@@ -28,7 +28,7 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 - [ ] Multi-format export (MP4, WebM, GIF) with resolution/quality/FPS options and batch export
 - [ ] Project file system (per-story folders with assets, exports; SQLite metadata index)
 - [ ] Natural-language → DSL conversion via LLM (Claude/OpenAI), chat-style authoring with diff preview
-- [ ] Smart selector engine with fallback chain (text → testid → aria → CSS) and auto-retry
+- [ ] Smart selector engine with intent-aware resolution: explicit `selector` / `testid` / `aria` targets resolve strictly, while human-text targets use ranked actionable/accessibility heuristics with ambiguity detection and attempt logging
 - [ ] AI voiceover (TTS) generation and voiceover↔timeline sync
 - [ ] Next.js 15 web companion: OAuth auth, S3/R2 video upload, shareable pages with embed, team workspaces, template marketplace, analytics
 - [ ] Desktop ↔ web WebSocket sync for recording status and project mirroring

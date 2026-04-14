@@ -30,7 +30,7 @@
 
 - [ ] **AUTO-01**: `BrowserDriver` trait with `ChromiumoxideDriver` (primary) and `PlaywrightSidecarDriver` (fallback) implementations
 - [ ] **AUTO-02**: Action executor maps each DSL verb to explicit auto-waiting (network idle, selector visible, animation settled) — does not rely on CDP defaults
-- [ ] **AUTO-03**: Smart selector engine with fallback chain: visible text → data-testid → aria-label → CSS selector, with attempt logging
+- [ ] **AUTO-03**: Smart selector engine uses intent-aware resolution: explicit `selector` / `testid` / `aria` targets resolve strictly with no cross-type fallback, while human-text targets build ranked candidates from accessible name, visible text, and label associations, with attempt logging and ambiguity errors when no unique high-confidence match exists
 - [ ] **AUTO-04**: Browser viewport, theme, and base URL driven by `meta` block settings
 - [ ] **AUTO-05**: On step failure, executor reports failure point, attempted selectors, and screenshot for UI retry UX
 - [ ] **AUTO-06**: Playwright sidecar is bundled and auto-selected for verbs chromiumoxide doesn't reliably support (file upload, wait-for-download, shadow-DOM click, OAuth popups)

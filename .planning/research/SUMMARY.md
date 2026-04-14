@@ -41,7 +41,7 @@ Competitive landscape pins Screen Studio as the polish benchmark, Arcade/Supadem
 
 **Must have (table stakes):** auto-zoom on clicks, smooth cursor interpolation, click ripples / highlight rings, rounded window + padded backgrounds, multi-format export (MP4 / WebM / GIF), trim/cut + preview-before-export, cursor controls, text overlays, scene transitions (xfade), BGM mixer, scene re-record, project persistence.
 
-**Should have (differentiators):** Story DSL as diffable Git-reviewable source of truth, reproducible recordings, natural-language → DSL authoring with diff preview, smart selector engine fallback chain, real browser automation, AI voiceover synced to DSL steps, offline-first, multi-viewport recording, web companion (upload + embed).
+**Should have (differentiators):** Story DSL as diffable Git-reviewable source of truth, reproducible recordings, natural-language → DSL authoring with diff preview, smart selector engine with intent-aware ranked resolution, real browser automation, AI voiceover synced to DSL steps, offline-first, multi-viewport recording, web companion (upload + embed).
 
 **Defer (v2+):** real-time collab (CRDT), native-app automation, headless CLI, plugin system, localization re-run, diff-aware re-recording.
 
