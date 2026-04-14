@@ -29,10 +29,11 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
   3. When recording completes, the app produces a playable MP4 (H.264) encoded through the bundled FFmpeg sidecar using hardware acceleration (VideoToolbox / NVENC / QSV) with audio/video drift under 100 ms.
   4. Signed, notarized installers (macOS Developer ID + hardened runtime; Windows signed) under 50 MB (excluding FFmpeg) are produced by GitHub Actions on every PR for macOS arm64, macOS x64, and Windows x64, with auto-updater wired and telemetry off by default.
   5. On macOS, Screen Recording TCC permission is handled via preflight probe, guided prompt, and relaunch-after-grant; on both OSes, multi-display and retina scaling are correct and a 30-minute capture soak stays under 800 MB RAM.
-**Plans**: 10 plans
+**Plans**: 11 plans
 - [ ] 01-01-PLAN.md — Monorepo scaffold (Turborepo + pnpm + Cargo workspace) + PR-build CI matrix
 - [ ] 01-02-PLAN.md — Wave-0 release gate: universal static FFmpeg + E2E macOS notarize smoke
-- [ ] 01-03-PLAN.md — Tauri v2 shell + plugins + typed IPC (tauri-specta) + React 19/Vite/Tailwind v4/shadcn+Base UI
+- [ ] 01-03-PLAN.md — Tauri v2 host (Rust-only): plugins, typed IPC (tauri-specta), error/logging/panic/keyring
+- [ ] 01-03b-PLAN.md — React 19/Vite 6/Tailwind v4/shadcn+Base UI frontend + typed IPC wrapper + panic modal (UI-09)
 - [ ] 01-04-PLAN.md — Story DSL parser crate (pest + two-layer + Levenshtein + panic-mode) + TS AST mirror
 - [ ] 01-05-PLAN.md — Storage crate (two-tier rusqlite + rusqlite_migration + portable project folders)
 - [ ] 01-06-PLAN.md — BrowserDriver trait + chromiumoxide + Playwright sidecar (Node SEA) + smart selector + auto-wait

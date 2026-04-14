@@ -52,7 +52,7 @@ Deliver the end-to-end "story → signed MP4" backbone. A developer can write a 
 ### Encoder / FFmpeg
 - **D-22:** FFmpeg **7.x built as a universal static binary** (no nested dylibs). LGPL build only — VideoToolbox / NVENC / QSV hardware encoders, no x264/x265 GPL. Recipe and CI script committed to `scripts/build-ffmpeg/`.
 - **D-23:** Bundled as Tauri **externalBin sidecar**; invoked over stdin/stdout pipes; process lifecycle owned by `crates/encoder`.
-- **D-24:** Runtime hardware-encoder feature detection: probe each encoder at startup, pick best available, fall back to `libx264` (still LGPL in this build path — verify `--enable-gpl` NOT set) → if unavailable use `mpeg4` or error. Report selection to logs + UI.
+- **D-24:** Runtime hardware-encoder feature detection: probe each encoder at startup, pick best available, fall back to `libopenh264` (LGPL-compatible Cisco reference encoder; Firefox/WebRTC use it) → if unavailable error out with a clear 'no available encoder' diagnostic. x264/x265 are explicitly excluded to preserve LGPL build discipline. Report selection to logs + UI.
 - **D-25:** Phase 1 output is **MP4 / H.264 only** (one format, one resolution = capture-native). WebM / GIF / resolution presets are Phase 2.
 - **D-26:** `ffprobe` A/V alignment CI job on a synthetic 10-minute recording — drift > 100 ms fails the build.
 

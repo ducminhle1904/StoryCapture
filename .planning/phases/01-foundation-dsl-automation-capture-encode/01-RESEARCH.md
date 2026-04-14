@@ -1268,14 +1268,14 @@ Working code sketches are embedded in each §Area. Minimum verifiable snippets t
 
 ---
 
-## Open Questions (for plan-check / execution)
+## Open Questions (RESOLVED)
 
-1. **Software H.264 fallback encoder**: D-24 says libx264; research recommends **libopenh264** to preserve LGPL. Needs user ratification — the change is invisible in behavior but material in licensing.
-2. **Chromium distribution for Playwright sidecar**: ship-in-installer vs. first-run download. Recommendation: first-run download, progress streamed to UI. Confirm with user if install size >180 MB is tolerable; otherwise first-run.
-3. **DSL `meta` block value grammar**: `viewport: 1280x800` vs. `viewport: { width: 1280, height: 800 }` — planner decides during DSL grammar plan.
-4. **BrowserDriver context lifetime**: one browser instance with N contexts (isolated) vs. N browser instances. Recommendation: one browser, one context per story.
-5. **HW-encoder probe mechanism**: run `ffmpeg -hide_banner -encoders` at first launch and cache, or probe on each session? Recommendation: cache in `app.sqlite` keyed by hw signature.
-6. **tauri-driver on Windows E2E**: confirm it still supports Tauri 2.8; if not, defer E2E to manual on Windows too.
+1. **Software H.264 fallback encoder** **(RESOLVED: libopenh264)**: Use Cisco's `libopenh264` as the software fallback. It is LGPL-compatible (the binary is redistributable under Cisco's BSD-like license with royalty coverage), already deployed at scale by Firefox and WebRTC, and preserves the project's LGPL build discipline (no `--enable-gpl` in the FFmpeg build recipe). `libx264`/`libx265` are explicitly excluded. If `libopenh264` is unavailable at runtime, the encoder crate must error out with a clear "no available encoder" diagnostic rather than silently picking another codec.
+2. **Chromium distribution for Playwright sidecar** **(RESOLVED: first-run download)**: Ship Chromium via first-run download, not bundled. Rationale: keeps installer <50 MB (D-41), matches the pattern already used for `chromiumoxide`, and lets users opt out of the Playwright path on constrained networks. Progress is streamed to the UI during the download. P06 documents the UX (cancel/retry, checksum verification, cached under `$APP_DATA/browsers/`).
+3. **DSL `meta` block value grammar** **(RESOLVED: `viewport: 1280x800` literal syntax)**: Adopt the compact `WIDTHxHEIGHT` literal (e.g. `viewport: 1280x800`) for readability and to match common screenshot-tool conventions. The parser accepts only this form in Phase 1; structured object syntax can be added in Phase 2 without breaking compatibility.
+4. **BrowserDriver context lifetime** **(RESOLVED: one browser, one context per story)**: Single browser instance, one fresh `BrowserContext` per story execution. Gives isolation (cookies/storage) without the cold-start cost of a new browser. Documented in the `automation` crate's `BrowserDriver` trait docs.
+5. **HW-encoder probe mechanism** **(RESOLVED: probe once, cache in `app.sqlite`)**: Run `ffmpeg -hide_banner -encoders` once at first launch, cache the result in `app.sqlite` keyed by a hardware signature (OS + CPU model + GPU vendor string). Re-probe if the signature changes (hardware swap). Eliminates per-session probe latency.
+6. **tauri-driver on Windows E2E** **(RESOLVED: WebdriverIO + `tauri-driver` per D-47; fall back to manual QA if incompatible)**: Use WebdriverIO with `tauri-driver` on Windows as specified by D-47. If at execution time `tauri-driver` turns out to be incompatible with Tauri 2.8 on Windows, the executor records a deviation and falls back to manual QA for Windows E2E. **This is non-blocking for Phase 1 sign-off.**
 
 ---
 
