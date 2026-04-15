@@ -53,8 +53,26 @@ impl GraphBuilder {
         self.push_video(VideoNode::ZoomPan { id, target, keyframes })
     }
 
-    pub fn background(&mut self, id: NodeId, kind: BackgroundKind, radius_px: f32, shadow: Option<Shadow>) -> &mut Self {
-        self.push_video(VideoNode::Background { id, kind, radius_px, shadow })
+    pub fn background(
+        &mut self,
+        id: NodeId,
+        kind: BackgroundKind,
+        radius_px: f32,
+        shadow: Option<Shadow>,
+    ) -> &mut Self {
+        self.background_with_padding(id, kind, radius_px, shadow, 0)
+    }
+
+    /// Full background constructor including `padding_px` (Plan 07 POST-04).
+    pub fn background_with_padding(
+        &mut self,
+        id: NodeId,
+        kind: BackgroundKind,
+        radius_px: f32,
+        shadow: Option<Shadow>,
+        padding_px: u32,
+    ) -> &mut Self {
+        self.push_video(VideoNode::Background { id, kind, radius_px, shadow, padding_px })
     }
 
     pub fn cursor(

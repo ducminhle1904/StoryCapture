@@ -296,6 +296,10 @@ pub enum VideoNode {
         kind: BackgroundKind,
         radius_px: f32,
         shadow: Option<Shadow>,
+        /// Inner padding around the foreground video after compositing onto the
+        /// background layer (Plan 07 / POST-04). Range: 0..=128 px.
+        #[serde(default)]
+        padding_px: u32,
     },
     CursorOverlay {
         id: NodeId,

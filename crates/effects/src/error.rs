@@ -36,6 +36,36 @@ pub enum EffectsError {
     #[cfg(feature = "sqlite")]
     #[error("sqlite: {0}")]
     Sqlite(#[from] rusqlite::Error),
+
+    /// An uploaded background image exceeds the max-dimensions or max-bytes cap.
+    #[error("image too large ({bytes} bytes)")]
+    ImageTooLarge { bytes: u64 },
+
+    /// An uploaded background image has an unsupported extension/MIME.
+    #[error("unsupported image format: {0}")]
+    UnsupportedImageFormat(String),
+
+    /// Referenced path was empty/invalid (e.g. no file_name component).
+    #[error("invalid path")]
+    InvalidPath,
+
+    /// An image-crate error during decode/validation.
+    #[error("image decode: {0}")]
+    ImageDecode(String),
+
+    /// A gradient preset id was referenced that is not in the static registry.
+    #[error("unknown gradient preset: {0}")]
+    UnknownGradient(String),
+
+    /// FFmpeg probe or related subprocess failure.
+    #[error("ffmpeg probe: {0}")]
+    FfmpegProbe(String),
+}
+
+impl From<image::ImageError> for EffectsError {
+    fn from(e: image::ImageError) -> Self {
+        EffectsError::ImageDecode(e.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, EffectsError>;

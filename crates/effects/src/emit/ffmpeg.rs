@@ -185,7 +185,8 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 .unwrap();
                 cur = out_label;
             }
-            VideoNode::Background { kind, radius_px, shadow, .. } => {
+            VideoNode::Background { kind, radius_px, shadow, padding_px, .. } => {
+                let _ = padding_px;
                 // Emit: color/gradient source → overlay onto cur.
                 let bg_src = match kind {
                     BackgroundKind::Solid { color } => {

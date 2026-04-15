@@ -10,11 +10,13 @@
 //! the same AST.
 
 pub mod ast;
+pub mod background;
 pub mod builder;
 pub mod cursor;
 pub mod emit;
 pub mod error;
 pub mod math;
+pub mod transitions;
 pub mod zoom;
 
 pub use ast::{AudioNode, Graph, VideoNode, SCHEMA_VERSION};

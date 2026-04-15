@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "presets": [
+    { "id": "runway-dark", "name": "Runway Dark", "file": "runway-dark.png", "tags": ["dark", "cinematic", "primary"] },
+    { "id": "runway-light", "name": "Runway Light", "file": "runway-light.png", "tags": ["light", "cinematic"] },
+    { "id": "linear-slate", "name": "Linear Slate", "file": "linear-slate.png", "tags": ["dark", "minimal", "editor"] },
+    { "id": "elevenlabs-violet", "name": "ElevenLabs Violet", "file": "elevenlabs-violet.png", "tags": ["violet", "timeline"] },
+    { "id": "warm-sunset", "name": "Warm Sunset", "file": "warm-sunset.png", "tags": ["warm", "demo"] },
+    { "id": "cool-ocean", "name": "Cool Ocean", "file": "cool-ocean.png", "tags": ["cool", "tech"] },
+    { "id": "forest-emerald", "name": "Forest Emerald", "file": "forest-emerald.png", "tags": ["green", "eco"] },
+    { "id": "solid-black", "name": "Solid Black", "file": "solid-black.png", "tags": ["solid", "minimal"] },
+    { "id": "solid-white", "name": "Solid White", "file": "solid-white.png", "tags": ["solid", "print"] },
+    { "id": "paper-grain", "name": "Paper Grain", "file": "paper-grain.png", "tags": ["textured", "documentary"] }
+  ]
+}
