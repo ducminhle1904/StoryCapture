@@ -12,7 +12,7 @@ use std::fmt::Write;
 use crate::ast::audio::{AudioNode, SidechainParams};
 use crate::ast::types::NodeId;
 use crate::ast::video::{
-    BackgroundKind, RippleEvent, TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe,
+    BackgroundKind, TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe,
 };
 use crate::ast::Graph;
 
@@ -218,11 +218,21 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
             VideoNode::CursorOverlay { trajectory, size_scale, .. } => {
-                // Plan 08 fills cursor PNG sequence lookup; we emit the shape.
+                // Plan 06 (POST-03): cursor trajectory + ripples are baked into
+                // a PNG sequence by `crates/effects::cursor::render_png_sequence`
+                // that the caller (Plan 11) feeds as a separate input via
+                // `-framerate {fps} -i {dir}/frame_%05d.png`. The compositor
+                // already positions the cursor at each frame's sample.pos, so
+                // the overlay sits at (0, 0).
+                //
+                // The `movie=` source here is the same sequence path; in the
+                // render pipeline the caller can either use this `movie=`
+                // demuxer OR wire a second input stream — both produce an
+                // image2 sequence that `overlay` consumes pixel-for-pixel.
                 let cursor_src_label = format!("[{}_cursor]", node_label_core(node.id()));
                 write!(
                     out,
-                    "movie='{path}':loop=0,setpts=N/{fps}/TB,scale=iw*{s:.3}:ih*{s:.3}{cursor_src_label};{cur}{cursor_src_label}overlay=x='W/2':y='H/2':eof_action=pass{out_label}",
+                    "movie='{path}':loop=0,setpts=N/{fps}/TB,scale=iw*{s:.3}:ih*{s:.3}{cursor_src_label};{cur}{cursor_src_label}overlay=eof_action=pass:x=0:y=0{out_label}",
                     path = escape_ffmpeg_path(&trajectory.png_sequence_dir.to_string_lossy()),
                     fps = trajectory.fps,
                     s = size_scale,
@@ -234,27 +244,15 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
             VideoNode::RippleOverlay { events, .. } => {
-                // Emit one overlay per event, chained left-to-right.
-                let mut ripple_cur = cur.clone();
-                let mut mid = String::new();
-                for (i, ev) in events.iter().enumerate() {
-                    if !mid.is_empty() {
-                        mid.push(';');
-                    }
-                    let step_label = if i + 1 == events.len() {
-                        out_label.clone()
-                    } else {
-                        format!("[{}_r{}]", node_label_core(node.id()), i)
-                    };
-                    mid.push_str(&ripple_expr(&ripple_cur, &step_label, ev));
-                    ripple_cur = step_label;
-                }
-                if events.is_empty() {
-                    // Degenerate: pass-through.
-                    write!(out, "{cur}null{out_label}", cur = cur, out_label = out_label).unwrap();
-                } else {
-                    out.push_str(&mid);
-                }
+                // Plan 06 (POST-03): ripples are baked into the CursorOverlay
+                // PNG sequence by `compose_frame`, so the RippleOverlay AST
+                // node degrades to a no-op passthrough in FFmpeg. We keep the
+                // node in the AST for PreviewRenderPlan parity — the WebGPU
+                // preview (Plan 12) consumes `PreviewRenderPlan.ripples`
+                // independently of the baked PNGs (D-01: preview + final
+                // share the same source data).
+                let _ = events;
+                write!(out, "{cur}null{out_label}", cur = cur, out_label = out_label).unwrap();
                 cur = out_label;
             }
             VideoNode::TextOverlay { boxes, .. } => {
@@ -315,20 +313,6 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
         }
         write!(out, "{cur}null[out_v]", cur = cur).unwrap();
     }
-}
-
-fn ripple_expr(inp: &str, outp: &str, ev: &RippleEvent) -> String {
-    let t0 = (ev.t_anticipate_ms as f64) / 1000.0;
-    let t1 = ((ev.t_impact_ms + ev.duration_ms as u64) as f64) / 1000.0;
-    format!(
-        "{inp}drawbox=enable='between(t,{t0:.3},{t1:.3})':x={x:.1}:y={y:.1}:w={r:.1}:h={r:.1}:color=0x{R:02X}{G:02X}{B:02X}@{A:.3}:t=2{outp}",
-        inp = inp, outp = outp,
-        t0 = t0, t1 = t1,
-        x = ev.center.x, y = ev.center.y,
-        r = ev.max_radius_px,
-        R = ev.color.r, G = ev.color.g, B = ev.color.b,
-        A = (ev.color.a as f32) / 255.0,
-    )
 }
 
 fn drawtext_args(tb: &TextBox) -> String {
