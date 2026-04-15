@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::ast::audio::{AudioNode, SidechainParams};
-use crate::ast::types::{NodeId, Rgba, Vec2};
+use crate::ast::types::{NodeId, Rgba};
 use crate::ast::video::{
     BackgroundKind, CursorSkin, RippleEvent, Shadow, TextBox, TrajectoryRef, VideoNode, XfadeKind,
     ZoomKeyframe, ZoomTarget,
@@ -134,11 +134,6 @@ impl GraphBuilder {
     pub fn audio_delay(&mut self, id: NodeId, input_label: impl Into<String>, ms: u64) -> &mut Self {
         self.push_audio(AudioNode::Delay { id, input_label: input_label.into(), ms })
     }
-
-    /// Convenience: drop a Vec2 as builder sugar (unused but keeps the type
-    /// alive for downstream use with `#[allow(unused_imports)]`).
-    #[doc(hidden)]
-    pub fn _vec2_sentinel(&self, _v: Vec2) {}
 
     /// Validate + consume. Performs:
     ///   1. duplicate-id detection across all video + audio nodes

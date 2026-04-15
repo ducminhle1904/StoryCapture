@@ -14,6 +14,7 @@ use crate::ast::types::NodeId;
 use crate::ast::video::{TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe};
 use crate::ast::Graph;
 use crate::background::compositor::emit_background;
+use crate::text::{escape_drawtext_text, path_to_ffmpeg_arg};
 
 /// Axis selector for [`zoompan_expr`]. The zoompan filter wants three
 /// expressions: `z` (scale), `x` (x-offset), `y` (y-offset). We build them
@@ -217,7 +218,7 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 write!(
                     out,
                     "movie='{path}':loop=0,setpts=N/{fps}/TB,scale=iw*{s:.3}:ih*{s:.3}{cursor_src_label};{cur}{cursor_src_label}overlay=eof_action=pass:x=0:y=0{out_label}",
-                    path = escape_ffmpeg_path(&trajectory.png_sequence_dir.to_string_lossy()),
+                    path = path_to_ffmpeg_arg(&trajectory.png_sequence_dir),
                     fps = trajectory.fps,
                     s = size_scale,
                     cursor_src_label = cursor_src_label,
@@ -310,42 +311,13 @@ fn drawtext_args(tb: &TextBox) -> String {
     let _ = alpha_expr;
     format!(
         "text='{t}':x={x:.1}:y={y:.1}:fontsize={fs:.1}:fontcolor=0x{R:02X}{G:02X}{B:02X}@{A:.3}:enable='between(t,{f:.3},{to:.3})'",
-        t = escape_drawtext(&tb.text),
+        t = escape_drawtext_text(&tb.text),
         x = tb.pos.x, y = tb.pos.y,
         fs = tb.size_pt,
         R = tb.color.r, G = tb.color.g, B = tb.color.b,
         A = (tb.color.a as f32) / 255.0,
         f = enable_from, to = enable_to,
     )
-}
-
-/// Escape a string for the FFmpeg `drawtext text=` argument (T-02-02).
-fn escape_drawtext(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '\'' => out.push_str("\\'"),
-            ':' => out.push_str("\\:"),
-            _ => out.push(ch),
-        }
-    }
-    out
-}
-
-/// Escape a filesystem path for FFmpeg filter expressions (`movie=` argument).
-fn escape_ffmpeg_path(s: &str) -> String {
-    // FFmpeg expects `:` and `\` escaped in filter args.
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            ':' => out.push_str("\\:"),
-            '\'' => out.push_str("\\'"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 fn node_label_core(id: NodeId) -> String {
@@ -460,13 +432,6 @@ fn sidechain_args(p: &SidechainParams) -> String {
         a = p.attack_ms,
         rel = p.release_ms,
     )
-}
-
-/// Keep `stable_label` usage visible at a symbol level so the plan's
-/// acceptance grep succeeds even when `cargo fmt` reorders expressions.
-#[doc(hidden)]
-pub fn _stable_label_hint(id: NodeId) -> String {
-    id.stable_label("v")
 }
 
 /// Collect the extra `-i` inputs needed by every Background node in the

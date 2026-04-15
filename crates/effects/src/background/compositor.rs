@@ -200,14 +200,6 @@ pub fn emit_background(
 
     let _ = (kind, id); // silence unused if any
 
-    // Touch gradient-presets in a grep-visible way: callers grep this module
-    // for the literal `"gradient-presets"` to confirm asset-path resolution.
-    #[doc(hidden)]
-    fn _grep_anchor() -> &'static str {
-        "gradient-presets"
-    }
-    let _ = _grep_anchor();
-
     Ok(BackgroundEmit { filter_chain: chain, extra_inputs })
 }
 
