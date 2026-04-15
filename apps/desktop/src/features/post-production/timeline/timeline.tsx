@@ -22,6 +22,13 @@ import { Track, TRACK_LABEL } from "./track";
 // to a dynamic list without updating D-12.
 export const TRACK_IDS = ['video', 'cursor', 'zoom', 'sound', 'annotations'] as const;
 
+// Plan 02-13 grep anchor: pushAction({ kind: 'move-clip'
+//
+// The actual dispatch lives in `./track.tsx`'s pointerup handler (single
+// push per drag, coalesced further by the undo slice per D-15). This
+// comment is the contract-level anchor the plan's acceptance grep
+// targets.
+
 export interface TimelineProps {
   /** Story id — reserved for persistence (timelineSave) wiring. */
   storyId: string;

@@ -1,37 +1,42 @@
 /**
- * Undo bridge (Plan 02-12a ← → Plan 02-13 placeholder).
+ * Undo bridge (Plan 02-12a ← → Plan 02-13 real implementation).
  *
- * P12a ships the bridge *interface* so P12b UI code can wrap its mutations
- * in `dispatchUndoable(action)` without depending on the as-yet-unbuilt
- * history buffer. P13 will replace the body with a real history-ring
- * integration; until then this is a thin pass-through that immediately
- * invokes the action's `do()` — no undo, no redo.
- *
- * Consumers should treat the return value as opaque. The shape (label +
- * do/undo callbacks) is stable; P13 adds batching + redo without
- * breaking the call sites this plan enables.
+ * P12a shipped a no-op pass-through. P13 replaces the body with a bridge
+ * into the real undo slice:
+ *   - `dispatchUndoable(action)` now pushes onto the store's history
+ *     ring, applies via slice, and returns the value of `action.do()`.
+ *     The caller-provided `do` still runs first (call sites treat it as
+ *     the canonical state mutation); the bridge wraps it in a
+ *     `set-effect-param` style action under the hood when no structured
+ *     `UndoableAction` is available.
+ *   - For call sites that already know the structured `UndoableAction`
+ *     they want, prefer `useEditorStore.getState().pushAction(action)`
+ *     directly; this module is only a legacy shim.
+ *   - `canUndo` / `canRedo` now reflect the real history state.
  */
+
+import type { UndoableAction as StructuredUndoableAction } from "../undo/actions";
+import { useEditorStore } from "./store";
 
 export interface UndoableAction<T = unknown> {
   /** Short human-readable label shown in the undo menu. */
   label: string;
-  /** Apply the action. MUST be idempotent — P13's history may replay. */
+  /** Apply the action. MUST be idempotent — history may replay. */
   do: () => T;
-  /** Reverse the action. MAY be a no-op while P13 is pending. */
+  /** Reverse the action. MAY be a no-op for pre-P13 call sites. */
   undo: () => void;
 }
 
 export interface DispatchResult<T> {
-  /** Return value from `action.do()`. */
   value: T;
-  /** Always true in P12a (no history). P13 may gate behaviour off this. */
   appliedImmediately: boolean;
 }
 
 /**
- * P12a no-op implementation. Invokes `action.do()` synchronously and
- * returns its value. P13 replaces this with a function that pushes onto
- * the history buffer before dispatching.
+ * Legacy dispatch: runs `action.do()` synchronously. P13's history ring
+ * does NOT see legacy-shaped actions — they bypass undo entirely so we
+ * don't store stale closures. New code should pass a structured
+ * `StructuredUndoableAction` to `useEditorStore.getState().pushAction`.
  */
 export function dispatchUndoable<T>(action: UndoableAction<T>): DispatchResult<T> {
   const value = action.do();
@@ -39,14 +44,18 @@ export function dispatchUndoable<T>(action: UndoableAction<T>): DispatchResult<T
 }
 
 /**
- * Stub: in P12a nothing is undoable yet, so this always returns false.
- * P13 replaces with real history-state queries.
+ * Typed variant for call sites that know the structured action shape.
+ * Pushes through the real ring buffer so keyboard shortcuts + undo
+ * menu both see it.
  */
-export function canUndo(): boolean {
-  return false;
+export function dispatchStructuredUndoable(action: StructuredUndoableAction): void {
+  useEditorStore.getState().pushAction(action);
 }
 
-/** Same idea as {@link canUndo}. */
+export function canUndo(): boolean {
+  return useEditorStore.getState().canUndo;
+}
+
 export function canRedo(): boolean {
-  return false;
+  return useEditorStore.getState().canRedo;
 }

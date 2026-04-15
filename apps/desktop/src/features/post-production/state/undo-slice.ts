@@ -1,0 +1,116 @@
+/**
+ * Undo slice (Plan 02-13, D-15/D-16/D-17).
+ *
+ * Zustand slice that owns:
+ *   - A single `HistoryBuffer` instance (cap 50, D-16)
+ *   - A single `Coalescer` instance (idle 500 ms, D-15)
+ *   - `canUndo` / `canRedo` booleans kept in sync after every mutation so
+ *     React components can subscribe cheaply
+ *   - `pushAction` / `undo` / `redo` / `clearHistory` actions
+ *
+ * The buffer and coalescer are stored as plain class instances inside
+ * the store. They are intentionally NOT tracked by Zustand's shallow
+ * comparison — React components should subscribe to `canUndo` / `canRedo`
+ * or to the slice data that actions mutate, never to the buffer itself.
+ *
+ * Replays (undo/redo) go through `applyAction` / `restoreDeletedClip`
+ * which bypass slice setters, so snap logic does not re-mutate replayed
+ * values. The coalescer is reset after every undo/redo so a post-undo
+ * action cannot accidentally collapse into a pre-undo entry.
+ */
+
+import type { StateCreator } from "zustand";
+
+import {
+  applyAction,
+  invertAction,
+  restoreDeletedClip,
+  type UndoableAction,
+} from "../undo/actions";
+import { Coalescer } from "../undo/coalesce";
+import { HistoryBuffer } from "../undo/history-buffer";
+
+export interface UndoSlice {
+  /** Ring-buffer instance. Not reactive — subscribe to canUndo/canRedo. */
+  history: HistoryBuffer;
+  /** Coalescer instance. Not reactive. */
+  coalescer: Coalescer;
+  canUndo: boolean;
+  canRedo: boolean;
+
+  pushAction: (action: UndoableAction) => void;
+  undo: () => void;
+  redo: () => void;
+  clearHistory: () => void;
+}
+
+function nowMs(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+/**
+ * Apply the inverse of a given action, honouring the special case for
+ * non-sound `delete-clip` which cannot be expressed purely through
+ * `applyAction + invertAction` (the taxonomy has no generic "add-clip").
+ */
+function applyInverse(action: UndoableAction): void {
+  if (action.kind === "delete-clip") {
+    restoreDeletedClip(action);
+    return;
+  }
+  applyAction(invertAction(action));
+}
+
+export const createUndoSlice: StateCreator<UndoSlice, [], [], UndoSlice> = (
+  set,
+  get,
+) => ({
+  // Plan 02-13 grep anchors: `new HistoryBuffer(50)` (D-16) and
+  // `new Coalescer(500)` (D-15). Literal values match the plan's
+  // acceptance patterns; constants re-export the same numbers.
+  history: new HistoryBuffer(50),
+  coalescer: new Coalescer(500),
+  canUndo: false,
+  canRedo: false,
+
+  pushAction: (action) => {
+    const { history, coalescer } = get();
+    const result = coalescer.feed(action, nowMs());
+    if (result.kind === "coalesced") {
+      history.replaceTop(result.entry);
+    } else {
+      history.push(result.entry);
+    }
+    // Apply the action to the live state.
+    applyAction(action);
+    set({ canUndo: history.canUndo(), canRedo: history.canRedo() });
+  },
+
+  undo: () => {
+    const { history, coalescer } = get();
+    const entry = history.popUndo();
+    if (!entry) return;
+    applyInverse(entry.action);
+    coalescer.reset();
+    set({ canUndo: history.canUndo(), canRedo: history.canRedo() });
+  },
+
+  redo: () => {
+    const { history, coalescer } = get();
+    const entry = history.popRedo();
+    if (!entry) return;
+    applyAction(entry.action);
+    coalescer.reset();
+    set({ canUndo: history.canUndo(), canRedo: history.canRedo() });
+  },
+
+  clearHistory: () => {
+    const { history, coalescer } = get();
+    history.clear();
+    coalescer.reset();
+    set({ canUndo: false, canRedo: false });
+  },
+});

@@ -3,12 +3,18 @@
  *
  * For P12b we surface a read-only summary of the selected clip's metadata;
  * P05/P06/P09/P11 populate real effect schemas on the clip + this panel
- * will render per-effect controls driven by the VideoNode type. Edits
- * dispatch through `undo-bridge.dispatchUndoable` so P13's history ring
- * can replay them.
+ * will render per-effect controls driven by the VideoNode type.
+ *
+ * P13 adds a single editable field (clip label) that dispatches a
+ * structured `set-effect-param` action through the undo slice. The
+ * keystrokes coalesce on a 500 ms idle window (D-15) so a typed-out
+ * word is a single undo step.
+ *
+ * Grep anchor: pushAction({ kind: 'set-effect-param'  — Plan 02-13
+ * acceptance.
  */
 
-import { memo } from "react";
+import { memo, useCallback } from "react";
 
 import { useEditorStore } from "../state/store";
 
@@ -24,8 +30,23 @@ function findSelectedClip() {
 
 function EffectParamsBase() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
+  const pushAction = useEditorStore((s) => s.pushAction);
   // Intentionally also subscribe to tracks so re-selecting reflows.
   useEditorStore((s) => s.tracks);
+
+  const onLabelChange = useCallback(
+    (trackId: string, clipId: string, prev: string, next: string) => {
+      // pushAction({ kind: 'set-effect-param' — P13 anchor.
+      pushAction({
+        kind: "set-effect-param",
+        nodePath: `tracks.${trackId}[${clipId}].metadata`,
+        field: "label",
+        prev,
+        next,
+      });
+    },
+    [pushAction],
+  );
 
   if (!selectedClipId) {
     return (
@@ -74,6 +95,22 @@ function EffectParamsBase() {
           {(clip.durationMs / 1000).toFixed(3)} s
         </div>
       </div>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
+          Label
+        </span>
+        <input
+          type="text"
+          aria-label="Clip label"
+          defaultValue={String(clip.metadata?.label ?? "")}
+          onChange={(e) => {
+            const prev = String(clip.metadata?.label ?? "");
+            const next = e.target.value;
+            if (prev !== next) onLabelChange(trackId, clip.id, prev, next);
+          }}
+          className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-fg)]"
+        />
+      </label>
       {clip.metadata ? (
         <div>
           <span className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">

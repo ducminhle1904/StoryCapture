@@ -1,14 +1,20 @@
 /**
- * Post-Production editor store (Plan 02-12a, D-32).
+ * Post-Production editor store (Plan 02-12a, D-32; Plan 02-13 added
+ * UndoSlice).
  *
- * Composition of 5 slices (timeline / panels / selection / export / queue)
- * into a single Zustand store. The panels slice is persisted to
- * `localStorage` via `zustand/middleware/persist` so pane sizes and
- * drawer flags survive reloads. Timeline / selection / export / queue
- * are transient — a reload starts clean.
+ * Composition of 6 slices:
+ *   - timeline / panels / selection / export / queue (P12a)
+ *   - undo (P13) — owns the HistoryBuffer + Coalescer
  *
- * The undo bridge is a module-level export, not a slice (it's stateless
- * in P12a and will hold its own history buffer in P13).
+ * The panels slice is persisted to `localStorage` via
+ * `zustand/middleware/persist` so pane sizes and drawer flags survive
+ * reloads. Timeline / selection / export / queue / undo are transient.
+ * The undo ring is NOT persisted (D-16) — reloading the project resets
+ * history.
+ *
+ * The undo-bridge module re-exports the slice's pushAction as
+ * `dispatchUndoable` so P12a's call sites continue to compile without
+ * changes; see `undo-bridge.ts`.
  */
 
 import { create } from "zustand";
@@ -19,12 +25,14 @@ import { createPanelsSlice, PANELS_STORAGE_KEY, type PanelsSlice } from "./panel
 import { createQueueSlice, type QueueSlice } from "./queue-slice";
 import { createSelectionSlice, type SelectionSlice } from "./selection-slice";
 import { createTimelineSlice, type TimelineSlice } from "./timeline-slice";
+import { createUndoSlice, type UndoSlice } from "./undo-slice";
 
 export type EditorStore = TimelineSlice &
   PanelsSlice &
   SelectionSlice &
   ExportSlice &
-  QueueSlice;
+  QueueSlice &
+  UndoSlice;
 
 /**
  * Keys from `PanelsSlice` that are worth persisting. We deliberately
@@ -45,6 +53,7 @@ export const useEditorStore = create<EditorStore>()(
       ...createSelectionSlice(...a),
       ...createExportSlice(...a),
       ...createQueueSlice(...a),
+      ...createUndoSlice(...a),
     }),
     {
       name: PANELS_STORAGE_KEY,
@@ -65,6 +74,6 @@ export {
   dispatchUndoable,
   canRedo,
   canUndo,
-  type UndoableAction,
+  type UndoableAction as LegacyUndoableAction,
   type DispatchResult,
 } from "./undo-bridge";

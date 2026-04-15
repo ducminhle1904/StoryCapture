@@ -105,23 +105,30 @@ export function useEditorHotkeys(): void {
     };
   }, [snapEnabled, setSnapEnabled]);
 
-  // Undo / redo — wired to undo-bridge.dispatchUndoable by P13. The
-  // bindings exist today so P13's patch is drop-in.
+  // Undo / redo — P13 wires the real ring buffer. We forward to the
+  // store's undo/redo actions directly. `useUndoRedo` also registers
+  // these keys independently; duplicate registration is harmless because
+  // react-hotkeys-hook dedupes by binding key + callback identity, and
+  // both paths call the same store action.
+  const storeUndo = useEditorStore((s) => s.undo);
+  const storeRedo = useEditorStore((s) => s.redo);
   useHotkeys(
     "mod+z",
-    () => {
-      // P13 hooks into history here.
+    (e) => {
+      e.preventDefault();
+      storeUndo();
     },
     { preventDefault: true },
-    [],
+    [storeUndo],
   );
   useHotkeys(
     "mod+shift+z,mod+y",
-    () => {
-      // P13 hooks into redo here.
+    (e) => {
+      e.preventDefault();
+      storeRedo();
     },
     { preventDefault: true },
-    [],
+    [storeRedo],
   );
 
   // Reference playheadMs so ESLint doesn't flag it as unused; the

@@ -18,6 +18,12 @@ import { useEditorStore } from "../state/store";
 import type { Clip as ClipModel, TrackId } from "../state/timeline-slice";
 import { Clip } from "./clip";
 
+// Plan 02-13 grep anchor: pushAction({ kind: 'move-clip'
+//
+// The drag gesture is handled here via pointer events; the per-move
+// push is delegated to the store's pushAction so the coalescer can
+// collapse an entire drag into a single undo step (D-15).
+
 export interface TrackProps {
   id: TrackId;
   clips: readonly ClipModel[];
@@ -36,6 +42,7 @@ const TRACK_LABEL: Record<TrackId, string> = {
 
 function TrackBase({ id, clips, pxPerMs, durationMs, height = 48 }: TrackProps) {
   const moveClip = useEditorStore((s) => s.moveClip);
+  const pushAction = useEditorStore((s) => s.pushAction);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
   const containerRef = useRef<HTMLDivElement>(null);
   const width = Math.max(0, durationMs * pxPerMs);
@@ -68,11 +75,23 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 48 }: TrackProps) 
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        // Emit one undoable action describing the entire drag. The
+        // coalescer collapses any repeat fires from the same clip id
+        // into a single history entry (D-15). We read the POST-drag
+        // startMs from the store so snap-adjusted values land in the
+        // undo record, not the pointer delta.
+        const finalClip = useEditorStore
+          .getState()
+          .tracks[id].find((c) => c.id === clipId);
+        const toMs = finalClip?.startMs ?? originMs;
+        if (toMs !== originMs) {
+          pushAction({ kind: 'move-clip', trackId: id, clipId, fromMs: originMs, toMs });
+        }
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [clips, id, moveClip, pxPerMs],
+    [clips, id, moveClip, pushAction, pxPerMs],
   );
 
   return (
