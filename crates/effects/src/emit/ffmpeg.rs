@@ -12,9 +12,87 @@ use std::fmt::Write;
 use crate::ast::audio::{AudioNode, SidechainParams};
 use crate::ast::types::NodeId;
 use crate::ast::video::{
-    BackgroundKind, RippleEvent, TextAnim, TextBox, VideoNode, XfadeKind,
+    BackgroundKind, RippleEvent, TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe,
 };
 use crate::ast::Graph;
+
+/// Axis selector for [`zoompan_expr`]. The zoompan filter wants three
+/// expressions: `z` (scale), `x` (x-offset), `y` (y-offset). We build them
+/// from the same keyframe list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExprAxis {
+    /// Scale (z). Emits `scale` values literally.
+    Z,
+    /// X axis. Converts scene-space center_x into zoompan x-offset using
+    /// `center_x - iw/(2*z)` so `center_x` lands in the center of the output.
+    X,
+    /// Y axis. Same conversion for center_y.
+    Y,
+}
+
+/// Build a zoompan expression for `axis` from a keyframe list.
+///
+/// Output is a nested `if(lt(t, t1), v0, if(lt(t, t2), v0+(v1-v0)*(t-t1)/(t2-t1), ...))`
+/// ladder suitable for passing directly to FFmpeg's zoompan filter.
+///
+/// - Empty keyframes → constant `1.0` for Z, `0` for X/Y (degenerate).
+/// - Single keyframe → constant equal to that keyframe's value.
+/// - Times are emitted in seconds (keyframe `t_ms / 1000`).
+///
+/// The X / Y expressions reference `iw` / `ih` to convert scene-space
+/// coordinates into zoompan's top-left offsets.
+pub fn zoompan_expr(keyframes: &[ZoomKeyframe], axis: ExprAxis) -> String {
+    if keyframes.is_empty() {
+        return match axis {
+            ExprAxis::Z => "1.0".to_string(),
+            ExprAxis::X | ExprAxis::Y => "0".to_string(),
+        };
+    }
+
+    if keyframes.len() == 1 {
+        let k = keyframes[0];
+        return format_axis_value(k, axis);
+    }
+
+    // Build the nested-if ladder from last to first.
+    // Base case: after the last keyframe, hold the final value.
+    let mut expr = format_axis_value(*keyframes.last().unwrap(), axis);
+
+    // Walk pairs in reverse: (kN-1, kN), (kN-2, kN-1), ... (k0, k1).
+    for i in (0..keyframes.len() - 1).rev() {
+        let k0 = keyframes[i];
+        let k1 = keyframes[i + 1];
+        let t_hi = (k1.t_ms as f64) / 1000.0;
+        let v0 = format_axis_value(k0, axis);
+        let v1 = format_axis_value(k1, axis);
+        // Linear interpolation v0 + (v1-v0)*(t - t0)/(t1 - t0). Since we
+        // chain from the outside, the current `expr` is the post-k1 tail.
+        let t_lo = (k0.t_ms as f64) / 1000.0;
+        let dt = (t_hi - t_lo).max(1e-6);
+        let segment = format!(
+            "({v0})+(({v1})-({v0}))*(t-{t_lo:.6})/{dt:.6}",
+            v0 = v0,
+            v1 = v1,
+            t_lo = t_lo,
+            dt = dt,
+        );
+        expr = format!("if(lt(t,{t_hi:.6}),{segment},{expr})");
+    }
+
+    // Before k0, hold the first value.
+    let first = format_axis_value(keyframes[0], axis);
+    let t0 = (keyframes[0].t_ms as f64) / 1000.0;
+    format!("if(lt(t,{t0:.6}),{first},{expr})")
+}
+
+fn format_axis_value(k: ZoomKeyframe, axis: ExprAxis) -> String {
+    match axis {
+        ExprAxis::Z => format!("{:.4}", k.scale),
+        // Convert scene-space center to zoompan offset: offset = center - iw/(2*z)
+        ExprAxis::X => format!("({:.2}-iw/(2*zoom))", k.center.x),
+        ExprAxis::Y => format!("({:.2}-ih/(2*zoom))", k.center.y),
+    }
+}
 
 /// Namespace for the FFmpeg emitter.
 pub struct FfmpegEmit;
@@ -85,25 +163,23 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
             VideoNode::ZoomPan { keyframes, .. } => {
-                // Placeholder expression — Plan 05 replaces with keyframe lerp.
-                let (cx, cz) = keyframes
-                    .first()
-                    .map(|k| (k.center, k.scale))
-                    .unwrap_or_else(|| {
-                        (
-                            crate::ast::types::Vec2::new(w as f32 / 2.0, h as f32 / 2.0),
-                            1.0,
-                        )
-                    });
+                // Plan 05: piecewise-linear interpolation across the keyframe
+                // list. The caller (plan_zoom) is responsible for applying
+                // spring low-pass + D-06 phase separation before we get here.
+                let z_expr = zoompan_expr(keyframes, ExprAxis::Z);
+                let x_expr = zoompan_expr(keyframes, ExprAxis::X);
+                let y_expr = zoompan_expr(keyframes, ExprAxis::Y);
+                let fps = g.output_fps;
                 write!(
                     out,
-                    "{cur}zoompan=z='{z:.4}':x='{x:.1}':y='{y:.1}':d=1:s={w}x{h}{out_label}",
+                    "{cur}zoompan=z='{z}':x='{x}':y='{y}':d=1:s={w}x{h}:fps={fps}{out_label}",
                     cur = cur,
-                    z = cz,
-                    x = cx.x,
-                    y = cx.y,
+                    z = z_expr,
+                    x = x_expr,
+                    y = y_expr,
                     w = w,
                     h = h,
+                    fps = fps,
                     out_label = out_label,
                 )
                 .unwrap();

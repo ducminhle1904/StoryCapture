@@ -117,7 +117,13 @@ fn full_scene_preview_plan_is_populated() {
     assert_eq!(plan.output_width, 1920);
     assert_eq!(plan.output_height, 1080);
     assert_eq!(plan.fps, 60);
-    assert_eq!(plan.zoom_matrices.len(), 2, "one frame per keyframe (placeholder sampler)");
+    // Plan 05: per-frame sampler at output_fps. Two keyframes at t=0 and
+    // t=1000 ms at 60fps → ~61 samples. Accept a small ceil/round tolerance.
+    assert!(
+        plan.zoom_matrices.len() >= 60 && plan.zoom_matrices.len() <= 62,
+        "per-frame zoom matrices expected ~61 samples, got {}",
+        plan.zoom_matrices.len()
+    );
     assert!(plan.cursor_atlas_ref.is_some());
     assert_eq!(plan.ripples.len(), 1);
     assert_eq!(plan.text_boxes.len(), 1);
