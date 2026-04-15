@@ -5,4 +5,5 @@
 // here and extend `ipc_spec::builder()` accordingly.
 
 pub mod automation;
+pub mod capture;
 pub mod system;

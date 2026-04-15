@@ -5398,9 +5398,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "automation",
+ "capture",
  "keyring",
  "log",
  "once_cell",
+ "parking_lot",
  "serde",
  "serde_json",
  "specta",
