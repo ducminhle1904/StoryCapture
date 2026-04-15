@@ -1,0 +1,10 @@
+{
+  "name": "storycapture",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @storycapture/desktop dev",
+    "build": "pnpm --filter @storycapture/desktop build"
+  }
+}
