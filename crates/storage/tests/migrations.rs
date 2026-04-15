@@ -7,11 +7,12 @@ fn fresh_db_runs_to_latest() {
     let td = tempdir().unwrap();
     let app_path = td.path().join("app.sqlite");
     let app = AppDb::open(&app_path).unwrap();
-    assert_eq!(app.schema_version().unwrap(), 1);
+    // Phase 2 Plan 03: app.sqlite -> v2, project.sqlite -> v6.
+    assert_eq!(app.schema_version().unwrap(), 2);
 
     let project_dir = td.path().join("proj");
     let proj = ProjectDb::open(&project_dir).unwrap();
-    assert_eq!(proj.schema_version().unwrap(), 1);
+    assert_eq!(proj.schema_version().unwrap(), 6);
 }
 
 #[test]
@@ -21,7 +22,7 @@ fn idempotent_rerun() {
     let v1 = AppDb::open(&path).unwrap().schema_version().unwrap();
     let v2 = AppDb::open(&path).unwrap().schema_version().unwrap();
     assert_eq!(v1, v2, "second open must not bump version");
-    assert_eq!(v1, 1);
+    assert_eq!(v1, 2);
 }
 
 #[test]
@@ -41,7 +42,7 @@ fn downgrade_detected_app() {
     match result {
         Ok(_) => panic!("expected SchemaVersionMismatch"),
         Err(StorageError::SchemaVersionMismatch { expected, found }) => {
-            assert_eq!(expected, 1);
+            assert_eq!(expected, 2);
             assert_eq!(found, 99);
         }
         Err(other) => panic!("expected SchemaVersionMismatch, got {other:?}"),

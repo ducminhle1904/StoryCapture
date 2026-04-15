@@ -1,11 +1,17 @@
 //! Migrations for the global `app.sqlite`. Each `M::up(...)` is one schema bump.
+//!
+//! v1 (Phase 1 Plan 05): 001_init.sql — projects, app_settings.
+//! v2 (Phase 2 Plan 03): effect_presets (global-scope presets mirror).
 
 use rusqlite_migration::{Migrations, M};
 
+use super::v2;
+
 pub fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!("001_init.sql"))])
+    let mut all: Vec<M<'static>> = vec![M::up(include_str!("001_init.sql"))];
+    all.extend(v2::app_migrations());
+    Migrations::new(all)
 }
 
-/// Number of migrations defined — equals the expected `user_version` after
-/// `to_latest`. Used by version-mismatch detection.
-pub const LATEST_VERSION: u32 = 1;
+/// v1 contributes 1 migration, v2 contributes 1 → total 2.
+pub const LATEST_VERSION: u32 = 2;

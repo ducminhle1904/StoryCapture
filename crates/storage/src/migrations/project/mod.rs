@@ -1,9 +1,20 @@
 //! Migrations for per-project `project.sqlite`.
+//!
+//! v1 (Phase 1 Plan 05): 001_init.sql — sessions, steps, step_attempts,
+//!   exports, presets.
+//! v2 (Phase 2 Plan 03): 5 new tables (timeline_state, effect_presets,
+//!   effect_settings, render_jobs, sound_library_index). Each is one M::up.
 
 use rusqlite_migration::{Migrations, M};
 
+use super::v2;
+
 pub fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!("001_init.sql"))])
+    let mut all: Vec<M<'static>> = vec![M::up(include_str!("001_init.sql"))];
+    all.extend(v2::project_migrations());
+    Migrations::new(all)
 }
 
-pub const LATEST_VERSION: u32 = 1;
+/// Count of migrations applied at `to_latest`. v1 contributes 1, v2
+/// contributes 5 → total 6.
+pub const LATEST_VERSION: u32 = 6;

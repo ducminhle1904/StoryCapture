@@ -14,7 +14,8 @@ fn open_creates_db_if_missing() {
     assert!(!path.exists());
     let db = AppDb::open(&path).unwrap();
     assert!(path.exists(), "db file should be created");
-    assert_eq!(db.schema_version().unwrap(), 1);
+    // Phase 2 Plan 03 bumped app.sqlite LATEST_VERSION to 2 (effect_presets).
+    assert_eq!(db.schema_version().unwrap(), 2);
 }
 
 #[test]
