@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build-test (${{ matrix.os }} / ${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+      CARGO_INCREMENTAL: "0"
+      CARGO_TERM_COLOR: "always"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: pnpm install
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome lint
+        shell: bash
+        run: pnpm biome check .
+
+      - name: Rust fmt check
+        shell: bash
+        run: cargo fmt --all -- --check
+
+      - name: Rust clippy
+        shell: bash
+        run: cargo clippy --workspace --all-targets --target ${{ matrix.target }} -- -D warnings
+
+      - name: Rust check
+        shell: bash
+        run: cargo check --workspace --all-targets --target ${{ matrix.target }}
+
+      - name: Rust test (nextest with cargo-test fallback)
+        shell: bash
+        run: |
+          cargo nextest run --workspace --target ${{ matrix.target }} \
+            || cargo test --workspace --target ${{ matrix.target }}
+
+      - name: sccache stats
+        if: always()
+        shell: bash
+        run: sccache --show-stats || true

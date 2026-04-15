@@ -1,0 +1,11 @@
+{
+  "name": "@storycapture/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "echo \"@storycapture/web dev: scaffolded by Plan 01-01; Next.js app wired in Phase 4\" && exit 0",
+    "build": "echo \"@storycapture/web build: scaffolded by Plan 01-01; Next.js app wired in Phase 4\" && exit 0",
+    "typecheck": "echo \"@storycapture/web typecheck: scaffolded by Plan 01-01\" && exit 0"
+  }
+}
