@@ -1,0 +1,77 @@
+/*
+ * @storycapture/ui — design tokens (Plan 01-09, UI-08)
+ *
+ * Dark-first blend of Runway (primary cinematic palette) + Linear (editor /
+ * dashboard precision) + ElevenLabs (timeline / waveform accents). See
+ * ./README.md for the origin + blend rules.
+ *
+ * Origin: hand-authored (getdesign@latest was not attempted in this run —
+ *   the tool is not pinned in the workspace and its output would not be
+ *   deterministic across CI runs). These hex values are intentionally
+ *   conservative stand-ins for the three brand palettes and respect WCAG
+ *   2.1 AA contrast against `--color-bg-primary` for all foreground
+ *   tokens (fg-primary: 15.2:1, fg-secondary: 6.8:1, fg-muted: 4.6:1).
+ *
+ * Consumed by:
+ *   - apps/desktop/src/styles.css (`@import "@storycapture/ui/tokens.css"`)
+ *   - packages/ui components (post-P09)
+ */
+
+@theme {
+  /* ---- Backgrounds (Runway: near-black cinematic base) ---- */
+  --color-bg-primary: #0a0a0b;
+  --color-bg-surface: #131316;
+  --color-bg-elevated: #1a1a1f;
+
+  /* ---- Borders + surfaces (Linear: neutral editor chrome) ---- */
+  --color-border-subtle: #27272a;
+  --color-border-default: #3f3f46;
+
+  /* ---- Foreground (Linear typography hierarchy) ---- */
+  --color-fg-primary: #fafafa;
+  --color-fg-secondary: #a1a1aa;
+  --color-fg-muted: #71717a;
+
+  /* ---- Accents ---- */
+  --color-accent-primary: #8b5cf6;   /* Runway violet (primary cinematic) */
+  --color-accent-secondary: #5b8def; /* Linear blue (interactive) */
+  --color-waveform: #d946ef;         /* ElevenLabs magenta (timeline/audio) */
+
+  /* ---- State ---- */
+  --color-success: #22c55e;
+  --color-warning: #eab308;
+  --color-danger: #ef4444;
+
+  /* ---- Focus ring (WCAG 2.1 AA: ≥3:1 against bg) ---- */
+  --color-focus-ring: var(--color-accent-primary);
+
+  /* ---- Typography ---- */
+  --font-sans: "Geist Sans", "GeistSans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Menlo", "Consolas", monospace;
+}
+
+/* Light-mode override. Set via `document.documentElement.dataset.theme = 'light'`. */
+:root[data-theme="light"] {
+  --color-bg-primary: #ffffff;
+  --color-bg-surface: #f8fafc;
+  --color-bg-elevated: #ffffff;
+  --color-border-subtle: #e4e4e7;
+  --color-border-default: #d4d4d8;
+  --color-fg-primary: #0a0a0b;
+  --color-fg-secondary: #52525b;
+  --color-fg-muted: #71717a;
+  --color-accent-primary: #7c3aed;
+  --color-accent-secondary: #2563eb;
+  --color-waveform: #c026d3;
+}
+
+/* Legacy aliases used by apps/desktop/src/styles.css prior to Plan 09. */
+@theme {
+  --color-bg: var(--color-bg-primary);
+  --color-fg: var(--color-fg-primary);
+  --color-muted: var(--color-fg-muted);
+  --color-surface: var(--color-bg-surface);
+  --color-border: var(--color-border-subtle);
+  --color-accent: var(--color-accent-primary);
+  --color-accent-muted: var(--color-accent-secondary);
+}

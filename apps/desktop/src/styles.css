@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Fonts via @fontsource (CSS-only, framework-agnostic). See ./lib/fonts.ts. */
+/* Fonts via @fontsource (CSS-only, framework-agnostic). */
 @import "@fontsource/geist-sans/400.css";
 @import "@fontsource/geist-sans/500.css";
 @import "@fontsource/geist-sans/600.css";
@@ -8,28 +8,20 @@
 @import "@fontsource/jetbrains-mono/500.css";
 @import "@fontsource/jetbrains-mono/700.css";
 
-@theme {
-  --font-sans: "Geist Sans", "GeistSans", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Menlo", "Consolas", monospace;
-
-  --color-bg: #0a0a0b;
-  --color-fg: #e4e4e7;
-  --color-muted: #71717a;
-  --color-surface: #18181b;
-  --color-border: #27272a;
-
-  /* Placeholder accent — Plan 09 refines blend (Runway + Linear + ElevenLabs) via getdesign */
-  --color-accent: #6366f1;
-  --color-accent-muted: #4338ca;
-}
+/* Shared design tokens — Runway + Linear + ElevenLabs blend (Plan 01-09). */
+@import "@storycapture/ui/tokens.css";
 
 :root {
   color-scheme: dark;
 }
 
-:root[data-theme="dark"] body {
-  background: var(--color-bg);
-  color: var(--color-fg);
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-fg-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -50,4 +42,25 @@ input,
 textarea,
 select {
   font-family: inherit;
+}
+
+/* Skip-link for keyboard users (WCAG 2.1 AA — UI-10). */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--color-accent-primary);
+  color: var(--color-fg-primary);
+  padding: 0.5rem 1rem;
+  z-index: 100;
+  border-radius: 0 0 0.375rem 0;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* Global focus-visible baseline — all custom interactive controls */
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
