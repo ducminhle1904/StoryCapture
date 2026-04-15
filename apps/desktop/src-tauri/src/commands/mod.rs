@@ -7,4 +7,6 @@
 pub mod automation;
 pub mod capture;
 pub mod encode;
+pub mod parse;
+pub mod projects;
 pub mod system;

@@ -16,7 +16,10 @@
 use tauri::Wry;
 use tauri_specta::{collect_commands, Builder};
 
-use crate::{commands::{automation, capture, encode, system}, error::AppError};
+use crate::{
+    commands::{automation, capture, encode, parse, projects, system},
+    error::AppError,
+};
 
 /// Constructs the tauri-specta builder. Called from `lib.rs::run()`.
 ///
@@ -48,6 +51,11 @@ pub fn builder() -> Builder<Wry> {
             encode::probe_hw_encoders,
             encode::start_recording,
             encode::stop_recording,
+            parse::parse_story,
+            projects::list_projects,
+            projects::create_project,
+            projects::open_project,
+            projects::remove_project,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -66,6 +74,23 @@ pub fn builder() -> Builder<Wry> {
         .typ::<encode::RecordingEvent>()
         .typ::<encode::RecordingSessionId>()
         .typ::<encode::StartRecordingArgs>()
+        // Plan 01-09 (parse + projects)
+        .typ::<parse::ParseResultDto>()
+        .typ::<parse::StoryDto>()
+        .typ::<parse::SceneDto>()
+        .typ::<parse::CommandDto>()
+        .typ::<parse::MetaDto>()
+        .typ::<parse::ViewportDto>()
+        .typ::<parse::ThemeDto>()
+        .typ::<parse::SelectorOrTextDto>()
+        .typ::<parse::ScrollDirDto>()
+        .typ::<parse::DiagnosticDto>()
+        .typ::<parse::SeverityDto>()
+        .typ::<parse::SpanDto>()
+        .typ::<projects::ProjectDto>()
+        .typ::<projects::ProjectFolderInfoDto>()
+        .typ::<projects::CreateProjectArgs>()
+        .typ::<projects::ProjectIdArg>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the
