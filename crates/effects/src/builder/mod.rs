@@ -125,8 +125,12 @@ impl GraphBuilder {
     /// Validate + consume. Performs:
     ///   1. duplicate-id detection across all video + audio nodes
     ///   2. canonical-order validation on the video chain (D-19)
-    pub fn build(mut self) -> Result<Graph, BuilderError> {
-        // Duplicate detection — scan all nodes exactly once.
+    ///
+    /// Takes `&mut self` (not `self`) so the builder composes cleanly with
+    /// the `&mut Self` returning fluent methods — call sites read as one
+    /// chain terminated by `.build()`.
+    pub fn build(&mut self) -> Result<Graph, BuilderError> {
+        self.seen_ids.clear();
         for n in &self.graph.video {
             if !self.seen_ids.insert(n.id()) {
                 return Err(EffectsError::DuplicateNodeId);
@@ -138,6 +142,8 @@ impl GraphBuilder {
             }
         }
         validate_order(&self.graph.video)?;
-        Ok(self.graph)
+        // Snapshot current graph state; caller can continue mutating the
+        // builder after `build` (useful for preset-authoring flows).
+        Ok(self.graph.clone())
     }
 }
