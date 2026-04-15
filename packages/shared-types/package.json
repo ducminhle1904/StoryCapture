@@ -14,5 +14,8 @@
       "types": "./src/ipc.ts",
       "import": "./src/ipc.ts"
     }
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
   }
 }

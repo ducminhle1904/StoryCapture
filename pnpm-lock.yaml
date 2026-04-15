@@ -131,7 +131,11 @@ importers:
 
   packages/config: {}
 
-  packages/shared-types: {}
+  packages/shared-types:
+    dependencies:
+      '@tauri-apps/api':
+        specifier: ^2.0.0
+        version: 2.10.1
 
   packages/story-dsl:
     devDependencies:
