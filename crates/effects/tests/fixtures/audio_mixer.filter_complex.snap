@@ -1,0 +1,5 @@
+---
+source: crates/effects/tests/audio_mixer.rs
+assertion_line: 233
+---
+[0:a]anull[main];[1:a]volume=0.450[bgm_scaled];[2:a]volume=1.000[vo];[bgm_scaled][vo]sidechaincompress=threshold=0.08:ratio=8:attack=80:release=400[bgm_ducked];[3:a]volume=0.300,adelay=1200|1200[sfx_0];[4:a]volume=0.300,adelay=2400|2400[sfx_1];[5:a]volume=0.300,adelay=3600|3600[sfx_2];[sfx_0][sfx_1][sfx_2]amix=inputs=3:duration=longest:normalize=0[sfx_mix];[main][bgm_ducked][sfx_mix][vo]amix=inputs=4:duration=longest:normalize=0[mixed];[mixed]alimiter=limit=0.95[aout]

@@ -10,6 +10,7 @@
 //! the same AST.
 
 pub mod ast;
+pub mod audio;
 pub mod background;
 pub mod builder;
 pub mod cursor;
