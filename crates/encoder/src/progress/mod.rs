@@ -1,9 +1,26 @@
-//! FFmpeg `-progress pipe:2` parser.
+//! FFmpeg `-progress` parsers.
 //!
-//! FFmpeg emits key=value lines, one per line, terminated by either
-//! `progress=continue` (a running update, emitted roughly every second)
-//! or `progress=end` (final flush). We accumulate key=value pairs
-//! between markers and emit one `EncodeProgress` per marker.
+//! Two parsers coexist in this module:
+//!
+//! - `ProgressParser` / `EncodeProgress` — the Phase 1 `-progress pipe:2`
+//!   parser for the capture→encode recording pipeline (declared below in
+//!   this file, unchanged).
+//! - `RenderProgressParser` / `RenderProgress` — the Plan 02-10 render-queue
+//!   parser driven fragment-by-fragment from FFmpeg `-progress pipe:1`
+//!   output and keyed by `job_id`. Lives in the [`parser`] submodule.
+
+pub mod parser;
+
+pub use parser::{parse_line, ProgressFrag, RenderProgress, RenderProgressParser};
+
+//
+// Phase 1 `-progress pipe:2` parser (kept verbatim below)
+// -------------------------------------------------------
+//
+// FFmpeg emits key=value lines, one per line, terminated by either
+// `progress=continue` (a running update, emitted roughly every second)
+// or `progress=end` (final flush). We accumulate key=value pairs
+// between markers and emit one `EncodeProgress` per marker.
 
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, BufReader};

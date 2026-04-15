@@ -14,14 +14,27 @@
 
 mod config;
 mod error;
+pub mod fanout;
 mod pipeline;
+pub mod pool;
 mod probe;
-mod progress;
+pub mod progress;
+pub mod queue;
 mod sidecar;
 
 pub use config::EncodeConfig;
 pub use error::{EncoderError, Result};
 pub use pipeline::{bgra_bytes_of_frame, EncodePipeline, EncodeResult, SHUTDOWN_TIMEOUT};
+pub use pool::{PoolConfig, SidecarHandle, SidecarPermit, SidecarPool};
 pub use probe::{probe_encoders, EncoderProbe, HardwareEncoder};
-pub use progress::{EncodeProgress, ProgressParser};
+pub use progress::{
+    parse_line, EncodeProgress, ProgressFrag, ProgressParser, RenderProgress,
+    RenderProgressParser,
+};
+pub use queue::{spawn_render_queue, QueueMsg, RenderQueueActor, RenderQueueHandle};
 pub use sidecar::{FfmpegSidecar, LocalFfmpegCommand, SidecarChild, SidecarCommand};
+
+pub use fanout::{
+    fanout_encode, render_intermediate, FanoutPlan, IntermediateOutput, OutputFormat, OutputSpec,
+    Quality, Resolution,
+};
