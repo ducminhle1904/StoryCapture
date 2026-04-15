@@ -11,6 +11,10 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Mutex};
 
+use parking_lot::Mutex as PLMutex;
+
+use crate::commands::render::RenderQueueState;
+
 /// Cross-thread handle map for actor senders. Keys are stable string tags
 /// (e.g. `"automation"`, `"capture"`, `"encoder"`) chosen by each downstream
 /// plan; values are erased mpsc senders. Erasure (`serde_json::Value`) is
@@ -31,6 +35,12 @@ pub struct AppState {
 
     /// Actor registry — see module comment.
     pub actors: ActorRegistry,
+
+    /// Render queue state (Plan 02-10). `None` until the host calls
+    /// `install_render_queue` during project-open; cleared when the
+    /// project closes. Wrapped in `parking_lot::Mutex` for cheap
+    /// synchronous access from Tauri commands.
+    pub render_queue: PLMutex<Option<RenderQueueState>>,
 }
 
 impl AppState {
@@ -39,6 +49,23 @@ impl AppState {
             data_dir,
             log_dir,
             actors: Mutex::new(HashMap::new()),
+            render_queue: PLMutex::new(None),
         }
+    }
+
+    /// Snapshot the currently-installed render queue state. Returns
+    /// `None` when no project is open.
+    pub fn render_queue(&self) -> Option<RenderQueueState> {
+        self.render_queue.lock().clone()
+    }
+
+    /// Called by the host during project-open (Plan 11 wires the full
+    /// flow; Plan 02-10 parks the slot).
+    pub fn install_render_queue(&self, rq: RenderQueueState) {
+        *self.render_queue.lock() = Some(rq);
+    }
+
+    pub fn clear_render_queue(&self) {
+        *self.render_queue.lock() = None;
     }
 }

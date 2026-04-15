@@ -1376,6 +1376,7 @@ dependencies = [
  "effects",
  "futures",
  "libc",
+ "rusqlite",
  "serde",
  "serde_json",
  "storage",

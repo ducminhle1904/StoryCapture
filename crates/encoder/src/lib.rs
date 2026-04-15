@@ -31,7 +31,10 @@ pub use progress::{
     parse_line, EncodeProgress, ProgressFrag, ProgressParser, RenderProgress,
     RenderProgressParser,
 };
-pub use queue::{spawn_render_queue, QueueMsg, RenderQueueActor, RenderQueueHandle};
+pub use queue::{
+    open_project_conn, spawn_render_queue, JobExecutor, JobOutcome, NoopJobExecutor, QueueMsg,
+    RenderQueueActor, RenderQueueConfig, RenderQueueHandle, SharedExecutor,
+};
 pub use sidecar::{FfmpegSidecar, LocalFfmpegCommand, SidecarChild, SidecarCommand};
 
 pub use fanout::{

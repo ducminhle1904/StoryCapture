@@ -20,6 +20,7 @@ bytes = "1"
 capture = { path = "../capture" }
 effects = { path = "../effects" }
 storage = { path = "../storage" }
+rusqlite = { version = "0.34", features = ["bundled"] }
 uuid = { workspace = true }
 futures = "0.3"
 tempfile = "3"
@@ -36,3 +37,6 @@ real-ffmpeg = []
 
 [dev-dependencies]
 tempfile = "3"
+async-trait = "0.1"
+tokio-util = "0.7"
+rusqlite = { version = "0.34", features = ["bundled"] }

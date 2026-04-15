@@ -9,5 +9,6 @@ pub mod capture;
 pub mod encode;
 pub mod parse;
 pub mod projects;
+pub mod render;
 pub mod system;
 pub mod updater;

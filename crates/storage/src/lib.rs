@@ -7,7 +7,7 @@
 
 mod app_db;
 mod error;
-mod migrations;
+pub mod migrations;
 mod models;
 mod preset_io;
 mod project_db;
@@ -16,6 +16,10 @@ pub mod repos;
 
 pub use app_db::AppDb;
 pub use error::StorageError;
+/// Re-export `rusqlite::Connection` so downstream crates that wire the
+/// two-tier DB (e.g. the Tauri host bridging the render queue) don't have
+/// to take a direct dep on rusqlite. Plan 02-10 consumer.
+pub use rusqlite::Connection;
 pub use models::*;
 pub use preset_io::{
     export_preset, import_preset, migrate_preset_v1_to_v2, ScpresetFile, ScpresetMetadata,

@@ -1,6 +1,10 @@
-//! Render queue actor (Plan 02-10). Task 2 fills this in.
+//! Render queue actor (Plan 02-10).
 
 pub mod actor;
 pub mod job;
 
-pub use actor::{spawn_render_queue, QueueMsg, RenderQueueActor, RenderQueueHandle};
+pub use actor::{
+    open_project_conn, spawn_render_queue, QueueMsg, RenderQueueActor, RenderQueueConfig,
+    RenderQueueHandle,
+};
+pub use job::{JobExecutor, JobOutcome, NoopJobExecutor, SharedExecutor};

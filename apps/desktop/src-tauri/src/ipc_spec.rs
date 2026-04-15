@@ -17,7 +17,7 @@ use tauri::Wry;
 use tauri_specta::{collect_commands, Builder};
 
 use crate::{
-    commands::{automation, capture, encode, parse, projects, system, updater},
+    commands::{automation, capture, encode, parse, projects, render, system, updater},
     error::AppError,
 };
 
@@ -56,6 +56,10 @@ pub fn builder() -> Builder<Wry> {
             projects::create_project,
             projects::open_project,
             projects::remove_project,
+            render::render_enqueue,
+            render::render_cancel,
+            render::render_list_active,
+            render::stream_render_progress,
             updater::check_update,
             updater::install_update,
         ])
@@ -93,6 +97,10 @@ pub fn builder() -> Builder<Wry> {
         .typ::<projects::ProjectFolderInfoDto>()
         .typ::<projects::CreateProjectArgs>()
         .typ::<projects::ProjectIdArg>()
+        // Plan 02-10 (render queue)
+        .typ::<render::NewRenderJobDto>()
+        .typ::<render::RenderJobDto>()
+        .typ::<render::RenderProgressDto>()
         // Plan 01-10 (auto-updater)
         .typ::<updater::UpdateInfo>()
 }
