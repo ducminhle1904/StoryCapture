@@ -14,6 +14,7 @@
 
 mod config;
 mod error;
+pub mod export;
 pub mod fanout;
 mod pipeline;
 pub mod pool;
