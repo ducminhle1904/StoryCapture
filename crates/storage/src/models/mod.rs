@@ -1,4 +1,5 @@
-//! Public data model types (Project, Session, Step, ...).
+//! Public data model types. Phase 1 types (Project, Session, Step, Export,
+//! Preset, ...) live inline here; Phase 2 types live in their own submodules.
 //!
 //! All structs derive `Debug, Clone, Serialize, Deserialize`. UUID v7 is used
 //! for all IDs (time-ordered, monotonic per process — preferred over v4 for
@@ -7,6 +8,18 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
+
+pub mod effect_preset;
+pub mod effect_settings;
+pub mod render_job;
+pub mod sound_library_entry;
+pub mod timeline_state;
+
+pub use effect_preset::{EffectPreset, NewEffectPreset, PresetTier};
+pub use effect_settings::EffectSettings;
+pub use render_job::{NewRenderJob, RenderJob, RenderJobStatus};
+pub use sound_library_entry::{SoundCategory, SoundLibraryEntry};
+pub use timeline_state::TimelineState;
 
 // ---------- app.sqlite ----------
 
@@ -33,7 +46,7 @@ pub struct AppSetting {
     pub updated_at: i64,
 }
 
-// ---------- project.sqlite ----------
+// ---------- project.sqlite (Phase 1) ----------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
