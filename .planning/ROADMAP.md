@@ -53,7 +53,20 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
   3. User can export the polished video to MP4, WebM, or GIF at 720p / 1080p / 4K with configurable FPS and quality, including a batch export that renders multiple formats in one run.
   4. A 1-minute polished video renders in under 30 seconds on reference hardware (verified by a CI benchmark), runs in the background with live progress events, and does not block editing of other stories.
   5. Every edit to a story or post-production setting is reversible through a multi-step undo/redo stack.
-**Plans**: TBD
+**Plans**: 13 plans
+- [ ] 02-01-PLAN.md — Effects AST + canonical-order builder + dual emitters + POST-08 snapshots
+- [ ] 02-02-PLAN.md — Math primitives (minimum-jerk, spring, Perlin, low-pass, easing)
+- [ ] 02-03-PLAN.md — project.sqlite v2 migrations + preset storage + .scpreset I/O + 5 bundled presets
+- [ ] 02-04-PLAN.md — WebGPU/WebGL2 preview engine bootstrap + VideoFrame lifecycle + stub shaders
+- [ ] 02-05-PLAN.md — Auto-zoom planner (Dynamic/Calm/Subtle presets) + zoompan emitter
+- [ ] 02-06-PLAN.md — Cursor overlay engine (min-jerk + ripple + 5 bundled skins + PNG sequence)
+- [ ] 02-07-PLAN.md — Background compositor (10 gradient presets + rounded frame + shadow) + xfade transitions + OpenCL probe
+- [ ] 02-08-PLAN.md — Sound mixer (click SFX + BGM ducking + 20 bundled sounds + attribution)
+- [ ] 02-09-PLAN.md — Text overlay engine (drawtext + callouts + highlight rings + 5 bundled fonts)
+- [ ] 02-10-PLAN.md — Render queue actor + FFmpeg sidecar pool + smart-batch fan-out + EXPORT-06 CI benchmark
+- [ ] 02-11-PLAN.md — Export pipeline (MP4/WebM/GIF × 720/1080/4K × FPS × quality) + batch + POST-08 PSNR test
+- [ ] 02-12-PLAN.md — Post-Production Editor UI (5-track timeline + preview player + inspector + sound drawer + export modal + queue widget)
+- [ ] 02-13-PLAN.md — Per-action coalesced undo/redo (50-step ring buffer, cmd+z/shift+z)
 **UI hint**: yes
 
 ### Phase 3: Intelligence Layer — AI Authoring & Voiceover
@@ -87,7 +100,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation — DSL, Automation, Capture, Encode | 0/10 | Planned | - |
-| 2. Cinematic Post-Production & Export | 0/0 | Not started | - |
+| 2. Cinematic Post-Production & Export | 0/13 | Planned | - |
 | 3. Intelligence Layer — AI Authoring & Voiceover | 0/0 | Not started | - |
 | 4. Web Companion & Sharing | 0/0 | Not started | - |
 
