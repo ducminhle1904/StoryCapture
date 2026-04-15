@@ -13,7 +13,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 ## Phases
 
 - [x] **Phase 1: Foundation — DSL, Automation, Capture, Encode** - End-to-end pipeline from `.story` file to signed, playable MP4 on macOS and Windows (code-complete; 2 operator-gated verification steps pending)
-- [ ] **Phase 2: Cinematic Post-Production & Export** - Screen Studio-grade polish layer (auto-zoom, cursor, transitions, sound, overlays) with multi-format export and post-pro editor UI
+- [x] **Phase 2: Cinematic Post-Production & Export** - Screen Studio-grade polish layer (auto-zoom, cursor, transitions, sound, overlays) with multi-format export and post-pro editor UI (code-complete; 2 operator-gated verification steps pending)
 - [ ] **Phase 3: Intelligence Layer — AI Authoring & Voiceover** - Natural-language → DSL chat, AI TTS synced to steps, LSP-powered editor assistance
 - [ ] **Phase 4: Web Companion & Sharing** - Next.js 15 companion with OAuth, upload, shareable embed, workspaces, analytics, and desktop↔web sync
 
@@ -54,20 +54,20 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
   4. A 1-minute polished video renders in under 30 seconds on reference hardware (verified by a CI benchmark), runs in the background with live progress events, and does not block editing of other stories.
   5. Every edit to a story or post-production setting is reversible through a multi-step undo/redo stack.
 **Plans**: 14 plans
-- [ ] 02-01-PLAN.md — Effects AST + canonical-order builder + dual emitters + POST-08 snapshots
-- [ ] 02-02-PLAN.md — Math primitives (minimum-jerk, spring, Perlin, low-pass, easing)
-- [ ] 02-03-PLAN.md — project.sqlite v2 migrations + preset storage + .scpreset I/O + 5 bundled presets
-- [ ] 02-04-PLAN.md — WebGPU/WebGL2 preview engine bootstrap + VideoFrame lifecycle + stub shaders
-- [ ] 02-05-PLAN.md — Auto-zoom planner (Dynamic/Calm/Subtle presets) + zoompan emitter
-- [ ] 02-06-PLAN.md — Cursor overlay engine (min-jerk + ripple + 5 bundled skins + PNG sequence)
-- [ ] 02-07-PLAN.md — Background compositor (10 gradient presets + rounded frame + shadow) + xfade transitions + OpenCL probe
-- [ ] 02-08-PLAN.md — Sound mixer (click SFX + BGM ducking + curated 20-file sound pack + attribution)
-- [ ] 02-09-PLAN.md — Text overlay engine (drawtext + callouts + highlight rings + 5 bundled fonts)
-- [ ] 02-10-PLAN.md — Render queue actor + FFmpeg sidecar pool + smart-batch fan-out + EXPORT-06 CI benchmarks (PR speed-factor + release wall-clock)
-- [ ] 02-11-PLAN.md — Export pipeline (MP4/WebM/GIF × 720/1080/4K × FPS × quality) + batch + POST-08 two-phase PSNR regression
-- [ ] 02-12a-PLAN.md — Post-Production Editor state + IPC (Zustand slices + Tauri commands + IPC wrappers + undo bridge)
-- [ ] 02-12b-PLAN.md — Post-Production Editor React UI (5-track timeline + preview player + inspector + sound drawer + export modal + queue widget + formal human-verify)
-- [ ] 02-13-PLAN.md — Per-action coalesced undo/redo (50-step ring buffer, cmd+z/shift+z)
+- [x] 02-01-PLAN.md — Effects AST + canonical-order builder + dual emitters + POST-08 snapshots
+- [x] 02-02-PLAN.md — Math primitives (minimum-jerk, spring, Perlin, low-pass, easing)
+- [x] 02-03-PLAN.md — project.sqlite v2 migrations + preset storage + .scpreset I/O + 5 bundled presets
+- [x] 02-04-PLAN.md — WebGPU/WebGL2 preview engine bootstrap + VideoFrame lifecycle + stub shaders
+- [x] 02-05-PLAN.md — Auto-zoom planner (Dynamic/Calm/Subtle presets) + zoompan emitter
+- [x] 02-06-PLAN.md — Cursor overlay engine (min-jerk + ripple + 5 bundled skins + PNG sequence)
+- [x] 02-07-PLAN.md — Background compositor (10 gradient presets + rounded frame + shadow) + xfade transitions + OpenCL probe
+- [x] 02-08-PLAN.md — Sound mixer (click SFX + BGM ducking + curated 20-file sound pack + attribution) ⚠ 20 CC0 audio files need manual curation + human listen-test (see `02-08-RESUME.md` + `scripts/curate-sound-library.md`)
+- [x] 02-09-PLAN.md — Text overlay engine (drawtext + callouts + highlight rings + 5 bundled fonts)
+- [x] 02-10-PLAN.md — Render queue actor + FFmpeg sidecar pool + smart-batch fan-out + EXPORT-06 CI benchmarks (PR speed-factor + release wall-clock)
+- [x] 02-11-PLAN.md — Export pipeline (MP4/WebM/GIF × 720/1080/4K × FPS × quality) + batch + POST-08 two-phase PSNR regression
+- [x] 02-12a-PLAN.md — Post-Production Editor state + IPC (Zustand slices + Tauri commands + IPC wrappers + undo bridge)
+- [x] 02-12b-PLAN.md — Post-Production Editor React UI (5-track timeline + preview player + inspector + sound drawer + export modal + queue widget + formal human-verify) ⚠ human-verify walkthrough pending (see `02-12b-RESUME.md`)
+- [x] 02-13-PLAN.md — Per-action coalesced undo/redo (50-step ring buffer, cmd+z/shift+z)
 **UI hint**: yes
 
 ### Phase 3: Intelligence Layer — AI Authoring & Voiceover
@@ -122,7 +122,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation — DSL, Automation, Capture, Encode | 11/11 | Code-complete (2 verification steps pending) | 2026-04-15 |
-| 2. Cinematic Post-Production & Export | 0/14 | Not started | - |
+| 2. Cinematic Post-Production & Export | 14/14 | Code-complete (2 verification steps pending) | 2026-04-15 |
 | 3. Intelligence Layer — AI Authoring & Voiceover | 0/21 | Planned | - |
 | 4. Web Companion & Sharing | 0/0 | Not started | - |
 
