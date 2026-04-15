@@ -1,0 +1,5 @@
+# FFmpeg sidecar binaries are produced by Plan 01-02 (scripts/build-ffmpeg/)
+# and downloaded into this directory in CI as `ffmpeg-<rust-triple>` (or
+# `.exe` on Windows). Tauri's externalBin resolver picks the right one
+# at bundle time. Empty in dev — `pnpm tauri dev` works without a sidecar
+# because the encoder crate (Plan 01-08) is not exercised at startup.
