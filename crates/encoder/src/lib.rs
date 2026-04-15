@@ -38,6 +38,7 @@ pub use queue::{
 pub use sidecar::{FfmpegSidecar, LocalFfmpegCommand, SidecarChild, SidecarCommand};
 
 pub use fanout::{
-    fanout_encode, render_intermediate, FanoutPlan, IntermediateOutput, OutputFormat, OutputSpec,
-    Quality, Resolution,
+    bitrate_for, build_encode_args, build_intermediate_args, default_h264_encoder, fanout_encode,
+    render_intermediate, resolution_height, resolution_width, FanoutPlan, IntermediateOutput,
+    OutputFormat, OutputSpec, Quality, Resolution,
 };

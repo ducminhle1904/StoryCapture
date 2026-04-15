@@ -1,0 +1,41 @@
+name: Render Benchmark (EXPORT-06 release gate)
+
+# The canonical EXPORT-06 success criterion: 1-minute render completes in
+# under 30 s of wall clock on the self-hosted macOS M2 Pro reference
+# machine. Gated on `release/*` tags so it runs exactly once per shipped
+# version. The PR-level `render-benchmark.yml` workflow catches drift on
+# every PR via the hardware-independent speed-factor proxy.
+
+on:
+  push:
+    tags:
+      - "release/*"
+  workflow_dispatch: {}
+
+jobs:
+  benchmark:
+    runs-on: [self-hosted, macos-m2pro]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      # Reference self-hosted runner has ffmpeg + jq pre-installed; keep
+      # a defensive check so the first run surfaces a clear error.
+      - name: Verify FFmpeg + jq available
+        shell: bash
+        run: |
+          command -v ffmpeg >/dev/null || { echo "ffmpeg missing on runner" >&2; exit 1; }
+          command -v jq     >/dev/null || { echo "jq missing on runner" >&2; exit 1; }
+
+      - name: Run 1-minute render benchmark (strict wall-clock + speed factor)
+        shell: bash
+        env:
+          STRICT_WALL_CLOCK: "1"
+        run: bash scripts/benchmark/render-1min.sh
