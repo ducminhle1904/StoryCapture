@@ -1,0 +1,60 @@
+[package]
+name = "capture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Platform-native screen capture (ScreenCaptureKit / Windows.Graphics.Capture / xcap fallback). Phase 1 plan 01-07 — CAP-01..CAP-07."
+
+[lib]
+
+[dependencies]
+async-trait = "0.1"
+tokio = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+xcap = "0.9"
+
+# Optional — pulled in only by the `real-capture` feature for the
+# 30-min memory soak (CAP-05). Default builds don't depend on sysinfo.
+sysinfo = { version = "0.32", optional = true }
+
+# Platform-gated native deps (D-16 / D-17). Versions pinned to the
+# highest published 1.x stable on crates.io as of 2026-04-15.
+#
+# Plan 01-07 specifies `screencapturekit = "=1.70.0"` and
+# `windows-capture = "=1.5.0"` per CONTEXT.md decisions; those exact
+# versions are not on crates.io (the doom-fish crate's published
+# 1.x line caps at 1.5.4; windows-capture's 1.x line caps at 1.5.0
+# on its own track but the registry's `windows-capture` is at 2.0.0).
+# Per Rule 3 (blocking dep), pinned to the closest published versions.
+# See SUMMARY for the full deviation note.
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = "=1.5.4"
+objc2 = "0.5"
+objc2-foundation = "0.2"
+core-foundation = "0.10"
+core-graphics = "0.24"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-capture = "=2.0.0"
+windows = { version = "0.58", features = [
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_System_Performance",
+    "Graphics_Capture",
+    "Win32_UI_HiDpi",
+    "Win32_Foundation",
+] }
+
+[features]
+default = []
+# Real-capture integration tests (incl. 30-min CI soak). Off by default
+# because they require Screen Recording / a display; CI flips them on.
+real-capture = ["dep:sysinfo"]
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

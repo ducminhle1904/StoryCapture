@@ -1,0 +1,79 @@
+[package]
+name = "storycapture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "StoryCapture desktop host (Tauri v2). Phase 1 plan 01-03 — thin host: plugins, typed IPC, error taxonomy, logging, panic hook, OS keychain."
+
+[lib]
+name = "storycapture"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "storycapture"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Tauri core + plugins (D-context Claude's Discretion list, see CONTEXT.md)
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
+tauri-plugin-log = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-os = "2"
+
+# Typed IPC codegen (D-05)
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+specta = "=2.0.0-rc.22"
+specta-typescript = "0.0.9"
+
+# Errors (D-31)
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Serde (IPC payloads)
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging / tracing (D-30)
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = "0.2"
+tracing-log = "0.2"
+log = "0.4"
+
+# Async runtime
+tokio = { workspace = true }
+
+# IDs
+uuid = { workspace = true }
+
+# OS keychain (D-29 — keyring crate, NOT Stronghold).
+# tauri-plugin-keyring is a community plugin and not all releases are on
+# crates.io; the `keyring` crate is the established Rust binding to all
+# three platform keychains (macOS Keychain, Windows Credential Manager,
+# Linux Secret Service) and satisfies D-29 directly. We expose it through
+# a local `commands::system` smoke API rather than as a separate plugin.
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+# OnceCell for storing the AppHandle inside the panic hook
+once_cell = "1"
+
+# Workspace crates (Plan 01-06 wires automation; Plan 01-05 storage already
+# in workspace; downstream plans add capture / encoder / story-parser).
+automation = { path = "../../../crates/automation" }
+capture = { path = "../../../crates/capture" }
+encoder = { path = "../../../crates/encoder" }
+story-parser = { path = "../../../crates/story-parser" }
+storage = { path = "../../../crates/storage" }
+parking_lot = { workspace = true }
+async-trait = "0.1"
+

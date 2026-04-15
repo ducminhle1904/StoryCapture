@@ -1,0 +1,13 @@
+{
+  "name": "smoke-notarize",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Throwaway Tauri v2 app whose sole purpose is end-to-end validation of macOS sign + notarize + staple with the FFmpeg sidecar (Phase 1 plan 01-02). NOT shipped to users.",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

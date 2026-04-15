@@ -1,0 +1,28 @@
+[package]
+name = "encoder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "FFmpeg sidecar encoder. Pure crate — sidecar command injected by Tauri host (Plan 01-08)."
+
+[lib]
+
+[dependencies]
+async-trait = "0.1"
+tokio = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+bytes = "1"
+capture = { path = "../capture" }
+
+[features]
+default = []
+# Tests that spawn a real FFmpeg binary are gated behind this feature. CI
+# enables it only after the `ffmpeg-build.yml` artifact is downloaded into
+# `scripts/build-ffmpeg/out/ffmpeg-<triple>`.
+real-ffmpeg = []
+
+[dev-dependencies]
+tempfile = "3"

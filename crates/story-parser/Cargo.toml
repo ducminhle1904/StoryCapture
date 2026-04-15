@@ -1,0 +1,27 @@
+[package]
+name = "story-parser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+
+[dependencies]
+pest = "2.7"
+pest_derive = "2.7"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+strsim = "0.11"
+specta = { version = "2.0.0-rc.22", features = ["derive"], optional = true }
+ts-rs = { version = "10", optional = true }
+
+[features]
+default = ["ts-export"]
+ts-export = ["dep:ts-rs"]
+specta-types = ["dep:specta"]
+
+[dev-dependencies]
+insta = "1.40"
+proptest = "1.5"

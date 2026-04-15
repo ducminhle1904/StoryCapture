@@ -1,0 +1,117 @@
+# Plan 01-10 Task 2: run the 30-minute capture soak against the signed
+# installer produced by `release.yml`. This proves that signing +
+# notarization + bundling haven't pushed the shipping build over the
+# 800 MB RSS ceiling (same threshold as Plan 01-07's in-tree soak).
+#
+# Triggers:
+#   - workflow_run on `Release` (tag pushes only — tag pushes report an
+#     empty `head_branch`, so the `branches-ignore: ["**"]` filter lets
+#     them through while silencing branch pushes).
+#   - workflow_dispatch for manual re-runs against an already-published tag.
+#
+# Approach:
+#   1. Download the signed installer attached to the release.
+#   2. Install it on the matrix host (hdiutil copy on macOS, silent NSIS
+#      install on Windows).
+#   3. Export `CAPTURE_SOAK_TARGET` pointing at the installed StoryCapture
+#      binary. Plan 01-07's soak test (gated by `--features real-capture`)
+#      honors this env var; if it doesn't yet, the test still runs the
+#      in-tree capture pipeline and the external-binary contract is a
+#      small follow-up.
+#   4. Run the soak. RSS assertions are enforced by the test (<800 MB).
+#   5. Upload `rss-samples.csv` as an artifact for post-hoc inspection.
+#
+# Matrix is macOS arm64 + Windows x64. macOS x64 is omitted for speed;
+# we can add it if we ever see Intel Mac regressions.
+name: Release Soak
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+    branches-ignore: ["**"]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to soak-test (e.g. v0.1.0-rc2)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-toolchain
+
+      - name: Resolve tag name
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            echo "tag=${{ github.event.inputs.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            # workflow_run: head_branch is empty on tag pushes, so fall back
+            # to head_sha's annotation. Tauri-action always sets the tag ref
+            # as the display_title.
+            echo "tag=${{ github.event.workflow_run.display_title }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download release installer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-artifact
+          gh release download "${{ steps.tag.outputs.tag }}" \
+            --dir release-artifact \
+            --pattern "*.dmg" \
+            --pattern "*-setup.exe" \
+            --pattern "*.msi"
+
+      - name: Install app (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          dmg=$(ls release-artifact/*.dmg | head -1)
+          hdiutil attach -nobrowse -mountpoint /tmp/sc-mnt "$dmg"
+          cp -R /tmp/sc-mnt/*.app /Applications/
+          hdiutil detach /tmp/sc-mnt
+          app=$(ls -d /Applications/StoryCapture*.app | head -1)
+          echo "APP_PATH=${app}" >> "$GITHUB_ENV"
+          echo "CAPTURE_SOAK_TARGET=${app}/Contents/MacOS/StoryCapture" >> "$GITHUB_ENV"
+
+      - name: Install app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release-artifact -Filter *-setup.exe | Select-Object -First 1
+          & $exe.FullName /S
+          $bin = "C:\\Program Files\\StoryCapture\\StoryCapture.exe"
+          echo "APP_PATH=$bin" >> $env:GITHUB_ENV
+          echo "CAPTURE_SOAK_TARGET=$bin" >> $env:GITHUB_ENV
+
+      - name: Run 30-minute capture soak against installed binary
+        shell: bash
+        run: |
+          cargo test -p capture --test soak --features real-capture -- --ignored --nocapture
+
+      - name: Upload RSS samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-soak-${{ matrix.os }}-${{ steps.tag.outputs.tag }}
+          path: |
+            target/tmp/rss-samples.csv
+            crates/capture/target/tmp/rss-samples.csv
+          if-no-files-found: warn

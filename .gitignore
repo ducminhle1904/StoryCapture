@@ -1,0 +1,58 @@
+# Node
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Turborepo
+.turbo/
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Tauri build artifacts
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/binaries/ffmpeg-*
+apps/desktop/src-tauri/binaries/playwright-sidecar-*
+apps/desktop/src-tauri/gen/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Release signing keys (Plan 01-10): private Tauri updater key lives here
+# locally; public key gets pasted into tauri.conf.json. NEVER commit the
+# private key — GitHub Secrets hold the CI copy.
+.release-keys/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+
+# Misc
+*.tsbuildinfo
+.cache/
+.eslintcache
+coverage/
+.claude/

@@ -1,0 +1,79 @@
+name: Capture Soak
+
+# 30-min memory-stability soak (CAP-05, PITFALLS §8). One leg per native
+# capture backend. Triggered nightly (cron), on-demand (workflow_dispatch),
+# and on PRs that touch the capture crate or its CI workflow.
+#
+# NOTE on the macOS leg: GitHub Actions runners do NOT persist TCC grants
+# between jobs. The `soak-mac` job is gated to workflow_dispatch + schedule
+# only; PRs run the Windows leg automatically. The mac leg requires a
+# pre-authorized test app (or `tccutil reset ScreenCapture` + grant via a
+# self-hosted runner). Until that hardness lands, the mac soak is a manual
+# trigger; the Windows soak gates every PR that touches `crates/capture/`.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "crates/capture/**"
+      - ".github/workflows/capture-soak.yml"
+
+jobs:
+  soak-mac:
+    name: macOS soak (30 min)
+    runs-on: macos-14
+    timeout-minutes: 45
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-soak-${{ hashFiles('**/Cargo.lock') }}
+      - name: Reset Screen Recording TCC and grant (best-effort)
+        # macOS GHA runners are ephemeral and the grant won't persist.
+        # The test still runs without a grant (xcap fallback path); the
+        # native SCK path needs a pre-authorized signed test app — see
+        # CONTRIBUTING for the self-hosted-runner setup.
+        run: tccutil reset ScreenCapture || true
+      - name: Run 30-minute capture soak
+        run: cargo test -p capture --test soak --features real-capture -- --ignored --nocapture
+      - name: Upload RSS samples artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-samples-mac
+          path: target/tmp/rss-samples.csv
+
+  soak-win:
+    name: Windows soak (30 min)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-soak-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run 30-minute capture soak
+        run: cargo test -p capture --test soak --features real-capture -- --ignored --nocapture
+      - name: Upload RSS samples artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-samples-win
+          path: target/tmp/rss-samples.csv

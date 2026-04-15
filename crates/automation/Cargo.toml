@@ -1,0 +1,47 @@
+[package]
+name = "automation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "BrowserDriver trait + chromiumoxide + Playwright sidecar drivers (pure crate, no Tauri deps)."
+
+[lib]
+
+[dependencies]
+# Primary in-process CDP driver (D-11). Pinned per RESEARCH §Standard Stack.
+chromiumoxide = { version = "=0.7.0", default-features = false, features = ["tokio-runtime"] }
+
+# Async runtime + utilities
+tokio = { workspace = true }
+async-trait = "0.1"
+futures = "0.3"
+
+# Serde
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Errors / observability
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# IDs (UUID v7 step ids passed through to storage)
+uuid = { workspace = true }
+
+# URL handling for navigate / base-url joining
+url = "2"
+
+# Pure-crate intra-workspace deps (zero Tauri).
+story-parser = { path = "../story-parser" }
+storage = { path = "../storage" }
+
+[features]
+default = []
+# Gate browser-dependent tests behind this so CI doesn't need a Chromium binary.
+real-browser-tests = []
+# Gate Node-process tests behind this so CI doesn't need Node + playwright-core.
+real-playwright-tests = []
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["full", "test-util"] }
