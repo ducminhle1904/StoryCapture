@@ -16,7 +16,7 @@
 use tauri::Wry;
 use tauri_specta::{collect_commands, Builder};
 
-use crate::{commands::system, error::AppError};
+use crate::{commands::{automation, system}, error::AppError};
 
 /// Constructs the tauri-specta builder. Called from `lib.rs::run()`.
 ///
@@ -38,6 +38,7 @@ pub fn builder() -> Builder<Wry> {
             system::load_secret,
             system::delete_secret,
             system::trigger_panic,
+            automation::launch_automation,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()

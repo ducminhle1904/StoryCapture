@@ -66,3 +66,10 @@ keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 # OnceCell for storing the AppHandle inside the panic hook
 once_cell = "1"
+
+# Workspace crates (Plan 01-06 wires automation; Plan 01-05 storage already
+# in workspace; downstream plans add capture / encoder / story-parser).
+automation = { path = "../../../crates/automation" }
+story-parser = { path = "../../../crates/story-parser" }
+storage = { path = "../../../crates/storage" }
+

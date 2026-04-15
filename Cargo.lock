@@ -4729,6 +4729,7 @@ name = "storycapture"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "automation",
  "keyring",
  "log",
  "once_cell",
@@ -4736,6 +4737,8 @@ dependencies = [
  "serde_json",
  "specta",
  "specta-typescript",
+ "storage",
+ "story-parser",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

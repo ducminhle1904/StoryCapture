@@ -4,4 +4,5 @@
 // 07 (capture), 08 (encoder), 09 (storage) each add their own submodule
 // here and extend `ipc_spec::builder()` accordingly.
 
+pub mod automation;
 pub mod system;
