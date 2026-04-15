@@ -136,6 +136,36 @@ fn ripple_alpha_decay() {
     );
 }
 
+#[test]
+fn png_sequence_is_deterministic() {
+    // Same seed + same inputs → byte-identical PNG frames across two
+    // independent renders (success criterion: PNG sequence output
+    // deterministic).
+    let wps = [
+        wp(0, 40.0, 40.0, WaypointKind::Click),
+        wp(500, 180.0, 120.0, WaypointKind::Hover),
+    ];
+    let traj = sample_trajectory(
+        &wps,
+        TrajectoryOptions { jitter_seed: 777, ..Default::default() },
+    );
+    let ripples = build_ripples(&wps, &RippleOptions::default());
+    let skin = load_skin(CursorSkin::MacDefault).expect("skin");
+
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    render_png_sequence(&traj, &ripples, &skin, a.path(), 256, 200, 60).unwrap();
+    render_png_sequence(&traj, &ripples, &skin, b.path(), 256, 200, 60).unwrap();
+
+    // Compare every frame byte-for-byte.
+    for i in 0..traj.len() {
+        let name = format!("frame_{:05}.png", i);
+        let ba = std::fs::read(a.path().join(&name)).unwrap();
+        let bb = std::fs::read(b.path().join(&name)).unwrap();
+        assert_eq!(ba, bb, "frame {i} differs between runs");
+    }
+}
+
 // Silence an unused-import warning when tests above don't reference
 // `CursorSample` / `Path` directly in all compilation paths.
 #[allow(dead_code)]
