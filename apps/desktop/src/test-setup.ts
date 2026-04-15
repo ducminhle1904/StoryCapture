@@ -8,6 +8,13 @@
  */
 
 import "@testing-library/jest-dom/vitest";
+import { afterEach } from "vitest";
+import { cleanup } from "@testing-library/react";
+
+// Ensure DOM is torn down between tests so queries don't see leftover nodes.
+afterEach(() => {
+  cleanup();
+});
 
 // happy-dom does not ship matchMedia.
 if (typeof window !== "undefined" && !window.matchMedia) {

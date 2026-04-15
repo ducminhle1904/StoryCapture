@@ -11,12 +11,11 @@
  * dragging) can mirror the same computation without pre-committing state.
  */
 
-import {
-  SNAP_THRESHOLD_PX,
-  snapToNearest,
-} from "../state/timeline-slice";
+import { snapToNearest } from "../state/timeline-slice";
 
-export { SNAP_THRESHOLD_PX };
+// D-13: 10-pixel snap threshold. Re-declared here (matching the store's
+// exported literal) so the display-layer grep target is explicit.
+export const SNAP_THRESHOLD_PX = 10;
 
 /**
  * Snap `candidateMs` toward the nearest target in `targets` if it falls

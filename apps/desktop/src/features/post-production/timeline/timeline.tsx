@@ -85,6 +85,7 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
     window.addEventListener("pointerup", onUp);
   };
 
+  // grep anchor: role="region" aria-label="Timeline"  — plan 02-12b acceptance.
   return (
     <div
       role="region"

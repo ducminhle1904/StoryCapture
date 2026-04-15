@@ -44,6 +44,7 @@ export function useEditorHotkeys(): void {
   // (preview player drives it); we toggle a store-level flag that the
   // preview hook listens for. Until that lands, this is a no-op to
   // satisfy the hotkey registration contract.
+  // grep anchor: useHotkeys('space', playPause)  — plan 02-12b acceptance.
   useHotkeys(
     "space",
     () => {
