@@ -10,9 +10,10 @@ use effects::ast::types::{Rgba, Vec2};
 use effects::ast::video::{FontChoice, TextAnim, TextBox};
 use effects::text::{
     anim_fade_params, anim_scale_in_params, anim_slide_up_params, auto_annotate_step,
-    emit_drawtext, ensure_fonts_extracted, escape_drawtext_text, path_to_ffmpeg_arg,
-    pulse_alpha_expr, resolve_bundled_font_path, AutoAnnotateOptions, BundledFont, StepAstRef,
-    BUNDLED_FONT_FILES,
+    emit_callout_overlay, emit_drawtext, emit_ring_overlay, ensure_fonts_extracted,
+    escape_drawtext_text, path_to_ffmpeg_arg, pulse_alpha_expr, render_callout_png,
+    render_highlight_ring_png, resolve_bundled_font_path, ArrowDir, AutoAnnotateOptions,
+    BundledFont, CalloutSpec, RingSpec, StepAstRef, BUNDLED_FONT_FILES,
 };
 
 // ------------------------------------------------------------
@@ -334,11 +335,64 @@ fn snapshot_text_overlay_filter_complex() {
     let s1 = emit_drawtext(&tb1, &font_dir, "[v0]", "[t0]").unwrap();
     let s2 = emit_drawtext(&tb2, &font_dir, "[t0]", "[t1]").unwrap();
 
+    // Task 2: integrated callout + highlight ring overlays.
+    let tmp_assets = tempfile::tempdir().unwrap();
+    let callout_png = tmp_assets.path().join("callout.png");
+    let ring_png = tmp_assets.path().join("ring.png");
+    render_callout_png(
+        &CalloutSpec {
+            text: "Primary CTA".into(),
+            size_pt: 22.0,
+            font: FontChoice::Bundled { family: "Inter".into(), weight: 700 },
+            fg: Rgba::new(240, 240, 240, 255),
+            bg: Rgba::new(20, 20, 20, 230),
+            border: Some(Rgba::new(255, 255, 255, 255)),
+            padding_px: 14,
+            radius_px: 10,
+            arrow: Some(ArrowDir::Down),
+        },
+        &callout_png,
+    )
+    .unwrap();
+    render_highlight_ring_png(
+        &RingSpec {
+            bbox_w: 220,
+            bbox_h: 48,
+            stroke_px: 3,
+            color: Rgba::new(0, 200, 255, 255),
+            rounded_radius_px: 8,
+        },
+        &ring_png,
+    )
+    .unwrap();
+    let s3 = emit_callout_overlay(
+        &callout_png,
+        Vec2::new(300.0, 240.0),
+        1_000,
+        4_500,
+        "[t1]",
+        2,
+        "[t2]",
+    );
+    let s4 = emit_ring_overlay(
+        &ring_png,
+        Vec2::new(400.0, 220.0),
+        2_000,
+        5_000,
+        1.0,
+        "[t2]",
+        3,
+        "[t3]",
+    );
+
     let pulse = pulse_alpha_expr(5.0, 1.0);
 
     // Normalise the font dir path (UUID varies per run) to keep the
     // snapshot deterministic.
-    let stable = normalize_font_path(&format!("{};{}\n--- pulse ---\n{}", s1, s2, pulse));
+    let stable = normalize_font_path(&format!(
+        "{};{};{};{}\n--- pulse ---\n{}",
+        s1, s2, s3, s4, pulse
+    ));
 
     // Write to fixtures dir as a plain-text snap.
     let snap_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -356,6 +410,112 @@ fn snapshot_text_overlay_filter_complex() {
     assert!(stable.contains("drawtext="));
     assert!(stable.contains("between(t,0.500,3.500)"));
     assert!(stable.contains("0.5+0.5*sin(2*PI*"));
+}
+
+// ------------------------------------------------------------
+// Task 2 — callout + highlight ring PNGs + integrated snapshot
+// ------------------------------------------------------------
+
+#[test]
+fn render_callout_png_rounded_rect() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("callout.png");
+    let (w, h) = render_callout_png(
+        &CalloutSpec {
+            text: "Click Save".into(),
+            size_pt: 24.0,
+            font: FontChoice::SystemDefault,
+            fg: Rgba::new(240, 240, 240, 255),
+            bg: Rgba::new(20, 20, 20, 230),
+            border: None,
+            padding_px: 16,
+            radius_px: 12,
+            arrow: None,
+        },
+        &out,
+    )
+    .unwrap();
+    // Heuristic: 10 chars * 24pt * 0.55 ≈ 132 text width, + 32 padding.
+    assert!(w > 32, "w={}", w);
+    assert!(h > 32, "h={}", h);
+    assert!(out.exists());
+}
+
+#[test]
+fn render_callout_png_with_arrow_adds_strip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let plain = tmp.path().join("plain.png");
+    let arrow = tmp.path().join("arrow.png");
+    let base = CalloutSpec {
+        text: "Hello".into(),
+        size_pt: 20.0,
+        font: FontChoice::SystemDefault,
+        fg: Rgba::new(240, 240, 240, 255),
+        bg: Rgba::new(10, 10, 10, 230),
+        border: Some(Rgba::new(255, 255, 255, 255)),
+        padding_px: 12,
+        radius_px: 10,
+        arrow: None,
+    };
+    let (_, h0) = render_callout_png(&base, &plain).unwrap();
+    let (_, h1) = render_callout_png(
+        &CalloutSpec { arrow: Some(ArrowDir::Down), ..base },
+        &arrow,
+    )
+    .unwrap();
+    assert!(h1 > h0, "arrow variant should be taller: {} vs {}", h1, h0);
+}
+
+#[test]
+fn render_highlight_ring_png_bbox() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("ring.png");
+    let (w, h) = render_highlight_ring_png(
+        &RingSpec {
+            bbox_w: 200,
+            bbox_h: 100,
+            stroke_px: 4,
+            color: Rgba::new(0, 200, 255, 255),
+            rounded_radius_px: 8,
+        },
+        &out,
+    )
+    .unwrap();
+    assert_eq!(w, 208);
+    assert_eq!(h, 108);
+    assert!(out.exists());
+}
+
+#[test]
+fn emit_callout_overlay_shape() {
+    let s = emit_callout_overlay(
+        Path::new("/tmp/callout.png"),
+        Vec2::new(100.0, 200.0),
+        1_000,
+        5_000,
+        "[vin]",
+        2,
+        "[vout]",
+    );
+    assert!(s.starts_with("[vin][2:v]overlay=x=100:y=200:"), "{}", s);
+    assert!(s.ends_with("[vout]"));
+    assert!(s.contains("between(t,1.000,5.000)"));
+}
+
+#[test]
+fn emit_ring_overlay_has_pulse_alpha() {
+    let s = emit_ring_overlay(
+        Path::new("/tmp/ring.png"),
+        Vec2::new(50.0, 50.0),
+        2_000,
+        8_000,
+        1.5,
+        "[vin]",
+        3,
+        "[vout]",
+    );
+    assert!(s.contains("0.5+0.5*sin(2*PI*(t-2.000)/1.500)"), "{}", s);
+    assert!(s.contains("enable='between(t,2.000,8.000)'"), "{}", s);
 }
 
 fn normalize_font_path(s: &str) -> String {
