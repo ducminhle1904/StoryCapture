@@ -1,0 +1,59 @@
+{
+  "id": "01900000-0000-7001-8000-000000000002",
+  "version": 2,
+  "kind": "effect_preset",
+  "name": "Runway Cinematic",
+  "description": "Dynamic zoom + dark gradient background + pronounced cursor ripple. Max zoom 3.0x with 500ms dwell for energetic product reveal videos.",
+  "bundled": true,
+  "ast": {
+    "schema_version": 2,
+    "output_width": 1920,
+    "output_height": 1080,
+    "output_fps": 60,
+    "video": [
+      {
+        "kind": "Source",
+        "id": "src_0001",
+        "path": "source.mp4",
+        "pts_offset_ms": 0
+      },
+      {
+        "kind": "ZoomPan",
+        "id": "zp_0002",
+        "preset": "dynamic",
+        "max_zoom": 3.0,
+        "dwell_ms": 500,
+        "easing": "ease_in_out",
+        "keyframes": []
+      },
+      {
+        "kind": "Background",
+        "id": "bg_0003",
+        "background": {
+          "Gradient": {
+            "name": "runway-dark",
+            "from": { "r": 15, "g": 15, "b": 25, "a": 255 },
+            "to": { "r": 40, "g": 30, "b": 60, "a": 255 },
+            "angle_deg": 135.0
+          }
+        },
+        "radius_px": 16.0,
+        "shadow": { "blur": 48.0, "offset_y": 8.0, "alpha": 0.55 }
+      },
+      {
+        "kind": "RippleOverlay",
+        "id": "rp_0004",
+        "color": { "r": 255, "g": 255, "b": 255, "a": 242 },
+        "max_radius_px": 80.0,
+        "duration_ms": 420,
+        "anticipation_ms": 80
+      }
+    ],
+    "audio": []
+  },
+  "metadata": {
+    "author": "StoryCapture",
+    "created_at": 1744761600000,
+    "tags": ["bundled", "runway", "cinematic", "dynamic"]
+  }
+}

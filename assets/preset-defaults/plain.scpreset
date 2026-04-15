@@ -1,0 +1,28 @@
+{
+  "id": "01900000-0000-7001-8000-000000000005",
+  "version": 2,
+  "kind": "effect_preset",
+  "name": "Plain",
+  "description": "Raw recording baseline with no effects applied — useful as an A/B comparison target and for users who just want the source untouched.",
+  "bundled": true,
+  "ast": {
+    "schema_version": 2,
+    "output_width": 1920,
+    "output_height": 1080,
+    "output_fps": 60,
+    "video": [
+      {
+        "kind": "Source",
+        "id": "src_0001",
+        "path": "source.mp4",
+        "pts_offset_ms": 0
+      }
+    ],
+    "audio": []
+  },
+  "metadata": {
+    "author": "StoryCapture",
+    "created_at": 1744761600000,
+    "tags": ["bundled", "plain", "passthrough", "baseline"]
+  }
+}

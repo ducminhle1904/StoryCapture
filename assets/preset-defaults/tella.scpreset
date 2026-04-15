@@ -1,0 +1,63 @@
+{
+  "id": "01900000-0000-7001-8000-000000000003",
+  "version": 2,
+  "kind": "effect_preset",
+  "name": "Tella",
+  "description": "Calm mid-level zoom (max 2.2x, 800ms dwell) + rounded frame with soft drop shadow + BGM baseline. Tuned for feature walkthroughs.",
+  "bundled": true,
+  "ast": {
+    "schema_version": 2,
+    "output_width": 1920,
+    "output_height": 1080,
+    "output_fps": 60,
+    "video": [
+      {
+        "kind": "Source",
+        "id": "src_0001",
+        "path": "source.mp4",
+        "pts_offset_ms": 0
+      },
+      {
+        "kind": "ZoomPan",
+        "id": "zp_0002",
+        "preset": "calm",
+        "max_zoom": 2.2,
+        "dwell_ms": 800,
+        "easing": "critically_damped_spring",
+        "keyframes": []
+      },
+      {
+        "kind": "Background",
+        "id": "bg_0003",
+        "background": {
+          "Gradient": {
+            "name": "tella-warm",
+            "from": { "r": 245, "g": 238, "b": 225, "a": 255 },
+            "to": { "r": 230, "g": 215, "b": 195, "a": 255 },
+            "angle_deg": 180.0
+          }
+        },
+        "radius_px": 24.0,
+        "shadow": { "blur": 32.0, "offset_y": 6.0, "alpha": 0.35 }
+      }
+    ],
+    "audio": [
+      {
+        "kind": "AudioSource",
+        "id": "as_0100",
+        "path": "bgm/default.mp3",
+        "role": "bgm"
+      },
+      {
+        "kind": "Volume",
+        "id": "av_0101",
+        "gain_db": -14.0
+      }
+    ]
+  },
+  "metadata": {
+    "author": "StoryCapture",
+    "created_at": 1744761600000,
+    "tags": ["bundled", "tella", "calm", "bgm"]
+  }
+}
