@@ -1,0 +1,5 @@
+---
+source: crates/effects/tests/background.rs
+expression: out
+---
+[0:v]setpts=PTS-STARTPTS+0.000000/TB[v_1111];[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080[n_3333_bg_scaled];[v_1111]scale=1792:952[n_3333_fg_scaled];[n_3333_fg_scaled]format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(X,24)*lt(Y,24)*gt(pow(24-X,2)+pow(24-Y,2),pow(24,2)),0,if(gt(X,W-24)*lt(Y,24)*gt(pow(X-(W-24),2)+pow(24-Y,2),pow(24,2)),0,if(lt(X,24)*gt(Y,H-24)*gt(pow(24-X,2)+pow(Y-(H-24),2),pow(24,2)),0,if(gt(X,W-24)*gt(Y,H-24)*gt(pow(X-(W-24),2)+pow(Y-(H-24),2),pow(24,2)),0,alpha(X,Y)))))'[n_3333_fg_rounded];[n_3333_fg_rounded]split=2[n_3333_fg_a][n_3333_fg_b];[n_3333_fg_b]format=rgba,geq=r='0':g='0':b='0':a='alpha(X,Y)*0.502',boxblur=32:1[n_3333_shadow];[n_3333_bg_scaled][n_3333_shadow]overlay=x=64:y=72[n_3333_bg_sh];[n_3333_bg_sh][n_3333_fg_a]overlay=x=64:y=64[v_3333];[v_3333]null[out_v]

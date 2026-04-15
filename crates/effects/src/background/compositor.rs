@@ -162,7 +162,7 @@ pub fn emit_background(
         let shadow_label = format!("[{}_shadow]", core);
         chain.push(';');
         chain.push_str(&format!(
-            "{fg_rounded}split={split_a}{split_b}",
+            "{fg_rounded}split=2{split_a}{split_b}",
             fg_rounded = fg_rounded,
             split_a = split_a,
             split_b = split_b,

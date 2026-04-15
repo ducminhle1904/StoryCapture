@@ -11,10 +11,9 @@ use std::fmt::Write;
 
 use crate::ast::audio::{AudioNode, SidechainParams};
 use crate::ast::types::NodeId;
-use crate::ast::video::{
-    BackgroundKind, TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe,
-};
+use crate::ast::video::{TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe};
 use crate::ast::Graph;
+use crate::background::compositor::emit_background;
 
 /// Axis selector for [`zoompan_expr`]. The zoompan filter wants three
 /// expressions: `z` (scale), `x` (x-offset), `y` (y-offset). We build them
@@ -185,37 +184,21 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 .unwrap();
                 cur = out_label;
             }
-            VideoNode::Background { kind, radius_px, shadow, padding_px, .. } => {
-                let _ = padding_px;
-                // Emit: color/gradient source → overlay onto cur.
-                let bg_src = match kind {
-                    BackgroundKind::Solid { color } => {
-                        format!(
-                            "color=c=0x{r:02X}{g:02X}{b:02X}@{a:.3}:s={w}x{h}",
-                            r = color.r, g = color.g, b = color.b,
-                            a = (color.a as f32) / 255.0,
-                            w = w, h = h,
-                        )
-                    }
-                    BackgroundKind::Gradient { preset_id } => {
-                        // Gradients resolve to lavfi sources in Plan 07.
-                        format!("gradients=preset={preset_id}:s={w}x{h}")
-                    }
-                    BackgroundKind::Image { path } => {
-                        format!("movie='{}'", escape_ffmpeg_path(&path.to_string_lossy()))
-                    }
-                };
-                let _ = (radius_px, shadow); // Plan 07 consumes these.
-                let bg_label = format!("[{}_bg]", node_label_core(node.id()));
-                write!(
-                    out,
-                    "{bg_src}{bg_label};{bg_label}{cur}overlay=x=0:y=0{out_label}",
-                    bg_src = bg_src,
-                    bg_label = bg_label,
-                    cur = cur,
-                    out_label = out_label,
-                )
-                .unwrap();
+            VideoNode::Background { .. } => {
+                // Plan 07 (POST-04): delegate to the background compositor.
+                // The extra `-i` inputs produced by the compositor are
+                // surfaced via `collect_extra_inputs`; this emit path only
+                // produces the filter_complex fragment. `bg_input_index`
+                // equals the current `source_count` so the bg plate lands at
+                // the next available stream slot.
+                let bge = emit_background(node, &cur, &out_label, g, source_count)
+                    .expect("emit_background failed");
+                // Any gradient / image / lavfi source consumes exactly one
+                // extra input slot. Advance source_count accordingly so
+                // downstream Source nodes (Plan 11 multi-scene) pick up
+                // correct `[N:v]` indices.
+                source_count += bge.extra_inputs.len();
+                out.push_str(&bge.filter_chain);
                 cur = out_label;
             }
             VideoNode::CursorOverlay { trajectory, size_scale, .. } => {
@@ -484,4 +467,27 @@ fn sidechain_args(p: &SidechainParams) -> String {
 #[doc(hidden)]
 pub fn _stable_label_hint(id: NodeId) -> String {
     id.stable_label("v")
+}
+
+/// Collect the extra `-i` inputs needed by every Background node in the
+/// graph, in traversal order. Plan 11 (renderer integration) consumes this to
+/// build the FFmpeg CLI. The source-stream index of the Nth extra input is
+/// `source_count_when_background_seen + N` — matching the allocation done by
+/// [`emit_filter_complex`].
+pub fn collect_extra_inputs(g: &Graph) -> Vec<crate::background::compositor::ExtraInput> {
+    let mut out = Vec::new();
+    let mut src_idx: usize = 0;
+    for node in &g.video {
+        match node {
+            VideoNode::Source { .. } => src_idx += 1,
+            VideoNode::Background { .. } => {
+                if let Ok(bge) = emit_background(node, "[ignored]", "[ignored]", g, src_idx) {
+                    src_idx += bge.extra_inputs.len();
+                    out.extend(bge.extra_inputs);
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
