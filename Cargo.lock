@@ -1360,8 +1360,14 @@ checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 name = "encoder"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "bytes",
+ "capture",
  "serde",
+ "tempfile",
  "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -5397,8 +5403,10 @@ name = "storycapture"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "automation",
  "capture",
+ "encoder",
  "keyring",
  "log",
  "once_cell",

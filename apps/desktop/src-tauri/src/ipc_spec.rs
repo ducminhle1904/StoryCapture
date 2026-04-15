@@ -16,7 +16,7 @@
 use tauri::Wry;
 use tauri_specta::{collect_commands, Builder};
 
-use crate::{commands::{automation, capture, system}, error::AppError};
+use crate::{commands::{automation, capture, encode, system}, error::AppError};
 
 /// Constructs the tauri-specta builder. Called from `lib.rs::run()`.
 ///
@@ -45,6 +45,9 @@ pub fn builder() -> Builder<Wry> {
             capture::relaunch_app,
             capture::start_capture,
             capture::stop_capture,
+            encode::probe_hw_encoders,
+            encode::start_recording,
+            encode::stop_recording,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -56,6 +59,13 @@ pub fn builder() -> Builder<Wry> {
         .typ::<capture::CaptureEventDto>()
         .typ::<capture::FrameMetaDto>()
         .typ::<capture::SessionId>()
+        .typ::<encode::HardwareEncoderDto>()
+        .typ::<encode::EncoderProbeDto>()
+        .typ::<encode::EncodeResultDto>()
+        .typ::<encode::EncodeProgressDto>()
+        .typ::<encode::RecordingEvent>()
+        .typ::<encode::RecordingSessionId>()
+        .typ::<encode::StartRecordingArgs>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the

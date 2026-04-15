@@ -6,4 +6,5 @@
 
 pub mod automation;
 pub mod capture;
+pub mod encode;
 pub mod system;

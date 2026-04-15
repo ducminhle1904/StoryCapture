@@ -22,6 +22,7 @@ Cargo.lock.bak
 # Tauri build artifacts
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/binaries/ffmpeg-*
+apps/desktop/src-tauri/binaries/playwright-sidecar-*
 apps/desktop/src-tauri/gen/
 
 # OS

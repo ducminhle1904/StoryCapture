@@ -71,7 +71,9 @@ once_cell = "1"
 # in workspace; downstream plans add capture / encoder / story-parser).
 automation = { path = "../../../crates/automation" }
 capture = { path = "../../../crates/capture" }
+encoder = { path = "../../../crates/encoder" }
 story-parser = { path = "../../../crates/story-parser" }
 storage = { path = "../../../crates/storage" }
 parking_lot = { workspace = true }
+async-trait = "0.1"
 

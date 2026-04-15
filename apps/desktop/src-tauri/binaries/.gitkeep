@@ -1,5 +1,21 @@
-# FFmpeg sidecar binaries are produced by Plan 01-02 (scripts/build-ffmpeg/)
-# and downloaded into this directory in CI as `ffmpeg-<rust-triple>` (or
-# `.exe` on Windows). Tauri's externalBin resolver picks the right one
-# at bundle time. Empty in dev — `pnpm tauri dev` works without a sidecar
-# because the encoder crate (Plan 01-08) is not exercised at startup.
+# External sidecar binaries (Tauri `bundle.externalBin`).
+#
+# Two sidecars live here, one per Rust host triple:
+#
+#   ffmpeg-<triple>                 — LGPL static FFmpeg (Plan 01-02;
+#                                      built by .github/workflows/ffmpeg-build.yml)
+#   playwright-sidecar-<triple>     — Node SEA Playwright driver (Plan 01-06;
+#                                      built by .github/workflows/playwright-sidecar-build.yml)
+#
+# Tauri's build script requires BOTH paths to exist per host triple, or
+# `cargo check -p storycapture --lib` fails. For local dev, run:
+#
+#     bash scripts/dev/install-sidecar-placeholders.sh
+#
+# which drops tiny shell-script stubs matching your host triple. The
+# stubs exit 127 if invoked at runtime — they exist purely to satisfy
+# the externalBin path check. Release CI downloads the real per-triple
+# artifacts from the build workflows before packaging.
+#
+# All `ffmpeg-*` and `playwright-sidecar-*` files in this directory are
+# gitignored (see root .gitignore).
