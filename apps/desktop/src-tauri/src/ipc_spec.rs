@@ -17,7 +17,10 @@ use tauri::Wry;
 use tauri_specta::{collect_commands, Builder};
 
 use crate::{
-    commands::{automation, capture, encode, export, parse, projects, render, system, updater},
+    commands::{
+        automation, capture, encode, export, parse, preset, projects, render, sound_library,
+        system, timeline, updater,
+    },
     error::AppError,
 };
 
@@ -63,6 +66,12 @@ pub fn builder() -> Builder<Wry> {
             export::export_run,
             export::export_get_presets,
             export::export_validate_config,
+            preset::preset_list,
+            preset::preset_import,
+            preset::preset_export,
+            timeline::timeline_load,
+            timeline::timeline_save,
+            sound_library::sound_library_list,
             updater::check_update,
             updater::install_update,
         ])
@@ -109,6 +118,12 @@ pub fn builder() -> Builder<Wry> {
         .typ::<export::ExportRunArgs>()
         .typ::<export::ExportResultDto>()
         .typ::<export::ExportPresetsCatalogue>()
+        // Plan 02-12a (preset / timeline / sound-library)
+        .typ::<preset::PresetScopeDto>()
+        .typ::<preset::EffectPresetDto>()
+        .typ::<timeline::TimelineStateDto>()
+        .typ::<sound_library::SoundCategoryDto>()
+        .typ::<sound_library::SoundLibraryEntryDto>()
         // Plan 01-10 (auto-updater)
         .typ::<updater::UpdateInfo>()
 }
