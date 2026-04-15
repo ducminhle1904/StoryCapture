@@ -1,5 +1,16 @@
-//! `storage` — two-tier SQLite (rusqlite + rusqlite_migration): global app.sqlite + per-project project.sqlite.
+//! `storage` — two-tier SQLite (rusqlite + rusqlite_migration): global
+//! `app.sqlite` (projects index, app settings) + per-project `project.sqlite`
+//! (sessions, steps, exports, presets) inside each project folder.
 //!
-//! Scaffold stub — implementation lives in later plans (Phase 1, FOUND-06 / storage requirements).
+//! Pure crate: no Tauri imports. Reusable from the future Phase 5 headless CLI.
 
-pub fn _scaffold_marker() {}
+mod app_db;
+mod error;
+mod migrations;
+mod models;
+mod project_db;
+
+pub use app_db::AppDb;
+pub use error::StorageError;
+pub use models::*;
+pub use project_db::{ProjectDb, PROJECT_DB_FILENAME};
