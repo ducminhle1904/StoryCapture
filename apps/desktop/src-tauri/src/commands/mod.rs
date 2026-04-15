@@ -7,6 +7,7 @@
 pub mod automation;
 pub mod capture;
 pub mod encode;
+pub mod export;
 pub mod parse;
 pub mod projects;
 pub mod render;

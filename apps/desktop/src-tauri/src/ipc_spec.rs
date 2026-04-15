@@ -17,7 +17,7 @@ use tauri::Wry;
 use tauri_specta::{collect_commands, Builder};
 
 use crate::{
-    commands::{automation, capture, encode, parse, projects, render, system, updater},
+    commands::{automation, capture, encode, export, parse, projects, render, system, updater},
     error::AppError,
 };
 
@@ -60,6 +60,9 @@ pub fn builder() -> Builder<Wry> {
             render::render_cancel,
             render::render_list_active,
             render::stream_render_progress,
+            export::export_run,
+            export::export_get_presets,
+            export::export_validate_config,
             updater::check_update,
             updater::install_update,
         ])
@@ -101,6 +104,11 @@ pub fn builder() -> Builder<Wry> {
         .typ::<render::NewRenderJobDto>()
         .typ::<render::RenderJobDto>()
         .typ::<render::RenderProgressDto>()
+        // Plan 02-11 (export)
+        .typ::<export::ExportOutputDto>()
+        .typ::<export::ExportRunArgs>()
+        .typ::<export::ExportResultDto>()
+        .typ::<export::ExportPresetsCatalogue>()
         // Plan 01-10 (auto-updater)
         .typ::<updater::UpdateInfo>()
 }

@@ -72,6 +72,7 @@ once_cell = "1"
 automation = { path = "../../../crates/automation" }
 capture = { path = "../../../crates/capture" }
 encoder = { path = "../../../crates/encoder" }
+effects = { path = "../../../crates/effects" }
 story-parser = { path = "../../../crates/story-parser" }
 storage = { path = "../../../crates/storage" }
 parking_lot = { workspace = true }

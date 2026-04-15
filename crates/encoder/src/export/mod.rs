@@ -18,6 +18,7 @@ pub mod format;
 pub mod orchestrator;
 pub mod psnr;
 pub mod quality;
+pub mod reference_graph;
 pub mod resolution;
 
 pub use batch::{build_batch, validate, BatchExportRequest, OutputSpec};

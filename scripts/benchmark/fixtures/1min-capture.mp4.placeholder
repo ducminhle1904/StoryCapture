@@ -1,0 +1,15 @@
+This is a PLACEHOLDER for the deterministic 1-minute 1080p60 capture MP4 referenced by
+`1min-reference.json` (the `source_path` field).
+
+The real artifact (`1min-capture.mp4`, ~5-10 MB) is NOT committed to the repo. Regenerate it
+locally or in CI with:
+
+    ffmpeg -y -f lavfi -i testsrc2=size=1920x1080:rate=60:duration=60 \
+           -f lavfi -i sine=frequency=440:sample_rate=48000:duration=60 \
+           -c:v libx264 -crf 18 -pix_fmt yuv420p \
+           -c:a aac -b:a 64k -movflags +faststart \
+           scripts/benchmark/fixtures/1min-capture.mp4
+
+The `scripts/benchmark/render-1min.sh` script already falls back to synthesising this clip
+inline when it's absent, so contributors don't have to run this command by hand on a fresh
+clone. This placeholder exists solely as an in-repo signpost.
