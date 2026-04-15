@@ -26,6 +26,16 @@ pub enum EffectsError {
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
+
+    /// An unknown waypoint kind was encountered while loading from a storage
+    /// backend (e.g. the `steps` table). Surfaced by [`crate::zoom::waypoint_source`].
+    #[error("unknown waypoint kind: {0}")]
+    UnknownWaypointKind(String),
+
+    /// A SQLite-backed storage operation failed.
+    #[cfg(feature = "sqlite")]
+    #[error("sqlite: {0}")]
+    Sqlite(#[from] rusqlite::Error),
 }
 
 pub type Result<T> = std::result::Result<T, EffectsError>;

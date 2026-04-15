@@ -14,6 +14,7 @@ pub mod builder;
 pub mod emit;
 pub mod error;
 pub mod math;
+pub mod zoom;
 
 pub use ast::{AudioNode, Graph, VideoNode, SCHEMA_VERSION};
 pub use builder::{BuilderError, GraphBuilder};
