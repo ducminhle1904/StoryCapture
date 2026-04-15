@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/* Fonts via @fontsource (CSS-only, framework-agnostic). See ./lib/fonts.ts. */
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-sans/500.css";
+@import "@fontsource/geist-sans/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+@theme {
+  --font-sans: "Geist Sans", "GeistSans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Menlo", "Consolas", monospace;
+
+  --color-bg: #0a0a0b;
+  --color-fg: #e4e4e7;
+  --color-muted: #71717a;
+  --color-surface: #18181b;
+  --color-border: #27272a;
+
+  /* Placeholder accent — Plan 09 refines blend (Runway + Linear + ElevenLabs) via getdesign */
+  --color-accent: #6366f1;
+  --color-accent-muted: #4338ca;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  min-height: 100vh;
+}
+
+.font-mono,
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
