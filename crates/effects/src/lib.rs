@@ -13,6 +13,7 @@ pub mod ast;
 pub mod builder;
 pub mod emit;
 pub mod error;
+pub mod math;
 
 pub use ast::{AudioNode, Graph, VideoNode, SCHEMA_VERSION};
 pub use builder::{BuilderError, GraphBuilder};
