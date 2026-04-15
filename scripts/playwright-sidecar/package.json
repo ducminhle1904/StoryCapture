@@ -1,0 +1,19 @@
+{
+  "name": "playwright-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "server.mjs",
+  "description": "StoryCapture Playwright sidecar — JSON-RPC over stdin/stdout, packaged as a Node 20 SEA binary and shipped as a Tauri externalBin sidecar.",
+  "scripts": {
+    "dev": "node server.mjs",
+    "install-browser": "playwright install chromium",
+    "build:sea": "node build-sea.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.48.0"
+  },
+  "devDependencies": {
+    "postject": "^1.0.0-alpha.6"
+  }
+}
