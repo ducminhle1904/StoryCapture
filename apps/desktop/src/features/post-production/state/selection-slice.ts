@@ -25,12 +25,21 @@ export const createSelectionSlice: StateCreator<
   [],
   [],
   SelectionSlice
-> = (set) => ({
+> = (set, get) => ({
   selectedClipId: null,
   selectedPresetId: null,
   selectedTab: "presets",
 
-  setSelectedClipId: (id) => set({ selectedClipId: id }),
-  setSelectedPresetId: (id) => set({ selectedPresetId: id }),
-  setSelectedTab: (tab) => set({ selectedTab: tab }),
+  setSelectedClipId: (id) => {
+    if (get().selectedClipId === id) return;
+    set({ selectedClipId: id });
+  },
+  setSelectedPresetId: (id) => {
+    if (get().selectedPresetId === id) return;
+    set({ selectedPresetId: id });
+  },
+  setSelectedTab: (tab) => {
+    if (get().selectedTab === tab) return;
+    set({ selectedTab: tab });
+  },
 });

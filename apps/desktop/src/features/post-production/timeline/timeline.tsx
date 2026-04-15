@@ -13,14 +13,13 @@
 
 import { useMemo, useRef } from "react";
 
+import { TRACK_IDS } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
 import { Playhead } from "./playhead";
 import { TimeRuler } from "./time-ruler";
 import { Track, TRACK_LABEL } from "./track";
 
-// D-12: five fixed tracks. This literal is a grep target — do NOT refactor
-// to a dynamic list without updating D-12.
-export const TRACK_IDS = ['video', 'cursor', 'zoom', 'sound', 'annotations'] as const;
+export { TRACK_IDS };
 
 // Plan 02-13 grep anchor: pushAction({ kind: 'move-clip'
 //

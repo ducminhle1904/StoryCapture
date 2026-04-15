@@ -16,23 +16,22 @@
 
 import { memo, useCallback } from "react";
 
+import { TRACK_IDS } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
-
-function findSelectedClip() {
-  const s = useEditorStore.getState();
-  if (!s.selectedClipId) return null;
-  for (const track of ["video", "cursor", "zoom", "sound", "annotations"] as const) {
-    const hit = s.tracks[track].find((c) => c.id === s.selectedClipId);
-    if (hit) return { trackId: track, clip: hit };
-  }
-  return null;
-}
 
 function EffectParamsBase() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const pushAction = useEditorStore((s) => s.pushAction);
-  // Intentionally also subscribe to tracks so re-selecting reflows.
-  useEditorStore((s) => s.tracks);
+  // Subscribe only to the selected clip so mutations on other clips do not
+  // trigger a re-render of the inspector.
+  const selectedClip = useEditorStore((s) => {
+    if (!s.selectedClipId) return null;
+    for (const track of TRACK_IDS) {
+      const hit = s.tracks[track].find((c) => c.id === s.selectedClipId);
+      if (hit) return { trackId: track, clip: hit };
+    }
+    return null;
+  });
 
   const onLabelChange = useCallback(
     (trackId: string, clipId: string, prev: string, next: string) => {
@@ -56,7 +55,7 @@ function EffectParamsBase() {
     );
   }
 
-  const hit = findSelectedClip();
+  const hit = selectedClip;
   if (!hit) {
     return (
       <div className="p-4 text-sm text-[var(--color-fg-muted)]">

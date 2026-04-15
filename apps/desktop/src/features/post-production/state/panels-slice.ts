@@ -15,16 +15,15 @@ export const PANELS_STORAGE_KEY = "storycapture.post-production.panels";
 export interface PanelsSlice {
   /** % of editor height given to the timeline. Defaults to 30. */
   timelineHeightPct: number;
-  /** % of editor width given to the preview pane. Defaults to 60. */
+  /** % of editor width given to the preview pane. Defaults to 60. The
+   * inspector's width is derived as `100 - previewWidthPct` at the
+   * shell level. */
   previewWidthPct: number;
-  /** % of editor width given to the inspector pane. Defaults to 25. */
-  inspectorWidthPct: number;
   soundDrawerOpen: boolean;
   exportModalOpen: boolean;
 
   setTimelineHeightPct: (pct: number) => void;
   setPreviewWidthPct: (pct: number) => void;
-  setInspectorWidthPct: (pct: number) => void;
   setSoundDrawerOpen: (open: boolean) => void;
   setExportModalOpen: (open: boolean) => void;
 }
@@ -36,13 +35,11 @@ export const createPanelsSlice: StateCreator<PanelsSlice, [], [], PanelsSlice> =
 ) => ({
   timelineHeightPct: 30,
   previewWidthPct: 60,
-  inspectorWidthPct: 25,
   soundDrawerOpen: false,
   exportModalOpen: false,
 
   setTimelineHeightPct: (pct) => set({ timelineHeightPct: clampPct(pct) }),
   setPreviewWidthPct: (pct) => set({ previewWidthPct: clampPct(pct) }),
-  setInspectorWidthPct: (pct) => set({ inspectorWidthPct: clampPct(pct) }),
   setSoundDrawerOpen: (open) => set({ soundDrawerOpen: open }),
   setExportModalOpen: (open) => set({ exportModalOpen: open }),
 });

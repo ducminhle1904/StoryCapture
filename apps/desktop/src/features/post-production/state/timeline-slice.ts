@@ -137,10 +137,21 @@ export const createTimelineSlice: StateCreator<
   snapEnabled: true,
   durationMs: 0,
 
-  setPlayhead: (ms) => set({ playheadMs: Math.max(0, ms) }),
-  setDuration: (ms) => set({ durationMs: Math.max(0, ms) }),
+  setPlayhead: (ms) => {
+    const next = Math.max(0, ms);
+    if (get().playheadMs === next) return;
+    set({ playheadMs: next });
+  },
+  setDuration: (ms) => {
+    const next = Math.max(0, ms);
+    if (get().durationMs === next) return;
+    set({ durationMs: next });
+  },
   toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
-  setSnapEnabled: (on) => set({ snapEnabled: on }),
+  setSnapEnabled: (on) => {
+    if (get().snapEnabled === on) return;
+    set({ snapEnabled: on });
+  },
 
   addSoundClip: (clip) =>
     set((s) => ({

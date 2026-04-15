@@ -12,9 +12,8 @@
  * The undo ring is NOT persisted (D-16) — reloading the project resets
  * history.
  *
- * The undo-bridge module re-exports the slice's pushAction as
- * `dispatchUndoable` so P12a's call sites continue to compile without
- * changes; see `undo-bridge.ts`.
+ * Call sites that need to push undoable actions use
+ * `useEditorStore.getState().pushAction(action)` directly.
  */
 
 import { create } from "zustand";
@@ -42,7 +41,6 @@ export type EditorStore = TimelineSlice &
 const PERSISTED_PANEL_KEYS = [
   "timelineHeightPct",
   "previewWidthPct",
-  "inspectorWidthPct",
 ] as const;
 
 export const useEditorStore = create<EditorStore>()(
@@ -69,11 +67,3 @@ export const useEditorStore = create<EditorStore>()(
     },
   ),
 );
-
-export {
-  dispatchUndoable,
-  canRedo,
-  canUndo,
-  type UndoableAction as LegacyUndoableAction,
-  type DispatchResult,
-} from "./undo-bridge";

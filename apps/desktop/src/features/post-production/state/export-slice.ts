@@ -9,9 +9,9 @@
 
 import type { StateCreator } from "zustand";
 
-export type ExportFormat = "mp4" | "webm" | "gif";
-export type ExportResolution = "720p" | "1080p" | "4k";
-export type ExportQuality = "low" | "med" | "high";
+import type { ExportFormat, ExportQuality, ExportResolution } from "../../../ipc/export";
+
+export type { ExportFormat, ExportQuality, ExportResolution };
 
 export interface ExportFormState {
   formats: ExportFormat[];
