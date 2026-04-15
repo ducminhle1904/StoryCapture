@@ -42,7 +42,7 @@ pub fn list_by_scope(
     conn: &Connection,
     scope: PresetTier,
 ) -> Result<Vec<EffectPreset>, StorageError> {
-    let mut stmt = conn.prepare(&format!(
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT {SELECT_COLS} FROM effect_presets WHERE scope = ?1 ORDER BY bundled DESC, name ASC"
     ))?;
     let rows = stmt

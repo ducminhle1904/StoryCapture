@@ -71,7 +71,7 @@ pub fn enqueue(conn: &Connection, j: &NewRenderJob) -> Result<Uuid, StorageError
 /// D-04 priority poll: highest-priority pending jobs first, FIFO within same
 /// priority. Does NOT mutate status — the caller chooses which to pick up.
 pub fn poll_ready(conn: &Connection, limit: u32) -> Result<Vec<RenderJob>, StorageError> {
-    let mut stmt = conn.prepare(&format!(
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT {SELECT_COLS} FROM render_jobs WHERE status='pending' ORDER BY priority DESC, created_at ASC LIMIT ?1"
     ))?;
     let rows = stmt
@@ -169,7 +169,7 @@ pub fn on_startup_mark_orphans(conn: &Connection) -> Result<u32, StorageError> {
 }
 
 pub fn list_active(conn: &Connection, story_id: &str) -> Result<Vec<RenderJob>, StorageError> {
-    let mut stmt = conn.prepare(&format!(
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT {SELECT_COLS} FROM render_jobs WHERE story_id=?1 AND status IN ('pending','running','interrupted') ORDER BY priority DESC, created_at ASC"
     ))?;
     let rows = stmt
@@ -179,7 +179,7 @@ pub fn list_active(conn: &Connection, story_id: &str) -> Result<Vec<RenderJob>, 
 }
 
 pub fn list_by_batch(conn: &Connection, batch_id: &str) -> Result<Vec<RenderJob>, StorageError> {
-    let mut stmt = conn.prepare(&format!(
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT {SELECT_COLS} FROM render_jobs WHERE batch_id=?1 ORDER BY created_at ASC"
     ))?;
     let rows = stmt
