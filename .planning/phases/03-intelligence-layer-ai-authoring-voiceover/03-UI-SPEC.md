@@ -1,7 +1,8 @@
 ---
 phase: 3
 slug: intelligence-layer-ai-authoring-voiceover
-status: draft
+status: approved
+reviewed_at: 2026-04-15
 shadcn_initialized: deferred-to-phase-1
 preset: base-vega (shadcn/ui + Base UI)
 created: 2026-04-15
