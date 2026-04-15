@@ -1,9 +1,9 @@
 ---
 phase: 02-cinematic-post-production-export
-plan: 12
+plan: 12b
 type: execute
-wave: 3
-depends_on: ["02-04", "02-10", "02-11"]
+wave: 5
+depends_on: ["02-04", "02-10", "02-11", "02-12a"]
 autonomous: false
 files_modified:
   - apps/desktop/src/routes/post-production.tsx
@@ -12,6 +12,7 @@ files_modified:
   - apps/desktop/src/features/post-production/timeline/track.tsx
   - apps/desktop/src/features/post-production/timeline/clip.tsx
   - apps/desktop/src/features/post-production/timeline/playhead.tsx
+  - apps/desktop/src/features/post-production/timeline/time-ruler.tsx
   - apps/desktop/src/features/post-production/timeline/snapping.ts
   - apps/desktop/src/features/post-production/preview/preview-player.tsx
   - apps/desktop/src/features/post-production/preview/transport-controls.tsx
@@ -22,49 +23,42 @@ files_modified:
   - apps/desktop/src/features/post-production/sound-browser/sound-row.tsx
   - apps/desktop/src/features/post-production/export-modal/export-modal.tsx
   - apps/desktop/src/features/post-production/export-modal/format-checkboxes.tsx
+  - apps/desktop/src/features/post-production/export-modal/resolution-picker.tsx
   - apps/desktop/src/features/post-production/render-queue/queue-widget.tsx
   - apps/desktop/src/features/post-production/render-queue/job-row.tsx
-  - apps/desktop/src/features/post-production/state/timeline-slice.ts
-  - apps/desktop/src/features/post-production/state/panels-slice.ts
-  - apps/desktop/src/features/post-production/state/selection-slice.ts
-  - apps/desktop/src/features/post-production/state/store.ts
+  - apps/desktop/src/features/post-production/render-queue/progress-bar.tsx
   - apps/desktop/src/features/post-production/hooks/use-preview.ts
   - apps/desktop/src/features/post-production/hooks/use-render-progress.ts
   - apps/desktop/src/features/post-production/hooks/use-hotkeys.ts
-  - apps/desktop/src/ipc/render.ts
-  - apps/desktop/src/ipc/export.ts
-  - apps/desktop/src/ipc/presets.ts
-  - apps/desktop/src/ipc/sound-library.ts
-  - apps/desktop/src/ipc/timeline.ts
-  - apps/desktop/src-tauri/src/commands/preset.rs
-  - apps/desktop/src-tauri/src/commands/timeline.rs
-  - apps/desktop/src-tauri/src/commands/sound_library.rs
-  - apps/desktop/src-tauri/src/commands/mod.rs
-  - apps/desktop/package.json
+  - apps/desktop/src/features/post-production/hooks/use-editor-store.ts
+  - apps/desktop/src/features/post-production/layer-tracks/video-track.tsx
+  - apps/desktop/src/features/post-production/layer-tracks/cursor-track.tsx
+  - apps/desktop/src/features/post-production/layer-tracks/zoom-track.tsx
+  - apps/desktop/src/features/post-production/layer-tracks/sound-track.tsx
+  - apps/desktop/src/features/post-production/layer-tracks/annotations-track.tsx
+  - apps/desktop/src/App.tsx
   - apps/desktop/src/features/post-production/__tests__/timeline.test.tsx
-  - apps/desktop/src/features/post-production/__tests__/store.test.ts
   - apps/desktop/src/features/post-production/__tests__/export-modal.test.tsx
+  - apps/desktop/src/features/post-production/__tests__/preview-player.test.tsx
 requirements:
   - UI-05
-tags: [ui, post-production, timeline, 5-track, preview-player, inspector, sound-browser, export-modal, render-queue, zustand, wavesurfer, dnd-kit, shadcn, wcag
+tags: [ui, post-production, react, timeline, 5-track, preview-player, inspector, sound-browser, export-modal, render-queue, wavesurfer, dnd-kit, shadcn, wcag]
 
 must_haves:
   truths:
     - "Post-Production Editor route /post-production/<story_id> renders 4-pane layout (D-14): Timeline bottom ~30%, Preview top-left 60%, Inspector top-right 25%, Sound browser left drawer, Export right drawer/modal"
-    - "5 fixed timeline tracks (D-12): Video, Cursor, Zoom, Sound, Annotations — user cannot add/remove tracks"
-    - "Magnetic snap ON by default (D-13); Alt-hold disables; snap targets = playhead + scene boundaries + neighbor clip edges"
-    - "Preview player wraps Plan 04 PreviewEngine; renderFrame driven by requestAnimationFrame + currentTime; scrub updates <video>.currentTime synchronously (Research §2 baseline, <video> path not WebCodecs)"
+    - "5 fixed timeline tracks rendered (D-12): Video, Cursor, Zoom, Sound, Annotations — each with its own layer-track component reading from Plan 12a's timeline slice"
+    - "Magnetic snap ON by default (D-13); Alt-hold disables via hotkey bound to timeline slice"
+    - "Preview player wraps Plan 04 PreviewEngine; renderFrame driven by requestAnimationFrame + currentTime; scrub updates `<video>`.currentTime synchronously"
     - "Transport controls: play/pause (space), seek (arrow keys + 5s jump with shift), frame-step forward/back (period/comma)"
-    - "Inspector panel tabs: Presets | Effects | Sound; preset grid shows 5 bundled + user presets from Plan 03; effect-params form edits VideoNode attributes + emits AST patches to Zustand + calls debounced IPC to persist"
+    - "Inspector panel tabs: Presets | Effects | Sound; preset grid from Plan 03 via `presetList`; effect-params form edits VideoNode attributes + emits AST patches via Plan 12a store actions + calls debounced IPC to persist"
     - "Sound library drawer (left slide-out) shows SFX + BGM categories with wavesurfer.js static waveform + duration; drag-to-timeline adds a clip to the Sound track"
-    - "Export modal (right drawer): format checkboxes MP4/WebM/GIF + per-format resolution + FPS + quality + output folder picker (tauri-plugin-dialog) + Export button -> calls export_run Tauri command (Plan 11)"
-    - "Render queue widget (top-bar dropdown): shows active jobs from render_list_active, live progress from stream_render_progress Channel<RenderProgress> (Plan 10), cancel button per job"
-    - "Zustand store slices: timeline (clips per track, playhead_ms, snap_enabled), panels (pane sizes persisted), selection (selected_clip_id, selected_preset_id) (D-32)"
-    - "TanStack Query for: render_list_active, preset list, sound library list (D-32)"
-    - "Keyboard shortcuts via react-hotkeys-hook: space=play/pause, cmd/ctrl+z/shift+z = undo/redo (wired to Plan 13), delete=remove selected clip, alt = disable snap (while held)"
-    - "WCAG 2.1 AA: every interactive element is keyboard-reachable, focus-ring visible on clips/tracks, ARIA labels on timeline clips ('Cursor clip at 12.5s, 3.2s duration'), screen-reader announcements for playhead position changes"
-    - "Vitest + RTL tests for: timeline snap math, store slice reducers, export modal form validation"
-    - "Human verify checkpoint: user opens a Phase 1 recording in the editor, scrubs, applies a preset, exports MP4+WebM, confirms 60fps preview on 1080p reference hardware"
+    - "Export modal (right drawer): format checkboxes MP4/WebM/GIF + per-format resolution + FPS + quality + output folder picker (tauri-plugin-dialog) + Export button -> calls exportRun (Plan 11 via 12a IPC)"
+    - "Render queue widget (top-bar dropdown): shows active jobs from renderListActive, live progress from stream_render_progress Channel<RenderProgress>, cancel button per job"
+    - "Keyboard shortcuts via react-hotkeys-hook: space=play/pause, cmd/ctrl+z/shift+z (and cmd/ctrl+y on Windows)=undo/redo (wired to Plan 13 through undo-bridge from 12a), delete=remove selected clip, alt=disable snap (while held)"
+    - "WCAG 2.1 AA: every interactive element keyboard-reachable, focus-ring visible on clips/tracks, ARIA labels on timeline clips ('Cursor clip at 12.5s, 3.2s duration'), screen-reader announcements for playhead position changes"
+    - "Vitest + RTL tests for: timeline snap behaviour, export modal form validation, preview player lifecycle"
+    - "Formal human-verify checkpoint covers scrub-at-60fps + preset application + MP4/WebM/GIF export + undo/redo journey (see Task 4)"
   artifacts:
     - path: "apps/desktop/src/routes/post-production.tsx"
       provides: "Route entry wiring EditorShell"
@@ -79,22 +73,16 @@ must_haves:
     - path: "apps/desktop/src/features/post-production/sound-browser/sound-drawer.tsx"
       provides: "Sound library drawer with wavesurfer.js previews"
     - path: "apps/desktop/src/features/post-production/export-modal/export-modal.tsx"
-      provides: "Export modal calling export_run Tauri command"
+      provides: "Export modal calling exportRun IPC"
     - path: "apps/desktop/src/features/post-production/render-queue/queue-widget.tsx"
       provides: "Top-bar active render list with live progress + cancel"
-    - path: "apps/desktop/src/features/post-production/state/store.ts"
-      provides: "Zustand store composing 3 slices"
-    - path: "apps/desktop/src/ipc/export.ts"
-      provides: "Typed wrappers for export_run / export_get_presets / export_validate_config (Plan 11)"
-    - path: "apps/desktop/src/ipc/render.ts"
-      provides: "Typed wrappers for render_enqueue / render_cancel / render_list_active / stream_render_progress (Plan 10)"
   key_links:
     - from: "apps/desktop/src/features/post-production/preview/preview-player.tsx"
       to: "apps/desktop/src/features/post-production/preview/preview-engine.ts (Plan 04)"
       via: "new PreviewEngine({ canvas, videoElement, ... }); engine.renderFrame(t_ms, plan)"
       pattern: "PreviewEngine"
     - from: "apps/desktop/src/features/post-production/export-modal/export-modal.tsx"
-      to: "apps/desktop/src/ipc/export.ts"
+      to: "apps/desktop/src/ipc/export.ts (Plan 12a)"
       via: "calls exportRun(request) on submit"
       pattern: "exportRun"
     - from: "apps/desktop/src/features/post-production/render-queue/queue-widget.tsx"
@@ -102,17 +90,17 @@ must_haves:
       via: "subscribes to Channel<RenderProgress>"
       pattern: "stream_render_progress"
     - from: "apps/desktop/src/features/post-production/sound-browser/sound-drawer.tsx"
-      to: "apps/desktop/src/ipc/sound-library.ts"
+      to: "apps/desktop/src/ipc/sound-library.ts (Plan 12a)"
       via: "soundLibraryList({ category }) via TanStack Query"
       pattern: "sound_library_list"
 ---
 
 <objective>
-Deliver UI-05: the Post-Production Editor — a 4-pane shell with a 5-track timeline, preview player, inspector, sound library drawer, export modal, and render queue widget. Wire it end-to-end into Plan 04's PreviewEngine, Plan 10's render queue Tauri commands, Plan 11's export orchestrator, and Plan 03's preset + timeline + sound library repositories.
+Deliver UI-05 (Plan 12b of a 12a/12b split): the React UI of the Post-Production Editor — 4-pane shell, 5-track timeline with clips/playhead/snapping, preview player wired to Plan 04's PreviewEngine, inspector panels (Presets/Effects/Sound tabs), sound library drawer with wavesurfer.js previews, export modal, render queue widget, layer track components. Depends on Plan 12a's Zustand store + IPC wrappers + Tauri commands.
 
-Purpose: This is the single biggest UI surface in the project and where every Phase 2 feature finally meets the user. The layout is fully specified in D-12/D-13/D-14; the state management is fully specified in D-32/D-33. A human verify checkpoint confirms 60fps preview + exportable output on reference hardware.
+Purpose: The single biggest UI surface in the project where every Phase 2 feature meets the user. Layout per D-12/D-13/D-14. Human verify checkpoint confirms 60fps preview + working export + undo on reference hardware.
 
-Output: 20+ React components + Zustand store + IPC wrappers + Tauri commands for preset / timeline / sound library + tests + human verify checkpoint.
+Output: ~30 React/TS files + Vitest tests + formal human-verify checkpoint covering the full editor journey.
 </objective>
 
 <execution_context>
@@ -148,80 +136,7 @@ This plan ALSO introduces these Tauri commands (wrapping Plan 03's repos):
 <tasks>
 
 <task type="auto">
-  <name>Task 1: Zustand store + Tauri commands for preset/timeline/sound library + IPC wrappers</name>
-  <read_first>
-    - Phase 1 apps/desktop/src/state/ (existing Zustand patterns)
-    - Phase 1 apps/desktop/src-tauri/src/commands/ (command registration pattern)
-    - crates/storage/src/repos/ (Plan 03 repo functions)
-  </read_first>
-  <files>
-    apps/desktop/src/features/post-production/state/store.ts
-    apps/desktop/src/features/post-production/state/timeline-slice.ts
-    apps/desktop/src/features/post-production/state/panels-slice.ts
-    apps/desktop/src/features/post-production/state/selection-slice.ts
-    apps/desktop/src/ipc/export.ts
-    apps/desktop/src/ipc/render.ts
-    apps/desktop/src/ipc/presets.ts
-    apps/desktop/src/ipc/timeline.ts
-    apps/desktop/src/ipc/sound-library.ts
-    apps/desktop/src-tauri/src/commands/preset.rs
-    apps/desktop/src-tauri/src/commands/timeline.rs
-    apps/desktop/src-tauri/src/commands/sound_library.rs
-    apps/desktop/src-tauri/src/commands/mod.rs
-    apps/desktop/src/features/post-production/__tests__/store.test.ts
-  </files>
-  <action>
-    **Zustand store (D-32):**
-    ```typescript
-    // apps/desktop/src/features/post-production/state/store.ts
-    import { create } from 'zustand';
-    import { createTimelineSlice, TimelineSlice } from './timeline-slice';
-    import { createPanelsSlice, PanelsSlice } from './panels-slice';
-    import { createSelectionSlice, SelectionSlice } from './selection-slice';
-    export type EditorStore = TimelineSlice & PanelsSlice & SelectionSlice;
-    export const useEditorStore = create<EditorStore>()((...a) => ({
-      ...createTimelineSlice(...a),
-      ...createPanelsSlice(...a),
-      ...createSelectionSlice(...a),
-    }));
-    ```
-
-    **Timeline slice** covers: `tracks: { video: Clip[]; cursor: Clip[]; zoom: Clip[]; sound: Clip[]; annotations: Clip[] }`, `playheadMs: number`, `snapEnabled: boolean`, `durationMs: number`, actions `setPlayhead`, `moveClip(trackId, clipId, newStartMs)`, `trimClip`, `deleteClip`, `addSoundClip`, `toggleSnap`.
-
-    **Panels slice** covers: `timelineHeightPct: 30`, `previewWidthPct: 60`, `inspectorWidthPct: 25`, `soundDrawerOpen: false`, `exportModalOpen: false`, setters. Persist to localStorage via `persist` middleware (zustand/middleware).
-
-    **Selection slice** covers: `selectedClipId: string | null`, `selectedPresetId: string | null`, `selectedTab: 'presets' | 'effects' | 'sound'`.
-
-    **Tauri commands:**
-    - `apps/desktop/src-tauri/src/commands/preset.rs` wraps Plan 03 `preset_repo` CRUD + `import_preset` + `export_preset`.
-    - `apps/desktop/src-tauri/src/commands/timeline.rs` wraps `timeline_repo::load/save`.
-    - `apps/desktop/src-tauri/src/commands/sound_library.rs` wraps `sound_library_repo::list_by_category`.
-    - Register all in `commands/mod.rs` and `src-tauri/src/main.rs` invoke_handler list.
-
-    **IPC wrappers:** `apps/desktop/src/ipc/export.ts`, `render.ts`, `presets.ts`, `timeline.ts`, `sound-library.ts` — thin typed wrappers around `invoke`/`listen`/`Channel` generated by `tauri-specta` (Phase 1 D-05 pattern).
-
-    Add `zustand@5`, `@tanstack/react-query@5`, `@tanstack/react-virtual@3`, `wavesurfer.js@7`, `react-hotkeys-hook@4`, `@dnd-kit/core@6` to `apps/desktop/package.json` if not already present.
-
-    Write Vitest tests in `store.test.ts` covering: `setPlayhead`, `moveClip` with snap enabled snaps to nearest neighbour edge within 10 px threshold, `moveClip` with Alt-held (snap disabled) does NOT snap, `toggleSnap` toggles, `addSoundClip` adds to Sound track only.
-  </action>
-  <verify>
-    <automated>pnpm --filter desktop exec vitest run src/features/post-production/__tests__/store.test.ts && pnpm --filter desktop exec tsc --noEmit</automated>
-  </verify>
-  <acceptance_criteria>
-    - `grep -q "export const useEditorStore" apps/desktop/src/features/post-production/state/store.ts` succeeds.
-    - `grep -q "snapEnabled: boolean" apps/desktop/src/features/post-production/state/timeline-slice.ts` succeeds.
-    - `grep -q "tracks: { video: Clip\\[\\]; cursor: Clip\\[\\]; zoom: Clip\\[\\]; sound: Clip\\[\\]; annotations: Clip\\[\\]" apps/desktop/src/features/post-production/state/timeline-slice.ts` succeeds (exact 5-track names).
-    - `grep -q "#\\[tauri::command\\]" apps/desktop/src-tauri/src/commands/preset.rs` succeeds.
-    - `grep -q "sound_library_list" apps/desktop/src-tauri/src/commands/sound_library.rs` succeeds.
-    - `grep -q "exportRun" apps/desktop/src/ipc/export.ts` succeeds.
-    - `pnpm --filter desktop exec vitest run src/features/post-production/__tests__/store.test.ts` passes.
-    - `pnpm --filter desktop exec tsc --noEmit` exits 0.
-  </acceptance_criteria>
-  <done>Store + Tauri command surfaces + IPC wrappers compile and pass store tests.</done>
-</task>
-
-<task type="auto">
-  <name>Task 2: Editor shell + 5-track timeline + preview player + inspector + sound drawer</name>
+  <name>Task 1: Editor shell + 5-track timeline + preview player + inspector + sound drawer</name>
   <read_first>
     - .planning/phases/02-cinematic-post-production-export/02-CONTEXT.md D-12, D-13, D-14
     - .planning/phases/02-cinematic-post-production-export/02-RESEARCH.md §11 layout diagram
@@ -378,7 +293,7 @@ This plan ALSO introduces these Tauri commands (wrapping Plan 03's repos):
 </task>
 
 <task type="auto">
-  <name>Task 3: Export modal + render queue widget + progress channel subscription</name>
+  <name>Task 2: Export modal + render queue widget + progress channel subscription</name>
   <read_first>
     - apps/desktop/src/ipc/export.ts + render.ts (Task 1)
     - Plan 10 stream_render_progress Channel<RenderProgress>
@@ -462,7 +377,7 @@ This plan ALSO introduces these Tauri commands (wrapping Plan 03's repos):
 </task>
 
 <task type="checkpoint:human-verify" gate="blocking">
-  <name>Task 4: Human verify — open a Phase 1 recording, scrub, apply preset, export MP4+WebM at 1080p60, confirm 60fps preview + working export</name>
+  <name>Task 3: Human verify — full editor journey (scrub 60fps + 3 presets + MP4/WebM/GIF export + undo-all/redo-all)</name>
   <what-built>
     End-to-end Post-Production Editor UI:
     - 4-pane layout (Preview + Inspector + Timeline + Sound drawer + Export modal + Queue widget)
@@ -471,22 +386,39 @@ This plan ALSO introduces these Tauri commands (wrapping Plan 03's repos):
     - Export modal calling Plan 11's export_run; render queue widget showing live progress
   </what-built>
   <how-to-verify>
-    1. Build and run: `pnpm --filter desktop dev` (launches Tauri dev build).
-    2. On the Dashboard, open any existing Phase 1 recording (if none exists, create a quick recording first).
-    3. Click "Open in Post-Production Editor" (or navigate to `/post-production/<story-id>` route).
-    4. Verify the 4-pane layout renders: Preview top-left, Inspector top-right, Timeline bottom, Sound drawer handle on left, Export button top-right.
-    5. Click Play (or press Space). Verify preview plays at ≥60fps on 1080p reference hardware (check frame rate via devtools Performance monitor — look for consistent 16.6ms frame times). Note the active backend ('webgpu' or 'webgl2') logged in the console.
-    6. Scrub the playhead with mouse drag. Verify preview updates in real time with no visible frame drops > 100 ms.
-    7. In the Inspector panel, click the "Presets" tab. Apply the "Runway Cinematic" preset. Verify the preview updates within ~500 ms with dynamic zoom + ripples + dark background + BGM.
-    8. Drag a sound from the Sound drawer onto the Sound track. Verify the clip appears and snaps to playhead (within 10 px threshold).
-    9. Hold Alt and drag the same clip. Verify snap is disabled.
-    10. Click Export. Check MP4 + WebM, select 1080p + 60fps + Med quality, pick an output folder. Click Export.
-    11. Verify a toast appears ("Export queued: 2 jobs") and the queue widget badge shows "2".
-    12. Wait for export to complete (watch progress bar in queue widget). Verify both files exist in the chosen folder and play correctly in QuickTime / VLC.
-    13. Verify keyboard accessibility: Tab through the timeline; every clip has a visible focus ring; arrow keys move the selection.
-    14. Verify screen-reader support (VoiceOver on macOS or NVDA on Windows): timeline clips announce as "Cursor clip at 12.5 seconds, 3.2 seconds duration" or equivalent.
+    **Environment:** `pnpm --filter desktop dev` launches the Tauri dev build. Open any existing Phase 1 sample recording (create a quick one first if none exists). Navigate to `/post-production/<story-id>`.
 
-    **If any step fails, describe which step and the observed behaviour.**
+    **1. Scrub at 60fps (no jank).**
+       - Open devtools Performance monitor.
+       - Drag the timeline playhead continuously for 10 seconds across the full duration.
+       - Confirm sustained ~60 fps (frame time ≤ 16.6 ms) with no dropped frames > 100 ms on 1080p reference hardware.
+       - Note active backend ('webgpu' or 'webgl2') logged in console.
+
+    **2. Apply 3 different presets and verify preview matches expectations.**
+       - In Inspector → Presets tab, apply each of 3 bundled presets in sequence (e.g. "Runway Cinematic", "Calm Tutorial", "Fast Demo").
+       - For each preset, within ~500 ms the preview should reflect the change (zoom behaviour, cursor style, ripple intensity, BGM swap). Visually confirm each preset looks distinct.
+
+    **3. Export MP4 + WebM + GIF; confirm files play correctly.**
+       - Open Export modal. Check all three formats (MP4 + WebM + GIF), set 1080p + 60 fps + Med quality (GIF auto-falls-back to 720p30 per Plan 11 validator — verify the UI warning).
+       - Pick an output folder, click Export.
+       - Toast: "Export queued: 3 jobs". Queue widget badge shows "3".
+       - Wait for all 3 to complete. Open each in QuickTime / VLC / a browser:
+         - MP4: plays correctly with audio.
+         - WebM: plays correctly in Chrome.
+         - GIF: plays as animated image (no audio expected).
+
+    **4. Apply 5 actions, undo all, redo all (verify cmd+z / cmd+shift+z).**
+       - Perform 5 distinct undoable actions in order: (a) move a clip, (b) trim a clip, (c) apply a different preset, (d) drag a BGM clip onto Sound track, (e) change a text overlay string.
+       - Press cmd+z (or ctrl+z) five times. After each undo, confirm the UI reverts the matching action. After the 5th undo the timeline should match the original state.
+       - Press cmd+shift+z (or ctrl+shift+z, or ctrl+y on Windows) five times. After each redo the matching action should re-apply. After the 5th redo the timeline should match the post-5-actions state.
+       - This confirms Plan 13's undo-bridge wiring works end-to-end through the 12a store.
+
+    **5. Accessibility smoke test.**
+       - Tab through the timeline; every clip has a visible focus ring.
+       - Arrow keys move the clip selection.
+       - VoiceOver (macOS) or NVDA (Windows) announces timeline clips as "Cursor clip at 12.5 seconds, 3.2 seconds duration" (or equivalent).
+
+    **If any of 1-5 fails, describe which sub-step and the observed behaviour. A follow-up patch task will be created via `/gsd-plan-phase --gaps`.**
   </how-to-verify>
   <resume-signal>Type "approved" if all steps pass. Otherwise describe failures — a follow-up patch task will be created.</resume-signal>
 </task>
@@ -527,5 +459,5 @@ This plan ALSO introduces these Tauri commands (wrapping Plan 03's repos):
 </success_criteria>
 
 <output>
-After completion, create `.planning/phases/02-cinematic-post-production-export/02-12-SUMMARY.md` including measured preview fps from the human-verify checkpoint and any accessibility issues found.
+After completion, create `.planning/phases/02-cinematic-post-production-export/02-12b-SUMMARY.md` including measured preview fps from the human-verify checkpoint and any accessibility issues found.
 </output>
