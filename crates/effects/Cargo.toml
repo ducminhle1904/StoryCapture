@@ -16,6 +16,8 @@ uuid = { workspace = true }
 indexmap = "2.5"
 ts-rs = { version = "10", optional = true }
 rusqlite = { version = "0.34", features = ["bundled"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rayon = "1"
 
 [features]
 default = ["ts-export", "sqlite"]
@@ -24,3 +26,4 @@ sqlite = ["dep:rusqlite"]
 
 [dev-dependencies]
 insta = "1.40"
+tempfile = "3"
