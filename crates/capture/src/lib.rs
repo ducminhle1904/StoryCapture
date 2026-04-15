@@ -1,6 +1,70 @@
-//! `capture` — platform-native screen capture (ScreenCaptureKit / Windows.Graphics.Capture).
+//! `capture` — platform-native screen capture.
 //!
-//! Scaffold stub — implementation lives in later plans (Phase 1, CAP-* requirements).
-//! Zero-copy, byte-bounded frame queue lands here.
+//! Pure crate: zero Tauri / specta deps. The Tauri host wraps these
+//! types at the IPC boundary in `apps/desktop/src-tauri/src/commands/capture.rs`.
+//!
+//! Backends:
+//!   - **macOS**: `SckBackend` (ScreenCaptureKit, `screencapturekit = "=1.70.0"`)
+//!   - **Windows**: `WgcBackend` (Windows.Graphics.Capture, `windows-capture = "=1.5.0"`)
+//!   - **fallback**: `XcapBackend` (xcap polling, owned bytes — not zero-copy)
+//!
+//! Critical invariants (D-19 / D-21 / CAP-05 / CAP-07):
+//!   - Frame queue is byte-bounded (256 MiB default), not frame-count-bounded.
+//!   - Capture-API PTS preserved end-to-end; no Rust-side timestamp rewriting.
+//!   - Native surface handles wrapped in RAII (CFRelease / Release on Drop).
 
-pub fn _scaffold_marker() {}
+mod backend;
+mod clock;
+mod display;
+mod error;
+mod events;
+mod fallback;
+mod frame;
+mod pipeline;
+mod queue;
+
+#[cfg(target_os = "macos")]
+pub mod macos;
+#[cfg(target_os = "windows")]
+pub mod windows;
+
+pub use backend::{BackendKind, CaptureBackend, CaptureConfig, CaptureStats};
+pub use clock::{default_clock, Clock};
+pub use display::{enumerate_displays, DisplayId, DisplayInfo};
+pub use error::CaptureError;
+pub use events::CaptureEvent;
+pub use fallback::XcapBackend;
+pub use frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
+pub use pipeline::CapturePipeline;
+pub use queue::{ByteBoundedQueue, DroppedFrame, QueueStats};
+
+#[cfg(target_os = "macos")]
+pub use macos::SckBackend;
+
+#[cfg(target_os = "windows")]
+pub use windows::WgcBackend;
+
+/// Construct the recommended backend for the current platform. Falls
+/// back to `XcapBackend` when the native backend can't be initialized
+/// (e.g. TCC denied, no D3D11 device available).
+pub fn pick_default_backend(_cfg: &CaptureConfig) -> Box<dyn CaptureBackend> {
+    #[cfg(target_os = "macos")]
+    {
+        match macos::SckBackend::new() {
+            Ok(b) => return Box::new(b),
+            Err(e) => {
+                tracing::warn!(error = %e, "SckBackend init failed; falling back to xcap");
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        match windows::WgcBackend::new() {
+            Ok(b) => return Box::new(b),
+            Err(e) => {
+                tracing::warn!(error = %e, "WgcBackend init failed; falling back to xcap");
+            }
+        }
+    }
+    Box::new(XcapBackend::new())
+}
