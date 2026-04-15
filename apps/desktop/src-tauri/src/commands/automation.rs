@@ -66,8 +66,7 @@ pub async fn launch_automation(
 
     // Open project DB for persistence (Plan 05).
     let project_path = std::path::PathBuf::from(&project_folder);
-    let project_db = storage::ProjectDb::open(&project_path)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    let project_db = storage::ProjectDb::open(&project_path)?;
 
     // Resolve screenshot dir within the project folder's `assets/` dir.
     let screenshot_dir = project_path.join(storage::ASSETS_DIRNAME);

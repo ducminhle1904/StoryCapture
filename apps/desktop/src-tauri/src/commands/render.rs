@@ -168,7 +168,7 @@ pub async fn render_enqueue(
     let new = NewRenderJob::from(job);
     let id = {
         let conn = queue.db.lock().await;
-        render_job_repo::enqueue(&conn, &new).map_err(|e| AppError::Storage(e.to_string()))?
+        render_job_repo::enqueue(&conn, &new)?
     };
     // Best-effort nudge to the actor — not load-bearing (the periodic tick
     // also picks the job up).
@@ -205,8 +205,7 @@ pub async fn render_list_active(
         .render_queue()
         .ok_or_else(|| AppError::Internal("render queue not initialised".into()))?;
     let conn = queue.db.lock().await;
-    let rows = render_job_repo::list_active(&conn, &story_id)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    let rows = render_job_repo::list_active(&conn, &story_id)?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 

@@ -46,8 +46,7 @@ pub async fn timeline_load(
         .render_queue()
         .ok_or_else(|| AppError::Internal("render queue not initialised".into()))?;
     let conn = queue.db.lock().await;
-    let row = timeline_repo::load(&conn, &story_id)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    let row = timeline_repo::load(&conn, &story_id)?;
     Ok(row.map(Into::into))
 }
 
@@ -69,8 +68,7 @@ pub async fn timeline_save(
         .render_queue()
         .ok_or_else(|| AppError::Internal("render queue not initialised".into()))?;
     let conn = queue.db.lock().await;
-    timeline_repo::save(&conn, &story_id, &layout_json)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    timeline_repo::save(&conn, &story_id, &layout_json)?;
     Ok(())
 }
 

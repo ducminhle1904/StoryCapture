@@ -101,6 +101,24 @@ impl From<tauri::Error> for AppError {
     }
 }
 
+impl From<storage::StorageError> for AppError {
+    fn from(e: storage::StorageError) -> Self {
+        AppError::Storage(e.to_string())
+    }
+}
+
+impl From<encoder::EncoderError> for AppError {
+    fn from(e: encoder::EncoderError) -> Self {
+        AppError::Encoder(e.to_string())
+    }
+}
+
+impl From<effects::EffectsError> for AppError {
+    fn from(e: effects::EffectsError) -> Self {
+        AppError::Internal(e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

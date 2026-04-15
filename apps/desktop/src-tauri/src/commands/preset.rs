@@ -133,8 +133,7 @@ pub async fn preset_list(
         .render_queue()
         .ok_or_else(|| AppError::Internal("render queue not initialised".into()))?;
     let conn = queue.db.lock().await;
-    let rows = preset_repo::list_by_scope(&conn, scope.into())
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    let rows = preset_repo::list_by_scope(&conn, scope.into())?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
@@ -146,8 +145,7 @@ pub async fn preset_import(
     scope: PresetScopeDto,
 ) -> Result<String, AppError> {
     let canonical = validate_preset_path(Path::new(&path))?;
-    let mut preset =
-        import_preset(&canonical).map_err(|e| AppError::Storage(e.to_string()))?;
+    let mut preset = import_preset(&canonical)?;
     // Align scope with the caller's request; `import_preset` defaults to Project.
     preset.scope = PresetTier::from(scope);
 
@@ -166,7 +164,7 @@ pub async fn preset_import(
         author: preset.author,
         tags: preset.tags,
     };
-    let id = preset_repo::insert(&conn, &new).map_err(|e| AppError::Storage(e.to_string()))?;
+    let id = preset_repo::insert(&conn, &new)?;
     Ok(id.to_string())
 }
 
@@ -195,10 +193,9 @@ pub async fn preset_export(
         .render_queue()
         .ok_or_else(|| AppError::Internal("render queue not initialised".into()))?;
     let conn = queue.db.lock().await;
-    let preset = preset_repo::get(&conn, uuid)
-        .map_err(|e| AppError::Storage(e.to_string()))?
+    let preset = preset_repo::get(&conn, uuid)?
         .ok_or_else(|| AppError::NotFound(format!("preset {uuid}")))?;
-    export_preset(&preset, &out_path).map_err(|e| AppError::Storage(e.to_string()))?;
+    export_preset(&preset, &out_path)?;
     Ok(())
 }
 

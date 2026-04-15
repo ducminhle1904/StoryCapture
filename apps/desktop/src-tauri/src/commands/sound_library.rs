@@ -68,7 +68,6 @@ pub async fn sound_library_list(
         .render_queue()
         .ok_or_else(|| AppError::Internal("render queue not initialised".into()))?;
     let conn = queue.db.lock().await;
-    let rows = sound_library_repo::list_by_category(&conn, category.into())
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    let rows = sound_library_repo::list_by_category(&conn, category.into())?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
