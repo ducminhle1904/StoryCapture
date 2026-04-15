@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the StoryCapture main window. Phase 1 plan 01-03 — explicit allow-list per Tauri v2 capability model (T-03-01, T-03-05).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "log:default",
+    "fs:default",
+    "dialog:default",
+    "updater:default",
+    "window-state:default",
+    "shell:allow-spawn",
+    "process:default",
+    "os:default"
+  ]
+}
