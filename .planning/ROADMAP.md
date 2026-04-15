@@ -80,7 +80,28 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
   3. In the DSL editor, hover, autocomplete, and diagnostics are driven by a live LSP connected to the pest grammar, and the smart selector engine surfaces fallback attempts and retries in the UI.
   4. User can run a Dry-Run that executes browser automation end-to-end without capture or render, producing selector-debugging feedback in seconds instead of a full recording cycle.
   5. All LLM and TTS API keys are stored in the OS keychain via `tauri-plugin-keyring` and never appear in plaintext on disk or in SQLite.
-**Plans**: TBD
+**Plans**: 21 plans
+- [ ] 03-01-PLAN.md — Intelligence crate skeleton + LlmProvider/TtsProvider traits + secret redaction (G1)
+- [ ] 03-02-PLAN.md — SQLite V5 migration: nl_conversations + tts_cache_index + llm/tts_clip_metrics + session_rollup view
+- [ ] 03-03-PLAN.md — Keychain (tauri-plugin-keyring) commands for 4 providers + no-leak test
+- [ ] 03-04-PLAN.md — AnthropicProvider streaming with prompt caching + tool-use partial-JSON accumulator
+- [ ] 03-05-PLAN.md — OpenAiProvider fallback with Chat Completions streaming + response_format:json_schema
+- [ ] 03-06-PLAN.md — NL→DSL orchestrator: schemas + prompt templates + verb whitelist retry + diff engine + goldens
+- [ ] 03-07-PLAN.md — NL Tauri IPC (nl_chat_send + 5 more) + token metrics persistence + cancel registry
+- [ ] 03-08-PLAN.md — ElevenLabsProvider streaming + 6 curated voice presets + voice catalog fetch
+- [ ] 03-09-PLAN.md — OpenAiTtsProvider fallback (/v1/audio/speech) + 6 built-in voices
+- [ ] 03-10-PLAN.md — Auto-script generator: per-step NarrationDraft from DSL via LLM tool-use
+- [ ] 03-11-PLAN.md — TTS cache (hash + sanitized path) + 4 Tauri commands + metrics + GC
+- [ ] 03-12-PLAN.md — Voiceover↔timeline sync (TTS ground truth) + BGM duck events (Phase 2 D-22)
+- [ ] 03-13-PLAN.md — tower-lsp LanguageServer over story_parser: did_open/change, diagnostics, hover, completion
+- [ ] 03-14-PLAN.md — LSP Tauri IPC bridge (NOT stdio) + CodeMirror 6 extension
+- [ ] 03-15-PLAN.md — Selector heuristic linter (6 rules) + 30-fixture corpus meeting E11 thresholds
+- [ ] 03-16-PLAN.md — Dry-Run orchestrator + Tauri commands (reuses Phase 1 BrowserDriver)
+- [ ] 03-17-PLAN.md — NL chat panel UI (ChatPanel + DiffCard + streaming/error states) per UI-SPEC
+- [ ] 03-18-PLAN.md — Dry-Run panel + selector fallback popover + editor gutter integration
+- [ ] 03-19-PLAN.md — Voice catalog + script editor + TTS clip inspector UI
+- [ ] 03-20-PLAN.md — Accounts settings + token counter + cost warning + AI disclosure (G7/G8/G9) + human-verify
+- [ ] 03-21-PLAN.md — Golden dataset (25 prompts) + eval harness + offline PR CI + nightly live-LLM CI
 **UI hint**: yes
 
 ### Phase 4: Web Companion & Sharing
@@ -102,7 +123,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 |-------|----------------|--------|-----------|
 | 1. Foundation — DSL, Automation, Capture, Encode | 0/10 | Planned | - |
 | 2. Cinematic Post-Production & Export | 0/14 | Planned | - |
-| 3. Intelligence Layer — AI Authoring & Voiceover | 0/0 | Not started | - |
+| 3. Intelligence Layer — AI Authoring & Voiceover | 0/21 | Planned | - |
 | 4. Web Companion & Sharing | 0/0 | Not started | - |
 
 ## Coverage
