@@ -1,0 +1,11 @@
+{
+  "name": "@storycapture/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "echo \"@storycapture/desktop dev: scaffolded by Plan 01-01; Tauri shell wired in Plan 01-03\" && exit 0",
+    "build": "echo \"@storycapture/desktop build: scaffolded by Plan 01-01; Tauri shell wired in Plan 01-03\" && exit 0",
+    "typecheck": "echo \"@storycapture/desktop typecheck: scaffolded by Plan 01-01\" && exit 0"
+  }
+}
