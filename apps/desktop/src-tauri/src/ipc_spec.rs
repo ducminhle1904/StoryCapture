@@ -17,7 +17,7 @@ use tauri::Wry;
 use tauri_specta::{collect_commands, Builder};
 
 use crate::{
-    commands::{automation, capture, encode, parse, projects, system},
+    commands::{automation, capture, encode, parse, projects, system, updater},
     error::AppError,
 };
 
@@ -56,6 +56,8 @@ pub fn builder() -> Builder<Wry> {
             projects::create_project,
             projects::open_project,
             projects::remove_project,
+            updater::check_update,
+            updater::install_update,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -91,6 +93,8 @@ pub fn builder() -> Builder<Wry> {
         .typ::<projects::ProjectFolderInfoDto>()
         .typ::<projects::CreateProjectArgs>()
         .typ::<projects::ProjectIdArg>()
+        // Plan 01-10 (auto-updater)
+        .typ::<updater::UpdateInfo>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the

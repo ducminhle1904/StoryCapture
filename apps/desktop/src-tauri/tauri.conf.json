@@ -58,10 +58,11 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://updates.storycapture.example/api/release/{{target}}/{{arch}}/{{current_version}}"
+        "https://github.com/{{ORG_PLACEHOLDER}}/storycapture/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "PUBKEY_PLACEHOLDER_FILL_VIA_TAURI_SIGNER_GENERATE_AT_RELEASE_CI"
+      "pubkey": "PUBKEY_PLACEHOLDER_FILL_VIA_TAURI_SIGNER_GENERATE_AT_RELEASE_CI",
+      "createUpdaterArtifacts": true
     }
   }
 }

@@ -37,6 +37,11 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# Release signing keys (Plan 01-10): private Tauri updater key lives here
+# locally; public key gets pasted into tauri.conf.json. NEVER commit the
+# private key — GitHub Secrets hold the CI copy.
+.release-keys/
+
 # IDE
 .idea/
 .vscode/*
