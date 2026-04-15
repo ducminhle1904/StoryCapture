@@ -1,0 +1,104 @@
+// Story DSL grammar (pest 2.7)
+//
+// Top-level shape:
+//   story "Name"? { meta { ... }? scene "name" { commands... }+ }
+//
+// Whitespace is implicit between rules; newlines are explicitly tracked
+// because statement boundaries matter for panic-mode recovery (D-09).
+
+WHITESPACE = _{ " " | "\t" }
+COMMENT = _{ ("#" ~ (!NEWLINE ~ ANY)*) | ("/*" ~ (!"*/" ~ ANY)* ~ "*/") }
+NEWLINE = _{ "\r\n" | "\n" | "\r" }
+EOI_OR_NL = _{ NEWLINE+ | ";" | &EOI | &"}" }
+
+// ---- Top level ----
+file = { SOI ~ NEWLINE* ~ story_block? ~ NEWLINE* ~ EOI }
+
+story_block = {
+    "story" ~ string? ~ "{" ~ NEWLINE*
+    ~ meta_block?
+    ~ NEWLINE*
+    ~ scene_block*
+    ~ "}"
+    ~ NEWLINE*
+}
+
+// ---- Meta block ----
+meta_block = {
+    "meta" ~ "{" ~ NEWLINE*
+    ~ meta_entry*
+    ~ "}"
+    ~ NEWLINE*
+}
+
+meta_entry = { meta_key ~ ":" ~ meta_value ~ ("," | EOI_OR_NL) }
+meta_key = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "-")* }
+
+meta_value = { viewport_pair | viewport_struct | string | number | ident }
+
+// `viewport: 1280x800`  (per PROJECT.md spec / RESEARCH Q3)
+viewport_pair = ${ ASCII_DIGIT+ ~ "x" ~ ASCII_DIGIT+ }
+
+// `viewport: { width: 1280, height: 800 }`  (alt form, accepted)
+viewport_struct = {
+    "{" ~ "width" ~ ":" ~ number ~ "," ~ "height" ~ ":" ~ number ~ "}"
+}
+
+// ---- Scene block ----
+scene_block = {
+    "scene" ~ string ~ "{" ~ NEWLINE*
+    ~ statement*
+    ~ "}"
+    ~ NEWLINE*
+}
+
+statement = { command_line | recovery_line }
+command_line = { command ~ EOI_OR_NL }
+// Layer-1 lenient catch-all: any non-empty line that isn't a known command.
+recovery_line = @{ (!NEWLINE ~ !"}" ~ ANY)+ ~ (NEWLINE | &"}") }
+
+command = {
+      cmd_navigate
+    | cmd_wait_for
+    | cmd_wait
+    | cmd_click
+    | cmd_type
+    | cmd_scroll
+    | cmd_hover
+    | cmd_drag
+    | cmd_select
+    | cmd_upload
+    | cmd_assert
+    | cmd_screenshot
+    | cmd_pause
+}
+
+cmd_navigate   = { "navigate"   ~ string }
+cmd_click      = { "click"      ~ target }
+cmd_type       = { "type"       ~ target ~ string }
+cmd_scroll     = { "scroll"     ~ direction ~ number? }
+cmd_hover      = { "hover"      ~ target }
+cmd_drag       = { "drag"       ~ target ~ "to" ~ target }
+cmd_select     = { "select"     ~ target ~ string }
+cmd_upload     = { "upload"     ~ target ~ string }
+cmd_wait       = { "wait"       ~ duration }
+cmd_wait_for   = { "wait-for"   ~ target ~ ("timeout" ~ duration)? }
+cmd_assert     = { "assert"     ~ target }
+cmd_screenshot = { "screenshot" ~ string }
+cmd_pause      = { "pause" }
+
+// ---- Targets ----
+target = { target_selector | target_testid | target_aria | target_text }
+target_text     = { string }
+target_selector = { "selector" ~ string }
+target_testid   = { "testid"   ~ string }
+target_aria     = { "aria"     ~ string }
+
+direction = @{ "up" | "down" | "left" | "right" }
+duration  = ${ number_lit ~ duration_unit }
+duration_unit = @{ "ms" | "s" | "m" }
+number_lit = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+
+string = @{ "\"" ~ (("\\" ~ ANY) | (!"\"" ~ !NEWLINE ~ ANY))* ~ "\"" }
+number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+ident  = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "-")* }

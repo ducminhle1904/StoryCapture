@@ -1,6 +1,21 @@
 //! `story-parser` — pest-based DSL grammar + AST for StoryCapture.
 //!
-//! Scaffold stub — implementation lives in later plans (Plan 01-05, FOUND/DSL).
-//! This crate is intentionally Tauri-free so it can be reused by a future CLI.
+//! **Purity guarantee (DSL-07):** This crate has zero Tauri dependencies.
+//! It is callable from a future headless CLI (Phase 5) without
+//! modification.
+//!
+//! See [`parse`] for the public entrypoint.
 
-pub fn _scaffold_marker() {}
+pub mod ast;
+pub mod diagnostic;
+pub mod io;
+pub mod lenient_tokenize;
+pub mod parser;
+pub mod recover;
+pub mod semantic;
+pub mod suggest;
+
+pub use ast::*;
+pub use diagnostic::{Diagnostic, Severity};
+pub use io::{parse_file, MAX_STORY_FILE_BYTES};
+pub use parser::{parse, ParseResult, Rule};
