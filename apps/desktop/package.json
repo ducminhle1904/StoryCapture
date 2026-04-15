@@ -24,6 +24,7 @@
     "@fontsource/jetbrains-mono": "^5.1.0",
     "@lezer/highlight": "^1",
     "@storycapture/shared-types": "workspace:*",
+    "@storycapture/story-dsl": "workspace:*",
     "@storycapture/ui": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-query-devtools": "^5.62.0",

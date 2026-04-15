@@ -5,3 +5,4 @@
 // (run `cargo test -p story-parser` to regenerate). Do not edit `ast.ts`
 // manually; CI in Plan 01-10 enforces no-drift via `git diff --exit-code`.
 export * from "./ast";
+export * from "./codemirror-lang";

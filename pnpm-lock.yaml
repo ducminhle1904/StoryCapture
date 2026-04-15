@@ -53,6 +53,9 @@ importers:
       '@storycapture/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@storycapture/story-dsl':
+        specifier: workspace:*
+        version: link:../../packages/story-dsl
       '@storycapture/ui':
         specifier: workspace:*
         version: link:../../packages/ui
