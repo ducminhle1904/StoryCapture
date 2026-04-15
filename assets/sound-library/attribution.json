@@ -1,0 +1,25 @@
+{
+  "_note": "UNCURATED SCAFFOLD — every entry must be replaced with a real CC0 or CC-BY-4.0 source before shipping. See scripts/curate-sound-library.md.",
+  "entries": [
+    { "id": "click", "category": "sfx", "file": "click.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "type", "category": "sfx", "file": "type.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "navigate", "category": "sfx", "file": "navigate.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "scroll", "category": "sfx", "file": "scroll.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "hover", "category": "sfx", "file": "hover.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "drag", "category": "sfx", "file": "drag.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "select", "category": "sfx", "file": "select.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "upload", "category": "sfx", "file": "upload.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "success", "category": "sfx", "file": "success.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "error", "category": "sfx", "file": "error.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "transition-whoosh-1", "category": "sfx", "file": "transition-whoosh-1.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "transition-whoosh-2", "category": "sfx", "file": "transition-whoosh-2.wav", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "chill-1", "category": "bgm", "file": "chill-1.ogg", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "chill-2", "category": "bgm", "file": "chill-2.ogg", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "upbeat-1", "category": "bgm", "file": "upbeat-1.ogg", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "upbeat-2", "category": "bgm", "file": "upbeat-2.ogg", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "ambient-1", "category": "bgm", "file": "ambient-1.ogg", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "ambient-2", "category": "bgm", "file": "ambient-2.ogg", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "corporate-1", "category": "bgm", "file": "corporate-1.ogg", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null },
+    { "id": "dramatic-1", "category": "bgm", "file": "dramatic-1.ogg", "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER", "attribution_text": null }
+  ]
+}
