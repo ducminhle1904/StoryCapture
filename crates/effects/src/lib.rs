@@ -17,6 +17,7 @@ pub mod cursor;
 pub mod emit;
 pub mod error;
 pub mod math;
+pub mod text;
 pub mod transitions;
 pub mod zoom;
 
