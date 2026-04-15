@@ -1,0 +1,5 @@
+---
+source: crates/effects/tests/minimal_scene.rs
+expression: out
+---
+[0:v]setpts=PTS-STARTPTS+0.000000/TB[v_0101];[v_0101]null[out_v];[0:a]asetpts=PTS-STARTPTS+0.000000/TB[a_0202];[a_0202]alimiter=limit=0.970[a_0303];[a_0303]anull[out_a]
