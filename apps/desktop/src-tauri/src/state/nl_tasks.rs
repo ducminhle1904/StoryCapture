@@ -48,10 +48,12 @@ impl NlTaskRegistry {
     }
 
     /// Abort a task and remove it from the registry. Returns `true` if
-    /// the task was found and aborted.
+    /// the task was found and aborted. Also removes any cached doc for
+    /// this task to prevent memory leaks on cancellation.
     pub fn abort(&self, id: &str) -> bool {
         if let Some(entry) = self.tasks.lock().unwrap().remove(id) {
             entry.handle.abort();
+            self.docs.lock().unwrap().remove(id);
             true
         } else {
             false
