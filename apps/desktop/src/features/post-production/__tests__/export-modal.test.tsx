@@ -91,7 +91,11 @@ describe("ExportModal", () => {
     expect(btn).toBeDisabled();
   });
 
-  it("enables Export once formats + folder are set; invokes export_run with correct outputs", async () => {
+  it("keeps Export disabled pending graph wiring (Plan 02-13b) even when form is valid", () => {
+    // Once the effects graph is wired this test should flip to the
+    // previous behaviour (button enabled, invoke called). Until then we
+    // assert that a valid form does NOT enable submit, preventing empty
+    // `graph_json` payloads from reaching the backend.
     useEditorStore.setState({
       exportForm: {
         formats: ["mp4"],
@@ -103,18 +107,6 @@ describe("ExportModal", () => {
       },
     });
 
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "export_validate_config") return Promise.resolve(undefined);
-      if (cmd === "export_run") {
-        return Promise.resolve({
-          batch_id: "b1",
-          job_ids: ["j1"],
-          graph_snapshot_path: "/tmp/snap.json",
-        });
-      }
-      return Promise.resolve(null);
-    });
-
     render(
       <Wrapped>
         <ExportModal storyId="s1" />
@@ -122,28 +114,8 @@ describe("ExportModal", () => {
     );
 
     const btn = screen.getByRole("button", { name: /start export/i });
-    expect(btn).not.toBeDisabled();
-
-    fireEvent.click(btn);
-
-    await waitFor(() => {
-      const exportCall = mockInvoke.mock.calls.find(
-        (c) => c[0] === "export_run",
-      );
-      expect(exportCall).toBeDefined();
-    });
-
-    const exportCall = mockInvoke.mock.calls.find((c) => c[0] === "export_run")!;
-    const payload = exportCall[1] as { args: { outputs: unknown[]; story_id: string; output_folder: string } };
-    expect(payload.args.story_id).toBe("s1");
-    expect(payload.args.output_folder).toBe("/tmp/out");
-    expect(payload.args.outputs).toHaveLength(1);
-    expect(payload.args.outputs[0]).toMatchObject({
-      format: "mp4",
-      resolution: "1080p",
-      fps: 60,
-      quality: "med",
-    });
+    expect(btn).toBeDisabled();
+    expect(btn.getAttribute("title")).toMatch(/Plan 02-13b/i);
   });
 
   it("surfaces validation failures as warning text and keeps submit disabled", async () => {

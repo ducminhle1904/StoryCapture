@@ -71,12 +71,18 @@ export function ExportModal({ storyId }: ExportModalProps) {
     }
   }, [setOutFolder]);
 
+  // Plan 02-13b wires the computed effects graph into this modal; until it
+  // lands there is no way to assemble a non-empty `graph_json`, so we block
+  // submission entirely rather than silently enqueueing empty-graph jobs.
+  const graphAvailable = false;
+
   const canSubmit =
     !submitting &&
     outputs.length > 0 &&
     !!form.outFolder &&
     form.baseName.trim().length > 0 &&
-    warnings.length === 0;
+    warnings.length === 0 &&
+    graphAvailable;
 
   const runValidate = useCallback(async () => {
     const errs: string[] = [];
@@ -100,9 +106,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
         toast.error("Export validation failed — fix warnings and retry");
         return;
       }
+      // Graph computation is not yet wired (Plan 02-13b); `canSubmit`
+      // gates the button behind `graphAvailable = false`, so this path
+      // should be unreachable. Guard defensively so we never submit an
+      // empty graph to the backend.
+      if (!graphAvailable) {
+        toast.error("Graph computation pending (Plan 02-13b)");
+        return;
+      }
       const res = await exportRun({
         story_id: storyId,
-        graph_json: "{}", // P13 wires the computed graph
+        graph_json: "",
         outputs,
         priority: 0,
         output_folder: form.outFolder,
@@ -262,6 +276,11 @@ export function ExportModal({ storyId }: ExportModalProps) {
             aria-disabled={!canSubmit}
             onClick={onSubmit}
             aria-label="Start export"
+            title={
+              !graphAvailable
+                ? "Graph computation pending (Plan 02-13b)"
+                : undefined
+            }
           >
             {submitting ? "Submitting…" : "Export"}
           </Button>
