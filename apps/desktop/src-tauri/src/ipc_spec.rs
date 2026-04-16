@@ -19,7 +19,7 @@ use tauri_specta::{collect_commands, Builder};
 use crate::{
     commands::{
         automation, capture, dryrun, encode, export, keys, lsp, nl, parse, preset, projects,
-        render, sound_library, system, timeline, updater,
+        render, sound_library, system, timeline, tts, updater,
     },
     error::AppError,
 };
@@ -91,6 +91,11 @@ pub fn builder() -> Builder<Wry> {
             nl::nl_diff_reject,
             nl::nl_regen_step,
             nl::nl_load_history,
+            // Phase 03 plan 11 — TTS synthesis + cache + GC.
+            tts::tts_generate,
+            tts::tts_voice_list,
+            tts::tts_regenerate_clip,
+            tts::tts_gc_cache,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -159,6 +164,10 @@ pub fn builder() -> Builder<Wry> {
         .typ::<nl::NlStepDiffDto>()
         .typ::<nl::NlTurnDto>()
         .typ::<nl::NlCommandError>()
+        // Phase 03 plan 11 (TTS synthesis + cache)
+        .typ::<tts::TtsGenerateResult>()
+        .typ::<tts::TtsCommandError>()
+        .typ::<tts::VoiceInfoDto>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the
