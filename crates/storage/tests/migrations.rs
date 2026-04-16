@@ -7,12 +7,13 @@ fn fresh_db_runs_to_latest() {
     let td = tempdir().unwrap();
     let app_path = td.path().join("app.sqlite");
     let app = AppDb::open(&app_path).unwrap();
-    // Phase 2 Plan 03: app.sqlite -> v2, project.sqlite -> v6.
+    // Phase 3 Plan 02: app.sqlite -> v2 (unchanged), project.sqlite -> v10
+    // (v1:1 + v2:5 + v3:4).
     assert_eq!(app.schema_version().unwrap(), 2);
 
     let project_dir = td.path().join("proj");
     let proj = ProjectDb::open(&project_dir).unwrap();
-    assert_eq!(proj.schema_version().unwrap(), 6);
+    assert_eq!(proj.schema_version().unwrap(), 10);
 }
 
 #[test]

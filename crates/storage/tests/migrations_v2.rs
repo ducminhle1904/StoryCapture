@@ -50,7 +50,10 @@ fn fresh_project_db_has_all_v2_tables() {
     let user_version: u32 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(user_version, 6, "project.sqlite should be at v6 (1 v1 + 5 v2)");
+    assert_eq!(
+        user_version, 10,
+        "project.sqlite should be at v10 (1 v1 + 5 v2 + 4 v3)"
+    );
 }
 
 #[test]
@@ -94,9 +97,9 @@ fn v1_project_db_upgrades_without_data_loss() {
         .unwrap();
     }
 
-    // Open via ProjectDb — must auto-upgrade v1 -> v6.
+    // Open via ProjectDb — must auto-upgrade v1 -> v10.
     let db = ProjectDb::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 6);
+    assert_eq!(db.schema_version().unwrap(), 10);
 
     // Pre-existing row preserved.
     let conn = rusqlite::Connection::open(&db_path).unwrap();
@@ -126,21 +129,22 @@ fn migrations_are_idempotent() {
     let dir = tempdir().unwrap();
     let _ = ProjectDb::open(dir.path()).unwrap();
     let db = ProjectDb::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 6);
+    assert_eq!(db.schema_version().unwrap(), 10);
     let db = ProjectDb::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 6);
+    assert_eq!(db.schema_version().unwrap(), 10);
 }
 
 #[test]
 fn full_project_folder_reaches_v6() {
-    // Sanity: create + open via public API reaches v6 and the existing v1
-    // repo surface (sessions CRUD) continues to function.
+    // Sanity: create + open via public API reaches latest (v10) and the
+    // existing v1 repo surface (sessions CRUD) continues to function. Test
+    // name kept for historical grep stability.
     let dir = tempdir().unwrap();
     let _ = create_project(dir.path(), "My Project").unwrap();
     let folder = dir.path().join("my-project");
 
     let mut pf = open_project(&folder).unwrap();
-    assert_eq!(pf.db().schema_version().unwrap(), 6);
+    assert_eq!(pf.db().schema_version().unwrap(), 10);
 
     let sid = pf
         .db_mut()

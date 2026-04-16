@@ -9,6 +9,7 @@ mod app_db;
 mod error;
 pub mod migrations;
 mod models;
+pub mod phase3;
 mod preset_io;
 mod project_db;
 mod project_folder;
