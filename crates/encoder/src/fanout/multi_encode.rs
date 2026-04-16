@@ -214,12 +214,12 @@ pub async fn fanout_encode(
             let h264 = h264_encoder.to_string();
             tokio::spawn(async move {
                 let args = build_encode_args(&input, &spec, &h264);
-                let _child = cmd.spawn(args).await?;
-                // Task 3 pipeline leaves exit-waiting to the caller /
-                // Plan 11 host wiring which also streams progress; the
-                // fanout contract here is "args were dispatched". See
-                // `queue::actor::reconcile_done` for the lifecycle the
-                // RenderQueueActor layers on top of this.
+                // `run` spawns the sidecar AND awaits its exit status. The
+                // returned path therefore always refers to a completed
+                // encode: callers downstream (RenderQueueActor,
+                // reconcile_done, UI progress) can rely on the file being
+                // fully flushed to disk.
+                cmd.run(args).await?;
                 Result::<PathBuf>::Ok(spec.output_path)
             })
         })
@@ -361,5 +361,71 @@ mod tests {
         };
         assert!(mp4_args.contains("libopenh264"));
         assert!(webm_args.contains("libvpx-vp9"));
+    }
+
+    /// Sidecar double whose `run` actually writes the output file before
+    /// returning — proves that `fanout_encode` only resolves AFTER each
+    /// per-output task has finished, so the returned path is guaranteed
+    /// to exist on disk.
+    struct WritingCmd;
+
+    #[async_trait]
+    impl SidecarCommand for WritingCmd {
+        async fn spawn(&self, _args: Vec<String>) -> Result<crate::sidecar::SidecarChild> {
+            unreachable!("fanout_encode uses run(), not spawn()");
+        }
+
+        async fn run(&self, args: Vec<String>) -> Result<()> {
+            // Output path is the last arg in `build_encode_args`.
+            let out = args
+                .last()
+                .expect("output path must be last arg")
+                .to_string();
+            // Write synchronously-equivalent async to prove the file is
+            // present at `run` completion.
+            tokio::fs::write(&out, b"encoded")
+                .await
+                .map_err(|e| EncoderError::Io(format!("write {out}: {e}")))?;
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn fanout_encode_awaits_completion_before_returning_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let intermediate = IntermediateOutput {
+            path: PathBuf::from("/tmp/interm.mkv"),
+            duration_ms: 1000,
+            width: 1920,
+            height: 1080,
+            fps: 60,
+        };
+        let plan = FanoutPlan::batch(
+            vec![OutputFormat::Mp4, OutputFormat::WebM],
+            Resolution::R1080p,
+            60,
+            Quality::Med,
+            tmp.path(),
+            "clip",
+        );
+
+        let outputs = fanout_encode(
+            &intermediate,
+            &plan,
+            || Arc::new(WritingCmd) as Arc<dyn SidecarCommand>,
+            "libopenh264",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outputs.len(), 2);
+        // Each returned path MUST already exist — `fanout_encode` must
+        // not resolve before the sidecars finish writing.
+        for p in &outputs {
+            assert!(
+                p.exists(),
+                "fanout_encode returned path that does not exist yet: {p:?}"
+            );
+        }
     }
 }

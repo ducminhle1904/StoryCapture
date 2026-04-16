@@ -26,6 +26,30 @@ use crate::error::{EncoderError, Result};
 #[async_trait]
 pub trait SidecarCommand: Send + Sync {
     async fn spawn(&self, args: Vec<String>) -> Result<SidecarChild>;
+
+    /// Spawn the sidecar, wait for it to exit, and return an error if the
+    /// exit status is non-zero. Default implementation is layered on top
+    /// of [`SidecarCommand::spawn`] so existing implementors get the
+    /// behaviour for free; override only if a backend needs custom
+    /// waiting semantics (e.g. to stream progress while awaiting).
+    async fn run(&self, args: Vec<String>) -> Result<()> {
+        let mut child = self.spawn(args).await?;
+        // Drop piped stdin so any FFmpeg pipeline that reads from stdin
+        // sees EOF; callers that need to pump raw frames should use
+        // `spawn` directly and drive the child themselves.
+        drop(child.stdin);
+        let status = child
+            .child
+            .wait()
+            .await
+            .map_err(|e| EncoderError::Io(format!("sidecar wait: {e}")))?;
+        if !status.success() {
+            return Err(EncoderError::SpawnFailed(format!(
+                "sidecar exited with status {status}"
+            )));
+        }
+        Ok(())
+    }
 }
 
 /// Piped stdio handles for a running FFmpeg process, plus the child.
