@@ -148,7 +148,7 @@ async fn text_over_80_words_is_truncated_at_sentence_boundary() {
 #[tokio::test]
 async fn cost_estimate_matches_elevenlabs_pricing() {
     // Build a narration that is exactly 150 characters
-    let text_150 = "We navigate to the login page where users can enter their credentials to access the application dashboard and begin their workflow session today.x";
+    let text_150 = "We navigate to the login page where users can enter their credentials to access the application dashboard and begin their daily workflow sessions.xxxx";
     // Ensure exactly 150 chars
     assert_eq!(text_150.chars().count(), 150, "fixture text must be 150 chars");
 

@@ -1,0 +1,25 @@
+---
+source: crates/intelligence/tests/tts_script_tests.rs
+assertion_line: 247
+expression: snapshot
+---
+[
+  {
+    "cost_estimate_usd": 0.012299999999999998,
+    "step_id": "s1",
+    "text": "We begin by navigating to the login page.",
+    "word_count": 8
+  },
+  {
+    "cost_estimate_usd": 0.015899999999999997,
+    "step_id": "s2",
+    "text": "Next, we type the email address into the email field.",
+    "word_count": 10
+  },
+  {
+    "cost_estimate_usd": 0.013799999999999998,
+    "step_id": "s3",
+    "text": "Finally, we click the submit button to log in.",
+    "word_count": 9
+  }
+]
