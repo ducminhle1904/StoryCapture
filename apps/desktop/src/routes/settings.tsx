@@ -1,7 +1,5 @@
-import { ArrowLeft, Settings } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Settings } from "lucide-react";
 
-import { BrandLockup } from "@/components/brand";
 import { AccountsPage } from "@/features/settings/AccountsPage";
 import AutoUpdaterSettings from "@/features/settings/auto-updater";
 
@@ -15,56 +13,41 @@ export default function SettingsRoute() {
         <div className="absolute inset-y-0 right-0 w-[34%] bg-[var(--color-surface-100)] opacity-60" />
         <div className="absolute inset-x-0 top-0 h-24 bg-[var(--color-surface-200)]" />
         <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1.2fr)_320px]">
-          <div className="flex items-start gap-4">
-            <Link
-              to="/"
-              aria-label="Back to dashboard"
-              className="mt-1 inline-flex items-center gap-1 rounded-md p-1 text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-            >
-              <ArrowLeft size={16} aria-hidden="true" />
-            </Link>
-            <div>
-              <BrandLockup
-                size={28}
-                muted
-                className="gap-2"
-                wordmarkClassName="text-base text-[var(--color-fg-secondary)]"
-              />
-              <div className="mt-5 flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[var(--color-fg-muted)]">
-                <Settings size={12} aria-hidden="true" />
-                Desktop settings
+          <div>
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[var(--color-fg-muted)]">
+              <Settings size={12} aria-hidden="true" />
+              Desktop settings
+            </div>
+            <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-[-0.055em] text-[var(--color-fg-primary)]">
+              Keep credentials, sync, and update controls in one local-first workspace.
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-fg-secondary)]">
+              StoryCapture stores provider credentials in the OS keychain, keeps web
+              sync optional, and leaves update checks off until you enable them.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                  Key storage
+                </div>
+                <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                  OS keychain only
+                </div>
               </div>
-              <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-[-0.055em] text-[var(--color-fg-primary)]">
-                Keep credentials, sync, and update controls in one local-first workspace.
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-fg-secondary)]">
-                StoryCapture stores provider credentials in the OS keychain, keeps web
-                sync optional, and leaves update checks off until you enable them.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-                    Key storage
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
-                    OS keychain only
-                  </div>
+              <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                  Sync model
                 </div>
-                <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-                    Sync model
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
-                    Opt-in web account
-                  </div>
+                <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                  Opt-in web account
                 </div>
-                <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-                    Updates
-                  </div>
-                  <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
-                    Manual by default
-                  </div>
+              </div>
+              <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                  Updates
+                </div>
+                <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                  Manual by default
                 </div>
               </div>
             </div>

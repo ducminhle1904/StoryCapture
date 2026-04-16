@@ -16,10 +16,8 @@
  */
 
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Music2, Settings } from "lucide-react";
+import { Music2 } from "lucide-react";
 
-import { BrandLockup } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "./state/store";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
@@ -62,36 +60,12 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       data-story-id={storyId}
     >
       {/* Top bar */}
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-3 backdrop-blur-md">
-        <div className="flex min-w-0 items-center gap-4">
-          <Link
-            to="/"
-            aria-label="Back to dashboard"
-            className="inline-flex items-center gap-1 rounded-md p-1 text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-          </Link>
-          <div className="min-w-0">
-            <BrandLockup
-              size={22}
-              muted
-              className="gap-2"
-              wordmarkClassName="text-sm text-[var(--color-fg-secondary)]"
-            />
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
-              <span>post-production</span>
-              <span className="text-[var(--color-fg-primary)]">story {storyId}</span>
-            </div>
-          </div>
+      <header className="flex items-center justify-between gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-2">
+        <div className="flex min-w-0 items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+          <span>post-production</span>
+          <span className="text-[var(--color-fg-primary)]">story {storyId}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            to="/settings"
-            className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-sm text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-          >
-            <Settings size={14} aria-hidden="true" />
-            Settings
-          </Link>
           <Button
             variant="ghost"
             size="sm"

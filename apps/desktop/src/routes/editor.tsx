@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   Mic2,
-  Settings,
   Sparkles,
   Video,
 } from "lucide-react";
@@ -13,7 +12,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import previewBackdrop from "@/assets/gradients/warm-sunset.png";
-import { BrandLockup } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { PreviewPanel } from "@/features/editor/preview-panel";
 import { StoryEditor } from "@/features/editor/story-editor";
@@ -434,52 +432,26 @@ export default function EditorRoute() {
       id="main-content"
       className="flex h-full flex-col bg-[var(--color-bg-primary)]"
     >
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-3 backdrop-blur-md">
-        <div className="flex min-w-0 items-center gap-4">
-          <Link
-            to="/"
-            aria-label="Back to dashboard"
-            className="inline-flex items-center gap-1 rounded-md p-1 text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-          </Link>
-          <div className="min-w-0">
-            <BrandLockup
-              size={22}
-              muted
-              className="gap-2"
-              wordmarkClassName="text-sm text-[var(--color-fg-secondary)]"
-            />
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
-              <span>project</span>
-              <span className="text-[var(--color-fg-primary)]">
-                {folder?.name ?? "Loading project"}
-              </span>
-              <span>script.dsl</span>
-              <span className={errorCount > 0 ? "text-[var(--color-danger)]" : ""}>
-                errors: {errorCount}
-              </span>
-            </div>
-          </div>
+      <header className="flex items-center justify-between gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-2">
+        <div className="flex min-w-0 items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+          <span>project</span>
+          <span className="text-[var(--color-fg-primary)]">
+            {folder?.name ?? "Loading project"}
+          </span>
+          <span>script.dsl</span>
+          <span className={errorCount > 0 ? "text-[var(--color-danger)]" : ""}>
+            errors: {errorCount}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+        {projectId ? (
           <Link
-            to="/settings"
-            className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-sm text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+            to={`/recorder/${projectId}`}
+            className="brand-button inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
           >
-            <Settings size={14} aria-hidden="true" />
-            Settings
+            <Video size={14} aria-hidden="true" />
+            Record
           </Link>
-          {projectId ? (
-            <Link
-              to={`/recorder/${projectId}`}
-              className="brand-button inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-            >
-              <Video size={14} aria-hidden="true" />
-              Record
-            </Link>
-          ) : null}
-        </div>
+        ) : null}
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">

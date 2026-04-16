@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Plus, AlertTriangle, Settings } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, AlertTriangle } from "lucide-react";
 import { motion } from "motion/react";
 
 import brandSplashSrc from "@/assets/branding/ribbon-s-splash.png";
@@ -80,13 +80,6 @@ export default function DashboardRoute() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              to="/settings"
-              className="inline-flex items-center gap-2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-elevated)] px-4 py-3 text-sm font-medium text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-            >
-              <Settings size={16} aria-hidden="true" />
-              Settings
-            </Link>
             <button
               onClick={() => setDialogOpen(true)}
               aria-label="Create new project"

@@ -4,9 +4,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import {
-  ArrowLeft,
   Monitor,
   Pause as PauseIcon,
   Play as PlayIcon,
@@ -251,15 +249,8 @@ export function RecordingView({
     >
       <CursorTrail />
 
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-3 backdrop-blur-md">
+      <header className="flex items-center justify-between gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-2">
         <div className="flex min-w-0 items-center gap-3">
-          <Link
-            to="/"
-            aria-label="Back to dashboard"
-            className="inline-flex items-center gap-1 rounded-md p-1 text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-          </Link>
           <div className="min-w-0">
             <h1 className="text-sm font-medium text-[var(--color-fg-primary)]">
               {projectName}
