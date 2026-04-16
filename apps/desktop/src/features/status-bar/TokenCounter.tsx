@@ -10,7 +10,6 @@
  * data-testid="token-counter"
  */
 
-import * as React from "react";
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";

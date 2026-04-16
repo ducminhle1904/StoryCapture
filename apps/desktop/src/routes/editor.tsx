@@ -69,11 +69,8 @@ export default function EditorRoute() {
   }
 
   return (
-    <main id="main-content" className="flex h-screen flex-col">
-      <header
-        data-tauri-drag-region
-        className="flex items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] py-2 pl-[88px] pr-4"
-      >
+    <main id="main-content" className="flex h-full flex-col">
+      <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] px-4 py-2">
         <div className="flex items-center gap-3">
           <Link
             to="/"

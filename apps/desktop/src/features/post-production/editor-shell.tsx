@@ -55,7 +55,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   return (
     <div
-      className="flex h-screen w-screen flex-col bg-[var(--color-bg)] text-[var(--color-fg)]"
+      className="flex h-full w-full flex-col bg-[var(--color-bg)] text-[var(--color-fg)]"
       data-editor-shell="true"
       data-story-id={storyId}
     >

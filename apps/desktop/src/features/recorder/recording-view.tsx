@@ -180,7 +180,7 @@ export function RecordingView({
   };
 
   return (
-    <main id="main-content" className="relative flex h-screen flex-col">
+    <main id="main-content" className="relative flex h-full flex-col">
       <CursorTrail />
       <RecordingHud projectName={projectName} />
 
