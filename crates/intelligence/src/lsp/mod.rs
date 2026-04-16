@@ -18,6 +18,7 @@
 pub mod diagnostics;
 pub mod document;
 pub mod ipc_bridge;
+pub mod selector_lint;
 pub mod server;
 
 pub use ipc_bridge::{LspBridge, LspBridgeError, LspNotification};

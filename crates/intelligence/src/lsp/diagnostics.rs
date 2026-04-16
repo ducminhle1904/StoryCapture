@@ -10,10 +10,12 @@
 //! set of diagnostics produced by `story_parser::parse`.
 
 use ropey::Rope;
+use story_parser::ast::{Command, SelectorOrText};
 use story_parser::{parse as parse_story, Diagnostic as ParserDiag, Severity as ParserSeverity};
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range};
 
 use crate::lsp::document::byte_range_to_lsp_range;
+use crate::lsp::selector_lint;
 
 /// Well-known verbs. Mirrors `story_parser::suggest::KNOWN_VERBS` so we
 /// can produce hover/completion content without depending on a
@@ -57,14 +59,87 @@ pub fn grammar_diagnostics(source: &str, rope: &Rope) -> Vec<Diagnostic> {
 }
 
 /// Semantic-level subset (WARNING / INFO severity — unknown verb,
-/// missing arg, "did you mean …").
+/// missing arg, "did you mean …") plus selector-lint warnings for
+/// commands that take a selector argument (click, type, hover, assert,
+/// etc.). D-17 + AI-SPEC E11.
 pub fn semantic_diagnostics(source: &str, rope: &Rope) -> Vec<Diagnostic> {
-    parse_story(source)
+    let result = parse_story(source);
+    let mut diags: Vec<Diagnostic> = result
         .diagnostics
         .into_iter()
         .filter(|d| !matches!(d.severity, ParserSeverity::Error))
         .map(|d| to_lsp_diag(d, rope))
-        .collect()
+        .collect();
+
+    // Selector lint: walk the AST and lint every Selector target in
+    // commands that accept selectors (click, type, hover, assert, etc.)
+    if let Some(ref story) = result.ast {
+        for scene in &story.scenes {
+            for cmd in &scene.commands {
+                lint_command_selectors(cmd, rope, &mut diags);
+            }
+        }
+    }
+
+    diags
+}
+
+/// Extract selector strings from a command and run the selector linter.
+/// Only `SelectorOrText::Selector` variants are linted — Text, TestId,
+/// and Aria targets are inherently stable and don't need heuristic checks.
+fn lint_command_selectors(cmd: &Command, rope: &Rope, diags: &mut Vec<Diagnostic>) {
+    let targets: Vec<(&SelectorOrText, story_parser::ast::Span)> = match cmd {
+        Command::Click { target, span, .. } => vec![(target, *span)],
+        Command::Type { target, span, .. } => vec![(target, *span)],
+        Command::Hover { target, span, .. } => vec![(target, *span)],
+        Command::Assert { target, span, .. } => vec![(target, *span)],
+        Command::Select { target, span, .. } => vec![(target, *span)],
+        Command::WaitFor { target, span, .. } => vec![(target, *span)],
+        Command::Upload { target, span, .. } => vec![(target, *span)],
+        Command::Drag { from, to, span, .. } => vec![(from, *span), (to, *span)],
+        _ => vec![],
+    };
+
+    for (target, span) in targets {
+        if let SelectorOrText::Selector(raw) = target {
+            // The parser stores the full `selector "..."` token text.
+            // Extract the inner selector value by stripping the keyword
+            // prefix and surrounding quotes.
+            let sel = extract_selector_value(raw);
+            let warnings = selector_lint::analyze_selector(&sel, false);
+            let range = byte_range_to_lsp_range(rope, span.start, span.end);
+            for w in warnings {
+                diags.push(selector_warning_to_diag(&w, range));
+            }
+        }
+    }
+}
+
+/// Extract the inner CSS/XPath selector from the raw token text.
+/// The parser stores `selector "..."` as the full text including
+/// the keyword prefix and quotes. This strips to just the selector value.
+fn extract_selector_value(raw: &str) -> String {
+    let s = raw.trim();
+    // Strip `selector ` prefix if present
+    let s = s.strip_prefix("selector").unwrap_or(s).trim();
+    // Strip surrounding quotes
+    let s = s.strip_prefix('"').unwrap_or(s);
+    let s = s.strip_suffix('"').unwrap_or(s);
+    s.to_string()
+}
+
+fn selector_warning_to_diag(w: &selector_lint::SelectorWarning, range: Range) -> Diagnostic {
+    Diagnostic {
+        range,
+        severity: Some(DiagnosticSeverity::WARNING),
+        code: Some(NumberOrString::String("selector-lint".to_string())),
+        code_description: None,
+        source: Some("selector-lint".to_string()),
+        message: w.message.clone(),
+        related_information: None,
+        tags: None,
+        data: None,
+    }
 }
 
 fn to_lsp_diag(d: ParserDiag, rope: &Rope) -> Diagnostic {
@@ -158,6 +233,35 @@ mod tests {
     fn verb_catalog_covers_known_verbs() {
         for v in story_parser::suggest::KNOWN_VERBS {
             assert!(verb_doc(v).is_some(), "missing doc for {v}");
+        }
+    }
+
+    #[test]
+    fn test7_semantic_diagnostics_includes_selector_lint_warning() {
+        // A .story file with a generic selector `.btn` in a click command
+        // should produce a selector-lint warning in semantic_diagnostics.
+        let source = "story \"test\" {\n  scene \"login\" {\n    click selector \".btn\"\n  }\n}\n";
+        let rope = Rope::from_str(source);
+        let diags = semantic_diagnostics(source, &rope);
+        let selector_lint_diags: Vec<_> = diags
+            .iter()
+            .filter(|d| d.source.as_deref() == Some("selector-lint"))
+            .collect();
+        assert!(
+            !selector_lint_diags.is_empty(),
+            "expected selector-lint warnings for `.btn`, got none. All diags: {:?}",
+            diags
+        );
+        // Should have both TooGeneric and MissingFallback warnings
+        assert!(
+            selector_lint_diags.len() >= 2,
+            "expected at least 2 selector-lint warnings (TooGeneric + MissingFallback), got {}",
+            selector_lint_diags.len()
+        );
+        // Verify source field
+        for d in &selector_lint_diags {
+            assert_eq!(d.source.as_deref(), Some("selector-lint"));
+            assert_eq!(d.severity, Some(DiagnosticSeverity::WARNING));
         }
     }
 }
