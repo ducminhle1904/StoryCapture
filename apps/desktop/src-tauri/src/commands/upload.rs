@@ -332,12 +332,6 @@ pub async fn get_upload_status(
 
 // ---- Internal upload logic ----------------------------------------------------
 
-/// Default web companion URL; overridable via STORYCAPTURE_WEB_URL env var.
-fn web_url() -> String {
-    std::env::var("STORYCAPTURE_WEB_URL")
-        .unwrap_or_else(|_| "https://storycapture.app".to_string())
-}
-
 async fn do_upload(
     video_path: &Path,
     project_name: &str,
@@ -348,7 +342,7 @@ async fn do_upload(
     on_progress: &Channel<UploadProgressEvent>,
     cancel_flag: &AtomicBool,
 ) -> Result<UploadResult, UploadError> {
-    let base = web_url();
+    let base = super::util::web_url();
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
         .build()

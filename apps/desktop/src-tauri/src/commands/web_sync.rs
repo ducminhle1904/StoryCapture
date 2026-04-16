@@ -72,14 +72,6 @@ impl From<WebSyncError> for AppError {
     }
 }
 
-// ── Constants ──
-
-/// Default web companion URL; overridable via STORYCAPTURE_WEB_URL env var.
-fn web_url() -> String {
-    std::env::var("STORYCAPTURE_WEB_URL")
-        .unwrap_or_else(|_| "https://storycapture.app".to_string())
-}
-
 // ── Database helpers ──
 
 /// Ensure the sync_queue table exists in app.sqlite.
@@ -155,7 +147,7 @@ async fn post_trpc_mutation(
     procedure: &str,
     payload: &serde_json::Value,
 ) -> Result<serde_json::Value, WebSyncError> {
-    let url = format!("{}/api/trpc/{}", web_url(), procedure);
+    let url = format!("{}/api/trpc/{}", super::util::web_url(), procedure);
 
     let response = client
         .post(&url)

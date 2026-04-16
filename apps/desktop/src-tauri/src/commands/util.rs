@@ -29,3 +29,9 @@ pub fn now_epoch_secs() -> i64 {
         .unwrap_or_default()
         .as_secs() as i64
 }
+
+/// Default web companion URL; overridable via STORYCAPTURE_WEB_URL env var.
+pub fn web_url() -> String {
+    std::env::var("STORYCAPTURE_WEB_URL")
+        .unwrap_or_else(|_| "https://storycapture.app".to_string())
+}
