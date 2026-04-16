@@ -67,8 +67,8 @@ async fn drive_fixture(fixture: &str) -> (Vec<LlmEvent>, Option<intelligence::ll
             }
         };
         match process_event(&frame.data, &mut accum, &tx).await {
-            Ok(intelligence::llm::openai::EventOutcome::Continue) => continue,
-            Ok(intelligence::llm::openai::EventOutcome::Stop) => break,
+            Ok(intelligence::llm::EventOutcome::Continue) => continue,
+            Ok(intelligence::llm::EventOutcome::Stop) => break,
             Err(e) => {
                 err = Some(e);
                 break;
@@ -150,7 +150,7 @@ async fn done_sentinel_terminates_without_error() {
     let outcome = process_event("[DONE]", &mut accum, &tx).await.unwrap();
     assert!(matches!(
         outcome,
-        intelligence::llm::openai::EventOutcome::Stop
+        intelligence::llm::EventOutcome::Stop
     ));
 }
 

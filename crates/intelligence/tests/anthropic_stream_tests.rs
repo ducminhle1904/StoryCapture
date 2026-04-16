@@ -12,9 +12,10 @@ use eventsource_stream::Eventsource;
 use futures_util::stream;
 use futures_util::StreamExt;
 use intelligence::llm::anthropic::{
-    process_event, AnthropicProvider, EventOutcome, ANTHROPIC_PROMPT_CACHING_BETA,
+    process_event, AnthropicProvider, ANTHROPIC_PROMPT_CACHING_BETA,
     ANTHROPIC_VERSION,
 };
+use intelligence::llm::EventOutcome;
 use intelligence::llm::{LlmEvent, LlmProvider, LlmRequest};
 use tokio::sync::mpsc;
 use wiremock::matchers::{header, method, path};
