@@ -1,5 +1,5 @@
 /**
- * Zustand store for Dry-Run UI state (Plan 03-18).
+ * Zustand store for Dry-Run UI state.
  *
  * Tracks per-step status, timing, fallback chains, and summary.
  * Session-ephemeral -- no persistence needed.

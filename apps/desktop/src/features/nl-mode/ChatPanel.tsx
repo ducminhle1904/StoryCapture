@@ -1,5 +1,5 @@
 /**
- * NL Mode chat panel (Plan 03-17).
+ * NL Mode chat panel.
  *
  * Resizable right panel (min 320, max 560, default 420px) per UI-SPEC Layout Contract.
  * Collapsible to 40px rail with icon stack.

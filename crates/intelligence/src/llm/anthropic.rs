@@ -255,7 +255,7 @@ pub async fn process_event(
             if let Some(buf) = tool_json_bufs.remove(&index) {
                 if !buf.is_empty() {
                     let value: Value = serde_json::from_str(&buf).map_err(|_| {
-                        // T-03-04-05: do NOT echo buf contents (may hold PII).
+                        // do NOT echo buf contents (may hold PII).
                         LlmError::PartialJsonInvalid
                     })?;
                     let _ = tx

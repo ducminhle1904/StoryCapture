@@ -1,5 +1,5 @@
 /**
- * Token breakdown popover (Plan 03-20, Task 2).
+ * Token breakdown popover.
  *
  * Popover showing last 20 turns: time, provider/model, input/output/cache tokens, cost.
  * data-testid="token-breakdown-popover"

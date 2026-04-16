@@ -1,5 +1,5 @@
 /**
- * Voice preset card component (Plan 03-19).
+ * Voice preset card component.
  *
  * Displays voice name, locale flag, premium/featured badges,
  * and "Nghe thu" preview button with conic-gradient ring animation.
@@ -31,7 +31,7 @@ export function VoicePresetCard({
     try {
       await onPreview(preset);
     } catch {
-      // T-03-19-01: Audio decode errors handled silently
+      // Audio decode errors handled silently
     } finally {
       setLocalPlaying(false);
     }

@@ -1,5 +1,5 @@
 /**
- * AccountsPage tests (Plan 03-20, Task 1).
+ * AccountsPage tests.
  *
  * Covers 6 behaviors:
  * 1. Renders 4 rows grouped into LLM + TTS sections with correct ordering.

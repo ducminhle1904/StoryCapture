@@ -1,5 +1,5 @@
 /**
- * TokenCounter + CostWarningModal + AiDisclosureModal tests (Plan 03-20, Task 2).
+ * TokenCounter + CostWarningModal + AiDisclosureModal tests.
  *
  * Covers 6 behaviors:
  * 1. Token counter polls session_get_rollup every 500ms; renders cost.

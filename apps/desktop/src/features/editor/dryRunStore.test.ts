@@ -1,5 +1,5 @@
 /**
- * dryRunStore + useDryRun tests (Plan 03-18, Task 1).
+ * dryRunStore + useDryRun tests.
  *
  * 5 behaviors:
  * 1. Queued event sets statusByStep[step_id] = "queued"

@@ -1,4 +1,4 @@
-// Dry-Run orchestrator (D-19).
+// Dry-Run orchestrator.
 //
 // Iterates through DSL steps, invoking `BrowserDriver::execute` for each,
 // and emitting `DryRunEvent` variants through an mpsc channel. Stops on

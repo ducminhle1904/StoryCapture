@@ -1,5 +1,5 @@
 /**
- * Per-step TTS script editor (Plan 03-19).
+ * Per-step TTS script editor.
  *
  * States: empty, generating, generated, edited-not-regenerated, regen-in-progress, error.
  * Shows char count, cost estimate, and Sinh loi thoai / Tao lai audio buttons.

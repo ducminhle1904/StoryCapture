@@ -1,6 +1,6 @@
 //! `tower-lsp` `LanguageServer` implementation for `.story` files.
 //!
-//! Architecture (D-16): shares the `crates/story-parser` crate directly
+//! Architecture: shares the `crates/story-parser` crate directly
 //! — no stdio, no sidecar. The IPC bridge (tauri → lsp) lands in a
 //! follow-up plan.
 //!

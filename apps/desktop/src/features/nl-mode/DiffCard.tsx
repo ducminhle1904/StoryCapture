@@ -1,5 +1,5 @@
 /**
- * Per-step diff card with inline diff + 4 actions (Plan 03-17, Task 2).
+ * Per-step diff card with inline diff + 4 actions.
  *
  * UI-SPEC Component Inventory: "Per-step diff card"
  * - Collapsible card with inline diff + 4-button action row

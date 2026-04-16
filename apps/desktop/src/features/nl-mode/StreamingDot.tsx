@@ -1,5 +1,5 @@
 /**
- * Streaming token indicator (Plan 03-17).
+ * Streaming token indicator.
  *
  * Motion pulse 900ms loop per UI-SPEC. prefers-reduced-motion -> static filled dot.
  * Uses accent color gradient per UI-SPEC accent reserved list item 5.

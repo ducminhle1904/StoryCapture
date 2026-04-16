@@ -1,5 +1,5 @@
 /**
- * Dry-Run step row (Plan 03-18).
+ * Dry-Run step row.
  *
  * Displays step number + status badge + timing + fallback chain chips.
  * Click handler emits step-click for editor cursor jump.

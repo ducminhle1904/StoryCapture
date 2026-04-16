@@ -1,4 +1,4 @@
-// Phase 3 plan 03-16: Dry-Run IPC.
+// Dry-Run IPC.
 //
 // `dryrun_start` spawns a DryRunOrchestrator task against a mock
 // BrowserDriver (real driver wired when Phase 1 `phase1-wired` feature

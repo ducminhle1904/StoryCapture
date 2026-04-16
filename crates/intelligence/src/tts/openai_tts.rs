@@ -1,4 +1,4 @@
-//! OpenAI TTS provider — fallback (D-10) when ElevenLabs is quota-exhausted or
+//! OpenAI TTS provider — fallback when ElevenLabs is quota-exhausted or
 //! slow. Single POST to `/v1/audio/speech`; response is a non-streamed MP3
 //! payload (OpenAI does not chunk the audio endpoint the way ElevenLabs does).
 //!
@@ -79,7 +79,7 @@ impl OpenAiTtsProvider {
 impl TtsProvider for OpenAiTtsProvider {
     #[instrument(skip_all, fields(voice_id = %req.voice_id, model = %req.model))]
     async fn synthesize(&self, req: TtsRequest) -> Result<Bytes, TtsError> {
-        // T-03-09-02: voice id whitelist BEFORE network call. A spoofed voice
+        // voice id whitelist BEFORE network call. A spoofed voice
         // id must not reach the provider — fail fast with a local error.
         if !BUILTIN_VOICES.contains(&req.voice_id.as_str()) {
             return Err(TtsError::VoiceNotFound(req.voice_id));

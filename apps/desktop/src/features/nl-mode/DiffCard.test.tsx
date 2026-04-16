@@ -1,5 +1,5 @@
 /**
- * DiffCard tests (Plan 03-17, Task 2).
+ * DiffCard tests.
  *
  * 8 behaviors:
  * 1. Renders card with step title, inline diff, 4 action buttons with aria-labels

@@ -1,5 +1,5 @@
 /**
- * TtsScriptEditor + TtsClipInspector tests (Plan 03-19, Task 2).
+ * TtsScriptEditor + TtsClipInspector tests.
  *
  * 5 behaviors:
  * 1. Empty state: "Chua co loi thoai cho buoc nay" + CTA "Sinh loi thoai"

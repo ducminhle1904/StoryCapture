@@ -1,5 +1,5 @@
 /**
- * Hook for TTS operations (Plan 03-19).
+ * Hook for TTS operations.
  *
  * Wires to Plan 11 Tauri commands: tts_generate, tts_voice_list,
  * tts_regenerate_clip. Provides voice preview via HTMLAudioElement.
@@ -69,7 +69,7 @@ export function useTts(projectId: string) {
     );
     const audio = new Audio(result.file_path);
     audio.onerror = () => {
-      // T-03-19-01: Browser audio decoder sandboxed; play failure caught
+      // Browser audio decoder sandboxed; play failure caught
       console.error("Audio playback failed for preview");
     };
     await audio.play();

@@ -1,5 +1,5 @@
 /**
- * Hook wiring NL chat UI to Tauri IPC commands (Plan 03-17).
+ * Hook wiring NL chat UI to Tauri IPC commands.
  *
  * Uses Channel<NlChatEvent> for streaming events from the Rust backend.
  */

@@ -1,5 +1,5 @@
 /**
- * Zustand store for NL Mode ephemeral chat UI state (Plan 03-17).
+ * Zustand store for NL Mode ephemeral chat UI state.
  *
  * Persists panelWidth + panelCollapsed to localStorage key "nl-mode.panel".
  * All other state is session-ephemeral.

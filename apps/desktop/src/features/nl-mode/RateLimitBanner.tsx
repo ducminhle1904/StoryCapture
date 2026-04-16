@@ -1,5 +1,5 @@
 /**
- * Rate-limit banner with retry countdown (Plan 03-17).
+ * Rate-limit banner with retry countdown.
  *
  * UI-SPEC copy: "{provider} dang gioi han toc do. Thu lai sau {N}s
  * hoac chuyen sang fallback provider."

@@ -1,4 +1,4 @@
-// Phase 1 plan 01-07: capture IPC.
+// capture IPC.
 //
 // Thin Tauri-side wrapper around the pure `capture` crate. Exposes:
 //   - list_displays                        — multi-display enumeration (CAP-06)

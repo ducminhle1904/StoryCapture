@@ -1,5 +1,5 @@
 /**
- * Selector fallback HoverCard popover (Plan 03-18).
+ * Selector fallback HoverCard popover.
  *
  * Shows winning strategy + fallback time + "Cap nhat selector" CTA.
  * Triggered from editor gutter warning icon (LSP selector-fallback warning).

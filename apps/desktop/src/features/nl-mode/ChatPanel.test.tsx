@@ -1,5 +1,5 @@
 /**
- * ChatPanel tests (Plan 03-17, Task 1).
+ * ChatPanel tests.
  *
  * Covers 6 behaviors:
  * 1. Empty state: heading + CTA

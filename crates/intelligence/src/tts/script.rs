@@ -1,4 +1,4 @@
-//! TTS auto-script generator (D-12).
+//! TTS auto-script generator.
 //!
 //! Uses an LLM to generate a short narration paragraph per DSL step.
 //! Input: `StoryDoc` + optional brand-tone hint.

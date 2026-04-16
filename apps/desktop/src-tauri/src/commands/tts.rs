@@ -1,4 +1,4 @@
-//! Phase 3 Plan 11 -- TTS synthesis Tauri commands with cache + metrics + GC.
+//! TTS synthesis Tauri commands with cache + metrics + GC.
 //!
 //! Four commands:
 //!
@@ -497,7 +497,7 @@ pub struct SyncPlanDto {
 /// Flow:
 /// 1. Load ClipMeta by scanning tts_cache_index + probing audio durations.
 /// 2. Call `compute_sync_plan`.
-/// 3. Emit duck_events via `app.emit("sound_mixer/duck_events", ...)` (D-22).
+/// 3. Emit duck_events via `app.emit("sound_mixer/duck_events", ...)`.
 /// 4. Persist drift_ms in tts_clip_metrics for each clip.
 #[tauri::command]
 #[specta::specta]

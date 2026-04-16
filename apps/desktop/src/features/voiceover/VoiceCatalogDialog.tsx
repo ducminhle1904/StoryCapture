@@ -1,5 +1,5 @@
 /**
- * Voice catalog modal dialog (Plan 03-19).
+ * Voice catalog modal dialog.
  *
  * Two modes:
  * - Curated (default): 720x560, shows curated presets
@@ -124,7 +124,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
         });
         const audio = new Audio(result.file_path);
         audio.onerror = () => {
-          // T-03-19-01: sandboxed audio decode failure
+          // sandboxed audio decode failure
           setPlayingId(null);
         };
         audio.onended = () => setPlayingId(null);

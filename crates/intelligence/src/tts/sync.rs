@@ -8,7 +8,7 @@
 //!   appended to clip.
 //!
 //! For every clip, a `DuckEvent` is emitted for the Phase 2 BGM mixer
-//! (D-22) to lower BGM by -12 dB during narration.
+//! to lower BGM by -12 dB during narration.
 //!
 //! Drift p95 target: <= 150 ms (AI-SPEC E7).
 
@@ -55,7 +55,7 @@ pub struct AdjustedStep {
     pub drift_ms: i64,
 }
 
-/// BGM auto-duck event for the Phase 2 sound mixer (D-22).
+/// BGM auto-duck event for the Phase 2 sound mixer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuckEvent {
     /// Timeline-global start in milliseconds.

@@ -17,7 +17,7 @@ pub struct StoryDoc {
 /// A single step within a `StoryDoc`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StoryStep {
-    /// Stable ID for per-step regen (D-08).
+    /// Stable ID for per-step regen.
     pub id: String,
     /// One-line user-intent summary, surfaced in the diff card.
     pub label: String,
@@ -25,7 +25,7 @@ pub struct StoryStep {
     pub verb: DslVerb,
     /// Verb-specific args (selector, text, url, ...).
     pub args: serde_json::Value,
-    /// Optional inline narration for the TTS auto-script (D-12).
+    /// Optional inline narration for the TTS auto-script.
     pub narration: Option<String>,
 }
 

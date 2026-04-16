@@ -1,5 +1,5 @@
 /**
- * VoiceCatalogDialog + VoicePresetCard tests (Plan 03-19, Task 1).
+ * VoiceCatalogDialog + VoicePresetCard tests.
  *
  * 7 behaviors:
  * 1. Dialog opens at default curated mode; renders >= 6 cards

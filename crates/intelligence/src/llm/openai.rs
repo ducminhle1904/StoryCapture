@@ -272,7 +272,7 @@ impl LlmProvider for OpenAiProvider {
 /// emit corresponding [`LlmEvent`]s on `tx`. Exposed so integration tests
 /// can drive the parser directly from fixture bytes without HTTP.
 ///
-/// The `[DONE]` sentinel is a literal byte-string compare (T-03-05-02): no
+/// The `[DONE]` sentinel is a literal byte-string compare: no
 /// JSON parsing attempt, no substring match — the payload must equal
 /// `"[DONE]"` verbatim.
 pub async fn process_event(

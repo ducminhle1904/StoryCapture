@@ -1,5 +1,5 @@
 /**
- * Status-bar token counter (Plan 03-20, Task 2).
+ * Status-bar token counter.
  *
  * Reads session_id from app state; polls session_get_rollup via TanStack Query
  * with refetchInterval: 500 (AI-SPEC section 7.2).

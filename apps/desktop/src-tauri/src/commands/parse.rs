@@ -6,7 +6,7 @@
 // `ParseResult` with best-effort AST + structured diagnostics.
 //
 // `story_parser::parser::ParseResult` and `story_parser::diagnostic::Diagnostic`
-// are defined in the pure `story-parser` crate (D-07) which deliberately
+// are defined in the pure `story-parser` crate which deliberately
 // does NOT depend on `specta`. We wrap them here in DTOs that derive
 // `specta::Type` so the generated TS binding (`ParseResultDto`, etc.)
 // lives in `packages/shared-types/src/ipc.ts`.

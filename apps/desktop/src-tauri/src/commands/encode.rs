@@ -1,4 +1,4 @@
-// Phase 1 plan 01-08: encoder IPC.
+// encoder IPC.
 //
 // Thin Tauri-side bridge around the pure `encoder` crate. Exposes:
 //   - probe_hw_encoders  — runtime HW-encoder feature detection (ENC-02)

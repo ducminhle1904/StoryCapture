@@ -1,5 +1,5 @@
 /**
- * Chat bubble component (Plan 03-17).
+ * Chat bubble component.
  *
  * Card with role-based border tint per UI-SPEC:
  * - user: blue-ish subtle border

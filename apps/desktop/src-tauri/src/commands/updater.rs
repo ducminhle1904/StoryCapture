@@ -1,4 +1,4 @@
-// Phase 1 plan 01-10: auto-updater IPC (DIST-03).
+// auto-updater IPC (DIST-03).
 //
 // Thin wrapper around `tauri-plugin-updater`'s `UpdaterExt` that exposes:
 //   - check_update   → returns Option<UpdateInfo>

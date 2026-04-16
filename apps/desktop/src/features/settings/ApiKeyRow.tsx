@@ -1,5 +1,5 @@
 /**
- * Single API key row for the Accounts page (Plan 03-20, Task 1).
+ * Single API key row for the Accounts page.
  *
  * Displays provider logo, name, masked key input, status badge,
  * test button, and remove action with AlertDialog confirmation.
@@ -44,7 +44,7 @@ export function ApiKeyRow({
     setSaving(true);
     try {
       await invoke("key_set", { provider: providerId, key: keyValue });
-      // T-03-20-02: clear local state immediately after save
+      // clear local state immediately after save
       setKeyValue("");
       setEditing(false);
       onPresenceChange(true);

@@ -1,4 +1,4 @@
-//! Phase 3 plan 03 — OS keychain + provider probe Tauri commands.
+//! OS keychain + provider probe Tauri commands.
 //!
 //! Four commands exposed to the webview for AI provider credential management:
 //!

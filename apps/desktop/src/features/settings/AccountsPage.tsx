@@ -1,5 +1,5 @@
 /**
- * Settings -> Accounts page (Plan 03-20, Task 1).
+ * Settings -> Accounts page.
  *
  * Single column, max-width 720px centered layout.
  * Header: "Cai dat tai khoan" + keychain callout badge.

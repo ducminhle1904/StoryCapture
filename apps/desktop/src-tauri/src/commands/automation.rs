@@ -1,9 +1,9 @@
-// Phase 1 plan 01-06: automation IPC.
+// automation IPC.
 //
 // `launch_automation` parses a story source, launches both drivers
 // (chromiumoxide in-process + Playwright sidecar via `tauri-plugin-shell`),
 // runs the executor, and forwards every `ExecutorEvent` to the renderer
-// over a Tauri `Channel<ExecutorEvent>` (D-06).
+// over a Tauri `Channel<ExecutorEvent>`.
 //
 // The Playwright sidecar binary is the SEA artifact built by
 // `scripts/playwright-sidecar/build-sea.mjs` and bundled as
@@ -25,7 +25,7 @@ use tokio::sync::Mutex;
 
 /// Tauri / specta wrapper around `automation::ExecutorEvent`.
 ///
-/// The `automation` crate is pure (D-11) — it doesn't depend on `specta`.
+/// The `automation` crate is pure — it doesn't depend on `specta`.
 /// We wrap its event into a JSON `Value` here so the `Channel<T>` payload
 /// type satisfies `specta::Type` without leaking Tauri into `automation`.
 #[derive(Debug, Clone, Serialize, specta::Type)]

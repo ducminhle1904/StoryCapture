@@ -1,5 +1,5 @@
 /**
- * Dry-Run summary panel (Plan 03-18).
+ * Dry-Run summary panel.
  *
  * Bottom resizable drawer below editor.
  * - Header: title + "Chay thu" primary button (accent) OR "Huy" warning while running.

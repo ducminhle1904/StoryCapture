@@ -1,5 +1,5 @@
 /**
- * DryRunPanel + DryRunStepRow + SelectorFallbackPopover tests (Plan 03-18, Task 2).
+ * DryRunPanel + DryRunStepRow + SelectorFallbackPopover tests.
  *
  * 6 behaviors:
  * 1. Empty state copy "Chua co lan chay thu nao" when summary === null && panelOpen

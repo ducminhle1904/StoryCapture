@@ -1,5 +1,5 @@
 /**
- * React hook for wiring the LSP transport to a CodeMirror editor (Plan 03-14).
+ * React hook for wiring the LSP transport to a CodeMirror editor.
  *
  * Returns a CodeMirror Extension that provides LSP-backed diagnostics, hover,
  * and completion. Handles `textDocument/didOpen` on mount and `didChange` on

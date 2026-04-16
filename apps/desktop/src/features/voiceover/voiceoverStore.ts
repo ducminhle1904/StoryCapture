@@ -1,5 +1,5 @@
 /**
- * Zustand store for Voiceover UI state (Plan 03-19).
+ * Zustand store for Voiceover UI state.
  *
  * Tracks selected voice preset, catalog modal state, filters,
  * per-step TTS clips, and generation progress.

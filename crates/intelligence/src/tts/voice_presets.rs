@@ -1,4 +1,4 @@
-//! StoryCapture-curated voice presets (D-11).
+//! StoryCapture-curated voice presets.
 //!
 //! Six canonical voices spanning male/female, warm/authoritative, and
 //! tutorial/cinematic tones. Each `slug` is a stable identifier used in

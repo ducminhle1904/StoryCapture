@@ -1,4 +1,4 @@
-// Dry-Run orchestrator module (D-19).
+// Dry-Run orchestrator module.
 //
 // Drives `BrowserDriver` (Phase 1) through DSL steps without screen capture
 // or FFmpeg encode. Emits per-step status events + selector fallback chain

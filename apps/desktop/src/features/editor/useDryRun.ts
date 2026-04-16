@@ -1,5 +1,5 @@
 /**
- * Hook wrapping Dry-Run IPC (Plan 03-18).
+ * Hook wrapping Dry-Run IPC.
  *
  * Provides `start(steps)` to launch a dry-run via `dryrun_start` Tauri command
  * and `cancel()` to abort via `dryrun_cancel`. Events stream through a

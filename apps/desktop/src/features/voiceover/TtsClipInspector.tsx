@@ -1,5 +1,5 @@
 /**
- * TTS clip inspector (Plan 03-19).
+ * TTS clip inspector.
  *
  * Shows clip duration, voice preset name, cost, cache-hit indicator,
  * and regenerate button. Displays timeline-clip states from UI-SPEC.

@@ -1,4 +1,4 @@
-//! Phase 3 Plan 07 -- NL-to-DSL Tauri command surface.
+//! NL-to-DSL Tauri command surface.
 //!
 //! Six commands bridging the Rust NL orchestrator (Plan 06) to the webview:
 //!
@@ -233,7 +233,7 @@ pub async fn nl_chat_send(
     provider_override: Option<ProviderId>,
     on_event: Channel<NlChatEvent>,
 ) -> Result<String, NlCommandError> {
-    // T-03-07-01: validate project_id
+    // validate project_id
     let _pid = Uuid::parse_str(&project_id)
         .map_err(|_| NlCommandError::InvalidProject)?;
 
