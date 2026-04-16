@@ -6,6 +6,7 @@
 
 pub mod automation;
 pub mod capture;
+pub mod dryrun;
 pub mod encode;
 pub mod export;
 pub mod keys;

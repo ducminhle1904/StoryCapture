@@ -18,8 +18,8 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        automation, capture, encode, export, keys, parse, preset, projects, render, sound_library,
-        system, timeline, updater,
+        automation, capture, dryrun, encode, export, keys, parse, preset, projects, render,
+        sound_library, system, timeline, updater,
     },
     error::AppError,
 };
@@ -79,6 +79,9 @@ pub fn builder() -> Builder<Wry> {
             keys::key_get_presence,
             keys::key_delete,
             keys::key_test,
+            // Phase 03 plan 16 — Dry-Run orchestrator.
+            dryrun::dryrun_start,
+            dryrun::dryrun_cancel,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -135,6 +138,9 @@ pub fn builder() -> Builder<Wry> {
         .typ::<keys::ProviderId>()
         .typ::<keys::KeyTestReport>()
         .typ::<keys::KeyError>()
+        // Phase 03 plan 16 (Dry-Run)
+        .typ::<dryrun::DryRunEventDto>()
+        .typ::<dryrun::DryRunStepDto>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the
