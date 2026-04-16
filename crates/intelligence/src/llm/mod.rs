@@ -8,6 +8,7 @@ use thiserror::Error;
 
 pub mod anthropic;
 pub mod openai;
+pub mod retry;
 
 /// Request payload fed into an [`LlmProvider::stream`] call.
 ///
