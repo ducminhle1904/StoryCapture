@@ -164,6 +164,11 @@ fn render_step(step: &StoryStep) -> String {
     }
 }
 
+/// Public wrapper around `render_step` for use by the diff engine.
+pub fn render_step_text(step: &StoryStep) -> String {
+    render_step(step)
+}
+
 /// Render a target from the step args. Checks for selector/testid/aria/text fields.
 fn render_target(args: &serde_json::Value) -> String {
     if let Some(sel) = args.get("selector").and_then(|v| v.as_str()) {

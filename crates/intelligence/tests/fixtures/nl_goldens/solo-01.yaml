@@ -1,0 +1,13 @@
+id: solo-01
+bucket: solo
+user_prompt: "login flow demo"
+expected:
+  min_steps: 3
+  max_steps: 6
+  required_verbs: [navigate, type, click]
+  forbidden_verbs: []
+  must_parse: true
+assert:
+  schema_valid: true
+  verb_whitelist_compliant: true
+  first_try_parse: true
