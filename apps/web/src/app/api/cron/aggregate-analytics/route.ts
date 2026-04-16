@@ -43,24 +43,45 @@ export async function GET(req: NextRequest) {
       timestamp: { gte: today, lte: todayEnd },
     };
 
-    // Total plays
-    const totalPlays = await prisma.viewEvent.count({
-      where: { ...where, event: "play" },
-    });
+    // Run all 5 independent read queries concurrently to reduce wall-clock time
+    // from 5N sequential round-trips to ~N parallel round-trips.
+    const [totalPlays, uniqueRows, endedEvents, countryRows, sceneEnters] =
+      await Promise.all([
+        // Total plays
+        prisma.viewEvent.count({
+          where: { ...where, event: "play" },
+        }),
 
-    // Unique plays
-    const uniqueRows = await prisma.viewEvent.groupBy({
-      by: ["sessionId"],
-      where: { ...where, event: "play" },
-    });
+        // Unique plays (by session)
+        prisma.viewEvent.groupBy({
+          by: ["sessionId"],
+          where: { ...where, event: "play" },
+        }),
+
+        // Durations (ended events with watch duration)
+        prisma.viewEvent.findMany({
+          where: { ...where, event: "ended", watchDurationSec: { not: null } },
+          select: { watchDurationSec: true },
+          orderBy: { watchDurationSec: "asc" },
+        }),
+
+        // Country breakdown
+        prisma.viewEvent.groupBy({
+          by: ["country"],
+          where: { ...where, event: "play" },
+          _count: { id: true },
+        }),
+
+        // Scene dropoffs
+        prisma.viewEvent.groupBy({
+          by: ["currentScene"],
+          where: { ...where, event: "scene_enter", currentScene: { not: null } },
+          _count: { id: true },
+          orderBy: { currentScene: "asc" },
+        }),
+      ]);
+
     const uniquePlays = uniqueRows.length;
-
-    // Durations
-    const endedEvents = await prisma.viewEvent.findMany({
-      where: { ...where, event: "ended", watchDurationSec: { not: null } },
-      select: { watchDurationSec: true },
-      orderBy: { watchDurationSec: "asc" },
-    });
 
     let avgDurationSec = 0;
     let medianDurationSec = 0;
@@ -75,24 +96,11 @@ export async function GET(req: NextRequest) {
           : (durations[mid - 1]! + durations[mid]!) / 2;
     }
 
-    // Country breakdown
-    const countryRows = await prisma.viewEvent.groupBy({
-      by: ["country"],
-      where: { ...where, event: "play" },
-      _count: { id: true },
-    });
     const countryBreakdown: Record<string, number> = {};
     for (const row of countryRows) {
       countryBreakdown[row.country] = row._count.id;
     }
 
-    // Scene dropoffs
-    const sceneEnters = await prisma.viewEvent.groupBy({
-      by: ["currentScene"],
-      where: { ...where, event: "scene_enter", currentScene: { not: null } },
-      _count: { id: true },
-      orderBy: { currentScene: "asc" },
-    });
     const sceneDropoffs = sceneEnters.map((row, idx) => {
       const nextCount =
         idx < sceneEnters.length - 1 ? sceneEnters[idx + 1]!._count.id : 0;
