@@ -140,12 +140,13 @@ function VoiceoverWorkbench({
   }, [steps]);
 
   useEffect(() => {
+    const current = useVoiceoverStore.getState().scriptByStepId;
     for (const step of steps) {
-      if (!(step.id in scriptByStepId)) {
+      if (!(step.id in current)) {
         setScript(step.id, step.suggestedScript);
       }
     }
-  }, [scriptByStepId, setScript, steps]);
+  }, [steps, setScript]);
 
   const selectedStep =
     steps.find((step) => step.id === selectedStepId) ?? null;
