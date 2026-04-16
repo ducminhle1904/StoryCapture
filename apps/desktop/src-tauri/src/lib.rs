@@ -86,8 +86,8 @@ pub fn run() {
             // safely look up the data dir.
             app.manage(state::AppState::new(data_dir, log_dir));
 
-            // LSP bridge (D-16, Plan 03-14): in-process tower-lsp via IPC.
-            app.manage(commands::lsp::LspBridgeState(
+            // LSP bridge: in-process tower-lsp via IPC.
+            app.manage(commands::lsp::LspBridgeState::new(
                 intelligence::lsp::LspBridge::new(),
             ));
 
