@@ -1,0 +1,16 @@
+id: edge-02
+bucket: edge
+user_prompt: "Show an OAuth popup login flow with iframe. Navigate to the app, click Sign in with Google, handle the popup window that appears, enter credentials in the OAuth iframe, click Allow, and wait for the redirect back to the app dashboard."
+expected:
+  min_steps: 4
+  max_steps: 10
+  required_verbs: [navigate, click, type, wait_for]
+  forbidden_verbs: []
+  must_parse: true
+  step_mapping_rubric: |
+    Must have: navigate to app, trigger OAuth popup, interact with credentials in popup/iframe, authorize, wait for redirect.
+    Must not: assume single-window flow, skip popup handling.
+assert:
+  schema_valid: true
+  verb_whitelist_compliant: true
+  first_try_parse: true

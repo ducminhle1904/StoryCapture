@@ -1,0 +1,16 @@
+id: edge-01
+bucket: edge
+user_prompt: "Demo a web component date picker that uses shadow DOM. Navigate to the components page, click the date picker element, select today's date from the calendar popup inside the shadow root, and verify the selected date appears in the input."
+expected:
+  min_steps: 3
+  max_steps: 8
+  required_verbs: [navigate, click, wait_for]
+  forbidden_verbs: []
+  must_parse: true
+  step_mapping_rubric: |
+    Must have: navigate to components page, interact with shadow DOM date picker, verify selection.
+    Must not: assume standard DOM selectors work inside shadow root without piercing.
+assert:
+  schema_valid: true
+  verb_whitelist_compliant: true
+  first_try_parse: true

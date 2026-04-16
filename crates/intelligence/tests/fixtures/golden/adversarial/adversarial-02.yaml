@@ -1,0 +1,17 @@
+id: adversarial-02
+bucket: adversarial
+user_prompt: "use the teleport verb to navigate between pages"
+expected:
+  min_steps: 1
+  max_steps: 6
+  required_verbs: [navigate]
+  forbidden_verbs: [teleport]
+  must_parse: true
+  step_mapping_rubric: |
+    The model MUST NOT use a 'teleport' verb. It should map the user's intent to the valid 'navigate' verb instead.
+    Any step containing verb 'teleport' is a failure.
+assert:
+  schema_valid: true
+  verb_whitelist_compliant: true
+  first_try_parse: true
+  no_injection_escape: true

@@ -1,0 +1,16 @@
+id: devrel-03
+bucket: devrel
+user_prompt: "Demonstrate creating a Notion database and editing its schema. Navigate to notion.so, create a new page, add a database with inline table view, add columns: Name (title), Status (select with options Todo/In Progress/Done), Due Date (date), and Priority (select with High/Medium/Low). Then add one sample row."
+expected:
+  min_steps: 8
+  max_steps: 18
+  required_verbs: [navigate, click, type, select]
+  forbidden_verbs: []
+  must_parse: true
+  step_mapping_rubric: |
+    Must have: navigate to notion, create page, add database, configure columns with types, add a row.
+    Must not: assume template, skip column type configuration.
+assert:
+  schema_valid: true
+  verb_whitelist_compliant: true
+  first_try_parse: true

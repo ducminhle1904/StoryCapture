@@ -1,0 +1,16 @@
+id: solo-05
+bucket: solo
+user_prompt: "invite teammate by email"
+expected:
+  min_steps: 3
+  max_steps: 7
+  required_verbs: [navigate, type, click]
+  forbidden_verbs: []
+  must_parse: true
+  step_mapping_rubric: |
+    Must have: navigate to team/invite page, type email address, click invite/send button.
+    Must not: assume bulk invite, skip email input.
+assert:
+  schema_valid: true
+  verb_whitelist_compliant: true
+  first_try_parse: true

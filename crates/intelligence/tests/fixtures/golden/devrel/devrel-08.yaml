@@ -1,0 +1,16 @@
+id: devrel-08
+bucket: devrel
+user_prompt: "Show deploying a project from Git on Vercel. Navigate to vercel.com/new, click Import Git Repository, select the target repo from the list, configure the project name, set the framework preset to Next.js, add an environment variable API_KEY with value 'demo123', and click Deploy. Wait for the deployment to complete."
+expected:
+  min_steps: 7
+  max_steps: 14
+  required_verbs: [navigate, click, type, select, wait_for]
+  forbidden_verbs: []
+  must_parse: true
+  step_mapping_rubric: |
+    Must have: navigate to Vercel new project, import repo, configure name, set framework, add env var, deploy, wait for completion.
+    Must not: assume CLI deployment, skip framework selection.
+assert:
+  schema_valid: true
+  verb_whitelist_compliant: true
+  first_try_parse: true

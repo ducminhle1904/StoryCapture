@@ -1,0 +1,16 @@
+id: devrel-04
+bucket: devrel
+user_prompt: "Walk through a GitHub pull request review workflow. Navigate to a repo's PR list, open the first PR, click Files changed, add a review comment on a specific line suggesting a code change, then submit the review with 'Request changes' selected."
+expected:
+  min_steps: 6
+  max_steps: 12
+  required_verbs: [navigate, click, type, select]
+  forbidden_verbs: []
+  must_parse: true
+  step_mapping_rubric: |
+    Must have: navigate to PR list, click PR, click files changed tab, click line to comment, type comment, select review type, submit.
+    Must not: assume merge permissions, skip review type selection.
+assert:
+  schema_valid: true
+  verb_whitelist_compliant: true
+  first_try_parse: true
