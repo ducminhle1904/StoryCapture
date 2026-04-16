@@ -22,6 +22,7 @@
 import { TRPCError } from "@trpc/server";
 import { tracked } from "@trpc/server";
 import { z } from "zod";
+import type { PrismaClient } from "@prisma/client";
 import { EventEmitter, on } from "node:events";
 import { router, publicProcedure, protectedProcedure } from "../init";
 import { verifyJwt } from "@/lib/jwt";
@@ -77,15 +78,7 @@ const sseSubscriptionInput = z.object({
 async function verifySubscriber(
   token: string,
   workspaceId: string,
-  prisma: Parameters<Parameters<typeof publicProcedure.query>[0]> extends [
-    infer O,
-  ]
-    ? O extends { ctx: infer C }
-      ? C extends { prisma: infer P }
-        ? P
-        : never
-      : never
-    : never,
+  prisma: PrismaClient,
 ) {
   const { userId } = await verifyJwt(token).catch(() => {
     throw new TRPCError({
@@ -94,18 +87,7 @@ async function verifySubscriber(
     });
   });
 
-  const membership = await (prisma as any).workspaceMember.findUnique({
-    where: {
-      userId_workspaceId: { userId, workspaceId },
-    },
-  });
-
-  if (!membership) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Not a member of this workspace",
-    });
-  }
+  await requireWorkspaceMember(prisma, userId, workspaceId);
 
   return { userId };
 }
