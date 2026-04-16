@@ -68,3 +68,33 @@ jobs:
         if: always()
         shell: bash
         run: sccache --show-stats || true
+
+  offline-eval:
+    name: offline-eval (AI golden dataset)
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: "always"
+      STORYCAPTURE_EVAL_MODE: offline
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verb whitelist grep
+        shell: bash
+        run: bash scripts/verb-whitelist-grep.sh
+
+      - name: Offline golden eval (mock provider)
+        shell: bash
+        run: |
+          cargo nextest run -p intelligence --test eval_golden_dataset --no-fail-fast \
+            || cargo test -p intelligence --test eval_golden_dataset
+
+      - name: Eval report (threshold check)
+        shell: bash
+        run: |
+          cargo run -p intelligence --bin eval_report -- \
+            --results eval_result.json \
+            --thresholds crates/intelligence/tests/fixtures/eval_thresholds.toml \
+            --ci

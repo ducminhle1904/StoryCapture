@@ -1,0 +1,48 @@
+name: Nightly Eval
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC daily, on main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  golden-eval:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY_EVAL: ${{ secrets.ANTHROPIC_API_KEY_EVAL }}
+      STORYCAPTURE_EVAL_MODE: live
+      CARGO_TERM_COLOR: "always"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run 25-prompt golden dataset
+        run: |
+          cargo nextest run -p intelligence --test eval_golden_dataset --no-fail-fast \
+            || cargo test -p intelligence --test eval_golden_dataset
+
+      - name: Generate report
+        run: |
+          cargo run -p intelligence --bin eval_report -- \
+            --results eval_result.json \
+            --thresholds crates/intelligence/tests/fixtures/eval_thresholds.toml \
+            --ci
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-result
+          path: eval_result.json
+          retention-days: 30
+
+      - name: Fail on regression
+        if: failure()
+        run: |
+          echo "::error::Golden eval regressed — see eval_result.json artifact"
+          exit 1

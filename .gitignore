@@ -50,6 +50,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Eval (generated per CI run, never committed — T-03-21-04)
+eval_result.json
+
 # Misc
 *.tsbuildinfo
 .cache/

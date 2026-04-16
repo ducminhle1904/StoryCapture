@@ -47,8 +47,15 @@ sha2     = "0.10"
 rand     = "0.8"
 httpdate = "1"
 
+# Config parsing (eval_report binary)
+toml = "0.8"
+
 # Workspace siblings
 story-parser = { path = "../story-parser" }
+
+[[bin]]
+name = "eval_report"
+path = "src/bin/eval_report.rs"
 
 [dev-dependencies]
 tokio    = { version = "1.40", features = ["test-util", "macros", "rt-multi-thread"] }
