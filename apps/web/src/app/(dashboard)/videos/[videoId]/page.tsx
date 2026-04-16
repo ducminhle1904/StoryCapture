@@ -86,12 +86,15 @@ function VideoDetailContent({ videoId }: { videoId: string }) {
         />
       </section>
 
-      {/* Analytics link placeholder */}
+      {/* Analytics */}
       <section>
         <h2 className="mb-3 text-sm font-medium text-zinc-300">Analytics</h2>
-        <p className="text-sm text-zinc-500">
-          View analytics will be available after Plan 04-08 is implemented.
-        </p>
+        <a
+          href={`/analytics/${videoId}`}
+          className="inline-flex items-center gap-1 text-sm text-zinc-400 underline transition-colors hover:text-zinc-200"
+        >
+          View analytics
+        </a>
       </section>
 
       {/* Delete */}
