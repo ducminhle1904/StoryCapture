@@ -4,16 +4,29 @@ import { useState, useRef, useEffect } from "react";
 import { useTRPC } from "@/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import type { Role } from "@/generated/prisma";
 
 /**
  * Workspace switcher dropdown.
  * Shows all user workspaces with role badges, personal badge,
  * and a "Create Workspace" option.
  */
+export interface WorkspaceListItem {
+  workspaceId: string;
+  name: string;
+  slug: string;
+  isPersonal: boolean;
+  role: Role;
+  videoCount: number;
+  memberCount: number;
+}
+
 export function WorkspaceSwitcher({
   currentWorkspaceId,
+  initialData,
 }: {
   currentWorkspaceId?: string;
+  initialData?: WorkspaceListItem[];
 }) {
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -23,7 +36,13 @@ export function WorkspaceSwitcher({
   const queryClient = useQueryClient();
   const trpc = useTRPC();
 
-  const workspacesQuery = useQuery(trpc.workspace.list.queryOptions());
+  // When initialData is provided by the server component, TanStack Query
+  // renders immediately without a client-side fetch, eliminating the
+  // double-fetch. It will still revalidate in the background per staleTime.
+  const workspacesQuery = useQuery({
+    ...trpc.workspace.list.queryOptions(),
+    ...(initialData ? { initialData } : {}),
+  });
 
   const createMutation = useMutation(
     trpc.workspace.create.mutationOptions({
