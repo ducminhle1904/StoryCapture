@@ -115,6 +115,7 @@ export default async function WatchPage({ params }: WatchPageProps) {
         thumbnailUrl={thumbnailUrl}
         chapters={chapters}
         projectName={video.projectName}
+        videoId={video.id}
       />
     </div>
   );

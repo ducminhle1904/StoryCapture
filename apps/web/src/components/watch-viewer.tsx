@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { VideoPlayer } from "./video-player";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { Chapter, AnalyticsEvent } from "./video-player";
 import { ChapterNav } from "./chapter-nav";
 
@@ -10,36 +9,131 @@ interface WatchViewerProps {
   thumbnailUrl: string | null;
   chapters: Chapter[];
   projectName: string;
+  /** Video ID for analytics event tracking */
+  videoId: string;
 }
 
 /**
  * Client component that combines VideoPlayer + ChapterNav with shared playback state.
  * Used by the /watch/[slug] server component page.
+ *
+ * Wires analytics events to /api/analytics/ingest (Plan 04-08).
+ * Session tracking via /api/analytics/session cookie (D-06 GDPR-safe).
  */
 export function WatchViewer({
   videoUrl,
   thumbnailUrl,
   chapters,
   projectName,
+  videoId,
 }: WatchViewerProps) {
   const [currentTime, setCurrentTime] = useState(0);
+  const sessionIdRef = useRef<string | null>(null);
+  const lastSceneRef = useRef<number>(-1);
+  const playStartRef = useRef<number>(0);
 
-  const handleTimeUpdate = useCallback((time: number) => {
-    setCurrentTime(time);
+  // Initialize session cookie on mount
+  useEffect(() => {
+    fetch("/api/analytics/session")
+      .then((res) => res.json())
+      .then((data: { sessionId: string }) => {
+        sessionIdRef.current = data.sessionId;
+      })
+      .catch(() => {
+        // Silent fail — analytics are best-effort (T-04-28)
+      });
   }, []);
 
+  // Send analytics event to ingest endpoint
+  const sendEvent = useCallback(
+    (event: string, extra?: { currentScene?: number; watchDurationSec?: number }) => {
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) return;
+
+      const payload = {
+        videoId,
+        event,
+        sessionId,
+        ...extra,
+      };
+
+      // Use sendBeacon for 'ended' to survive page unload
+      if (event === "ended" && navigator.sendBeacon) {
+        navigator.sendBeacon(
+          "/api/analytics/ingest",
+          new Blob([JSON.stringify(payload)], { type: "application/json" }),
+        );
+      } else {
+        fetch("/api/analytics/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }).catch(() => {
+          // Silent fail — analytics are best-effort (T-04-28)
+        });
+      }
+    },
+    [videoId],
+  );
+
+  // Detect scene boundary crossings
+  const checkSceneBoundary = useCallback(
+    (time: number) => {
+      if (chapters.length === 0) return;
+
+      let currentSceneIdx = 0;
+      for (let i = chapters.length - 1; i >= 0; i--) {
+        if (time >= chapters[i]!.startTimeSec) {
+          currentSceneIdx = i;
+          break;
+        }
+      }
+
+      if (currentSceneIdx !== lastSceneRef.current) {
+        lastSceneRef.current = currentSceneIdx;
+        sendEvent("scene_enter", { currentScene: currentSceneIdx });
+      }
+    },
+    [chapters, sendEvent],
+  );
+
+  const handleTimeUpdate = useCallback(
+    (time: number) => {
+      setCurrentTime(time);
+      checkSceneBoundary(time);
+    },
+    [checkSceneBoundary],
+  );
+
   const handleSeek = useCallback((timeSec: number) => {
-    // We need to communicate with the video element.
-    // Use a ref-based approach via a shared ref.
     seekRef.current?.(timeSec);
   }, []);
 
   // Stable ref for seek function from VideoPlayer
   const seekRef = { current: null as ((t: number) => void) | null };
 
-  const handleAnalyticsEvent = useCallback((_event: AnalyticsEvent) => {
-    // Will be wired to /api/analytics/ingest in Plan 04-08
-  }, []);
+  const handleAnalyticsEvent = useCallback(
+    (analyticsEvent: AnalyticsEvent) => {
+      switch (analyticsEvent.event) {
+        case "play":
+          playStartRef.current = Date.now();
+          sendEvent("play");
+          break;
+        case "pause":
+          sendEvent("pause");
+          break;
+        case "seek":
+          sendEvent("seek");
+          break;
+        case "ended": {
+          const watchDurationSec = (Date.now() - playStartRef.current) / 1000;
+          sendEvent("ended", { watchDurationSec });
+          break;
+        }
+      }
+    },
+    [sendEvent],
+  );
 
   return (
     <div className="mx-auto w-full max-w-4xl">
@@ -130,8 +224,6 @@ function VideoPlayerWithSeek({
     </div>
   );
 }
-
-import { useRef, useEffect } from "react";
 
 function useVideoRef(onSeekRef: (seekFn: (t: number) => void) => void) {
   const ref = useRef<HTMLVideoElement>(null);
