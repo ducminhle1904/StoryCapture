@@ -1,11 +1,12 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import Link from "next/link";
 
 /**
  * Dashboard home page.
- * Shows a welcome message and the user's workspaces.
- * Server component — fetches data directly via Prisma.
+ * Shows workspace switcher at top, defaults to personal workspace.
+ * Each workspace card links to the workspace page.
  */
 export default async function DashboardPage() {
   const session = await auth();
@@ -51,8 +52,9 @@ export default async function DashboardPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {memberships.map((m) => (
-              <div
+              <Link
                 key={m.workspace.id}
+                href={`/workspace/${m.workspace.id}`}
                 className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-colors hover:border-zinc-700"
               >
                 <div className="flex items-start justify-between">
@@ -72,7 +74,7 @@ export default async function DashboardPage() {
                   <span>{m.workspace._count.videos} videos</span>
                   <span>{m.workspace._count.members} members</span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
