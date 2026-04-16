@@ -62,6 +62,7 @@ export function StoryEditor({ onAutosave }: StoryEditorProps) {
         ref={cmRef}
         value={source}
         height="100%"
+        theme="dark"
         extensions={extensions}
         onChange={handleChange}
         basicSetup={{

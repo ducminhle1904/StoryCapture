@@ -20,7 +20,8 @@ export function storyEditorExtensions(): Extension[] {
     storyDiagnosticsLinter,
     storyAutocomplete,
     indentUnit.of("  "),
-    EditorView.theme({
+    EditorView.theme(
+      {
       "&": {
         height: "100%",
         backgroundColor: "var(--color-bg-primary)",
@@ -51,6 +52,8 @@ export function storyEditorExtensions(): Extension[] {
       "&.cm-focused": {
         outline: "none",
       },
-    }),
+      },
+      { dark: true },
+    ),
   ];
 }
