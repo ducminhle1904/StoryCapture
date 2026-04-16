@@ -1,20 +1,9 @@
-/**
- * Single API key row for the Accounts page.
- *
- * Displays provider logo, name, masked key input, status badge,
- * test button, and remove action with AlertDialog confirmation.
- *
- * T-03-20-01: type="password" on input prevents plain-text display.
- * T-03-20-02: Raw key is NOT held in React state post-save. After
- * key_set succeeds, local state reverts to "".
- */
-
 import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Dialog } from "@base-ui-components/react/dialog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Shield, Trash2, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export interface ApiKeyRowProps {
   providerId: string;
@@ -22,7 +11,9 @@ export interface ApiKeyRowProps {
   present: boolean;
   testStatus?: "valid" | "invalid" | "rate_limited" | "untested";
   onPresenceChange: (present: boolean) => void;
-  onTestStatusChange: (status: "valid" | "invalid" | "rate_limited" | "untested") => void;
+  onTestStatusChange: (
+    status: "valid" | "invalid" | "rate_limited" | "untested",
+  ) => void;
 }
 
 export function ApiKeyRow({
@@ -44,12 +35,9 @@ export function ApiKeyRow({
     setSaving(true);
     try {
       await invoke("key_set", { provider: providerId, key: keyValue });
-      // clear local state immediately after save
       setKeyValue("");
       setEditing(false);
       onPresenceChange(true);
-
-      // Auto-test after save
       try {
         const report = (await invoke("key_test", {
           provider: providerId,
@@ -90,145 +78,147 @@ export function ApiKeyRow({
     }
   }, [providerId, onPresenceChange, onTestStatusChange]);
 
-  const statusBadge = testStatus && testStatus !== "untested" && (
-    <span
+  return (
+    <div
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        testStatus === "valid" &&
-          "border border-[var(--color-success)]/25 bg-[var(--color-success)]/12 text-[var(--color-success)]",
-        testStatus === "invalid" &&
-          "border border-[var(--color-danger)]/25 bg-[var(--color-danger)]/12 text-[var(--color-danger)]",
-        testStatus === "rate_limited" &&
-          "border border-[var(--color-warning)]/25 bg-[var(--color-warning)]/12 text-[var(--color-warning)]",
+        "flex items-center gap-4 rounded-[var(--radius-lg)] border px-4 py-3 transition-colors",
+        present
+          ? "border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]"
+          : "border-dashed border-[var(--color-border-default)] bg-transparent",
       )}
     >
-      {testStatus === "valid" && "valid"}
-      {testStatus === "invalid" && "invalid"}
-      {testStatus === "rate_limited" && "rate_limited"}
-    </span>
-  );
-
-  return (
-    <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-        <div className="flex items-center gap-3">
-          <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-2">
-            <Shield className="h-5 w-5 shrink-0 text-[var(--color-fg-muted)]" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-[var(--color-fg-primary)]">
-              {displayName}
-            </div>
-            <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
-              {present ? "Stored in keychain" : "No key saved yet"}
-            </div>
-          </div>
-        </div>
-
-        <div className="min-w-0 flex-1">
-        {present && !editing ? (
-          <span className="font-mono text-sm text-[var(--color-fg-muted)]">
-            {"\u2022\u2022\u2022\u2022 last4"}
+      {/* Provider name + status */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-[var(--color-fg-primary)]">
+            {displayName}
           </span>
-        ) : editing ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              autoComplete="off"
-              value={keyValue}
-              onChange={(e) => setKeyValue(e.target.value)}
-              placeholder={`Paste ${displayName} API key`}
-              className="flex-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-500)] px-3 py-2 text-sm font-mono text-[var(--color-fg-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-              aria-label={`API key cho ${displayName}`}
-            />
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving || !keyValue.trim()}
-              className="brand-button rounded-xl text-[var(--color-fg-primary)]"
-            >
-              {saving ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                "Save"
-              )}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setEditing(false);
-                setKeyValue("");
-              }}
-              className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : null}
+          {testStatus === "valid" && (
+            <span className="rounded-full bg-[var(--color-success)]/12 px-2 py-0.5 text-[10px] font-medium text-[var(--color-success)]">
+              connected
+            </span>
+          )}
+          {testStatus === "invalid" && (
+            <span className="rounded-full bg-[var(--color-danger)]/12 px-2 py-0.5 text-[10px] font-medium text-[var(--color-danger)]">
+              invalid
+            </span>
+          )}
+          {testStatus === "rate_limited" && (
+            <span className="rounded-full bg-[var(--color-warning)]/12 px-2 py-0.5 text-[10px] font-medium text-[var(--color-warning)]">
+              rate limited
+            </span>
+          )}
         </div>
+        {present && !editing && (
+          <span className="mt-0.5 block font-mono text-xs text-[var(--color-fg-muted)]">
+            ••••••••
+          </span>
+        )}
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          {statusBadge}
+      {/* Inline edit form */}
+      {editing && (
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <input
+            type="password"
+            autoComplete="off"
+            value={keyValue}
+            onChange={(e) => setKeyValue(e.target.value)}
+            placeholder={`Paste ${displayName} key`}
+            className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 font-mono text-xs text-[var(--color-fg-primary)] placeholder:text-[var(--color-fg-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent-primary)]"
+            aria-label={`API key for ${displayName}`}
+          />
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || !keyValue.trim()}
+            className="shrink-0 rounded-[var(--radius-md)] px-3 text-xs"
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+          </Button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(false);
+              setKeyValue("");
+            }}
+            className="shrink-0 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
-          {!present && !editing && (
-            <Button
-              size="sm"
-              variant="outline"
+      {/* Actions */}
+      {!editing && (
+        <div className="flex shrink-0 items-center gap-2">
+          {!present && (
+            <button
+              type="button"
               onClick={() => setEditing(true)}
-              className="rounded-xl border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
+              className="text-xs font-medium text-[var(--color-accent-primary)] hover:underline"
             >
               Add key
-            </Button>
+            </button>
           )}
-
           {present && (
             <>
-              <Button
-                size="sm"
-                variant="outline"
+              <button
+                type="button"
                 onClick={handleTest}
                 disabled={testing}
-                className="rounded-xl border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
+                className="text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)] disabled:opacity-50"
               >
                 {testing ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="inline h-3 w-3 animate-spin" />
                 ) : (
-                  "Test connection"
+                  "Test"
                 )}
-              </Button>
-
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setShowConfirm(true)}
-                aria-label={`Delete API key ${displayName}`}
-                className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
+              </button>
+              <span className="text-[var(--color-border-default)]">|</span>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
               >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+                Replace
+              </button>
+              <span className="text-[var(--color-border-default)]">|</span>
+              <button
+                type="button"
+                onClick={() => setShowConfirm(true)}
+                className="text-xs text-[var(--color-danger)]/70 hover:text-[var(--color-danger)]"
+                aria-label={`Remove ${displayName} key`}
+              >
+                Remove
+              </button>
             </>
           )}
         </div>
-      </div>
+      )}
 
+      {/* Delete confirmation dialog */}
       <Dialog.Root open={showConfirm} onOpenChange={setShowConfirm}>
         <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm" />
-          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)]">
-            <Dialog.Title className="mb-2 text-lg font-semibold text-[var(--color-fg-primary)]">
-              {`Delete ${displayName} key?`}
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)]">
+            <Dialog.Title className="text-base font-semibold text-[var(--color-fg-primary)]">
+              Remove {displayName} key?
             </Dialog.Title>
-            <Dialog.Description className="mb-4 text-sm text-[var(--color-fg-muted)]">
-              This removes the key from the OS keychain. You will need to add it
-              again before this provider can be used.
+            <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
+              This deletes the key from the OS keychain. You can add it again
+              later.
             </Dialog.Description>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowConfirm(false)}>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowConfirm(false)}
+              >
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleDelete}>
-                Remove key
+              <Button variant="destructive" size="sm" onClick={handleDelete}>
+                Remove
               </Button>
             </div>
           </Dialog.Popup>

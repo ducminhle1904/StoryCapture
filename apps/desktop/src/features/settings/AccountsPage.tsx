@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Lock } from "lucide-react";
 import { ApiKeyRow } from "./ApiKeyRow";
 import { WebAccountPanel } from "./accounts-panel";
+import AutoUpdaterSettings from "./auto-updater";
 
 interface ProviderState {
   present: boolean;
@@ -70,45 +71,44 @@ export function AccountsPage() {
   const ttsProviders = PROVIDERS.filter((p) => p.group === "TTS");
 
   return (
-    <div data-testid="accounts-page" className="space-y-8">
-      {/* Web account */}
-      <section>
-        <h2 className="text-base font-semibold text-[var(--color-fg-primary)]">
+    <div data-testid="accounts-page" className="grid gap-x-12 gap-y-10 xl:grid-cols-[280px_minmax(0,1fr)]">
+
+      {/* --- Row 1: Web account --- */}
+      <div className="pt-1">
+        <h2 className="text-sm font-semibold text-[var(--color-fg-primary)]">
           Web account
         </h2>
-        <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-          Connect to sync projects and upload videos.
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+          Connect to upload videos and sync projects with the web companion.
         </p>
-        <div className="mt-4">
-          <WebAccountPanel />
+      </div>
+      <div>
+        <WebAccountPanel />
+      </div>
+
+      {/* Divider */}
+      <div className="col-span-full h-px bg-[var(--color-border-subtle)]" />
+
+      {/* --- Row 2: API keys --- */}
+      <div className="pt-1">
+        <h2 className="text-sm font-semibold text-[var(--color-fg-primary)]">
+          API keys
+        </h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+          Provider credentials for language models and voice synthesis.
+        </p>
+        <div className="mt-3 flex items-center gap-1.5 text-xs text-[var(--color-success)]">
+          <Lock size={11} />
+          Stored in OS keychain
         </div>
-      </section>
-
-      <div className="h-px bg-[var(--color-border-subtle)]" />
-
-      {/* API keys */}
-      <section>
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-[var(--color-fg-primary)]">
-              API keys
-            </h2>
-            <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-              Keys are stored in your OS keychain and never leave the device.
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-[var(--color-success)]">
-            <Lock size={12} />
-            OS keychain
-          </div>
-        </div>
-
-        {/* LLM */}
-        <div className="mt-6">
-          <h3 className="text-xs font-medium uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+      </div>
+      <div className="space-y-6">
+        {/* LLM providers */}
+        <div>
+          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-muted)]">
             Language models
           </h3>
-          <div className="mt-3 space-y-2">
+          <div className="space-y-2">
             {llmProviders.map((p) => (
               <ApiKeyRow
                 key={p.id}
@@ -127,12 +127,12 @@ export function AccountsPage() {
           </div>
         </div>
 
-        {/* TTS */}
-        <div className="mt-6">
-          <h3 className="text-xs font-medium uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+        {/* TTS providers */}
+        <div>
+          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-muted)]">
             Voice services
           </h3>
-          <div className="mt-3 space-y-2">
+          <div className="space-y-2">
             {ttsProviders.map((p) => (
               <ApiKeyRow
                 key={p.id}
@@ -150,7 +150,23 @@ export function AccountsPage() {
             ))}
           </div>
         </div>
-      </section>
+      </div>
+
+      {/* Divider */}
+      <div className="col-span-full h-px bg-[var(--color-border-subtle)]" />
+
+      {/* --- Row 3: Updates --- */}
+      <div className="pt-1">
+        <h2 className="text-sm font-semibold text-[var(--color-fg-primary)]">
+          Updates
+        </h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+          Control when the app checks for new versions.
+        </p>
+      </div>
+      <div>
+        <AutoUpdaterSettings />
+      </div>
     </div>
   );
 }

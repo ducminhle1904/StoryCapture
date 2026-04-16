@@ -11,12 +11,8 @@ export default function SettingsRoute() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-10 px-6 py-8">
+        <div className="mx-auto max-w-5xl px-8 py-8">
           <AccountsPage />
-
-          <div className="h-px bg-[var(--color-border-subtle)]" />
-
-          <AutoUpdaterSettings />
         </div>
       </div>
     </main>
