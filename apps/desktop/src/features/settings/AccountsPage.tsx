@@ -1,14 +1,3 @@
-/**
- * Settings -> Accounts page.
- *
- * Single column, max-width 720px centered layout.
- * Header: "Cai dat tai khoan" + keychain callout badge.
- * Two sections: LLM (Anthropic, OpenAI) + TTS (ElevenLabs, OpenAI TTS).
- * Empty state: "Chua co API key nao" + explanation copy.
- *
- * data-testid="accounts-page"
- */
-
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Lock } from "lucide-react";
@@ -35,7 +24,6 @@ export function AccountsPage() {
     openai_tts: { present: false, testStatus: "untested" },
   });
 
-  // On mount: check presence of all keys
   useEffect(() => {
     const checkAll = async () => {
       for (const p of PROVIDERS) {
@@ -48,7 +36,7 @@ export function AccountsPage() {
             [p.id]: { ...prev[p.id], present },
           }));
         } catch {
-          // Keychain unavailable -- leave as absent
+          // Keychain unavailable
         }
       }
     };
@@ -80,85 +68,47 @@ export function AccountsPage() {
 
   const llmProviders = PROVIDERS.filter((p) => p.group === "LLM");
   const ttsProviders = PROVIDERS.filter((p) => p.group === "TTS");
-  const allAbsent = Object.values(providers).every((p) => !p.present);
-  const connectedCount = Object.values(providers).filter((p) => p.present).length;
 
   return (
     <div data-testid="accounts-page" className="space-y-8">
-      <div className="max-w-2xl">
-        <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
-          Credentials
-        </div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] text-[var(--color-fg-primary)]">
-          Accounts and providers
-        </h1>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
-          Configure model providers, voice services, and the optional web account
-          from one surface.
+      {/* Web account */}
+      <section>
+        <h2 className="text-base font-semibold text-[var(--color-fg-primary)]">
+          Web account
+        </h2>
+        <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
+          Connect to sync projects and upload videos.
         </p>
-        <div
-          className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-success)]/25 bg-[var(--color-success)]/12 px-3 py-1 text-sm text-[var(--color-success)]"
-          id="keychain-docs"
-          aria-describedby="keychain-docs"
-        >
-          <Lock className="h-3.5 w-3.5" />
-          <span>{"Lưu trong OS Keychain"}</span>
+        <div className="mt-4">
+          <WebAccountPanel />
         </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-            Connected providers
-          </div>
-          <div className="mt-2 font-mono text-3xl font-semibold tracking-[-0.04em] text-[var(--color-fg-primary)]">
-            {connectedCount}
-          </div>
-        </div>
-        <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-            LLM services
-          </div>
-          <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
-            Anthropic, OpenAI
-          </div>
-        </div>
-        <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-            Voice services
-          </div>
-          <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
-            ElevenLabs, OpenAI TTS
-          </div>
-        </div>
-      </div>
-
-      <section className="mb-8">
-        <WebAccountPanel />
       </section>
 
-      {allAbsent && (
-        <div className="mb-6 rounded-[var(--radius-2xl)] border border-dashed border-[var(--color-border-default)] bg-[var(--color-surface-400)] p-6 text-center">
-          <p className="text-sm font-medium text-[var(--color-fg-primary)]">
-            No API keys connected yet
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
-            Keys are stored in your machine keychain and never written into a
-            project file.
-          </p>
-        </div>
-      )}
+      <div className="h-px bg-[var(--color-border-subtle)]" />
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <section className="brand-panel rounded-[var(--radius-2xl)] px-5 py-5">
-          <h2 className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
-            LLM providers
-          </h2>
-          <p className="mt-2 max-w-sm text-sm text-[var(--color-fg-secondary)]">
-            Anthropic and OpenAI power natural language mode, planning, and
-            assistant workflows.
-          </p>
-          <div className="mt-5 space-y-2">
+      {/* API keys */}
+      <section>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--color-fg-primary)]">
+              API keys
+            </h2>
+            <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
+              Keys are stored in your OS keychain and never leave the device.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--color-success)]">
+            <Lock size={12} />
+            OS keychain
+          </div>
+        </div>
+
+        {/* LLM */}
+        <div className="mt-6">
+          <h3 className="text-xs font-medium uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+            Language models
+          </h3>
+          <div className="mt-3 space-y-2">
             {llmProviders.map((p) => (
               <ApiKeyRow
                 key={p.id}
@@ -175,17 +125,14 @@ export function AccountsPage() {
               />
             ))}
           </div>
-        </section>
+        </div>
 
-        <section className="brand-panel rounded-[var(--radius-2xl)] px-5 py-5">
-          <h2 className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
-            Voice providers
-          </h2>
-          <p className="mt-2 max-w-sm text-sm text-[var(--color-fg-secondary)]">
-            ElevenLabs and OpenAI TTS drive preview voice, script generation, and
-            voiceover clips.
-          </p>
-          <div className="mt-5 space-y-2">
+        {/* TTS */}
+        <div className="mt-6">
+          <h3 className="text-xs font-medium uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+            Voice services
+          </h3>
+          <div className="mt-3 space-y-2">
             {ttsProviders.map((p) => (
               <ApiKeyRow
                 key={p.id}
@@ -202,8 +149,8 @@ export function AccountsPage() {
               />
             ))}
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }
