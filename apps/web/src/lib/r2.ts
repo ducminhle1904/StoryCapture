@@ -1,0 +1,92 @@
+import "server-only";
+
+import {
+  S3Client,
+  CreateMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+  UploadPartCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+/**
+ * R2 S3-compatible client + presigned URL helpers.
+ *
+ * CRITICAL (Pitfall 3): All presigned URLs use the S3 API domain
+ * (`<ACCOUNT_ID>.r2.cloudflarestorage.com`), NOT a custom domain.
+ * Custom domains do not support presigned URL verification.
+ *
+ * DIST-06: All uploads use ServerSideEncryption: AES256 (SSE-S3).
+ */
+
+export const R2_BUCKET = process.env.R2_BUCKET ?? "storycapture-media";
+
+export const r2Client = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+});
+
+/**
+ * Create a presigned PUT URL for uploading a single part of a multipart upload.
+ * Expires in 1 hour. Part-specific (partNumber encoded in signature).
+ * T-04-13: time-limited + part-specific.
+ */
+export async function createPresignedPartUrl(
+  bucket: string,
+  key: string,
+  uploadId: string,
+  partNumber: number,
+): Promise<string> {
+  const command = new UploadPartCommand({
+    Bucket: bucket,
+    Key: key,
+    UploadId: uploadId,
+    PartNumber: partNumber,
+  });
+  return getSignedUrl(r2Client, command, { expiresIn: 3600 });
+}
+
+/**
+ * Create a presigned GET URL for reading an object (thumbnails, private videos).
+ * Expires in 1 hour.
+ */
+export async function createPresignedGetUrl(
+  bucket: string,
+  key: string,
+): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  });
+  return getSignedUrl(r2Client, command, { expiresIn: 3600 });
+}
+
+/**
+ * Create a presigned PUT URL for a single object upload (thumbnails, small files).
+ * Expires in 1 hour. Includes SSE-S3 encryption (DIST-06).
+ */
+export async function createPresignedPutUrl(
+  bucket: string,
+  key: string,
+  contentType: string,
+): Promise<string> {
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+    ServerSideEncryption: "AES256",
+  });
+  return getSignedUrl(r2Client, command, { expiresIn: 3600 });
+}
+
+export {
+  CreateMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+};
