@@ -1,0 +1,64 @@
+# Known-good selectors: each should produce zero warnings.
+# Used by the E11 confusion-matrix test (precision >= 0.80, recall >= 0.70).
+
+- selector: "button[data-testid='signup']"
+  has_fallback: false
+  expected: []
+
+- selector: ".primary-cta[aria-label='Sign up']"
+  has_fallback: false
+  expected: []
+
+- selector: "[data-testid='foo']"
+  has_fallback: false
+  expected: []
+
+- selector: "input[name='email']"
+  has_fallback: false
+  expected: []
+
+- selector: "button[type='submit']"
+  has_fallback: false
+  expected: []
+
+- selector: "a[href='/login']"
+  has_fallback: false
+  expected: []
+
+- selector: "form.login-form input[name='password']"
+  has_fallback: false
+  expected: []
+
+- selector: "div.container > button.primary"
+  has_fallback: false
+  expected: []
+
+- selector: "[role='dialog'] button"
+  has_fallback: false
+  expected: []
+
+- selector: "nav a[aria-current='page']"
+  has_fallback: false
+  expected: []
+
+# False-positive trap: has .class but also anchor attribute -- should be []
+- selector: "button.primary-cta[data-testid='submit']"
+  has_fallback: false
+  expected: []
+
+# False-negative trap: deep structural chain (not nth-child) -- acceptable
+- selector: "div > div > div > div > span:nth-of-type(2)"
+  has_fallback: false
+  expected: []
+
+- selector: "table tbody tr td:first-child"
+  has_fallback: false
+  expected: []
+
+- selector: "#app main section h2"
+  has_fallback: false
+  expected: []
+
+- selector: "label[for='username']"
+  has_fallback: false
+  expected: []

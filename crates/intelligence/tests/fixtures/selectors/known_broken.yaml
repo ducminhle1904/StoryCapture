@@ -1,0 +1,72 @@
+# Known-broken selectors: each has at least one expected issue.
+# Used by the E11 confusion-matrix test (precision >= 0.80, recall >= 0.70).
+
+# TooGeneric + MissingFallback
+- selector: ".btn"
+  has_fallback: false
+  expected: [TooGeneric, MissingFallback]
+
+- selector: "#signup"
+  has_fallback: false
+  expected: [TooGeneric, MissingFallback]
+
+- selector: ".primary-cta"
+  has_fallback: false
+  expected: [TooGeneric, MissingFallback]
+
+- selector: "#email-input"
+  has_fallback: false
+  expected: [TooGeneric, MissingFallback]
+
+# TooGeneric only (has fallback)
+- selector: ".submit"
+  has_fallback: true
+  expected: [TooGeneric]
+
+# AbsoluteXPath
+- selector: "/html/body/form/div[2]/input"
+  has_fallback: false
+  expected: [AbsoluteXPath]
+
+- selector: "/html/body/div[1]/div[2]/span"
+  has_fallback: false
+  expected: [AbsoluteXPath]
+
+- selector: "xpath:/html/body/main/section/button"
+  has_fallback: false
+  expected: [AbsoluteXPath]
+
+# DeepNthChild
+- selector: "div:nth-child(3):nth-child(2):nth-child(1)"
+  has_fallback: false
+  expected: [DeepNthChild]
+
+- selector: "ul > li:nth-child(2) > a:nth-child(1) > span:nth-child(3)"
+  has_fallback: false
+  expected: [DeepNthChild]
+
+# OverlyDynamicClass
+- selector: "._a3f9b2_container"
+  has_fallback: false
+  expected: [OverlyDynamicClass, TooGeneric, MissingFallback]
+
+- selector: "div.__module_abc12__wrapper"
+  has_fallback: false
+  expected: [OverlyDynamicClass]
+
+- selector: "span._ff00aa_label"
+  has_fallback: false
+  expected: [OverlyDynamicClass]
+
+# BrittleAttribute
+- selector: 'div[style="color: red; font-size: 14px"]'
+  has_fallback: false
+  expected: [BrittleAttribute]
+
+- selector: 'div[class="very-long-class-name-that-is-really-specific-and-fragile"]'
+  has_fallback: false
+  expected: [BrittleAttribute]
+
+- selector: "[data-id='a3f9b2c4e5d6f7a8']"
+  has_fallback: false
+  expected: [BrittleAttribute]
