@@ -4,6 +4,7 @@
 
 use thiserror::Error;
 
+pub mod cache;
 pub mod elevenlabs;
 pub mod openai_tts;
 pub mod script;
