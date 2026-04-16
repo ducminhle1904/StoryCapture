@@ -16,12 +16,8 @@ const createCaller = createCallerFactory(appRouter);
 
 export const caller = cache(async () => {
   const hdrs = await headers();
-  return createCaller({
-    prisma: (await createTRPCContext({ headers: hdrs })).prisma,
-    session: null,
-    user: null,
-    headers: hdrs,
-  });
+  const ctx = await createTRPCContext({ headers: hdrs });
+  return createCaller(ctx);
 });
 
 export const trpc = createTRPCOptionsProxy({

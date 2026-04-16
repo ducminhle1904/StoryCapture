@@ -1,16 +1,19 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 
 /**
  * tRPC context — available to all procedures.
- * Session wiring comes in Plan 04-02 (auth).
+ * Includes auth session from NextAuth v5.
  */
 export async function createTRPCContext(opts: { headers: Headers }) {
+  const session = await auth();
+
   return {
     prisma,
-    session: null as null, // wired in Plan 04-02
-    user: null as null, // wired in Plan 04-02
+    session,
+    user: session?.user ?? null,
     headers: opts.headers,
   };
 }
@@ -26,13 +29,21 @@ export const router = t.router;
 export const publicProcedure = t.procedure;
 
 /**
- * Protected procedure — placeholder that throws UNAUTHORIZED.
- * Replaced in Plan 04-02 with real auth check.
+ * Protected procedure — checks auth session and throws UNAUTHORIZED if absent (T-04-05).
  */
-export const protectedProcedure = t.procedure.use(async ({ next }) => {
-  // TODO(04-02): Replace with real session check
-  throw new TRPCError({
-    code: "UNAUTHORIZED",
-    message: "Authentication required. Wired in Plan 04-02.",
+export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  if (!ctx.session?.user) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Authentication required.",
+    });
+  }
+
+  return next({
+    ctx: {
+      ...ctx,
+      session: ctx.session,
+      user: ctx.session.user,
+    },
   });
 });
