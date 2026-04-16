@@ -112,7 +112,8 @@ export function Sidebar() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -4 }}
               transition={{ duration: 0.15 }}
-              className="text-sm font-semibold tracking-[-0.03em] text-[var(--color-fg-primary)]"
+              className="text-sm font-semibold tracking-[-0.02em] text-[var(--color-fg-primary)]"
+              style={{ fontFamily: "'Outfit Variable', 'Outfit', sans-serif" }}
             >
               storycapture
             </motion.span>

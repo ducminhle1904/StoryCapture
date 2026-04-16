@@ -31,10 +31,11 @@ export function BrandWordmark({
   return (
     <span
       className={cn(
-        "font-semibold tracking-[-0.04em]",
+        "font-semibold tracking-[-0.02em]",
         muted ? "text-[var(--color-fg-secondary)]" : "text-[var(--color-fg-primary)]",
         className,
       )}
+      style={{ fontFamily: "'Outfit Variable', 'Outfit', sans-serif" }}
     >
       storycapture
     </span>
