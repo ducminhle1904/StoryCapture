@@ -77,6 +77,17 @@ encoder = { path = "../../../crates/encoder" }
 effects = { path = "../../../crates/effects" }
 story-parser = { path = "../../../crates/story-parser" }
 storage = { path = "../../../crates/storage" }
+intelligence = { path = "../../../crates/intelligence" }
 parking_lot = { workspace = true }
 async-trait = "0.1"
+
+# Phase 03 plan 03: provider probe HTTPS client (rustls only — no native-tls,
+# no plaintext HTTP). `json` parses error bodies for safe `detail` strings.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+[dev-dependencies]
+# Phase 03 plan 03: mock HTTP server for `key_test` leak-proof integration tests.
+wiremock = "0.6"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = { workspace = true }
 
