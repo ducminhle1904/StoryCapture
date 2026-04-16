@@ -1,0 +1,223 @@
+// StoryCapture Web Companion — Prisma Schema
+// 12 models, 3 enums covering auth, workspaces, video, analytics, templates, sync
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth.js required models ───
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  workspaceMemberships WorkspaceMember[]
+  videos        Video[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Workspace & RBAC ───
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  isPersonal Boolean @default(false)
+  members   WorkspaceMember[]
+  videos    Video[]
+  invites   WorkspaceInvite[]
+  templates Template[]
+  syncedProjects SyncedProject[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role      @default(VIEWER)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  joinedAt    DateTime  @default(now())
+
+  @@unique([userId, workspaceId])
+}
+
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+model WorkspaceInvite {
+  id          String    @id @default(cuid())
+  email       String
+  workspaceId String
+  role        Role      @default(VIEWER)
+  token       String    @unique @default(cuid())
+  expiresAt   DateTime
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([token])
+}
+
+// ─── Video & Upload ───
+
+model Video {
+  id              String      @id @default(cuid())
+  slug            String      @unique
+  projectName     String
+  fileName        String
+  fileSizeBytes   BigInt
+  r2Key           String      @unique
+  thumbnailR2Key  String?
+  uploadId        String?     // S3 multipart upload ID (null after complete)
+  status          VideoStatus @default(UPLOADING)
+  isPublic        Boolean     @default(false) // D-02: private by default
+  storySource     String?     @db.Text // DSL source for display (read-only)
+  sceneBoundaries Json        @default("[]") // [{sceneIndex, label, startTimeSec}]
+  workspaceId     String
+  uploaderId      String
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploader        User        @relation(fields: [uploaderId], references: [id])
+  viewEvents      ViewEvent[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([workspaceId])
+  @@index([slug])
+}
+
+enum VideoStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+// ─── Analytics ───
+
+model ViewEvent {
+  id               String   @id @default(cuid())
+  videoId          String
+  event            String   // play, pause, seek, scene_enter, ended
+  sessionId        String   // from httpOnly cookie (no PII)
+  country          String   @default("XX") // ISO 3166-1 alpha-2
+  currentScene     Int?     // scene index from DSL
+  watchDurationSec Float?
+  timestamp        DateTime @default(now())
+  video            Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, timestamp])
+  @@index([videoId, sessionId])
+}
+
+// ─── Aggregated analytics (materialized by cron / tRPC mutation) ───
+
+model DailyVideoStats {
+  id                String   @id @default(cuid())
+  videoId           String
+  date              DateTime @db.Date
+  totalPlays        Int      @default(0)
+  uniquePlays       Int      @default(0)
+  avgDurationSec    Float    @default(0)
+  medianDurationSec Float    @default(0)
+  countryBreakdown  Json     @default("{}")  // { "US": 42, "DE": 7, ... }
+  sceneDropoffs     Json     @default("[]")  // [{ sceneIndex, dropoffCount }]
+
+  @@unique([videoId, date])
+  @@index([videoId])
+}
+
+// ─── Templates ───
+
+model Template {
+  id           String           @id @default(cuid())
+  name         String
+  description  String?          @db.Text
+  category     TemplateCategory
+  storySource  String           @db.Text // DSL content
+  thumbnailUrl String?
+  workspaceId  String?          // null = system template
+  workspace    Workspace?       @relation(fields: [workspaceId], references: [id])
+  forkCount    Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([category])
+}
+
+enum TemplateCategory {
+  SAAS_ONBOARDING
+  ECOMMERCE_CHECKOUT
+  API_WALKTHROUGH
+  MOBILE_DEMO
+  CLI_TOOL
+  LANDING_PAGE
+  FEATURE_ANNOUNCEMENT
+  BUG_REPRODUCTION
+  INTERNAL_TRAINING
+}
+
+// ─── Desktop sync (project mirror metadata) ───
+
+model SyncedProject {
+  id              String   @id @default(cuid())
+  desktopId       String   // UUID from desktop project.sqlite
+  workspaceId     String
+  projectName     String
+  storySource     String?  @db.Text
+  recordingStatus String?  // "idle" | "recording" | "step:3/7"
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lastSyncedAt    DateTime @default(now())
+
+  @@unique([desktopId, workspaceId])
+  @@index([workspaceId])
+}
