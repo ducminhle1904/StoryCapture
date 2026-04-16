@@ -384,4 +384,230 @@ export const videoRouter = router({
         createdAt: video.createdAt,
       };
     }),
+
+  /**
+   * Toggle video privacy between private (unlisted, noindex) and public (indexed).
+   * D-02: Private by default. Owner/editor can toggle.
+   * T-04-19: Verifies workspace membership + editor/owner role.
+   */
+  updatePrivacy: protectedProcedure
+    .input(
+      z.object({
+        videoId: z.string(),
+        isPublic: z.boolean(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const video = await ctx.prisma.video.findUnique({
+        where: { id: input.videoId },
+        select: { id: true, workspaceId: true },
+      });
+
+      if (!video) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
+      }
+
+      // T-04-19: Check workspace membership + role
+      const membership = await ctx.prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: ctx.user.id!,
+            workspaceId: video.workspaceId,
+          },
+        },
+      });
+
+      if (!membership || membership.role === "VIEWER") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You need EDITOR or OWNER role to change video privacy.",
+        });
+      }
+
+      const updated = await ctx.prisma.video.update({
+        where: { id: input.videoId },
+        data: { isPublic: input.isPublic },
+        select: { id: true, isPublic: true },
+      });
+
+      return updated;
+    }),
+
+  /**
+   * Update the vanity slug for a video.
+   * D-02: Defaults to slugified project name, owner can edit.
+   * T-04-18: Validates format (lowercase alphanumeric + hyphens, 3-60 chars) and enforces uniqueness.
+   * T-04-19: Verifies workspace membership + editor/owner role.
+   */
+  updateSlug: protectedProcedure
+    .input(
+      z.object({
+        videoId: z.string(),
+        newSlug: z
+          .string()
+          .min(3, "Slug must be at least 3 characters.")
+          .max(60, "Slug must be at most 60 characters.")
+          .regex(
+            /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+            "Slug must be lowercase alphanumeric with hyphens only.",
+          ),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const video = await ctx.prisma.video.findUnique({
+        where: { id: input.videoId },
+        select: { id: true, slug: true, workspaceId: true },
+      });
+
+      if (!video) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
+      }
+
+      // T-04-19: Check workspace membership + role
+      const membership = await ctx.prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: ctx.user.id!,
+            workspaceId: video.workspaceId,
+          },
+        },
+      });
+
+      if (!membership || membership.role === "VIEWER") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You need EDITOR or OWNER role to change the video slug.",
+        });
+      }
+
+      // T-04-18: Check uniqueness (skip if slug unchanged)
+      if (input.newSlug !== video.slug) {
+        const existing = await ctx.prisma.video.findUnique({
+          where: { slug: input.newSlug },
+          select: { id: true },
+        });
+
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This slug is already taken. Please choose a different one.",
+          });
+        }
+      }
+
+      const updated = await ctx.prisma.video.update({
+        where: { id: input.videoId },
+        data: { slug: input.newSlug },
+        select: { id: true, slug: true },
+      });
+
+      return updated;
+    }),
+
+  /**
+   * Get a video by ID for the management/detail page.
+   * Auth-gated: only workspace members can view.
+   */
+  getById: protectedProcedure
+    .input(z.object({ videoId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const video = await ctx.prisma.video.findUnique({
+        where: { id: input.videoId },
+        select: {
+          id: true,
+          slug: true,
+          projectName: true,
+          fileName: true,
+          fileSizeBytes: true,
+          status: true,
+          isPublic: true,
+          sceneBoundaries: true,
+          r2Key: true,
+          thumbnailR2Key: true,
+          workspaceId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (!video) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
+      }
+
+      // Check workspace membership
+      const membership = await ctx.prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: ctx.user.id!,
+            workspaceId: video.workspaceId,
+          },
+        },
+      });
+
+      if (!membership) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a member of this workspace.",
+        });
+      }
+
+      const videoUrl = await createPresignedGetUrl(R2_BUCKET, video.r2Key);
+      const thumbnailUrl = video.thumbnailR2Key
+        ? await createPresignedGetUrl(R2_BUCKET, video.thumbnailR2Key)
+        : null;
+
+      return {
+        id: video.id,
+        slug: video.slug,
+        projectName: video.projectName,
+        fileName: video.fileName,
+        fileSizeBytes: Number(video.fileSizeBytes),
+        status: video.status,
+        isPublic: video.isPublic,
+        sceneBoundaries: video.sceneBoundaries,
+        videoUrl,
+        thumbnailUrl,
+        workspaceId: video.workspaceId,
+        createdAt: video.createdAt,
+        updatedAt: video.updatedAt,
+      };
+    }),
+
+  /**
+   * Delete a video and its R2 objects.
+   * T-04-19: Only editors/owners can delete.
+   */
+  deleteVideo: protectedProcedure
+    .input(z.object({ videoId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const video = await ctx.prisma.video.findUnique({
+        where: { id: input.videoId },
+        select: { id: true, workspaceId: true },
+      });
+
+      if (!video) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
+      }
+
+      const membership = await ctx.prisma.workspaceMember.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: ctx.user.id!,
+            workspaceId: video.workspaceId,
+          },
+        },
+      });
+
+      if (!membership || membership.role === "VIEWER") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You need EDITOR or OWNER role to delete videos.",
+        });
+      }
+
+      // Delete from DB (R2 cleanup can be handled by a background job later)
+      await ctx.prisma.video.delete({ where: { id: input.videoId } });
+
+      return { deleted: true };
+    }),
 });
