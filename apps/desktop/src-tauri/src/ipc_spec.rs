@@ -18,7 +18,7 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        automation, capture, encode, export, parse, preset, projects, render, sound_library,
+        automation, capture, encode, export, keys, parse, preset, projects, render, sound_library,
         system, timeline, updater,
     },
     error::AppError,
@@ -74,6 +74,11 @@ pub fn builder() -> Builder<Wry> {
             sound_library::sound_library_list,
             updater::check_update,
             updater::install_update,
+            // Phase 03 plan 03 — AI provider key management.
+            keys::key_set,
+            keys::key_get_presence,
+            keys::key_delete,
+            keys::key_test,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -126,6 +131,10 @@ pub fn builder() -> Builder<Wry> {
         .typ::<sound_library::SoundLibraryEntryDto>()
         // Plan 01-10 (auto-updater)
         .typ::<updater::UpdateInfo>()
+        // Phase 03 plan 03 (AI key management)
+        .typ::<keys::ProviderId>()
+        .typ::<keys::KeyTestReport>()
+        .typ::<keys::KeyError>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the

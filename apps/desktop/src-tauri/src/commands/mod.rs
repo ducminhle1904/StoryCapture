@@ -8,6 +8,7 @@ pub mod automation;
 pub mod capture;
 pub mod encode;
 pub mod export;
+pub mod keys;
 pub mod parse;
 pub mod preset;
 pub mod projects;

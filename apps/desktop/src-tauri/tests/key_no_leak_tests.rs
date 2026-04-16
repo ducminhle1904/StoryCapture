@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use storycapture::commands::keys::{
     key_delete_for_test, key_set_for_test, key_test_for_test, KeyError, KeyTestReport, ProviderId,
 };
-use tracing::subscriber::with_default;
+use tracing::subscriber::{set_default, with_default};
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wiremock::matchers::{method, path};
@@ -112,7 +112,7 @@ fn no_api_key_leak_from_key_commands() {
     cleanup(&service, ProviderId::Anthropic);
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn no_api_key_leak_from_key_test_happy_path() {
     // --- arrange: wiremock serving the provider probe endpoint ---
     let server = MockServer::start().await;
@@ -137,10 +137,14 @@ async fn no_api_key_leak_from_key_test_happy_path() {
     set.expect("key_set should succeed");
 
     // --- act: key_test under the redaction subscriber ---
+    // `set_default` returns a thread-local guard that persists across
+    // `await` points on the current task (single-threaded test runtime).
     let sub = subscriber_for(writer.clone());
-    let report: KeyTestReport =
-        with_default(sub, || key_test_for_test(&service, ProviderId::Anthropic))
-            .expect("key_test should succeed against mock server");
+    let _guard = set_default(sub);
+    let report: KeyTestReport = key_test_for_test(&service, ProviderId::Anthropic)
+        .await
+        .expect("key_test should succeed against mock server");
+    drop(_guard);
 
     // --- assert ---
     assert!(report.ok, "probe should succeed (mock returns 200)");
