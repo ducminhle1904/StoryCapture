@@ -46,6 +46,11 @@ fn row_to_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<RenderJob> {
 
 const SELECT_COLS: &str = "id, story_id, preset_id, format, resolution, fps, quality, status, progress_pct, started_at, completed_at, error, priority, output_path, batch_id, created_at";
 
+/// Default retention window for terminal (completed/failed/cancelled) rows.
+/// Prevents the render_jobs table from growing unboundedly over months of
+/// usage while still leaving enough history for the "recent exports" UI.
+const DEFAULT_RETENTION_LIMIT: usize = 100;
+
 pub fn enqueue(conn: &Connection, j: &NewRenderJob) -> Result<Uuid, StorageError> {
     let id = Uuid::now_v7();
     let created_at = now_millis();
@@ -65,7 +70,31 @@ pub fn enqueue(conn: &Connection, j: &NewRenderJob) -> Result<Uuid, StorageError
             created_at,
         ],
     )?;
+    // Amortise retention pruning across enqueues. Non-terminal rows are
+    // untouched; only the OLDEST completed/failed/cancelled rows beyond
+    // the retention window are removed.
+    let _ = prune_completed_before(conn, DEFAULT_RETENTION_LIMIT)?;
     Ok(id)
+}
+
+/// Delete terminal (completed/failed/cancelled) rows beyond the most
+/// recent `limit` entries, ordered by `created_at` descending. Non-
+/// terminal rows (pending/running/interrupted) are never touched.
+///
+/// Returns the number of rows deleted.
+pub fn prune_completed_before(conn: &Connection, limit: usize) -> Result<u32, StorageError> {
+    let n = conn.execute(
+        "DELETE FROM render_jobs \
+         WHERE status IN ('completed','failed','cancelled') \
+         AND id NOT IN ( \
+             SELECT id FROM render_jobs \
+             WHERE status IN ('completed','failed','cancelled') \
+             ORDER BY created_at DESC \
+             LIMIT ?1 \
+         )",
+        params![limit as i64],
+    )?;
+    Ok(n as u32)
 }
 
 /// D-04 priority poll: highest-priority pending jobs first, FIFO within same
@@ -301,6 +330,80 @@ mod tests {
         assert_eq!(batch.len(), 2);
         assert_eq!(batch[0].id, j1);
         assert_eq!(batch[1].id, j2);
+    }
+
+    #[test]
+    fn prune_completed_before_retains_limit_terminal_rows_and_never_touches_active() {
+        let c = conn();
+        // Seed 5 completed jobs with strictly increasing created_at.
+        let mut terminal_ids = Vec::new();
+        for i in 0..5 {
+            let id = enqueue(&c, &new_job(&format!("term-{i}"), 0)).unwrap();
+            mark_running(&c, id).unwrap();
+            mark_completed(&c, id, Path::new("x")).unwrap();
+            terminal_ids.push(id);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        // One failed + one cancelled to exercise both terminal classes.
+        let failed = enqueue(&c, &new_job("failed", 0)).unwrap();
+        mark_running(&c, failed).unwrap();
+        mark_failed(&c, failed, "boom").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let cancelled = enqueue(&c, &new_job("cancel", 0)).unwrap();
+        cancel(&c, cancelled).unwrap();
+
+        // Add a live pending + running job — must survive pruning.
+        let live_pending = enqueue(&c, &new_job("live", 0)).unwrap();
+        let live_running = enqueue(&c, &new_job("live2", 0)).unwrap();
+        mark_running(&c, live_running).unwrap();
+
+        // Retain only the 2 most recent terminal rows; expect 5 deletes.
+        let deleted = prune_completed_before(&c, 2).unwrap();
+        assert_eq!(deleted, 5);
+
+        // Live rows untouched.
+        assert!(get(&c, live_pending).unwrap().is_some());
+        assert!(get(&c, live_running).unwrap().is_some());
+
+        // The 2 most recently-created terminal rows (cancelled, failed)
+        // should survive; older completed rows should be gone.
+        assert!(get(&c, cancelled).unwrap().is_some());
+        assert!(get(&c, failed).unwrap().is_some());
+        for id in &terminal_ids {
+            assert!(
+                get(&c, *id).unwrap().is_none(),
+                "older completed row {id} should have been pruned"
+            );
+        }
+    }
+
+    #[test]
+    fn enqueue_triggers_retention_pruning() {
+        let c = conn();
+        // Seed DEFAULT_RETENTION_LIMIT+5 completed rows, each followed by
+        // a short sleep so created_at is strictly monotonic.
+        let mut terminal_ids = Vec::new();
+        for i in 0..(DEFAULT_RETENTION_LIMIT + 5) {
+            let id = enqueue(&c, &new_job(&format!("j-{i}"), 0)).unwrap();
+            mark_running(&c, id).unwrap();
+            mark_completed(&c, id, Path::new("x")).unwrap();
+            terminal_ids.push(id);
+        }
+        // After the next enqueue, the terminal-row count should be capped.
+        let fresh = enqueue(&c, &new_job("fresh", 0)).unwrap();
+        let terminal_count: i64 = c
+            .query_row(
+                "SELECT COUNT(*) FROM render_jobs WHERE status IN ('completed','failed','cancelled')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            terminal_count as usize <= DEFAULT_RETENTION_LIMIT,
+            "terminal rows {terminal_count} exceeded retention {DEFAULT_RETENTION_LIMIT}"
+        );
+        // The just-enqueued row (pending) is untouched.
+        assert!(get(&c, fresh).unwrap().is_some());
     }
 
     #[test]
