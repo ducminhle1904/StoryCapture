@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../init";
+import { requireWorkspaceMember } from "../lib/guards";
 import {
   r2Client,
   R2_BUCKET,
@@ -61,21 +62,7 @@ export const videoRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // Verify user has EDITOR or OWNER role in workspace
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: input.workspaceId,
-          },
-        },
-      });
-
-      if (!membership || membership.role === "VIEWER") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You need EDITOR or OWNER role to upload videos.",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId, "EDITOR");
 
       // Generate R2 key: {workspaceId}/{uuid}/{fileName}
       const videoUuid = crypto.randomUUID();
@@ -289,21 +276,7 @@ export const videoRouter = router({
     .input(z.object({ workspaceId: z.string() }))
     .query(async ({ ctx, input }) => {
       // Verify membership
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: input.workspaceId,
-          },
-        },
-      });
-
-      if (!membership) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You are not a member of this workspace.",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId);
 
       const videos = await ctx.prisma.video.findMany({
         where: { workspaceId: input.workspaceId },
@@ -408,21 +381,7 @@ export const videoRouter = router({
       }
 
       // T-04-19: Check workspace membership + role
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: video.workspaceId,
-          },
-        },
-      });
-
-      if (!membership || membership.role === "VIEWER") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You need EDITOR or OWNER role to change video privacy.",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId, "EDITOR");
 
       const updated = await ctx.prisma.video.update({
         where: { id: input.videoId },
@@ -464,21 +423,7 @@ export const videoRouter = router({
       }
 
       // T-04-19: Check workspace membership + role
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: video.workspaceId,
-          },
-        },
-      });
-
-      if (!membership || membership.role === "VIEWER") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You need EDITOR or OWNER role to change the video slug.",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId, "EDITOR");
 
       // T-04-18: Check uniqueness (skip if slug unchanged)
       if (input.newSlug !== video.slug) {
@@ -535,21 +480,7 @@ export const videoRouter = router({
       }
 
       // Check workspace membership
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: video.workspaceId,
-          },
-        },
-      });
-
-      if (!membership) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You are not a member of this workspace.",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId);
 
       const videoUrl = await createPresignedGetUrl(R2_BUCKET, video.r2Key);
       const thumbnailUrl = video.thumbnailR2Key
@@ -589,21 +520,7 @@ export const videoRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
       }
 
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: video.workspaceId,
-          },
-        },
-      });
-
-      if (!membership || membership.role === "VIEWER") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You need EDITOR or OWNER role to delete videos.",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId, "EDITOR");
 
       // Delete from DB (R2 cleanup can be handled by a background job later)
       await ctx.prisma.video.delete({ where: { id: input.videoId } });

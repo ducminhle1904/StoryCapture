@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { PrismaClient } from "@prisma/client";
 import { router, protectedProcedure } from "../init";
 import { DASHBOARD_DAYS, MAX_RETENTION_DAYS } from "@/lib/constants";
+import { requireWorkspaceMember } from "../lib/guards";
 
 /**
  * Analytics tRPC router (Plan 04-08, D-06).
@@ -21,7 +23,7 @@ import { DASHBOARD_DAYS, MAX_RETENTION_DAYS } from "@/lib/constants";
  * in the workspace that owns the video.
  */
 async function verifyVideoAccess(
-  prisma: Parameters<typeof router>[0] extends never ? never : any,
+  prisma: PrismaClient,
   userId: string,
   videoId: string,
 ) {
@@ -34,21 +36,7 @@ async function verifyVideoAccess(
     throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
   }
 
-  const membership = await prisma.workspaceMember.findUnique({
-    where: {
-      userId_workspaceId: {
-        userId,
-        workspaceId: video.workspaceId,
-      },
-    },
-  });
-
-  if (!membership) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "You are not a member of this workspace.",
-    });
-  }
+  await requireWorkspaceMember(prisma, userId, video.workspaceId);
 
   return video;
 }

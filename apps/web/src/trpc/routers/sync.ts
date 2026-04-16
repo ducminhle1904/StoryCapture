@@ -25,6 +25,7 @@ import { z } from "zod";
 import { EventEmitter, on } from "node:events";
 import { router, publicProcedure, protectedProcedure } from "../init";
 import { verifyJwt } from "@/lib/jwt";
+import { requireWorkspaceMember } from "../lib/guards";
 
 // ── Sync event emitter (in-memory, per-process) ──
 
@@ -107,21 +108,7 @@ export const syncRouter = router({
     .input(pushMetadataInput)
     .mutation(async ({ ctx, input }) => {
       // Verify workspace membership
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: input.workspaceId,
-          },
-        },
-      });
-
-      if (!membership) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Not a member of this workspace",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId);
 
       const synced = await ctx.prisma.syncedProject.upsert({
         where: {
@@ -179,21 +166,7 @@ export const syncRouter = router({
   updateRecordingStatus: protectedProcedure
     .input(updateRecordingStatusInput)
     .mutation(async ({ ctx, input }) => {
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: input.workspaceId,
-          },
-        },
-      });
-
-      if (!membership) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Not a member of this workspace",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId);
 
       await ctx.prisma.syncedProject.updateMany({
         where: {
@@ -325,21 +298,7 @@ export const syncRouter = router({
   listProjects: protectedProcedure
     .input(z.object({ workspaceId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const membership = await ctx.prisma.workspaceMember.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: ctx.user.id!,
-            workspaceId: input.workspaceId,
-          },
-        },
-      });
-
-      if (!membership) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Not a member of this workspace",
-        });
-      }
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId);
 
       const projects = await ctx.prisma.syncedProject.findMany({
         where: { workspaceId: input.workspaceId },
