@@ -152,6 +152,16 @@ export const useNlStore = create<NlStore>((set, get) => ({
   },
 
   addMessage: (msg: ChatMessage) => {
-    set((state) => ({ messages: [...state.messages, msg] }));
+    set((state) => {
+      const updated = [...state.messages, msg];
+      // Cap at 200 messages to prevent unbounded memory growth.
+      const MAX_MESSAGES = 200;
+      return {
+        messages:
+          updated.length > MAX_MESSAGES
+            ? updated.slice(updated.length - MAX_MESSAGES)
+            : updated,
+      };
+    });
   },
 }));
