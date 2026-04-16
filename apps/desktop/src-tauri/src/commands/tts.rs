@@ -103,10 +103,8 @@ fn compute_tts_cost(provider: ProviderId, model: &str, char_count: usize) -> f64
 
 // ---- Keychain helper ----
 
-const KEYCHAIN_SERVICE: &str = "com.storycapture.keys";
-
 fn read_api_key(provider: ProviderId) -> Result<String, TtsCommandError> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, provider.account())
+    let entry = keyring::Entry::new(super::keys::SERVICE, provider.account())
         .map_err(|_| TtsCommandError::NoApiKey)?;
     entry.get_password().map_err(|_| TtsCommandError::NoApiKey)
 }

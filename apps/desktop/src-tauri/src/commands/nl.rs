@@ -196,10 +196,8 @@ fn build_provider(
 
 // ---- Keychain helper ----
 
-const KEYCHAIN_SERVICE: &str = "com.storycapture.keys";
-
 fn read_api_key(provider: ProviderId) -> Result<String, NlCommandError> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, provider.account())
+    let entry = keyring::Entry::new(super::keys::SERVICE, provider.account())
         .map_err(|_| NlCommandError::NoApiKey)?;
     entry.get_password().map_err(|_| NlCommandError::NoApiKey)
 }

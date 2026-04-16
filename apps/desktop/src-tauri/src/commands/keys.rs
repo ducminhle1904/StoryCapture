@@ -106,7 +106,7 @@ impl From<keyring::Error> for KeyError {
 
 // ---- service constant ----------------------------------------------------
 
-const SERVICE: &str = "com.storycapture.keys";
+pub const SERVICE: &str = "com.storycapture.keys";
 
 // Env-var override hook for `tests/key_no_leak_tests.rs`. In production it is
 // unset and the real provider base URL is used.
