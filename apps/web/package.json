@@ -34,7 +34,8 @@
     "tailwindcss": "^4.0.0",
     "resend": "^4.0.0",
     "client-only": "^0.0.1",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "@storycapture/ui": "workspace:*"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
