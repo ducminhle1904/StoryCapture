@@ -3,9 +3,7 @@
 //! Tests the pure function `compute_sync_plan` which aligns TTS clip
 //! durations to DSL step boundaries per D-13.
 
-use intelligence::tts::sync::{
-    compute_sync_plan, AdjustedStep, ClipMeta, DuckEvent, StepTiming, SyncPlan,
-};
+use intelligence::tts::sync::{compute_sync_plan, ClipMeta, StepTiming};
 use std::path::PathBuf;
 
 /// Test 1: Clip longer than step -> extend step with freeze frame.

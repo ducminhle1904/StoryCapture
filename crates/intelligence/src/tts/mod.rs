@@ -8,6 +8,7 @@ pub mod cache;
 pub mod elevenlabs;
 pub mod openai_tts;
 pub mod script;
+pub mod sync;
 pub mod voice_presets;
 
 #[derive(Debug, Clone)]

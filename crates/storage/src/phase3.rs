@@ -372,6 +372,57 @@ where
     Ok(removed)
 }
 
+/// Look up the most recent TTS cache entry for a given step_id.
+///
+/// Returns the entry with the latest `last_used_at` if multiple cache
+/// entries exist for the same step (e.g. different voices or regenerations).
+pub fn lookup_tts_cache_by_step(
+    conn: &Connection,
+    step_id: &str,
+) -> rusqlite::Result<Option<TtsCacheEntry>> {
+    conn.query_row(
+        "SELECT hash, step_id, project_id, file_path, provider, model, voice_id, \
+                script_sha, byte_size, created_at, last_used_at \
+         FROM tts_cache_index WHERE step_id = ?1 \
+         ORDER BY last_used_at DESC LIMIT 1",
+        params![step_id],
+        |row| {
+            let file_path_s: String = row.get(3)?;
+            Ok(TtsCacheEntry {
+                hash: row.get(0)?,
+                step_id: row.get(1)?,
+                project_id: row.get(2)?,
+                file_path: PathBuf::from(file_path_s),
+                provider: row.get(4)?,
+                model: row.get(5)?,
+                voice_id: row.get(6)?,
+                script_sha: row.get(7)?,
+                byte_size: row.get(8)?,
+                created_at: row.get(9)?,
+                last_used_at: row.get(10)?,
+            })
+        },
+    )
+    .optional()
+}
+
+/// Update the drift_ms field on the most recent tts_clip_metrics row
+/// for a given step_id. Used by `tts_apply_sync` after computing the
+/// sync plan.
+pub fn update_tts_metric_drift(
+    conn: &Connection,
+    step_id: &str,
+    drift_ms: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE tts_clip_metrics SET drift_ms = ?1 \
+         WHERE rowid = (SELECT rowid FROM tts_clip_metrics \
+         WHERE step_id = ?2 ORDER BY timestamp DESC LIMIT 1)",
+        params![drift_ms, step_id],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

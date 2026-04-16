@@ -96,6 +96,8 @@ pub fn builder() -> Builder<Wry> {
             tts::tts_voice_list,
             tts::tts_regenerate_clip,
             tts::tts_gc_cache,
+            // Phase 03 plan 12 — TTS voiceover sync engine.
+            tts::tts_apply_sync,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -168,6 +170,11 @@ pub fn builder() -> Builder<Wry> {
         .typ::<tts::TtsGenerateResult>()
         .typ::<tts::TtsCommandError>()
         .typ::<tts::VoiceInfoDto>()
+        // Phase 03 plan 12 (TTS voiceover sync)
+        .typ::<tts::SyncPlanDto>()
+        .typ::<tts::AdjustedStepDto>()
+        .typ::<tts::DuckEventDto>()
+        .typ::<tts::StepTimingDto>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the

@@ -19,7 +19,7 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
 use crate::commands::keys::ProviderId;
@@ -455,4 +455,154 @@ pub async fn tts_gc_cache(
     );
 
     Ok(removed)
+}
+
+// ---- Sync plan types (specta-compatible DTOs) ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct AdjustedStepDto {
+    pub step_id: String,
+    pub new_duration_ms: u64,
+    pub freeze_frame_extension_ms: u64,
+    pub silence_padding_ms: u64,
+    pub clip_start_ms: u64,
+    pub drift_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct DuckEventDto {
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub db: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SyncPlanDto {
+    pub adjusted_steps: Vec<AdjustedStepDto>,
+    pub duck_events: Vec<DuckEventDto>,
+}
+
+/// Compute a TTS voiceover-to-timeline sync plan and emit duck events
+/// to the sound mixer (Phase 2 D-22 slot).
+///
+/// This command accepts step timings directly (Phase 2 effects AST
+/// integration is deferred — when Phase 2 is fully merged, this will
+/// load step timings from the project's effects AST instead of
+/// requiring them as a parameter).
+///
+/// Flow:
+/// 1. Load ClipMeta by scanning tts_cache_index + probing audio durations.
+/// 2. Call `compute_sync_plan`.
+/// 3. Emit duck_events via `app.emit("sound_mixer/duck_events", ...)` (D-22).
+/// 4. Persist drift_ms in tts_clip_metrics for each clip.
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(skip(app, step_timings))]
+pub async fn tts_apply_sync(
+    app: AppHandle,
+    project_id: String,
+    step_timings: Vec<StepTimingDto>,
+) -> Result<SyncPlanDto, TtsCommandError> {
+    let _pid = Uuid::parse_str(&project_id)
+        .map_err(|_| TtsCommandError::InvalidProject)?;
+
+    let app_state = app.state::<AppState>();
+    let root = project_root(&app_state, &project_id);
+    let db_path = project_db_path(&app_state, &project_id);
+
+    let conn = storage::Connection::open(&db_path)
+        .map_err(|e| TtsCommandError::Storage(e.to_string()))?;
+
+    // Convert DTO step timings to intelligence types.
+    let steps: Vec<intelligence::tts::sync::StepTiming> = step_timings
+        .iter()
+        .map(|s| intelligence::tts::sync::StepTiming {
+            step_id: s.step_id.clone(),
+            original_duration_ms: s.original_duration_ms,
+        })
+        .collect();
+
+    // Load ClipMeta by scanning the tts_cache_index for this project's steps.
+    let mut clip_metas: Vec<intelligence::tts::sync::ClipMeta> = Vec::new();
+    for st in &steps {
+        if let Some(entry) = storage::phase3::lookup_tts_cache_by_step(&conn, &st.step_id)
+            .unwrap_or(None)
+        {
+            let abs_path = root.join(&entry.file_path);
+            let audio_duration_ms = if abs_path.exists() {
+                let bytes = std::fs::read(&abs_path)
+                    .map_err(|e| TtsCommandError::Io(e.to_string()))?;
+                probe_audio_duration_ms(&bytes).unwrap_or(0)
+            } else {
+                0
+            };
+            clip_metas.push(intelligence::tts::sync::ClipMeta {
+                step_id: st.step_id.clone(),
+                audio_duration_ms,
+                file_path: abs_path,
+            });
+        }
+    }
+
+    // Compute sync plan.
+    let plan = intelligence::tts::sync::compute_sync_plan(&steps, &clip_metas);
+
+    // Emit duck_events to the sound mixer actor (Phase 2 D-22 slot).
+    let duck_dtos: Vec<DuckEventDto> = plan
+        .duck_events
+        .iter()
+        .map(|d| DuckEventDto {
+            start_ms: d.start_ms,
+            end_ms: d.end_ms,
+            db: d.db,
+        })
+        .collect();
+    let _ = app.emit("sound_mixer/duck_events", &duck_dtos);
+
+    // Persist drift_ms in tts_clip_metrics for each adjusted step.
+    for adj in &plan.adjusted_steps {
+        let _ = storage::phase3::update_tts_metric_drift(
+            &conn,
+            &adj.step_id,
+            adj.drift_ms,
+        );
+    }
+
+    // Convert to DTO.
+    let dto = SyncPlanDto {
+        adjusted_steps: plan
+            .adjusted_steps
+            .iter()
+            .map(|a| AdjustedStepDto {
+                step_id: a.step_id.clone(),
+                new_duration_ms: a.new_duration_ms,
+                freeze_frame_extension_ms: a.freeze_frame_extension_ms,
+                silence_padding_ms: a.silence_padding_ms,
+                clip_start_ms: a.clip_start_ms,
+                drift_ms: a.drift_ms,
+            })
+            .collect(),
+        duck_events: duck_dtos,
+    };
+
+    tracing::info!(
+        target: "storycapture::tts",
+        project_id = %project_id,
+        steps = plan.adjusted_steps.len(),
+        duck_events = plan.duck_events.len(),
+        "tts_apply_sync completed"
+    );
+
+    Ok(dto)
+}
+
+/// Step timing DTO for the `tts_apply_sync` command.
+///
+/// Phase 2 hand-off note: when Phase 2 effects AST is fully merged,
+/// this parameter can be replaced by loading step timings from the
+/// project's effects AST directly.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct StepTimingDto {
+    pub step_id: String,
+    pub original_duration_ms: u64,
 }
