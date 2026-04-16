@@ -2,9 +2,6 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, AlertTriangle } from "lucide-react";
 import { motion } from "motion/react";
-
-import brandSplashSrc from "@/assets/branding/ribbon-s-splash.png";
-import { BrandLockup } from "@/components/brand";
 import { useProjects, type Project } from "@/ipc/projects";
 import { useDashboardStore } from "@/state/projects";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
@@ -52,44 +49,23 @@ export default function DashboardRoute() {
       transition={{ duration: 0.25, ease: "easeOut" }}
       className="mx-auto max-w-6xl p-8"
     >
-      <header className="brand-panel relative overflow-hidden rounded-[var(--radius-2xl)] p-8">
-        <img
-          src={brandSplashSrc}
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 right-0 h-full max-w-[56%] object-cover opacity-40"
-        />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,var(--color-surface-300)_0%,rgba(235,234,229,0.96)_46%,rgba(235,234,229,0.42)_100%)]" />
-        <div className="relative flex items-start justify-between gap-6">
-          <div className="max-w-2xl">
-            <BrandLockup
-              size={44}
-              wordmarkClassName="text-[1.95rem] leading-none"
-            />
-            <p className="mt-3 max-w-xl text-sm text-[var(--color-fg-secondary)]">
-              Turn a written story into a polished demo video, without recording
-              takes or editing passes.
-            </p>
-            <div className="mt-10">
-              <h1 className="text-4xl font-semibold tracking-[-0.05em] text-[var(--color-fg-primary)]">
-                Projects
-              </h1>
-              <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
-                Write a story, record it, and ship a cleaner demo faster.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setDialogOpen(true)}
-              aria-label="Create new project"
-              className="brand-button inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-            >
-              <Plus size={16} aria-hidden="true" />
-              New Project
-            </button>
-          </div>
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-[-0.03em] text-[var(--color-fg-primary)]">
+            Projects
+          </h1>
+          <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
+            Write a story, record it, and ship a cleaner demo faster.
+          </p>
         </div>
+        <button
+          onClick={() => setDialogOpen(true)}
+          aria-label="Create new project"
+          className="brand-button inline-flex items-center gap-2 rounded-[var(--radius-lg)] px-4 py-2.5 text-sm font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+        >
+          <Plus size={16} aria-hidden="true" />
+          New Project
+        </button>
       </header>
 
       <section aria-label="Filters" className="mt-8">
