@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
+import { BrandMark } from "@/components/brand";
+
 const STORAGE_KEY = "storycapture-sidebar-collapsed";
 
 interface NavItem {
@@ -99,19 +101,20 @@ export function Sidebar() {
       className="flex flex-col border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]"
       style={{ width: collapsed ? 48 : 200 }}
     >
-      {/* Branding — sits below the macOS title bar drag region */}
-      <div className="flex h-8 shrink-0 items-center px-3">
+      {/* Branding — logo + wordmark */}
+      <div className="flex h-10 shrink-0 items-center gap-2.5 px-3">
+        <BrandMark size={collapsed ? 22 : 24} />
         <AnimatePresence mode="wait">
           {!collapsed && (
             <motion.span
               key="brand"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, x: -4 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -4 }}
               transition={{ duration: 0.15 }}
-              className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]"
+              className="text-sm font-semibold tracking-[-0.03em] text-[var(--color-fg-primary)]"
             >
-              StoryCapture
+              storycapture
             </motion.span>
           )}
         </AnimatePresence>
