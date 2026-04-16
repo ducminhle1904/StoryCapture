@@ -29,7 +29,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use tracing::{instrument, warn};
 
-use super::{LlmError, LlmEvent, LlmProvider, LlmRequest};
+use super::{EventOutcome, LlmError, LlmEvent, LlmProvider, LlmRequest};
 use crate::secrets::Redacted;
 
 pub const OPENAI_URL: &str = "https://api.openai.com/v1/chat/completions";
@@ -258,11 +258,6 @@ impl LlmProvider for OpenAiProvider {
         }
         Ok(())
     }
-}
-
-pub enum EventOutcome {
-    Continue,
-    Stop,
 }
 
 /// Parse a single SSE `data` payload (the raw string after `data: `) and

@@ -88,6 +88,14 @@ pub trait LlmProvider: Send + Sync {
     ) -> Result<(), LlmError>;
 }
 
+/// Outcome of processing a single SSE event during streaming.
+///
+/// Used by both Anthropic and OpenAI provider `process_event` functions.
+pub enum EventOutcome {
+    Continue,
+    Stop,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
