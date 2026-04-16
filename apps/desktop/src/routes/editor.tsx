@@ -9,7 +9,7 @@ import {
   Sparkles,
   Video,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import previewBackdrop from "@/assets/gradients/warm-sunset.png";
@@ -26,6 +26,8 @@ import { useVoiceoverStore } from "@/features/voiceover/voiceoverStore";
 import { type Command, type SelectorOrText, type Story } from "@/ipc/parse";
 import { fetchProjectFolder, type ProjectFolderInfo } from "@/ipc/projects";
 import { useEditorStore } from "@/state/editor";
+
+const EMPTY_DIAGNOSTICS: never[] = [];
 
 interface VoiceoverStep {
   id: string;
@@ -354,7 +356,7 @@ export default function EditorRoute() {
   const setSource = useEditorStore((s) => s.setSource);
   const source = useEditorStore((s) => s.source);
   const story = useEditorStore((s) => s.lastParse?.ast ?? null);
-  const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics ?? []);
+  const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
 
   useEffect(() => {
     let cancelled = false;
