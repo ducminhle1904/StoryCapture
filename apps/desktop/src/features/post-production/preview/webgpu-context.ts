@@ -48,6 +48,11 @@ export class WebGPUBackend {
   private sampler: GPUSampler | null = null;
   private cursorAtlas: GPUTexture | null = null;
   private disposed = false;
+  // Pre-allocated typed-array views over a single ArrayBuffer reused every
+  // frame. `queue.writeBuffer` copies the bytes out, so reuse is safe.
+  // Allocated in `init()`.
+  private frameUniformF32: Float32Array | null = null;
+  private frameUniformU32: Uint32Array | null = null;
 
   constructor(
     private readonly device: GPUDevice,
@@ -127,6 +132,14 @@ export class WebGPUBackend {
       format: "rgba8unorm",
       usage: TEX_BINDING | TEX_COPY_DST,
     });
+
+    // Pre-allocate the frame-uniform scratch buffer once. Both typed views
+    // share the same ArrayBuffer so we can stamp f32 + u32 fields without
+    // aliasing costs. `buildFrameUniforms` overwrites all slots it uses on
+    // every tick, so no zero-fill is required between frames.
+    const scratch = new ArrayBuffer(FRAME_UNIFORM_BYTES);
+    this.frameUniformF32 = new Float32Array(scratch);
+    this.frameUniformU32 = new Uint32Array(scratch);
   }
 
   renderFrame(t_ms: number, plan: PreviewRenderPlan): void {
@@ -154,22 +167,41 @@ export class WebGPUBackend {
     t_ms: number,
     plan: PreviewRenderPlan,
   ): Float32Array {
-    const buf = new Float32Array(FRAME_UNIFORM_BYTES / 4);
+    // Reuse the pre-allocated scratch buffer — zero-alloc hot path.
+    const buf = this.frameUniformF32!;
+    const u32 = this.frameUniformU32!;
     // Identity zoom in 3x4 column-major with vec3 -> vec4 padding.
     // col0
-    buf[0] = 1; buf[1] = 0; buf[2] = 0;
+    buf[0] = 1; buf[1] = 0; buf[2] = 0; buf[3] = 0;
     // col1
-    buf[4] = 0; buf[5] = 1; buf[6] = 0;
+    buf[4] = 0; buf[5] = 1; buf[6] = 0; buf[7] = 0;
     // col2
-    buf[8] = 0; buf[9] = 0; buf[10] = 1;
+    buf[8] = 0; buf[9] = 0; buf[10] = 1; buf[11] = 0;
     buf[12] = plan.output_width;
     buf[13] = plan.output_height;
     buf[14] = t_ms;
-    // has_cursor as u32 written via DataView view of the same ArrayBuffer
-    const u32 = new Uint32Array(buf.buffer);
+    // has_cursor as u32 aliased over the same ArrayBuffer.
     u32[15] = plan.cursor_atlas_ref ? 1 : 0;
     u32[16] = Math.min(plan.ripples.length, MAX_RIPPLES);
     return buf;
+  }
+
+  /**
+   * Handle a canvas resize. WebGPU swapchain textures are sized to the
+   * canvas's `width`/`height` attributes; after they change we must
+   * re-configure the context so the next frame draws at the new size.
+   * `queue.writeBuffer` uniforms already carry `plan.output_width/height`
+   * independently, so no buffer resize is needed here.
+   */
+  resize(_width: number, _height: number): void {
+    if (this.disposed) return;
+    // `context.configure` is idempotent; re-running it rebinds the
+    // swapchain to the canvas's current backing size.
+    this.context.configure({
+      device: this.device,
+      format: this.format,
+      alphaMode: "premultiplied",
+    });
   }
 
   dispose(): void {
@@ -186,6 +218,8 @@ export class WebGPUBackend {
     this.bindGroupLayout = null;
     void this.sampler;
     this.sampler = null;
+    this.frameUniformF32 = null;
+    this.frameUniformU32 = null;
     // `context` is retained for future re-configure (e.g. size change); mark read.
     void this.context;
   }

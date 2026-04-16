@@ -31,6 +31,7 @@ export interface PreviewEngineConfig {
 interface Backend {
   init(): Promise<void>;
   renderFrame(t_ms: number, plan: PreviewRenderPlan): void;
+  resize(width: number, height: number): void;
   dispose(): void;
 }
 
@@ -60,6 +61,15 @@ export class PreviewEngine {
       throw new Error("PreviewEngine not initialised — call init() first");
     }
     this.backendImpl.renderFrame(t_ms, plan);
+  }
+
+  /**
+   * Propagate a canvas resize to the active backend. Called by the host
+   * hook (`usePreview`) on `ResizeObserver` ticks. Safe to call before
+   * `init()` resolves — becomes a no-op.
+   */
+  resize(width: number, height: number): void {
+    this.backendImpl?.resize(width, height);
   }
 
   dispose(): void {

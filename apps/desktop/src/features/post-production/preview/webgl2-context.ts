@@ -25,6 +25,12 @@ export class WebGL2Backend {
   private cursorTexture: WebGLTexture | null = null;
   private uniformLocations: Record<string, WebGLUniformLocation | null> = {};
   private disposed = false;
+  // Tracks whether the video-frame texture storage has been allocated.
+  // First upload uses `texImage2D` (allocates + uploads); subsequent same-
+  // size uploads use `texSubImage2D` (upload-only, no realloc).
+  private videoTextureAllocated = false;
+  private videoTextureWidth = 0;
+  private videoTextureHeight = 0;
 
   constructor(
     private readonly gl: WebGL2RenderingContext,
@@ -129,17 +135,40 @@ export class WebGL2Backend {
     if (!videoReady) return;
 
     gl.useProgram(this.program);
-    // Upload <video> frame into u_video_frame.
+    // Upload <video> frame into u_video_frame. First frame (or any
+    // resolution change) allocates storage via texImage2D; subsequent
+    // frames at the same size reuse storage via texSubImage2D, which
+    // avoids per-frame GPU reallocation (Pitfall #4 perf).
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      this.config.videoElement,
-    );
+    const video = this.config.videoElement;
+    const vw = video.videoWidth | 0;
+    const vh = video.videoHeight | 0;
+    const sizeChanged =
+      vw !== this.videoTextureWidth || vh !== this.videoTextureHeight;
+    if (!this.videoTextureAllocated || sizeChanged) {
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        video,
+      );
+      this.videoTextureAllocated = true;
+      this.videoTextureWidth = vw;
+      this.videoTextureHeight = vh;
+    } else {
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        video,
+      );
+    }
     const uVideo = this.uniformLocations.u_video_frame;
     if (uVideo) gl.uniform1i(uVideo, 0);
 
@@ -160,6 +189,16 @@ export class WebGL2Backend {
 
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  /**
+   * Handle a canvas resize. WebGL2 needs the viewport re-set to match the
+   * new drawing-buffer dimensions; the <video> texture itself is resized
+   * lazily on the next upload when `videoWidth`/`videoHeight` change.
+   */
+  resize(width: number, height: number): void {
+    if (this.disposed) return;
+    this.gl.viewport(0, 0, Math.max(1, width | 0), Math.max(1, height | 0));
   }
 
   dispose(): void {

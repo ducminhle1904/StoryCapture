@@ -65,14 +65,43 @@ export function usePreview({
         console.warn("[post-production] PreviewEngine init failed", err);
       });
 
+    // Observe canvas size changes and forward to the backend. Without this
+    // the WebGPU swapchain or WebGL2 viewport stays at the initial size
+    // and the preview becomes blurry / letterboxed on container resize.
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      // Prefer `contentBoxSize` (physical device px for HiDPI canvases);
+      // fall back to `contentRect` for older runtimes.
+      let w: number;
+      let h: number;
+      const box = entry.devicePixelContentBoxSize?.[0] ?? entry.contentBoxSize?.[0];
+      if (box) {
+        w = box.inlineSize;
+        h = box.blockSize;
+      } else {
+        w = entry.contentRect.width;
+        h = entry.contentRect.height;
+      }
+      if (w <= 0 || h <= 0) return;
+      // Keep canvas backing store in sync with CSS size. Setting these
+      // attributes is what the WebGPU swapchain reads on `configure`.
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+      engineRef.current?.resize(w, h);
+    });
+    ro.observe(canvas);
+
     return () => {
       disposed = true;
+      ro.disconnect();
       engineRef.current?.dispose();
       engineRef.current = null;
       setReady(false);
     };
-    // outputWidth / outputHeight intentionally captured at mount; resize
-    // handling would recreate the engine, not mutate it in place.
+    // outputWidth / outputHeight are the *logical* output resolution and
+    // are captured at mount; canvas pixel size is handled by the
+    // ResizeObserver above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
