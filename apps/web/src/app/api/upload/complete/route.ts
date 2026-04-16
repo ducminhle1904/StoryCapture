@@ -35,13 +35,25 @@ export async function POST(req: NextRequest) {
 
   // Handle abort
   if (action === "abort") {
-    await r2Client.send(
-      new AbortMultipartUploadCommand({
-        Bucket: R2_BUCKET,
-        Key: r2Key,
-        UploadId: uploadId,
-      }),
-    );
+    try {
+      await r2Client.send(
+        new AbortMultipartUploadCommand({
+          Bucket: R2_BUCKET,
+          Key: r2Key,
+          UploadId: uploadId,
+        }),
+      );
+    } catch (err) {
+      await prisma.video.update({
+        where: { id: videoId },
+        data: { status: "FAILED" },
+      });
+      const detail = err instanceof Error ? err.message : String(err);
+      return NextResponse.json(
+        { error: `R2 abort failed: ${detail.slice(0, 200)}` },
+        { status: 502 },
+      );
+    }
 
     await prisma.video.update({
       where: { id: videoId },
@@ -79,14 +91,26 @@ export async function POST(req: NextRequest) {
   }
 
   // Complete S3 multipart upload
-  await r2Client.send(
-    new CompleteMultipartUploadCommand({
-      Bucket: R2_BUCKET,
-      Key: r2Key,
-      UploadId: uploadId,
-      MultipartUpload: { Parts: parts },
-    }),
-  );
+  try {
+    await r2Client.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: R2_BUCKET,
+        Key: r2Key,
+        UploadId: uploadId,
+        MultipartUpload: { Parts: parts },
+      }),
+    );
+  } catch (err) {
+    await prisma.video.update({
+      where: { id: videoId },
+      data: { status: "FAILED" },
+    });
+    const detail = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { error: `R2 complete failed: ${detail.slice(0, 200)}` },
+      { status: 502 },
+    );
+  }
 
   // Transition to READY
   await prisma.video.update({
