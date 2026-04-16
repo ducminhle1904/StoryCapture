@@ -110,6 +110,12 @@ The following are implementation details where the researcher and planner should
 - **Video comments / annotations on viewer page** — v2, new capability
 - **Custom domain for viewer pages** — v2, requires CNAME + SSL provisioning
 
+
+### D-08 Addendum: Vercel Pro Tier
+- **Vercel Pro tier** is committed for deployment (required for 60s function timeout for SSE subscriptions)
+- Hobby tier graceful degradation: SSE endpoints include polling fallback (5s interval) if connection drops after 10s timeout
+- Resend (free tier, 100 emails/day) committed for workspace invite emails (per Q3 resolution)
+
 ## Discussion Log
 
 - 2026-04-16: All 8 gray areas presented with recommendations; user approved all defaults without overrides.

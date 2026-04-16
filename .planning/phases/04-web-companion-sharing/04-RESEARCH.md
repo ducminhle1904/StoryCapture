@@ -1000,27 +1000,19 @@ MAXMIND_LICENSE_KEY="..." # for downloading GeoLite2 MMDB
 | A6 | EventSource API limitation (no custom headers) mitigated by tRPC's fetch-based SSE | Pitfall 7 | Medium — if tRPC uses native EventSource internally, auth breaks |
 | A7 | Email sending for workspace invites needs Resend or similar service | Workspace RBAC | Low — can defer email to v2 and use copy-link invite |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Next.js version: 15.x or 16.x?**
-   - What we know: CLAUDE.md specifies 15.x; npm latest is 16.2.x (stable since early 2026)
-   - What's unclear: Whether the user wants to match CLAUDE.md exactly or use latest stable
-   - Recommendation: Use 15.3.9 (latest 15.x) to match CLAUDE.md; upgrade to 16.x is a separate decision
+   - **RESOLVED:** Use Next.js 15.x (15.3.9) per CLAUDE.md committed stack. The committed stack explicitly specifies Next.js 15.x and this is a firm constraint.
 
 2. **Vercel plan tier?**
-   - What we know: SSE needs long-lived connections; Hobby tier has 10s function timeout
-   - What's unclear: Whether the project will be on Hobby or Pro
-   - Recommendation: Design for Pro (60s timeout). If Hobby only, use polling instead of SSE for analytics dashboard, or deploy SSE endpoint on Fly.io
+   - **RESOLVED:** Design for Vercel Pro tier (60s function timeout). This is required for SSE subscriptions (recording status, analytics real-time). Plan 04-09 includes an SSE polling fallback for graceful degradation on Hobby tier: if the SSE connection drops after 10s, the client falls back to polling every 5s.
 
 3. **Email service for workspace invites?**
-   - What we know: D-04 requires invite by email; no email service is in the committed stack
-   - What's unclear: Which email provider to use (Resend, SendGrid, Vercel email)
-   - Recommendation: Start with copy-to-clipboard invite link; add email sending as enhancement
+   - **RESOLVED:** Use Resend (free tier: 100 emails/day, simple REST API). Added as a dependency in Plan 04-06. Workspace invite emails sent via Resend with a simple HTML template containing the invite link. Fallback: if RESEND_API_KEY is not configured, degrade gracefully to copy-to-clipboard invite link.
 
 4. **Video serving: R2 custom domain or presigned GETs?**
-   - What we know: Public videos need to be streamable; private videos need auth
-   - What's unclear: Whether to set up R2 custom domain immediately
-   - Recommendation: Use presigned GET URLs initially (works without custom domain setup). Add R2 custom domain for public videos later for cleaner URLs and CDN caching.
+   - **RESOLVED:** Use presigned GET URLs for all video serving in v1 (no custom domain). This works without additional infrastructure setup. Both public and private videos use presigned GET URLs. Custom domain is a v2 enhancement for cleaner URLs and CDN caching.
 
 ## Environment Availability
 
