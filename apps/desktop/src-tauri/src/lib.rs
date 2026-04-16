@@ -86,6 +86,11 @@ pub fn run() {
             // safely look up the data dir.
             app.manage(state::AppState::new(data_dir, log_dir));
 
+            // LSP bridge (D-16, Plan 03-14): in-process tower-lsp via IPC.
+            app.manage(commands::lsp::LspBridgeState(
+                intelligence::lsp::LspBridge::new(),
+            ));
+
             // Panic hook last — needs an AppHandle for event emit.
             panic_hook::install(app.handle().clone());
 

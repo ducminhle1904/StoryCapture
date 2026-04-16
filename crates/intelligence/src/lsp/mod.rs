@@ -17,6 +17,8 @@
 
 pub mod diagnostics;
 pub mod document;
+pub mod ipc_bridge;
 pub mod server;
 
+pub use ipc_bridge::{LspBridge, LspBridgeError, LspNotification};
 pub use server::StoryLanguageServer;
