@@ -140,6 +140,8 @@ pub enum NlCommandError {
     TaskNotFound(String),
     #[error("too many in-flight NL turns for this project")]
     TooManyInFlight,
+    #[error("invalid provider for LLM: {0}")]
+    InvalidProvider(String),
     #[error("orchestrator error: {0}")]
     Orchestrator(String),
     #[error("storage error: {0}")]
@@ -179,17 +181,25 @@ fn step_diff_to_dto(d: &StepDiff) -> NlStepDiffDto {
 
 /// Build an `AnthropicProvider` (or `OpenAiProvider` on override) from the
 /// keychain key. Returns the provider as a trait object.
+///
+/// TTS-only providers (Elevenlabs, OpenaiTts) are not valid LLM providers
+/// and return an error.
 fn build_provider(
     provider_id: ProviderId,
     api_key: &str,
-) -> Arc<dyn LlmProvider> {
+) -> Result<Arc<dyn LlmProvider>, NlCommandError> {
     match provider_id {
-        ProviderId::Openai => {
-            Arc::new(intelligence::llm::openai::OpenAiProvider::new(api_key.to_string()))
+        ProviderId::Anthropic => {
+            Ok(Arc::new(intelligence::llm::anthropic::AnthropicProvider::new(api_key.to_string())))
         }
-        _ => {
-            // Default to Anthropic for Anthropic, Elevenlabs, OpenaiTts
-            Arc::new(intelligence::llm::anthropic::AnthropicProvider::new(api_key.to_string()))
+        ProviderId::Openai => {
+            Ok(Arc::new(intelligence::llm::openai::OpenAiProvider::new(api_key.to_string())))
+        }
+        ProviderId::Elevenlabs | ProviderId::OpenaiTts => {
+            Err(NlCommandError::InvalidProvider(format!(
+                "{:?} is a TTS-only provider, not a valid LLM provider",
+                provider_id
+            )))
         }
     }
 }
@@ -225,7 +235,7 @@ pub async fn nl_chat_send(
     let api_key = read_api_key(provider_id)?;
 
     // Build provider
-    let provider = build_provider(provider_id, &api_key);
+    let provider = build_provider(provider_id, &api_key)?;
 
     // Generate task_id (Uuid v7 for time-ordering, T-03-07-05)
     let task_id = Uuid::now_v7().to_string();
@@ -421,7 +431,7 @@ pub async fn nl_regen_step(
 
     let provider_id = ProviderId::Anthropic;
     let api_key = read_api_key(provider_id)?;
-    let provider = build_provider(provider_id, &api_key);
+    let provider = build_provider(provider_id, &api_key)?;
 
     let task_id = Uuid::now_v7().to_string();
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
