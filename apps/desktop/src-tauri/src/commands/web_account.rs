@@ -70,11 +70,7 @@ const SERVICE: &str = "com.storycapture.web";
 const ACCOUNT_TOKEN: &str = "web_api_token";
 const ACCOUNT_INFO: &str = "web_account_info";
 
-/// Default web companion URL; overridable via STORYCAPTURE_WEB_URL env var.
-fn web_companion_url() -> String {
-    std::env::var("STORYCAPTURE_WEB_URL")
-        .unwrap_or_else(|_| "https://storycapture.app".to_string())
-}
+use super::util::web_url as web_companion_url;
 
 // ---- Tauri commands -------------------------------------------------------
 

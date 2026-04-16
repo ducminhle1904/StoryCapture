@@ -30,8 +30,16 @@ pub fn now_epoch_secs() -> i64 {
         .as_secs() as i64
 }
 
-/// Default web companion URL; overridable via STORYCAPTURE_WEB_URL env var.
+/// Web companion URL. Priority:
+/// 1. `STORYCAPTURE_WEB_URL` env var (explicit override)
+/// 2. Debug builds → `http://localhost:3000` (local dev server)
+/// 3. Release builds → `https://storycapture.app` (production)
 pub fn web_url() -> String {
-    std::env::var("STORYCAPTURE_WEB_URL")
-        .unwrap_or_else(|_| "https://storycapture.app".to_string())
+    std::env::var("STORYCAPTURE_WEB_URL").unwrap_or_else(|_| {
+        if cfg!(debug_assertions) {
+            "http://localhost:3000".to_string()
+        } else {
+            "https://storycapture.app".to_string()
+        }
+    })
 }
