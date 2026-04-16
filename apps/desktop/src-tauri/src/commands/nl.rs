@@ -280,6 +280,7 @@ pub async fn nl_chat_send(
     let task_id_fwd = task_id.clone();
     let project_id_fwd = project_id.clone();
     let provider_name = provider_id.account().to_string();
+    let session_id = registry.session_id().to_string();
     let registry_fwd = registry.clone();
     tokio::spawn(async move {
         while let Some(ev) = out_rx.recv().await {
@@ -313,7 +314,7 @@ pub async fn nl_chat_send(
                     if let Ok(pid) = Uuid::parse_str(&project_id_fwd) {
                         let _ = persist_llm_metric(
                             &data_dir, &pid, &task_id_fwd,
-                            &provider_name, input, output,
+                            &provider_name, &session_id, input, output,
                             cache_read, cache_write, cost_usd, total_ms,
                         );
                     }
@@ -472,6 +473,7 @@ pub async fn nl_regen_step(
     // Forward events (same pattern as nl_chat_send)
     let task_id_fwd = task_id.clone();
     let provider_name = provider_id.account().to_string();
+    let session_id = registry.session_id().to_string();
     let registry_fwd = registry.clone();
     tokio::spawn(async move {
         while let Some(ev) = out_rx.recv().await {
@@ -495,7 +497,7 @@ pub async fn nl_regen_step(
                     if let Ok(pid) = Uuid::parse_str(&project_id_clone) {
                         let _ = persist_llm_metric(
                             &data_dir, &pid, &task_id_fwd,
-                            &provider_name, input, output,
+                            &provider_name, &session_id, input, output,
                             cache_read, cache_write, cost_usd, total_ms,
                         );
                     }
@@ -603,6 +605,7 @@ fn persist_llm_metric(
     project_id: &Uuid,
     task_id: &str,
     provider: &str,
+    session_id: &str,
     input: u32,
     output: u32,
     cache_read: u32,
@@ -616,7 +619,7 @@ fn persist_llm_metric(
 
     let metric = storage::phase3::LlmTurnMetric {
         turn_id: task_id.to_string(),
-        session_id: "app".to_string(), // session_id derived from app startup
+        session_id: session_id.to_string(),
         provider: provider.to_string(),
         model: intelligence::llm::DEFAULT_NL_MODEL.to_string(),
         input_tokens: i64::from(input),

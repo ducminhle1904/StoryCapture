@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tokio::task::AbortHandle;
+use uuid::Uuid;
 
 use intelligence::nl::schemas::StoryDoc;
 
@@ -27,14 +28,33 @@ struct TaskEntry {
 /// Also holds an in-memory cache of `StoryDoc` outputs keyed by `task_id`,
 /// so `nl_diff_apply` can retrieve the doc after `StoryDocReady` without
 /// re-querying the LLM.
-#[derive(Default)]
+///
+/// Each registry instance gets a unique `session_id` (UUID v4) generated at
+/// creation time, used for per-session metrics aggregation.
 pub struct NlTaskRegistry {
     tasks: Mutex<HashMap<String, TaskEntry>>,
     /// Cached StoryDoc from completed turns, keyed by task_id.
     docs: Mutex<HashMap<String, StoryDoc>>,
+    /// Unique session identifier generated at app startup.
+    session_id: String,
+}
+
+impl Default for NlTaskRegistry {
+    fn default() -> Self {
+        Self {
+            tasks: Mutex::new(HashMap::new()),
+            docs: Mutex::new(HashMap::new()),
+            session_id: Uuid::new_v4().to_string(),
+        }
+    }
 }
 
 impl NlTaskRegistry {
+    /// Returns the unique session ID for this registry instance.
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
     /// Insert a new task. Returns `true` if inserted, `false` if the
     /// per-project concurrency cap (4) would be exceeded.
     pub fn insert(&self, id: String, project_id: String, handle: AbortHandle) -> bool {
