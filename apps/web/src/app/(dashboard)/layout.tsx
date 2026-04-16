@@ -35,6 +35,12 @@ export default async function DashboardLayout({
           >
             Dashboard
           </a>
+          <a
+            href="/templates"
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+          >
+            Templates
+          </a>
         </nav>
 
         {/* User section */}
