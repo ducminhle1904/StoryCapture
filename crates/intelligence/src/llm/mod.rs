@@ -10,6 +10,9 @@ pub mod anthropic;
 pub mod openai;
 pub mod retry;
 
+/// Default model identifier for NL-to-DSL and narration generation.
+pub const DEFAULT_NL_MODEL: &str = "claude-sonnet-4-6";
+
 /// Request payload fed into an [`LlmProvider::stream`] call.
 ///
 /// Shape matches the Anthropic Messages API surface (system_blocks for

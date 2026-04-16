@@ -70,7 +70,7 @@ impl LlmRequest {
         }));
 
         LlmRequest {
-            model: "claude-sonnet-4-6".to_string(),
+            model: crate::llm::DEFAULT_NL_MODEL.to_string(),
             system_blocks: build_system_blocks(),
             messages,
             tools: vec![emit_story_doc_tool()],

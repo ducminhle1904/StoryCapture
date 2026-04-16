@@ -106,7 +106,7 @@ pub async fn generate_narration_script(
     let max_tokens = MAX_TOKENS_PER_STEP.saturating_mul(story.steps.len() as u32).min(8192);
 
     let req = LlmRequest {
-        model: "claude-sonnet-4-6".to_string(),
+        model: crate::llm::DEFAULT_NL_MODEL.to_string(),
         system_blocks: vec![serde_json::json!({
             "type": "text",
             "text": system_prompt,

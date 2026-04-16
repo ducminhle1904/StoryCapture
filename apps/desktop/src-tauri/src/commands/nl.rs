@@ -587,7 +587,7 @@ fn persist_turn(
         role: "assistant".to_string(),
         content: format!("[NL turn {task_id}]"),
         tool_calls_json: None,
-        llm_model: Some("claude-sonnet-4-6".to_string()),
+        llm_model: Some(intelligence::llm::DEFAULT_NL_MODEL.to_string()),
         llm_provider: Some("anthropic".to_string()),
         token_usage_json: None,
         created_at: now,
@@ -621,7 +621,7 @@ fn persist_llm_metric(
         turn_id: task_id.to_string(),
         session_id: "app".to_string(), // session_id derived from app startup
         provider: provider.to_string(),
-        model: "claude-sonnet-4-6".to_string(),
+        model: intelligence::llm::DEFAULT_NL_MODEL.to_string(),
         input_tokens: i64::from(input),
         output_tokens: i64::from(output),
         cache_read_tokens: i64::from(cache_read),
