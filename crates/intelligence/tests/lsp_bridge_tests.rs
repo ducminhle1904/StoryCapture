@@ -15,7 +15,8 @@ use tokio::time::timeout;
 
 /// Helper: build a bridge and run the initialize handshake.
 async fn initialized_bridge() -> Arc<LspBridge> {
-    let bridge = LspBridge::new();
+    let (bridge, drain) = LspBridge::new();
+    tokio::spawn(drain);
 
     // Send `initialize` request.
     let init_resp = bridge
@@ -50,7 +51,8 @@ async fn initialized_bridge() -> Arc<LspBridge> {
 /// receive a valid `initialize` response envelope with `capabilities`.
 #[tokio::test]
 async fn initialize_returns_capabilities() {
-    let bridge = LspBridge::new();
+    let (bridge, drain) = LspBridge::new();
+    tokio::spawn(drain);
 
     let resp = bridge
         .handle_lsp_request(json!({

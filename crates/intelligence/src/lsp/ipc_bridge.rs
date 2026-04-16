@@ -54,9 +54,12 @@ pub struct LspBridge {
 }
 
 impl LspBridge {
-    /// Build the bridge. Spawns a background task to drain the
-    /// `ClientSocket` stream and broadcast server notifications.
-    pub fn new() -> Arc<Self> {
+    /// Build the bridge. Returns the bridge and a future that must be
+    /// spawned on a Tokio runtime to drain server-initiated notifications.
+    /// The caller is responsible for spawning — this avoids requiring a
+    /// live runtime at construction time (Tauri's `setup` runs before the
+    /// async runtime is accessible via `tokio::spawn`).
+    pub fn new() -> (Arc<Self>, impl std::future::Future<Output = ()> + Send + 'static) {
         let (service, socket) = LspService::new(StoryLanguageServer::new);
         let (tx, _rx) = broadcast::channel::<LspNotification>(64);
 
@@ -65,10 +68,9 @@ impl LspBridge {
             notifier: tx.clone(),
         });
 
-        // Spawn background reader for server-initiated messages.
-        tokio::spawn(Self::drain_notifications(socket, tx));
+        let drain_future = Self::drain_notifications(socket, tx);
 
-        bridge
+        (bridge, drain_future)
     }
 
     /// Subscribe to server-initiated notifications (e.g. publishDiagnostics).

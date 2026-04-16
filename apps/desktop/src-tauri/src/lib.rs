@@ -87,9 +87,12 @@ pub fn run() {
             app.manage(state::AppState::new(data_dir, log_dir));
 
             // LSP bridge: in-process tower-lsp via IPC.
-            app.manage(commands::lsp::LspBridgeState::new(
-                intelligence::lsp::LspBridge::new(),
-            ));
+            // `LspBridge::new()` returns (bridge, drain_future) — the drain
+            // must be spawned on a Tokio runtime. `tauri::async_runtime::spawn`
+            // works during setup; plain `tokio::spawn` does not.
+            let (lsp_bridge, lsp_drain) = intelligence::lsp::LspBridge::new();
+            tauri::async_runtime::spawn(lsp_drain);
+            app.manage(commands::lsp::LspBridgeState::new(lsp_bridge));
 
             // NL task registry (Plan 03-07): abort handles for in-flight NL turns.
             // Wrapped in Arc so spawned tasks can clone and hold a reference
