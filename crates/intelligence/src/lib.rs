@@ -2,6 +2,7 @@
 #![warn(clippy::all)]
 
 pub mod error;
+pub mod http;
 pub mod secrets;
 pub mod tracing; // redaction layer
 pub mod dryrun;

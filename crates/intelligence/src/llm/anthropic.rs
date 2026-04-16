@@ -35,8 +35,6 @@ use crate::secrets::Redacted;
 pub const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
 pub const ANTHROPIC_VERSION: &str = "2023-06-01";
 pub const ANTHROPIC_PROMPT_CACHING_BETA: &str = "prompt-caching-2024-07-31";
-/// Cap on bytes of provider error body echoed into `LlmError::Provider`.
-const PROVIDER_BODY_TRUNCATE: usize = 256;
 
 // ---- Outgoing request shape ------------------------------------------------
 
@@ -293,25 +291,17 @@ fn parse_usage(usage: &Value) -> Option<LlmEvent> {
 }
 
 async fn classify_http_error(status: StatusCode, resp: reqwest::Response) -> LlmError {
-    if status == StatusCode::TOO_MANY_REQUESTS {
-        let retry_after_s = resp
-            .headers()
-            .get("retry-after")
-            .and_then(|v| v.to_str().ok())
-            .and_then(super::retry::parse_retry_after)
-            .map(|d| d.as_secs())
-            .unwrap_or(1);
-        return LlmError::RateLimited { retry_after_s };
+    let (is_retryable, detail, retry_after) =
+        crate::http::classify_http_error(status, resp).await;
+    if is_retryable {
+        return LlmError::RateLimited {
+            retry_after_s: retry_after.unwrap_or(1),
+        };
     }
-    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+    if detail == "auth_failed" {
         return LlmError::AuthFailed;
     }
-    let body = resp.text().await.unwrap_or_default();
-    let mut truncated: String = body.chars().take(PROVIDER_BODY_TRUNCATE).collect();
-    if body.len() > truncated.len() {
-        truncated.push_str("…");
-    }
-    LlmError::Provider(format!("{}: {}", status, truncated))
+    LlmError::Provider(detail)
 }
 
 #[cfg(test)]
