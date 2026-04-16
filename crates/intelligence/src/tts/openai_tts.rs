@@ -60,6 +60,16 @@ impl OpenAiTtsProvider {
         }
     }
 
+    /// Constructor accepting a pre-built [`Client`] for connection pool reuse
+    /// across providers. The caller is responsible for configuring timeouts.
+    pub fn with_client(client: Client, api_key: String) -> Self {
+        Self {
+            http: client,
+            api_key: Redacted::new(api_key),
+            base_url: OPENAI_TTS_URL.to_string(),
+        }
+    }
+
     fn synth_url(&self) -> String {
         format!("{}/v1/audio/speech", self.base_url.trim_end_matches('/'))
     }

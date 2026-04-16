@@ -64,6 +64,16 @@ impl ElevenLabsProvider {
         }
     }
 
+    /// Constructor accepting a pre-built [`Client`] for connection pool reuse
+    /// across providers. The caller is responsible for configuring timeouts.
+    pub fn with_client(client: Client, api_key: String) -> Self {
+        Self {
+            http: client,
+            api_key: Redacted::new(api_key),
+            base_url: ELEVENLABS_URL.to_string(),
+        }
+    }
+
     fn synth_url(&self, voice_id: &str) -> String {
         format!(
             "{}/v1/text-to-speech/{}/stream",

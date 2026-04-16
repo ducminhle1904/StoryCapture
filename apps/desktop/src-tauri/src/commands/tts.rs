@@ -112,17 +112,20 @@ fn read_api_key(provider: ProviderId) -> Result<String, TtsCommandError> {
 // ---- Provider factory ----
 
 fn build_tts_provider(
+    http_client: reqwest::Client,
     provider: ProviderId,
     api_key: &str,
 ) -> Result<Arc<dyn TtsProvider>, TtsCommandError> {
     match provider {
         ProviderId::Elevenlabs => {
-            Ok(Arc::new(intelligence::tts::elevenlabs::ElevenLabsProvider::new(
+            Ok(Arc::new(intelligence::tts::elevenlabs::ElevenLabsProvider::with_client(
+                http_client,
                 api_key.to_string(),
             )))
         }
         ProviderId::OpenaiTts => {
-            Ok(Arc::new(intelligence::tts::openai_tts::OpenAiTtsProvider::new(
+            Ok(Arc::new(intelligence::tts::openai_tts::OpenAiTtsProvider::with_client(
+                http_client,
                 api_key.to_string(),
             )))
         }
@@ -251,9 +254,10 @@ async fn tts_generate_inner(
         }
     }
 
-    // Cache miss (or force) — synthesize
+    // Cache miss (or force) — synthesize with shared HTTP client
     let api_key = read_api_key(provider)?;
-    let tts_provider = build_tts_provider(provider, &api_key)?;
+    let http_client = app_state.http_client.clone();
+    let tts_provider = build_tts_provider(http_client, provider, &api_key)?;
 
     let started = Instant::now();
 
@@ -352,12 +356,13 @@ pub async fn tts_voice_list(
     app: AppHandle,
     provider: ProviderId,
 ) -> Result<Vec<VoiceInfoDto>, TtsCommandError> {
-    let _ = app; // retained for future state access
+    let app_state = app.state::<AppState>();
+    let http_client = app_state.http_client.clone();
 
     match provider {
         ProviderId::OpenaiTts => {
             // Static list — no network call needed
-            let p = intelligence::tts::openai_tts::OpenAiTtsProvider::new("unused".to_string());
+            let p = intelligence::tts::openai_tts::OpenAiTtsProvider::with_client(http_client, "unused".to_string());
             let voices = p
                 .list_voices()
                 .await
@@ -366,7 +371,7 @@ pub async fn tts_voice_list(
         }
         ProviderId::Elevenlabs => {
             let api_key = read_api_key(provider)?;
-            let p = intelligence::tts::elevenlabs::ElevenLabsProvider::new(api_key);
+            let p = intelligence::tts::elevenlabs::ElevenLabsProvider::with_client(http_client, api_key);
             let all_voices = p
                 .list_voices()
                 .await

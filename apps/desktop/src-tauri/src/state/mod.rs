@@ -15,6 +15,8 @@ use std::{collections::HashMap, path::PathBuf, sync::Mutex};
 
 use parking_lot::Mutex as PLMutex;
 
+use reqwest::Client as HttpClient;
+
 use crate::commands::render::RenderQueueState;
 
 /// Cross-thread handle map for actor senders. Keys are stable string tags
@@ -38,20 +40,32 @@ pub struct AppState {
     /// Actor registry — see module comment.
     pub actors: ActorRegistry,
 
-    /// Render queue state (Plan 02-10). `None` until the host calls
+    /// Render queue state. `None` until the host calls
     /// `install_render_queue` during project-open; cleared when the
     /// project closes. Wrapped in `parking_lot::Mutex` for cheap
     /// synchronous access from Tauri commands.
     pub render_queue: PLMutex<Option<RenderQueueState>>,
+
+    /// Shared HTTP client for connection pool reuse across LLM and TTS
+    /// providers. Created once at startup with generous timeouts; individual
+    /// providers inherit the pool but may override per-request timeouts.
+    pub http_client: HttpClient,
 }
 
 impl AppState {
     pub fn new(data_dir: PathBuf, log_dir: PathBuf) -> Self {
+        let http_client = HttpClient::builder()
+            .timeout(std::time::Duration::from_secs(180))
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .pool_max_idle_per_host(8)
+            .build()
+            .expect("shared reqwest client");
         Self {
             data_dir,
             log_dir,
             actors: Mutex::new(HashMap::new()),
             render_queue: PLMutex::new(None),
+            http_client,
         }
     }
 

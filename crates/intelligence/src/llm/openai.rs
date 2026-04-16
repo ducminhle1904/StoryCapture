@@ -204,7 +204,7 @@ impl OpenAiProvider {
     /// tests). Production callers should use [`Self::new`].
     pub fn with_base_url(api_key: String, base_url: String) -> Self {
         let http = Client::builder()
-            .timeout(Duration::from_secs(120)) // T-03-05-03 DoS cap
+            .timeout(Duration::from_secs(120)) // DoS cap
             .pool_idle_timeout(Duration::from_secs(90))
             .pool_max_idle_per_host(8)
             .build()
@@ -213,6 +213,16 @@ impl OpenAiProvider {
             http,
             api_key: Redacted::new(api_key),
             base_url,
+        }
+    }
+
+    /// Constructor accepting a pre-built [`Client`] for connection pool reuse
+    /// across providers. The caller is responsible for configuring timeouts.
+    pub fn with_client(client: Client, api_key: String) -> Self {
+        Self {
+            http: client,
+            api_key: Redacted::new(api_key),
+            base_url: OPENAI_URL.to_string(),
         }
     }
 }

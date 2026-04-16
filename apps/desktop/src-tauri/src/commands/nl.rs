@@ -180,20 +180,27 @@ fn step_diff_to_dto(d: &StepDiff) -> NlStepDiffDto {
 }
 
 /// Build an `AnthropicProvider` (or `OpenAiProvider` on override) from the
-/// keychain key. Returns the provider as a trait object.
+/// keychain key, reusing the shared HTTP client for connection pool sharing.
 ///
 /// TTS-only providers (Elevenlabs, OpenaiTts) are not valid LLM providers
 /// and return an error.
 fn build_provider(
+    http_client: reqwest::Client,
     provider_id: ProviderId,
     api_key: &str,
 ) -> Result<Arc<dyn LlmProvider>, NlCommandError> {
     match provider_id {
         ProviderId::Anthropic => {
-            Ok(Arc::new(intelligence::llm::anthropic::AnthropicProvider::new(api_key.to_string())))
+            Ok(Arc::new(intelligence::llm::anthropic::AnthropicProvider::with_client(
+                http_client,
+                api_key.to_string(),
+            )))
         }
         ProviderId::Openai => {
-            Ok(Arc::new(intelligence::llm::openai::OpenAiProvider::new(api_key.to_string())))
+            Ok(Arc::new(intelligence::llm::openai::OpenAiProvider::with_client(
+                http_client,
+                api_key.to_string(),
+            )))
         }
         ProviderId::Elevenlabs | ProviderId::OpenaiTts => {
             Err(NlCommandError::InvalidProvider(format!(
@@ -234,8 +241,10 @@ pub async fn nl_chat_send(
     let provider_id = provider_override.unwrap_or(ProviderId::Anthropic);
     let api_key = read_api_key(provider_id)?;
 
-    // Build provider
-    let provider = build_provider(provider_id, &api_key)?;
+    // Build provider with shared HTTP client for connection pool reuse
+    let app_state = app.state::<AppState>();
+    let http_client = app_state.http_client.clone();
+    let provider = build_provider(http_client, provider_id, &api_key)?;
 
     // Generate task_id (Uuid v7 for time-ordering, T-03-07-05)
     let task_id = Uuid::now_v7().to_string();
@@ -247,7 +256,6 @@ pub async fn nl_chat_send(
     let history: Vec<ChatTurn> = Vec::new();
 
     // Grab data_dir before spawning
-    let app_state = app.state::<AppState>();
     let data_dir = app_state.data_dir.clone();
     let started = Instant::now();
 
@@ -430,19 +438,19 @@ pub async fn nl_regen_step(
 
     let provider_id = ProviderId::Anthropic;
     let api_key = read_api_key(provider_id)?;
-    let provider = build_provider(provider_id, &api_key)?;
+    let app_state = app.state::<AppState>();
+    let http_client = app_state.http_client.clone();
+    let provider = build_provider(http_client, provider_id, &api_key)?;
 
     let task_id = Uuid::now_v7().to_string();
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
 
-    // Regen prompt per AI-SPEC section 4 context strategy item 4
     let regen_message = format!(
         "Regenerate ONLY step with id={step_id}. Keep all other steps unchanged. \
          The output must include ALL steps from the current story, with only the \
          specified step regenerated."
     );
 
-    let app_state = app.state::<AppState>();
     let data_dir = app_state.data_dir.clone();
     let project_id_clone = project_id.clone();
     let started = Instant::now();
