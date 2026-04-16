@@ -11,6 +11,7 @@ pub mod encode;
 pub mod export;
 pub mod keys;
 pub mod lsp;
+pub mod nl;
 pub mod parse;
 pub mod preset;
 pub mod projects;

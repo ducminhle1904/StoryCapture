@@ -91,6 +91,11 @@ pub fn run() {
                 intelligence::lsp::LspBridge::new(),
             ));
 
+            // NL task registry (Plan 03-07): abort handles for in-flight NL turns.
+            // Wrapped in Arc so spawned tasks can clone and hold a reference
+            // beyond the Tauri command lifetime.
+            app.manage(std::sync::Arc::new(state::nl_tasks::NlTaskRegistry::default()));
+
             // Panic hook last — needs an AppHandle for event emit.
             panic_hook::install(app.handle().clone());
 

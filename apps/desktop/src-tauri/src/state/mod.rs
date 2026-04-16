@@ -9,6 +9,8 @@
 // Plan 01-03 ships the placeholder; Plans 06/07/08 add typed channel newtypes
 // and their corresponding senders.
 
+pub mod nl_tasks;
+
 use std::{collections::HashMap, path::PathBuf, sync::Mutex};
 
 use parking_lot::Mutex as PLMutex;

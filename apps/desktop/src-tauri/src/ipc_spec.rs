@@ -18,8 +18,8 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        automation, capture, dryrun, encode, export, keys, lsp, parse, preset, projects, render,
-        sound_library, system, timeline, updater,
+        automation, capture, dryrun, encode, export, keys, lsp, nl, parse, preset, projects,
+        render, sound_library, system, timeline, updater,
     },
     error::AppError,
 };
@@ -84,6 +84,13 @@ pub fn builder() -> Builder<Wry> {
             dryrun::dryrun_cancel,
             // Phase 03 plan 14 — LSP IPC bridge.
             lsp::lsp_request,
+            // Phase 03 plan 07 — NL-to-DSL commands.
+            nl::nl_chat_send,
+            nl::nl_cancel,
+            nl::nl_diff_apply,
+            nl::nl_diff_reject,
+            nl::nl_regen_step,
+            nl::nl_load_history,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -145,6 +152,13 @@ pub fn builder() -> Builder<Wry> {
         .typ::<dryrun::DryRunStepDto>()
         // Phase 03 plan 14 (LSP IPC bridge)
         .typ::<lsp::LspNotificationDto>()
+        // Phase 03 plan 07 (NL-to-DSL commands)
+        .typ::<nl::NlChatEvent>()
+        .typ::<nl::NlStoryDocDto>()
+        .typ::<nl::NlStoryStepDto>()
+        .typ::<nl::NlStepDiffDto>()
+        .typ::<nl::NlTurnDto>()
+        .typ::<nl::NlCommandError>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the
