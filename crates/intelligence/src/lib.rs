@@ -7,6 +7,7 @@ pub mod tracing; // redaction layer
 pub mod dryrun;
 pub mod llm;
 pub mod lsp;
+pub mod nl;
 pub mod tts;
 
 pub use error::IntelError;
