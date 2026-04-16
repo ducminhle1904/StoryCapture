@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+default-run = "storycapture"
 description = "StoryCapture desktop host (Tauri v2). Phase 1 plan 01-03 — thin host: plugins, typed IPC, error taxonomy, logging, panic hook, OS keychain."
 
 [lib]

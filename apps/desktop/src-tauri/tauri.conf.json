@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.storycapture.desktop",
   "build": {
-    "beforeDevCommand": "",
-    "beforeBuildCommand": "",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
     "devUrl": "http://localhost:1420",
-    "frontendDist": "../src"
+    "frontendDist": "../dist"
   },
   "app": {
     "macOSPrivateApi": true,
