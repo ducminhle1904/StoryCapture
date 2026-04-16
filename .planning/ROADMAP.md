@@ -114,7 +114,18 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
   3. User can create a team workspace, invite members with owner/editor/viewer roles, share an asset library, and browse/fork entries in a template marketplace organized by category.
   4. While recording on desktop, a connected web dashboard shows live recording status and project mirror via an authenticated WebSocket channel with short-lived JWT auth and reconnect.
   5. Each video's viewer page shows play count, watch duration, drop-off heatmap, and geographic breakdown for the owner or workspace editors.
-**Plans**: TBD
+**Plans**: 10 plans
+Plans:
+- [ ] 04-01-PLAN.md — Next.js 15 scaffold + Prisma schema (12 models) + tRPC 11 setup + Tailwind v4
+- [ ] 04-02-PLAN.md — NextAuth v5 (GitHub + Google OAuth) + Prisma adapter + desktop token exchange + auth-gated dashboard
+- [ ] 04-03-PLAN.md — Desktop Settings > Accounts panel + OAuth flow + keychain token storage
+- [ ] 04-04-PLAN.md — Upload pipeline: R2 multipart presigned URLs + desktop upload commands + progress UI
+- [ ] 04-05-PLAN.md — Shareable viewer page + iframe embed + oEmbed endpoint + privacy toggle + slug editor
+- [ ] 04-06-PLAN.md — Team workspaces with RBAC (owner/editor/viewer) + invite flow + workspace UI
+- [ ] 04-07-PLAN.md — Template marketplace: curated seed data (12 templates, 9 categories) + fork + category grid
+- [ ] 04-08-PLAN.md — Analytics pipeline: event ingestion + GeoIP + session tracking + dashboard (play/duration/dropoff/geo)
+- [ ] 04-09-PLAN.md — Desktop-web sync: SSE subscriptions + metadata push + recording status + offline queue
+- [ ] 04-10-PLAN.md — Final integration + dashboard navigation + landing page + human-verify checkpoint
 **UI hint**: yes
 
 ## Progress
@@ -124,7 +135,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 | 1. Foundation — DSL, Automation, Capture, Encode | 11/11 | Code-complete (2 verification steps pending) | 2026-04-15 |
 | 2. Cinematic Post-Production & Export | 14/14 | Code-complete (2 verification steps pending) | 2026-04-15 |
 | 3. Intelligence Layer — AI Authoring & Voiceover | 21/21 | Code-complete (1 verification step pending) | 2026-04-15 |
-| 4. Web Companion & Sharing | 0/0 | Not started | - |
+| 4. Web Companion & Sharing | 0/10 | Planned | - |
 
 ## Coverage
 
