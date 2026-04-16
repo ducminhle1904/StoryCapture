@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -223,9 +223,8 @@ pub async fn open_screen_capture_prefs(app: AppHandle) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     {
         let url = capture::macos::tcc::TCC_PREFS_URL;
-        // tauri-plugin-shell exposes an `open` API on the Shell handle.
-        app.shell()
-            .open(url, None)
+        app.opener()
+            .open_url(url, None::<&str>)
             .map_err(|e| AppError::Capture(format!("open prefs URL: {e}")))
     }
     #[cfg(not(target_os = "macos"))]

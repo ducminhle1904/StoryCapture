@@ -54,6 +54,7 @@
     "updater:default",
     "window-state:default",
     "shell:allow-spawn",
+    "opener:default",
     "process:default",
     "os:default"
   ]
