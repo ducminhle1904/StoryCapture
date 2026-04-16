@@ -5,6 +5,7 @@ pub mod error;
 pub mod secrets;
 pub mod tracing; // redaction layer
 pub mod llm;
+pub mod lsp;
 pub mod tts;
 
 pub use error::IntelError;
