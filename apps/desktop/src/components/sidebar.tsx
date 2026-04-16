@@ -99,7 +99,25 @@ export function Sidebar() {
       className="flex flex-col border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]"
       style={{ width: collapsed ? 48 : 200 }}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-1 px-1.5 pt-2">
+      {/* Branding — sits below the macOS title bar drag region */}
+      <div className="flex h-8 shrink-0 items-center px-3">
+        <AnimatePresence mode="wait">
+          {!collapsed && (
+            <motion.span
+              key="brand"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]"
+            >
+              StoryCapture
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-1 px-1.5">
         {visibleItems.map((item) => {
           const active = isActive(item, location.pathname);
           const Icon = item.icon;

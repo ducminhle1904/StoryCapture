@@ -6,21 +6,11 @@ import { StatusBar } from "@/components/status-bar";
 export function AppLayout() {
   return (
     <div className="app-shell flex h-screen flex-col">
-      {/* Title bar area — macOS drag region */}
+      {/* Full-width drag region for macOS title bar */}
       <div
         data-tauri-drag-region
-        className="flex h-7 shrink-0 items-center bg-[var(--color-surface-300)] px-3"
-      >
-        {/* macOS traffic lights occupy ~70px on the left; leave space */}
-        <div className="pl-[70px]" data-tauri-drag-region>
-          <span
-            className="text-[11px] font-medium tracking-wide text-[var(--color-fg-secondary)]"
-            data-tauri-drag-region
-          >
-            StoryCapture
-          </span>
-        </div>
-      </div>
+        className="h-7 shrink-0 bg-[var(--color-surface-300)]"
+      />
 
       {/* Main content area: sidebar + routes */}
       <div className="flex min-h-0 flex-1">
