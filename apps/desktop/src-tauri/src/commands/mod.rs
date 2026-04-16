@@ -22,4 +22,5 @@ pub mod timeline;
 pub mod tts;
 pub mod updater;
 pub mod util;
+pub mod upload;
 pub mod web_account;

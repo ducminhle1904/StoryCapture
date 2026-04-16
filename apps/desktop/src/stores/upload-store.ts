@@ -1,0 +1,105 @@
+/**
+ * Zustand store for upload state management.
+ *
+ * Tracks upload progress, status, and provides actions
+ * for starting, cancelling, and resetting uploads.
+ *
+ * Listens to Tauri Channel<T> progress events from the
+ * upload_video command (same pattern as render progress).
+ *
+ * D-01: No auto-retry. User manually triggers upload.
+ */
+
+import { create } from "zustand";
+import { invoke, Channel } from "@tauri-apps/api/core";
+
+export interface UploadProgress {
+  phase: string; // "thumbnail" | "uploading" | "completing"
+  partNumber: number;
+  totalParts: number;
+  bytesUploaded: number;
+  totalBytes: number;
+}
+
+export interface UploadStore {
+  status: "idle" | "uploading" | "complete" | "error";
+  progress: UploadProgress | null;
+  videoSlug: string | null;
+  error: string | null;
+  // Actions
+  startUpload: (
+    filePath: string,
+    projectName: string,
+    workspaceId?: string,
+    storySource?: string,
+    sceneBoundaries?: unknown[],
+  ) => Promise<void>;
+  cancelUpload: () => Promise<void>;
+  reset: () => void;
+}
+
+export const useUploadStore = create<UploadStore>((set) => ({
+  status: "idle",
+  progress: null,
+  videoSlug: null,
+  error: null,
+
+  startUpload: async (
+    filePath: string,
+    projectName: string,
+    workspaceId?: string,
+    storySource?: string,
+    sceneBoundaries?: unknown[],
+  ) => {
+    set({ status: "uploading", progress: null, videoSlug: null, error: null });
+
+    try {
+      // Create a Channel for progress events (same pattern as render progress)
+      const onProgress = new Channel<UploadProgress>();
+      onProgress.onmessage = (event: UploadProgress) => {
+        set({ progress: event });
+      };
+
+      const result = await invoke<{
+        videoId: string;
+        slug: string;
+        status: string;
+      }>("upload_video", {
+        videoPath: filePath,
+        projectName,
+        workspaceId: workspaceId ?? null,
+        storySource: storySource ?? null,
+        sceneBoundaries: sceneBoundaries
+          ? JSON.stringify(sceneBoundaries)
+          : null,
+        onProgress,
+      });
+
+      set({
+        status: "complete",
+        videoSlug: result.slug,
+        progress: null,
+        error: null,
+      });
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Upload failed. Please try again.";
+      set({ status: "error", error: message, progress: null });
+    }
+  },
+
+  cancelUpload: async () => {
+    try {
+      await invoke("cancel_upload");
+      set({ status: "idle", progress: null, error: null });
+    } catch {
+      // Cancel may fail if no upload in progress — that's fine
+    }
+  },
+
+  reset: () => {
+    set({ status: "idle", progress: null, videoSlug: null, error: null });
+  },
+}));

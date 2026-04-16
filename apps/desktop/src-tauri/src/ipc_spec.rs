@@ -19,7 +19,7 @@ use tauri_specta::{collect_commands, Builder};
 use crate::{
     commands::{
         automation, capture, dryrun, encode, export, keys, lsp, nl, parse, preset, projects,
-        render, sound_library, system, timeline, tts, updater, web_account,
+        render, sound_library, system, timeline, tts, updater, upload, web_account,
     },
     error::AppError,
 };
@@ -98,6 +98,10 @@ pub fn builder() -> Builder<Wry> {
             tts::tts_gc_cache,
             // Phase 03 plan 12 — TTS voiceover sync engine.
             tts::tts_apply_sync,
+            // Phase 04 plan 04 — Upload pipeline.
+            upload::upload_video,
+            upload::cancel_upload,
+            upload::get_upload_status,
             // Phase 04 plan 03 — Web account OAuth + keychain.
             web_account::start_web_oauth,
             web_account::complete_web_oauth,
@@ -181,6 +185,11 @@ pub fn builder() -> Builder<Wry> {
         .typ::<tts::AdjustedStepDto>()
         .typ::<tts::DuckEventDto>()
         .typ::<tts::StepTimingDto>()
+        // Phase 04 plan 04 (Upload pipeline)
+        .typ::<upload::UploadProgressEvent>()
+        .typ::<upload::UploadResult>()
+        .typ::<upload::UploadStatusDto>()
+        .typ::<upload::UploadError>()
         // Phase 04 plan 03 (Web account OAuth)
         .typ::<web_account::WebAccountInfo>()
         .typ::<web_account::WebAccountError>()
