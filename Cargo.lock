@@ -5772,6 +5772,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "tauri-specta",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tracing",
  "tracing-appender",

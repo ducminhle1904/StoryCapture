@@ -83,6 +83,9 @@ async-trait = "0.1"
 # Phase 03 plan 07: rusqlite for nl_conversations query in persist_turn helper.
 rusqlite = { version = "0.34", features = ["bundled"] }
 
+# Phase 04 plan 03: timestamp formatting for web account connected_at.
+time = { version = "0.3", features = ["formatting"] }
+
 # Phase 03 plan 03: provider probe HTTPS client (rustls only — no native-tls,
 # no plaintext HTTP). `json` parses error bodies for safe `detail` strings.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
