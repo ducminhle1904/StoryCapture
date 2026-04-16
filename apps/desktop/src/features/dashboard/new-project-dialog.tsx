@@ -59,7 +59,7 @@ export function NewProjectDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
+        <Dialog.Backdrop className="fixed inset-0 bg-[var(--color-fg-primary)/50] backdrop-blur-sm z-40" />
         <Dialog.Popup className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] shadow-xl z-50 p-6">
           <div className="flex items-start justify-between">
             <div>
@@ -129,7 +129,7 @@ export function NewProjectDialog({
               <button
                 type="submit"
                 disabled={create.isPending}
-                className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-4 py-2 text-sm font-medium text-white hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-60"
               >
                 {create.isPending && (
                   <Loader2 size={14} className="animate-spin" aria-hidden="true" />

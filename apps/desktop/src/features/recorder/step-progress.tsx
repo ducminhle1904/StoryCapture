@@ -16,7 +16,7 @@ export function StepProgress() {
       aria-valuemax={steps.length}
       aria-valuenow={currentStep}
       aria-label={`Step ${currentStep + 1} of ${steps.length}`}
-      className="rounded-[22px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-4 py-4"
+      className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4"
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-center">
         <div>
@@ -28,9 +28,9 @@ export function StepProgress() {
               {activeStep?.verb ?? "waiting"}
             </span>
           </div>
-          <div className="mt-3 flex gap-1 overflow-hidden rounded-full bg-white/4 p-[3px]">
+          <div className="mt-3 flex gap-1 overflow-hidden rounded-full bg-[var(--color-surface-100)] p-[3px]">
             {steps.map((step, i) => {
-              let cls = "bg-white/8";
+              let cls = "bg-[var(--color-surface-300)]";
               if (step.status === "running")
                 cls = "bg-[var(--color-accent-primary)]/70 animate-pulse";
               else if (step.status === "succeeded")
@@ -53,7 +53,7 @@ export function StepProgress() {
           {steps.slice(Math.max(0, currentStep - 1), currentStep + 2).map((step, index) => (
             <span
               key={`${step.verb}-${index}`}
-              className="rounded-full border border-white/8 bg-black/12 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-secondary)]"
+              className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-secondary)]"
             >
               {step.verb}
             </span>

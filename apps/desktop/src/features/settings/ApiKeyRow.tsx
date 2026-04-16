@@ -109,10 +109,10 @@ export function ApiKeyRow({
   );
 
   return (
-    <div className="rounded-[24px] border border-white/8 bg-black/14 p-4">
+    <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl border border-white/8 bg-white/5 p-2">
+          <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-2">
             <Shield className="h-5 w-5 shrink-0 text-[var(--color-fg-muted)]" />
           </div>
           <div>
@@ -138,14 +138,14 @@ export function ApiKeyRow({
               value={keyValue}
               onChange={(e) => setKeyValue(e.target.value)}
               placeholder={`Paste ${displayName} API key`}
-              className="flex-1 rounded-xl border border-white/8 bg-black/18 px-3 py-2 text-sm font-mono text-[var(--color-fg-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className="flex-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-500)] px-3 py-2 text-sm font-mono text-[var(--color-fg-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
               aria-label={`API key cho ${displayName}`}
             />
             <Button
               size="sm"
               onClick={handleSave}
               disabled={saving || !keyValue.trim()}
-              className="brand-button rounded-xl text-white"
+              className="brand-button rounded-xl text-[var(--color-fg-primary)]"
             >
               {saving ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -160,7 +160,7 @@ export function ApiKeyRow({
                 setEditing(false);
                 setKeyValue("");
               }}
-              className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8"
+              className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
             >
               Cancel
             </Button>
@@ -176,7 +176,7 @@ export function ApiKeyRow({
               size="sm"
               variant="outline"
               onClick={() => setEditing(true)}
-              className="rounded-xl border-white/8 bg-white/4 hover:bg-white/8"
+              className="rounded-xl border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
             >
               Add key
             </Button>
@@ -189,7 +189,7 @@ export function ApiKeyRow({
                 variant="outline"
                 onClick={handleTest}
                 disabled={testing}
-                className="rounded-xl border-white/8 bg-white/4 hover:bg-white/8"
+                className="rounded-xl border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
               >
                 {testing ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -203,7 +203,7 @@ export function ApiKeyRow({
                 variant="ghost"
                 onClick={() => setShowConfirm(true)}
                 aria-label={`Delete API key ${displayName}`}
-                className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8"
+                className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -214,8 +214,8 @@ export function ApiKeyRow({
 
       <Dialog.Root open={showConfirm} onOpenChange={setShowConfirm}>
         <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
-          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(14,17,24,0.98),rgba(8,10,15,0.98))] p-6 shadow-[0_32px_90px_rgba(0,0,0,0.42)]">
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm" />
+          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)]">
             <Dialog.Title className="mb-2 text-lg font-semibold text-[var(--color-fg-primary)]">
               {`Delete ${displayName} key?`}
             </Dialog.Title>

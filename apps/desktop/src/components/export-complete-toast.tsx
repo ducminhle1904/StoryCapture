@@ -65,7 +65,7 @@ export function ExportCompleteToast({
           <button
             onClick={handleUpload}
             disabled={!isConnected || isUploading}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             title={
               !isConnected
                 ? "Connect a web account in Settings > Accounts"

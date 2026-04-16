@@ -107,7 +107,7 @@ export function AccountsPage() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-[24px] border border-white/8 bg-white/4 px-4 py-4">
+        <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4">
           <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
             Connected providers
           </div>
@@ -115,7 +115,7 @@ export function AccountsPage() {
             {connectedCount}
           </div>
         </div>
-        <div className="rounded-[24px] border border-white/8 bg-white/4 px-4 py-4">
+        <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4">
           <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
             LLM services
           </div>
@@ -123,7 +123,7 @@ export function AccountsPage() {
             Anthropic, OpenAI
           </div>
         </div>
-        <div className="rounded-[24px] border border-white/8 bg-white/4 px-4 py-4">
+        <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4">
           <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
             Voice services
           </div>
@@ -138,7 +138,7 @@ export function AccountsPage() {
       </section>
 
       {allAbsent && (
-        <div className="mb-6 rounded-[28px] border border-dashed border-white/12 bg-black/14 p-6 text-center">
+        <div className="mb-6 rounded-[var(--radius-2xl)] border border-dashed border-[var(--color-border-default)] bg-[var(--color-surface-400)] p-6 text-center">
           <p className="text-sm font-medium text-[var(--color-fg-primary)]">
             No API keys connected yet
           </p>
@@ -150,7 +150,7 @@ export function AccountsPage() {
       )}
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="brand-panel rounded-[28px] px-5 py-5">
+        <section className="brand-panel rounded-[var(--radius-2xl)] px-5 py-5">
           <h2 className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
             LLM providers
           </h2>
@@ -177,7 +177,7 @@ export function AccountsPage() {
           </div>
         </section>
 
-        <section className="brand-panel rounded-[28px] px-5 py-5">
+        <section className="brand-panel rounded-[var(--radius-2xl)] px-5 py-5">
           <h2 className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
             Voice providers
           </h2>

@@ -95,7 +95,7 @@ function MetricChip({
   value: string;
 }) {
   return (
-    <div className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+    <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
       <span>{label}</span>
       <span className="ml-2 text-[var(--color-fg-primary)]">{value}</span>
     </div>
@@ -205,8 +205,8 @@ function VoiceoverWorkbench({
   ]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border border-white/8 bg-[linear-gradient(180deg,rgba(21,26,34,0.92),rgba(15,18,25,0.96))] shadow-[0_22px_80px_rgba(0,0,0,0.26)]">
-      <div className="flex items-start justify-between gap-5 border-b border-white/6 px-5 py-4">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]">
+      <div className="flex items-start justify-between gap-5 border-b border-[var(--color-border-subtle)] px-5 py-4">
         <div className="max-w-xl">
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[var(--color-fg-muted)]">
             <Mic2 size={12} aria-hidden="true" />
@@ -239,7 +239,7 @@ function VoiceoverWorkbench({
         </div>
       ) : (
         <>
-          <div className="flex gap-2 overflow-x-auto border-b border-white/6 bg-black/8 px-5 py-4">
+          <div className="flex gap-2 overflow-x-auto border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-5 py-4">
             {steps.map((step) => {
               const isSelected = step.id === selectedStepId;
               const hasClip = Boolean(clipByStepId[step.id]);
@@ -251,7 +251,7 @@ function VoiceoverWorkbench({
                   className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
                     isSelected
                       ? "border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/12 text-[var(--color-fg-primary)]"
-                      : "border-white/8 bg-white/4 text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)]"
+                      : "border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)]"
                   }`}
                 >
                   <span className="truncate">{step.label}</span>
@@ -264,9 +264,9 @@ function VoiceoverWorkbench({
           </div>
 
           <div className="grid min-h-0 flex-1 gap-5 overflow-auto p-5 xl:grid-cols-[minmax(0,1.18fr)_330px]">
-            <div className="min-w-0 rounded-[24px] bg-black/14 p-4">
+            <div className="min-w-0 rounded-[var(--radius-2xl)] bg-[var(--color-surface-400)] p-4">
               {selectedStep ? (
-                <div className="mb-4 border-b border-white/6 pb-4">
+                <div className="mb-4 border-b border-[var(--color-border-subtle)] pb-4">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
                     Active segment
                   </div>
@@ -280,7 +280,7 @@ function VoiceoverWorkbench({
                       </p>
                     </div>
                     {selectedPreset ? (
-                      <div className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-xs text-[var(--color-fg-secondary)]">
+                      <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1 text-xs text-[var(--color-fg-secondary)]">
                         {selectedPreset.name}
                       </div>
                     ) : null}
@@ -293,7 +293,7 @@ function VoiceoverWorkbench({
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+              <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
                   Active voice
                 </div>
@@ -336,7 +336,7 @@ function VoiceoverWorkbench({
                   }}
                 />
               ) : (
-                <div className="rounded-[24px] border border-dashed border-white/10 bg-black/14 p-4 text-sm leading-6 text-[var(--color-fg-muted)]">
+                <div className="rounded-[var(--radius-2xl)] border border-dashed border-[var(--color-border-default)] bg-[var(--color-surface-400)] p-4 text-sm leading-6 text-[var(--color-fg-muted)]">
                   Generate a clip for the selected step to inspect duration, cost, and sync state.
                 </div>
               )}
@@ -432,9 +432,9 @@ export default function EditorRoute() {
   return (
     <main
       id="main-content"
-      className="flex h-full flex-col bg-[linear-gradient(180deg,#0f1319_0%,#0d1117_100%)]"
+      className="flex h-full flex-col bg-[var(--color-bg-primary)]"
     >
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-white/6 bg-black/10 px-4 py-3 backdrop-blur-md">
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-3 backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-4">
           <Link
             to="/"
@@ -465,7 +465,7 @@ export default function EditorRoute() {
         <div className="flex items-center gap-2">
           <Link
             to="/settings"
-            className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-sm text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-sm text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
           >
             <Settings size={14} aria-hidden="true" />
             Settings
@@ -473,7 +473,7 @@ export default function EditorRoute() {
           {projectId ? (
             <Link
               to={`/recorder/${projectId}`}
-              className="brand-button inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+              className="brand-button inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
             >
               <Video size={14} aria-hidden="true" />
               Record
@@ -485,9 +485,9 @@ export default function EditorRoute() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)]">
-            <aside className="min-h-0 border-r border-white/6 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)]">
+            <aside className="min-h-0 border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
               <div className="flex h-full min-h-0 flex-col">
-                <div className="border-b border-white/6 px-5 py-4">
+                <div className="border-b border-[var(--color-border-subtle)] px-5 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
@@ -497,7 +497,7 @@ export default function EditorRoute() {
                         Write the capture sequence directly, then refine timing and narration.
                       </p>
                     </div>
-                    <div className="rounded-full border border-white/8 bg-black/14 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+                    <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
                       lines
                       <span className="ml-2 text-[var(--color-fg-primary)]">
                         {source.split("\n").length}
@@ -511,7 +511,7 @@ export default function EditorRoute() {
               </div>
             </aside>
 
-            <section className="min-h-0 bg-[radial-gradient(circle_at_top,rgba(255,107,115,0.08),transparent_28rem)]">
+            <section className="min-h-0 bg-[var(--color-bg-primary)]">
               <div className="flex h-full min-h-0 flex-col gap-4 p-5">
                 <div className="min-h-0 flex-[1.05]">
                   <PreviewPanel thumbnailPath={previewBackdrop} />
@@ -525,7 +525,7 @@ export default function EditorRoute() {
             </section>
           </div>
 
-          <div className="h-52 min-h-0 border-t border-white/6 bg-[linear-gradient(180deg,#121720_0%,#0f141b_100%)]">
+          <div className="h-52 min-h-0 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
             <TimelinePanel />
           </div>
         </div>

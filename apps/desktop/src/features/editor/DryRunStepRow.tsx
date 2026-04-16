@@ -24,11 +24,11 @@ const statusConfig: Record<
   DryRunStepStatus,
   { label: string; className: string }
 > = {
-  queued: { label: "Queued", className: "bg-[var(--color-info,#4493F8)] text-white" },
-  running: { label: "Running", className: "bg-[var(--color-info,#4493F8)] text-white" },
-  pass: { label: "Pass", className: "bg-[var(--color-success,#30A46C)] text-white" },
-  fail: { label: "Fail", className: "bg-[var(--color-destructive,#E5484D)] text-white" },
-  skipped: { label: "Skipped", className: "bg-[var(--color-muted-foreground,#8A90A2)] text-white" },
+  queued: { label: "Queued", className: "bg-[var(--color-info,#4493F8)] text-[var(--color-fg-primary)]" },
+  running: { label: "Running", className: "bg-[var(--color-info,#4493F8)] text-[var(--color-fg-primary)]" },
+  pass: { label: "Pass", className: "bg-[var(--color-success,#30A46C)] text-[var(--color-fg-primary)]" },
+  fail: { label: "Fail", className: "bg-[var(--color-destructive,#E5484D)] text-[var(--color-fg-primary)]" },
+  skipped: { label: "Skipped", className: "bg-[var(--color-muted-foreground,#8A90A2)] text-[var(--color-fg-primary)]" },
 };
 
 export function DryRunStepRow({

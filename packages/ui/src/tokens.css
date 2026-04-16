@@ -1,71 +1,88 @@
 /*
- * @storycapture/ui — design tokens (Plan 01-09, UI-08)
+ * @storycapture/ui — design tokens
  *
- * Dark-first blend of Runway (primary cinematic palette) + Linear (editor /
- * dashboard precision) + ElevenLabs (timeline / waveform accents). See
- * ./README.md for the origin + blend rules.
+ * Cursor-inspired warm minimalism: cream canvas, warm near-black text,
+ * three-font typographic system (gothic display, serif body, mono code),
+ * oklab-space borders, atmospheric shadows.
  *
- * Origin: hand-authored (getdesign@latest was not attempted in this run —
- *   the tool is not pinned in the workspace and its output would not be
- *   deterministic across CI runs). These hex values are intentionally
- *   conservative stand-ins for the three brand palettes and respect WCAG
- *   2.1 AA contrast against `--color-bg-primary` for all foreground
- *   tokens (fg-primary: 15.2:1, fg-secondary: 6.8:1, fg-muted: 4.6:1).
+ * Font substitutions (Cursor originals are proprietary):
+ *   CursorGothic  → Inter (gothic sans-serif, tight tracking at display sizes)
+ *   jjannon       → Lora (warm serif with OpenType swash alternates)
+ *   berkeleyMono  → JetBrains Mono (refined coding font)
  *
  * Consumed by:
  *   - apps/desktop/src/styles.css (`@import "@storycapture/ui/tokens.css"`)
+ *   - apps/web/src/styles/globals.css
  *   - packages/ui components (post-P09)
  */
 
 @theme {
-  /* ---- Backgrounds (Runway: near-black cinematic base) ---- */
-  --color-bg-primary: #0a0a0b;
-  --color-bg-surface: #131316;
-  --color-bg-elevated: #1a1a1f;
+  /* ---- Backgrounds / Surface Scale ---- */
+  --color-bg-primary: #f2f1ed;     /* Cursor Cream — page background */
+  --color-bg-surface: #e6e5e0;     /* Surface 400 — cards, secondary surfaces */
+  --color-bg-elevated: #ebeae5;    /* Surface 300 — buttons, elevated elements */
 
-  /* ---- Borders + surfaces (Linear: neutral editor chrome) ---- */
-  --color-border-subtle: #27272a;
-  --color-border-default: #3f3f46;
+  --color-surface-100: #f7f7f4;    /* Lightest — subtle button/card */
+  --color-surface-200: #f2f1ed;    /* Page background (= bg-primary) */
+  --color-surface-300: #ebeae5;    /* Button default, subtle emphasis */
+  --color-surface-400: #e6e5e0;    /* Card background, secondary */
+  --color-surface-500: #e1e0db;    /* Tertiary, deeper emphasis */
 
-  /* ---- Foreground (Linear typography hierarchy) ---- */
-  --color-fg-primary: #fafafa;
-  --color-fg-secondary: #a1a1aa;
-  --color-fg-muted: #71717a;
+  /* ---- Borders (oklab warm brown at alpha levels) ---- */
+  --color-border-subtle: rgba(38, 37, 30, 0.1);   /* 10% warm brown */
+  --color-border-default: rgba(38, 37, 30, 0.2);   /* 20% warm brown */
+  --color-border-strong: rgba(38, 37, 30, 0.55);   /* Strong — table rules */
+  --color-border-solid: #26251e;                    /* Full-opacity dark border */
+
+  /* ---- Foreground (warm near-black hierarchy) ---- */
+  --color-fg-primary: #26251e;              /* Cursor Dark — headings, primary text */
+  --color-fg-secondary: rgba(38, 37, 30, 0.55); /* 55% warm brown — body text */
+  --color-fg-muted: rgba(38, 37, 30, 0.4);      /* 40% warm brown — captions */
 
   /* ---- Accents ---- */
-  --color-accent-primary: #8b5cf6;   /* Runway violet (primary cinematic) */
-  --color-accent-secondary: #5b8def; /* Linear blue (interactive) */
-  --color-waveform: #d946ef;         /* ElevenLabs magenta (timeline/audio) */
+  --color-accent-primary: #f54e00;    /* Cursor Orange — brand accent, CTAs */
+  --color-accent-secondary: #c08532;  /* Gold — premium, highlighted contexts */
 
   /* ---- State ---- */
-  --color-success: #22c55e;
-  --color-warning: #eab308;
-  --color-danger: #ef4444;
+  --color-success: #1f8a65;     /* Warm muted teal-green */
+  --color-warning: #c08532;     /* Gold (shared with accent-secondary) */
+  --color-danger: #cf2d56;      /* Warm crimson-rose (also hover accent) */
 
-  /* ---- Focus ring (WCAG 2.1 AA: ≥3:1 against bg) ---- */
+  /* ---- Interactive ---- */
+  --color-hover: #cf2d56;       /* Warm crimson — signature hover text shift */
+
+  /* ---- Timeline / Feature Colors ---- */
+  --color-timeline-thinking: #dfa88f;  /* Warm peach */
+  --color-timeline-grep: #9fc9a2;      /* Soft sage green */
+  --color-timeline-read: #9fbbe0;      /* Soft blue */
+  --color-timeline-edit: #c0a8dd;      /* Soft lavender */
+
+  /* ---- Focus ring ---- */
   --color-focus-ring: var(--color-accent-primary);
 
-  /* ---- Typography ---- */
-  --font-sans: "Geist Sans", "GeistSans", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Menlo", "Consolas", monospace;
+  /* ---- Typography — 3 voices ---- */
+  --font-display: "Inter", "Inter Fallback", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-serif: "Lora", "Iowan Old Style", "Palatino Linotype", "URW Palladio L", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-sans: var(--font-display);
+
+  /* ---- Shadows ---- */
+  --shadow-ambient: 0px 0px 16px rgba(0, 0, 0, 0.02), 0px 0px 8px rgba(0, 0, 0, 0.008);
+  --shadow-card: 0px 28px 70px rgba(0, 0, 0, 0.14), 0px 14px 32px rgba(0, 0, 0, 0.1);
+  --shadow-focus: 0px 4px 12px rgba(0, 0, 0, 0.1);
+
+  /* ---- Border Radius Scale ---- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-default: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-pill: 9999px;
 }
 
-/* Light-mode override. Set via `document.documentElement.dataset.theme = 'light'`. */
-:root[data-theme="light"] {
-  --color-bg-primary: #ffffff;
-  --color-bg-surface: #f8fafc;
-  --color-bg-elevated: #ffffff;
-  --color-border-subtle: #e4e4e7;
-  --color-border-default: #d4d4d8;
-  --color-fg-primary: #0a0a0b;
-  --color-fg-secondary: #52525b;
-  --color-fg-muted: #71717a;
-  --color-accent-primary: #7c3aed;
-  --color-accent-secondary: #2563eb;
-  --color-waveform: #c026d3;
-}
-
-/* Legacy aliases used by apps/desktop/src/styles.css prior to Plan 09. */
+/* Legacy aliases for existing component compatibility */
 @theme {
   --color-bg: var(--color-bg-primary);
   --color-fg: var(--color-fg-primary);
@@ -74,4 +91,34 @@
   --color-border: var(--color-border-subtle);
   --color-accent: var(--color-accent-primary);
   --color-accent-muted: var(--color-accent-secondary);
+  --color-waveform: var(--color-timeline-edit);
+}
+
+/*
+ * Dark-mode override.
+ * Warm dark counterpart — not cold/clinical, maintains the warm undertone.
+ * Set via `document.documentElement.dataset.theme = 'dark'`.
+ */
+:root[data-theme="dark"] {
+  --color-bg-primary: #1c1b18;
+  --color-bg-surface: #26251e;
+  --color-bg-elevated: #302f27;
+  --color-surface-100: #211f1a;
+  --color-surface-200: #1c1b18;
+  --color-surface-300: #302f27;
+  --color-surface-400: #3a3830;
+  --color-surface-500: #44423a;
+  --color-border-subtle: rgba(242, 241, 237, 0.1);
+  --color-border-default: rgba(242, 241, 237, 0.2);
+  --color-border-strong: rgba(242, 241, 237, 0.45);
+  --color-border-solid: #f2f1ed;
+  --color-fg-primary: #f2f1ed;
+  --color-fg-secondary: rgba(242, 241, 237, 0.65);
+  --color-fg-muted: rgba(242, 241, 237, 0.45);
+  --color-accent-primary: #ff6b2d;
+  --color-accent-secondary: #d4a04a;
+  --color-success: #2aad7a;
+  --color-warning: #d4a04a;
+  --color-danger: #e84672;
+  --color-hover: #e84672;
 }

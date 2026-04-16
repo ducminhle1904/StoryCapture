@@ -48,7 +48,7 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
       aria-pressed={selected}
       data-clip-id={clip.id}
       data-track-id={trackId}
-      className={`absolute top-1 flex items-center overflow-hidden rounded border text-left text-[10px] text-white transition ${TRACK_COLOR[trackId]} ${
+      className={`absolute top-1 flex items-center overflow-hidden rounded border text-left text-[10px] text-[var(--color-fg-primary)] transition ${TRACK_COLOR[trackId]} ${
         selected ? "ring-2 ring-[var(--color-accent,#ff5b76)]" : ""
       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]`}
       style={{ left, width, height: trackHeight - 8 }}

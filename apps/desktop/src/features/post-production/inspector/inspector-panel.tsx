@@ -58,7 +58,7 @@ export function InspectorPanel() {
       aria-label="Inspector"
       className="flex h-full w-full flex-col bg-transparent"
     >
-      <div className="border-b border-white/6 px-5 py-4">
+      <div className="border-b border-[var(--color-border-subtle)] px-5 py-4">
         <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
           Inspector
         </div>
@@ -69,7 +69,7 @@ export function InspectorPanel() {
       <div
         role="tablist"
         aria-label="Inspector sections"
-        className="flex shrink-0 gap-2 border-b border-white/6 px-5 py-4"
+        className="flex shrink-0 gap-2 border-b border-[var(--color-border-subtle)] px-5 py-4"
       >
         {TABS.map((t) => {
           const active = t.id === selectedTab;
@@ -85,7 +85,7 @@ export function InspectorPanel() {
               className={`rounded-full px-3 py-2 text-xs uppercase tracking-[0.18em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
                 active
                   ? "bg-[var(--color-accent-primary)]/12 text-[var(--color-fg)]"
-                  : "bg-white/4 text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                  : "bg-[var(--color-surface-100)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
               }`}
               onClick={() => setSelectedTab(t.id)}
             >

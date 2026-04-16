@@ -55,7 +55,7 @@ export function StoryEditor({ onAutosave }: StoryEditorProps) {
 
   return (
     <div
-      className="h-full w-full overflow-hidden bg-transparent [&_.cm-editor]:h-full [&_.cm-editor]:bg-transparent [&_.cm-gutters]:border-r-0 [&_.cm-gutters]:bg-transparent [&_.cm-scroller]:font-mono [&_.cm-activeLine]:bg-white/4 [&_.cm-activeLineGutter]:bg-white/4 [&_.cm-cursor]:border-l-[var(--color-accent-primary)] [&_.cm-content]:py-5 [&_.cm-line]:px-2 [&_.cm-selectionBackground]:bg-[rgba(255,107,115,0.22)]"
+      className="h-full w-full overflow-hidden bg-transparent [&_.cm-editor]:h-full [&_.cm-editor]:bg-transparent [&_.cm-gutters]:border-r-0 [&_.cm-gutters]:bg-transparent [&_.cm-scroller]:font-mono [&_.cm-activeLine]:bg-[var(--color-surface-100)] [&_.cm-activeLineGutter]:bg-[var(--color-surface-100)] [&_.cm-cursor]:border-l-[var(--color-accent-primary)] [&_.cm-content]:py-5 [&_.cm-line]:px-2 [&_.cm-selectionBackground]:bg-[rgba(255,107,115,0.22)]"
       onBlur={handleBlur}
     >
       <CodeMirror

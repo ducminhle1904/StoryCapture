@@ -40,7 +40,7 @@ export function SoundDrawer() {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-30 bg-black/40"
+        className="fixed inset-0 z-30 bg-[var(--color-fg-primary)/40]"
         aria-hidden="true"
         onClick={() => setOpen(false)}
       />

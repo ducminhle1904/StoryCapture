@@ -53,7 +53,7 @@ export function AiDisclosureModal({
     <div
       role="alertdialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-fg-primary)/50]"
     >
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-6 shadow-lg max-w-md">
         <h2 className="text-lg font-semibold mb-2">

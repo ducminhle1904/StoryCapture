@@ -32,7 +32,7 @@ export function BrandWordmark({
     <span
       className={cn(
         "font-semibold tracking-[-0.04em]",
-        muted ? "text-[var(--color-fg-secondary)]" : "text-white",
+        muted ? "text-[var(--color-fg-secondary)]" : "text-[var(--color-fg-primary)]",
         className,
       )}
     >

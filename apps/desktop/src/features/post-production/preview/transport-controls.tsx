@@ -32,7 +32,7 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         size="icon"
         aria-label="Jump back 5 seconds"
         onClick={() => setPlayhead(Math.max(0, playheadMs - 5000))}
-        className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8"
+        className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
       >
         <SkipBack className="h-4 w-4" />
       </Button>
@@ -50,11 +50,11 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         size="icon"
         aria-label="Jump forward 5 seconds"
         onClick={() => setPlayhead(playheadMs + 5000)}
-        className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8"
+        className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
       >
         <SkipForward className="h-4 w-4" />
       </Button>
-      <span className="ml-2 rounded-full border border-white/8 bg-white/4 px-3 py-1 text-xs tabular-nums text-[var(--color-fg-muted)]">
+      <span className="ml-2 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1 text-xs tabular-nums text-[var(--color-fg-muted)]">
         {(playheadMs / 1000).toFixed(2)}s
       </span>
     </div>

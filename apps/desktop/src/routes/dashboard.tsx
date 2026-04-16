@@ -52,14 +52,14 @@ export default function DashboardRoute() {
       transition={{ duration: 0.25, ease: "easeOut" }}
       className="mx-auto max-w-6xl p-8"
     >
-      <header className="brand-panel relative overflow-hidden rounded-[32px] p-8">
+      <header className="brand-panel relative overflow-hidden rounded-[var(--radius-2xl)] p-8">
         <img
           src={brandSplashSrc}
           alt=""
           aria-hidden="true"
           className="pointer-events-none absolute inset-y-0 right-0 h-full max-w-[56%] object-cover opacity-40"
         />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,#0f1219_0%,rgba(15,18,25,0.96)_46%,rgba(15,18,25,0.42)_100%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,var(--color-surface-300)_0%,rgba(235,234,229,0.96)_46%,rgba(235,234,229,0.42)_100%)]" />
         <div className="relative flex items-start justify-between gap-6">
           <div className="max-w-2xl">
             <BrandLockup
@@ -71,7 +71,7 @@ export default function DashboardRoute() {
               takes or editing passes.
             </p>
             <div className="mt-10">
-              <h1 className="text-4xl font-semibold tracking-[-0.05em] text-white">
+              <h1 className="text-4xl font-semibold tracking-[-0.05em] text-[var(--color-fg-primary)]">
                 Projects
               </h1>
               <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
@@ -90,7 +90,7 @@ export default function DashboardRoute() {
             <button
               onClick={() => setDialogOpen(true)}
               aria-label="Create new project"
-              className="brand-button inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+              className="brand-button inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
             >
               <Plus size={16} aria-hidden="true" />
               New Project
@@ -107,14 +107,14 @@ export default function DashboardRoute() {
         {isLoading ? (
           <div
             role="status"
-            className="brand-panel rounded-[24px] p-8 text-sm text-[var(--color-fg-muted)]"
+            className="brand-panel rounded-[var(--radius-2xl)] p-8 text-sm text-[var(--color-fg-muted)]"
           >
             Loading projects…
           </div>
         ) : error ? (
           <div
             role="alert"
-            className="flex items-center gap-3 rounded-[24px] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]"
+            className="flex items-center gap-3 rounded-[var(--radius-2xl)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]"
           >
             <AlertTriangle size={16} aria-hidden="true" />
             Failed to load projects: {String(error)}

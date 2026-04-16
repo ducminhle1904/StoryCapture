@@ -35,7 +35,7 @@ export function TimelinePanel({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-white/6 px-5 py-3">
+      <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-5 py-3">
         <div>
           <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
             Master timeline
@@ -60,7 +60,7 @@ export function TimelinePanel({
             return (
               <li
                 key={`${scene.name}-${idx}`}
-                className="grid gap-3 border-b border-white/6 pb-4 last:border-b-0"
+                className="grid gap-3 border-b border-[var(--color-border-subtle)] pb-4 last:border-b-0"
               >
                 <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
                   <div>
@@ -76,7 +76,7 @@ export function TimelinePanel({
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex h-8 w-full items-stretch gap-[3px] overflow-hidden rounded-full bg-white/4 p-[3px]">
+                    <div className="flex h-8 w-full items-stretch gap-[3px] overflow-hidden rounded-full bg-[var(--color-surface-100)] p-[3px]">
                       {scene.commands.map((cmd, cidx) => {
                         const ms = estimateStepDuration(cmd);
                         const pct = totalMs > 0 ? (ms / totalMs) * 100 : 0;
@@ -101,7 +101,7 @@ export function TimelinePanel({
                           key={`${scene.name}-${idx}-chip-${cidx}`}
                           type="button"
                           onClick={() => onJumpTo?.(cmd.span.start)}
-                          className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
+                          className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
                         >
                           {cmd.verb}
                         </button>

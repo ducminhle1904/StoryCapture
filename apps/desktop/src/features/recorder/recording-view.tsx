@@ -247,11 +247,11 @@ export function RecordingView({
   return (
     <main
       id="main-content"
-      className="relative flex h-full flex-col bg-[linear-gradient(180deg,#0f1319_0%,#0d1117_100%)]"
+      className="relative flex h-full flex-col bg-[var(--color-bg-primary)]"
     >
       <CursorTrail />
 
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-white/6 bg-black/10 px-4 py-3 backdrop-blur-md">
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-3 backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-3">
           <Link
             to="/"
@@ -270,14 +270,14 @@ export function RecordingView({
             </div>
           </div>
         </div>
-        <div className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+        <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
           target identity
           <span className="ml-2 text-[var(--color-fg-primary)]">{displayLabel}</span>
         </div>
       </header>
 
       <section className="grid min-h-0 flex-1 gap-6 px-6 py-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col justify-between rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+        <aside className="flex min-h-0 flex-col justify-between rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-5 shadow-[var(--shadow-card)]">
           <div className="space-y-8">
             <div>
               <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
@@ -322,7 +322,7 @@ export function RecordingView({
             </div>
           </div>
 
-          <div className="rounded-[22px] border border-white/8 bg-black/12 p-4">
+          <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-4">
             <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
               Capture target
             </div>
@@ -343,7 +343,7 @@ export function RecordingView({
                 value={selectedDisplay ?? ""}
                 onChange={(e) => setSelectedDisplay(Number(e.target.value))}
                 disabled={permission !== "Granted" || displays.length === 0}
-                className="min-w-0 w-full rounded-xl border border-white/8 bg-black/18 py-2 pl-9 pr-3 text-sm text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
+                className="min-w-0 w-full rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-500)] py-2 pl-9 pr-3 text-sm text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
               >
                 {displays.length === 0 && <option value="">No displays detected</option>}
                 {displays.map((d) => {
@@ -360,8 +360,8 @@ export function RecordingView({
         </aside>
 
         <div className="flex min-h-0 flex-col gap-5">
-          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(21,26,34,0.96),rgba(15,18,25,0.96))] shadow-[0_28px_90px_rgba(0,0,0,0.26)]">
-            <div className="flex items-start justify-between gap-4 border-b border-white/6 px-6 py-5">
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border-subtle)] px-6 py-5">
               <div>
                 <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
                   Recording control
@@ -377,15 +377,15 @@ export function RecordingView({
                     : "Actively capturing the scripted sequence. System state stays visible while the browser run advances."}
                 </p>
               </div>
-              <div className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+              <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
                 {projectFolder.split("/").slice(-2).join("/")}
               </div>
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col justify-between px-6 py-6">
               <div className="flex min-h-0 flex-1 items-center justify-center">
-                <div className="relative flex min-h-[420px] w-full max-w-5xl flex-col justify-center overflow-hidden rounded-[26px] border border-white/8 bg-[linear-gradient(180deg,#10151c_0%,#0c1016_100%)] px-6 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:18px_18px]" />
+                <div className="relative flex min-h-[420px] w-full max-w-5xl flex-col justify-center overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-6 py-8 shadow-[inset_0_1px_0_rgba(38,37,30,0.03)]">
+                  <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:radial-gradient(rgba(38,37,30,0.06)_1px,transparent_1px)] [background-size:18px_18px]" />
                   <div className="pointer-events-none absolute inset-x-10 top-10 h-56 rounded-full bg-[radial-gradient(circle,rgba(255,107,115,0.08),transparent_60%)] blur-3xl" />
 
                   <div className="relative text-center">
@@ -422,7 +422,7 @@ export function RecordingView({
                     onClick={handleRecord}
                     disabled={permission !== "Granted" || selectedDisplay == null}
                     aria-label="Start recording"
-                    className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-danger)] px-6 py-3 text-sm font-medium text-white shadow-[0_16px_36px_rgba(255,107,115,0.22)] transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-danger)] px-6 py-3 text-sm font-medium text-[var(--color-fg-primary)] shadow-[0_16px_36px_rgba(255,107,115,0.22)] transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
                   >
                     <Video size={18} aria-hidden="true" />
                     Start recording
@@ -440,7 +440,7 @@ export function RecordingView({
                           ? "Resume recording"
                           : "Pause recording"
                       }
-                      className="inline-flex items-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-5 py-3 text-sm text-[var(--color-fg-primary)] transition hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
+                      className="inline-flex items-center gap-2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-5 py-3 text-sm text-[var(--color-fg-primary)] transition hover:bg-[var(--color-surface-300)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
                     >
                       {status === "paused" ? (
                         <PlayIcon size={16} aria-hidden="true" />
@@ -452,7 +452,7 @@ export function RecordingView({
                     <button
                       onClick={handleStop}
                       aria-label="Stop recording"
-                      className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-danger)] px-5 py-3 text-sm font-medium text-white transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-danger)] px-5 py-3 text-sm font-medium text-[var(--color-fg-primary)] transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
                     >
                       <StopIcon size={16} aria-hidden="true" />
                       Stop
@@ -486,7 +486,7 @@ function PermissionRow({
   dotClassName: string;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-xl border border-white/8 bg-black/12 px-3 py-3">
+    <div className="flex items-center justify-between rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-3">
       <span className="text-sm text-[var(--color-fg-secondary)]">{label}</span>
       <span className={`inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] ${tone}`}>
         <span className={`h-2 w-2 rounded-full ${dotClassName}`} />
@@ -504,7 +504,7 @@ function StatCard({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/8 bg-black/12 px-3 py-3">
+    <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-3">
       <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
         {label}
       </div>

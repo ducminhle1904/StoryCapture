@@ -159,7 +159,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-fg-primary)/50]"
       onClick={() => setCatalogOpen(false)}
       onKeyDown={(e) => {
         if (e.key === "Escape") setCatalogOpen(false);
@@ -265,7 +265,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
               </p>
               <button
                 type="button"
-                className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent)]/90"
+                className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] hover:bg-[var(--accent)]/90"
                 onClick={() => {
                   setCatalogOpen(false);
                   navigate("/settings");

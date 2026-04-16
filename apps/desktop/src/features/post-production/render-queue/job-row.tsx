@@ -25,7 +25,7 @@ function JobRowBase({ job, progress, onCancel }: JobRowProps) {
     <div
       role="listitem"
       aria-label={`Render job ${label} — ${Math.round(pct)} percent complete`}
-      className="flex flex-col gap-1 rounded-xl border border-white/8 bg-black/12 p-3 text-xs"
+      className="flex flex-col gap-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-3 text-xs"
     >
       <div className="flex items-center justify-between">
         <span className="font-medium text-[var(--color-fg)]">{label}</span>
@@ -33,7 +33,7 @@ function JobRowBase({ job, progress, onCancel }: JobRowProps) {
           type="button"
           aria-label={`Cancel ${label}`}
           onClick={onCancel}
-          className="rounded p-0.5 text-[var(--color-fg-muted)] hover:bg-white/8 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
+          className="rounded p-0.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-300)] hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
         >
           <X className="h-3 w-3" />
         </button>

@@ -149,7 +149,7 @@ export function PreviewPlayer({
       data-story-id={storyId}
       data-preview-ready={ready ? "true" : "false"}
     >
-      <div className="flex items-start justify-between gap-4 border-b border-white/6 px-5 py-4">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border-subtle)] px-5 py-4">
         <div>
           <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
             Preview
@@ -159,17 +159,17 @@ export function PreviewPlayer({
           </p>
         </div>
         <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-          <span className="rounded-full border border-white/8 bg-white/4 px-2 py-1">
+          <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2 py-1">
             {width}×{height}
           </span>
-          <span className="rounded-full border border-white/8 bg-white/4 px-2 py-1">
+          <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2 py-1">
             {ready ? "ready" : "warming"}
           </span>
         </div>
       </div>
 
       <div className="flex flex-1 items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#0c1016_0%,#090c11_100%)] p-5">
-        <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[26px] border border-white/8 bg-black shadow-[0_28px_100px_rgba(0,0,0,0.38)]">
+        <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-fg-primary)] shadow-[var(--shadow-card)]">
           {resolvedSrc ? null : (
             <>
               <img
@@ -179,11 +179,11 @@ export function PreviewPlayer({
                 className="absolute inset-0 h-full w-full object-cover opacity-92"
               />
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,10,14,0.15),rgba(7,10,14,0.35))]" />
-              <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/72">
-                <span className="rounded-full border border-white/12 bg-black/32 px-2 py-1">
+              <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-primary)]/72">
+                <span className="rounded-full border border-[var(--color-border-default)] bg-[var(--color-surface-500)] px-2 py-1">
                   PRV_01_FINAL_RENDER
                 </span>
-                <span className="rounded-full border border-white/12 bg-black/32 px-2 py-1">
+                <span className="rounded-full border border-[var(--color-border-default)] bg-[var(--color-surface-500)] px-2 py-1">
                   4K UHD
                 </span>
               </div>
@@ -191,8 +191,8 @@ export function PreviewPlayer({
           )}
           {!resolvedSrc ? (
             <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center">
-              <div className="grid h-20 w-20 place-items-center rounded-[24px] border border-white/12 bg-black/38 shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
-                <Film className="h-8 w-8 text-white/82" />
+              <div className="grid h-20 w-20 place-items-center rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-500)] shadow-[var(--shadow-card)]">
+                <Film className="h-8 w-8 text-[var(--color-fg-primary)]/82" />
               </div>
             </div>
           ) : null}
@@ -215,7 +215,7 @@ export function PreviewPlayer({
           crossOrigin="anonymous"
         />
       </div>
-      <div className="flex items-center justify-between border-t border-white/6 bg-black/16 px-4 py-3">
+      <div className="flex items-center justify-between border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
         <TransportControls playing={playing} onTogglePlay={togglePlay} />
       </div>
     </div>

@@ -27,7 +27,7 @@ function TimeRulerBase({ durationMs, pxPerMs, height = 24 }: TimeRulerProps) {
 
   return (
     <div
-      className="relative select-none border-b border-white/6 bg-white/4 text-[10px] text-[var(--color-fg-muted)]"
+      className="relative select-none border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] text-[10px] text-[var(--color-fg-muted)]"
       style={{ width, height }}
       role="presentation"
     >
@@ -39,7 +39,7 @@ function TimeRulerBase({ durationMs, pxPerMs, height = 24 }: TimeRulerProps) {
             className="absolute top-0 h-full"
             style={{ left }}
           >
-            <div className="h-2 w-px bg-white/10" />
+            <div className="h-2 w-px bg-[var(--color-surface-300)]" />
             <div className="pl-1">{formatMs(sec * 1000)}</div>
           </div>
         );

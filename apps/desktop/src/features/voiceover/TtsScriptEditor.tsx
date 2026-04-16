@@ -175,7 +175,7 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
           {!clip && (
             <button
               type="button"
-              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent)]/90 disabled:opacity-50"
+              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
               onClick={handleGenerate}
               disabled={isGenerating || !script.trim() || !selectedPreset}
               aria-label={`Sinh l\u1eddi tho\u1ea1i`}
@@ -186,7 +186,7 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
           {clip && (
             <button
               type="button"
-              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent)]/90 disabled:opacity-50"
+              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
               onClick={handleRegenerate}
               disabled={isGenerating || !script.trim() || !selectedPreset}
             >

@@ -133,7 +133,7 @@ export function ChatPanel({
       <div
         data-testid="nl-chat-panel"
         className={cn(
-          "flex flex-col items-center gap-3 border-l border-white/6 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)] py-3",
+          "flex flex-col items-center gap-3 border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] py-3",
           className,
         )}
         style={{ width: 40 }}
@@ -171,7 +171,7 @@ export function ChatPanel({
     <div
       data-testid="nl-chat-panel"
       className={cn(
-        "flex flex-col border-l border-white/6 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)]",
+        "flex flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]",
         className,
       )}
       style={{ width: panelWidth, minWidth: 320, maxWidth: 560 }}
@@ -235,7 +235,7 @@ export function ChatPanel({
 
         {/* Empty state */}
         {isEmpty && !error && (
-          <div className="rounded-[22px] border border-white/8 bg-black/12 p-5">
+          <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-5">
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-[var(--color-muted-foreground,#8A90A2)]">
               <MessageCircle className="h-4 w-4" />
               Suggested prompts
@@ -255,7 +255,7 @@ export function ChatPanel({
                       "Create a short onboarding demo: open the app, create a project, and share the result.";
                   }
                 }}
-                className="rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-left text-sm text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
+                className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-left text-sm text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
               >
                 Make the onboarding story shorter
               </button>
@@ -267,7 +267,7 @@ export function ChatPanel({
                       "Rewrite the current story with clearer narration for each step.";
                   }
                 }}
-                className="rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-left text-sm text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
+                className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-left text-sm text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
               >
                 Rewrite the narration in a cleaner voice
               </button>
@@ -298,13 +298,13 @@ export function ChatPanel({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-white/6 p-4">
+      <div className="border-t border-[var(--color-border-subtle)] p-4">
         <div className="flex gap-2">
           <textarea
             ref={textareaRef}
             placeholder={"M\u00f4 t\u1ea3 lu\u1ed3ng b\u1ea1n mu\u1ed1n\u2026"}
             onKeyDown={handleKeyDown}
-            className="flex-1 resize-none rounded-xl border border-white/8 bg-black/14 px-3 py-2 text-sm text-[var(--color-foreground,#E6E8EE)] placeholder:text-[var(--color-muted-foreground,#8A90A2)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-primary)]"
+            className="flex-1 resize-none rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-2 text-sm text-[var(--color-foreground,#E6E8EE)] placeholder:text-[var(--color-muted-foreground,#8A90A2)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-primary)]"
             rows={2}
           />
           <Button

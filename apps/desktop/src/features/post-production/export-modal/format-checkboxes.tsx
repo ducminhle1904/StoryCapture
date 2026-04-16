@@ -36,7 +36,7 @@ function FormatCheckboxesBase({ value, onChange }: FormatCheckboxesProps) {
               className={`flex cursor-pointer items-center justify-between rounded-2xl border px-4 py-3 text-sm transition ${
                 checked
                   ? "border-[var(--color-accent-primary)]/50 bg-[var(--color-accent-primary)]/10 text-[var(--color-fg-primary)] shadow-[0_16px_32px_rgba(0,0,0,0.18)]"
-                  : "border-white/8 bg-black/14 text-[var(--color-fg-secondary)] hover:border-white/14 hover:bg-white/5 hover:text-[var(--color-fg-primary)]"
+                  : "border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] text-[var(--color-fg-secondary)] hover:border-[var(--color-border-default)] hover:bg-[var(--color-surface-100)] hover:text-[var(--color-fg-primary)]"
               }`}
             >
               <div>

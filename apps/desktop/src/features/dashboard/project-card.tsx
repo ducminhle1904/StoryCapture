@@ -43,7 +43,7 @@ export function ProjectCard({ project, onOpen }: ProjectCardProps) {
       transition={{ duration: 0.15 }}
       onClick={() => onOpen(project.id)}
       aria-label={`Open project ${project.name}`}
-      className="brand-panel group flex h-full w-full flex-col overflow-hidden rounded-[22px] text-left transition-colors hover:border-white/14 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+      className="brand-panel group flex h-full w-full flex-col overflow-hidden rounded-[var(--radius-2xl)] text-left transition-colors hover:border-[var(--color-border-default)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
     >
       {project.thumbnail_path ? (
         <img
@@ -60,7 +60,7 @@ export function ProjectCard({ project, onOpen }: ProjectCardProps) {
             backgroundSize: "cover",
           }}
         >
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent_42%,rgba(0,0,0,0.22))]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(38,37,30,0.03),transparent_42%,rgba(38,37,30,0.06))]" />
         </div>
       )}
       <div className="p-4">

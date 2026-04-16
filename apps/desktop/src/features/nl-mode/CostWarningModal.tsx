@@ -57,7 +57,7 @@ export function CostWarningModal({
   return (
     <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && handleCancel()}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm" />
         <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-2xl">
           <Dialog.Title className="text-lg font-semibold text-[var(--color-fg-primary)]">
             {"Prompt n\u00e0y d\u00f9ng nhi\u1ec1u token"}

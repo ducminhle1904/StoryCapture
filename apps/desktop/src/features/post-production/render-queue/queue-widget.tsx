@@ -45,7 +45,7 @@ export function QueueWidget({ storyId }: QueueWidgetProps) {
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-xs text-[var(--color-fg)] hover:bg-white/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
+        className="flex items-center gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-xs text-[var(--color-fg)] hover:bg-[var(--color-surface-300)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
       >
         {activeCount > 0 ? (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -58,7 +58,7 @@ export function QueueWidget({ storyId }: QueueWidgetProps) {
         <div
           role="dialog"
           aria-label="Render queue"
-          className="absolute right-0 top-full z-50 mt-2 w-80 rounded-2xl border border-white/8 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)] p-3 shadow-[0_24px_80px_rgba(0,0,0,0.32)]"
+          className="absolute right-0 top-full z-50 mt-2 w-80 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3 shadow-[var(--shadow-card)]"
         >
           {jobs.length === 0 ? (
             <div className="p-2 text-xs text-[var(--color-fg-muted)]">

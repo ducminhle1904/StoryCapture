@@ -84,7 +84,7 @@ export function PanicModal() {
   return (
     <Dialog.Root open={payload !== null} onOpenChange={(open) => !open && setPayload(null)}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" />
+        <Dialog.Backdrop className="fixed inset-0 z-40 bg-[var(--color-fg-primary)/50] backdrop-blur-sm" />
         <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-xl">
           <div className="flex items-start justify-between">
             <Dialog.Title className="text-lg font-semibold text-[var(--color-fg)]">

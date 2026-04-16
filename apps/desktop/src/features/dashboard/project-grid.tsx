@@ -13,14 +13,14 @@ export function ProjectGrid({ projects, onOpen, emptyHint }: ProjectGridProps) {
     return (
       <div
         role="status"
-        className="brand-panel rounded-[24px] border border-dashed border-white/10 p-12 text-center text-[var(--color-fg-muted)]"
+        className="brand-panel rounded-[var(--radius-2xl)] border border-dashed border-[var(--color-border-default)] p-12 text-center text-[var(--color-fg-muted)]"
       >
         <div className="mx-auto flex max-w-sm flex-col items-center gap-4">
-          <div className="rounded-[22px] bg-white/5 p-3 ring-1 ring-white/8">
+          <div className="rounded-[var(--radius-2xl)] bg-[var(--color-surface-100)] p-3 ring-1 ring-[var(--color-border-subtle)]">
             <BrandMark size={56} />
           </div>
           <div className="space-y-2">
-            <BrandWordmark className="text-xl text-white" />
+            <BrandWordmark className="text-xl text-[var(--color-fg-primary)]" />
             <p className="text-sm text-[var(--color-fg-muted)]">
               {emptyHint ??
                 "No projects yet. Start your first story and turn it into a polished demo video."}

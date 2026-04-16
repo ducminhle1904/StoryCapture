@@ -65,9 +65,9 @@ export function WebAccountPanel() {
         </h2>
       </div>
 
-      <div className="brand-panel rounded-[28px] p-5">
+      <div className="brand-panel rounded-[var(--radius-2xl)] p-5">
         <div className="mb-5 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-white/8 bg-black/14 px-4 py-3">
+          <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
               Status
             </div>
@@ -75,7 +75,7 @@ export function WebAccountPanel() {
               {account ? "Connected" : isConnecting ? "Authorizing" : "Local only"}
             </div>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-black/14 px-4 py-3">
+          <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
               Uploads
             </div>
@@ -83,7 +83,7 @@ export function WebAccountPanel() {
               {account ? "Ready" : "Locked until sign-in"}
             </div>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-black/14 px-4 py-3">
+          <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
               Sync
             </div>
@@ -104,8 +104,8 @@ export function WebAccountPanel() {
         )}
 
         {!account && !isConnecting && (
-          <div className="flex flex-col items-center gap-4 rounded-[28px] border border-white/8 bg-black/14 px-6 py-8 text-center">
-            <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
+          <div className="flex flex-col items-center gap-4 rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-6 py-8 text-center">
+            <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
               <Globe className="h-8 w-8 text-[var(--color-fg-muted)]" aria-hidden="true" />
             </div>
             <div>
@@ -119,7 +119,7 @@ export function WebAccountPanel() {
             </div>
             <Button
               onClick={handleConnect}
-              className="brand-button gap-2 rounded-xl px-4 text-white"
+              className="brand-button gap-2 rounded-xl px-4 text-[var(--color-fg-primary)]"
               aria-label="Connect web account via GitHub"
             >
               <Globe className="h-4 w-4" aria-hidden="true" />
@@ -129,7 +129,7 @@ export function WebAccountPanel() {
         )}
 
         {isConnecting && (
-          <div className="flex flex-col items-center gap-4 rounded-[28px] border border-white/8 bg-black/14 px-6 py-8 text-center">
+          <div className="flex flex-col items-center gap-4 rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-6 py-8 text-center">
             <Loader2
               className="h-8 w-8 animate-spin text-[var(--color-accent)]"
               aria-hidden="true"
@@ -146,17 +146,17 @@ export function WebAccountPanel() {
         )}
 
         {account && !isConnecting && (
-          <div className="rounded-[28px] border border-white/8 bg-black/14 p-5">
+          <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center">
             {account.avatarUrl ? (
               <img
                 src={account.avatarUrl}
                 alt={`${account.name ?? account.email} avatar`}
-                className="h-14 w-14 rounded-2xl border border-white/10 object-cover"
+                className="h-14 w-14 rounded-2xl border border-[var(--color-border-default)] object-cover"
               />
             ) : (
               <div
-                className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-[var(--color-accent)]/15 text-sm font-semibold text-[var(--color-accent)]"
+                className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-accent)]/15 text-sm font-semibold text-[var(--color-accent)]"
                 aria-hidden="true"
               >
                 {initials}
@@ -187,7 +187,7 @@ export function WebAccountPanel() {
               variant="ghost"
               onClick={() => setShowDisconnectConfirm(true)}
               aria-label="Disconnect web account"
-              className="rounded-xl border border-white/8 bg-white/4 text-[var(--color-fg-muted)] hover:bg-white/8 hover:text-[var(--color-danger)]"
+              className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-danger)]"
             >
               <LogOut className="h-4 w-4" aria-hidden="true" />
             </Button>
@@ -196,7 +196,7 @@ export function WebAccountPanel() {
         )}
       </div>
 
-      <div className="rounded-[24px] border border-white/8 bg-white/4 p-4">
+      <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <User className="h-4 w-4 text-[var(--color-fg-muted)]" aria-hidden="true" />
@@ -227,8 +227,8 @@ export function WebAccountPanel() {
       {/* Disconnect confirmation dialog */}
       <Dialog.Root open={showDisconnectConfirm} onOpenChange={setShowDisconnectConfirm}>
         <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
-          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(14,17,24,0.98),rgba(8,10,15,0.98))] p-6 shadow-[0_32px_90px_rgba(0,0,0,0.42)]">
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm" />
+          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)]">
             <Dialog.Title className="mb-2 text-lg font-semibold text-[var(--color-fg-primary)]">
               Disconnect web account?
             </Dialog.Title>

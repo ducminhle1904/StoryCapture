@@ -155,7 +155,7 @@ export function DryRunPanel({
           ) : (
             <Button
               size="sm"
-              className="bg-[var(--color-accent,#7C3AED)] hover:bg-[var(--color-accent,#7C3AED)]/90 text-white"
+              className="bg-[var(--color-accent,#7C3AED)] hover:bg-[var(--color-accent,#7C3AED)]/90 text-[var(--color-fg-primary)]"
               onClick={() => onStart(steps)}
               data-testid="dryrun-start-btn"
             >

@@ -102,7 +102,7 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
     >
       <div className="flex">
         <div
-          className="shrink-0 border-b border-r border-white/6 bg-white/4"
+          className="shrink-0 border-b border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]"
           style={{ width: LABEL_GUTTER_PX, height: 24 }}
         />
         <div

@@ -57,12 +57,12 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   return (
     <div
-      className="flex h-full w-full flex-col bg-[linear-gradient(180deg,#0f1319_0%,#0d1117_100%)] text-[var(--color-fg)]"
+      className="flex h-full w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-fg)]"
       data-editor-shell="true"
       data-story-id={storyId}
     >
       {/* Top bar */}
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-white/6 bg-black/10 px-4 py-3 backdrop-blur-md">
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-3 backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-4">
           <Link
             to="/"
@@ -87,7 +87,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         <div className="flex items-center gap-2">
           <Link
             to="/settings"
-            className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-sm text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-sm text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
           >
             <Settings size={14} aria-hidden="true" />
             Settings
@@ -97,7 +97,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
             size="sm"
             onClick={() => setSoundDrawerOpen(true)}
             aria-label="Open sound library"
-            className="rounded-xl border border-white/8 bg-white/4 px-3 text-[var(--color-fg-secondary)] hover:bg-white/8 hover:text-[var(--color-fg-primary)]"
+            className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 text-[var(--color-fg-secondary)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
           >
             <Music2 className="mr-1 h-4 w-4" />
             Sounds
@@ -121,14 +121,14 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         style={{ height: `${topHeightPct}%` }}
       >
         <section
-          className="min-w-0 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(21,26,34,0.96),rgba(15,18,25,0.96))] shadow-[0_28px_90px_rgba(0,0,0,0.26)]"
+          className="min-w-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
           style={{ width: `${previewWidthPct}%` }}
           aria-label="Preview"
         >
           <PreviewPlayer storyId={storyId} videoSrc={videoSrc} />
         </section>
         <section
-          className="min-w-0 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
+          className="min-w-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
           style={{ width: `${inspectorWidthPct}%` }}
         >
           <InspectorPanel />
@@ -137,7 +137,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
       {/* Bottom region: timeline */}
       <section
-        className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,#121720_0%,#0f141b_100%)] shadow-[0_24px_90px_rgba(0,0,0,0.24)]"
+        className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
         style={{ height: `${timelineHeightPct}%` }}
         aria-label="Timeline area"
       >
