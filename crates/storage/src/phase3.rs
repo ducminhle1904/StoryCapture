@@ -96,6 +96,7 @@ pub struct TtsCacheEntry {
     pub voice_id: String,
     pub script_sha: String,
     pub byte_size: i64,
+    pub duration_ms: Option<i64>,
     pub created_at: i64,
     pub last_used_at: i64,
 }
@@ -280,9 +281,10 @@ pub fn upsert_tts_cache(conn: &Connection, entry: &TtsCacheEntry) -> rusqlite::R
     conn.execute(
         "INSERT INTO tts_cache_index \
          (hash, step_id, project_id, file_path, provider, model, voice_id, \
-          script_sha, byte_size, created_at, last_used_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
-         ON CONFLICT(hash) DO UPDATE SET last_used_at = excluded.last_used_at",
+          script_sha, byte_size, duration_ms, created_at, last_used_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
+         ON CONFLICT(hash) DO UPDATE SET last_used_at = excluded.last_used_at, \
+         duration_ms = COALESCE(excluded.duration_ms, duration_ms)",
         params![
             entry.hash,
             entry.step_id,
@@ -293,6 +295,7 @@ pub fn upsert_tts_cache(conn: &Connection, entry: &TtsCacheEntry) -> rusqlite::R
             entry.voice_id,
             entry.script_sha,
             entry.byte_size,
+            entry.duration_ms,
             entry.created_at,
             entry.last_used_at,
         ],
@@ -306,7 +309,7 @@ pub fn lookup_tts_cache(
 ) -> rusqlite::Result<Option<TtsCacheEntry>> {
     conn.query_row(
         "SELECT hash, step_id, project_id, file_path, provider, model, voice_id, \
-                script_sha, byte_size, created_at, last_used_at \
+                script_sha, byte_size, duration_ms, created_at, last_used_at \
          FROM tts_cache_index WHERE hash = ?1",
         params![hash],
         |row| {
@@ -321,8 +324,9 @@ pub fn lookup_tts_cache(
                 voice_id: row.get(6)?,
                 script_sha: row.get(7)?,
                 byte_size: row.get(8)?,
-                created_at: row.get(9)?,
-                last_used_at: row.get(10)?,
+                duration_ms: row.get(9)?,
+                created_at: row.get(10)?,
+                last_used_at: row.get(11)?,
             })
         },
     )
@@ -382,7 +386,7 @@ pub fn lookup_tts_cache_by_step(
 ) -> rusqlite::Result<Option<TtsCacheEntry>> {
     conn.query_row(
         "SELECT hash, step_id, project_id, file_path, provider, model, voice_id, \
-                script_sha, byte_size, created_at, last_used_at \
+                script_sha, byte_size, duration_ms, created_at, last_used_at \
          FROM tts_cache_index WHERE step_id = ?1 \
          ORDER BY last_used_at DESC LIMIT 1",
         params![step_id],
@@ -398,8 +402,9 @@ pub fn lookup_tts_cache_by_step(
                 voice_id: row.get(6)?,
                 script_sha: row.get(7)?,
                 byte_size: row.get(8)?,
-                created_at: row.get(9)?,
-                last_used_at: row.get(10)?,
+                duration_ms: row.get(9)?,
+                created_at: row.get(10)?,
+                last_used_at: row.get(11)?,
             })
         },
     )

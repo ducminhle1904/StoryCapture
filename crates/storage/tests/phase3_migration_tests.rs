@@ -66,8 +66,8 @@ fn migration_v5_creates_all_tables() {
     let user_version: u32 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    // v1 (1) + v2 (5) + v3 (4) = 10
-    assert_eq!(user_version, 10);
+    // v1 (1) + v2 (5) + v3 (5) = 11
+    assert_eq!(user_version, 11);
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn migrations_v3_are_idempotent() {
     let dir = tempdir().unwrap();
     let _ = ProjectDb::open(dir.path()).unwrap();
     let db = ProjectDb::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 10);
+    assert_eq!(db.schema_version().unwrap(), 11);
 }
 
 #[test]
@@ -175,6 +175,7 @@ fn tts_cache_upsert_updates_last_used_at() {
         voice_id: "Rachel".into(),
         script_sha: "aaaabbbb".into(),
         byte_size: 12_345,
+        duration_ms: Some(2500),
         created_at: 1_700_000_000_000,
         last_used_at: 1_700_000_000_000,
     };
@@ -264,6 +265,7 @@ fn gc_tts_cache_removes_old_rows_and_calls_delete_fn() {
         voice_id: "v".into(),
         script_sha: "s".into(),
         byte_size: 1,
+        duration_ms: None,
         created_at: cutoff - 1_000,
         last_used_at: cutoff - 1_000, // older than cutoff
     };
@@ -308,6 +310,7 @@ fn upsert_tts_cache_rejects_path_traversal() {
         voice_id: "v".into(),
         script_sha: "s".into(),
         byte_size: 1,
+        duration_ms: None,
         created_at: 1,
         last_used_at: 1,
     };

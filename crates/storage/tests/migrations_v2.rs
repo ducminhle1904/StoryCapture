@@ -51,8 +51,8 @@ fn fresh_project_db_has_all_v2_tables() {
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
     assert_eq!(
-        user_version, 10,
-        "project.sqlite should be at v10 (1 v1 + 5 v2 + 4 v3)"
+        user_version, 11,
+        "project.sqlite should be at v11 (1 v1 + 5 v2 + 5 v3)"
     );
 }
 
@@ -99,7 +99,7 @@ fn v1_project_db_upgrades_without_data_loss() {
 
     // Open via ProjectDb — must auto-upgrade v1 -> v10.
     let db = ProjectDb::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 10);
+    assert_eq!(db.schema_version().unwrap(), 11);
 
     // Pre-existing row preserved.
     let conn = rusqlite::Connection::open(&db_path).unwrap();
@@ -129,9 +129,9 @@ fn migrations_are_idempotent() {
     let dir = tempdir().unwrap();
     let _ = ProjectDb::open(dir.path()).unwrap();
     let db = ProjectDb::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 10);
+    assert_eq!(db.schema_version().unwrap(), 11);
     let db = ProjectDb::open(dir.path()).unwrap();
-    assert_eq!(db.schema_version().unwrap(), 10);
+    assert_eq!(db.schema_version().unwrap(), 11);
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn full_project_folder_reaches_v6() {
     let folder = dir.path().join("my-project");
 
     let mut pf = open_project(&folder).unwrap();
-    assert_eq!(pf.db().schema_version().unwrap(), 10);
+    assert_eq!(pf.db().schema_version().unwrap(), 11);
 
     let sid = pf
         .db_mut()

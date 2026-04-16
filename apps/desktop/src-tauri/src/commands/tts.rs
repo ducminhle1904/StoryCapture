@@ -220,10 +220,21 @@ async fn tts_generate_inner(
                 };
                 let _ = storage::phase3::upsert_tts_cache(&conn, &updated_entry);
 
-                // Read file to probe duration
-                let audio_bytes = std::fs::read(&file_path)
-                    .map_err(|e| TtsCommandError::Io(e.to_string()))?;
-                let audio_duration_ms = probe_audio_duration_ms(&audio_bytes).unwrap_or(0);
+                // Use stored duration if available; only probe file as fallback
+                // for cache entries created before the duration_ms column existed.
+                let audio_duration_ms = entry.duration_ms
+                    .map(|d| d as u64)
+                    .unwrap_or_else(|| {
+                        let bytes = std::fs::read(&file_path).unwrap_or_default();
+                        let dur = probe_audio_duration_ms(&bytes).unwrap_or(0);
+                        // Backfill duration_ms for next time
+                        let backfill = storage::phase3::TtsCacheEntry {
+                            duration_ms: Some(dur as i64),
+                            ..entry.clone()
+                        };
+                        let _ = storage::phase3::upsert_tts_cache(&conn, &backfill);
+                        dur
+                    });
 
                 // Insert metrics row for cache hit
                 let metric = storage::phase3::TtsClipMetric {
@@ -311,6 +322,7 @@ async fn tts_generate_inner(
         voice_id: voice_id.clone(),
         script_sha: hash.clone(), // content hash is the same
         byte_size: audio_bytes.len() as i64,
+        duration_ms: Some(audio_duration_ms as i64),
         created_at: now,
         last_used_at: now,
     };
