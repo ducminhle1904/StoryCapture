@@ -206,12 +206,9 @@ pub async fn sync_project_metadata(
         "storySource": story_source,
     });
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| WebSyncError::NetworkError(e.to_string()))?;
+    let client = &state.http_client;
 
-    match post_trpc_mutation(&client, &token, "sync.pushMetadata", &payload).await {
+    match post_trpc_mutation(client, &token, "sync.pushMetadata", &payload).await {
         Ok(resp) => {
             let last_synced = resp
                 .pointer("/result/data/json/lastSyncedAt")
@@ -245,6 +242,7 @@ pub async fn sync_project_metadata(
 #[tauri::command]
 #[specta::specta]
 pub async fn update_recording_status(
+    state: State<'_, AppState>,
     desktop_id: String,
     workspace_id: String,
     status: String,
@@ -264,13 +262,10 @@ pub async fn update_recording_status(
         "status": status,
     });
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| WebSyncError::NetworkError(e.to_string()))?;
+    let client = &state.http_client;
 
     // Fire-and-forget: log error but don't fail the caller
-    match post_trpc_mutation(&client, &token, "sync.updateRecordingStatus", &payload).await {
+    match post_trpc_mutation(client, &token, "sync.updateRecordingStatus", &payload).await {
         Ok(_) => Ok(()),
         Err(e) => {
             tracing::debug!(
@@ -320,10 +315,7 @@ pub async fn flush_sync_queue(
         });
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| WebSyncError::NetworkError(e.to_string()))?;
+    let client = &state.http_client;
 
     // Phase 2: Send each item via HTTP (async)
     let mut succeeded_ids: Vec<i64> = Vec::new();

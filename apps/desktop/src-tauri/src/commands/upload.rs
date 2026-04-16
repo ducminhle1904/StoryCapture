@@ -31,6 +31,7 @@ use tauri::Manager;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
+use crate::state::AppState;
 use super::web_account::WebAccountError;
 
 // ---- Constants ----------------------------------------------------------------
@@ -246,6 +247,9 @@ pub async fn upload_video(
 
     cancel_flag.store(false, Ordering::SeqCst);
 
+    // Get shared HTTP client from AppState
+    let http_client = &app.state::<AppState>().http_client;
+
     // Update status to uploading
     {
         let mut s = status_lock.lock().await;
@@ -264,6 +268,7 @@ pub async fn upload_video(
         story_source.as_deref(),
         scene_boundaries,
         &token,
+        http_client,
         &on_progress,
         &cancel_flag,
     )
@@ -339,14 +344,11 @@ async fn do_upload(
     story_source: Option<&str>,
     scene_boundaries: Option<String>,
     token: &str,
+    client: &reqwest::Client,
     on_progress: &Channel<UploadProgressEvent>,
     cancel_flag: &AtomicBool,
 ) -> Result<UploadResult, UploadError> {
     let base = super::util::web_url();
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
-        .build()
-        .map_err(|e| UploadError::NetworkError(e.to_string()))?;
 
     let file_meta = tokio::fs::metadata(video_path)
         .await
