@@ -7,15 +7,27 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use eventsource_stream::Eventsource;
 use futures_util::stream;
 use futures_util::StreamExt;
+use intelligence::llm::anthropic::{
+    AnthropicProvider, ANTHROPIC_PROMPT_CACHING_BETA, ANTHROPIC_VERSION,
+};
 use intelligence::llm::openai::{process_event, OpenAiProvider, ToolCallAccumulator};
 use intelligence::llm::{LlmEvent, LlmProvider, LlmRequest};
 use tokio::sync::mpsc;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+fn anthropic_fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("anthropic_sse")
+        .join(name)
+}
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -193,4 +205,83 @@ async fn request_body_carries_bearer_and_response_format() {
     assert_eq!(body_json["stream_options"]["include_usage"], true);
     assert_eq!(body_json["response_format"], schema);
     assert_eq!(body_json["messages"][0]["role"], "system");
+}
+
+/// Provider swap: the SAME caller code works for both `AnthropicProvider`
+/// and `OpenAiProvider` behind `Arc<dyn LlmProvider>`, producing equivalent
+/// `ToolUseComplete` events from their respective wire formats. Proves the
+/// trait-level swap required by REQUIREMENT AI-01 ("Anthropic/OpenAI").
+#[tokio::test]
+async fn provider_swap_yields_equivalent_tool_use_complete_events() {
+    // --- OpenAI leg --------------------------------------------------------
+    let openai_server = MockServer::start().await;
+    let openai_body = std::fs::read_to_string(fixture_path("tool_use_happy.txt")).unwrap();
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(openai_body),
+        )
+        .expect(1)
+        .mount(&openai_server)
+        .await;
+    let openai: Arc<dyn LlmProvider> = Arc::new(OpenAiProvider::with_base_url(
+        "test-openai".to_string(),
+        format!("{}/v1/chat/completions", openai_server.uri()),
+    ));
+
+    // --- Anthropic leg -----------------------------------------------------
+    let anth_server = MockServer::start().await;
+    let anth_body = std::fs::read_to_string(anthropic_fixture_path("tool_use_happy.txt")).unwrap();
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .and(header("anthropic-version", ANTHROPIC_VERSION))
+        .and(header("anthropic-beta", ANTHROPIC_PROMPT_CACHING_BETA))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(anth_body),
+        )
+        .expect(1)
+        .mount(&anth_server)
+        .await;
+    let anthropic: Arc<dyn LlmProvider> = Arc::new(AnthropicProvider::with_base_url(
+        "test-anthropic".to_string(),
+        format!("{}/v1/messages", anth_server.uri()),
+    ));
+
+    // --- Shared caller code runs against both ------------------------------
+    async fn collect_tool_inputs(provider: Arc<dyn LlmProvider>) -> Vec<serde_json::Value> {
+        let (tx, mut rx) = mpsc::channel(32);
+        let req = LlmRequest {
+            model: "doesnt-matter".into(),
+            system_blocks: vec![serde_json::json!("sys")],
+            messages: vec![serde_json::json!({"role":"user","content":"hi"})],
+            tools: vec![],
+            tool_choice: None,
+            max_tokens: 256,
+            temperature: 0.0,
+        };
+        let join = tokio::spawn(async move {
+            let _ = provider.stream(req, tx).await;
+        });
+        let mut out = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            if let LlmEvent::ToolUseComplete { input, .. } = ev {
+                out.push(input);
+            }
+        }
+        join.await.unwrap();
+        out
+    }
+
+    let openai_inputs = collect_tool_inputs(openai).await;
+    let anthropic_inputs = collect_tool_inputs(anthropic).await;
+
+    assert_eq!(openai_inputs.len(), 1);
+    assert_eq!(anthropic_inputs.len(), 1);
+    // Both fixtures encode the same logical tool input: {"steps":[{"id":"s1"}]}.
+    assert_eq!(openai_inputs[0], anthropic_inputs[0]);
+    assert_eq!(openai_inputs[0]["steps"][0]["id"], "s1");
 }
