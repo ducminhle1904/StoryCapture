@@ -1,40 +1,13 @@
 //! Easing functions used by the auto-zoom planner (Plan 05) for keyframe
 //! interpolation (pan/scale phases) and by cursor micro-motions.
 //!
-//! Per Research §3 / §4 we only need three curves for v1:
-//! - `Linear` — no easing, literal lerp
-//! - `EaseInOutCubic` — cinematic pan start/stop, matches Runway/Loom zooms
-//! - `EaseOutQuad` — quick settle for cursor-final-position nudges
-//!
-//! This module defines its own [`EasingKind`] distinct from the AST-level
-//! [`crate::ast::types::EasingKind`] enum. The AST enum is the serialised
-//! form stored in presets; this one is the numerical form consumed by the
-//! zoom/cursor math. Plan 05 is responsible for mapping one to the other
-//! (or consolidating them) when it wires `ZoomKeyframe.easing` into the
-//! per-frame sampler.
+//! All easing variants now live on the canonical [`crate::ast::types::EasingKind`]
+//! enum (previously split between an AST enum and this module's numerical
+//! enum — consolidated per the /simplify review). The samplers below
+//! dispatch on all variants; variants without a bespoke cubic/quad
+//! implementation fall through to a reasonable numerical equivalent.
 
-use serde::{Deserialize, Serialize};
-
-#[cfg(feature = "ts-export")]
-use ts_rs::TS;
-
-/// Three easing curves used by the numerical zoom/cursor path samplers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts-export", derive(TS))]
-#[cfg_attr(
-    feature = "ts-export",
-    ts(
-        export,
-        export_to = "../../../packages/shared-types/src/generated/effects.ts",
-        rename = "MathEasingKind"
-    )
-)]
-#[serde(rename_all = "kebab-case")]
-pub enum EasingKind {
-    Linear,
-    EaseInOutCubic,
-    EaseOutQuad,
-}
+pub use crate::ast::types::EasingKind;
 
 /// Linear (identity). `t` is clamped to `[0, 1]`.
 #[inline]
@@ -60,11 +33,39 @@ pub fn ease_out_quad(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(2)
 }
 
-/// Dispatch `kind` to the corresponding easing function.
+/// Quadratic ease-in. `s(0)=0, s(1)=1`, slow start.
+#[inline]
+pub fn ease_in_quad(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t
+}
+
+/// Generic ease-in-out (cubic). Identical to [`ease_in_out_cubic`]; exposed
+/// as a distinct name so the AST enum's `EaseInOut` variant has an explicit
+/// numerical mapping (cubic is the "default" symmetric ease).
+#[inline]
+pub fn ease_in_out(t: f32) -> f32 {
+    ease_in_out_cubic(t)
+}
+
+/// Dispatch `kind` to the corresponding easing function. All variants on
+/// the unified [`EasingKind`] enum are handled:
+///
+/// | Variant           | Numerical form       |
+/// |-------------------|----------------------|
+/// | Linear            | `linear`             |
+/// | EaseIn            | `ease_in_quad`       |
+/// | EaseOut           | `ease_out_quad`      |
+/// | EaseInOut         | `ease_in_out_cubic`  |
+/// | EaseInOutCubic    | `ease_in_out_cubic`  |
+/// | EaseOutQuad       | `ease_out_quad`      |
 #[inline]
 pub fn apply(kind: EasingKind, t: f32) -> f32 {
     match kind {
         EasingKind::Linear => linear(t),
+        EasingKind::EaseIn => ease_in_quad(t),
+        EasingKind::EaseOut => ease_out_quad(t),
+        EasingKind::EaseInOut => ease_in_out_cubic(t),
         EasingKind::EaseInOutCubic => ease_in_out_cubic(t),
         EasingKind::EaseOutQuad => ease_out_quad(t),
     }

@@ -134,4 +134,11 @@ pub enum EasingKind {
     EaseIn,
     EaseOut,
     EaseInOut,
+    /// Cinematic cubic ease-in-out used by the zoom planner's pan/scale
+    /// samplers (Plan 05). Previously lived in `math::ease::EasingKind`;
+    /// consolidated here so presets, runtime samplers, and the TypeScript
+    /// export all reference a single enum.
+    EaseInOutCubic,
+    /// Quadratic ease-out used for cursor-final-position nudges (Plan 06).
+    EaseOutQuad,
 }

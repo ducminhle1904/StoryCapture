@@ -34,7 +34,7 @@ export type Duration = { ms: bigint, };
  * Easing functions for keyframe interpolation. Details live in Plan 05;
  * we only need the variants reachable from the AST here.
  */
-export type EasingKind = "linear" | "ease-in" | "ease-out" | "ease-in-out";
+export type EasingKind = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "ease-in-out-cubic" | "ease-out-quad";
 
 export type FontChoice = { "kind": "bundled", family: string, weight: number, } | { "kind": "system-default" };
 
@@ -47,11 +47,6 @@ export type Graph = {
  * migrated by the loader (Plan 03).
  */
 schema_version: number, output_width: number, output_height: number, output_fps: number, video: Array<VideoNode>, audio: Array<AudioNode>, };
-
-/**
- * Three easing curves used by the numerical zoom/cursor path samplers.
- */
-export type MathEasingKind = "linear" | "ease-in-out-cubic" | "ease-out-quad";
 
 /**
  * A stable, globally-unique identifier for an AST node.
