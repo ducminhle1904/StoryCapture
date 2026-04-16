@@ -430,7 +430,7 @@ export default function EditorRoute() {
   return (
     <main
       id="main-content"
-      className="flex h-full flex-col bg-[var(--color-bg-primary)]"
+      className="relative flex h-full flex-col bg-[var(--color-bg-primary)]"
     >
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-2">
         <div className="flex items-center gap-3">
@@ -454,51 +454,50 @@ export default function EditorRoute() {
         ) : null}
       </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)]">
-            <aside className="flex min-h-0 flex-col border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
-              <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2">
-                <span className="text-xs font-medium text-[var(--color-fg-muted)]">
-                  Script
-                </span>
-                <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
-                  {source.split("\n").length} lines
-                </span>
-              </div>
-              <div className="min-h-0 flex-1">
-                <StoryEditor onAutosave={autosave} />
-              </div>
-            </aside>
-
-            <section className="min-h-0 bg-[var(--color-bg-primary)]">
-              <div className="flex h-full min-h-0 flex-col gap-4 p-5">
-                <div className="min-h-0 flex-[1.05]">
-                  <PreviewPanel thumbnailPath={previewBackdrop} />
-                </div>
-                {projectId ? (
-                  <div className="min-h-0 flex-[0.95]">
-                    <VoiceoverWorkbench projectId={projectId} story={story} />
-                  </div>
-                ) : null}
-              </div>
-            </section>
+      {/* Main editor grid: script (40%) | preview+voiceover (60%) */}
+      <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
+        {/* Left: Script editor */}
+        <aside className="flex min-h-0 flex-col border-r border-[var(--color-border-subtle)]">
+          <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2">
+            <span className="text-xs font-medium text-[var(--color-fg-muted)]">
+              Script
+            </span>
+            <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+              {source.split("\n").length} lines
+            </span>
           </div>
-
-          <div className="h-52 min-h-0 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
-            <TimelinePanel />
+          <div className="min-h-0 flex-1">
+            <StoryEditor onAutosave={autosave} />
           </div>
+        </aside>
+
+        {/* Right: Preview (55%) + Voiceover (45%) stacked */}
+        <div className="flex min-h-0 flex-col">
+          <div className="min-h-0 flex-[55] border-b border-[var(--color-border-subtle)] p-4">
+            <PreviewPanel thumbnailPath={previewBackdrop} />
+          </div>
+          {projectId ? (
+            <div className="min-h-0 flex-[45] overflow-y-auto p-4">
+              <VoiceoverWorkbench projectId={projectId} story={story} />
+            </div>
+          ) : null}
         </div>
-
-        {projectId ? (
-          <ChatPanel
-            projectId={projectId}
-            currentStory={source}
-            sessionId={sessionId}
-            className="shrink-0"
-          />
-        ) : null}
       </div>
+
+      {/* Bottom: Timeline strip */}
+      <div className="h-44 shrink-0 border-t border-[var(--color-border-subtle)]">
+        <TimelinePanel />
+      </div>
+
+      {/* Chat panel: slides in as overlay from right */}
+      {projectId ? (
+        <ChatPanel
+          projectId={projectId}
+          currentStory={source}
+          sessionId={sessionId}
+          className="absolute right-0 top-0 z-10 h-full w-80 border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[-8px_0_24px_rgba(0,0,0,0.08)]"
+        />
+      ) : null}
 
       {projectId ? <VoiceCatalogDialog projectId={projectId} /> : null}
     </main>
