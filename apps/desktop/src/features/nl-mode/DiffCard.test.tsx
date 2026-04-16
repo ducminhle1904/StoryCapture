@@ -154,7 +154,7 @@ describe("DiffCard", () => {
     ];
     useNlStore.setState({ pendingCards: cards });
 
-    const { container } = render(
+    render(
       <div>
         {cards.map((c, i) => (
           <DiffCard
@@ -215,7 +215,7 @@ describe("DiffCard", () => {
     ];
     useNlStore.setState({ pendingCards: threeCards });
 
-    const { unmount } = render(
+    render(
       <DiffCard
         card={threeCards[0]}
         stepIndex={0}
@@ -230,9 +230,6 @@ describe("DiffCard", () => {
       useNlStore.getState().togglePanel(); // simulate close
     });
 
-    // The confirm dialog content should be in DOM
-    // "Bo N thay doi chua ap dung?"
-    const confirmText = document.body.textContent || "";
     // Since this is a unit test we verify the discard confirm component
     // is wired -- the full dialog may not render without portal
     expect(threeCards.length).toBeGreaterThanOrEqual(3);

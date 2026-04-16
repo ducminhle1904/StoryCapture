@@ -5,7 +5,6 @@
  * Uses accent color gradient per UI-SPEC accent reserved list item 5.
  */
 
-import * as React from "react";
 import { motion } from "motion/react";
 
 export function StreamingDot() {

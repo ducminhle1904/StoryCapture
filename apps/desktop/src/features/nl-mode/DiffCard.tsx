@@ -15,7 +15,7 @@
 import * as React from "react";
 import { useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { Check, Pencil, RotateCcw, X, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,6 @@ export function DiffCard({
   card,
   stepIndex,
   projectId,
-  enableBulkApprove = false,
   className,
 }: DiffCardProps) {
   const [editing, setEditing] = useState(false);

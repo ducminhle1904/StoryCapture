@@ -7,7 +7,6 @@
  * Body text 14px Regular per Typography contract.
  */
 
-import * as React from "react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { StreamingDot } from "./StreamingDot";
@@ -29,28 +28,17 @@ export function ChatBubble({
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
-  const Wrapper = reducedMotion ? "div" : motion.div;
-  const animationProps = reducedMotion
-    ? {}
-    : {
-        initial: { opacity: 0, y: 8 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: 0.18, ease: "easeOut" },
-      };
+  const sharedClassName = cn(
+    "rounded-lg border p-2 text-sm leading-relaxed",
+    "bg-[var(--color-card,#13151C)]",
+    role === "user"
+      ? "border-blue-800/40 ml-6"
+      : "border-[var(--color-border,#242733)] mr-6",
+    className,
+  );
 
-  return (
-    <Wrapper
-      {...animationProps}
-      className={cn(
-        "rounded-lg border p-2 text-sm leading-relaxed",
-        "bg-[var(--color-card,#13151C)]",
-        role === "user"
-          ? "border-blue-800/40 ml-6"
-          : "border-[var(--color-border,#242733)] mr-6",
-        className,
-      )}
-      data-testid={`chat-bubble-${role}`}
-    >
+  const children = (
+    <>
       <div className="mb-1 text-xs font-semibold text-[var(--color-muted-foreground,#8A90A2)]">
         {role === "user" ? "You" : "StoryCapture AI"}
       </div>
@@ -62,6 +50,26 @@ export function ChatBubble({
           </span>
         )}
       </div>
-    </Wrapper>
+    </>
+  );
+
+  if (reducedMotion) {
+    return (
+      <div className={sharedClassName} data-testid={`chat-bubble-${role}`}>
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+      className={sharedClassName}
+      data-testid={`chat-bubble-${role}`}
+    >
+      {children}
+    </motion.div>
   );
 }

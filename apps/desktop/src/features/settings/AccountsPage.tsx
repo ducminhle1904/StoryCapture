@@ -9,10 +9,8 @@
  * data-testid="accounts-page"
  */
 
-import * as React from "react";
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { cn } from "@/lib/utils";
 import { Lock } from "lucide-react";
 import { ApiKeyRow } from "./ApiKeyRow";
 

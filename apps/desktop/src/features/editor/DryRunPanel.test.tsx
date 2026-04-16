@@ -11,11 +11,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DryRunPanel } from "./DryRunPanel";
-import { DryRunStepRow } from "./DryRunStepRow";
 import { SelectorFallbackPopover } from "./SelectorFallbackPopover";
+import type { StoryStep } from "./useDryRun";
 import { useDryRunStore } from "./dryRunStore";
 
 // Mock Tauri
@@ -37,7 +37,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   Channel: MockChannel,
 }));
 
-const sampleSteps = [
+const sampleSteps: StoryStep[] = [
   { id: "s1", verb: "navigate", args: { url: "https://example.com" }, label: "Open page", line: 1 },
   { id: "s2", verb: "click", args: { selector: "#btn" }, label: "Click button", line: 2 },
   { id: "s3", verb: "type", args: { selector: "#input", text: "hello" }, label: "Type text", line: 3 },

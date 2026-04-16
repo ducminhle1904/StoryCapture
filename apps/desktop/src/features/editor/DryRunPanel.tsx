@@ -39,7 +39,6 @@ export function DryRunPanel({
     fallbackChainByStep,
     summary,
     panelOpen,
-    taskId,
     togglePanel,
   } = useDryRunStore();
 

@@ -10,7 +10,6 @@
  * (simple char-count / 4 heuristic), if > 50K call this modal.
  */
 
-import * as React from "react";
 import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 

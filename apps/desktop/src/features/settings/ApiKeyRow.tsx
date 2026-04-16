@@ -9,12 +9,11 @@
  * key_set succeeds, local state reverts to "".
  */
 
-import * as React from "react";
 import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Shield, Trash2, ExternalLink, Loader2 } from "lucide-react";
+import { Shield, Trash2, Loader2 } from "lucide-react";
 
 export interface ApiKeyRowProps {
   providerId: string;

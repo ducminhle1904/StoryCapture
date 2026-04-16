@@ -14,7 +14,6 @@
  * TODO: Integration with Phase 2 export via event bus when Phase 2 export is shipped.
  */
 
-import * as React from "react";
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";

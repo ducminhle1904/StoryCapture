@@ -5,7 +5,6 @@
  * data-testid="token-breakdown-popover"
  */
 
-import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export interface TurnMetric {
@@ -27,8 +26,6 @@ export interface TokenBreakdownPopoverProps {
 }
 
 export function TokenBreakdownPopover({
-  projectId,
-  sessionId,
   onClose,
   className,
 }: TokenBreakdownPopoverProps) {
