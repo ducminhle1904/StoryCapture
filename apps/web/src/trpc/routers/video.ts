@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../init";
 import { requireWorkspaceMember } from "../lib/guards";
+import { slugify } from "@/lib/slugify";
 import {
   r2Client,
   R2_BUCKET,
@@ -27,15 +28,6 @@ import {
  * - T-04-14: R2 credentials never leave server
  * - T-04-16: SSE-S3 AES256 encryption on all objects (DIST-06)
  */
-
-/** Generate a URL-friendly slug from a project name. */
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-}
 
 const sceneBoundarySchema = z.object({
   sceneIndex: z.number(),

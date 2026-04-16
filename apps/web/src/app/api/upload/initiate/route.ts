@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyDesktopToken } from "@/lib/jwt";
 import { prisma } from "@/lib/prisma";
+import { slugify } from "@/lib/slugify";
 import {
   r2Client,
   R2_BUCKET,
@@ -83,11 +84,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Generate unique slug
-  const baseSlug = projectName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60) || "video";
+  const baseSlug = slugify(projectName) || "video";
   let slug = baseSlug;
   let attempt = 0;
   while (true) {
