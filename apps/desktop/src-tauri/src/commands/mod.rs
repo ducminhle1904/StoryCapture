@@ -24,3 +24,4 @@ pub mod updater;
 pub mod util;
 pub mod upload;
 pub mod web_account;
+pub mod web_sync;

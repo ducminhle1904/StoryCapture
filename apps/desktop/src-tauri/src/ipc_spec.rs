@@ -19,7 +19,7 @@ use tauri_specta::{collect_commands, Builder};
 use crate::{
     commands::{
         automation, capture, dryrun, encode, export, keys, lsp, nl, parse, preset, projects,
-        render, sound_library, system, timeline, tts, updater, upload, web_account,
+        render, sound_library, system, timeline, tts, updater, upload, web_account, web_sync,
     },
     error::AppError,
 };
@@ -91,6 +91,8 @@ pub fn builder() -> Builder<Wry> {
             nl::nl_diff_reject,
             nl::nl_regen_step,
             nl::nl_load_history,
+            nl::nl_get_session_id,
+            nl::session_get_rollup,
             // Phase 03 plan 11 — TTS synthesis + cache + GC.
             tts::tts_generate,
             tts::tts_voice_list,
@@ -108,6 +110,11 @@ pub fn builder() -> Builder<Wry> {
             web_account::get_web_account,
             web_account::disconnect_web_account,
             web_account::get_web_api_token,
+            // Phase 04 plan 09 — Desktop-web sync with offline queue.
+            web_sync::sync_project_metadata,
+            web_sync::update_recording_status,
+            web_sync::flush_sync_queue,
+            web_sync::get_sync_status,
         ])
         .typ::<AppError>()
         .typ::<system::AppInfo>()
@@ -175,6 +182,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<nl::NlStoryStepDto>()
         .typ::<nl::NlStepDiffDto>()
         .typ::<nl::NlTurnDto>()
+        .typ::<nl::SessionRollupDto>()
         .typ::<nl::NlCommandError>()
         // Phase 03 plan 11 (TTS synthesis + cache)
         .typ::<tts::TtsGenerateResult>()
@@ -193,6 +201,11 @@ pub fn builder() -> Builder<Wry> {
         // Phase 04 plan 03 (Web account OAuth)
         .typ::<web_account::WebAccountInfo>()
         .typ::<web_account::WebAccountError>()
+        // Phase 04 plan 09 (Desktop-web sync)
+        .typ::<web_sync::SyncResult>()
+        .typ::<web_sync::FlushResult>()
+        .typ::<web_sync::SyncStatusDto>()
+        .typ::<web_sync::WebSyncError>()
 }
 
 /// Path (relative to the `apps/desktop/src-tauri` crate root) where the
