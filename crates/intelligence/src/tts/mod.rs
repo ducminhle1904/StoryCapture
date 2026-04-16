@@ -6,6 +6,7 @@ use thiserror::Error;
 
 pub mod elevenlabs;
 pub mod openai_tts;
+pub mod voice_presets;
 
 #[derive(Debug, Clone)]
 pub struct TtsRequest {
