@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Lock } from "lucide-react";
 import { ApiKeyRow } from "./ApiKeyRow";
+import { WebAccountPanel } from "./accounts-panel";
 
 interface ProviderState {
   present: boolean;
@@ -88,27 +89,32 @@ export function AccountsPage() {
     >
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">
+        <h1 className="text-2xl font-bold tracking-tight text-[var(--color-fg-primary)]">
           {"C\u00e0i \u0111\u1eb7t t\u00e0i kho\u1ea3n"}
         </h1>
         <div
-          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-sm text-green-800"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-success)]/25 bg-[var(--color-success)]/12 px-3 py-1 text-sm text-[var(--color-success)]"
           id="keychain-docs"
           aria-describedby="keychain-docs"
         >
           <Lock className="h-3.5 w-3.5" />
-          <span>{"🔒 Lưu trong OS Keychain"}</span>
+          <span>{"Lưu trong OS Keychain"}</span>
         </div>
       </div>
 
+      {/* Web Account connection (Phase 04 plan 03) */}
+      <section className="mb-8">
+        <WebAccountPanel />
+      </section>
+
       {/* Empty state */}
       {allAbsent && (
-        <div className="mb-6 rounded-lg border border-dashed border-[var(--color-border)] p-6 text-center">
-          <p className="text-sm font-medium text-[var(--color-fg)]">
+        <div className="mb-6 rounded-2xl border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]/55 p-6 text-center">
+          <p className="text-sm font-medium text-[var(--color-fg-primary)]">
             {"Ch\u01b0a c\u00f3 API key n\u00e0o"}
           </p>
           <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
-            {"API key \u0111\u01b0\u1ee3c l\u01b0u v\u00e0o Keychain m\u00e1y b\u1ea1n, kh\u00f4ng g\u1eedi l\u00ean server."}
+            {"API key \u0111\u01b0\u1ee3c l\u01b0u v\u00e0o Keychain m\u00e1y b\u1ea1n, kh\u00f4ng bao gi\u1edd ghi ra file."}
           </p>
         </div>
       )}
