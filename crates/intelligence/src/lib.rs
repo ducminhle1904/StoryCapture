@@ -4,6 +4,7 @@
 pub mod error;
 pub mod secrets;
 pub mod tracing; // redaction layer
+pub mod dryrun;
 pub mod llm;
 pub mod lsp;
 pub mod tts;
