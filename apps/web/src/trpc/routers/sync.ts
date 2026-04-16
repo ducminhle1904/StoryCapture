@@ -37,6 +37,19 @@ function nextEventId(): string {
   return `${Date.now()}-${++eventCounter}`;
 }
 
+// ── Shared enums ──
+
+export const recordingStatusEnum = z.enum([
+  "idle",
+  "recording",
+  "processing",
+  "complete",
+  "error",
+]);
+
+/** Recording status type for frontend use. */
+export type RecordingStatus = z.infer<typeof recordingStatusEnum>;
+
 // ── Input schemas ──
 
 const pushMetadataInput = z.object({
@@ -44,13 +57,13 @@ const pushMetadataInput = z.object({
   workspaceId: z.string(),
   projectName: z.string(),
   storySource: z.string().optional(),
-  recordingStatus: z.string().optional(),
+  recordingStatus: recordingStatusEnum.optional(),
 });
 
 const updateRecordingStatusInput = z.object({
   desktopId: z.string(),
   workspaceId: z.string(),
-  status: z.string(),
+  status: recordingStatusEnum,
 });
 
 const sseSubscriptionInput = z.object({
