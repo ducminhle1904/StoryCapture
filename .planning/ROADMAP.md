@@ -15,7 +15,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 - [x] **Phase 1: Foundation — DSL, Automation, Capture, Encode** - End-to-end pipeline from `.story` file to signed, playable MP4 on macOS and Windows (code-complete; 2 operator-gated verification steps pending)
 - [x] **Phase 2: Cinematic Post-Production & Export** - Screen Studio-grade polish layer (auto-zoom, cursor, transitions, sound, overlays) with multi-format export and post-pro editor UI (code-complete; 2 operator-gated verification steps pending)
 - [x] **Phase 3: Intelligence Layer — AI Authoring & Voiceover** - Natural-language → DSL chat, AI TTS synced to steps, LSP-powered editor assistance (code-complete; 1 operator-gated verification step pending)
-- [ ] **Phase 4: Web Companion & Sharing** - Next.js 15 companion with OAuth, upload, shareable embed, workspaces, analytics, and desktop↔web sync
+- [x] **Phase 4: Web Companion & Sharing** - Next.js 15 companion with OAuth, upload, shareable embed, workspaces, analytics, and desktop↔web sync (code-complete; 1 operator-gated verification step pending)
 
 ## Phase Details
 
@@ -116,16 +116,16 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
   5. Each video's viewer page shows play count, watch duration, drop-off heatmap, and geographic breakdown for the owner or workspace editors.
 **Plans**: 10 plans
 Plans:
-- [ ] 04-01-PLAN.md — Next.js 15 scaffold + Prisma schema (12 models) + tRPC 11 setup + Tailwind v4
-- [ ] 04-02-PLAN.md — NextAuth v5 (GitHub + Google OAuth) + Prisma adapter + desktop token exchange + auth-gated dashboard
-- [ ] 04-03-PLAN.md — Desktop Settings > Accounts panel + OAuth flow + keychain token storage
-- [ ] 04-04-PLAN.md — Upload pipeline: R2 multipart presigned URLs + desktop upload commands + progress UI
-- [ ] 04-05-PLAN.md — Shareable viewer page + iframe embed + oEmbed endpoint + privacy toggle + slug editor
-- [ ] 04-06-PLAN.md — Team workspaces with RBAC (owner/editor/viewer) + invite flow + workspace UI
-- [ ] 04-07-PLAN.md — Template marketplace: curated seed data (12 templates, 9 categories) + fork + category grid
-- [ ] 04-08-PLAN.md — Analytics pipeline: event ingestion + GeoIP + session tracking + dashboard (play/duration/dropoff/geo)
-- [ ] 04-09-PLAN.md — Desktop-web sync: SSE subscriptions + metadata push + recording status + offline queue
-- [ ] 04-10-PLAN.md — Final integration + dashboard navigation + landing page + human-verify checkpoint
+- [x] 04-01-PLAN.md — Next.js 15 scaffold + Prisma schema (12 models) + tRPC 11 setup + Tailwind v4
+- [x] 04-02-PLAN.md — NextAuth v5 (GitHub + Google OAuth) + Prisma adapter + desktop token exchange + auth-gated dashboard
+- [x] 04-03-PLAN.md — Desktop Settings > Accounts panel + OAuth flow + keychain token storage
+- [x] 04-04-PLAN.md — Upload pipeline: R2 multipart presigned URLs + desktop upload commands + progress UI
+- [x] 04-05-PLAN.md — Shareable viewer page + iframe embed + oEmbed endpoint + privacy toggle + slug editor
+- [x] 04-06-PLAN.md — Team workspaces with RBAC (owner/editor/viewer) + invite flow + workspace UI
+- [x] 04-07-PLAN.md — Template marketplace: curated seed data (12 templates, 9 categories) + fork + category grid
+- [x] 04-08-PLAN.md — Analytics pipeline: event ingestion + GeoIP + session tracking + dashboard (play/duration/dropoff/geo)
+- [x] 04-09-PLAN.md — Desktop-web sync: SSE subscriptions + metadata push + recording status + offline queue
+- [x] 04-10-PLAN.md — Final integration + dashboard navigation + landing page + human-verify checkpoint ⚠ human-verify walkthrough pending (see `04-10-RESUME.md`)
 **UI hint**: yes
 
 ## Progress
@@ -135,7 +135,7 @@ Plans:
 | 1. Foundation — DSL, Automation, Capture, Encode | 11/11 | Code-complete (2 verification steps pending) | 2026-04-15 |
 | 2. Cinematic Post-Production & Export | 14/14 | Code-complete (2 verification steps pending) | 2026-04-15 |
 | 3. Intelligence Layer — AI Authoring & Voiceover | 21/21 | Code-complete (1 verification step pending) | 2026-04-15 |
-| 4. Web Companion & Sharing | 0/10 | Planned | - |
+| 4. Web Companion & Sharing | 10/10 | Code-complete (1 verification step pending) | 2026-04-15 |
 
 ## Coverage
 
