@@ -35,17 +35,12 @@ export function TimelinePanel({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-5 py-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
-            Master timeline
-          </div>
-          <p className="mt-1 text-sm text-[var(--color-fg-secondary)]">
-            Structural view of the parsed story before recording begins.
-          </p>
-        </div>
-        <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
-          {ast.scenes.length} scenes
+      <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2">
+        <span className="text-xs font-medium text-[var(--color-fg-muted)]">
+          Timeline
+        </span>
+        <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+          {ast.scenes.length} {ast.scenes.length === 1 ? "scene" : "scenes"}
         </span>
       </header>
 
@@ -64,13 +59,10 @@ export function TimelinePanel({
               >
                 <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
                   <div>
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
-                      Scene {idx + 1}
-                    </div>
-                    <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                    <div className="text-sm font-medium text-[var(--color-fg-primary)]">
                       {scene.name || `Scene ${idx + 1}`}
                     </div>
-                    <div className="mt-1 font-mono text-xs text-[var(--color-fg-muted)]">
+                    <div className="mt-0.5 font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
                       ~{(totalMs / 1000).toFixed(1)}s
                     </div>
                   </div>

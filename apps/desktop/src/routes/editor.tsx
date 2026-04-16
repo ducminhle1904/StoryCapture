@@ -432,23 +432,23 @@ export default function EditorRoute() {
       id="main-content"
       className="flex h-full flex-col bg-[var(--color-bg-primary)]"
     >
-      <header className="flex items-center justify-between gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-2">
-        <div className="flex min-w-0 items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
-          <span>project</span>
-          <span className="text-[var(--color-fg-primary)]">
-            {folder?.name ?? "Loading project"}
-          </span>
-          <span>script.dsl</span>
-          <span className={errorCount > 0 ? "text-[var(--color-danger)]" : ""}>
-            errors: {errorCount}
-          </span>
+      <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-sm font-semibold text-[var(--color-fg-primary)]">
+            {folder?.name ?? "Loading..."}
+          </h1>
+          {errorCount > 0 && (
+            <span className="rounded-full bg-[var(--color-danger)]/12 px-2 py-0.5 text-[10px] font-medium tabular-nums text-[var(--color-danger)]">
+              {errorCount} {errorCount === 1 ? "error" : "errors"}
+            </span>
+          )}
         </div>
         {projectId ? (
           <Link
             to={`/recorder/${projectId}`}
-            className="brand-button inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+            className="brand-button inline-flex items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
           >
-            <Video size={14} aria-hidden="true" />
+            <Video size={13} aria-hidden="true" />
             Record
           </Link>
         ) : null}
@@ -457,29 +457,17 @@ export default function EditorRoute() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)]">
-            <aside className="min-h-0 border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="border-b border-[var(--color-border-subtle)] px-5 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
-                        Script DSL
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
-                        Write the capture sequence directly, then refine timing and narration.
-                      </p>
-                    </div>
-                    <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
-                      lines
-                      <span className="ml-2 text-[var(--color-fg-primary)]">
-                        {source.split("\n").length}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="min-h-0 flex-1">
-                  <StoryEditor onAutosave={autosave} />
-                </div>
+            <aside className="flex min-h-0 flex-col border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
+              <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2">
+                <span className="text-xs font-medium text-[var(--color-fg-muted)]">
+                  Script
+                </span>
+                <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+                  {source.split("\n").length} lines
+                </span>
+              </div>
+              <div className="min-h-0 flex-1">
+                <StoryEditor onAutosave={autosave} />
               </div>
             </aside>
 

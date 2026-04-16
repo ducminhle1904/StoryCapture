@@ -27,19 +27,14 @@ export function PreviewPanel({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]">
-      <header className="flex items-start justify-between gap-4 border-b border-[var(--color-border-subtle)] px-5 py-4">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
-            Preview stage
-          </div>
-          <p className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
-            Static frame for the current viewport. Live browser mirroring arrives in Phase 2.
-          </p>
-        </div>
+      <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2">
+        <span className="text-xs font-medium text-[var(--color-fg-muted)]">
+          Preview
+        </span>
         <div
           role="radiogroup"
           aria-label="Preview viewport"
-          className="flex gap-1 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-1"
+          className="flex gap-0.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] p-0.5"
         >
           <ViewportButton
             icon={<Monitor size={14} aria-hidden="true" />}
@@ -129,10 +124,10 @@ function ViewportButton({
       aria-checked={active}
       aria-label={`Preview as ${label}`}
       onClick={onClick}
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)] ${
+      className={`inline-flex items-center rounded-[var(--radius-sm)] px-2 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)] ${
         active
-          ? "bg-[var(--color-accent-primary)] text-[var(--color-fg-primary)]"
-          : "text-[var(--color-fg-secondary)] hover:text-[var(--color-fg-primary)]"
+          ? "bg-[var(--color-surface-100)] text-[var(--color-fg-primary)] shadow-sm"
+          : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
       }`}
     >
       {icon}
