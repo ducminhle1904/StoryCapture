@@ -110,7 +110,7 @@ export function WatchViewer({
   }, []);
 
   // Stable ref for seek function from VideoPlayer
-  const seekRef = { current: null as ((t: number) => void) | null };
+  const seekRef = useRef<((t: number) => void) | null>(null);
 
   const handleAnalyticsEvent = useCallback(
     (analyticsEvent: AnalyticsEvent) => {
