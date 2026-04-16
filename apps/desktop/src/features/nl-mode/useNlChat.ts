@@ -43,11 +43,29 @@ export function useNlChat(projectId: string) {
       // Create a fresh Channel per send() call so overlapping sends
       // each get their own handler (avoids onmessage overwrite bug).
       const channel = new Channel<NlChatEvent>();
+
+      // Buffer text deltas and flush to the store at ~60fps via
+      // requestAnimationFrame. This reduces re-renders from hundreds
+      // (one per SSE chunk) to ~10-20 per response.
+      let deltaBuffer = "";
+      let rafId: number | null = null;
+
+      const flushDelta = () => {
+        rafId = null;
+        if (deltaBuffer) {
+          useNlStore.getState().appendStream(deltaBuffer);
+          deltaBuffer = "";
+        }
+      };
+
       channel.onmessage = (ev: NlChatEvent) => {
         switch (ev.kind) {
           case "text":
             if (ev.delta) {
-              useNlStore.getState().appendStream(ev.delta);
+              deltaBuffer += ev.delta;
+              if (rafId === null) {
+                rafId = requestAnimationFrame(flushDelta);
+              }
             }
             break;
           case "story_doc_ready":
@@ -65,6 +83,9 @@ export function useNlChat(projectId: string) {
             }
             break;
           case "error":
+            // Flush any buffered text before reporting error
+            if (rafId !== null) { cancelAnimationFrame(rafId); }
+            flushDelta();
             useNlStore.getState().setError({
               kind: "network",
               message: ev.message ?? "Unknown error",
@@ -72,6 +93,9 @@ export function useNlChat(projectId: string) {
             useNlStore.getState().endStream();
             break;
           case "done":
+            // Flush remaining buffered text before ending stream
+            if (rafId !== null) { cancelAnimationFrame(rafId); }
+            flushDelta();
             useNlStore.getState().endStream();
             break;
         }
