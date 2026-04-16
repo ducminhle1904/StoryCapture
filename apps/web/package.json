@@ -36,6 +36,9 @@
     "client-only": "^0.0.1",
     "server-only": "^0.0.1"
   },
+  "prisma": {
+    "seed": "npx tsx prisma/seed.ts"
+  },
   "devDependencies": {
     "prisma": "^6.0.0",
     "pino-pretty": "^11.0.0",
