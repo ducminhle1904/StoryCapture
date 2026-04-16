@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@import "@storycapture/ui/tokens.css";
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-fg-primary);
+  font-family: var(--font-sans);
+}
