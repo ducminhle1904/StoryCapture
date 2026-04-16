@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 import previewBackdrop from "@/assets/gradients/warm-sunset.png";
 import { Button } from "@/components/ui/button";
@@ -454,50 +455,65 @@ export default function EditorRoute() {
         ) : null}
       </header>
 
-      {/* Main editor grid: script (40%) | preview+voiceover (60%) */}
-      <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
-        {/* Left: Script editor */}
-        <aside className="flex min-h-0 flex-col border-r border-[var(--color-border-subtle)]">
-          <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2">
-            <span className="text-xs font-medium text-[var(--color-fg-muted)]">
-              Script
-            </span>
-            <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
-              {source.split("\n").length} lines
-            </span>
-          </div>
-          <div className="min-h-0 flex-1">
-            <StoryEditor onAutosave={autosave} />
-          </div>
-        </aside>
+      {/* Outer: main content (top) | timeline (bottom) — resizable vertically */}
+      <PanelGroup direction="vertical" className="min-h-0 flex-1">
+        <Panel defaultSize={78} minSize={50}>
+          {/* Inner: script (left) | preview+voiceover (right) — resizable horizontally */}
+          <PanelGroup direction="horizontal">
+            <Panel defaultSize={38} minSize={22} maxSize={60}>
+              <aside className="flex h-full flex-col">
+                <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-4 py-2">
+                  <span className="text-xs font-medium text-[var(--color-fg-muted)]">
+                    Script
+                  </span>
+                  <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+                    {source.split("\n").length} lines
+                  </span>
+                </div>
+                <div className="min-h-0 flex-1">
+                  <StoryEditor onAutosave={autosave} />
+                </div>
+              </aside>
+            </Panel>
 
-        {/* Right: Preview (55%) + Voiceover (45%) stacked */}
-        <div className="flex min-h-0 flex-col">
-          <div className="min-h-0 flex-[55] border-b border-[var(--color-border-subtle)] p-4">
-            <PreviewPanel thumbnailPath={previewBackdrop} />
-          </div>
-          {projectId ? (
-            <div className="min-h-0 flex-[45] overflow-y-auto p-4">
-              <VoiceoverWorkbench projectId={projectId} story={story} />
-            </div>
-          ) : null}
-        </div>
-      </div>
+            <PanelResizeHandle className="group relative w-1.5 bg-transparent transition-colors hover:bg-[var(--color-accent-primary)]/20 active:bg-[var(--color-accent-primary)]/40">
+              <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--color-border-subtle)] group-hover:bg-[var(--color-accent-primary)]/50" />
+            </PanelResizeHandle>
 
-      {/* Bottom: Timeline strip */}
-      <div className="h-44 shrink-0 border-t border-[var(--color-border-subtle)]">
-        <TimelinePanel />
-      </div>
+            <Panel defaultSize={62} minSize={30}>
+              {/* Right: Preview (top) + Voiceover (bottom) — resizable vertically */}
+              <PanelGroup direction="vertical">
+                <Panel defaultSize={55} minSize={25}>
+                  <div className="h-full p-3">
+                    <PreviewPanel thumbnailPath={previewBackdrop} />
+                  </div>
+                </Panel>
 
-      {/* Chat panel: slides in as overlay from right */}
-      {projectId ? (
-        <ChatPanel
-          projectId={projectId}
-          currentStory={source}
-          sessionId={sessionId}
-          className="absolute right-0 top-0 z-10 h-full w-80 border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[-8px_0_24px_rgba(0,0,0,0.08)]"
-        />
-      ) : null}
+                {projectId ? (
+                  <>
+                    <PanelResizeHandle className="group relative h-1.5 bg-transparent transition-colors hover:bg-[var(--color-accent-primary)]/20 active:bg-[var(--color-accent-primary)]/40">
+                      <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--color-border-subtle)] group-hover:bg-[var(--color-accent-primary)]/50" />
+                    </PanelResizeHandle>
+                    <Panel defaultSize={45} minSize={20}>
+                      <div className="h-full overflow-y-auto p-3">
+                        <VoiceoverWorkbench projectId={projectId} story={story} />
+                      </div>
+                    </Panel>
+                  </>
+                ) : null}
+              </PanelGroup>
+            </Panel>
+          </PanelGroup>
+        </Panel>
+
+        <PanelResizeHandle className="group relative h-1.5 bg-transparent transition-colors hover:bg-[var(--color-accent-primary)]/20 active:bg-[var(--color-accent-primary)]/40">
+          <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--color-border-subtle)] group-hover:bg-[var(--color-accent-primary)]/50" />
+        </PanelResizeHandle>
+
+        <Panel defaultSize={22} minSize={12} maxSize={40}>
+          <TimelinePanel />
+        </Panel>
+      </PanelGroup>
 
       {projectId ? <VoiceCatalogDialog projectId={projectId} /> : null}
     </main>
