@@ -52,19 +52,36 @@ export async function createPresignedPartUrl(
   return getSignedUrl(r2Client, command, { expiresIn: 3600 });
 }
 
+// ── Presigned GET URL cache (55-minute TTL for 1-hour expiry URLs) ──
+
+const GET_URL_CACHE = new Map<string, { url: string; expiresAt: number }>();
+const GET_URL_TTL_MS = 55 * 60 * 1000; // 55 minutes
+
 /**
  * Create a presigned GET URL for reading an object (thumbnails, private videos).
- * Expires in 1 hour.
+ * Expires in 1 hour. Cached for 55 minutes to avoid re-signing on every request.
  */
 export async function createPresignedGetUrl(
   bucket: string,
   key: string,
 ): Promise<string> {
+  const cacheKey = `${bucket}:${key}`;
+  const cached = GET_URL_CACHE.get(cacheKey);
+  const now = Date.now();
+
+  if (cached && cached.expiresAt > now) {
+    return cached.url;
+  }
+
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: key,
   });
-  return getSignedUrl(r2Client, command, { expiresIn: 3600 });
+  const url = await getSignedUrl(r2Client, command, { expiresIn: 3600 });
+
+  GET_URL_CACHE.set(cacheKey, { url, expiresAt: now + GET_URL_TTL_MS });
+
+  return url;
 }
 
 /**
