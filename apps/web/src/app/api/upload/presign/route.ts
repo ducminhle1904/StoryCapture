@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyDesktopToken } from "@/lib/jwt";
+import { requireDesktopAuth } from "@/lib/desktop-auth";
 import { prisma } from "@/lib/prisma";
 import { R2_BUCKET, createPresignedPartUrl, createPresignedPutUrl } from "@/lib/r2";
 
@@ -16,18 +16,9 @@ import { R2_BUCKET, createPresignedPartUrl, createPresignedPutUrl } from "@/lib/
  * Pitfall 3: presigned URL uses S3 API domain only.
  */
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Missing authorization" }, { status: 401 });
-  }
-
-  let userId: string;
-  try {
-    const result = await verifyDesktopToken(authHeader.slice(7));
-    userId = result.userId;
-  } catch {
-    return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
-  }
+  const auth = await requireDesktopAuth(req);
+  if (!auth.ok) return auth.response;
+  const userId = auth.userId;
 
   const body = await req.json();
   const { r2Key, uploadId, partNumber, type } = body;
