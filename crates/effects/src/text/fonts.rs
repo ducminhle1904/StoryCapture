@@ -16,8 +16,17 @@
 //! licenced under the SIL OFL (see `assets/fonts/LICENSES.md`).
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use crate::error::{EffectsError, Result};
+
+/// Memoised workspace fonts directory. The walk in [`workspace_fonts_dir`]
+/// is idempotent (takes no parameters, hits the filesystem repeatedly),
+/// so caching the result for the process lifetime is safe and saves a
+/// directory walk on every font resolution call. [`ensure_fonts_extracted`]
+/// is intentionally NOT memoised — it writes a new UUID-named subdir
+/// under a caller-supplied parent on every invocation.
+static WORKSPACE_FONTS_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// The 5 bundled font variants shipped with StoryCapture.
 ///
@@ -85,6 +94,10 @@ impl BundledFont {
 /// `CARGO_MANIFEST_DIR` (or CWD) until it finds an `assets/fonts`
 /// child. In the typical layout that's the workspace root.
 fn workspace_fonts_dir() -> Result<PathBuf> {
+    if let Some(cached) = WORKSPACE_FONTS_DIR.get() {
+        return Ok(cached.clone());
+    }
+
     // Prefer CARGO_MANIFEST_DIR (stable during `cargo test`). Fall back
     // to CWD.
     let start: PathBuf = std::env::var_os("CARGO_MANIFEST_DIR")
@@ -92,10 +105,10 @@ fn workspace_fonts_dir() -> Result<PathBuf> {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     let mut cursor = start.as_path();
-    loop {
+    let resolved = loop {
         let candidate = cursor.join("assets").join("fonts");
         if candidate.is_dir() {
-            return Ok(candidate);
+            break candidate;
         }
         match cursor.parent() {
             Some(p) => cursor = p,
@@ -103,7 +116,11 @@ fn workspace_fonts_dir() -> Result<PathBuf> {
                 return Err(EffectsError::InvalidPath);
             }
         }
-    }
+    };
+    // `set` may race with another thread resolving first; either way the
+    // stored value is canonical for the process, so propagate it.
+    let stored = WORKSPACE_FONTS_DIR.get_or_init(|| resolved);
+    Ok(stored.clone())
 }
 
 /// Resolve the on-disk path for a bundled font. Returns
