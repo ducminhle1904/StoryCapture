@@ -404,11 +404,9 @@ pub async fn nl_diff_reject(
     app: AppHandle,
     project_id: String,
     task_id: String,
-    step_ids: Vec<String>,
 ) -> Result<(), NlCommandError> {
     let _pid = Uuid::parse_str(&project_id)
         .map_err(|_| NlCommandError::InvalidProject)?;
-    let _ = step_ids; // Currently unused -- reject drops the entire doc
 
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
     registry.drop_doc(&task_id);
