@@ -139,18 +139,7 @@ fn project_root(app_state: &AppState, project_id: &str) -> PathBuf {
     app_state.data_dir.join(format!("projects/{project_id}"))
 }
 
-fn project_db_path(app_state: &AppState, project_id: &str) -> PathBuf {
-    app_state
-        .data_dir
-        .join(format!("projects/{project_id}/project.sqlite"))
-}
-
-fn now_epoch_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64
-}
+use super::util::{project_db_path, now_epoch_ms};
 
 // ---- Commands ----
 

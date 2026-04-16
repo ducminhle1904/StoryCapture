@@ -533,9 +533,7 @@ pub async fn nl_load_history(
         .map_err(|_| NlCommandError::InvalidProject)?;
 
     let app_state = app.state::<AppState>();
-    let db_path = app_state
-        .data_dir
-        .join(format!("projects/{project_id}/project.sqlite"));
+    let db_path = super::util::project_db_path(&app_state, &project_id);
 
     let conn = storage::Connection::open(&db_path)
         .map_err(|e| NlCommandError::Storage(e.to_string()))?;
@@ -569,10 +567,7 @@ fn persist_turn(
     task_id: &str,
     _provider: &str,
 ) -> Result<(), String> {
-    let db_path = data_dir.join(format!(
-        "projects/{}/project.sqlite",
-        project_id
-    ));
+    let db_path = super::util::project_db_path_from_dir(data_dir, &project_id.to_string());
     let conn = storage::Connection::open(&db_path)
         .map_err(|e| e.to_string())?;
 
@@ -585,10 +580,7 @@ fn persist_turn(
         )
         .unwrap_or(-1);
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let now = super::util::now_epoch_secs();
 
     let turn = storage::phase3::NlTurnInsert {
         id: Uuid::now_v7(),
@@ -620,10 +612,7 @@ fn persist_llm_metric(
     cost_usd: f64,
     total_ms: i64,
 ) -> Result<(), String> {
-    let db_path = data_dir.join(format!(
-        "projects/{}/project.sqlite",
-        project_id
-    ));
+    let db_path = super::util::project_db_path_from_dir(data_dir, &project_id.to_string());
     let conn = storage::Connection::open(&db_path)
         .map_err(|e| e.to_string())?;
 
@@ -640,10 +629,7 @@ fn persist_llm_metric(
         total_ms,
         cost_usd,
         error_code: None,
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64,
+        timestamp: super::util::now_epoch_secs(),
     };
 
     storage::phase3::insert_llm_metric(&conn, &metric)
