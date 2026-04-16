@@ -41,6 +41,29 @@ async function verifyVideoAccess(
   return video;
 }
 
+/**
+ * Compute average and median duration from a sorted list of ended events.
+ */
+function computeDurationStats(
+  endedEvents: { watchDurationSec: number | null }[],
+): { avgDurationSec: number; medianDurationSec: number } {
+  if (endedEvents.length === 0) {
+    return { avgDurationSec: 0, medianDurationSec: 0 };
+  }
+
+  const durations = endedEvents.map((e) => e.watchDurationSec!);
+  const avgDurationSec =
+    durations.reduce((sum, d) => sum + d, 0) / durations.length;
+
+  const mid = Math.floor(durations.length / 2);
+  const medianDurationSec =
+    durations.length % 2 !== 0
+      ? durations[mid]!
+      : (durations[mid - 1]! + durations[mid]!) / 2;
+
+  return { avgDurationSec, medianDurationSec };
+}
+
 export const analyticsRouter = router({
   /**
    * Dashboard aggregated analytics for a video.
@@ -92,21 +115,8 @@ export const analyticsRouter = router({
         orderBy: { watchDurationSec: "asc" },
       });
 
-      let avgDurationSec = 0;
-      let medianDurationSec = 0;
-
-      if (endedEvents.length > 0) {
-        const durations = endedEvents.map((e) => e.watchDurationSec!);
-        avgDurationSec =
-          durations.reduce((sum, d) => sum + d, 0) / durations.length;
-
-        // Median
-        const mid = Math.floor(durations.length / 2);
-        medianDurationSec =
-          durations.length % 2 !== 0
-            ? durations[mid]!
-            : (durations[mid - 1]! + durations[mid]!) / 2;
-      }
+      const { avgDurationSec, medianDurationSec } =
+        computeDurationStats(endedEvents);
 
       // Scene drop-offs: count scene_enter per scene
       const sceneEnters = await ctx.prisma.viewEvent.groupBy({
@@ -262,18 +272,8 @@ export const analyticsRouter = router({
         orderBy: { watchDurationSec: "asc" },
       });
 
-      let avgDurationSec = 0;
-      let medianDurationSec = 0;
-
-      if (endedEvents.length > 0) {
-        const durations = endedEvents.map((e) => e.watchDurationSec!);
-        avgDurationSec = durations.reduce((s, d) => s + d, 0) / durations.length;
-        const mid = Math.floor(durations.length / 2);
-        medianDurationSec =
-          durations.length % 2 !== 0
-            ? durations[mid]!
-            : (durations[mid - 1]! + durations[mid]!) / 2;
-      }
+      const { avgDurationSec, medianDurationSec } =
+        computeDurationStats(endedEvents);
 
       // Country breakdown
       const countryRows = await ctx.prisma.viewEvent.groupBy({
