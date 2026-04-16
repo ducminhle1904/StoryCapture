@@ -4,7 +4,7 @@
  * Uses Channel<NlChatEvent> for streaming events from the Rust backend.
  */
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { useNlStore, type ChatMessage } from "./nlStore";
 
@@ -28,11 +28,6 @@ export function useNlChat(projectId: string) {
   const store = useNlStore();
   const taskIdRef = useRef<string | null>(null);
 
-  const channel = useMemo(() => {
-    const ch = new Channel<NlChatEvent>();
-    return ch;
-  }, []);
-
   const send = useCallback(
     async (message: string, currentStory: string) => {
       // Add user message
@@ -45,6 +40,9 @@ export function useNlChat(projectId: string) {
       store.addMessage(userMsg);
       store.beginStream("pending");
 
+      // Create a fresh Channel per send() call so overlapping sends
+      // each get their own handler (avoids onmessage overwrite bug).
+      const channel = new Channel<NlChatEvent>();
       channel.onmessage = (ev: NlChatEvent) => {
         switch (ev.kind) {
           case "text":
@@ -112,7 +110,7 @@ export function useNlChat(projectId: string) {
         useNlStore.getState().endStream();
       }
     },
-    [projectId, channel, store],
+    [projectId, store],
   );
 
   const cancel = useCallback(async () => {
