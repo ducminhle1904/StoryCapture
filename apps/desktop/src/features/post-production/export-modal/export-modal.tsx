@@ -17,7 +17,13 @@
 import { useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import {
+  ChevronRight,
+  FolderOpen,
+  Sparkles,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +31,8 @@ import {
   exportValidateConfig,
   type ExportOutput,
 } from "@/ipc/export";
+import { AiDisclosureModal } from "@/features/export/AiDisclosureModal";
+import { useVoiceoverStore } from "@/features/voiceover/voiceoverStore";
 import { useEditorStore } from "../state/store";
 import { FormatCheckboxes } from "./format-checkboxes";
 import { ResolutionPicker } from "./resolution-picker";
@@ -45,9 +53,13 @@ export function ExportModal({ storyId }: ExportModalProps) {
   const setQuality = useEditorStore((s) => s.setExportQuality);
   const setOutFolder = useEditorStore((s) => s.setExportOutFolder);
   const setBaseName = useEditorStore((s) => s.setExportBaseName);
+  const ttsClipCount = useVoiceoverStore(
+    (s) => Object.keys(s.clipByStepId).length,
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [disclosureOpen, setDisclosureOpen] = useState(false);
 
   const outputs: ExportOutput[] = useMemo(
     () =>
@@ -97,7 +109,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
     return errs.length === 0;
   }, [outputs]);
 
-  const onSubmit = useCallback(async () => {
+  const runExport = useCallback(async () => {
     if (!form.outFolder) return;
     setSubmitting(true);
     try {
@@ -132,12 +144,34 @@ export function ExportModal({ storyId }: ExportModalProps) {
     }
   }, [form.outFolder, form.baseName, outputs, runValidate, storyId, setOpen]);
 
+  const onSubmit = useCallback(async () => {
+    if (ttsClipCount > 0) {
+      setDisclosureOpen(true);
+      return;
+    }
+    await runExport();
+  }, [runExport, ttsClipCount]);
+
+  const handleDisclosureResult = useCallback(
+    async ({ proceed }: { proceed: boolean; embedC2pa: boolean }) => {
+      setDisclosureOpen(false);
+      if (!proceed) return;
+      await runExport();
+    },
+    [runExport],
+  );
+
   if (!open) return null;
+
+  const selectedFormatsLabel =
+    form.formats.length > 0
+      ? form.formats.map((format) => format.toUpperCase()).join(" + ")
+      : "No format selected";
 
   return (
     <>
       <div
-        className="fixed inset-0 z-30 bg-black/40"
+        className="fixed inset-0 z-30 bg-black/60 backdrop-blur-md"
         aria-hidden="true"
         onClick={() => setOpen(false)}
       />
@@ -145,39 +179,89 @@ export function ExportModal({ storyId }: ExportModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="export-modal-title"
-        className="fixed inset-y-0 right-0 z-40 flex w-[420px] flex-col border-l border-[var(--color-border)] bg-[var(--color-bg)] shadow-2xl"
+        className="fixed inset-y-3 right-3 z-40 flex w-[min(460px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(14,17,24,0.98),rgba(8,10,15,0.98))] shadow-[0_32px_90px_rgba(0,0,0,0.42)]"
       >
-        <header className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-          <h2 id="export-modal-title" className="text-sm font-semibold">
-            Export
-          </h2>
-          <button
-            type="button"
-            aria-label="Close export dialog"
-            onClick={() => setOpen(false)}
-            className="rounded p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        <header className="relative overflow-hidden border-b border-white/8 px-5 py-5">
+          <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_left,rgba(255,106,124,0.2),transparent_58%)]" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[var(--color-fg-muted)]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Export queue
+              </div>
+              <h2
+                id="export-modal-title"
+                className="mt-3 text-2xl font-semibold tracking-[-0.045em] text-[var(--color-fg-primary)]"
+              >
+                Ship this cut
+              </h2>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-[var(--color-fg-secondary)]">
+                Choose formats, quality, and destination before sending the render
+                job to the queue.
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="Close export dialog"
+              onClick={() => setOpen(false)}
+              className="rounded-xl border border-white/8 bg-white/4 p-2 text-[var(--color-fg-muted)] transition hover:bg-white/8 hover:text-[var(--color-fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/8 bg-black/16 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                Formats
+              </div>
+              <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                {selectedFormatsLabel}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-black/16 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                Resolution
+              </div>
+              <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                {form.resolution.toUpperCase()}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-black/16 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                FPS
+              </div>
+              <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                {form.fps} fps
+              </div>
+            </div>
+          </div>
         </header>
 
-        <div className="flex-1 space-y-5 overflow-auto p-4">
-          <FormatCheckboxes value={form.formats} onChange={setFormats} />
+        <div className="flex-1 space-y-4 overflow-auto px-5 py-5">
+          <section className="rounded-[24px] border border-white/8 bg-white/4 p-4">
+            <FormatCheckboxes value={form.formats} onChange={setFormats} />
+          </section>
 
-          <ResolutionPicker value={form.resolution} onChange={setResolution} />
+          <section className="rounded-[24px] border border-white/8 bg-white/4 p-4">
+            <ResolutionPicker
+              value={form.resolution}
+              onChange={setResolution}
+            />
+          </section>
 
-          <div>
-            <label className="block text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
-              Frames per second
-            </label>
-            <div className="mt-1 flex gap-2">
+          <section className="rounded-[24px] border border-white/8 bg-white/4 p-4">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+              Motion fidelity
+            </div>
+            <div className="mt-3 flex gap-2">
               {FPS_CHOICES.map((n) => (
                 <label
                   key={n}
-                  className={`cursor-pointer rounded border px-2 py-1 text-sm ${
+                  className={`flex-1 cursor-pointer rounded-2xl border px-3 py-3 text-center text-sm font-medium transition ${
                     form.fps === n
-                      ? "border-[var(--color-accent,#ff5b76)] bg-[var(--color-surface-hi)] text-[var(--color-fg)]"
-                      : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg-muted)]"
+                      ? "border-[var(--color-accent-primary)]/50 bg-[var(--color-accent-primary)]/10 text-[var(--color-fg-primary)] shadow-[0_16px_32px_rgba(0,0,0,0.18)]"
+                      : "border-white/8 bg-black/14 text-[var(--color-fg-secondary)] hover:border-white/14 hover:bg-white/5 hover:text-[var(--color-fg-primary)]"
                   }`}
                 >
                   <input
@@ -192,71 +276,105 @@ export function ExportModal({ storyId }: ExportModalProps) {
                 </label>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div>
-            <label
-              htmlFor="export-quality"
-              className="block text-xs uppercase tracking-wide text-[var(--color-fg-muted)]"
-            >
-              Quality
-            </label>
-            <select
-              id="export-quality"
-              value={form.quality}
-              onChange={(e) =>
-                setQuality(e.target.value as "low" | "med" | "high")
-              }
-              className="mt-1 w-full rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
-            >
-              <option value="low">Low</option>
-              <option value="med">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
+          <section className="rounded-[24px] border border-white/8 bg-white/4 p-4">
+            <div className="grid gap-4">
+              <div>
+                <label
+                  htmlFor="export-quality"
+                  className="block text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]"
+                >
+                  Quality
+                </label>
+                <select
+                  id="export-quality"
+                  value={form.quality}
+                  onChange={(e) =>
+                    setQuality(e.target.value as "low" | "med" | "high")
+                  }
+                  className="mt-3 w-full rounded-2xl border border-white/8 bg-black/14 px-4 py-3 text-sm text-[var(--color-fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+                >
+                  <option value="low">Low</option>
+                  <option value="med">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
 
-          <div>
-            <label
-              htmlFor="export-basename"
-              className="block text-xs uppercase tracking-wide text-[var(--color-fg-muted)]"
-            >
-              Base file name
-            </label>
-            <input
-              id="export-basename"
-              type="text"
-              value={form.baseName}
-              onChange={(e) => setBaseName(e.target.value)}
-              className="mt-1 w-full rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-fg)]"
-              aria-label="Export base file name"
-            />
-          </div>
+              <div>
+                <label
+                  htmlFor="export-basename"
+                  className="block text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]"
+                >
+                  Base file name
+                </label>
+                <input
+                  id="export-basename"
+                  type="text"
+                  value={form.baseName}
+                  onChange={(e) => setBaseName(e.target.value)}
+                  className="mt-3 w-full rounded-2xl border border-white/8 bg-black/14 px-4 py-3 text-sm text-[var(--color-fg-primary)] placeholder:text-[var(--color-fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+                  aria-label="Export base file name"
+                />
+              </div>
 
-          <div>
-            <span className="block text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
-              Output folder
-            </span>
-            <div className="mt-1 flex items-center gap-2">
-              <input
-                readOnly
-                value={form.outFolder ?? ""}
-                aria-label="Output folder"
-                placeholder="Pick a folder…"
-                className="flex-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-fg-muted)]"
-              />
-              <Button variant="outline" size="sm" onClick={pickFolder}>
-                Pick…
-              </Button>
+              <div>
+                <span className="block text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+                  Output folder
+                </span>
+                <div className="mt-3 flex items-center gap-2 rounded-2xl border border-white/8 bg-black/14 p-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/8 bg-white/5 text-[var(--color-fg-muted)]">
+                    <FolderOpen className="h-4 w-4" />
+                  </div>
+                  <input
+                    readOnly
+                    value={form.outFolder ?? ""}
+                    aria-label="Output folder"
+                    placeholder="Pick a folder…"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-[var(--color-fg-secondary)] placeholder:text-[var(--color-fg-muted)] focus:outline-none"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={pickFolder}
+                    className="rounded-xl border-white/10 bg-white/4 px-3 text-[var(--color-fg-primary)] hover:bg-white/8"
+                  >
+                    Pick
+                  </Button>
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
+
+          {!graphAvailable ? (
+            <section className="rounded-[24px] border border-[var(--color-accent-primary)]/20 bg-[var(--color-accent-primary)]/8 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-xl border border-[var(--color-accent-primary)]/20 bg-black/20 p-2 text-[var(--color-accent-primary)]">
+                  <ChevronRight className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-[var(--color-fg-primary)]">
+                    Export execution is still gated
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-[var(--color-fg-secondary)]">
+                    The drawer is ready, but graph computation is not wired yet, so
+                    this screen can validate config and collect export choices only.
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {warnings.length > 0 ? (
             <div
               role="alert"
-              className="rounded border border-amber-700 bg-amber-900/40 p-2 text-xs text-amber-200"
+              className="rounded-[24px] border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"
             >
-              <div className="mb-1 font-semibold">Validation warnings</div>
-              <ul className="list-inside list-disc space-y-0.5">
+              <div className="flex items-center gap-2 font-medium">
+                <TriangleAlert className="h-4 w-4" />
+                Validation warnings
+              </div>
+              <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-amber-100/85">
                 {warnings.map((w) => (
                   <li key={w}>{w}</li>
                 ))}
@@ -265,8 +383,13 @@ export function ExportModal({ storyId }: ExportModalProps) {
           ) : null}
         </div>
 
-        <footer className="flex items-center justify-between border-t border-[var(--color-border)] px-4 py-3">
-          <Button variant="ghost" size="sm" onClick={runValidate}>
+        <footer className="flex items-center justify-between border-t border-white/8 bg-black/16 px-5 py-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={runValidate}
+            className="rounded-xl px-4 text-[var(--color-fg-secondary)] hover:bg-white/6 hover:text-[var(--color-fg-primary)]"
+          >
             Validate
           </Button>
           <Button
@@ -281,11 +404,19 @@ export function ExportModal({ storyId }: ExportModalProps) {
                 ? "Graph computation pending (Plan 02-13b)"
                 : undefined
             }
+            className="brand-button rounded-xl px-4 text-white disabled:bg-white/10 disabled:text-[var(--color-fg-muted)] disabled:shadow-none"
           >
             {submitting ? "Submitting…" : "Export"}
           </Button>
         </footer>
       </div>
+      <AiDisclosureModal
+        open={disclosureOpen}
+        ttsClipCount={ttsClipCount}
+        onResult={(result) => {
+          void handleDisclosureResult(result);
+        }}
+      />
     </>
   );
 }

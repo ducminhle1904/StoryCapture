@@ -1,6 +1,6 @@
 //! NL-to-DSL Tauri command surface.
 //!
-//! Six commands bridging the Rust NL orchestrator (Plan 06) to the webview:
+//! Eight commands bridging the Rust NL orchestrator (Plan 06) to the webview:
 //!
 //! | Command            | Purpose                                             |
 //! |--------------------|-----------------------------------------------------|
@@ -10,6 +10,8 @@
 //! | `nl_diff_reject`   | Reject a turn's output, drop cached doc             |
 //! | `nl_regen_step`    | Regenerate a single step via a new LLM turn         |
 //! | `nl_load_history`  | Load conversation history for a project             |
+//! | `nl_get_session_id`| Return the current NL session UUID                  |
+//! | `session_get_rollup`| Load aggregate token/cost metrics for a session    |
 //!
 //! Security:
 //! - T-03-07-01: `project_id` parsed as UUID before any write.
@@ -21,6 +23,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::ipc::Channel;
@@ -125,6 +128,14 @@ pub struct NlTurnDto {
     pub llm_provider: Option<String>,
     pub token_usage_json: Option<String>,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SessionRollupDto {
+    pub turn_count: i64,
+    pub total_cost_usd: f64,
+    pub total_tokens: i64,
+    pub avg_first_token_ms: Option<f64>,
 }
 
 // ---- Error type ----
@@ -564,6 +575,51 @@ pub async fn nl_load_history(
             created_at: t.created_at,
         })
         .collect())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn nl_get_session_id(app: AppHandle) -> Result<String, NlCommandError> {
+    let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
+    Ok(registry.session_id().to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn session_get_rollup(
+    app: AppHandle,
+    project_id: String,
+    session_id: String,
+) -> Result<SessionRollupDto, NlCommandError> {
+    let _pid = Uuid::parse_str(&project_id).map_err(|_| NlCommandError::InvalidProject)?;
+    let app_state = app.state::<AppState>();
+    let db_path = super::util::project_db_path(app_state.inner(), &project_id);
+    let conn = storage::Connection::open(&db_path)
+        .map_err(|e| NlCommandError::Storage(e.to_string()))?;
+
+    let rollup = conn
+        .query_row(
+            "SELECT turn_count, total_cost_usd, total_tokens, avg_first_token_ms \
+             FROM session_rollup WHERE session_id = ?1",
+            [session_id],
+            |row| {
+                Ok(SessionRollupDto {
+                    turn_count: row.get(0)?,
+                    total_cost_usd: row.get::<_, Option<f64>>(1)?.unwrap_or(0.0),
+                    total_tokens: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    avg_first_token_ms: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| NlCommandError::Storage(e.to_string()))?;
+
+    Ok(rollup.unwrap_or(SessionRollupDto {
+        turn_count: 0,
+        total_cost_usd: 0.0,
+        total_tokens: 0,
+        avg_first_token_ms: None,
+    }))
 }
 
 // ---- Persistence helpers ----

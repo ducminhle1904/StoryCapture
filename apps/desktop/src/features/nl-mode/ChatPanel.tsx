@@ -22,18 +22,24 @@ import {
 } from "lucide-react";
 import { useNlStore } from "./nlStore";
 import { ChatBubble } from "./ChatBubble";
+import { CostWarningModal } from "./CostWarningModal";
 import { RateLimitBanner } from "./RateLimitBanner";
 import { useNlChat } from "./useNlChat";
+import { TokenCounter } from "@/features/status-bar/TokenCounter";
 
 export interface ChatPanelProps {
   projectId: string;
   currentStory: string;
+  sessionId?: string;
   className?: string;
 }
+
+const COST_WARNING_THRESHOLD = 50_000;
 
 export function ChatPanel({
   projectId,
   currentStory,
+  sessionId,
   className,
 }: ChatPanelProps) {
   const {
@@ -49,18 +55,67 @@ export function ChatPanel({
   const { send } = useNlChat(projectId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const costWarningSuppressedRef = useRef(false);
+  const pendingWarningRef = useRef<string | null>(null);
+  const pendingWarningTokensRef = useRef(0);
+  const [warningOpen, setWarningOpen] = React.useState(false);
 
   const isEmpty =
     pendingCards.length === 0 && streaming === null && messages.length === 0;
+
+  const sendMessage = useCallback(
+    async (message: string) => {
+      if (textareaRef.current?.value?.trim() === message) {
+        textareaRef.current.value = "";
+      }
+      await send(message, currentStory);
+    },
+    [currentStory, send],
+  );
 
   const handleSend = useCallback(async () => {
     const text = textareaRef.current?.value?.trim();
     if (!text) return;
 
-    const msg = text;
-    if (textareaRef.current) textareaRef.current.value = "";
-    await send(msg, currentStory);
-  }, [send, currentStory]);
+    const estimatedTokens = Math.ceil((text.length + currentStory.length) / 4);
+    if (
+      estimatedTokens > COST_WARNING_THRESHOLD &&
+      !costWarningSuppressedRef.current
+    ) {
+      pendingWarningRef.current = text;
+      pendingWarningTokensRef.current = estimatedTokens;
+      setWarningOpen(true);
+      return;
+    }
+
+    await sendMessage(text);
+  }, [currentStory.length, sendMessage]);
+
+  const handleWarningResult = useCallback(
+    async ({
+      proceed,
+      suppressForSession,
+    }: {
+      proceed: boolean;
+      suppressForSession: boolean;
+    }) => {
+      setWarningOpen(false);
+      if (suppressForSession) {
+        costWarningSuppressedRef.current = true;
+      }
+      if (!proceed || !pendingWarningRef.current) {
+        pendingWarningRef.current = null;
+        pendingWarningTokensRef.current = 0;
+        return;
+      }
+
+      const message = pendingWarningRef.current;
+      pendingWarningRef.current = null;
+      pendingWarningTokensRef.current = 0;
+      await sendMessage(message);
+    },
+    [sendMessage],
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -78,7 +133,7 @@ export function ChatPanel({
       <div
         data-testid="nl-chat-panel"
         className={cn(
-          "flex flex-col items-center gap-3 border-l border-[var(--color-border,#242733)] bg-[var(--color-background,#0A0B0F)] py-3",
+          "flex flex-col items-center gap-3 border-l border-white/6 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)] py-3",
           className,
         )}
         style={{ width: 40 }}
@@ -116,29 +171,39 @@ export function ChatPanel({
     <div
       data-testid="nl-chat-panel"
       className={cn(
-        "flex flex-col border-l border-[var(--color-border,#242733)] bg-[var(--color-background,#0A0B0F)]",
+        "flex flex-col border-l border-white/6 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)]",
         className,
       )}
       style={{ width: panelWidth, minWidth: 320, maxWidth: 560 }}
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--color-border,#242733)] px-4 py-3">
-        <h2 className="text-xl font-semibold text-[var(--color-foreground,#E6E8EE)]">
-          NL Mode
-        </h2>
-        <button
-          onClick={togglePanel}
-          aria-label={"Thu g\u1ecdn panel"}
-          className="p-1 text-[var(--color-muted-foreground,#8A90A2)] hover:text-[var(--color-foreground,#E6E8EE)]"
-        >
-          <PanelRightClose className="h-4 w-4" />
-        </button>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-muted-foreground,#8A90A2)]">
+            NL assistant
+          </div>
+          <h2 className="mt-1 text-sm font-semibold text-[var(--color-foreground,#E6E8EE)]">
+            Rewrite the story in plain language
+          </h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {sessionId ? (
+            <TokenCounter projectId={projectId} sessionId={sessionId} />
+          ) : null}
+          <button
+            onClick={togglePanel}
+            aria-label={"Thu g\u1ecdn panel"}
+            className="p-1 text-[var(--color-muted-foreground,#8A90A2)] hover:text-[var(--color-foreground,#E6E8EE)]"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Messages area */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-4"
+        className="flex-1 overflow-y-auto px-4 py-5"
       >
         {/* Error banners */}
         {error?.kind === "rate_limit" && (
@@ -170,17 +235,43 @@ export function ChatPanel({
 
         {/* Empty state */}
         {isEmpty && !error && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <MessageCircle className="mb-4 h-12 w-12 text-[var(--color-muted-foreground,#8A90A2)]" />
-            <h3 className="mb-2 text-lg font-semibold text-[var(--color-foreground,#E6E8EE)]">
+          <div className="rounded-[22px] border border-white/8 bg-black/12 p-5">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-[var(--color-muted-foreground,#8A90A2)]">
+              <MessageCircle className="h-4 w-4" />
+              Suggested prompts
+            </div>
+            <h3 className="mt-3 text-lg font-semibold text-[var(--color-foreground,#E6E8EE)]">
               {"Vi\u1ebft story b\u1eb1ng l\u1eddi"}
             </h3>
-            <p className="mb-4 max-w-xs text-sm text-[var(--color-muted-foreground,#8A90A2)]">
+            <p className="mt-2 max-w-xs text-sm leading-6 text-[var(--color-muted-foreground,#8A90A2)]">
               {"M\u00f4 t\u1ea3 lu\u1ed3ng b\u1ea1n mu\u1ed1n demo \u2014 v\u00ed d\u1ee5 \u201c\u0110\u0103ng nh\u1eadp v\u00e0o app, t\u1ea1o project m\u1edbi, share link\u201d. StoryCapture s\u1ebd sinh t\u1eebng b\u01b0\u1edbc DSL \u0111\u1ec3 b\u1ea1n duy\u1ec7t."}
             </p>
-            <Button variant="outline" size="sm">
-              {"Th\u1eed v\u00ed d\u1ee5 m\u1eabu"}
-            </Button>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (textareaRef.current) {
+                    textareaRef.current.value =
+                      "Create a short onboarding demo: open the app, create a project, and share the result.";
+                  }
+                }}
+                className="rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-left text-sm text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
+              >
+                Make the onboarding story shorter
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (textareaRef.current) {
+                    textareaRef.current.value =
+                      "Rewrite the current story with clearer narration for each step.";
+                  }
+                }}
+                className="rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-left text-sm text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
+              >
+                Rewrite the narration in a cleaner voice
+              </button>
+            </div>
           </div>
         )}
 
@@ -207,13 +298,13 @@ export function ChatPanel({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-[var(--color-border,#242733)] p-4">
+      <div className="border-t border-white/6 p-4">
         <div className="flex gap-2">
           <textarea
             ref={textareaRef}
             placeholder={"M\u00f4 t\u1ea3 lu\u1ed3ng b\u1ea1n mu\u1ed1n\u2026"}
             onKeyDown={handleKeyDown}
-            className="flex-1 resize-none rounded-md border border-[var(--color-border,#242733)] bg-[var(--color-card,#13151C)] px-3 py-2 text-sm text-[var(--color-foreground,#E6E8EE)] placeholder:text-[var(--color-muted-foreground,#8A90A2)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent,#7C3AED)]"
+            className="flex-1 resize-none rounded-xl border border-white/8 bg-black/14 px-3 py-2 text-sm text-[var(--color-foreground,#E6E8EE)] placeholder:text-[var(--color-muted-foreground,#8A90A2)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-primary)]"
             rows={2}
           />
           <Button
@@ -229,6 +320,14 @@ export function ChatPanel({
           {"\u2318\u21b5 G\u1eedi"}
         </div>
       </div>
+      <CostWarningModal
+        estimatedTokens={pendingWarningTokensRef.current}
+        open={warningOpen}
+        suppressed={costWarningSuppressedRef.current}
+        onResult={(result) => {
+          void handleWarningResult(result);
+        }}
+      />
     </div>
   );
 }

@@ -21,7 +21,9 @@
         "minHeight": 640,
         "resizable": true,
         "decorations": true,
-        "titleBarStyle": "Overlay"
+        "titleBarStyle": "Visible",
+        "acceptFirstMouse": true,
+        "hiddenTitle": false
       }
     ],
     "security": {

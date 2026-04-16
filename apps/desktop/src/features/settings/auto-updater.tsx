@@ -84,8 +84,10 @@ export function AutoUpdaterSettings() {
   return (
     <section
       aria-labelledby="auto-updater-heading"
-      className="rounded-lg border border-[var(--color-border-subtle)] p-6"
+      className="brand-panel rounded-[28px] p-6"
     >
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
       <h2
         id="auto-updater-heading"
         className="text-lg font-semibold text-[var(--color-fg-primary)]"
@@ -96,8 +98,23 @@ export function AutoUpdaterSettings() {
         StoryCapture never checks for updates unless you turn this on. No
         telemetry, no background pings.
       </p>
+        </div>
+        <div className="rounded-[24px] border border-white/8 bg-black/14 px-4 py-4">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+            Update mode
+          </div>
+          <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+            {checkOnLaunch ? "Check on launch" : "Manual only"}
+          </div>
+          <div className="mt-2 text-xs leading-5 text-[var(--color-fg-muted)]">
+            {checkOnLaunch
+              ? "The app will check for a new build when it starts."
+              : "No network call happens until you press check."}
+          </div>
+        </div>
+      </div>
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-5 flex items-center gap-3 rounded-[24px] border border-white/8 bg-black/14 px-4 py-4">
         <input
           id="check-on-launch"
           type="checkbox"
@@ -115,7 +132,7 @@ export function AutoUpdaterSettings() {
           type="button"
           onClick={() => void runCheck()}
           disabled={checkState.kind === "checking" || checkState.kind === "installing"}
-          className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface-elevated)] px-3 py-2 text-sm hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/4 px-4 py-2.5 text-sm text-[var(--color-fg-primary)] hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
         >
           <RefreshCcw
             size={14}
@@ -143,7 +160,7 @@ export function AutoUpdaterSettings() {
       </div>
 
       {checkState.kind === "available" && (
-        <div className="mt-5 rounded-md border border-[var(--color-accent-primary)]/40 bg-[var(--color-accent-primary)]/5 p-4">
+        <div className="mt-5 rounded-[24px] border border-[var(--color-accent-primary)]/30 bg-[var(--color-accent-primary)]/8 p-4">
           <div className="text-sm font-medium text-[var(--color-fg-primary)]">
             Update available: {checkState.update.current_version} →{" "}
             {checkState.update.version}
@@ -161,7 +178,7 @@ export function AutoUpdaterSettings() {
           <button
             type="button"
             onClick={() => void runInstall()}
-            className="mt-4 inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-3 py-2 text-sm font-medium text-white hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+            className="brand-button mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
           >
             <Download size={14} aria-hidden="true" />
             Download &amp; install

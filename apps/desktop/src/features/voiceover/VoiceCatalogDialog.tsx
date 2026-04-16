@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useNavigate } from "react-router-dom";
 import { useVoiceoverStore, type VoicePreset } from "./voiceoverStore";
 import { VoicePresetCard } from "./VoicePresetCard";
 
@@ -30,6 +31,7 @@ export interface VoiceCatalogDialogProps {
 const MAX_FEATURED = 2;
 
 export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
+  const navigate = useNavigate();
   const {
     catalogOpen,
     catalogMode,
@@ -264,6 +266,10 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
               <button
                 type="button"
                 className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent)]/90"
+                onClick={() => {
+                  setCatalogOpen(false);
+                  navigate("/settings");
+                }}
               >
                 {`M\u1EDF Settings`}
               </button>

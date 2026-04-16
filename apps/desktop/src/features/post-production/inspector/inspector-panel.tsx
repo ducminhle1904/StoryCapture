@@ -56,12 +56,20 @@ export function InspectorPanel() {
     <aside
       role="complementary"
       aria-label="Inspector"
-      className="flex h-full w-full flex-col border-l border-[var(--color-border)] bg-[var(--color-bg)]"
+      className="flex h-full w-full flex-col bg-transparent"
     >
+      <div className="border-b border-white/6 px-5 py-4">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+          Inspector
+        </div>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
+          Adjust transforms, effects, and sound decisions for the selected media.
+        </p>
+      </div>
       <div
         role="tablist"
         aria-label="Inspector sections"
-        className="flex shrink-0 border-b border-[var(--color-border)]"
+        className="flex shrink-0 gap-2 border-b border-white/6 px-5 py-4"
       >
         {TABS.map((t) => {
           const active = t.id === selectedTab;
@@ -74,10 +82,10 @@ export function InspectorPanel() {
               aria-controls={`inspector-panel-${t.id}`}
               id={`inspector-tab-${t.id}`}
               tabIndex={active ? 0 : -1}
-              className={`flex-1 px-3 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
+              className={`rounded-full px-3 py-2 text-xs uppercase tracking-[0.18em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
                 active
-                  ? "border-b-2 border-[var(--color-accent,#ff5b76)] text-[var(--color-fg)]"
-                  : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                  ? "bg-[var(--color-accent-primary)]/12 text-[var(--color-fg)]"
+                  : "bg-white/4 text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
               }`}
               onClick={() => setSelectedTab(t.id)}
             >
@@ -90,7 +98,7 @@ export function InspectorPanel() {
         role="tabpanel"
         id={`inspector-panel-${selectedTab}`}
         aria-labelledby={`inspector-tab-${selectedTab}`}
-        className="flex-1 overflow-auto"
+        className="flex-1 overflow-auto px-1 py-1"
       >
         {body}
       </div>

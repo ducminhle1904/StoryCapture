@@ -11,6 +11,7 @@
 
 import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Dialog } from "@base-ui-components/react/dialog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Shield, Trash2, Loader2 } from "lucide-react";
@@ -93,9 +94,12 @@ export function ApiKeyRow({
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        testStatus === "valid" && "bg-green-100 text-green-800",
-        testStatus === "invalid" && "bg-red-100 text-red-800",
-        testStatus === "rate_limited" && "bg-amber-100 text-amber-800",
+        testStatus === "valid" &&
+          "border border-[var(--color-success)]/25 bg-[var(--color-success)]/12 text-[var(--color-success)]",
+        testStatus === "invalid" &&
+          "border border-[var(--color-danger)]/25 bg-[var(--color-danger)]/12 text-[var(--color-danger)]",
+        testStatus === "rate_limited" &&
+          "border border-[var(--color-warning)]/25 bg-[var(--color-warning)]/12 text-[var(--color-warning)]",
       )}
     >
       {testStatus === "valid" && "valid"}
@@ -105,15 +109,23 @@ export function ApiKeyRow({
   );
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] p-3">
-      {/* Provider icon placeholder */}
-      <Shield className="h-6 w-6 shrink-0 text-[var(--color-fg-muted)]" />
+    <div className="rounded-[24px] border border-white/8 bg-black/14 p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl border border-white/8 bg-white/5 p-2">
+            <Shield className="h-5 w-5 shrink-0 text-[var(--color-fg-muted)]" />
+          </div>
+          <div>
+            <div className="text-sm font-medium text-[var(--color-fg-primary)]">
+              {displayName}
+            </div>
+            <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
+              {present ? "Stored in keychain" : "No key saved yet"}
+            </div>
+          </div>
+        </div>
 
-      {/* Provider name */}
-      <span className="min-w-[100px] font-medium text-sm">{displayName}</span>
-
-      {/* Key display / input */}
-      <div className="flex-1">
+        <div className="min-w-0 flex-1">
         {present && !editing ? (
           <span className="font-mono text-sm text-[var(--color-fg-muted)]">
             {"\u2022\u2022\u2022\u2022 last4"}
@@ -126,18 +138,19 @@ export function ApiKeyRow({
               value={keyValue}
               onChange={(e) => setKeyValue(e.target.value)}
               placeholder={`Paste ${displayName} API key`}
-              className="flex-1 rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className="flex-1 rounded-xl border border-white/8 bg-black/18 px-3 py-2 text-sm font-mono text-[var(--color-fg-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
               aria-label={`API key cho ${displayName}`}
             />
             <Button
               size="sm"
               onClick={handleSave}
               disabled={saving || !keyValue.trim()}
+              className="brand-button rounded-xl text-white"
             >
               {saving ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
-                "L\u01b0u v\u00e0o Keychain"
+                "Save"
               )}
             </Button>
             <Button
@@ -147,76 +160,80 @@ export function ApiKeyRow({
                 setEditing(false);
                 setKeyValue("");
               }}
+              className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8"
             >
-              {"\u0110\u00f3ng"}
+              Cancel
             </Button>
           </div>
         ) : null}
-      </div>
+        </div>
 
-      {/* Status badge */}
-      {statusBadge}
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          {statusBadge}
 
-      {/* Actions */}
-      <div className="flex items-center gap-1">
-        {!present && !editing && (
-          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-            {"Th\u00eam key"}
-          </Button>
-        )}
-
-        {present && (
-          <>
+          {!present && !editing && (
             <Button
               size="sm"
               variant="outline"
-              onClick={handleTest}
-              disabled={testing}
+              onClick={() => setEditing(true)}
+              className="rounded-xl border-white/8 bg-white/4 hover:bg-white/8"
             >
-              {testing ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                "Ki\u1ec3m tra k\u1ebft n\u1ed1i"
-              )}
+              Add key
             </Button>
+          )}
 
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setShowConfirm(true)}
-              aria-label={`Xo\u0301a API key ${displayName}`}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </>
-        )}
+          {present && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleTest}
+                disabled={testing}
+                className="rounded-xl border-white/8 bg-white/4 hover:bg-white/8"
+              >
+                {testing ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  "Test connection"
+                )}
+              </Button>
+
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setShowConfirm(true)}
+                aria-label={`Delete API key ${displayName}`}
+                className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Confirm dialog overlay */}
-      {showConfirm && (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-        >
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-6 shadow-lg max-w-sm">
-            <h3 className="text-lg font-semibold mb-2">
-              {`Xoá API key ${displayName}?`}
-            </h3>
-            <p className="text-sm text-[var(--color-fg-muted)] mb-4">
-              {"Key s\u1ebd b\u1ecb xo\u00e1 kh\u1ecfi OS Keychain. B\u1ea1n s\u1ebd c\u1ea7n nh\u1eadp l\u1ea1i n\u1ebfu mu\u1ed1n d\u00f9ng l\u1ea1i."}
-            </p>
+      <Dialog.Root open={showConfirm} onOpenChange={setShowConfirm}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(14,17,24,0.98),rgba(8,10,15,0.98))] p-6 shadow-[0_32px_90px_rgba(0,0,0,0.42)]">
+            <Dialog.Title className="mb-2 text-lg font-semibold text-[var(--color-fg-primary)]">
+              {`Delete ${displayName} key?`}
+            </Dialog.Title>
+            <Dialog.Description className="mb-4 text-sm text-[var(--color-fg-muted)]">
+              This removes the key from the OS keychain. You will need to add it
+              again before this provider can be used.
+            </Dialog.Description>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowConfirm(false)}>
-                {"Hu\u1ef7"}
+                Cancel
               </Button>
               <Button variant="destructive" onClick={handleDelete}>
-                {"Xoá khỏi Keychain"}
+                Remove key
               </Button>
             </div>
-          </div>
-        </div>
-      )}
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

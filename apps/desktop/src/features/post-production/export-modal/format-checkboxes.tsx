@@ -23,31 +23,45 @@ export interface FormatCheckboxesProps {
 function FormatCheckboxesBase({ value, onChange }: FormatCheckboxesProps) {
   const set = new Set(value);
   return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
+    <fieldset className="flex flex-col gap-3">
+      <legend className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
         Formats
       </legend>
-      {OPTIONS.map((opt) => (
-        <label
-          key={opt.id}
-          className="flex cursor-pointer items-center gap-2 text-sm text-[var(--color-fg)]"
-        >
-          <input
-            type="checkbox"
-            name={`export-format-${opt.id}`}
-            aria-label={`Export as ${opt.label}`}
-            checked={set.has(opt.id)}
-            onChange={(e) => {
-              const next = new Set(set);
-              if (e.target.checked) next.add(opt.id);
-              else next.delete(opt.id);
-              onChange(Array.from(next));
-            }}
-            className="h-4 w-4 accent-[var(--color-accent,#ff5b76)]"
-          />
-          {opt.label}
-        </label>
-      ))}
+      <div className="grid gap-2">
+        {OPTIONS.map((opt) => {
+          const checked = set.has(opt.id);
+          return (
+            <label
+              key={opt.id}
+              className={`flex cursor-pointer items-center justify-between rounded-2xl border px-4 py-3 text-sm transition ${
+                checked
+                  ? "border-[var(--color-accent-primary)]/50 bg-[var(--color-accent-primary)]/10 text-[var(--color-fg-primary)] shadow-[0_16px_32px_rgba(0,0,0,0.18)]"
+                  : "border-white/8 bg-black/14 text-[var(--color-fg-secondary)] hover:border-white/14 hover:bg-white/5 hover:text-[var(--color-fg-primary)]"
+              }`}
+            >
+              <div>
+                <div className="font-medium">{opt.id.toUpperCase()}</div>
+                <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
+                  {opt.label}
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                name={`export-format-${opt.id}`}
+                aria-label={`Export as ${opt.label}`}
+                checked={checked}
+                onChange={(e) => {
+                  const next = new Set(set);
+                  if (e.target.checked) next.add(opt.id);
+                  else next.delete(opt.id);
+                  onChange(Array.from(next));
+                }}
+                className="h-4 w-4 accent-[var(--color-accent-primary)]"
+              />
+            </label>
+          );
+        })}
+      </div>
     </fieldset>
   );
 }

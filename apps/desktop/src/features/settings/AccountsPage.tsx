@@ -81,19 +81,23 @@ export function AccountsPage() {
   const llmProviders = PROVIDERS.filter((p) => p.group === "LLM");
   const ttsProviders = PROVIDERS.filter((p) => p.group === "TTS");
   const allAbsent = Object.values(providers).every((p) => !p.present);
+  const connectedCount = Object.values(providers).filter((p) => p.present).length;
 
   return (
-    <div
-      data-testid="accounts-page"
-      className="mx-auto max-w-[720px] px-6 py-8"
-    >
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-[var(--color-fg-primary)]">
-          {"C\u00e0i \u0111\u1eb7t t\u00e0i kho\u1ea3n"}
+    <div data-testid="accounts-page" className="space-y-8">
+      <div className="max-w-2xl">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+          Credentials
+        </div>
+        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] text-[var(--color-fg-primary)]">
+          Accounts and providers
         </h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
+          Configure model providers, voice services, and the optional web account
+          from one surface.
+        </p>
         <div
-          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-success)]/25 bg-[var(--color-success)]/12 px-3 py-1 text-sm text-[var(--color-success)]"
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-success)]/25 bg-[var(--color-success)]/12 px-3 py-1 text-sm text-[var(--color-success)]"
           id="keychain-docs"
           aria-describedby="keychain-docs"
         >
@@ -102,70 +106,104 @@ export function AccountsPage() {
         </div>
       </div>
 
-      {/* Web Account connection (Phase 04 plan 03) */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-[24px] border border-white/8 bg-white/4 px-4 py-4">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+            Connected providers
+          </div>
+          <div className="mt-2 font-mono text-3xl font-semibold tracking-[-0.04em] text-[var(--color-fg-primary)]">
+            {connectedCount}
+          </div>
+        </div>
+        <div className="rounded-[24px] border border-white/8 bg-white/4 px-4 py-4">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+            LLM services
+          </div>
+          <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+            Anthropic, OpenAI
+          </div>
+        </div>
+        <div className="rounded-[24px] border border-white/8 bg-white/4 px-4 py-4">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+            Voice services
+          </div>
+          <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+            ElevenLabs, OpenAI TTS
+          </div>
+        </div>
+      </div>
+
       <section className="mb-8">
         <WebAccountPanel />
       </section>
 
-      {/* Empty state */}
       {allAbsent && (
-        <div className="mb-6 rounded-2xl border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]/55 p-6 text-center">
+        <div className="mb-6 rounded-[28px] border border-dashed border-white/12 bg-black/14 p-6 text-center">
           <p className="text-sm font-medium text-[var(--color-fg-primary)]">
-            {"Ch\u01b0a c\u00f3 API key n\u00e0o"}
+            No API keys connected yet
           </p>
           <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
-            {"API key \u0111\u01b0\u1ee3c l\u01b0u v\u00e0o Keychain m\u00e1y b\u1ea1n, kh\u00f4ng bao gi\u1edd ghi ra file."}
+            Keys are stored in your machine keychain and never written into a
+            project file.
           </p>
         </div>
       )}
 
-      {/* LLM section */}
-      <section className="mb-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-fg-muted)]">
-          LLM
-        </h2>
-        <div className="space-y-2">
-          {llmProviders.map((p) => (
-            <ApiKeyRow
-              key={p.id}
-              providerId={p.id}
-              displayName={p.displayName}
-              present={providers[p.id]?.present ?? false}
-              testStatus={providers[p.id]?.testStatus}
-              onPresenceChange={(present) =>
-                handlePresenceChange(p.id, present)
-              }
-              onTestStatusChange={(status) =>
-                handleTestStatusChange(p.id, status)
-              }
-            />
-          ))}
-        </div>
-      </section>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <section className="brand-panel rounded-[28px] px-5 py-5">
+          <h2 className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+            LLM providers
+          </h2>
+          <p className="mt-2 max-w-sm text-sm text-[var(--color-fg-secondary)]">
+            Anthropic and OpenAI power natural language mode, planning, and
+            assistant workflows.
+          </p>
+          <div className="mt-5 space-y-2">
+            {llmProviders.map((p) => (
+              <ApiKeyRow
+                key={p.id}
+                providerId={p.id}
+                displayName={p.displayName}
+                present={providers[p.id]?.present ?? false}
+                testStatus={providers[p.id]?.testStatus}
+                onPresenceChange={(present) =>
+                  handlePresenceChange(p.id, present)
+                }
+                onTestStatusChange={(status) =>
+                  handleTestStatusChange(p.id, status)
+                }
+              />
+            ))}
+          </div>
+        </section>
 
-      {/* TTS section */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-fg-muted)]">
-          TTS
-        </h2>
-        <div className="space-y-2">
-          {ttsProviders.map((p) => (
-            <ApiKeyRow
-              key={p.id}
-              providerId={p.id}
-              displayName={p.displayName}
-              present={providers[p.id]?.present ?? false}
-              testStatus={providers[p.id]?.testStatus}
-              onPresenceChange={(present) =>
-                handlePresenceChange(p.id, present)
-              }
-              onTestStatusChange={(status) =>
-                handleTestStatusChange(p.id, status)
-              }
-            />
-          ))}
-        </div>
-      </section>
+        <section className="brand-panel rounded-[28px] px-5 py-5">
+          <h2 className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+            Voice providers
+          </h2>
+          <p className="mt-2 max-w-sm text-sm text-[var(--color-fg-secondary)]">
+            ElevenLabs and OpenAI TTS drive preview voice, script generation, and
+            voiceover clips.
+          </p>
+          <div className="mt-5 space-y-2">
+            {ttsProviders.map((p) => (
+              <ApiKeyRow
+                key={p.id}
+                providerId={p.id}
+                displayName={p.displayName}
+                present={providers[p.id]?.present ?? false}
+                testStatus={providers[p.id]?.testStatus}
+                onPresenceChange={(present) =>
+                  handlePresenceChange(p.id, present)
+                }
+                onTestStatusChange={(status) =>
+                  handleTestStatusChange(p.id, status)
+                }
+              />
+            ))}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

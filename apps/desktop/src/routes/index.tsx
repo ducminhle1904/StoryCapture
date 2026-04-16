@@ -5,6 +5,7 @@ import DashboardRoute from "./dashboard";
 import EditorRoute from "./editor";
 import PostProductionRoute from "./post-production";
 import RecorderRoute from "./recorder";
+import SettingsRoute from "./settings";
 
 export const router = createBrowserRouter([
   {
@@ -14,6 +15,7 @@ export const router = createBrowserRouter([
       { path: "/editor/:projectId", element: <EditorRoute /> },
       { path: "/recorder/:projectId", element: <RecorderRoute /> },
       { path: "/post-production/:storyId", element: <PostProductionRoute /> },
+      { path: "/settings", element: <SettingsRoute /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

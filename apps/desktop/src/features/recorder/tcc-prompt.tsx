@@ -32,16 +32,19 @@ export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
     <Dialog.Root open={open} onOpenChange={(o) => !o && onDismiss()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-2xl">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)] p-6 shadow-[0_28px_100px_rgba(0,0,0,0.35)]">
           <div className="flex items-start gap-3">
-            <div className="grid size-10 place-items-center rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)]">
+            <div className="grid size-11 place-items-center rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)]">
               <ShieldAlert size={20} aria-hidden="true" />
             </div>
             <div>
-              <Dialog.Title className="text-base font-semibold text-[var(--color-fg-primary)]">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+                macOS permission
+              </div>
+              <Dialog.Title className="mt-2 text-lg font-semibold text-[var(--color-fg-primary)]">
                 Screen Recording permission needed
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm text-[var(--color-fg-secondary)]">
+              <Dialog.Description className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
                 StoryCapture needs macOS Screen Recording access to record your
                 browser demos. You only have to grant it once — the app will
                 relaunch so the new permission takes effect.
@@ -49,21 +52,23 @@ export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
             </div>
           </div>
 
-          <ol className="mt-5 flex flex-col gap-3 text-sm text-[var(--color-fg-secondary)]">
-            <li>
+          <ol className="mt-6 flex flex-col gap-3 text-sm text-[var(--color-fg-secondary)]">
+            <li className="rounded-xl border border-white/8 bg-black/12 px-4 py-3">
               1. Open <strong>System Settings → Privacy & Security → Screen Recording</strong>.
             </li>
-            <li>
+            <li className="rounded-xl border border-white/8 bg-black/12 px-4 py-3">
               2. Enable <strong>StoryCapture</strong>.
             </li>
-            <li>3. Relaunch the app.</li>
+            <li className="rounded-xl border border-white/8 bg-black/12 px-4 py-3">
+              3. Relaunch the app.
+            </li>
           </ol>
 
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={() => openScreenCapturePrefs().catch(() => {})}
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-4 py-2 text-sm text-[var(--color-fg-primary)] hover:bg-[var(--color-bg-surface)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/8 bg-white/4 px-4 py-2 text-sm text-[var(--color-fg-primary)] hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
             >
               <Settings size={14} aria-hidden="true" />
               Open System Settings
@@ -71,7 +76,7 @@ export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
             <button
               type="button"
               onClick={() => relaunchApp().catch(() => {})}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-4 py-2 text-sm font-medium text-white hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--color-accent-primary)] px-4 py-2 text-sm font-medium text-white hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
             >
               <RefreshCw size={14} aria-hidden="true" />
               Reopen

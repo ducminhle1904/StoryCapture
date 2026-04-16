@@ -98,11 +98,11 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
       aria-label="Timeline"
       data-story-id={storyId}
       data-snap-enabled={snapEnabled ? "true" : "false"}
-      className="flex h-full w-full flex-col overflow-auto bg-[var(--color-bg)]"
+      className="flex h-full w-full flex-col overflow-auto bg-transparent"
     >
       <div className="flex">
         <div
-          className="shrink-0 border-b border-r border-[var(--color-border)] bg-[var(--color-surface)]"
+          className="shrink-0 border-b border-r border-white/6 bg-white/4"
           style={{ width: LABEL_GUTTER_PX, height: 24 }}
         />
         <div

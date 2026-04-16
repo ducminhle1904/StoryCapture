@@ -41,8 +41,10 @@ export function TokenCounter({
     queryFn: () =>
       invoke<SessionRollup>("session_get_rollup", {
         projectId,
+        sessionId,
       }),
     refetchInterval: 500,
+    enabled: Boolean(projectId && sessionId),
   });
 
   const cost = data?.total_cost_usd ?? 0;

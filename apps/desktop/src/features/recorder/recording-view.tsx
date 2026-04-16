@@ -1,18 +1,17 @@
 /**
  * Recording view orchestrator (UI-04): TCC preflight → display picker →
- * Record button → HUD + StepProgress + CursorTrail. Subscribes to a Tauri
- * `Channel<RecordingEvent>` from `start_recording` and dispatches to the
- * recorder Zustand store.
+ * Record button → status stage + step progress + cursor trail.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
-  Video,
-  Square as StopIcon,
+  Monitor,
   Pause as PauseIcon,
   Play as PlayIcon,
+  Square as StopIcon,
+  Video,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,10 +27,10 @@ import {
   type RecordingEvent,
   type RecordingSessionId,
 } from "@/ipc/encode";
+import { parseStory } from "@/ipc/parse";
 import { useRecorderStore } from "@/state/recorder";
 
 import { TccPrompt } from "./tcc-prompt";
-import { RecordingHud } from "./hud";
 import { StepProgress } from "./step-progress";
 import { CursorTrail } from "./cursor-trail";
 
@@ -41,6 +40,37 @@ interface RecordingViewProps {
   storySource: string;
 }
 
+function formatTime(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+function formatPermission(state: PermissionState) {
+  switch (state) {
+    case "Granted":
+      return {
+        label: "Granted",
+        tone: "text-[var(--color-success)]",
+        dot: "bg-[var(--color-success)]",
+      };
+    case "Denied":
+      return {
+        label: "Needs attention",
+        tone: "text-[var(--color-danger)]",
+        dot: "bg-[var(--color-danger)]",
+      };
+    default:
+      return {
+        label: "Pending",
+        tone: "text-[var(--color-warning)]",
+        dot: "bg-[var(--color-warning)]",
+      };
+  }
+}
+
 export function RecordingView({
   projectName,
   projectFolder,
@@ -48,8 +78,15 @@ export function RecordingView({
 }: RecordingViewProps) {
   const {
     status,
+    sessionId,
+    currentStep,
+    steps,
+    error,
+    outputPath,
+    elapsedMs,
     setStatus,
     setSession,
+    setSteps,
     advanceStep,
     pushCursor,
     setError,
@@ -65,6 +102,18 @@ export function RecordingView({
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
   const startedAtRef = useRef<number | null>(null);
+
+  const currentStepEntry =
+    steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
+  const completedSteps = steps.filter((step) => step.status === "succeeded").length;
+  const displayLabel = useMemo(() => {
+    if (selectedDisplay == null) return "No display selected";
+    const match = displays.find((d) => {
+      const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
+      return id === selectedDisplay;
+    });
+    return match ? `${match.name} · ${match.width}×${match.height}` : "Selected display";
+  }, [displays, selectedDisplay]);
 
   // Preflight + display enumeration on mount.
   useEffect(() => {
@@ -90,7 +139,30 @@ export function RecordingView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Timer for HUD elapsed display.
+  // Derive recorder steps from the story so progress is meaningful before capture starts.
+  useEffect(() => {
+    let cancelled = false;
+    parseStory(storySource)
+      .then((result) => {
+        if (cancelled || !result.ast) return;
+        const derivedSteps = result.ast.scenes.flatMap((scene) =>
+          scene.commands.map((command, index) => ({
+            index,
+            status: "pending" as const,
+            verb: command.verb,
+          })),
+        );
+        setSteps(derivedSteps);
+      })
+      .catch(() => {
+        if (!cancelled) setSteps([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [setSteps, storySource]);
+
+  // Timer for elapsed display.
   useEffect(() => {
     if (status !== "recording") return;
     const handle = window.setInterval(() => {
@@ -100,44 +172,6 @@ export function RecordingView({
     }, 250);
     return () => window.clearInterval(handle);
   }, [status, setElapsed]);
-
-  const handleRecord = async () => {
-    if (permission !== "Granted" || selectedDisplay == null) return;
-    setStatus("recording");
-    startedAtRef.current = Date.now();
-    try {
-      const id = await startRecording(
-        {
-          project_folder: projectFolder,
-          display_id: selectedDisplay,
-          width: 1920,
-          height: 1080,
-          fps: 30,
-        },
-        (event) => dispatch(event),
-      );
-      sessionRef.current = id;
-      setSession(typeof (id as unknown) === "string" ? (id as unknown as string) : id.id);
-    } catch (e) {
-      setError(String(e));
-      setStatus("failed");
-      toast.error(`Recording failed to start: ${String(e)}`);
-    }
-    // Pass storySource upstream so automation can execute the DSL alongside
-    // capture. Phase 1: source is visible in audit logs; Plan 06 owns the
-    // actual executor wiring. This is currently a no-op placeholder.
-    void storySource;
-  };
-
-  const handleStop = async () => {
-    if (!sessionRef.current) return;
-    setStatus("stopping");
-    try {
-      await stopRecording(sessionRef.current);
-    } catch (e) {
-      toast.error(`Stop failed: ${String(e)}`);
-    }
-  };
 
   const dispatch = (event: RecordingEvent) => {
     switch (event.kind) {
@@ -161,12 +195,6 @@ export function RecordingView({
         setOutputPath(event.output_path);
         toast.success("Recording complete", {
           description: event.output_path,
-          action: {
-            label: "Open",
-            onClick: () => {
-              /* tauri-plugin-opener hookup deferred to next plan */
-            },
-          },
         });
         break;
       case "Failed":
@@ -179,13 +207,52 @@ export function RecordingView({
     }
   };
 
-  return (
-    <main id="main-content" className="relative flex h-full flex-col">
-      <CursorTrail />
-      <RecordingHud projectName={projectName} />
+  const handleRecord = async () => {
+    if (permission !== "Granted" || selectedDisplay == null) return;
+    setStatus("recording");
+    startedAtRef.current = Date.now();
+    try {
+      const id = await startRecording(
+        {
+          project_folder: projectFolder,
+          display_id: selectedDisplay,
+          width: 1920,
+          height: 1080,
+          fps: 30,
+        },
+        (event) => dispatch(event),
+      );
+      sessionRef.current = id;
+      setSession(typeof (id as unknown) === "string" ? (id as unknown as string) : id.id);
+    } catch (e) {
+      setError(String(e));
+      setStatus("failed");
+      toast.error(`Recording failed to start: ${String(e)}`);
+    }
+    void storySource;
+  };
 
-      <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] px-4 py-2">
-        <div className="flex items-center gap-3">
+  const handleStop = async () => {
+    if (!sessionRef.current) return;
+    setStatus("stopping");
+    try {
+      await stopRecording(sessionRef.current);
+    } catch (e) {
+      toast.error(`Stop failed: ${String(e)}`);
+    }
+  };
+
+  const permissionVisual = formatPermission(permission);
+
+  return (
+    <main
+      id="main-content"
+      className="relative flex h-full flex-col bg-[linear-gradient(180deg,#0f1319_0%,#0d1117_100%)]"
+    >
+      <CursorTrail />
+
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-white/6 bg-black/10 px-4 py-3 backdrop-blur-md">
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             to="/"
             aria-label="Back to dashboard"
@@ -193,25 +260,90 @@ export function RecordingView({
           >
             <ArrowLeft size={16} aria-hidden="true" />
           </Link>
-          <h1 className="text-sm font-medium text-[var(--color-fg-primary)]">
-            {projectName} — Recorder
-          </h1>
+          <div className="min-w-0">
+            <h1 className="text-sm font-medium text-[var(--color-fg-primary)]">
+              {projectName}
+            </h1>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+              <span>recording control</span>
+              {sessionId ? <span>session: {sessionId.slice(0, 8)}</span> : null}
+            </div>
+          </div>
+        </div>
+        <div className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+          target identity
+          <span className="ml-2 text-[var(--color-fg-primary)]">{displayLabel}</span>
         </div>
       </header>
 
-      <section className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
-        {status === "idle" && (
-          <>
-            <div className="flex flex-col gap-2 items-center">
-              <label htmlFor="display-select" className="text-sm text-[var(--color-fg-secondary)]">
-                Display
-              </label>
+      <section className="grid min-h-0 flex-1 gap-6 px-6 py-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="flex min-h-0 flex-col justify-between rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,#151a22_0%,#121720_100%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+          <div className="space-y-8">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+                Permissions state
+              </div>
+              <div className="mt-4 space-y-2">
+                <PermissionRow
+                  label="Screen capture"
+                  value={permissionVisual.label}
+                  tone={permissionVisual.tone}
+                  dotClassName={permissionVisual.dot}
+                />
+                <PermissionRow
+                  label="Audio input"
+                  value="Ready"
+                  tone="text-[var(--color-success)]"
+                  dotClassName="bg-[var(--color-success)]"
+                />
+                <PermissionRow
+                  label="System events"
+                  value={steps.length > 0 ? "Script loaded" : "Waiting"}
+                  tone={steps.length > 0 ? "text-[var(--color-success)]" : "text-[var(--color-warning)]"}
+                  dotClassName={
+                    steps.length > 0
+                      ? "bg-[var(--color-success)]"
+                      : "bg-[var(--color-warning)]"
+                  }
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+                Session statistics
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <StatCard label="Steps ready" value={String(steps.length)} />
+                <StatCard label="Completed" value={String(completedSteps)} />
+                <StatCard label="Buffer" value="128MB" />
+                <StatCard label="FPS" value="30" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-white/8 bg-black/12 p-4">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+              Capture target
+            </div>
+            <label
+              htmlFor="display-select"
+              className="mt-3 block text-sm text-[var(--color-fg-secondary)]"
+            >
+              Display
+            </label>
+            <div className="relative mt-2">
+              <Monitor
+                size={14}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-fg-muted)]"
+              />
               <select
                 id="display-select"
                 value={selectedDisplay ?? ""}
                 onChange={(e) => setSelectedDisplay(Number(e.target.value))}
                 disabled={permission !== "Granted" || displays.length === 0}
-                className="min-w-[260px] rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 py-2 text-sm text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
+                className="min-w-0 w-full rounded-xl border border-white/8 bg-black/18 py-2 pl-9 pr-3 text-sm text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
               >
                 {displays.length === 0 && <option value="">No displays detected</option>}
                 {displays.map((d) => {
@@ -224,57 +356,113 @@ export function RecordingView({
                 })}
               </select>
             </div>
-            <button
-              onClick={handleRecord}
-              disabled={permission !== "Granted" || selectedDisplay == null}
-              aria-label="Start recording"
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--color-danger)] px-6 py-3 text-sm font-medium text-white hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
-            >
-              <Video size={18} aria-hidden="true" />
-              Record
-            </button>
-          </>
-        )}
+          </div>
+        </aside>
 
-        {(status === "recording" || status === "paused") && (
-          <div className="flex flex-col items-stretch gap-4 w-full max-w-2xl">
-            <StepProgress />
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={() => setStatus(status === "paused" ? "recording" : "paused")}
-                aria-label={status === "paused" ? "Resume recording" : "Pause recording"}
-                className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 py-2 text-sm text-[var(--color-fg-primary)] hover:bg-[var(--color-bg-elevated)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
-              >
-                {status === "paused" ? (
-                  <PlayIcon size={16} aria-hidden="true" />
-                ) : (
-                  <PauseIcon size={16} aria-hidden="true" />
-                )}
-                {status === "paused" ? "Resume" : "Pause"}
-              </button>
-              <button
-                onClick={handleStop}
-                aria-label="Stop recording"
-                className="inline-flex items-center gap-2 rounded-md bg-[var(--color-danger)] px-4 py-2 text-sm font-medium text-white hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-              >
-                <StopIcon size={16} aria-hidden="true" />
-                Stop
-              </button>
+        <div className="flex min-h-0 flex-col gap-5">
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(21,26,34,0.96),rgba(15,18,25,0.96))] shadow-[0_28px_90px_rgba(0,0,0,0.26)]">
+            <div className="flex items-start justify-between gap-4 border-b border-white/6 px-6 py-5">
+              <div>
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
+                  Recording control
+                  {status === "recording" ? (
+                    <span className="rounded-full bg-[var(--color-danger)]/18 px-2 py-0.5 text-[var(--color-danger)]">
+                      live session
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-fg-secondary)]">
+                  {status === "idle"
+                    ? "Prepare the capture target, confirm permissions, then start the automated run."
+                    : "Actively capturing the scripted sequence. System state stays visible while the browser run advances."}
+                </p>
+              </div>
+              <div className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+                {projectFolder.split("/").slice(-2).join("/")}
+              </div>
             </div>
-          </div>
-        )}
 
-        {status === "completed" && (
-          <div
-            role="status"
-            className="rounded-lg border border-[var(--color-success)]/40 bg-[var(--color-success)]/10 p-6 text-center text-sm text-[var(--color-fg-primary)]"
-          >
-            <p className="font-medium text-[var(--color-success)]">Recording complete</p>
-            <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
-              Saved to project exports folder.
-            </p>
-          </div>
-        )}
+            <div className="flex min-h-0 flex-1 flex-col justify-between px-6 py-6">
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <div className="relative flex min-h-[420px] w-full max-w-5xl flex-col justify-center overflow-hidden rounded-[26px] border border-white/8 bg-[linear-gradient(180deg,#10151c_0%,#0c1016_100%)] px-6 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                  <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:18px_18px]" />
+                  <div className="pointer-events-none absolute inset-x-10 top-10 h-56 rounded-full bg-[radial-gradient(circle,rgba(255,107,115,0.08),transparent_60%)] blur-3xl" />
+
+                  <div className="relative text-center">
+                    <div className="font-mono text-[clamp(3rem,8vw,5.5rem)] font-semibold tracking-[-0.06em] text-[var(--color-fg-primary)]">
+                      {formatTime(elapsedMs)}
+                    </div>
+                    <div className="mt-4 text-[12px] uppercase tracking-[0.34em] text-[var(--color-accent-primary)]">
+                      Current step:
+                      <span className="ml-3 text-[var(--color-fg-secondary)]">
+                        {currentStepEntry?.verb ?? "waiting"}
+                      </span>
+                    </div>
+                    {error ? (
+                      <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-3 text-sm text-[var(--color-danger)]">
+                        {error}
+                      </div>
+                    ) : null}
+                    {status === "completed" && outputPath ? (
+                      <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-[var(--color-success)]/30 bg-[var(--color-success)]/10 px-4 py-3 text-sm text-[var(--color-success)]">
+                        Saved to {outputPath}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="relative mt-8">
+                    <StepProgress />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+                {status === "idle" && (
+                  <button
+                    onClick={handleRecord}
+                    disabled={permission !== "Granted" || selectedDisplay == null}
+                    aria-label="Start recording"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-danger)] px-6 py-3 text-sm font-medium text-white shadow-[0_16px_36px_rgba(255,107,115,0.22)] transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)] disabled:opacity-50"
+                  >
+                    <Video size={18} aria-hidden="true" />
+                    Start recording
+                  </button>
+                )}
+
+                {(status === "recording" || status === "paused") && (
+                  <>
+                    <button
+                      onClick={() =>
+                        setStatus(status === "paused" ? "recording" : "paused")
+                      }
+                      aria-label={
+                        status === "paused"
+                          ? "Resume recording"
+                          : "Pause recording"
+                      }
+                      className="inline-flex items-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-5 py-3 text-sm text-[var(--color-fg-primary)] transition hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
+                    >
+                      {status === "paused" ? (
+                        <PlayIcon size={16} aria-hidden="true" />
+                      ) : (
+                        <PauseIcon size={16} aria-hidden="true" />
+                      )}
+                      {status === "paused" ? "Resume" : "Pause"}
+                    </button>
+                    <button
+                      onClick={handleStop}
+                      aria-label="Stop recording"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-danger)] px-5 py-3 text-sm font-medium text-white transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                    >
+                      <StopIcon size={16} aria-hidden="true" />
+                      Stop
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
       </section>
 
       <TccPrompt
@@ -283,5 +471,46 @@ export function RecordingView({
         onDismiss={() => setTccOpen(false)}
       />
     </main>
+  );
+}
+
+function PermissionRow({
+  label,
+  value,
+  tone,
+  dotClassName,
+}: {
+  label: string;
+  value: string;
+  tone: string;
+  dotClassName: string;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-white/8 bg-black/12 px-3 py-3">
+      <span className="text-sm text-[var(--color-fg-secondary)]">{label}</span>
+      <span className={`inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] ${tone}`}>
+        <span className={`h-2 w-2 rounded-full ${dotClassName}`} />
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/12 px-3 py-3">
+      <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+        {label}
+      </div>
+      <div className="mt-2 font-mono text-2xl text-[var(--color-fg-primary)]">
+        {value}
+      </div>
+    </div>
   );
 }

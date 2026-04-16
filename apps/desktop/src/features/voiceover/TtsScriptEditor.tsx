@@ -117,36 +117,17 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
     }
   }, [projectId, stepId, script, selectedPreset, setClip, setGenerating, setEditedAfterGen]);
 
-  // Empty state
-  if (!script && !clip) {
-    return (
-      <div
-        data-testid="tts-script-editor"
-        className="flex flex-col items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-6"
-      >
-        <p className="text-sm text-[var(--muted-foreground)]">
-          {`Ch\u01b0a c\u00f3 l\u1eddi tho\u1ea1i cho b\u01b0\u1edbc n\u00e0y`}
-        </p>
-        <p className="text-xs text-[var(--muted-foreground)]">
-          {`Sinh t\u1ef1 \u0111\u1ed9ng t\u1eeb n\u1ed9i dung DSL, ho\u1eb7c vi\u1ebft tay b\u00ean d\u01b0\u1edbi.`}
-        </p>
-        <button
-          type="button"
-          className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent)]/90"
-          aria-label={`Sinh l\u1eddi tho\u1ea1i`}
-          onClick={handleGenerate}
-        >
-          {`Sinh l\u1eddi tho\u1ea1i`}
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div
       data-testid="tts-script-editor"
       className="flex flex-col gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"
     >
+      {!script && !clip ? (
+        <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--background)]/50 px-3 py-2 text-xs text-[var(--muted-foreground)]">
+          {`Ch\u01b0a c\u00f3 l\u1eddi tho\u1ea1i. Vi\u1ebft tay ho\u1eb7c d\u00e1n b\u1ea3n nh\u00e1p cho b\u01b0\u1edbc n\u00e0y, r\u1ed3i sinh audio khi s\u1eb5n s\u00e0ng.`}
+        </div>
+      ) : null}
+
       {/* Textarea */}
       <textarea
         className="w-full resize-none rounded-md border border-[var(--border)] bg-[var(--background)] p-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
@@ -196,7 +177,7 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
               type="button"
               className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent)]/90 disabled:opacity-50"
               onClick={handleGenerate}
-              disabled={isGenerating || !script.trim()}
+              disabled={isGenerating || !script.trim() || !selectedPreset}
               aria-label={`Sinh l\u1eddi tho\u1ea1i`}
             >
               {isGenerating ? `\u0110ang sinh...` : `Sinh l\u1eddi tho\u1ea1i`}
@@ -207,7 +188,7 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
               type="button"
               className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent)]/90 disabled:opacity-50"
               onClick={handleRegenerate}
-              disabled={isGenerating || !script.trim()}
+              disabled={isGenerating || !script.trim() || !selectedPreset}
             >
               {isGenerating ? `\u0110ang t\u1ea1o l\u1ea1i...` : `T\u1ea1o l\u1ea1i audio`}
             </button>

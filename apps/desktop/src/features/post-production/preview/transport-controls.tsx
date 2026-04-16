@@ -25,13 +25,14 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
     <div
       role="toolbar"
       aria-label="Preview transport"
-      className="flex items-center gap-1"
+      className="flex items-center gap-2"
     >
       <Button
         variant="ghost"
         size="icon"
         aria-label="Jump back 5 seconds"
         onClick={() => setPlayhead(Math.max(0, playheadMs - 5000))}
+        className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8"
       >
         <SkipBack className="h-4 w-4" />
       </Button>
@@ -40,6 +41,7 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         size="icon"
         aria-label={playing ? "Pause" : "Play"}
         onClick={onTogglePlay}
+        className="rounded-2xl"
       >
         {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
       </Button>
@@ -48,10 +50,11 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         size="icon"
         aria-label="Jump forward 5 seconds"
         onClick={() => setPlayhead(playheadMs + 5000)}
+        className="rounded-xl border border-white/8 bg-white/4 hover:bg-white/8"
       >
         <SkipForward className="h-4 w-4" />
       </Button>
-      <span className="ml-2 text-xs tabular-nums text-[var(--color-fg-muted)]">
+      <span className="ml-2 rounded-full border border-white/8 bg-white/4 px-3 py-1 text-xs tabular-nums text-[var(--color-fg-muted)]">
         {(playheadMs / 1000).toFixed(2)}s
       </span>
     </div>

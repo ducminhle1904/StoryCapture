@@ -1,3 +1,4 @@
+import { BrandMark, BrandWordmark } from "@/components/brand";
 import type { Project } from "@/ipc/projects";
 import { ProjectCard } from "./project-card";
 
@@ -12,9 +13,20 @@ export function ProjectGrid({ projects, onOpen, emptyHint }: ProjectGridProps) {
     return (
       <div
         role="status"
-        className="rounded-lg border border-dashed border-[var(--color-border-subtle)] p-12 text-center text-[var(--color-fg-muted)]"
+        className="brand-panel rounded-[24px] border border-dashed border-white/10 p-12 text-center text-[var(--color-fg-muted)]"
       >
-        {emptyHint ?? "No projects yet. Click \u201cNew Project\u201d to get started."}
+        <div className="mx-auto flex max-w-sm flex-col items-center gap-4">
+          <div className="rounded-[22px] bg-white/5 p-3 ring-1 ring-white/8">
+            <BrandMark size={56} />
+          </div>
+          <div className="space-y-2">
+            <BrandWordmark className="text-xl text-white" />
+            <p className="text-sm text-[var(--color-fg-muted)]">
+              {emptyHint ??
+                "No projects yet. Start your first story and turn it into a polished demo video."}
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -22,7 +34,7 @@ export function ProjectGrid({ projects, onOpen, emptyHint }: ProjectGridProps) {
   return (
     <ul
       role="list"
-      className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+      className="grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]"
     >
       {projects.map((p) => (
         <li key={p.id}>

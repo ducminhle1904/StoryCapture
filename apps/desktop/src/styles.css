@@ -29,6 +29,10 @@ body {
   min-height: 100vh;
 }
 
+#root {
+  min-height: 100vh;
+}
+
 .font-mono,
 code,
 pre,
@@ -63,4 +67,32 @@ select {
 :focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(255, 110, 130, 0.14), transparent 26rem),
+    radial-gradient(circle at top right, rgba(123, 74, 226, 0.16), transparent 30rem),
+    linear-gradient(180deg, #10131a 0%, #0a0d13 100%);
+}
+
+.brand-panel {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015)),
+    rgba(14, 17, 24, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.brand-button {
+  background-image: linear-gradient(135deg, #ff6a7c 0%, #f04f9a 48%, #7b4ae2 100%);
+  box-shadow: 0 14px 28px rgba(122, 78, 221, 0.28);
+}
+
+.brand-button:hover {
+  filter: brightness(1.05);
 }

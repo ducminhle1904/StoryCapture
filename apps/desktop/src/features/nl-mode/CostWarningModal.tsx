@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
+import { Dialog } from "@base-ui-components/react/dialog";
 import { Button } from "@/components/ui/button";
 
 export interface CostWarningResult {
@@ -54,38 +55,37 @@ export function CostWarningModal({
   }
 
   return (
-    <div
-      role="alertdialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-    >
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-6 shadow-lg max-w-md">
-        <h2 className="text-lg font-semibold mb-2">
-          {"Prompt n\u00e0y d\u00f9ng nhi\u1ec1u token"}
-        </h2>
-        <p className="text-sm text-[var(--color-fg-muted)] mb-4">
-          {`\u01af\u1edbc t\u00ednh prompt n\u00e0y s\u1eed d\u1ee5ng kho\u1ea3ng ${estimatedTokens.toLocaleString()} token. Chi ph\u00ed c\u00f3 th\u1ec3 cao h\u01a1n b\u00ecnh th\u01b0\u1eddng.`}
-        </p>
+    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && handleCancel()}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-2xl">
+          <Dialog.Title className="text-lg font-semibold text-[var(--color-fg-primary)]">
+            {"Prompt n\u00e0y d\u00f9ng nhi\u1ec1u token"}
+          </Dialog.Title>
+          <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
+            {`\u01af\u1edbc t\u00ednh prompt n\u00e0y s\u1eed d\u1ee5ng kho\u1ea3ng ${estimatedTokens.toLocaleString()} token. Chi ph\u00ed c\u00f3 th\u1ec3 cao h\u01a1n b\u00ecnh th\u01b0\u1eddng.`}
+          </Dialog.Description>
 
-        <label className="flex items-center gap-2 mb-4 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={dontAskAgain}
-            onChange={(e) => setDontAskAgain(e.target.checked)}
-            className="rounded border-[var(--color-border)]"
-          />
-          <span>{"Đừng hỏi lại cho session này"}</span>
-        </label>
+          <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-primary)]/60 px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={dontAskAgain}
+              onChange={(e) => setDontAskAgain(e.target.checked)}
+              className="rounded border-[var(--color-border-subtle)]"
+            />
+            <span>{"Đừng hỏi lại cho session này"}</span>
+          </label>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={handleCancel}>
-            {"Hu\u1ef7"}
-          </Button>
-          <Button onClick={handleProceed}>
-            {"Ti\u1ebfp t\u1ee5c"}
-          </Button>
-        </div>
-      </div>
-    </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="ghost" onClick={handleCancel}>
+              {"Hu\u1ef7"}
+            </Button>
+            <Button onClick={handleProceed}>
+              {"Ti\u1ebfp t\u1ee5c"}
+            </Button>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
