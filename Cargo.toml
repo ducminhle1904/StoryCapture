@@ -9,6 +9,7 @@ members = [
   "crates/encoder",
   "crates/storage",
   "crates/intelligence",
+  "tools/e2e-playwright-capture",
 ]
 
 [workspace.package]

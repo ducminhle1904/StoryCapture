@@ -1,0 +1,22 @@
+[package]
+name = "e2e-playwright-capture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "End-to-end smoke binary: spawn Playwright sidecar, resolve its pid to an SCWindow, record 5s, assert MP4 validity via ffprobe. Plan 05-02 Task 4."
+
+[[bin]]
+name = "e2e-playwright-capture"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "io-util"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+capture = { path = "../../crates/capture" }
+automation = { path = "../../crates/automation" }
+story-parser = { path = "../../crates/story-parser" }
