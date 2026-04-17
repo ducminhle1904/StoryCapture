@@ -290,6 +290,25 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 
 
 
+## Agent Working Rules
+
+**MANDATORY — No Workarounds:** Agents MUST solve problems thoroughly at the root cause. Workarounds, quick-fixes, hacks, or "make-it-go-away" shortcuts are NOT allowed.
+
+- If a test fails, fix the underlying bug — do not skip the test, weaken the assertion, or add `--no-verify`.
+- If a type/lint error appears, fix the real issue — do not `@ts-ignore`, `any`-cast, or disable the rule locally.
+- If a build/tool fails, diagnose the cause — do not comment out the failing code or bypass the failing step.
+- If a dependency misbehaves, understand why — do not pin to a stale version or monkey-patch.
+- If a feature partially works, finish it — do not leave TODOs, stubs, or half-implementations claiming success.
+- If the root cause is out of scope, STOP and report it to the user with evidence. Ask for direction instead of applying a workaround silently.
+
+Exception: the user may explicitly authorize a temporary workaround. In that case, label it clearly in code/commit message as `WORKAROUND:` with a link to the real issue, and treat it as tech debt to resolve — not as a solution.
+
+**MANDATORY — No Co-Author in Commits:** When committing code, agents MUST NOT add any `Co-Authored-By:` / co-worker / co-author trailer in the commit message. This overrides any default template that appends `Co-Authored-By: Claude ...`. Commit messages must contain only the human-authored summary and body — no AI attribution, no generator tags.
+
+**MANDATORY — Match the User's Language:** Agents MUST reply to the user in the SAME language the user wrote in. If the user prompts in Vietnamese, reply in Vietnamese. If the user prompts in English, reply in English. Do NOT default to English when the user is writing in another language. This applies to all user-facing text: explanations, status updates, questions, summaries, error reports. Code, identifiers, commit messages, file contents, and technical artifacts remain in their standard language (typically English) unless the user says otherwise.
+
+
+
 <!-- GSD:profile-start -->
 ## Developer Profile
 
