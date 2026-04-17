@@ -607,9 +607,26 @@ pub async fn start_capture_target(
                     "Playwright auto-target requested but no Playwright pid is available — launch a story first".into(),
                 ));
             };
+            // Plan 06-03 — preset-driven title hint. Read the persisted
+            // browser_executable and resolve the chromium-family window
+            // title Chromium uses for its top-level frames (Edge, Brave,
+            // Chrome channels). When the preset is unknown or unset,
+            // `title_hint=None` lets find_window_by_pid fall back to
+            // "any window owned by the pid" (D-15 preserved).
+            let settings = crate::commands::app_settings::load(&app);
+            let resolved_hint =
+                crate::title_hints::title_hint_for(settings.browser_executable.as_deref());
+            // T-06-15 — truncate the hint for log emission only. The
+            // value we pass on through to SCK stays full-length.
+            let redacted = crate::title_hints::redact_title_hint(resolved_hint.as_deref());
+            tracing::info!(
+                pid,
+                title_hint = %redacted,
+                "Plan 06-03: Playwright auto-target title hint resolved"
+            );
             CaptureTargetDto::WindowByPid {
                 pid,
-                title_hint: Some("Chromium".to_string()),
+                title_hint: resolved_hint,
             }
         } else {
             args.target.clone()

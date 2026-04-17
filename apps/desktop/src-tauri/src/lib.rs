@@ -19,6 +19,7 @@ pub mod ipc_spec;
 pub mod logging;
 pub mod panic_hook;
 pub mod state;
+pub mod title_hints;
 
 use tauri::{
     menu::{Menu, MenuItemBuilder, PredefinedMenuItem},
