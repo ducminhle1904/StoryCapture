@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-04-17T09:32:42.310Z"
+status: executing
+last_updated: "2026-04-17T09:57:42.769Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 59
-  completed_plans: 54
-  percent: 92
+  completed_plans: 55
+  percent: 93
 ---
 
 # State: StoryCapture
@@ -76,6 +76,7 @@ See PROJECT.md → Key Decisions. Highlights:
 - Dry-Run reuses Phase 1 BrowserDriver without capture pipeline — fastest possible iteration loop
 - All LLM/TTS keys stored in OS keychain via tauri-plugin-keyring; never in SQLite or plaintext
 - [Phase 05]: Plan 05-01: real SCK streaming for display+window + grouped Target picker + silent xcap fallback; capture_target persists to app_settings.json
+- [Phase 05]: Plan 05-02: launchServer+connect in sidecar (Browser class has no .process()); process-global PlaywrightPidStash + background probe task for pid acquisition; SharedPlaywrightDriver adapter so probe+executor share the driver; host-side pid rewrite in start_capture_target for WindowByPid sentinel (T-05-02-01)
 
 ### Open Todos
 
@@ -90,7 +91,9 @@ See PROJECT.md → Key Decisions. Highlights:
 
 ### Blockers
 
-None currently blocking post-v1 work. All six verification items above are operator-gated (require secrets, real hardware, or manual review). All v1 code is committed.
+currently blocking post-v1 work. All six verification items above are operator-gated (require secrets, real hardware, or manual review). All v1 code is committed.
+
+- [05-02] Human-verify checkpoint auto-approved under workflow.auto_advance=true: macOS host with Screen Recording TCC grant required to exercise (a) 3x real-capture find_window_by_pid tests, (b) cargo run -p e2e-playwright-capture, (c) 8-step UI walkthrough. Defer to operator same as 01-07 soak.
 
 ## Session Continuity
 
