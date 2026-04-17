@@ -16,6 +16,8 @@ mod config;
 mod error;
 pub mod export;
 pub mod fanout;
+#[cfg(target_os = "macos")]
+pub mod macos;
 mod pipeline;
 pub mod pool;
 mod probe;

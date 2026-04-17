@@ -91,6 +91,18 @@ impl EncodePipeline {
     ) -> Result<JoinHandle<Result<EncodeResult>>> {
         cfg.validate()?;
 
+        // macOS fast path: if the first frame is NativeMacOS
+        // (CVPixelBuffer from SCK), route through AVAssetWriter +
+        // VideoToolbox and skip the FFmpeg subprocess entirely. Mixed
+        // streams (session-mid fallback to xcap) are not supported — we
+        // commit to one path based on the first frame.
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(join) = try_start_vt_fast_path(&cfg, &mut frames, &progress_tx).await? {
+                return Ok(join);
+            }
+        }
+
         let args = cfg.to_ffmpeg_args();
         let child = sidecar_cmd.spawn(args).await?;
         let mut sidecar = FfmpegSidecar::new(child);
@@ -208,6 +220,143 @@ impl EncodePipeline {
 
         Ok(join)
     }
+}
+
+/// macOS AVAssetWriter fast path. Peeks the first frame; if it's a
+/// `NativeMacOS(CVPixelBuffer)`, spawns a `VtWriter` worker and returns
+/// a JoinHandle that resolves when the writer finalizes the MP4.
+/// Otherwise re-injects the peeked frame into a new channel and returns
+/// `None` so the caller falls back to the FFmpeg path.
+#[cfg(target_os = "macos")]
+async fn try_start_vt_fast_path(
+    cfg: &EncodeConfig,
+    frames: &mut mpsc::Receiver<Frame>,
+    progress_tx: &mpsc::Sender<EncodeProgress>,
+) -> Result<Option<JoinHandle<Result<EncodeResult>>>> {
+    use crate::macos::vt_writer::VtWriter;
+
+    // Peek the first frame to classify the stream. If the sender drops
+    // before delivering one, there's nothing to encode; bail to the
+    // FFmpeg path so it can produce an empty-encode error consistently.
+    let first = match frames.recv().await {
+        Some(f) => f,
+        None => return Ok(None),
+    };
+
+    match first.data {
+        FrameData::NativeMacOS(_) => {
+            tracing::info!(
+                target: "storycapture::encoder",
+                "vt_writer fast path engaged: first frame is NativeMacOS CVPixelBuffer"
+            );
+        }
+        _ => {
+            // Not a native frame — push it back onto a new channel so the
+            // caller's FFmpeg pump sees an unmodified stream. Since we
+            // consumed `frames`, we need to re-forward; but we only have
+            // the receiver reference, not the sender. Instead, stash the
+            // frame via a lightweight shim: build a new channel, forward
+            // the first frame + drain from the old receiver.
+            //
+            // We achieve this by spawning a shim task that forwards
+            // first+rest into a new receiver, and replacing the caller's
+            // `frames` is not possible from here. So we instead signal
+            // "not mine" and let the caller re-peek — but that would
+            // lose the frame.
+            //
+            // Simpler: we swap `frames` with a new channel whose sender
+            // is fed first + drained-from-original. Done via a helper
+            // below that returns the new receiver.
+            let new_rx = forward_with_prefix(first, std::mem::replace(frames, tokio_placeholder()));
+            *frames = new_rx;
+            return Ok(None);
+        }
+    }
+
+    // Build writer and spawn the append pump.
+    let handle = VtWriter::start(cfg.clone(), progress_tx.clone())?;
+
+    // Queue the first frame we already popped.
+    if let FrameData::NativeMacOS(buf) = first.data {
+        let pts_ns = first.pts.ns;
+        let _ = handle.append(buf, pts_ns);
+    }
+
+    // Move the receiver into a detached task that drives the writer.
+    let mut frames_owned = std::mem::replace(frames, tokio_placeholder());
+    let join: JoinHandle<Result<EncodeResult>> = tokio::spawn(async move {
+        let mut frames_written: u64 = 0;
+        let mut frames_dropped: u64 = 0;
+        while let Some(frame) = frames_owned.recv().await {
+            match frame.data {
+                FrameData::NativeMacOS(buf) => {
+                    let pts_ns = frame.pts.ns;
+                    if handle.append(buf, pts_ns).is_err() {
+                        tracing::warn!(target: "storycapture::encoder", "vt_writer worker closed early");
+                        break;
+                    }
+                    frames_written += 1;
+                }
+                other => {
+                    // Stream switched backend mid-session — we can't
+                    // handle that cleanly here (the vt_writer has a
+                    // different output file). Drop with a log; the
+                    // orchestrator should drain+restart on backend switch.
+                    tracing::warn!(
+                        target: "storycapture::encoder",
+                        ?other,
+                        "vt_writer path encountered non-NativeMacOS frame; dropping"
+                    );
+                    frames_dropped += 1;
+                }
+            }
+        }
+        tracing::info!(
+            target: "storycapture::encoder",
+            frames_written,
+            frames_dropped,
+            "vt_writer input channel closed; finalizing MP4"
+        );
+        // Move finish off the runtime thread — AVFoundation flush can
+        // block longer than the tokio worker budget.
+        let out = tokio::task::spawn_blocking(move || handle.finish())
+            .await
+            .map_err(|e| EncoderError::Io(format!("vt_writer finish join: {e}")))?;
+        out
+    });
+
+    Ok(Some(join))
+}
+
+/// Tiny helper: build a new mpsc pair where the receiver yields
+/// `prefix` first, then forwards items from `rest` until it closes.
+#[cfg(target_os = "macos")]
+fn forward_with_prefix(
+    prefix: Frame,
+    mut rest: mpsc::Receiver<Frame>,
+) -> mpsc::Receiver<Frame> {
+    let (tx, rx) = mpsc::channel::<Frame>(64);
+    tokio::spawn(async move {
+        if tx.send(prefix).await.is_err() {
+            return;
+        }
+        while let Some(f) = rest.recv().await {
+            if tx.send(f).await.is_err() {
+                break;
+            }
+        }
+    });
+    rx
+}
+
+/// `std::mem::replace` needs an `mpsc::Receiver<Frame>` value. We build a
+/// throwaway closed-immediately receiver for the swap.
+#[cfg(target_os = "macos")]
+fn tokio_placeholder() -> mpsc::Receiver<Frame> {
+    let (_tx, rx) = mpsc::channel::<Frame>(1);
+    // Drop tx so the rx is already closed. Caller is expected to
+    // overwrite it immediately.
+    rx
 }
 
 #[cfg(test)]
