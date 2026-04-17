@@ -1,4 +1,11 @@
 import { create } from "zustand";
+import {
+  getCaptureTarget,
+  listCaptureTargets,
+  setCaptureTarget as ipcSetCaptureTarget,
+  type CaptureTarget,
+  type CaptureTargets,
+} from "@/ipc/capture";
 
 export type RecorderStatus =
   | "idle"
@@ -32,6 +39,10 @@ interface RecorderState {
   outputPath: string | null;
   elapsedMs: number;
 
+  // Plan 05-01 — capture-target state.
+  captureTarget: CaptureTarget | null;
+  availableTargets: CaptureTargets | null;
+
   setStatus: (s: RecorderStatus) => void;
   setSession: (id: string | null) => void;
   setSteps: (steps: StepProgress[]) => void;
@@ -42,6 +53,10 @@ interface RecorderState {
   setOutputPath: (p: string | null) => void;
   setElapsed: (ms: number) => void;
   reset: () => void;
+
+  // Plan 05-01 — capture-target actions.
+  loadCaptureTargets: () => Promise<void>;
+  setCaptureTarget: (target: CaptureTarget) => Promise<void>;
 }
 
 const INITIAL: Omit<
@@ -56,6 +71,8 @@ const INITIAL: Omit<
   | "setOutputPath"
   | "setElapsed"
   | "reset"
+  | "loadCaptureTargets"
+  | "setCaptureTarget"
 > = {
   status: "idle",
   sessionId: null,
@@ -66,6 +83,8 @@ const INITIAL: Omit<
   error: null,
   outputPath: null,
   elapsedMs: 0,
+  captureTarget: null,
+  availableTargets: null,
 };
 
 export const useRecorderStore = create<RecorderState>((set) => ({
@@ -88,4 +107,25 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   setOutputPath: (outputPath) => set({ outputPath }),
   setElapsed: (elapsedMs) => set({ elapsedMs }),
   reset: () => set({ ...INITIAL }),
+
+  loadCaptureTargets: async () => {
+    const [targets, persisted] = await Promise.all([
+      listCaptureTargets(),
+      getCaptureTarget().catch(() => null),
+    ]);
+    // Fall back to the first display if nothing is persisted.
+    const fallback: CaptureTarget | null = persisted
+      ?? (targets.displays[0]
+        ? { kind: "display" as const, display_id: targets.displays[0].id }
+        : null);
+    set({ availableTargets: targets, captureTarget: fallback });
+  },
+  setCaptureTarget: async (target) => {
+    await ipcSetCaptureTarget(target).catch((err) => {
+      // Non-fatal: persistence failure shouldn't block the UI choice.
+      // eslint-disable-next-line no-console
+      console.warn("set_capture_target persistence failed:", err);
+    });
+    set({ captureTarget: target });
+  },
 }));

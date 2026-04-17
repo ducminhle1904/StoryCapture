@@ -99,3 +99,40 @@ export const SelectItem = React.forwardRef<
   </BaseSelect.Item>
 ));
 SelectItem.displayName = "SelectItem";
+
+// Grouping primitives — optional helpers used by TargetPicker (Plan 05-01).
+// Base UI's Select supports semantic grouping via Group / GroupLabel.
+export const SelectGroup = BaseSelect.Group;
+
+export const SelectGroupLabel = React.forwardRef<
+  React.ElementRef<typeof BaseSelect.GroupLabel>,
+  React.ComponentPropsWithoutRef<typeof BaseSelect.GroupLabel>
+>(({ className, children, ...props }, ref) => (
+  <BaseSelect.GroupLabel
+    ref={ref}
+    className={cn(
+      "px-2 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]",
+      className,
+    )}
+    {...props}
+  >
+    {children}
+  </BaseSelect.GroupLabel>
+));
+SelectGroupLabel.displayName = "SelectGroupLabel";
+
+export const SelectSeparator = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    role="separator"
+    className={cn(
+      "my-1 h-px bg-[var(--color-border-subtle)]",
+      className,
+    )}
+    {...props}
+  />
+));
+SelectSeparator.displayName = "SelectSeparator";

@@ -44,6 +44,7 @@ import {
   type DisplayInfo,
   type PermissionState,
 } from "@/ipc/capture";
+import { TargetPicker } from "@/features/capture/TargetPicker";
 import {
   startRecording,
   stopRecording,
@@ -57,13 +58,6 @@ import {
   type RecorderStatus,
   type StepProgress,
 } from "@/state/recorder";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 import { TccPrompt } from "./tcc-prompt";
 import { CursorTrail } from "./cursor-trail";
@@ -119,6 +113,8 @@ export function RecordingView({
     error,
     outputPath,
     elapsedMs,
+    captureTarget,
+    availableTargets,
     setStatus,
     setSession,
     setSteps,
@@ -128,6 +124,8 @@ export function RecordingView({
     setOutputPath,
     setElapsed,
     reset,
+    loadCaptureTargets,
+    setCaptureTarget,
   } = useRecorderStore();
 
   const reduceMotion = useReducedMotion();
@@ -182,6 +180,14 @@ export function RecordingView({
             }
           } catch (e) {
             setError(`listDisplays failed: ${formatIpcError(e)}`);
+          }
+          // Plan 05-01 — load capture targets + persisted selection.
+          try {
+            await loadCaptureTargets();
+          } catch (e) {
+            // Non-fatal; UI falls back to the legacy Display dropdown.
+            // eslint-disable-next-line no-console
+            console.warn("loadCaptureTargets failed:", e);
           }
         }
       } catch (e) {
@@ -588,65 +594,30 @@ export function RecordingView({
         <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto bg-[var(--color-surface-100)] px-4 py-4">
           <SettingsGroup label="Source" icon={<Monitor size={13} />}>
             <label
-              htmlFor="display-select"
+              htmlFor="target-select"
               className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
             >
-              Display
+              Target
             </label>
-            <Select
-              items={displays.map((d) => {
-                const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
-                return {
-                  value: id,
-                  label: `${d.name} — ${d.width_px}×${d.height_px}`,
-                };
-              })}
-              value={selectedDisplay ?? null}
-              onValueChange={(v) => {
-                if (typeof v === "number") setSelectedDisplay(v);
+            <TargetPicker
+              availableTargets={availableTargets}
+              value={captureTarget}
+              onValueChange={(t) => {
+                void setCaptureTarget(t);
+                // Bridge to the legacy Display picker — when the user
+                // selects a Display target, keep the encoder's old
+                // display_id path working.
+                if (t.kind === "display") {
+                  const id =
+                    typeof t.display_id === "bigint"
+                      ? Number(t.display_id)
+                      : t.display_id;
+                  setSelectedDisplay(id);
+                }
               }}
-              disabled={!canRecord || status !== "idle" || displays.length === 0}
-            >
-              <SelectTrigger id="display-select" aria-label="Display">
-                <SelectValue>
-                  {(value: unknown) => {
-                    if (displays.length === 0) {
-                      return (
-                        <span className="text-[var(--color-fg-muted)]">
-                          No displays detected
-                        </span>
-                      );
-                    }
-                    if (value == null) {
-                      return (
-                        <span className="text-[var(--color-fg-muted)]">
-                          Select display
-                        </span>
-                      );
-                    }
-                    const match = displays.find((d) => {
-                      const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
-                      return id === value;
-                    });
-                    return match ? (
-                      <span className="truncate">
-                        {match.name} — {match.width_px}×{match.height_px}
-                      </span>
-                    ) : null;
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {displays.map((d) => {
-                  const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
-                  return (
-                    <SelectItem key={String(id)} value={id}>
-                      {d.name} — {d.width_px}×{d.height_px}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+              onRefresh={() => loadCaptureTargets()}
+              disabled={!canRecord || status !== "idle"}
+            />
             {displayLabel && (
               <p className="mt-1.5 font-mono text-[10px] text-[var(--color-fg-muted)]">
                 {displayLabel}
