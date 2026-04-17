@@ -158,5 +158,15 @@ Plans:
 - [ ] 05-02-PLAN.md — Playwright auto-follow: browserProcess sidecar verb + pid→SCWindow bridge + UI auto-enable + E2E smoke binary
 - [ ] 05-03-PLAN.md — Windows WGC parity (windows-capture 2.0.0) + list_windows + pid→HWND + CI build gate
 
+### Phase 6: Recording v2 — audio, region capture, chrome-hiding, multi-browser auto-follow, live preview
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 5
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 6 to break down)
+
 ---
 *Roadmap created: 2026-04-14*
