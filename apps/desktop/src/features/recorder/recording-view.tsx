@@ -43,6 +43,9 @@ import {
 import { TccPrompt } from "./tcc-prompt";
 import { CursorTrail } from "./cursor-trail";
 import { AudioDevicePicker } from "./AudioDevicePicker";
+import { ChromeHidingToggle } from "./ChromeHidingToggle";
+import { CursorToggle } from "./CursorToggle";
+import { invoke } from "@tauri-apps/api/core";
 
 interface RecordingViewProps {
   projectId: string | null;
@@ -102,6 +105,10 @@ export function RecordingView({
     availableTargets,
     audioDeviceId,
     setAudioDeviceId,
+    includeCursor,
+    setIncludeCursor,
+    chromeHiding,
+    setChromeHiding,
     setStatus,
     setSession,
     setSteps,
@@ -116,10 +123,22 @@ export function RecordingView({
     refreshPlaywrightAvailability,
   } = useRecorderStore();
 
+  // Plan 06-02 — read the active BrowserRow preset so ChromeHidingToggle
+  // can grey itself out for non-Chromium picks (D-11). The Settings page
+  // owns the source of truth; we just mirror it here.
+  const [browserPreset, setBrowserPreset] = useState<string | null>(null);
+  useEffect(() => {
+    invoke<{ browser_executable: string | null }>("get_app_settings")
+      .then((s) => setBrowserPreset(s.browser_executable))
+      .catch(() => {});
+  }, []);
+
   const reduceMotion = useReducedMotion();
   const [permission, setPermission] = useState<PermissionState>("undetermined");
   const [tccOpen, setTccOpen] = useState(false);
-  const [showCursor, setShowCursor] = useState(true);
+  // Plan 06-02 — `showCursor` now lives in the Zustand store as
+  // `includeCursor` (D-20 non-sticky). Local state here drives only
+  // the decorative 3s countdown affordance.
   const [useCountdown, setUseCountdown] = useState(true);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
@@ -343,6 +362,8 @@ export function RecordingView({
           // silent path. When "System default" is selected we pass
           // "default" as a sentinel — the host resolves cpal's default.
           audio_device_id: audioDeviceId ?? undefined,
+          // Plan 06-02 — per-recording include-cursor (D-19/D-20).
+          include_cursor: includeCursor,
         },
         (event) => dispatch(event),
       );
@@ -358,8 +379,9 @@ export function RecordingView({
         storyBytes: storySource.length,
         projectFolder,
       });
-      launchAutomation({ storySource, projectFolder }, (evt) =>
-        dispatchAutomation(evt),
+      launchAutomation(
+        { storySource, projectFolder, chromeHiding },
+        (evt) => dispatchAutomation(evt),
       ).catch((e) => {
         const msg = formatIpcError(e);
         // eslint-disable-next-line no-console
@@ -721,10 +743,26 @@ export function RecordingView({
 
           <SettingsGroup label="Options">
             <div className="space-y-2 text-xs">
-              <Toggle
-                label="Show cursor"
-                checked={showCursor}
-                onChange={setShowCursor}
+              {/* Plan 06-02 — D-19/D-20 cursor toggle (non-sticky, defaults ON). */}
+              <CursorToggle
+                checked={includeCursor}
+                onChange={setIncludeCursor}
+                disabled={
+                  status === "recording" ||
+                  status === "paused" ||
+                  status === "stopping"
+                }
+              />
+              {/* Plan 06-02 — D-10 chrome-hiding toggle (non-sticky, defaults OFF). */}
+              <ChromeHidingToggle
+                checked={chromeHiding}
+                onChange={setChromeHiding}
+                browserPreset={browserPreset}
+                disabled={
+                  status === "recording" ||
+                  status === "paused" ||
+                  status === "stopping"
+                }
               />
               <Toggle
                 label="3s countdown"

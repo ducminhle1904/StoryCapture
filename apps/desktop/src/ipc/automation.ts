@@ -21,6 +21,12 @@ export type ExecutorEvent =
 export interface LaunchAutomationArgs {
   storySource: string;
   projectFolder: string;
+  /**
+   * Plan 06-02 — when true, the host validates meta.app via `url::Url`
+   * and appends `--app=<meta.app>` to Playwright's launch args (D-09/
+   * D-10). Non-sticky: the recorder resets the backing toggle each run.
+   */
+  chromeHiding?: boolean;
 }
 
 export async function launchAutomation(
@@ -40,5 +46,6 @@ export async function launchAutomation(
     storySource: args.storySource,
     projectFolder: args.projectFolder,
     onEvent: channel,
+    chromeHiding: args.chromeHiding ?? false,
   });
 }

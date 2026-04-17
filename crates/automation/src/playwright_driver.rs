@@ -169,6 +169,8 @@ impl BrowserDriver for PlaywrightSidecarDriver {
             "headless": config.headless,
             "downloadDir": config.download_dir.to_string_lossy(),
             "executable": config.executable.as_ref().map(|p| p.to_string_lossy().to_string()),
+            // Plan 06-02 — extra Chromium args (chrome-hiding --app=<url>).
+            "args": config.args,
         });
         self.call("launch", params).await?;
         Ok(())

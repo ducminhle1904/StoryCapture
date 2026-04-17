@@ -50,11 +50,26 @@ const handlers = {
   }),
 
   launch: async (params) => {
-    const { viewport, theme, baseUrl, headless, downloadDir, executable, channel } =
-      params || {};
+    const {
+      viewport,
+      theme,
+      baseUrl,
+      headless,
+      downloadDir,
+      executable,
+      channel,
+      args,
+    } = params || {};
     state.baseUrl = baseUrl || null;
     state.downloadDir = downloadDir || null;
-    const launchOpts = { headless: headless !== false };
+    // Plan 06-02: args is an optional array of Chromium CLI flags (e.g.
+    // ["--app=https://demo.com"] for chrome-hiding per D-09/D-10). Defaults
+    // to [] so pre-06-02 call sites (Plan 05-02 tests) keep working.
+    const extraArgs = Array.isArray(args) ? [...args] : [];
+    const launchOpts = {
+      headless: headless !== false,
+      args: extraArgs,
+    };
     if (executable) launchOpts.executablePath = executable;
     else if (channel) launchOpts.channel = channel; // 'chrome' | 'msedge' | 'chrome-beta' | ...
     // Plan 05-02: launch via `launchServer` + `connect` so we retain the
@@ -72,7 +87,24 @@ const handlers = {
         theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'no-preference',
       acceptDownloads: true,
     });
-    state.page = await state.context.newPage();
+    // Plan 06-02 (RESEARCH Pitfall 6): when `--app=<url>` is in the launch
+    // args, Chromium creates an initial app-mode page/window with that URL
+    // already loaded. Calling `context.newPage()` here would spawn a
+    // second `about:blank` tab alongside the app window — the auto-follow
+    // capture path then picks the wrong one. Reuse the existing first
+    // page when one exists (the typical --app= path) and only create a
+    // fresh page defensively when the context reports none.
+    const hasApp = extraArgs.some(
+      (a) => typeof a === 'string' && a.startsWith('--app='),
+    );
+    const existingPages = state.context.pages();
+    if (hasApp && existingPages.length > 0) {
+      state.page = existingPages[0];
+    } else if (existingPages.length > 0) {
+      state.page = existingPages[0];
+    } else {
+      state.page = await state.context.newPage();
+    }
     return { ok: true };
   },
 
@@ -181,10 +213,16 @@ const handlers = {
     return { ok: true, path };
   },
 
-  elementState: async ({ selector }) => {
-    const result = await state.page.evaluate((sel) => {
-      const el = document.querySelector(sel);
-      if (!el) return null;
+  elementState: async ({ selector, strategy }) => {
+    // Route through the same `locate()` helper as click/type so that
+    // prefixed values (aria-name=, text=, label=, text~=) are resolved
+    // via Playwright's locator engine instead of raw CSS querySelector.
+    const locator = await locate(selector, strategy);
+    const handle = await locator.first().elementHandle().catch(() => null);
+    if (!handle) {
+      return { visible: false, inViewport: false, animating: false };
+    }
+    const result = await handle.evaluate((el) => {
       const r = el.getBoundingClientRect();
       const s = getComputedStyle(el);
       const visible =
@@ -202,7 +240,8 @@ const handlers = {
         animating,
         bbox: { x: r.x, y: r.y, w: r.width, h: r.height },
       };
-    }, selector);
+    });
+    await handle.dispose().catch(() => {});
     return result || { visible: false, inViewport: false, animating: false };
   },
 
@@ -283,7 +322,15 @@ async function locate(selector, strategy) {
     return state.page.locator(selector);
   }
   if (selector.startsWith('aria-name=')) {
-    return state.page.getByLabel(selector.slice('aria-name='.length));
+    // accessible-name covers form labels AND interactive text (links,
+    // buttons, headings, etc.). getByLabel only handles form labels, so
+    // chain it with role-by-name and visible-text for the common cases.
+    const name = selector.slice('aria-name='.length);
+    return state.page
+      .getByRole('link', { name, exact: true })
+      .or(state.page.getByRole('button', { name, exact: true }))
+      .or(state.page.getByLabel(name))
+      .or(state.page.getByText(name, { exact: true }));
   }
   if (selector.startsWith('text=')) {
     return state.page.getByText(selector.slice('text='.length), { exact: true });

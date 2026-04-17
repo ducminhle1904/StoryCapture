@@ -19,6 +19,12 @@ export interface StartRecordingArgs {
    * resets this to null on mount and on recording complete.
    */
   audio_device_id?: string | null;
+  /**
+   * Plan 06-02 — per-recording include-cursor flag (D-19/D-20).
+   * `undefined` / `null` → backend default (true). Non-sticky: the
+   * recorder store resets this to true on mount and on recording-complete.
+   */
+  include_cursor?: boolean | null;
 }
 
 export interface RecordingSessionId {

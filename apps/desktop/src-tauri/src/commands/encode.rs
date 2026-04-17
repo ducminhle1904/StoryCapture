@@ -262,6 +262,12 @@ pub struct StartRecordingArgs {
     /// (silent anullsrc track, Phase 1 behavior). Non-sticky per D-02.
     #[serde(default)]
     pub audio_device_id: Option<String>,
+    /// Plan 06-02 — per-recording include-cursor flag (D-19/D-20).
+    /// `None` → default `true` (matches Phase 5 D-06 pre-toggle behavior).
+    /// When `Some(false)`, SCK sets `with_shows_cursor(false)` and WGC
+    /// uses `CursorCaptureSettings::WithoutCursor`.
+    #[serde(default)]
+    pub include_cursor: Option<bool>,
 }
 
 // ---------------------------------------------------------------------------
@@ -366,11 +372,13 @@ pub async fn start_recording(
     let output_path = exports_dir.join(format!("{session_id}.mp4"));
 
     // Start capture pipeline.
+    // Plan 06-02 — include_cursor flows from the per-recording toggle;
+    // absent/None defaults to true (Phase 5 D-06 behavior preserved).
     let cap_cfg = CaptureConfig {
         target: capture::CaptureTarget::Display {
             display_id: DisplayId(args.display_id),
         },
-        include_cursor: true,
+        include_cursor: args.include_cursor.unwrap_or(true),
         fps_target: args.fps,
         pixel_format: PixelFormat::Bgra,
         queue_cap_bytes: ByteBoundedQueue::DEFAULT_CAP_BYTES,

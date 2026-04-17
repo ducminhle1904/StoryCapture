@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::Mutex;
@@ -49,13 +49,26 @@ impl From<ExecutorEvent> for AutomationEvent {
 /// executor mpsc receiver into the channel.
 #[tauri::command]
 #[specta::specta]
+/// Plan 06-02 — when `chrome_hiding` is `Some(true)`, the host sets
+/// `STORYCAPTURE_CHROME_HIDING=1` before `LaunchConfig::from_meta` runs
+/// so `--app=<meta.app>` is appended to launch args (D-09/D-10).
+/// `meta.app` is parsed via `url::Url` at this layer (T-06-09) to
+/// reject non-http/https schemes before the env flips. Non-sticky: the
+/// recorder resets the backing toggle each run.
 pub async fn launch_automation(
     app: AppHandle,
     _state: State<'_, AppState>,
     story_source: String,
     project_folder: String,
     on_event: Channel<AutomationEvent>,
+    chrome_hiding: Option<bool>,
 ) -> Result<(), AppError> {
+    tracing::info!(
+        target: "storycapture::automation",
+        story_bytes = story_source.len(),
+        project_folder = %project_folder,
+        "launch_automation invoked"
+    );
     // Apply user-configured browser executable (Phase 1 browser picker).
     // `LaunchConfig::from_meta` reads this env var; set it per-invocation so
     // a settings change takes effect without app restart.
@@ -66,25 +79,87 @@ pub async fn launch_automation(
         std::env::remove_var("STORYCAPTURE_BROWSER_PATH");
     }
 
+    // Plan 06-02 — chrome-hiding (D-09/D-10). Validate `meta.app` with
+    // `url::Url` here (T-06-09) so schemes outside http/https never
+    // reach the launch args. Parse the story up front to inspect meta
+    // before flipping the env var; the parser runs twice (once here for
+    // the URL gate, once below for the executor) but it's pure + fast.
+    if chrome_hiding == Some(true) {
+        let preview = story_parser::parse(&story_source);
+        let app_url = preview
+            .ast
+            .as_ref()
+            .and_then(|a| a.meta.app.as_deref());
+        let safe = match app_url {
+            Some(raw) => match url::Url::parse(raw) {
+                Ok(u) => matches!(u.scheme(), "http" | "https"),
+                Err(_) => false,
+            },
+            None => false,
+        };
+        if safe {
+            std::env::set_var("STORYCAPTURE_CHROME_HIDING", "1");
+            tracing::info!(
+                target: "storycapture::automation",
+                "chrome-hiding ON — LaunchConfig::from_meta will append --app=<meta.app>"
+            );
+        } else {
+            tracing::warn!(
+                target: "storycapture::automation",
+                "chrome-hiding requested but meta.app is missing or not http/https — ignored"
+            );
+            std::env::remove_var("STORYCAPTURE_CHROME_HIDING");
+        }
+    } else {
+        std::env::remove_var("STORYCAPTURE_CHROME_HIDING");
+    }
+
     // Parse the story (pure crate, no IO outside the input string).
     let parse = story_parser::parse(&story_source);
-    let story = parse
-        .ast
-        .ok_or_else(|| AppError::InvalidArgument("story parse failed".into()))?;
+    let story = match parse.ast {
+        Some(ast) => {
+            tracing::info!(
+                target: "storycapture::automation",
+                scenes = ast.scenes.len(),
+                "story parsed"
+            );
+            ast
+        }
+        None => {
+            tracing::error!(
+                target: "storycapture::automation",
+                diagnostics = ?parse.diagnostics,
+                "story parse failed"
+            );
+            return Err(AppError::InvalidArgument("story parse failed".into()));
+        }
+    };
 
     // Open project DB for persistence (Plan 05).
     let project_path = std::path::PathBuf::from(&project_folder);
-    let project_db = storage::ProjectDb::open(&project_path)?;
+    let project_db = storage::ProjectDb::open(&project_path).map_err(|e| {
+        tracing::error!(target: "storycapture::automation", error = %e, "ProjectDb::open failed");
+        e
+    })?;
+    tracing::info!(target: "storycapture::automation", "ProjectDb opened");
 
     // Resolve screenshot dir within the project folder's `assets/` dir.
     let screenshot_dir = project_path.join(storage::ASSETS_DIRNAME);
-    std::fs::create_dir_all(&screenshot_dir).map_err(AppError::from)?;
+    std::fs::create_dir_all(&screenshot_dir).map_err(|e| {
+        tracing::error!(target: "storycapture::automation", error = %e, dir = %screenshot_dir.display(), "create_dir_all failed");
+        AppError::from(e)
+    })?;
+    tracing::info!(target: "storycapture::automation", "screenshot dir ready");
 
     // Launch the Playwright sidecar via tauri-plugin-shell.
+    tracing::info!(target: "storycapture::automation", "resolving playwright sidecar via tauri-plugin-shell");
     let sidecar = app
         .shell()
         .sidecar("playwright-sidecar")
-        .map_err(|e| AppError::Automation(format!("sidecar resolve: {e}")))?;
+        .map_err(|e| {
+            tracing::error!(target: "storycapture::automation", error = %e, "shell.sidecar resolve failed");
+            AppError::Automation(format!("sidecar resolve: {e}"))
+        })?;
     // The shell plugin's sidecar command isn't a tokio::process::Child, so
     // we spawn the resolved binary path through tokio directly to keep the
     // stdin/stdout pipes hot for JSON-RPC framing.
@@ -100,19 +175,52 @@ pub async fn launch_automation(
             std::path::PathBuf::from("playwright-sidecar")
         }
     };
+    tracing::info!(
+        target: "storycapture::automation",
+        sidecar_path = %sidecar_path.display(),
+        "spawning playwright sidecar"
+    );
+    // The SEA wrapper's default module-lookup candidates don't match the
+    // layout Tauri produces (resources land in Contents/Resources/binaries/,
+    // not Contents/Resources/). Point the sidecar at the bundled modules
+    // dir explicitly via env.
+    let modules_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|r| r.join("binaries").join("playwright-sidecar-modules"));
     let mut tokio_cmd = TokioCommand::new(&sidecar_path);
     tokio_cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
+    if let Some(dir) = modules_dir.as_ref() {
+        tracing::info!(
+            target: "storycapture::automation",
+            modules_dir = %dir.display(),
+            "setting STORYCAPTURE_SIDECAR_MODULES for sidecar"
+        );
+        tokio_cmd.env("STORYCAPTURE_SIDECAR_MODULES", dir);
+    }
     let playwright = match tokio_cmd.spawn() {
-        Ok(child) => match PlaywrightSidecarDriver::from_child(child) {
-            Ok(d) => Some(d),
-            Err(e) => {
-                tracing::warn!(target: "storycapture::automation", "playwright sidecar wrap failed: {e}");
-                None
+        Ok(mut child) => {
+            if let Some(stderr) = child.stderr.take() {
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncBufReadExt, BufReader};
+                    let mut lines = BufReader::new(stderr).lines();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        tracing::warn!(target: "storycapture::automation", sidecar_stderr = %line);
+                    }
+                });
             }
-        },
+            match PlaywrightSidecarDriver::from_child(child) {
+                Ok(d) => Some(d),
+                Err(e) => {
+                    tracing::warn!(target: "storycapture::automation", "playwright sidecar wrap failed: {e}");
+                    None
+                }
+            }
+        }
         Err(e) => {
             tracing::warn!(target: "storycapture::automation", "playwright sidecar spawn failed (binary not built?): {e}");
             None
@@ -186,13 +294,29 @@ pub async fn launch_automation(
     let persistence = Some(Arc::new(Mutex::new(project_db)) as automation::PersistenceHandle);
 
     // Run the executor and pump events to the renderer.
+    tracing::info!(target: "storycapture::automation", "Executor::run starting");
     let mut events = Executor::run(story, primary, fallback, persistence, screenshot_dir);
     while let Some(evt) = events.recv().await {
+        // Mirror every event into tracing so we can diagnose without the
+        // renderer side. For step_failed/story_ended specifically, log the
+        // full debug so error_message is visible.
+        let truncate_at = match &evt {
+            automation::ExecutorEvent::StepFailed { .. }
+            | automation::ExecutorEvent::StoryEnded { .. } => 4000,
+            _ => 400,
+        };
+        let evt_dbg = format!("{:?}", evt);
+        tracing::info!(
+            target: "storycapture::automation",
+            event = %&evt_dbg.chars().take(truncate_at).collect::<String>(),
+            "executor event"
+        );
         if let Err(e) = on_event.send(AutomationEvent::from(evt)) {
             tracing::warn!(target: "storycapture::automation", "channel send failed: {e}");
             break;
         }
     }
+    tracing::info!(target: "storycapture::automation", "Executor channel closed (story ended)");
     // Story finished (executor channel closed). Clear the stash so the
     // UI greys out the Playwright-auto option until the next launch.
     playwright_pid_stash().set(None);

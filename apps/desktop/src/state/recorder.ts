@@ -79,6 +79,15 @@ interface RecorderState {
   // default. Any other string is a cpal device name.
   audioDeviceId: AudioPickerValue;
 
+  // Plan 06-02 — per-recording include-cursor flag (D-19/D-20
+  // non-sticky, defaults to true every recording).
+  includeCursor: boolean;
+
+  // Plan 06-02 — per-recording chrome-hiding flag (D-10 non-sticky,
+  // defaults to false every recording). When true, the recorder appends
+  // `--app=<meta.app>` to LaunchConfig.args before automation starts.
+  chromeHiding: boolean;
+
   setStatus: (s: RecorderStatus) => void;
   setSession: (id: string | null) => void;
   setSteps: (steps: StepProgress[]) => void;
@@ -99,6 +108,10 @@ interface RecorderState {
 
   // Phase 6 plan 01 — mic audio setter (D-02 non-sticky).
   setAudioDeviceId: (id: AudioPickerValue) => void;
+
+  // Plan 06-02 — per-recording toggles (D-10/D-19/D-20 non-sticky).
+  setIncludeCursor: (v: boolean) => void;
+  setChromeHiding: (v: boolean) => void;
 }
 
 const INITIAL: Omit<
@@ -117,6 +130,8 @@ const INITIAL: Omit<
   | "setCaptureTarget"
   | "refreshPlaywrightAvailability"
   | "setAudioDeviceId"
+  | "setIncludeCursor"
+  | "setChromeHiding"
 > = {
   status: "idle",
   sessionId: null,
@@ -132,6 +147,10 @@ const INITIAL: Omit<
   // D-02 non-sticky — reset to null on every reset() call (covers mount
   // and recording-complete).
   audioDeviceId: null,
+  // Plan 06-02 — D-19/D-20: cursor defaults ON every recording.
+  includeCursor: true,
+  // Plan 06-02 — D-10: chrome-hiding defaults OFF every recording.
+  chromeHiding: false,
 };
 
 export const useRecorderStore = create<RecorderState>((set) => ({
@@ -166,6 +185,10 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   // Phase 6 plan 01 — non-sticky selector. No persistence layer on
   // purpose; D-02 wants every new recording to start with "No audio".
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
+  // Plan 06-02 — non-sticky per-recording toggles. No persistence; the
+  // reset() defaults above flip them back on mount / recording-complete.
+  setIncludeCursor: (includeCursor) => set({ includeCursor }),
+  setChromeHiding: (chromeHiding) => set({ chromeHiding }),
 
   loadCaptureTargets: async () => {
     const [targets, persisted] = await Promise.all([
