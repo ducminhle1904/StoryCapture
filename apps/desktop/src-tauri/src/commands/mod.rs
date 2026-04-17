@@ -5,6 +5,7 @@
 // here and extend `ipc_spec::builder()` accordingly.
 
 pub mod app_settings;
+pub mod audio;
 pub mod automation;
 pub mod automation_shared;
 pub mod capture;

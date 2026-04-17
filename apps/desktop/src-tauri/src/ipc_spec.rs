@@ -18,9 +18,9 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        app_settings, automation, capture, dryrun, encode, export, keys, lsp, nl, parse, preset,
-        projects, render, sound_library, system, timeline, tts, updater, upload, web_account,
-        web_sync,
+        app_settings, audio, automation, capture, dryrun, encode, export, keys, lsp, nl, parse,
+        preset, projects, render, sound_library, system, timeline, tts, updater, upload,
+        web_account, web_sync,
     },
     error::AppError,
 };
@@ -49,6 +49,8 @@ pub fn builder() -> Builder<Wry> {
             automation::resolve_playwright_target,
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
+            // Phase 6 plan 01 — mic audio enumeration.
+            audio::list_audio_inputs,
             capture::list_displays,
             capture::list_windows,
             capture::list_capture_targets,
@@ -149,6 +151,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<encode::RecordingEvent>()
         .typ::<encode::RecordingSessionId>()
         .typ::<encode::StartRecordingArgs>()
+        .typ::<audio::AudioInputInfoDto>()
         // Plan 01-09 (parse + projects)
         .typ::<parse::ParseResultDto>()
         .typ::<parse::StoryDto>()

@@ -23,10 +23,11 @@
 
 use crate::error::AppError;
 use crate::state::AppState;
+use capture::audio::{make_fifo, AudioCaptureStream, FifoHandle};
 use capture::{pick_default_backend, ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, DisplayId, Frame, PixelFormat};
 use encoder::{
-    probe_encoders, EncodeConfig, EncodePipeline, EncodeProgress, EncodeResult, EncoderError,
-    EncoderProbe, HardwareEncoder, SidecarChild, SidecarCommand,
+    probe_encoders, AudioFormat, AudioInput, EncodeConfig, EncodePipeline, EncodeProgress,
+    EncodeResult, EncoderError, EncoderProbe, HardwareEncoder, SidecarChild, SidecarCommand,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -256,6 +257,11 @@ pub struct StartRecordingArgs {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
+    /// Phase 6 plan 01 — optional mic device (cpal device name, OR
+    /// `"default"` for system default). `None` / missing → no audio
+    /// (silent anullsrc track, Phase 1 behavior). Non-sticky per D-02.
+    #[serde(default)]
+    pub audio_device_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +275,14 @@ struct RecordingHandle {
     /// via `EncodeResult.output_path`).
     #[allow(dead_code)]
     output_path: PathBuf,
+    /// Phase 6 plan 01: optional mic capture stream. Dropped in
+    /// `stop_recording` BEFORE the encoder is joined so the audio tail
+    /// flushes into FFmpeg cleanly (see pipeline.rs start-order note).
+    audio_stream: Option<AudioCaptureStream>,
+    /// RAII handle for the named pipe. Held alongside the stream so
+    /// the tempdir survives until stop.
+    #[allow(dead_code)]
+    audio_fifo: Option<FifoHandle>,
 }
 
 #[derive(Default)]
@@ -386,14 +400,43 @@ pub async fn start_recording(
         "capture pipeline started"
     );
 
-    // Kick encode pipeline.
-    let enc_cfg = EncodeConfig::new(
+    // Phase 6 plan 01 — if the user opted into mic audio, build the
+    // named pipe BEFORE spawning FFmpeg so FFmpeg's -i <fifo> resolves
+    // on first access (Pitfall 8).
+    //
+    // Default sample config: 48 kHz F32LE; channels are 1 (mono) on
+    // input but FFmpeg downmixes to stereo AAC (see encoder/config.rs).
+    // The cpal stream will adopt the device's native rate; we pass what
+    // `list_inputs` reported OR fall back to 48 kHz and let FFmpeg's
+    // aresample handle mismatches.
+    let audio_fifo: Option<FifoHandle> = if args.audio_device_id.is_some() {
+        Some(make_fifo("storycapture-audio").map_err(|e| {
+            tracing::error!(
+                target: "storycapture::recording",
+                "audio fifo creation failed: {}",
+                e
+            );
+            AppError::Capture(format!("audio fifo: {e}"))
+        })?)
+    } else {
+        None
+    };
+
+    let mut enc_cfg = EncodeConfig::new(
         output_path.clone(),
         args.width,
         args.height,
         args.fps,
         probe.preferred,
     );
+    if let Some(f) = &audio_fifo {
+        enc_cfg = enc_cfg.with_audio(AudioInput {
+            fifo_path: f.path().to_path_buf(),
+            sample_rate: 48_000,
+            channels: 1,
+            format: AudioFormat::F32LE,
+        });
+    }
     let (prog_tx, mut prog_rx) = mpsc::channel::<EncodeProgress>(32);
     let sidecar = TauriSidecar::new(app.clone());
     let encode_join = EncodePipeline::start(enc_cfg, &sidecar, frame_rx, prog_tx)
@@ -412,6 +455,56 @@ pub async fn start_recording(
         output_path
     );
 
+    // Phase 6 plan 01 — after FFmpeg has opened the fifo for read, start
+    // the cpal capture + drain thread. Giving FFmpeg ~200ms to reach the
+    // "open input" stage lets the drain thread's OpenOptions::write call
+    // return immediately instead of blocking (Pitfall 8). If the wait
+    // is too short the drain thread just blocks until FFmpeg catches up
+    // — not fatal, just delayed startup.
+    let audio_stream: Option<AudioCaptureStream> = if let Some(f) = &audio_fifo {
+        let fifo_path = f.path().to_path_buf();
+        let device_id = args.audio_device_id.clone();
+        // Small delay so FFmpeg's input stage opens the fifo first.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // cpal work runs on a blocking thread — the Send bounds make
+        // this ergonomic despite cpal::Stream not being Sync.
+        match tokio::task::spawn_blocking(move || {
+            AudioCaptureStream::start(device_id.as_deref(), fifo_path)
+        })
+        .await
+        {
+            Ok(Ok((stream, info))) => {
+                tracing::info!(
+                    target: "storycapture::recording",
+                    sample_rate = info.sample_rate,
+                    channels = info.channels,
+                    "mic audio capture started"
+                );
+                Some(stream)
+            }
+            Ok(Err(e)) => {
+                // Non-fatal — fall through to video-only. The UI will
+                // see `audio_device_id` was set but no MP4 audio track.
+                tracing::warn!(
+                    target: "storycapture::recording",
+                    error = %e,
+                    "mic audio start failed; continuing video-only"
+                );
+                None
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "storycapture::recording",
+                    error = %e,
+                    "mic audio spawn_blocking join error; continuing video-only"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Progress fan-out to the renderer.
     let on_event_clone = on_event.clone();
     tokio::spawn(async move {
@@ -428,6 +521,8 @@ pub async fn start_recording(
             capture: Arc::new(tokio::sync::Mutex::new(capture)),
             encode_join,
             output_path,
+            audio_stream,
+            audio_fifo,
         },
     );
 
@@ -449,6 +544,16 @@ pub async fn stop_recording(
             tracing::error!(target: "storycapture::recording", "stop_recording: session {} not in registry", session.0);
             AppError::NotFound(format!("recording session {}", session.0))
         })?;
+
+    // Phase 6 plan 01 — drop the AudioCaptureStream FIRST so the fifo
+    // reaches EOF while FFmpeg is still consuming. If we wait until
+    // after encode_join starts awaiting child exit, the audio tail gets
+    // clipped (FFmpeg's -shortest would truncate at the video end
+    // instead of letting the mic flush its ringbuf).
+    if let Some(audio) = handle.audio_stream {
+        tracing::info!(target: "storycapture::recording", "stop_recording: dropping audio stream to flush tail");
+        drop(audio);
+    }
 
     tracing::info!(target: "storycapture::recording", "stop_recording: stopping capture pipeline");
     {
