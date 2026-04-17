@@ -148,13 +148,15 @@ v2 items (ADV-01..08) tracked in REQUIREMENTS.md under v2 Requirements; out of s
 
 ### Phase 5: Window-targeted screen capture with Playwright auto-follow
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Replace full-screen xcap capture with window-aware capture (macOS SCK + Windows WGC) + Playwright auto-follow so StoryCapture records only the demo browser, never its own UI.
+**Requirements**: PHASE-5.1, PHASE-5.2, PHASE-5.3, PHASE-5.4
 **Depends on:** Phase 4
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 5 to break down)
+- [ ] 05-01-PLAN.md — macOS SCK streaming + window/display picker UI + xcap fallback + 2nd-failure modal + sticky target persistence
+- [ ] 05-02-PLAN.md — Playwright auto-follow: browserProcess sidecar verb + pid→SCWindow bridge + UI auto-enable + E2E smoke binary
+- [ ] 05-03-PLAN.md — Windows WGC parity (windows-capture 2.0.0) + list_windows + pid→HWND + CI build gate
 
 ---
 *Roadmap created: 2026-04-14*
