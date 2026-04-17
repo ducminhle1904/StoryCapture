@@ -14,7 +14,7 @@
 // inject), `@yao-pkg/pkg` is the documented fallback — see README.md.
 
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, copyFileSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, copyFileSync, mkdirSync, rmSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { platform } from 'node:os';
@@ -41,14 +41,52 @@ mkdirSync(outDir, { recursive: true });
 // 0. Bundle server.mjs → server.cjs with esbuild. Node SEA doesn't accept
 //    ESM entry points, so we pre-bundle into a single CommonJS file while
 //    keeping `playwright-core` external (its native chromium launcher +
-//    `.node` files can't be safely embedded). The bundled binary resolves
-//    playwright-core at runtime from a sibling `node_modules/` directory.
+//    `.node` files can't be safely embedded).
+//
+//    SEA's embedded `require()` only resolves built-in modules. After
+//    bundling we patch the generated `require("playwright-core")` call
+//    to use `module.createRequire()` rooted at the executable's own
+//    directory so it resolves a sibling `node_modules/playwright-core/`.
 const bundlePath = resolve(__dirname, 'server.cjs');
-console.log('[playwright-sidecar] Step 0/4: esbuild server.mjs → server.cjs');
+console.log('[playwright-sidecar] Step 0/5: esbuild server.mjs → server.cjs');
 execSync(
   `npx --yes esbuild server.mjs --bundle --platform=node --format=cjs --external:playwright-core --outfile=server.cjs`,
   { cwd: __dirname, stdio: 'inherit' },
 );
+
+console.log('[playwright-sidecar] Step 0b/5: patching require("playwright-core") for SEA');
+const SEA_REQUIRE_SHIM =
+  `const { createRequire: __seaCR } = require("node:module");` +
+  `const { dirname: __seaDN, resolve: __seaRV } = require("node:path");` +
+  `const { existsSync: __seaEX } = require("node:fs");` +
+  `function __seaResolveModules() {` +
+  `  const envDir = process.env.STORYCAPTURE_SIDECAR_MODULES;` +
+  `  if (envDir && __seaEX(__seaRV(envDir, "playwright-core/package.json"))) return envDir;` +
+  `  const exeDir = __seaDN(process.execPath);` +
+  `  const candidates = [` +
+  `    __seaRV(exeDir, "node_modules"),` +
+  `    __seaRV(exeDir, "playwright-sidecar-modules"),` +
+  `    __seaRV(exeDir, "../Resources/playwright-sidecar-modules"),` +
+  `  ];` +
+  `  for (const c of candidates) {` +
+  `    if (__seaEX(__seaRV(c, "playwright-core/package.json"))) return c;` +
+  `  }` +
+  `  throw new Error("playwright-core not found alongside SEA binary; checked: " + candidates.join(", "));` +
+  `}` +
+  `const __seaModulesDir = __seaResolveModules();` +
+  `const __seaRequire = __seaCR(__seaRV(__seaModulesDir, "playwright-core/package.json"));`;
+let bundleSrc = readFileSync(bundlePath, 'utf8');
+const before = bundleSrc;
+bundleSrc = bundleSrc.replace(
+  /require\("playwright-core"\)/g,
+  '__seaRequire("playwright-core")',
+);
+if (bundleSrc === before) {
+  console.error('[playwright-sidecar] warn: require("playwright-core") not found in bundle — shim not wired');
+} else {
+  bundleSrc = SEA_REQUIRE_SHIM + '\n' + bundleSrc;
+  writeFileSync(bundlePath, bundleSrc);
+}
 
 // 1. Generate the SEA blob.
 const blobPath = resolve(__dirname, 'sea-prep.blob');
@@ -88,7 +126,40 @@ if (r.status !== 0) {
   process.exit(r.status || 1);
 }
 
+// 5. Copy the runtime dependency (playwright-core only — the rest of
+//    node_modules is dev-time postject + esbuild). Lives next to the
+//    binary so the SEA require shim resolves it.
+console.log('[playwright-sidecar] Step 5/6: copying playwright-core next to binary');
+const depsDir = resolve(outDir, 'playwright-sidecar-modules');
+const srcPw = resolve(__dirname, 'node_modules', 'playwright-core');
+const dstPw = resolve(depsDir, 'playwright-core');
+if (!existsSync(srcPw)) {
+  console.error(`[playwright-sidecar] playwright-core not installed in ${srcPw} — run pnpm install --ignore-workspace`);
+  process.exit(1);
+}
+mkdirSync(depsDir, { recursive: true });
+if (existsSync(dstPw)) rmSync(dstPw, { recursive: true, force: true });
+// pnpm symlinks playwright-core into its .pnpm store — dereference so the
+// copied tree is self-contained and safe to ship in a bundle.
+cpSync(srcPw, dstPw, { recursive: true, dereference: true });
+
+// 6. Re-sign after postject injection. macOS kills unsigned Mach-O files
+//    modified by postject with SIGKILL before they reach userland. The
+//    release pipeline replaces this ad-hoc signature with a real Developer
+//    ID signature during notarization.
+if (platform() === 'darwin') {
+  console.log('[playwright-sidecar] Step 6/6: re-signing (ad-hoc)');
+  const signed = spawnSync('codesign', ['--force', '--sign', '-', outPath], {
+    stdio: 'inherit',
+  });
+  if (signed.status !== 0) {
+    console.error('[playwright-sidecar] codesign failed');
+    process.exit(signed.status || 1);
+  }
+}
+
 console.log(`[playwright-sidecar] Done: ${outPath}`);
+console.log(`[playwright-sidecar] Modules: ${depsDir}`);
 
 function defaultTarget() {
   const p = process.platform;

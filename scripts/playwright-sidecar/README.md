@@ -57,28 +57,28 @@ The build pipeline:
    file, keeping `playwright-core` marked `external` so its native
    chromium launcher isn't embedded (the SEA binary would crash on the
    `.node` loader).
-2. `node --experimental-sea-config sea-config.json` → produces
-   `sea-prep.blob` from `server.cjs`.
-3. Copy the host `node` binary to the output path.
-4. On macOS: `codesign --remove-signature` so postject can inject; the
+2. **SEA shim injection** — the bundled `server.cjs` gets a prefixed
+   header that rewrites `require("playwright-core")` to a
+   `module.createRequire()` rooted at the executable's own directory.
+   SEA's built-in `require()` only resolves built-in modules; this
+   shim makes external requires work.
+3. `node --experimental-sea-config sea-config.json` → produces
+   `sea-prep.blob` from the patched `server.cjs`.
+4. Copy the host `node` binary to the output path.
+5. On macOS: `codesign --remove-signature` so postject can inject; the
    Tauri build pipeline (Plan 02 / Plan 10) re-signs every sidecar binary
    as part of notarization.
-5. `npx postject` injects the blob into the binary using the SEA fuse
+6. `npx postject` injects the blob into the binary using the SEA fuse
    sentinel `NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`.
-
-### Runtime shape (TODO for production bundling)
-
-Because `playwright-core` is external, the SEA binary at runtime expects
-its `node_modules/playwright-core/` directory to live at a resolvable
-path. The Tauri bundler currently only copies the single binary into
-`StoryCapture.app/Contents/MacOS/`. The release pipeline needs an
-additional step to ship `node_modules/playwright-core/` alongside
-(likely via `bundle.resources` pointing at a pre-packed module tree, and
-a wrapper that sets `NODE_PATH` before `exec`ing the SEA binary).
-
-Until that ships, local dev uses the shell wrapper at
-`apps/desktop/src-tauri/binaries/playwright-sidecar-<triple>` which
-execs `node server.mjs` against the repo checkout. See that file.
+7. **Copy playwright-core** next to the binary at
+   `apps/desktop/src-tauri/binaries/playwright-sidecar-modules/playwright-core/`
+   (symlinks dereferenced to make the tree self-contained). Tauri's
+   `bundle.resources` config ships this directory into
+   `Contents/Resources/playwright-sidecar-modules/` at package time; the
+   SEA shim's resolution walks check both layouts.
+8. **Ad-hoc re-sign** with `codesign --force --sign -` so macOS doesn't
+   SIGKILL the postject-modified Mach-O on launch. The release pipeline
+   replaces this with a Developer ID signature during notarization.
 
 If Node SEA proves too brittle, `@yao-pkg/pkg` is the documented
 fallback — see RESEARCH.md §Standard Stack.
