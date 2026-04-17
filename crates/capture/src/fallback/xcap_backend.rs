@@ -16,14 +16,17 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 
 pub struct XcapBackend {
     running: Arc<AtomicBool>,
     sequence: Arc<AtomicU64>,
     started_at: Arc<Mutex<Option<Instant>>>,
     stats: Arc<Mutex<CaptureStats>>,
-    handle: Option<JoinHandle<()>>,
+    // `xcap::Monitor` is NOT `Send` on Windows (it holds an HMONITOR
+    // pointer which windows-rs marks !Send). Run the capture loop on a
+    // std::thread instead of tokio::spawn; push frames into the tokio
+    // channel via `blocking_send`.
+    handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl XcapBackend {
@@ -76,7 +79,14 @@ impl CaptureBackend for XcapBackend {
         *self.started_at.lock() = Some(Instant::now());
 
         // Resolve the requested monitor once at startup.
-        let monitor = pick_monitor(display_id)?;
+        //
+        // `xcap::Monitor` on Windows holds an `HMONITOR` (raw pointer) which
+        // `windows-rs` marks `!Send`. Our capture thread is dedicated —
+        // the HMONITOR is only ever used from the spawned thread, never
+        // shared. We wrap it in a `SendMonitor` newtype that asserts Send
+        // across the ownership-transfer boundary. This is sound because
+        // ownership moves exactly once into the thread.
+        let monitor = SendMonitor(pick_monitor(display_id)?);
         let fps = cfg.fps_target.max(1);
         let interval_ms = (1000 / fps as u64).max(1);
 
@@ -85,16 +95,27 @@ impl CaptureBackend for XcapBackend {
         let stats = self.stats.clone();
         let start_epoch = Instant::now();
 
-        let handle = tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_millis(interval_ms));
+        let handle = std::thread::spawn(move || {
+            // Force whole-struct capture of the SendMonitor wrapper (not
+            // disjoint capture of the inner !Send Monitor field, RFC 2229).
+            let monitor = monitor;
+            let interval = Duration::from_millis(interval_ms);
+            let mut next_tick = Instant::now();
             loop {
                 if !running.load(Ordering::Acquire) {
                     break;
                 }
-                ticker.tick().await;
+                // Sleep-until style pacing — good enough for xcap's polling
+                // backend. std::thread::sleep is fine here; we're on a
+                // dedicated capture thread.
+                let now = Instant::now();
+                if now < next_tick {
+                    std::thread::sleep(next_tick - now);
+                }
+                next_tick += interval;
                 // Capture; on failure, log + continue (don't tear down on
                 // a single bad frame).
-                let img = match monitor.capture_image() {
+                let img = match monitor.0.capture_image() {
                     Ok(img) => img,
                     Err(e) => {
                         tracing::warn!(error = %e, "xcap capture_image failed");
@@ -131,7 +152,7 @@ impl CaptureBackend for XcapBackend {
                         s.bytes_peak = bytes;
                     }
                 }
-                if out.send(frame).await.is_err() {
+                if out.blocking_send(frame).is_err() {
                     break;
                 }
             }
@@ -143,7 +164,9 @@ impl CaptureBackend for XcapBackend {
     async fn stop(&mut self) -> Result<CaptureStats, CaptureError> {
         self.running.store(false, Ordering::Release);
         if let Some(h) = self.handle.take() {
-            let _ = h.await;
+            // Join on a blocking task so we don't stall the async runtime
+            // while the xcap capture thread drains its final tick.
+            let _ = tokio::task::spawn_blocking(move || h.join()).await;
         }
         let mut stats = self.stats.lock();
         if let Some(t) = self.started_at.lock().take() {
@@ -156,6 +179,16 @@ impl CaptureBackend for XcapBackend {
         enumerate()
     }
 }
+
+/// `xcap::Monitor` wrapper asserting `Send` for one-shot cross-thread
+/// ownership transfer. The wrapped monitor is only ever touched by the
+/// dedicated capture thread after transfer; no shared access.
+struct SendMonitor(xcap::Monitor);
+// SAFETY: the capture thread takes exclusive ownership via `move`; we
+// never share this value across threads or clone it. The underlying
+// HMONITOR is a kernel handle that's safe to use from any thread, the
+// `!Send` marker on windows-rs is precautionary, not a soundness claim.
+unsafe impl Send for SendMonitor {}
 
 fn pick_monitor(display_id: DisplayId) -> Result<xcap::Monitor, CaptureError> {
     let monitors = xcap::Monitor::all()

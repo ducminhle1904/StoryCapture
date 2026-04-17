@@ -1,0 +1,78 @@
+name: capture-windows
+
+# Windows x64 build gate for `crates/capture`. Keeps the WGC backend from
+# silently regressing when macOS-only contributors change cross-cutting
+# capture code (Plan 05-03 Task 0).
+#
+# Scope: this runs `cargo build --no-run`-style verification only. Real
+# WGC capture tests live behind the `real-capture-windows` feature and are
+# operator-triggered on a Windows VM with a graphical session (see
+# crates/capture/tests/wgc_real_capture.rs). PR CI cannot run them.
+
+on:
+  pull_request:
+    paths:
+      - "crates/capture/src/windows/**"
+      - "crates/capture/src/lib.rs"
+      - "crates/capture/src/backend.rs"
+      - "crates/capture/src/orchestrator.rs"
+      - "crates/capture/src/target.rs"
+      - "crates/capture/tests/wgc_real_capture.rs"
+      - "crates/capture/Cargo.toml"
+      - ".github/workflows/capture-windows.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/capture/src/windows/**"
+      - "crates/capture/Cargo.toml"
+      - ".github/workflows/capture-windows.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: capture-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build + test (no-run) on windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable, x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: capture-windows-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            capture-windows-
+
+      - name: cargo build -p capture --target x86_64-pc-windows-msvc
+        run: cargo build -p capture --target x86_64-pc-windows-msvc
+        shell: pwsh
+
+      - name: cargo test -p capture --no-run
+        run: cargo test -p capture --target x86_64-pc-windows-msvc --no-run
+        shell: pwsh
+
+      - name: cargo test -p capture --features real-capture-windows --no-run
+        run: |
+          cargo test -p capture --target x86_64-pc-windows-msvc `
+            --features real-capture-windows --no-run
+        shell: pwsh
+
+      - name: cargo clippy -p capture -- -D warnings
+        run: |
+          cargo clippy -p capture --target x86_64-pc-windows-msvc `
+            --all-features -- -D warnings
+        shell: pwsh
