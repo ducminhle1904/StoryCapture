@@ -22,6 +22,7 @@ mod fallback;
 mod frame;
 mod pipeline;
 mod queue;
+mod target;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -37,6 +38,7 @@ pub use fallback::XcapBackend;
 pub use frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
 pub use pipeline::CapturePipeline;
 pub use queue::{ByteBoundedQueue, DroppedFrame, QueueStats};
+pub use target::{CaptureTarget, WindowId};
 
 #[cfg(target_os = "macos")]
 pub use macos::SckBackend;

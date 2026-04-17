@@ -5,6 +5,7 @@
 use crate::display::{DisplayId, DisplayInfo};
 use crate::error::CaptureError;
 use crate::frame::{Frame, PixelFormat};
+use crate::target::CaptureTarget;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -19,7 +20,8 @@ pub enum BackendKind {
 
 #[derive(Debug, Clone)]
 pub struct CaptureConfig {
-    pub display_id: DisplayId,
+    /// What to capture (display / window / window-by-pid). Plan 05-01.
+    pub target: CaptureTarget,
     pub include_cursor: bool,
     /// Advisory FPS hint. SCK + WGC are variable-frame-rate; xcap
     /// fallback honors this exactly via a tokio interval.
@@ -30,13 +32,29 @@ pub struct CaptureConfig {
 }
 
 impl CaptureConfig {
+    /// Legacy constructor — builds a Display-targeted config. Prefer
+    /// `new_for_target` in new code.
     pub fn new(display_id: DisplayId) -> Self {
+        Self::new_for_target(CaptureTarget::Display { display_id })
+    }
+
+    /// Construct a capture config for an arbitrary target.
+    pub fn new_for_target(target: CaptureTarget) -> Self {
         Self {
-            display_id,
+            target,
             include_cursor: true,
             fps_target: 60,
             pixel_format: PixelFormat::Bgra,
             queue_cap_bytes: crate::queue::ByteBoundedQueue::DEFAULT_CAP_BYTES,
+        }
+    }
+
+    /// Convenience: if the target is a `Display`, returns its id. Returns
+    /// `None` for window targets (which don't have a stable display id).
+    pub fn display_id(&self) -> Option<DisplayId> {
+        match self.target {
+            CaptureTarget::Display { display_id } => Some(display_id),
+            _ => None,
         }
     }
 }

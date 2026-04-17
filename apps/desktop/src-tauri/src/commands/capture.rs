@@ -92,7 +92,9 @@ pub struct CaptureConfigDto {
 impl From<CaptureConfigDto> for CaptureConfig {
     fn from(c: CaptureConfigDto) -> Self {
         CaptureConfig {
-            display_id: DisplayId(c.display_id),
+            target: capture::CaptureTarget::Display {
+                display_id: DisplayId(c.display_id),
+            },
             include_cursor: c.include_cursor,
             fps_target: c.fps_target,
             pixel_format: c.pixel_format.into(),
@@ -298,10 +300,12 @@ pub async fn start_capture(
 
     // Resolve the display info for the Started event. Best-effort: if
     // enumeration fails here we skip the Started payload but keep the
-    // session running.
-    if let Ok(displays) = enumerate_displays() {
-        if let Some(d) = displays.into_iter().find(|d| d.id == cap_cfg.display_id) {
-            let _ = on_event.send(CaptureEvent::Started { display: d }.into());
+    // session running. Only applies to Display targets.
+    if let Some(display_id) = cap_cfg.display_id() {
+        if let Ok(displays) = enumerate_displays() {
+            if let Some(d) = displays.into_iter().find(|d| d.id == display_id) {
+                let _ = on_event.send(CaptureEvent::Started { display: d }.into());
+            }
         }
     }
     let _ = kind; // already encoded into the Started event via backend choice

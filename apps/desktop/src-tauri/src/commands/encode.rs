@@ -353,7 +353,9 @@ pub async fn start_recording(
 
     // Start capture pipeline.
     let cap_cfg = CaptureConfig {
-        display_id: DisplayId(args.display_id),
+        target: capture::CaptureTarget::Display {
+            display_id: DisplayId(args.display_id),
+        },
         include_cursor: true,
         fps_target: args.fps,
         pixel_format: PixelFormat::Bgra,

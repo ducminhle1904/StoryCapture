@@ -58,3 +58,4 @@ real-capture = ["dep:sysinfo"]
 [dev-dependencies]
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+serde_json = "1"

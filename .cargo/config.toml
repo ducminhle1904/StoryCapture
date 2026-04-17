@@ -1,0 +1,17 @@
+# Add macOS Swift runtime search path to the linker so binaries that
+# pull in screencapturekit (which links Swift's libswift_Concurrency via
+# @rpath) can locate the dylib at runtime. Needed for `cargo test -p
+# capture --lib` once window.rs / frame_from_sample.rs link SCK into the
+# lib's test binary (Plan 05-01 Task 1). Harmless on non-macOS targets.
+
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-Wl,-rpath,/usr/lib/swift",
+    "-C", "link-arg=-Wl,-rpath,/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx",
+]
+
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "link-arg=-Wl,-rpath,/usr/lib/swift",
+    "-C", "link-arg=-Wl,-rpath,/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx",
+]

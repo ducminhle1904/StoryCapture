@@ -58,10 +58,25 @@ impl CaptureBackend for XcapBackend {
         if self.running.swap(true, Ordering::AcqRel) {
             return Err(CaptureError::Backend("xcap backend already running".into()));
         }
+        // xcap is display-only: no window-capture API exists in 0.9.x.
+        // Reject Window / WindowByPid variants with a typed error so the
+        // fallback orchestrator can decide whether to degrade to primary
+        // display (D-07) or surface the failure.
+        let display_id = match cfg.target {
+            crate::target::CaptureTarget::Display { display_id } => display_id,
+            crate::target::CaptureTarget::Window { .. } => {
+                self.running.store(false, Ordering::Release);
+                return Err(CaptureError::UnsupportedTarget("window"));
+            }
+            crate::target::CaptureTarget::WindowByPid { .. } => {
+                self.running.store(false, Ordering::Release);
+                return Err(CaptureError::UnsupportedTarget("window_by_pid"));
+            }
+        };
         *self.started_at.lock() = Some(Instant::now());
 
         // Resolve the requested monitor once at startup.
-        let monitor = pick_monitor(cfg.display_id)?;
+        let monitor = pick_monitor(display_id)?;
         let fps = cfg.fps_target.max(1);
         let interval_ms = (1000 / fps as u64).max(1);
 

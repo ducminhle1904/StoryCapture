@@ -27,4 +27,14 @@ pub enum CaptureError {
 
     #[error("backend not available on this platform")]
     Unsupported,
+
+    /// A `CaptureTarget` variant the current backend cannot satisfy (e.g.
+    /// the xcap fallback is asked to capture a specific window).
+    #[error("backend does not support target kind: {0}")]
+    UnsupportedTarget(&'static str),
+
+    /// Enumerated windows did not include the requested id — the window
+    /// may have closed between enumeration and capture-start.
+    #[error("window not found (id={0})")]
+    WindowNotFound(u64),
 }
