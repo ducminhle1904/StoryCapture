@@ -41,10 +41,14 @@ const handlers = {
   }),
 
   launch: async (params) => {
-    const { viewport, theme, baseUrl, headless, downloadDir } = params || {};
+    const { viewport, theme, baseUrl, headless, downloadDir, executable, channel } =
+      params || {};
     state.baseUrl = baseUrl || null;
     state.downloadDir = downloadDir || null;
-    state.browser = await chromium.launch({ headless: headless !== false });
+    const launchOpts = { headless: headless !== false };
+    if (executable) launchOpts.executablePath = executable;
+    else if (channel) launchOpts.channel = channel; // 'chrome' | 'msedge' | 'chrome-beta' | ...
+    state.browser = await chromium.launch(launchOpts);
     state.context = await state.browser.newContext({
       viewport: viewport ? { width: viewport.width, height: viewport.height } : undefined,
       colorScheme:

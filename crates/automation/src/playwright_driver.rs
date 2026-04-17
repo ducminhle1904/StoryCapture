@@ -168,6 +168,7 @@ impl BrowserDriver for PlaywrightSidecarDriver {
             "baseUrl": config.base_url,
             "headless": config.headless,
             "downloadDir": config.download_dir.to_string_lossy(),
+            "executable": config.executable.as_ref().map(|p| p.to_string_lossy().to_string()),
         });
         self.call("launch", params).await?;
         Ok(())

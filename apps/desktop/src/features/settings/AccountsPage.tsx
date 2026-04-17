@@ -4,6 +4,7 @@ import { Lock } from "lucide-react";
 import { ApiKeyRow } from "./ApiKeyRow";
 import { WebAccountPanel } from "./accounts-panel";
 import AutoUpdaterSettings from "./auto-updater";
+import { BrowserRow } from "./BrowserRow";
 
 interface ProviderState {
   present: boolean;
@@ -166,6 +167,22 @@ export function AccountsPage() {
       </div>
       <div>
         <AutoUpdaterSettings />
+      </div>
+
+      {/* Divider */}
+      <div className="col-span-full h-px bg-[var(--color-border-subtle)]" />
+
+      {/* --- Row 4: Automation --- */}
+      <div className="pt-1">
+        <h2 className="text-sm font-semibold text-[var(--color-fg-primary)]">
+          Automation
+        </h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+          Any Chromium-based browser works (Chrome, Brave, Edge, Arc, Chromium).
+        </p>
+      </div>
+      <div>
+        <BrowserRow />
       </div>
     </div>
   );

@@ -234,6 +234,39 @@ pub async fn open_screen_capture_prefs(app: AppHandle) -> Result<(), AppError> {
     }
 }
 
+/// Calls `CGRequestScreenCaptureAccess()` on macOS. This triggers the
+/// native system permission prompt (first launch) AND registers the app
+/// in System Settings → Privacy & Security → Screen Recording so the
+/// user can toggle it on. Without this call, the app never appears in
+/// the Settings list.
+///
+/// Returns the state AFTER the request. On macOS Sequoia the OS may
+/// still require an app relaunch before the new grant attaches to the
+/// running process.
+#[tauri::command]
+#[specta::specta]
+pub fn request_screen_capture_access() -> Result<PermissionState, AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        use capture::macos::tcc::{
+            preflight_screen_capture_access, request_access, PermissionState as P,
+        };
+        // Fire the request — this registers the app in TCC so it appears in
+        // System Settings → Privacy → Screen Recording.
+        let _ = request_access();
+        // Re-check; note macOS may cache the pre-grant state for the current process.
+        Ok(match preflight_screen_capture_access() {
+            P::Granted => PermissionState::Granted,
+            P::Denied => PermissionState::Denied,
+            P::Undetermined => PermissionState::Undetermined,
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(PermissionState::Granted)
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn relaunch_app(app: AppHandle) -> Result<(), AppError> {

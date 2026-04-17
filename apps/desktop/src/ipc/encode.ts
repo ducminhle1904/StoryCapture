@@ -25,7 +25,7 @@ export interface RecordingSessionId {
 export type RecordingEvent =
   | { kind: "EncodeProgress"; progress: unknown }
   | { kind: "CaptureStatus"; json: string }
-  | { kind: "Completed"; output_path: string; duration_ms: number }
+  | { kind: "Completed"; result: { output_path: string; duration_ms: number; [k: string]: unknown } }
   | { kind: "Failed"; message: string }
   | { kind: "StepStarted"; index: number; verb: string }
   | { kind: "StepSucceeded"; index: number; cursor_x?: number; cursor_y?: number }
@@ -47,6 +47,11 @@ export async function startRecording(
   });
 }
 
-export async function stopRecording(session: RecordingSessionId): Promise<unknown> {
-  return invoke("stop_recording", { session });
+export async function stopRecording(
+  session: RecordingSessionId,
+  onEvent: (e: RecordingEvent) => void,
+): Promise<unknown> {
+  const channel = new Channel<RecordingEvent>();
+  channel.onmessage = (evt) => onEvent(evt);
+  return invoke("stop_recording", { session, onEvent: channel });
 }

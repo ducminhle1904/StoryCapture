@@ -20,6 +20,7 @@ pub mod driver;
 pub mod error;
 pub mod events;
 pub mod executor;
+pub mod noop_driver;
 pub mod playwright_driver;
 pub mod selector;
 pub mod session;
@@ -32,6 +33,7 @@ pub use driver::{
 pub use error::{AutomationError, Result};
 pub use events::{AttemptLog, AttemptOutcome, ExecutorEvent, SelectorStrategy, StorySummary};
 pub use executor::{Executor, PersistenceHandle};
+pub use noop_driver::NoopDriver;
 pub use playwright_driver::PlaywrightSidecarDriver;
 pub use selector::SmartSelector;
 pub use session::{SessionActor, SessionCmd, SessionId, SessionStatusSnapshot};

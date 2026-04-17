@@ -5,7 +5,9 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
-export type PermissionState = "Granted" | "Denied" | "Undetermined";
+// Rust-side DTO uses `#[serde(rename_all = "kebab-case")]`, so values
+// arrive as lowercase over IPC. Keep TS in lockstep.
+export type PermissionState = "granted" | "denied" | "undetermined";
 
 export interface DisplayInfo {
   id: bigint | number; // specta emits bigint for u64
@@ -25,6 +27,16 @@ export function checkScreenCapturePermission(): Promise<PermissionState> {
 
 export function openScreenCapturePrefs(): Promise<void> {
   return invoke<void>("open_screen_capture_prefs");
+}
+
+/**
+ * Triggers macOS `CGRequestScreenCaptureAccess()`. Registers the app in
+ * System Settings → Privacy & Security → Screen Recording so the user
+ * can toggle it. Without this call, the app doesn't appear in the list.
+ * Call this BEFORE opening Settings.
+ */
+export function requestScreenCaptureAccess(): Promise<PermissionState> {
+  return invoke<PermissionState>("request_screen_capture_access");
 }
 
 export function relaunchApp(): Promise<void> {

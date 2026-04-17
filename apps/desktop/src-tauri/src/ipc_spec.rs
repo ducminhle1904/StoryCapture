@@ -18,8 +18,9 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        automation, capture, dryrun, encode, export, keys, lsp, nl, parse, preset, projects,
-        render, sound_library, system, timeline, tts, updater, upload, web_account, web_sync,
+        app_settings, automation, capture, dryrun, encode, export, keys, lsp, nl, parse, preset,
+        projects, render, sound_library, system, timeline, tts, updater, upload, web_account,
+        web_sync,
     },
     error::AppError,
 };
@@ -45,9 +46,12 @@ pub fn builder() -> Builder<Wry> {
             system::delete_secret,
             system::trigger_panic,
             automation::launch_automation,
+            app_settings::get_app_settings,
+            app_settings::set_browser_executable,
             capture::list_displays,
             capture::check_screen_capture_permission,
             capture::open_screen_capture_prefs,
+            capture::request_screen_capture_access,
             capture::relaunch_app,
             capture::start_capture,
             capture::stop_capture,
@@ -117,6 +121,7 @@ pub fn builder() -> Builder<Wry> {
             web_sync::get_sync_status,
         ])
         .typ::<AppError>()
+        .typ::<app_settings::AppSettings>()
         .typ::<system::AppInfo>()
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<capture::DisplayInfoDto>()

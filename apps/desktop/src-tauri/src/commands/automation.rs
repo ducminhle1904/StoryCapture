@@ -11,9 +11,7 @@
 
 use crate::error::AppError;
 use crate::state::AppState;
-use automation::{
-    ChromiumoxideDriver, Executor, ExecutorEvent, LaunchConfig, PlaywrightSidecarDriver,
-};
+use automation::{Executor, ExecutorEvent, NoopDriver, PlaywrightSidecarDriver};
 use serde::Serialize;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -58,6 +56,16 @@ pub async fn launch_automation(
     project_folder: String,
     on_event: Channel<AutomationEvent>,
 ) -> Result<(), AppError> {
+    // Apply user-configured browser executable (Phase 1 browser picker).
+    // `LaunchConfig::from_meta` reads this env var; set it per-invocation so
+    // a settings change takes effect without app restart.
+    let settings = crate::commands::app_settings::load(&app);
+    if let Some(path) = settings.browser_executable.as_ref() {
+        std::env::set_var("STORYCAPTURE_BROWSER_PATH", path);
+    } else {
+        std::env::remove_var("STORYCAPTURE_BROWSER_PATH");
+    }
+
     // Parse the story (pure crate, no IO outside the input string).
     let parse = story_parser::parse(&story_source);
     let story = parse
@@ -72,19 +80,6 @@ pub async fn launch_automation(
     let screenshot_dir = project_path.join(storage::ASSETS_DIRNAME);
     std::fs::create_dir_all(&screenshot_dir).map_err(AppError::from)?;
 
-    // Launch chromiumoxide (primary, in-process).
-    let mut chromium = ChromiumoxideDriver::new();
-    {
-        // Best-effort launch; defer real LaunchConfig from meta to executor.
-        let cfg = LaunchConfig::from_meta(&story.meta);
-        if let Err(e) = automation::BrowserDriver::launch(&mut chromium, cfg).await {
-            // Don't abort the whole run if chromium isn't available — the
-            // executor will route every verb to Playwright via fallback.
-            // The renderer surfaces the warning as a tracing log.
-            tracing::warn!(target: "storycapture::automation", "chromium launch failed: {e}");
-        }
-    }
-
     // Launch the Playwright sidecar via tauri-plugin-shell.
     let sidecar = app
         .shell()
@@ -98,7 +93,14 @@ pub async fn launch_automation(
     // stdin/stdout pipes for JSON-RPC framing.
     drop(sidecar);
     // Spawn raw (path-resolved) Playwright sidecar with piped stdio.
-    let mut tokio_cmd = TokioCommand::new("playwright-sidecar");
+    let sidecar_path = match crate::commands::encode::resolve_sidecar_path("playwright-sidecar") {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(target: "storycapture::automation", "playwright sidecar path unresolved ({e}); falling back to PATH lookup");
+            std::path::PathBuf::from("playwright-sidecar")
+        }
+    };
+    let mut tokio_cmd = TokioCommand::new(&sidecar_path);
     tokio_cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -117,16 +119,17 @@ pub async fn launch_automation(
         }
     };
 
-    // The executor expects two boxed drivers. If Playwright failed to
-    // spawn (CI / dev without the SEA binary built), substitute a stub
-    // chromium clone; capability-routed verbs (upload, download, shadow)
-    // will surface a CapabilityMismatch error.
-    let primary: Box<dyn automation::BrowserDriver> = Box::new(chromium);
-    let fallback: Box<dyn automation::BrowserDriver> = if let Some(pw) = playwright {
-        Box::new(pw)
-    } else {
-        Box::new(ChromiumoxideDriver::new())
+    // Playwright is the only automation driver. If the sidecar didn't
+    // spawn, there is no meaningful fallback — surface a clear error.
+    let primary: Box<dyn automation::BrowserDriver> = match playwright {
+        Some(pw) => Box::new(pw),
+        None => {
+            return Err(AppError::Automation(
+                "Playwright sidecar failed to spawn — check that Node.js is installed and `scripts/playwright-sidecar` has `pnpm install` run".into(),
+            ));
+        }
     };
+    let fallback: Box<dyn automation::BrowserDriver> = Box::new(NoopDriver::new());
 
     let persistence = Some(Arc::new(Mutex::new(project_db)) as automation::PersistenceHandle);
 

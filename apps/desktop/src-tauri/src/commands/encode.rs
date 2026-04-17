@@ -46,6 +46,34 @@ use uuid::Uuid;
 // SidecarCommand bridge
 // ---------------------------------------------------------------------------
 
+/// Resolve a sidecar binary sitting next to the app executable.
+///
+/// Tauri bundles sidecars into `Contents/MacOS/` (macOS) / next to the main
+/// exe (Windows/Linux) and strips the target-triple suffix. In `cargo tauri
+/// dev` they're copied to `target/debug/<name>-<triple>` (suffix retained).
+/// We check the stripped name first, then fall back to the triple-suffixed
+/// variant so the same code path works bundled and in dev.
+pub fn resolve_sidecar_path(name: &str) -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let dir = exe.parent().ok_or("exe has no parent")?;
+    let bundled = dir.join(name);
+    if bundled.exists() {
+        return Ok(bundled);
+    }
+    // Dev mode: look for any `<name>-<triple>` sibling.
+    let prefix = format!("{name}-");
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let fname = entry.file_name();
+            let s = fname.to_string_lossy();
+            if s.starts_with(&prefix) {
+                return Ok(entry.path());
+            }
+        }
+    }
+    Err(format!("sidecar {name} not found at {} (or {}* in dev)", bundled.display(), prefix))
+}
+
 /// `TauriSidecar` resolves the FFmpeg path via `tauri-plugin-shell` (so
 /// the externalBin per-triple naming is handled consistently with the
 /// Playwright sidecar), drops the resulting shell-plugin wrapper, and
@@ -75,7 +103,10 @@ impl SidecarCommand for TauriSidecar {
             .sidecar(&self.binary_name)
             .map_err(|e| EncoderError::SpawnFailed(format!("resolve sidecar: {e}")))?;
 
-        let mut cmd = TokioCommand::new(&self.binary_name);
+        let binary_path = resolve_sidecar_path(&self.binary_name)
+            .map_err(|e| EncoderError::SpawnFailed(format!("locate sidecar: {e}")))?;
+
+        let mut cmd = TokioCommand::new(&binary_path);
         cmd.args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -280,19 +311,44 @@ pub async fn start_recording(
     args: StartRecordingArgs,
     on_event: Channel<RecordingEvent>,
 ) -> Result<RecordingSessionId, AppError> {
+    tracing::info!(
+        target: "storycapture::recording",
+        "start_recording requested: display_id={} {}x{}@{}fps folder={:?}",
+        args.display_id, args.width, args.height, args.fps, args.project_folder
+    );
+
     // Probe encoders (done per-start; the `EncoderProbe` is small).
     let probe = {
         let cmd = TauriSidecar::new(app.clone());
         probe_encoders(&cmd)
             .await
-            .map_err(|e| AppError::Encoder(e.to_string()))?
+            .map_err(|e| {
+                tracing::error!(
+                    target: "storycapture::recording",
+                    "probe_encoders failed: {}",
+                    e
+                );
+                AppError::Encoder(e.to_string())
+            })?
     };
+    tracing::info!(
+        target: "storycapture::recording",
+        "encoder probe ok: preferred={:?}",
+        probe.preferred
+    );
 
     // Allocate session + output path.
     let session_id = Uuid::new_v4().to_string();
     let project = PathBuf::from(&args.project_folder);
     let exports_dir = project.join("exports");
-    std::fs::create_dir_all(&exports_dir).map_err(AppError::from)?;
+    std::fs::create_dir_all(&exports_dir).map_err(|e| {
+        tracing::error!(
+            target: "storycapture::recording",
+            "create exports dir failed at {:?}: {}",
+            exports_dir, e
+        );
+        AppError::from(e)
+    })?;
     let output_path = exports_dir.join(format!("{session_id}.mp4"));
 
     // Start capture pipeline.
@@ -304,13 +360,29 @@ pub async fn start_recording(
         queue_cap_bytes: ByteBoundedQueue::DEFAULT_CAP_BYTES,
     };
     let backend = pick_default_backend(&cap_cfg);
+    tracing::info!(
+        target: "storycapture::recording",
+        "starting capture pipeline backend={:?}",
+        backend.kind()
+    );
     let queue = ByteBoundedQueue::new(cap_cfg.queue_cap_bytes);
     let mut capture = CapturePipeline::new(backend, queue);
     let (frame_tx, frame_rx) = mpsc::channel::<Frame>(64);
     capture
         .start(cap_cfg.clone(), frame_tx)
         .await
-        .map_err(|e| AppError::Capture(e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!(
+                target: "storycapture::recording",
+                "capture pipeline start failed: {}",
+                e
+            );
+            AppError::Capture(e.to_string())
+        })?;
+    tracing::info!(
+        target: "storycapture::recording",
+        "capture pipeline started"
+    );
 
     // Kick encode pipeline.
     let enc_cfg = EncodeConfig::new(
@@ -324,7 +396,19 @@ pub async fn start_recording(
     let sidecar = TauriSidecar::new(app.clone());
     let encode_join = EncodePipeline::start(enc_cfg, &sidecar, frame_rx, prog_tx)
         .await
-        .map_err(|e| AppError::Encoder(e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!(
+                target: "storycapture::recording",
+                "encode pipeline start failed: {}",
+                e
+            );
+            AppError::Encoder(e.to_string())
+        })?;
+    tracing::info!(
+        target: "storycapture::recording",
+        "encode pipeline started: output={:?}",
+        output_path
+    );
 
     // Progress fan-out to the renderer.
     let on_event_clone = on_event.clone();
@@ -354,38 +438,40 @@ pub async fn stop_recording(
     session: RecordingSessionId,
     on_event: Channel<RecordingEvent>,
 ) -> Result<EncodeResultDto, AppError> {
+    tracing::info!(target: "storycapture::recording", "stop_recording requested: session={}", session.0);
     let handle = registry()
         .sessions
         .lock()
         .remove(&session.0)
-        .ok_or_else(|| AppError::NotFound(format!("recording session {}", session.0)))?;
-
-    // Stop capture — this closes the frame channel, which causes the
-    // encoder's frame pump to hit EOF, drop stdin, and let FFmpeg finalize.
-    {
-        let mut p = handle.capture.lock().await;
-        let _ = p
-            .stop()
-            .await
-            .map_err(|e| AppError::Capture(e.to_string()))?;
-    }
-
-    // Wait for the encoder to flush.
-    let result = handle
-        .encode_join
-        .await
-        .map_err(|e| AppError::Encoder(format!("encoder join: {e}")))?
-        .map_err(|e| {
-            let _ = on_event.send(RecordingEvent::Failed {
-                message: e.to_string(),
-            });
-            AppError::Encoder(e.to_string())
+        .ok_or_else(|| {
+            tracing::error!(target: "storycapture::recording", "stop_recording: session {} not in registry", session.0);
+            AppError::NotFound(format!("recording session {}", session.0))
         })?;
 
+    tracing::info!(target: "storycapture::recording", "stop_recording: stopping capture pipeline");
+    {
+        let mut p = handle.capture.lock().await;
+        p.stop().await.map_err(|e| {
+            tracing::error!(target: "storycapture::recording", "capture stop failed: {}", e);
+            AppError::Capture(e.to_string())
+        })?;
+    }
+    tracing::info!(target: "storycapture::recording", "stop_recording: capture stopped, waiting on encoder flush");
+
+    let result = handle.encode_join.await
+        .map_err(|e| {
+            tracing::error!(target: "storycapture::recording", "encoder join error: {}", e);
+            AppError::Encoder(format!("encoder join: {e}"))
+        })?
+        .map_err(|e| {
+            tracing::error!(target: "storycapture::recording", "encoder returned error: {}", e);
+            let _ = on_event.send(RecordingEvent::Failed { message: e.to_string() });
+            AppError::Encoder(e.to_string())
+        })?;
+    tracing::info!(target: "storycapture::recording", "stop_recording: encoder finalized output={:?}", result.output_path);
+
     let dto: EncodeResultDto = result.into();
-    let _ = on_event.send(RecordingEvent::Completed {
-        result: dto.clone(),
-    });
+    let _ = on_event.send(RecordingEvent::Completed { result: dto.clone() });
     Ok(dto)
 }
 

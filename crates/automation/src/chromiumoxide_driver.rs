@@ -107,9 +107,11 @@ impl ChromiumoxideDriver {
 impl BrowserDriver for ChromiumoxideDriver {
     async fn launch(&mut self, config: LaunchConfig) -> Result<()> {
         let mut bcfg = BrowserConfig::builder();
-        if config.headless {
-            // chromiumoxide 0.7 default is headless; explicit for clarity.
-            bcfg = bcfg.with_head().with_head().disable_default_args(); // no-op chain; placeholder
+        if !config.headless {
+            bcfg = bcfg.with_head();
+        }
+        if let Some(exe) = config.executable.as_ref() {
+            bcfg = bcfg.chrome_executable(exe);
         }
         // Viewport
         bcfg = bcfg.viewport(Some(chromiumoxide::handler::viewport::Viewport {

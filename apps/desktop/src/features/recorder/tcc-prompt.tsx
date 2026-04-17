@@ -18,6 +18,11 @@ import {
   relaunchApp,
   type PermissionState,
 } from "@/ipc/capture";
+import {
+  dialogBackdropMotionClassName,
+  dialogCenteredPopupMotionClassName,
+  dialogViewportClassName,
+} from "@/components/ui/dialog-motion";
 
 interface TccPromptProps {
   open: boolean;
@@ -26,14 +31,19 @@ interface TccPromptProps {
 }
 
 export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
-  if (permission === "Granted") return null;
+  if (permission === "granted") return null;
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onDismiss()}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-[var(--color-fg-primary)/50] backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)]">
-          <div className="flex items-start gap-3">
+        <Dialog.Backdrop
+          className={`fixed inset-0 z-40 bg-[var(--color-fg-primary)/50] backdrop-blur-sm ${dialogBackdropMotionClassName}`}
+        />
+        <Dialog.Viewport className={dialogViewportClassName}>
+          <Dialog.Popup
+            className={`w-full max-w-lg rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)] ${dialogCenteredPopupMotionClassName}`}
+          >
+            <div className="flex items-start gap-3">
             <div className="grid size-11 place-items-center rounded-full bg-[var(--color-warning)]/15 text-[var(--color-warning)]">
               <ShieldAlert size={20} aria-hidden="true" />
             </div>
@@ -44,7 +54,7 @@ export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
               <Dialog.Title className="mt-2 text-lg font-semibold text-[var(--color-fg-primary)]">
                 Screen Recording permission needed
               </Dialog.Title>
-              <Dialog.Description className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
+              <Dialog.Description className="font-serif mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
                 StoryCapture needs macOS Screen Recording access to record your
                 browser demos. You only have to grant it once — the app will
                 relaunch so the new permission takes effect.
@@ -82,7 +92,8 @@ export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
               Reopen
             </button>
           </div>
-        </Dialog.Popup>
+          </Dialog.Popup>
+        </Dialog.Viewport>
       </Dialog.Portal>
     </Dialog.Root>
   );

@@ -31,10 +31,18 @@ pub struct LaunchConfig {
     pub base_url: Option<String>,
     /// Where downloads land (project folder `assets/`).
     pub download_dir: PathBuf,
+    /// Optional path to a Chromium-family browser executable (Chrome, Brave,
+    /// Edge, Arc, etc.). When `None`, chromiumoxide auto-detects Chrome.
+    /// Overridden at runtime by `STORYCAPTURE_BROWSER_PATH` env var.
+    pub executable: Option<PathBuf>,
 }
 
 impl LaunchConfig {
     /// Build from a parsed [`story_parser::Meta`] block (AUTO-04).
+    ///
+    /// Recording sessions need a visible browser window, so `headless`
+    /// defaults to `false`. Tests/CI override via `LaunchConfig::default()`.
+    /// The browser executable can be overridden via `STORYCAPTURE_BROWSER_PATH`.
     pub fn from_meta(meta: &story_parser::Meta) -> Self {
         Self {
             url: meta.app.clone(),
@@ -43,9 +51,13 @@ impl LaunchConfig {
                 height: 800,
             }),
             theme: meta.theme.unwrap_or(Theme::Auto),
-            headless: true,
+            headless: false,
             base_url: meta.app.clone(),
             download_dir: std::env::temp_dir(),
+            executable: std::env::var("STORYCAPTURE_BROWSER_PATH")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from),
         }
     }
 }
@@ -62,6 +74,7 @@ impl Default for LaunchConfig {
             headless: true,
             base_url: None,
             download_dir: std::env::temp_dir(),
+            executable: None,
         }
     }
 }
