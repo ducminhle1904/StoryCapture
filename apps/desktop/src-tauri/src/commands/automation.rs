@@ -204,7 +204,7 @@ pub async fn launch_automation(
 /// T-05-02-01: pid flows ONLY from the host's Playwright driver into this
 /// stash, never from the renderer. The renderer asks "use playwright-auto";
 /// the host builds the CaptureTarget.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlaywrightLaunchInfo {
     pub pid: Option<i32>,
     pub executable_path: Option<String>,
@@ -212,8 +212,16 @@ pub struct PlaywrightLaunchInfo {
 
 pub struct PlaywrightPidStash(parking_lot::Mutex<Option<PlaywrightLaunchInfo>>);
 impl PlaywrightPidStash {
-    pub fn set(&self, v: Option<PlaywrightLaunchInfo>) {
-        *self.0.lock() = v;
+    /// Stores the new value and returns `true` iff it differs from the
+    /// prior one. Callers polling the driver use the returned bool to
+    /// skip downstream notifications when nothing changed.
+    pub fn set(&self, v: Option<PlaywrightLaunchInfo>) -> bool {
+        let mut guard = self.0.lock();
+        if *guard == v {
+            return false;
+        }
+        *guard = v;
+        true
     }
     pub fn get(&self) -> Option<PlaywrightLaunchInfo> {
         self.0.lock().clone()

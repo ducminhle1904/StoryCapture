@@ -164,12 +164,10 @@ impl GraphicsCaptureApiHandler for WgcHandler {
     fn on_frame_arrived(
         &mut self,
         frame: &mut WgcFrame,
-        _capture_control: InternalCaptureControl,
+        capture_control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
-        // Strict rule (parity with macOS SCK handler + Plan 05-01 pitfall):
-        // NEVER block, NEVER await inside on_frame_arrived. Best-effort
-        // try_send and bump a drop counter on backpressure. This thread is
-        // owned by the windows-capture crate.
+        // NEVER block or await inside on_frame_arrived — this is the
+        // windows-capture delegate thread and backpressure becomes frame loss.
         let f = match frame_from_wgc::to_frame(frame, self.start_epoch) {
             Ok(f) => f,
             Err(e) => {
@@ -186,9 +184,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
-                // Consumer went away; stop by posting WM_QUIT to our thread.
-                // `InternalCaptureControl` exposes `stop()` for this purpose.
-                // (Not a soundness error — the message loop will drain.)
+                capture_control.stop();
             }
         }
         Ok(())
@@ -377,39 +373,10 @@ fn map_start_err(e: GraphicsCaptureApiError<WgcHandlerError>) -> CaptureError {
     CaptureError::Native(format!("WgcHandler::start_free_threaded: {e}"))
 }
 
-/// Enumeration via xcap — like the macOS shim, this returns the same
-/// physical-pixel display list as `windows-capture`'s own enumeration
-/// without coupling us to that crate's enumeration shape (which has
-/// shifted between 1.x and 2.x). DPI awareness was set in `WgcBackend::new`
-/// so xcap's reported widths reflect physical pixels.
+/// Enumeration is shared with the xcap fallback backend: both go through
+/// `xcap::Monitor::all()` so they agree on ordering and physical-pixel
+/// dimensions. DPI awareness was set in `WgcBackend::new` before any
+/// HMONITOR query.
 pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
-    use crate::display::DisplayId;
-    let monitors = xcap::Monitor::all()
-        .map_err(|e| CaptureError::Native(format!("xcap monitor enumeration: {e}")))?;
-    let mut out = Vec::with_capacity(monitors.len());
-    for m in monitors {
-        let id = m
-            .id()
-            .map_err(|e| CaptureError::Native(format!("monitor id: {e}")))?;
-        let width = m
-            .width()
-            .map_err(|e| CaptureError::Native(format!("monitor width: {e}")))?;
-        let height = m
-            .height()
-            .map_err(|e| CaptureError::Native(format!("monitor height: {e}")))?;
-        let scale = m
-            .scale_factor()
-            .map_err(|e| CaptureError::Native(format!("monitor scale: {e}")))?;
-        let name = m.name().unwrap_or_else(|_| String::from("display"));
-        let is_primary = m.is_primary().unwrap_or(false);
-        out.push(DisplayInfo {
-            id: DisplayId(id as u64),
-            width_px: (width as f32 * scale) as u32,
-            height_px: (height as f32 * scale) as u32,
-            scale_factor: scale,
-            name,
-            is_primary,
-        });
-    }
-    Ok(out)
+    crate::fallback::xcap_backend::enumerate()
 }

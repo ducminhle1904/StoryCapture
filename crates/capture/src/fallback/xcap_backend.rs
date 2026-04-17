@@ -9,17 +9,16 @@
 use crate::backend::{BackendKind, CaptureBackend, CaptureConfig, CaptureStats};
 use crate::display::{DisplayId, DisplayInfo};
 use crate::error::CaptureError;
-use crate::frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
+use crate::frame::{self, ClockSource, Frame, FrameData, PixelFormat, Pts};
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 pub struct XcapBackend {
     running: Arc<AtomicBool>,
-    sequence: Arc<AtomicU64>,
     started_at: Arc<Mutex<Option<Instant>>>,
     stats: Arc<Mutex<CaptureStats>>,
     // `xcap::Monitor` is NOT `Send` on Windows (it holds an HMONITOR
@@ -33,7 +32,6 @@ impl XcapBackend {
     pub fn new() -> Self {
         Self {
             running: Arc::new(AtomicBool::new(false)),
-            sequence: Arc::new(AtomicU64::new(0)),
             started_at: Arc::new(Mutex::new(None)),
             stats: Arc::new(Mutex::new(CaptureStats::default())),
             handle: None,
@@ -91,7 +89,6 @@ impl CaptureBackend for XcapBackend {
         let interval_ms = (1000 / fps as u64).max(1);
 
         let running = self.running.clone();
-        let sequence = self.sequence.clone();
         let stats = self.stats.clone();
         let start_epoch = Instant::now();
 
@@ -131,7 +128,7 @@ impl CaptureBackend for XcapBackend {
                 for px in data.chunks_exact_mut(4) {
                     px.swap(0, 2);
                 }
-                let seq = sequence.fetch_add(1, Ordering::AcqRel);
+                let seq = frame::next_sequence();
                 let pts = Pts {
                     ns: start_epoch.elapsed().as_nanos() as i128,
                     source: ClockSource::Synthetic,

@@ -15,16 +15,10 @@
 #![cfg(target_os = "windows")]
 
 use crate::error::CaptureError;
-use crate::frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::frame::{self, ClockSource, Frame, FrameData, PixelFormat, Pts};
 use std::time::Instant;
 use windows_capture::frame::Frame as WgcFrame;
 use windows_capture::settings::ColorFormat;
-
-/// Monotonic sequence counter, shared across WGC backend instances in the
-/// same process. Matches the macOS `frame_from_sample` pattern so the UI's
-/// HUD never sees a sequence regression across back-to-back sessions.
-static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Convert a live `windows_capture::frame::Frame` into our `Frame` by
 /// copying the BGRA buffer out of the D3D11 staging texture.
@@ -50,11 +44,16 @@ pub fn to_frame(frame: &mut WgcFrame, start_epoch: Instant) -> Result<Frame, Cap
     // convention (encoder expects BGRA).
     let stride = (width_px as usize) * 4;
     let mut bgra = vec![0u8; stride * height_px as usize];
-    // Copy without padding to match stride = width*4.
+    let bgra_base = bgra.as_ptr();
     let copied = buffer.as_nopadding_buffer(&mut bgra);
-    // `as_nopadding_buffer` may return a reference into our buffer or into
-    // the raw buffer (when no padding). Normalize to an owned Vec.
-    let bgra_vec: Vec<u8> = copied.to_vec();
+    let same_buffer = std::ptr::eq(bgra_base, copied.as_ptr());
+    let copied_len = copied.len();
+    let bgra_vec: Vec<u8> = if same_buffer {
+        bgra.truncate(copied_len);
+        bgra
+    } else {
+        copied.to_vec()
+    };
 
     // Rgba8 → Bgra8 swap if needed (MSFT default is Rgba8; we request Bgra8
     // in Settings::new, but defend against drift).
@@ -74,7 +73,7 @@ pub fn to_frame(frame: &mut WgcFrame, start_epoch: Instant) -> Result<Frame, Cap
         }
     };
 
-    let sequence = SEQUENCE.fetch_add(1, Ordering::AcqRel);
+    let sequence = frame::next_sequence();
     let pts = Pts {
         ns: start_epoch.elapsed().as_nanos() as i128,
         source: ClockSource::Synthetic,

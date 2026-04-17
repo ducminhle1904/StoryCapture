@@ -9,6 +9,21 @@
 //! an owned `Vec<u8>` (xcap fallback path; not zero-copy).
 
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Process-wide monotonic frame sequence. Shared across every backend
+/// (SCK, WGC, xcap) so the HUD never sees a sequence regression when the
+/// orchestrator falls back mid-session.
+static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+pub fn next_sequence() -> u64 {
+    SEQUENCE.fetch_add(1, Ordering::AcqRel)
+}
+
+#[cfg(test)]
+pub fn reset_sequence_for_test() {
+    SEQUENCE.store(0, Ordering::Release);
+}
 
 /// Pixel format of the captured frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

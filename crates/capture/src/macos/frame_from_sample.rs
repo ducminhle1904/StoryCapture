@@ -8,12 +8,9 @@
 
 #![cfg(target_os = "macos")]
 
-use crate::frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
+use crate::frame::{self, ClockSource, Frame, FrameData, PixelFormat, Pts};
 use crate::macos::raii::CVPixelBufferHandle;
 use screencapturekit::cm::CMSampleBuffer;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Convert one SCK-delivered sample buffer into a `Frame`. Returns `None`
 /// if the sample has no backing pixel buffer (e.g. audio samples, which
@@ -46,31 +43,19 @@ pub fn to_frame(sample: &CMSampleBuffer) -> Option<Frame> {
         height_px,
         format: PixelFormat::Bgra,
         data: FrameData::NativeMacOS(handle),
-        sequence: SEQUENCE.fetch_add(1, Ordering::Relaxed),
+        sequence: frame::next_sequence(),
     })
-}
-
-/// Reset the sequence counter — test hook; do NOT call from production code
-/// (ordering matters to the encoder).
-#[cfg(test)]
-pub fn reset_sequence() {
-    SEQUENCE.store(0, Ordering::Release);
 }
 
 #[cfg(test)]
 mod tests {
-    // Unit-testing this function requires a real CMSampleBuffer; the
-    // integration coverage lives in `tests/sck_real_capture.rs` behind
-    // the `real-capture` feature. Here we just assert the sequence
-    // counter advances monotonically without synthesizing a sample.
-    use super::*;
-    use std::sync::atomic::Ordering;
+    use crate::frame;
 
     #[test]
     fn sequence_counter_is_monotonic() {
-        reset_sequence();
-        let a = SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let b = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        frame::reset_sequence_for_test();
+        let a = frame::next_sequence();
+        let b = frame::next_sequence();
         assert_eq!(b, a + 1);
     }
 }

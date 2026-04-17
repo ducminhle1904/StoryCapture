@@ -15,7 +15,7 @@
 
 use crate::error::AppError;
 use capture::{
-    enumerate_displays, pick_default_backend, BackendKind, ByteBoundedQueue, CaptureConfig,
+    enumerate_displays, pick_default_backend, ByteBoundedQueue, CaptureConfig,
     CaptureEvent, CaptureStats, CapturePipeline, ClockSource, DisplayId, DisplayInfo, Frame,
     PixelFormat,
 };
@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -363,14 +363,6 @@ pub async fn stop_capture(session: SessionId) -> Result<CaptureStatsDto, AppErro
     // make it to the renderer before we report stats.
     let _ = handle.forward_task.await;
     Ok(stats.into())
-}
-
-// Suppress unused-import warnings on Windows / non-mac builds where the
-// Manager re-export is only needed by the macOS branch above.
-#[allow(unused_imports)]
-fn _silence_unused() {
-    use Manager as _;
-    use BackendKind as _;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -777,23 +769,6 @@ pub async fn set_capture_target(
     let mut settings = crate::commands::app_settings::load(&app);
     settings.capture_target = Some(target.into());
     crate::commands::app_settings::save(&app, &settings)
-}
-
-// Trait extension for macOS to access SckBackend-specific hooks through
-// the dyn CaptureBackend box. We keep this private to this file.
-#[cfg(target_os = "macos")]
-trait SckBackendExt {
-    fn as_any_sck(&self) -> Option<&capture::SckBackend>;
-}
-#[cfg(target_os = "macos")]
-impl<T: capture::CaptureBackend + ?Sized> SckBackendExt for Box<T> {
-    fn as_any_sck(&self) -> Option<&capture::SckBackend> {
-        // Can't downcast through the trait object without Any bounds;
-        // we only call this immediately after Box::new(SckBackend), so
-        // the orchestrator-level wiring uses a separate path. Return
-        // None here — the event sink gets wired directly in that path.
-        None
-    }
 }
 
 #[cfg(test)]
