@@ -102,6 +102,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 - [x] 03-19-PLAN.md — Voice catalog + script editor + TTS clip inspector UI
 - [x] 03-20-PLAN.md — Accounts settings + token counter + cost warning + AI disclosure (G7/G8/G9) + human-verify ⚠ human-verify walkthrough pending (see `03-20-RESUME.md`)
 - [x] 03-21-PLAN.md — Golden dataset (25 prompts) + eval harness + offline PR CI + nightly live-LLM CI
+
 **UI hint**: yes
 
 ### Phase 4: Web Companion & Sharing
@@ -160,13 +161,16 @@ Plans:
 
 ### Phase 6: Recording v2 — audio, region capture, chrome-hiding, multi-browser auto-follow, live preview
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Polish the recording pipeline to production-grade quality by shipping Phase 5's deferred features — opt-in microphone audio, per-display region capture, Chromium chrome-hiding via `--app`, multi-browser auto-follow (Edge/Brave/Chrome channels), static 2s-refresh live preview thumbnail, per-recording cursor toggle, and Windows real-capture E2E CI infrastructure.
+**Requirements**: PHASE-6.1, PHASE-6.2, PHASE-6.3, PHASE-6.4
 **Depends on:** Phase 5
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 6 to break down)
+- [ ] 06-01-PLAN.md — Mic audio capture (cpal + ringbuf + named pipe + FFmpeg dual-input mux) + device picker + mid-record failure UX
+- [ ] 06-02-PLAN.md — Region capture (SCK source_rect + Windows CPU crop) + Chromium `--app` chrome-hiding + non-sticky cursor toggle
+- [ ] 06-03-PLAN.md — Multi-browser title-hint map (Edge/Brave/Chrome channels) + 2s live preview thumbnail (SCScreenshotManager / single-frame WGC)
+- [ ] 06-04-PLAN.md — Windows real-capture E2E: workflow_dispatch-only workflow on self-hosted graphical runner + operator runbook fallback
 
 ---
 *Roadmap created: 2026-04-14*
