@@ -19,6 +19,7 @@ import { useEffect } from "react";
 import { Music2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { PageContentTransition } from "@/components/page-content-transition";
 import { useEditorStore } from "./state/store";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { Timeline } from "./timeline/timeline";
@@ -89,34 +90,36 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         </div>
       </header>
 
-      {/* Top region: preview | inspector */}
-      <div
-        className="flex min-h-0 gap-5 px-5 py-5"
-        style={{ height: `${topHeightPct}%` }}
-      >
-        <section
-          className="min-w-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
-          style={{ width: `${previewWidthPct}%` }}
-          aria-label="Preview"
+      <PageContentTransition className="min-h-0 flex-1">
+        {/* Top region: preview | inspector */}
+        <div
+          className="flex min-h-0 gap-5 px-5 py-5"
+          style={{ height: `${topHeightPct}%` }}
         >
-          <PreviewPlayer storyId={storyId} videoSrc={videoSrc} />
-        </section>
-        <section
-          className="min-w-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
-          style={{ width: `${inspectorWidthPct}%` }}
-        >
-          <InspectorPanel />
-        </section>
-      </div>
+          <section
+            className="min-w-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
+            style={{ width: `${previewWidthPct}%` }}
+            aria-label="Preview"
+          >
+            <PreviewPlayer storyId={storyId} videoSrc={videoSrc} />
+          </section>
+          <section
+            className="min-w-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
+            style={{ width: `${inspectorWidthPct}%` }}
+          >
+            <InspectorPanel />
+          </section>
+        </div>
 
-      {/* Bottom region: timeline */}
-      <section
-        className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
-        style={{ height: `${timelineHeightPct}%` }}
-        aria-label="Timeline area"
-      >
-        <Timeline storyId={storyId} />
-      </section>
+        {/* Bottom region: timeline */}
+        <section
+          className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
+          style={{ height: `${timelineHeightPct}%` }}
+          aria-label="Timeline area"
+        >
+          <Timeline storyId={storyId} />
+        </section>
+      </PageContentTransition>
 
       <SoundDrawer />
       <ExportModal storyId={storyId} />

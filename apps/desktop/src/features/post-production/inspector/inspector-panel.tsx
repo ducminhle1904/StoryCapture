@@ -62,7 +62,7 @@ export function InspectorPanel() {
         <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
           Inspector
         </div>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
+        <p className="font-serif mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
           Adjust transforms, effects, and sound decisions for the selected media.
         </p>
       </div>

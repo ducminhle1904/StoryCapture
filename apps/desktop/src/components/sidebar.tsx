@@ -8,10 +8,11 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeft,
+  Sun,
+  Moon,
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-
 import { BrandMark } from "@/components/brand";
+import { getTheme, toggleTheme, type Theme } from "@/lib/theme";
 
 const STORAGE_KEY = "storycapture-sidebar-collapsed";
 
@@ -79,6 +80,7 @@ export function Sidebar() {
       return false;
     }
   });
+  const [theme, setTheme] = useState<Theme>(() => getTheme());
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -91,6 +93,11 @@ export function Sidebar() {
     }
   }, [collapsed]);
 
+  const handleToggleTheme = () => {
+    const next = toggleTheme();
+    setTheme(next);
+  };
+
   const visibleItems = NAV_ITEMS.filter((item) =>
     isVisible(item, location.pathname),
   );
@@ -98,27 +105,27 @@ export function Sidebar() {
   return (
     <nav
       aria-label="Main navigation"
-      className="flex flex-col border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]"
+      className="flex flex-col overflow-hidden border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
       style={{ width: collapsed ? 48 : 200 }}
     >
       {/* Branding — logo + wordmark */}
       <div className="flex h-10 shrink-0 items-center gap-2.5 px-3">
         <BrandMark size={collapsed ? 22 : 24} />
-        <AnimatePresence mode="wait">
-          {!collapsed && (
-            <motion.span
-              key="brand"
-              initial={{ opacity: 0, x: -4 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -4 }}
-              transition={{ duration: 0.15 }}
-              className="text-sm font-semibold tracking-[-0.02em] text-[var(--color-fg-primary)]"
-              style={{ fontFamily: "'Outfit Variable', 'Outfit', sans-serif" }}
-            >
-              storycapture
-            </motion.span>
-          )}
-        </AnimatePresence>
+        <span
+          aria-hidden={collapsed}
+          className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+            collapsed
+              ? "pointer-events-none grid-cols-[0fr] opacity-0"
+              : "grid-cols-[1fr] opacity-100"
+          }`}
+        >
+          <span
+            className="min-w-0 whitespace-nowrap text-sm font-semibold tracking-[-0.02em] text-[var(--color-fg-primary)]"
+            style={{ fontFamily: "'Outfit Variable', 'Outfit', sans-serif" }}
+          >
+            storycapture
+          </span>
+        </span>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1 px-1.5">
@@ -137,7 +144,7 @@ export function Sidebar() {
                 }
               }}
               title={collapsed ? item.label : undefined}
-              className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+              className={`flex items-center gap-2.5 overflow-hidden rounded-lg px-2.5 py-2 text-sm transition-colors ${
                 active
                   ? "bg-[var(--color-accent-primary)]/12 text-[var(--color-fg-primary)]"
                   : "text-[var(--color-fg-secondary)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
@@ -145,60 +152,102 @@ export function Sidebar() {
             >
               <Icon
                 size={18}
-                className={
+                className={`shrink-0 ${
                   active
                     ? "text-[var(--color-accent-primary)]"
                     : "text-[var(--color-fg-muted)]"
-                }
+                }`}
               />
-              <AnimatePresence initial={false}>
-                {!collapsed && (
-                  <motion.span
-                    initial={{ opacity: 0, width: 0 }}
-                    animate={{ opacity: 1, width: "auto" }}
-                    exit={{ opacity: 0, width: 0 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="truncate whitespace-nowrap"
-                  >
-                    {item.label}
-                  </motion.span>
-                )}
-              </AnimatePresence>
+              <span
+                aria-hidden={collapsed}
+                className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                  collapsed
+                    ? "pointer-events-none grid-cols-[0fr] opacity-0"
+                    : "grid-cols-[1fr] opacity-100"
+                }`}
+              >
+                <span className="min-w-0 truncate whitespace-nowrap">
+                  {item.label}
+                </span>
+              </span>
             </button>
           );
         })}
       </div>
 
-      {/* Collapse toggle at bottom */}
-      <div className="border-t border-[var(--color-border-subtle)] px-1.5 py-2">
+      {/* Footer: theme toggle + collapse */}
+      <div className="flex flex-col gap-0.5 border-t border-[var(--color-border-subtle)] px-1.5 py-2">
+        {/* Theme toggle */}
+        <button
+          type="button"
+          onClick={handleToggleTheme}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className="flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-2.5 py-2 text-sm text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
+        >
+          <span className="relative grid h-[18px] w-[18px] shrink-0 place-items-center">
+            <Sun
+              size={18}
+              className={`absolute text-[var(--color-fg-muted)] transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                theme === "dark"
+                  ? "rotate-90 scale-0 opacity-0"
+                  : "rotate-0 scale-100 opacity-100"
+              }`}
+              aria-hidden="true"
+            />
+            <Moon
+              size={18}
+              className={`absolute text-[var(--color-fg-muted)] transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                theme === "dark"
+                  ? "rotate-0 scale-100 opacity-100"
+                  : "-rotate-90 scale-0 opacity-0"
+              }`}
+              aria-hidden="true"
+            />
+          </span>
+          <span
+            aria-hidden={collapsed}
+            className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+              collapsed
+                ? "pointer-events-none grid-cols-[0fr] opacity-0"
+                : "grid-cols-[1fr] opacity-100"
+            }`}
+          >
+            <span className="min-w-0 truncate whitespace-nowrap">
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </span>
+          </span>
+        </button>
+
+        {/* Collapse toggle */}
         <button
           type="button"
           onClick={() => setCollapsed((prev) => !prev)}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
+          className="flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-2.5 py-2 text-sm text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
         >
           {collapsed ? (
-            <PanelLeft size={18} className="text-[var(--color-fg-muted)]" />
+            <PanelLeft
+              size={18}
+              className="shrink-0 text-[var(--color-fg-muted)]"
+            />
           ) : (
             <PanelLeftClose
               size={18}
-              className="text-[var(--color-fg-muted)]"
+              className="shrink-0 text-[var(--color-fg-muted)]"
             />
           )}
-          <AnimatePresence initial={false}>
-            {!collapsed && (
-              <motion.span
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: "auto" }}
-                exit={{ opacity: 0, width: 0 }}
-                transition={{ duration: 0.15, ease: "easeOut" }}
-                className="truncate whitespace-nowrap"
-              >
-                Collapse
-              </motion.span>
-            )}
-          </AnimatePresence>
+          <span
+            aria-hidden={collapsed}
+            className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+              collapsed
+                ? "pointer-events-none grid-cols-[0fr] opacity-0"
+                : "grid-cols-[1fr] opacity-100"
+            }`}
+          >
+            <span className="min-w-0 truncate whitespace-nowrap">Collapse</span>
+          </span>
         </button>
       </div>
     </nav>

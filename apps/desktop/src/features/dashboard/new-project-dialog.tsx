@@ -4,6 +4,11 @@ import { FolderOpen, Loader2, X } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { useCreateProject } from "@/ipc/projects";
+import {
+  dialogBackdropMotionClassName,
+  dialogCenteredPopupMotionClassName,
+  dialogViewportClassName,
+} from "@/components/ui/dialog-motion";
 
 interface NewProjectDialogProps {
   open: boolean;
@@ -59,9 +64,14 @@ export function NewProjectDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 bg-[var(--color-fg-primary)/50] backdrop-blur-sm z-40" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] shadow-xl z-50 p-6">
-          <div className="flex items-start justify-between">
+        <Dialog.Backdrop
+          className={`fixed inset-0 z-40 bg-[var(--color-fg-primary)/50] backdrop-blur-sm ${dialogBackdropMotionClassName}`}
+        />
+        <Dialog.Viewport className={dialogViewportClassName}>
+          <Dialog.Popup
+            className={`w-full max-w-md rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-xl ${dialogCenteredPopupMotionClassName}`}
+          >
+            <div className="flex items-start justify-between">
             <div>
               <Dialog.Title className="text-base font-semibold text-[var(--color-fg-primary)]">
                 New project
@@ -138,7 +148,8 @@ export function NewProjectDialog({
               </button>
             </div>
           </form>
-        </Dialog.Popup>
+          </Dialog.Popup>
+        </Dialog.Viewport>
       </Dialog.Portal>
     </Dialog.Root>
   );

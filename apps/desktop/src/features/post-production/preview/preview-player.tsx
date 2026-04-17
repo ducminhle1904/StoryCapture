@@ -154,7 +154,7 @@ export function PreviewPlayer({
           <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
             Preview
           </div>
-          <p className="mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
+          <p className="font-serif mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
             Frame the final output, inspect timing, and scrub before export.
           </p>
         </div>

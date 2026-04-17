@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, AlertTriangle } from "lucide-react";
-import { motion } from "motion/react";
 import { useProjects, type Project } from "@/ipc/projects";
+import { PageContentTransition } from "@/components/page-content-transition";
 import { useDashboardStore } from "@/state/projects";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { ProjectFilters } from "@/features/dashboard/project-filters";
@@ -64,12 +64,7 @@ export default function DashboardRoute() {
       </header>
 
       {/* Scrollable body */}
-      <motion.div
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
-        className="min-h-0 flex-1 overflow-y-auto"
-      >
+      <PageContentTransition className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-6 py-6">
 
       <section aria-label="Filters">
@@ -98,7 +93,7 @@ export default function DashboardRoute() {
       </section>
 
         </div>
-      </motion.div>
+      </PageContentTransition>
 
       <NewProjectDialog
         open={dialogOpen}

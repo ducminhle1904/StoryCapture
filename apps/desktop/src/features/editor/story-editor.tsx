@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useRef } from "react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
+import { EditorView } from "@codemirror/view";
 
 import { storyEditorExtensions } from "./codemirror-setup";
 import { useEditorStore } from "@/state/editor";
 import { parseStory } from "@/ipc/parse";
 
+export interface EditorJumpTarget {
+  offset: number;
+  nonce: number;
+}
+
 interface StoryEditorProps {
   onAutosave?: (source: string) => void;
+  jumpTarget?: EditorJumpTarget | null;
 }
 
 /**
@@ -14,7 +21,7 @@ interface StoryEditorProps {
  * linter (UI-02). Autosave callback debounced 5s after last change; also
  * fires on blur.
  */
-export function StoryEditor({ onAutosave }: StoryEditorProps) {
+export function StoryEditor({ onAutosave, jumpTarget }: StoryEditorProps) {
   const source = useEditorStore((s) => s.source);
   const setSource = useEditorStore((s) => s.setSource);
   const setLastParse = useEditorStore((s) => s.setLastParse);
@@ -52,6 +59,18 @@ export function StoryEditor({ onAutosave }: StoryEditorProps) {
   const handleBlur = () => {
     if (onAutosave) onAutosave(source);
   };
+
+  useEffect(() => {
+    const view = cmRef.current?.view;
+    if (!view || !jumpTarget) return;
+
+    const pos = Math.max(0, Math.min(jumpTarget.offset, view.state.doc.length));
+    view.dispatch({
+      selection: { anchor: pos },
+      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+    });
+    view.focus();
+  }, [jumpTarget]);
 
   return (
     <div

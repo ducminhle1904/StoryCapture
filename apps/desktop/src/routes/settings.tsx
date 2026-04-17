@@ -1,5 +1,5 @@
+import { PageContentTransition } from "@/components/page-content-transition";
 import { AccountsPage } from "@/features/settings/AccountsPage";
-import AutoUpdaterSettings from "@/features/settings/auto-updater";
 
 export default function SettingsRoute() {
   return (
@@ -10,11 +10,11 @@ export default function SettingsRoute() {
         </h1>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <PageContentTransition className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-5xl px-8 py-8">
           <AccountsPage />
         </div>
-      </div>
+      </PageContentTransition>
     </main>
   );
 }

@@ -16,6 +16,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Dialog } from "@base-ui-components/react/dialog";
 import { toast } from "sonner";
 import {
   ChevronRight,
@@ -26,6 +27,11 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  dialogBackdropMotionClassName,
+  dialogSideSheetPopupMotionClassName,
+  dialogSideSheetViewportClassName,
+} from "@/components/ui/dialog-motion";
 import {
   exportRun,
   exportValidateConfig,
@@ -161,8 +167,6 @@ export function ExportModal({ storyId }: ExportModalProps) {
     [runExport],
   );
 
-  if (!open) return null;
-
   const selectedFormatsLabel =
     form.formats.length > 0
       ? form.formats.map((format) => format.toUpperCase()).join(" + ")
@@ -170,18 +174,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-30 bg-[var(--color-fg-primary)/50] backdrop-blur-md"
-        aria-hidden="true"
-        onClick={() => setOpen(false)}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="export-modal-title"
-        className="fixed inset-y-3 right-3 z-40 flex w-[min(460px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
-      >
-        <header className="relative overflow-hidden border-b border-[var(--color-border-subtle)] px-5 py-5">
+      <Dialog.Root open={open} onOpenChange={setOpen}>
+        <Dialog.Portal>
+          <Dialog.Backdrop
+            className={`fixed inset-0 z-30 bg-[var(--color-fg-primary)/50] backdrop-blur-md ${dialogBackdropMotionClassName}`}
+          />
+          <Dialog.Viewport className={dialogSideSheetViewportClassName}>
+            <Dialog.Popup
+              aria-labelledby="export-modal-title"
+              className={`pointer-events-auto flex h-full w-[min(460px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)] ${dialogSideSheetPopupMotionClassName}`}
+            >
+              <header className="relative overflow-hidden border-b border-[var(--color-border-subtle)] px-5 py-5">
           <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_left,rgba(255,106,124,0.2),transparent_58%)]" />
           <div className="relative flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -195,19 +198,19 @@ export function ExportModal({ storyId }: ExportModalProps) {
               >
                 Ship this cut
               </h2>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-[var(--color-fg-secondary)]">
+              <p className="font-serif mt-2 max-w-sm text-sm leading-6 text-[var(--color-fg-secondary)]">
                 Choose formats, quality, and destination before sending the render
                 job to the queue.
               </p>
             </div>
-            <button
-              type="button"
-              aria-label="Close export dialog"
-              onClick={() => setOpen(false)}
+            <Dialog.Close
+              render={
+                <button type="button" aria-label="Close export dialog" />
+              }
               className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-2 text-[var(--color-fg-muted)] transition hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
             >
               <X className="h-4 w-4" />
-            </button>
+            </Dialog.Close>
           </div>
 
           <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
@@ -236,9 +239,9 @@ export function ExportModal({ storyId }: ExportModalProps) {
               </div>
             </div>
           </div>
-        </header>
+              </header>
 
-        <div className="flex-1 space-y-4 overflow-auto px-5 py-5">
+              <div className="flex-1 space-y-4 overflow-auto px-5 py-5">
           <section className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
             <FormatCheckboxes value={form.formats} onChange={setFormats} />
           </section>
@@ -356,7 +359,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
                   <div className="text-sm font-medium text-[var(--color-fg-primary)]">
                     Export execution is still gated
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-[var(--color-fg-secondary)]">
+                  <p className="font-serif mt-1 text-sm leading-6 text-[var(--color-fg-secondary)]">
                     The drawer is ready, but graph computation is not wired yet, so
                     this screen can validate config and collect export choices only.
                   </p>
@@ -381,9 +384,9 @@ export function ExportModal({ storyId }: ExportModalProps) {
               </ul>
             </div>
           ) : null}
-        </div>
+              </div>
 
-        <footer className="flex items-center justify-between border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-5 py-4">
+              <footer className="flex items-center justify-between border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-5 py-4">
           <Button
             variant="ghost"
             size="sm"
@@ -408,8 +411,11 @@ export function ExportModal({ storyId }: ExportModalProps) {
           >
             {submitting ? "Submitting…" : "Export"}
           </Button>
-        </footer>
-      </div>
+              </footer>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
       <AiDisclosureModal
         open={disclosureOpen}
         ttsClipCount={ttsClipCount}

@@ -12,6 +12,11 @@ import { useEffect, useState, useCallback } from "react";
 import { Dialog } from "@base-ui-components/react/dialog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  dialogBackdropMotionClassName,
+  dialogCenteredPopupMotionClassName,
+  dialogViewportClassName,
+} from "@/components/ui/dialog-motion";
 import { useWebAccountStore } from "@/stores/web-account-store";
 import { Globe, LogOut, Loader2, AlertCircle, CheckCircle2, User } from "lucide-react";
 
@@ -112,7 +117,7 @@ export function WebAccountPanel() {
               <p className="text-base font-medium text-[var(--color-fg-primary)]">
                 Connect your web account
               </p>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-[var(--color-fg-muted)]">
+              <p className="font-serif mt-2 max-w-sm text-sm leading-6 text-[var(--color-fg-muted)]">
                 Sign in when you want uploads, team sharing, and cross-device project
                 sync. Local desktop work stays available without this connection.
               </p>
@@ -138,7 +143,7 @@ export function WebAccountPanel() {
               <p className="text-base font-medium text-[var(--color-fg-primary)]">
                 Waiting for browser authentication...
               </p>
-              <p className="mt-2 text-sm leading-6 text-[var(--color-fg-muted)]">
+              <p className="font-serif mt-2 text-sm leading-6 text-[var(--color-fg-muted)]">
                 Complete the sign-in in your browser. This window will update automatically.
               </p>
             </div>
@@ -227,9 +232,14 @@ export function WebAccountPanel() {
       {/* Disconnect confirmation dialog */}
       <Dialog.Root open={showDisconnectConfirm} onOpenChange={setShowDisconnectConfirm}>
         <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm" />
-          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)]">
-            <Dialog.Title className="mb-2 text-lg font-semibold text-[var(--color-fg-primary)]">
+          <Dialog.Backdrop
+            className={`fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm ${dialogBackdropMotionClassName}`}
+          />
+          <Dialog.Viewport className={dialogViewportClassName}>
+            <Dialog.Popup
+              className={`w-full max-w-sm rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)] ${dialogCenteredPopupMotionClassName}`}
+            >
+              <Dialog.Title className="mb-2 text-lg font-semibold text-[var(--color-fg-primary)]">
               Disconnect web account?
             </Dialog.Title>
             <Dialog.Description className="mb-4 text-sm text-[var(--color-fg-muted)]">
@@ -244,7 +254,8 @@ export function WebAccountPanel() {
                 Disconnect
               </Button>
             </div>
-          </Dialog.Popup>
+            </Dialog.Popup>
+          </Dialog.Viewport>
         </Dialog.Portal>
       </Dialog.Root>
     </div>

@@ -243,7 +243,7 @@ export function ChatPanel({
             <h3 className="mt-3 text-lg font-semibold text-[var(--color-foreground,#E6E8EE)]">
               {"Vi\u1ebft story b\u1eb1ng l\u1eddi"}
             </h3>
-            <p className="mt-2 max-w-xs text-sm leading-6 text-[var(--color-muted-foreground,#8A90A2)]">
+            <p className="font-serif mt-2 max-w-xs text-sm leading-6 text-[var(--color-muted-foreground,#8A90A2)]">
               {"M\u00f4 t\u1ea3 lu\u1ed3ng b\u1ea1n mu\u1ed1n demo \u2014 v\u00ed d\u1ee5 \u201c\u0110\u0103ng nh\u1eadp v\u00e0o app, t\u1ea1o project m\u1edbi, share link\u201d. StoryCapture s\u1ebd sinh t\u1eebng b\u01b0\u1edbc DSL \u0111\u1ec3 b\u1ea1n duy\u1ec7t."}
             </p>
             <div className="mt-4 flex flex-col gap-2">

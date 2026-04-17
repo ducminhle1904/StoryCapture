@@ -13,6 +13,7 @@ interface EditorState {
   setViewport: (v: PreviewViewport) => void;
   setLastParse: (r: ParseResult) => void;
   diagnostics: () => Diagnostic[];
+  resetProjectState: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -25,4 +26,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setViewport: (v) => set({ previewViewport: v }),
   setLastParse: (r) => set({ lastParse: r }),
   diagnostics: () => get().lastParse?.diagnostics ?? [],
+  // Clear per-project fields so navigating A→B doesn't flash A's content.
+  resetProjectState: () => set({ source: "", lastParse: null }),
 }));

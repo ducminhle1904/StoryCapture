@@ -2,11 +2,11 @@
  * TtsScriptEditor + TtsClipInspector tests.
  *
  * 5 behaviors:
- * 1. Empty state: "Chua co loi thoai cho buoc nay" + CTA "Sinh loi thoai"
+ * 1. Empty state: no narration copy + CTA "Generate audio"
  * 2. CTA click invokes tts_generate with script text
- * 3. Char count updates live; cost estimate renders in monospace
+ * 3. Char count warning appears near the limit
  * 4. Editing after generation sets edited-not-regenerated state; stale warning chip
- * 5. "Tao lai audio" button calls tts_regenerate_clip
+ * 5. "Regenerate audio" button calls tts_regenerate_clip
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -60,10 +60,10 @@ describe("TtsScriptEditor", () => {
       <TtsScriptEditor projectId="proj-1" stepId="step-1" />,
     );
     expect(
-      screen.getByText(/Ch\u01b0a c\u00f3 l\u1eddi tho\u1ea1i cho b\u01b0\u1edbc n\u00e0y/),
+      screen.getByText(/Write the line, then render a take\./i),
     ).toBeTruthy();
     expect(
-      screen.getByText(/Sinh l\u1eddi tho\u1ea1i/),
+      screen.getByRole("button", { name: /Generate audio/i }),
     ).toBeTruthy();
   });
 
@@ -76,7 +76,7 @@ describe("TtsScriptEditor", () => {
       <TtsScriptEditor projectId="proj-1" stepId="step-1" />,
     );
     const generateBtn = screen.getByRole("button", {
-      name: /Sinh l\u1eddi tho\u1ea1i/,
+      name: /Generate audio/i,
     });
     await act(async () => {
       fireEvent.click(generateBtn);
@@ -92,7 +92,7 @@ describe("TtsScriptEditor", () => {
     );
   });
 
-  it("updates char count live and renders cost estimate", async () => {
+  it("shows the soft-limit warning when the script gets long", async () => {
     // Pre-set a script and clip so the editor renders textarea (not empty state)
     act(() => {
       useVoiceoverStore.getState().setScript("step-1", "Hello");
@@ -108,11 +108,8 @@ describe("TtsScriptEditor", () => {
     );
     const textarea = screen.getByRole("textbox");
     await user.clear(textarea);
-    await user.type(textarea, "Test narration");
-    // Char count should show (14 chars in "14 / 800" format)
-    expect(screen.getByText(/14 \/ 800/)).toBeTruthy();
-    // Cost estimate should render
-    expect(screen.getByTestId("cost-estimate")).toBeTruthy();
+    await user.type(textarea, "a".repeat(710));
+    expect(screen.getByText(/710 \/ 800/)).toBeTruthy();
   });
 
   it("shows stale warning chip when edited after generation", async () => {
@@ -134,12 +131,12 @@ describe("TtsScriptEditor", () => {
     // Should show stale warning
     await waitFor(() => {
       expect(
-        screen.getByText(/\u0110\u00e3 s\u1eeda, ch\u01b0a t\u1ea1o l\u1ea1i audio/),
+        screen.getByText(/The script changed since the last take\./i),
       ).toBeTruthy();
     });
   });
 
-  it("renders Tao lai audio button in TtsClipInspector", async () => {
+  it("renders Regenerate audio button in TtsClipInspector", async () => {
     render(
       <TtsClipInspector
         stepId="step-1"
@@ -150,7 +147,7 @@ describe("TtsScriptEditor", () => {
         onRegenerate={vi.fn()}
       />,
     );
-    const regenBtn = screen.getByText(/T\u1ea1o l\u1ea1i audio/);
+    const regenBtn = screen.getByText(/Regenerate/i);
     expect(regenBtn).toBeTruthy();
     await act(async () => {
       fireEvent.click(regenBtn);

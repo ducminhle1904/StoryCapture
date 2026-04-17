@@ -92,6 +92,16 @@
   --color-accent: var(--color-accent-primary);
   --color-accent-muted: var(--color-accent-secondary);
   --color-waveform: var(--color-timeline-edit);
+  --background: var(--color-surface-200);
+  --foreground: var(--color-fg-primary);
+  --muted-foreground: var(--color-fg-secondary);
+  --card: var(--color-surface-100);
+  --border: var(--color-border-subtle);
+  --accent: var(--color-accent-primary);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --destructive: var(--color-danger);
+  --info: var(--color-timeline-read);
 }
 
 /*

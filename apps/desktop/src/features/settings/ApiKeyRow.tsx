@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { Dialog } from "@base-ui-components/react/dialog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  dialogBackdropMotionClassName,
+  dialogCenteredPopupMotionClassName,
+  dialogViewportClassName,
+} from "@/components/ui/dialog-motion";
 import { Loader2 } from "lucide-react";
 
 export interface ApiKeyRowProps {
@@ -200,9 +205,14 @@ export function ApiKeyRow({
       {/* Delete confirmation dialog */}
       <Dialog.Root open={showConfirm} onOpenChange={setShowConfirm}>
         <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
-          <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)]">
-            <Dialog.Title className="text-base font-semibold text-[var(--color-fg-primary)]">
+          <Dialog.Backdrop
+            className={`fixed inset-0 z-50 bg-black/40 backdrop-blur-sm ${dialogBackdropMotionClassName}`}
+          />
+          <Dialog.Viewport className={dialogViewportClassName}>
+            <Dialog.Popup
+              className={`w-full max-w-sm rounded-[var(--radius-xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)] ${dialogCenteredPopupMotionClassName}`}
+            >
+              <Dialog.Title className="text-base font-semibold text-[var(--color-fg-primary)]">
               Remove {displayName} key?
             </Dialog.Title>
             <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
@@ -221,7 +231,8 @@ export function ApiKeyRow({
                 Remove
               </Button>
             </div>
-          </Dialog.Popup>
+            </Dialog.Popup>
+          </Dialog.Viewport>
         </Dialog.Portal>
       </Dialog.Root>
     </div>

@@ -20,7 +20,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # Tauri core + plugins (D-context Claude's Discretion list, see CONTEXT.md)
-tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "tray-icon"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
@@ -90,9 +90,26 @@ time = { version = "0.3", features = ["formatting"] }
 # no plaintext HTTP). `json` parses error bodies for safe `detail` strings.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
+# macOS-only: set the Dock icon at runtime so `tauri dev` (which runs
+# the raw binary without an .app bundle) shows the StoryCapture icon
+# instead of the generic executable glyph.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5"
+objc2-app-kit = { version = "0.2", features = [
+    "NSApplication",
+    "NSImage",
+    "NSResponder",
+    "NSRunningApplication",
+] }
+objc2-foundation = { version = "0.2", features = [
+    "NSData",
+    "NSThread",
+    "NSString",
+    "NSGeometry",
+] }
+
 [dev-dependencies]
 # Phase 03 plan 03: mock HTTP server for `key_test` leak-proof integration tests.
 wiremock = "0.6"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true }
-

@@ -1,8 +1,7 @@
 /**
  * TTS clip inspector.
  *
- * Shows clip duration, voice preset name, cost, cache-hit indicator,
- * and regenerate button. Displays timeline-clip states from UI-SPEC.
+ * Shows the current take in a minimal summary row.
  *
  * States: generated, out-of-sync-with-script, regenerating, failed, selected.
  */
@@ -22,6 +21,7 @@ export interface TtsClipInspectorProps {
   clip: TtsClip;
   presetName: string;
   status: TtsClipStatus;
+  stepLabel?: string;
   cacheHit?: boolean;
   onRegenerate: () => void;
 }
@@ -35,12 +35,11 @@ const STATUS_COLORS: Record<TtsClipStatus, string> = {
 };
 
 const STATUS_LABELS: Record<TtsClipStatus, string> = {
-  generated: "\u0110\u00e3 t\u1ea1o",
-  "out-of-sync-with-script":
-    "Kh\u00f4ng \u0111\u1ed3ng b\u1ed9",
-  regenerating: "\u0110ang t\u1ea1o l\u1ea1i",
-  failed: "L\u1ed7i",
-  selected: "\u0110\u00e3 ch\u1ECDn",
+  generated: "Generated",
+  "out-of-sync-with-script": "Out of sync",
+  regenerating: "Regenerating",
+  failed: "Failed",
+  selected: "Selected",
 };
 
 function formatDuration(ms: number): string {
@@ -54,63 +53,51 @@ export function TtsClipInspector({
   clip,
   presetName,
   status,
+  stepLabel,
   cacheHit,
   onRegenerate,
 }: TtsClipInspectorProps) {
   return (
     <div
       data-testid="tts-clip-inspector"
-      className="flex flex-col gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"
+      className="flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card)] px-4 py-3"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-[var(--foreground)]">
-          {`B\u01b0\u1edbc ${stepId}`}
-        </span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_COLORS[status]}`}
-        >
-          {STATUS_LABELS[status]}
-        </span>
-      </div>
-
-      {/* Clip info */}
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
-          <span>{`Gi\u1ECDng: ${presetName}`}</span>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-semibold text-[var(--foreground)]">
+            {stepLabel ?? stepId}
+          </span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_COLORS[status]}`}
+          >
+            {STATUS_LABELS[status]}
+          </span>
+        </div>
+        <div className="mt-1 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+          <span>{presetName}</span>
+          <span className="text-[var(--border)]">/</span>
           <span
             className="font-mono"
             style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "12px" }}
           >
             {formatDuration(clip.durationMs)}
           </span>
-        </div>
-        <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
-          <span>${clip.costUsd.toFixed(4)}</span>
-          {cacheHit !== undefined && (
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] ${
-                cacheHit
-                  ? "bg-[var(--success)]/10 text-[var(--success)]"
-                  : "bg-[var(--muted-foreground)]/10 text-[var(--muted-foreground)]"
-              }`}
-            >
-              {cacheHit ? "Cache hit" : "Cache miss"}
-            </span>
-          )}
+          {cacheHit !== undefined ? (
+            <>
+              <span className="text-[var(--border)]">/</span>
+              <span>{cacheHit ? "Cached" : "Fresh render"}</span>
+            </>
+          ) : null}
         </div>
       </div>
 
-      {/* Regenerate button */}
       <button
         type="button"
-        className="mt-1 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--foreground)]/5 disabled:opacity-50"
+        className="shrink-0 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/5 disabled:opacity-50"
         onClick={onRegenerate}
         disabled={status === "regenerating"}
       >
-        {status === "regenerating"
-          ? `\u0110ang t\u1ea1o l\u1ea1i...`
-          : `T\u1ea1o l\u1ea1i audio`}
+        {status === "regenerating" ? "Regenerating..." : "Regenerate"}
       </button>
     </div>
   );

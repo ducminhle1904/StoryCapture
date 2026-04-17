@@ -13,6 +13,11 @@
 import { useState, useCallback, useEffect } from "react";
 import { Dialog } from "@base-ui-components/react/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  dialogBackdropMotionClassName,
+  dialogCenteredPopupMotionClassName,
+  dialogViewportClassName,
+} from "@/components/ui/dialog-motion";
 
 export interface CostWarningResult {
   proceed: boolean;
@@ -57,9 +62,14 @@ export function CostWarningModal({
   return (
     <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && handleCancel()}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-2xl">
-          <Dialog.Title className="text-lg font-semibold text-[var(--color-fg-primary)]">
+        <Dialog.Backdrop
+          className={`fixed inset-0 z-50 bg-[var(--color-fg-primary)/50] backdrop-blur-sm ${dialogBackdropMotionClassName}`}
+        />
+        <Dialog.Viewport className={dialogViewportClassName}>
+          <Dialog.Popup
+            className={`w-full max-w-md rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-2xl ${dialogCenteredPopupMotionClassName}`}
+          >
+            <Dialog.Title className="text-lg font-semibold text-[var(--color-fg-primary)]">
             {"Prompt n\u00e0y d\u00f9ng nhi\u1ec1u token"}
           </Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
@@ -84,7 +94,8 @@ export function CostWarningModal({
               {"Ti\u1ebfp t\u1ee5c"}
             </Button>
           </div>
-        </Dialog.Popup>
+          </Dialog.Popup>
+        </Dialog.Viewport>
       </Dialog.Portal>
     </Dialog.Root>
   );

@@ -2,17 +2,18 @@
  * VoiceCatalogDialog + VoicePresetCard tests.
  *
  * 7 behaviors:
- * 1. Dialog opens at default curated mode; renders >= 6 cards
- * 2. Clicking "Xem tat ca giong" switches to expanded mode
+ * 1. Dialog opens with the full library and renders >= 6 cards
+ * 2. Header renders current library metadata
  * 3. Filter by locale 'en' narrows the list
- * 4. Clicking "Nghe thu" calls tts_generate with sample, plays Audio
- * 5. Empty filter state renders "Khong co giong nao khop"
- * 6. No API key -> renders "Chua ket noi provider TTS" + Settings link
+ * 4. Clicking "Preview" calls tts_generate with sample, plays Audio
+ * 5. Empty filter state renders current no-match copy
+ * 6. No API key -> renders current provider-empty state + Settings CTA
  * 7. At most 2 presets show Featured badge (accent rule #6)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { VoiceCatalogDialog } from "./VoiceCatalogDialog";
 import { useVoiceoverStore } from "./voiceoverStore";
 
@@ -41,6 +42,14 @@ class MockAudio {
 
 vi.stubGlobal("Audio", MockAudio);
 
+function renderDialog() {
+  return render(
+    <MemoryRouter>
+      <VoiceCatalogDialog projectId="proj-1" />
+    </MemoryRouter>,
+  );
+}
+
 const sampleVoices = [
   { id: "v1", name: "Bella", locale: "en", premium: false },
   { id: "v2", name: "Adam", locale: "en", premium: false },
@@ -59,7 +68,6 @@ describe("VoiceCatalogDialog", () => {
     useVoiceoverStore.setState({
       selectedPreset: null,
       catalogOpen: true,
-      catalogMode: "curated",
       filter: {},
       clipByStepId: {},
       generating: new Set(),
@@ -80,8 +88,8 @@ describe("VoiceCatalogDialog", () => {
     });
   });
 
-  it("opens with default curated mode and renders >= 6 cards", async () => {
-    render(<VoiceCatalogDialog projectId="proj-1" />);
+  it("opens with the full library and renders >= 6 cards", async () => {
+    renderDialog();
     await waitFor(() => {
       expect(screen.getByTestId("voice-catalog")).toBeTruthy();
     });
@@ -89,22 +97,18 @@ describe("VoiceCatalogDialog", () => {
     expect(cards.length).toBeGreaterThanOrEqual(6);
   });
 
-  it("switches to expanded mode on 'Xem tat ca giong' click", async () => {
-    render(<VoiceCatalogDialog projectId="proj-1" />);
+  it("renders current selection and library metadata", async () => {
+    renderDialog();
     await waitFor(() => {
       expect(screen.getByTestId("voice-catalog")).toBeTruthy();
     });
-    const expandBtn = screen.getByText(
-      /Xem t\u1EA5t c\u1EA3 gi\u1ECDng/,
-    );
-    await act(async () => {
-      fireEvent.click(expandBtn);
-    });
-    expect(useVoiceoverStore.getState().catalogMode).toBe("expanded");
+    expect(screen.getByText("No voice selected")).toBeTruthy();
+    expect(screen.getByText(`${sampleVoices.length} available`)).toBeTruthy();
+    expect(screen.getByText("Full library")).toBeTruthy();
   });
 
   it("filters by locale 'en' and narrows the list", async () => {
-    render(<VoiceCatalogDialog projectId="proj-1" />);
+    renderDialog();
     await waitFor(() => {
       expect(screen.getAllByTestId("voice-preset-card").length).toBeGreaterThanOrEqual(6);
     });
@@ -120,12 +124,12 @@ describe("VoiceCatalogDialog", () => {
     });
   });
 
-  it("plays preview on 'Nghe thu' click via Audio element", async () => {
-    render(<VoiceCatalogDialog projectId="proj-1" />);
+  it("plays preview on 'Preview' click via Audio element", async () => {
+    renderDialog();
     await waitFor(() => {
       expect(screen.getAllByTestId("voice-preset-card").length).toBeGreaterThanOrEqual(1);
     });
-    const previewBtns = screen.getAllByLabelText(/Nghe th\u1EED gi\u1ECDng/);
+    const previewBtns = screen.getAllByLabelText(/Preview voice/i);
     await act(async () => {
       fireEvent.click(previewBtns[0]);
       // Allow the async invoke chain to resolve
@@ -144,7 +148,7 @@ describe("VoiceCatalogDialog", () => {
   });
 
   it("renders empty filter state copy when no voices match", async () => {
-    render(<VoiceCatalogDialog projectId="proj-1" />);
+    renderDialog();
     await waitFor(() => {
       expect(screen.getAllByTestId("voice-preset-card").length).toBeGreaterThanOrEqual(1);
     });
@@ -154,7 +158,7 @@ describe("VoiceCatalogDialog", () => {
     });
     await waitFor(() => {
       expect(
-        screen.getByText(/Kh\u00f4ng c\u00f3 gi\u1ECDng n\u00e0o kh\u1edbp/),
+        screen.getByText(/Nothing matches these filters/),
       ).toBeTruthy();
     });
   });
@@ -165,17 +169,17 @@ describe("VoiceCatalogDialog", () => {
         return Promise.reject(new Error("no API key stored for this provider"));
       return Promise.resolve(null);
     });
-    render(<VoiceCatalogDialog projectId="proj-1" />);
+    renderDialog();
     await waitFor(() => {
       expect(
-        screen.getByText(/Ch\u01b0a k\u1EBFt n\u1ED1i provider TTS/),
+        screen.getByText(/Connect a provider first/),
       ).toBeTruthy();
     });
-    expect(screen.getByText(/M\u1EDF Settings/)).toBeTruthy();
+    expect(screen.getByText(/Open settings/)).toBeTruthy();
   });
 
   it("shows at most 2 Featured badges", async () => {
-    render(<VoiceCatalogDialog projectId="proj-1" />);
+    renderDialog();
     await waitFor(() => {
       expect(screen.getAllByTestId("voice-preset-card").length).toBeGreaterThanOrEqual(1);
     });

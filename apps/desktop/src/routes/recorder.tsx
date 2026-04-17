@@ -61,6 +61,7 @@ export default function RecorderRoute() {
 
   return (
     <RecordingView
+      projectId={projectId ?? null}
       projectName={folder.name}
       projectFolder={folder.folder_path}
       storySource={storySource}

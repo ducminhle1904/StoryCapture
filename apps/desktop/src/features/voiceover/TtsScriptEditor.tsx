@@ -2,7 +2,7 @@
  * Per-step TTS script editor.
  *
  * States: empty, generating, generated, edited-not-regenerated, regen-in-progress, error.
- * Shows char count, cost estimate, and Sinh loi thoai / Tao lai audio buttons.
+ * Keeps the writing surface spare and focused on the line itself.
  */
 
 import { useCallback } from "react";
@@ -14,8 +14,6 @@ export interface TtsScriptEditorProps {
   stepId: string;
 }
 
-/** ElevenLabs rate: $0.30 per 1K chars */
-const COST_RATE_PER_1K = 0.30;
 /** Soft char limit for warning */
 const SOFT_LIMIT = 800;
 const WARNING_THRESHOLD = 700;
@@ -38,7 +36,6 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
   const isGenerating = generating.has(stepId);
   const isEditedAfterGen = editedAfterGenByStepId[stepId] ?? false;
   const charCount = script.length;
-  const costEstimate = (charCount * COST_RATE_PER_1K) / 1000;
 
   const handleTextChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -118,56 +115,55 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
   }, [projectId, stepId, script, selectedPreset, setClip, setGenerating, setEditedAfterGen]);
 
   return (
-    <div
-      data-testid="tts-script-editor"
-      className="flex flex-col gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"
-    >
+    <div data-testid="tts-script-editor" className="flex flex-col gap-4">
       {!script && !clip ? (
-        <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--background)]/50 px-3 py-2 text-xs text-[var(--muted-foreground)]">
-          {`Ch\u01b0a c\u00f3 l\u1eddi tho\u1ea1i. Vi\u1ebft tay ho\u1eb7c d\u00e1n b\u1ea3n nh\u00e1p cho b\u01b0\u1edbc n\u00e0y, r\u1ed3i sinh audio khi s\u1eb5n s\u00e0ng.`}
+        <div className="text-sm leading-relaxed text-[var(--muted-foreground)]">
+          Write the line, then render a take.
         </div>
       ) : null}
 
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+            Narration
+          </div>
+          <div className="mt-1 truncate text-xs text-[var(--muted-foreground)]">
+            {selectedPreset ? selectedPreset.name : "No voice selected"}
+          </div>
+        </div>
+
+        {charCount >= WARNING_THRESHOLD ? (
+          <span className="font-mono text-[11px] tabular-nums text-[var(--warning)]">
+            {charCount} / {SOFT_LIMIT}
+          </span>
+        ) : null}
+      </div>
+
       {/* Textarea */}
       <textarea
-        className="w-full resize-none rounded-md border border-[var(--border)] bg-[var(--background)] p-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+        className="font-serif min-h-[172px] w-full resize-none rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--background)] px-4 py-3.5 text-[14px] leading-6 text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
         value={script}
         onChange={handleTextChange}
-        placeholder={`Vi\u1EBFt l\u1EDDi tho\u1EA1i cho b\u01B0\u1EDBc n\u00E0y...`}
-        rows={3}
+        placeholder="Write the narration for this step..."
+        rows={6}
         role="textbox"
       />
 
       {/* Stale warning chip */}
       {isEditedAfterGen && clip && (
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-[var(--warning)]/15 px-2 py-0.5 text-xs font-medium text-[var(--warning)]">
-            {`\u0110\u00e3 s\u1eeda, ch\u01b0a t\u1ea1o l\u1ea1i audio`}
-          </span>
+        <div className="text-xs text-[var(--warning)]">
+          The script changed since the last take.
         </div>
       )}
 
       {/* Footer row */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {/* Char count */}
-          <span
-            className={`font-mono text-xs ${
-              charCount >= WARNING_THRESHOLD
-                ? "text-[var(--warning)]"
-                : "text-[var(--muted-foreground)]"
-            }`}
-          >
-            {charCount} / {SOFT_LIMIT}
-          </span>
-          {/* Cost estimate */}
-          <span
-            data-testid="cost-estimate"
-            className="font-mono text-xs text-[var(--muted-foreground)]"
-            style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "12px" }}
-          >
-            {charCount} {`k\u00fd t\u1ef1`} {"\u00d7"} ${COST_RATE_PER_1K}/1K {"\u2248"} ${costEstimate.toFixed(4)}
-          </span>
+        <div className="text-xs text-[var(--muted-foreground)]">
+          {clip
+            ? "A take is ready for this step."
+            : selectedPreset
+              ? "Ready to render."
+              : "Choose a voice to continue."}
         </div>
 
         {/* Action buttons */}
@@ -175,22 +171,22 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
           {!clip && (
             <button
               type="button"
-              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
+              className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--accent)]/90 disabled:opacity-50"
               onClick={handleGenerate}
               disabled={isGenerating || !script.trim() || !selectedPreset}
-              aria-label={`Sinh l\u1eddi tho\u1ea1i`}
+              aria-label="Generate audio"
             >
-              {isGenerating ? `\u0110ang sinh...` : `Sinh l\u1eddi tho\u1ea1i`}
+              {isGenerating ? "Generating..." : "Generate audio"}
             </button>
           )}
           {clip && (
             <button
               type="button"
-              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] hover:bg-[var(--accent)]/90 disabled:opacity-50"
+              className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--foreground)]/5 disabled:opacity-50"
               onClick={handleRegenerate}
               disabled={isGenerating || !script.trim() || !selectedPreset}
             >
-              {isGenerating ? `\u0110ang t\u1ea1o l\u1ea1i...` : `T\u1ea1o l\u1ea1i audio`}
+              {isGenerating ? "Regenerating..." : "Regenerate audio"}
             </button>
           )}
         </div>
