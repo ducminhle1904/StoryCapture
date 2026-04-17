@@ -104,3 +104,14 @@ serde_json = "1"
 # PATH on the operator machine or the self-hosted runner.
 anyhow = "1"
 which = "7"
+# Plan 06-02 — bench gate for Windows post-capture CPU crop (<5ms per
+# 1080p BGRA frame on reference hardware). Criterion 0.5 is the current
+# stable line per the project's dev stack in CLAUDE.md.
+criterion = "0.5"
+
+[[bench]]
+name = "windows_cpu_crop"
+harness = false
+# Only builds on Windows; the helpers live under
+# `crates/capture/src/windows/frame_from_wgc.rs` which is
+# `#![cfg(target_os = "windows")]`. The bench file itself also cfg-gates.

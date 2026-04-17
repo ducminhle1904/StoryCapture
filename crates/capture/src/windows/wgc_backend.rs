@@ -114,6 +114,11 @@ struct WgcHandler {
     start_epoch: Instant,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    /// Plan 06-02 — post-capture CPU crop rect (physical pixels). `None`
+    /// = full-frame pass-through (existing Phase 5 behavior).
+    /// `windows-capture = 2.0.0` has no native region/crop API (RESEARCH
+    /// Pitfall 5 + amendment to D-07), so we crop in `on_frame_arrived`.
+    crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
 }
 
 /// Per-session flags passed through `Settings::new(flags = ...)` into
@@ -124,6 +129,8 @@ struct WgcFlags {
     start_epoch: Instant,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    /// Plan 06-02 — optional crop rect (physical pixels).
+    crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
 }
 
 /// Handler-level error type. Only used to satisfy the trait bound; we never
@@ -151,6 +158,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             start_epoch,
             dropped,
             delivered,
+            crop_rect,
         } = ctx.flags;
         Ok(Self {
             out,
@@ -158,6 +166,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             start_epoch,
             dropped,
             delivered,
+            crop_rect,
         })
     }
 
@@ -175,6 +184,52 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
                 return Ok(());
             }
+        };
+        // Plan 06-02 — apply post-capture CPU crop when a rect is set.
+        // `to_frame` always produces FrameData::Owned with stride=width*4
+        // (nopadding buffer), so the crop here is a tight row copy over
+        // contiguous BGRA. Bench gate <5ms @ 1080p is tracked in
+        // crates/capture/benches/windows_cpu_crop.rs.
+        let f = if let Some(rect) = self.crop_rect {
+            use crate::frame::FrameData;
+            let (src_bytes, src_stride) = match &f.data {
+                FrameData::Owned(v, stride) => (v.as_slice(), *stride),
+                _ => {
+                    // Native handle path would need a D3D11 readback;
+                    // to_frame currently returns Owned so this branch is
+                    // defensive. Drop the frame if the variant changes.
+                    self.dropped.fetch_add(1, Ordering::Relaxed);
+                    return Ok(());
+                }
+            };
+            match frame_from_wgc::cpu_crop_bgra(
+                src_bytes,
+                f.width_px,
+                f.height_px,
+                src_stride,
+                rect,
+            ) {
+                Some(cropped) => {
+                    let cropped_stride = (rect.w as usize) * 4;
+                    Frame {
+                        pts: f.pts,
+                        width_px: rect.w,
+                        height_px: rect.h,
+                        format: f.format,
+                        data: FrameData::Owned(cropped, cropped_stride),
+                        sequence: f.sequence,
+                    }
+                }
+                None => {
+                    // Rect overflowed source — treat as drop, do not
+                    // panic. (Validation at the IPC boundary should have
+                    // rejected this; defence-in-depth.)
+                    self.dropped.fetch_add(1, Ordering::Relaxed);
+                    return Ok(());
+                }
+            }
+        } else {
+            f
         };
         match self.out.try_send(f) {
             Ok(()) => {
@@ -259,12 +314,43 @@ impl CaptureBackend for WgcBackend {
         // value implementing TryInto<GraphicsCaptureItemType>.
         let event_sink = self.event_sink.lock().clone();
         let start_epoch = Instant::now();
+
+        // Plan 06-02 — resolve the crop rect (physical pixels) for
+        // DisplayRegion targets. Logical-point rect × DPI scale =
+        // physical pixels. We pull the scale from the primary monitor's
+        // reported width via the shared xcap enumeration (same path
+        // `WgcBackend::list_displays` uses), so the rect matches what
+        // the user saw in the overlay.
+        let crop_rect = match &cfg.target {
+            CaptureTarget::DisplayRegion { display_id, rect } => {
+                let displays = crate::display::enumerate_displays()?;
+                let disp = displays
+                    .iter()
+                    .find(|d| d.id == *display_id)
+                    .ok_or_else(|| {
+                        CaptureError::Native(format!(
+                            "DisplayRegion references unknown display {}",
+                            display_id.0
+                        ))
+                    })?;
+                let scale = disp.scale_factor.max(1.0) as f64;
+                Some(crate::windows::frame_from_wgc::PhysicalRectU32 {
+                    x: (rect.x * scale).round() as u32,
+                    y: (rect.y * scale).round() as u32,
+                    w: (rect.w * scale).round() as u32,
+                    h: (rect.h * scale).round() as u32,
+                })
+            }
+            _ => None,
+        };
+
         let flags = WgcFlags {
             out,
             event_sink,
             start_epoch,
             dropped: self.dropped.clone(),
             delivered: self.delivered.clone(),
+            crop_rect,
         };
 
         // Cursor-on per D-06. Color format BGRA8 so frame_from_wgc takes
@@ -322,6 +408,28 @@ impl CaptureBackend for WgcBackend {
                 let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
                 let settings = Settings::new(
                     window,
+                    cursor,
+                    border,
+                    secondary,
+                    min_interval,
+                    dirty,
+                    color_format,
+                    flags,
+                );
+                WgcHandler::start_free_threaded(settings).map_err(map_start_err)?
+            }
+            CaptureTarget::DisplayRegion { .. } => {
+                // Plan 06-02 — windows-capture 2.0.0 has no native region
+                // API (RESEARCH Pitfall 5). We capture the full primary
+                // display and crop in `on_frame_arrived` via the
+                // `crop_rect` threaded through `flags`. Falling back to
+                // the primary monitor matches the Phase 5 CaptureTarget::Display
+                // arm — a future plan can resolve the specific display
+                // once xcap/windows-capture display id mapping lands.
+                let monitor = Monitor::primary()
+                    .map_err(|e| CaptureError::Native(format!("Monitor::primary: {e}")))?;
+                let settings = Settings::new(
+                    monitor,
                     cursor,
                     border,
                     secondary,
