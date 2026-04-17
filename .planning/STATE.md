@@ -3,40 +3,40 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-17T09:57:42.769Z"
+last_updated: "2026-04-17T10:45:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 59
-  completed_plans: 55
-  percent: 93
+  completed_plans: 58
+  percent: 98
 ---
 
 # State: StoryCapture
 
-**Last updated:** 2026-04-15
+**Last updated:** 2026-04-17
 
 ## Project Reference
 
 - **Name:** StoryCapture
 - **Core Value:** Turn a written story into a polished, shareable demo video automatically — no recording, editing, or video-production skill required.
-- **Current Focus:** Phase 05 — window-targeted-screen-capture-with-playwright-auto-follow
+- **Current Focus:** Phase 05 code-complete pending verification gate — next: Phase 06 (Recording v2)
 
 ## Current Position
 
-Phase: 05 (window-targeted-screen-capture-with-playwright-auto-follow) — EXECUTING
-Plan: 2 of 3
+Phase: 05 (window-targeted-screen-capture-with-playwright-auto-follow) — CODE-COMPLETE
+Plan: 3 of 3
 
 - **Milestone:** v1
 - **Phase:** 5 — Window-targeted screen capture with Playwright auto-follow
-- **Plan:** 1 of 3 complete (05-01 code-committed; human-verify checkpoint auto-approved under workflow.auto_advance=true)
-- **Status:** Executing Phase 05
-- **Progress:** [█████████░] 92%
+- **Plan:** 3 of 3 complete (05-01/05-02/05-03 all code-committed; human-verify checkpoints auto-approved under workflow.auto_advance=true; 05-VERIFICATION.md written)
+- **Status:** Phase 05 code-complete pending verification gate
+- **Progress:** [█████████░] 98%
 
 ## Performance Metrics
 
-- Phases completed: 3 / 4 (Phase 1 fully complete; Phase 2 code-complete pending verification gate; Phase 3 code-complete pending verification gate; Phase 4 code-complete pending verification gate)
-- Plans completed: 56 / 56
+- Phases completed: 4 / 5 (Phase 1 fully complete; Phases 2–5 code-complete pending verification gate)
+- Plans completed: 59 / 59
 - Requirements validated: 87 / 87 (Phase 1: FOUND-01..08, DSL-01..07, AUTO-01..06, CAP-01..07, ENC-01..05, UI-01..04,08..10, DIST-01..05 | Phase 2: POST-01..09, EXPORT-01..06, UI-05, UI-11 | Phase 3: AI-01..06, UI-07 | Phase 4: WEB-01..08, UI-06, DIST-06)
 
 ## Accumulated Context
@@ -96,12 +96,14 @@ See PROJECT.md → Key Decisions. Highlights:
 currently blocking post-v1 work. All six verification items above are operator-gated (require secrets, real hardware, or manual review). All v1 code is committed.
 
 - [05-02] Human-verify checkpoint auto-approved under workflow.auto_advance=true: macOS host with Screen Recording TCC grant required to exercise (a) 3x real-capture find_window_by_pid tests, (b) cargo run -p e2e-playwright-capture, (c) 8-step UI walkthrough. Defer to operator same as 01-07 soak.
+- [05-01] Human-verify checkpoint auto-approved: TCC-granted macOS host for `cargo test -p capture --features real-capture -- --ignored` + 30-min SCK-window soak (<800 MB) + TCC-deny fallback + 2nd-failure modal smoke.
+- [05-03] Human-verify checkpoint auto-approved: Windows 10/11 operator VM for `cargo test -p capture --features real-capture-windows -- --ignored` + 6-step WGC walkthrough + first live `capture-windows.yml` CI run (requires a push).
 
 ## Session Continuity
 
-- Last action: Phase 4 — all 10 plans executed and committed (code-complete). STATE.md + ROADMAP.md updated to reflect Phase 4 completion. 04-10 paused at human-verify checkpoint.
-- Next action: Complete operator-gated verification items (01-07 soak, 01-10 release cut, 02-08 audio curation, 02-12b UI walkthrough, 03-20 AI disclosure review, 04-10 landing page + integration walkthrough).
-- Files touched this session: `.planning/STATE.md`, `.planning/ROADMAP.md`.
+- Last action: Phase 5 — all 3 plans executed (05-01 Wave 1 + 05-02/05-03 Wave 2 parallel worktrees merged to main). `cargo check -p capture` green on macOS + `x86_64-pc-windows-msvc` cross-target. 05-VERIFICATION.md written — phase code-complete pending operator-gated verification.
+- Next action: Phase 6 (Recording v2 — audio/region/chrome-hiding/multi-browser) OR complete operator-gated verification items across phases 1–5.
+- Files touched this session: `.planning/STATE.md`, `.planning/ROADMAP.md`, phase 05 directory (3 SUMMARYs + VERIFICATION), `crates/capture/**`, `crates/automation/**`, `apps/desktop/**`, `scripts/playwright-sidecar/**`, `tools/e2e-playwright-capture/**`, `.github/workflows/capture-windows.yml`.
 
 ---
-*State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15*
+*State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17*
