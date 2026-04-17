@@ -156,7 +156,7 @@ v2 items (ADV-01..08) tracked in REQUIREMENTS.md under v2 Requirements; out of s
 Plans:
 - [x] 05-01-PLAN.md — macOS SCK streaming + window/display picker UI + xcap fallback + 2nd-failure modal + sticky target persistence
 - [ ] 05-02-PLAN.md — Playwright auto-follow: browserProcess sidecar verb + pid→SCWindow bridge + UI auto-enable + E2E smoke binary
-- [ ] 05-03-PLAN.md — Windows WGC parity (windows-capture 2.0.0) + list_windows + pid→HWND + CI build gate
+- [x] 05-03-PLAN.md — Windows WGC parity (windows-capture 2.0.0) + list_windows + pid→HWND + CI build gate
 
 ### Phase 6: Recording v2 — audio, region capture, chrome-hiding, multi-browser auto-follow, live preview
 

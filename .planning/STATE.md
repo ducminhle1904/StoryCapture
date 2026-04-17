@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-04-17T09:32:42.310Z"
+status: executing
+last_updated: "2026-04-17T09:52:49.273Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 59
-  completed_plans: 54
-  percent: 92
+  completed_plans: 55
+  percent: 93
 ---
 
 # State: StoryCapture
@@ -76,6 +76,8 @@ See PROJECT.md → Key Decisions. Highlights:
 - Dry-Run reuses Phase 1 BrowserDriver without capture pipeline — fastest possible iteration loop
 - All LLM/TTS keys stored in OS keychain via tauri-plugin-keyring; never in SQLite or plaintext
 - [Phase 05]: Plan 05-01: real SCK streaming for display+window + grouped Target picker + silent xcap fallback; capture_target persists to app_settings.json
+- [Phase 05]: Plan 05-03: Chromium parent/child resolution via ToolHelp snapshot walk restricted to chrome.exe/msedge.exe/chromium.exe process names (T-05-03-07)
+- [Phase 05]: Plan 05-03: PTS clock source set to ClockSource::Synthetic on WGC path (QPC plumbing deferred to encoder-coordinated follow-up)
 
 ### Open Todos
 
