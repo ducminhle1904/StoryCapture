@@ -37,11 +37,9 @@ import { toast } from "sonner";
 
 import {
   checkScreenCapturePermission,
-  listDisplays,
   openScreenCapturePrefs,
   relaunchApp,
   requestScreenCaptureAccess,
-  type DisplayInfo,
   type PermissionState,
 } from "@/ipc/capture";
 import { TargetPicker } from "@/features/capture/TargetPicker";
@@ -131,14 +129,20 @@ export function RecordingView({
 
   const reduceMotion = useReducedMotion();
   const [permission, setPermission] = useState<PermissionState>("undetermined");
-  const [displays, setDisplays] = useState<DisplayInfo[]>([]);
-  const [selectedDisplay, setSelectedDisplay] = useState<number | null>(null);
   const [tccOpen, setTccOpen] = useState(false);
   const [showCursor, setShowCursor] = useState(true);
   const [useCountdown, setUseCountdown] = useState(true);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
   const startedAtRef = useRef<number | null>(null);
+
+  const displays = availableTargets?.displays ?? [];
+  const selectedDisplay: number | null =
+    captureTarget?.kind === "display"
+      ? typeof captureTarget.display_id === "bigint"
+        ? Number(captureTarget.display_id)
+        : captureTarget.display_id
+      : null;
 
   const currentStepEntry =
     steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
@@ -171,24 +175,9 @@ export function RecordingView({
         // bypass) is less intrusive.
         if (perm === "granted") {
           try {
-            const list = await listDisplays();
-            setDisplays(list);
-            if (list.length > 0) {
-              const first = list[0].id;
-              setSelectedDisplay(
-                typeof first === "bigint" ? Number(first) : first,
-              );
-            }
-          } catch (e) {
-            setError(`listDisplays failed: ${formatIpcError(e)}`);
-          }
-          // Plan 05-01 — load capture targets + persisted selection.
-          try {
             await loadCaptureTargets();
           } catch (e) {
-            // Non-fatal; UI falls back to the legacy Display dropdown.
-            // eslint-disable-next-line no-console
-            console.warn("loadCaptureTargets failed:", e);
+            setError(`loadCaptureTargets failed: ${formatIpcError(e)}`);
           }
         }
       } catch (e) {
@@ -468,13 +457,10 @@ export function RecordingView({
             const next = await checkScreenCapturePermission();
             setPermission(next);
             if (next === "granted") {
-              const list = await listDisplays();
-              setDisplays(list);
-              if (list.length > 0) {
-                const first = list[0].id;
-                setSelectedDisplay(
-                  typeof first === "bigint" ? Number(first) : first,
-                );
+              try {
+                await loadCaptureTargets();
+              } catch (e) {
+                toast.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
               }
               toast.success("Screen recording permission granted");
             } else {
@@ -494,17 +480,10 @@ export function RecordingView({
             setPermission("granted");
             setTccOpen(false);
             try {
-              const list = await listDisplays();
-              setDisplays(list);
-              if (list.length > 0) {
-                const first = list[0].id;
-                setSelectedDisplay(
-                  typeof first === "bigint" ? Number(first) : first,
-                );
-              }
+              await loadCaptureTargets();
               toast.success("Permission check bypassed");
             } catch (e) {
-              toast.error(`Could not list displays: ${formatIpcError(e)}`);
+              toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
             }
           }}
         />
@@ -617,16 +596,6 @@ export function RecordingView({
               value={captureTarget}
               onValueChange={(t) => {
                 void setCaptureTarget(t);
-                // Bridge to the legacy Display picker — when the user
-                // selects a Display target, keep the encoder's old
-                // display_id path working.
-                if (t.kind === "display") {
-                  const id =
-                    typeof t.display_id === "bigint"
-                      ? Number(t.display_id)
-                      : t.display_id;
-                  setSelectedDisplay(id);
-                }
               }}
               onRefresh={() => loadCaptureTargets()}
               disabled={!canRecord || status !== "idle"}
