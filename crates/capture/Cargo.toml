@@ -17,6 +17,26 @@ tracing = { workspace = true }
 parking_lot = { workspace = true }
 xcap = "0.9"
 
+# Phase 6 plan 01 — mic audio capture.
+# cpal 0.17.3 is the current published line (2026-02-18). The 0.16→0.17
+# bump changed build_input_stream to take StreamConfig by value — see
+# Pattern 1 in 06-RESEARCH.md.
+# ringbuf 0.4.8 is the SPSC workaround for cpal#970 (no cross-thread
+# sends inside the cpal callback on Windows WASAPI).
+# rubato is pinned but currently unused — kept as a future SRC hook
+# per RESEARCH Out-of-scope note.
+cpal = "=0.17.3"
+ringbuf = "=0.4.8"
+rubato = "0.16"
+bytemuck = "1"
+# tempfile was a dev-dep before Phase 6; promoted to a runtime dep because
+# `audio::fifo::make_fifo` uses tempdir() to create the owner-only
+# parent directory for the mkfifo target (T-06-06 mitigation).
+tempfile = "3"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["fs"] }
+
 # Optional — pulled in only by the `real-capture` feature for the
 # 30-min memory soak (CAP-05). Default builds don't depend on sysinfo.
 sysinfo = { version = "0.32", optional = true }
@@ -55,6 +75,9 @@ windows = { version = "0.58", features = [
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_Foundation",
+    # Phase 6 plan 01 — audio named pipe factory (fifo.rs).
+    "Win32_System_Pipes",
+    "Win32_Storage_FileSystem",
 ] }
 
 [features]
@@ -66,8 +89,18 @@ real-capture = ["dep:sysinfo"]
 # requires a graphical Windows session + notepad.exe + Playwright sidecar.
 # Operator-triggered on a Windows VM (not in PR CI).
 real-capture-windows = []
+# Phase 06 plan 01 — synthetic 1 kHz sine wave injection for the
+# audio pipeline. Bypasses cpal's hardware enumeration so tests can run
+# on CI hosts without a mic, and makes fixture-driven unit tests
+# hardware-free.
+audio-mock = []
 
 [dev-dependencies]
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 serde_json = "1"
+# Plan 06-04 Windows E2E tests: encode captured frames via sibling FFmpeg
+# and probe the result with ffprobe. `which` resolves both binaries from
+# PATH on the operator machine or the self-hosted runner.
+anyhow = "1"
+which = "7"
