@@ -11,6 +11,14 @@ export interface StartRecordingArgs {
   width: number;
   height: number;
   fps: number;
+  /**
+   * Phase 6 plan 01 — optional mic device. `null` / undefined = no
+   * audio (silent track, Phase 1 behavior). `"default"` = host resolves
+   * the system default input device. Any other string is a cpal device
+   * name from `listAudioInputs`. Non-sticky per D-02 — the recorder
+   * resets this to null on mount and on recording complete.
+   */
+  audio_device_id?: string | null;
 }
 
 export interface RecordingSessionId {

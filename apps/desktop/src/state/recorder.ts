@@ -9,6 +9,7 @@ import {
   type CaptureTarget,
   type CaptureTargets,
 } from "@/ipc/capture";
+import type { AudioPickerValue } from "@/ipc/audio";
 
 export type RecorderStatus =
   | "idle"
@@ -73,6 +74,11 @@ interface RecorderState {
   captureTarget: CaptureTarget | null;
   availableTargets: CaptureTargets | null;
 
+  // Phase 6 plan 01 — mic audio selection (D-02 non-sticky).
+  // `null` = no audio (default every render). `"default"` = system
+  // default. Any other string is a cpal device name.
+  audioDeviceId: AudioPickerValue;
+
   setStatus: (s: RecorderStatus) => void;
   setSession: (id: string | null) => void;
   setSteps: (steps: StepProgress[]) => void;
@@ -90,6 +96,9 @@ interface RecorderState {
 
   // Plan 05-02 — Playwright auto-target actions.
   refreshPlaywrightAvailability: () => Promise<void>;
+
+  // Phase 6 plan 01 — mic audio setter (D-02 non-sticky).
+  setAudioDeviceId: (id: AudioPickerValue) => void;
 }
 
 const INITIAL: Omit<
@@ -107,6 +116,7 @@ const INITIAL: Omit<
   | "loadCaptureTargets"
   | "setCaptureTarget"
   | "refreshPlaywrightAvailability"
+  | "setAudioDeviceId"
 > = {
   status: "idle",
   sessionId: null,
@@ -119,6 +129,9 @@ const INITIAL: Omit<
   elapsedMs: 0,
   captureTarget: null,
   availableTargets: null,
+  // D-02 non-sticky — reset to null on every reset() call (covers mount
+  // and recording-complete).
+  audioDeviceId: null,
 };
 
 export const useRecorderStore = create<RecorderState>((set) => ({
@@ -150,6 +163,9 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   setOutputPath: (outputPath) => set({ outputPath }),
   setElapsed: (elapsedMs) => set({ elapsedMs }),
   reset: () => set({ ...INITIAL }),
+  // Phase 6 plan 01 — non-sticky selector. No persistence layer on
+  // purpose; D-02 wants every new recording to start with "No audio".
+  setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
 
   loadCaptureTargets: async () => {
     const [targets, persisted] = await Promise.all([

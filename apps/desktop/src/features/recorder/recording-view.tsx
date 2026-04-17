@@ -39,6 +39,7 @@ import {
 
 import { TccPrompt } from "./tcc-prompt";
 import { CursorTrail } from "./cursor-trail";
+import { AudioDevicePicker } from "./AudioDevicePicker";
 
 interface RecordingViewProps {
   projectId: string | null;
@@ -96,6 +97,8 @@ export function RecordingView({
     elapsedMs,
     captureTarget,
     availableTargets,
+    audioDeviceId,
+    setAudioDeviceId,
     setStatus,
     setSession,
     setSteps,
@@ -242,7 +245,13 @@ export function RecordingView({
   };
 
   const handleRecord = async () => {
-    if (permission !== "granted" || selectedDisplay == null) return;
+    if (permission !== "granted") return;
+    if (selectedDisplay == null) {
+      toast.error(
+        "Window-target recording (via Start Recording button) is not yet wired to the encoder. Switch the Target to a Display, or run a story to let Playwright-auto capture the Chromium window.",
+      );
+      return;
+    }
     setStatus("recording");
     startedAtRef.current = Date.now();
     // Encoder must be told the *actual* pixel dimensions xcap delivers.
@@ -263,6 +272,11 @@ export function RecordingView({
           width,
           height,
           fps: 30,
+          // Phase 6 plan 01: omit the field (undefined) when the user
+          // picked "No audio" so the host takes its Phase-1-compatible
+          // silent path. When "System default" is selected we pass
+          // "default" as a sentinel — the host resolves cpal's default.
+          audio_device_id: audioDeviceId ?? undefined,
         },
         (event) => dispatch(event),
       );
@@ -273,10 +287,17 @@ export function RecordingView({
 
       // Fire-and-forget: run the DSL against the browser driver in parallel
       // with the screen capture. Events update the step rail via dispatchAutomation.
+      // eslint-disable-next-line no-console
+      console.log("[recorder] invoking launchAutomation", {
+        storyBytes: storySource.length,
+        projectFolder,
+      });
       launchAutomation({ storySource, projectFolder }, (evt) =>
         dispatchAutomation(evt),
       ).catch((e) => {
         const msg = formatIpcError(e);
+        // eslint-disable-next-line no-console
+        console.error("[recorder] launchAutomation rejected", e);
         toast.error(`Automation failed: ${msg}`);
         setError(msg);
       });
@@ -353,7 +374,11 @@ export function RecordingView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, permission, selectedDisplay]);
 
-  const canRecord = permission === "granted" && selectedDisplay != null;
+  const canRecord = permission === "granted" && captureTarget != null;
+  // Separate flag for the display-only code path in `handleRecord` — window
+  // targets route through start_capture_target (Plan 05-01) and don't need
+  // a display_id up front.
+  const canRecordDisplay = canRecord && selectedDisplay != null;
   const permissionDenied = permission === "denied";
   const permissionPending = permission === "undetermined";
 
@@ -520,7 +545,7 @@ export function RecordingView({
 
             <div className="flex items-center gap-2">
               {status === "idle" && (
-                <RecordButton disabled={!canRecord} onClick={handleRecord} />
+                <RecordButton disabled={!canRecordDisplay} onClick={handleRecord} />
               )}
               {(status === "recording" || status === "paused") && (
                 <>
@@ -583,13 +608,40 @@ export function RecordingView({
                 void setCaptureTarget(t);
               }}
               onRefresh={() => loadCaptureTargets()}
-              disabled={!canRecord || status !== "idle"}
+              disabled={
+                !canRecord ||
+                status === "recording" ||
+                status === "paused" ||
+                status === "stopping"
+              }
             />
             {displayLabel && (
               <p className="mt-1.5 font-mono text-[10px] text-[var(--color-fg-muted)]">
                 {displayLabel}
               </p>
             )}
+          </SettingsGroup>
+
+          <SettingsGroup label="Microphone" icon={<SettingsIcon size={13} />}>
+            <label
+              htmlFor="audio-device-select"
+              className="mb-1.5 block text-xs text-[var(--color-fg-muted)]"
+            >
+              Audio input
+            </label>
+            <AudioDevicePicker
+              value={audioDeviceId}
+              onValueChange={setAudioDeviceId}
+              disabled={
+                status === "recording" ||
+                status === "paused" ||
+                status === "stopping"
+              }
+            />
+            <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
+              Default is off; choose "System default" to include voice-over.
+              Resets every recording.
+            </p>
           </SettingsGroup>
 
           <SettingsGroup label="Quality" icon={<SettingsIcon size={13} />}>
