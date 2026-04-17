@@ -353,9 +353,15 @@ impl CaptureBackend for WgcBackend {
             crop_rect,
         };
 
-        // Cursor-on per D-06. Color format BGRA8 so frame_from_wgc takes
-        // the fast path (no channel swap). Everything else at Default.
-        let cursor = CursorCaptureSettings::WithCursor;
+        // Plan 06-02 (D-19/D-20) — cursor is now a per-recording toggle
+        // plumbed through `cfg.include_cursor` (Phase 5 D-06 default =
+        // true). Color format BGRA8 so frame_from_wgc takes the fast
+        // path (no channel swap). Everything else at Default.
+        let cursor = if cfg.include_cursor {
+            CursorCaptureSettings::WithCursor
+        } else {
+            CursorCaptureSettings::WithoutCursor
+        };
         let border = DrawBorderSettings::Default;
         let secondary = SecondaryWindowSettings::Default;
         let min_interval = MinimumUpdateIntervalSettings::Default;
