@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useRecorderStore } from "@/state/recorder";
+import { getCursorPositions, useRecorderStore } from "@/state/recorder";
 
 /**
  * Live cursor trail visualization (UI-04).
@@ -11,7 +11,8 @@ import { useRecorderStore } from "@/state/recorder";
  * pointer events.
  */
 export function CursorTrail() {
-  const points = useRecorderStore((s) => s.cursorPositions);
+  const ring = useRecorderStore((s) => s.cursorPositions);
+  const points = useMemo(() => getCursorPositions(ring), [ring]);
 
   const polylinePoints = useMemo(
     () => points.map((p) => `${p.x},${p.y}`).join(" "),

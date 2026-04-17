@@ -31,12 +31,39 @@ export interface StepProgress {
   verb: string;
 }
 
+/** Fixed-capacity ring of cursor points. `buffer` slots are reused in
+ *  place; `head` is the next write index modulo MAX; `size` is the count
+ *  of valid entries (capped at MAX once the ring wraps). */
+export interface CursorRing {
+  buffer: CursorPoint[];
+  head: number;
+  size: number;
+}
+
+const CURSOR_RING_MAX = 120;
+
+function emptyCursorRing(): CursorRing {
+  return { buffer: new Array<CursorPoint>(CURSOR_RING_MAX), head: 0, size: 0 };
+}
+
+/** Selector helper: chronological snapshot of a CursorRing. */
+export function getCursorPositions(ring: CursorRing): CursorPoint[] {
+  if (ring.size === 0) return [];
+  const max = ring.buffer.length;
+  const start = ring.size < max ? 0 : ring.head;
+  const out: CursorPoint[] = [];
+  for (let i = 0; i < ring.size; i++) {
+    out.push(ring.buffer[(start + i) % max]);
+  }
+  return out;
+}
+
 interface RecorderState {
   status: RecorderStatus;
   sessionId: string | null;
   currentStep: number;
   totalSteps: number;
-  cursorPositions: CursorPoint[];
+  cursorPositions: CursorRing;
   steps: StepProgress[];
   error: string | null;
   outputPath: string | null;
@@ -85,7 +112,7 @@ const INITIAL: Omit<
   sessionId: null,
   currentStep: 0,
   totalSteps: 0,
-  cursorPositions: [],
+  cursorPositions: emptyCursorRing(),
   steps: [],
   error: null,
   outputPath: null,
@@ -105,11 +132,20 @@ export const useRecorderStore = create<RecorderState>((set) => ({
       return { steps, currentStep: Math.max(s.currentStep, index) };
     }),
   pushCursor: (p) =>
-    set((s) => ({
-      // Keep last 120 points (~2s at 60Hz) to bound SVG render cost.
-      cursorPositions: [...s.cursorPositions.slice(-119), p],
-    })),
-  clearCursor: () => set({ cursorPositions: [] }),
+    set((s) => {
+      // In-place ring write; returning a new outer object is what zustand
+      // needs to notify subscribers. The buffer array is reused.
+      const max = s.cursorPositions.buffer.length;
+      s.cursorPositions.buffer[s.cursorPositions.head] = p;
+      return {
+        cursorPositions: {
+          buffer: s.cursorPositions.buffer,
+          head: (s.cursorPositions.head + 1) % max,
+          size: Math.min(s.cursorPositions.size + 1, max),
+        },
+      };
+    }),
+  clearCursor: () => set({ cursorPositions: emptyCursorRing() }),
   setError: (error) => set({ error }),
   setOutputPath: (outputPath) => set({ outputPath }),
   setElapsed: (elapsedMs) => set({ elapsedMs }),
