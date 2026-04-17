@@ -8,25 +8,10 @@
 //! them.
 
 use crate::error::CaptureError;
-use serde::{Deserialize, Serialize};
+pub use crate::window::WindowInfo;
 
 #[cfg(target_os = "macos")]
 use screencapturekit::shareable_content::SCShareableContent;
-
-/// Lightweight window info — what the UI needs to render the picker.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowInfo {
-    pub window_id: u32,
-    pub title: Option<String>,
-    pub app_name: String,
-    pub pid: i32,
-    pub bundle_id: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub is_on_screen: bool,
-}
 
 /// Enumerate every capturable on-screen window.
 ///
@@ -71,7 +56,7 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
             "enumerated window"
         );
         out.push(WindowInfo {
-            window_id: w.window_id(),
+            window_id: u64::from(w.window_id()),
             title: w.title(),
             app_name: app.application_name(),
             pid,

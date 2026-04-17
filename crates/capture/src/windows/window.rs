@@ -22,28 +22,7 @@
 //!   unrelated browser-child helper as the capture target.
 
 use crate::error::CaptureError;
-use serde::{Deserialize, Serialize};
-
-/// Lightweight window info — shape matches the macOS `WindowInfo` so the
-/// UI picker code (Plan 05-01) works unchanged on both platforms.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowInfo {
-    /// Platform-scoped window id. On Windows this is the HWND reinterpreted
-    /// as `u64` (via `isize as u64`). The backend unpacks it the same way
-    /// in `WgcBackend::start`.
-    pub window_id: u64,
-    pub title: Option<String>,
-    pub app_name: String,
-    pub pid: i32,
-    /// Windows does not expose a "bundle id"; we stuff the process name
-    /// (e.g. `"chrome.exe"`) in here for the UI's grouping logic.
-    pub bundle_id: String,
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub is_on_screen: bool,
-}
+pub use crate::window::WindowInfo;
 
 /// Enumerate every capturable top-level window.
 ///

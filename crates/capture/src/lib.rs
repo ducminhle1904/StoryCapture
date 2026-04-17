@@ -24,6 +24,7 @@ mod orchestrator;
 mod pipeline;
 mod queue;
 mod target;
+mod window;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -41,6 +42,7 @@ pub use pipeline::CapturePipeline;
 pub use queue::{ByteBoundedQueue, DroppedFrame, QueueStats};
 pub use orchestrator::{orchestrate_start, FallbackCounter, OrchestratedStart};
 pub use target::{CaptureTarget, WindowId};
+pub use window::WindowInfo;
 
 #[cfg(target_os = "macos")]
 pub use macos::SckBackend;

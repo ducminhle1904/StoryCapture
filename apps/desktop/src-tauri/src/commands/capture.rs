@@ -447,79 +447,43 @@ fn window_allow_list() -> &'static WindowAllowList {
 #[tauri::command]
 #[specta::specta]
 pub async fn list_windows() -> Result<Vec<WindowInfoDto>, AppError> {
+    // Enumeration is synchronous on both platforms (SCShareableContent / EnumChildWindows),
+    // so both paths run in spawn_blocking (Pitfall 7).
     #[cfg(target_os = "macos")]
-    {
-        // SCShareableContent::get blocks; run in spawn_blocking (Pitfall 7).
-        let infos = tokio::task::spawn_blocking(capture::macos::window::list_windows)
-            .await
-            .map_err(|e| AppError::Capture(format!("join: {e}")))?
-            .map_err(|e| AppError::Capture(e.to_string()))?;
-
-        // Update allow-list for subsequent start_capture_target validation.
-        {
-            let mut ids = window_allow_list().ids.lock();
-            ids.clear();
-            for w in &infos {
-                ids.insert(u64::from(w.window_id));
-            }
-        }
-
-        Ok(infos
-            .into_iter()
-            .map(|w| WindowInfoDto {
-                window_id: u64::from(w.window_id),
-                title: w.title,
-                app_name: w.app_name,
-                pid: w.pid,
-                bundle_id: w.bundle_id,
-                x: w.x,
-                y: w.y,
-                width: w.width,
-                height: w.height,
-                is_on_screen: w.is_on_screen,
-            })
-            .collect())
-    }
+    let infos = tokio::task::spawn_blocking(capture::macos::window::list_windows)
+        .await
+        .map_err(|e| AppError::Capture(format!("join: {e}")))?
+        .map_err(|e| AppError::Capture(e.to_string()))?;
     #[cfg(target_os = "windows")]
-    {
-        // EnumChildWindows is synchronous; run in spawn_blocking so we
-        // don't stall the async runtime (parity with macOS SCShareableContent).
-        // Plan 05-03 Task 2.
-        let infos = tokio::task::spawn_blocking(capture::windows::window::list_windows)
-            .await
-            .map_err(|e| AppError::Capture(format!("join: {e}")))?
-            .map_err(|e| AppError::Capture(e.to_string()))?;
-
-        // Update allow-list for subsequent start_capture_target validation
-        // (T-05-03-01, parity with macOS T-05-01-01).
-        {
-            let mut ids = window_allow_list().ids.lock();
-            ids.clear();
-            for w in &infos {
-                ids.insert(w.window_id);
-            }
-        }
-
-        Ok(infos
-            .into_iter()
-            .map(|w| WindowInfoDto {
-                window_id: w.window_id,
-                title: w.title,
-                app_name: w.app_name,
-                pid: w.pid,
-                bundle_id: w.bundle_id,
-                x: w.x,
-                y: w.y,
-                width: w.width,
-                height: w.height,
-                is_on_screen: w.is_on_screen,
-            })
-            .collect())
-    }
+    let infos = tokio::task::spawn_blocking(capture::windows::window::list_windows)
+        .await
+        .map_err(|e| AppError::Capture(format!("join: {e}")))?
+        .map_err(|e| AppError::Capture(e.to_string()))?;
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let infos: Vec<capture::WindowInfo> = Vec::new();
+
     {
-        Ok(Vec::new())
+        let mut ids = window_allow_list().ids.lock();
+        ids.clear();
+        for w in &infos {
+            ids.insert(w.window_id);
+        }
     }
+    Ok(infos
+        .into_iter()
+        .map(|w| WindowInfoDto {
+            window_id: w.window_id,
+            title: w.title,
+            app_name: w.app_name,
+            pid: w.pid,
+            bundle_id: w.bundle_id,
+            x: w.x,
+            y: w.y,
+            width: w.width,
+            height: w.height,
+            is_on_screen: w.is_on_screen,
+        })
+        .collect())
 }
 
 #[tauri::command]
