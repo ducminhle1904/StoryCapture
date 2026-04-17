@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
+import { listen } from "@tauri-apps/api/event";
 
 import {
   checkScreenCapturePermission,
@@ -198,6 +199,31 @@ export function RecordingView({
       cancelled = true;
     };
   }, [setSteps, storySource]);
+
+  // Phase 6 plan 01 Task 6 — surface non-fatal mic degradation events.
+  // The host polls AudioCaptureStream::degraded every 500ms during a
+  // recording and emits `audio://disconnected` when the cpal err_cb
+  // flag flips (mic unplug / driver reset). Video pipeline is left
+  // alone; we just toast the user.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<string>("audio://disconnected", (event) => {
+      const msg =
+        typeof event.payload === "string"
+          ? event.payload
+          : "Microphone disconnected — continuing video-only.";
+      toast.warning(msg);
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   // Elapsed timer.
   useEffect(() => {

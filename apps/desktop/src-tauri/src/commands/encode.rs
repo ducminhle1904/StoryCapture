@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::mpsc;
@@ -461,6 +461,7 @@ pub async fn start_recording(
     // return immediately instead of blocking (Pitfall 8). If the wait
     // is too short the drain thread just blocks until FFmpeg catches up
     // — not fatal, just delayed startup.
+    let app_for_audio_event = app.clone();
     let audio_stream: Option<AudioCaptureStream> = if let Some(f) = &audio_fifo {
         let fifo_path = f.path().to_path_buf();
         let device_id = args.audio_device_id.clone();
@@ -480,6 +481,29 @@ pub async fn start_recording(
                     channels = info.channels,
                     "mic audio capture started"
                 );
+                // Phase 6 plan 01 Task 6 — poll the cpal err_cb flag
+                // every 500 ms; on flip, emit `audio://disconnected` so
+                // the renderer can toast a non-fatal warning. Video
+                // pipeline is untouched (cf. D-01 graceful degradation).
+                let flag = stream.degraded_flag();
+                tokio::spawn(async move {
+                    let mut ticker =
+                        tokio::time::interval(std::time::Duration::from_millis(500));
+                    loop {
+                        ticker.tick().await;
+                        if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                            tracing::warn!(
+                                target: "storycapture::recording",
+                                "audio stream degraded; emitting audio://disconnected"
+                            );
+                            let _ = app_for_audio_event.emit(
+                                "audio://disconnected",
+                                "Microphone disconnected — continuing without audio.",
+                            );
+                            break;
+                        }
+                    }
+                });
                 Some(stream)
             }
             Ok(Err(e)) => {

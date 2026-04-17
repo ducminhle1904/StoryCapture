@@ -224,6 +224,14 @@ impl AudioCaptureStream {
         self.degraded.load(Ordering::Relaxed)
     }
 
+    /// Shared handle on the degraded flag. Cloned into a tokio polling
+    /// task so the host can emit a Tauri event without holding the
+    /// AudioCaptureStream itself (which is !Sync because of cpal
+    /// internals on some platforms).
+    pub fn degraded_flag(&self) -> Arc<AtomicBool> {
+        self.degraded.clone()
+    }
+
     pub fn info(&self) -> AudioStreamInfo {
         self.info
     }
