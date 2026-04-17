@@ -19,8 +19,8 @@ use tauri_specta::{collect_commands, Builder};
 use crate::{
     commands::{
         app_settings, audio, automation, capture, dryrun, encode, export, keys, lsp, nl, parse,
-        preset, projects, render, sound_library, system, timeline, tts, updater, upload,
-        web_account, web_sync,
+        preset, projects, region_overlay, render, sound_library, system, timeline, tts, updater,
+        upload, web_account, web_sync,
     },
     error::AppError,
 };
@@ -63,6 +63,9 @@ pub fn builder() -> Builder<Wry> {
             capture::stop_capture,
             capture::get_capture_target,
             capture::set_capture_target,
+            // Plan 06-02 — region selection overlay.
+            region_overlay::open_region_overlay,
+            region_overlay::close_region_overlay,
             encode::probe_hw_encoders,
             encode::start_recording,
             encode::stop_recording,

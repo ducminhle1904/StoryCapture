@@ -37,6 +37,13 @@ interface TargetPickerProps {
   onValueChange: (target: CaptureTarget) => void;
   onRefresh: () => void | Promise<void>;
   disabled?: boolean;
+  /**
+   * Plan 06-02 — invoked when the user clicks "Crop to region…". Only
+   * shown when a Display target is selected (NOT for window or Playwright
+   * auto). `displayId` is the selected display's id in the number space
+   * expected by `open_region_overlay`.
+   */
+  onOpenRegion?: (displayId: number) => void | Promise<void>;
 }
 
 /** Truncate titles to 60 chars, dedupe (app, title) repeats with " (2)". */
@@ -78,6 +85,7 @@ export function TargetPicker({
   onValueChange,
   onRefresh,
   disabled = false,
+  onOpenRegion,
 }: TargetPickerProps) {
   const [refreshing, setRefreshing] = useState(false);
 
@@ -256,6 +264,26 @@ export function TargetPicker({
           className={refreshing ? "animate-spin" : undefined}
         />
       </button>
+
+      {/* Plan 06-02 — only shown when a Display target is selected.
+          Window/PlaywrightAuto targets have no region concept. */}
+      {onOpenRegion && value?.kind === "display" && !disabled && (
+        <button
+          type="button"
+          onClick={() => {
+            const id =
+              typeof value.display_id === "bigint"
+                ? Number(value.display_id)
+                : value.display_id;
+            void onOpenRegion(id);
+          }}
+          aria-label="Crop capture to region"
+          title="Crop to region…"
+          className="text-[11px] text-[var(--color-accent-primary)] underline underline-offset-2 hover:brightness-125"
+        >
+          Crop to region…
+        </button>
+      )}
     </div>
   );
 }

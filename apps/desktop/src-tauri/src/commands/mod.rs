@@ -18,6 +18,8 @@ pub mod nl;
 pub mod parse;
 pub mod preset;
 pub mod projects;
+// Plan 06-02 — region-selection overlay window + IPC commands.
+pub mod region_overlay;
 pub mod render;
 pub mod sound_library;
 pub mod system;

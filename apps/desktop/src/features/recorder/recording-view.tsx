@@ -18,10 +18,12 @@ import { listen } from "@tauri-apps/api/event";
 
 import {
   checkScreenCapturePermission,
+  openRegionOverlay,
   openScreenCapturePrefs,
   relaunchApp,
   requestScreenCaptureAccess,
   type PermissionState,
+  type RegionSelectedPayload,
 } from "@/ipc/capture";
 import { TargetPicker } from "@/features/capture/TargetPicker";
 import {
@@ -129,7 +131,11 @@ export function RecordingView({
       ? typeof captureTarget.display_id === "bigint"
         ? Number(captureTarget.display_id)
         : captureTarget.display_id
-      : null;
+      : captureTarget?.kind === "display_region"
+        ? typeof captureTarget.display_id === "bigint"
+          ? Number(captureTarget.display_id)
+          : captureTarget.display_id
+        : null;
 
   const currentStepEntry =
     steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
@@ -199,6 +205,40 @@ export function RecordingView({
       cancelled = true;
     };
   }, [setSteps, storySource]);
+
+  // Plan 06-02 — listen for region-selection events emitted by the
+  // transparent overlay window. On confirm, promote the captureTarget
+  // to a DisplayRegion variant; on cancel, leave the target untouched.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<RegionSelectedPayload>("region://selected", (event) => {
+      const payload = event.payload;
+      if ("cancelled" in payload && payload.cancelled) return;
+      if (!("x" in payload)) return;
+      void setCaptureTarget({
+        kind: "display_region",
+        display_id: payload.display_id,
+        rect: {
+          x: payload.x,
+          y: payload.y,
+          w: payload.w,
+          h: payload.h,
+        },
+      });
+      toast.success(
+        `Region set: ${Math.round(payload.w)}×${Math.round(payload.h)} on display ${payload.display_id}`,
+      );
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [setCaptureTarget]);
 
   // Phase 6 plan 01 Task 6 — surface non-fatal mic degradation events.
   // The host polls AudioCaptureStream::degraded every 500ms during a
@@ -634,6 +674,7 @@ export function RecordingView({
                 void setCaptureTarget(t);
               }}
               onRefresh={() => loadCaptureTargets()}
+              onOpenRegion={(id) => openRegionOverlay(id)}
               disabled={
                 !canRecord ||
                 status === "recording" ||

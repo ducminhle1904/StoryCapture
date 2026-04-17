@@ -162,3 +162,27 @@ export interface ResolvedPlaywrightTarget {
 export function resolvePlaywrightTarget(): Promise<ResolvedPlaywrightTarget | null> {
   return invoke<ResolvedPlaywrightTarget | null>("resolve_playwright_target");
 }
+
+// ─── Plan 06-02 — Region selection overlay ────────────────────────────
+
+/** Open the transparent, fullscreen, always-on-top region-selection
+ *  overlay on the requested display. The overlay emits a `region://selected`
+ *  Tauri event on confirm/cancel (see {@link RegionSelectedPayload}). */
+export function openRegionOverlay(displayId: number | bigint): Promise<void> {
+  return invoke<void>("open_region_overlay", { displayId: Number(displayId) });
+}
+
+export function closeRegionOverlay(): Promise<void> {
+  return invoke<void>("close_region_overlay");
+}
+
+export type RegionSelectedPayload =
+  | {
+      display_id: number;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      cancelled?: false;
+    }
+  | { cancelled: true };
