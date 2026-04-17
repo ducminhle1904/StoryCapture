@@ -21,6 +21,23 @@
 //! is a pipe of bytes. Phase 1 accepts the CPU copy cost (documented in
 //! the plan); Plan 11 or Phase 2 will optimize by linking against
 //! VideoToolbox/NVENC directly. For now we copy via `bgra_bytes_of_frame`.
+//!
+//! ## Audio pipeline start order (Phase 6 plan 01)
+//!
+//! When `EncodeConfig::audio_input` is `Some`, the host MUST start
+//! components in this exact order (RESEARCH Pitfall 8):
+//!
+//!   1. `capture::audio::make_fifo(name_hint)` — creates the named pipe.
+//!   2. `EncodePipeline::start(cfg, ...)` — spawns FFmpeg with the fifo
+//!      path in its arg vec. FFmpeg opens the fifo for read.
+//!   3. `AudioCaptureStream::start(device_id, fifo_path)` — the drain
+//!      thread opens the fifo for write, which blocks until step 2's
+//!      reader connects. If this step runs BEFORE step 2, the drain
+//!      thread blocks forever on the POSIX fifo open.
+//!
+//! Shutdown order is reversed: drop `AudioCaptureStream` BEFORE closing
+//! FFmpeg stdin so the audio tail flushes cleanly while FFmpeg is still
+//! consuming the fifo.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};

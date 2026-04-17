@@ -25,7 +25,7 @@ pub mod progress;
 pub mod queue;
 mod sidecar;
 
-pub use config::EncodeConfig;
+pub use config::{AudioFormat, AudioInput, EncodeConfig};
 pub use error::{EncoderError, Result};
 pub use pipeline::{bgra_bytes_of_frame, EncodePipeline, EncodeResult, SHUTDOWN_TIMEOUT};
 pub use pool::{PoolConfig, SidecarHandle, SidecarPermit, SidecarPool};
