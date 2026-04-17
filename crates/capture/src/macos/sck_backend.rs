@@ -160,8 +160,8 @@ impl SckBackend {
                     .find(|d| d.display_id() as u64 == display_id.0)
                     .or_else(|| displays.first())
                     .ok_or_else(|| CaptureError::Native("no SCDisplay available".into()))?;
-                let width = disp.width() as u32;
-                let height = disp.height() as u32;
+                let width = disp.width();
+                let height = disp.height();
                 // NEVER pass empty excluding_windows (Pitfall 2) — the
                 // builder default takes care of it when we don't call
                 // `with_excluding_windows`.

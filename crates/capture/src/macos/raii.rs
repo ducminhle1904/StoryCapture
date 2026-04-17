@@ -30,7 +30,10 @@ impl CVPixelBufferHandle {
     /// Take ownership of an unretained pointer. `CFRetain` is called so
     /// the wrapper holds an independent retain count.
     ///
-    /// SAFETY: `ptr` must be a valid `CVPixelBufferRef` (or null).
+    /// # Safety
+    /// `ptr` must be either null or a valid `CVPixelBufferRef` with at
+    /// least one outstanding retain held by the caller for the duration
+    /// of this call.
     pub unsafe fn retain(ptr: *mut c_void) -> Option<Self> {
         if ptr.is_null() {
             None

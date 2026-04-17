@@ -289,7 +289,20 @@ pub async fn resolve_playwright_target(
             pid,
         }))
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        let hwnd = capture::windows::window::find_window_by_pid(pid, None)
+            .await
+            .map_err(|e| AppError::Capture(e.to_string()))?;
+        let Some(hwnd) = hwnd else {
+            return Ok(None);
+        };
+        Ok(Some(ResolvedPlaywrightTarget {
+            window_id: hwnd as u64,
+            pid,
+        }))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = pid;
         Ok(None)
