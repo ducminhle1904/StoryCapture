@@ -10,12 +10,38 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
     /// Absolute path to a Chromium-family browser executable. When unset,
     /// chromiumoxide auto-detects Google Chrome on the default install path.
     pub browser_executable: Option<String>,
+    /// Last-chosen capture target for stickiness (Plan 05-01, D-01).
+    /// First-run default: None → UI translates to "Playwright auto" greyed
+    /// out until a story launches.
+    ///
+    /// Note: not exposed via specta::Type — the full `CaptureTarget` type
+    /// lives in the `capture` crate and flows over IPC separately via
+    /// get_capture_target / set_capture_target in commands/capture.rs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capture_target: Option<capture::CaptureTarget>,
+}
+
+// Specta-visible DTO exposed to the frontend — mirrors the persisted
+// fields that the frontend cares about (the capture_target is exposed
+// through dedicated get/set commands).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct AppSettingsDto {
+    pub browser_executable: Option<String>,
+}
+
+impl From<&AppSettings> for AppSettingsDto {
+    fn from(s: &AppSettings) -> Self {
+        Self {
+            browser_executable: s.browser_executable.clone(),
+        }
+    }
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, AppError> {
@@ -33,7 +59,7 @@ pub fn load(app: &AppHandle) -> AppSettings {
     serde_json::from_slice(&bytes).unwrap_or_default()
 }
 
-fn save(app: &AppHandle, settings: &AppSettings) -> Result<(), AppError> {
+pub fn save(app: &AppHandle, settings: &AppSettings) -> Result<(), AppError> {
     let path = settings_path(app)?;
     let bytes = serde_json::to_vec_pretty(settings)
         .map_err(|e| AppError::Internal(format!("serialize settings: {e}")))?;
@@ -43,8 +69,8 @@ fn save(app: &AppHandle, settings: &AppSettings) -> Result<(), AppError> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_app_settings(app: AppHandle) -> Result<AppSettings, AppError> {
-    Ok(load(&app))
+pub async fn get_app_settings(app: AppHandle) -> Result<AppSettingsDto, AppError> {
+    Ok((&load(&app)).into())
 }
 
 #[tauri::command]
@@ -52,9 +78,9 @@ pub async fn get_app_settings(app: AppHandle) -> Result<AppSettings, AppError> {
 pub async fn set_browser_executable(
     app: AppHandle,
     path: Option<String>,
-) -> Result<AppSettings, AppError> {
+) -> Result<AppSettingsDto, AppError> {
     let mut s = load(&app);
     s.browser_executable = path.filter(|p| !p.is_empty());
     save(&app, &s)?;
-    Ok(s)
+    Ok((&s).into())
 }

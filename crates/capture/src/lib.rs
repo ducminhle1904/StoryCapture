@@ -20,6 +20,7 @@ mod error;
 mod events;
 mod fallback;
 mod frame;
+mod orchestrator;
 mod pipeline;
 mod queue;
 mod target;
@@ -38,6 +39,7 @@ pub use fallback::XcapBackend;
 pub use frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
 pub use pipeline::CapturePipeline;
 pub use queue::{ByteBoundedQueue, DroppedFrame, QueueStats};
+pub use orchestrator::{orchestrate_start, FallbackCounter, OrchestratedStart};
 pub use target::{CaptureTarget, WindowId};
 
 #[cfg(target_os = "macos")]

@@ -49,12 +49,17 @@ pub fn builder() -> Builder<Wry> {
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
             capture::list_displays,
+            capture::list_windows,
+            capture::list_capture_targets,
             capture::check_screen_capture_permission,
             capture::open_screen_capture_prefs,
             capture::request_screen_capture_access,
             capture::relaunch_app,
             capture::start_capture,
+            capture::start_capture_target,
             capture::stop_capture,
+            capture::get_capture_target,
+            capture::set_capture_target,
             encode::probe_hw_encoders,
             encode::start_recording,
             encode::stop_recording,
@@ -121,10 +126,14 @@ pub fn builder() -> Builder<Wry> {
             web_sync::get_sync_status,
         ])
         .typ::<AppError>()
-        .typ::<app_settings::AppSettings>()
+        .typ::<app_settings::AppSettingsDto>()
         .typ::<system::AppInfo>()
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<capture::DisplayInfoDto>()
+        .typ::<capture::WindowInfoDto>()
+        .typ::<capture::CaptureTargetDto>()
+        .typ::<capture::CaptureTargetsDto>()
+        .typ::<capture::StartCaptureTargetArgs>()
         .typ::<capture::PermissionState>()
         .typ::<capture::CaptureConfigDto>()
         .typ::<capture::CaptureStatsDto>()
