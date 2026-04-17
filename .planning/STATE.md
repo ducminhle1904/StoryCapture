@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-04-17T09:10:14.459Z"
+status: verifying
+last_updated: "2026-04-17T09:32:42.310Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 59
-  completed_plans: 53
-  percent: 90
+  completed_plans: 54
+  percent: 92
 ---
 
 # State: StoryCapture
@@ -25,13 +25,13 @@ progress:
 ## Current Position
 
 Phase: 05 (window-targeted-screen-capture-with-playwright-auto-follow) — EXECUTING
-Plan: 1 of 3
+Plan: 2 of 3
 
 - **Milestone:** v1
-- **Phase:** 4 — Web Companion & Sharing
-- **Plan:** 10 of 10 (all code committed; 04-10 paused at human-verify checkpoint for landing page + integration walkthrough)
+- **Phase:** 5 — Window-targeted screen capture with Playwright auto-follow
+- **Plan:** 1 of 3 complete (05-01 code-committed; human-verify checkpoint auto-approved under workflow.auto_advance=true)
 - **Status:** Executing Phase 05
-- **Progress:** `[██████████] 56/56 plans (Phase 1: 11/11, Phase 2: 14/14, Phase 3: 21/21, Phase 4: 10/10 — all code-complete)`
+- **Progress:** [█████████░] 92%
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ See PROJECT.md → Key Decisions. Highlights:
 - LSP bridged to CodeMirror 6 via Tauri IPC (not stdio) to avoid shell escaping issues in packaged app
 - Dry-Run reuses Phase 1 BrowserDriver without capture pipeline — fastest possible iteration loop
 - All LLM/TTS keys stored in OS keychain via tauri-plugin-keyring; never in SQLite or plaintext
+- [Phase 05]: Plan 05-01: real SCK streaming for display+window + grouped Target picker + silent xcap fallback; capture_target persists to app_settings.json
 
 ### Open Todos
 
