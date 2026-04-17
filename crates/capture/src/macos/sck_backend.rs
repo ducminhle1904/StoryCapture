@@ -151,7 +151,7 @@ impl SckBackend {
     /// for `DisplayRegion` targets, otherwise `None`. Callers applying it
     /// to `SCStreamConfiguration::with_source_rect` get kernel-side crop
     /// (no overcapture — T-06-12).
-    fn build_filter(
+    pub(crate) fn build_filter(
         target: &CaptureTarget,
     ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>), CaptureError> {
         match target {

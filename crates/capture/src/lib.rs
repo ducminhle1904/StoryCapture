@@ -25,6 +25,7 @@ mod orchestrator;
 mod pipeline;
 mod queue;
 mod target;
+pub mod thumbnail;
 mod window;
 
 #[cfg(target_os = "macos")]

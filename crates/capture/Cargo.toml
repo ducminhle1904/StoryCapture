@@ -16,6 +16,11 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 parking_lot = { workspace = true }
 xcap = "0.9"
+# Plan 06-03 Task 1 — PNG encoding for the `capture_thumbnail` API
+# (SCScreenshotManager rgba_data → PNG bytes). Only default-features
+# off + "png" keeps the bloat under 200 KB. Already transitively pulled
+# in by xcap 0.9, so we just surface it.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Phase 6 plan 01 — mic audio capture.
 # cpal 0.17.3 is the current published line (2026-02-18). The 0.16→0.17
