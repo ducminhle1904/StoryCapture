@@ -62,9 +62,11 @@ pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Vec<u8>, usize)> {
     match &frame.data {
         FrameData::Owned(bytes, stride) => Ok((bytes.clone(), *stride)),
         #[cfg(target_os = "macos")]
-        FrameData::NativeMacOS(_) => Err(EncoderError::InvalidConfig(
-            "native CVPixelBuffer input requires CPU copy helper (Plan 11); pipeline expects FrameData::Owned from the capture crate's public pipeline path".into(),
-        )),
+        FrameData::NativeMacOS(handle) => handle.to_owned_bgra().map_err(|rc| {
+            EncoderError::InvalidConfig(format!(
+                "CVPixelBufferLockBaseAddress failed (CVReturn {rc})"
+            ))
+        }),
         #[cfg(target_os = "windows")]
         FrameData::NativeWindows(_) => Err(EncoderError::InvalidConfig(
             "native D3D texture input requires CPU copy helper (Plan 11); pipeline expects FrameData::Owned from the capture crate's public pipeline path".into(),

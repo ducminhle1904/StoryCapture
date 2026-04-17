@@ -77,9 +77,64 @@ async launchAutomation(storySource: string, projectFolder: string, onEvent: TAUR
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Resolve the current Playwright auto-target to a concrete window id.
+ * 
+ * Returns:
+ * - `Ok(Some(WindowId))` — a Chromium window owned by the Playwright
+ * pid is currently on-screen; UI should enable + pre-select the
+ * "Playwright browser (auto)" entry.
+ * - `Ok(None)` — no Playwright launched yet, or remote-browser session,
+ * or the pid failed to resolve within the retry budget. UI should
+ * keep the auto entry disabled.
+ * 
+ * This command NEVER returns an error for "not available" — only for
+ * unexpected SCK failures (TCC, ABI). The distinction matters: UI code
+ * checks `.is_some()` to decide enablement, not `.is_ok()`.
+ */
+async resolvePlaywrightTarget() : Promise<Result<ResolvedPlaywrightTarget | null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("resolve_playwright_target") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getAppSettings() : Promise<Result<AppSettingsDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_app_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setBrowserExecutable(path: string | null) : Promise<Result<AppSettingsDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_browser_executable", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async listDisplays() : Promise<Result<DisplayInfoDto[], AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_displays") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listWindows() : Promise<Result<WindowInfoDto[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_windows") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listCaptureTargets() : Promise<Result<CaptureTargetsDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_capture_targets") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -101,6 +156,25 @@ async openScreenCapturePrefs() : Promise<Result<null, AppError>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Calls `CGRequestScreenCaptureAccess()` on macOS. This triggers the
+ * native system permission prompt (first launch) AND registers the app
+ * in System Settings → Privacy & Security → Screen Recording so the
+ * user can toggle it on. Without this call, the app never appears in
+ * the Settings list.
+ * 
+ * Returns the state AFTER the request. On macOS Sequoia the OS may
+ * still require an app relaunch before the new grant attaches to the
+ * running process.
+ */
+async requestScreenCaptureAccess() : Promise<Result<PermissionState, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("request_screen_capture_access") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async relaunchApp() : Promise<Result<null, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("relaunch_app") };
@@ -117,9 +191,38 @@ async startCapture(cfg: CaptureConfigDto, onEvent: TAURI_CHANNEL<CaptureEventDto
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Extended `start_capture` that accepts a `CaptureTarget` and runs it
+ * through the fallback orchestrator. The existing `start_capture` is
+ * kept for backwards compat with the encoder path.
+ */
+async startCaptureTarget(args: StartCaptureTargetArgs, onEvent: TAURI_CHANNEL<CaptureEventDto>, onFrame: TAURI_CHANNEL<FrameMetaDto>) : Promise<Result<SessionId, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_capture_target", { args, onEvent, onFrame }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async stopCapture(session: SessionId) : Promise<Result<CaptureStatsDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("stop_capture", { session }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getCaptureTarget() : Promise<Result<CaptureTargetDto | null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_capture_target") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setCaptureTarget(target: CaptureTargetDto) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_capture_target", { target }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -763,6 +866,7 @@ async getSyncStatus() : Promise<Result<SyncStatusDto, WebSyncError>> {
 export type AdjustedStepDto = { step_id: string; new_duration_ms: bigint; freeze_frame_extension_ms: bigint; silence_padding_ms: bigint; clip_start_ms: bigint; drift_ms: bigint }
 export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"; message: string } | { kind: "Keyring"; message: string } | { kind: "Automation"; message: string } | { kind: "Capture"; message: string } | { kind: "Encoder"; message: string } | { kind: "Storage"; message: string } | { kind: "NotFound"; message: string } | { kind: "InvalidArgument"; message: string } | { kind: "Internal"; message: string }
 export type AppInfo = { version: string; platform: string; arch: string; data_dir: string; log_dir: string }
+export type AppSettingsDto = { browser_executable: string | null }
 /**
  * Tauri / specta wrapper around `automation::ExecutorEvent`.
  * 
@@ -789,6 +893,12 @@ queue_cap_bytes: bigint | null }
  */
 export type CaptureEventDto = { json: string }
 export type CaptureStatsDto = { frames_delivered: bigint; frames_dropped: bigint; bytes_peak: bigint; duration_ms: bigint }
+/**
+ * Tagged CaptureTarget DTO. Mirrors `capture::CaptureTarget` with the
+ * same `kind` discriminator so the JSON wire format is identical.
+ */
+export type CaptureTargetDto = { kind: "display"; display_id: bigint } | { kind: "window"; window_id: bigint } | { kind: "window_by_pid"; pid: number; title_hint: string | null }
+export type CaptureTargetsDto = { displays: DisplayInfoDto[]; windows: WindowInfoDto[]; playwright_auto_available: boolean }
 export type ClockSourceDto = "host-time" | "qpc" | "synthetic"
 export type CommandDto = { verb: "navigate"; url: string; span: SpanDto } | { verb: "click"; target: SelectorOrTextDto; span: SpanDto } | { verb: "type"; target: SelectorOrTextDto; text: string; span: SpanDto } | { verb: "scroll"; direction: ScrollDirDto; amount: number | null; span: SpanDto } | { verb: "hover"; target: SelectorOrTextDto; span: SpanDto } | { verb: "drag"; from: SelectorOrTextDto; to: SelectorOrTextDto; span: SpanDto } | { verb: "select"; target: SelectorOrTextDto; value: string; span: SpanDto } | { verb: "upload"; target: SelectorOrTextDto; path: string; span: SpanDto } | { verb: "wait"; duration_ms: bigint; span: SpanDto } | { verb: "wait-for"; target: SelectorOrTextDto; timeout_ms: bigint | null; span: SpanDto } | { verb: "assert"; target: SelectorOrTextDto; span: SpanDto } | { verb: "screenshot"; name: string; span: SpanDto } | { verb: "pause"; span: SpanDto }
 export type CreateProjectArgs = { name: string; 
@@ -950,6 +1060,13 @@ export type RecordingEvent = { type: "capture-status"; json: string } | { type: 
 export type RecordingSessionId = string
 export type RenderJobDto = { id: string; story_id: string; preset_id: string | null; format: string; resolution: string; fps: number; quality: string; status: string; progress_pct: number; started_at: bigint | null; completed_at: bigint | null; error: string | null; priority: number; output_path: string | null; batch_id: string | null; created_at: bigint }
 export type RenderProgressDto = { job_id: string; pct: number; frame: bigint; fps: number; speed: number; eta_ms: bigint }
+/**
+ * Returned by `resolve_playwright_target`. The `pid` is echoed back so the
+ * renderer can store it as part of a `WindowByPid` capture target (the
+ * actual WindowByPid resolve-at-start behavior in SckBackend always
+ * re-resolves, so the stored pid is only a UI display hint).
+ */
+export type ResolvedPlaywrightTarget = { window_id: bigint; pid: number }
 export type SceneDto = { name: string; commands: CommandDto[]; span: SpanDto }
 export type ScrollDirDto = "up" | "down" | "left" | "right"
 export type SelectorOrTextDto = { kind: "text"; value: string } | { kind: "selector"; value: string } | { kind: "test_id"; value: string } | { kind: "aria"; value: string }
@@ -963,6 +1080,7 @@ export type SoundLibraryEntryDto = { id: string;
  */
 category: string; name: string; file_path: string; duration_ms: bigint; license: string; source_url: string | null; author: string | null; bundled: boolean }
 export type SpanDto = { start: number; end: number; line: number; col: number }
+export type StartCaptureTargetArgs = { target: CaptureTargetDto; include_cursor: boolean; fps_target: number; pixel_format: PixelFormatDto; queue_cap_bytes: bigint | null }
 export type StartRecordingArgs = { project_folder: string; display_id: bigint; width: number; height: number; fps: number }
 /**
  * Step timing DTO for the `tts_apply_sync` command.
@@ -1037,6 +1155,7 @@ export type WebAccountInfo = { email: string; name: string | null; avatarUrl: st
  * Structured error for web sync operations.
  */
 export type WebSyncError = { kind: "NotConnected" } | { kind: "NetworkError"; message: string } | { kind: "ServerError"; message: string } | { kind: "DatabaseError"; message: string }
+export type WindowInfoDto = { window_id: bigint; title: string | null; app_name: string; pid: number; bundle_id: string; x: number; y: number; width: number; height: number; is_on_screen: boolean }
 
 /** tauri-specta globals **/
 
