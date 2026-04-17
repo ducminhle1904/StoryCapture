@@ -146,5 +146,15 @@ Plans:
 
 v2 items (ADV-01..08) tracked in REQUIREMENTS.md under v2 Requirements; out of scope for this roadmap.
 
+### Phase 5: Window-targeted screen capture with Playwright auto-follow
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 4
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 5 to break down)
+
 ---
 *Roadmap created: 2026-04-14*

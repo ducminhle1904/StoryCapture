@@ -40,6 +40,10 @@ Phase: 4 (Web Companion & Sharing) — CODE-COMPLETE
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 5 added: Window-targeted screen capture with Playwright auto-follow — replaces SckBackend stub with real SCK streaming + window/app target enum + Playwright PID→SCWindow bridge. Research done, stack corrections noted (`screencapturekit = =1.5.4`, not 1.70.x).
+
 ### Decisions
 
 See PROJECT.md → Key Decisions. Highlights:
