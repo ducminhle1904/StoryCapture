@@ -15,14 +15,13 @@
 
 use crate::error::AppError;
 use capture::{
-    enumerate_displays, pick_default_backend, ByteBoundedQueue, CaptureConfig,
-    CaptureEvent, CaptureStats, CapturePipeline, ClockSource, DisplayId, DisplayInfo, Frame,
+    enumerate_displays, pick_default_backend, ByteBoundedQueue, CaptureBackend, CaptureConfig,
+    CaptureEvent, CaptureStats, ClockSource, DisplayId, DisplayInfo, Frame,
     PixelFormat,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
@@ -183,7 +182,7 @@ struct CaptureRegistry {
 }
 
 struct SessionHandle {
-    pipeline: Arc<tokio::sync::Mutex<CapturePipeline>>,
+    backend: tokio::sync::Mutex<Box<dyn CaptureBackend + Send>>,
     forward_task: JoinHandle<()>,
 }
 
@@ -287,13 +286,11 @@ pub async fn start_capture(
     on_frame: Channel<FrameMetaDto>,
 ) -> Result<SessionId, AppError> {
     let cap_cfg: CaptureConfig = cfg.into();
-    let backend = pick_default_backend(&cap_cfg);
+    let mut backend = pick_default_backend(&cap_cfg);
     let kind = backend.kind();
-    let queue = ByteBoundedQueue::new(cap_cfg.queue_cap_bytes);
-    let mut pipeline = CapturePipeline::new(backend, queue);
     let (tx, mut rx) = mpsc::channel::<Frame>(64);
 
-    pipeline
+    backend
         .start(cap_cfg.clone(), tx)
         .await
         .map_err(|e| AppError::Capture(e.to_string()))?;
@@ -333,7 +330,7 @@ pub async fn start_capture(
 
     let session_id = Uuid::new_v4().to_string();
     let handle = SessionHandle {
-        pipeline: Arc::new(tokio::sync::Mutex::new(pipeline)),
+        backend: tokio::sync::Mutex::new(backend),
         forward_task,
     };
     registry()
@@ -353,14 +350,14 @@ pub async fn stop_capture(session: SessionId) -> Result<CaptureStatsDto, AppErro
         .remove(&session.0)
         .ok_or_else(|| AppError::NotFound(format!("capture session {}", session.0)))?;
     let stats = {
-        let mut p = handle.pipeline.lock().await;
-        p.stop()
+        let mut b = handle.backend.lock().await;
+        b.stop()
             .await
             .map_err(|e| AppError::Capture(e.to_string()))?
     };
-    // Forwarder exits when the consumer rx hits EOF (pipeline closes its
-    // queue on backend stop). Wait for it so any final metadata events
-    // make it to the renderer before we report stats.
+    // Forwarder exits when its rx hits EOF (backend drops its tx on stop).
+    // Await so any final metadata events make it to the renderer before
+    // stats are reported.
     let _ = handle.forward_task.await;
     Ok(stats.into())
 }
@@ -684,16 +681,6 @@ pub async fn start_capture_target(
     .await
     .map_err(|e| AppError::Capture(e.to_string()))?;
 
-    // Mount the backend behind a CapturePipeline so stop_capture drives it.
-    let queue = ByteBoundedQueue::new(cap_cfg.queue_cap_bytes);
-    let pipeline = CapturePipeline::new(backend, queue);
-    // Orchestrator already started the backend. We re-use the pipeline
-    // purely to own the forwarder + consumer tasks; start is a no-op
-    // here since the orchestrator bound `tx` directly. To keep the shape
-    // simple, we'll pipe frames through the existing on_frame channel
-    // directly from `rx`.
-    let _ = pipeline;
-
     // Emit a synthetic Started event (display name where applicable).
     if let capture::CaptureTarget::Display { display_id } = &target {
         if let Ok(displays) = enumerate_displays() {
@@ -725,33 +712,18 @@ pub async fn start_capture_target(
     });
     let _ = on_frame;
 
-    // Because the orchestrator already started the backend against the
-    // caller-supplied `tx`, we own the backend here — park it for
-    // stop_capture via an ad-hoc handle store.
+    let _ = outcome;
     let session_id = Uuid::new_v4().to_string();
     let handle = SessionHandle {
-        // We no longer have a CapturePipeline wrapper; for Plan 05-01
-        // the lifecycle is simpler: stop the backend directly.
-        pipeline: Arc::new(tokio::sync::Mutex::new(
-            CapturePipeline::new(Box::new(capture::XcapBackend::new()), ByteBoundedQueue::new(1)),
-        )),
+        backend: tokio::sync::Mutex::new(backend),
         forward_task,
     };
-    // NOTE: we intentionally leak the real backend for Plan 05-01; a
-    // follow-up will refactor CapturePipeline to accept an already-started
-    // backend. For now, stop_capture only stops the forwarder task — the
-    // backend stops itself when its tx is dropped or the window closes.
-    let _ = backend_stash_park(session_id.clone(), outcome);
-
     registry()
         .sessions
         .lock()
         .insert(session_id.clone(), handle);
     Ok(SessionId(session_id))
 }
-
-/// Per-session fallback outcome stash, for logs only.
-fn backend_stash_park(_session_id: String, _outcome: capture::OrchestratedStart) {}
 
 #[tauri::command]
 #[specta::specta]
