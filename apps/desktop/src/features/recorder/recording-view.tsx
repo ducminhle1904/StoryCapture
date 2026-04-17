@@ -45,6 +45,7 @@ import { CursorTrail } from "./cursor-trail";
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
+import { TargetThumbnail } from "./TargetThumbnail";
 import { invoke } from "@tauri-apps/api/core";
 
 interface RecordingViewProps {
@@ -709,6 +710,19 @@ export function RecordingView({
                 {displayLabel}
               </p>
             )}
+            {/* Plan 06-03 Task 3 — 2s static thumbnail of the selected
+                capture target. Paused during recording to prevent
+                contention with the main SCK/WGC session (D-18). */}
+            <div className="mt-2.5">
+              <TargetThumbnail
+                target={captureTarget ?? null}
+                paused={
+                  status === "recording" ||
+                  status === "paused" ||
+                  status === "stopping"
+                }
+              />
+            </div>
           </SettingsGroup>
 
           <SettingsGroup label="Microphone" icon={<SettingsIcon size={13} />}>

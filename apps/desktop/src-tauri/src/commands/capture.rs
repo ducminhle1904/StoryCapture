@@ -769,6 +769,36 @@ pub async fn start_capture_target(
     Ok(SessionId(session_id))
 }
 
+/// Plan 06-03 Task 3 — one-shot thumbnail capture for the recorder's
+/// live-preview box. Returns PNG bytes; the renderer wraps them in a
+/// `Blob`/`createObjectURL` for the `<img src>`.
+///
+/// Thumbnail failures are NON-FATAL from the UI's perspective — the
+/// React component surfaces a neutral placeholder on any Err and never
+/// unmounts the recorder view. We still emit a typed AppError for
+/// debugging / telemetry.
+///
+/// `max_width` / `max_height` default to 320×200 when callers pass
+/// `None` — matches the fixed UI frame size.
+#[tauri::command]
+#[specta::specta]
+pub async fn capture_target_thumbnail(
+    target: CaptureTargetDto,
+    max_width: Option<u32>,
+    max_height: Option<u32>,
+) -> Result<Vec<u8>, AppError> {
+    let max_w = max_width.unwrap_or(capture::thumbnail::DEFAULT_MAX_WIDTH);
+    let max_h = max_height.unwrap_or(capture::thumbnail::DEFAULT_MAX_HEIGHT);
+    // Clamp upper bound at 2× the default for HiDPI preview + protect
+    // against renderer bugs flooding the native call with 4K requests.
+    let max_w = max_w.min(capture::thumbnail::DEFAULT_MAX_WIDTH * 2);
+    let max_h = max_h.min(capture::thumbnail::DEFAULT_MAX_HEIGHT * 2);
+    let native_target: capture::CaptureTarget = target.into();
+    capture::thumbnail::capture_thumbnail(&native_target, max_w, max_h)
+        .await
+        .map_err(|e| AppError::Capture(e.to_string()))
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn get_capture_target(app: AppHandle) -> Result<Option<CaptureTargetDto>, AppError> {

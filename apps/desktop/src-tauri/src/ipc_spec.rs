@@ -63,6 +63,8 @@ pub fn builder() -> Builder<Wry> {
             capture::stop_capture,
             capture::get_capture_target,
             capture::set_capture_target,
+            // Plan 06-03 — one-shot thumbnail for recorder preview.
+            capture::capture_target_thumbnail,
             // Plan 06-02 — region selection overlay.
             region_overlay::open_region_overlay,
             region_overlay::close_region_overlay,

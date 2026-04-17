@@ -163,6 +163,28 @@ export function resolvePlaywrightTarget(): Promise<ResolvedPlaywrightTarget | nu
   return invoke<ResolvedPlaywrightTarget | null>("resolve_playwright_target");
 }
 
+// ─── Plan 06-03 — one-shot recorder-preview thumbnail ─────────────────
+
+/**
+ * Ask the host for a single thumbnail of the capture target. Returns
+ * raw PNG bytes (specta encodes `Vec<u8>` as a `number[]` on the wire).
+ *
+ * Omit `maxWidth` / `maxHeight` to use the 320×200 default. Callers may
+ * request up to 2× for HiDPI previews; anything larger is clamped
+ * host-side.
+ */
+export function captureTargetThumbnail(
+  target: CaptureTarget,
+  maxWidth?: number,
+  maxHeight?: number,
+): Promise<number[]> {
+  return invoke<number[]>("capture_target_thumbnail", {
+    target,
+    maxWidth: maxWidth ?? null,
+    maxHeight: maxHeight ?? null,
+  });
+}
+
 // ─── Plan 06-02 — Region selection overlay ────────────────────────────
 
 /** Open the transparent, fullscreen, always-on-top region-selection
