@@ -32,6 +32,15 @@ Expected response (one line):
 
 ## SEA build
 
+> **Node 20 LTS required.** Node 24's SEA injector silently fails to boot
+> the embedded script in our testing; the CI workflow pins `node-version:
+> '20'` for the same reason. If you're on Node 24 via nvm, switch to a
+> Node 20 shell before running `build-sea.mjs`:
+>
+> ```bash
+> nvm install 20 && nvm use 20
+> ```
+
 ```bash
 node build-sea.mjs --target aarch64-apple-darwin
 node build-sea.mjs --target x86_64-apple-darwin
@@ -42,18 +51,36 @@ Output lands in `apps/desktop/src-tauri/binaries/playwright-sidecar-<triple>`
 where Tauri's `externalBin` mechanism picks it up (the binary name is
 required by Tauri to end with the target triple).
 
-The build follows the official Node 20 SEA recipe:
+The build pipeline:
 
-1. `node --experimental-sea-config sea-config.json` → produces `sea-prep.blob`
-2. Copy the host `node` binary to the output path.
-3. On macOS: `codesign --remove-signature` so postject can inject; the
+1. **esbuild** bundles `server.mjs` → `server.cjs` as a single CommonJS
+   file, keeping `playwright-core` marked `external` so its native
+   chromium launcher isn't embedded (the SEA binary would crash on the
+   `.node` loader).
+2. `node --experimental-sea-config sea-config.json` → produces
+   `sea-prep.blob` from `server.cjs`.
+3. Copy the host `node` binary to the output path.
+4. On macOS: `codesign --remove-signature` so postject can inject; the
    Tauri build pipeline (Plan 02 / Plan 10) re-signs every sidecar binary
    as part of notarization.
-4. `npx postject` injects the blob into the binary using the SEA fuse
+5. `npx postject` injects the blob into the binary using the SEA fuse
    sentinel `NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`.
 
-If Node SEA proves brittle in your environment (notarization edge cases,
-postject macho injection issues), `@yao-pkg/pkg` is the documented
+### Runtime shape (TODO for production bundling)
+
+Because `playwright-core` is external, the SEA binary at runtime expects
+its `node_modules/playwright-core/` directory to live at a resolvable
+path. The Tauri bundler currently only copies the single binary into
+`StoryCapture.app/Contents/MacOS/`. The release pipeline needs an
+additional step to ship `node_modules/playwright-core/` alongside
+(likely via `bundle.resources` pointing at a pre-packed module tree, and
+a wrapper that sets `NODE_PATH` before `exec`ing the SEA binary).
+
+Until that ships, local dev uses the shell wrapper at
+`apps/desktop/src-tauri/binaries/playwright-sidecar-<triple>` which
+execs `node server.mjs` against the repo checkout. See that file.
+
+If Node SEA proves too brittle, `@yao-pkg/pkg` is the documented
 fallback — see RESEARCH.md §Standard Stack.
 
 ## Chromium browser binary (RESEARCH Q2 — first-run download)

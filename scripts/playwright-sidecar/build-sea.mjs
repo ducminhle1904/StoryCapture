@@ -38,6 +38,18 @@ console.log(`[playwright-sidecar] Output: ${outPath}`);
 
 mkdirSync(outDir, { recursive: true });
 
+// 0. Bundle server.mjs → server.cjs with esbuild. Node SEA doesn't accept
+//    ESM entry points, so we pre-bundle into a single CommonJS file while
+//    keeping `playwright-core` external (its native chromium launcher +
+//    `.node` files can't be safely embedded). The bundled binary resolves
+//    playwright-core at runtime from a sibling `node_modules/` directory.
+const bundlePath = resolve(__dirname, 'server.cjs');
+console.log('[playwright-sidecar] Step 0/4: esbuild server.mjs → server.cjs');
+execSync(
+  `npx --yes esbuild server.mjs --bundle --platform=node --format=cjs --external:playwright-core --outfile=server.cjs`,
+  { cwd: __dirname, stdio: 'inherit' },
+);
+
 // 1. Generate the SEA blob.
 const blobPath = resolve(__dirname, 'sea-prep.blob');
 if (existsSync(blobPath)) rmSync(blobPath);

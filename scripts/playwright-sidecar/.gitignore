@@ -1,0 +1,4 @@
+# Build artifacts
+node_modules/
+sea-prep.blob
+server.cjs
