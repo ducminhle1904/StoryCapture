@@ -189,17 +189,9 @@ impl SckBackend {
                 Ok((filter, width, height))
             }
             CaptureTarget::WindowByPid { pid, title_hint } => {
-                // Plan 05-02: resolve pid→SCWindow with retry. We're
-                // already inside `spawn_blocking` (see the `start` path
-                // below), so calling the sync resolver directly is
-                // correct; looping here gives us the same ~1s budget as
-                // the async version without re-entering the reactor.
-                const MAX_RETRIES: u32 = 10;
-                const RETRY_DELAY: std::time::Duration =
-                    std::time::Duration::from_millis(100);
-                // Validate title_hint (T-05-02-02). The Tauri command
-                // layer also validates; defense-in-depth for any in-host
-                // caller that bypasses the command.
+                // Single-shot resolution: the command-layer path already
+                // retried via `find_window_by_pid`. Direct in-host callers
+                // of this backend are expected to pass a live pid.
                 if let Some(h) = title_hint.as_deref() {
                     if h.len() > 256 {
                         return Err(CaptureError::Backend(
@@ -212,24 +204,11 @@ impl SckBackend {
                         ));
                     }
                 }
-                let mut window = None;
-                for attempt in 0..MAX_RETRIES {
-                    if let Some(w) = crate::macos::window::find_window_by_pid_sync(
-                        *pid,
-                        title_hint.as_deref(),
-                    )? {
-                        window = Some(w);
-                        break;
-                    }
-                    if attempt + 1 < MAX_RETRIES {
-                        std::thread::sleep(RETRY_DELAY);
-                    }
-                }
-                let window = window.ok_or_else(|| {
-                    // Plan 05-01 orchestrator's silent-xcap-fallback path
-                    // engages on WindowNotFound per D-07.
-                    CaptureError::WindowNotFound(*pid as u64)
-                })?;
+                let window = crate::macos::window::find_window_by_pid_sync(
+                    *pid,
+                    title_hint.as_deref(),
+                )?
+                .ok_or(CaptureError::WindowNotFound(*pid as u64))?;
                 let frame = window.frame();
                 // Point dimensions; scale to pixels via 2x (retina) —
                 // same approach as the Window arm above.
