@@ -13,6 +13,7 @@
 //!   - Capture-API PTS preserved end-to-end; no Rust-side timestamp rewriting.
 //!   - Native surface handles wrapped in RAII (CFRelease / Release on Drop).
 
+pub mod audio;
 mod backend;
 mod clock;
 mod display;

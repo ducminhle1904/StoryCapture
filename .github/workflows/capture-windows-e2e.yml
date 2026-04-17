@@ -1,0 +1,191 @@
+name: capture-windows-e2e
+
+# Windows **real-capture** end-to-end workflow for `crates/capture` (Plan 06-04).
+#
+# SCOPE
+# -----
+# Exercises the Windows.Graphics.Capture (WGC) backend against a real graphical
+# session by running the `#[ignore]`-marked integration tests in
+# `crates/capture/tests/windows_real_capture_e2e.rs` under the
+# `real-capture-windows` feature. The tests drain 3s of frames, encode with
+# bundled FFmpeg, then ffprobe the result for duration within ±10% of 3s.
+#
+# TRIGGERS (Plan 06-04 D-21 — explicit no-auto-run policy)
+# --------------------------------------------------------
+# * `workflow_dispatch` ONLY — operator-triggered; no push/PR trigger.
+#   Rationale: self-hosted graphical Windows runners are rare, expensive, and
+#   share-a-physical-session with other workloads. Running on every PR would
+#   both exhaust runner capacity and give us a noisy signal.
+# * A weekly cron is provided below, commented out. Enable it ONLY once the
+#   self-hosted runner has demonstrated stability (≥ 2 weeks of green manual
+#   dispatches). Never merge an uncommented cron in the same PR that adds
+#   the workflow.
+#
+# RUNNER CONTRACT
+# ---------------
+# Requires a self-hosted runner registered with labels:
+#     `self-hosted`, `windows`, `graphical`
+# Operator provisioning guide: `scripts/test-windows-capture.md`
+# (the same script also serves as the D-23 fallback when no runner is online —
+# if `workflow_dispatch` queues indefinitely, follow that runbook on a local
+# Windows box and attach evidence to the phase SUMMARY).
+#
+# RUNNER HARDENING (T-06-22 / T-06-27)
+# ------------------------------------
+# * Use a dedicated VM, not a shared developer workstation.
+# * Firewall inbound; disable RDP unless actively debugging the runner.
+# * Ephemeral-restart between runs is recommended (runner reboots clear
+#   user-mode state that a compromised dispatch could leave behind).
+# * No secrets are referenced — this workflow is local-only. If you're
+#   tempted to add `secrets.FOO`, stop and re-read the threat model: the
+#   runner executes repo code with write-access-level trust and should
+#   never hold cross-workflow credentials.
+#
+# FALLBACK
+# --------
+# When no runner is online, operators manually run `scripts/test-windows-capture.md`
+# and attach ffprobe output + MP4 evidence to the phase SUMMARY. That is the
+# D-23 "infra-pending" path and fully satisfies the phase's verification gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      capture_type:
+        description: "Which happy-path test(s) to run"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - display
+          - window
+          - both
+  # schedule:
+  #   # Weekly Monday 06:00 UTC — enable ONLY after manual dispatches have
+  #   # been green for ≥ 2 weeks. Disabled per D-21 (no auto-runs until
+  #   # runner availability + cost are proven).
+  #   - cron: "0 6 * * 1"
+
+concurrency:
+  group: capture-windows-e2e
+  # Do NOT cancel in progress: a cancelled run leaves an orphaned MP4 in
+  # target/tmp/ on the runner. Runs are short (<5min typical); let them
+  # finish.
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: WGC real-capture E2E (workflow_dispatch, self-hosted graphical)
+    runs-on: [self-hosted, windows, graphical]
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install Node workspace deps
+        run: pnpm install --frozen-lockfile
+        shell: pwsh
+
+      - name: Install Playwright Chromium (idempotent)
+        run: npx playwright install chromium
+        shell: pwsh
+
+      - name: Compile tests (no-run, feature=real-capture-windows)
+        run: |
+          cargo test -p capture --target x86_64-pc-windows-msvc `
+            --features real-capture-windows --no-run
+        shell: pwsh
+
+      - name: Run display happy-path
+        if: ${{ inputs.capture_type == 'display' || inputs.capture_type == 'both' }}
+        run: |
+          cargo test -p capture --target x86_64-pc-windows-msvc `
+            --features real-capture-windows `
+            -- --ignored --test-threads=1 --nocapture `
+            windows_e2e_display_happy_path
+        shell: pwsh
+
+      - name: Launch Playwright sidecar for window test
+        if: ${{ inputs.capture_type == 'window' || inputs.capture_type == 'both' }}
+        id: sidecar
+        shell: pwsh
+        run: |
+          # Spawn the Phase 5 Playwright sidecar in the background, capture
+          # its Chromium pid, and export it for the next step. The sidecar
+          # writes a line of the form `PID=<n>` when the browser is ready
+          # (see scripts/playwright-sidecar/server.mjs — Plan 05-02).
+          $env:STORYCAPTURE_CI_E2E = "1"
+          $job = Start-Job -ScriptBlock {
+            node "$using:PWD\scripts\playwright-sidecar\server.mjs" --preset chromium --ready-fd stdout
+          }
+          # Poll the job output for the PID line (max 30s).
+          $pid_val = $null
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 1
+            $out = Receive-Job -Job $job -Keep
+            $line = $out | Where-Object { $_ -match '^PID=(\d+)' } | Select-Object -First 1
+            if ($line) {
+              $pid_val = ($line -replace '^PID=', '').Trim()
+              break
+            }
+          }
+          if (-not $pid_val) {
+            Receive-Job -Job $job | Write-Host
+            throw "Playwright sidecar did not report a Chromium PID within 30s"
+          }
+          Write-Host "Chromium PID: $pid_val"
+          "STORYCAPTURE_TEST_CHROMIUM_PID=$pid_val" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SIDECAR_JOB_ID=$($job.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Run window happy-path
+        if: ${{ inputs.capture_type == 'window' || inputs.capture_type == 'both' }}
+        run: |
+          cargo test -p capture --target x86_64-pc-windows-msvc `
+            --features real-capture-windows `
+            -- --ignored --test-threads=1 --nocapture `
+            windows_e2e_window_happy_path
+        shell: pwsh
+
+      - name: Tear down Playwright sidecar
+        if: always() && (inputs.capture_type == 'window' || inputs.capture_type == 'both')
+        shell: pwsh
+        run: |
+          if ($env:SIDECAR_JOB_ID) {
+            Stop-Job -Id $env:SIDECAR_JOB_ID -ErrorAction SilentlyContinue
+            Remove-Job -Id $env:SIDECAR_JOB_ID -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload MP4 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-windows-e2e-mp4-${{ github.run_id }}
+          path: |
+            target/**/tmp/storycapture-e2e-*.mp4
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Runbook pointer on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host "::notice::If this run failed due to runner availability,"
+          Write-Host "::notice::follow scripts/test-windows-capture.md on a"
+          Write-Host "::notice::local Windows box and attach ffprobe output +"
+          Write-Host "::notice::MP4 to the phase 06-04-SUMMARY.md (D-23 fallback)."
