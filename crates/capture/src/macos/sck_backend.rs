@@ -1,17 +1,62 @@
-//! ScreenCaptureKit backend — `screencapturekit = "=1.70.0"` (D-16).
+//! ScreenCaptureKit backend — `screencapturekit = "=1.5.4"` (CLAUDE.md says
+//! 1.70.0 but the crate never published that version; Cargo.lock pins 1.5.4).
+//!
+//! # Verified SCK 1.5.4 API surface (Plan 05-01 Task 0 spike — 2026-04-17)
+//!
+//! The following method names were verified by reading the installed 1.5.4
+//! source at `~/.cargo/registry/src/.../screencapturekit-1.5.4/`. Downstream
+//! tasks rely on these names:
+//!
+//!   `SCShareableContent::get() -> Result<Self, SCError>` (synchronous; wrap in
+//!     `spawn_blocking` per Pitfall 7).
+//!   `SCShareableContent::windows() -> Vec<SCWindow>`
+//!   `SCShareableContent::displays() -> Vec<SCDisplay>`
+//!   `SCWindow::window_id() -> u32`
+//!   `SCWindow::title() -> Option<String>`
+//!   `SCWindow::owning_application() -> Option<SCRunningApplication>`
+//!   `SCWindow::is_on_screen() -> bool`
+//!   `SCWindow::window_layer() -> i32`
+//!   `SCWindow::frame() -> CGRect` (points, not pixels)
+//!   `SCRunningApplication::process_id() -> i32`
+//!   `SCRunningApplication::application_name() -> String`
+//!   `SCRunningApplication::bundle_identifier() -> String`
+//!
+//!   `SCContentFilter::create()` → builder; `.with_display(&display)` or
+//!     `.with_window(&window)` → `.build() -> SCContentFilter`. NEVER pass
+//!     empty `excluding_windows` (Pitfall 2).
+//!
+//!   `SCStreamConfiguration::new()` → builder; `.with_width(u32)`,
+//!     `.with_height(u32)`, `.with_pixel_format(PixelFormat::BGRA)`,
+//!     `.with_shows_cursor(bool)`, `.with_minimum_frame_interval(&CMTime)`
+//!     (no `.with_fps` — use 1/fps as CMTime), `.with_queue_depth(u32)`.
+//!
+//!   `SCStream::new(&filter, &config) -> SCStream`
+//!   `SCStream::new_with_delegate(&filter, &config, delegate)` → delegate is
+//!     `impl SCStreamDelegateTrait + 'static`; use `StreamCallbacks::new()
+//!     .on_error(..).on_stop(..)` builder.
+//!   `SCStream::add_output_handler(handler, SCStreamOutputType::Screen)` —
+//!     handler is `impl SCStreamOutputTrait` (blanket impl for `Fn(CMSampleBuffer,
+//!     SCStreamOutputType) + Send + 'static`).
+//!   `SCStream::start_capture() -> Result<(), SCError>`
+//!   `SCStream::stop_capture() -> Result<(), SCError>`
+//!   `SCStream::update_content_filter(&filter)` and
+//!     `SCStream::update_configuration(&config)` BOTH exist in 1.5.4 → Open
+//!     Question 1 resolved: we CAN reconfigure without rebuilding the stream.
+//!
+//!   `CMSampleBuffer::image_buffer() -> Option<CVPixelBuffer>`
+//!   `CMSampleBuffer::presentation_timestamp() -> CMTime`
+//!   `CMTime { value: i64, timescale: i32, flags: u32, epoch: i64 }` —
+//!     ns = value * 1_000_000_000 / timescale. There is no `to_nanos()`
+//!     method; compute manually.
+//!   `CVPixelBuffer::as_ptr() -> *mut c_void` (pass through to our
+//!     `CVPixelBufferHandle::retain` unsafe helper).
+//!   `CVPixelBuffer::width() -> usize` / `height() -> usize`.
 //!
 //! Note on minimization: the doom-fish crate exposes a high-level streaming
-//! API but is API-unstable across patch releases. We deliberately keep the
-//! integration thin — enumerate displays, build an SCStreamConfiguration,
-//! attach a frame handler that wraps each `CMSampleBuffer` in our RAII
-//! `CVPixelBufferHandle`, and emit `Frame`s through the mpsc sender that
-//! the pipeline owns.
-//!
-//! The actual SCStream wiring is deliberately stubbed at this layer
-//! pending the empirical real-Chromium / real-display spike (see
-//! `deferred-items.md`); the trait + lifecycle + display enumeration +
-//! TCC preflight are wired so the rest of the system compiles and
-//! exercises this backend through `tests/pipeline.rs` via a mock backend.
+//! API. We keep the integration thin — enumerate windows/displays, build an
+//! SCContentFilter, attach a closure handler that wraps each `CMSampleBuffer`
+//! in our RAII `CVPixelBufferHandle`, and emit `Frame`s through the mpsc
+//! sender that the pipeline owns.
 
 use crate::backend::{BackendKind, CaptureBackend, CaptureConfig, CaptureStats};
 use crate::display::{DisplayId, DisplayInfo};
