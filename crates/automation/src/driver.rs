@@ -1,8 +1,8 @@
 //! `BrowserDriver` trait — the abstraction every driver impl honors.
 //!
-//! Two implementations from day one (D-11):
-//! - [`crate::ChromiumoxideDriver`] — primary, in-process CDP.
-//! - [`crate::PlaywrightSidecarDriver`] — fallback, Node SEA bundled.
+//! Current impls:
+//! - [`crate::PlaywrightSidecarDriver`] — primary, Node SEA bundled.
+//! - [`crate::NoopDriver`] — stub fallback.
 //!
 //! The executor (`crate::executor`) dispatches per-verb based on
 //! [`CapabilitySet`] flags (D-14): a verb that the primary lacks routes to
@@ -32,7 +32,7 @@ pub struct LaunchConfig {
     /// Where downloads land (project folder `assets/`).
     pub download_dir: PathBuf,
     /// Optional path to a Chromium-family browser executable (Chrome, Brave,
-    /// Edge, Arc, etc.). When `None`, chromiumoxide auto-detects Chrome.
+    /// Edge, Arc, etc.). When `None`, Playwright uses its bundled Chromium.
     /// Overridden at runtime by `STORYCAPTURE_BROWSER_PATH` env var.
     pub executable: Option<PathBuf>,
 }
@@ -106,10 +106,10 @@ pub struct CapabilitySet {
 }
 
 impl CapabilitySet {
-    /// Capabilities chromiumoxide reliably supports today (RESEARCH §3,
-    /// PITFALLS #3). Conservative defaults — anything unproven is `false` so
-    /// the executor routes to Playwright instead of failing late.
-    pub const CHROMIUMOXIDE: Self = Self {
+    /// Limited capability set — a driver supporting only basic DOM verbs
+    /// (click, type, navigate, scroll, hover, screenshot). Used by the
+    /// capability-routing tests and as a reference for future thin drivers.
+    pub const LIMITED: Self = Self {
         file_upload: false,
         wait_for_download: false,
         shadow_dom_click: false,

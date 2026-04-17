@@ -1,7 +1,7 @@
 //! AUTO-06 / D-14 routing proof (browser-free).
 //!
 //! Two mock `BrowserDriver` doubles — `MockChromiumoxide` (capability
-//! profile matches `CapabilitySet::CHROMIUMOXIDE`) and `MockPlaywright`
+//! profile matches `CapabilitySet::LIMITED`) and `MockPlaywright`
 //! (`CapabilitySet::PLAYWRIGHT`). Each records whether any of its action
 //! methods was called via an `AtomicBool last_called`. Routing is
 //! exercised through `Executor::pick_driver_for_cmd` (the executor's own
@@ -158,7 +158,7 @@ fn oauth_click_cmd() -> Command {
 
 #[tokio::test]
 async fn upload_routes_to_playwright() {
-    let primary = Mock::new("chromiumoxide", CapabilitySet::CHROMIUMOXIDE);
+    let primary = Mock::new("limited", CapabilitySet::LIMITED);
     let fallback = Mock::new("playwright", CapabilitySet::PLAYWRIGHT);
 
     let chosen = Executor::pick_driver_for_cmd(&primary, &fallback, &upload_cmd());
@@ -183,12 +183,12 @@ async fn upload_routes_to_playwright() {
 }
 
 #[tokio::test]
-async fn plain_click_routes_to_chromiumoxide() {
-    let primary = Mock::new("chromiumoxide", CapabilitySet::CHROMIUMOXIDE);
+async fn plain_click_routes_to_limited_primary() {
+    let primary = Mock::new("limited", CapabilitySet::LIMITED);
     let fallback = Mock::new("playwright", CapabilitySet::PLAYWRIGHT);
 
     let chosen = Executor::pick_driver_for_cmd(&primary, &fallback, &plain_click_cmd());
-    assert_eq!(chosen.name(), "chromiumoxide");
+    assert_eq!(chosen.name(), "limited");
 
     chosen
         .click(&ResolvedSelector {
@@ -205,7 +205,7 @@ async fn plain_click_routes_to_chromiumoxide() {
 
 #[tokio::test]
 async fn shadow_dom_click_routes_to_playwright() {
-    let primary = Mock::new("chromiumoxide", CapabilitySet::CHROMIUMOXIDE);
+    let primary = Mock::new("limited", CapabilitySet::LIMITED);
     let fallback = Mock::new("playwright", CapabilitySet::PLAYWRIGHT);
 
     let chosen = Executor::pick_driver_for_cmd(&primary, &fallback, &shadow_dom_click_cmd());
@@ -214,7 +214,7 @@ async fn shadow_dom_click_routes_to_playwright() {
 
 #[tokio::test]
 async fn wait_for_download_routes_to_playwright() {
-    let primary = Mock::new("chromiumoxide", CapabilitySet::CHROMIUMOXIDE);
+    let primary = Mock::new("limited", CapabilitySet::LIMITED);
     let fallback = Mock::new("playwright", CapabilitySet::PLAYWRIGHT);
 
     let chosen = Executor::pick_driver_for_cmd(&primary, &fallback, &wait_for_download_cmd());
@@ -223,7 +223,7 @@ async fn wait_for_download_routes_to_playwright() {
 
 #[tokio::test]
 async fn oauth_click_routes_to_playwright() {
-    let primary = Mock::new("chromiumoxide", CapabilitySet::CHROMIUMOXIDE);
+    let primary = Mock::new("limited", CapabilitySet::LIMITED);
     let fallback = Mock::new("playwright", CapabilitySet::PLAYWRIGHT);
 
     let chosen = Executor::pick_driver_for_cmd(&primary, &fallback, &oauth_click_cmd());
@@ -231,11 +231,11 @@ async fn oauth_click_routes_to_playwright() {
 }
 
 #[test]
-fn capability_set_chromiumoxide_lacks_uploads() {
-    assert!(!CapabilitySet::CHROMIUMOXIDE.file_upload);
-    assert!(!CapabilitySet::CHROMIUMOXIDE.shadow_dom_click);
-    assert!(!CapabilitySet::CHROMIUMOXIDE.wait_for_download);
-    assert!(!CapabilitySet::CHROMIUMOXIDE.oauth_popup);
+fn capability_set_limited_lacks_uploads() {
+    assert!(!CapabilitySet::LIMITED.file_upload);
+    assert!(!CapabilitySet::LIMITED.shadow_dom_click);
+    assert!(!CapabilitySet::LIMITED.wait_for_download);
+    assert!(!CapabilitySet::LIMITED.oauth_popup);
 }
 
 #[test]

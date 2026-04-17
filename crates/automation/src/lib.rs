@@ -1,13 +1,13 @@
-//! `automation` — `BrowserDriver` trait + chromiumoxide / Playwright sidecar drivers.
+//! `automation` — `BrowserDriver` trait + Playwright sidecar driver.
 //!
-//! **Pure crate (D-07/D-11):** zero Tauri imports; Phase 5's headless CLI
+//! **Pure crate (D-07):** zero Tauri imports; Phase 5's headless CLI
 //! consumes this crate unchanged.
 //!
 //! ## Architecture
 //!
 //! - [`BrowserDriver`] — async trait every driver implements.
-//! - [`ChromiumoxideDriver`] — primary, in-process CDP (chromiumoxide 0.7).
-//! - [`PlaywrightSidecarDriver`] — fallback, Node SEA bundled, JSON-RPC.
+//! - [`PlaywrightSidecarDriver`] — primary driver, Node SEA bundled, JSON-RPC.
+//! - [`NoopDriver`] — fallback stub used when only one real driver exists.
 //! - [`Executor`] — DSL → driver dispatch with capability-routing (D-14)
 //!   + per-verb auto-wait (D-12) + intent-aware selector resolution (D-13).
 //! - [`SmartSelector`] — explicit-strict + ranked-text resolution.
@@ -15,7 +15,6 @@
 
 pub mod auto_wait;
 pub mod capability;
-pub mod chromiumoxide_driver;
 pub mod driver;
 pub mod error;
 pub mod events;
@@ -25,7 +24,6 @@ pub mod playwright_driver;
 pub mod selector;
 pub mod session;
 
-pub use chromiumoxide_driver::ChromiumoxideDriver;
 pub use driver::{
     ActionKind, BoundingBox, BrowserDriver, Capability, CapabilitySet, ElementState, LaunchConfig,
     ResolvedSelector,
