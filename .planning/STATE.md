@@ -77,6 +77,8 @@ See PROJECT.md → Key Decisions. Highlights:
 - All LLM/TTS keys stored in OS keychain via tauri-plugin-keyring; never in SQLite or plaintext
 - [Phase 05]: Plan 05-01: real SCK streaming for display+window + grouped Target picker + silent xcap fallback; capture_target persists to app_settings.json
 - [Phase 05]: Plan 05-02: launchServer+connect in sidecar (Browser class has no .process()); process-global PlaywrightPidStash + background probe task for pid acquisition; SharedPlaywrightDriver adapter so probe+executor share the driver; host-side pid rewrite in start_capture_target for WindowByPid sentinel (T-05-02-01)
+- [Phase 05]: Plan 05-03: Chromium parent/child resolution via ToolHelp snapshot walk restricted to chrome.exe/msedge.exe/chromium.exe process names (T-05-03-07)
+- [Phase 05]: Plan 05-03: PTS clock source set to ClockSource::Synthetic on WGC path (QPC plumbing deferred to encoder-coordinated follow-up)
 
 ### Open Todos
 

@@ -491,7 +491,43 @@ pub async fn list_windows() -> Result<Vec<WindowInfoDto>, AppError> {
             })
             .collect())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        // EnumChildWindows is synchronous; run in spawn_blocking so we
+        // don't stall the async runtime (parity with macOS SCShareableContent).
+        // Plan 05-03 Task 2.
+        let infos = tokio::task::spawn_blocking(capture::windows::window::list_windows)
+            .await
+            .map_err(|e| AppError::Capture(format!("join: {e}")))?
+            .map_err(|e| AppError::Capture(e.to_string()))?;
+
+        // Update allow-list for subsequent start_capture_target validation
+        // (T-05-03-01, parity with macOS T-05-01-01).
+        {
+            let mut ids = window_allow_list().ids.lock();
+            ids.clear();
+            for w in &infos {
+                ids.insert(w.window_id);
+            }
+        }
+
+        Ok(infos
+            .into_iter()
+            .map(|w| WindowInfoDto {
+                window_id: w.window_id,
+                title: w.title,
+                app_name: w.app_name,
+                pid: w.pid,
+                bundle_id: w.bundle_id,
+                x: w.x,
+                y: w.y,
+                width: w.width,
+                height: w.height,
+                is_on_screen: w.is_on_screen,
+            })
+            .collect())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         Ok(Vec::new())
     }
@@ -616,21 +652,28 @@ pub async fn start_capture_target(
 
     let (tx, mut rx) = mpsc::channel::<Frame>(64);
 
-    // SCK on macOS (native), else fall back to xcap. The orchestrator
-    // handles the silent xcap fallback for window targets.
-    #[cfg(target_os = "macos")]
-    let preferred: Box<dyn capture::CaptureBackend> =
-        Box::new(capture::SckBackend::new().map_err(|e| AppError::Capture(e.to_string()))?);
-    #[cfg(not(target_os = "macos"))]
-    let preferred: Box<dyn capture::CaptureBackend> = Box::new(capture::XcapBackend::new());
-
-    // Event sink for BackendFailed / WindowCaptureFellBack / Degraded.
-    // We forward every event to the renderer via `on_event`.
+    // Native-first per platform; orchestrator falls back to xcap silently
+    // for window targets (D-07 / Plan 05-01 orchestrator).
+    //
+    // Plan 05-03: on Windows, wire the WgcBackend with its event sink so
+    // `on_closed` (target window disappears) surfaces as BackendFailed and
+    // the partial MP4 finalizes cleanly (parity with macOS SCK delegate).
     let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<CaptureEvent>();
+
     #[cfg(target_os = "macos")]
-    if let Some(sck) = preferred.as_any_sck() {
+    let preferred: Box<dyn capture::CaptureBackend> = {
+        let sck = capture::SckBackend::new().map_err(|e| AppError::Capture(e.to_string()))?;
         sck.set_event_sink(evt_tx.clone());
-    }
+        Box::new(sck)
+    };
+    #[cfg(target_os = "windows")]
+    let preferred: Box<dyn capture::CaptureBackend> = {
+        let wgc = capture::WgcBackend::new().map_err(|e| AppError::Capture(e.to_string()))?;
+        wgc.set_event_sink(evt_tx.clone());
+        Box::new(wgc)
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let preferred: Box<dyn capture::CaptureBackend> = Box::new(capture::XcapBackend::new());
     let on_event_for_pump = on_event.clone();
     tokio::spawn(async move {
         while let Some(evt) = evt_rx.recv().await {

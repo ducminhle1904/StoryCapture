@@ -4,8 +4,8 @@
 //! types at the IPC boundary in `apps/desktop/src-tauri/src/commands/capture.rs`.
 //!
 //! Backends:
-//!   - **macOS**: `SckBackend` (ScreenCaptureKit, `screencapturekit = "=1.70.0"`)
-//!   - **Windows**: `WgcBackend` (Windows.Graphics.Capture, `windows-capture = "=1.5.0"`)
+//!   - **macOS**: `SckBackend` (ScreenCaptureKit, `screencapturekit = "=1.5.4"`)
+//!   - **Windows**: `WgcBackend` (Windows.Graphics.Capture, `windows-capture = "=2.0.0"`)
 //!   - **fallback**: `XcapBackend` (xcap polling, owned bytes — not zero-copy)
 //!
 //! Critical invariants (D-19 / D-21 / CAP-05 / CAP-07):
@@ -50,13 +50,27 @@ pub use windows::WgcBackend;
 
 /// Construct the recommended backend for the current platform. Falls
 /// back to `XcapBackend` when the native backend can't be initialized
-/// (e.g. TCC denied, no D3D11 device available).
+/// (e.g. TCC denied on macOS, WGC unavailable on Windows).
 ///
-/// NOTE: the native `SckBackend` / `WgcBackend` are currently
-/// trait-surface stubs (see their source) — they init cleanly but never
-/// deliver frames. Until the native capture spike lands, force the
-/// xcap polling backend which is fully implemented end-to-end. xcap
-/// gives us ~30fps polled BGRA frames which is adequate for demo videos.
+/// The per-target fallback orchestration for window-only-captures lives
+/// in `orchestrator::orchestrate_start`; this helper picks the *kind*
+/// of backend to try first when the caller doesn't want to drive the
+/// orchestrator directly.
 pub fn pick_default_backend(_cfg: &CaptureConfig) -> Box<dyn CaptureBackend> {
+    #[cfg(target_os = "windows")]
+    {
+        match WgcBackend::new() {
+            Ok(b) => return Box::new(b),
+            Err(e) => {
+                tracing::warn!(error = %e, "WgcBackend::new failed; using xcap fallback");
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(b) = SckBackend::new() {
+            return Box::new(b);
+        }
+    }
     Box::new(XcapBackend::new())
 }

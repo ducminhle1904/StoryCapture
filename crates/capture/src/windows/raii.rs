@@ -15,7 +15,9 @@ impl D3DTextureHandle {
     /// have already incremented the refcount (or be transferring its
     /// own); Drop calls `Release` once.
     ///
-    /// SAFETY: `ptr` must be a valid `ID3D11Texture2D*` (or null) with a
+    /// # Safety
+    ///
+    /// `ptr` must be a valid `ID3D11Texture2D*` (or null) with a
     /// refcount the wrapper now owns.
     pub unsafe fn from_raw(ptr: *mut c_void) -> Option<Self> {
         if ptr.is_null() {
