@@ -1,23 +1,3 @@
-/**
- * Recording view orchestrator (UI-04): TCC preflight → display picker →
- * Record button → status stage + step progress + cursor trail.
- *
- * Layout follows the "industrial recorder" research:
- *   ┌─────────────────────────────────────────────┐
- *   │ Header: [<] project name                    │
- *   │ [Permission banner — inline, not modal]     │
- *   ├───────────────────────────┬─────────────────┤
- *   │                           │ Source          │
- *   │       PREVIEW / STAGE     │ Quality         │
- *   │       (16:9 letterbox)    │ Options         │
- *   │                           │                 │
- *   ├───────────────────────────┴─────────────────┤
- *   │ Step rail (horizontal chips)                │
- *   ├─────────────────────────────────────────────┤
- *   │           [ ● Start Recording ]  ⌘R         │
- *   └─────────────────────────────────────────────┘
- */
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -70,7 +50,10 @@ interface RecordingViewProps {
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
+    2,
+    "0",
+  );
   const seconds = String(totalSeconds % 60).padStart(2, "0");
   return `${hours}:${minutes}:${seconds}`;
 }
@@ -153,7 +136,9 @@ export function RecordingView({
       const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
       return id === selectedDisplay;
     });
-    return match ? `${match.name} · ${match.width_px}×${match.height_px}` : null;
+    return match
+      ? `${match.name} · ${match.width_px}×${match.height_px}`
+      : null;
   }, [displays, selectedDisplay]);
 
   // Preflight + display enumeration on mount.
@@ -242,7 +227,9 @@ export function RecordingView({
       case "Completed":
         setStatus("completed");
         setOutputPath(event.result.output_path);
-        toast.success("Recording complete", { description: event.result.output_path });
+        toast.success("Recording complete", {
+          description: event.result.output_path,
+        });
         break;
       case "Failed":
         setStatus("failed");
@@ -281,16 +268,13 @@ export function RecordingView({
       );
       sessionRef.current = id;
       setSession(
-        typeof (id as unknown) === "string"
-          ? (id as unknown as string)
-          : id.id,
+        typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
       );
 
       // Fire-and-forget: run the DSL against the browser driver in parallel
       // with the screen capture. Events update the step rail via dispatchAutomation.
-      launchAutomation(
-        { storySource, projectFolder },
-        (evt) => dispatchAutomation(evt),
+      launchAutomation({ storySource, projectFolder }, (evt) =>
+        dispatchAutomation(evt),
       ).catch((e) => {
         const msg = formatIpcError(e);
         toast.error(`Automation failed: ${msg}`);
@@ -384,7 +368,9 @@ export function RecordingView({
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
         <div className="flex items-center gap-3">
           {/* Back to editor (falls back to dashboard). Blocked while recording. */}
-          {status === "recording" || status === "paused" || status === "stopping" ? (
+          {status === "recording" ||
+          status === "paused" ||
+          status === "stopping" ? (
             <span
               aria-label="Back button disabled during recording"
               className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-muted)] opacity-50"
@@ -426,9 +412,7 @@ export function RecordingView({
         </div>
         <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
           {sessionId ? (
-            <span className="font-mono">
-              session · {sessionId.slice(0, 8)}
-            </span>
+            <span className="font-mono">session · {sessionId.slice(0, 8)}</span>
           ) : null}
         </div>
       </header>
@@ -464,13 +448,10 @@ export function RecordingView({
               }
               toast.success("Screen recording permission granted");
             } else {
-              toast.message(
-                "Permission still needed",
-                {
-                  description:
-                    "After granting in System Settings, relaunch StoryCapture so macOS picks up the change.",
-                },
-              );
+              toast.message("Permission still needed", {
+                description:
+                  "After granting in System Settings, relaunch StoryCapture so macOS picks up the change.",
+              });
             }
           }}
           onBypass={async () => {
@@ -483,7 +464,9 @@ export function RecordingView({
               await loadCaptureTargets();
               toast.success("Permission check bypassed");
             } catch (e) {
-              toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
+              toast.error(
+                `Could not load capture targets: ${formatIpcError(e)}`,
+              );
             }
           }}
         />
@@ -546,7 +529,9 @@ export function RecordingView({
                       setStatus(status === "paused" ? "recording" : "paused")
                     }
                     aria-label={
-                      status === "paused" ? "Resume recording" : "Pause recording"
+                      status === "paused"
+                        ? "Resume recording"
+                        : "Pause recording"
                     }
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
                   >
@@ -694,8 +679,8 @@ function PermissionBanner({
             : "Screen recording permission needed."}
         </span>
         <span className="text-[var(--color-fg-secondary)]">
-          macOS Sequoia sometimes reports stale state. If you've already granted,
-          click "Already granted".
+          macOS Sequoia sometimes reports stale state. If you've already
+          granted, click "Already granted".
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -783,7 +768,9 @@ function PreviewStage({
           </motion.div>
         )}
 
-        {(status === "recording" || status === "paused" || status === "stopping") && (
+        {(status === "recording" ||
+          status === "paused" ||
+          status === "stopping") && (
           <motion.div
             key="recording"
             initial={reduceMotion ? false : { opacity: 0, scale: 0.98 }}
