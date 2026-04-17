@@ -312,6 +312,39 @@ impl BrowserDriver for PlaywrightSidecarDriver {
     }
 }
 
+/// Plan 05-02 — process info for the launched browser, returned by the
+/// sidecar's `browserProcess` JSON-RPC verb.
+///
+/// - `pid: Some(_)` — locally-launched Chromium; host may resolve pid→SCWindow.
+/// - `pid: None`, `reason: Some("remote-browser")` — `chromium.connect()` path,
+///   no local process to target. UI keeps the auto option disabled.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct BrowserProcessInfo {
+    pub pid: Option<i32>,
+    #[serde(rename = "executablePath")]
+    pub executable_path: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+impl PlaywrightSidecarDriver {
+    /// Call the sidecar's `browserProcess` verb. Returns `Ok(info)` when the
+    /// sidecar answers (either with a local pid or the remote-browser
+    /// sentinel). Returns `Err(AutomationError::Browser("browser not
+    /// launched"))` when no `launch` has happened yet — the caller should
+    /// treat that as "Playwright auto unavailable" rather than a fatal
+    /// error.
+    ///
+    /// T-05-02-03: the sidecar logs `executable_path` at DEBUG only; this
+    /// method does not emit it at any level to avoid host-side leak.
+    pub async fn browser_process(&self) -> Result<BrowserProcessInfo> {
+        let v = self.call("browserProcess", serde_json::json!({})).await?;
+        let info: BrowserProcessInfo = serde_json::from_value(v)
+            .map_err(|e| AutomationError::Protocol(format!("browserProcess decode: {e}")))?;
+        Ok(info)
+    }
+}
+
 fn target_to_json(t: &SelectorOrText) -> Value {
     match t {
         SelectorOrText::Text(s) => json!({ "kind": "text", "value": s }),

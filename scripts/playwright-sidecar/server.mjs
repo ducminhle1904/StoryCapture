@@ -28,6 +28,15 @@ let state = {
   page: null,
   baseUrl: null,
   downloadDir: null,
+  // Plan 05-02: when we launch Chromium via `chromium.launchServer()`
+  // followed by `chromium.connect(wsEndpoint)`, the server exposes the
+  // child process (pid + spawnfile) which `Browser` itself doesn't. We
+  // keep the server handle here so `browserProcess` can report it.
+  browserServer: null,
+  // Test-only: force `browserProcess` to return the "remote-browser"
+  // response shape even though we launched locally. Flipped by the
+  // `__test_set_remote_browser` verb exercised from vitest.
+  fakeRemoteBrowser: false,
 };
 
 const handlers = {
@@ -48,7 +57,15 @@ const handlers = {
     const launchOpts = { headless: headless !== false };
     if (executable) launchOpts.executablePath = executable;
     else if (channel) launchOpts.channel = channel; // 'chrome' | 'msedge' | 'chrome-beta' | ...
-    state.browser = await chromium.launch(launchOpts);
+    // Plan 05-02: launch via `launchServer` + `connect` so we retain the
+    // child-process handle (pid + spawnfile) for the Playwright auto-follow
+    // capture path. Functionally equivalent to `chromium.launch()` for all
+    // the verbs we dispatch — all interaction flows through the connected
+    // Browser instance.
+    state.browserServer = await chromium.launchServer(launchOpts);
+    state.browser = await chromium.connect({
+      wsEndpoint: state.browserServer.wsEndpoint(),
+    });
     state.context = await state.browser.newContext({
       viewport: viewport ? { width: viewport.width, height: viewport.height } : undefined,
       colorScheme:
@@ -60,8 +77,21 @@ const handlers = {
   },
 
   close: async () => {
-    if (state.browser) await state.browser.close();
-    state = { browser: null, context: null, page: null, baseUrl: null, downloadDir: null };
+    if (state.browser) {
+      try { await state.browser.close(); } catch {}
+    }
+    if (state.browserServer) {
+      try { await state.browserServer.close(); } catch {}
+    }
+    state = {
+      browser: null,
+      context: null,
+      page: null,
+      baseUrl: null,
+      downloadDir: null,
+      browserServer: null,
+      fakeRemoteBrowser: false,
+    };
     return { ok: true };
   },
 
@@ -179,6 +209,59 @@ const handlers = {
   cursorPosition: async () => {
     return { x: 0, y: 0 };
   },
+
+  // Plan 05-02 — return {pid, executablePath} of the launched browser so
+  // the macOS host can resolve pid→SCWindow for Playwright auto-follow.
+  //
+  // Responses:
+  //   - launched, local:  { pid: <int>, executablePath: <string> }
+  //   - launched, remote: { pid: null, executablePath: null, reason: "remote-browser" }
+  //                       (a future chromium.connect() path; no error)
+  //   - not launched:     JSON-RPC error -32000 "browser not launched"
+  //
+  // T-05-02-03: executablePath may include a user-home path; log at DEBUG
+  // only (the sidecar's stdout is the JSON-RPC channel; we only emit
+  // structured tracing on stderr when DEBUG=storycapture-sidecar is set).
+  browserProcess: async () => {
+    if (!state.browser) {
+      const err = new Error("browser not launched");
+      err.code = -32000;
+      throw err;
+    }
+    if (state.fakeRemoteBrowser) {
+      return { pid: null, executablePath: null, reason: "remote-browser" };
+    }
+    // Local launch path — we always retain a BrowserServer handle in
+    // `state.browserServer`. If it's absent, the browser came from a
+    // future `connect()`-only path (remote CDP) and has no local pid.
+    const proc = state.browserServer ? state.browserServer.process() : null;
+    if (!proc) {
+      return { pid: null, executablePath: null, reason: "remote-browser" };
+    }
+    const pid = typeof proc.pid === "number" ? proc.pid : Number(proc.pid);
+    const executablePath =
+      typeof proc.spawnfile === "string"
+        ? proc.spawnfile
+        : proc.spawnfile
+        ? String(proc.spawnfile)
+        : null;
+    if (process.env.DEBUG && /storycapture-sidecar/.test(process.env.DEBUG)) {
+      // Debug-only: never emit at INFO/stdout levels.
+      process.stderr.write(
+        `[debug] browserProcess pid=${pid} exec=${executablePath}\n`,
+      );
+    }
+    return { pid, executablePath };
+  },
+
+  // Test-only shim (Plan 05-02 Task 0): let vitest exercise the
+  // remote-browser response shape without a real remote CDP endpoint.
+  // Safe to ship because it only mutates a non-observable flag — all
+  // real capture paths ignore it unless a browser is actually attached.
+  __test_set_remote_browser: async ({ enabled }) => {
+    state.fakeRemoteBrowser = Boolean(enabled);
+    return { ok: true };
+  },
 };
 
 function absolute(url) {
@@ -251,6 +334,11 @@ rl.on('close', async () => {
   if (state.browser) {
     try {
       await state.browser.close();
+    } catch {}
+  }
+  if (state.browserServer) {
+    try {
+      await state.browserServer.close();
     } catch {}
   }
   process.exit(0);

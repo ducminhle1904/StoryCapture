@@ -117,30 +117,25 @@ describe("browserProcess JSON-RPC verb", () => {
   }, 90_000);
 
   it("returns {pid: null, reason: 'remote-browser'} when browser.process() is null", async () => {
-    // We can't easily spin up a real remote CDP endpoint in unit tests, so
-    // we simulate the remote-browser path by launching and then overriding
-    // the state via a test-only hook. Since server.mjs has no such hook,
-    // we instead assert that the handler's response shape is correct by
-    // invoking the internal code path indirectly: after launch, we replace
-    // the browser.process() return. This is most cleanly tested inside the
-    // sidecar via a dedicated `__test_fake_remote_browser` verb (added in
-    // Task 1 for deterministic testing). If that verb is absent, we skip
-    // this test with a clear message.
-    let testVerbAvailable = true;
+    // Deterministic remote-browser simulation: launch locally, then flip
+    // the test-only flag so `browserProcess` responds as if it were a
+    // remote CDP-connected browser (browser.process() === null).
+    await client.call("launch", {
+      viewport: { width: 800, height: 600 },
+      theme: "auto",
+      baseUrl: null,
+      headless: true,
+      downloadDir: "/tmp",
+    });
     try {
       await client.call("__test_set_remote_browser", { enabled: true });
-    } catch (e) {
-      testVerbAvailable = false;
+      const resp = await client.call("browserProcess", {});
+      expect(resp.result).toBeDefined();
+      expect(resp.result.pid).toBeNull();
+      expect(resp.result.executablePath).toBeNull();
+      expect(resp.result.reason).toBe("remote-browser");
+    } finally {
+      await client.call("close", {}).catch(() => {});
     }
-    if (!testVerbAvailable) {
-      // The test-only shim is expected once Task 1 lands.
-      // Mark as a skip to keep Wave-0 scaffold green without real remote CDP.
-      return;
-    }
-    const resp = await client.call("browserProcess", {});
-    expect(resp.result).toBeDefined();
-    expect(resp.result.pid).toBeNull();
-    expect(resp.result.executablePath).toBeNull();
-    expect(resp.result.reason).toBe("remote-browser");
-  }, 30_000);
+  }, 90_000);
 });
