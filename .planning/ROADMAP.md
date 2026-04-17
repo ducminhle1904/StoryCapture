@@ -167,10 +167,24 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Mic audio capture (cpal + ringbuf + named pipe + FFmpeg dual-input mux) + device picker + mid-record failure UX
-- [ ] 06-02-PLAN.md — Region capture (SCK source_rect + Windows CPU crop) + Chromium `--app` chrome-hiding + non-sticky cursor toggle
+- [x] 06-01-PLAN.md — Mic audio capture (cpal + ringbuf + named pipe + FFmpeg dual-input mux) + device picker + mid-record failure UX
+- [x] 06-02-PLAN.md — Region capture (SCK source_rect + Windows CPU crop) + Chromium `--app` chrome-hiding + non-sticky cursor toggle
 - [ ] 06-03-PLAN.md — Multi-browser title-hint map (Edge/Brave/Chrome channels) + 2s live preview thumbnail (SCScreenshotManager / single-frame WGC)
-- [ ] 06-04-PLAN.md — Windows real-capture E2E: workflow_dispatch-only workflow on self-hosted graphical runner + operator runbook fallback
+- [x] 06-04-PLAN.md — Windows real-capture E2E: workflow_dispatch-only workflow on self-hosted graphical runner + operator runbook fallback
+
+### Phase 7: Semantic DSL verbs + element picker (Tier 1 + Tier 2)
+
+**Goal:** Make the StoryCapture DSL authorable by non-developers. Tier 1 promotes accessibility-first locators (`click button "Save"`, `fill field "Email" with "..."`) into first-class DSL syntax that compiles to Playwright `getByRole`/`getByLabel`/`getByText`. Tier 2 adds a "Pick element" button that drives an in-browser overlay picker to emit the best Tier 1 DSL line at the editor cursor, with an MVP (primary locator) shipping first and a robustness plan (ranked fallback persistence + self-healing) landing after.
+**Requirements**: PHASE-7.1, PHASE-7.2, PHASE-7.3, PHASE-7.4, PHASE-7.5
+**Depends on:** Phase 5
+**Plans:** 4 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Grammar + AST: role-qualified `target_role`, `target_field`, `target_text_kw` rules; `SelectorOrText::{Role,Label,TextExact}` variants; `AriaRole` enum; `cmd_fill` sugar desugaring to `Type`; did-you-mean role suggestions; backwards compat tests
+- [ ] 07-02-PLAN.md — SmartSelector + sidecar + driver marshalling: `SelectorStrategy::{Role,Label,TextExact}` short-circuits; sidecar `locate()` / `targetToLocator()` branches; `playwright_driver::target_to_json()` coverage for the three new variants; E2E fixture tests
+- [ ] 07-03-PLAN.md — Tier 2 MVP: "Pick element" button + overlay bundle (esbuild IIFE embedded in SEA) + `pickElement.start/cancel/isActive` sidecar methods + ranked generator (testid → role+name → label → text → css) + `editorController` singleton + CodeMirror atomic insertion + Esc-to-cancel banner + vitest + jsdom accessible-name matrix
+- [ ] 07-04-PLAN.md — Tier 2 robustness: JSON-RPC notification plumbing (`id: Option<u64>`) + `pickElement.hoverPreview` streaming + `.story.targets.json` schema + parser `# @id=<uuidv7>` trailing-comment round-trip + minimal story-parser formatter + executor self-healing fallback promotion
 
 ---
 *Roadmap created: 2026-04-14*
+*Phase 7 added: 2026-04-17*
