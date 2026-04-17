@@ -42,7 +42,7 @@ pub use frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
 pub use pipeline::CapturePipeline;
 pub use queue::{ByteBoundedQueue, DroppedFrame, QueueStats};
 pub use orchestrator::{orchestrate_start, FallbackCounter, OrchestratedStart};
-pub use target::{CaptureTarget, WindowId};
+pub use target::{CaptureTarget, RegionRect, WindowId};
 pub use window::WindowInfo;
 
 #[cfg(target_os = "macos")]

@@ -4,9 +4,88 @@
 //! with a richer variant that supports full-display, explicit-window, and
 //! "window owned by this PID" (Playwright auto-follow — resolved at
 //! `SckBackend::start` time, Plan 05-02 wires the sentinel).
+//!
+//! Plan 06-02 extends with `DisplayRegion { display_id, rect }` — a
+//! logical-point rect over a specific display, cropped at capture time
+//! (SCK `with_source_rect` on macOS, post-capture CPU crop on Windows per
+//! RESEARCH.md amendment to D-07: `windows-capture = 2.0.0` has no
+//! native region/crop API).
 
 use crate::display::DisplayId;
 use serde::{Deserialize, Serialize};
+
+/// A rectangle in **logical points/pixels** over a display.
+///
+/// - On macOS, coordinates are logical points; the SCK backend applies
+///   `point_pixel_scale()` internally when computing physical pixel
+///   `with_width`/`with_height` (RESEARCH Pitfall 7).
+/// - On Windows, coordinates are logical pixels (DPI-unaware layer); the
+///   WGC backend multiplies by the monitor's DPI scale to reach physical
+///   pixels for the post-capture CPU crop.
+///
+/// Values are `f64` to round-trip overlay-drawn rects losslessly through
+/// serde JSON.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RegionRect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+impl RegionRect {
+    /// Validate the rect against the bounds of the display it targets.
+    ///
+    /// Rejects:
+    /// - Non-finite coordinates (NaN / Inf)
+    /// - Zero-area or negative dimensions (`w <= 0` or `h <= 0`)
+    /// - Negative origins (`x < 0` or `y < 0`)
+    /// - Rects whose origin+size exceeds display bounds
+    ///
+    /// `display_logical_w` / `display_logical_h` are the display's size
+    /// in the same coordinate system as `self` (points on macOS, logical
+    /// pixels on Windows). Callers MUST fetch these from the target
+    /// display's `DisplayInfo` BEFORE starting a capture session.
+    ///
+    /// Returns a structured error string rather than a backend panic
+    /// (T-06-08 mitigation).
+    pub fn validate(
+        &self,
+        display_logical_w: f64,
+        display_logical_h: f64,
+    ) -> Result<(), String> {
+        if !self.x.is_finite() || !self.y.is_finite()
+            || !self.w.is_finite() || !self.h.is_finite()
+        {
+            return Err(format!(
+                "RegionRect contains non-finite coordinate: {:?}",
+                self
+            ));
+        }
+        if self.w <= 0.0 || self.h <= 0.0 {
+            return Err(format!(
+                "RegionRect has non-positive size ({}×{})",
+                self.w, self.h
+            ));
+        }
+        if self.x < 0.0 || self.y < 0.0 {
+            return Err(format!(
+                "RegionRect has negative origin ({}, {})",
+                self.x, self.y
+            ));
+        }
+        if self.x + self.w > display_logical_w + f64::EPSILON
+            || self.y + self.h > display_logical_h + f64::EPSILON
+        {
+            return Err(format!(
+                "RegionRect ({},{},{}×{}) exceeds display bounds {}×{}",
+                self.x, self.y, self.w, self.h,
+                display_logical_w, display_logical_h
+            ));
+        }
+        Ok(())
+    }
+}
 
 /// Platform-tagged window identifier.
 ///
@@ -36,7 +115,7 @@ pub struct WindowId(pub u64);
 /// The sentinel `WindowByPid { pid: -1, title_hint: Some("storycapture-playwright") }`
 /// represents "Playwright auto (resolve when a story launches)" in UI-facing
 /// persistence; Plan 05-02 replaces the sentinel with the real Playwright PID.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CaptureTarget {
     Display {
@@ -49,6 +128,13 @@ pub enum CaptureTarget {
         pid: i32,
         title_hint: Option<String>,
     },
+    /// Plan 06-02 — logical-point sub-rect of a specific display.
+    /// macOS: SCK `with_source_rect` (kernel-side crop, no overcapture).
+    /// Windows: post-capture CPU crop in `on_frame_arrived`.
+    DisplayRegion {
+        display_id: DisplayId,
+        rect: RegionRect,
+    },
 }
 
 impl CaptureTarget {
@@ -58,6 +144,7 @@ impl CaptureTarget {
             Self::Display { .. } => "display",
             Self::Window { .. } => "window",
             Self::WindowByPid { .. } => "window_by_pid",
+            Self::DisplayRegion { .. } => "display_region",
         }
     }
 }
@@ -101,5 +188,71 @@ mod tests {
         let s = serde_json::to_string(&t).unwrap();
         let back: CaptureTarget = serde_json::from_str(&s).unwrap();
         assert_eq!(t, back);
+    }
+
+    // ─── Plan 06-02 — DisplayRegion + RegionRect ───────────────────────
+
+    #[test]
+    fn region_rect_round_trips_json_preserving_f64_precision() {
+        let r = RegionRect { x: 100.25, y: 50.75, w: 640.125, h: 480.875 };
+        let s = serde_json::to_string(&r).unwrap();
+        let back: RegionRect = serde_json::from_str(&s).unwrap();
+        assert_eq!(r, back);
+        assert!(s.contains("\"x\":100.25"), "f64 x preserved: {s}");
+        assert!(s.contains("\"w\":640.125"), "f64 w preserved: {s}");
+    }
+
+    #[test]
+    fn target_display_region_round_trips_json() {
+        let t = CaptureTarget::DisplayRegion {
+            display_id: DisplayId(3),
+            rect: RegionRect { x: 0.0, y: 0.0, w: 1280.0, h: 720.0 },
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        let back: CaptureTarget = serde_json::from_str(&s).unwrap();
+        assert_eq!(t, back);
+        assert!(s.contains("\"display_region\""), "tag serialized: {s}");
+        assert!(s.contains("\"rect\""), "rect nested: {s}");
+    }
+
+    #[test]
+    fn region_rect_validate_accepts_in_bounds() {
+        let r = RegionRect { x: 100.0, y: 100.0, w: 640.0, h: 480.0 };
+        assert!(r.validate(1920.0, 1080.0).is_ok());
+    }
+
+    #[test]
+    fn region_rect_validate_rejects_zero_area() {
+        let r = RegionRect { x: 0.0, y: 0.0, w: 0.0, h: 480.0 };
+        assert!(r.validate(1920.0, 1080.0).is_err());
+        let r = RegionRect { x: 0.0, y: 0.0, w: 640.0, h: 0.0 };
+        assert!(r.validate(1920.0, 1080.0).is_err());
+    }
+
+    #[test]
+    fn region_rect_validate_rejects_negative_size() {
+        let r = RegionRect { x: 0.0, y: 0.0, w: -10.0, h: 480.0 };
+        assert!(r.validate(1920.0, 1080.0).is_err());
+    }
+
+    #[test]
+    fn region_rect_validate_rejects_negative_origin() {
+        let r = RegionRect { x: -1.0, y: 0.0, w: 100.0, h: 100.0 };
+        assert!(r.validate(1920.0, 1080.0).is_err());
+    }
+
+    #[test]
+    fn region_rect_validate_rejects_overflow() {
+        // origin+size exceeds display bounds
+        let r = RegionRect { x: 1500.0, y: 100.0, w: 640.0, h: 480.0 };
+        assert!(r.validate(1920.0, 1080.0).is_err());
+    }
+
+    #[test]
+    fn region_rect_validate_rejects_non_finite() {
+        let r = RegionRect { x: f64::NAN, y: 0.0, w: 640.0, h: 480.0 };
+        assert!(r.validate(1920.0, 1080.0).is_err());
+        let r = RegionRect { x: 0.0, y: 0.0, w: f64::INFINITY, h: 480.0 };
+        assert!(r.validate(1920.0, 1080.0).is_err());
     }
 }

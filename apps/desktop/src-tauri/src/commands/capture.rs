@@ -383,12 +383,39 @@ pub struct WindowInfoDto {
 
 /// Tagged CaptureTarget DTO. Mirrors `capture::CaptureTarget` with the
 /// same `kind` discriminator so the JSON wire format is identical.
+///
+/// Plan 06-02 adds `DisplayRegion { display_id, rect }` — a logical-point
+/// sub-rect of a display. The `rect` is validated against display bounds
+/// at the IPC boundary (T-06-08 mitigation) before it reaches SCK/WGC.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CaptureTargetDto {
     Display { display_id: u64 },
     Window { window_id: u64 },
     WindowByPid { pid: i32, title_hint: Option<String> },
+    DisplayRegion { display_id: u64, rect: RegionRectDto },
+}
+
+/// Logical-point rect over a display. Serializes to/from `capture::RegionRect`
+/// with identical field order.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+pub struct RegionRectDto {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+impl From<RegionRectDto> for capture::RegionRect {
+    fn from(r: RegionRectDto) -> Self {
+        capture::RegionRect { x: r.x, y: r.y, w: r.w, h: r.h }
+    }
+}
+
+impl From<capture::RegionRect> for RegionRectDto {
+    fn from(r: capture::RegionRect) -> Self {
+        RegionRectDto { x: r.x, y: r.y, w: r.w, h: r.h }
+    }
 }
 
 impl From<CaptureTargetDto> for capture::CaptureTarget {
@@ -402,6 +429,12 @@ impl From<CaptureTargetDto> for capture::CaptureTarget {
             }
             CaptureTargetDto::WindowByPid { pid, title_hint } => {
                 capture::CaptureTarget::WindowByPid { pid, title_hint }
+            }
+            CaptureTargetDto::DisplayRegion { display_id, rect } => {
+                capture::CaptureTarget::DisplayRegion {
+                    display_id: DisplayId(display_id),
+                    rect: rect.into(),
+                }
             }
         }
     }
@@ -418,6 +451,12 @@ impl From<capture::CaptureTarget> for CaptureTargetDto {
             }
             capture::CaptureTarget::WindowByPid { pid, title_hint } => {
                 CaptureTargetDto::WindowByPid { pid, title_hint }
+            }
+            capture::CaptureTarget::DisplayRegion { display_id, rect } => {
+                CaptureTargetDto::DisplayRegion {
+                    display_id: display_id.0,
+                    rect: rect.into(),
+                }
             }
         }
     }
@@ -580,6 +619,30 @@ pub async fn start_capture_target(
     };
     // Overwrite the incoming target with the sanitized / pid-rewritten one.
     let args = StartCaptureTargetArgs { target, ..args };
+
+    // Plan 06-02 — validate region rect against display bounds at IPC
+    // boundary (T-06-08). Rejects NaN/Inf/negative/zero-area/out-of-bounds
+    // rects with a structured error — never reaches SCK/WGC.
+    if let CaptureTargetDto::DisplayRegion { display_id, rect } = &args.target {
+        let displays = enumerate_displays()
+            .map_err(|e| AppError::Capture(format!("enumerate displays for region validation: {e}")))?;
+        let disp = displays
+            .into_iter()
+            .find(|d| d.id.0 == *display_id)
+            .ok_or_else(|| {
+                AppError::Capture(format!(
+                    "region target references unknown display_id={display_id}"
+                ))
+            })?;
+        // `DisplayInfo.{width_px,height_px}` are physical pixels already
+        // scaled by `scale_factor`. The RegionRect is logical — divide to
+        // recover logical extents.
+        let logical_w = (disp.width_px as f64) / (disp.scale_factor as f64).max(1.0);
+        let logical_h = (disp.height_px as f64) / (disp.scale_factor as f64).max(1.0);
+        let rr: capture::RegionRect = (*rect).into();
+        rr.validate(logical_w, logical_h)
+            .map_err(AppError::Capture)?;
+    }
 
     // Persist the target for stickiness (D-01).
     {

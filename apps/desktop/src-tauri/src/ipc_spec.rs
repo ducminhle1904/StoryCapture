@@ -136,6 +136,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<capture::DisplayInfoDto>()
         .typ::<capture::WindowInfoDto>()
         .typ::<capture::CaptureTargetDto>()
+        .typ::<capture::RegionRectDto>()
         .typ::<capture::CaptureTargetsDto>()
         .typ::<capture::StartCaptureTargetArgs>()
         .typ::<capture::PermissionState>()

@@ -73,6 +73,16 @@ impl CaptureBackend for XcapBackend {
                 self.running.store(false, Ordering::Release);
                 return Err(CaptureError::UnsupportedTarget("window_by_pid"));
             }
+            // Plan 06-02: region capture has no xcap fallback path in v1.
+            // The orchestrator's fallback heuristic only degrades window
+            // targets; a user-chosen region requires the native backend
+            // (SCK source_rect or WGC CPU crop). Surface an explicit error
+            // so callers see a structured reason rather than a silent
+            // full-display capture.
+            crate::target::CaptureTarget::DisplayRegion { .. } => {
+                self.running.store(false, Ordering::Release);
+                return Err(CaptureError::UnsupportedTarget("display_region"));
+            }
         };
         *self.started_at.lock() = Some(Instant::now());
 

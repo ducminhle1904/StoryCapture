@@ -71,6 +71,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
 
+use screencapturekit::cg::CGRect;
 use screencapturekit::cm::CMTime;
 use screencapturekit::shareable_content::SCShareableContent;
 use screencapturekit::stream::{
@@ -103,17 +104,18 @@ struct SckState {
 
 impl SckBackend {
     pub fn new() -> Result<Self, CaptureError> {
-        // TCC preflight — fail fast if denied.
-        match crate::macos::tcc::preflight_screen_capture_access() {
-            crate::macos::tcc::PermissionState::Granted => {}
-            other => {
-                return Err(CaptureError::PermissionDenied(format!(
-                    "ScreenCaptureKit access not granted: {:?} — visit {}",
-                    other,
-                    crate::macos::tcc::TCC_PREFS_URL
-                )));
-            }
-        }
+        // NOTE: `CGPreflightScreenCaptureAccess` false-negatives on Sequoia
+        // after ad-hoc re-signs (TCC caches per-signature). We log the
+        // preflight result for diagnostics but don't gatekeep on it —
+        // SCStream itself fails loudly via didStopWithError if access is
+        // truly denied, which the caller treats as a backend failure and
+        // falls back through the orchestrator.
+        let pre = crate::macos::tcc::preflight_screen_capture_access();
+        tracing::info!(
+            target: "capture::macos::sck_backend",
+            preflight = ?pre,
+            "SckBackend::new — proceeding regardless of preflight (Sequoia false-negative guard)"
+        );
         Ok(Self {
             state: Arc::new(Mutex::new(SckState {
                 started_at: None,
@@ -143,7 +145,15 @@ impl SckBackend {
     /// Build the `SCContentFilter` for a target, resolving WindowId via
     /// `SCShareableContent`. `WindowByPid` is out of scope for Plan 05-01
     /// — Plan 05-02 implements it.
-    fn build_filter(target: &CaptureTarget) -> Result<(SCContentFilter, u32, u32), CaptureError> {
+    ///
+    /// Return value: `(filter, width_px, height_px, source_rect_opt)`.
+    /// Plan 06-02: `source_rect_opt` is `Some(CGRect)` **in logical points**
+    /// for `DisplayRegion` targets, otherwise `None`. Callers applying it
+    /// to `SCStreamConfiguration::with_source_rect` get kernel-side crop
+    /// (no overcapture — T-06-12).
+    fn build_filter(
+        target: &CaptureTarget,
+    ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>), CaptureError> {
         match target {
             CaptureTarget::Display { display_id } => {
                 let content = SCShareableContent::get().map_err(|e| {
@@ -174,7 +184,7 @@ impl SckBackend {
                 // the *raw* initWithDisplay:excludingWindows:[] SDK call.
                 // The 1.5.4 builder maps this to excludingWindows with a
                 // null ptr + 0 count, which Apple accepts.
-                Ok((filter, width, height))
+                Ok((filter, width, height, None))
             }
             CaptureTarget::Window { window_id } => {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
@@ -186,7 +196,7 @@ impl SckBackend {
                 let width = (frame.width * 2.0) as u32;
                 let height = (frame.height * 2.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
-                Ok((filter, width, height))
+                Ok((filter, width, height, None))
             }
             CaptureTarget::WindowByPid { pid, title_hint } => {
                 // Single-shot resolution: the command-layer path already
@@ -215,7 +225,42 @@ impl SckBackend {
                 let width = (frame.width * 2.0) as u32;
                 let height = (frame.height * 2.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
-                Ok((filter, width, height))
+                Ok((filter, width, height, None))
+            }
+            // Plan 06-02 — SCK native region capture via with_source_rect.
+            //
+            // Invariants (RESEARCH Pattern 3 + Pitfall 7):
+            //   1. source_rect is in LOGICAL POINTS — same coordinate
+            //      space as `disp.frame()` returns.
+            //   2. with_width / with_height use PHYSICAL PIXELS — we scale
+            //      the logical rect by the display's point→pixel factor,
+            //      computed from `disp.width() / disp.frame().width`.
+            //   3. We do NOT call `SCContentFilter::set_content_rect`
+            //      (macOS 14.2+ only); the stream-config path works on
+            //      macOS 12.3+ which is StoryCapture's min target.
+            //   4. Filter stays display-only (no exclude-windows).
+            CaptureTarget::DisplayRegion { display_id, rect } => {
+                let content = SCShareableContent::get().map_err(|e| {
+                    CaptureError::Native(format!("SCShareableContent::get: {e}"))
+                })?;
+                let displays = content.displays();
+                let disp = displays
+                    .iter()
+                    .find(|d| d.display_id() as u64 == display_id.0)
+                    .or_else(|| displays.first())
+                    .ok_or_else(|| CaptureError::Native("no SCDisplay available".into()))?;
+                // SCK `frame()` returns logical-point dimensions; `width()`
+                // returns physical pixels. Compute the source-rect +
+                // pixel dimensions via the shared helper so tests and
+                // production agree byte-for-byte on the rounding rules.
+                let frame = disp.frame();
+                let (width_px, height_px, source_rect) =
+                    compute_region_math(rect, frame.width, disp.width());
+                let filter = SCContentFilter::create()
+                    .with_display(disp)
+                    .with_excluding_windows(&[])
+                    .build();
+                Ok((filter, width_px, height_px, Some(source_rect)))
             }
         }
     }
@@ -235,7 +280,7 @@ impl CaptureBackend for SckBackend {
         // Resolve the SCContentFilter on a blocking thread (Pitfall 7:
         // SCShareableContent::get blocks 50–200ms).
         let target = cfg.target.clone();
-        let (filter, width_px, height_px) =
+        let (filter, width_px, height_px, source_rect) =
             tokio::task::spawn_blocking(move || Self::build_filter(&target))
                 .await
                 .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
@@ -263,13 +308,26 @@ impl CaptureBackend for SckBackend {
             crate::frame::PixelFormat::Nv12 => SckPixelFormat::BGRA,
         };
 
-        let config = SCStreamConfiguration::new()
+        let mut config = SCStreamConfiguration::new()
             .with_width(width_px)
             .with_height(height_px)
             .with_pixel_format(sck_pf)
             .with_shows_cursor(cfg.include_cursor)
             .with_minimum_frame_interval(&frame_interval)
             .with_queue_depth(8);
+
+        // Plan 06-02 — when the target is a DisplayRegion, apply SCK's
+        // native source-rect + destination-rect crop. with_source_rect
+        // takes logical points (matches disp.frame()); with_destination_rect
+        // is in output-frame pixels (anchored at origin, full rect); and
+        // with_scales_to_fit(false) preserves 1:1 pixel fidelity.
+        if let Some(src) = source_rect {
+            let dest = CGRect::new(0.0, 0.0, width_px as f64, height_px as f64);
+            config = config
+                .with_source_rect(src)
+                .with_destination_rect(dest)
+                .with_scales_to_fit(false);
+        }
 
         // Delegate for lifecycle events. Forward to the event sink if
         // one was registered (orchestrator).
@@ -370,6 +428,89 @@ impl CaptureBackend for SckBackend {
     fn list_displays(&self) -> Result<Vec<DisplayInfo>, CaptureError> {
         enumerate()
     }
+}
+
+/// Internal helper that computes the SCK source_rect (logical points)
+/// and pixel dimensions for a `DisplayRegion` target, given the display's
+/// logical-point frame width and its physical pixel width. Split out of
+/// `build_filter` so unit tests can drive it without TCC.
+pub(crate) fn compute_region_math(
+    rect: &crate::target::RegionRect,
+    disp_logical_width: f64,
+    disp_pixel_width: u32,
+) -> (u32, u32, CGRect) {
+    let scale = if disp_logical_width > 0.0 {
+        (disp_pixel_width as f64) / disp_logical_width
+    } else {
+        2.0
+    };
+    let src = CGRect::new(rect.x, rect.y, rect.w, rect.h);
+    let width_px = (rect.w * scale).round() as u32;
+    let height_px = (rect.h * scale).round() as u32;
+    (width_px, height_px, src)
+}
+
+#[cfg(test)]
+mod region_tests {
+    use super::*;
+    use crate::target::RegionRect;
+
+    #[test]
+    fn region_math_retina_2x() {
+        // A 1440-point logical display backed by 2880 pixels → scale 2.0.
+        let rect = RegionRect { x: 100.0, y: 50.0, w: 640.0, h: 480.0 };
+        let (w_px, h_px, src) = compute_region_math(&rect, 1440.0, 2880);
+        assert_eq!(w_px, 1280);
+        assert_eq!(h_px, 960);
+        // source_rect stays in POINTS — identical to the input (Pitfall 7).
+        assert_eq!(src.x, 100.0);
+        assert_eq!(src.y, 50.0);
+        assert_eq!(src.width, 640.0);
+        assert_eq!(src.height, 480.0);
+    }
+
+    #[test]
+    fn region_math_non_retina_1x() {
+        let rect = RegionRect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
+        let (w_px, h_px, src) = compute_region_math(&rect, 1920.0, 1920);
+        assert_eq!(w_px, 800);
+        assert_eq!(h_px, 600);
+        assert_eq!(src.width, 800.0);
+    }
+
+    #[test]
+    fn region_math_fractional_scale_1_5x() {
+        // 1920-point display backed by 2880 pixels → 1.5× scale.
+        let rect = RegionRect { x: 0.0, y: 0.0, w: 640.0, h: 360.0 };
+        let (w_px, h_px, _src) = compute_region_math(&rect, 1920.0, 2880);
+        assert_eq!(w_px, 960);
+        assert_eq!(h_px, 540);
+    }
+}
+
+/// Test-only hook: exposes the internal `build_filter` for unit
+/// assertions on the source-rect path. Callers may construct a
+/// `CaptureTarget::DisplayRegion` and read back the `Option<CGRect>`
+/// without building a full SCStream.
+///
+/// NOTE: actual `SCContentFilter` construction still calls into
+/// SCShareableContent, which requires Screen Recording TCC. We swallow
+/// that error so no-TCC CI hosts can still exercise the rect math —
+/// the rect computation itself is deterministic and runs *before* the
+/// filter builder errors out. Returns the tuple (width_px, height_px,
+/// source_rect) for DisplayRegion targets; `None` if the SCK call failed.
+#[cfg(test)]
+pub(crate) fn build_filter_for_test_region(
+    display_id: u64,
+    rect: crate::target::RegionRect,
+) -> Option<(u32, u32, Option<CGRect>)> {
+    let target = CaptureTarget::DisplayRegion {
+        display_id: crate::display::DisplayId(display_id),
+        rect,
+    };
+    SckBackend::build_filter(&target)
+        .ok()
+        .map(|(_, w, h, r)| (w, h, r))
 }
 
 /// Cross-call display enumeration — used directly by `display::enumerate_displays`

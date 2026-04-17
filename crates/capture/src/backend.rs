@@ -54,6 +54,7 @@ impl CaptureConfig {
     pub fn display_id(&self) -> Option<DisplayId> {
         match self.target {
             CaptureTarget::Display { display_id } => Some(display_id),
+            CaptureTarget::DisplayRegion { display_id, .. } => Some(display_id),
             _ => None,
         }
     }

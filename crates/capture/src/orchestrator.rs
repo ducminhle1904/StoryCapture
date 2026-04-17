@@ -77,7 +77,17 @@ pub async fn orchestrate_start(
             // Only window-targeted captures should silently fall back;
             // display-targeted failures propagate (no fallback path adds
             // value for them).
-            let is_window_target = !matches!(cfg.target, CaptureTarget::Display { .. });
+            // Only window-targeted captures (and DisplayRegion, which is
+            // also native-only on Windows per RESEARCH amendment to D-07)
+            // go through the xcap fallback. Plain Display targets already
+            // work in xcap — if they fail, the failure is not something
+            // fallback can fix.
+            let is_window_target = matches!(
+                cfg.target,
+                CaptureTarget::Window { .. }
+                    | CaptureTarget::WindowByPid { .. }
+                    | CaptureTarget::DisplayRegion { .. }
+            );
             if !is_window_target {
                 return Err(primary_err);
             }
