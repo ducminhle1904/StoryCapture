@@ -3,6 +3,7 @@
 
 pub mod frame_from_wgc;
 pub mod raii;
+pub mod thumbnail;
 pub mod wgc_backend;
 pub mod window;
 
