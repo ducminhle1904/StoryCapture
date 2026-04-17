@@ -188,9 +188,55 @@ impl SckBackend {
                 let filter = SCContentFilter::create().with_window(&window).build();
                 Ok((filter, width, height))
             }
-            CaptureTarget::WindowByPid { .. } => {
-                // Plan 05-02 resolves Playwright PID → SCWindow here.
-                Err(CaptureError::UnsupportedTarget("window_by_pid (plan 05-02)"))
+            CaptureTarget::WindowByPid { pid, title_hint } => {
+                // Plan 05-02: resolve pid→SCWindow with retry. We're
+                // already inside `spawn_blocking` (see the `start` path
+                // below), so calling the sync resolver directly is
+                // correct; looping here gives us the same ~1s budget as
+                // the async version without re-entering the reactor.
+                const MAX_RETRIES: u32 = 10;
+                const RETRY_DELAY: std::time::Duration =
+                    std::time::Duration::from_millis(100);
+                // Validate title_hint (T-05-02-02). The Tauri command
+                // layer also validates; defense-in-depth for any in-host
+                // caller that bypasses the command.
+                if let Some(h) = title_hint.as_deref() {
+                    if h.len() > 256 {
+                        return Err(CaptureError::Backend(
+                            "title_hint exceeds 256 chars".into(),
+                        ));
+                    }
+                    if h.chars().any(|c| c.is_ascii_control()) {
+                        return Err(CaptureError::Backend(
+                            "title_hint contains ASCII control chars".into(),
+                        ));
+                    }
+                }
+                let mut window = None;
+                for attempt in 0..MAX_RETRIES {
+                    if let Some(w) = crate::macos::window::find_window_by_pid_sync(
+                        *pid,
+                        title_hint.as_deref(),
+                    )? {
+                        window = Some(w);
+                        break;
+                    }
+                    if attempt + 1 < MAX_RETRIES {
+                        std::thread::sleep(RETRY_DELAY);
+                    }
+                }
+                let window = window.ok_or_else(|| {
+                    // Plan 05-01 orchestrator's silent-xcap-fallback path
+                    // engages on WindowNotFound per D-07.
+                    CaptureError::WindowNotFound(*pid as u64)
+                })?;
+                let frame = window.frame();
+                // Point dimensions; scale to pixels via 2x (retina) —
+                // same approach as the Window arm above.
+                let width = (frame.width * 2.0) as u32;
+                let height = (frame.height * 2.0) as u32;
+                let filter = SCContentFilter::create().with_window(&window).build();
+                Ok((filter, width, height))
             }
         }
     }
