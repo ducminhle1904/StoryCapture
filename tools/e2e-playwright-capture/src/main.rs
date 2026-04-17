@@ -107,12 +107,8 @@ async fn main() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
         match capture::macos::window::find_window_by_pid(pid, Some("Chromium")).await {
-            Ok(Some(w)) => {
-                tracing::info!(
-                    window_id = w.window_id(),
-                    title = ?w.title(),
-                    "resolved SCWindow"
-                );
+            Ok(Some(id)) => {
+                tracing::info!(window_id = id.0, "resolved WindowId");
             }
             Ok(None) => {
                 tracing::warn!(

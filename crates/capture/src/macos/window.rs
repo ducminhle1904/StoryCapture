@@ -71,11 +71,10 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
     Ok(out)
 }
 
-/// Look up an `SCWindow` by its window_id. Returns `None` if the window is
-/// no longer in the shareable-content snapshot. Used by `SckBackend::start`
-/// to convert a `CaptureTarget::Window { window_id }` into a live handle.
+/// Look up an `SCWindow` by its window_id. Used only within the macOS
+/// backend crate — keeps the `screencapturekit` ABI off the public API.
 #[cfg(target_os = "macos")]
-pub fn find_window_by_id(
+pub(crate) fn resolve_sc_window_by_id(
     target: crate::target::WindowId,
 ) -> Result<Option<screencapturekit::shareable_content::SCWindow>, CaptureError> {
     let target_id_u32 = u32::try_from(target.0).map_err(|_| {
@@ -105,7 +104,7 @@ pub fn find_window_by_id(
 /// and can block 50–200ms on WindowServer. Callers MUST wrap in
 /// `spawn_blocking` or use the async version below.
 #[cfg(target_os = "macos")]
-pub fn find_window_by_pid_sync(
+pub(crate) fn resolve_sc_window_by_pid_sync(
     pid: i32,
     title_hint: Option<&str>,
 ) -> Result<Option<screencapturekit::shareable_content::SCWindow>, CaptureError> {
@@ -175,12 +174,11 @@ pub fn find_window_by_pid_sync(
 pub async fn find_window_by_pid(
     pid: i32,
     title_hint: Option<&str>,
-) -> Result<Option<screencapturekit::shareable_content::SCWindow>, CaptureError> {
+) -> Result<Option<crate::target::WindowId>, CaptureError> {
     const MAX_RETRIES: u32 = 10;
     const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
-    // Validate title_hint at the entry point (T-05-02-02 defense-in-depth).
-    // The command-layer validator in Task 3 runs first, but since this is
-    // a library API we re-check to keep the invariant local.
+    // Defense-in-depth: the command-layer validator runs first but this is
+    // a library API with in-host callers (tools/e2e-playwright-capture).
     let owned_hint = match title_hint {
         Some(h) => {
             if h.len() > 256 {
@@ -200,12 +198,12 @@ pub async fn find_window_by_pid(
     for attempt in 0..MAX_RETRIES {
         let hint_clone = owned_hint.clone();
         let result = tokio::task::spawn_blocking(move || {
-            find_window_by_pid_sync(pid, hint_clone.as_deref())
+            resolve_sc_window_by_pid_sync(pid, hint_clone.as_deref())
         })
         .await
         .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
-        if result.is_some() {
-            return Ok(result);
+        if let Some(w) = result {
+            return Ok(Some(crate::target::WindowId(u64::from(w.window_id()))));
         }
         if attempt + 1 < MAX_RETRIES {
             tokio::time::sleep(RETRY_DELAY).await;
@@ -224,7 +222,7 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
 pub async fn find_window_by_pid(
     _pid: i32,
     _title_hint: Option<&str>,
-) -> Result<Option<()>, CaptureError> {
+) -> Result<Option<crate::target::WindowId>, CaptureError> {
     Err(CaptureError::Unsupported)
 }
 

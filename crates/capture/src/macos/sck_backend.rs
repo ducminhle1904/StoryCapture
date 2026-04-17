@@ -177,7 +177,7 @@ impl SckBackend {
                 Ok((filter, width, height))
             }
             CaptureTarget::Window { window_id } => {
-                let window = crate::macos::window::find_window_by_id(*window_id)?
+                let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
                     .ok_or(CaptureError::WindowNotFound(window_id.0))?;
                 let frame = window.frame();
                 // Point dimensions; scale to pixels via the display's
@@ -204,7 +204,7 @@ impl SckBackend {
                         ));
                     }
                 }
-                let window = crate::macos::window::find_window_by_pid_sync(
+                let window = crate::macos::window::resolve_sc_window_by_pid_sync(
                     *pid,
                     title_hint.as_deref(),
                 )?

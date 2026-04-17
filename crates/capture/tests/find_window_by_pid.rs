@@ -15,7 +15,7 @@
 
 #![cfg(all(target_os = "macos", feature = "real-capture"))]
 
-use capture::macos::window::find_window_by_pid;
+use capture::macos::window::{find_window_by_pid, list_windows};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
@@ -61,18 +61,23 @@ async fn find_window_by_pid_chromium() {
     let start = Instant::now();
     let result = find_window_by_pid(pid, Some("Chromium")).await;
     let elapsed = start.elapsed();
+    // Cross-check resolved id against list_windows so we can assert app
+    // identity without depending on SCWindow in the public API.
+    let infos = list_windows().ok();
     let _ = child.kill();
     let _ = child.wait();
     assert!(
         elapsed < Duration::from_secs(3),
         "cold-path resolution must complete within 3s, was {elapsed:?}",
     );
-    let window = result.expect("no SCK error").expect("pid window not found");
-    let title = window.title().unwrap_or_default();
-    let app_name = window
-        .owning_application()
-        .map(|a| a.application_name())
-        .unwrap_or_default();
+    let id = result.expect("no SCK error").expect("pid window not found");
+    let infos = infos.expect("list_windows");
+    let info = infos
+        .into_iter()
+        .find(|w| w.window_id == id.0)
+        .expect("resolved id not in list_windows snapshot");
+    let title = info.title.unwrap_or_default();
+    let app_name = info.app_name;
     assert!(
         title.to_lowercase().contains("chromium")
             || app_name.to_lowercase().contains("chromium")
@@ -111,18 +116,23 @@ async fn find_window_by_pid_prefers_largest_window() {
         .spawn();
     sleep(Duration::from_millis(800)).await;
     let result = find_window_by_pid(pid, Some("Chromium")).await;
+    let infos = list_windows().ok();
     let _ = child.kill();
     let _ = child.wait();
-    let window = result.expect("no SCK error").expect("pid window not found");
-    let frame = window.frame();
+    let id = result.expect("no SCK error").expect("pid window not found");
+    let info = infos
+        .expect("list_windows")
+        .into_iter()
+        .find(|w| w.window_id == id.0)
+        .expect("resolved id not in list_windows snapshot");
     // Largest-area rule: the returned window must have area > 500_000 px²
     // (e.g. 1000×500) — rules out small popup.
-    let area = frame.width * frame.height;
+    let area = info.width * info.height;
     assert!(
         area > 500_000.0,
         "expected largest-area window, got area={area} w={} h={}",
-        frame.width,
-        frame.height,
+        info.width,
+        info.height,
     );
 }
 
