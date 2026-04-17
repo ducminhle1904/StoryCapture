@@ -80,7 +80,16 @@ impl EncodeConfig {
     ///   - `-progress pipe:2 -loglevel info` — progress events on stderr
     ///     (`pipe:2`) are parsed by `progress.rs`.
     pub fn to_ffmpeg_args(&self) -> Vec<String> {
-        let bitrate = format!("{}k", self.bitrate_kbps);
+        // Bitrate scales with pixel count — 12 Mbps is fine for 1080p but
+        // looks washed out at 4K. Compute ~0.10 bpp target, clamped.
+        let pixels = (self.width as u64) * (self.height as u64);
+        let target_kbps = ((pixels / 1000) as u32).clamp(self.bitrate_kbps, 40_000);
+        let bitrate = format!("{}k", target_kbps);
+        // H.264 requires even dimensions. We keep native resolution (no
+        // downscale) now that the `-profile:v baseline -level 4.1`
+        // constraint is gone — VideoToolbox on Apple Silicon happily
+        // handles 4K inputs. Scale filter just rounds to even dims.
+        let scale_filter = "scale=trunc(iw/2)*2:trunc(ih/2)*2".to_string();
         vec![
             "-hide_banner".into(),
             "-y".into(),
@@ -102,15 +111,18 @@ impl EncodeConfig {
             "lavfi".into(),
             "-i".into(),
             "anullsrc=r=48000:cl=mono".into(),
+            // --- downscale + even-dim video filter ---
+            "-vf".into(),
+            scale_filter,
             // --- video encode ---
+            // NOTE: no explicit -profile/-level — VideoToolbox rejects
+            // baseline@4.1 for frames exceeding its macroblock budget
+            // (>8192 MBs). Letting FFmpeg pick defaults keeps encodes
+            // compatible across capture dimensions.
             "-c:v".into(),
             self.encoder.ffmpeg_codec_name().into(),
             "-b:v".into(),
             bitrate,
-            "-profile:v".into(),
-            "baseline".into(),
-            "-level".into(),
-            "4.1".into(),
             "-pix_fmt".into(),
             "yuv420p".into(),
             // --- audio encode ---
@@ -119,7 +131,7 @@ impl EncodeConfig {
             "-b:a".into(),
             "64k".into(),
             // --- framing / packaging ---
-            "-vsync".into(),
+            "-fps_mode".into(),
             "vfr".into(),
             "-movflags".into(),
             "+faststart".into(),
@@ -154,7 +166,7 @@ mod tests {
     fn ffmpeg_args_contain_required_flags() {
         let args = cfg().to_ffmpeg_args().join(" ");
         assert!(args.contains("-progress pipe:2"), "progress flag missing: {args}");
-        assert!(args.contains("-vsync vfr"), "vsync vfr missing: {args}");
+        assert!(args.contains("-fps_mode vfr"), "fps_mode vfr missing: {args}");
         assert!(args.contains("-movflags +faststart"), "faststart missing: {args}");
         assert!(args.contains("-pix_fmt bgra"), "pix_fmt bgra missing: {args}");
         assert!(args.contains("-f rawvideo"), "rawvideo missing: {args}");

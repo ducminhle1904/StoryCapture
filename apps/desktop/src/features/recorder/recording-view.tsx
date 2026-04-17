@@ -150,7 +150,7 @@ export function RecordingView({
       const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
       return id === selectedDisplay;
     });
-    return match ? `${match.name} · ${match.width}×${match.height}` : null;
+    return match ? `${match.name} · ${match.width_px}×${match.height_px}` : null;
   }, [displays, selectedDisplay]);
 
   // Preflight + display enumeration on mount.
@@ -262,13 +262,23 @@ export function RecordingView({
     if (permission !== "granted" || selectedDisplay == null) return;
     setStatus("recording");
     startedAtRef.current = Date.now();
+    // Encoder must be told the *actual* pixel dimensions xcap delivers.
+    // A mismatch produces noise because FFmpeg slices the raw BGRA byte
+    // stream at the wrong frame boundaries. We take what the backend
+    // reports for this display (already in physical pixels).
+    const display = displays.find((d) => {
+      const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
+      return id === selectedDisplay;
+    });
+    const width = display?.width_px ?? 1920;
+    const height = display?.height_px ?? 1080;
     try {
       const id = await startRecording(
         {
           project_folder: projectFolder,
           display_id: selectedDisplay,
-          width: 1920,
-          height: 1080,
+          width,
+          height,
           fps: 30,
         },
         (event) => dispatch(event),
@@ -316,6 +326,11 @@ export function RecordingView({
         if (evt.status.failed > 0) {
           toast.warning(`Story finished with ${evt.status.failed} failure(s)`);
         }
+        // Auto-stop capture now that the DSL has finished executing.
+        // Small delay to let the last frame land in the encoder buffer.
+        window.setTimeout(() => {
+          if (sessionRef.current) void handleStop();
+        }, 500);
         break;
       default:
         break;
@@ -583,7 +598,7 @@ export function RecordingView({
                 const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
                 return {
                   value: id,
-                  label: `${d.name} — ${d.width}×${d.height}`,
+                  label: `${d.name} — ${d.width_px}×${d.height_px}`,
                 };
               })}
               value={selectedDisplay ?? null}
@@ -615,7 +630,7 @@ export function RecordingView({
                     });
                     return match ? (
                       <span className="truncate">
-                        {match.name} — {match.width}×{match.height}
+                        {match.name} — {match.width_px}×{match.height_px}
                       </span>
                     ) : null;
                   }}
@@ -626,7 +641,7 @@ export function RecordingView({
                   const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
                   return (
                     <SelectItem key={String(id)} value={id}>
-                      {d.name} — {d.width}×{d.height}
+                      {d.name} — {d.width_px}×{d.height_px}
                     </SelectItem>
                   );
                 })}

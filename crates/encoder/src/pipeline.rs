@@ -113,34 +113,37 @@ impl EncodePipeline {
         let join = tokio::spawn(async move {
             let mut frames_written: u64 = 0;
             let mut frames_dropped: u64 = 0;
+            tracing::info!(target: "storycapture::encoder", "frame pump started");
 
             // Frame pump loop.
             while let Some(frame) = frames.recv().await {
                 let (bytes, _stride) = match bgra_bytes_of_frame(&frame) {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::error!(error = %e, "bgra extract failed; dropping frame");
+                        tracing::error!(target: "storycapture::encoder", error = %e, "bgra extract failed; dropping frame");
                         frames_dropped += 1;
                         continue;
                     }
                 };
                 match stdin.write_all(&bytes).await {
-                    Ok(()) => frames_written += 1,
+                    Ok(()) => {
+                        frames_written += 1;
+                        if frames_written == 1 || frames_written % 30 == 0 {
+                            tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, "encoder frame pump progress");
+                        }
+                    }
                     Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                        // FFmpeg exited early.
-                        tracing::warn!("ffmpeg stdin broken pipe; stopping frame pump");
+                        tracing::warn!(target: "storycapture::encoder", "ffmpeg stdin broken pipe; stopping frame pump");
                         break;
                     }
                     Err(e) => {
                         return Err(EncoderError::Io(format!("stdin write: {e}")));
                     }
                 }
-                // Drop the frame body explicitly so native RAII releases
-                // the underlying OS handle before the next iteration.
                 drop(frame);
             }
 
-            // Signal EOF to FFmpeg.
+            tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, "frame channel closed; signaling FFmpeg EOF");
             drop(stdin);
 
             // Wait for FFmpeg to flush + exit.

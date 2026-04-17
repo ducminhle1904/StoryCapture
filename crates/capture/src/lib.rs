@@ -47,24 +47,12 @@ pub use windows::WgcBackend;
 /// Construct the recommended backend for the current platform. Falls
 /// back to `XcapBackend` when the native backend can't be initialized
 /// (e.g. TCC denied, no D3D11 device available).
+///
+/// NOTE: the native `SckBackend` / `WgcBackend` are currently
+/// trait-surface stubs (see their source) — they init cleanly but never
+/// deliver frames. Until the native capture spike lands, force the
+/// xcap polling backend which is fully implemented end-to-end. xcap
+/// gives us ~30fps polled BGRA frames which is adequate for demo videos.
 pub fn pick_default_backend(_cfg: &CaptureConfig) -> Box<dyn CaptureBackend> {
-    #[cfg(target_os = "macos")]
-    {
-        match macos::SckBackend::new() {
-            Ok(b) => return Box::new(b),
-            Err(e) => {
-                tracing::warn!(error = %e, "SckBackend init failed; falling back to xcap");
-            }
-        }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        match windows::WgcBackend::new() {
-            Ok(b) => return Box::new(b),
-            Err(e) => {
-                tracing::warn!(error = %e, "WgcBackend init failed; falling back to xcap");
-            }
-        }
-    }
     Box::new(XcapBackend::new())
 }

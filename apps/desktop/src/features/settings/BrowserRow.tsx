@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { FolderSearch, X } from "lucide-react";
+import { exists } from "@tauri-apps/plugin-fs";
+import { toast } from "sonner";
+import { AlertTriangle, FolderSearch, X } from "lucide-react";
 
 interface AppSettings {
   browser_executable: string | null;
@@ -17,23 +19,60 @@ const PRESETS = [
 
 export function BrowserRow() {
   const [path, setPath] = useState<string | null>(null);
+  const [pathMissing, setPathMissing] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const checkPath = useCallback(async (p: string | null) => {
+    if (!p) {
+      setPathMissing(false);
+      return;
+    }
+    try {
+      setPathMissing(!(await exists(p)));
+    } catch {
+      setPathMissing(true);
+    }
+  }, []);
 
   useEffect(() => {
     invoke<AppSettings>("get_app_settings")
-      .then((s) => setPath(s.browser_executable))
+      .then((s) => {
+        setPath(s.browser_executable);
+        void checkPath(s.browser_executable);
+      })
       .catch(() => {});
-  }, []);
+  }, [checkPath]);
 
-  const save = useCallback(async (value: string | null) => {
-    setBusy(true);
-    try {
-      const next = await invoke<AppSettings>("set_browser_executable", { path: value });
-      setPath(next.browser_executable);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const save = useCallback(
+    async (value: string | null) => {
+      setBusy(true);
+      try {
+        if (value) {
+          let ok = false;
+          try {
+            ok = await exists(value);
+          } catch {
+            ok = false;
+          }
+          if (!ok) {
+            toast.error("Browser not found", {
+              description: `${value} doesn't exist on this machine. Install it first or pick a different browser.`,
+            });
+            return;
+          }
+        }
+        const next = await invoke<AppSettings>("set_browser_executable", { path: value });
+        setPath(next.browser_executable);
+        await checkPath(next.browser_executable);
+        toast.success(
+          value ? `Using ${value.split("/").pop()}` : "Reverted to bundled Chromium",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [checkPath],
+  );
 
   const pick = async () => {
     const selected = await open({
@@ -48,11 +87,28 @@ export function BrowserRow() {
     <div className="flex flex-col gap-2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[13px] font-medium text-[var(--color-fg-primary)]">
-            Browser executable
+          <div className="flex items-center gap-1.5">
+            <span className="text-[13px] font-medium text-[var(--color-fg-primary)]">
+              Browser executable
+            </span>
+            {pathMissing && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-[var(--color-danger)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-danger)]"
+                title="This path no longer exists on disk"
+              >
+                <AlertTriangle size={10} aria-hidden />
+                Not found
+              </span>
+            )}
           </div>
-          <div className="mt-0.5 truncate text-[11px] text-[var(--color-fg-muted)]">
-            {path ?? "Auto-detect Google Chrome"}
+          <div
+            className={`mt-0.5 truncate text-[11px] ${
+              pathMissing
+                ? "text-[var(--color-danger)]"
+                : "text-[var(--color-fg-muted)]"
+            }`}
+          >
+            {path ?? "Using Playwright's bundled Chromium"}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

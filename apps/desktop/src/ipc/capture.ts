@@ -12,9 +12,10 @@ export type PermissionState = "granted" | "denied" | "undetermined";
 export interface DisplayInfo {
   id: bigint | number; // specta emits bigint for u64
   name: string;
-  width: number;
-  height: number;
+  width_px: number;
+  height_px: number;
   scale_factor: number;
+  is_primary: boolean;
 }
 
 export function listDisplays(): Promise<DisplayInfo[]> {
