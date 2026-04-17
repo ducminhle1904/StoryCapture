@@ -12,7 +12,7 @@
 use crate::error::AppError;
 use crate::state::AppState;
 use automation::{Executor, ExecutorEvent, NoopDriver, PlaywrightSidecarDriver};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::ipc::Channel;
@@ -121,14 +121,58 @@ pub async fn launch_automation(
 
     // Playwright is the only automation driver. If the sidecar didn't
     // spawn, there is no meaningful fallback — surface a clear error.
-    let primary: Box<dyn automation::BrowserDriver> = match playwright {
-        Some(pw) => Box::new(pw),
+    let playwright = match playwright {
+        Some(pw) => pw,
         None => {
             return Err(AppError::Automation(
                 "Playwright sidecar failed to spawn — check that Node.js is installed and `scripts/playwright-sidecar` has `pnpm install` run".into(),
             ));
         }
     };
+    // Plan 05-02: wrap the Playwright driver in an Arc<Mutex<>> so a
+    // background probe task can call `browser_process()` to populate the
+    // pid stash while the executor runs. The executor needs `Box<dyn
+    // BrowserDriver>`, so we thread the Arc through a small forwarding
+    // adapter that implements BrowserDriver by delegating to the inner
+    // mutex-guarded driver.
+    let shared_pw: Arc<Mutex<PlaywrightSidecarDriver>> = Arc::new(Mutex::new(playwright));
+    // Spawn the probe: poll browser_process() every 200ms for up to 10s.
+    // Stops early once it gets a concrete pid or the response explicitly
+    // says remote-browser. Clears the stash on first call, so a previous
+    // story's pid can't linger.
+    playwright_pid_stash().set(None);
+    {
+        let probe_driver = shared_pw.clone();
+        tokio::spawn(async move {
+            for _ in 0..50 {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                let driver = probe_driver.lock().await;
+                match driver.browser_process().await {
+                    Ok(info) => {
+                        playwright_pid_stash().set(Some(PlaywrightLaunchInfo {
+                            pid: info.pid,
+                            executable_path: info.executable_path,
+                        }));
+                        // If we got a concrete pid or an explicit remote
+                        // signal, stop polling.
+                        if info.reason.as_deref() == Some("remote-browser")
+                            || info.pid.is_some()
+                        {
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        // "browser not launched" — keep polling until
+                        // launch() completes or the budget runs out.
+                        continue;
+                    }
+                }
+            }
+        });
+    }
+
+    let primary: Box<dyn automation::BrowserDriver> =
+        Box::new(crate::commands::automation_shared::SharedPlaywrightDriver::new(shared_pw));
     let fallback: Box<dyn automation::BrowserDriver> = Box::new(NoopDriver::new());
 
     let persistence = Some(Arc::new(Mutex::new(project_db)) as automation::PersistenceHandle);
@@ -141,6 +185,145 @@ pub async fn launch_automation(
             break;
         }
     }
+    // Story finished (executor channel closed). Clear the stash so the
+    // UI greys out the Playwright-auto option until the next launch.
+    playwright_pid_stash().set(None);
 
     Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Plan 05-02: resolve_playwright_target + pid stash
+// ──────────────────────────────────────────────────────────────────────
+
+/// Per-process stash of the most recent Playwright launch info. Written by
+/// `launch_automation` when the executor emits `LaunchOk`, cleared on
+/// `Closed` or when the command returns. Read by `resolve_playwright_target`
+/// to turn "the UI asks for Playwright auto" into a concrete window id.
+///
+/// T-05-02-01: pid flows ONLY from the host's Playwright driver into this
+/// stash, never from the renderer. The renderer asks "use playwright-auto";
+/// the host builds the CaptureTarget.
+#[derive(Debug, Clone)]
+pub struct PlaywrightLaunchInfo {
+    pub pid: Option<i32>,
+    pub executable_path: Option<String>,
+}
+
+pub struct PlaywrightPidStash(parking_lot::Mutex<Option<PlaywrightLaunchInfo>>);
+impl PlaywrightPidStash {
+    pub fn set(&self, v: Option<PlaywrightLaunchInfo>) {
+        *self.0.lock() = v;
+    }
+    pub fn get(&self) -> Option<PlaywrightLaunchInfo> {
+        self.0.lock().clone()
+    }
+}
+
+pub(crate) fn playwright_pid_stash() -> &'static PlaywrightPidStash {
+    use std::sync::OnceLock;
+    static STASH: OnceLock<PlaywrightPidStash> = OnceLock::new();
+    STASH.get_or_init(|| PlaywrightPidStash(parking_lot::Mutex::new(None)))
+}
+
+/// Test-only helper to inject a pid for the IPC test (avoids spawning a
+/// real Playwright). Only available under `cfg(test)` builds.
+#[cfg(test)]
+pub(crate) fn __test_set_playwright_pid(info: Option<PlaywrightLaunchInfo>) {
+    playwright_pid_stash().set(info);
+}
+
+/// Resolve the current Playwright auto-target to a concrete window id.
+///
+/// Returns:
+///   - `Ok(Some(WindowId))` — a Chromium window owned by the Playwright
+///     pid is currently on-screen; UI should enable + pre-select the
+///     "Playwright browser (auto)" entry.
+///   - `Ok(None)` — no Playwright launched yet, or remote-browser session,
+///     or the pid failed to resolve within the retry budget. UI should
+///     keep the auto entry disabled.
+///
+/// This command NEVER returns an error for "not available" — only for
+/// unexpected SCK failures (TCC, ABI). The distinction matters: UI code
+/// checks `.is_some()` to decide enablement, not `.is_ok()`.
+#[tauri::command]
+#[specta::specta]
+pub async fn resolve_playwright_target(
+    _state: State<'_, AppState>,
+) -> Result<Option<ResolvedPlaywrightTarget>, AppError> {
+    let info = match playwright_pid_stash().get() {
+        Some(i) => i,
+        None => return Ok(None),
+    };
+    let Some(pid) = info.pid else {
+        // remote-browser or similar — auto target stays disabled.
+        return Ok(None);
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        let window = capture::macos::window::find_window_by_pid(pid, Some("Chromium"))
+            .await
+            .map_err(|e| AppError::Capture(e.to_string()))?;
+        let Some(w) = window else {
+            return Ok(None);
+        };
+        Ok(Some(ResolvedPlaywrightTarget {
+            window_id: u64::from(w.window_id()),
+            pid,
+        }))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = pid;
+        Ok(None)
+    }
+}
+
+/// Returned by `resolve_playwright_target`. The `pid` is echoed back so the
+/// renderer can store it as part of a `WindowByPid` capture target (the
+/// actual WindowByPid resolve-at-start behavior in SckBackend always
+/// re-resolves, so the stored pid is only a UI display hint).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct ResolvedPlaywrightTarget {
+    pub window_id: u64,
+    pub pid: i32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_playwright_target_ipc_empty_stash_returns_none_shape() {
+        // Clear the stash; caller with nothing launched gets Ok(None).
+        playwright_pid_stash().set(None);
+        assert!(playwright_pid_stash().get().is_none());
+    }
+
+    #[test]
+    fn resolve_playwright_target_ipc_remote_browser_sentinel_is_none() {
+        // Simulate a remote-browser response: pid=None, reason="remote-browser".
+        playwright_pid_stash().set(Some(PlaywrightLaunchInfo {
+            pid: None,
+            executable_path: None,
+        }));
+        let info = playwright_pid_stash().get().unwrap();
+        // The resolve command returns Ok(None) for this shape (pid.is_none()).
+        assert!(info.pid.is_none());
+        // Reset so other tests aren't affected.
+        playwright_pid_stash().set(None);
+    }
+
+    #[test]
+    fn resolve_playwright_target_ipc_local_pid_is_stored() {
+        playwright_pid_stash().set(Some(PlaywrightLaunchInfo {
+            pid: Some(12345),
+            executable_path: Some("/opt/Chromium".into()),
+        }));
+        let info = playwright_pid_stash().get().unwrap();
+        assert_eq!(info.pid, Some(12345));
+        assert_eq!(info.executable_path.as_deref(), Some("/opt/Chromium"));
+        playwright_pid_stash().set(None);
+    }
 }

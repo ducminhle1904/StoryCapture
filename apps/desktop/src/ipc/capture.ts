@@ -126,10 +126,24 @@ export function captureTargetKey(t: CaptureTarget): string {
   }
 }
 
-/** The Playwright-auto sentinel (Plan 05-02 replaces the pid with the
- *  real Playwright PID at launch time). */
+/** The Playwright-auto sentinel. The Rust `start_capture_target` command
+ *  rewrites the pid from the host-side Playwright stash at call time
+ *  (T-05-02-01 — renderer never supplies a pid directly). */
 export const PLAYWRIGHT_AUTO_TARGET: CaptureTarget = {
   kind: "window_by_pid",
   pid: -1,
   title_hint: "storycapture-playwright",
 };
+
+// ─── Plan 05-02: Playwright auto-target resolution ────────────────────
+
+export interface ResolvedPlaywrightTarget {
+  window_id: bigint | number;
+  pid: number;
+}
+
+/** Ask the host to resolve the current Playwright window. Returns `null`
+ *  when no Playwright is running or the window isn't on-screen. */
+export function resolvePlaywrightTarget(): Promise<ResolvedPlaywrightTarget | null> {
+  return invoke<ResolvedPlaywrightTarget | null>("resolve_playwright_target");
+}

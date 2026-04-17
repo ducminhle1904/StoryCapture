@@ -3,6 +3,9 @@ import {
   getCaptureTarget,
   listCaptureTargets,
   setCaptureTarget as ipcSetCaptureTarget,
+  resolvePlaywrightTarget,
+  PLAYWRIGHT_AUTO_TARGET,
+  captureTargetKey,
   type CaptureTarget,
   type CaptureTargets,
 } from "@/ipc/capture";
@@ -57,6 +60,9 @@ interface RecorderState {
   // Plan 05-01 — capture-target actions.
   loadCaptureTargets: () => Promise<void>;
   setCaptureTarget: (target: CaptureTarget) => Promise<void>;
+
+  // Plan 05-02 — Playwright auto-target actions.
+  refreshPlaywrightAvailability: () => Promise<void>;
 }
 
 const INITIAL: Omit<
@@ -73,6 +79,7 @@ const INITIAL: Omit<
   | "reset"
   | "loadCaptureTargets"
   | "setCaptureTarget"
+  | "refreshPlaywrightAvailability"
 > = {
   status: "idle",
   sessionId: null,
@@ -128,4 +135,61 @@ export const useRecorderStore = create<RecorderState>((set) => ({
     });
     set({ captureTarget: target });
   },
+
+  // Plan 05-02: query the host for the current Playwright window availability
+  // and update `availableTargets.playwright_auto_available`. When the
+  // Playwright auto-target becomes available AND the user hasn't made an
+  // explicit non-auto choice this session, pre-select it per D-01/D-02.
+  //
+  // Debounced to ≤1 call/s via the module-level `playwrightRefreshGate`
+  // (T-05-02-06).
+  refreshPlaywrightAvailability: async () => {
+    if (!canRefreshPlaywright()) return;
+    const resolved = await resolvePlaywrightTarget().catch(() => null);
+    const isAvailable = resolved !== null;
+    set((s) => {
+      const prevTargets = s.availableTargets;
+      const nextTargets: CaptureTargets | null = prevTargets
+        ? { ...prevTargets, playwright_auto_available: isAvailable }
+        : prevTargets;
+      // Auto-pre-select the Playwright-auto entry when:
+      //   1. it just became available
+      //   2. AND the stored target is either null or the first-run sentinel
+      //      (we treat "display 0 or first display" as the first-run fallback)
+      const currentKey = s.captureTarget
+        ? captureTargetKey(s.captureTarget)
+        : "";
+      const storedIsFirstRunFallback =
+        !s.captureTarget ||
+        (prevTargets !== null &&
+          prevTargets.displays.length > 0 &&
+          s.captureTarget.kind === "display" &&
+          currentKey ===
+            captureTargetKey({
+              kind: "display",
+              display_id:
+                typeof prevTargets.displays[0].id === "bigint"
+                  ? Number(prevTargets.displays[0].id)
+                  : prevTargets.displays[0].id,
+            }));
+      const nextTarget =
+        isAvailable && storedIsFirstRunFallback
+          ? PLAYWRIGHT_AUTO_TARGET
+          : s.captureTarget;
+      return {
+        availableTargets: nextTargets,
+        captureTarget: nextTarget,
+      };
+    });
+  },
 }));
+
+// ─── Plan 05-02 — debounce gate for refreshPlaywrightAvailability ─────
+
+let lastPlaywrightRefreshMs = 0;
+function canRefreshPlaywright(): boolean {
+  const now = Date.now();
+  if (now - lastPlaywrightRefreshMs < 1000) return false;
+  lastPlaywrightRefreshMs = now;
+  return true;
+}

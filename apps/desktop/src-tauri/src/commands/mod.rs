@@ -6,6 +6,7 @@
 
 pub mod app_settings;
 pub mod automation;
+pub mod automation_shared;
 pub mod capture;
 pub mod dryrun;
 pub mod encode;

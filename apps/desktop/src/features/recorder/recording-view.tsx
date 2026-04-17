@@ -126,6 +126,7 @@ export function RecordingView({
     reset,
     loadCaptureTargets,
     setCaptureTarget,
+    refreshPlaywrightAvailability,
   } = useRecorderStore();
 
   const reduceMotion = useReducedMotion();
@@ -306,6 +307,18 @@ export function RecordingView({
         toast.error(`Automation failed: ${msg}`);
         setError(msg);
       });
+      // Plan 05-02: poll for Playwright window availability for up to 10s.
+      // The host's background probe stashes the pid once Playwright's
+      // launch() completes; this loop surfaces that to the UI and may
+      // auto-pre-select the "Playwright browser (auto)" target if the
+      // user hasn't made a non-auto choice this session.
+      (async () => {
+        const deadline = Date.now() + 10_000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 800));
+          await refreshPlaywrightAvailability();
+        }
+      })();
     } catch (e) {
       setError(formatIpcError(e));
       setStatus("failed");

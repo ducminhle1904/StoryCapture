@@ -46,6 +46,7 @@ pub fn builder() -> Builder<Wry> {
             system::delete_secret,
             system::trigger_panic,
             automation::launch_automation,
+            automation::resolve_playwright_target,
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
             capture::list_displays,
@@ -129,6 +130,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<app_settings::AppSettingsDto>()
         .typ::<system::AppInfo>()
         .typ::<crate::panic_hook::PanicPayload>()
+        .typ::<automation::ResolvedPlaywrightTarget>()
         .typ::<capture::DisplayInfoDto>()
         .typ::<capture::WindowInfoDto>()
         .typ::<capture::CaptureTargetDto>()

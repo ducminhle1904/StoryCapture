@@ -504,13 +504,16 @@ pub async fn list_capture_targets() -> Result<CaptureTargetsDto, AppError> {
         .map(|v| v.into_iter().map(DisplayInfoDto::from).collect::<Vec<_>>())
         .map_err(|e| AppError::Capture(e.to_string()))?;
     let windows = list_windows().await?;
-    // Plan 05-02 wires Playwright availability by checking whether the
-    // automation sidecar has an active browser. For 05-01 we report
-    // `false` so the UI greys out the Playwright entry.
+    // Plan 05-02: Playwright availability = the pid stash currently holds
+    // a concrete pid (not None, not remote-browser).
+    let playwright_auto_available = crate::commands::automation::playwright_pid_stash()
+        .get()
+        .and_then(|i| i.pid)
+        .is_some();
     Ok(CaptureTargetsDto {
         displays,
         windows,
-        playwright_auto_available: false,
+        playwright_auto_available,
     })
 }
 
@@ -543,6 +546,51 @@ pub async fn start_capture_target(
             )));
         }
     }
+    // Plan 05-02 (T-05-02-01, T-05-02-02): for `WindowByPid`, override any
+    // renderer-supplied pid with the host-side Playwright pid stash, and
+    // validate the title_hint.
+    let target = if let CaptureTargetDto::WindowByPid { title_hint, .. } = &args.target {
+        if let Some(h) = title_hint.as_deref() {
+            if h.len() > 256 {
+                return Err(AppError::Capture(
+                    "title_hint exceeds 256 chars".into(),
+                ));
+            }
+            if h.chars().any(|c| c.is_ascii_control()) {
+                return Err(AppError::Capture(
+                    "title_hint contains ASCII control chars".into(),
+                ));
+            }
+        }
+        // Only rewrite pid when the stored hint matches the Playwright
+        // sentinel ("storycapture-playwright" OR "Chromium"). Generic
+        // renderer-supplied WindowByPid targets are left alone — a future
+        // plan may enable non-Playwright auto-follow workflows.
+        let is_playwright_sentinel = matches!(
+            title_hint.as_deref(),
+            Some("storycapture-playwright") | Some("Chromium")
+        );
+        if is_playwright_sentinel {
+            let stash_pid = crate::commands::automation::playwright_pid_stash()
+                .get()
+                .and_then(|i| i.pid);
+            let Some(pid) = stash_pid else {
+                return Err(AppError::Capture(
+                    "Playwright auto-target requested but no Playwright pid is available — launch a story first".into(),
+                ));
+            };
+            CaptureTargetDto::WindowByPid {
+                pid,
+                title_hint: Some("Chromium".to_string()),
+            }
+        } else {
+            args.target.clone()
+        }
+    } else {
+        args.target.clone()
+    };
+    // Overwrite the incoming target with the sanitized / pid-rewritten one.
+    let args = StartCaptureTargetArgs { target, ..args };
 
     // Persist the target for stickiness (D-01).
     {
