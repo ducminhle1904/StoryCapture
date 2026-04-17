@@ -136,25 +136,31 @@ pub async fn launch_automation(
     // adapter that implements BrowserDriver by delegating to the inner
     // mutex-guarded driver.
     let shared_pw: Arc<Mutex<PlaywrightSidecarDriver>> = Arc::new(Mutex::new(playwright));
-    // Spawn the probe: poll browser_process() every 200ms for up to 10s.
-    // Stops early once it gets a concrete pid or the response explicitly
-    // says remote-browser. Clears the stash on first call, so a previous
-    // story's pid can't linger.
+    // Exponential-backoff probe: start at 100ms, double up to 1s, ~10s budget.
+    // Stops early on concrete pid / remote-browser signal; aborts after 3
+    // consecutive driver errors (launch permanently failed).
     playwright_pid_stash().set(None);
     {
         let probe_driver = shared_pw.clone();
         tokio::spawn(async move {
-            for _ in 0..50 {
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-                let driver = probe_driver.lock().await;
-                match driver.browser_process().await {
+            let budget = std::time::Duration::from_secs(10);
+            let deadline = std::time::Instant::now() + budget;
+            let mut delay = std::time::Duration::from_millis(100);
+            let cap = std::time::Duration::from_secs(1);
+            let mut consecutive_errors: u32 = 0;
+            while std::time::Instant::now() < deadline {
+                tokio::time::sleep(delay).await;
+                let result = {
+                    let driver = probe_driver.lock().await;
+                    driver.browser_process().await
+                };
+                match result {
                     Ok(info) => {
-                        playwright_pid_stash().set(Some(PlaywrightLaunchInfo {
+                        consecutive_errors = 0;
+                        let _ = playwright_pid_stash().set(Some(PlaywrightLaunchInfo {
                             pid: info.pid,
                             executable_path: info.executable_path,
                         }));
-                        // If we got a concrete pid or an explicit remote
-                        // signal, stop polling.
                         if info.reason.as_deref() == Some("remote-browser")
                             || info.pid.is_some()
                         {
@@ -162,11 +168,13 @@ pub async fn launch_automation(
                         }
                     }
                     Err(_) => {
-                        // "browser not launched" — keep polling until
-                        // launch() completes or the budget runs out.
-                        continue;
+                        consecutive_errors += 1;
+                        if consecutive_errors >= 3 {
+                            break;
+                        }
                     }
                 }
+                delay = std::cmp::min(delay * 2, cap);
             }
         });
     }
