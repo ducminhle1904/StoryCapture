@@ -37,13 +37,13 @@ beforeEach(() => {
   revokedUrls.length = 0;
   nextUrlId = 0;
   invokeMock.mockReset();
-  // @ts-expect-error — spy override
+  // @ts-ignore — spy override
   globalThis.URL.createObjectURL = vi.fn((blob: Blob) => {
     const url = `blob:test:${++nextUrlId}:${blob.size}`;
     createdUrls.push(url);
     return url;
   });
-  // @ts-expect-error — spy override
+  // @ts-ignore — spy override
   globalThis.URL.revokeObjectURL = vi.fn((url: string) => {
     revokedUrls.push(url);
   });

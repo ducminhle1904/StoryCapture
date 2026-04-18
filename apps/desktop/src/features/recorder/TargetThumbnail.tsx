@@ -42,7 +42,7 @@ export function TargetThumbnail({
   maxWidth = 320,
   maxHeight = 200,
   className,
-}: TargetThumbnailProps): JSX.Element {
+}: TargetThumbnailProps) {
   const key = target ? captureTargetKey(target) : "none";
   const enabled = target != null && !paused;
 
