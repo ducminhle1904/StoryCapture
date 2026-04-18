@@ -110,6 +110,7 @@ impl EncodePipeline {
 
             // Frame pump loop.
             let mut packed_buf: Vec<u8> = Vec::new();
+            let mut first_dims: Option<(u32, u32)> = None;
             while let Some(frame) = frames.recv().await {
                 let width_px = frame.width_px;
                 let height_px = frame.height_px;
@@ -121,6 +122,27 @@ impl EncodePipeline {
                         continue;
                     }
                 };
+                match first_dims {
+                    None => {
+                        first_dims = Some((width_px, height_px));
+                        tracing::info!(
+                            target: "storycapture::encoder",
+                            width_px, height_px, stride, bytes_len = bytes.len(),
+                            "first frame pumped"
+                        );
+                    }
+                    Some((fw, fh)) if fw != width_px || fh != height_px => {
+                        tracing::warn!(
+                            target: "storycapture::encoder",
+                            expected_w = fw, expected_h = fh,
+                            got_w = width_px, got_h = height_px,
+                            "frame dims changed mid-stream — dropping (would corrupt ffmpeg rawvideo stream)"
+                        );
+                        frames_dropped += 1;
+                        continue;
+                    }
+                    _ => {}
+                }
                 let row_bytes = (width_px as usize) * 4;
                 let bytes_ref: &[u8] = if stride == row_bytes {
                     &bytes[..]
