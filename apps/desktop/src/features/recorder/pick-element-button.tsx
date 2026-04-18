@@ -21,14 +21,25 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Crosshair } from "lucide-react";
 import { toast } from "sonner";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 
 import { editorController } from "@/features/editor/controller";
-import { isPicked, pickElement, pickElementCancel } from "@/ipc/picker";
+import {
+  isPicked,
+  listenPickerHoverPreview,
+  pickElement,
+  pickElementCancel,
+  type PickHoverPayload,
+} from "@/ipc/picker";
 import { useRecorderStore } from "@/state/recorder";
 
 export function PickElementButton() {
   const status = useRecorderStore((s) => s.status);
   const [picking, setPicking] = useState(false);
+  // Plan 07-04a — live hover preview. Updated by the `picker_hover_preview`
+  // Tauri event (forwarded from the sidecar's id-absent JSON-RPC
+  // notification). Cleared when picking ends.
+  const [preview, setPreview] = useState<PickHoverPayload | null>(null);
 
   // Sidecar is alive while the recorder is actively running. Paused is
   // also "alive" (driver still around); idle / preflight / stopping /
@@ -47,6 +58,51 @@ export function PickElementButton() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, [picking]);
+
+  // Plan 07-04a — subscribe to hover-preview events while picking.
+  // The Rust forwarder emits `picker_hover_preview` at most ~60 Hz
+  // (overlay is rAF-throttled); React setState coalesces at render
+  // cadence so the chip updates smoothly without extra debouncing.
+  useEffect(() => {
+    if (!picking) {
+      setPreview(null);
+      return;
+    }
+    let unlisten: UnlistenFn | undefined;
+    let cancelled = false;
+    listenPickerHoverPreview((p) => {
+      if (!cancelled) setPreview(p);
+    })
+      .then((u) => {
+        if (cancelled) {
+          // Picker ended before listener attached — detach immediately.
+          try {
+            u();
+          } catch {
+            /* backend may already have torn down */
+          }
+        } else {
+          unlisten = u;
+        }
+      })
+      .catch(() => {
+        /* Tauri event bridge unavailable (tests without shouldMockEvents
+         * or desktop backend not running) — non-fatal; chip stays empty. */
+      });
+    return () => {
+      cancelled = true;
+      if (unlisten) {
+        // unlisten() resolves via IPC; swallow errors (test mocks and
+        // post-teardown paths may reject the internal invoke).
+        Promise.resolve()
+          .then(() => unlisten!())
+          .catch(() => {
+            /* non-fatal */
+          });
+      }
+      setPreview(null);
+    };
   }, [picking]);
 
   const onClick = async () => {
@@ -114,6 +170,36 @@ export function PickElementButton() {
             document.body,
           )
         : null}
+      {/* Plan 07-04a — live hover-preview chip. Portal'd below the
+         PICKING banner so the two stack without overlap. Uses role="note"
+         + aria-live="polite" so screen readers can announce changes
+         without stealing focus from the picking banner. */}
+      {picking && preview && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              role="note"
+              aria-live="polite"
+              className="pointer-events-none fixed left-1/2 top-14 z-50 -translate-x-1/2 rounded border border-[var(--color-border-subtle)] bg-white/95 px-3 py-1 text-xs font-medium text-[var(--color-fg-primary)] shadow-md"
+            >
+              {describeHoverPreview(preview)}
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
+}
+
+/**
+ * Build the chip caption from a hover payload. Priority matches the
+ * sidecar's ranked DSL generator: testid → role+name → text → css
+ * fallback sentinel. Kept local because the semantics are UI-only
+ * (the ranked DSL itself still comes from the sidecar on click).
+ */
+function describeHoverPreview(p: PickHoverPayload): string {
+  if (p.testId) return `testid "${p.testId}"`;
+  if (p.role && p.accessibleName)
+    return `${p.role} "${p.accessibleName}"`;
+  if (p.accessibleName) return `text "${p.accessibleName}"`;
+  return "[css fallback]";
 }

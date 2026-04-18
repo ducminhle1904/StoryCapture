@@ -218,6 +218,19 @@ pub async fn launch_automation(
         *slot = Some(shared_pw.clone());
         tracing::info!(target: "storycapture::automation", "published shared Playwright driver to AppState (picker enabled)");
     }
+    // Plan 07-04a — wire the id-absent JSON-RPC notification forwarder
+    // that bridges the sidecar's broadcast channel to a Tauri event
+    // (`picker_hover_preview`). One forwarder per driver lifetime; the
+    // task exits automatically when the broadcast channel closes (driver
+    // dropped at story end).
+    {
+        let rx = {
+            let d = shared_pw.lock().await;
+            d.subscribe_notifications()
+        };
+        let _ = crate::commands::picker::spawn_notification_forwarder(app.clone(), rx);
+        tracing::info!(target: "storycapture::automation", "spawned picker hover-preview forwarder");
+    }
     // Exponential-backoff probe with a ~10s budget.
     playwright_pid_stash().set(None);
     playwright_first_paint_stash().set(false);

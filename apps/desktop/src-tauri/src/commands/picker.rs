@@ -10,7 +10,8 @@
 use crate::error::AppError;
 use crate::state::AppState;
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
+use tokio::task::JoinHandle;
 
 /// Tauri / specta DTO wrapping `automation::PickElementResponse` as a
 /// JSON string. The `automation` crate is pure-Rust (D-07: no Tauri /
@@ -94,4 +95,58 @@ pub async fn picker_is_active(state: State<'_, AppState>) -> Result<bool, AppErr
         }
         None => Ok(false),
     }
+}
+
+/// Plan 07-04a — forward id-absent JSON-RPC notifications from the
+/// sidecar to Tauri events. One task per driver lifetime. The task exits
+/// when the broadcast channel closes (driver dropped); caller owns the
+/// `JoinHandle` so it can be aborted early on explicit teardown.
+///
+/// Currently forwards only `pickElement.hoverPreview` → Tauri event
+/// `picker_hover_preview`. Other notification methods are logged at
+/// debug and otherwise ignored — future hover/preview notifications can
+/// add arms without changing the receiver contract.
+///
+/// T-07-04a-01 mitigation: lagged subscribers get `RecvError::Lagged(n)`
+/// and are logged at warn, not panicked. The channel capacity (128) is
+/// well above a rAF-throttled (~60 Hz) emitter against a React consumer.
+pub fn spawn_notification_forwarder(
+    app: AppHandle,
+    rx: tokio::sync::broadcast::Receiver<automation::Notification>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut rx = rx;
+        loop {
+            match rx.recv().await {
+                Ok(note) if note.method == "pickElement.hoverPreview" => {
+                    if let Err(e) = app.emit("picker_hover_preview", &note.params) {
+                        tracing::warn!(
+                            target: "storycapture::picker",
+                            "failed to emit picker_hover_preview: {e}"
+                        );
+                    }
+                }
+                Ok(note) => {
+                    tracing::debug!(
+                        target: "storycapture::picker",
+                        "ignoring unknown notification method: {}",
+                        note.method
+                    );
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(
+                        target: "storycapture::picker",
+                        "hover subscriber lagged {n} messages"
+                    );
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    tracing::debug!(
+                        target: "storycapture::picker",
+                        "notification channel closed — forwarder exiting"
+                    );
+                    break;
+                }
+            }
+        }
+    })
 }

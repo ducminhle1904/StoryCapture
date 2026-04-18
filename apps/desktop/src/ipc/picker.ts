@@ -12,6 +12,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type PickLocator = {
   kind: "testid" | "role" | "label" | "text_exact" | "selector" | string;
@@ -76,4 +77,34 @@ export async function pickElementCancel(): Promise<void> {
 /** True iff a pickElement session is waiting for a click. */
 export async function pickElementIsActive(): Promise<boolean> {
   return await invoke<boolean>("picker_is_active");
+}
+
+/**
+ * Plan 07-04a — live hover-preview payload emitted by the sidecar
+ * overlay (rAF-throttled, ~60 Hz ceiling). The Rust forwarder task
+ * translates each `pickElement.hoverPreview` notification into a Tauri
+ * event of the same name (`picker_hover_preview`).
+ *
+ * Payload is intentionally lightweight — the full ranked DSL emission
+ * still happens on click via `pickElement` (above). The chip only needs
+ * enough to tell the user "this is what you're pointing at".
+ */
+export interface PickHoverPayload {
+  testId?: string;
+  role?: string;
+  accessibleName?: string;
+  boundingRect?: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * Subscribe to live hover-preview events while a pick session is
+ * active. Callers MUST invoke the returned unlisten fn when picking
+ * ends or when the component unmounts.
+ */
+export async function listenPickerHoverPreview(
+  cb: (p: PickHoverPayload) => void,
+): Promise<UnlistenFn> {
+  return await listen<PickHoverPayload>("picker_hover_preview", (evt) =>
+    cb(evt.payload),
+  );
 }
