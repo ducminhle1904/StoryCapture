@@ -20,6 +20,16 @@ pub const KNOWN_VERBS: &[&str] = &[
 
 pub const KNOWN_META_KEYS: &[&str] = &["app", "viewport", "theme", "speed"];
 
+/// Phase 7 Tier 1 role keywords — MUST stay in lockstep with
+/// `ast::AriaRole::from_keyword`. Both `image` and `img` are listed
+/// because both are valid DSL spellings (D-05 / RESEARCH Q5).
+pub const KNOWN_ROLES: &[&str] = &[
+    "button", "link", "heading", "image", "img", "checkbox", "radio",
+    "tab", "menuitem", "menu", "option", "combobox", "listbox",
+    "dialog", "alert", "tooltip", "switch", "slider", "row", "cell",
+    "navigation", "main",
+];
+
 /// Returns the best candidate within Levenshtein distance ≤ 2,
 /// or `None` if nothing is close enough.
 pub fn did_you_mean(input: &str, candidates: &[&str]) -> Option<String> {
@@ -51,5 +61,12 @@ mod tests {
     fn finds_meta_key_typo() {
         assert_eq!(did_you_mean("spped", KNOWN_META_KEYS), Some("speed".into()));
         assert_eq!(did_you_mean("viewprt", KNOWN_META_KEYS), Some("viewport".into()));
+    }
+
+    #[test]
+    fn finds_role_typo() {
+        assert_eq!(did_you_mean("buton", KNOWN_ROLES), Some("button".into()));
+        assert_eq!(did_you_mean("lnk", KNOWN_ROLES), Some("link".into()));
+        assert_eq!(did_you_mean("imag", KNOWN_ROLES), Some("image".into()));
     }
 }
