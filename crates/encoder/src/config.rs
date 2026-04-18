@@ -98,12 +98,14 @@ impl EncodeConfig {
             ((self.width as u64 * self.height as u64 * 3) / 1000) as u32;
         let target_kbps = pixel_based_kbps.max(self.bitrate_kbps).min(40_000);
         let bitrate = format!("{}k", target_kbps);
-        // H.264 requires even dimensions.
-        let scale_filter = "scale=trunc(iw/2)*2:trunc(ih/2)*2".to_string();
+        let scale_filter =
+            "scale='min(1920,iw)':-2,scale=trunc(iw/2)*2:trunc(ih/2)*2".to_string();
 
         let mut args: Vec<String> = vec![
             "-hide_banner".into(),
             "-y".into(),
+            "-thread_queue_size".into(),
+            "1024".into(),
             // Raw BGRA input on stdin.
             "-f".into(),
             "rawvideo".into(),
@@ -123,6 +125,8 @@ impl EncodeConfig {
         match &self.audio_input {
             Some(audio) => {
                 args.extend([
+                    "-thread_queue_size".into(),
+                    "1024".into(),
                     "-f".into(),
                     audio.format.ffmpeg_name().into(),
                     "-ar".into(),
