@@ -77,6 +77,14 @@ pub enum RawTarget {
     Selector(String),
     TestId(String),
     Aria(String),
+    /// Phase 7 Tier 1: `<role> "name"`. `role` is kept stringly-typed at
+    /// layer 1; layer 2 (`semantic.rs`) validates against `AriaRole` and
+    /// emits a did-you-mean diagnostic on miss.
+    Role { role: String, name: String },
+    /// Phase 7 Tier 1: `field "Label"`.
+    Label(String),
+    /// Phase 7 Tier 1: `text "Verbatim"` — distinct from bare `Text`.
+    TextExact(String),
 }
 
 pub fn tokenize(file_pair: Pair<Rule>) -> Vec<LenientToken> {
@@ -228,6 +236,14 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
             ParsedCommand::Navigate { url }
         }
         Rule::cmd_click => ParsedCommand::Click { target: parse_target(cmd) },
+        Rule::cmd_fill => {
+            // `fill <target> with "<text>"` desugars to Type at layer 1 (D-03).
+            // No new ParsedCommand variant — the executor sees an ordinary Type.
+            let mut inner = cmd.into_inner();
+            let target = parse_target_pair(inner.next()?);
+            let text = unquote(inner.next()?.as_str());
+            ParsedCommand::Type { target, text }
+        }
         Rule::cmd_type => {
             let mut inner = cmd.into_inner();
             let target = parse_target_pair(inner.next()?);
@@ -298,6 +314,23 @@ fn parse_target_pair(pair: Pair<Rule>) -> RawTarget {
             Rule::target_selector => RawTarget::Selector(first_string(p)),
             Rule::target_testid => RawTarget::TestId(first_string(p)),
             Rule::target_aria => RawTarget::Aria(first_string(p)),
+            Rule::target_role => {
+                // `role_kw "name"` — both sit as direct children of the target_role pair.
+                let inner: Vec<_> = p.into_inner().collect();
+                let role = inner
+                    .iter()
+                    .find(|c| c.as_rule() == Rule::role_kw)
+                    .map(|r| r.as_str().to_string())
+                    .unwrap_or_default();
+                let name = inner
+                    .iter()
+                    .find(|c| c.as_rule() == Rule::string)
+                    .map(|s| unquote(s.as_str()))
+                    .unwrap_or_default();
+                RawTarget::Role { role, name }
+            }
+            Rule::target_field => RawTarget::Label(first_string(p)),
+            Rule::target_text_kw => RawTarget::TextExact(first_string(p)),
             _ => RawTarget::Text(String::new()),
         },
         None => RawTarget::Text(String::new()),

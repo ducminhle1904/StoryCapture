@@ -2,7 +2,9 @@
 //! validate semantic constraints, emit structured diagnostics, and
 //! produce the typed `Story` AST.
 
-use crate::ast::{Command, Meta, Scene, ScrollDir, SelectorOrText, Span, Story, Theme, Viewport};
+use crate::ast::{
+    AriaRole, Command, Meta, Scene, ScrollDir, SelectorOrText, Span, Story, Theme, Viewport,
+};
 use crate::diagnostic::Diagnostic;
 use crate::lenient_tokenize::{
     LenientToken, MetaEntry, MetaRawValue, ParsedCommand, RawTarget,
@@ -261,10 +263,22 @@ fn parse_scroll_dir(s: &str) -> ScrollDir {
 }
 
 fn to_target(t: RawTarget) -> SelectorOrText {
+    // Phase 7 Tier 1: structural mapping only — diagnostic emission for
+    // unknown roles is added in Task 2 by threading a `&mut Vec<Diagnostic>`
+    // through this function. This intermediate form keeps the build green
+    // between Task 1 (grammar+AST) and Task 2 (semantic+suggest) commits.
     match t {
         RawTarget::Text(s) => SelectorOrText::Text(s),
         RawTarget::Selector(s) => SelectorOrText::Selector(s),
         RawTarget::TestId(s) => SelectorOrText::TestId(s),
         RawTarget::Aria(s) => SelectorOrText::Aria(s),
+        RawTarget::Role { role, name } => match AriaRole::from_keyword(&role) {
+            Some(aria_role) => SelectorOrText::Role { role: aria_role, name },
+            // Best-effort fallback when the role keyword is unknown — Task 2
+            // replaces this with a did-you-mean diagnostic.
+            None => SelectorOrText::Text(name),
+        },
+        RawTarget::Label(s) => SelectorOrText::Label(s),
+        RawTarget::TextExact(s) => SelectorOrText::TextExact(s),
     }
 }

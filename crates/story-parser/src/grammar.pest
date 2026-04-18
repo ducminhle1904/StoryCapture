@@ -62,6 +62,7 @@ command = {
     | cmd_wait_for
     | cmd_wait
     | cmd_click
+    | cmd_fill
     | cmd_type
     | cmd_scroll
     | cmd_hover
@@ -75,6 +76,7 @@ command = {
 
 cmd_navigate   = { "navigate"   ~ string }
 cmd_click      = { "click"      ~ target }
+cmd_fill       = { "fill"       ~ target ~ "with" ~ string }
 cmd_type       = { "type"       ~ target ~ string }
 cmd_scroll     = { "scroll"     ~ direction ~ number? }
 cmd_hover      = { "hover"      ~ target }
@@ -88,11 +90,30 @@ cmd_screenshot = { "screenshot" ~ string }
 cmd_pause      = { "pause" }
 
 // ---- Targets ----
-target = { target_selector | target_testid | target_aria | target_text }
+//
+// Order matters: explicit-kind forms (selector/testid/aria/role/field/text)
+// MUST precede the bare-string `target_text` fallback so that a leading
+// keyword wins over interpreting the keyword itself as text.
+target = { target_selector | target_testid | target_aria | target_role | target_field | target_text_kw | target_text }
 target_text     = { string }
 target_selector = { "selector" ~ string }
 target_testid   = { "testid"   ~ string }
 target_aria     = { "aria"     ~ string }
+target_role     = { role_kw ~ string }
+target_field    = { "field" ~ string }
+target_text_kw  = { "text" ~ string }
+
+// Phase 7 Tier 1 supported ARIA roles (D-05 / RESEARCH Q5).
+// `image` and `img` are both accepted spellings; both normalize to
+// `AriaRole::Image` in the semantic layer. Keep this list in lockstep
+// with `ast::AriaRole::from_keyword` and `suggest::KNOWN_ROLES`.
+role_kw = @{
+      "button"   | "link"    | "heading" | "image"   | "img"
+    | "checkbox" | "radio"   | "tab"     | "menuitem" | "menu"
+    | "option"   | "combobox"| "listbox" | "dialog"  | "alert"
+    | "tooltip"  | "switch"  | "slider"  | "row"     | "cell"
+    | "navigation" | "main"
+}
 
 direction = @{ "up" | "down" | "left" | "right" }
 duration  = ${ number_lit ~ duration_unit }

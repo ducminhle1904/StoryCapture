@@ -106,6 +106,101 @@ pub struct Scene {
 
 // Targets
 
+/// Phase 7 Tier 1: ARIA role keyword recognized by the `<role> "name"`
+/// target form. Maps 1:1 onto Playwright `getByRole(role, { name })`.
+///
+/// Serializes to kebab-case (e.g. `Button` → `"button"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-export", derive(TS))]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../packages/story-dsl/src/ast.ts")
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum AriaRole {
+    Button,
+    Link,
+    Heading,
+    Image,
+    Checkbox,
+    Radio,
+    Tab,
+    Menuitem,
+    Menu,
+    Option,
+    Combobox,
+    Listbox,
+    Dialog,
+    Alert,
+    Tooltip,
+    Switch,
+    Slider,
+    Row,
+    Cell,
+    Navigation,
+    Main,
+}
+
+impl AriaRole {
+    /// Return the canonical kebab-case spelling used on the wire.
+    pub fn as_kebab(&self) -> &'static str {
+        match self {
+            AriaRole::Button => "button",
+            AriaRole::Link => "link",
+            AriaRole::Heading => "heading",
+            AriaRole::Image => "image",
+            AriaRole::Checkbox => "checkbox",
+            AriaRole::Radio => "radio",
+            AriaRole::Tab => "tab",
+            AriaRole::Menuitem => "menuitem",
+            AriaRole::Menu => "menu",
+            AriaRole::Option => "option",
+            AriaRole::Combobox => "combobox",
+            AriaRole::Listbox => "listbox",
+            AriaRole::Dialog => "dialog",
+            AriaRole::Alert => "alert",
+            AriaRole::Tooltip => "tooltip",
+            AriaRole::Switch => "switch",
+            AriaRole::Slider => "slider",
+            AriaRole::Row => "row",
+            AriaRole::Cell => "cell",
+            AriaRole::Navigation => "navigation",
+            AriaRole::Main => "main",
+        }
+    }
+
+    // 21 enum variants; 22 keyword spellings (image/img alias — both map to Image
+    // per D-05 / RESEARCH Q5). The count asymmetry is intentional, not a bug.
+    // `KNOWN_ROLES` in suggest.rs mirrors the 22 spellings for did-you-mean.
+    pub fn from_keyword(kw: &str) -> Option<Self> {
+        Some(match kw {
+            "button" => Self::Button,
+            "link" => Self::Link,
+            "heading" => Self::Heading,
+            // `image` and `img` both map to Image per D-05 / RESEARCH Q5
+            "image" | "img" => Self::Image,
+            "checkbox" => Self::Checkbox,
+            "radio" => Self::Radio,
+            "tab" => Self::Tab,
+            "menuitem" => Self::Menuitem,
+            "menu" => Self::Menu,
+            "option" => Self::Option,
+            "combobox" => Self::Combobox,
+            "listbox" => Self::Listbox,
+            "dialog" => Self::Dialog,
+            "alert" => Self::Alert,
+            "tooltip" => Self::Tooltip,
+            "switch" => Self::Switch,
+            "slider" => Self::Slider,
+            "row" => Self::Row,
+            "cell" => Self::Cell,
+            "navigation" => Self::Navigation,
+            "main" => Self::Main,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -122,6 +217,13 @@ pub enum SelectorOrText {
     TestId(String),
     /// `aria "Sign in"` — strict accessible name.
     Aria(String),
+    /// Phase 7 Tier 1: `<role> "name"` → Playwright `getByRole(role, { name, exact: true })`.
+    Role { role: AriaRole, name: String },
+    /// Phase 7 Tier 1: `field "Email"` → Playwright `getByLabel(name, { exact: true })`.
+    Label(String),
+    /// Phase 7 Tier 1: `text "Learn more"` → Playwright `getByText(name, { exact: true })`.
+    /// Distinct from the bare `Text(_)` variant which keeps its ranked/heuristic resolution.
+    TextExact(String),
 }
 
 pub type WaitForTarget = SelectorOrText;
