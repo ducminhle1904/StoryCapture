@@ -3,6 +3,7 @@ import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
 
 import { storyEditorExtensions } from "./codemirror-setup";
+import { editorController } from "./controller";
 import { useEditorStore } from "@/state/editor";
 import { parseStory } from "@/ipc/parse";
 
@@ -71,6 +72,16 @@ export function StoryEditor({ onAutosave, jumpTarget }: StoryEditorProps) {
     });
     view.focus();
   }, [jumpTarget]);
+
+  // Plan 07-03b — register the active CodeMirror view with the
+  // editorController singleton so the picker UI can insert at the
+  // cursor. Cleared on unmount.
+  useEffect(() => {
+    editorController.setView(cmRef.current?.view ?? null);
+    return () => {
+      editorController.clearView();
+    };
+  }, [cmRef.current?.view]);
 
   return (
     <div
