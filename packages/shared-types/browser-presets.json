@@ -1,0 +1,60 @@
+{
+  "_comment": "Canonical single source of truth for browser presets. Consumed by TS (apps/desktop/src) and Rust (apps/desktop/src-tauri via build.rs codegen). Order MATTERS: entries are iterated in order for basename path-fragment matching, so more-specific variants (canary/beta/dev) MUST appear before their generic parent (chrome/msedge). Do not reorder without updating callers.",
+  "presets": [
+    {
+      "id": "chromium",
+      "title": "Chromium",
+      "basenames": ["chromium"]
+    },
+    {
+      "id": "chrome-canary",
+      "title": "Google Chrome Canary",
+      "basenames": ["chrome canary"]
+    },
+    {
+      "id": "chrome-beta",
+      "title": "Google Chrome Beta",
+      "basenames": ["chrome beta"]
+    },
+    {
+      "id": "chrome-dev",
+      "title": "Google Chrome Dev",
+      "basenames": ["chrome dev"]
+    },
+    {
+      "id": "chrome",
+      "title": "Google Chrome",
+      "basenames": ["google chrome"]
+    },
+    {
+      "id": "msedge-canary",
+      "title": "Microsoft Edge Canary",
+      "basenames": ["microsoft edge canary"]
+    },
+    {
+      "id": "msedge-beta",
+      "title": "Microsoft Edge Beta",
+      "basenames": ["microsoft edge beta"]
+    },
+    {
+      "id": "msedge-dev",
+      "title": "Microsoft Edge Dev",
+      "basenames": ["microsoft edge dev"]
+    },
+    {
+      "id": "msedge",
+      "title": "Microsoft Edge",
+      "basenames": ["microsoft edge"]
+    },
+    {
+      "id": "brave",
+      "title": "Brave Browser",
+      "basenames": ["brave"]
+    },
+    {
+      "id": "arc",
+      "title": "Arc",
+      "basenames": ["arc"]
+    }
+  ]
+}

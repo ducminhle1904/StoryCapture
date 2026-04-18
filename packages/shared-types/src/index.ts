@@ -5,6 +5,7 @@
 // `apps/desktop/src-tauri/src/ipc_spec.rs`. DO NOT edit it by hand.
 
 export * from "./ipc";
+export * from "./browser-presets";
 
 // Note: WebAccountInfo is exported via ipc.ts (tauri-specta codegen).
 // See web-account.ts for the standalone type definition (not re-exported
