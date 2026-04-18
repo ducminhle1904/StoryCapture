@@ -170,6 +170,24 @@ mod tests {
         );
     }
 
+    /// Backlog #9 regression: msedge-canary was previously present in the
+    /// frontend CHROMIUM_PRESETS set but missing from both title-hint tables,
+    /// so Edge Canary auto-follow silently fell back to pid-only matching.
+    #[test]
+    fn exec_path_edge_canary_beats_generic_edge() {
+        assert_eq!(
+            title_hint_for(Some("msedge-canary")).as_deref(),
+            Some("Microsoft Edge Canary")
+        );
+        assert_eq!(
+            title_hint_for(Some(
+                "/Applications/Microsoft Edge Canary.app/Contents/MacOS/Microsoft Edge Canary"
+            ))
+            .as_deref(),
+            Some("Microsoft Edge Canary")
+        );
+    }
+
     #[test]
     fn exec_path_brave() {
         assert_eq!(

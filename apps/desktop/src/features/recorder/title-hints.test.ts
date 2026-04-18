@@ -14,8 +14,25 @@ describe("BROWSER_TITLE_HINTS", () => {
     expect(BROWSER_TITLE_HINTS["chrome"]).toBe("Google Chrome");
     expect(BROWSER_TITLE_HINTS["chrome-canary"]).toBe("Google Chrome Canary");
     expect(BROWSER_TITLE_HINTS["msedge"]).toBe("Microsoft Edge");
+    expect(BROWSER_TITLE_HINTS["msedge-canary"]).toBe("Microsoft Edge Canary");
     expect(BROWSER_TITLE_HINTS["brave"]).toBe("Brave Browser");
     expect(BROWSER_TITLE_HINTS["arc"]).toBe("Arc");
+  });
+});
+
+describe("backlog #9 regression — msedge-canary parity", () => {
+  // Previously msedge-canary was in CHROMIUM_PRESETS but missing from the
+  // title-hint tables; auto-follow silently fell back to pid-only match.
+  it("resolves msedge-canary id to Microsoft Edge Canary", () => {
+    expect(titleHintFor("msedge-canary")).toBe("Microsoft Edge Canary");
+  });
+
+  it("resolves Microsoft Edge Canary path before generic Edge", () => {
+    expect(
+      titleHintFor(
+        "/Applications/Microsoft Edge Canary.app/Contents/MacOS/Microsoft Edge Canary",
+      ),
+    ).toBe("Microsoft Edge Canary");
   });
 });
 
