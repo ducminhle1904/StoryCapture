@@ -123,27 +123,11 @@ pub async fn capture_thumbnail(
 ) -> Result<Vec<u8>, CaptureError> {
     let target_owned = target.clone();
 
-    // Pre-resolve the crop rect for DisplayRegion (same logic as wgc_backend).
+    // Pre-resolve the crop rect for DisplayRegion (shared helper w/ wgc_backend).
     let crop_rect = match &target_owned {
-        CaptureTarget::DisplayRegion { display_id, rect } => {
-            let displays = crate::display::enumerate_displays()?;
-            let disp = displays
-                .iter()
-                .find(|d| d.id == *display_id)
-                .ok_or_else(|| {
-                    CaptureError::Native(format!(
-                        "DisplayRegion references unknown display {}",
-                        display_id.0
-                    ))
-                })?;
-            let scale = disp.scale_factor.max(1.0) as f64;
-            Some(PhysicalRectU32 {
-                x: (rect.x * scale).round() as u32,
-                y: (rect.y * scale).round() as u32,
-                w: (rect.w * scale).round() as u32,
-                h: (rect.h * scale).round() as u32,
-            })
-        }
+        CaptureTarget::DisplayRegion { display_id, rect } => Some(
+            crate::windows::helpers::resolve_region_to_physical(display_id, rect)?,
+        ),
         _ => None,
     };
 

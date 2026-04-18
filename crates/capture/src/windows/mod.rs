@@ -2,6 +2,7 @@
 //! window enumeration + D3D11 texture RAII.
 
 pub mod frame_from_wgc;
+pub(crate) mod helpers;
 pub mod raii;
 pub mod thumbnail;
 pub mod wgc_backend;

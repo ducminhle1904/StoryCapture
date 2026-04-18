@@ -322,25 +322,9 @@ impl CaptureBackend for WgcBackend {
         // `WgcBackend::list_displays` uses), so the rect matches what
         // the user saw in the overlay.
         let crop_rect = match &cfg.target {
-            CaptureTarget::DisplayRegion { display_id, rect } => {
-                let displays = crate::display::enumerate_displays()?;
-                let disp = displays
-                    .iter()
-                    .find(|d| d.id == *display_id)
-                    .ok_or_else(|| {
-                        CaptureError::Native(format!(
-                            "DisplayRegion references unknown display {}",
-                            display_id.0
-                        ))
-                    })?;
-                let scale = disp.scale_factor.max(1.0) as f64;
-                Some(crate::windows::frame_from_wgc::PhysicalRectU32 {
-                    x: (rect.x * scale).round() as u32,
-                    y: (rect.y * scale).round() as u32,
-                    w: (rect.w * scale).round() as u32,
-                    h: (rect.h * scale).round() as u32,
-                })
-            }
+            CaptureTarget::DisplayRegion { display_id, rect } => Some(
+                crate::windows::helpers::resolve_region_to_physical(display_id, rect)?,
+            ),
             _ => None,
         };
 
