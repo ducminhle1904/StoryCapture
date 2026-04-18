@@ -39,6 +39,7 @@
 //! FFmpeg stdin so the audio tail flushes cleanly while FFmpeg is still
 //! consuming the fifo.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -75,15 +76,18 @@ pub struct EncodeResult {
 ///
 /// Returns the raw bytes and the per-row stride (may be larger than
 /// `width * 4` due to row padding on some backends).
-pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Vec<u8>, usize)> {
+pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Cow<'_, [u8]>, usize)> {
     match &frame.data {
-        FrameData::Owned(bytes, stride) => Ok((bytes.clone(), *stride)),
+        FrameData::Owned(bytes, stride) => Ok((Cow::Borrowed(bytes.as_slice()), *stride)),
         #[cfg(target_os = "macos")]
-        FrameData::NativeMacOS(handle) => handle.to_owned_bgra().map_err(|rc| {
-            EncoderError::InvalidConfig(format!(
-                "CVPixelBufferLockBaseAddress failed (CVReturn {rc})"
-            ))
-        }),
+        FrameData::NativeMacOS(handle) => {
+            let (bytes, stride) = handle.to_owned_bgra().map_err(|rc| {
+                EncoderError::InvalidConfig(format!(
+                    "CVPixelBufferLockBaseAddress failed (CVReturn {rc})"
+                ))
+            })?;
+            Ok((Cow::Owned(bytes), stride))
+        }
         #[cfg(target_os = "windows")]
         FrameData::NativeWindows(_) => Err(EncoderError::InvalidConfig(
             "native D3D texture input requires CPU copy helper (Plan 11); pipeline expects FrameData::Owned from the capture crate's public pipeline path".into(),
@@ -156,7 +160,7 @@ impl EncodePipeline {
                         continue;
                     }
                 };
-                match stdin.write_all(&bytes).await {
+                match stdin.write_all(&bytes[..]).await {
                     Ok(()) => {
                         frames_written += 1;
                         if frames_written == 1 || frames_written % 30 == 0 {
@@ -399,5 +403,7 @@ mod tests {
         let (bytes, s) = bgra_bytes_of_frame(&frame).unwrap();
         assert_eq!(bytes.len(), data.len());
         assert_eq!(s, stride);
+        // A1: Owned variant must be borrowed, not cloned.
+        assert!(matches!(bytes, std::borrow::Cow::Borrowed(_)));
     }
 }
