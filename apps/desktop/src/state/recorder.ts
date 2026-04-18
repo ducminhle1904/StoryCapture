@@ -73,9 +73,9 @@ export interface RecorderData {
   captureTarget: CaptureTarget | null;
   availableTargets: CaptureTargets | null;
 
-  /** `null` = no audio (default every render). `"default"` = system
-   *  default. Any other string is a cpal device name. Non-sticky:
-   *  resets to null on mount and recording completion. */
+  /** `null` = no audio. `"default"` = cpal's default input. Any other
+   *  string is a specific device name. Non-sticky: resets to null on
+   *  mount and recording completion. */
   audioDeviceId: AudioPickerValue;
 
   /** Per-recording include-cursor flag. Non-sticky, defaults to true. */
@@ -124,12 +124,11 @@ const INITIAL: RecorderData = {
   elapsedMs: 0,
   captureTarget: null,
   availableTargets: null,
-  // D-02 non-sticky — reset to null on every reset() call (covers mount
-  // and recording-complete).
+  // Non-sticky: reset() is called on recorder-view mount and recording
+  // completion, so every new recording starts with "No audio" / cursor
+  // on / chrome-hiding off regardless of prior session state.
   audioDeviceId: null,
-  // Plan 06-02 — D-19/D-20: cursor defaults ON every recording.
   includeCursor: true,
-  // Plan 06-02 — D-10: chrome-hiding defaults OFF every recording.
   chromeHiding: false,
 };
 
@@ -162,11 +161,7 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   setOutputPath: (outputPath) => set({ outputPath }),
   setElapsed: (elapsedMs) => set({ elapsedMs }),
   reset: () => set({ ...INITIAL }),
-  // Phase 6 plan 01 — non-sticky selector. No persistence layer on
-  // purpose; D-02 wants every new recording to start with "No audio".
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
-  // Plan 06-02 — non-sticky per-recording toggles. No persistence; the
-  // reset() defaults above flip them back on mount / recording-complete.
   setIncludeCursor: (includeCursor) => set({ includeCursor }),
   setChromeHiding: (chromeHiding) => set({ chromeHiding }),
 
@@ -183,6 +178,13 @@ export const useRecorderStore = create<RecorderState>((set) => ({
     set({ availableTargets: targets, captureTarget: fallback });
   },
   setCaptureTarget: async (target) => {
+    // Backlog #12 — short-circuit when the caller re-asserts the same
+    // target. Avoids a spurious IPC round-trip + zustand set on the
+    // TargetPicker render-time no-ops.
+    const current = useRecorderStore.getState().captureTarget;
+    if (current && captureTargetKey(current) === captureTargetKey(target)) {
+      return;
+    }
     await ipcSetCaptureTarget(target).catch((err) => {
       // Non-fatal: persistence failure shouldn't block the UI choice.
       // eslint-disable-next-line no-console
@@ -191,13 +193,11 @@ export const useRecorderStore = create<RecorderState>((set) => ({
     set({ captureTarget: target });
   },
 
-  // Plan 05-02: query the host for the current Playwright window availability
-  // and update `availableTargets.playwright_auto_available`. When the
-  // Playwright auto-target becomes available AND the user hasn't made an
-  // explicit non-auto choice this session, pre-select it per D-01/D-02.
-  //
-  // Debounced to ≤1 call/s via the module-level `playwrightRefreshGate`
-  // (T-05-02-06).
+  // Query the host for Playwright window availability and update
+  // `availableTargets.playwright_auto_available`. When the Playwright
+  // auto-target becomes available AND the user hasn't made an explicit
+  // non-auto choice this session, pre-select it. Debounced to ≤1 call/s
+  // via the module-level gate below.
   refreshPlaywrightAvailability: async () => {
     if (!canRefreshPlaywright()) return;
     const resolved = await resolvePlaywrightTarget().catch(() => null);
@@ -239,7 +239,7 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   },
 }));
 
-// ─── Plan 05-02 — debounce gate for refreshPlaywrightAvailability ─────
+// ─── Debounce gate for refreshPlaywrightAvailability ─────
 
 let lastPlaywrightRefreshMs = 0;
 function canRefreshPlaywright(): boolean {
