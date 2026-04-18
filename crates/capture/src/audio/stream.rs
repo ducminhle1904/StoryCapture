@@ -232,9 +232,8 @@ impl AudioCaptureStream {
 impl Drop for AudioCaptureStream {
     fn drop(&mut self) {
         self.stop_flag.store(true, Ordering::Relaxed);
-        // _stream drops on struct drop → cpal pauses, callback stops.
         if let Some(h) = self.drain_thread.take() {
-            let _ = h.join();
+            drop(h);
         }
     }
 }
