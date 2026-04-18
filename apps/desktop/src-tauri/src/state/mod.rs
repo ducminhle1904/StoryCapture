@@ -20,7 +20,7 @@ use tokio::sync::Mutex as TokioMutex;
 
 use crate::commands::render::RenderQueueState;
 
-/// Plan 07-03b — shared handle to the active Playwright sidecar driver.
+/// shared handle to the active Playwright sidecar driver.
 ///
 /// `launch_automation` populates this when it spawns the executor's
 /// driver, and clears it at story end. The picker commands
@@ -63,7 +63,7 @@ pub struct AppState {
     /// providers inherit the pool but may override per-request timeouts.
     pub http_client: HttpClient,
 
-    /// Plan 07-03b — handle to the in-flight Playwright sidecar driver
+    /// handle to the in-flight Playwright sidecar driver
     /// (populated by `launch_automation`, cleared at story end). The
     /// picker commands read this to issue `pickElement.*` against the
     /// same sidecar the executor is driving.

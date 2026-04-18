@@ -210,7 +210,7 @@ pub async fn launch_automation(
     };
     // Share the driver with the pid probe task.
     let shared_pw: Arc<Mutex<PlaywrightSidecarDriver>> = Arc::new(Mutex::new(playwright));
-    // Plan 07-03b — publish to AppState so the picker_* commands can issue
+    // publish to AppState so the picker_* commands can issue
     // pickElement.* against the SAME sidecar instance the executor is
     // driving. Cleared at story end (after the executor channel closes).
     {
@@ -218,7 +218,7 @@ pub async fn launch_automation(
         *slot = Some(shared_pw.clone());
         tracing::info!(target: "storycapture::automation", "published shared Playwright driver to AppState (picker enabled)");
     }
-    // Plan 07-04a — wire the id-absent JSON-RPC notification forwarder
+    // wire the id-absent JSON-RPC notification forwarder
     // that bridges the sidecar's broadcast channel to a Tauri event
     // (`picker_hover_preview`). One forwarder per driver lifetime; the
     // task exits automatically when the broadcast channel closes (driver
@@ -357,7 +357,7 @@ pub async fn launch_automation(
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
     playwright_first_paint_stash().set(false);
-    // Plan 07-03b — drop the shared driver handle so the picker disables
+    // drop the shared driver handle so the picker disables
     // until the next launch.
     {
         let mut slot = state.playwright_driver.lock().await;

@@ -1,4 +1,4 @@
-// Plan 07-03a — unit tests for the ranked DSL generator. The 5 cases here
+// unit tests for the ranked DSL generator. The 5 cases here
 // exercise the escape helper + rank-selection logic with a minimal page
 // stub; the real-Chromium integration coverage lives in server.test.mjs.
 

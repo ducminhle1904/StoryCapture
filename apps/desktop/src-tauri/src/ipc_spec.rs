@@ -47,13 +47,13 @@ pub fn builder() -> Builder<Wry> {
             system::trigger_panic,
             automation::launch_automation,
             automation::resolve_playwright_target,
-            // Plan 07-03b — element picker.
+            // element picker.
             picker::picker_start,
             picker::picker_cancel,
             picker::picker_is_active,
-            // Plan 07-04c — stamp UUIDv7 on first pick + seed targets sidecar.
+            // stamp UUIDv7 on first pick + seed targets sidecar.
             picker::picker_stamp_step_id,
-            // Plan 07-05 — author-time selector validator + DOM snapshot store.
+            // author-time selector validator + DOM snapshot store.
             author_snapshot::author_snapshot_capture,
             author_snapshot::author_snapshot_get,
             author_snapshot::author_snapshot_list,
@@ -152,7 +152,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<automation::ResolvedPlaywrightTarget>()
         .typ::<picker::PickElementResponseDto>()
-        // Plan 07-05 — author-time validator DTOs.
+        // author-time validator DTOs.
         .typ::<author_snapshot::AuthorSnapshotEntry>()
         .typ::<author_snapshot::AuthorValidationDto>()
         .typ::<capture::DisplayInfoDto>()

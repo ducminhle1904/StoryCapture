@@ -40,7 +40,7 @@ import { useRecorderStore, type RecorderStatus, type StepProgress } from "@/stat
 
 import { TccPrompt } from "./tcc-prompt";
 import { CursorTrail } from "./cursor-trail";
-// Plan 07-03b — element picker entry point.
+// element picker entry point.
 import { PickElementButton } from "./pick-element-button";
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
@@ -652,7 +652,7 @@ export function RecordingView({
               )}
               {status === "recording" && (
                 <>
-                  {/* Plan 07-03b — pick element while a Playwright session is live. */}
+                  {/* pick element while a Playwright session is live. */}
                   <PickElementButton />
                   <button
                     onClick={handlePause}

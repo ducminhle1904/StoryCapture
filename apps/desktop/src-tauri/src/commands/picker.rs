@@ -1,4 +1,4 @@
-// Plan 07-03b — element-picker Tauri commands.
+// element-picker Tauri commands.
 //
 // Routes `picker_start` / `picker_cancel` / `picker_is_active` to the
 // shared `PlaywrightSidecarDriver` populated by `launch_automation` in
@@ -97,7 +97,7 @@ pub async fn picker_is_active(state: State<'_, AppState>) -> Result<bool, AppErr
     }
 }
 
-/// Plan 07-04c — stamp a UUIDv7 step id onto a picked `.story` line AND
+/// stamp a UUIDv7 step id onto a picked `.story` line AND
 /// seed the sibling `.story.targets.json` with the pick's primary +
 /// fallback locators. Called fire-and-forget by `PickElementButton`
 /// after a successful pick.
@@ -120,7 +120,7 @@ pub async fn picker_is_active(state: State<'_, AppState>) -> Result<bool, AppErr
 /// ## Security
 ///
 /// Rejects `story_path` that contains `..` (path-traversal guard,
-/// T-07-04c-02). The Tauri FS scope (Plan 01-03) is still the primary
+/// 02). The Tauri FS scope (Plan 01-03) is still the primary
 /// boundary; this check is a defense-in-depth against a misconfigured
 /// scope or future refactor.
 ///
@@ -248,7 +248,7 @@ fn target_record_from_json(
     Ok(automation::targets_store::TargetRecord { kind, value })
 }
 
-/// Plan 07-04a — forward id-absent JSON-RPC notifications from the
+/// forward id-absent JSON-RPC notifications from the
 /// sidecar to Tauri events. One task per driver lifetime. The task exits
 /// when the broadcast channel closes (driver dropped); caller owns the
 /// `JoinHandle` so it can be aborted early on explicit teardown.
@@ -258,7 +258,7 @@ fn target_record_from_json(
 /// debug and otherwise ignored — future hover/preview notifications can
 /// add arms without changing the receiver contract.
 ///
-/// T-07-04a-01 mitigation: lagged subscribers get `RecvError::Lagged(n)`
+/// 01 mitigation: lagged subscribers get `RecvError::Lagged(n)`
 /// and are logged at warn, not panicked. The channel capacity (128) is
 /// well above a rAF-throttled (~60 Hz) emitter against a React consumer.
 pub fn spawn_notification_forwarder(

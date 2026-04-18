@@ -49,7 +49,7 @@ mkdirSync(outDir, { recursive: true });
 //    directory so it resolves a sibling `node_modules/playwright-core/`.
 const bundlePath = resolve(__dirname, 'server.cjs');
 
-// Plan 07-03a: pre-build the picker overlay TS into a single browser-side
+// pre-build the picker overlay TS into a single browser-side
 // IIFE. Output is a sibling file under picker/overlay/overlay.iife.js — the
 // next esbuild step inlines it as a string constant via --loader:.iife.js=text.
 // SEA cannot read sibling files at runtime, so the overlay MUST be embedded.

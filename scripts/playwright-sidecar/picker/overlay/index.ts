@@ -30,7 +30,7 @@ export interface PickCandidatePayload {
   shadowDepth: number;
 }
 
-// Plan 07-04a — live-hover preview payload.
+// live-hover preview payload.
 // Lightweight on purpose: the chip only needs "what the user is pointing at
 // right now" — the full ranked DSL emission still happens on click via
 // __sc_picker_emit. The bindings writer in server.mjs (writeNotification)
@@ -52,7 +52,7 @@ declare global {
     __sc_picker_emit?: (
       payload: PickCandidatePayload | { __cancel: true },
     ) => void;
-    // Plan 07-04a — fired on every rAF-throttled mouseover while picking.
+    // fired on every rAF-throttled mouseover while picking.
     __sc_picker_hover?: (payload: PickHoverPayload) => Promise<void>;
   }
 }
@@ -118,16 +118,16 @@ declare global {
   function onMouseOver(ev: MouseEvent) {
     if (!active) return;
     const target = findInteractiveTarget(ev);
-    if (!target) return;
+    if (!target || target === lastTarget) return;
     lastTarget = target;
     scheduleRepaint();
-    // Plan 07-04a — fire a hover-preview alongside the highlight repaint.
+    // fire a hover-preview alongside the highlight repaint.
     // Re-uses the SAME rAF throttle (scheduleHoverEmit) so at most one
     // notification is emitted per animation frame (~60 Hz ceiling).
     scheduleHoverEmit();
   }
 
-  // Plan 07-04a — rAF-throttled hover emission.
+  // rAF-throttled hover emission.
   //
   // Independent throttle from the paint scheduler because the hover
   // channel writes to stdout and we want to coalesce bursts (mouseover
@@ -249,7 +249,7 @@ declare global {
       window.cancelAnimationFrame(rafHandle);
       rafHandle = null;
     }
-    // Plan 07-04a — cancel the pending hover emission too so a
+    // cancel the pending hover emission too so a
     // post-stop() rAF callback doesn't invoke __sc_picker_hover.
     if (hoverRafHandle != null) {
       window.cancelAnimationFrame(hoverRafHandle);

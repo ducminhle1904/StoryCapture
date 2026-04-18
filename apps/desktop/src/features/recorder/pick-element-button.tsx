@@ -1,6 +1,6 @@
 /**
  * PickElementButton — toolbar button + aria-live banner that drives the
- * Playwright sidecar's element picker (Plan 07-03b).
+ * Playwright sidecar's element picker.
  *
  * Flow:
  *   click → setPicking(true) → portal banner ("PICKING — press Esc to cancel")
@@ -37,7 +37,7 @@ import { useRecorderStore } from "@/state/recorder";
 export function PickElementButton() {
   const status = useRecorderStore((s) => s.status);
   const [picking, setPicking] = useState(false);
-  // Plan 07-04a — live hover preview. Updated by the `picker_hover_preview`
+  // live hover preview. Updated by the `picker_hover_preview`
   // Tauri event (forwarded from the sidecar's id-absent JSON-RPC
   // notification). Cleared when picking ends.
   const [preview, setPreview] = useState<PickHoverPayload | null>(null);
@@ -61,7 +61,7 @@ export function PickElementButton() {
     return () => document.removeEventListener("keydown", onKey);
   }, [picking]);
 
-  // Plan 07-04a — subscribe to hover-preview events while picking.
+  // subscribe to hover-preview events while picking.
   // The Rust forwarder emits `picker_hover_preview` at most ~60 Hz
   // (overlay is rAF-throttled); React setState coalesces at render
   // cadence so the chip updates smoothly without extra debouncing.
@@ -73,7 +73,15 @@ export function PickElementButton() {
     let unlisten: UnlistenFn | undefined;
     let cancelled = false;
     listenPickerHoverPreview((p) => {
-      if (!cancelled) setPreview(p);
+      if (cancelled) return;
+      setPreview((prev) =>
+        prev &&
+        prev.testId === p.testId &&
+        prev.role === p.role &&
+        prev.accessibleName === p.accessibleName
+          ? prev
+          : p,
+      );
     })
       .then((u) => {
         if (cancelled) {
@@ -118,7 +126,7 @@ export function PickElementButton() {
         const res = editorController.insertAtCursor(r.emitted + "\n");
         if (res.ok) {
           toast.success(`Inserted: ${r.emitted}`);
-          // Plan 07-04c — fire-and-forget: stamp a UUIDv7 on the newly
+          // fire-and-forget: stamp a UUIDv7 on the newly
           // inserted line AND seed the sibling `.story.targets.json`
           // with the pick's primary + fallback locators. Skipped when
           // the editor hasn't been told the on-disk path of the open
@@ -193,7 +201,7 @@ export function PickElementButton() {
             document.body,
           )
         : null}
-      {/* Plan 07-04a — live hover-preview chip. Portal'd below the
+      {/* live hover-preview chip. Portal'd below the
          PICKING banner so the two stack without overlap. Uses role="note"
          + aria-live="polite" so screen readers can announce changes
          without stealing focus from the picking banner. */}

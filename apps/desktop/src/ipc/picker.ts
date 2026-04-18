@@ -1,5 +1,5 @@
 /**
- * Element-picker IPC wrappers (Plan 07-03b).
+ * Element-picker IPC wrappers.
  *
  * Thin typed facade for the `picker_*` Tauri commands defined in
  * `apps/desktop/src-tauri/src/commands/picker.rs`. Routes to the
@@ -80,7 +80,7 @@ export async function pickElementIsActive(): Promise<boolean> {
 }
 
 /**
- * Plan 07-04a — live hover-preview payload emitted by the sidecar
+ * live hover-preview payload emitted by the sidecar
  * overlay (rAF-throttled, ~60 Hz ceiling). The Rust forwarder task
  * translates each `pickElement.hoverPreview` notification into a Tauri
  * event of the same name (`picker_hover_preview`).
@@ -110,7 +110,7 @@ export async function listenPickerHoverPreview(
 }
 
 /**
- * Plan 07-04c — stamp a UUIDv7 step id onto the picked `.story` line
+ * stamp a UUIDv7 step id onto the picked `.story` line
  * AND seed the sibling `.story.targets.json` with the pick's primary
  * + fallback locators. Fire-and-forget from the UI: failures are
  * toasted but do NOT block the insertion flow (the editor already

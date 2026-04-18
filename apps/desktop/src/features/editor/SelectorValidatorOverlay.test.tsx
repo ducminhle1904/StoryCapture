@@ -1,5 +1,5 @@
 /**
- * Plan 07-05 — unit tests for the author-time validator overlay.
+ * unit tests for the author-time validator overlay.
  *
  * Stubs `@tauri-apps/api/core` `invoke` via Vitest's `vi.mock` so the
  * overlay's debounced `author_snapshot_validate` calls land in a

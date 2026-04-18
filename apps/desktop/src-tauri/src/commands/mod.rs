@@ -7,7 +7,7 @@
 pub mod app_settings;
 pub mod audio;
 pub mod automation;
-// Plan 07-05 — author-time selector validator + DOM snapshot store.
+// author-time selector validator + DOM snapshot store.
 pub mod author_snapshot;
 pub mod automation_shared;
 pub mod capture;
@@ -18,7 +18,7 @@ pub mod keys;
 pub mod lsp;
 pub mod nl;
 pub mod parse;
-// Plan 07-03b — element-picker IPC commands.
+// element-picker IPC commands.
 pub mod picker;
 pub mod preset;
 pub mod projects;

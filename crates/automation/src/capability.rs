@@ -22,7 +22,7 @@ fn is_shadow_dom(target: &SelectorOrText) -> bool {
         SelectorOrText::Aria(s) | SelectorOrText::TestId(s) | SelectorOrText::Text(s) => {
             s.starts_with("shadow:")
         }
-        // Phase 7 Tier 1: accessibility-first kinds. The name/label/text string
+        // accessibility-first kinds. The name/label/text string
         // may carry the conventional `shadow:` sentinel the DSL docs reserve.
         SelectorOrText::Role { name, .. }
         | SelectorOrText::Label(name)
@@ -39,7 +39,7 @@ fn is_download_target(target: &SelectorOrText) -> bool {
         | SelectorOrText::Selector(s)
         | SelectorOrText::TestId(s)
         | SelectorOrText::Aria(s) => s,
-        // Phase 7 Tier 1: the `name`/`value` string carries any sentinel.
+        // the `name`/`value` string carries any sentinel.
         SelectorOrText::Role { name, .. }
         | SelectorOrText::Label(name)
         | SelectorOrText::TextExact(name) => name,
@@ -58,7 +58,7 @@ fn is_oauth_target(target: &SelectorOrText) -> bool {
         | SelectorOrText::Selector(s)
         | SelectorOrText::TestId(s)
         | SelectorOrText::Aria(s) => s,
-        // Phase 7 Tier 1: the `name`/`value` string carries the sentinel.
+        // the `name`/`value` string carries the sentinel.
         SelectorOrText::Role { name, .. }
         | SelectorOrText::Label(name)
         | SelectorOrText::TextExact(name) => name,

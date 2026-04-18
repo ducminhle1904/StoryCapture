@@ -107,7 +107,7 @@ pub struct Scene {
 
 // Targets
 
-/// Phase 7 Tier 1: ARIA role keyword recognized by the `<role> "name"`
+/// ARIA role keyword recognized by the `<role> "name"`
 /// target form. Maps 1:1 onto Playwright `getByRole(role, { name })`.
 ///
 /// Serializes to kebab-case (e.g. `Button` → `"button"`).
@@ -218,11 +218,11 @@ pub enum SelectorOrText {
     TestId(String),
     /// `aria "Sign in"` — strict accessible name.
     Aria(String),
-    /// Phase 7 Tier 1: `<role> "name"` → Playwright `getByRole(role, { name, exact: true })`.
+    /// `<role> "name"` → Playwright `getByRole(role, { name, exact: true })`.
     Role { role: AriaRole, name: String },
-    /// Phase 7 Tier 1: `field "Email"` → Playwright `getByLabel(name, { exact: true })`.
+    /// `field "Email"` → Playwright `getByLabel(name, { exact: true })`.
     Label(String),
-    /// Phase 7 Tier 1: `text "Learn more"` → Playwright `getByText(name, { exact: true })`.
+    /// `text "Learn more"` → Playwright `getByText(name, { exact: true })`.
     /// Distinct from the bare `Text(_)` variant which keeps its ranked/heuristic resolution.
     TextExact(String),
 }

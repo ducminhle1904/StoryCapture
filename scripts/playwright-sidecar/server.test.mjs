@@ -30,7 +30,7 @@ function spawnSidecar() {
   });
   const pending = new Map();
   let nextId = 1;
-  // Plan 07-04a — capture every line the sidecar writes to stdout so
+  // capture every line the sidecar writes to stdout so
   // tests can assert on id-absent notifications (e.g.
   // `pickElement.hoverPreview`). Responses still dispatch via the
   // `pending` map; notifications land in the buffer only.
@@ -59,7 +59,7 @@ function spawnSidecar() {
   // Swallow stderr in tests (surface only on hang).
   child.stderr.on("data", () => {});
   return {
-    /** Plan 07-04a — snapshot every stdout line (responses + notifications). */
+    /** snapshot every stdout line (responses + notifications). */
     stdoutLines() {
       return stdoutLines.slice();
     },
@@ -185,7 +185,7 @@ describe("browserProcess JSON-RPC verb", () => {
     }
   }, 90_000);
 
-  // Plan 07-03a — element picker integration. Drives real Chromium against
+  // element picker integration. Drives real Chromium against
   // the picker.html fixture. Uses __test_simulate_pick / *_cancel to
   // synthesize click + Escape events deterministically (real mouse
   // coordination is flaky in headless CI). Each assertion mirrors a row
@@ -369,7 +369,7 @@ describe("browserProcess JSON-RPC verb", () => {
       }
     }, 60_000);
 
-    // Plan 07-04a — live-hover preview slice. Asserts the sidecar emits
+    // live-hover preview slice. Asserts the sidecar emits
     // at least one id-absent JSON-RPC notification
     // (`pickElement.hoverPreview`) while a pick is active, driven by the
     // overlay's rAF-throttled mouseover handler.
@@ -457,7 +457,7 @@ describe("browserProcess JSON-RPC verb", () => {
   }, 90_000);
 });
 
-// Plan 07-02 Task 2 — PHASE-7.3 acceptance gate.
+// PHASE-7.3 acceptance gate.
 // Drives real Chromium against tests/fixtures/tier1.html and proves:
 //   - locate('role'|'label'|'text_exact') → getByRole/getByLabel/getByText exact
 //   - targetToLocator supports {kind: 'role'|'label'|'text_exact'}

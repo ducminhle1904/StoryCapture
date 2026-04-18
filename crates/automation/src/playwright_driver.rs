@@ -34,7 +34,7 @@ struct JsonRpcRequest<'a> {
     params: Value,
 }
 
-// Plan 07-04a — JSON-RPC notifications.
+// JSON-RPC notifications.
 //
 // `id` is now Option<u64>: id-absent messages carry `method`+`params` and
 // are dispatched to a tokio broadcast channel instead of the pending-
@@ -57,7 +57,7 @@ struct JsonRpcResponse {
     error: Option<JsonRpcError>,
 }
 
-/// Plan 07-04a — fan-out payload for id-absent JSON-RPC messages.
+/// fan-out payload for id-absent JSON-RPC messages.
 /// Subscribers consume via `PlaywrightSidecarDriver::subscribe_notifications`.
 #[derive(Debug, Clone)]
 pub struct Notification {
@@ -80,7 +80,7 @@ pub struct PlaywrightSidecarDriver {
     pending: Pending,
     /// Keep the child alive for the driver lifetime.
     _child: Arc<Mutex<Option<Child>>>,
-    /// Plan 07-04a — fan-out for id-absent JSON-RPC messages (e.g.
+    /// fan-out for id-absent JSON-RPC messages (e.g.
     /// `pickElement.hoverPreview`). Capacity 128 — lagged subscribers
     /// receive `RecvError::Lagged(n)` and are logged, not panicked.
     notifications: broadcast::Sender<Notification>,
@@ -106,14 +106,14 @@ impl PlaywrightSidecarDriver {
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let pending_for_reader = pending.clone();
 
-        // Plan 07-04a — broadcast channel for id-absent JSON-RPC
+        // broadcast channel for id-absent JSON-RPC
         // notifications. Capacity 128: well above the rAF-throttled (~60 Hz)
         // hoverPreview stream against any reasonable UI consumer cadence.
         let (notifications, _keep_open) = broadcast::channel::<Notification>(128);
         let notifications_for_reader = notifications.clone();
 
         // Reader task: parse stdout lines, dispatch to the pending map or
-        // the notifications broadcast channel (Plan 07-04a).
+        // the notifications broadcast channel.
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
@@ -170,7 +170,7 @@ impl PlaywrightSidecarDriver {
         })
     }
 
-    /// Plan 07-04a — subscribe to id-absent JSON-RPC messages. Multiple
+    /// subscribe to id-absent JSON-RPC messages. Multiple
     /// subscribers all receive every notification. Lagged subscribers get
     /// `RecvError::Lagged(n)` on the next `recv()` and must choose whether
     /// to log and continue or resubscribe.
@@ -417,7 +417,7 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
-    /// Plan 07-05 — author-time DOM + screenshot capture for the selector
+    /// author-time DOM + screenshot capture for the selector
     /// validator. Routes to the sidecar's `captureSnapshot` verb which
     /// uses a DEDICATED browser (never disturbs the recording session's
     /// `state.page`). Returns the raw sidecar response — the desktop
@@ -443,7 +443,7 @@ impl PlaywrightSidecarDriver {
     }
 }
 
-/// Plan 07-05 — sidecar `captureSnapshot` response payload.
+/// sidecar `captureSnapshot` response payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotResponse {
     pub url: String,
@@ -463,7 +463,7 @@ fn target_to_json(t: &SelectorOrText) -> Value {
         SelectorOrText::Selector(s) => json!({ "kind": "selector", "value": s }),
         SelectorOrText::TestId(s) => json!({ "kind": "testid", "value": s }),
         SelectorOrText::Aria(s) => json!({ "kind": "aria", "value": s }),
-        // Phase 7 Tier 1 — sidecar `locate()` consumes these in
+        // sidecar `locate()` consumes these in
         // `targetToLocator()` per CONTEXT.md §Tier 1 prerequisite.
         SelectorOrText::Role { role, name } => json!({
             "kind": "role",
@@ -475,7 +475,7 @@ fn target_to_json(t: &SelectorOrText) -> Value {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Plan 07-03b — element-picker JSON-RPC wrappers.
+// element-picker JSON-RPC wrappers.
 //
 // CONTRACT: the `Picked` variant's field MUST be named `emitted: String`
 // — this matches the sidecar wire field at `scripts/playwright-sidecar/
@@ -548,7 +548,7 @@ impl PlaywrightSidecarDriver {
 
 #[cfg(test)]
 mod notification_tests {
-    // Plan 07-04a Task 1 — JSON-RPC notification plumbing.
+    // JSON-RPC notification plumbing.
     //
     // RED-first: these tests assert the broadcast semantics for id-absent
     // JSON-RPC messages (see CONTEXT.md §Tier 2 robustness). They exercise

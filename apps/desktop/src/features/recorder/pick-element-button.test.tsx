@@ -1,5 +1,5 @@
 /**
- * PickElementButton vitest with Tauri IPC mocks (Plan 07-03b Task 3).
+ * PickElementButton vitest with Tauri IPC mocks.
  *
  * THE FINAL GATE for PHASE-7.4 — proves end-to-end that the sidecar's
  * `result.emitted` field (07-03a wire contract) reaches the editor as
@@ -42,7 +42,7 @@ describe("PickElementButton", () => {
   beforeEach(() => {
     insertSpy = vi
       .spyOn(editorController, "insertAtCursor")
-      .mockReturnValue({ ok: true });
+      .mockReturnValue({ ok: true, lineNumber: 1 });
     // Default: live session.
     useRecorderStore.setState({ status: "recording" });
   });
@@ -138,7 +138,7 @@ describe("PickElementButton", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  // Plan 07-04a — hover-preview chip. Subscribed via the Tauri event
+  // hover-preview chip. Subscribed via the Tauri event
   // `picker_hover_preview`. The Rust forwarder task bridges the
   // broadcast channel → emit('picker_hover_preview', params).
   it("hover-preview chip renders with role+accessibleName from first event", async () => {

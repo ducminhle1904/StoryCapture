@@ -1,4 +1,4 @@
-// Plan 07-05 Task 2 — captureSnapshot JSON-RPC verb integration test.
+// captureSnapshot JSON-RPC verb integration test.
 //
 // Spawns the real Node sidecar, loads a local fixture via file:// URL, and
 // asserts the returned DOM hash + screenshot payload. Uses the same

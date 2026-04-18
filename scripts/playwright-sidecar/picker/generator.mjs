@@ -1,4 +1,4 @@
-// Plan 07-03a — ranked DSL generator. Each candidate is verified via
+// ranked DSL generator. Each candidate is verified via
 // `locator.count() === 1` before being emitted. Returns the FIRST candidate
 // that resolves uniquely. CSS fallback is always available as the last rank.
 //

@@ -1,4 +1,4 @@
-//! Plan 07-05 — Author-time snapshot store + selector validator IPC.
+//! Author-time snapshot store + selector validator IPC.
 //!
 //! The editor hovers a DSL step → the renderer asks "do I have a snapshot
 //! for this Navigate's URL?" If yes, run `SmartSelector::validate_against_dom`
@@ -113,7 +113,7 @@ fn snapshot_dir(project_dir: &str) -> Result<PathBuf, AppError> {
     Ok(root.join(SNAPSHOT_DIR_NAME))
 }
 
-/// Plan 07-05 — capture a fresh snapshot for `url`, persist the trio
+/// capture a fresh snapshot for `url`, persist the trio
 /// under `<project>/.story.snapshots/`, return the manifest entry.
 ///
 /// Requires the Playwright sidecar to be launched (via
@@ -176,7 +176,7 @@ pub async fn author_snapshot_capture(
     Ok(entry)
 }
 
-/// Plan 07-05 — return the manifest entry for `url` if one exists.
+/// return the manifest entry for `url` if one exists.
 /// Missing → `Ok(None)`. Corrupt JSON → `Err(AppError::Automation)`.
 #[tauri::command]
 #[specta::specta]
@@ -186,17 +186,22 @@ pub async fn author_snapshot_get(
 ) -> Result<Option<AuthorSnapshotEntry>, AppError> {
     let dir = snapshot_dir(&project_dir)?;
     let manifest = dir.join(format!("{}.json", url_key(&url)));
-    if !manifest.exists() {
-        return Ok(None);
-    }
-    let raw = std::fs::read_to_string(&manifest)
-        .map_err(|e| AppError::Automation(format!("read {}: {e}", manifest.display())))?;
+    let raw = match std::fs::read_to_string(&manifest) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(AppError::Automation(format!(
+                "read {}: {e}",
+                manifest.display()
+            )))
+        }
+    };
     let entry: AuthorSnapshotEntry = serde_json::from_str(&raw)
         .map_err(|e| AppError::Automation(format!("decode {}: {e}", manifest.display())))?;
     Ok(Some(entry))
 }
 
-/// Plan 07-05 — enumerate every stored snapshot for `project_dir`.
+/// enumerate every stored snapshot for `project_dir`.
 /// Skips malformed manifests (logged at debug) rather than erroring the
 /// whole list — one corrupt file shouldn't black out the UI.
 #[tauri::command]
@@ -205,13 +210,18 @@ pub async fn author_snapshot_list(
     project_dir: String,
 ) -> Result<Vec<AuthorSnapshotEntry>, AppError> {
     let dir = snapshot_dir(&project_dir)?;
-    if !dir.exists() {
-        return Ok(Vec::new());
-    }
+    let read_dir = match std::fs::read_dir(&dir) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => {
+            return Err(AppError::Automation(format!(
+                "read_dir {}: {e}",
+                dir.display()
+            )))
+        }
+    };
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(&dir)
-        .map_err(|e| AppError::Automation(format!("read_dir {}: {e}", dir.display())))?
-    {
+    for entry in read_dir {
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue,
@@ -238,7 +248,7 @@ pub async fn author_snapshot_list(
     Ok(out)
 }
 
-/// Plan 07-05 — validate a parsed DSL target against the cached snapshot
+/// validate a parsed DSL target against the cached snapshot
 /// DOM. Returns `NoSnapshot` if no snapshot exists for `url`; otherwise
 /// projects the Rust-side `ValidationResult` onto the wire DTO.
 ///
@@ -257,11 +267,18 @@ pub async fn author_snapshot_validate(
 
     let dir = snapshot_dir(&project_dir)?;
     let html_path = dir.join(format!("{}.html", url_key(&url)));
-    if !html_path.exists() {
-        return Ok(AuthorValidationDto::NoSnapshot);
-    }
-    let html = std::fs::read_to_string(&html_path)
-        .map_err(|e| AppError::Automation(format!("read {}: {e}", html_path.display())))?;
+    let html = match std::fs::read_to_string(&html_path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(AuthorValidationDto::NoSnapshot);
+        }
+        Err(e) => {
+            return Err(AppError::Automation(format!(
+                "read {}: {e}",
+                html_path.display()
+            )))
+        }
+    };
 
     let result = automation::SmartSelector::validate_against_dom(&target, &html);
     Ok(result.into())

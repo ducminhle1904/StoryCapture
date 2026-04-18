@@ -23,7 +23,7 @@ use story_parser::SelectorOrText;
 
 pub struct SmartSelector;
 
-/// Plan 07-05 — author-time validation outcome. Returned by
+/// author-time validation outcome. Returned by
 /// [`SmartSelector::validate_against_dom`] when checking a parsed DSL
 /// target against a cached snapshot HTML string (no live browser).
 ///
@@ -196,7 +196,7 @@ impl SmartSelector {
 }
 
 impl SmartSelector {
-    /// Plan 07-05 — author-time validator. Check whether `target` uniquely
+    /// author-time validator. Check whether `target` uniquely
     /// matches an element in the detached snapshot DOM string (no live
     /// browser; runs offline).
     ///
@@ -641,7 +641,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
-    // Plan 07-05 — `SmartSelector::validate_against_dom`
+    // `SmartSelector::validate_against_dom`
     // -----------------------------------------------------------------
 
     const SAMPLE_HTML: &str = r#"<!doctype html>

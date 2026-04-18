@@ -81,13 +81,13 @@ pub enum RawTarget {
     Selector(String),
     TestId(String),
     Aria(String),
-    /// Phase 7 Tier 1: `<role> "name"`. `role` is kept stringly-typed at
+    /// `<role> "name"`. `role` is kept stringly-typed at
     /// layer 1; layer 2 (`semantic.rs`) validates against `AriaRole` and
     /// emits a did-you-mean diagnostic on miss.
     Role { role: String, name: String },
-    /// Phase 7 Tier 1: `field "Label"`.
+    /// `field "Label"`.
     Label(String),
-    /// Phase 7 Tier 1: `text "Verbatim"` — distinct from bare `Text`.
+    /// `text "Verbatim"` — distinct from bare `Text`.
     TextExact(String),
 }
 

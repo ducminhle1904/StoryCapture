@@ -1,6 +1,6 @@
 /**
  * editorController — module-level singleton bridge between the picker
- * UI and the active CodeMirror EditorView (Plan 07-03b).
+ * UI and the active CodeMirror EditorView.
  *
  * NOT a React context, NOT in Zustand. React refs in Zustand are an
  * anti-pattern (don't trigger re-renders, leak imperative state into
@@ -18,7 +18,7 @@
 import type { EditorView } from "@codemirror/view";
 
 let currentView: EditorView | null = null;
-// Plan 07-04c — the on-disk path of the story currently edited, used by
+// the on-disk path of the story currently edited, used by
 // `picker_stamp_step_id` to locate the sibling `.story.targets.json`.
 // Null when the editor is showing unsaved / in-memory content.
 let currentStoryPath: string | null = null;
@@ -32,11 +32,11 @@ export const editorController = {
   clearView() {
     currentView = null;
   },
-  /** Plan 07-04c — register the absolute path of the open `.story` file. */
+  /** register the absolute path of the open `.story` file. */
   setStoryPath(path: string | null) {
     currentStoryPath = path;
   },
-  /** Plan 07-04c — read the currently open `.story` path (may be null). */
+  /** read the currently open `.story` path (may be null). */
   getStoryPath(): string | null {
     return currentStoryPath;
   },
@@ -48,7 +48,7 @@ export const editorController = {
    * Insert `text` at the current cursor (snap to line-end if mid-line).
    * Single dispatch — single undo entry.
    *
-   * Plan 07-04c: on success returns `{ ok: true, lineNumber }` where
+   * on success returns `{ ok: true, lineNumber }` where
    * `lineNumber` is 1-indexed and identifies the line the inserted DSL
    * now lives on (i.e. the line of the first character of the inserted
    * text, NOT the snap-origin). Callers use this to invoke

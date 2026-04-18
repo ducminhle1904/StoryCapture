@@ -35,7 +35,7 @@ export function PreviewPanel({
   const setViewport = useEditorStore((s) => s.setViewport);
   const size = VIEWPORT_SIZES[viewport];
 
-  // Plan 07-05 — aggregate author-time validator chip counts to display
+  // aggregate author-time validator chip counts to display
   // a compact "2G / 1Y / 0R" summary in the preview footer. Reads from
   // the store that the SelectorValidatorOverlay populates.
   const validationEntries = useSelectorValidation((s) => s.entries);
@@ -159,7 +159,7 @@ export function PreviewPanel({
 }
 
 /**
- * Plan 07-05 — aggregate the chip-state counts for the preview footer.
+ * aggregate the chip-state counts for the preview footer.
  * `total = 0` when the validator hasn't run; the caller hides the chunk.
  */
 function summarizeValidation(entries: Map<number, {

@@ -1,5 +1,5 @@
 /**
- * Author-time selector validator IPC wrappers (Plan 07-05).
+ * Author-time selector validator IPC wrappers.
  *
  * Thin facade over the Tauri commands defined in
  * `apps/desktop/src-tauri/src/commands/author_snapshot.rs`.

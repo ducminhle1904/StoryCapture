@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { chromium } from 'playwright-core';
 import { emitDsl } from './picker/generator.mjs';
 
-// Plan 07-03a: the picker overlay IIFE is built by build-sea.mjs (Step -1/5)
+// the picker overlay IIFE is built by build-sea.mjs (Step -1/5)
 // into picker/overlay/overlay.iife.js. esbuild's `--loader:.iife.js=text`
 // flag inlines the file contents as a string literal at SEA build time, so
 // the sidecar does NOT read a sibling file at runtime (SEA has no FS access
@@ -69,20 +69,20 @@ let state = {
   // response shape even though we launched locally. Flipped by the
   // `__test_set_remote_browser` verb exercised from vitest.
   fakeRemoteBrowser: false,
-  // Plan 07-03a: in-flight pickElement.start. Holds { resolve, cleanup }
+  // in-flight pickElement.start. Holds { resolve, cleanup }
   // so pickElement.cancel + framenavigated can short-circuit the wait.
   pickerPending: null,
-  // Plan 07-03a: page-level binding (`__sc_picker_emit`) is exposed once
+  // page-level binding (`__sc_picker_emit`) is exposed once
   // per page. We track which pages have it so a second pickElement.start
   // on the same page doesn't re-expose (Playwright throws on duplicate
   // exposeBinding for the same name).
   pickerBoundPages: new WeakSet(),
-  // Plan 07-04a: separate per-page set for the `__sc_picker_hover` binding
+  // separate per-page set for the `__sc_picker_hover` binding
   // (the live-hover preview channel). Split from pickerBoundPages because
   // the overlay can install each binding independently and Playwright
   // throws on duplicate exposeBinding calls with the same name.
   pickerHoverBoundPages: new WeakSet(),
-  // Plan 07-05 — dedicated author-time browser for DOM snapshots, SEPARATE
+  // dedicated author-time browser for DOM snapshots, SEPARATE
   // from any recording session. Launched lazily on first captureSnapshot
   // call; kept headless, no args, no init scripts. Never shares state
   // with `state.browser` / `state.context` / `state.page`.
@@ -138,7 +138,7 @@ const handlers = {
         theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'no-preference',
       acceptDownloads: true,
     });
-    // Plan 07-03a: inject the picker overlay IIFE into every frame of every
+    // inject the picker overlay IIFE into every frame of every
     // page in this context. addInitScript fires before page scripts so
     // window.__sc_picker is available the moment the user clicks Pick.
     if (OVERLAY_IIFE && OVERLAY_IIFE.length > 0) {
@@ -180,7 +180,7 @@ const handlers = {
     if (state.browserServer) {
       try { await state.browserServer.close(); } catch {}
     }
-    // Plan 07-05 — also tear down the author-time snapshot browser.
+    // also tear down the author-time snapshot browser.
     if (state.authorBrowser) {
       try { await state.authorBrowser.close(); } catch {}
     }
@@ -425,7 +425,7 @@ const handlers = {
     return { ok: true, url: state.page.url() };
   },
 
-  // Plan 07-05 — author-time DOM snapshot for the selector validator.
+  // author-time DOM snapshot for the selector validator.
   //
   // Loads `url` in a DEDICATED headless browser (never the recording
   // session's `state.browser`), waits for `load`, captures the serialized
@@ -512,7 +512,7 @@ const handlers = {
     return { ok: true };
   },
 
-  // Plan 07-03a — element picker.
+  // element picker.
   //
   // CONTRACT: pickElement.start response.emitted is the DSL line to insert at cursor. Drift breaks 07-03b UI flow.
   //
@@ -611,7 +611,7 @@ const handlers = {
               state.pickerBoundPages.add(page);
             });
 
-      // Plan 07-04a — expose the hover channel alongside the emit channel.
+      // expose the hover channel alongside the emit channel.
       // rAF-throttled mouseover in the overlay calls window.__sc_picker_hover
       // with a lightweight payload; the binding forwards it as an id-absent
       // JSON-RPC notification (`pickElement.hoverPreview`) to stdout. The
@@ -654,7 +654,7 @@ const handlers = {
 
   'pickElement.isActive': async () => ({ active: !!state.pickerPending }),
 
-  // Plan 07-03a — test-only hooks. The Rust driver never calls these; they
+  // test-only hooks. The Rust driver never calls these; they
   // exist so vitest can synthesize click + Escape events deterministically
   // (real mouse coordination in headless CI is flaky). Guarded by the
   // `__test_` prefix convention already used by __test_set_remote_browser.
@@ -674,7 +674,7 @@ const handlers = {
     return { ok: true };
   },
 
-  // Plan 07-04a — deterministic hover for vitest. Dispatches a mouseover
+  // deterministic hover for vitest. Dispatches a mouseover
   // event on the overlay at the given selector; the overlay's
   // rAF-throttled handler fires `window.__sc_picker_hover(payload)` on
   // the next animation frame, which the server turns into a
@@ -723,7 +723,7 @@ function absolute(url) {
 }
 
 async function locate(selector, strategy) {
-  // Phase 7 Tier 1 — strict explicit strategies (D-06 encoding).
+  // strict explicit strategies (D-06 encoding).
   // Routed on `strategy` FIRST so prefix collisions (e.g. "text=" shared
   // with legacy VisibleText) don't mis-dispatch.
   if (strategy === 'role') {
@@ -787,7 +787,7 @@ function targetToLocator(target) {
   if (target.kind === 'selector') return target.value;
   if (target.kind === 'testid') return `[data-testid="${target.value}"]`;
   if (target.kind === 'aria') return `[aria-label="${target.value}"]`;
-  // Phase 7 Tier 1 — these branches return a LOCATOR (not string).
+  // these branches return a LOCATOR (not string).
   if (target.kind === 'role') {
     // value is an object: { role: <kebab>, name: <string> }
     const { role, name } = target.value;
@@ -838,7 +838,7 @@ rl.on('close', async () => {
       await state.browserServer.close();
     } catch {}
   }
-  // Plan 07-05 — tear down the author-time snapshot browser on sidecar shutdown.
+  // tear down the author-time snapshot browser on sidecar shutdown.
   if (state.authorBrowser) {
     try {
       await state.authorBrowser.close();
@@ -851,7 +851,7 @@ function write(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
 }
 
-// Plan 07-04a — id-absent JSON-RPC notifications for live-hover preview.
+// id-absent JSON-RPC notifications for live-hover preview.
 // Separate from `write` so notifications share a single serialization path
 // with a clear type signature. The Rust reader (playwright_driver.rs)
 // dispatches any id-absent + method-present line to the broadcast channel.

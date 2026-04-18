@@ -17,7 +17,7 @@ interface StoryEditorProps {
   onAutosave?: (source: string) => void;
   jumpTarget?: EditorJumpTarget | null;
   /**
-   * Plan 07-05 — absolute project directory used to locate the
+   * absolute project directory used to locate the
    * `.story.snapshots/` cache. When `null` the author-time validator
    * stays idle (no IPC calls).
    */
@@ -80,7 +80,7 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
     view.focus();
   }, [jumpTarget]);
 
-  // Plan 07-03b — register the active CodeMirror view with the
+  // register the active CodeMirror view with the
   // editorController singleton so the picker UI can insert at the
   // cursor. Cleared on unmount.
   useEffect(() => {
@@ -113,7 +113,7 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
         }}
         aria-label="Story DSL editor"
       />
-      {/* Plan 07-05 — author-time selector validator. Renders nothing
+      {/* author-time selector validator. Renders nothing
           visible; writes validation state into useSelectorValidation
           for the gutter markers + Preview panel bbox overlay. */}
       <SelectorValidatorOverlay projectDir={projectDir ?? null} />

@@ -1,5 +1,5 @@
 /**
- * editorController vitest (Plan 07-03b Task 2).
+ * editorController vitest.
  *
  * Constructs a real CodeMirror EditorView (with `history()` extension)
  * inside happy-dom and asserts the singleton's contract:
@@ -60,7 +60,7 @@ describe("editorController", () => {
     view.dispatch({ selection: { anchor: 0 } });
 
     const r = editorController.insertAtCursor("X");
-    // Plan 07-04c — lineNumber is now returned so `pickerStampStepId`
+    // lineNumber is now returned so `pickerStampStepId`
     // can stamp the UUIDv7 on the correct row; line 1 is where the
     // snap-to-end-of-line insertion lands.
     expect(r).toEqual({ ok: true, lineNumber: 1 });

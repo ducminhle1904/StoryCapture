@@ -1,5 +1,5 @@
 /**
- * Plan 07-05 — Author-time selector validator overlay.
+ * Author-time selector validator overlay.
  *
  * Reads the parsed story AST from `useEditorStore().lastParse` and, for
  * every step that carries a `target + url-context`, calls
@@ -22,7 +22,7 @@
  * panel bbox overlay that read from `useSelectorValidation`.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { create } from "zustand";
 
 import { useEditorStore } from "@/state/editor";
@@ -144,13 +144,16 @@ export function SelectorValidatorOverlay({
   const clear = useSelectorValidation((s) => s.clear);
   const pending = useRef<Map<number, number>>(new Map());
   const lastKeys = useRef<Map<number, string>>(new Map());
+  const steps = useMemo(
+    () => (lastParse?.ast ? collectValidatableSteps(lastParse.ast) : null),
+    [lastParse],
+  );
 
   useEffect(() => {
-    if (!projectDir || !lastParse?.ast) {
+    if (!projectDir || !steps) {
       clear();
       return;
     }
-    const steps = collectValidatableSteps(lastParse.ast);
     const currentLines = new Set<number>();
 
     for (const step of steps) {
@@ -213,7 +216,7 @@ export function SelectorValidatorOverlay({
         }
       }
     }
-  }, [projectDir, lastParse, setEntry, clear, debounceMs]);
+  }, [projectDir, steps, setEntry, clear, debounceMs]);
 
   // Cleanup pending timers on unmount.
   useEffect(() => {

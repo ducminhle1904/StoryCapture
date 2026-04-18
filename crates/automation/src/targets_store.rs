@@ -101,11 +101,13 @@ pub struct TargetRecord {
 /// `path` does not exist (legacy-story forward compat); errors on a
 /// malformed body or unsupported version.
 pub fn load(path: &Path) -> Result<TargetsFile> {
-    if !path.exists() {
-        return Ok(TargetsFile::empty());
-    }
-    let raw = fs::read_to_string(path)
-        .map_err(|e| AutomationError::Io(format!("read {}: {e}", path.display())))?;
+    let raw = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(TargetsFile::empty());
+        }
+        Err(e) => return Err(AutomationError::Io(format!("read {}: {e}", path.display()))),
+    };
     let file: TargetsFile = serde_json::from_str(&raw)
         .map_err(|e| AutomationError::Protocol(format!("decode {}: {e}", path.display())))?;
     if file.version != CURRENT_VERSION {
