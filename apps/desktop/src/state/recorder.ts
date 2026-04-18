@@ -59,7 +59,7 @@ export function getCursorPositions(ring: CursorRing): CursorPoint[] {
   return out;
 }
 
-interface RecorderState {
+export interface RecorderData {
   status: RecorderStatus;
   sessionId: string | null;
   currentStep: number;
@@ -70,24 +70,24 @@ interface RecorderState {
   outputPath: string | null;
   elapsedMs: number;
 
-  // Plan 05-01 — capture-target state.
   captureTarget: CaptureTarget | null;
   availableTargets: CaptureTargets | null;
 
-  // Phase 6 plan 01 — mic audio selection (D-02 non-sticky).
-  // `null` = no audio (default every render). `"default"` = system
-  // default. Any other string is a cpal device name.
+  /** `null` = no audio (default every render). `"default"` = system
+   *  default. Any other string is a cpal device name. Non-sticky:
+   *  resets to null on mount and recording completion. */
   audioDeviceId: AudioPickerValue;
 
-  // Plan 06-02 — per-recording include-cursor flag (D-19/D-20
-  // non-sticky, defaults to true every recording).
+  /** Per-recording include-cursor flag. Non-sticky, defaults to true. */
   includeCursor: boolean;
 
-  // Plan 06-02 — per-recording chrome-hiding flag (D-10 non-sticky,
-  // defaults to false every recording). When true, the recorder appends
-  // `--app=<meta.app>` to LaunchConfig.args before automation starts.
+  /** Per-recording chrome-hiding flag. Non-sticky, defaults to false.
+   *  When true, the recorder appends `--app=<meta.app>` to
+   *  LaunchConfig.args before automation starts. */
   chromeHiding: boolean;
+}
 
+export interface RecorderActions {
   setStatus: (s: RecorderStatus) => void;
   setSession: (id: string | null) => void;
   setSteps: (steps: StepProgress[]) => void;
@@ -99,40 +99,20 @@ interface RecorderState {
   setElapsed: (ms: number) => void;
   reset: () => void;
 
-  // Plan 05-01 — capture-target actions.
   loadCaptureTargets: () => Promise<void>;
   setCaptureTarget: (target: CaptureTarget) => Promise<void>;
 
-  // Plan 05-02 — Playwright auto-target actions.
   refreshPlaywrightAvailability: () => Promise<void>;
 
-  // Phase 6 plan 01 — mic audio setter (D-02 non-sticky).
   setAudioDeviceId: (id: AudioPickerValue) => void;
 
-  // Plan 06-02 — per-recording toggles (D-10/D-19/D-20 non-sticky).
   setIncludeCursor: (v: boolean) => void;
   setChromeHiding: (v: boolean) => void;
 }
 
-const INITIAL: Omit<
-  RecorderState,
-  | "setStatus"
-  | "setSession"
-  | "setSteps"
-  | "advanceStep"
-  | "pushCursor"
-  | "clearCursor"
-  | "setError"
-  | "setOutputPath"
-  | "setElapsed"
-  | "reset"
-  | "loadCaptureTargets"
-  | "setCaptureTarget"
-  | "refreshPlaywrightAvailability"
-  | "setAudioDeviceId"
-  | "setIncludeCursor"
-  | "setChromeHiding"
-> = {
+export type RecorderState = RecorderData & RecorderActions;
+
+const INITIAL: RecorderData = {
   status: "idle",
   sessionId: null,
   currentStep: 0,
