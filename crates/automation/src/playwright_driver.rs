@@ -362,5 +362,164 @@ fn target_to_json(t: &SelectorOrText) -> Value {
         SelectorOrText::Selector(s) => json!({ "kind": "selector", "value": s }),
         SelectorOrText::TestId(s) => json!({ "kind": "testid", "value": s }),
         SelectorOrText::Aria(s) => json!({ "kind": "aria", "value": s }),
+        // Phase 7 Tier 1 — sidecar `locate()` consumes these in
+        // `targetToLocator()` per CONTEXT.md §Tier 1 prerequisite.
+        SelectorOrText::Role { role, name } => json!({
+            "kind": "role",
+            "value": { "role": role.as_kebab(), "name": name }
+        }),
+        SelectorOrText::Label(s) => json!({ "kind": "label", "value": s }),
+        SelectorOrText::TextExact(s) => json!({ "kind": "text_exact", "value": s }),
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Plan 07-03b — element-picker JSON-RPC wrappers.
+//
+// CONTRACT: the `Picked` variant's field MUST be named `emitted: String`
+// — this matches the sidecar wire field at `scripts/playwright-sidecar/
+// server.mjs:414`. Renaming (e.g. `dsl_line`) breaks the picker UI flow
+// in 07-03b. Grep-guarded by the plan's acceptance criteria.
+// ──────────────────────────────────────────────────────────────────────
+
+/// Locator description from the sidecar's ranked DSL generator.
+/// `value` is a string for testid/selector/label/text_exact, or an
+/// object `{ role, name }` for the role kind.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PickLocator {
+    pub kind: String,
+    pub value: Value,
+}
+
+/// One scored candidate from the ranked generator (same shape as the
+/// chosen locator plus a score and uniqueness flag).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PickCandidate {
+    pub kind: String,
+    pub value: Value,
+    pub score: f64,
+    #[serde(default)]
+    pub unique: bool,
+}
+
+/// Sidecar `pickElement.start` response. Untagged so serde discriminates
+/// on field shape: `Picked` requires `emitted`; `Cancelled` requires
+/// `cancelled: true` + `reason`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PickElementResponse {
+    Picked {
+        // CONTRACT (07-03a wire): field is `emitted: String`. Do not rename.
+        emitted: String,
+        locator: PickLocator,
+        candidates: Vec<PickCandidate>,
+    },
+    Cancelled {
+        cancelled: bool, // always true; kept for serde-untagged disambiguation
+        reason: String,
+    },
+}
+
+impl PlaywrightSidecarDriver {
+    /// Start an interactive pickElement session. Returns `Picked` on the
+    /// first user click that resolves to a unique locator, or `Cancelled`
+    /// for Esc / navigation / unsupported-url / timeout.
+    pub async fn pick_element_start(&self, timeout_ms: u64) -> Result<PickElementResponse> {
+        let v = self
+            .call("pickElement.start", json!({ "timeoutMs": timeout_ms }))
+            .await?;
+        serde_json::from_value(v)
+            .map_err(|e| AutomationError::Protocol(format!("pickElement.start decode: {e}")))
+    }
+
+    /// Cancel the in-flight pickElement session (no-op if none active).
+    pub async fn pick_element_cancel(&self) -> Result<()> {
+        self.call("pickElement.cancel", json!({})).await?;
+        Ok(())
+    }
+
+    /// True iff a pickElement session is currently waiting for a click.
+    pub async fn pick_element_is_active(&self) -> Result<bool> {
+        let v = self.call("pickElement.isActive", json!({})).await?;
+        Ok(v.get("active").and_then(|a| a.as_bool()).unwrap_or(false))
+    }
+}
+
+#[cfg(test)]
+mod pick_element_serde_tests {
+    use super::*;
+
+    #[test]
+    fn picked_response_deserializes_testid() {
+        let json = serde_json::json!({
+            "emitted": "click testid \"save\"",
+            "locator": { "kind": "testid", "value": "save" },
+            "candidates": [{ "kind": "testid", "value": "save", "score": 1.0, "unique": true }]
+        });
+        let r: PickElementResponse = serde_json::from_value(json).unwrap();
+        match r {
+            PickElementResponse::Picked {
+                emitted,
+                locator,
+                candidates,
+            } => {
+                assert_eq!(emitted, "click testid \"save\"");
+                assert_eq!(locator.kind, "testid");
+                assert_eq!(candidates.len(), 1);
+                assert!(candidates[0].unique);
+            }
+            _ => panic!("expected Picked"),
+        }
+    }
+
+    #[test]
+    fn picked_response_deserializes_role_object_value() {
+        let json = serde_json::json!({
+            "emitted": "click button \"Save\"",
+            "locator": { "kind": "role", "value": { "role": "button", "name": "Save" } },
+            "candidates": []
+        });
+        let r: PickElementResponse = serde_json::from_value(json).unwrap();
+        match r {
+            PickElementResponse::Picked { locator, .. } => {
+                assert_eq!(locator.kind, "role");
+                assert_eq!(locator.value["role"], "button");
+                assert_eq!(locator.value["name"], "Save");
+            }
+            _ => panic!("expected Picked"),
+        }
+    }
+
+    #[test]
+    fn cancelled_navigation() {
+        let json = serde_json::json!({ "cancelled": true, "reason": "navigation" });
+        let r: PickElementResponse = serde_json::from_value(json).unwrap();
+        match r {
+            PickElementResponse::Cancelled { cancelled, reason } => {
+                assert!(cancelled);
+                assert_eq!(reason, "navigation");
+            }
+            _ => panic!("expected Cancelled"),
+        }
+    }
+
+    #[test]
+    fn cancelled_user() {
+        let json = serde_json::json!({ "cancelled": true, "reason": "user-cancel" });
+        let r: PickElementResponse = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            r,
+            PickElementResponse::Cancelled { reason, .. } if reason == "user-cancel"
+        ));
+    }
+
+    #[test]
+    fn cancelled_unsupported_url() {
+        let json = serde_json::json!({ "cancelled": true, "reason": "unsupported-url" });
+        let r: PickElementResponse = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            r,
+            PickElementResponse::Cancelled { reason, .. } if reason == "unsupported-url"
+        ));
     }
 }

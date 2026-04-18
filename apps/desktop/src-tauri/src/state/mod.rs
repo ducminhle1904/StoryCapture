@@ -11,13 +11,24 @@
 
 pub mod nl_tasks;
 
-use std::{collections::HashMap, path::PathBuf, sync::Mutex};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, sync::Mutex};
 
 use parking_lot::Mutex as PLMutex;
 
 use reqwest::Client as HttpClient;
+use tokio::sync::Mutex as TokioMutex;
 
 use crate::commands::render::RenderQueueState;
+
+/// Plan 07-03b — shared handle to the active Playwright sidecar driver.
+///
+/// `launch_automation` populates this when it spawns the executor's
+/// driver, and clears it at story end. The picker commands
+/// (`picker_start`/`cancel`/`is_active`) read it to drive the SAME
+/// sidecar instance the executor is using — picker can't spin up its own
+/// because the overlay is injected via `addInitScript` at launch time.
+pub type SharedPlaywrightDriverHandle =
+    Arc<TokioMutex<Option<Arc<TokioMutex<automation::PlaywrightSidecarDriver>>>>>;
 
 /// Cross-thread handle map for actor senders. Keys are stable string tags
 /// (e.g. `"automation"`, `"capture"`, `"encoder"`) chosen by each downstream
@@ -27,7 +38,8 @@ use crate::commands::render::RenderQueueState;
 /// `pub fn capture_sender(&self) -> Option<CaptureCmdSender>`).
 pub type ActorRegistry = Mutex<HashMap<String, tokio::sync::mpsc::Sender<serde_json::Value>>>;
 
-#[derive(Debug)]
+// Note: AppState no longer derives Debug — `playwright_driver` holds
+// `PlaywrightSidecarDriver` (no Debug impl, owns process handles).
 pub struct AppState {
     /// Resolved at startup from `app.path().app_data_dir()`. Plan 01-09
     /// (storage) puts the global SQLite + per-project databases here.
@@ -50,6 +62,12 @@ pub struct AppState {
     /// providers. Created once at startup with generous timeouts; individual
     /// providers inherit the pool but may override per-request timeouts.
     pub http_client: HttpClient,
+
+    /// Plan 07-03b — handle to the in-flight Playwright sidecar driver
+    /// (populated by `launch_automation`, cleared at story end). The
+    /// picker commands read this to issue `pickElement.*` against the
+    /// same sidecar the executor is driving.
+    pub playwright_driver: SharedPlaywrightDriverHandle,
 }
 
 impl AppState {
@@ -66,6 +84,7 @@ impl AppState {
             actors: Mutex::new(HashMap::new()),
             render_queue: PLMutex::new(None),
             http_client,
+            playwright_driver: Arc::new(TokioMutex::new(None)),
         }
     }
 

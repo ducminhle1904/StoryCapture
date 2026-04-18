@@ -37,7 +37,7 @@ impl From<ExecutorEvent> for AutomationEvent {
 #[specta::specta]
 pub async fn launch_automation(
     app: AppHandle,
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
     story_source: String,
     project_folder: String,
     on_event: Channel<AutomationEvent>,
@@ -210,6 +210,14 @@ pub async fn launch_automation(
     };
     // Share the driver with the pid probe task.
     let shared_pw: Arc<Mutex<PlaywrightSidecarDriver>> = Arc::new(Mutex::new(playwright));
+    // Plan 07-03b — publish to AppState so the picker_* commands can issue
+    // pickElement.* against the SAME sidecar instance the executor is
+    // driving. Cleared at story end (after the executor channel closes).
+    {
+        let mut slot = state.playwright_driver.lock().await;
+        *slot = Some(shared_pw.clone());
+        tracing::info!(target: "storycapture::automation", "published shared Playwright driver to AppState (picker enabled)");
+    }
     // Exponential-backoff probe with a ~10s budget.
     playwright_pid_stash().set(None);
     playwright_first_paint_stash().set(false);
@@ -336,6 +344,12 @@ pub async fn launch_automation(
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
     playwright_first_paint_stash().set(false);
+    // Plan 07-03b — drop the shared driver handle so the picker disables
+    // until the next launch.
+    {
+        let mut slot = state.playwright_driver.lock().await;
+        *slot = None;
+    }
 
     // Auto-stop the attached recording so the encoder sidecar doesn't wait
     // on the UI to call stop_recording. Uses the same RecorderHandle shape

@@ -16,6 +16,8 @@ pub mod keys;
 pub mod lsp;
 pub mod nl;
 pub mod parse;
+// Plan 07-03b — element-picker IPC commands.
+pub mod picker;
 pub mod preset;
 pub mod projects;
 // Plan 06-02 — region-selection overlay window + IPC commands.

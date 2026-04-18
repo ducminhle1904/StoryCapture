@@ -19,8 +19,8 @@ use tauri_specta::{collect_commands, Builder};
 use crate::{
     commands::{
         app_settings, audio, automation, capture, dryrun, encode, export, keys, lsp, nl, parse,
-        preset, projects, region_overlay, render, sound_library, system, timeline, tts, updater,
-        upload, web_account, web_sync,
+        picker, preset, projects, region_overlay, render, sound_library, system, timeline, tts,
+        updater, upload, web_account, web_sync,
     },
     error::AppError,
 };
@@ -47,6 +47,10 @@ pub fn builder() -> Builder<Wry> {
             system::trigger_panic,
             automation::launch_automation,
             automation::resolve_playwright_target,
+            // Plan 07-03b — element picker.
+            picker::picker_start,
+            picker::picker_cancel,
+            picker::picker_is_active,
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
             // Phase 6 plan 01 — mic audio enumeration.
@@ -140,6 +144,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<system::AppInfo>()
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<automation::ResolvedPlaywrightTarget>()
+        .typ::<picker::PickElementResponseDto>()
         .typ::<capture::DisplayInfoDto>()
         .typ::<capture::WindowInfoDto>()
         .typ::<capture::CaptureTargetDto>()

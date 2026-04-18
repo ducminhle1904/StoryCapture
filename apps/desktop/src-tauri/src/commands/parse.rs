@@ -90,6 +90,11 @@ pub enum SelectorOrTextDto {
     Selector(String),
     TestId(String),
     Aria(String),
+    // Phase 7 Tier 1 variants — flattened to string for the DTO surface
+    // until the TS mirror is regenerated with structured shapes.
+    Role(String),
+    Label(String),
+    TextExact(String),
 }
 
 impl From<PSelectorOrText> for SelectorOrTextDto {
@@ -99,6 +104,11 @@ impl From<PSelectorOrText> for SelectorOrTextDto {
             PSelectorOrText::Selector(v) => SelectorOrTextDto::Selector(v),
             PSelectorOrText::TestId(v) => SelectorOrTextDto::TestId(v),
             PSelectorOrText::Aria(v) => SelectorOrTextDto::Aria(v),
+            PSelectorOrText::Role { role, name } => {
+                SelectorOrTextDto::Role(format!("{}:{}", role.as_kebab(), name))
+            }
+            PSelectorOrText::Label(v) => SelectorOrTextDto::Label(v),
+            PSelectorOrText::TextExact(v) => SelectorOrTextDto::TextExact(v),
         }
     }
 }

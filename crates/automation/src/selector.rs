@@ -155,6 +155,18 @@ fn explicit_strategy(target: &SelectorOrText) -> Option<(SelectorStrategy, Strin
         }
         SelectorOrText::Aria(s) => Some((SelectorStrategy::Aria, s.clone())),
         SelectorOrText::Text(_) => None,
+        // Phase 7 Tier 1 — short-circuit explicit strategies. Stub: encode
+        // value with a stable prefix so the sidecar's `locate()` can route
+        // (Tier 1 sidecar branches consume `role=<role>:<name>` / `label=…`
+        // / `text=…`). Strategy enum lacks Role/Label/TextExact variants
+        // pre-Tier-1; map to Aria as the closest existing semantic until
+        // events.rs gains the new variants in 07-02.
+        SelectorOrText::Role { role, name } => Some((
+            SelectorStrategy::Aria,
+            format!("role={}:{}", role.as_kebab(), name),
+        )),
+        SelectorOrText::Label(s) => Some((SelectorStrategy::Aria, format!("label={s}"))),
+        SelectorOrText::TextExact(s) => Some((SelectorStrategy::Aria, format!("text={s}"))),
     }
 }
 
