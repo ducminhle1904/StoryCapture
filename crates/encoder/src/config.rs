@@ -114,7 +114,7 @@ impl EncodeConfig {
             "-r".into(),
             self.fps_advisory.to_string(),
             "-use_wallclock_as_timestamps".into(),
-            "0".into(),
+            "1".into(),
             "-i".into(),
             "pipe:0".into(),
         ];
