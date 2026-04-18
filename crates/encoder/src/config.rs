@@ -124,10 +124,21 @@ impl EncodeConfig {
     ///   - `-progress pipe:2 -loglevel info` — progress events on stderr
     ///     (`pipe:2`) are parsed by `progress.rs`.
     pub fn to_ffmpeg_args(&self) -> Vec<String> {
-        // Bitrate scales with pixel count — 12 Mbps is fine for 1080p but
-        // looks washed out at 4K. Compute ~0.10 bpp target, clamped.
-        let pixels = (self.width as u64) * (self.height as u64);
-        let target_kbps = ((pixels / 1000) as u32).clamp(self.bitrate_kbps, 40_000);
+        // Bitrate scales with pixel count (backlog #10).
+        //
+        // Target ~0.10 bits per pixel per frame, adapted for a 30fps
+        // baseline: kbps ≈ (pixels × 30fps × 0.10bpp) / 1000
+        //               = pixels × 3 / 1000.
+        //
+        // `bitrate_kbps` acts as a FLOOR — at 1080p the formula yields
+        // ~6 Mbps, which is below the default 12 Mbps floor and clamps
+        // up. At 4K the formula yields ~25 Mbps, pushing past the floor
+        // up to the 40 Mbps cap. The previous implementation used
+        // `clamp(self.bitrate_kbps, 40_000)` as a min-floor without the
+        // ×30 factor, leaving 4K stuck at 12 Mbps (washed out).
+        let pixel_based_kbps =
+            ((self.width as u64 * self.height as u64 * 3) / 1000) as u32;
+        let target_kbps = pixel_based_kbps.max(self.bitrate_kbps).min(40_000);
         let bitrate = format!("{}k", target_kbps);
         // H.264 requires even dimensions. We keep native resolution (no
         // downscale) now that the `-profile:v baseline -level 4.1`
@@ -358,6 +369,39 @@ mod tests {
         assert!(
             video_idx < fifo_idx,
             "video -i pipe:0 must precede audio -i fifo; got video at {video_idx} vs fifo at {fifo_idx}"
+        );
+    }
+
+    /// Backlog #10 — at 4K the pixel-based formula must push bitrate
+    /// above the 12 Mbps default floor. Regression guard against the
+    /// old `clamp(floor, 40_000)` shape that left 4K pinned at 12 Mbps.
+    #[test]
+    fn test_4k_exceeds_floor() {
+        let c = EncodeConfig::new(
+            PathBuf::from("/tmp/4k.mp4"),
+            3840,
+            2160,
+            30,
+            HardwareEncoder::Openh264Software,
+        );
+        let args = c.to_ffmpeg_args();
+        let bv_idx = args
+            .iter()
+            .position(|a| a == "-b:v")
+            .expect("-b:v must be present");
+        let bitrate = &args[bv_idx + 1];
+        // Parse "NNNNNk" → u32.
+        let kbps: u32 = bitrate
+            .trim_end_matches('k')
+            .parse()
+            .expect("bitrate is numeric kbps");
+        assert!(
+            kbps > 12_000,
+            "4K bitrate must exceed the 12 Mbps default floor; got {kbps}k"
+        );
+        assert!(
+            kbps <= 40_000,
+            "4K bitrate must stay within the 40 Mbps cap; got {kbps}k"
         );
     }
 
