@@ -293,6 +293,58 @@ const handlers = {
     return { pid, executablePath };
   },
 
+  // Quick 260418-fpr — block until the launched page has painted its
+  // first non-blank URL. Called by the host pid-probe task AFTER pid
+  // resolves so that `start_recording` can gate SCK attach on a real
+  // "Chrome has content to capture" signal rather than on pid alone.
+  //
+  // Contract:
+  //   - If `state.page` is already on a non-blank URL, wait for `load`.
+  //   - Otherwise wait for a navigation away from `about:blank`, then `load`.
+  //   - Resolve with `{ ok: true, url }` on success.
+  //   - JSON-RPC -32000 on timeout OR if no browser/page is attached.
+  //
+  // Budget comes from the caller; the default keeps parity with the
+  // host's 10 s pid-probe budget.
+  waitForFirstPaint: async ({ timeoutMs } = {}) => {
+    const t = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000;
+    if (!state.page) {
+      const err = new Error("page not attached");
+      err.code = -32000;
+      throw err;
+    }
+    // Gate ONLY on URL change (framenavigated for the main frame
+    // transitioning away from about:blank). `waitForLoadState` — even
+    // for `domcontentloaded` — is serialized behind Playwright's
+    // internal navigation lock held by an in-flight `page.goto`, so
+    // the helper didn't resolve until `load` fired (3+ s),
+    // swallowing the first second of the story. Event-based
+    // URL-change detection fires the moment Chromium commits the
+    // navigation (~100-200 ms after goto starts) which is:
+    //   - early enough to capture the tail of the page-load animation
+    //   - late enough to guarantee Chromium has moved off the blank
+    //     about:blank surface (no leading black frames in video).
+    if (state.page.url() !== 'about:blank') {
+      return { ok: true, url: state.page.url() };
+    }
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        state.page.off('framenavigated', onNav);
+        reject(new Error(`waitForFirstPaint timeout after ${t}ms`));
+      }, t);
+      const onNav = (frame) => {
+        if (frame !== state.page.mainFrame()) return;
+        const url = frame.url();
+        if (!url || url === 'about:blank') return;
+        clearTimeout(timer);
+        state.page.off('framenavigated', onNav);
+        resolve();
+      };
+      state.page.on('framenavigated', onNav);
+    });
+    return { ok: true, url: state.page.url() };
+  },
+
   // Test-only shim (Plan 05-02 Task 0): let vitest exercise the
   // remote-browser response shape without a real remote CDP endpoint.
   // Safe to ship because it only mutates a non-observable flag — all

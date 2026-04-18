@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::mpsc;
@@ -329,6 +329,34 @@ pub async fn start_recording(
                 pid,
                 "start_recording: resolved Playwright auto sentinel to pid"
             );
+            {
+                let paint_deadline = std::time::Instant::now()
+                    + std::time::Duration::from_secs(10);
+                let wait_start = std::time::Instant::now();
+                let mut paint_ready = false;
+                loop {
+                    if crate::commands::automation::playwright_first_paint_stash().get() {
+                        paint_ready = true;
+                        break;
+                    }
+                    if std::time::Instant::now() >= paint_deadline {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                }
+                if paint_ready {
+                    tracing::info!(
+                        target: "storycapture::recording",
+                        waited_ms = wait_start.elapsed().as_millis() as u64,
+                        "start_recording: first paint ready — attaching SCK"
+                    );
+                } else {
+                    tracing::warn!(
+                        target: "storycapture::recording",
+                        "start_recording: first-paint gate timed out after 10s — attaching SCK anyway"
+                    );
+                }
+            }
             capture::CaptureTarget::WindowByPid {
                 pid,
                 // No hint — pid alone is authoritative for a single-browser session.
@@ -617,27 +645,6 @@ pub async fn start_recording(
             audio_fifo,
         },
     );
-
-    // Re-focus the StoryCapture main window now that the recording pipeline
-    // is running. Window-targeted capture (SCK on macOS, WGC on Windows) is
-    // focus-independent, so stealing foreground back does not disrupt frames.
-    // Covers the gap between `launch_automation` re-focusing once after the
-    // Playwright pid probe resolves and the user actually regaining control.
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.unminimize();
-        match win.set_focus() {
-            Ok(()) => tracing::info!(
-                target: "storycapture::recording",
-                session_id = %session_id,
-                "main window re-focused after start_recording"
-            ),
-            Err(e) => tracing::warn!(
-                target: "storycapture::recording",
-                error = %e,
-                "main window set_focus failed after start_recording"
-            ),
-        }
-    }
 
     Ok(RecordingSessionId(session_id))
 }

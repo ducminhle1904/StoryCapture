@@ -212,16 +212,15 @@ pub async fn launch_automation(
     let shared_pw: Arc<Mutex<PlaywrightSidecarDriver>> = Arc::new(Mutex::new(playwright));
     // Exponential-backoff probe with a ~10s budget.
     playwright_pid_stash().set(None);
+    playwright_first_paint_stash().set(false);
     {
         let probe_driver = shared_pw.clone();
-        let app_for_refocus = app.clone();
         tokio::spawn(async move {
             let budget = std::time::Duration::from_secs(10);
             let deadline = std::time::Instant::now() + budget;
             let mut delay = std::time::Duration::from_millis(100);
             let cap = std::time::Duration::from_secs(1);
             let mut consecutive_errors: u32 = 0;
-            let mut refocused = false;
             while std::time::Instant::now() < deadline {
                 tokio::time::sleep(delay).await;
                 let result = {
@@ -237,28 +236,6 @@ pub async fn launch_automation(
                             pid: info.pid,
                             executable_path: info.executable_path,
                         }));
-                        // One-shot re-focus of our own main window once the
-                        // Playwright-managed Chromium has actually materialized
-                        // (pid resolved) or the remote-browser sentinel is in.
-                        // Window-targeted SCK/WGC capture is focus-independent,
-                        // so taking foreground back does not disrupt recording.
-                        if !refocused && (pid_resolved || remote) {
-                            refocused = true;
-                            if let Some(win) = app_for_refocus.get_webview_window("main") {
-                                let _ = win.unminimize();
-                                match win.set_focus() {
-                                    Ok(()) => tracing::info!(
-                                        target: "storycapture::automation",
-                                        "main window re-focused after Playwright launch"
-                                    ),
-                                    Err(e) => tracing::warn!(
-                                        target: "storycapture::automation",
-                                        error = %e,
-                                        "main window set_focus failed after Playwright launch"
-                                    ),
-                                }
-                            }
-                        }
                         if remote || pid_resolved {
                             break;
                         }
@@ -271,6 +248,48 @@ pub async fn launch_automation(
                     }
                 }
                 delay = std::cmp::min(delay * 2, cap);
+            }
+        });
+    }
+
+    {
+        let paint_driver = shared_pw.clone();
+        tokio::spawn(async move {
+            let launch_deadline =
+                std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                if playwright_pid_stash().get().is_some() {
+                    break;
+                }
+                if std::time::Instant::now() >= launch_deadline {
+                    tracing::warn!(
+                        target: "storycapture::automation",
+                        "wait_for_first_paint skipped: pid never resolved within budget"
+                    );
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            let info = playwright_pid_stash().get();
+            if info.as_ref().and_then(|i| i.pid).is_none() {
+                return;
+            }
+            let driver = paint_driver.lock().await;
+            match driver.wait_for_first_paint(10_000).await {
+                Ok(()) => {
+                    playwright_first_paint_stash().set(true);
+                    tracing::info!(
+                        target: "storycapture::automation",
+                        "Playwright first paint signaled — SCK attach is now unblocked"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "storycapture::automation",
+                        error = %e,
+                        "wait_for_first_paint failed; start_recording will fall back to pre-260418-fpr behavior"
+                    );
+                }
             }
         });
     }
@@ -316,6 +335,7 @@ pub async fn launch_automation(
     clear_active_run_control(&control);
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
+    playwright_first_paint_stash().set(false);
 
     // Auto-stop the attached recording so the encoder sidecar doesn't wait
     // on the UI to call stop_recording. Uses the same RecorderHandle shape
@@ -404,6 +424,22 @@ pub(crate) fn playwright_pid_stash() -> &'static PlaywrightPidStash {
     use std::sync::OnceLock;
     static STASH: OnceLock<PlaywrightPidStash> = OnceLock::new();
     STASH.get_or_init(|| PlaywrightPidStash(parking_lot::Mutex::new(None)))
+}
+
+pub struct PlaywrightFirstPaintStash(std::sync::atomic::AtomicBool);
+impl PlaywrightFirstPaintStash {
+    pub fn set(&self, v: bool) {
+        self.0.store(v, std::sync::atomic::Ordering::SeqCst);
+    }
+    pub fn get(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+pub(crate) fn playwright_first_paint_stash() -> &'static PlaywrightFirstPaintStash {
+    use std::sync::OnceLock;
+    static STASH: OnceLock<PlaywrightFirstPaintStash> = OnceLock::new();
+    STASH.get_or_init(|| PlaywrightFirstPaintStash(std::sync::atomic::AtomicBool::new(false)))
 }
 
 /// Test-only helper to inject a pid.

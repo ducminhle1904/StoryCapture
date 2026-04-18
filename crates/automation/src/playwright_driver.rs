@@ -345,6 +345,15 @@ impl PlaywrightSidecarDriver {
             .map_err(|e| AutomationError::Protocol(format!("browserProcess decode: {e}")))?;
         Ok(info)
     }
+
+    pub async fn wait_for_first_paint(&self, timeout_ms: u64) -> Result<()> {
+        self.call(
+            "waitForFirstPaint",
+            serde_json::json!({ "timeoutMs": timeout_ms }),
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 fn target_to_json(t: &SelectorOrText) -> Value {

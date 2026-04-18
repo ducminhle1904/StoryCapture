@@ -82,17 +82,54 @@ pub(crate) fn resolve_sc_window_by_pid_sync(
     pid: i32,
     title_hint: Option<&str>,
 ) -> Result<Option<screencapturekit::shareable_content::SCWindow>, CaptureError> {
+    const MAX_ATTEMPTS: u32 = 10;
+    const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
+    for attempt in 0..MAX_ATTEMPTS {
+        match resolve_sc_window_by_pid_once(pid, title_hint)? {
+            Some(w) => return Ok(Some(w)),
+            None => {
+                if attempt + 1 < MAX_ATTEMPTS {
+                    std::thread::sleep(RETRY_DELAY);
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_sc_window_by_pid_once(
+    pid: i32,
+    title_hint: Option<&str>,
+) -> Result<Option<screencapturekit::shareable_content::SCWindow>, CaptureError> {
     let content = SCShareableContent::get()
         .map_err(|e| CaptureError::Native(format!("SCShareableContent::get: {e}")))?;
     let hint_lc = title_hint.map(|s| s.to_ascii_lowercase());
-    let mut candidates: Vec<screencapturekit::shareable_content::SCWindow> = content
+    const MIN_CONTENT_W: f64 = 800.0;
+    const MIN_CONTENT_H: f64 = 600.0;
+    let is_chromium_family = |w: &screencapturekit::shareable_content::SCWindow| -> bool {
+        let Some(app) = w.owning_application() else { return false };
+        let bundle = app.bundle_identifier().to_ascii_lowercase();
+        let name = app.application_name().to_ascii_lowercase();
+        bundle.contains("chromium")
+            || bundle.contains("google.chrome")
+            || name.contains("chromium")
+            || name == "chrome"
+    };
+    let total_pid_windows = content
         .windows()
         .into_iter()
         .filter(|w| {
-            if !w.is_on_screen() {
-                return false;
-            }
-            if w.window_layer() != 0 {
+            w.owning_application()
+                .map(|a| a.process_id() == pid)
+                .unwrap_or(false)
+        })
+        .count();
+    let all_pid_match: Vec<screencapturekit::shareable_content::SCWindow> = content
+        .windows()
+        .into_iter()
+        .filter(|w| {
+            if w.window_layer() != 0 || !w.is_on_screen() {
                 return false;
             }
             let Some(app) = w.owning_application() else {
@@ -117,19 +154,113 @@ pub(crate) fn resolve_sc_window_by_pid_sync(
             true
         })
         .collect();
-    // Prefer the largest match to avoid Chromium popups.
+    let all_bundle_match: Vec<screencapturekit::shareable_content::SCWindow> = content
+        .windows()
+        .into_iter()
+        .filter(|w| {
+            if w.window_layer() != 0 || !w.is_on_screen() {
+                return false;
+            }
+            is_chromium_family(w)
+        })
+        .collect();
+    let size_ok = |w: &screencapturekit::shareable_content::SCWindow| -> bool {
+        let f = w.frame();
+        f.width >= MIN_CONTENT_W && f.height >= MIN_CONTENT_H
+    };
+    let has_title = |w: &screencapturekit::shareable_content::SCWindow| -> bool {
+        w.title().map(|t| !t.is_empty()).unwrap_or(false)
+    };
+    let mut candidates: Vec<screencapturekit::shareable_content::SCWindow> = all_pid_match
+        .iter()
+        .filter(|w| size_ok(w))
+        .cloned()
+        .collect();
+    let mut used_bundle_fallback = false;
+    if candidates.is_empty() {
+        candidates = all_bundle_match
+            .iter()
+            .filter(|w| size_ok(w))
+            .cloned()
+            .collect();
+        used_bundle_fallback = !candidates.is_empty();
+    }
+    // Sort: prefer windows with a non-empty title (the real browser
+    // window has a page title; launch-time helpers don't), then by
+    // descending area.
     candidates.sort_by(|a, b| {
-        let af = a.frame();
-        let bf = b.frame();
-        let aa = af.width * af.height;
-        let ba = bf.width * bf.height;
-        ba.partial_cmp(&aa).unwrap_or(std::cmp::Ordering::Equal)
+        match (has_title(a), has_title(b)) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => {
+                let af = a.frame();
+                let bf = b.frame();
+                let aa = af.width * af.height;
+                let ba = bf.width * bf.height;
+                ba.partial_cmp(&aa).unwrap_or(std::cmp::Ordering::Equal)
+            }
+        }
     });
-    if let Some(best) = candidates.first() {
-        tracing::trace!(
+    // Shadow for later diagnostics access.
+    let all_for_pid = all_pid_match;
+    if candidates.is_empty() {
+        let dump: Vec<String> = content
+            .windows()
+            .into_iter()
+            .filter(|w| w.window_layer() == 0)
+            .map(|w| {
+                let f = w.frame();
+                let app = w.owning_application();
+                let app_name = app
+                    .as_ref()
+                    .map(|a| a.application_name())
+                    .unwrap_or_default();
+                let bundle = app
+                    .as_ref()
+                    .map(|a| a.bundle_identifier())
+                    .unwrap_or_default();
+                let app_pid = app.map(|a| a.process_id()).unwrap_or(-1);
+                format!(
+                    "[pid={} app={:?} bundle={:?} {}x{} on_screen={} title={:?}]",
+                    app_pid,
+                    app_name,
+                    bundle,
+                    f.width as i32,
+                    f.height as i32,
+                    w.is_on_screen(),
+                    w.title().unwrap_or_default(),
+                )
+            })
+            .collect();
+        tracing::info!(
+            target: "storycapture::capture",
             pid,
+            total_pid_windows,
+            layer0_for_pid = all_for_pid.len(),
+            first_layer0_dims = ?all_for_pid.first().map(|w| {
+                let f = w.frame();
+                (f.width, f.height)
+            }),
+            min_w = MIN_CONTENT_W,
+            min_h = MIN_CONTENT_H,
+            all_layer0_windows = %dump.join(" | "),
+            "find_window_by_pid: no content-size window yet for pid — will retry",
+        );
+        return Ok(None);
+    }
+    if let Some(best) = candidates.first() {
+        let f = best.frame();
+        let app = best.owning_application();
+        tracing::info!(
+            target: "storycapture::capture",
+            requested_pid = pid,
             window_id = best.window_id(),
+            owning_pid = app.as_ref().map(|a| a.process_id()).unwrap_or(-1),
+            bundle = ?app.as_ref().map(|a| a.bundle_identifier()),
+            width = f.width,
+            height = f.height,
             title = ?best.title(),
+            used_bundle_fallback,
             "find_window_by_pid: resolved best window",
         );
     }
