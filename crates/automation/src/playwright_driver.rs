@@ -446,6 +446,76 @@ impl PlaywrightSidecarDriver {
 }
 
 #[cfg(test)]
+mod notification_tests {
+    // Plan 07-04a Task 1 — JSON-RPC notification plumbing.
+    //
+    // RED-first: these tests assert the broadcast semantics for id-absent
+    // JSON-RPC messages (see CONTEXT.md §Tier 2 robustness). They exercise
+    // the primitives (broadcast::channel + JsonRpcResponse serde) rather
+    // than the reader loop so they run without spawning a Node sidecar.
+    use super::{JsonRpcResponse, Notification};
+    use tokio::sync::broadcast;
+
+    #[tokio::test]
+    async fn multi_subscriber_receives_all_notifications() {
+        let (tx, _) = broadcast::channel::<Notification>(16);
+        let mut a = tx.subscribe();
+        let mut b = tx.subscribe();
+        tx.send(Notification {
+            method: "x".into(),
+            params: serde_json::json!({"n": 1}),
+        })
+        .unwrap();
+        tx.send(Notification {
+            method: "x".into(),
+            params: serde_json::json!({"n": 2}),
+        })
+        .unwrap();
+        assert_eq!(a.recv().await.unwrap().params["n"], 1);
+        assert_eq!(a.recv().await.unwrap().params["n"], 2);
+        assert_eq!(b.recv().await.unwrap().params["n"], 1);
+        assert_eq!(b.recv().await.unwrap().params["n"], 2);
+    }
+
+    #[tokio::test]
+    async fn lagged_subscriber_gets_lag_error_not_panic() {
+        let (tx, _) = broadcast::channel::<Notification>(2);
+        let mut rx = tx.subscribe();
+        for i in 0..10 {
+            tx.send(Notification {
+                method: "x".into(),
+                params: serde_json::json!({ "n": i }),
+            })
+            .unwrap_or_else(|_| panic!("send {i}"));
+        }
+        let r = rx.recv().await;
+        assert!(
+            matches!(r, Err(broadcast::error::RecvError::Lagged(_))),
+            "expected Lagged, got {:?}",
+            r
+        );
+    }
+
+    #[test]
+    fn response_with_no_id_and_method_parses_as_notification() {
+        let line = r#"{"jsonrpc":"2.0","method":"pickElement.hoverPreview","params":{"role":"button"}}"#;
+        let r: JsonRpcResponse = serde_json::from_str(line).unwrap();
+        assert!(r.id.is_none());
+        assert_eq!(r.method.as_deref(), Some("pickElement.hoverPreview"));
+        assert_eq!(r.params.as_ref().unwrap()["role"], "button");
+    }
+
+    #[test]
+    fn response_with_id_and_result_parses_as_response() {
+        let line = r#"{"jsonrpc":"2.0","id":42,"result":{"ok":true}}"#;
+        let r: JsonRpcResponse = serde_json::from_str(line).unwrap();
+        assert_eq!(r.id, Some(42));
+        assert!(r.method.is_none());
+        assert_eq!(r.result.as_ref().unwrap()["ok"], true);
+    }
+}
+
+#[cfg(test)]
 mod pick_element_serde_tests {
     use super::*;
 
