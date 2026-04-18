@@ -287,7 +287,34 @@ pub async fn start_recording(
     args: StartRecordingArgs,
     on_event: Channel<RecordingEvent>,
 ) -> Result<RecordingSessionId, AppError> {
-    let capture_target: capture::CaptureTarget = args.target.clone().into();
+    let capture_target: capture::CaptureTarget = match &args.target {
+        crate::commands::capture::CaptureTargetDto::WindowByPid { title_hint, .. }
+            if matches!(
+                title_hint.as_deref(),
+                Some("storycapture-playwright") | Some("Chromium")
+            ) =>
+        {
+            let stash_pid = crate::commands::automation::playwright_pid_stash()
+                .get()
+                .and_then(|i| i.pid);
+            let Some(pid) = stash_pid else {
+                return Err(AppError::Capture(
+                    "Playwright auto-target requested but no Playwright pid is available — launch a story first".into(),
+                ));
+            };
+            tracing::info!(
+                target: "storycapture::recording",
+                pid,
+                "start_recording: resolved Playwright auto sentinel to pid"
+            );
+            capture::CaptureTarget::WindowByPid {
+                pid,
+                // No hint — pid alone is authoritative for a single-browser session.
+                title_hint: None,
+            }
+        }
+        _ => args.target.clone().into(),
+    };
     tracing::info!(
         target: "storycapture::recording",
         "start_recording requested: target={} {}x{}@{}fps folder={:?}",
