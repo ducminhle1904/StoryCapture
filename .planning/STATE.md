@@ -104,10 +104,11 @@ currently blocking post-v1 work. All six verification items above are operator-g
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260418-gkg | Recording engine quick fixes: drop Chromium sentinel, panic guard on frame-pump, export drop counts | 2026-04-18 | 1fe6fe8 | [260418-gkg-recording-engine-quick-fixes-drop-chromi](./quick/260418-gkg-recording-engine-quick-fixes-drop-chromi/) |
+| 260418-ios | Fix focus-steal during recording: re-focus main window after Playwright launch + start_recording | 2026-04-18 | 9fad310 | [260418-ios-fix-focus-steal-during-recording-so-play](./quick/260418-ios-fix-focus-steal-during-recording-so-play/) |
 
 ## Session Continuity
 
-- Last activity: 2026-04-18 - Completed quick task 260418-gkg: recording engine quick fixes (Chromium sentinel, stdin RAII guard, FramesDropped telemetry).
+- Last activity: 2026-04-18 - Completed quick task 260418-ios: fix focus-steal during recording (re-focus main window after Playwright launch + start_recording).
 - Last action: Phase 5 — all 3 plans executed (05-01 Wave 1 + 05-02/05-03 Wave 2 parallel worktrees merged to main). `cargo check -p capture` green on macOS + `x86_64-pc-windows-msvc` cross-target. 05-VERIFICATION.md written — phase code-complete pending operator-gated verification.
 - Next action: Phase 6 (Recording v2 — audio/region/chrome-hiding/multi-browser) OR complete operator-gated verification items across phases 1–5.
 - Files touched this session: `.planning/STATE.md`, `.planning/ROADMAP.md`, phase 05 directory (3 SUMMARYs + VERIFICATION), `crates/capture/**`, `crates/automation/**`, `apps/desktop/**`, `scripts/playwright-sidecar/**`, `tools/e2e-playwright-capture/**`, `.github/workflows/capture-windows.yml`.
