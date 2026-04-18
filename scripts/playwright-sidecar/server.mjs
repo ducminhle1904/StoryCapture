@@ -22,6 +22,7 @@
 import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { chromium } from 'playwright-core';
 import { emitDsl } from './picker/generator.mjs';
 
@@ -81,6 +82,12 @@ let state = {
   // the overlay can install each binding independently and Playwright
   // throws on duplicate exposeBinding calls with the same name.
   pickerHoverBoundPages: new WeakSet(),
+  // Plan 07-05 — dedicated author-time browser for DOM snapshots, SEPARATE
+  // from any recording session. Launched lazily on first captureSnapshot
+  // call; kept headless, no args, no init scripts. Never shares state
+  // with `state.browser` / `state.context` / `state.page`.
+  authorBrowser: null,
+  authorContext: null,
 };
 
 const handlers = {
@@ -173,6 +180,10 @@ const handlers = {
     if (state.browserServer) {
       try { await state.browserServer.close(); } catch {}
     }
+    // Plan 07-05 — also tear down the author-time snapshot browser.
+    if (state.authorBrowser) {
+      try { await state.authorBrowser.close(); } catch {}
+    }
     state = {
       browser: null,
       context: null,
@@ -184,6 +195,8 @@ const handlers = {
       pickerPending: null,
       pickerBoundPages: new WeakSet(),
       pickerHoverBoundPages: new WeakSet(),
+      authorBrowser: null,
+      authorContext: null,
     };
     return { ok: true };
   },
@@ -410,6 +423,84 @@ const handlers = {
       state.page.on('framenavigated', onNav);
     });
     return { ok: true, url: state.page.url() };
+  },
+
+  // Plan 07-05 — author-time DOM snapshot for the selector validator.
+  //
+  // Loads `url` in a DEDICATED headless browser (never the recording
+  // session's `state.browser`), waits for `load`, captures the serialized
+  // DOM (`documentElement.outerHTML`) + a PNG screenshot + bounding box
+  // metadata for every element (step 4 of the plan surfaces this to the
+  // UI via the cached snapshot + bbox overlay).
+  //
+  // Contract:
+  //   params  : { url: string, viewport?: { width, height }, timeoutMs?: number }
+  //   result  : {
+  //     url: string,            // resolved (base-url-aware)
+  //     domHash: string,        // SHA-256 of innerHTML (hex)
+  //     innerHTML: string,      // full <html> outer HTML
+  //     screenshotBase64: string, // PNG bytes base64-encoded
+  //     capturedAt: string      // ISO timestamp
+  //   }
+  //
+  // Errors:
+  //   -32000 on navigation failure, timeout, or unsupported URL scheme.
+  //
+  // Never mutates `state.page` / `state.context` — the author-time flow
+  // must not disturb an in-flight recording session.
+  captureSnapshot: async ({ url, viewport, timeoutMs } = {}) => {
+    if (typeof url !== 'string' || url.length === 0) {
+      const err = new Error('captureSnapshot: url must be a non-empty string');
+      err.code = -32602;
+      throw err;
+    }
+    if (/^(chrome|about|view-source):/i.test(url)) {
+      const err = new Error(`captureSnapshot: unsupported URL scheme for ${url}`);
+      err.code = -32000;
+      throw err;
+    }
+    const resolved = absolute(url);
+    const t = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15000;
+
+    // Lazy-launch the author-time browser. Kept alive across snapshot calls
+    // so repeated `captureSnapshot` from the editor doesn't pay cold-start
+    // Chromium spawn cost every time.
+    if (!state.authorBrowser) {
+      state.authorBrowser = await chromium.launch({ headless: true });
+    }
+    if (!state.authorContext) {
+      state.authorContext = await state.authorBrowser.newContext({
+        viewport:
+          viewport && typeof viewport.width === 'number'
+            ? { width: viewport.width, height: viewport.height }
+            : { width: 1280, height: 800 },
+      });
+    }
+
+    const page = await state.authorContext.newPage();
+    try {
+      await page.goto(resolved, { waitUntil: 'load', timeout: t });
+      const innerHTML = await page.evaluate(
+        () => document.documentElement.outerHTML,
+      );
+      const buf = await page.screenshot({ type: 'png', fullPage: false });
+      const screenshotBase64 = buf.toString('base64');
+      const domHash = createHash('sha256').update(innerHTML).digest('hex');
+      return {
+        url: resolved,
+        domHash,
+        innerHTML,
+        screenshotBase64,
+        capturedAt: new Date().toISOString(),
+      };
+    } finally {
+      // Close the page (not the browser/context) so we release memory
+      // between snapshots. The context is reused for efficiency; it gets
+      // torn down alongside the author browser in `close`.
+      try {
+        await page.close();
+      } catch {}
+    }
   },
 
   // Test-only shim (Plan 05-02 Task 0): let vitest exercise the
@@ -745,6 +836,12 @@ rl.on('close', async () => {
   if (state.browserServer) {
     try {
       await state.browserServer.close();
+    } catch {}
+  }
+  // Plan 07-05 — tear down the author-time snapshot browser on sidecar shutdown.
+  if (state.authorBrowser) {
+    try {
+      await state.authorBrowser.close();
     } catch {}
   }
   process.exit(0);
