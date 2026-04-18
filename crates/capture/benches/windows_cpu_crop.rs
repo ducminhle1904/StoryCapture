@@ -67,7 +67,45 @@ fn bench_cpu_crop(c: &mut Criterion) {
     });
 }
 
+/// Backlog #4 — BGRA→RGBA swap gate (<1 ms for 1080p on reference
+/// hardware). Exercises the `bytemuck::cast_slice` + u32 word-swap path
+/// LLVM auto-vectorizes to `vpshufb` / `vqtbl1q_u8`. Legacy per-pixel
+/// `extend_from_slice` loop benched at ~6–10 ms/1080p; the new path
+/// should be well under 1 ms.
 #[cfg(target_os = "windows")]
-criterion_group!(benches, bench_cpu_crop);
+fn bench_bgra_to_rgba_swap(c: &mut Criterion) {
+    use capture::windows::thumbnail::bgra_to_rgba_swap;
+
+    // 1080p (gate target).
+    let w = 1920usize;
+    let h = 1080usize;
+    let mut src_1080 = vec![0u8; w * h * 4];
+    for (i, b) in src_1080.iter_mut().enumerate() {
+        *b = (i & 0xff) as u8;
+    }
+    c.bench_function("windows_bgra_to_rgba_swap_1080p", |b| {
+        b.iter(|| {
+            let out = bgra_to_rgba_swap(black_box(&src_1080));
+            black_box(out);
+        })
+    });
+
+    // 4K (informational — no hard gate; tracks scaling).
+    let w4 = 3840usize;
+    let h4 = 2160usize;
+    let mut src_4k = vec![0u8; w4 * h4 * 4];
+    for (i, b) in src_4k.iter_mut().enumerate() {
+        *b = (i & 0xff) as u8;
+    }
+    c.bench_function("windows_bgra_to_rgba_swap_4k", |b| {
+        b.iter(|| {
+            let out = bgra_to_rgba_swap(black_box(&src_4k));
+            black_box(out);
+        })
+    });
+}
+
+#[cfg(target_os = "windows")]
+criterion_group!(benches, bench_cpu_crop, bench_bgra_to_rgba_swap);
 #[cfg(target_os = "windows")]
 criterion_main!(benches);
