@@ -49,7 +49,7 @@ async fn thirty_minute_memory_stability() {
     let queue = ByteBoundedQueue::new(ByteBoundedQueue::DEFAULT_CAP_BYTES);
     let mut pipeline = CapturePipeline::new(backend, queue.clone());
     let (tx, mut rx) = mpsc::channel::<Frame>(64);
-    pipeline.start(cfg, tx).await.expect("start capture");
+    pipeline.start(cfg, tx, None).await.expect("start capture");
 
     // Drain consumer in the background so frames flow and the queue
     // doesn't artificially fill up — we want to measure the BACKEND's

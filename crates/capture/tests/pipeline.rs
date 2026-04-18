@@ -86,7 +86,7 @@ async fn mock_backend_forwards_frames_with_pts_preserved() {
     let mut pipeline = CapturePipeline::new(Box::new(backend), queue);
     let (tx, mut rx) = mpsc::channel::<Frame>(128);
     pipeline
-        .start(CaptureConfig::new(DisplayId(0)), tx)
+        .start(CaptureConfig::new(DisplayId(0)), tx, None)
         .await
         .unwrap();
 
@@ -121,7 +121,7 @@ async fn mock_backend_drops_under_backpressure() {
     let mut pipeline = CapturePipeline::new(Box::new(backend), queue);
     let (tx, mut rx) = mpsc::channel::<Frame>(2);
     pipeline
-        .start(CaptureConfig::new(DisplayId(0)), tx)
+        .start(CaptureConfig::new(DisplayId(0)), tx, None)
         .await
         .unwrap();
 

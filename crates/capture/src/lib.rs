@@ -35,7 +35,7 @@ pub use error::CaptureError;
 pub use events::CaptureEvent;
 pub use fallback::XcapBackend;
 pub use frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
-pub use pipeline::CapturePipeline;
+pub use pipeline::{CapturePipeline, DropEventCallback};
 pub use queue::{ByteBoundedQueue, DroppedFrame, QueueStats};
 pub use orchestrator::{orchestrate_start, FallbackCounter, OrchestratedStart};
 pub use target::{CaptureTarget, RegionRect, WindowId};

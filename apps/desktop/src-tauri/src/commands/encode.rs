@@ -177,6 +177,11 @@ impl From<EncodeResult> for EncodeResultDto {
 pub enum RecordingEvent {
     CaptureStatus { json: String },
     EncodeProgress { progress: EncodeProgressDto },
+    /// Emitted periodically from the capture pipeline when the
+    /// byte-bounded queue has dropped frames. `total` is the lifetime
+    /// count for this session; `delta` is the count since the last
+    /// event (always >= 1 when an event fires).
+    FramesDropped { total: u64, delta: u64 },
     Completed { result: EncodeResultDto },
     Failed { message: String },
 }
@@ -372,8 +377,27 @@ pub async fn start_recording(
     let queue = ByteBoundedQueue::new(cap_cfg.queue_cap_bytes);
     let mut capture = CapturePipeline::new(backend, queue);
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(64);
+    // Best-effort drop telemetry: forward queue drops to the renderer via
+    // the existing RecordingEvent channel. Channel<T> is Clone in Tauri 2.x;
+    // clone once per callback invocation via the move-captured handle.
+    let on_event_for_drops = on_event.clone();
+    let drop_cb: Option<capture::DropEventCallback> =
+        Some(Box::new(move |total, delta| {
+            if let Err(e) = on_event_for_drops
+                .send(RecordingEvent::FramesDropped { total, delta })
+            {
+                // Channel closed / full is non-fatal — telemetry is best-effort.
+                tracing::debug!(
+                    target: "storycapture::recording",
+                    error = %e,
+                    total,
+                    delta,
+                    "FramesDropped event send failed (channel closed?)"
+                );
+            }
+        }));
     capture
-        .start(cap_cfg.clone(), frame_tx)
+        .start(cap_cfg.clone(), frame_tx, drop_cb)
         .await
         .map_err(|e| {
             tracing::error!(
