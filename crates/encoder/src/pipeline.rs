@@ -119,10 +119,22 @@ impl EncodePipeline {
         // VideoToolbox and skip the FFmpeg subprocess entirely. Mixed
         // streams (session-mid fallback to xcap) are not supported — we
         // commit to one path based on the first frame.
+        //
+        // Phase 6 plan 01: VtWriter is video-only. When mic audio is
+        // enabled (audio_input is Some), fall back to the FFmpeg pipeline
+        // which mux's video + audio from the named pipe. The VT fast
+        // path can be extended with AVAssetWriter audio inputs later.
         #[cfg(target_os = "macos")]
         {
-            if let Some(join) = try_start_vt_fast_path(&cfg, &mut frames, &progress_tx).await? {
-                return Ok(join);
+            if cfg.audio_input.is_none() {
+                if let Some(join) = try_start_vt_fast_path(&cfg, &mut frames, &progress_tx).await? {
+                    return Ok(join);
+                }
+            } else {
+                tracing::info!(
+                    target: "storycapture::encoder",
+                    "audio_input set — skipping VT fast path, using FFmpeg pipeline for AV mux"
+                );
             }
         }
 
