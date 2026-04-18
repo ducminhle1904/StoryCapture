@@ -1,16 +1,8 @@
-//! ScreenCaptureKit backend (`screencapturekit = "=1.5.4"`). Thin wrapper:
-//! enumerate, build an `SCContentFilter`, attach a handler that wraps each
-//! `CMSampleBuffer` in our RAII `CVPixelBufferHandle`, and emit `Frame`s.
+//! ScreenCaptureKit backend.
 //!
-//! SCK crate churn — pinned to 1.5.4 exactly; the published 1.x line caps
-//! here (CLAUDE.md aspires to 1.70 but no such version exists on the
-//! registry). Method surfaces have shifted between releases; do not bump
-//! without re-verifying against `~/.cargo/registry/.../screencapturekit`.
-//!
-//! TCC preflight: `SCShareableContent::get()` can succeed even when
-//! Screen Recording permission is stale on Sequoia 15.1+ — the inline
-//! banner's "Already granted" bypass exists because of this. Do not
-//! rely on a single preflight to gate capture.
+//! Builds `SCContentFilter`s, wraps sample buffers, and emits `Frame`s.
+//! Stay pinned to `screencapturekit = "=1.5.4"` until an upgrade is re-verified.
+//! Also do not trust a single TCC preflight check on recent macOS versions.
 
 use crate::backend::{BackendKind, CaptureBackend, CaptureConfig, CaptureStats};
 use crate::display::DisplayInfo;
@@ -38,12 +30,9 @@ use screencapturekit::stream::{
 
 pub struct SckBackend {
     state: Arc<Mutex<SckState>>,
-    /// Optional sink for lifecycle events (delegate-driven). Populated via
-    /// `set_event_sink` before `start` — the Task 3 orchestrator uses this
-    /// to route `BackendFailed` up to the pipeline / Tauri host.
+    /// Optional lifecycle-event sink.
     event_sink: Arc<Mutex<Option<mpsc::UnboundedSender<CaptureEvent>>>>,
-    /// Count of frames the output handler dropped because `try_send`
-    /// returned `Full`. Exposed via `dropped_frames`.
+    /// Frames dropped because `try_send` hit a full channel.
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
 }
@@ -51,19 +40,13 @@ pub struct SckBackend {
 struct SckState {
     started_at: Option<Instant>,
     stats: CaptureStats,
-    /// Live SCStream. Dropped (stop + release) in `stop()` so a subsequent
-    /// `start()` builds a fresh one (Pitfall: don't reuse after stop).
+    /// Live `SCStream`. Rebuilt on every `start()`.
     stream: Option<SCStream>,
 }
 
 impl SckBackend {
     pub fn new() -> Result<Self, CaptureError> {
-        // NOTE: `CGPreflightScreenCaptureAccess` false-negatives on Sequoia
-        // after ad-hoc re-signs (TCC caches per-signature). We log the
-        // preflight result for diagnostics but don't gatekeep on it —
-        // SCStream itself fails loudly via didStopWithError if access is
-        // truly denied, which the caller treats as a backend failure and
-        // falls back through the orchestrator.
+        // Log preflight for diagnostics, but do not gate on it.
         let pre = crate::macos::tcc::preflight_screen_capture_access();
         tracing::info!(
             target: "capture::macos::sck_backend",
@@ -82,29 +65,19 @@ impl SckBackend {
         })
     }
 
-    /// Register a lifecycle-event sink before calling `start`. The sink
-    /// receives `CaptureEvent::BackendFailed` when SCK's delegate fires
-    /// `didStopWithError`. Wired by the orchestrator (Task 3).
+    /// Register a lifecycle-event sink before `start()`.
     pub fn set_event_sink(&self, tx: mpsc::UnboundedSender<CaptureEvent>) {
         *self.event_sink.lock() = Some(tx);
     }
 
-    /// Number of frames dropped inside the output handler because the
-    /// downstream channel was full. Monotonically increases across the
-    /// session; reset via `stop()`.
+    /// Dropped frame count for the current session.
     pub fn dropped_frames(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
     }
 
-    /// Build the `SCContentFilter` for a target, resolving WindowId via
-    /// `SCShareableContent`. `WindowByPid` is out of scope for Plan 05-01
-    /// — Plan 05-02 implements it.
+    /// Build an `SCContentFilter` and output dimensions for a target.
     ///
-    /// Return value: `(filter, width_px, height_px, source_rect_opt)`.
-    /// Plan 06-02: `source_rect_opt` is `Some(CGRect)` **in logical points**
-    /// for `DisplayRegion` targets, otherwise `None`. Callers applying it
-    /// to `SCStreamConfiguration::with_source_rect` get kernel-side crop
-    /// (no overcapture — T-06-12).
+    /// `source_rect_opt` is in logical points when present.
     pub(crate) fn build_filter(
         target: &CaptureTarget,
     ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>), CaptureError> {
@@ -113,11 +86,7 @@ impl SckBackend {
                 let content = SCShareableContent::get().map_err(|e| {
                     CaptureError::Native(format!("SCShareableContent::get: {e}"))
                 })?;
-                // We don't have a stable mapping from the xcap-reported
-                // DisplayId(u64) to SCDisplay without calling display_id().
-                // Use primary display when our id matches, else first
-                // display as a best-effort fallback (fine for MVP — a
-                // proper SCDisplay cache belongs to a follow-up).
+                // Use the requested display when possible, else fall back to the first.
                 let displays = content.displays();
                 let disp = displays
                     .iter()
@@ -126,36 +95,25 @@ impl SckBackend {
                     .ok_or_else(|| CaptureError::Native("no SCDisplay available".into()))?;
                 let width = disp.width();
                 let height = disp.height();
-                // NEVER pass empty excluding_windows (Pitfall 2) — the
-                // builder default takes care of it when we don't call
-                // `with_excluding_windows`.
                 let filter = SCContentFilter::create()
                     .with_display(disp)
                     .with_excluding_windows(&[])
                     .build();
-                // ^ `with_excluding_windows(&[])` is actually the form the
-                // doom-fish README shows; the hang is specifically from
-                // the *raw* initWithDisplay:excludingWindows:[] SDK call.
-                // The 1.5.4 builder maps this to excludingWindows with a
-                // null ptr + 0 count, which Apple accepts.
+                // The builder handles an empty exclusion list safely.
                 Ok((filter, width, height, None))
             }
             CaptureTarget::Window { window_id } => {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
                     .ok_or(CaptureError::WindowNotFound(window_id.0))?;
                 let frame = window.frame();
-                // Point dimensions; scale to pixels via the display's
-                // backing scale. For now, assume 2x (most retina); a more
-                // precise path would look up the owning display.
+                // Approximate retina scale until we plumb the owning display.
                 let width = (frame.width * 2.0) as u32;
                 let height = (frame.height * 2.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
                 Ok((filter, width, height, None))
             }
             CaptureTarget::WindowByPid { pid, title_hint } => {
-                // Single-shot resolution: the command-layer path already
-                // retried via `find_window_by_pid`. Direct in-host callers
-                // of this backend are expected to pass a live pid.
+                // Command-layer callers already did the retry loop.
                 if let Some(h) = title_hint.as_deref() {
                     if h.len() > 256 {
                         return Err(CaptureError::Backend(
@@ -174,25 +132,13 @@ impl SckBackend {
                 )?
                 .ok_or(CaptureError::WindowNotFound(*pid as u64))?;
                 let frame = window.frame();
-                // Point dimensions; scale to pixels via 2x (retina) —
-                // same approach as the Window arm above.
+                // Same 2x retina approximation as the Window branch.
                 let width = (frame.width * 2.0) as u32;
                 let height = (frame.height * 2.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
                 Ok((filter, width, height, None))
             }
-            // Plan 06-02 — SCK native region capture via with_source_rect.
-            //
-            // Invariants (RESEARCH Pattern 3 + Pitfall 7):
-            //   1. source_rect is in LOGICAL POINTS — same coordinate
-            //      space as `disp.frame()` returns.
-            //   2. with_width / with_height use PHYSICAL PIXELS — we scale
-            //      the logical rect by the display's point→pixel factor,
-            //      computed from `disp.width() / disp.frame().width`.
-            //   3. We do NOT call `SCContentFilter::set_content_rect`
-            //      (macOS 14.2+ only); the stream-config path works on
-            //      macOS 12.3+ which is StoryCapture's min target.
-            //   4. Filter stays display-only (no exclude-windows).
+            // Region capture uses logical-point source rects and pixel output sizes.
             CaptureTarget::DisplayRegion { display_id, rect } => {
                 let content = SCShareableContent::get().map_err(|e| {
                     CaptureError::Native(format!("SCShareableContent::get: {e}"))
@@ -203,10 +149,7 @@ impl SckBackend {
                     .find(|d| d.display_id() as u64 == display_id.0)
                     .or_else(|| displays.first())
                     .ok_or_else(|| CaptureError::Native("no SCDisplay available".into()))?;
-                // SCK `frame()` returns logical-point dimensions; `width()`
-                // returns physical pixels. Compute the source-rect +
-                // pixel dimensions via the shared helper so tests and
-                // production agree byte-for-byte on the rounding rules.
+                // Use shared math so tests and production round the same way.
                 let frame = disp.frame();
                 let (width_px, height_px, source_rect) =
                     compute_region_math(rect, frame.width, disp.width());
@@ -231,8 +174,7 @@ impl CaptureBackend for SckBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
-        // Resolve the SCContentFilter on a blocking thread (Pitfall 7:
-        // SCShareableContent::get blocks 50–200ms).
+        // Resolve the filter off the async runtime.
         let target = cfg.target.clone();
         let (filter, width_px, height_px, source_rect) =
             tokio::task::spawn_blocking(move || Self::build_filter(&target))
@@ -257,8 +199,7 @@ impl CaptureBackend for SckBackend {
 
         let sck_pf = match cfg.pixel_format {
             crate::frame::PixelFormat::Bgra => SckPixelFormat::BGRA,
-            // NV12 path: SCK calls it YCbCr_420v; we'd need to widen our
-            // enum to route it here. For now, force BGRA (still zero-copy).
+            // Force BGRA until we add native NV12 handling.
             crate::frame::PixelFormat::Nv12 => SckPixelFormat::BGRA,
         };
 
@@ -270,11 +211,7 @@ impl CaptureBackend for SckBackend {
             .with_minimum_frame_interval(&frame_interval)
             .with_queue_depth(8);
 
-        // Plan 06-02 — when the target is a DisplayRegion, apply SCK's
-        // native source-rect + destination-rect crop. with_source_rect
-        // takes logical points (matches disp.frame()); with_destination_rect
-        // is in output-frame pixels (anchored at origin, full rect); and
-        // with_scales_to_fit(false) preserves 1:1 pixel fidelity.
+        // Apply native region crop when a source rect is present.
         if let Some(src) = source_rect {
             let dest = CGRect::new(0.0, 0.0, width_px as f64, height_px as f64);
             config = config
@@ -283,8 +220,7 @@ impl CaptureBackend for SckBackend {
                 .with_scales_to_fit(false);
         }
 
-        // Delegate for lifecycle events. Forward to the event sink if
-        // one was registered (orchestrator).
+        // Forward delegate failures to the optional event sink.
         let event_sink_for_err = self.event_sink.clone();
         let event_sink_for_stop = self.event_sink.clone();
         let delegate = StreamCallbacks::new()
@@ -306,8 +242,7 @@ impl CaptureBackend for SckBackend {
 
         let mut stream = SCStream::new_with_delegate(&filter, &config, delegate);
 
-        // Output handler closure — runs on SCK's internal GCD queue. NEVER
-        // .await. try_send (Pitfall 6). Frame metrics via atomic counters.
+        // Runs on SCK's GCD queue; keep it non-blocking.
         let out_for_handler = out.clone();
         let dropped_for_handler = self.dropped.clone();
         let delivered_for_handler = self.delivered.clone();
@@ -325,8 +260,7 @@ impl CaptureBackend for SckBackend {
                             dropped_for_handler.fetch_add(1, Ordering::Relaxed);
                         }
                         Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                            // Consumer went away — backend will be stopped
-                            // shortly. Silently drop.
+                            // Consumer went away; drop the frame.
                         }
                     }
                 }
@@ -339,7 +273,7 @@ impl CaptureBackend for SckBackend {
             ));
         }
 
-        // start_capture must be called AFTER add_output_handler.
+        // Start after the output handler is attached.
         stream.start_capture().map_err(|e| {
             CaptureError::Backend(format!("SCStream::start_capture: {e}"))
         })?;
@@ -351,9 +285,7 @@ impl CaptureBackend for SckBackend {
     }
 
     async fn stop(&mut self) -> Result<CaptureStats, CaptureError> {
-        // Take the stream out (holding lock only briefly) and stop it on a
-        // blocking thread; Drop then releases the Swift SCStream. Rebuild
-        // a fresh one on next start (Pitfall: don't reuse after stop).
+        // Stop the stream off-thread, then rebuild on the next start.
         let stream_opt = {
             let mut s = self.state.lock();
             s.stream.take()
@@ -373,7 +305,7 @@ impl CaptureBackend for SckBackend {
         stats.frames_delivered = self.delivered.load(Ordering::Relaxed);
         stats.frames_dropped = self.dropped.load(Ordering::Relaxed);
         drop(s);
-        // Reset counters so a subsequent start is clean.
+        // Reset counters for the next session.
         self.delivered.store(0, Ordering::Relaxed);
         self.dropped.store(0, Ordering::Relaxed);
         Ok(stats)
@@ -384,10 +316,7 @@ impl CaptureBackend for SckBackend {
     }
 }
 
-/// Internal helper that computes the SCK source_rect (logical points)
-/// and pixel dimensions for a `DisplayRegion` target, given the display's
-/// logical-point frame width and its physical pixel width. Split out of
-/// `build_filter` so unit tests can drive it without TCC.
+/// Compute a region source rect and pixel size for display-region capture.
 pub(crate) fn compute_region_math(
     rect: &crate::target::RegionRect,
     disp_logical_width: f64,
@@ -411,12 +340,12 @@ mod region_tests {
 
     #[test]
     fn region_math_retina_2x() {
-        // A 1440-point logical display backed by 2880 pixels → scale 2.0.
+        // 1440 logical points backed by 2880 pixels -> 2x scale.
         let rect = RegionRect { x: 100.0, y: 50.0, w: 640.0, h: 480.0 };
         let (w_px, h_px, src) = compute_region_math(&rect, 1440.0, 2880);
         assert_eq!(w_px, 1280);
         assert_eq!(h_px, 960);
-        // source_rect stays in POINTS — identical to the input (Pitfall 7).
+        // Source rect stays in logical points.
         assert_eq!(src.x, 100.0);
         assert_eq!(src.y, 50.0);
         assert_eq!(src.width, 640.0);
@@ -434,7 +363,7 @@ mod region_tests {
 
     #[test]
     fn region_math_fractional_scale_1_5x() {
-        // 1920-point display backed by 2880 pixels → 1.5× scale.
+        // 1920 logical points backed by 2880 pixels -> 1.5x scale.
         let rect = RegionRect { x: 0.0, y: 0.0, w: 640.0, h: 360.0 };
         let (w_px, h_px, _src) = compute_region_math(&rect, 1920.0, 2880);
         assert_eq!(w_px, 960);
@@ -442,17 +371,9 @@ mod region_tests {
     }
 }
 
-/// Test-only hook: exposes the internal `build_filter` for unit
-/// assertions on the source-rect path. Callers may construct a
-/// `CaptureTarget::DisplayRegion` and read back the `Option<CGRect>`
-/// without building a full SCStream.
+/// Test hook for the display-region source-rect path.
 ///
-/// NOTE: actual `SCContentFilter` construction still calls into
-/// SCShareableContent, which requires Screen Recording TCC. We swallow
-/// that error so no-TCC CI hosts can still exercise the rect math —
-/// the rect computation itself is deterministic and runs *before* the
-/// filter builder errors out. Returns the tuple (width_px, height_px,
-/// source_rect) for DisplayRegion targets; `None` if the SCK call failed.
+/// Returns `(width_px, height_px, source_rect)` when filter construction succeeds.
 #[cfg(test)]
 pub(crate) fn build_filter_for_test_region(
     display_id: u64,
@@ -467,12 +388,9 @@ pub(crate) fn build_filter_for_test_region(
         .map(|(_, w, h, r)| (w, h, r))
 }
 
-/// Cross-call display enumeration — used directly by `display::enumerate_displays`
-/// on macOS so callers don't need an `SckBackend` instance just to list
-/// displays. Implementation falls through to xcap because the high-level
-/// SCK crate's enumeration shape varies between patch releases; xcap's
-/// `Monitor::all()` returns the same physical displays and applies
-/// `backingScaleFactor` correctly.
+/// Enumerate displays without constructing an `SckBackend`.
+///
+/// This uses xcap because its monitor API is more stable than SCK's.
 pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
     use crate::display::DisplayId;
     let monitors = xcap::Monitor::all()

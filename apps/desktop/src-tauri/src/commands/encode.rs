@@ -1,25 +1,6 @@
 // encoder IPC.
 //
-// Thin Tauri-side bridge around the pure `encoder` crate. Exposes:
-//   - probe_hw_encoders  — runtime HW-encoder feature detection (ENC-02)
-//   - start_recording    — end-to-end orchestration (parse → capture →
-//                          encode), streaming RecordingEvent back to
-//                          the renderer over a Channel<RecordingEvent>
-//   - stop_recording     — graceful shutdown + finalize
-//
-// ## Tauri sidecar stdin bridge — design note
-//
-// `tauri-plugin-shell`'s sidecar API wraps the spawned child in an event
-// stream and does NOT expose the raw `ChildStdin` handle the encoder
-// pipeline needs (`encoder::SidecarCommand::spawn` returns piped
-// stdin/stdout/stderr tokio handles). Rather than wedging around the
-// plugin, we follow the same pattern Plan 01-06 uses for the Playwright
-// sidecar (`commands/automation.rs`): resolve the externalBin binary
-// path via `tauri-plugin-shell::ShellExt::sidecar` (which handles the
-// `binaries/ffmpeg-<triple>` lookup + notarization metadata), then
-// re-spawn through `tokio::process::Command` so we own the pipes.
-// Decision documented in SUMMARY.md "decision path for Tauri sidecar
-// stdin bridge".
+// Thin Tauri bridge around the pure `encoder` crate.
 
 use crate::commands::capture::CaptureTargetDto;
 use crate::error::AppError;
@@ -48,13 +29,7 @@ use uuid::Uuid;
 // SidecarCommand bridge
 // ---------------------------------------------------------------------------
 
-/// Resolve a sidecar binary sitting next to the app executable.
-///
-/// Tauri bundles sidecars into `Contents/MacOS/` (macOS) / next to the main
-/// exe (Windows/Linux) and strips the target-triple suffix. In `cargo tauri
-/// dev` they're copied to `target/debug/<name>-<triple>` (suffix retained).
-/// We check the stripped name first, then fall back to the triple-suffixed
-/// variant so the same code path works bundled and in dev.
+/// Resolve a sidecar binary next to the app executable.
 pub fn resolve_sidecar_path(name: &str) -> Result<std::path::PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let dir = exe.parent().ok_or("exe has no parent")?;
@@ -76,10 +51,7 @@ pub fn resolve_sidecar_path(name: &str) -> Result<std::path::PathBuf, String> {
     Err(format!("sidecar {name} not found at {} (or {}* in dev)", bundled.display(), prefix))
 }
 
-/// `TauriSidecar` resolves the FFmpeg path via `tauri-plugin-shell` (so
-/// the externalBin per-triple naming is handled consistently with the
-/// Playwright sidecar), drops the resulting shell-plugin wrapper, and
-/// re-spawns the raw binary via tokio so we own the stdio pipes.
+/// FFmpeg sidecar wrapper that re-spawns the raw binary through tokio.
 pub struct TauriSidecar {
     binary_name: String,
     app: AppHandle,
@@ -97,8 +69,7 @@ impl TauriSidecar {
 #[async_trait::async_trait]
 impl SidecarCommand for TauriSidecar {
     async fn spawn(&self, args: Vec<String>) -> Result<SidecarChild, EncoderError> {
-        // Resolve the per-triple externalBin path. We discard the wrapper
-        // because it doesn't expose ChildStdin; see module doc.
+        // Resolve the per-triple externalBin path.
         let _resolved = self
             .app
             .shell()
@@ -200,10 +171,7 @@ impl From<EncodeResult> for EncodeResultDto {
     }
 }
 
-/// Unified recording event — fan-in of capture / encode progress /
-/// terminal results. We don't wire automation executor events here
-/// (Plan 01-06 already streams those on its own channel); the UI joins
-/// the two streams via the session id.
+/// Unified recording event from capture / encode progress and terminal results.
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum RecordingEvent {
@@ -254,23 +222,15 @@ pub struct RecordingSessionId(pub String);
 #[derive(Debug, Clone, Deserialize, specta::Type)]
 pub struct StartRecordingArgs {
     pub project_folder: String,
-    /// Backlog #15 — replaces the flat `display_id: u64` with the full
-    /// CaptureTarget discriminated-union DTO so window + display-region
-    /// recordings can flow through the same entry point. Mirrors the
-    /// shape already used by `start_capture_target` (plan 05-01).
+    /// Capture target DTO.
     pub target: CaptureTargetDto,
     pub width: u32,
     pub height: u32,
     pub fps: u32,
-    /// Phase 6 plan 01 — optional mic device (cpal device name, OR
-    /// `"default"` for system default). `None` / missing → no audio
-    /// (silent anullsrc track, Phase 1 behavior). Non-sticky per D-02.
+    /// Optional mic device.
     #[serde(default)]
     pub audio_device_id: Option<String>,
-    /// Plan 06-02 — per-recording include-cursor flag (D-19/D-20).
-    /// `None` → default `true` (matches Phase 5 D-06 pre-toggle behavior).
-    /// When `Some(false)`, SCK sets `with_shows_cursor(false)` and WGC
-    /// uses `CursorCaptureSettings::WithoutCursor`.
+    /// Optional per-recording cursor toggle.
     #[serde(default)]
     pub include_cursor: Option<bool>,
 }
@@ -282,16 +242,12 @@ pub struct StartRecordingArgs {
 struct RecordingHandle {
     capture: Arc<tokio::sync::Mutex<CapturePipeline>>,
     encode_join: JoinHandle<encoder::Result<EncodeResult>>,
-    /// Target output file (retained for diagnostics; UI mirrors it back
-    /// via `EncodeResult.output_path`).
+    /// Target output file.
     #[allow(dead_code)]
     output_path: PathBuf,
-    /// Phase 6 plan 01: optional mic capture stream. Dropped in
-    /// `stop_recording` BEFORE the encoder is joined so the audio tail
-    /// flushes into FFmpeg cleanly (see pipeline.rs start-order note).
+    /// Optional mic capture stream.
     audio_stream: Option<AudioCaptureStream>,
-    /// RAII handle for the named pipe. Held alongside the stream so
-    /// the tempdir survives until stop.
+    /// Named-pipe handle.
     #[allow(dead_code)]
     audio_fifo: Option<FifoHandle>,
 }
@@ -311,8 +267,7 @@ fn registry() -> &'static RecordingRegistry {
 // Commands
 // ---------------------------------------------------------------------------
 
-/// ENC-02 — runtime HW-encoder feature detection. Safe to call at any
-/// time; callers SHOULD cache the result for the session.
+/// Runtime HW-encoder feature detection.
 #[tauri::command]
 #[specta::specta]
 pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
@@ -323,11 +278,7 @@ pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppErr
     Ok(probe.into())
 }
 
-/// Start an end-to-end recording: capture pipeline → encoder pipeline →
-/// MP4/H.264 file at `<project_folder>/exports/<session_id>.mp4`.
-///
-/// Automation orchestration (Plan 01-06 BrowserDriver) runs independently
-/// via `launch_automation`; the UI correlates the two by session id.
+/// Start an end-to-end recording.
 #[tauri::command]
 #[specta::specta]
 pub async fn start_recording(
@@ -343,7 +294,7 @@ pub async fn start_recording(
         capture_target.kind_label(), args.width, args.height, args.fps, args.project_folder
     );
 
-    // Probe encoders (done per-start; the `EncoderProbe` is small).
+    // Probe encoders.
     let probe = {
         let cmd = TauriSidecar::new(app.clone());
         probe_encoders(&cmd)
@@ -363,7 +314,7 @@ pub async fn start_recording(
         probe.preferred
     );
 
-    // Allocate session + output path.
+    // Allocate session and output path.
     let session_id = Uuid::new_v4().to_string();
     let project = PathBuf::from(&args.project_folder);
     let exports_dir = project.join("exports");
@@ -378,8 +329,6 @@ pub async fn start_recording(
     let output_path = exports_dir.join(format!("{session_id}.mp4"));
 
     // Start capture pipeline.
-    // Plan 06-02 — include_cursor flows from the per-recording toggle;
-    // absent/None defaults to true (Phase 5 D-06 behavior preserved).
     let cap_cfg = CaptureConfig {
         target: capture_target,
         include_cursor: args.include_cursor.unwrap_or(true),
@@ -412,15 +361,7 @@ pub async fn start_recording(
         "capture pipeline started"
     );
 
-    // Phase 6 plan 01 — if the user opted into mic audio, build the
-    // named pipe BEFORE spawning FFmpeg so FFmpeg's -i <fifo> resolves
-    // on first access (Pitfall 8).
-    //
-    // Default sample config: 48 kHz F32LE; channels are 1 (mono) on
-    // input but FFmpeg downmixes to stereo AAC (see encoder/config.rs).
-    // The cpal stream will adopt the device's native rate; we pass what
-    // `list_inputs` reported OR fall back to 48 kHz and let FFmpeg's
-    // aresample handle mismatches.
+    // Create mic input before spawning FFmpeg.
     let audio_fifo: Option<FifoHandle> = if args.audio_device_id.is_some() {
         Some(make_fifo("storycapture-audio").map_err(|e| {
             tracing::error!(
@@ -467,20 +408,14 @@ pub async fn start_recording(
         output_path
     );
 
-    // Phase 6 plan 01 — after FFmpeg has opened the fifo for read, start
-    // the cpal capture + drain thread. Giving FFmpeg ~200ms to reach the
-    // "open input" stage lets the drain thread's OpenOptions::write call
-    // return immediately instead of blocking (Pitfall 8). If the wait
-    // is too short the drain thread just blocks until FFmpeg catches up
-    // — not fatal, just delayed startup.
+    // Let FFmpeg open the FIFO before starting capture.
     let app_for_audio_event = app.clone();
     let audio_stream: Option<AudioCaptureStream> = if let Some(f) = &audio_fifo {
         let fifo_path = f.path().to_path_buf();
         let device_id = args.audio_device_id.clone();
-        // Small delay so FFmpeg's input stage opens the fifo first.
+        // Small delay so FFmpeg can open the FIFO first.
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        // cpal work runs on a blocking thread — the Send bounds make
-        // this ergonomic despite cpal::Stream not being Sync.
+        // cpal work runs on a blocking thread.
         match tokio::task::spawn_blocking(move || {
             AudioCaptureStream::start(device_id.as_deref(), fifo_path)
         })
@@ -493,10 +428,7 @@ pub async fn start_recording(
                     channels = info.channels,
                     "mic audio capture started"
                 );
-                // Phase 6 plan 01 Task 6 — poll the cpal err_cb flag
-                // every 500 ms; on flip, emit `audio://disconnected` so
-                // the renderer can toast a non-fatal warning. Video
-                // pipeline is untouched (cf. D-01 graceful degradation).
+                // Poll for a mic disconnect and emit a warning event.
                 let flag = stream.degraded_flag();
                 tokio::spawn(async move {
                     let mut ticker =
@@ -519,8 +451,7 @@ pub async fn start_recording(
                 Some(stream)
             }
             Ok(Err(e)) => {
-                // Non-fatal — fall through to video-only. The UI will
-                // see `audio_device_id` was set but no MP4 audio track.
+                // Fall through to video-only.
                 tracing::warn!(
                     target: "storycapture::recording",
                     error = %e,
@@ -581,11 +512,7 @@ pub async fn stop_recording(
             AppError::NotFound(format!("recording session {}", session.0))
         })?;
 
-    // Phase 6 plan 01 — drop the AudioCaptureStream FIRST so the fifo
-    // reaches EOF while FFmpeg is still consuming. If we wait until
-    // after encode_join starts awaiting child exit, the audio tail gets
-    // clipped (FFmpeg's -shortest would truncate at the video end
-    // instead of letting the mic flush its ringbuf).
+    // Drop the audio stream before waiting on the encoder.
     if let Some(audio) = handle.audio_stream {
         tracing::info!(target: "storycapture::recording", "stop_recording: dropping audio stream to flush tail");
         drop(audio);

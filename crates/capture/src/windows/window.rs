@@ -1,44 +1,11 @@
-//! Window enumeration + pid→HWND resolution (Plan 05-03, Task 2).
+//! Window enumeration and pid-to-HWND resolution.
 //!
-//! On Windows we use `windows_capture::window::Window::enumerate()` as the
-//! primary enumeration path — it already filters to visible, non-tool,
-//! non-child, non-self windows via `Window::is_valid()`. For the Playwright
-//! auto-follow path (`find_window_by_pid`), Chromium's process model
-//! (browser parent + sandboxed renderer children) means the top-level HWND
-//! may be owned by either the browser PID or a child PID. We use a
-//! ToolHelp snapshot to walk the child-pid set when the primary filter
-//! finds no match.
-//!
-//! Threat boundaries:
-//!
-//! - T-05-03-01: `CaptureTarget::Window { window_id }` must be validated
-//!   against the most recent `list_windows()` result at the IPC layer.
-//!   The allow-list lives in `commands::capture::window_allow_list`.
-//! - T-05-03-02: Window titles are PII-sensitive. Log at TRACE only.
-//! - T-05-03-03: `ProcessIdToSessionId` + current-session filter prevents
-//!   cross-session window capture on multi-user Windows hosts.
-//! - T-05-03-07: Chromium child-walk verifies process name matches
-//!   chrome.exe / msedge.exe / chromium.exe to avoid matching an
-//!   unrelated browser-child helper as the capture target.
+//! Titles are PII-sensitive, so log them at TRACE only.
 
 use crate::error::CaptureError;
 pub use crate::window::WindowInfo;
 
-/// Enumerate every capturable top-level window.
-///
-/// Filters applied by `windows_capture::window::Window::is_valid` (in the
-/// `enumerate` callback):
-///   - `IsWindowVisible(hwnd)` — excludes hidden windows
-///   - `pid != GetCurrentProcessId()` — excludes self
-///   - Not WS_EX_TOOLWINDOW (no tray/popup chrome)
-///   - Not WS_CHILD (no sub-windows)
-///
-/// Additional filters we apply on top:
-///   - Title OR process_name must be present (noise filter — matches the
-///     macOS `window_layer == 0 + owning_application.is_some()` intent).
-///   - Owner process must be in the current session (T-05-03-03).
-///
-/// Call from `spawn_blocking` — `EnumChildWindows` is synchronous.
+/// Enumerate capturable top-level windows.
 #[cfg(target_os = "windows")]
 pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
     use windows_capture::window::Window;
@@ -59,8 +26,7 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
         if pid == self_pid {
             continue;
         }
-        // Cross-session filter (T-05-03-03). If we can't resolve the
-        // session for a target, we conservatively skip it.
+        // Skip cross-session windows when session IDs are available.
         if let (Some(ours), Some(theirs)) = (self_session, pid_to_session(pid_u32)) {
             if ours != theirs {
                 continue;
@@ -68,8 +34,7 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
         }
         let title = w.title().ok();
         let process_name = w.process_name().unwrap_or_default();
-        // Noise filter: window must have either a title OR a process name
-        // we can show (most windows satisfy both).
+        // Require a title or process name.
         if title.as_deref().unwrap_or("").is_empty() && process_name.is_empty() {
             continue;
         }
@@ -78,7 +43,7 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
             Err(_) => continue,
         };
         let hwnd = w.as_raw_hwnd();
-        // TRACE-only title logging per T-05-03-02.
+        // TRACE only: titles may contain PII.
         tracing::trace!(
             hwnd = ?hwnd,
             pid,
@@ -102,30 +67,14 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
     Ok(out)
 }
 
-/// Resolve `pid` to a top-level HWND. Retries up to 10×100ms to handle the
-/// case where the browser's first top-level window hasn't materialized
-/// yet (Chromium startup race).
-///
-/// If multiple windows match, returns the largest-area one (parity with
-/// the macOS tiebreaker).
-///
-/// Chromium parent/child model: the pid we get from Playwright is the
-/// browser process; the top-level window's owning pid may be a *child*
-/// process (sandboxed renderer). When the direct filter fails, we walk
-/// child processes via ToolHelp and retry with the child-pid set. To
-/// avoid matching an unrelated helper, we require the child process name
-/// to match `chrome.exe` / `msedge.exe` / `chromium.exe` (T-05-03-07).
-///
-/// Returns the raw HWND as `isize` (packed into `WindowId(u64)` at the
-/// caller).
+/// Resolve `pid` to the best matching HWND.
 #[cfg(target_os = "windows")]
 pub async fn find_window_by_pid(
     pid: i32,
     title_hint: Option<&str>,
 ) -> Result<Option<isize>, CaptureError> {
     use tokio::time::{sleep, Duration};
-    // Allow the operator-triggered real-capture test to override the retry
-    // budget via env; keeps the 1s budget realistic under load.
+    // Allow the retry budget to be overridden in tests.
     let max_attempts: u32 = std::env::var("STORYCAPTURE_WGC_PID_RETRIES")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -138,7 +87,7 @@ pub async fn find_window_by_pid(
             sleep(Duration::from_millis(100)).await;
         }
     }
-    // Last-resort: child-process walk for Chromium browsers.
+    // Last resort: walk Chromium child processes.
     let children = chromium_child_pids(pid)?;
     if children.is_empty() {
         return Ok(None);
@@ -146,7 +95,7 @@ pub async fn find_window_by_pid(
     tracing::debug!(
         parent_pid = pid,
         child_count = children.len(),
-        "find_window_by_pid: falling back to Chromium child-pid walk"
+                "find_window_by_pid: falling back to Chromium child-pid walk"
     );
     for child_pid in children {
         if let Some(hwnd) = try_find_window_by_pid(child_pid as i32, title_hint)? {
@@ -202,9 +151,7 @@ fn try_find_window_by_pid(
     Ok(best.map(|(hwnd, _)| hwnd))
 }
 
-/// Snapshot `CreateToolhelp32Snapshot` + walk `Process32First/Next` to
-/// collect child PIDs of `parent_pid` whose process name matches a
-/// Chromium-family executable (T-05-03-07).
+/// Collect Chromium-family child PIDs for a parent process.
 #[cfg(target_os = "windows")]
 fn chromium_child_pids(parent_pid: i32) -> Result<Vec<u32>, CaptureError> {
     use windows::Win32::System::Diagnostics::ToolHelp::{
@@ -251,13 +198,7 @@ fn current_session_id() -> Option<u32> {
     pid_to_session(std::process::id())
 }
 
-/// Resolve a process's Terminal Services session ID. Used to filter
-/// out cross-session windows (T-05-03-03).
-///
-/// In windows-0.58, `ProcessIdToSessionId` is exposed via
-/// `Win32::System::RemoteDesktop` (kernel32 forwards it). We call
-/// through the FFI directly to sidestep cross-feature-flag drift —
-/// `kernel32!ProcessIdToSessionId` has been stable since Win2000.
+/// Resolve a process's Terminal Services session ID.
 #[cfg(target_os = "windows")]
 fn pid_to_session(pid: u32) -> Option<u32> {
     // SAFETY: The signature is `BOOL ProcessIdToSessionId(DWORD, DWORD*)`

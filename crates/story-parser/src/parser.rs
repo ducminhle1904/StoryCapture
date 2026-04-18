@@ -1,10 +1,4 @@
-//! pest-derived parser + public `parse` entrypoint.
-//!
-//! Pipeline:
-//! 1. Try `StoryParser::parse(Rule::file, source)`
-//! 2. On Ok → walk pairs into [`crate::lenient_tokenize`]
-//! 3. On Err → fall back to [`crate::recover::recover_from_pest_error`]
-//! 4. Pass tokens into [`crate::semantic::validate`] → `(Story, Vec<Diagnostic>)`
+//! Public parser entrypoint backed by pest, recovery, and semantic validation.
 
 use pest_derive::Parser;
 use serde::{Deserialize, Serialize};
@@ -16,10 +10,9 @@ use crate::diagnostic::Diagnostic;
 #[grammar = "grammar.pest"]
 pub struct StoryParser;
 
-/// Result of parsing a `.story` source string.
+/// Result of parsing `.story` source.
 ///
-/// `ast` is `Some` even when `diagnostics` is non-empty (best-effort AST,
-/// per DSL-06 panic-mode recovery).
+/// `ast` may still be present when diagnostics were recovered.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -31,13 +24,11 @@ pub struct ParseResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-/// Parse a `.story` source string. Never panics on any byte sequence
-/// (T-04-04 mitigation: input must already be valid UTF-8 — caller
-/// responsibility, see [`crate::io`]).
+/// Parse `.story` source without panicking on valid UTF-8 input.
 pub fn parse(source: &str) -> ParseResult {
     use pest::Parser as _;
 
-    // Empty input is valid: no story block.
+    // Empty input is valid.
     if source.trim().is_empty() {
         return ParseResult { ast: Some(Story::default()), diagnostics: vec![] };
     }
@@ -50,7 +41,7 @@ pub fn parse(source: &str) -> ParseResult {
             ParseResult { ast: Some(story), diagnostics }
         }
         Err(err) => {
-            // pest hit something it cannot tolerate. Try line-based recovery.
+            // Fall back to line-based recovery when pest stops early.
             let (tokens, mut diagnostics) =
                 crate::recover::recover_from_pest_error(source, &err);
             let (story, more) = crate::semantic::validate(tokens, source);

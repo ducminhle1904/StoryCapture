@@ -1,10 +1,7 @@
 /**
- * WebGL2 backend for the PreviewEngine (stub).
+ * Stub WebGL2 fallback for the preview engine.
  *
- * Fallback path used when navigator.gpu is missing or adapter request fails
- * (Pitfall #4). The <video> element is uploaded per-tick via texImage2D; this
- * is slower than the zero-copy GPUExternalTexture path but universal across
- * hardware. Ripples are packed into uniform arrays (MAX_RIPPLES = 32).
+ * Uploads the current video frame each tick and draws it through the compositor shader.
  */
 import type { PreviewRenderPlan } from "./types";
 import { loadGlsl } from "../shaders/loader";
@@ -25,9 +22,7 @@ export class WebGL2Backend {
   private cursorTexture: WebGLTexture | null = null;
   private uniformLocations: Record<string, WebGLUniformLocation | null> = {};
   private disposed = false;
-  // Tracks whether the video-frame texture storage has been allocated.
-  // First upload uses `texImage2D` (allocates + uploads); subsequent same-
-  // size uploads use `texSubImage2D` (upload-only, no realloc).
+  // First upload allocates storage; later same-size uploads reuse it.
   private videoTextureAllocated = false;
   private videoTextureWidth = 0;
   private videoTextureHeight = 0;
@@ -135,10 +130,7 @@ export class WebGL2Backend {
     if (!videoReady) return;
 
     gl.useProgram(this.program);
-    // Upload <video> frame into u_video_frame. First frame (or any
-    // resolution change) allocates storage via texImage2D; subsequent
-    // frames at the same size reuse storage via texSubImage2D, which
-    // avoids per-frame GPU reallocation (Pitfall #4 perf).
+    // Reallocate only when the video size changes.
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
     const video = this.config.videoElement;
@@ -191,11 +183,7 @@ export class WebGL2Backend {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
-  /**
-   * Handle a canvas resize. WebGL2 needs the viewport re-set to match the
-   * new drawing-buffer dimensions; the <video> texture itself is resized
-   * lazily on the next upload when `videoWidth`/`videoHeight` change.
-   */
+  /** Update the viewport after a canvas resize. */
   resize(width: number, height: number): void {
     if (this.disposed) return;
     this.gl.viewport(0, 0, Math.max(1, width | 0), Math.max(1, height | 0));

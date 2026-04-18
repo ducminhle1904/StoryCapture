@@ -1,16 +1,14 @@
 //! AST types for the Story DSL.
 //!
-//! Every node carries a [`Span`] so diagnostics can point at exact source
-//! ranges. Types derive `serde` (Rust ↔ JSON) and, when the `ts-export`
-//! feature is enabled, `ts-rs` mirror types are emitted to
-//! `packages/story-dsl/src/ast.ts`.
+//! Every node carries a [`Span`]. With `ts-export`, `ts-rs` also mirrors these
+//! types to `packages/story-dsl/src/ast.ts`.
 
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ts-export")]
 use ts_rs::TS;
 
-/// Source span (byte offsets + 1-indexed line/col of `start`).
+/// Source span with byte offsets and the 1-indexed start position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -41,7 +39,7 @@ impl Span {
     }
 }
 
-// ---- Top level ----
+// Top-level nodes
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
@@ -106,7 +104,7 @@ pub struct Scene {
     pub span: Span,
 }
 
-// ---- Targets ----
+// Targets
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
@@ -143,7 +141,7 @@ pub enum ScrollDir {
     Right,
 }
 
-// ---- Commands ----
+// Commands
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
@@ -187,7 +185,7 @@ impl Command {
         }
     }
 
-    /// The verb keyword as it appears in source.
+    /// Verb string as written in source.
     pub fn verb(&self) -> &'static str {
         match self {
             Command::Navigate { .. } => "navigate",

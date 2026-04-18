@@ -1,11 +1,6 @@
-//! AST → FFmpeg `filter_complex` string. Single source of truth for the
-//! final export engine (D-01). Stable UUID-derived labels prevent
-//! Pitfall #1 (label collisions).
+//! AST to FFmpeg `filter_complex` string.
 //!
-//! Algorithm specifics (zoompan math, cursor overlay x/y expressions,
-//! per-ripple timing) are placeholders here — Phase 2 Plans 05–09 refine
-//! them. This emitter pins the **shape** of the output so those plans
-//! cannot silently reorder nodes.
+//! Stable labels keep the export graph deterministic.
 
 use std::fmt::Write;
 
@@ -16,31 +11,18 @@ use crate::ast::Graph;
 use crate::background::compositor::emit_background;
 use crate::text::{escape_drawtext_text, path_to_ffmpeg_arg};
 
-/// Axis selector for [`zoompan_expr`]. The zoompan filter wants three
-/// expressions: `z` (scale), `x` (x-offset), `y` (y-offset). We build them
-/// from the same keyframe list.
+/// Axis selector for [`zoompan_expr`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprAxis {
-    /// Scale (z). Emits `scale` values literally.
+    /// Scale.
     Z,
-    /// X axis. Converts scene-space center_x into zoompan x-offset using
-    /// `center_x - iw/(2*z)` so `center_x` lands in the center of the output.
+    /// X axis.
     X,
-    /// Y axis. Same conversion for center_y.
+    /// Y axis.
     Y,
 }
 
-/// Build a zoompan expression for `axis` from a keyframe list.
-///
-/// Output is a nested `if(lt(t, t1), v0, if(lt(t, t2), v0+(v1-v0)*(t-t1)/(t2-t1), ...))`
-/// ladder suitable for passing directly to FFmpeg's zoompan filter.
-///
-/// - Empty keyframes → constant `1.0` for Z, `0` for X/Y (degenerate).
-/// - Single keyframe → constant equal to that keyframe's value.
-/// - Times are emitted in seconds (keyframe `t_ms / 1000`).
-///
-/// The X / Y expressions reference `iw` / `ih` to convert scene-space
-/// coordinates into zoompan's top-left offsets.
+/// Build a zoompan expression from keyframes.
 pub fn zoompan_expr(keyframes: &[ZoomKeyframe], axis: ExprAxis) -> String {
     if keyframes.is_empty() {
         return match axis {
@@ -55,18 +37,16 @@ pub fn zoompan_expr(keyframes: &[ZoomKeyframe], axis: ExprAxis) -> String {
     }
 
     // Build the nested-if ladder from last to first.
-    // Base case: after the last keyframe, hold the final value.
     let mut expr = format_axis_value(*keyframes.last().unwrap(), axis);
 
-    // Walk pairs in reverse: (kN-1, kN), (kN-2, kN-1), ... (k0, k1).
+    // Walk pairs in reverse.
     for i in (0..keyframes.len() - 1).rev() {
         let k0 = keyframes[i];
         let k1 = keyframes[i + 1];
         let t_hi = (k1.t_ms as f64) / 1000.0;
         let v0 = format_axis_value(k0, axis);
         let v1 = format_axis_value(k1, axis);
-        // Linear interpolation v0 + (v1-v0)*(t - t0)/(t1 - t0). Since we
-        // chain from the outside, the current `expr` is the post-k1 tail.
+        // Linear interpolation between the two keyframes.
         let t_lo = (k0.t_ms as f64) / 1000.0;
         let dt = (t_hi - t_lo).max(1e-6);
         let segment = format!(
@@ -79,7 +59,7 @@ pub fn zoompan_expr(keyframes: &[ZoomKeyframe], axis: ExprAxis) -> String {
         expr = format!("if(lt(t,{t_hi:.6}),{segment},{expr})");
     }
 
-    // Before k0, hold the first value.
+    // Hold the first value before the initial keyframe.
     let first = format_axis_value(keyframes[0], axis);
     let t0 = (keyframes[0].t_ms as f64) / 1000.0;
     format!("if(lt(t,{t0:.6}),{first},{expr})")
@@ -104,12 +84,6 @@ impl FfmpegEmit {
 }
 
 /// Emit a deterministic FFmpeg `filter_complex` string from the AST.
-///
-/// Contract:
-///   - Video chain begins at `[0:v]`, audio chain begins at `[0:a]`.
-///   - Every intermediate output label is `node.id().stable_label("v"|"a")`.
-///   - Final video output is `[out_v]`, final audio output is `[out_a]`.
-///   - Output is byte-for-byte deterministic given a fixed Graph.
 pub fn emit_filter_complex(g: &Graph) -> String {
     let mut out = String::with_capacity(512);
     emit_video_chain(&mut out, g);
@@ -128,8 +102,7 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
     let w = g.output_width;
     let h = g.output_height;
 
-    // Running input label for the chain. Start with the container's first
-    // video stream; real source nodes can retarget it.
+    // Start with the container's first video stream.
     let mut cur: String = "[0:v]".to_string();
     let mut source_count: usize = 0;
     let mut first_node = true;
@@ -144,12 +117,10 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
 
         match node {
             VideoNode::Source { id, pts_offset_ms, .. } => {
-                // Retarget `cur` to the underlying stream input. For v1 we
-                // assume `[N:v]` indexing; multi-input muxing is Plan 11.
+                // Retarget to the underlying input stream.
                 let in_label = format!("[{}:v]", source_count);
                 source_count += 1;
-                // Emit a null filter that just renames the stream → stable label,
-                // with an optional PTS shift applied via `setpts`.
+                // Rename the stream and apply an optional PTS shift.
                 let pts = (*pts_offset_ms as f64) / 1000.0;
                 write!(
                     out,
@@ -163,9 +134,7 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
             VideoNode::ZoomPan { keyframes, .. } => {
-                // Plan 05: piecewise-linear interpolation across the keyframe
-                // list. The caller (plan_zoom) is responsible for applying
-                // spring low-pass + D-06 phase separation before we get here.
+                // Piecewise-linear interpolation across the keyframe list.
                 let z_expr = zoompan_expr(keyframes, ExprAxis::Z);
                 let x_expr = zoompan_expr(keyframes, ExprAxis::X);
                 let y_expr = zoompan_expr(keyframes, ExprAxis::Y);
@@ -186,34 +155,16 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
             VideoNode::Background { .. } => {
-                // Plan 07 (POST-04): delegate to the background compositor.
-                // The extra `-i` inputs produced by the compositor are
-                // surfaced via `collect_extra_inputs`; this emit path only
-                // produces the filter_complex fragment. `bg_input_index`
-                // equals the current `source_count` so the bg plate lands at
-                // the next available stream slot.
+                // Delegate to the background compositor.
                 let bge = emit_background(node, &cur, &out_label, g, source_count)
                     .expect("emit_background failed");
-                // Any gradient / image / lavfi source consumes exactly one
-                // extra input slot. Advance source_count accordingly so
-                // downstream Source nodes (Plan 11 multi-scene) pick up
-                // correct `[N:v]` indices.
+                // Advance the input index for any extra source streams.
                 source_count += bge.extra_inputs.len();
                 out.push_str(&bge.filter_chain);
                 cur = out_label;
             }
             VideoNode::CursorOverlay { trajectory, size_scale, .. } => {
-                // Plan 06 (POST-03): cursor trajectory + ripples are baked into
-                // a PNG sequence by `crates/effects::cursor::render_png_sequence`
-                // that the caller (Plan 11) feeds as a separate input via
-                // `-framerate {fps} -i {dir}/frame_%05d.png`. The compositor
-                // already positions the cursor at each frame's sample.pos, so
-                // the overlay sits at (0, 0).
-                //
-                // The `movie=` source here is the same sequence path; in the
-                // render pipeline the caller can either use this `movie=`
-                // demuxer OR wire a second input stream — both produce an
-                // image2 sequence that `overlay` consumes pixel-for-pixel.
+                // Cursor frames come from a PNG sequence input.
                 let cursor_src_label = format!("[{}_cursor]", node_label_core(node.id()));
                 write!(
                     out,
@@ -229,19 +180,13 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
             VideoNode::RippleOverlay { events, .. } => {
-                // Plan 06 (POST-03): ripples are baked into the CursorOverlay
-                // PNG sequence by `compose_frame`, so the RippleOverlay AST
-                // node degrades to a no-op passthrough in FFmpeg. We keep the
-                // node in the AST for PreviewRenderPlan parity — the WebGPU
-                // preview (Plan 12) consumes `PreviewRenderPlan.ripples`
-                // independently of the baked PNGs (D-01: preview + final
-                // share the same source data).
+                // Ripples are baked into the cursor sequence, so this is a passthrough.
                 let _ = events;
                 write!(out, "{cur}null{out_label}", cur = cur, out_label = out_label).unwrap();
                 cur = out_label;
             }
             VideoNode::TextOverlay { boxes, .. } => {
-                // One drawtext per TextBox, chained.
+                // One drawtext per TextBox.
                 if boxes.is_empty() {
                     write!(out, "{cur}null{out_label}", cur = cur, out_label = out_label).unwrap();
                 } else {

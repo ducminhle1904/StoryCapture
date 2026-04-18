@@ -1,18 +1,6 @@
-//! Windows.Graphics.Capture backend (`windows-capture = "=2.0.0"`).
+//! Windows.Graphics.Capture backend.
 //!
-//! Frame ownership: `windows_capture::frame::Frame::buffer()` returns a
-//! borrow tied to the arrived-frame callback's lifetime. Copy out via
-//! `FrameBuffer::as_nopadding_buffer(&mut Vec<u8>)` before yielding
-//! control — the buffer is invalidated once `on_frame_arrived` returns.
-//!
-//! Settings::new is arg-rich in 2.0 (no longer generic): we pass
-//! `CursorCaptureSettings`, `DrawBorderSettings` etc. explicitly. The
-//! `include_cursor` flag threads through `CursorCaptureSettings::Default
-//! {With,Without}Cursor`; do not conflate with the SCK `shows_cursor`
-//! config as they diverge on click-visual affordance.
-//!
-//! Crate renamed the handler trait (`CaptureHandler` → `GraphicsCapture
-//! ApiHandler`) between 1.x and 2.0; re-verify when bumping.
+//! Copy each frame buffer before the callback returns.
 
 #![cfg(target_os = "windows")]
 
@@ -48,62 +36,46 @@ pub struct WgcBackend {
     event_sink: Arc<Mutex<Option<mpsc::UnboundedSender<CaptureEvent>>>>,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
-    /// Shared BGRA scratch pool (backlog item #2 step A2). Lives on
-    /// the backend (not the handler) so late frame drops from the
-    /// encoder return their buffers here — even if the capture thread
-    /// has already stopped.
+    /// Shared BGRA scratch pool.
     frame_pool: FramePool,
 }
 
 struct WgcState {
     started_at: Option<Instant>,
     stats: CaptureStats,
-    /// Non-blocking `CaptureControl` returned by `start_free_threaded`. We
-    /// `.stop()` it on backend stop to post WM_QUIT and join the capture
-    /// thread. Wrapped in `Option` so we can take+consume it in `stop`.
+    /// `CaptureControl` returned by `start_free_threaded`.
     control: Option<
         windows_capture::capture::CaptureControl<WgcHandler, WgcHandlerError>,
     >,
 }
 
-/// User-defined handler passed to `GraphicsCaptureApiHandler::start_free_threaded`.
-/// Owns the outbound frame channel + epoch + counters. Constructed on the
-/// capture thread by the `new` impl — we ship dependencies through the
-/// flags tuple.
+/// Handler passed to `start_free_threaded`.
 struct WgcHandler {
     out: mpsc::Sender<Frame>,
     event_sink: Option<mpsc::UnboundedSender<CaptureEvent>>,
     start_epoch: Instant,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
-    /// Plan 06-02 — post-capture CPU crop rect (physical pixels). `None`
-    /// = full-frame pass-through (existing Phase 5 behavior).
-    /// `windows-capture = 2.0.0` has no native region/crop API (RESEARCH
-    /// Pitfall 5 + amendment to D-07), so we crop in `on_frame_arrived`.
+    /// Optional post-capture crop rect.
     crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
-    /// BGRA scratch pool (backlog item #2 step A2). Strong ref held by
-    /// the handler; each emitted `FrameData::Pooled` carries a `Weak`
-    /// so the buffer returns here on drop.
+    /// BGRA scratch pool.
     frame_pool: FramePool,
 }
 
-/// Per-session flags passed through `Settings::new(flags = ...)` into
-/// `GraphicsCaptureApiHandler::new(Context { flags, .. })`.
+/// Per-session flags passed into the handler.
 struct WgcFlags {
     out: mpsc::Sender<Frame>,
     event_sink: Option<mpsc::UnboundedSender<CaptureEvent>>,
     start_epoch: Instant,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
-    /// Plan 06-02 — optional crop rect (physical pixels).
+    /// Optional crop rect.
     crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
-    /// Shared BGRA scratch pool (backlog item #2 step A2).
+    /// Shared BGRA scratch pool.
     frame_pool: FramePool,
 }
 
-/// Handler-level error type. Only used to satisfy the trait bound; we never
-/// return Err from `on_frame_arrived` (we do best-effort try_send and bump a
-/// drop counter instead — Pitfall: never block or await in the handler).
+/// Handler error type required by the trait.
 #[derive(Debug)]
 pub struct WgcHandlerError(String);
 
@@ -145,8 +117,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
         frame: &mut WgcFrame,
         capture_control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
-        // NEVER block or await inside on_frame_arrived — this is the
-        // windows-capture delegate thread and backpressure becomes frame loss.
+        // Never block or await in the callback.
         let f = match frame_from_wgc::to_frame(frame, self.start_epoch, &self.frame_pool) {
             Ok(f) => f,
             Err(e) => {
@@ -155,21 +126,14 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 return Ok(());
             }
         };
-        // Plan 06-02 — apply post-capture CPU crop when a rect is set.
-        // `to_frame` always produces FrameData::Owned with stride=width*4
-        // (nopadding buffer), so the crop here is a tight row copy over
-        // contiguous BGRA. Bench gate <5ms @ 1080p is tracked in
-        // crates/capture/benches/windows_cpu_crop.rs.
+        // Apply crop after capture when a rect is set.
         let f = if let Some(rect) = self.crop_rect {
             use crate::frame::FrameData;
             let (src_bytes, src_stride) = match &f.data {
                 FrameData::Owned(v, stride) => (v.as_slice(), *stride),
                 FrameData::Pooled(b, stride) => (b.as_slice(), *stride),
                 _ => {
-                    // Native handle path would need a D3D11 readback;
-                    // to_frame currently returns Owned/Pooled so this
-                    // branch is defensive. Drop the frame if the variant
-                    // changes.
+                    // Defensive fallback if the frame variant changes.
                     self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
@@ -193,9 +157,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                     }
                 }
                 None => {
-                    // Rect overflowed source — treat as drop, do not
-                    // panic. (Validation at the IPC boundary should have
-                    // rejected this; defence-in-depth.)
+                    // Drop overflowed crops.
                     self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
@@ -218,9 +180,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
     }
 
     fn on_closed(&mut self) -> Result<(), Self::Error> {
-        // Target window/monitor disappeared — surface as BackendFailed so
-        // the orchestrator finalizes the partial MP4 (parity with macOS
-        // SCK on_stop → BackendFailed).
+        // Surface target closure as a backend failure.
         if let Some(tx) = &self.event_sink {
             let _ = tx.send(CaptureEvent::BackendFailed {
                 reason: "capture target closed (on_closed)".into(),
@@ -232,9 +192,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
 
 impl WgcBackend {
     pub fn new() -> Result<Self, CaptureError> {
-        // PITFALLS §7: per-monitor DPI awareness must be set BEFORE any
-        // HMONITOR / monitor-size query so the OS reports physical pixels.
-        // Failure is non-fatal (a host may have already set it).
+        // Set per-monitor DPI awareness before any monitor query.
         unsafe {
             use windows::Win32::UI::HiDpi::{
                 SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -254,19 +212,17 @@ impl WgcBackend {
         })
     }
 
-    /// Register a lifecycle-event sink before `start`. The sink receives
-    /// `CaptureEvent::BackendFailed` when WGC fires `on_closed` (window
-    /// disappeared, etc.). Wired by the orchestrator / Tauri host.
+    /// Register a lifecycle-event sink before `start()`.
     pub fn set_event_sink(&self, tx: mpsc::UnboundedSender<CaptureEvent>) {
         *self.event_sink.lock() = Some(tx);
     }
 
-    /// Number of frames dropped because the downstream channel was full.
+    /// Frames dropped because the downstream channel was full.
     pub fn dropped_frames(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
     }
 
-    /// Number of frames successfully delivered.
+    /// Frames successfully delivered.
     pub fn delivered_frames(&self) -> u64 {
         self.delivered.load(Ordering::Relaxed)
     }

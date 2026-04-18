@@ -1,20 +1,5 @@
 /**
- * PreviewEngine — WebGPU-primary / WebGL2-fallback compositor owner.
- *
- * Design decision D-33: the engine owns the GPU context lifecycle end-to-end.
- * React components (wired in Plan 02-12) call `init()` in a useEffect and
- * `dispose()` in its cleanup; the engine survives webview reloads because it
- * re-initialises on mount. Consumers never need to know which backend is
- * active — `backend` getter exposes it only for telemetry/DevTools.
- *
- * PreviewRenderPlan field consumption map:
- *   output_width / output_height -> FrameUniforms.output_size
- *   fps                           -> host-side scheduling (not read here)
- *   zoom_matrices                 -> FrameUniforms.zoom (Plan 05 interpolates)
- *   cursor_atlas_ref              -> FrameUniforms.has_cursor + cursor atlas (Plan 06)
- *   ripples                       -> RippleGpu storage / uniform arrays (Plan 09)
- *   text_boxes                    -> drawtext in final emit (Plan 07) — NOT read here
- *   background                    -> BackgroundUniforms (Plan 11)
+ * PreviewEngine owns the compositor backend lifecycle.
  */
 import { initPreviewContext, type PreviewBackend, type PreviewCtx } from "./gpu";
 import type { PreviewRenderPlan } from "./types";
@@ -63,11 +48,7 @@ export class PreviewEngine {
     this.backendImpl.renderFrame(t_ms, plan);
   }
 
-  /**
-   * Propagate a canvas resize to the active backend. Called by the host
-   * hook (`usePreview`) on `ResizeObserver` ticks. Safe to call before
-   * `init()` resolves — becomes a no-op.
-   */
+  /** Propagate a canvas resize to the active backend. */
   resize(width: number, height: number): void {
     this.backendImpl?.resize(width, height);
   }

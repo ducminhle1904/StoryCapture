@@ -1,27 +1,7 @@
-//! End-to-end Playwright → pid → SCWindow → MP4 smoke binary (Plan 05-02 Task 4).
+//! Smoke test for Playwright pid -> window resolution -> ScreenCaptureKit capture.
 //!
-//! Workflow:
-//!   1. Spawn `node scripts/playwright-sidecar/server.mjs` with piped stdio.
-//!   2. Wrap it in `PlaywrightSidecarDriver`, call `launch()`, then `goto()`
-//!      to about:blank.
-//!   3. Call `driver.browser_process()` to get the Chromium pid.
-//!   4. Call `capture::macos::window::find_window_by_pid(pid, Some("Chromium"))`
-//!      to resolve to an SCWindow.
-//!   5. Start an `SckBackend` against `CaptureTarget::WindowByPid { pid,
-//!      title_hint: Some("Chromium") }`; collect 5s of frames into an
-//!      mpsc.
-//!   6. When `ffmpeg` is on PATH, pipe the BGRA frames through it and
-//!      assert the produced MP4 duration via `ffprobe`. When it isn't,
-//!      fall back to asserting ≥150 frames delivered (5s × 30fps).
-//!
-//! Preconditions:
-//!   - macOS host with Screen Recording granted for the calling terminal.
-//!   - `pnpm install` ran under `scripts/playwright-sidecar/`.
-//!   - `playwright install chromium` ran at least once.
-//!
-//! Usage: `cargo run -p e2e-playwright-capture`
-//!
-//! Exits 0 on success, 1 on any failure (with a structured error line).
+//! Launches the Playwright sidecar, opens a visible Chromium window, captures
+//! about five seconds from that window, and asserts the frame stream looks sane.
 
 use anyhow::{anyhow, Context, Result};
 use automation::{BrowserDriver, LaunchConfig, PlaywrightSidecarDriver};
@@ -49,7 +29,7 @@ async fn main() -> Result<()> {
     let start = Instant::now();
     tracing::info!("e2e-playwright-capture: start");
 
-    // 1. Spawn sidecar
+    // Spawn sidecar.
     let sidecar_script = workspace_root()?.join("scripts/playwright-sidecar/server.mjs");
     if !sidecar_script.exists() {
         return Err(anyhow!(
@@ -69,13 +49,13 @@ async fn main() -> Result<()> {
     let mut driver = PlaywrightSidecarDriver::from_child(child)
         .map_err(|e| anyhow!("wrap sidecar: {e}"))?;
 
-    // 2. Launch
+    // Launch visible Chromium.
     let cfg = LaunchConfig {
         url: None,
         viewport: story_parser::Viewport { width: 1280, height: 800 },
         theme: story_parser::Theme::Auto,
         base_url: None,
-        headless: false, // window must be on-screen for SCK to capture it
+        headless: false, // SCK only captures visible windows.
         download_dir: PathBuf::from("/tmp"),
         executable: None,
         args: Vec::new(),
@@ -90,7 +70,7 @@ async fn main() -> Result<()> {
         .map_err(|e| anyhow!("goto about:blank: {e}"))?;
     tracing::info!(elapsed = ?start.elapsed(), "sidecar launched + navigated");
 
-    // 3. Resolve pid
+    // Resolve browser pid.
     let info = driver
         .browser_process()
         .await
@@ -100,11 +80,7 @@ async fn main() -> Result<()> {
         .ok_or_else(|| anyhow!("sidecar returned null pid (remote-browser? reason={:?})", info.reason))?;
     tracing::info!(pid, "Playwright Chromium pid resolved");
 
-    // 4. Resolve SCWindow (via SckBackend::start's internal retry).
-    //    We DON'T call find_window_by_pid directly here — the backend's
-    //    build_filter does the retry; we just sanity-check with a
-    //    one-shot call. Failure of the one-shot does NOT block — the
-    //    backend retry is the authoritative path.
+    // Best-effort window lookup; backend start still does the real retry loop.
     #[cfg(target_os = "macos")]
     {
         match capture::macos::window::find_window_by_pid(pid, Some("Chromium")).await {
@@ -120,7 +96,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // 5. Start SckBackend against CaptureTarget::WindowByPid
+    // Capture ~5s from the Playwright window.
     #[cfg(target_os = "macos")]
     {
         let mut backend = SckBackend::new().map_err(|e| anyhow!("SckBackend::new: {e}"))?;
@@ -155,7 +131,7 @@ async fn main() -> Result<()> {
                 }
                 Ok(None) => break,
                 Err(_) => {
-                    // 500ms without a frame; tolerate up to the overall deadline
+                    // Allow brief gaps until the overall deadline.
                     continue;
                 }
             }
@@ -171,10 +147,7 @@ async fn main() -> Result<()> {
             "capture complete"
         );
 
-        // Acceptance — the plan asks for a valid MP4 but also gives us a
-        // frame-count proxy. We treat ≥120 frames (~4s × 30fps) as
-        // success for the smoke test; a dedicated encode harness is a
-        // follow-up (not in scope for the pid→window bridge).
+        // Treat frame count as the smoke-test signal.
         const MIN_FRAMES: u64 = 120;
         if frame_count < MIN_FRAMES {
             return Err(anyhow!(
@@ -188,15 +161,14 @@ async fn main() -> Result<()> {
         }
     }
 
-    // 6. Close Playwright.
+    // Close Playwright.
     let _ = driver.close().await;
     tracing::info!(total = ?start.elapsed(), "e2e-playwright-capture: SUCCESS");
     Ok(())
 }
 
 fn workspace_root() -> Result<PathBuf> {
-    // CARGO_MANIFEST_DIR at compile time points at this crate; walk up to
-    // the workspace root (2 levels: tools/e2e-playwright-capture → tools → root).
+    // Walk up from tools/e2e-playwright-capture to the repo root.
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let root = manifest
         .parent()

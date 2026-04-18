@@ -1,11 +1,4 @@
-/**
- * Post-Production route (Plan 02-12b).
- *
- * Thin wrapper that pulls `storyId` from the URL and hands it to the
- * editor shell. Real source-video resolution will flow from a future
- * `project_get_recording_path` IPC; for now the shell falls back to a
- * poster when videoSrc is undefined.
- */
+/** Route wrapper that passes `storyId` from the URL into `EditorShell`. */
 
 import { useParams } from "react-router-dom";
 

@@ -1,16 +1,8 @@
 /// <reference types="@webgpu/types" />
 /**
- * WebGPU backend for the PreviewEngine (stub).
+ * Stub WebGPU backend for the preview engine.
  *
- * Owns the render pipeline, bind group layout, uniform buffer, ripple storage
- * buffer, sampler, and cursor atlas texture. Each renderFrame() tick:
- *   1. Imports the current VideoFrame as a GPUExternalTexture (zero-copy).
- *   2. Updates the FrameUniforms (zoom matrix, time, ripple count) and the
- *      ripple storage buffer from the incoming PreviewRenderPlan.
- *   3. Issues a single fullscreen draw.
- *
- * This plan only wires the plumbing — actual per-feature uniform math (zoom
- * easing, cursor atlas sampling, text overlays) lands in Plans 05–10.
+ * Imports the current video frame, updates uniforms, and issues one fullscreen draw.
  */
 import type { PreviewRenderPlan } from "./types";
 import { loadWgsl } from "../shaders/loader";
@@ -23,18 +15,18 @@ export interface WebGPUBackendConfig {
 }
 
 const MAX_RIPPLES = 32;
-// FrameUniforms layout (std140-ish, WGSL std rules):
+// FrameUniforms layout:
 //   mat3x3<f32> zoom        -> 48 bytes (3 x vec3 padded to vec4)
 //   vec2<f32>  output_size  ->  8
 //   f32        time_ms      ->  4
 //   u32        has_cursor   ->  4
 //   u32        ripple_n     ->  4
 //   u32[3]     _pad         -> 12
-// Total -> 80 bytes. Round up to 256-byte alignment for uniform buffer.
+// Total = 80 bytes, rounded up to 256 for uniform-buffer alignment.
 const FRAME_UNIFORM_BYTES = 256;
-// BackgroundUniforms: 2 x vec4 + u32 + pad = 48 bytes -> 256 aligned.
+// Background uniforms also round up to 256 bytes.
 const BG_UNIFORM_BYTES = 256;
-// RippleGpu stride: vec2 + 4x f32 + vec4 = 40 bytes, WGSL rounds to 48.
+// RippleGpu stride rounds to 48 bytes.
 const RIPPLE_STRIDE = 48;
 
 export class WebGPUBackend {
@@ -43,14 +35,11 @@ export class WebGPUBackend {
   private frameUbo: GPUBuffer | null = null;
   private bgUbo: GPUBuffer | null = null;
   private rippleSsbo: GPUBuffer | null = null;
-  // Sampler + cursor atlas held here for Plans 06 (cursor) + 09 (ripples) to
-  // bind at draw time; intentionally unread in this bootstrap plan.
+  // Retained for future cursor and ripple passes.
   private sampler: GPUSampler | null = null;
   private cursorAtlas: GPUTexture | null = null;
   private disposed = false;
-  // Pre-allocated typed-array views over a single ArrayBuffer reused every
-  // frame. `queue.writeBuffer` copies the bytes out, so reuse is safe.
-  // Allocated in `init()`.
+  // Reused scratch views for zero-allocation uniform updates.
   private frameUniformF32: Float32Array | null = null;
   private frameUniformU32: Uint32Array | null = null;
 
@@ -67,8 +56,7 @@ export class WebGPUBackend {
       code: loadWgsl(),
     });
 
-    // GPUShaderStage.FRAGMENT = 0x2. Hard-coded so the module loads under
-    // test runners (happy-dom) that don't inject the WebGPU globals.
+    // Hard-code `GPUShaderStage.FRAGMENT` for test environments without WebGPU globals.
     const FRAGMENT = 0x2;
     this.bindGroupLayout = this.device.createBindGroupLayout({
       label: "compositor.bgl",
@@ -96,8 +84,7 @@ export class WebGPUBackend {
       primitive: { topology: "triangle-list" },
     });
 
-    // GPUBufferUsage flags — hard-coded for test-runner portability:
-    //   UNIFORM=0x40, STORAGE=0x80, COPY_DST=0x8
+    // Hard-code buffer flags for test-runner portability.
     const BUF_UNIFORM = 0x40;
     const BUF_STORAGE = 0x80;
     const BUF_COPY_DST = 0x8;
@@ -122,10 +109,10 @@ export class WebGPUBackend {
       addressModeU: "clamp-to-edge",
       addressModeV: "clamp-to-edge",
     });
-    // GPUTextureUsage: TEXTURE_BINDING=0x4, COPY_DST=0x1
+    // Hard-code texture flags for test-runner portability.
     const TEX_BINDING = 0x4;
     const TEX_COPY_DST = 0x1;
-    // Placeholder 1x1 cursor atlas — Plan 06 replaces with PNG sequence atlas.
+    // Placeholder 1x1 cursor atlas.
     this.cursorAtlas = this.device.createTexture({
       label: "cursor.atlas.stub",
       size: { width: 1, height: 1 },
@@ -133,10 +120,7 @@ export class WebGPUBackend {
       usage: TEX_BINDING | TEX_COPY_DST,
     });
 
-    // Pre-allocate the frame-uniform scratch buffer once. Both typed views
-    // share the same ArrayBuffer so we can stamp f32 + u32 fields without
-    // aliasing costs. `buildFrameUniforms` overwrites all slots it uses on
-    // every tick, so no zero-fill is required between frames.
+    // Share one scratch buffer between f32 and u32 views.
     const scratch = new ArrayBuffer(FRAME_UNIFORM_BYTES);
     this.frameUniformF32 = new Float32Array(scratch);
     this.frameUniformU32 = new Uint32Array(scratch);
@@ -145,8 +129,7 @@ export class WebGPUBackend {
   renderFrame(t_ms: number, plan: PreviewRenderPlan): void {
     if (this.disposed) return;
     if (!this.pipeline || !this.bindGroupLayout) return;
-    // Stub render path: import video frame if available, build uniforms, draw.
-    // Plans 05–10 fill in the per-feature logic.
+    // Minimal render path: video frame in, fullscreen draw out.
     const videoReady =
       this.config.videoElement.readyState >= 2 &&
       !this.config.videoElement.paused;
@@ -160,43 +143,33 @@ export class WebGPUBackend {
       frameData.byteOffset,
       frameData.byteLength,
     );
-    // Background + ripple buffer writes elided in stub; Plans 09/11 wire.
+    // Background and ripple writes are still stubbed.
   }
 
   private buildFrameUniforms(
     t_ms: number,
     plan: PreviewRenderPlan,
   ): Float32Array {
-    // Reuse the pre-allocated scratch buffer — zero-alloc hot path.
+    // Reuse the scratch buffer on the hot path.
     const buf = this.frameUniformF32!;
     const u32 = this.frameUniformU32!;
-    // Identity zoom in 3x4 column-major with vec3 -> vec4 padding.
-    // col0
+    // Identity zoom matrix in padded column-major form.
     buf[0] = 1; buf[1] = 0; buf[2] = 0; buf[3] = 0;
-    // col1
     buf[4] = 0; buf[5] = 1; buf[6] = 0; buf[7] = 0;
-    // col2
     buf[8] = 0; buf[9] = 0; buf[10] = 1; buf[11] = 0;
     buf[12] = plan.output_width;
     buf[13] = plan.output_height;
     buf[14] = t_ms;
-    // has_cursor as u32 aliased over the same ArrayBuffer.
+    // `has_cursor` shares the same backing buffer via a u32 view.
     u32[15] = plan.cursor_atlas_ref ? 1 : 0;
     u32[16] = Math.min(plan.ripples.length, MAX_RIPPLES);
     return buf;
   }
 
-  /**
-   * Handle a canvas resize. WebGPU swapchain textures are sized to the
-   * canvas's `width`/`height` attributes; after they change we must
-   * re-configure the context so the next frame draws at the new size.
-   * `queue.writeBuffer` uniforms already carry `plan.output_width/height`
-   * independently, so no buffer resize is needed here.
-   */
+  /** Reconfigure the canvas context after the backing size changes. */
   resize(_width: number, _height: number): void {
     if (this.disposed) return;
-    // `context.configure` is idempotent; re-running it rebinds the
-    // swapchain to the canvas's current backing size.
+    // Safe to rerun after a canvas resize.
     this.context.configure({
       device: this.device,
       format: this.format,
@@ -220,7 +193,7 @@ export class WebGPUBackend {
     this.sampler = null;
     this.frameUniformF32 = null;
     this.frameUniformU32 = null;
-    // `context` is retained for future re-configure (e.g. size change); mark read.
+    // Keep `context` alive for future resize reconfiguration.
     void this.context;
   }
 }

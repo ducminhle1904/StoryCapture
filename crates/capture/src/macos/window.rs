@@ -1,11 +1,7 @@
-//! Window enumeration via `SCShareableContent` (Plan 05-01).
+//! Window enumeration via `SCShareableContent`.
 //!
-//! `list_windows()` returns every on-screen, layer-0 window whose owning
-//! application is NOT this process. The UI picker feeds off this list.
-//!
-//! Threat: window titles may contain PII (bank URLs, medical apps). Titles
-//! are logged ONLY at TRACE level (T-05-01-02). Do not `info!` or `warn!`
-//! them.
+//! `list_windows()` returns on-screen, layer-0 windows not owned by this
+//! process. Titles may contain PII, so log them at TRACE only.
 
 use crate::error::CaptureError;
 pub use crate::window::WindowInfo;
@@ -13,17 +9,10 @@ pub use crate::window::WindowInfo;
 #[cfg(target_os = "macos")]
 use screencapturekit::shareable_content::SCShareableContent;
 
-/// Enumerate every capturable on-screen window.
+/// List capturable on-screen windows.
 ///
-/// Filters:
-///   - `is_on_screen()` — excludes minimized / hidden windows.
-///   - `window_layer() == 0` — excludes menubar, dock, system chrome.
-///   - `owning_application().is_some()` — excludes orphaned window records.
-///   - `pid != std::process::id()` — excludes StoryCapture's own windows
-///     (threat T-05-01-02: self-capture recursion / PII in our UI).
-///
-/// Call from a tokio `spawn_blocking` scope — `SCShareableContent::get`
-/// is synchronous and blocks 50–200ms on WindowServer (Pitfall 7).
+/// Excludes hidden, system, orphaned, and self-owned windows. Call from
+/// `spawn_blocking` because `SCShareableContent::get()` is synchronous.
 #[cfg(target_os = "macos")]
 pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
     let content = SCShareableContent::get()
@@ -47,7 +36,7 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
             continue;
         }
         let frame = w.frame();
-        // TRACE-only title logging per T-05-01-02.
+        // TRACE only: titles may contain PII.
         tracing::trace!(
             window_id = w.window_id(),
             pid,
@@ -71,8 +60,7 @@ pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
     Ok(out)
 }
 
-/// Look up an `SCWindow` by its window_id. Used only within the macOS
-/// backend crate — keeps the `screencapturekit` ABI off the public API.
+/// Resolve an `SCWindow` by id without exposing SCK types publicly.
 #[cfg(target_os = "macos")]
 pub(crate) fn resolve_sc_window_by_id(
     target: crate::target::WindowId,
@@ -85,24 +73,10 @@ pub(crate) fn resolve_sc_window_by_id(
     Ok(content.windows().into_iter().find(|w| w.window_id() == target_id_u32))
 }
 
-/// Plan 05-02 — resolve a pid + optional title hint to the best on-screen
-/// SCWindow. Retries up to 10×100ms (~1s total) to tolerate the Chromium
-/// launch→WindowServer-register race (A1, RESEARCH.md Pitfall 4).
+/// Resolve the best on-screen window for a pid and optional title hint.
 ///
-/// Filters (per RESEARCH.md Example 2):
-///   - `is_on_screen() && window_layer() == 0`
-///   - `owning_application().process_id() == pid`
-///   - When `title_hint` is `Some`, keep only windows whose title contains
-///     it (case-insensitive; handles Chromium ↔ Chrome variants).
-///
-/// When multiple windows pass the filter, the largest-area window wins.
-/// Chromium's main document window is always larger than its popup /
-/// helper windows; this rule degrades cleanly for Open Question 3 (popup
-/// follow is out of scope for MVP).
-///
-/// This function calls `SCShareableContent::get()` which is synchronous
-/// and can block 50–200ms on WindowServer. Callers MUST wrap in
-/// `spawn_blocking` or use the async version below.
+/// Matches visible layer-0 windows for the process, then prefers the largest
+/// candidate to avoid popups. Call from `spawn_blocking` or use the async wrapper.
 #[cfg(target_os = "macos")]
 pub(crate) fn resolve_sc_window_by_pid_sync(
     pid: i32,
@@ -143,7 +117,7 @@ pub(crate) fn resolve_sc_window_by_pid_sync(
             true
         })
         .collect();
-    // Sort largest-area-first (Open Question 3: Chromium popup handling).
+    // Prefer the largest match to avoid Chromium popups.
     candidates.sort_by(|a, b| {
         let af = a.frame();
         let bf = b.frame();
@@ -162,14 +136,7 @@ pub(crate) fn resolve_sc_window_by_pid_sync(
     Ok(candidates.into_iter().next())
 }
 
-/// Async wrapper around `find_window_by_pid_sync` with a retry loop to
-/// tolerate the launch→register race (A1). Runs each SCK query inside
-/// `spawn_blocking` so the async runtime is never blocked.
-///
-/// Returns:
-///   - `Ok(Some(window))` when a match is found within the retry budget
-///   - `Ok(None)` when no window matches after `MAX_RETRIES` attempts
-///   - `Err(_)` when SCK itself errors (TCC denial, ABI mismatch, etc.)
+/// Async retry wrapper around `resolve_sc_window_by_pid_sync`.
 #[cfg(target_os = "macos")]
 pub async fn find_window_by_pid(
     pid: i32,
@@ -177,8 +144,7 @@ pub async fn find_window_by_pid(
 ) -> Result<Option<crate::target::WindowId>, CaptureError> {
     const MAX_RETRIES: u32 = 10;
     const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
-    // Defense-in-depth: the command-layer validator runs first but this is
-    // a library API with in-host callers (tools/e2e-playwright-capture).
+    // Re-validate here because this is also used outside the command layer.
     let owned_hint = match title_hint {
         Some(h) => {
             if h.len() > 256 {
@@ -212,7 +178,7 @@ pub async fn find_window_by_pid(
     Ok(None)
 }
 
-// Non-macOS stubs so callers can compile cross-platform without cfg arms.
+// Non-macOS stubs for cross-platform callers.
 #[cfg(not(target_os = "macos"))]
 pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
     Err(CaptureError::Unsupported)
@@ -228,14 +194,11 @@ pub async fn find_window_by_pid(
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    /// The free-function filter contract is structural; we spot-check the
-    /// pid-self exclusion logic here without actually calling SCK (that
-    /// requires a TCC grant and lives in the feature-gated integration
-    /// tests).
+    /// Spot-check the self-pid exclusion without calling SCK.
     #[test]
     fn self_pid_filter_excludes_current_process() {
         let self_pid = std::process::id() as i32;
-        // Sanity: std::process::id must fit in i32 on any realistic host.
+        // `std::process::id()` should fit in i32 on supported hosts.
         assert!(self_pid > 0);
     }
 }

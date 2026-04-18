@@ -1,20 +1,13 @@
-//! `EncodeConfig` — inputs to the FFmpeg sidecar for a single recording.
+//! `EncodeConfig` values for one recording.
 //!
-//! Phase 1 is MP4 / H.264 baseline only (D-25). Resolution + framerate
-//! come from the capture source; audio is a silent 48 kHz mono AAC track
-//! so downstream Phase 2 features (which assume both streams) have
-//! something to mix — and so the A/V drift CI job (D-26 / ENC-05) is
-//! meaningful.
+//! Resolution and framerate come from capture. Audio defaults to a silent AAC track.
 
 use std::path::PathBuf;
 
 use crate::error::{EncoderError, Result};
 use crate::probe::HardwareEncoder;
 
-/// Raw-PCM sample format for the mic audio fifo input (Phase 6 plan 01).
-/// v1 always uses F32LE — cpal hands us `f32` and we `bytemuck::cast_slice`
-/// straight to the pipe. S16LE is reserved for a future low-bandwidth
-/// mic mode but not currently produced.
+/// Raw PCM format for the mic audio FIFO.
 #[derive(Debug, Clone, Copy)]
 pub enum AudioFormat {
     F32LE,
@@ -30,11 +23,7 @@ impl AudioFormat {
     }
 }
 
-/// Mic audio input for the encoder (Phase 6 plan 01, D-03).
-///
-/// When set, FFmpeg reads raw PCM from `fifo_path` as input 1; the video
-/// stdin path stays on `pipe:0` (input 0). When unset, the existing
-/// silent `anullsrc` track is retained (D-25 / Phase 1 behavior).
+/// Mic audio input for the encoder.
 #[derive(Debug, Clone)]
 pub struct AudioInput {
     pub fifo_path: PathBuf,
@@ -48,15 +37,12 @@ pub struct EncodeConfig {
     pub output_path: PathBuf,
     pub width: u32,
     pub height: u32,
-    /// FPS *advisory* — FFmpeg receives this hint but the `-vsync vfr`
-    /// flag preserves per-frame PTS from the capture API (D-21). Actual
-    /// framerate is VFR driven by the incoming capture timestamps.
+    /// FPS hint; FFmpeg still uses per-frame timestamps.
     pub fps_advisory: u32,
     pub encoder: HardwareEncoder,
-    /// Video bitrate in kbps. Default: 12_000.
+    /// Video bitrate in kbps.
     pub bitrate_kbps: u32,
-    /// Optional mic audio input. `None` → silent anullsrc track
-    /// (backwards-compatible Phase 1 behavior).
+    /// Optional mic input.
     pub audio_input: Option<AudioInput>,
 }
 
@@ -79,9 +65,7 @@ impl EncodeConfig {
         }
     }
 
-    /// Attach a mic audio input. Called by the host pipeline once the
-    /// fifo is ready and FFmpeg has been spawned with the dual-input arg
-    /// shape (see `to_ffmpeg_args`).
+    /// Attach mic input.
     pub fn with_audio(mut self, audio: AudioInput) -> Self {
         self.audio_input = Some(audio);
         self
@@ -107,49 +91,20 @@ impl EncodeConfig {
         Ok(())
     }
 
-    /// Render the full FFmpeg argv (minus the binary path itself). See
-    /// plan 01-08 for the canonical form.
-    ///
-    /// Key flags:
-    ///   - `-f rawvideo -pix_fmt bgra -s WxH -r FPS -i pipe:0` — raw BGRA
-    ///     frames arrive on stdin at the advisory rate.
-    ///   - `-f lavfi -i anullsrc=r=48000:cl=mono` — silent audio track so
-    ///     the MP4 always has two streams.
-    ///   - `-c:v <encoder> -b:v 12M -profile:v baseline -level 4.1
-    ///     -pix_fmt yuv420p` — H.264 baseline, widely-compatible output.
-    ///   - `-vsync vfr` — preserve capture-API per-frame PTS (D-21).
-    ///   - `-movflags +faststart` — MP4 moov atom at the head of the file
-    ///     so the web companion (Phase 4) can stream without a full
-    ///     download.
-    ///   - `-progress pipe:2 -loglevel info` — progress events on stderr
-    ///     (`pipe:2`) are parsed by `progress.rs`.
+    /// Render the FFmpeg argv without the binary path.
     pub fn to_ffmpeg_args(&self) -> Vec<String> {
-        // Bitrate scales with pixel count (backlog #10).
-        //
-        // Target ~0.10 bits per pixel per frame, adapted for a 30fps
-        // baseline: kbps ≈ (pixels × 30fps × 0.10bpp) / 1000
-        //               = pixels × 3 / 1000.
-        //
-        // `bitrate_kbps` acts as a FLOOR — at 1080p the formula yields
-        // ~6 Mbps, which is below the default 12 Mbps floor and clamps
-        // up. At 4K the formula yields ~25 Mbps, pushing past the floor
-        // up to the 40 Mbps cap. The previous implementation used
-        // `clamp(self.bitrate_kbps, 40_000)` as a min-floor without the
-        // ×30 factor, leaving 4K stuck at 12 Mbps (washed out).
+        // Bitrate scales with pixel count.
         let pixel_based_kbps =
             ((self.width as u64 * self.height as u64 * 3) / 1000) as u32;
         let target_kbps = pixel_based_kbps.max(self.bitrate_kbps).min(40_000);
         let bitrate = format!("{}k", target_kbps);
-        // H.264 requires even dimensions. We keep native resolution (no
-        // downscale) now that the `-profile:v baseline -level 4.1`
-        // constraint is gone — VideoToolbox on Apple Silicon happily
-        // handles 4K inputs. Scale filter just rounds to even dims.
+        // H.264 requires even dimensions.
         let scale_filter = "scale=trunc(iw/2)*2:trunc(ih/2)*2".to_string();
 
         let mut args: Vec<String> = vec![
             "-hide_banner".into(),
             "-y".into(),
-            // --- raw BGRA input on stdin (input 0) ---
+            // Raw BGRA input on stdin.
             "-f".into(),
             "rawvideo".into(),
             "-pix_fmt".into(),
@@ -164,11 +119,7 @@ impl EncodeConfig {
             "pipe:0".into(),
         ];
 
-        // --- audio input (input 1) ---
-        // Phase 6 plan 01: when audio_input is Some, FFmpeg reads raw PCM
-        // from the named pipe. When None, the original anullsrc silent
-        // track is retained byte-for-byte — this branch is the regression
-        // guard for the no-audio path.
+        // Audio input. Silence is the fallback.
         match &self.audio_input {
             Some(audio) => {
                 args.extend([
@@ -192,10 +143,7 @@ impl EncodeConfig {
             }
         }
 
-        // --- stream mapping (explicit only when real audio is in use) ---
-        // The silent-audio path omits -map and relies on FFmpeg's default
-        // "pick best of each type" — preserves Phase 1's byte-for-byte
-        // arg shape for regression stability.
+        // Explicit mapping only when real audio is present.
         if self.audio_input.is_some() {
             args.extend([
                 "-map".into(),
@@ -206,29 +154,22 @@ impl EncodeConfig {
         }
 
         args.extend([
-            // --- downscale + even-dim video filter ---
+            // Downscale + even-dim video filter.
             "-vf".into(),
             scale_filter,
-            // --- video encode ---
-            // NOTE: no explicit -profile/-level — VideoToolbox rejects
-            // baseline@4.1 for frames exceeding its macroblock budget
-            // (>8192 MBs). Letting FFmpeg pick defaults keeps encodes
-            // compatible across capture dimensions.
+            // Video encode.
             "-c:v".into(),
             self.encoder.ffmpeg_codec_name().into(),
             "-b:v".into(),
             bitrate,
             "-pix_fmt".into(),
             "yuv420p".into(),
-            // --- audio encode ---
+            // Audio encode.
             "-c:a".into(),
             "aac".into(),
         ]);
 
-        // Phase 6 plan 01 decision: mic path upgrades to 128 kbps stereo
-        // (Claude's discretion in 06-CONTEXT — standard for voiceover).
-        // Silent path keeps the existing 64 kbps so no-audio recordings
-        // don't grow for no reason.
+        // Mic input gets a higher bitrate than the silent fallback.
         if self.audio_input.is_some() {
             args.extend([
                 "-b:a".into(),

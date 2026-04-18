@@ -139,6 +139,7 @@ impl EncodePipeline {
         }
 
         let args = cfg.to_ffmpeg_args();
+        tracing::info!(target: "storycapture::encoder", "ffmpeg args: {}", args.join(" "));
         let child = sidecar_cmd.spawn(args).await?;
         let mut sidecar = FfmpegSidecar::new(child);
 
@@ -232,6 +233,12 @@ impl EncodePipeline {
                     stderr_tail,
                 });
             }
+
+            tracing::info!(
+                target: "storycapture::encoder",
+                "ffmpeg exit stderr tail: {}",
+                stderr_tail.lines().rev().take(30).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ")
+            );
 
             let duration_ms = start.elapsed().as_millis() as u64;
             let bytes = std::fs::metadata(&output_path)

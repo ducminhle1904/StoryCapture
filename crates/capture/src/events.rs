@@ -1,5 +1,4 @@
-//! Capture lifecycle events. The Tauri host re-serializes these through a
-//! `Channel<CaptureEvent>` (Plan 01-09 wires the UI subscriber).
+//! Capture lifecycle events forwarded to the host and UI.
 
 use crate::backend::CaptureStats;
 use crate::display::DisplayInfo;
@@ -24,21 +23,15 @@ pub enum CaptureEvent {
     PermissionDenied {
         platform_hint: String,
     },
-    /// SCK delegate reported an error mid-stream (window closed, TCC
-    /// revoked, hardware fault). The pipeline will stop and finalize the
-    /// partial MP4 (D-03). Plan 05-01 Task 2 wires this from the SCK
-    /// StreamCallbacks::on_stop/on_error hooks.
+    /// Backend failed mid-stream; stop and finalize partial output.
     BackendFailed {
         reason: String,
     },
-    /// SCK window-target capture failed to start; we silently fell back
-    /// to xcap full-display (D-07). Plan 05-01 Task 3 emits this from
-    /// the orchestrator.
+    /// Window capture failed to start and fell back to full-display capture.
     WindowCaptureFellBack {
         reason: String,
     },
-    /// Second consecutive fallback in the same session (D-08). UI shows
-    /// the modal with "Open System Settings" / "Use full screen" buttons.
+    /// Repeated fallback in one session; UI should offer escalation actions.
     WindowCaptureDegraded {
         reason: String,
     },

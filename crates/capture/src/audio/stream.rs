@@ -1,13 +1,7 @@
-//! cpal input stream + lock-free ringbuf + drain thread writing raw f32
-//! samples to a named pipe for FFmpeg.
+//! cpal input stream plus ring buffer and drain thread for FFmpeg.
 //!
-//! Precondition: FFmpeg must open the fifo for read BEFORE `start()` —
-//! POSIX `O_WRONLY` blocks until a reader attaches.
-//!
-//! cpal#970 rule: the input callback MUST use ONLY `push_slice`. Any
-//! cross-thread sync primitive (mpsc, mutex, condvar, channels) causes
-//! WASAPI on Windows to silently stop firing callbacks after a few
-//! dispatches.
+//! FFmpeg must open the FIFO before `start()`, and the callback must only
+//! use `push_slice` to avoid WASAPI stalls.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,33 +14,22 @@ use ringbuf::HeapRb;
 
 use super::error::AudioError;
 
-/// Sleep between empty ringbuf polls in the drain thread (backlog #14).
-///
-/// Tradeoff: shorter → lower tail latency when FFmpeg drains the fifo,
-/// but more wake-ups/sec (≈500 at 2ms). The cpal callback fills the
-/// ringbuf at device rate — typically every ~10ms at 48kHz — so 2ms
-/// keeps worst-case wakeup drift under one device callback period.
-/// Harmless on desktop; measurable on battery. Revisit if mobile ever
-/// lands.
+/// Sleep between empty ringbuf polls in the drain thread.
 const DRAIN_EMPTY_SLEEP_MS: u64 = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AudioStreamInfo {
     pub sample_rate: u32,
     pub channels: u16,
-    /// Always F32 in v1 — i16 sources are converted in-callback.
+    /// Always F32 in v1.
     pub format: SampleFormat,
 }
 
 pub struct AudioCaptureStream {
-    // Keep the cpal Stream alive; drops first in the normal Drop order
-    // (fields drop in declaration order), then the stop flag + thread.
+    // Keep the cpal stream alive until drop.
     _stream: Box<dyn StreamTrait + Send>,
     stop_flag: Arc<AtomicBool>,
-    /// `Arc<AtomicBool>` exposed to the host so a non-fatal degradation
-    /// (stream invalidated mid-recording) can be surfaced via a Tauri
-    /// event without requiring the full stream ownership to cross
-    /// threads. Flipped by the cpal err_cb.
+    /// Set when the stream errors out mid-recording.
     degraded: Arc<AtomicBool>,
     drain_thread: Option<std::thread::JoinHandle<()>>,
     info: AudioStreamInfo,
@@ -54,20 +37,11 @@ pub struct AudioCaptureStream {
 
 impl AudioCaptureStream {
     /// Start capture.
-    ///
-    /// **Precondition:** FFmpeg (or another reader) has already opened
-    /// `fifo_path` for read. On POSIX the drain thread's
-    /// `OpenOptions::write(true).open(fifo)` call would otherwise block
-    /// forever (RESEARCH Pitfall 8).
-    ///
-    /// `device_id` is the cpal device name from `AudioInputInfo::id`, or
-    /// `None` to pick the host default. `"default"` is treated as an
-    /// alias for `None`.
     pub fn start(
         device_id: Option<&str>,
         fifo_path: PathBuf,
     ) -> Result<(Self, AudioStreamInfo), AudioError> {
-        // Mock path for CI / unit tests.
+        // Mock path for CI and unit tests.
         #[cfg(feature = "audio-mock")]
         {
             if device_id == Some("__mock__") || std::env::var_os("STORYCAPTURE_AUDIO_MOCK").is_some()
@@ -104,10 +78,7 @@ impl AudioCaptureStream {
         let sample_rate = cfg.sample_rate;
         let channels = cfg.channels;
 
-        // 2-second HeapRb — T-06-02 mitigation: fixed capacity, push_slice
-        // returns short count when full so samples are dropped (not
-        // OOM-ed). Capacity sized generously so a slow drain never
-        // causes permanent underflow.
+        // Fixed-capacity ring buffer; full writes drop samples.
         let buf_cap = (sample_rate as usize) * channels as usize * 2;
         let rb = HeapRb::<f32>::new(buf_cap.max(4096));
         let (mut prod, mut cons) = rb.split();
@@ -117,26 +88,18 @@ impl AudioCaptureStream {
         let degraded_for_err = degraded.clone();
         let err_cb = move |e: cpal::StreamError| {
             tracing::error!(target: "storycapture::audio", error = ?e, "cpal stream error");
-            // Any StreamError — StreamInvalidated (mic unplug), device
-            // gone, backend panic — flips the flag. The recording
-            // orchestrator polls this and emits `audio://disconnected`
-            // while the video pipeline continues (D-01 graceful
-            // degradation).
+            // Any stream error flips the degraded flag.
             degraded_for_err.store(true, Ordering::Relaxed);
         };
 
-        // Build the stream, branching on sample format. Only F32 + I16
-        // are supported in v1 (covers ~all USB/Bluetooth/built-in mics;
-        // exotic U16/F64 devices return UnsupportedFormat).
+        // Branch on sample format.
         let stream: Box<dyn StreamTrait + Send> = match sample_format {
             SampleFormat::F32 => {
                 let s = device
                     .build_input_stream::<f32, _, _>(
                         &cfg,
                         move |data: &[f32], _: &_| {
-                            // cpal#970 workaround — do NOT add any other
-                            // cross-thread primitive here. push_slice is
-                            // wait-free SPSC.
+                            // Keep the callback SPSC-only.
                             let _ = prod.push_slice(data);
                         },
                         err_cb,
@@ -150,17 +113,14 @@ impl AudioCaptureStream {
                     .build_input_stream::<i16, _, _>(
                         &cfg,
                         move |data: &[i16], _: &_| {
-                            // cpal#970 workaround — no cross-thread primitives.
-                            // Convert i16 → f32 per-sample directly on the
-                            // callback stack; no heap allocation (we
-                            // push_slice in small chunks).
+                            // Convert i16 to f32 in small chunks.
                             const CHUNK: usize = 512;
                             let mut buf = [0f32; CHUNK];
                             let mut i = 0;
                             while i < data.len() {
                                 let n = (data.len() - i).min(CHUNK);
                                 for k in 0..n {
-                                    // i16::MAX as f32 → normalized [-1, 1]
+                                    // Normalize to [-1, 1].
                                     buf[k] = (data[i + k] as f32) / 32_768.0;
                                 }
                                 let _ = prod.push_slice(&buf[..n]);
@@ -208,18 +168,12 @@ impl AudioCaptureStream {
         ))
     }
 
-    /// Returns true if the cpal stream has reported an unrecoverable
-    /// error since start (e.g., mic unplug). The host polls this and
-    /// emits `audio://disconnected` when it flips, while letting the
-    /// video pipeline finish.
+    /// Returns true if the stream has errored.
     pub fn degraded(&self) -> bool {
         self.degraded.load(Ordering::Relaxed)
     }
 
-    /// Shared handle on the degraded flag. Cloned into a tokio polling
-    /// task so the host can emit a Tauri event without holding the
-    /// AudioCaptureStream itself (which is !Sync because of cpal
-    /// internals on some platforms).
+    /// Cloneable degraded flag for host polling.
     pub fn degraded_flag(&self) -> Arc<AtomicBool> {
         self.degraded.clone()
     }
@@ -238,9 +192,7 @@ impl Drop for AudioCaptureStream {
     }
 }
 
-/// Drain the ringbuf into the named pipe in ~2 ms chunks. Runs on a
-/// dedicated std::thread (NOT tokio) because the fifo open is blocking
-/// and the write loop is bursty.
+/// Drain the ring buffer into the named pipe on a dedicated thread.
 fn drain_loop(
     mut cons: impl Consumer<Item = f32>,
     stop_flag: Arc<AtomicBool>,
@@ -264,9 +216,11 @@ fn drain_loop(
         }
     };
 
-    // 4096 samples × 4 bytes = 16 KiB per write. Matches FFmpeg's input
-    // buffer sweet-spot for raw PCM.
+    // 16 KiB writes line up well with FFmpeg's raw PCM input buffer.
     let mut buf = vec![0f32; 4096];
+    let mut total_samples: u64 = 0;
+    let mut last_log_samples: u64 = 0;
+    tracing::info!(target: "storycapture::audio", "drain thread: fifo opened");
     while !stop_flag.load(Ordering::Relaxed) {
         let n = cons.pop_slice(&mut buf);
         if n == 0 {
@@ -278,13 +232,19 @@ fn drain_loop(
             tracing::warn!(
                 target: "storycapture::audio",
                 error = %e,
+                total_samples,
                 "fifo write failed — drain thread exiting (likely FFmpeg closed its end)"
             );
             break;
         }
+        total_samples += n as u64;
+        if total_samples - last_log_samples >= 48_000 {
+            tracing::info!(target: "storycapture::audio", total_samples, "drain progress (~1s of audio)");
+            last_log_samples = total_samples;
+        }
     }
-    // Final drain — pump whatever is left so the tail of the recording
-    // isn't truncated.
+    tracing::info!(target: "storycapture::audio", total_samples, stop_flag = stop_flag.load(Ordering::Relaxed), "drain main loop exited, entering final drain");
+    // Final drain so the tail is not truncated.
     loop {
         let n = cons.pop_slice(&mut buf);
         if n == 0 {
@@ -297,11 +257,7 @@ fn drain_loop(
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Mock path: synthetic 1 kHz sine @ 48 kHz mono. Compiled only when the
-// `audio-mock` feature is enabled — keeps cpal-free CI honest and lets
-// us assert sample-count invariants deterministically.
-// ──────────────────────────────────────────────────────────────────────
+// Mock path: synthetic 1 kHz sine @ 48 kHz mono.
 #[cfg(feature = "audio-mock")]
 mod mock {
     use super::*;

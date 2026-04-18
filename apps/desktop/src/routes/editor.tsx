@@ -37,7 +37,7 @@ import { useEditorStore } from "@/state/editor";
 
 const EMPTY_DIAGNOSTICS: never[] = [];
 
-/* ─── Voiceover helpers ─── */
+/* Voiceover helpers */
 
 interface VoiceoverStep {
   id: string;
@@ -121,7 +121,7 @@ function findSceneIndexForOffset(story: Story | null, offset: number): number {
 
 type RailTab = "preview" | "voiceover";
 
-/* ─── Compact Voiceover Panel ─── */
+/* Voiceover panel */
 
 function VoiceoverCompact({
   projectId,
@@ -488,7 +488,7 @@ function RailTabButton({
   );
 }
 
-/* ─── Main Editor Route ─── */
+/* Editor route */
 
 export default function EditorRoute() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -499,9 +499,7 @@ export default function EditorRoute() {
   const [railTab, setRailTab] = useState<RailTab>("preview");
   const [editorJumpTarget, setEditorJumpTarget] =
     useState<EditorJumpTarget | null>(null);
-  // Track which projectId the store currently reflects. Until this matches
-  // the URL's projectId, don't render the editor body — otherwise we'd
-  // briefly show the previous project's scenes (the "flash").
+  // Only render once store state matches the URL project to avoid a stale scene flash.
   const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
   const setSource = useEditorStore((s) => s.setSource);
   const setLastParse = useEditorStore((s) => s.setLastParse);
@@ -513,8 +511,7 @@ export default function EditorRoute() {
 
   useEffect(() => {
     if (!projectId) return;
-    // Clear stale per-project state synchronously so the previous project's
-    // scenes don't render during the async load.
+    // Reset per-project state before the async load so old scenes never flash.
     resetProjectState();
     setFolder(null);
     setLoadError(null);
@@ -528,19 +525,15 @@ export default function EditorRoute() {
         if (cancelled) return;
         const text = await readTextFile(info.story_path);
         if (cancelled) return;
-        // Parse BEFORE flipping ready so the first workspace render already
-        // has scenes/diagnostics. Without this, the 300ms parse debounce in
-        // StoryEditor causes the SceneListPanel to appear late and the
-        // layout to reshuffle — the "flash".
+        // Parse before marking ready so the first paint already has scenes and diagnostics.
         let parsed: Awaited<ReturnType<typeof parseStory>> | null = null;
         try {
           parsed = await parseStory(text);
         } catch {
-          /* parse error still lets us render; diagnostics surface elsewhere */
+          /* Render anyway; diagnostics surface elsewhere. */
         }
         if (cancelled) return;
-        // Batch: folder, source, parse, and ready-flag flip in one render
-        // so the editor never renders with mismatched state.
+        // Commit folder, source, parse result, and ready flag together.
         setFolder(info);
         setSource(text);
         if (parsed) setLastParse(parsed);
@@ -573,7 +566,7 @@ export default function EditorRoute() {
       try {
         await writeTextFile(folder.story_path, nextSource);
       } catch {
-        /* surfaced in UI via toast if wired */
+        /* UI handles autosave failure separately. */
       }
     },
     [folder],

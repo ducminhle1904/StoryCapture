@@ -1,23 +1,16 @@
-//! RAII wrappers around macOS native frame buffers.
+//! RAII wrappers for macOS frame buffers.
 //!
-//! `CVPixelBufferHandle` holds a CFRetain on the pixel buffer; Drop
-//! calls CFRelease so we never leak IOSurface backing memory. This is
-//! the centerpiece of PITFALLS.md §8 (capture memory leaks) — every
-//! native frame must travel through one of these wrappers.
+//! `CVPixelBufferHandle` retains and releases `CVPixelBufferRef`s so
+//! IOSurface-backed frames do not leak.
 
 use std::ffi::c_void;
 
-/// Opaque pointer to a CoreVideo pixel buffer (`CVPixelBufferRef` is a
-/// typedef for `*mut __CVBuffer`). We treat it as an opaque token here
-/// to avoid pulling in `core-video-sys` for the public API surface.
+/// Opaque handle to a CoreVideo pixel buffer.
 pub struct CVPixelBufferHandle {
     ptr: *mut c_void,
 }
 
-// SAFETY: CVPixelBuffer is documented as thread-safe for reads; the
-// retain/release operations are atomic. The producer side hands the
-// frame off to the consumer via mpsc, after which only one task touches
-// the handle at a time.
+// SAFETY: read access is thread-safe and retain/release is atomic.
 unsafe impl Send for CVPixelBufferHandle {}
 unsafe impl Sync for CVPixelBufferHandle {}
 
@@ -26,8 +19,7 @@ extern "C" {
     fn CFRelease(cf: *const c_void);
 }
 
-// CoreVideo FFI for the CPU-copy path — needed until an FFmpeg ingest
-// route can consume the IOSurface directly without a copy.
+// CoreVideo FFI for the current CPU-copy path.
 #[link(name = "CoreVideo", kind = "framework")]
 extern "C" {
     fn CVPixelBufferLockBaseAddress(pb: *mut c_void, flags: u64) -> i32;
@@ -41,13 +33,10 @@ extern "C" {
 const K_CV_PIXEL_BUFFER_LOCK_READ_ONLY: u64 = 0x0000_0001;
 
 impl CVPixelBufferHandle {
-    /// Take ownership of an unretained pointer. `CFRetain` is called so
-    /// the wrapper holds an independent retain count.
+    /// Retain a raw `CVPixelBufferRef` and wrap it.
     ///
     /// # Safety
-    /// `ptr` must be either null or a valid `CVPixelBufferRef` with at
-    /// least one outstanding retain held by the caller for the duration
-    /// of this call.
+    /// `ptr` must be null or a valid `CVPixelBufferRef`.
     pub unsafe fn retain(ptr: *mut c_void) -> Option<Self> {
         if ptr.is_null() {
             None
@@ -61,10 +50,7 @@ impl CVPixelBufferHandle {
         self.ptr
     }
 
-    /// Copy the CVPixelBuffer's BGRA pixel data into an owned Vec plus
-    /// its per-row stride. Locks the base address read-only for the
-    /// duration of the copy. Fails if the lock call returns a non-zero
-    /// `CVReturn`.
+    /// Copy BGRA bytes into an owned buffer and return its stride.
     pub fn to_owned_bgra(&self) -> Result<(Vec<u8>, usize), i32> {
         unsafe {
             let rc = CVPixelBufferLockBaseAddress(self.ptr, K_CV_PIXEL_BUFFER_LOCK_READ_ONLY);

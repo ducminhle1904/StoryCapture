@@ -1,27 +1,6 @@
-//! `VtWriter` — AVAssetWriter + AVAssetWriterInputPixelBufferAdaptor
-//! wrapper that ingests `CVPixelBuffer` handles directly into an H.264 MP4,
-//! leveraging VideoToolbox underneath. Zero-copy: the CVPixelBuffer is
-//! handed straight to AVFoundation, which retains it internally until
-//! encoding completes.
+//! `VtWriter` wraps `AVAssetWriter` for H.264 MP4 output.
 //!
-//! ## Thread affinity
-//!
-//! AVAssetWriter itself is not Send-safe across arbitrary tokio worker
-//! threads — the Objective-C runtime couples some internal state to the
-//! thread that called `startWriting`. We therefore spawn a dedicated
-//! `std::thread` that owns the writer, and drive it via an mpsc channel.
-//! Public API (`VtWriterHandle`) is Send + Sync and can be used from tokio
-//! tasks.
-//!
-//! ## Timebase
-//!
-//! Frames carry `Pts { ns: i128 }` (nanoseconds since host-time zero,
-//! per `capture::frame::Pts`). We build `CMTime(value = pts_ns, timescale
-//! = 1_000_000_000)` and let AVFoundation rescale to its preferred media
-//! timescale internally. The first append's PTS is normalized to zero by
-//! passing the first-frame pts as the source time to
-//! `startSessionAtSourceTime:` — that way the MP4 timeline starts at
-//! wall-clock zero regardless of when the capture session began.
+//! A dedicated thread owns the writer; public handles stay `Send + Sync`.
 
 #![cfg(target_os = "macos")]
 
@@ -49,9 +28,7 @@ use crate::error::{EncoderError, Result};
 use crate::pipeline::EncodeResult;
 use crate::progress::EncodeProgress;
 
-/// Sent to the writer worker thread. We carry owned values across the
-/// boundary so the worker thread becomes the sole owner of each pixel
-/// buffer handle until append completes + AVFoundation has retained it.
+/// Message sent to the writer thread.
 enum Cmd {
     Append {
         buffer: CVPixelBufferHandle,
@@ -60,24 +37,18 @@ enum Cmd {
     Finish,
 }
 
-/// Public handle returned from `VtWriter::start`. Sends commands to the
-/// dedicated writer thread; the writer thread performs all AVFoundation
-/// calls.
+/// Public handle returned from `VtWriter::start`.
 pub struct VtWriterHandle {
     cmd_tx: std_mpsc::SyncSender<Cmd>,
     result_rx: std_mpsc::Receiver<Result<EncodeResult>>,
     thread: Option<thread::JoinHandle<()>>,
-    /// Progress sender for fps/bytes snapshots. Producer-side of the
-    /// caller's `mpsc::Sender<EncodeProgress>` — the worker forwards
-    /// periodic snapshots.
+    /// Progress sender for snapshots.
     progress_tx: tokio::sync::mpsc::Sender<EncodeProgress>,
     output_path: PathBuf,
 }
 
 impl VtWriterHandle {
-    /// Append one frame. Returns `Ok(true)` if queued, `Ok(false)` if
-    /// worker thread is gone (the caller should treat as a terminal
-    /// signal and stop sending).
+    /// Append one frame.
     pub fn append(&self, buffer: CVPixelBufferHandle, pts_ns: i128) -> std::io::Result<()> {
         self.cmd_tx
             .send(Cmd::Append { buffer, pts_ns })
@@ -89,8 +60,7 @@ impl VtWriterHandle {
         let _ = self.progress_tx.send(p).await;
     }
 
-    /// Finalize: signals EOS, waits for the writer thread to flush and
-    /// close the MP4 atom. Consumes the handle.
+    /// Finalize and wait for the worker to flush.
     pub fn finish(mut self) -> Result<EncodeResult> {
         let _ = self.cmd_tx.send(Cmd::Finish);
         drop(self.cmd_tx);
@@ -109,22 +79,18 @@ impl VtWriterHandle {
     }
 }
 
-/// Type marker + factory namespace. The real state lives on the worker
-/// thread; all public callers go through `VtWriterHandle`.
+/// Factory namespace; state lives on the worker thread.
 pub struct VtWriter;
 
 impl VtWriter {
     /// Spawn the writer thread and return a handle.
-    ///
-    /// The output file is deleted up front if it exists — AVAssetWriter
-    /// refuses to overwrite.
     pub fn start(
         cfg: EncodeConfig,
         progress_tx: tokio::sync::mpsc::Sender<EncodeProgress>,
     ) -> Result<VtWriterHandle> {
         cfg.validate()?;
 
-        // AVAssetWriter won't overwrite; pre-delete.
+        // AVAssetWriter won't overwrite.
         if cfg.output_path.exists() {
             std::fs::remove_file(&cfg.output_path).map_err(|e| {
                 EncoderError::Io(format!(
@@ -158,30 +124,20 @@ impl VtWriter {
     }
 }
 
-/// Writer thread body. Owns all AVFoundation objects; none of these
-/// `Retained<>` values may cross the thread boundary.
+/// Writer thread body.
 fn run_worker(
     cfg: EncodeConfig,
     cmd_rx: std_mpsc::Receiver<Cmd>,
     progress_tx: tokio::sync::mpsc::Sender<EncodeProgress>,
 ) -> Result<EncodeResult> {
-    // Wrap in an autoreleasepool so the transient NSNumber/NSString
-    // autoreleased instances don't accumulate for the lifetime of the
-    // encode.
+    // Keep transient Objective-C objects scoped.
     objc2::rc::autoreleasepool(|_| -> Result<EncodeResult> {
         let output_path = cfg.output_path.clone();
         let start = Instant::now();
 
-        // --- Build AVAssetWriter ---
-        // AVAssetWriter refuses to create over an existing file (returns
-        // NSFileWriteFileExistsError). Remove any prior artifact at the
-        // exact output path — UUID session ids normally prevent collisions,
-        // but retried sessions or leftover .mp4 files from crashes would
-        // break the writer silently otherwise.
+        // Build AVAssetWriter.
         let _ = std::fs::remove_file(&output_path);
-        // `fileURLWithPath:` takes a POSIX path, NOT a file:// URL. Passing
-        // a prefixed "file://…" string builds an invalid URL and
-        // startWriting fails with "Cannot create file".
+        // `fileURLWithPath:` wants a POSIX path, not a file URL.
         let path_str = NSString::from_str(&output_path.display().to_string());
         let url: Retained<NSURL> = NSURL::fileURLWithPath(&path_str);
 
@@ -196,18 +152,7 @@ fn run_worker(
                 ))
             })?;
 
-        // --- Build outputSettings dictionary for the video input ---
-        //
-        // {
-        //   AVVideoCodecKey: AVVideoCodecTypeH264,
-        //   AVVideoWidthKey: <width>,
-        //   AVVideoHeightKey: <height>,
-        //   AVVideoCompressionPropertiesKey: {
-        //     AVVideoAverageBitRateKey: <bps>,
-        //   },
-        // }
-        //
-        // Bitrate is in bits-per-second on this key (note: config uses kbps).
+        // Build video output settings.
         let bitrate_bps: i64 = (cfg.bitrate_kbps as i64) * 1000;
         let width_num = NSNumber::new_u32(cfg.width);
         let height_num = NSNumber::new_u32(cfg.height);
@@ -226,14 +171,14 @@ fn run_worker(
         let codec_h264 = unsafe { AVVideoCodecTypeH264 }
             .ok_or_else(|| EncoderError::Io("AVVideoCodecTypeH264 symbol missing".into()))?;
 
-        // Inner compression-properties dict: { AVVideoAverageBitRateKey: <bps> }
+        // Compression properties.
         let compression_dict: Retained<NSDictionary<NSString, AnyObject>> =
             NSDictionary::from_slices(
                 &[bitrate_key],
                 &[&*bitrate_num as &AnyObject],
             );
 
-        // Top-level outputSettings dict.
+        // Top-level settings.
         let settings: Retained<NSDictionary<NSString, AnyObject>> = NSDictionary::from_slices(
             &[codec_key, width_key, height_key, compression_key],
             &[
@@ -244,7 +189,7 @@ fn run_worker(
             ],
         );
 
-        // --- Input ---
+        // Input.
         let media_type = unsafe { AVMediaTypeVideo }
             .ok_or_else(|| EncoderError::Io("AVMediaTypeVideo symbol missing".into()))?;
         let input = unsafe {

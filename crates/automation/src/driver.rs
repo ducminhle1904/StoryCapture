@@ -1,12 +1,6 @@
-//! `BrowserDriver` trait — the abstraction every driver impl honors.
+//! `BrowserDriver` trait and related automation types.
 //!
-//! Current impls:
-//! - [`crate::PlaywrightSidecarDriver`] — primary, Node SEA bundled.
-//! - [`crate::NoopDriver`] — stub fallback.
-//!
-//! The executor (`crate::executor`) dispatches per-verb based on
-//! [`CapabilitySet`] flags (D-14): a verb that the primary lacks routes to
-//! the fallback automatically.
+//! The executor routes verbs by `CapabilitySet`, falling back when needed.
 
 use crate::error::Result;
 use crate::events::SelectorStrategy;
@@ -17,69 +11,42 @@ use story_parser::{ScrollDir, SelectorOrText, Theme, Viewport};
 
 // ---------- Launch config ----------
 
-/// Options threaded from the Tauri host into [`LaunchConfig::from_meta`].
-///
-/// Plan 06 cleanup — replaces the previous env-var IPC
-/// (`STORYCAPTURE_BROWSER_PATH`, `STORYCAPTURE_CHROME_HIDING`) which was
-/// unsafe under Rust 1.80+ and racy across concurrent `launch_automation`
-/// invocations. Callers construct this directly; the host validates
-/// `app_url_for_hiding` with `url::Url` before passing it in.
+/// Launch options threaded in from the host.
 #[derive(Debug, Clone, Default)]
 pub struct LaunchOptions {
-    /// Optional Chromium-family browser executable override. When `None`,
-    /// Playwright uses its bundled Chromium.
+    /// Optional browser executable override.
     pub browser_executable: Option<PathBuf>,
-    /// Pre-validated `http://` or `https://` URL — when `Some`, `--app=<url>`
-    /// is appended to the Chromium launch args (D-09/D-10 chrome-hiding).
-    /// The host is responsible for validating the scheme before passing
-    /// it in (T-06-09); this crate does a defensive second check.
+    /// Optional `http(s)` app URL used for chrome-hiding.
     pub app_url_for_hiding: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchConfig {
-    /// Optional initial URL (also derived from `meta.app` if absent).
+    /// Initial URL.
     pub url: Option<String>,
-    /// Browser viewport. Defaults to 1280x800 if `meta.viewport` absent.
+    /// Browser viewport.
     pub viewport: Viewport,
     /// Color scheme emulation.
     pub theme: Theme,
-    /// Headless mode. CI defaults to `true`; recording sessions to `false`.
+    /// Headless mode.
     pub headless: bool,
-    /// Base URL for relative `navigate` paths (from `meta.app`).
+    /// Base URL for relative navigation.
     pub base_url: Option<String>,
-    /// Where downloads land (project folder `assets/`).
+    /// Download directory.
     pub download_dir: PathBuf,
-    /// Optional path to a Chromium-family browser executable (Chrome, Brave,
-    /// Edge, Arc, etc.). When `None`, Playwright uses its bundled Chromium.
-    /// Threaded from the Tauri host via [`LaunchOptions::browser_executable`].
+    /// Optional browser executable path.
     pub executable: Option<PathBuf>,
-    /// Plan 06-02 — extra Chromium command-line args forwarded verbatim
-    /// to `launchServer({ args })`. Used for chrome-hiding via
-    /// `--app=<url>` (D-09/D-10) and future extension knobs. Default is
-    /// empty; `#[serde(default)]` lets existing IPC call sites omit it.
+    /// Extra Chromium command-line args.
     #[serde(default)]
     pub args: Vec<String>,
 }
 
 impl LaunchConfig {
-    /// Build from a parsed [`story_parser::Meta`] block (AUTO-04) plus
-    /// host-provided [`LaunchOptions`].
-    ///
-    /// Recording sessions need a visible browser window, so `headless`
-    /// defaults to `false`. Tests/CI override via `LaunchConfig::default()`.
-    ///
-    /// Plan 06-02 / cleanup — when `opts.app_url_for_hiding` is `Some`
-    /// AND the URL is `http(s)://`, `--app=<url>` is appended to `args`
-    /// (D-09/D-10). The host validates the URL via `url::Url::parse` at
-    /// the Tauri boundary (T-06-09) so injection attempts (`javascript:`,
-    /// `data:`) never reach this code path; the defensive prefix check
-    /// below is a belt-and-braces second guard.
+    /// Build a launch config from story metadata and host options.
     pub fn from_meta(meta: &story_parser::Meta, opts: &LaunchOptions) -> Self {
         let mut args = Vec::new();
         if let Some(url) = opts.app_url_for_hiding.as_deref() {
-            // Defensive re-check: host already validated with url::Url
-            // but a second guard costs nothing and documents intent.
+            // Defensive second check.
             if url.starts_with("http://") || url.starts_with("https://") {
                 args.push(format!("--app={}", url));
             }
@@ -118,11 +85,9 @@ impl Default for LaunchConfig {
     }
 }
 
-// ---------- Capability flags (D-14) ----------
+// ---------- Capability flags ----------
 
-/// One required-capability tag per verb. The executor maps a [`Command`] to
-/// the capability it needs (see [`crate::capability::required_for`]) and
-/// picks the driver whose [`CapabilitySet`] satisfies it.
+/// Required-capability tags used for verb routing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Capability {
     None,
@@ -145,9 +110,7 @@ pub struct CapabilitySet {
 }
 
 impl CapabilitySet {
-    /// Limited capability set — a driver supporting only basic DOM verbs
-    /// (click, type, navigate, scroll, hover, screenshot). Used by the
-    /// capability-routing tests and as a reference for future thin drivers.
+    /// Basic DOM verbs only.
     pub const LIMITED: Self = Self {
         file_upload: false,
         wait_for_download: false,
@@ -157,8 +120,7 @@ impl CapabilitySet {
         iframes: true,
     };
 
-    /// Playwright's capability matrix — all-true. Playwright is the
-    /// hardened-coverage path.
+    /// Full Playwright capability set.
     pub const PLAYWRIGHT: Self = Self {
         file_upload: true,
         wait_for_download: true,
@@ -168,7 +130,7 @@ impl CapabilitySet {
         iframes: true,
     };
 
-    /// Does this set satisfy the requested capability?
+    /// Check whether the set satisfies a capability.
     pub fn satisfies(&self, required: Capability) -> bool {
         match required {
             Capability::None => true,
@@ -182,7 +144,7 @@ impl CapabilitySet {
     }
 }
 
-// ---------- Element state used by the auto-wait module ----------
+// ---------- Element state ----------
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BoundingBox {
@@ -202,24 +164,19 @@ pub struct ElementState {
 
 // ---------- Resolved selector handle ----------
 
-/// Driver-agnostic "the SmartSelector picked this" handle.
-///
-/// Each driver interprets the inner `value` per its own engine — chromiumoxide
-/// runs CDP `DOM.querySelector`, the Playwright sidecar passes the value
-/// through to the Node `page.locator(...)` call.
+/// Driver-agnostic selector handle.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResolvedSelector {
     pub strategy: SelectorStrategy,
-    /// CSS-style or XPath-style or text= prefix per `strategy`.
+    /// Selector string.
     pub value: String,
-    /// Original DSL target (kept for diagnostics + persistence).
+    /// Original DSL target.
     pub origin: SelectorOrText,
 }
 
 // ---------- The trait ----------
 
-/// Action coloring used by the SmartSelector to bias candidate ranking
-/// (a `click` should prefer buttons; a `type` should prefer inputs).
+/// Action kind used to bias selector ranking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionKind {
     Click,
@@ -232,10 +189,7 @@ pub enum ActionKind {
     WaitFor,
 }
 
-/// The `BrowserDriver` trait.
-///
-/// Send + Sync so it can be `Box<dyn BrowserDriver>` in the executor's
-/// state machine; `'static` so tokio tasks own them.
+/// Trait implemented by all browser drivers.
 #[async_trait]
 pub trait BrowserDriver: Send + Sync + 'static {
     // ---- lifecycle ----
