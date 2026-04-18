@@ -188,6 +188,42 @@ Plans:
 - [ ] 07-04b-PLAN.md — Tier 2 robustness parser: additive pest `step_id_comment` rule (Tier 1 regression-guarded) + `LineMeta.step_id: Option<Uuid>` + warn-on-invalid-UUID + minimal `story_parser::formatter::format_story` + 3 parse-format-parse fixpoint tests + insta snapshot
 - [ ] 07-04c-PLAN.md — Tier 2 robustness self-healing: `targets_store.rs` with atomic tmp+rename + executor fallback promotion hook + `picker_stamp_step_id` Tauri command (stamps UUIDv7 on first pick via formatter, seeds targets.json) + integration test (primary-miss → fallback-promoted → targets rewritten, source untouched) + PHASE-7.5 final gate
 
+### Phase 9: Live Preview pane — render Chromium automation inside the Recorder window via CDP Page.startScreencast
+
+**Goal:** Render the Playwright-driven Chromium visually inside the StoryCapture Recorder window while it automates, eliminating the need for the user to watch an external browser window. Preview is cosmetic — the final recording still uses real-Chromium pixels via SCK/WGC window capture (NOT screencast frames). Backed by Chrome DevTools Protocol `Page.startScreencast` (base64 JPEG frames @ ≤25 fps), bridged through the existing playwright-sidecar into a Tauri event stream consumed by a React canvas renderer.
+
+**Depends on:** Phase 5 (window-target capture — shipped), quick task 260418-ios (focus-steal fix — shipped)
+
+**In scope:**
+- Sidecar CDP verbs `startPreviewStream` / `stopPreviewStream` wrapping `Page.startScreencast` + `Page.screencastFrameAck`
+- Rust → React bridge via Tauri event `preview://frame`
+- `<LivePreview />` canvas component in RecordingView left zone
+- Options toggle "Live preview" (default ON)
+- Backpressure + drop-under-load; preview failure must NOT affect capture
+- Graceful fallback when CDP unavailable (non-Chromium backends)
+
+**Out of scope:**
+- Using screencast frames for the final video (quality regression)
+- Input forwarding from the preview canvas back into Chromium
+- Cursor-overlay compositing on the preview (CursorTrail stays on final video)
+- Preview for non-Playwright capture targets (display / generic window)
+
+**Acceptance criteria:**
+- Recording with a Playwright target renders automation live in-app at ≥15 fps
+- Toggling "Live preview" off does not disturb recording behavior
+- Occluded / offscreen / background Chromium still streams (PID-bound, not window-bound)
+- Final video bitrate, frame count, and encoder selection unchanged vs. pre-phase
+- All Phase 5 capture tests remain green
+- CPU cost of preview ≤15% on a 2023 M2 MBP; frame rate degrades gracefully under load
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans (proposed split; finalized in /gsd-plan-phase 9):
+- [ ] 09-01 — Sidecar CDP screencast verbs + Rust event bridge
+- [ ] 09-02 — React `<LivePreview />` canvas renderer + Options toggle
+- [ ] 09-03 — Perf / backpressure hardening + fallback UX
+
 ---
 *Roadmap created: 2026-04-14*
 *Phase 7 added: 2026-04-17*
