@@ -119,7 +119,6 @@ export function RecordingView({
     reset,
     loadCaptureTargets,
     setCaptureTarget,
-    refreshPlaywrightAvailability,
   } = useRecorderStore();
 
   // Mirror the active browser preset for ChromeHidingToggle.
@@ -344,23 +343,25 @@ export function RecordingView({
           toast.error(`Automation failed: ${msg}`);
           setError(msg);
         });
-        // Poll for pid up to 5s. `playwright_auto_available` flips true
-        // once the host stash has the Chromium pid.
-        const deadline = Date.now() + 5_000;
+        // Poll the HOST directly for the Chromium pid (bypassing the
+        // store's 1s-debounced refresher). Up to 8s; return as soon as
+        // resolvePlaywrightTarget returns non-null.
+        const { resolvePlaywrightTarget } = await import("@/ipc/capture");
+        const deadline = Date.now() + 8_000;
+        let autoResolved = false;
         while (Date.now() < deadline) {
-          await refreshPlaywrightAvailability();
-          if (
-            useRecorderStore.getState().availableTargets
-              ?.playwright_auto_available
-          ) {
-            break;
+          try {
+            const hit = await resolvePlaywrightTarget();
+            if (hit && hit.window_id != null) {
+              autoResolved = true;
+              break;
+            }
+          } catch {
+            /* keep polling */
           }
-          await new Promise((r) => setTimeout(r, 200));
+          await new Promise((r) => setTimeout(r, 300));
         }
-        const auto =
-          useRecorderStore.getState().availableTargets
-            ?.playwright_auto_available ?? false;
-        if (auto) {
+        if (autoResolved) {
           recordingTarget = {
             kind: "window_by_pid" as const,
             pid: -1,
