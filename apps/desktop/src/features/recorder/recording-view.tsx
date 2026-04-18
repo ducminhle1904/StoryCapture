@@ -351,10 +351,18 @@ export function RecordingView({
     const width = display?.width_px ?? 1920;
     const height = display?.height_px ?? 1080;
     try {
+      // Backlog #15 — start_recording now takes a full CaptureTarget
+      // (not just display_id). Constructing a display target here
+      // preserves pre-#15 behaviour; future window/region paths drop in
+      // as the picker's `captureTarget` flows through unchanged.
+      const recordingTarget = captureTarget ?? {
+        kind: "display" as const,
+        display_id: selectedDisplay,
+      };
       const id = await startRecording(
         {
           project_folder: projectFolder,
-          display_id: selectedDisplay,
+          target: recordingTarget,
           width,
           height,
           fps: 30,

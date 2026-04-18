@@ -21,10 +21,11 @@
 // Decision documented in SUMMARY.md "decision path for Tauri sidecar
 // stdin bridge".
 
+use crate::commands::capture::CaptureTargetDto;
 use crate::error::AppError;
 use crate::state::AppState;
 use capture::audio::{make_fifo, AudioCaptureStream, FifoHandle};
-use capture::{pick_default_backend, ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, DisplayId, Frame, PixelFormat};
+use capture::{pick_default_backend, ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, Frame, PixelFormat};
 use encoder::{
     probe_encoders, AudioFormat, AudioInput, EncodeConfig, EncodePipeline, EncodeProgress,
     EncodeResult, EncoderError, EncoderProbe, HardwareEncoder, SidecarChild, SidecarCommand,
@@ -253,7 +254,11 @@ pub struct RecordingSessionId(pub String);
 #[derive(Debug, Clone, Deserialize, specta::Type)]
 pub struct StartRecordingArgs {
     pub project_folder: String,
-    pub display_id: u64,
+    /// Backlog #15 — replaces the flat `display_id: u64` with the full
+    /// CaptureTarget discriminated-union DTO so window + display-region
+    /// recordings can flow through the same entry point. Mirrors the
+    /// shape already used by `start_capture_target` (plan 05-01).
+    pub target: CaptureTargetDto,
     pub width: u32,
     pub height: u32,
     pub fps: u32,
@@ -331,10 +336,11 @@ pub async fn start_recording(
     args: StartRecordingArgs,
     on_event: Channel<RecordingEvent>,
 ) -> Result<RecordingSessionId, AppError> {
+    let capture_target: capture::CaptureTarget = args.target.clone().into();
     tracing::info!(
         target: "storycapture::recording",
-        "start_recording requested: display_id={} {}x{}@{}fps folder={:?}",
-        args.display_id, args.width, args.height, args.fps, args.project_folder
+        "start_recording requested: target={} {}x{}@{}fps folder={:?}",
+        capture_target.kind_label(), args.width, args.height, args.fps, args.project_folder
     );
 
     // Probe encoders (done per-start; the `EncoderProbe` is small).
@@ -375,9 +381,7 @@ pub async fn start_recording(
     // Plan 06-02 — include_cursor flows from the per-recording toggle;
     // absent/None defaults to true (Phase 5 D-06 behavior preserved).
     let cap_cfg = CaptureConfig {
-        target: capture::CaptureTarget::Display {
-            display_id: DisplayId(args.display_id),
-        },
+        target: capture_target,
         include_cursor: args.include_cursor.unwrap_or(true),
         fps_target: args.fps,
         pixel_format: PixelFormat::Bgra,

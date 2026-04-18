@@ -5,9 +5,17 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
+import type { CaptureTarget } from "./capture";
+
 export interface StartRecordingArgs {
   project_folder: string;
-  display_id: number;
+  /**
+   * Backlog #15 — full CaptureTarget DTO. Replaces the earlier flat
+   * `display_id: number`. `kind: "display"` preserves the pre-#15
+   * behaviour; other variants route through the same window/region
+   * code paths used by `start_capture_target`.
+   */
+  target: CaptureTarget;
   width: number;
   height: number;
   fps: number;
