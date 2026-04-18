@@ -405,6 +405,14 @@ export function RecordingView({
         while (Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 800));
           await refreshPlaywrightAvailability();
+          // Backlog #13 — once the pid lands, stop polling; the prior
+          // loop ran to completion even after a hit, wasting IPCs.
+          if (
+            useRecorderStore.getState().availableTargets
+              ?.playwright_auto_available
+          ) {
+            break;
+          }
         }
       })();
     } catch (e) {
