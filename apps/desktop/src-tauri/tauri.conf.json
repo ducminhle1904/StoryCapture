@@ -38,7 +38,9 @@
     "active": true,
     "targets": ["app", "dmg", "msi", "nsis"],
     "externalBin": ["binaries/ffmpeg", "binaries/playwright-sidecar"],
-    "resources": ["binaries/playwright-sidecar-modules/**/*"],
+    "resources": {
+      "binaries/playwright-sidecar-modules/": "playwright-sidecar-modules/"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
