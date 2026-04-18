@@ -4,7 +4,9 @@
 
 use crate::backend::{CaptureBackend, CaptureConfig, CaptureStats};
 use crate::error::CaptureError;
+use crate::events::CaptureEvent;
 use crate::frame::Frame;
+use crate::orchestrator::{orchestrate_start, FallbackCounter, OrchestratedStart};
 use crate::queue::ByteBoundedQueue;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,8 +19,13 @@ use tokio::task::JoinHandle;
 /// send) — capture throughput is never gated on its completion.
 pub type DropEventCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 
+/// Small burst buffer between native capture callbacks and the byte-bounded
+/// queue. Keeping this intentionally low prevents multiple large BGRA frames
+/// from accumulating outside the queue's byte accounting.
+const BACKEND_BURST_CHANNEL_CAPACITY: usize = 4;
+
 pub struct CapturePipeline {
-    backend: Box<dyn CaptureBackend>,
+    backend: Option<Box<dyn CaptureBackend>>,
     queue: Arc<ByteBoundedQueue>,
     forwarder: Option<JoinHandle<()>>,
     consumer: Option<JoinHandle<()>>,
@@ -29,12 +36,9 @@ pub struct CapturePipeline {
 impl CapturePipeline {
     /// Build a new pipeline. `out` is the consumer-facing channel — the
     /// encoder (Plan 01-08) hooks up to its receiver.
-    pub fn new(
-        backend: Box<dyn CaptureBackend>,
-        queue: Arc<ByteBoundedQueue>,
-    ) -> Self {
+    pub fn new(backend: Box<dyn CaptureBackend>, queue: Arc<ByteBoundedQueue>) -> Self {
         Self {
-            backend,
+            backend: Some(backend),
             queue,
             forwarder: None,
             consumer: None,
@@ -47,22 +51,22 @@ impl CapturePipeline {
         &self.queue
     }
 
-    /// Start capture + forwarding. Backends emit frames into an internal
-    /// mpsc channel; we drain it, push into the byte-bounded queue, and
-    /// forward to `out`.
-    ///
-    /// If `on_drop` is `Some`, a lightweight telemetry task polls the
-    /// queue's `dropped_frames` counter every 500ms and invokes the
-    /// callback with `(total, delta)` whenever new drops are observed.
-    /// Pass `None` when the consumer does not need drop telemetry.
-    pub async fn start(
+    fn backend_mut(&mut self) -> Result<&mut Box<dyn CaptureBackend>, CaptureError> {
+        self.backend
+            .as_mut()
+            .ok_or_else(|| CaptureError::Backend("capture pipeline backend missing".into()))
+    }
+
+    fn attach_forwarders(
         &mut self,
-        cfg: CaptureConfig,
+        mut rx: mpsc::Receiver<Frame>,
         out: mpsc::Sender<Frame>,
         on_drop: Option<DropEventCallback>,
-    ) -> Result<(), CaptureError> {
-        let (tx, mut rx) = mpsc::channel::<Frame>(64);
-        self.backend.start(cfg, tx).await?;
+    ) {
+        // Cancel any prior telemetry task before wiring a new run.
+        if let Some(cancel) = self.telemetry_cancel.take() {
+            let _ = cancel.send(());
+        }
 
         let queue = self.queue.clone();
         let forwarder = tokio::spawn(async move {
@@ -118,12 +122,51 @@ impl CapturePipeline {
             self.telemetry = Some(telemetry);
             self.telemetry_cancel = Some(cancel_tx);
         }
+    }
 
+    /// Start capture + forwarding. Backends emit frames into a small internal
+    /// mpsc channel; we drain it, push into the byte-bounded queue, and
+    /// forward to `out`.
+    ///
+    /// If `on_drop` is `Some`, a lightweight telemetry task polls the
+    /// queue's `dropped_frames` counter every 500ms and invokes the
+    /// callback with `(total, delta)` whenever new drops are observed.
+    /// Pass `None` when the consumer does not need drop telemetry.
+    pub async fn start(
+        &mut self,
+        cfg: CaptureConfig,
+        out: mpsc::Sender<Frame>,
+        on_drop: Option<DropEventCallback>,
+    ) -> Result<(), CaptureError> {
+        let (tx, rx) = mpsc::channel::<Frame>(BACKEND_BURST_CHANNEL_CAPACITY);
+        self.backend_mut()?.start(cfg, tx).await?;
+        self.attach_forwarders(rx, out, on_drop);
         Ok(())
     }
 
+    /// Start capture through the native fallback orchestrator and then attach
+    /// the same queue/forwarder plumbing used by the direct `start()` path.
+    pub async fn start_orchestrated(
+        &mut self,
+        cfg: CaptureConfig,
+        out: mpsc::Sender<Frame>,
+        event_sink: Option<mpsc::UnboundedSender<CaptureEvent>>,
+        counter: FallbackCounter,
+        on_drop: Option<DropEventCallback>,
+    ) -> Result<OrchestratedStart, CaptureError> {
+        let (tx, rx) = mpsc::channel::<Frame>(BACKEND_BURST_CHANNEL_CAPACITY);
+        let preferred = self
+            .backend
+            .take()
+            .ok_or_else(|| CaptureError::Backend("capture pipeline backend missing".into()))?;
+        let (backend, outcome) = orchestrate_start(preferred, cfg, tx, event_sink, counter).await?;
+        self.backend = Some(backend);
+        self.attach_forwarders(rx, out, on_drop);
+        Ok(outcome)
+    }
+
     pub async fn stop(&mut self) -> Result<CaptureStats, CaptureError> {
-        let stats = self.backend.stop().await?;
+        let stats = self.backend_mut()?.stop().await?;
         // Signal telemetry task to exit (if running); await it but drop
         // any error — telemetry is best-effort.
         if let Some(cancel) = self.telemetry_cancel.take() {
@@ -140,5 +183,13 @@ impl CapturePipeline {
             let _ = h.await;
         }
         Ok(stats)
+    }
+
+    pub async fn pause(&mut self) -> Result<(), CaptureError> {
+        self.backend_mut()?.pause().await
+    }
+
+    pub async fn resume(&mut self) -> Result<(), CaptureError> {
+        self.backend_mut()?.resume().await
     }
 }

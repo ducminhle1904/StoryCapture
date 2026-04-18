@@ -15,7 +15,7 @@ pub enum AudioError {
     #[error("no default input device available")]
     NoDefaultInput,
 
-    /// The requested device name was not present in the enumeration.
+    /// The requested device id was not present in the enumeration.
     /// Usually means the user unplugged a USB mic between listing and
     /// recording.
     #[error("audio device not found: {0}")]

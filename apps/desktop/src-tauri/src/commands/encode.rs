@@ -6,7 +6,7 @@ use crate::commands::capture::CaptureTargetDto;
 use crate::error::AppError;
 use crate::state::AppState;
 use capture::audio::{make_fifo, AudioCaptureStream, FifoHandle};
-use capture::{pick_default_backend, ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, Frame, PixelFormat};
+use capture::{ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, Frame, PixelFormat};
 use encoder::{
     probe_encoders, AudioFormat, AudioInput, EncodeConfig, EncodePipeline, EncodeProgress,
     EncodeResult, EncoderError, EncoderProbe, HardwareEncoder, SidecarChild, SidecarCommand,
@@ -24,6 +24,8 @@ use tokio::process::Command as TokioCommand;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+
+const ENCODER_FRAME_CHANNEL_CAPACITY: usize = 4;
 
 // ---------------------------------------------------------------------------
 // SidecarCommand bridge
@@ -48,7 +50,11 @@ pub fn resolve_sidecar_path(name: &str) -> Result<std::path::PathBuf, String> {
             }
         }
     }
-    Err(format!("sidecar {name} not found at {} (or {}* in dev)", bundled.display(), prefix))
+    Err(format!(
+        "sidecar {name} not found at {} (or {}* in dev)",
+        bundled.display(),
+        prefix
+    ))
 }
 
 /// FFmpeg sidecar wrapper that re-spawns the raw binary through tokio.
@@ -85,19 +91,22 @@ impl SidecarCommand for TauriSidecar {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| EncoderError::SpawnFailed(format!("tokio spawn {}: {e}", self.binary_name)))?;
+        let mut child = cmd.spawn().map_err(|e| {
+            EncoderError::SpawnFailed(format!("tokio spawn {}: {e}", self.binary_name))
+        })?;
 
-        let stdin = child.stdin.take().ok_or_else(|| {
-            EncoderError::SpawnFailed("missing stdin handle".into())
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            EncoderError::SpawnFailed("missing stdout handle".into())
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            EncoderError::SpawnFailed("missing stderr handle".into())
-        })?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| EncoderError::SpawnFailed("missing stdin handle".into()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| EncoderError::SpawnFailed("missing stdout handle".into()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| EncoderError::SpawnFailed("missing stderr handle".into()))?;
         Ok(SidecarChild {
             stdin,
             stdout,
@@ -175,15 +184,26 @@ impl From<EncodeResult> for EncodeResultDto {
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum RecordingEvent {
-    CaptureStatus { json: String },
-    EncodeProgress { progress: EncodeProgressDto },
+    CaptureStatus {
+        json: String,
+    },
+    EncodeProgress {
+        progress: EncodeProgressDto,
+    },
     /// Emitted periodically from the capture pipeline when the
     /// byte-bounded queue has dropped frames. `total` is the lifetime
     /// count for this session; `delta` is the count since the last
     /// event (always >= 1 when an event fires).
-    FramesDropped { total: u64, delta: u64 },
-    Completed { result: EncodeResultDto },
-    Failed { message: String },
+    FramesDropped {
+        total: u64,
+        delta: u64,
+    },
+    Completed {
+        result: EncodeResultDto,
+    },
+    Failed {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -251,7 +271,7 @@ struct RecordingHandle {
     #[allow(dead_code)]
     output_path: PathBuf,
     /// Optional mic capture stream.
-    audio_stream: Option<AudioCaptureStream>,
+    audio_stream: Arc<tokio::sync::Mutex<Option<AudioCaptureStream>>>,
     /// Named-pipe handle.
     #[allow(dead_code)]
     audio_fifo: Option<FifoHandle>,
@@ -294,10 +314,7 @@ pub async fn start_recording(
 ) -> Result<RecordingSessionId, AppError> {
     let capture_target: capture::CaptureTarget = match &args.target {
         crate::commands::capture::CaptureTargetDto::WindowByPid { title_hint, .. }
-            if matches!(
-                title_hint.as_deref(),
-                Some("storycapture-playwright")
-            ) =>
+            if matches!(title_hint.as_deref(), Some("storycapture-playwright")) =>
         {
             let stash_pid = crate::commands::automation::playwright_pid_stash()
                 .get()
@@ -329,16 +346,14 @@ pub async fn start_recording(
     // Probe encoders.
     let probe = {
         let cmd = TauriSidecar::new(app.clone());
-        probe_encoders(&cmd)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    target: "storycapture::recording",
-                    "probe_encoders failed: {}",
-                    e
-                );
-                AppError::Encoder(e.to_string())
-            })?
+        probe_encoders(&cmd).await.map_err(|e| {
+            tracing::error!(
+                target: "storycapture::recording",
+                "probe_encoders failed: {}",
+                e
+            );
+            AppError::Encoder(e.to_string())
+        })?
     };
     tracing::info!(
         target: "storycapture::recording",
@@ -368,36 +383,56 @@ pub async fn start_recording(
         pixel_format: PixelFormat::Bgra,
         queue_cap_bytes: ByteBoundedQueue::DEFAULT_CAP_BYTES,
     };
-    let backend = pick_default_backend(&cap_cfg);
-    tracing::info!(
-        target: "storycapture::recording",
-        "starting capture pipeline backend={:?}",
-        backend.kind()
-    );
+    let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<CaptureEvent>();
+    #[cfg(target_os = "macos")]
+    let preferred: Box<dyn capture::CaptureBackend> = {
+        let sck = capture::SckBackend::new().map_err(|e| AppError::Capture(e.to_string()))?;
+        sck.set_event_sink(evt_tx.clone());
+        Box::new(sck)
+    };
+    #[cfg(target_os = "windows")]
+    let preferred: Box<dyn capture::CaptureBackend> = {
+        let wgc = capture::WgcBackend::new().map_err(|e| AppError::Capture(e.to_string()))?;
+        wgc.set_event_sink(evt_tx.clone());
+        Box::new(wgc)
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let preferred: Box<dyn capture::CaptureBackend> = Box::new(capture::XcapBackend::new());
+
+    let on_event_for_capture = on_event.clone();
+    tokio::spawn(async move {
+        while let Some(evt) = evt_rx.recv().await {
+            let _ = on_event_for_capture.send(evt.into());
+        }
+    });
+
     let queue = ByteBoundedQueue::new(cap_cfg.queue_cap_bytes);
-    let mut capture = CapturePipeline::new(backend, queue);
-    let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(64);
+    let mut capture = CapturePipeline::new(preferred, queue);
+    let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(ENCODER_FRAME_CHANNEL_CAPACITY);
     // Best-effort drop telemetry: forward queue drops to the renderer via
     // the existing RecordingEvent channel. Channel<T> is Clone in Tauri 2.x;
     // clone once per callback invocation via the move-captured handle.
     let on_event_for_drops = on_event.clone();
-    let drop_cb: Option<capture::DropEventCallback> =
-        Some(Box::new(move |total, delta| {
-            if let Err(e) = on_event_for_drops
-                .send(RecordingEvent::FramesDropped { total, delta })
-            {
-                // Channel closed / full is non-fatal — telemetry is best-effort.
-                tracing::debug!(
-                    target: "storycapture::recording",
-                    error = %e,
-                    total,
-                    delta,
-                    "FramesDropped event send failed (channel closed?)"
-                );
-            }
-        }));
-    capture
-        .start(cap_cfg.clone(), frame_tx, drop_cb)
+    let drop_cb: Option<capture::DropEventCallback> = Some(Box::new(move |total, delta| {
+        if let Err(e) = on_event_for_drops.send(RecordingEvent::FramesDropped { total, delta }) {
+            // Channel closed / full is non-fatal — telemetry is best-effort.
+            tracing::debug!(
+                target: "storycapture::recording",
+                error = %e,
+                total,
+                delta,
+                "FramesDropped event send failed (channel closed?)"
+            );
+        }
+    }));
+    let outcome = capture
+        .start_orchestrated(
+            cap_cfg.clone(),
+            frame_tx,
+            Some(evt_tx.clone()),
+            capture::FallbackCounter::new(),
+            drop_cb,
+        )
         .await
         .map_err(|e| {
             tracing::error!(
@@ -409,6 +444,7 @@ pub async fn start_recording(
         })?;
     tracing::info!(
         target: "storycapture::recording",
+        ?outcome,
         "capture pipeline started"
     );
 
@@ -417,33 +453,29 @@ pub async fn start_recording(
     // the window, not the display — using args.width/height would cause
     // FFmpeg's rawvideo input to reject every frame as "invalid buffer
     // size". Worst case: 3s timeout, then we fall back to args dims.
-    let (actual_width, actual_height, first_frame) = match tokio::time::timeout(
-        std::time::Duration::from_secs(3),
-        frame_rx.recv(),
-    )
-    .await
-    {
-        Ok(Some(frame)) => {
-            let w = frame.width_px;
-            let h = frame.height_px;
-            tracing::info!(
-                target: "storycapture::recording",
-                "first frame dims {}x{} (caller sent {}x{})",
-                w, h, args.width, args.height
-            );
-            (w, h, Some(frame))
-        }
-        _ => {
-            tracing::warn!(
-                target: "storycapture::recording",
-                "no first frame within 3s; encoder using caller dims {}x{}",
-                args.width, args.height
-            );
-            (args.width, args.height, None)
-        }
-    };
+    let (actual_width, actual_height, first_frame) =
+        match tokio::time::timeout(std::time::Duration::from_secs(3), frame_rx.recv()).await {
+            Ok(Some(frame)) => {
+                let w = frame.width_px;
+                let h = frame.height_px;
+                tracing::info!(
+                    target: "storycapture::recording",
+                    "first frame dims {}x{} (caller sent {}x{})",
+                    w, h, args.width, args.height
+                );
+                (w, h, Some(frame))
+            }
+            _ => {
+                tracing::warn!(
+                    target: "storycapture::recording",
+                    "no first frame within 3s; encoder using caller dims {}x{}",
+                    args.width, args.height
+                );
+                (args.width, args.height, None)
+            }
+        };
     // Stitch peeked frame back in front of remaining frames.
-    let (enc_tx, enc_rx) = mpsc::channel::<Frame>(64);
+    let (enc_tx, enc_rx) = mpsc::channel::<Frame>(ENCODER_FRAME_CHANNEL_CAPACITY);
     if let Some(f) = first_frame {
         let _ = enc_tx.send(f).await;
     }
@@ -476,7 +508,8 @@ pub async fn start_recording(
         actual_height,
         args.fps,
         probe.preferred,
-    );
+    )
+    .force_ffmpeg_path();
     if let Some(f) = &audio_fifo {
         enc_cfg = enc_cfg.with_audio(AudioInput {
             fifo_path: f.path().to_path_buf(),
@@ -526,8 +559,7 @@ pub async fn start_recording(
                 // Poll for a mic disconnect and emit a warning event.
                 let flag = stream.degraded_flag();
                 tokio::spawn(async move {
-                    let mut ticker =
-                        tokio::time::interval(std::time::Duration::from_millis(500));
+                    let mut ticker = tokio::time::interval(std::time::Duration::from_millis(500));
                     loop {
                         ticker.tick().await;
                         if flag.load(std::sync::atomic::Ordering::Relaxed) {
@@ -571,9 +603,7 @@ pub async fn start_recording(
     let on_event_clone = on_event.clone();
     tokio::spawn(async move {
         while let Some(p) = prog_rx.recv().await {
-            let _ = on_event_clone.send(RecordingEvent::EncodeProgress {
-                progress: p.into(),
-            });
+            let _ = on_event_clone.send(RecordingEvent::EncodeProgress { progress: p.into() });
         }
     });
 
@@ -583,7 +613,7 @@ pub async fn start_recording(
             capture: Arc::new(tokio::sync::Mutex::new(capture)),
             encode_join,
             output_path,
-            audio_stream,
+            audio_stream: Arc::new(tokio::sync::Mutex::new(audio_stream)),
             audio_fifo,
         },
     );
@@ -621,7 +651,9 @@ pub async fn stop_recording(
     tracing::info!(target: "storycapture::recording", "stop_recording requested: session={}", session.0);
     match stop_recording_inner(&session.0).await {
         Ok(dto) => {
-            let _ = on_event.send(RecordingEvent::Completed { result: dto.clone() });
+            let _ = on_event.send(RecordingEvent::Completed {
+                result: dto.clone(),
+            });
             Ok(dto)
         }
         Err(e) => {
@@ -633,6 +665,18 @@ pub async fn stop_recording(
             Err(e)
         }
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn pause_recording(session: RecordingSessionId) -> Result<(), AppError> {
+    pause_recording_inner(&session.0).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn resume_recording(session: RecordingSessionId) -> Result<(), AppError> {
+    resume_recording_inner(&session.0).await
 }
 
 /// Core stop logic shared by the `stop_recording` Tauri command and the
@@ -656,8 +700,10 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
             AppError::NotFound(format!("recording session {session_id}"))
         })?;
 
+    crate::commands::automation::resume_active_automation();
+
     // Drop the audio stream before waiting on the encoder.
-    if let Some(audio) = handle.audio_stream {
+    if let Some(audio) = handle.audio_stream.lock().await.take() {
         tracing::info!(target: "storycapture::recording", "stop_recording: dropping audio stream to flush tail");
         drop(audio);
     }
@@ -686,6 +732,56 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
     tracing::info!(target: "storycapture::recording", "stop_recording: encoder finalized output={:?}", result.output_path);
 
     Ok(result.into())
+}
+
+async fn pause_recording_inner(session_id: &str) -> Result<(), AppError> {
+    let (capture, audio_stream) = {
+        let sessions = registry().sessions.lock();
+        let handle = sessions
+            .get(session_id)
+            .ok_or_else(|| AppError::NotFound(format!("recording session {session_id}")))?;
+        (handle.capture.clone(), handle.audio_stream.clone())
+    };
+
+    {
+        let mut capture = capture.lock().await;
+        capture
+            .pause()
+            .await
+            .map_err(|e| AppError::Capture(e.to_string()))?;
+    }
+
+    if let Some(stream) = audio_stream.lock().await.as_ref() {
+        stream.pause().map_err(|e| AppError::Capture(e.to_string()))?;
+    }
+
+    crate::commands::automation::pause_active_automation();
+    Ok(())
+}
+
+async fn resume_recording_inner(session_id: &str) -> Result<(), AppError> {
+    let (capture, audio_stream) = {
+        let sessions = registry().sessions.lock();
+        let handle = sessions
+            .get(session_id)
+            .ok_or_else(|| AppError::NotFound(format!("recording session {session_id}")))?;
+        (handle.capture.clone(), handle.audio_stream.clone())
+    };
+
+    {
+        let mut capture = capture.lock().await;
+        capture
+            .resume()
+            .await
+            .map_err(|e| AppError::Capture(e.to_string()))?;
+    }
+
+    if let Some(stream) = audio_stream.lock().await.as_ref() {
+        stream.resume().map_err(|e| AppError::Capture(e.to_string()))?;
+    }
+
+    crate::commands::automation::resume_active_automation();
+    Ok(())
 }
 
 /// [`automation::RecorderHandle`] impl backed by the recording registry.

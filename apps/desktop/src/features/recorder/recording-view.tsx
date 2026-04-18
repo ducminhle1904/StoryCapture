@@ -7,8 +7,8 @@ import {
   Circle,
   Loader2,
   Monitor,
-  Pause as PauseIcon,
-  Play as PlayIcon,
+  Pause,
+  Play,
   Square as StopIcon,
   Settings as SettingsIcon,
 } from "lucide-react";
@@ -27,6 +27,8 @@ import {
 } from "@/ipc/capture";
 import { TargetPicker } from "@/features/capture/TargetPicker";
 import {
+  pauseRecording,
+  resumeRecording,
   startRecording,
   stopRecording,
   type RecordingEvent,
@@ -34,11 +36,7 @@ import {
 } from "@/ipc/encode";
 import { launchAutomation, type ExecutorEvent } from "@/ipc/automation";
 import { parseStory } from "@/ipc/parse";
-import {
-  useRecorderStore,
-  type RecorderStatus,
-  type StepProgress,
-} from "@/state/recorder";
+import { useRecorderStore, type RecorderStatus, type StepProgress } from "@/state/recorder";
 
 import { TccPrompt } from "./tcc-prompt";
 import { CursorTrail } from "./cursor-trail";
@@ -58,10 +56,7 @@ interface RecordingViewProps {
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
-    2,
-    "0",
-  );
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
   const seconds = String(totalSeconds % 60).padStart(2, "0");
   return `${hours}:${minutes}:${seconds}`;
 }
@@ -137,6 +132,8 @@ export function RecordingView({
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
   const startedAtRef = useRef<number | null>(null);
+  const pausedAtRef = useRef<number | null>(null);
+  const automationOwnsStopRef = useRef(false);
 
   const displays = availableTargets?.displays ?? [];
   const selectedDisplay: number | null =
@@ -150,8 +147,7 @@ export function RecordingView({
           : captureTarget.display_id
         : null;
 
-  const currentStepEntry =
-    steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
+  const currentStepEntry = steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
   const completedSteps = steps.filter((s) => s.status === "succeeded").length;
   const displayLabel = useMemo(() => {
     if (selectedDisplay == null) return null;
@@ -159,9 +155,7 @@ export function RecordingView({
       const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
       return id === selectedDisplay;
     });
-    return match
-      ? `${match.name} · ${match.width_px}×${match.height_px}`
-      : null;
+    return match ? `${match.name} · ${match.width_px}×${match.height_px}` : null;
   }, [displays, selectedDisplay]);
 
   // Preflight and enumerate targets on mount.
@@ -278,30 +272,25 @@ export function RecordingView({
   }, [status, setElapsed]);
 
   const dispatch = (event: RecordingEvent) => {
-    switch (event.kind) {
-      case "StepStarted":
-        advanceStep(event.index, "running");
-        break;
-      case "StepSucceeded":
-        advanceStep(event.index, "succeeded");
-        if (
-          typeof event.cursor_x === "number" &&
-          typeof event.cursor_y === "number"
-        ) {
-          pushCursor({ x: event.cursor_x, y: event.cursor_y, t: Date.now() });
-        }
-        break;
-      case "StepFailed":
-        advanceStep(event.index, "failed");
-        break;
-      case "Completed":
+    switch (event.type) {
+      case "completed":
+        sessionRef.current = null;
+        startedAtRef.current = null;
+        pausedAtRef.current = null;
+        automationOwnsStopRef.current = false;
+        setSession(null);
         setStatus("completed");
         setOutputPath(event.result.output_path);
         toast.success("Recording complete", {
           description: event.result.output_path,
         });
         break;
-      case "Failed":
+      case "failed":
+        sessionRef.current = null;
+        startedAtRef.current = null;
+        pausedAtRef.current = null;
+        automationOwnsStopRef.current = false;
+        setSession(null);
         setStatus("failed");
         setError(event.message);
         toast.error(`Recording failed: ${event.message}`);
@@ -319,6 +308,8 @@ export function RecordingView({
     }
     setStatus("recording");
     startedAtRef.current = Date.now();
+    pausedAtRef.current = null;
+    automationOwnsStopRef.current = false;
     const display = displays.find((d) => {
       const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
       return id === selectedDisplay;
@@ -328,8 +319,7 @@ export function RecordingView({
     try {
       const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
       const userPickedDisplay = captureTarget?.kind === "display";
-      const shouldAutoFollow =
-        storyHasBrowser && (captureTarget == null || userPickedDisplay);
+      const shouldAutoFollow = storyHasBrowser && (captureTarget == null || userPickedDisplay);
       let recordingTarget: typeof captureTarget = captureTarget ?? {
         kind: "display" as const,
         display_id: selectedDisplay!,
@@ -369,9 +359,7 @@ export function RecordingView({
           };
           toast.info("Recording just the browser window");
         } else {
-          toast.warning(
-            "Playwright didn't launch in time — recording full display instead",
-          );
+          toast.warning("Playwright didn't launch in time — recording full display instead");
         }
       }
       const id = await startRecording(
@@ -388,18 +376,24 @@ export function RecordingView({
         (event) => dispatch(event),
       );
       sessionRef.current = id;
-      setSession(
-        typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
-      );
+      setSession(typeof (id as unknown) === "string" ? (id as unknown as string) : id.id);
 
       // Launch DSL automation here ONLY if we didn't already launch it
       // for auto-follow (`shouldAutoFollow` fires launchAutomation BEFORE
       // capture starts so the Chromium pid is resolvable). Otherwise, we'd
       // spawn two Playwright sessions.
       if (!shouldAutoFollow) {
-        launchAutomation({ storySource, projectFolder, chromeHiding }, (evt) =>
-          dispatchAutomation(evt),
+        automationOwnsStopRef.current = true;
+        launchAutomation(
+          {
+            storySource,
+            projectFolder,
+            chromeHiding,
+            recordingSessionId: typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
+          },
+          (evt) => dispatchAutomation(evt),
         ).catch((e) => {
+          automationOwnsStopRef.current = false;
           const msg = formatIpcError(e);
           toast.error(`Automation failed: ${msg}`);
           setError(msg);
@@ -430,10 +424,13 @@ export function RecordingView({
         if (evt.status.failed > 0) {
           toast.warning(`Story finished with ${evt.status.failed} failure(s)`);
         }
-        // Stop capture after the DSL finishes.
-        window.setTimeout(() => {
-          if (sessionRef.current) void handleStop();
-        }, 500);
+        if (!automationOwnsStopRef.current) {
+          // Stop capture after the DSL finishes when the host isn't already
+          // attached to the recording session.
+          window.setTimeout(() => {
+            if (sessionRef.current) void handleStop();
+          }, 500);
+        }
         break;
       default:
         break;
@@ -442,11 +439,48 @@ export function RecordingView({
 
   const handleStop = async () => {
     if (!sessionRef.current) return;
+    const session = sessionRef.current;
     setStatus("stopping");
     try {
-      await stopRecording(sessionRef.current, () => {});
+      const result = await stopRecording(session);
+      dispatch({ type: "completed", result });
     } catch (e) {
-      toast.error(`Stop failed: ${formatIpcError(e)}`);
+      sessionRef.current = null;
+      startedAtRef.current = null;
+      setSession(null);
+      const message = formatIpcError(e);
+      setStatus("failed");
+      setError(message);
+      toast.error(`Stop failed: ${message}`);
+    }
+  };
+
+  const handlePause = async () => {
+    if (!sessionRef.current || status !== "recording") return;
+    try {
+      await pauseRecording(sessionRef.current);
+      pausedAtRef.current = Date.now();
+      setStatus("paused");
+    } catch (e) {
+      const message = formatIpcError(e);
+      setError(message);
+      toast.error(`Pause failed: ${message}`);
+    }
+  };
+
+  const handleResume = async () => {
+    if (!sessionRef.current || status !== "paused") return;
+    try {
+      await resumeRecording(sessionRef.current);
+      if (startedAtRef.current && pausedAtRef.current) {
+        startedAtRef.current += Date.now() - pausedAtRef.current;
+      }
+      pausedAtRef.current = null;
+      setStatus("recording");
+    } catch (e) {
+      const message = formatIpcError(e);
+      setError(message);
+      toast.error(`Resume failed: ${message}`);
     }
   };
 
@@ -456,7 +490,7 @@ export function RecordingView({
       if ((e.metaKey || e.ctrlKey) && e.key === "r") {
         e.preventDefault();
         if (status === "idle") void handleRecord();
-        else if (status === "recording") void handleStop();
+        else if (status === "recording" || status === "paused") void handleStop();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -471,19 +505,14 @@ export function RecordingView({
   const permissionPending = permission === "undetermined";
 
   return (
-    <main
-      id="main-content"
-      className="relative flex h-full flex-col bg-[var(--color-bg-primary)]"
-    >
+    <main id="main-content" className="relative flex h-full flex-col bg-[var(--color-bg-primary)]">
       <CursorTrail />
 
       {/* ─── Header ─── */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
         <div className="flex items-center gap-3">
           {/* Back to editor (falls back to dashboard). Blocked while recording. */}
-          {status === "recording" ||
-          status === "paused" ||
-          status === "stopping" ? (
+          {status === "recording" || status === "paused" || status === "stopping" ? (
             <span
               aria-label="Back button disabled during recording"
               className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-muted)] opacity-50"
@@ -513,20 +542,16 @@ export function RecordingView({
               <span>Record</span>
             )}
             <span>/</span>
-            <span className="font-medium text-[var(--color-fg-primary)]">
-              {projectName}
-            </span>
+            <span className="font-medium text-[var(--color-fg-primary)]">{projectName}</span>
             <span>/</span>
             <span>Record</span>
           </div>
-          {status === "recording" && (
-            <LiveRecordingBadge reduceMotion={!!reduceMotion} />
+          {(status === "recording" || status === "paused") && (
+            <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
           )}
         </div>
         <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
-          {sessionId ? (
-            <span className="font-mono">session · {sessionId.slice(0, 8)}</span>
-          ) : null}
+          {sessionId ? <span className="font-mono">session · {sessionId.slice(0, 8)}</span> : null}
         </div>
       </header>
 
@@ -573,9 +598,7 @@ export function RecordingView({
               await loadCaptureTargets();
               toast.success("Permission check bypassed");
             } catch (e) {
-              toast.error(
-                `Could not load capture targets: ${formatIpcError(e)}`,
-              );
+              toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
             }
           }}
         />
@@ -600,11 +623,7 @@ export function RecordingView({
 
           {/* Step rail — horizontal chips */}
           <div className="shrink-0 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-3">
-            <StepRail
-              steps={steps}
-              currentStep={currentStep}
-              completedSteps={completedSteps}
-            />
+            <StepRail steps={steps} currentStep={currentStep} completedSteps={completedSteps} />
           </div>
 
           {/* Primary action strip */}
@@ -616,43 +635,48 @@ export function RecordingView({
                 <span>Resolve permissions to record</span>
               ) : status === "recording" ? (
                 <span>Recording in progress</span>
+              ) : status === "paused" ? (
+                <span>Recording paused</span>
               ) : status === "completed" ? (
-                <span className="text-[var(--color-success)]">
-                  Recording complete
-                </span>
+                <span className="text-[var(--color-success)]">Recording complete</span>
               ) : status === "failed" ? (
-                <span className="text-[var(--color-danger)]">
-                  Recording failed
-                </span>
+                <span className="text-[var(--color-danger)]">Recording failed</span>
               ) : null}
             </div>
 
             <div className="flex items-center gap-2">
               {status === "idle" && (
-                <RecordButton
-                  disabled={!canRecordDisplay}
-                  onClick={handleRecord}
-                />
+                <RecordButton disabled={!canRecordDisplay} onClick={handleRecord} />
               )}
-              {(status === "recording" || status === "paused") && (
+              {status === "recording" && (
                 <>
                   <button
-                    onClick={() =>
-                      setStatus(status === "paused" ? "recording" : "paused")
-                    }
-                    aria-label={
-                      status === "paused"
-                        ? "Resume recording"
-                        : "Pause recording"
-                    }
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)] focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)]"
+                    onClick={handlePause}
+                    aria-label="Pause recording"
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,background-color] duration-150 hover:bg-[var(--color-surface-300)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
                   >
-                    {status === "paused" ? (
-                      <PlayIcon size={13} aria-hidden="true" />
-                    ) : (
-                      <PauseIcon size={13} aria-hidden="true" />
-                    )}
-                    {status === "paused" ? "Resume" : "Pause"}
+                    <Pause size={13} aria-hidden="true" />
+                    Pause
+                  </button>
+                  <button
+                    onClick={handleStop}
+                    aria-label="Stop recording"
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                  >
+                    <StopIcon size={13} aria-hidden="true" />
+                    Stop
+                  </button>
+                </>
+              )}
+              {status === "paused" && (
+                <>
+                  <button
+                    onClick={handleResume}
+                    aria-label="Resume recording"
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-warning)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,filter] duration-150 hover:brightness-105 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                  >
+                    <Play size={13} aria-hidden="true" />
+                    Resume
                   </button>
                   <button
                     onClick={handleStop}
@@ -696,12 +720,7 @@ export function RecordingView({
               }}
               onRefresh={() => loadCaptureTargets()}
               onOpenRegion={(id) => openRegionOverlay(id)}
-              disabled={
-                !canRecord ||
-                status === "recording" ||
-                status === "paused" ||
-                status === "stopping"
-              }
+              disabled={!canRecord || status === "recording" || status === "paused" || status === "stopping"}
             />
             {displayLabel && (
               <p className="mt-1.5 font-mono text-[10px] text-[var(--color-fg-muted)]">
@@ -709,16 +728,12 @@ export function RecordingView({
               </p>
             )}
             {/* 2s static thumbnail of the selected capture target.
-                Paused during recording to prevent contention with the
+                Suspended during recording to prevent contention with the
                 main SCK/WGC session. */}
             <div className="mt-2.5">
               <TargetThumbnail
                 target={captureTarget ?? null}
-                paused={
-                  status === "recording" ||
-                  status === "paused" ||
-                  status === "stopping"
-                }
+                suspended={status === "recording" || status === "paused" || status === "stopping"}
               />
             </div>
           </SettingsGroup>
@@ -733,15 +748,10 @@ export function RecordingView({
             <AudioDevicePicker
               value={audioDeviceId}
               onValueChange={setAudioDeviceId}
-              disabled={
-                status === "recording" ||
-                status === "paused" ||
-                status === "stopping"
-              }
+              disabled={status === "recording" || status === "paused" || status === "stopping"}
             />
             <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
-              Default is off; choose "System default" to include voice-over.
-              Resets every recording.
+              Default is off; choose "System default" to include voice-over. Resets every recording.
             </p>
           </SettingsGroup>
 
@@ -759,28 +769,16 @@ export function RecordingView({
               <CursorToggle
                 checked={includeCursor}
                 onChange={setIncludeCursor}
-                disabled={
-                  status === "recording" ||
-                  status === "paused" ||
-                  status === "stopping"
-                }
+                disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
               {/* Chrome-hiding toggle (non-sticky, defaults OFF). */}
               <ChromeHidingToggle
                 checked={chromeHiding}
                 onChange={setChromeHiding}
                 browserPreset={browserPreset}
-                disabled={
-                  status === "recording" ||
-                  status === "paused" ||
-                  status === "stopping"
-                }
+                disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
-              <Toggle
-                label="3s countdown"
-                checked={useCountdown}
-                onChange={setUseCountdown}
-              />
+              <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
             </div>
           </SettingsGroup>
 
@@ -796,22 +794,32 @@ export function RecordingView({
       </div>
 
       {/* Fallback modal for first-time permission grant (macOS requires app restart) */}
-      <TccPrompt
-        open={tccOpen}
-        permission={permission}
-        onDismiss={() => setTccOpen(false)}
-      />
+      <TccPrompt open={tccOpen} permission={permission} onDismiss={() => setTccOpen(false)} />
     </main>
   );
 }
 
 /* ─── Subcomponents ─── */
 
-function LiveRecordingBadge({ reduceMotion }: { reduceMotion: boolean }) {
+function LiveRecordingBadge({
+  paused,
+  reduceMotion,
+}: {
+  paused: boolean;
+  reduceMotion: boolean;
+}) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-danger)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--color-danger)]">
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+        paused
+          ? "bg-[var(--color-warning)]/15 text-[var(--color-warning)]"
+          : "bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
+      }`}
+    >
       <motion.span
-        className="h-1.5 w-1.5 rounded-full bg-[var(--color-danger)]"
+        className={`h-1.5 w-1.5 rounded-full ${
+          paused ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"
+        }`}
         animate={reduceMotion ? undefined : { opacity: [1, 0.35, 1] }}
         transition={{
           duration: 1.2,
@@ -819,7 +827,7 @@ function LiveRecordingBadge({ reduceMotion }: { reduceMotion: boolean }) {
           ease: "easeInOut",
         }}
       />
-      Live
+      {paused ? "Paused" : "Live"}
     </span>
   );
 }
@@ -843,13 +851,11 @@ function PermissionBanner({
       <div className="flex min-w-0 items-center gap-2 text-[var(--color-warning)]">
         <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
         <span className="font-medium text-[var(--color-fg-primary)]">
-          {isDenied
-            ? "Screen recording permission denied."
-            : "Screen recording permission needed."}
+          {isDenied ? "Screen recording permission denied." : "Screen recording permission needed."}
         </span>
         <span className="text-[var(--color-fg-secondary)]">
-          macOS Sequoia sometimes reports stale state. If you've already
-          granted, click "Already granted".
+          macOS Sequoia sometimes reports stale state. If you've already granted, click "Already
+          granted".
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -920,11 +926,7 @@ function PreviewStage({
             className="relative flex flex-col items-center text-center"
           >
             <div className="grid h-14 w-14 place-items-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
-              <Monitor
-                size={22}
-                className="text-[var(--color-fg-muted)]"
-                aria-hidden="true"
-              />
+              <Monitor size={22} className="text-[var(--color-fg-muted)]" aria-hidden="true" />
             </div>
             <p className="mt-4 text-sm font-medium text-[var(--color-fg-primary)]">
               Ready to record
@@ -937,9 +939,7 @@ function PreviewStage({
           </motion.div>
         )}
 
-        {(status === "recording" ||
-          status === "paused" ||
-          status === "stopping") && (
+        {(status === "recording" || status === "paused" || status === "stopping") && (
           <motion.div
             key="recording"
             initial={reduceMotion ? false : { opacity: 0, scale: 0.98 }}
@@ -952,6 +952,8 @@ function PreviewStage({
               {formatTime(elapsedMs)}
             </div>
             <div className="mt-3 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              <span>{status === "paused" ? "Paused" : "Recording"}</span>
+              <span>/</span>
               <span>Step {Math.min(currentStepIndex + 1, totalSteps)}</span>
               <span>/</span>
               <span>{totalSteps}</span>
@@ -959,11 +961,6 @@ function PreviewStage({
             <p className="font-mono mt-2 max-w-md truncate text-xs text-[var(--color-fg-secondary)]">
               {currentStepLabel ?? "waiting…"}
             </p>
-            {status === "paused" && (
-              <div className="mt-4 rounded-full bg-[var(--color-warning)]/15 px-3 py-1 text-[11px] font-medium text-[var(--color-warning)]">
-                Paused
-              </div>
-            )}
           </motion.div>
         )}
 
@@ -998,17 +995,11 @@ function PreviewStage({
             exit={reduceMotion ? undefined : { opacity: 0 }}
             className="relative flex max-w-md flex-col items-center text-center"
           >
-            <AlertTriangle
-              size={26}
-              className="text-[var(--color-danger)]"
-              aria-hidden="true"
-            />
+            <AlertTriangle size={26} className="text-[var(--color-danger)]" aria-hidden="true" />
             <p className="mt-3 text-sm font-medium text-[var(--color-fg-primary)]">
               Recording failed
             </p>
-            <p className="font-mono mt-1 text-[11px] text-[var(--color-fg-secondary)]">
-              {error}
-            </p>
+            <p className="font-mono mt-1 text-[11px] text-[var(--color-fg-secondary)]">{error}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1033,46 +1024,99 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
     );
   }
 
+  const failedCount = steps.filter((s) => s.status === "failed").length;
+  const activeIdx = Math.min(currentStep, steps.length - 1);
+  const activeStep = steps[activeIdx];
+  const activeRunning = activeStep?.status === "running";
+  const activeFailed = activeStep?.status === "failed";
+  const progressPct = Math.round((completedSteps / steps.length) * 100);
+
   return (
-    <div className="flex items-center gap-3">
-      <div className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
-        {completedSteps} / {steps.length}
+    <div className="flex flex-col gap-2">
+      {/* Row 1: focus — current step readout + counters */}
+      <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span
+            className={`grid h-4 w-4 shrink-0 place-items-center rounded-full ${
+              activeFailed
+                ? "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+                : activeRunning
+                  ? "bg-[var(--color-accent-primary)]/15 text-[var(--color-accent-primary)]"
+                  : "bg-[var(--color-surface-300)] text-[var(--color-fg-muted)]"
+            }`}
+          >
+            {activeFailed ? (
+              <AlertTriangle size={9} aria-hidden="true" />
+            ) : activeRunning ? (
+              <Loader2 size={9} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Circle size={7} aria-hidden="true" />
+            )}
+          </span>
+          <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+            {String(activeIdx + 1).padStart(2, "0")}
+            <span className="opacity-50">/{String(steps.length).padStart(2, "0")}</span>
+          </span>
+          <span className="min-w-0 truncate text-[11px] text-[var(--color-fg-primary)]">
+            {activeStep?.verb ?? "—"}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+          <span>
+            <span className="text-[var(--color-success)]">{completedSteps}</span>
+            <span className="mx-1 opacity-40">·</span>
+            <span className={failedCount ? "text-[var(--color-danger)]" : ""}>
+              {failedCount} failed
+            </span>
+          </span>
+          <span className="font-mono tabular-nums text-[var(--color-fg-secondary)]">
+            {progressPct}%
+          </span>
+        </div>
       </div>
-      <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+
+      {/* Row 2: all-steps matrix — fixed height, no scroll.
+          Auto-fit cells shrink to accommodate any step count. */}
+      <div
+        className="grid gap-[3px]"
+        style={{
+          gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`,
+        }}
+      >
         {steps.map((step, i) => {
-          const active = i === currentStep;
+          const active = i === activeIdx;
           const done = step.status === "succeeded";
           const running = step.status === "running";
           const failed = step.status === "failed";
+          const tone = failed
+            ? "bg-[var(--color-danger)]"
+            : done
+              ? "bg-[var(--color-success)]"
+              : running
+                ? "bg-[var(--color-accent-primary)]"
+                : "bg-[var(--color-surface-300)]";
           return (
             <motion.div
               key={i}
               layout
-              className={`flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[10px] font-medium ${
-                failed
-                  ? "bg-[var(--color-danger)]/10 text-[var(--color-danger)]"
-                  : done
-                    ? "bg-[var(--color-success)]/10 text-[var(--color-success)]"
-                    : running || active
-                      ? "bg-[var(--color-accent-primary)]/10 text-[var(--color-accent-primary)]"
-                      : "bg-[var(--color-surface-300)] text-[var(--color-fg-muted)]"
+              title={`${i + 1}. ${step.verb}${
+                failed ? " — failed" : done ? " — done" : running ? " — running" : ""
               }`}
+              className="group relative h-2 min-w-0"
+              initial={false}
             >
-              {done ? (
-                <CheckCircle2 size={10} aria-hidden="true" />
-              ) : running ? (
-                <Loader2
-                  size={10}
-                  className="animate-spin"
-                  aria-hidden="true"
+              <span
+                className={`block h-full w-full rounded-[2px] transition-[opacity,transform] duration-200 ${tone} ${
+                  done || failed || running ? "opacity-90" : "opacity-50"
+                } ${running ? "animate-pulse" : ""}`}
+              />
+              {active && (
+                <motion.span
+                  layoutId="step-indicator"
+                  className="pointer-events-none absolute -inset-x-0.5 -inset-y-1 rounded-[3px] ring-1 ring-[var(--color-fg-primary)]/70"
+                  transition={{ type: "spring", stiffness: 400, damping: 34 }}
                 />
-              ) : failed ? (
-                <AlertTriangle size={10} aria-hidden="true" />
-              ) : (
-                <Circle size={10} aria-hidden="true" />
               )}
-              <span className="font-mono tabular-nums">{i + 1}</span>
-              <span className="truncate">{step.verb}</span>
             </motion.div>
           );
         })}
@@ -1130,9 +1174,7 @@ function SettingsRow({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex items-center justify-between">
       <dt className="text-[var(--color-fg-muted)]">{k}</dt>
-      <dd className="font-mono text-[11px] text-[var(--color-fg-primary)]">
-        {v}
-      </dd>
+      <dd className="font-mono text-[11px] text-[var(--color-fg-primary)]">{v}</dd>
     </div>
   );
 }
@@ -1155,9 +1197,7 @@ function Toggle({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`relative h-4 w-7 rounded-full transition-colors duration-150 ${
-          checked
-            ? "bg-[var(--color-accent-primary)]"
-            : "bg-[var(--color-surface-400)]"
+          checked ? "bg-[var(--color-accent-primary)]" : "bg-[var(--color-surface-400)]"
         }`}
       >
         <span

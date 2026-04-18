@@ -13,6 +13,7 @@
 //! attempt rows (Plan 05 surface).
 
 use crate::capability::{driver_for, required_for};
+use crate::control::RunControl;
 use crate::driver::{ActionKind, BrowserDriver, LaunchConfig, LaunchOptions};
 use crate::error::{AutomationError, Result};
 use crate::events::{AttemptLog, ExecutorEvent, StorySummary};
@@ -25,6 +26,7 @@ use tokio::sync::{mpsc, Mutex};
 
 const DEFAULT_ACTION_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_WAITFOR_TIMEOUT_MS: u64 = 30_000;
+const PAUSE_POLL_SLICE_MS: u64 = 50;
 
 pub type PersistenceHandle = Arc<Mutex<ProjectDb>>;
 
@@ -40,6 +42,7 @@ impl Executor {
         persistence: Option<PersistenceHandle>,
         screenshot_dir: PathBuf,
         launch_opts: LaunchOptions,
+        control: Option<Arc<RunControl>>,
     ) -> mpsc::Receiver<ExecutorEvent> {
         let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
         tokio::spawn(async move {
@@ -50,6 +53,7 @@ impl Executor {
                 persistence,
                 screenshot_dir,
                 launch_opts,
+                control,
                 tx,
             )
             .await;
@@ -77,6 +81,7 @@ async fn run_story(
     persistence: Option<PersistenceHandle>,
     screenshot_dir: PathBuf,
     launch_opts: LaunchOptions,
+    control: Option<Arc<RunControl>>,
     tx: mpsc::Sender<ExecutorEvent>,
 ) -> Result<()> {
     let started = Instant::now();
@@ -110,6 +115,7 @@ async fn run_story(
     let mut ordinal: u32 = 0;
 
     'scenes: for (i, scene) in story.scenes.iter().enumerate() {
+        checkpoint(control.as_deref()).await;
         let _ = tx
             .send(ExecutorEvent::SceneEntered {
                 name: scene.name.clone(),
@@ -117,6 +123,7 @@ async fn run_story(
             })
             .await;
         for cmd in &scene.commands {
+            checkpoint(control.as_deref()).await;
             ordinal += 1;
             total += 1;
             let driver = Executor::pick_driver_for_cmd(primary.as_ref(), fallback.as_ref(), cmd);
@@ -147,8 +154,17 @@ async fn run_story(
 
             let cmd_started = Instant::now();
             let result =
-                run_command(driver, cmd, &screenshot_dir, &tx, ordinal, &persistence, step_id)
-                    .await;
+                run_command(
+                    driver,
+                    cmd,
+                    &screenshot_dir,
+                    &tx,
+                    ordinal,
+                    &persistence,
+                    step_id,
+                    control.as_deref(),
+                )
+                .await;
 
             match result {
                 Ok(()) => {
@@ -226,8 +242,10 @@ async fn run_command(
     ordinal: u32,
     persistence: &Option<PersistenceHandle>,
     step_id: Option<uuid::Uuid>,
+    control: Option<&RunControl>,
 ) -> std::result::Result<(), (AutomationError, Vec<AttemptLog>)> {
     let mut attempts: Vec<AttemptLog> = Vec::new();
+    checkpoint(control).await;
 
     macro_rules! resolve {
         ($target:expr, $action:expr) => {{
@@ -295,7 +313,7 @@ async fn run_command(
             let sel = resolve!(target, ActionKind::Upload);
             driver.upload_file(&sel, std::path::Path::new(path)).await
         }
-        Command::Wait { duration_ms, .. } => driver.wait_ms(*duration_ms).await,
+        Command::Wait { duration_ms, .. } => wait_with_pause(*duration_ms, control, driver).await,
         Command::WaitFor {
             target, timeout_ms, ..
         } => {
@@ -309,6 +327,31 @@ async fn run_command(
     };
 
     result.map_err(|e| (e, attempts))
+}
+
+async fn checkpoint(control: Option<&RunControl>) {
+    if let Some(control) = control {
+        control.checkpoint().await;
+    }
+}
+
+async fn wait_with_pause(
+    duration_ms: u64,
+    control: Option<&RunControl>,
+    driver: &dyn BrowserDriver,
+) -> Result<()> {
+    if control.is_none() {
+        return driver.wait_ms(duration_ms).await;
+    }
+
+    let mut remaining_ms = duration_ms;
+    while remaining_ms > 0 {
+        checkpoint(control).await;
+        let slice_ms = remaining_ms.min(PAUSE_POLL_SLICE_MS);
+        driver.wait_ms(slice_ms).await?;
+        remaining_ms -= slice_ms;
+    }
+    Ok(())
 }
 
 async fn push_attempts(

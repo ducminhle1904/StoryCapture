@@ -141,129 +141,147 @@ export function TargetPicker({
 
   const playwrightAvail = availableTargets?.playwright_auto_available ?? false;
 
+  const showCropRegion =
+    !!onOpenRegion && value?.kind === "display" && !disabled;
+
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="min-w-0 flex-1">
-        <Select
-          value={selectedKey}
-          onValueChange={(v: unknown) => {
-            if (typeof v === "string") {
-              const t = lookup.get(v);
-              if (t) onValueChange(t);
-            }
-          }}
-          onOpenChange={handleOpen}
-          disabled={disabled || !availableTargets}
-        >
-          <SelectTrigger
-            id="target-select"
-            aria-label="Capture target"
-          >
-            <SelectValue>
-              {() =>
-                value ? (
-                  <span className="truncate">
-                    {labelForTarget(value, availableTargets)}
-                  </span>
-                ) : (
-                  <span className="text-[var(--color-fg-muted)]">
-                    Select target
-                  </span>
-                )
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        <div className="min-w-0 flex-1">
+          <Select
+            value={selectedKey}
+            onValueChange={(v: unknown) => {
+              if (typeof v === "string") {
+                const t = lookup.get(v);
+                if (t) onValueChange(t);
               }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectGroupLabel>Playwright browser</SelectGroupLabel>
-              <SelectItem
-                value={captureTargetKey(PLAYWRIGHT_AUTO_TARGET)}
-                disabled={!playwrightAvail}
-              >
-                <span>
-                  Playwright browser (auto){" "}
-                  <span className="ml-1 rounded-sm bg-[var(--color-accent-primary)]/15 px-1 text-[9px] uppercase tracking-wider text-[var(--color-accent-primary)]">
-                    Recommended
+            }}
+            onOpenChange={handleOpen}
+            disabled={disabled || !availableTargets}
+          >
+            <SelectTrigger
+              id="target-select"
+              aria-label="Capture target"
+              className="min-w-0"
+            >
+              <SelectValue>
+                {() =>
+                  value ? (
+                    <span className="block min-w-0 flex-1 truncate text-left">
+                      {labelForTarget(value, availableTargets)}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--color-fg-muted)]">
+                      Select target
+                    </span>
+                  )
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="max-w-[min(var(--available-width),22rem)]">
+              <SelectGroup>
+                <SelectGroupLabel>Playwright browser</SelectGroupLabel>
+                <SelectItem
+                  value={captureTargetKey(PLAYWRIGHT_AUTO_TARGET)}
+                  disabled={!playwrightAvail}
+                >
+                  <span className="flex min-w-0 flex-wrap items-center gap-1">
+                    <span className="truncate">Playwright browser (auto)</span>
+                    <span className="rounded-sm bg-[var(--color-accent-primary)]/15 px-1 text-[9px] uppercase tracking-wider text-[var(--color-accent-primary)]">
+                      Recommended
+                    </span>
+                    {!playwrightAvail ? (
+                      <span className="truncate text-[var(--color-fg-muted)]">
+                        · Launch a story to enable
+                      </span>
+                    ) : null}
                   </span>
-                </span>
-                {!playwrightAvail ? (
-                  <span className="ml-2 text-[var(--color-fg-muted)]">
-                    · Launch a story to enable
-                  </span>
-                ) : null}
-              </SelectItem>
-            </SelectGroup>
+                </SelectItem>
+              </SelectGroup>
 
-            <SelectSeparator />
+              <SelectSeparator />
 
-            <SelectGroup>
-              <SelectGroupLabel>Full screen</SelectGroupLabel>
-              {(availableTargets?.displays ?? []).map((d) => {
-                const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
-                const target: CaptureTarget = { kind: "display", display_id: id };
-                return (
-                  <SelectItem key={`display:${id}`} value={captureTargetKey(target)}>
-                    Display {id} — {d.name} ({d.width_px}×{d.height_px})
-                  </SelectItem>
-                );
-              })}
-              {(!availableTargets || availableTargets.displays.length === 0) && (
-                <div className="px-2 py-1 text-[11px] text-[var(--color-fg-muted)]">
-                  No displays detected
-                </div>
-              )}
-            </SelectGroup>
+              <SelectGroup>
+                <SelectGroupLabel>Full screen</SelectGroupLabel>
+                {(availableTargets?.displays ?? []).map((d) => {
+                  const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
+                  const target: CaptureTarget = {
+                    kind: "display",
+                    display_id: id,
+                  };
+                  const label = `Display ${id} — ${d.name} (${d.width_px}×${d.height_px})`;
+                  return (
+                    <SelectItem
+                      key={`display:${id}`}
+                      value={captureTargetKey(target)}
+                    >
+                      <span className="block truncate" title={label}>
+                        {label}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+                {(!availableTargets ||
+                  availableTargets.displays.length === 0) && (
+                  <div className="px-2 py-1 text-[11px] text-[var(--color-fg-muted)]">
+                    No displays detected
+                  </div>
+                )}
+              </SelectGroup>
 
-            <SelectSeparator />
+              <SelectSeparator />
 
-            <SelectGroup>
-              <SelectGroupLabel>Specific window</SelectGroupLabel>
-              {windowsWithOccurrence.length === 0 ? (
-                <div className="px-2 py-1 text-[11px] text-[var(--color-fg-muted)]">
-                  No windows detected
-                </div>
-              ) : (
-                windowsWithOccurrence.map((wi) => (
-                  <SelectItem key={wi.key} value={wi.key}>
-                    {wi.label}
-                  </SelectItem>
-                ))
-              )}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+              <SelectGroup>
+                <SelectGroupLabel>Specific window</SelectGroupLabel>
+                {windowsWithOccurrence.length === 0 ? (
+                  <div className="px-2 py-1 text-[11px] text-[var(--color-fg-muted)]">
+                    No windows detected
+                  </div>
+                ) : (
+                  windowsWithOccurrence.map((wi) => (
+                    <SelectItem key={wi.key} value={wi.key}>
+                      <span className="block truncate" title={wi.label}>
+                        {wi.label}
+                      </span>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <button
+          type="button"
+          aria-label="Refresh capture targets"
+          title="Refresh windows"
+          onClick={handleManualRefresh}
+          disabled={disabled || refreshing}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw
+            size={11}
+            aria-hidden="true"
+            className={refreshing ? "animate-spin" : undefined}
+          />
+        </button>
       </div>
-
-      <button
-        type="button"
-        aria-label="Refresh capture targets"
-        title="Refresh windows"
-        onClick={handleManualRefresh}
-        disabled={disabled || refreshing}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <RefreshCw
-          size={11}
-          aria-hidden="true"
-          className={refreshing ? "animate-spin" : undefined}
-        />
-      </button>
 
       {/* Plan 06-02 — only shown when a Display target is selected.
           Window/PlaywrightAuto targets have no region concept. */}
-      {onOpenRegion && value?.kind === "display" && !disabled && (
+      {showCropRegion && (
         <button
           type="button"
           onClick={() => {
             const id =
-              typeof value.display_id === "bigint"
-                ? Number(value.display_id)
-                : value.display_id;
-            void onOpenRegion(id);
+              typeof value!.display_id === "bigint"
+                ? Number(value!.display_id)
+                : (value!.display_id as number);
+            void onOpenRegion!(id);
           }}
           aria-label="Crop capture to region"
           title="Crop to region…"
-          className="text-[11px] text-[var(--color-accent-primary)] underline underline-offset-2 hover:brightness-125"
+          className="self-start text-[11px] text-[var(--color-accent-primary)] underline underline-offset-2 transition-[filter] hover:brightness-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
         >
           Crop to region…
         </button>

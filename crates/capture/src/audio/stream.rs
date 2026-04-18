@@ -4,11 +4,12 @@
 //! use `push_slice` to avoid WASAPI stalls.
 
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, StreamConfig};
+use cpal::{Device, DeviceId, SampleFormat, StreamConfig};
 use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::HeapRb;
 
@@ -44,7 +45,8 @@ impl AudioCaptureStream {
         // Mock path for CI and unit tests.
         #[cfg(feature = "audio-mock")]
         {
-            if device_id == Some("__mock__") || std::env::var_os("STORYCAPTURE_AUDIO_MOCK").is_some()
+            if device_id == Some("__mock__")
+                || std::env::var_os("STORYCAPTURE_AUDIO_MOCK").is_some()
             {
                 return mock::start_mock(fifo_path);
             }
@@ -55,19 +57,7 @@ impl AudioCaptureStream {
             None | Some("") | Some("default") => host
                 .default_input_device()
                 .ok_or(AudioError::NoDefaultInput)?,
-            Some(name) => {
-                let mut found = None;
-                for d in host
-                    .input_devices()
-                    .map_err(|e| AudioError::Cpal(e.to_string()))?
-                {
-                    if d.name().ok().as_deref() == Some(name) {
-                        found = Some(d);
-                        break;
-                    }
-                }
-                found.ok_or_else(|| AudioError::DeviceNotFound(name.to_string()))?
-            }
+            Some(id) => resolve_input_device(&host, id)?,
         };
 
         let default_cfg = device
@@ -81,7 +71,7 @@ impl AudioCaptureStream {
         // Fixed-capacity ring buffer; full writes drop samples.
         let buf_cap = (sample_rate as usize) * channels as usize * 2;
         let rb = HeapRb::<f32>::new(buf_cap.max(4096));
-        let (mut prod, mut cons) = rb.split();
+        let (mut prod, cons) = rb.split();
         let stop_flag = Arc::new(AtomicBool::new(false));
         let degraded = Arc::new(AtomicBool::new(false));
 
@@ -181,6 +171,43 @@ impl AudioCaptureStream {
     pub fn info(&self) -> AudioStreamInfo {
         self.info
     }
+
+    pub fn pause(&self) -> Result<(), AudioError> {
+        self._stream
+            .pause()
+            .map_err(|e| AudioError::Cpal(format!("stream.pause: {e}")))
+    }
+
+    pub fn resume(&self) -> Result<(), AudioError> {
+        self._stream
+            .play()
+            .map_err(|e| AudioError::Cpal(format!("stream.play: {e}")))
+    }
+}
+
+fn resolve_input_device(host: &cpal::Host, device_id: &str) -> Result<Device, AudioError> {
+    if let Ok(parsed) = DeviceId::from_str(device_id) {
+        if let Some(device) = host.device_by_id(&parsed) {
+            return Ok(device);
+        }
+    }
+
+    // Backward-compatible fallback for pre-id sessions that persisted the
+    // human-readable device name instead of cpal's stable DeviceId.
+    for device in host
+        .input_devices()
+        .map_err(|e| AudioError::Cpal(e.to_string()))?
+    {
+        let name = match device.description() {
+            Ok(description) => description.name().to_string(),
+            Err(_) => continue,
+        };
+        if name == device_id {
+            return Ok(device);
+        }
+    }
+
+    Err(AudioError::DeviceNotFound(device_id.to_string()))
 }
 
 impl Drop for AudioCaptureStream {
@@ -193,17 +220,10 @@ impl Drop for AudioCaptureStream {
 }
 
 /// Drain the ring buffer into the named pipe on a dedicated thread.
-fn drain_loop(
-    mut cons: impl Consumer<Item = f32>,
-    stop_flag: Arc<AtomicBool>,
-    fifo_path: PathBuf,
-) {
+fn drain_loop(mut cons: impl Consumer<Item = f32>, stop_flag: Arc<AtomicBool>, fifo_path: PathBuf) {
     use std::io::Write;
 
-    let mut fifo = match std::fs::OpenOptions::new()
-        .write(true)
-        .open(&fifo_path)
-    {
+    let mut fifo = match std::fs::OpenOptions::new().write(true).open(&fifo_path) {
         Ok(f) => f,
         Err(e) => {
             tracing::error!(

@@ -12,7 +12,7 @@ use crate::frame::Frame;
 use crate::target::CaptureTarget;
 use async_trait::async_trait;
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -35,6 +35,7 @@ pub struct SckBackend {
     /// Frames dropped because `try_send` hit a full channel.
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    paused: Arc<AtomicBool>,
 }
 
 struct SckState {
@@ -62,6 +63,7 @@ impl SckBackend {
             event_sink: Arc::new(Mutex::new(None)),
             dropped: Arc::new(AtomicU64::new(0)),
             delivered: Arc::new(AtomicU64::new(0)),
+            paused: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -246,9 +248,13 @@ impl CaptureBackend for SckBackend {
         let out_for_handler = out.clone();
         let dropped_for_handler = self.dropped.clone();
         let delivered_for_handler = self.delivered.clone();
+        let paused_for_handler = self.paused.clone();
         let added = stream.add_output_handler(
             move |sample, kind| {
                 if kind != SCStreamOutputType::Screen {
+                    return;
+                }
+                if paused_for_handler.load(Ordering::Relaxed) {
                     return;
                 }
                 if let Some(frame) = crate::macos::frame_from_sample::to_frame(&sample) {
@@ -299,6 +305,7 @@ impl CaptureBackend for SckBackend {
         let mut s = self.state.lock();
         s.started_at = Some(Instant::now());
         s.stream = Some(stream);
+        self.paused.store(false, Ordering::Release);
         Ok(())
     }
 
@@ -326,7 +333,18 @@ impl CaptureBackend for SckBackend {
         // Reset counters for the next session.
         self.delivered.store(0, Ordering::Relaxed);
         self.dropped.store(0, Ordering::Relaxed);
+        self.paused.store(false, Ordering::Release);
         Ok(stats)
+    }
+
+    async fn pause(&mut self) -> Result<(), CaptureError> {
+        self.paused.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    async fn resume(&mut self) -> Result<(), CaptureError> {
+        self.paused.store(false, Ordering::Release);
+        Ok(())
     }
 
     fn list_displays(&self) -> Result<Vec<DisplayInfo>, CaptureError> {

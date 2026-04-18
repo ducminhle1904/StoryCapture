@@ -22,8 +22,8 @@ export interface StartRecordingArgs {
   /**
    * Phase 6 plan 01 — optional mic device. `null` / undefined = no
    * audio (silent track, Phase 1 behavior). `"default"` = host resolves
-   * the system default input device. Any other string is a cpal device
-   * name from `listAudioInputs`. Non-sticky per D-02 — the recorder
+   * the system default input device. Any other string is a stable cpal
+   * device id from `listAudioInputs`. Non-sticky per D-02 — the recorder
    * resets this to null on mount and on recording complete.
    */
   audio_device_id?: string | null;
@@ -39,19 +39,27 @@ export interface RecordingSessionId {
   id: string;
 }
 
+export interface EncodeResultDto {
+  output_path: string;
+  duration_ms: number;
+  bytes?: number;
+  frames_written?: number;
+  frames_dropped?: number;
+  [k: string]: unknown;
+}
+
 /**
  * `RecordingEvent` is a tagged union surfaced by the host over a Tauri
- * Channel. The renderer treats it as JSON and switches on `kind`. See
+ * Channel. The renderer switches on the Rust `#[serde(tag = "type")]`
+ * discriminator. See
  * `RecordingEvent` in `commands/encode.rs` for the authoritative shape.
  */
 export type RecordingEvent =
-  | { kind: "EncodeProgress"; progress: unknown }
-  | { kind: "CaptureStatus"; json: string }
-  | { kind: "Completed"; result: { output_path: string; duration_ms: number; [k: string]: unknown } }
-  | { kind: "Failed"; message: string }
-  | { kind: "StepStarted"; index: number; verb: string }
-  | { kind: "StepSucceeded"; index: number; cursor_x?: number; cursor_y?: number }
-  | { kind: "StepFailed"; index: number; message: string };
+  | { type: "encode-progress"; progress: unknown }
+  | { type: "capture-status"; json: string }
+  | { type: "frames-dropped"; total: number; delta: number }
+  | { type: "completed"; result: EncodeResultDto }
+  | { type: "failed"; message: string };
 
 export async function probeHwEncoders(): Promise<unknown> {
   return invoke("probe_hw_encoders");
@@ -71,9 +79,17 @@ export async function startRecording(
 
 export async function stopRecording(
   session: RecordingSessionId,
-  onEvent: (e: RecordingEvent) => void,
-): Promise<unknown> {
+  onEvent: (e: RecordingEvent) => void = () => {},
+): Promise<EncodeResultDto> {
   const channel = new Channel<RecordingEvent>();
   channel.onmessage = (evt) => onEvent(evt);
-  return invoke("stop_recording", { session, onEvent: channel });
+  return invoke<EncodeResultDto>("stop_recording", { session, onEvent: channel });
+}
+
+export async function pauseRecording(session: RecordingSessionId): Promise<void> {
+  return invoke("pause_recording", { session });
+}
+
+export async function resumeRecording(session: RecordingSessionId): Promise<void> {
+  return invoke("resume_recording", { session });
 }

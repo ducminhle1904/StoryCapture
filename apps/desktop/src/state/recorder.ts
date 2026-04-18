@@ -74,7 +74,7 @@ export interface RecorderData {
   availableTargets: CaptureTargets | null;
 
   /** `null` = no audio. `"default"` = cpal's default input. Any other
-   *  string is a specific device name. Non-sticky: resets to null on
+   *  string is a specific device id. Non-sticky: resets to null on
    *  mount and recording completion. */
   audioDeviceId: AudioPickerValue;
 
@@ -171,8 +171,9 @@ export const useRecorderStore = create<RecorderState>((set) => ({
       getCaptureTarget().catch(() => null),
     ]);
     // Fall back to the first display if nothing is persisted.
-    const fallback: CaptureTarget | null = persisted
-      ?? (targets.displays[0]
+    const fallback: CaptureTarget | null =
+      persisted ??
+      (targets.displays[0]
         ? { kind: "display" as const, display_id: targets.displays[0].id }
         : null);
     set({ availableTargets: targets, captureTarget: fallback });
@@ -211,9 +212,7 @@ export const useRecorderStore = create<RecorderState>((set) => ({
       //   1. it just became available
       //   2. AND the stored target is either null or the first-run sentinel
       //      (we treat "display 0 or first display" as the first-run fallback)
-      const currentKey = s.captureTarget
-        ? captureTargetKey(s.captureTarget)
-        : "";
+      const currentKey = s.captureTarget ? captureTargetKey(s.captureTarget) : "";
       const storedIsFirstRunFallback =
         !s.captureTarget ||
         (prevTargets !== null &&
@@ -228,9 +227,7 @@ export const useRecorderStore = create<RecorderState>((set) => ({
                   : prevTargets.displays[0].id,
             }));
       const nextTarget =
-        isAvailable && storedIsFirstRunFallback
-          ? PLAYWRIGHT_AUTO_TARGET
-          : s.captureTarget;
+        isAvailable && storedIsFirstRunFallback ? PLAYWRIGHT_AUTO_TARGET : s.captureTarget;
       return {
         availableTargets: nextTargets,
         captureTarget: nextTarget,

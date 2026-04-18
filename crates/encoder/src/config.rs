@@ -37,13 +37,18 @@ pub struct EncodeConfig {
     pub output_path: PathBuf,
     pub width: u32,
     pub height: u32,
-    /// FPS hint; FFmpeg still uses per-frame timestamps.
+    /// Fixed output cadence for the FFmpeg stdin path. The macOS VT fast
+    /// path preserves native capture PTS; raw BGRA over stdin does not.
     pub fps_advisory: u32,
     pub encoder: HardwareEncoder,
     /// Video bitrate in kbps.
     pub bitrate_kbps: u32,
     /// Optional mic input.
     pub audio_input: Option<AudioInput>,
+    /// Force the rawvideo -> FFmpeg path even when a platform-native fast
+    /// path is available. Recorder sessions use this so pause/resume shortens
+    /// the timeline instead of preserving native timestamp gaps.
+    pub force_ffmpeg_path: bool,
 }
 
 impl EncodeConfig {
@@ -62,12 +67,18 @@ impl EncodeConfig {
             encoder,
             bitrate_kbps: 12_000,
             audio_input: None,
+            force_ffmpeg_path: false,
         }
     }
 
     /// Attach mic input.
     pub fn with_audio(mut self, audio: AudioInput) -> Self {
         self.audio_input = Some(audio);
+        self
+    }
+
+    pub fn force_ffmpeg_path(mut self) -> Self {
+        self.force_ffmpeg_path = true;
         self
     }
 
@@ -79,13 +90,11 @@ impl EncodeConfig {
             )));
         }
         if self.fps_advisory == 0 {
-            return Err(EncoderError::InvalidConfig("fps_advisory must be > 0".into()));
+            return Err(EncoderError::InvalidConfig(
+                "fps_advisory must be > 0".into(),
+            ));
         }
-        if self
-            .output_path
-            .as_os_str()
-            .is_empty()
-        {
+        if self.output_path.as_os_str().is_empty() {
             return Err(EncoderError::InvalidConfig("empty output_path".into()));
         }
         Ok(())
@@ -94,19 +103,17 @@ impl EncodeConfig {
     /// Render the FFmpeg argv without the binary path.
     pub fn to_ffmpeg_args(&self) -> Vec<String> {
         // Bitrate scales with pixel count.
-        let pixel_based_kbps =
-            ((self.width as u64 * self.height as u64 * 3) / 1000) as u32;
+        let pixel_based_kbps = ((self.width as u64 * self.height as u64 * 3) / 1000) as u32;
         let target_kbps = pixel_based_kbps.max(self.bitrate_kbps).min(40_000);
         let bitrate = format!("{}k", target_kbps);
-        let scale_filter =
-            "scale='min(1920,iw)':-2,scale=trunc(iw/2)*2:trunc(ih/2)*2".to_string();
+        let scale_filter = "scale='min(1920,iw)':-2,scale=trunc(iw/2)*2:trunc(ih/2)*2".to_string();
 
         let mut args: Vec<String> = vec![
             "-hide_banner".into(),
             "-y".into(),
             "-thread_queue_size".into(),
             "1024".into(),
-            // Raw BGRA input on stdin.
+            // Raw BGRA input on stdin at a fixed cadence.
             "-f".into(),
             "rawvideo".into(),
             "-pix_fmt".into(),
@@ -115,8 +122,6 @@ impl EncodeConfig {
             format!("{}x{}", self.width, self.height),
             "-r".into(),
             self.fps_advisory.to_string(),
-            "-use_wallclock_as_timestamps".into(),
-            "1".into(),
             "-i".into(),
             "pipe:0".into(),
         ];
@@ -149,12 +154,7 @@ impl EncodeConfig {
 
         // Explicit mapping only when real audio is present.
         if self.audio_input.is_some() {
-            args.extend([
-                "-map".into(),
-                "0:v:0".into(),
-                "-map".into(),
-                "1:a:0".into(),
-            ]);
+            args.extend(["-map".into(), "0:v:0".into(), "-map".into(), "1:a:0".into()]);
         }
 
         args.extend([
@@ -175,12 +175,7 @@ impl EncodeConfig {
 
         // Mic input gets a higher bitrate than the silent fallback.
         if self.audio_input.is_some() {
-            args.extend([
-                "-b:a".into(),
-                "128k".into(),
-                "-ac".into(),
-                "2".into(),
-            ]);
+            args.extend(["-b:a".into(), "128k".into(), "-ac".into(), "2".into()]);
         } else {
             args.extend(["-b:a".into(), "64k".into()]);
         }
@@ -188,7 +183,7 @@ impl EncodeConfig {
         args.extend([
             // Framing and packaging.
             "-fps_mode".into(),
-            "vfr".into(),
+            "cfr".into(),
             "-movflags".into(),
             "+faststart".into(),
             "-shortest".into(),
@@ -223,10 +218,22 @@ mod tests {
     #[test]
     fn ffmpeg_args_contain_required_flags() {
         let args = cfg().to_ffmpeg_args().join(" ");
-        assert!(args.contains("-progress pipe:2"), "progress flag missing: {args}");
-        assert!(args.contains("-fps_mode vfr"), "fps_mode vfr missing: {args}");
-        assert!(args.contains("-movflags +faststart"), "faststart missing: {args}");
-        assert!(args.contains("-pix_fmt bgra"), "pix_fmt bgra missing: {args}");
+        assert!(
+            args.contains("-progress pipe:2"),
+            "progress flag missing: {args}"
+        );
+        assert!(
+            args.contains("-fps_mode cfr"),
+            "fps_mode cfr missing: {args}"
+        );
+        assert!(
+            args.contains("-movflags +faststart"),
+            "faststart missing: {args}"
+        );
+        assert!(
+            args.contains("-pix_fmt bgra"),
+            "pix_fmt bgra missing: {args}"
+        );
         assert!(args.contains("-f rawvideo"), "rawvideo missing: {args}");
         assert!(args.contains("pipe:0"), "stdin input missing: {args}");
         assert!(args.contains("anullsrc"), "silent audio missing: {args}");
@@ -274,12 +281,18 @@ mod tests {
         assert!(args.contains("-ac 1"), "missing -ac 1 for mono mic: {args}");
         assert!(args.contains("-i /tmp/mic.fifo"), "missing fifo -i: {args}");
         // Explicit mapping so FFmpeg uses the FIFO audio.
-        assert!(args.contains("-map 0:v:0 -map 1:a:0"), "missing maps: {args}");
+        assert!(
+            args.contains("-map 0:v:0 -map 1:a:0"),
+            "missing maps: {args}"
+        );
         // AAC 128 kbps stereo output.
         assert!(args.contains("-b:a 128k"), "missing 128k audio: {args}");
         assert!(args.contains("-ac 2"), "missing stereo downmix: {args}");
         // `anullsrc` is absent on the mic path.
-        assert!(!args.contains("anullsrc"), "mic path should not include anullsrc: {args}");
+        assert!(
+            !args.contains("anullsrc"),
+            "mic path should not include anullsrc: {args}"
+        );
     }
 
     #[test]

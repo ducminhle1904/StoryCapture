@@ -29,7 +29,6 @@ use std::sync::Arc;
 use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame as WgcFrame;
 use windows_capture::graphics_capture_api::InternalCaptureControl;
-use windows_capture::monitor::Monitor;
 use windows_capture::settings::{
     ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
     MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
@@ -176,9 +175,9 @@ pub async fn capture_thumbnail(
         // handler, but immediately join via .stop(). The handler itself
         // calls capture_control.stop() on frame 1, so the pump exits.
         let control = match &target_owned {
-            CaptureTarget::Display { .. } | CaptureTarget::DisplayRegion { .. } => {
-                let monitor = Monitor::primary()
-                    .map_err(|e| CaptureError::Native(format!("Monitor::primary: {e}")))?;
+            CaptureTarget::Display { display_id }
+            | CaptureTarget::DisplayRegion { display_id, .. } => {
+                let monitor = crate::windows::helpers::resolve_monitor(display_id)?;
                 let settings = Settings::new(
                     monitor,
                     cursor,
@@ -229,14 +228,21 @@ pub async fn capture_thumbnail(
     .await
     .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
 
-    let captured = slot.lock().take().ok_or_else(|| {
-        CaptureError::Timeout("thumbnail: no frame arrived within 1s".into())
-    })?;
+    let captured = slot
+        .lock()
+        .take()
+        .ok_or_else(|| CaptureError::Timeout("thumbnail: no frame arrived within 1s".into()))?;
 
     // Downscale + PNG-encode. Stays on a blocking thread because both
     // ops are CPU-bound (~5-15ms for a 1080p BGRA + 320×200 PNG).
     tokio::task::spawn_blocking(move || {
-        encode_bgra_to_png(&captured.bgra, captured.width_px, captured.height_px, max_width, max_height)
+        encode_bgra_to_png(
+            &captured.bgra,
+            captured.width_px,
+            captured.height_px,
+            max_width,
+            max_height,
+        )
     })
     .await
     .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))?
@@ -282,7 +288,10 @@ fn encode_bgra_to_png(
 /// guarantees this by slicing to `src_w * src_h * 4` beforehand. `pub` so the
 /// Criterion bench can exercise it directly.
 pub fn bgra_to_rgba_swap(bgra: &[u8]) -> Vec<u8> {
-    debug_assert!(bgra.len() % 4 == 0, "BGRA buffer length must be a multiple of 4");
+    debug_assert!(
+        bgra.len() % 4 == 0,
+        "BGRA buffer length must be a multiple of 4"
+    );
     let mut rgba = vec![0u8; bgra.len()];
     let src_words: &[u32] = bytemuck::cast_slice(bgra);
     let dst_words: &mut [u32] = bytemuck::cast_slice_mut(&mut rgba[..]);

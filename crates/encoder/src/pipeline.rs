@@ -101,14 +101,15 @@ impl EncodePipeline {
         // Audio input forces the FFmpeg path.
         #[cfg(target_os = "macos")]
         {
-            if cfg.audio_input.is_none() {
+            if !cfg.force_ffmpeg_path && cfg.audio_input.is_none() {
                 if let Some(join) = try_start_vt_fast_path(&cfg, &mut frames, &progress_tx).await? {
                     return Ok(join);
                 }
             } else {
                 tracing::info!(
                     target: "storycapture::encoder",
-                    "audio_input set — skipping VT fast path, using FFmpeg pipeline for AV mux"
+                    force_ffmpeg_path = cfg.force_ffmpeg_path,
+                    "audio_input set or FFmpeg forced — skipping VT fast path, using FFmpeg pipeline"
                 );
             }
         }

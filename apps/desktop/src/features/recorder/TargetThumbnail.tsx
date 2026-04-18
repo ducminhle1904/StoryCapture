@@ -2,7 +2,7 @@
  * Static 2s-refresh preview thumbnail of the selected capture target.
  *
  * Contract:
- *   - Refetches every 2s; pauses when recording or target is null (no
+ *   - Refetches every 2s; suspends when recording or target is null (no
  *     cycles stolen from the real capture pipeline).
  *   - On error (TCC denied, window closed, IPC failure) renders a
  *     neutral placeholder instead of surfacing an error state.
@@ -16,16 +16,12 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
 
-import {
-  captureTargetKey,
-  captureTargetThumbnail,
-  type CaptureTarget,
-} from "@/ipc/capture";
+import { captureTargetKey, captureTargetThumbnail, type CaptureTarget } from "@/ipc/capture";
 
 export interface TargetThumbnailProps {
   target: CaptureTarget | null;
   /** When true, suspend refetching (e.g. during active recording). */
-  paused?: boolean;
+  suspended?: boolean;
   /** Override the default 320×200 bounds (HiDPI previews). */
   maxWidth?: number;
   maxHeight?: number;
@@ -38,13 +34,13 @@ export interface TargetThumbnailProps {
  */
 export function TargetThumbnail({
   target,
-  paused = false,
+  suspended = false,
   maxWidth = 320,
   maxHeight = 200,
   className,
 }: TargetThumbnailProps) {
   const key = target ? captureTargetKey(target) : "none";
-  const enabled = target != null && !paused;
+  const enabled = target != null && !suspended;
 
   const query = useQuery<Uint8Array, Error>({
     queryKey: ["target-thumbnail", key, maxWidth, maxHeight],
@@ -103,8 +99,8 @@ export function TargetThumbnail({
           <span>
             {!target
               ? "No target selected"
-              : paused
-                ? "Paused during recording"
+              : suspended
+                ? "Preview suspended during recording"
                 : "Preview unavailable"}
           </span>
         </div>

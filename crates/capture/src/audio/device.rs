@@ -12,9 +12,8 @@ use serde::{Deserialize, Serialize};
 use super::error::AudioError;
 
 /// Serializable DTO for the audio-device picker. `id` doubles as the
-/// selection key — cpal device names are stable enough for session
-/// lifetime (they change on physical re-plug, which forces re-listing
-/// anyway).
+/// selection key and uses cpal's stable host/device identifier. `name`
+/// remains the user-facing label in the picker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioInputInfo {
     pub id: String,
@@ -29,11 +28,12 @@ pub struct AudioInputInfo {
 /// and surface a helpful UI message instead of an error.
 pub fn list_inputs() -> Result<Vec<AudioInputInfo>, AudioError> {
     let host = cpal::default_host();
-    // Resolve default-device NAME only — do not query further properties
-    // (those touch mic on macOS per cpal#901).
-    let default_name = host
+    // Resolve the default-device ID only — do not query further
+    // properties (those touch mic on macOS per cpal#901).
+    let default_id = host
         .default_input_device()
-        .and_then(|d| d.name().ok());
+        .and_then(|d| d.id().ok())
+        .map(|id| id.to_string());
 
     let devices = host
         .input_devices()
@@ -41,10 +41,15 @@ pub fn list_inputs() -> Result<Vec<AudioInputInfo>, AudioError> {
 
     let mut out = Vec::new();
     for dev in devices {
-        let name = match dev.name() {
-            Ok(n) => n,
+        let id = match dev.id() {
+            Ok(id) => id.to_string(),
             Err(_) => continue,
         };
+        let description = match dev.description() {
+            Ok(desc) => desc,
+            Err(_) => continue,
+        };
+        let name = description.name().to_string();
         // default_input_config may fail on e.g. disconnected or busy
         // devices; skip silently rather than failing the whole listing.
         let cfg = match dev.default_input_config() {
@@ -52,8 +57,8 @@ pub fn list_inputs() -> Result<Vec<AudioInputInfo>, AudioError> {
             Err(_) => continue,
         };
         out.push(AudioInputInfo {
-            id: name.clone(),
-            is_default: default_name.as_deref() == Some(&name),
+            id: id.clone(),
+            is_default: default_id.as_deref() == Some(id.as_str()),
             name,
             channels: cfg.channels(),
             sample_rate_hz: cfg.sample_rate(),

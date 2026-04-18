@@ -5,7 +5,9 @@
 
 use crate::error::AppError;
 use crate::state::AppState;
-use automation::{Executor, ExecutorEvent, LaunchOptions, NoopDriver, PlaywrightSidecarDriver};
+use automation::{
+    Executor, ExecutorEvent, LaunchOptions, NoopDriver, PlaywrightSidecarDriver, RunControl,
+};
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -278,10 +280,20 @@ pub async fn launch_automation(
     let fallback: Box<dyn automation::BrowserDriver> = Box::new(NoopDriver::new());
 
     let persistence = Some(Arc::new(Mutex::new(project_db)) as automation::PersistenceHandle);
+    let control = Arc::new(RunControl::new());
+    set_active_run_control(Some(control.clone()));
 
     // Run the executor and forward events.
     tracing::info!(target: "storycapture::automation", "Executor::run starting");
-    let mut events = Executor::run(story, primary, fallback, persistence, screenshot_dir, launch_opts);
+    let mut events = Executor::run(
+        story,
+        primary,
+        fallback,
+        persistence,
+        screenshot_dir,
+        launch_opts,
+        Some(control.clone()),
+    );
     while let Some(evt) = events.recv().await {
         // Mirror events into tracing for diagnostics.
         let truncate_at = match &evt {
@@ -301,6 +313,7 @@ pub async fn launch_automation(
         }
     }
     tracing::info!(target: "storycapture::automation", "Executor channel closed (story ended)");
+    clear_active_run_control(&control);
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
 
@@ -326,6 +339,38 @@ pub async fn launch_automation(
     }
 
     Ok(())
+}
+
+fn active_run_control() -> &'static parking_lot::Mutex<Option<Arc<RunControl>>> {
+    use std::sync::OnceLock;
+    static ACTIVE: OnceLock<parking_lot::Mutex<Option<Arc<RunControl>>>> = OnceLock::new();
+    ACTIVE.get_or_init(|| parking_lot::Mutex::new(None))
+}
+
+fn set_active_run_control(control: Option<Arc<RunControl>>) {
+    *active_run_control().lock() = control;
+}
+
+fn clear_active_run_control(expected: &Arc<RunControl>) {
+    let mut guard = active_run_control().lock();
+    if guard
+        .as_ref()
+        .is_some_and(|current| Arc::ptr_eq(current, expected))
+    {
+        *guard = None;
+    }
+}
+
+pub(crate) fn pause_active_automation() {
+    if let Some(control) = active_run_control().lock().clone() {
+        control.pause();
+    }
+}
+
+pub(crate) fn resume_active_automation() {
+    if let Some(control) = active_run_control().lock().clone() {
+        control.resume();
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────

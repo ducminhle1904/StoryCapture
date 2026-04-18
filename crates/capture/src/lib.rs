@@ -5,7 +5,7 @@
 //! bytes — not zero-copy).
 //!
 //! Invariants: frame queue bounded in BYTES not frames (256 MiB default);
-//! capture-API PTS preserved end-to-end; native surface handles wrapped
+//! capture-API PTS preserved through the capture crate; native surface handles wrapped
 //! in RAII (CFRelease/Release on Drop).
 
 pub mod audio;
@@ -35,9 +35,9 @@ pub use error::CaptureError;
 pub use events::CaptureEvent;
 pub use fallback::XcapBackend;
 pub use frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
+pub use orchestrator::{orchestrate_start, FallbackCounter, OrchestratedStart};
 pub use pipeline::{CapturePipeline, DropEventCallback};
 pub use queue::{ByteBoundedQueue, DroppedFrame, QueueStats};
-pub use orchestrator::{orchestrate_start, FallbackCounter, OrchestratedStart};
 pub use target::{CaptureTarget, RegionRect, WindowId};
 pub use window::WindowInfo;
 

@@ -84,5 +84,13 @@ pub trait CaptureBackend: Send + Sync {
 
     async fn stop(&mut self) -> Result<CaptureStats, CaptureError>;
 
+    async fn pause(&mut self) -> Result<(), CaptureError> {
+        Ok(())
+    }
+
+    async fn resume(&mut self) -> Result<(), CaptureError> {
+        Ok(())
+    }
+
     fn list_displays(&self) -> Result<Vec<DisplayInfo>, CaptureError>;
 }

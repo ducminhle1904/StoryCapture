@@ -14,17 +14,14 @@ use crate::windows::frame_from_wgc;
 use crate::windows::pool::{self, FramePool};
 use async_trait::async_trait;
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
 
-use windows_capture::capture::{
-    Context, GraphicsCaptureApiError, GraphicsCaptureApiHandler,
-};
+use windows_capture::capture::{Context, GraphicsCaptureApiError, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame as WgcFrame;
 use windows_capture::graphics_capture_api::InternalCaptureControl;
-use windows_capture::monitor::Monitor;
 use windows_capture::settings::{
     ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
     MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
@@ -36,6 +33,7 @@ pub struct WgcBackend {
     event_sink: Arc<Mutex<Option<mpsc::UnboundedSender<CaptureEvent>>>>,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    paused: Arc<AtomicBool>,
     /// Shared BGRA scratch pool.
     frame_pool: FramePool,
 }
@@ -44,9 +42,7 @@ struct WgcState {
     started_at: Option<Instant>,
     stats: CaptureStats,
     /// `CaptureControl` returned by `start_free_threaded`.
-    control: Option<
-        windows_capture::capture::CaptureControl<WgcHandler, WgcHandlerError>,
-    >,
+    control: Option<windows_capture::capture::CaptureControl<WgcHandler, WgcHandlerError>>,
 }
 
 /// Handler passed to `start_free_threaded`.
@@ -56,6 +52,7 @@ struct WgcHandler {
     start_epoch: Instant,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    paused: Arc<AtomicBool>,
     /// Optional post-capture crop rect.
     crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
     /// BGRA scratch pool.
@@ -69,6 +66,7 @@ struct WgcFlags {
     start_epoch: Instant,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    paused: Arc<AtomicBool>,
     /// Optional crop rect.
     crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
     /// Shared BGRA scratch pool.
@@ -98,6 +96,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             start_epoch,
             dropped,
             delivered,
+            paused,
             crop_rect,
             frame_pool,
         } = ctx.flags;
@@ -107,6 +106,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             start_epoch,
             dropped,
             delivered,
+            paused,
             crop_rect,
             frame_pool,
         })
@@ -118,6 +118,9 @@ impl GraphicsCaptureApiHandler for WgcHandler {
         capture_control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
         // Never block or await in the callback.
+        if self.paused.load(Ordering::Relaxed) {
+            return Ok(());
+        }
         let f = match frame_from_wgc::to_frame(frame, self.start_epoch, &self.frame_pool) {
             Ok(f) => f,
             Err(e) => {
@@ -208,6 +211,7 @@ impl WgcBackend {
             event_sink: Arc::new(Mutex::new(None)),
             dropped: Arc::new(AtomicU64::new(0)),
             delivered: Arc::new(AtomicU64::new(0)),
+            paused: Arc::new(AtomicBool::new(false)),
             frame_pool: pool::new_pool(),
         })
     }
@@ -257,6 +261,7 @@ impl CaptureBackend for WgcBackend {
             start_epoch,
             dropped: self.dropped.clone(),
             delivered: self.delivered.clone(),
+            paused: self.paused.clone(),
             crop_rect,
             frame_pool: self.frame_pool.clone(),
         };
@@ -275,9 +280,8 @@ impl CaptureBackend for WgcBackend {
 
         // Dispatch by target kind.
         let control = match cfg.target {
-            CaptureTarget::Display { .. } => {
-                let monitor = Monitor::primary()
-                    .map_err(|e| CaptureError::Native(format!("Monitor::primary: {e}")))?;
+            CaptureTarget::Display { display_id } => {
+                let monitor = crate::windows::helpers::resolve_monitor(&display_id)?;
                 let settings = Settings::new(
                     monitor,
                     cursor,
@@ -317,14 +321,13 @@ impl CaptureBackend for WgcBackend {
                 );
                 control
             }
-            CaptureTarget::WindowByPid { pid, ref title_hint } => {
-                let hwnd_opt = crate::windows::window::find_window_by_pid(
-                    pid,
-                    title_hint.as_deref(),
-                )
-                .await?;
-                let hwnd = hwnd_opt
-                    .ok_or(CaptureError::WindowNotFound(pid as u64))?;
+            CaptureTarget::WindowByPid {
+                pid,
+                ref title_hint,
+            } => {
+                let hwnd_opt =
+                    crate::windows::window::find_window_by_pid(pid, title_hint.as_deref()).await?;
+                let hwnd = hwnd_opt.ok_or(CaptureError::WindowNotFound(pid as u64))?;
                 let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
                 let settings = Settings::new(
                     window,
@@ -345,10 +348,8 @@ impl CaptureBackend for WgcBackend {
                 );
                 control
             }
-            CaptureTarget::DisplayRegion { .. } => {
-                // Capture the primary display and crop in the callback.
-                let monitor = Monitor::primary()
-                    .map_err(|e| CaptureError::Native(format!("Monitor::primary: {e}")))?;
+            CaptureTarget::DisplayRegion { display_id, .. } => {
+                let monitor = crate::windows::helpers::resolve_monitor(&display_id)?;
                 let settings = Settings::new(
                     monitor,
                     cursor,
@@ -366,6 +367,7 @@ impl CaptureBackend for WgcBackend {
         let mut s = self.state.lock();
         s.started_at = Some(Instant::now());
         s.control = Some(control);
+        self.paused.store(false, Ordering::Release);
         Ok(())
     }
 
@@ -388,7 +390,18 @@ impl CaptureBackend for WgcBackend {
         }
         s.stats.frames_delivered = self.delivered.load(Ordering::Acquire);
         s.stats.frames_dropped = self.dropped.load(Ordering::Acquire);
+        self.paused.store(false, Ordering::Release);
         Ok(s.stats)
+    }
+
+    async fn pause(&mut self) -> Result<(), CaptureError> {
+        self.paused.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    async fn resume(&mut self) -> Result<(), CaptureError> {
+        self.paused.store(false, Ordering::Release);
+        Ok(())
     }
 
     fn list_displays(&self) -> Result<Vec<DisplayInfo>, CaptureError> {

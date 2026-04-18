@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 pub struct XcapBackend {
     running: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
     started_at: Arc<Mutex<Option<Instant>>>,
     stats: Arc<Mutex<CaptureStats>>,
     // `xcap::Monitor` is NOT `Send` on Windows (it holds an HMONITOR
@@ -32,6 +33,7 @@ impl XcapBackend {
     pub fn new() -> Self {
         Self {
             running: Arc::new(AtomicBool::new(false)),
+            paused: Arc::new(AtomicBool::new(false)),
             started_at: Arc::new(Mutex::new(None)),
             stats: Arc::new(Mutex::new(CaptureStats::default())),
             handle: None,
@@ -99,6 +101,7 @@ impl CaptureBackend for XcapBackend {
         let interval_ms = (1000 / fps as u64).max(1);
 
         let running = self.running.clone();
+        let paused = self.paused.clone();
         let stats = self.stats.clone();
         let start_epoch = Instant::now();
 
@@ -111,6 +114,11 @@ impl CaptureBackend for XcapBackend {
             loop {
                 if !running.load(Ordering::Acquire) {
                     break;
+                }
+                if paused.load(Ordering::Acquire) {
+                    std::thread::sleep(interval);
+                    next_tick = Instant::now() + interval;
+                    continue;
                 }
                 // Sleep-until style pacing — good enough for xcap's polling
                 // backend. std::thread::sleep is fine here; we're on a
@@ -179,7 +187,18 @@ impl CaptureBackend for XcapBackend {
         if let Some(t) = self.started_at.lock().take() {
             stats.duration_ms = t.elapsed().as_millis() as u64;
         }
+        self.paused.store(false, Ordering::Release);
         Ok(*stats)
+    }
+
+    async fn pause(&mut self) -> Result<(), CaptureError> {
+        self.paused.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    async fn resume(&mut self) -> Result<(), CaptureError> {
+        self.paused.store(false, Ordering::Release);
+        Ok(())
     }
 
     fn list_displays(&self) -> Result<Vec<DisplayInfo>, CaptureError> {

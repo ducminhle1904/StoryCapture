@@ -70,6 +70,8 @@ pub fn builder() -> Builder<Wry> {
             region_overlay::close_region_overlay,
             encode::probe_hw_encoders,
             encode::start_recording,
+            encode::pause_recording,
+            encode::resume_recording,
             encode::stop_recording,
             parse::parse_story,
             projects::list_projects,
