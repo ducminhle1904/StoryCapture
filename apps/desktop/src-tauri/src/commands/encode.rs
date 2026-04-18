@@ -291,7 +291,7 @@ pub async fn start_recording(
         crate::commands::capture::CaptureTargetDto::WindowByPid { title_hint, .. }
             if matches!(
                 title_hint.as_deref(),
-                Some("storycapture-playwright") | Some("Chromium")
+                Some("storycapture-playwright")
             ) =>
         {
             let stash_pid = crate::commands::automation::playwright_pid_stash()
