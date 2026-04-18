@@ -78,6 +78,7 @@ async fn main() -> Result<()> {
         headless: false, // window must be on-screen for SCK to capture it
         download_dir: PathBuf::from("/tmp"),
         executable: None,
+        args: Vec::new(),
     };
     driver
         .launch(cfg)
