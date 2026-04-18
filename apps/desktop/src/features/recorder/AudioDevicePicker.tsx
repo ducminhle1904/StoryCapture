@@ -1,19 +1,10 @@
 /**
- * AudioDevicePicker — Phase 6 plan 01 (D-02 / D-04).
+ * AudioDevicePicker — Base UI Select wrapping the cpal device list.
  *
- * Base UI Select with three classes of entries:
- *   1. "No audio"       → value = null (default selection every render)
- *   2. "System default" → value = "default" (host resolves cpal default)
- *   3. Enumerated devices — value = device name from listAudioInputs()
- *
- * Non-stickiness (D-02, D-19 pattern): the parent Zustand slice resets
- * this to null on recorder-view mount AND on recording completion. The
- * picker itself does NOT remember a prior choice — "No audio" is the
- * default value prop every render.
- *
- * Laziness: the listAudioInputs query is gated by an `open` handler on
- * the trigger. Querying at component mount would defeat the cpal#901
- * workaround (mic TCC prompt on cold launch).
+ * Laziness: listAudioInputs is gated on the trigger's `open` event —
+ * querying at mount defeats the cpal#901 workaround (mic TCC prompt on
+ * cold launch). The parent Zustand slice resets the selection to null
+ * every render (non-sticky: "No audio" is the default every time).
  */
 
 import { useState } from "react";
@@ -31,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  AUDIO_DEFAULT_SENTINEL,
   listAudioInputs,
   type AudioInputInfo,
   type AudioPickerValue,
@@ -46,16 +36,75 @@ interface AudioDevicePickerProps {
   disabled?: boolean;
 }
 
-// Base UI Select requires a non-null value. We round-trip through a
-// sentinel string so "No audio" (null) has a stable Select identity.
-const NO_AUDIO_SENTINEL = "__no_audio__";
+/**
+ * Typed representation of what the Select is showing. The Base UI Select
+ * requires a non-null string value, so we round-trip every choice through
+ * a stable `kind:payload` string. Keeps magic strings out of the JSX.
+ */
+type AudioPickerChoice =
+  | { kind: "none" }
+  | { kind: "default" }
+  | { kind: "device"; id: string }
+  | { kind: "loading" }
+  | { kind: "empty" };
 
-function encode(value: AudioPickerValue): string {
-  return value == null ? NO_AUDIO_SENTINEL : value;
+function choiceToSelectValue(c: AudioPickerChoice): string {
+  switch (c.kind) {
+    case "none":
+      return "none:";
+    case "default":
+      return "default:";
+    case "device":
+      return `device:${c.id}`;
+    case "loading":
+      return "loading:";
+    case "empty":
+      return "empty:";
+  }
 }
 
-function decode(raw: string): AudioPickerValue {
-  return raw === NO_AUDIO_SENTINEL ? null : raw;
+function selectValueToChoice(s: string): AudioPickerChoice {
+  const idx = s.indexOf(":");
+  const kind = idx === -1 ? s : s.slice(0, idx);
+  const payload = idx === -1 ? "" : s.slice(idx + 1);
+  switch (kind) {
+    case "none":
+      return { kind: "none" };
+    case "default":
+      return { kind: "default" };
+    case "device":
+      return { kind: "device", id: payload };
+    case "loading":
+      return { kind: "loading" };
+    case "empty":
+      return { kind: "empty" };
+    default:
+      // Unknown encoding → treat as "no audio" so the UI stays consistent.
+      return { kind: "none" };
+  }
+}
+
+function valueToChoice(value: AudioPickerValue): AudioPickerChoice {
+  if (value == null) return { kind: "none" };
+  if (value === "default") return { kind: "default" };
+  return { kind: "device", id: value };
+}
+
+function choiceToValue(c: AudioPickerChoice): AudioPickerValue {
+  switch (c.kind) {
+    case "none":
+      return null;
+    case "default":
+      return "default";
+    case "device":
+      return c.id;
+    // The sentinels below are never selectable (disabled items), but if
+    // one ever leaks through, fall back to "no audio" rather than
+    // assigning a garbage device id.
+    case "loading":
+    case "empty":
+      return null;
+  }
 }
 
 export function AudioDevicePicker({
@@ -81,9 +130,10 @@ export function AudioDevicePicker({
 
   return (
     <Select
-      value={encode(value)}
+      value={choiceToSelectValue(valueToChoice(value))}
       onValueChange={(raw) => {
-        if (typeof raw === "string") onValueChange(decode(raw));
+        if (typeof raw !== "string") return;
+        onValueChange(choiceToValue(selectValueToChoice(raw)));
       }}
       onOpenChange={(open) => {
         if (open) setHasOpened(true);
@@ -103,8 +153,12 @@ export function AudioDevicePicker({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectItem value={NO_AUDIO_SENTINEL}>No audio</SelectItem>
-          <SelectItem value={AUDIO_DEFAULT_SENTINEL}>System default</SelectItem>
+          <SelectItem value={choiceToSelectValue({ kind: "none" })}>
+            No audio
+          </SelectItem>
+          <SelectItem value={choiceToSelectValue({ kind: "default" })}>
+            System default
+          </SelectItem>
         </SelectGroup>
         {hasOpened && (
           <>
@@ -112,17 +166,26 @@ export function AudioDevicePicker({
             <SelectGroup>
               <SelectGroupLabel>Input devices</SelectGroupLabel>
               {isLoading && (
-                <SelectItem value="__loading__" disabled>
+                <SelectItem
+                  value={choiceToSelectValue({ kind: "loading" })}
+                  disabled
+                >
                   Loading…
                 </SelectItem>
               )}
               {!isLoading && devices.length === 0 && (
-                <SelectItem value="__empty__" disabled>
+                <SelectItem
+                  value={choiceToSelectValue({ kind: "empty" })}
+                  disabled
+                >
                   No microphones detected
                 </SelectItem>
               )}
               {devices.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
+                <SelectItem
+                  key={d.id}
+                  value={choiceToSelectValue({ kind: "device", id: d.id })}
+                >
                   {d.name}
                   {d.is_default ? " (default)" : ""}
                 </SelectItem>
