@@ -52,6 +52,38 @@ pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Cow<'_, [u8]>, usize)> {
     }
 }
 
+/// RAII guard around the FFmpeg child's stdin.
+///
+/// Dropping `tokio::process::ChildStdin` closes the pipe, signaling EOF to
+/// FFmpeg. Using an explicit guard inside the frame-pump task guarantees that
+/// stdin is released on any exit path — normal completion, early `Err(..)`
+/// return, OR stack-unwinding panic — so FFmpeg never waits for the full
+/// `SHUTDOWN_TIMEOUT` budget on unwind.
+struct StdinGuard(Option<tokio::process::ChildStdin>);
+
+impl StdinGuard {
+    fn new(stdin: tokio::process::ChildStdin) -> Self {
+        Self(Some(stdin))
+    }
+
+    fn as_mut(&mut self) -> &mut tokio::process::ChildStdin {
+        self.0.as_mut().expect("stdin guard used after take")
+    }
+
+    /// Take the stdin handle and drop it immediately, closing the pipe.
+    fn close(&mut self) {
+        // Dropping the handle closes the pipe.
+        let _ = self.0.take();
+    }
+}
+
+impl Drop for StdinGuard {
+    fn drop(&mut self) {
+        // Runs on normal scope-exit, early return, AND panic unwind.
+        let _ = self.0.take();
+    }
+}
+
 /// Start an encode and return a join handle.
 pub struct EncodePipeline;
 
@@ -92,7 +124,7 @@ impl EncodePipeline {
             .ok_or_else(|| EncoderError::Io("sidecar yielded no handles".into()))?;
         // Drop stdout; probe uses it instead.
         drop(handles.stdout);
-        let mut stdin = handles.stdin;
+        let stdin = handles.stdin;
         let stderr = handles.stderr;
         let mut child = handles.child;
 
@@ -104,6 +136,12 @@ impl EncodePipeline {
         let progress_task = tokio::spawn(async move { parser.pump(stderr, progress_tx).await });
 
         let join = tokio::spawn(async move {
+            // RAII guard ensures ffmpeg stdin is closed on ANY exit path
+            // (normal completion, early Err return, or panic unwind) so
+            // ffmpeg receives EOF immediately instead of waiting up to
+            // SHUTDOWN_TIMEOUT for the task-local to be dropped by tokio's
+            // teardown (which doesn't guarantee drop order under unwind).
+            let mut stdin = StdinGuard::new(stdin);
             let mut frames_written: u64 = 0;
             let mut frames_dropped: u64 = 0;
             tracing::info!(target: "storycapture::encoder", "frame pump started");
@@ -159,7 +197,7 @@ impl EncodePipeline {
                     }
                     &packed_buf[..]
                 };
-                match stdin.write_all(bytes_ref).await {
+                match stdin.as_mut().write_all(bytes_ref).await {
                     Ok(()) => {
                         frames_written += 1;
                         if frames_written == 1 || frames_written % 30 == 0 {
@@ -178,7 +216,11 @@ impl EncodePipeline {
             }
 
             tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, "frame channel closed; signaling FFmpeg EOF");
-            drop(stdin);
+            // Close stdin explicitly to signal EOF BEFORE we await child.wait().
+            // The guard's Drop would also close it at end-of-scope, but doing it
+            // here preserves the existing "EOF before wait" ordering and keeps
+            // the tracing::info log above meaningful.
+            stdin.close();
 
             // Wait for FFmpeg to flush and exit.
             let status = match tokio::time::timeout(SHUTDOWN_TIMEOUT, child.wait()).await {
