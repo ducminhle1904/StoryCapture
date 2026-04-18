@@ -34,6 +34,7 @@ export const BROWSER_TITLE_HINTS: Readonly<Record<string, string>> = {
   msedge: "Microsoft Edge",
   "msedge-beta": "Microsoft Edge Beta",
   "msedge-dev": "Microsoft Edge Dev",
+  "msedge-canary": "Microsoft Edge Canary",
   brave: "Brave Browser",
   arc: "Arc",
 };
@@ -71,6 +72,8 @@ export function titleHintFor(
   if (basename.includes("chrome canary")) return BROWSER_TITLE_HINTS["chrome-canary"];
   if (basename.includes("chrome beta")) return BROWSER_TITLE_HINTS["chrome-beta"];
   if (basename.includes("chrome dev")) return BROWSER_TITLE_HINTS["chrome-dev"];
+  if (basename.includes("microsoft edge canary"))
+    return BROWSER_TITLE_HINTS["msedge-canary"];
   if (basename.includes("microsoft edge beta"))
     return BROWSER_TITLE_HINTS["msedge-beta"];
   if (basename.includes("microsoft edge dev"))
