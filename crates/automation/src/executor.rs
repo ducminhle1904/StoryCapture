@@ -13,7 +13,7 @@
 //! attempt rows (Plan 05 surface).
 
 use crate::capability::{driver_for, required_for};
-use crate::driver::{ActionKind, BrowserDriver, LaunchConfig};
+use crate::driver::{ActionKind, BrowserDriver, LaunchConfig, LaunchOptions};
 use crate::error::{AutomationError, Result};
 use crate::events::{AttemptLog, ExecutorEvent, StorySummary};
 use std::path::PathBuf;
@@ -39,10 +39,20 @@ impl Executor {
         fallback: Box<dyn BrowserDriver>,
         persistence: Option<PersistenceHandle>,
         screenshot_dir: PathBuf,
+        launch_opts: LaunchOptions,
     ) -> mpsc::Receiver<ExecutorEvent> {
         let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
         tokio::spawn(async move {
-            let _ = run_story(story, primary, fallback, persistence, screenshot_dir, tx).await;
+            let _ = run_story(
+                story,
+                primary,
+                fallback,
+                persistence,
+                screenshot_dir,
+                launch_opts,
+                tx,
+            )
+            .await;
         });
         rx
     }
@@ -66,6 +76,7 @@ async fn run_story(
     mut fallback: Box<dyn BrowserDriver>,
     persistence: Option<PersistenceHandle>,
     screenshot_dir: PathBuf,
+    launch_opts: LaunchOptions,
     tx: mpsc::Sender<ExecutorEvent>,
 ) -> Result<()> {
     let started = Instant::now();
@@ -78,7 +89,7 @@ async fn run_story(
 
     // Launch both drivers. Errors during launch are fatal for the session
     // (we can't dispatch anything without an open page).
-    let launch_cfg = LaunchConfig::from_meta(&story.meta);
+    let launch_cfg = LaunchConfig::from_meta(&story.meta, &launch_opts);
     primary.launch(launch_cfg.clone()).await?;
     fallback.launch(launch_cfg.clone()).await.ok(); // playwright sidecar may not be wired in unit tests
 

@@ -26,7 +26,7 @@ pub mod session;
 
 pub use driver::{
     ActionKind, BoundingBox, BrowserDriver, Capability, CapabilitySet, ElementState, LaunchConfig,
-    ResolvedSelector,
+    LaunchOptions, ResolvedSelector,
 };
 pub use error::{AutomationError, Result};
 pub use events::{AttemptLog, AttemptOutcome, ExecutorEvent, SelectorStrategy, StorySummary};

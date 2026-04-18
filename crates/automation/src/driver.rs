@@ -17,6 +17,25 @@ use story_parser::{ScrollDir, SelectorOrText, Theme, Viewport};
 
 // ---------- Launch config ----------
 
+/// Options threaded from the Tauri host into [`LaunchConfig::from_meta`].
+///
+/// Plan 06 cleanup — replaces the previous env-var IPC
+/// (`STORYCAPTURE_BROWSER_PATH`, `STORYCAPTURE_CHROME_HIDING`) which was
+/// unsafe under Rust 1.80+ and racy across concurrent `launch_automation`
+/// invocations. Callers construct this directly; the host validates
+/// `app_url_for_hiding` with `url::Url` before passing it in.
+#[derive(Debug, Clone, Default)]
+pub struct LaunchOptions {
+    /// Optional Chromium-family browser executable override. When `None`,
+    /// Playwright uses its bundled Chromium.
+    pub browser_executable: Option<PathBuf>,
+    /// Pre-validated `http://` or `https://` URL — when `Some`, `--app=<url>`
+    /// is appended to the Chromium launch args (D-09/D-10 chrome-hiding).
+    /// The host is responsible for validating the scheme before passing
+    /// it in (T-06-09); this crate does a defensive second check.
+    pub app_url_for_hiding: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchConfig {
     /// Optional initial URL (also derived from `meta.app` if absent).
@@ -33,7 +52,7 @@ pub struct LaunchConfig {
     pub download_dir: PathBuf,
     /// Optional path to a Chromium-family browser executable (Chrome, Brave,
     /// Edge, Arc, etc.). When `None`, Playwright uses its bundled Chromium.
-    /// Overridden at runtime by `STORYCAPTURE_BROWSER_PATH` env var.
+    /// Threaded from the Tauri host via [`LaunchOptions::browser_executable`].
     pub executable: Option<PathBuf>,
     /// Plan 06-02 — extra Chromium command-line args forwarded verbatim
     /// to `launchServer({ args })`. Used for chrome-hiding via
@@ -44,28 +63,25 @@ pub struct LaunchConfig {
 }
 
 impl LaunchConfig {
-    /// Build from a parsed [`story_parser::Meta`] block (AUTO-04).
+    /// Build from a parsed [`story_parser::Meta`] block (AUTO-04) plus
+    /// host-provided [`LaunchOptions`].
     ///
     /// Recording sessions need a visible browser window, so `headless`
     /// defaults to `false`. Tests/CI override via `LaunchConfig::default()`.
-    /// The browser executable can be overridden via `STORYCAPTURE_BROWSER_PATH`.
     ///
-    /// Plan 06-02 — when `STORYCAPTURE_CHROME_HIDING=1` is set AND
-    /// `meta.app` is a parseable http/https URL, `--app=<url>` is appended
-    /// to `args`. The host sets the env var from the recorder's
-    /// `chromeHiding` toggle before invoking automation and unsets it
-    /// immediately after — non-sticky per D-10. The URL is validated via
-    /// `url::Url::parse` at the host boundary (T-06-09) so injection
-    /// attempts (javascript:, data:) never reach this code path.
-    pub fn from_meta(meta: &story_parser::Meta) -> Self {
+    /// Plan 06-02 / cleanup — when `opts.app_url_for_hiding` is `Some`
+    /// AND the URL is `http(s)://`, `--app=<url>` is appended to `args`
+    /// (D-09/D-10). The host validates the URL via `url::Url::parse` at
+    /// the Tauri boundary (T-06-09) so injection attempts (`javascript:`,
+    /// `data:`) never reach this code path; the defensive prefix check
+    /// below is a belt-and-braces second guard.
+    pub fn from_meta(meta: &story_parser::Meta, opts: &LaunchOptions) -> Self {
         let mut args = Vec::new();
-        if std::env::var("STORYCAPTURE_CHROME_HIDING").ok().as_deref() == Some("1") {
-            if let Some(url) = meta.app.as_deref() {
-                // Defensive re-check: host already validated with url::Url
-                // but a second guard costs nothing and documents intent.
-                if url.starts_with("http://") || url.starts_with("https://") {
-                    args.push(format!("--app={}", url));
-                }
+        if let Some(url) = opts.app_url_for_hiding.as_deref() {
+            // Defensive re-check: host already validated with url::Url
+            // but a second guard costs nothing and documents intent.
+            if url.starts_with("http://") || url.starts_with("https://") {
+                args.push(format!("--app={}", url));
             }
         }
         Self {
@@ -78,10 +94,7 @@ impl LaunchConfig {
             headless: false,
             base_url: meta.app.clone(),
             download_dir: std::env::temp_dir(),
-            executable: std::env::var("STORYCAPTURE_BROWSER_PATH")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .map(PathBuf::from),
+            executable: opts.browser_executable.clone(),
             args,
         }
     }
@@ -294,21 +307,20 @@ mod launch_config_tests {
 
     #[test]
     fn from_meta_without_chrome_hiding_has_empty_args() {
-        // Ensure env doesn't leak from another test.
-        std::env::remove_var("STORYCAPTURE_CHROME_HIDING");
-        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("https://example.com")));
+        let cfg = LaunchConfig::from_meta(
+            &meta_with_app(Some("https://example.com")),
+            &LaunchOptions::default(),
+        );
         assert!(cfg.args.is_empty());
     }
 
     #[test]
     fn from_meta_with_chrome_hiding_appends_app_arg() {
-        // Serial env-var manipulation — cargo test runs in threads; the
-        // other tests in this module also poke the same var, so we set
-        // then unset. For parallel safety a mutex would be stricter, but
-        // `cargo test -p automation launch_config` matches these.
-        std::env::set_var("STORYCAPTURE_CHROME_HIDING", "1");
-        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("https://demo.com")));
-        std::env::remove_var("STORYCAPTURE_CHROME_HIDING");
+        let opts = LaunchOptions {
+            app_url_for_hiding: Some("https://demo.com".into()),
+            ..Default::default()
+        };
+        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("https://demo.com")), &opts);
         assert!(
             cfg.args.iter().any(|a| a == "--app=https://demo.com"),
             "expected --app= in {:?}", cfg.args
@@ -317,10 +329,13 @@ mod launch_config_tests {
 
     #[test]
     fn from_meta_with_chrome_hiding_but_non_http_url_rejects() {
-        std::env::set_var("STORYCAPTURE_CHROME_HIDING", "1");
-        // file:// + javascript: schemes — must not reach args.
-        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("javascript:alert(1)")));
-        std::env::remove_var("STORYCAPTURE_CHROME_HIDING");
+        // Defensive guard: even if the host misbehaves and forwards a
+        // non-http(s) URL, `from_meta` must drop it.
+        let opts = LaunchOptions {
+            app_url_for_hiding: Some("javascript:alert(1)".into()),
+            ..Default::default()
+        };
+        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("javascript:alert(1)")), &opts);
         assert!(cfg.args.is_empty(), "javascript: URL leaked into args: {:?}", cfg.args);
     }
 
