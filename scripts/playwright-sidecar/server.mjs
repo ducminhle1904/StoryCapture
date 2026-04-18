@@ -195,15 +195,21 @@ const handlers = {
       if (state.downloadDir) await download.saveAs(dest);
       return { ok: true, downloaded: dest };
     }
-    const sel = targetToLocator(target);
-    await state.page.waitForSelector(sel, { timeout: timeoutMs });
+    const loc = targetToLocator(target);
+    if (typeof loc === 'string') {
+      await state.page.waitForSelector(loc, { timeout: timeoutMs });
+    } else {
+      // Locator — wait for it to attach.
+      await loc.waitFor({ state: 'attached', timeout: timeoutMs });
+    }
     return { ok: true };
   },
 
   assert: async ({ target }) => {
-    const sel = targetToLocator(target);
-    const count = await state.page.locator(sel).count();
-    if (count === 0) throw new Error(`assert failed: no elements match ${sel}`);
+    const loc = targetToLocator(target);
+    const count =
+      typeof loc === 'string' ? await state.page.locator(loc).count() : await loc.count();
+    if (count === 0) throw new Error(`assert failed: no elements match ${JSON.stringify(target)}`);
     return { ok: true };
   },
 
@@ -368,6 +374,30 @@ function absolute(url) {
 }
 
 async function locate(selector, strategy) {
+  // Phase 7 Tier 1 — strict explicit strategies (D-06 encoding).
+  // Routed on `strategy` FIRST so prefix collisions (e.g. "text=" shared
+  // with legacy VisibleText) don't mis-dispatch.
+  if (strategy === 'role') {
+    // value shape: "role=<role-kebab>:<name>" — split on FIRST ':' so names may contain ':'
+    const body = selector.slice('role='.length);
+    const idx = body.indexOf(':');
+    if (idx < 0) throw new Error(`invalid role selector encoding: ${selector}`);
+    const role = body.slice(0, idx);
+    const name = body.slice(idx + 1);
+    return state.page.getByRole(role, { name, exact: true });
+  }
+  if (strategy === 'label') {
+    // value shape: "label=<name>"
+    const name = selector.slice('label='.length);
+    return state.page.getByLabel(name, { exact: true });
+  }
+  if (strategy === 'text_exact') {
+    // value shape: "text=<name>" — SAME wire prefix as legacy VisibleText, but
+    // the strategy dispatch distinguishes them: 'text_exact' → exact, no fallback.
+    const name = selector.slice('text='.length);
+    return state.page.getByText(name, { exact: true });
+  }
+
   // The Rust SmartSelector emits strategy-prefixed values; map them to
   // playwright-locator literals. Anything else is treated as raw CSS.
   if (strategy === 'css' || strategy === 'testid' || strategy === 'aria') {
@@ -396,11 +426,30 @@ async function locate(selector, strategy) {
   return state.page.locator(selector);
 }
 
+// INVARIANT: targetToLocator() returns `string | Locator`.
+// All call sites MUST handle both shapes. Current call sites (as of Phase 7):
+//   - waitFor:  string → page.waitForSelector(s); Locator → loc.waitFor({state:'attached'})
+//   - assert:   string → page.locator(s).count(); Locator → loc.count()
+// New callers: follow the same `typeof loc === 'string'` pattern.
+// Phase 7 Tier 1 adds three `kind` values that return Locators:
+//   "role" (value = { role, name }), "label" (value = string), "text_exact" (value = string).
 function targetToLocator(target) {
   if (!target) return '*';
   if (target.kind === 'selector') return target.value;
   if (target.kind === 'testid') return `[data-testid="${target.value}"]`;
   if (target.kind === 'aria') return `[aria-label="${target.value}"]`;
+  // Phase 7 Tier 1 — these branches return a LOCATOR (not string).
+  if (target.kind === 'role') {
+    // value is an object: { role: <kebab>, name: <string> }
+    const { role, name } = target.value;
+    return state.page.getByRole(role, { name, exact: true });
+  }
+  if (target.kind === 'label') {
+    return state.page.getByLabel(target.value, { exact: true });
+  }
+  if (target.kind === 'text_exact') {
+    return state.page.getByText(target.value, { exact: true });
+  }
   return `text=${target.value}`;
 }
 

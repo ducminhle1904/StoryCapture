@@ -10,11 +10,14 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_PATH = resolve(__dirname, "server.mjs");
+const TIER1_FIXTURE_URL = pathToFileURL(
+  resolve(__dirname, "tests/fixtures/tier1.html"),
+).toString();
 
 /**
  * Spawn the sidecar and return a JSON-RPC client object with `.call()`
@@ -189,5 +192,133 @@ describe("browserProcess JSON-RPC verb", () => {
     } finally {
       await client.call("close", {}).catch(() => {});
     }
+  }, 90_000);
+});
+
+// Plan 07-02 Task 2 — PHASE-7.3 acceptance gate.
+// Drives real Chromium against tests/fixtures/tier1.html and proves:
+//   - locate('role'|'label'|'text_exact') → getByRole/getByLabel/getByText exact
+//   - targetToLocator supports {kind: 'role'|'label'|'text_exact'}
+//   - elementState routes through locate() for new strategies
+//   - colon-in-name splits correctly on FIRST ':'
+//   - legacy bare-text aria-name= ranked chain still resolves (regression guard)
+describe("Phase 7 Tier 1 — locate() strict explicit strategies", () => {
+  let client;
+  beforeEach(async () => {
+    client = spawnSidecar();
+    await client.call("launch", {
+      viewport: { width: 1280, height: 800 },
+      theme: "auto",
+      baseUrl: null,
+      headless: true,
+      downloadDir: "/tmp",
+    });
+    await client.call("goto", { url: TIER1_FIXTURE_URL });
+  }, 90_000);
+  afterEach(async () => {
+    try {
+      await client.call("close", {});
+    } catch {}
+    if (client) await client.dispose();
+  });
+
+  async function expectSingleRoleMatch(role, name) {
+    const r = await client.call("assert", {
+      target: { kind: "role", value: { role, name } },
+    });
+    expect(r.result.ok).toBe(true);
+  }
+
+  it("getByRole(button, Save) resolves the submit button", async () => {
+    await expectSingleRoleMatch("button", "Save");
+  }, 90_000);
+
+  it("getByRole(link, Docs) resolves the nav link", async () => {
+    await expectSingleRoleMatch("link", "Docs");
+  }, 90_000);
+
+  it("getByLabel(Email) resolves the email input", async () => {
+    const r = await client.call("assert", {
+      target: { kind: "label", value: "Email" },
+    });
+    expect(r.result.ok).toBe(true);
+  }, 90_000);
+
+  it("getByText exact matches 'Learn more' but not 'Learn more not present'", async () => {
+    const r = await client.call("assert", {
+      target: { kind: "text_exact", value: "Learn more" },
+    });
+    expect(r.result.ok).toBe(true);
+    // Negative: a non-existent exact string should fail the assert.
+    await expect(
+      client.call("assert", {
+        target: { kind: "text_exact", value: "Learn more not present" },
+      }),
+    ).rejects.toMatchObject({
+      error: expect.objectContaining({
+        message: expect.stringMatching(/no elements match/),
+      }),
+    });
+  }, 90_000);
+
+  it("click uses locate('role') for SelectorOrText::Role", async () => {
+    const r = await client.call("click", {
+      selector: "role=button:Save",
+      strategy: "role",
+    });
+    expect(r.result.ok).toBe(true);
+  }, 90_000);
+
+  it("type uses locate('label') for SelectorOrText::Label", async () => {
+    const r = await client.call("type", {
+      selector: "label=Email",
+      strategy: "label",
+      text: "a@x",
+    });
+    expect(r.result.ok).toBe(true);
+  }, 90_000);
+
+  it("click uses locate('text_exact') for SelectorOrText::TextExact", async () => {
+    const r = await client.call("click", {
+      selector: "text=Learn more",
+      strategy: "text_exact",
+    });
+    expect(r.result.ok).toBe(true);
+  }, 90_000);
+
+  it("bare aria-name= fallback path still resolves (legacy regression guard)", async () => {
+    // Pre-Phase-7 behavior: bare `click "Save"` emits strategy="accessible-name"
+    // with value "aria-name=Save". The sidecar's locate() `aria-name=` chained
+    // .or() branch MUST still resolve to the Save button.
+    const r = await client.call("click", {
+      selector: "aria-name=Save",
+      strategy: "accessible-name",
+    });
+    expect(r.result.ok).toBe(true);
+  }, 90_000);
+
+  it("elementState with Tier 1 role= target routes through locate() and reports visible", async () => {
+    const r = await client.call("elementState", {
+      selector: "role=button:Save",
+      strategy: "role",
+    });
+    expect(r.result.visible).toBe(true);
+  }, 90_000);
+
+  it("role selector with colon-containing name resolves on a real DOM element", async () => {
+    // Navigate to a small data: URL that contains a button whose name has ':'.
+    // This exercises the sidecar's split-on-FIRST-colon logic end-to-end and
+    // cross-references the Rust-side encoding test
+    // `explicit_role_preserves_colon_in_name`.
+    const dataUrl =
+      "data:text/html," +
+      encodeURIComponent(
+        '<!doctype html><html><body><button type="button">Go: now</button></body></html>',
+      );
+    await client.call("goto", { url: dataUrl });
+    const r = await client.call("assert", {
+      target: { kind: "role", value: { role: "button", name: "Go: now" } },
+    });
+    expect(r.result.ok).toBe(true);
   }, 90_000);
 });
