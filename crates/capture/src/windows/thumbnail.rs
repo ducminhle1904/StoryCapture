@@ -23,6 +23,7 @@ use crate::error::CaptureError;
 use crate::target::CaptureTarget;
 use crate::windows::frame_from_wgc::{cpu_crop_bgra, PhysicalRectU32};
 use parking_lot::Mutex;
+use std::sync::mpsc;
 use std::sync::Arc;
 
 use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
@@ -36,9 +37,17 @@ use windows_capture::settings::{
 use windows_capture::window::Window;
 
 /// Flags threaded into the one-shot WGC handler via `Settings::new`.
+///
+/// `done_tx` is a oneshot-style signalling sender (`std::sync::mpsc`
+/// chosen over `tokio::sync::oneshot` because the waiter runs inside
+/// `spawn_blocking` and `std::mpsc::Receiver::recv_timeout` gives us
+/// the bounded wait natively — no dangling async task if the handler
+/// never fires). The handler sends `()` after storing the frame,
+/// replacing the 10 ms busy-poll (backlog #5).
 struct ThumbFlags {
     slot: Arc<Mutex<Option<CapturedFrame>>>,
     crop_rect: Option<PhysicalRectU32>,
+    done_tx: Option<mpsc::SyncSender<()>>,
 }
 
 struct CapturedFrame {
@@ -56,6 +65,7 @@ enum ThumbHandlerError {
 struct ThumbHandler {
     slot: Arc<Mutex<Option<CapturedFrame>>>,
     crop_rect: Option<PhysicalRectU32>,
+    done_tx: Option<mpsc::SyncSender<()>>,
     done: bool,
 }
 
@@ -67,6 +77,7 @@ impl GraphicsCaptureApiHandler for ThumbHandler {
         Ok(Self {
             slot: ctx.flags.slot,
             crop_rect: ctx.flags.crop_rect,
+            done_tx: ctx.flags.done_tx,
             done: false,
         })
     }
@@ -109,6 +120,12 @@ impl GraphicsCaptureApiHandler for ThumbHandler {
             });
         }
         self.done = true;
+        // Signal the waiter before requesting stop — if the send fails
+        // (receiver dropped because the caller timed out) we still tear
+        // down cleanly via capture_control.stop().
+        if let Some(tx) = self.done_tx.take() {
+            let _ = tx.try_send(());
+        }
         capture_control.stop();
         Ok(())
     }
@@ -133,7 +150,12 @@ pub async fn capture_thumbnail(
 
     let slot: Arc<Mutex<Option<CapturedFrame>>> = Arc::new(Mutex::new(None));
     let slot_for_flags = slot.clone();
-    let slot_for_poll = slot.clone();
+
+    // Signalling channel replaces the previous 10 ms busy-poll (backlog
+    // #5). `sync_channel(1)` gives us the bounded one-slot semantics of
+    // a oneshot without pulling the `tokio::sync::oneshot` blocking-
+    // recv surface through cfg gates.
+    let (done_tx, done_rx) = mpsc::sync_channel::<()>(1);
 
     // `windows-capture` start APIs are synchronous and run the capture
     // pump on the current thread, so we wrap in spawn_blocking.
@@ -141,6 +163,7 @@ pub async fn capture_thumbnail(
         let flags = ThumbFlags {
             slot: slot_for_flags,
             crop_rect,
+            done_tx: Some(done_tx),
         };
         let cursor = CursorCaptureSettings::WithCursor;
         let border = DrawBorderSettings::Default;
@@ -193,18 +216,11 @@ pub async fn capture_thumbnail(
             }
         };
 
-        // Wait ≤ 1s for a frame. Poll the slot + control.stop() afterwards
-        // to tear the session down cleanly.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
-        loop {
-            if slot_for_poll.lock().is_some() {
-                break;
-            }
-            if std::time::Instant::now() >= deadline {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
+        // Wait ≤ 1s for the handler to signal (backlog #5 — no busy
+        // poll). `recv_timeout` returns Err on either timeout or sender
+        // drop; both cases fall through to `control.stop()` so the
+        // capture thread is always joined before this task exits.
+        let _ = done_rx.recv_timeout(std::time::Duration::from_secs(1));
         // stop() on the CaptureControl is idempotent — the handler may
         // have already posted WM_QUIT, but calling stop joins the thread.
         let _ = control.stop();
