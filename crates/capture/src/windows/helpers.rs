@@ -22,7 +22,7 @@ pub(crate) fn resolve_region_to_physical(
     display_id: &DisplayId,
     rect: &RegionRect,
 ) -> Result<PhysicalRectU32, CaptureError> {
-    let displays = crate::display::enumerate_displays()?;
+    let displays = crate::display::cached_displays()?;
     let disp = displays
         .iter()
         .find(|d| d.id == *display_id)
