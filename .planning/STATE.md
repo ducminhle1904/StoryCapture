@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-17T16:20:03.738Z"
+last_updated: "2026-04-18T05:00:00.000Z"
 progress:
   total_phases: 7
   completed_phases: 3
@@ -14,7 +14,7 @@ progress:
 
 # State: StoryCapture
 
-**Last updated:** 2026-04-17
+**Last updated:** 2026-04-18
 
 ## Project Reference
 
@@ -99,8 +99,15 @@ currently blocking post-v1 work. All six verification items above are operator-g
 - [05-01] Human-verify checkpoint auto-approved: TCC-granted macOS host for `cargo test -p capture --features real-capture -- --ignored` + 30-min SCK-window soak (<800 MB) + TCC-deny fallback + 2nd-failure modal smoke.
 - [05-03] Human-verify checkpoint auto-approved: Windows 10/11 operator VM for `cargo test -p capture --features real-capture-windows -- --ignored` + 6-step WGC walkthrough + first live `capture-windows.yml` CI run (requires a push).
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260418-gkg | Recording engine quick fixes: drop Chromium sentinel, panic guard on frame-pump, export drop counts | 2026-04-18 | 1fe6fe8 | [260418-gkg-recording-engine-quick-fixes-drop-chromi](./quick/260418-gkg-recording-engine-quick-fixes-drop-chromi/) |
+
 ## Session Continuity
 
+- Last activity: 2026-04-18 - Completed quick task 260418-gkg: recording engine quick fixes (Chromium sentinel, stdin RAII guard, FramesDropped telemetry).
 - Last action: Phase 5 — all 3 plans executed (05-01 Wave 1 + 05-02/05-03 Wave 2 parallel worktrees merged to main). `cargo check -p capture` green on macOS + `x86_64-pc-windows-msvc` cross-target. 05-VERIFICATION.md written — phase code-complete pending operator-gated verification.
 - Next action: Phase 6 (Recording v2 — audio/region/chrome-hiding/multi-browser) OR complete operator-gated verification items across phases 1–5.
 - Files touched this session: `.planning/STATE.md`, `.planning/ROADMAP.md`, phase 05 directory (3 SUMMARYs + VERIFICATION), `crates/capture/**`, `crates/automation/**`, `apps/desktop/**`, `scripts/playwright-sidecar/**`, `tools/e2e-playwright-capture/**`, `.github/workflows/capture-windows.yml`.
