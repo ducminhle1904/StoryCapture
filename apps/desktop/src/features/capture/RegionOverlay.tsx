@@ -60,13 +60,18 @@ export function RegionOverlay() {
         // Emit to main window only — avoids broadcasting to every
         // window in the app, including ourselves.
         await emitTo("main", "region://selected", payload);
-      } catch {
-        /* non-fatal: main window may have navigated away */
+      } catch (e) {
+        // Non-fatal: main window may have navigated away, but surface
+        // the reason so a stuck-open overlay isn't silent (backlog #16).
+        // eslint-disable-next-line no-console
+        console.warn("[RegionOverlay] emit region://selected failed:", e);
       } finally {
         try {
           await getCurrentWebviewWindow().close();
-        } catch {
-          /* overlay already closing */
+        } catch (e) {
+          // Overlay may already be closing (duplicate Enter/Esc).
+          // eslint-disable-next-line no-console
+          console.warn("[RegionOverlay] close overlay window failed:", e);
         }
       }
     },
