@@ -307,6 +307,26 @@ Exception: the user may explicitly authorize a temporary workaround. In that cas
 
 **MANDATORY — Match the User's Language:** Agents MUST reply to the user in the SAME language the user wrote in. If the user prompts in Vietnamese, reply in Vietnamese. If the user prompts in English, reply in English. Do NOT default to English when the user is writing in another language. This applies to all user-facing text: explanations, status updates, questions, summaries, error reports. Code, identifiers, commit messages, file contents, and technical artifacts remain in their standard language (typically English) unless the user says otherwise.
 
+**MANDATORY — Plan Before Breaking / Big Changes:** When an agent is about to perform a **breaking change** or a **big change**, the agent MUST enter plan mode first and present the plan for user approval. Do NOT execute the change immediately.
+
+A change qualifies as "breaking" or "big" if it meets ANY of the following:
+- Modifies a public API surface, IPC contract, DSL grammar, database schema, or file/config format in a non-backward-compatible way.
+- Deletes, renames, or moves files/modules/directories that are referenced from multiple call sites.
+- Touches more than ~5 files or more than ~150 lines across unrelated concerns in a single step.
+- Changes build configuration, dependency versions (major bumps), CI pipelines, signing/notarization flows, or release tooling.
+- Replaces a committed stack choice (see Technology Stack section) with an alternative, or removes a previously approved dependency.
+- Alters security-sensitive code: auth, keychain/secret storage, permissions, crypto, network boundaries.
+- Refactors that change architectural boundaries (module splits/merges, ownership of state, data flow direction).
+- Any change the agent itself is uncertain about or suspects may have non-obvious downstream effects.
+
+Required protocol:
+1. STOP before editing. Enter plan mode (use `ExitPlanMode` / plan-presentation flow, or the active GSD planning command such as `/gsd-plan-phase`, `/gsd-discuss-phase`, or `/gsd-spec-phase`).
+2. Present: scope, files/modules affected, rationale, risks, rollback strategy, and test/verification plan.
+3. Wait for explicit user approval before executing. Do not start edits during planning.
+4. If mid-task the scope expands into a breaking/big change, STOP immediately, re-enter plan mode, and seek re-approval — do not silently widen the change.
+
+Exception: the user may explicitly say "skip plan mode" or "just do it" for a specific change. That authorization applies only to that single change, not to future ones.
+
 
 
 <!-- GSD:profile-start -->
