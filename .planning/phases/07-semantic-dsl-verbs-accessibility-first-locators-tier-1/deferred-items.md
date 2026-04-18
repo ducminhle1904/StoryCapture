@@ -22,3 +22,13 @@ encoding role as `"<kebab>:<name>"`. The proper structured shape mirroring
 the AST `Role { role: String, name: String }` and its TS regen via `ts-rs`
 is still stub. Acceptable for now (TS IPC surface only). Proper landing can
 happen in a later polish pass or in 07-04b's ts-rs regen window.
+## Pre-existing test failures (discovered during 07-04a execution)
+
+Confirmed via `git stash` test — these fail on HEAD before 07-04a's changes:
+
+- `src/features/nl-mode/ChatPanel.test.tsx` — 1 failure (renders empty state)
+- `src/features/settings/AccountsPage.test.tsx` — 6 failures
+
+Out of scope for 07-04a (hover-preview slice). Recommend a dedicated fix
+plan; these tests touch unrelated subsystems (settings keychain UI +
+NL-mode chat).
