@@ -28,6 +28,13 @@ pub enum SelectorStrategy {
     LabelAssoc,
     /// `"visible text"` — bounded fuzzy / partial text (last resort).
     FuzzyText,
+    // Phase 7 Tier 1 — explicit, strict, single-attempt strategies.
+    /// `button "Save"` etc. — Playwright `getByRole(role, { name, exact: true })`.
+    Role,
+    /// `field "Email"` — Playwright `getByLabel(name, { exact: true })`.
+    Label,
+    /// `text "Learn more"` — Playwright `getByText(name, { exact: true })`.
+    TextExact,
 }
 
 impl SelectorStrategy {
@@ -40,6 +47,9 @@ impl SelectorStrategy {
             SelectorStrategy::VisibleText => "visible-text",
             SelectorStrategy::LabelAssoc => "label-assoc",
             SelectorStrategy::FuzzyText => "fuzzy-text",
+            SelectorStrategy::Role => "role",
+            SelectorStrategy::Label => "label",
+            SelectorStrategy::TextExact => "text_exact",
         }
     }
 }

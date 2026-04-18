@@ -22,11 +22,11 @@ fn is_shadow_dom(target: &SelectorOrText) -> bool {
         SelectorOrText::Aria(s) | SelectorOrText::TestId(s) | SelectorOrText::Text(s) => {
             s.starts_with("shadow:")
         }
-        // Phase 7 Tier 1 variants: shadow-DOM heuristic doesn't apply to
-        // role/label/text-exact targets (no prefix convention defined yet).
-        SelectorOrText::Role { .. }
-        | SelectorOrText::Label(_)
-        | SelectorOrText::TextExact(_) => false,
+        // Phase 7 Tier 1: accessibility-first kinds. The name/label/text string
+        // may carry the conventional `shadow:` sentinel the DSL docs reserve.
+        SelectorOrText::Role { name, .. }
+        | SelectorOrText::Label(name)
+        | SelectorOrText::TextExact(name) => name.starts_with("shadow:"),
     }
 }
 
@@ -38,11 +38,11 @@ fn is_download_target(target: &SelectorOrText) -> bool {
         SelectorOrText::Text(s)
         | SelectorOrText::Selector(s)
         | SelectorOrText::TestId(s)
-        | SelectorOrText::Aria(s)
-        | SelectorOrText::Label(s)
-        | SelectorOrText::TextExact(s) => s,
-        // Role variant has structured value, not a single string sentinel.
-        SelectorOrText::Role { .. } => return false,
+        | SelectorOrText::Aria(s) => s,
+        // Phase 7 Tier 1: the `name`/`value` string carries any sentinel.
+        SelectorOrText::Role { name, .. }
+        | SelectorOrText::Label(name)
+        | SelectorOrText::TextExact(name) => name,
     };
     s.starts_with("download:")
         || s.starts_with("download://")
@@ -57,10 +57,11 @@ fn is_oauth_target(target: &SelectorOrText) -> bool {
         SelectorOrText::Text(s)
         | SelectorOrText::Selector(s)
         | SelectorOrText::TestId(s)
-        | SelectorOrText::Aria(s)
-        | SelectorOrText::Label(s)
-        | SelectorOrText::TextExact(s) => s,
-        SelectorOrText::Role { .. } => return false,
+        | SelectorOrText::Aria(s) => s,
+        // Phase 7 Tier 1: the `name`/`value` string carries the sentinel.
+        SelectorOrText::Role { name, .. }
+        | SelectorOrText::Label(name)
+        | SelectorOrText::TextExact(name) => name,
     };
     s.starts_with("oauth:") || s.contains("login.microsoftonline.com") || s.contains("accounts.google.com")
 }

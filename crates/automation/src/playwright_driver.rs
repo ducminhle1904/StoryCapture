@@ -523,3 +523,51 @@ mod pick_element_serde_tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod tier1_target_to_json_tests {
+    use super::*;
+    use story_parser::AriaRole;
+
+    #[test]
+    fn role_encodes_as_object_value_with_kebab_role_and_name() {
+        let v = target_to_json(&SelectorOrText::Role {
+            role: AriaRole::Button,
+            name: "Save".into(),
+        });
+        assert_eq!(v["kind"], "role");
+        assert_eq!(v["value"]["role"], "button");
+        assert_eq!(v["value"]["name"], "Save");
+    }
+
+    #[test]
+    fn role_preserves_colon_in_name() {
+        let v = target_to_json(&SelectorOrText::Role {
+            role: AriaRole::Link,
+            name: "Go: now".into(),
+        });
+        assert_eq!(v["value"]["name"], "Go: now");
+    }
+
+    #[test]
+    fn label_encodes_as_string_value() {
+        let v = target_to_json(&SelectorOrText::Label("Email".into()));
+        assert_eq!(v["kind"], "label");
+        assert_eq!(v["value"], "Email");
+    }
+
+    #[test]
+    fn text_exact_encodes_with_snake_case_kind() {
+        let v = target_to_json(&SelectorOrText::TextExact("Learn more".into()));
+        assert_eq!(v["kind"], "text_exact");
+        assert_eq!(v["value"], "Learn more");
+    }
+
+    #[test]
+    fn legacy_variants_unchanged() {
+        assert_eq!(target_to_json(&SelectorOrText::Text("x".into()))["kind"], "text");
+        assert_eq!(target_to_json(&SelectorOrText::Selector("#x".into()))["kind"], "selector");
+        assert_eq!(target_to_json(&SelectorOrText::TestId("x".into()))["kind"], "testid");
+        assert_eq!(target_to_json(&SelectorOrText::Aria("x".into()))["kind"], "aria");
+    }
+}

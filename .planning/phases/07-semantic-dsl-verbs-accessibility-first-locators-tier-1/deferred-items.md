@@ -1,26 +1,24 @@
 # Deferred Items — Phase 7
 
-## From 07-03b execution
+## Resolved — 07-02 recovery merge (commit following 07-03b)
 
-### Tier 1 forward-compat stubs (07-02 owns the proper landing)
+Root cause: the 07-02 executor worktree was accidentally discarded before its
+5 commits (e545507…0daaae2) landed on main. 07-03b subsequently had to add
+forward-compat stubs to keep the workspace compiling. Those stubs have now
+been replaced with 07-02's proper implementations via a recovery merge of
+`0daaae2` onto current main. Conflict resolution:
 
-`07-03b` had to add minimal pattern arms in `crates/automation/` so the
-workspace compiles, because `SelectorOrText::{Role,Label,TextExact}` exist
-in `crates/story-parser/src/ast.rs` but downstream consumers were never
-patched. These are STUBS — 07-02 should land the proper implementations:
+- `crates/automation/src/events.rs` — 07-02's `SelectorStrategy::{Role,Label,TextExact}` variants now present with canonical `as_str()` values (`"role"`, `"label"`, `"text_exact"`).
+- `crates/automation/src/selector.rs` — 07-02's `explicit_strategy()` routes the new variants to the proper strategies; stub Aria fallback arms deleted (previously unreachable).
+- `crates/automation/src/playwright_driver.rs` — kept 07-03b's version (it already has the correct `target_to_json()` wire shape + all the `PickElement*` types). Added 07-02's 5 `tier1_target_to_json_tests` on top.
+- `crates/automation/src/capability.rs` — took 07-02's version.
+- 33/33 `cargo test -p automation --lib` tests green (07-02's 6 new + 07-03b's 5 pick-response + pre-existing).
 
-- `crates/automation/src/events.rs` — `SelectorStrategy` enum still lacks
-  `Role`/`Label`/`TextExact` variants. `selector.rs::explicit_strategy()`
-  currently maps the new SelectorOrText variants onto `SelectorStrategy::Aria`
-  with prefixed string values (`role=...`, `label=...`, `text=...`). 07-02
-  should add the proper `SelectorStrategy::Role|Label|TextExact` variants
-  and update `explicit_strategy()` to return them.
-- `crates/automation/src/selector.rs` — same as above; uses Aria strategy
-  as a placeholder.
-- `crates/automation/src/playwright_driver.rs::target_to_json()` — already
-  emits the proper `{"kind": "role", "value": {role, name}}` etc. Matches
-  CONTEXT.md §Tier 1 prerequisite. No further work needed.
-- `apps/desktop/src-tauri/src/commands/parse.rs::SelectorOrTextDto` — added
-  flat `Role(String)`/`Label`/`TextExact` arms. The proper structured shape
-  (mirror of the AST `Role { role, name }`) and TS regen via `ts-rs` is
-  Tier 1 work.
+## Still outstanding
+
+### `apps/desktop/src-tauri/src/commands/parse.rs::SelectorOrTextDto`
+07-03b added flat `Role(String)` / `Label(String)` / `TextExact(String)` arms
+encoding role as `"<kebab>:<name>"`. The proper structured shape mirroring
+the AST `Role { role: String, name: String }` and its TS regen via `ts-rs`
+is still stub. Acceptable for now (TS IPC surface only). Proper landing can
+happen in a later polish pass or in 07-04b's ts-rs regen window.
