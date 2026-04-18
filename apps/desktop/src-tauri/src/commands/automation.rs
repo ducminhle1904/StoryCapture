@@ -212,12 +212,14 @@ pub async fn launch_automation(
     playwright_pid_stash().set(None);
     {
         let probe_driver = shared_pw.clone();
+        let app_for_refocus = app.clone();
         tokio::spawn(async move {
             let budget = std::time::Duration::from_secs(10);
             let deadline = std::time::Instant::now() + budget;
             let mut delay = std::time::Duration::from_millis(100);
             let cap = std::time::Duration::from_secs(1);
             let mut consecutive_errors: u32 = 0;
+            let mut refocused = false;
             while std::time::Instant::now() < deadline {
                 tokio::time::sleep(delay).await;
                 let result = {
@@ -227,13 +229,35 @@ pub async fn launch_automation(
                 match result {
                     Ok(info) => {
                         consecutive_errors = 0;
+                        let remote = info.reason.as_deref() == Some("remote-browser");
+                        let pid_resolved = info.pid.is_some();
                         let _ = playwright_pid_stash().set(Some(PlaywrightLaunchInfo {
                             pid: info.pid,
                             executable_path: info.executable_path,
                         }));
-                        if info.reason.as_deref() == Some("remote-browser")
-                            || info.pid.is_some()
-                        {
+                        // One-shot re-focus of our own main window once the
+                        // Playwright-managed Chromium has actually materialized
+                        // (pid resolved) or the remote-browser sentinel is in.
+                        // Window-targeted SCK/WGC capture is focus-independent,
+                        // so taking foreground back does not disrupt recording.
+                        if !refocused && (pid_resolved || remote) {
+                            refocused = true;
+                            if let Some(win) = app_for_refocus.get_webview_window("main") {
+                                let _ = win.unminimize();
+                                match win.set_focus() {
+                                    Ok(()) => tracing::info!(
+                                        target: "storycapture::automation",
+                                        "main window re-focused after Playwright launch"
+                                    ),
+                                    Err(e) => tracing::warn!(
+                                        target: "storycapture::automation",
+                                        error = %e,
+                                        "main window set_focus failed after Playwright launch"
+                                    ),
+                                }
+                            }
+                        }
+                        if remote || pid_resolved {
                             break;
                         }
                     }

@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::mpsc;
@@ -587,6 +587,27 @@ pub async fn start_recording(
             audio_fifo,
         },
     );
+
+    // Re-focus the StoryCapture main window now that the recording pipeline
+    // is running. Window-targeted capture (SCK on macOS, WGC on Windows) is
+    // focus-independent, so stealing foreground back does not disrupt frames.
+    // Covers the gap between `launch_automation` re-focusing once after the
+    // Playwright pid probe resolves and the user actually regaining control.
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        match win.set_focus() {
+            Ok(()) => tracing::info!(
+                target: "storycapture::recording",
+                session_id = %session_id,
+                "main window re-focused after start_recording"
+            ),
+            Err(e) => tracing::warn!(
+                target: "storycapture::recording",
+                error = %e,
+                "main window set_focus failed after start_recording"
+            ),
+        }
+    }
 
     Ok(RecordingSessionId(session_id))
 }
