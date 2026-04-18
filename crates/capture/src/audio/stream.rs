@@ -1,31 +1,13 @@
-//! `AudioCaptureStream` — cpal input stream + lock-free ringbuf + drain
-//! thread writing raw f32 samples to a named pipe for FFmpeg.
+//! cpal input stream + lock-free ringbuf + drain thread writing raw f32
+//! samples to a named pipe for FFmpeg.
 //!
-//! ## Lifecycle
+//! Precondition: FFmpeg must open the fifo for read BEFORE `start()` —
+//! POSIX `O_WRONLY` blocks until a reader attaches.
 //!
-//! ```text
-//!   FFmpeg spawns and opens(fifo, O_RDONLY)  ◄── must happen FIRST
-//!          │
-//!          ▼
-//!   AudioCaptureStream::start()
-//!     ├─ device.build_input_stream(cfg, |data| prod.push_slice(data), err_cb)
-//!     ├─ std::thread::spawn(drain_loop)  // opens fifo(O_WRONLY), pumps ringbuf
-//!     └─ stream.play()
-//! ```
-//!
-//! On `Drop`:
-//!   1. `stop_flag.store(true)` — drain loop notices and exits.
-//!   2. `_stream` drops → cpal pauses/releases the callback.
-//!   3. `drain_thread.join()` — bounded wait; thread is idle on the
-//!      ringbuf poll and exits within a few ms.
-//!
-//! ## cpal#970 rule
-//!
-//! The input callback MUST use ONLY `ringbuf::Producer::push_slice`.
-//! Adding *any* cross-thread synchronization primitive (tokio mpsc,
-//! std mpsc, mutex, condvar, channels, parking_lot) causes WASAPI on
-//! Windows to silently stop firing callbacks after a few dispatches.
-//! See the inline comment in the callback body.
+//! cpal#970 rule: the input callback MUST use ONLY `push_slice`. Any
+//! cross-thread sync primitive (mpsc, mutex, condvar, channels) causes
+//! WASAPI on Windows to silently stop firing callbacks after a few
+//! dispatches.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,6 +19,16 @@ use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::HeapRb;
 
 use super::error::AudioError;
+
+/// Sleep between empty ringbuf polls in the drain thread (backlog #14).
+///
+/// Tradeoff: shorter → lower tail latency when FFmpeg drains the fifo,
+/// but more wake-ups/sec (≈500 at 2ms). The cpal callback fills the
+/// ringbuf at device rate — typically every ~10ms at 48kHz — so 2ms
+/// keeps worst-case wakeup drift under one device callback period.
+/// Harmless on desktop; measurable on battery. Revisit if mobile ever
+/// lands.
+const DRAIN_EMPTY_SLEEP_MS: u64 = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AudioStreamInfo {
@@ -279,7 +271,7 @@ fn drain_loop(
     while !stop_flag.load(Ordering::Relaxed) {
         let n = cons.pop_slice(&mut buf);
         if n == 0 {
-            std::thread::sleep(std::time::Duration::from_millis(2));
+            std::thread::sleep(std::time::Duration::from_millis(DRAIN_EMPTY_SLEEP_MS));
             continue;
         }
         let bytes: &[u8] = bytemuck::cast_slice(&buf[..n]);
