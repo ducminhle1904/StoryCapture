@@ -24,7 +24,7 @@ use std::sync::Arc;
 use story_parser::{ScrollDir, SelectorOrText};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{broadcast, oneshot, Mutex};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JsonRpcRequest<'a> {
@@ -34,15 +34,35 @@ struct JsonRpcRequest<'a> {
     params: Value,
 }
 
+// Plan 07-04a — JSON-RPC notifications.
+//
+// `id` is now Option<u64>: id-absent messages carry `method`+`params` and
+// are dispatched to a tokio broadcast channel instead of the pending-
+// request map. `result`/`error` are unchanged so response parsing remains
+// backward-compatible with every 07-03a/b call site.
 #[derive(Debug, Deserialize)]
 struct JsonRpcResponse {
     #[allow(dead_code)]
+    #[serde(default)]
     jsonrpc: Option<String>,
-    id: u64,
+    #[serde(default)]
+    id: Option<u64>,
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    params: Option<Value>,
     #[serde(default)]
     result: Option<Value>,
     #[serde(default)]
     error: Option<JsonRpcError>,
+}
+
+/// Plan 07-04a — fan-out payload for id-absent JSON-RPC messages.
+/// Subscribers consume via `PlaywrightSidecarDriver::subscribe_notifications`.
+#[derive(Debug, Clone)]
+pub struct Notification {
+    pub method: String,
+    pub params: Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,6 +80,10 @@ pub struct PlaywrightSidecarDriver {
     pending: Pending,
     /// Keep the child alive for the driver lifetime.
     _child: Arc<Mutex<Option<Child>>>,
+    /// Plan 07-04a — fan-out for id-absent JSON-RPC messages (e.g.
+    /// `pickElement.hoverPreview`). Capacity 128 — lagged subscribers
+    /// receive `RecvError::Lagged(n)` and are logged, not panicked.
+    notifications: broadcast::Sender<Notification>,
 }
 
 impl PlaywrightSidecarDriver {
@@ -82,7 +106,14 @@ impl PlaywrightSidecarDriver {
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let pending_for_reader = pending.clone();
 
-        // Reader task: parse stdout lines, dispatch to the pending map.
+        // Plan 07-04a — broadcast channel for id-absent JSON-RPC
+        // notifications. Capacity 128: well above the rAF-throttled (~60 Hz)
+        // hoverPreview stream against any reasonable UI consumer cadence.
+        let (notifications, _keep_open) = broadcast::channel::<Notification>(128);
+        let notifications_for_reader = notifications.clone();
+
+        // Reader task: parse stdout lines, dispatch to the pending map or
+        // the notifications broadcast channel (Plan 07-04a).
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
@@ -97,13 +128,35 @@ impl PlaywrightSidecarDriver {
                         continue;
                     }
                 };
-                let mut p = pending_for_reader.lock().await;
-                if let Some(tx) = p.remove(&resp.id) {
-                    let _ = tx.send(if let Some(err) = resp.error {
-                        Err(err.message)
-                    } else {
-                        Ok(resp.result.unwrap_or(Value::Null))
-                    });
+                match (resp.id, resp.method.as_deref()) {
+                    (Some(id), _) => {
+                        // Id-present → request/response path (unchanged).
+                        let mut p = pending_for_reader.lock().await;
+                        if let Some(tx) = p.remove(&id) {
+                            let _ = tx.send(if let Some(err) = resp.error {
+                                Err(err.message)
+                            } else {
+                                Ok(resp.result.unwrap_or(Value::Null))
+                            });
+                        }
+                    }
+                    (None, Some(method)) => {
+                        // Id-absent + method → notification (fan-out).
+                        let note = Notification {
+                            method: method.to_string(),
+                            params: resp.params.unwrap_or(Value::Null),
+                        };
+                        // `send` errors only when there are zero live
+                        // receivers — ignore so startup before any
+                        // subscriber attaches doesn't log-spam.
+                        let _ = notifications_for_reader.send(note);
+                    }
+                    _ => {
+                        tracing::warn!(
+                            target: "automation::playwright",
+                            "malformed line (no id, no method): {line}"
+                        );
+                    }
                 }
             }
         });
@@ -113,7 +166,16 @@ impl PlaywrightSidecarDriver {
             next_id: AtomicU64::new(1),
             pending,
             _child: Arc::new(Mutex::new(Some(child))),
+            notifications,
         })
+    }
+
+    /// Plan 07-04a — subscribe to id-absent JSON-RPC messages. Multiple
+    /// subscribers all receive every notification. Lagged subscribers get
+    /// `RecvError::Lagged(n)` on the next `recv()` and must choose whether
+    /// to log and continue or resubscribe.
+    pub fn subscribe_notifications(&self) -> broadcast::Receiver<Notification> {
+        self.notifications.subscribe()
     }
 
     async fn call(&self, method: &str, params: Value) -> Result<Value> {

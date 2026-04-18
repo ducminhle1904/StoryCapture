@@ -76,6 +76,11 @@ let state = {
   // on the same page doesn't re-expose (Playwright throws on duplicate
   // exposeBinding for the same name).
   pickerBoundPages: new WeakSet(),
+  // Plan 07-04a: separate per-page set for the `__sc_picker_hover` binding
+  // (the live-hover preview channel). Split from pickerBoundPages because
+  // the overlay can install each binding independently and Playwright
+  // throws on duplicate exposeBinding calls with the same name.
+  pickerHoverBoundPages: new WeakSet(),
 };
 
 const handlers = {
@@ -178,6 +183,7 @@ const handlers = {
       fakeRemoteBrowser: false,
       pickerPending: null,
       pickerBoundPages: new WeakSet(),
+      pickerHoverBoundPages: new WeakSet(),
     };
     return { ok: true };
   },
@@ -514,7 +520,29 @@ const handlers = {
               state.pickerBoundPages.add(page);
             });
 
-      exposePromise
+      // Plan 07-04a — expose the hover channel alongside the emit channel.
+      // rAF-throttled mouseover in the overlay calls window.__sc_picker_hover
+      // with a lightweight payload; the binding forwards it as an id-absent
+      // JSON-RPC notification (`pickElement.hoverPreview`) to stdout. The
+      // Rust reader loop fan-outs via the notifications broadcast channel.
+      const hoverExposePromise = state.pickerHoverBoundPages.has(page)
+        ? Promise.resolve()
+        : page
+            .exposeBinding('__sc_picker_hover', async ({ page: _p }, payload) => {
+              // Do not spam after settle — the overlay itself stops
+              // listening, but a race between stop() and a last in-flight
+              // rAF callback is possible.
+              if (settled) return;
+              writeNotification('pickElement.hoverPreview', payload || {});
+            })
+            .then(() => {
+              state.pickerHoverBoundPages.add(page);
+            })
+            .catch(() => {
+              state.pickerHoverBoundPages.add(page);
+            });
+
+      Promise.all([exposePromise, hoverExposePromise])
         .then(() => page.evaluate(() => window.__sc_picker?.start()))
         .catch(async (e) => {
           await settle({
@@ -550,6 +578,27 @@ const handlers = {
       if (!el) throw new Error('no element for selector ' + sel);
       el.dispatchEvent(
         new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    }, selector);
+    return { ok: true };
+  },
+
+  // Plan 07-04a — deterministic hover for vitest. Dispatches a mouseover
+  // event on the overlay at the given selector; the overlay's
+  // rAF-throttled handler fires `window.__sc_picker_hover(payload)` on
+  // the next animation frame, which the server turns into a
+  // `pickElement.hoverPreview` JSON-RPC notification.
+  __test_simulate_hover: async ({ selector }) => {
+    if (!state.page) {
+      const err = new Error('browser not launched');
+      err.code = -32000;
+      throw err;
+    }
+    await state.page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (!el) throw new Error('no element for selector ' + sel);
+      el.dispatchEvent(
+        new MouseEvent('mouseover', { bubbles: true, cancelable: true }),
       );
     }, selector);
     return { ok: true };
@@ -703,4 +752,14 @@ rl.on('close', async () => {
 
 function write(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
+}
+
+// Plan 07-04a — id-absent JSON-RPC notifications for live-hover preview.
+// Separate from `write` so notifications share a single serialization path
+// with a clear type signature. The Rust reader (playwright_driver.rs)
+// dispatches any id-absent + method-present line to the broadcast channel.
+function writeNotification(method, params) {
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n',
+  );
 }

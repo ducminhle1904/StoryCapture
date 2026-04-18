@@ -30,6 +30,18 @@ export interface PickCandidatePayload {
   shadowDepth: number;
 }
 
+// Plan 07-04a — live-hover preview payload.
+// Lightweight on purpose: the chip only needs "what the user is pointing at
+// right now" — the full ranked DSL emission still happens on click via
+// __sc_picker_emit. The bindings writer in server.mjs (writeNotification)
+// forwards this as an id-absent JSON-RPC `pickElement.hoverPreview`.
+export interface PickHoverPayload {
+  testId?: string;
+  role?: string;
+  accessibleName?: string;
+  boundingRect?: { x: number; y: number; width: number; height: number };
+}
+
 declare global {
   interface Window {
     __sc_picker?: {
@@ -40,6 +52,8 @@ declare global {
     __sc_picker_emit?: (
       payload: PickCandidatePayload | { __cancel: true },
     ) => void;
+    // Plan 07-04a — fired on every rAF-throttled mouseover while picking.
+    __sc_picker_hover?: (payload: PickHoverPayload) => Promise<void>;
   }
 }
 
@@ -107,6 +121,44 @@ declare global {
     if (!target) return;
     lastTarget = target;
     scheduleRepaint();
+    // Plan 07-04a — fire a hover-preview alongside the highlight repaint.
+    // Re-uses the SAME rAF throttle (scheduleHoverEmit) so at most one
+    // notification is emitted per animation frame (~60 Hz ceiling).
+    scheduleHoverEmit();
+  }
+
+  // Plan 07-04a — rAF-throttled hover emission.
+  //
+  // Independent throttle from the paint scheduler because the hover
+  // channel writes to stdout and we want to coalesce bursts (mouseover
+  // fires on every nested child) rather than serialize every event.
+  let hoverRafHandle: number | null = null;
+  function scheduleHoverEmit() {
+    if (hoverRafHandle != null) return;
+    hoverRafHandle = window.requestAnimationFrame(() => {
+      hoverRafHandle = null;
+      if (!active || !lastTarget) return;
+      const rect = lastTarget.getBoundingClientRect();
+      const name = accessibleName(lastTarget).trim() || undefined;
+      const payload: PickHoverPayload = {
+        testId: lastTarget.getAttribute("data-testid") ?? undefined,
+        role: inferRole(lastTarget),
+        accessibleName: name,
+        boundingRect: {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        },
+      };
+      const hover = window.__sc_picker_hover;
+      if (typeof hover === "function") {
+        // Awaiting isn't useful — the binding resolves on the Node side
+        // after stdout write. Swallow rejection so a torn-down page
+        // during stop() doesn't surface an unhandled promise.
+        hover(payload).catch(() => {});
+      }
+    });
   }
 
   function buildPayload(el: Element): PickCandidatePayload {
@@ -196,6 +248,12 @@ declare global {
     if (rafHandle != null) {
       window.cancelAnimationFrame(rafHandle);
       rafHandle = null;
+    }
+    // Plan 07-04a — cancel the pending hover emission too so a
+    // post-stop() rAF callback doesn't invoke __sc_picker_hover.
+    if (hoverRafHandle != null) {
+      window.cancelAnimationFrame(hoverRafHandle);
+      hoverRafHandle = null;
     }
   }
 

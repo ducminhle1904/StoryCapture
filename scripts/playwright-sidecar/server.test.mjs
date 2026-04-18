@@ -30,9 +30,15 @@ function spawnSidecar() {
   });
   const pending = new Map();
   let nextId = 1;
+  // Plan 07-04a — capture every line the sidecar writes to stdout so
+  // tests can assert on id-absent notifications (e.g.
+  // `pickElement.hoverPreview`). Responses still dispatch via the
+  // `pending` map; notifications land in the buffer only.
+  const stdoutLines = [];
   const rl = createInterface({ input: child.stdout });
   rl.on("line", (line) => {
     if (!line.trim()) return;
+    stdoutLines.push(line);
     let msg;
     try {
       msg = JSON.parse(line);
@@ -40,6 +46,10 @@ function spawnSidecar() {
       return;
     }
     const { id } = msg;
+    if (id === undefined || id === null) {
+      // id-absent → notification; not a response to any pending request.
+      return;
+    }
     const waiter = pending.get(id);
     if (waiter) {
       pending.delete(id);
@@ -49,6 +59,10 @@ function spawnSidecar() {
   // Swallow stderr in tests (surface only on hang).
   child.stderr.on("data", () => {});
   return {
+    /** Plan 07-04a — snapshot every stdout line (responses + notifications). */
+    stdoutLines() {
+      return stdoutLines.slice();
+    },
     call(method, params = {}) {
       const id = nextId++;
       return new Promise((resolveReq, rejectReq) => {
@@ -350,6 +364,49 @@ describe("browserProcess JSON-RPC verb", () => {
           cancelled: true,
           reason: "navigation",
         });
+      } finally {
+        await client.call("close", {}).catch(() => {});
+      }
+    }, 60_000);
+
+    // Plan 07-04a — live-hover preview slice. Asserts the sidecar emits
+    // at least one id-absent JSON-RPC notification
+    // (`pickElement.hoverPreview`) while a pick is active, driven by the
+    // overlay's rAF-throttled mouseover handler.
+    it("pickElement.hoverPreview notifications fire during hover (rAF-throttled)", async () => {
+      await launchAndOpen();
+      try {
+        const startPromise = client.call("pickElement.start", {
+          timeoutMs: 10000,
+        });
+        // Let the overlay install + exposeBinding('__sc_picker_hover')
+        // complete before simulating the hover. exposeBinding makes one
+        // CDP round-trip per binding; 300 ms gives headroom under CI
+        // load.
+        await new Promise((r) => setTimeout(r, 500));
+        await client.call("__test_simulate_hover", {
+          selector: '[data-testid="save-btn"]',
+        });
+        // rAF callback + __sc_picker_hover binding invocation + stdout
+        // write round-trip. The binding does one CDP hop each way. Poll
+        // for up to 3 s so slow CI doesn't flake.
+        let notes = [];
+        for (let i = 0; i < 30 && notes.length === 0; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          notes = client
+            .stdoutLines()
+            .filter((l) => l.includes("pickElement.hoverPreview"));
+        }
+        expect(notes.length).toBeGreaterThanOrEqual(1);
+        // Parse the notification payload and confirm shape: must be
+        // id-absent + method="pickElement.hoverPreview".
+        const parsed = JSON.parse(notes[0]);
+        expect(parsed.id).toBeUndefined();
+        expect(parsed.method).toBe("pickElement.hoverPreview");
+        expect(parsed.params).toBeDefined();
+        // Resolve the pick so the test cleanup doesn't hang.
+        await client.call("__test_simulate_pick_cancel", {});
+        await startPromise;
       } finally {
         await client.call("close", {}).catch(() => {});
       }
