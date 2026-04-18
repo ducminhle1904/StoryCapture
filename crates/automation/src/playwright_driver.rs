@@ -416,6 +416,45 @@ impl PlaywrightSidecarDriver {
         .await?;
         Ok(())
     }
+
+    /// Plan 07-05 — author-time DOM + screenshot capture for the selector
+    /// validator. Routes to the sidecar's `captureSnapshot` verb which
+    /// uses a DEDICATED browser (never disturbs the recording session's
+    /// `state.page`). Returns the raw sidecar response — the desktop
+    /// command layer is responsible for persisting it to disk + hashing.
+    pub async fn capture_snapshot(
+        &self,
+        url: &str,
+        viewport: Option<(u32, u32)>,
+        timeout_ms: Option<u64>,
+    ) -> Result<SnapshotResponse> {
+        let mut params = serde_json::json!({ "url": url });
+        if let Some((w, h)) = viewport {
+            params["viewport"] = serde_json::json!({ "width": w, "height": h });
+        }
+        if let Some(t) = timeout_ms {
+            params["timeoutMs"] = serde_json::json!(t);
+        }
+        let v = self.call("captureSnapshot", params).await?;
+        let resp: SnapshotResponse = serde_json::from_value(v).map_err(|e| {
+            AutomationError::Protocol(format!("captureSnapshot decode: {e}"))
+        })?;
+        Ok(resp)
+    }
+}
+
+/// Plan 07-05 — sidecar `captureSnapshot` response payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotResponse {
+    pub url: String,
+    #[serde(rename = "domHash")]
+    pub dom_hash: String,
+    #[serde(rename = "innerHTML")]
+    pub inner_html: String,
+    #[serde(rename = "screenshotBase64")]
+    pub screenshot_base64: String,
+    #[serde(rename = "capturedAt")]
+    pub captured_at: String,
 }
 
 fn target_to_json(t: &SelectorOrText) -> Value {

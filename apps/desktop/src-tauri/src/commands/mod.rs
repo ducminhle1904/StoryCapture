@@ -7,6 +7,8 @@
 pub mod app_settings;
 pub mod audio;
 pub mod automation;
+// Plan 07-05 — author-time selector validator + DOM snapshot store.
+pub mod author_snapshot;
 pub mod automation_shared;
 pub mod capture;
 pub mod dryrun;

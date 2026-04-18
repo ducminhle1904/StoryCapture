@@ -18,9 +18,9 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        app_settings, audio, automation, capture, dryrun, encode, export, keys, lsp, nl, parse,
-        picker, preset, projects, region_overlay, render, sound_library, system, timeline, tts,
-        updater, upload, web_account, web_sync,
+        app_settings, audio, automation, author_snapshot, capture, dryrun, encode, export, keys,
+        lsp, nl, parse, picker, preset, projects, region_overlay, render, sound_library, system,
+        timeline, tts, updater, upload, web_account, web_sync,
     },
     error::AppError,
 };
@@ -53,6 +53,11 @@ pub fn builder() -> Builder<Wry> {
             picker::picker_is_active,
             // Plan 07-04c — stamp UUIDv7 on first pick + seed targets sidecar.
             picker::picker_stamp_step_id,
+            // Plan 07-05 — author-time selector validator + DOM snapshot store.
+            author_snapshot::author_snapshot_capture,
+            author_snapshot::author_snapshot_get,
+            author_snapshot::author_snapshot_list,
+            author_snapshot::author_snapshot_validate,
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
             // Phase 6 plan 01 — mic audio enumeration.
@@ -147,6 +152,9 @@ pub fn builder() -> Builder<Wry> {
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<automation::ResolvedPlaywrightTarget>()
         .typ::<picker::PickElementResponseDto>()
+        // Plan 07-05 — author-time validator DTOs.
+        .typ::<author_snapshot::AuthorSnapshotEntry>()
+        .typ::<author_snapshot::AuthorValidationDto>()
         .typ::<capture::DisplayInfoDto>()
         .typ::<capture::WindowInfoDto>()
         .typ::<capture::CaptureTargetDto>()

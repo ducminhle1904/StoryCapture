@@ -97,6 +97,11 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # (T-06-09 — reject javascript:/data: schemes).
 url = "2"
 
+# Plan 07-05: author-time snapshot store hashing + base64 PNG decoding.
+base64 = "0.22"
+sha2 = "0.10"
+hex = "0.4"
+
 # macOS-only: set the Dock icon at runtime so `tauri dev` (which runs
 # the raw binary without an .app bundle) shows the StoryCapture icon
 # instead of the generic executable glyph.
@@ -120,3 +125,5 @@ objc2-foundation = { version = "0.2", features = [
 wiremock = "0.6"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true }
+# Plan 07-05: tempdir fixtures for author_snapshot store tests.
+tempfile = "3"
