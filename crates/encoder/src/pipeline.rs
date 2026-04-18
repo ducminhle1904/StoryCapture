@@ -109,8 +109,11 @@ impl EncodePipeline {
             tracing::info!(target: "storycapture::encoder", "frame pump started");
 
             // Frame pump loop.
+            let mut packed_buf: Vec<u8> = Vec::new();
             while let Some(frame) = frames.recv().await {
-                let (bytes, _stride) = match bgra_bytes_of_frame(&frame) {
+                let width_px = frame.width_px;
+                let height_px = frame.height_px;
+                let (bytes, stride) = match bgra_bytes_of_frame(&frame) {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::error!(target: "storycapture::encoder", error = %e, "bgra extract failed; dropping frame");
@@ -118,7 +121,23 @@ impl EncodePipeline {
                         continue;
                     }
                 };
-                match stdin.write_all(&bytes[..]).await {
+                let row_bytes = (width_px as usize) * 4;
+                let bytes_ref: &[u8] = if stride == row_bytes {
+                    &bytes[..]
+                } else {
+                    let total = row_bytes * (height_px as usize);
+                    if packed_buf.len() != total {
+                        packed_buf.resize(total, 0);
+                    }
+                    for row in 0..(height_px as usize) {
+                        let src_off = row * stride;
+                        let dst_off = row * row_bytes;
+                        packed_buf[dst_off..dst_off + row_bytes]
+                            .copy_from_slice(&bytes[src_off..src_off + row_bytes]);
+                    }
+                    &packed_buf[..]
+                };
+                match stdin.write_all(bytes_ref).await {
                     Ok(()) => {
                         frames_written += 1;
                         if frames_written == 1 || frames_written % 30 == 0 {
