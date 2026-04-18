@@ -8,6 +8,7 @@
 
 pub mod ast;
 pub mod diagnostic;
+pub mod formatter;
 pub mod io;
 pub mod lenient_tokenize;
 pub mod parser;
@@ -17,5 +18,6 @@ pub mod suggest;
 
 pub use ast::*;
 pub use diagnostic::{Diagnostic, Severity};
+pub use formatter::format_story;
 pub use io::{parse_file, MAX_STORY_FILE_BYTES};
 pub use parser::{parse, ParseResult, Rule};

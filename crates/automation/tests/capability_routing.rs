@@ -124,6 +124,7 @@ fn upload_cmd() -> Command {
         target: SelectorOrText::Selector("#f".into()),
         path: "/tmp/x".into(),
         span: Span::empty(),
+        step_id: None,
     }
 }
 
@@ -131,6 +132,7 @@ fn plain_click_cmd() -> Command {
     Command::Click {
         target: SelectorOrText::Selector("#save".into()),
         span: Span::empty(),
+        step_id: None,
     }
 }
 
@@ -138,6 +140,7 @@ fn shadow_dom_click_cmd() -> Command {
     Command::Click {
         target: SelectorOrText::Selector("div::shadow button".into()),
         span: Span::empty(),
+        step_id: None,
     }
 }
 
@@ -146,6 +149,7 @@ fn wait_for_download_cmd() -> Command {
         target: SelectorOrText::Text("download:report.pdf".into()),
         timeout_ms: Some(2_000),
         span: Span::empty(),
+        step_id: None,
     }
 }
 
@@ -153,6 +157,7 @@ fn oauth_click_cmd() -> Command {
     Command::Click {
         target: SelectorOrText::Text("oauth:Sign in with Microsoft".into()),
         span: Span::empty(),
+        step_id: None,
     }
 }
 

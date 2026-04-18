@@ -4,6 +4,7 @@
 //! types to `packages/story-dsl/src/ast.ts`.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[cfg(feature = "ts-export")]
 use ts_rs::TS;
@@ -245,6 +246,25 @@ pub enum ScrollDir {
 
 // Commands
 
+/// Per-command line metadata — originally just source line/column.
+///
+/// Phase 7 Tier 2 (plan 07-04b) adds `step_id: Option<Uuid>` carrying the
+/// parsed trailing `# @id=<uuidv7>` comment. Grammar extension is ADDITIVE;
+/// legacy lines parse with `step_id == None`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-export", derive(TS))]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(export, export_to = "../../../packages/story-dsl/src/ast.ts")
+)]
+pub struct LineMeta {
+    pub line: u32,
+    pub column: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+    pub step_id: Option<Uuid>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -253,19 +273,19 @@ pub enum ScrollDir {
 )]
 #[serde(tag = "verb", rename_all = "kebab-case")]
 pub enum Command {
-    Navigate { url: String, span: Span },
-    Click { target: SelectorOrText, span: Span },
-    Type { target: SelectorOrText, text: String, span: Span },
-    Scroll { direction: ScrollDir, amount: Option<f32>, span: Span },
-    Hover { target: SelectorOrText, span: Span },
-    Drag { from: SelectorOrText, to: SelectorOrText, span: Span },
-    Select { target: SelectorOrText, value: String, span: Span },
-    Upload { target: SelectorOrText, path: String, span: Span },
-    Wait { duration_ms: u64, span: Span },
-    WaitFor { target: WaitForTarget, timeout_ms: Option<u64>, span: Span },
-    Assert { target: AssertTarget, span: Span },
-    Screenshot { name: String, span: Span },
-    Pause { span: Span },
+    Navigate { url: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Click { target: SelectorOrText, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Type { target: SelectorOrText, text: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Scroll { direction: ScrollDir, amount: Option<f32>, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Hover { target: SelectorOrText, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Drag { from: SelectorOrText, to: SelectorOrText, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Select { target: SelectorOrText, value: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Upload { target: SelectorOrText, path: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Wait { duration_ms: u64, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    WaitFor { target: WaitForTarget, timeout_ms: Option<u64>, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Assert { target: AssertTarget, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Screenshot { name: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Pause { span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
 }
 
 impl Command {
@@ -283,7 +303,57 @@ impl Command {
             | Command::WaitFor { span, .. }
             | Command::Assert { span, .. }
             | Command::Screenshot { span, .. }
-            | Command::Pause { span } => *span,
+            | Command::Pause { span, .. } => *span,
+        }
+    }
+
+    /// Return the optional step id parsed from a trailing `# @id=<uuidv7>` comment.
+    /// Legacy lines (no comment) yield `None`.
+    pub fn step_id(&self) -> Option<Uuid> {
+        match self {
+            Command::Navigate { step_id, .. }
+            | Command::Click { step_id, .. }
+            | Command::Type { step_id, .. }
+            | Command::Scroll { step_id, .. }
+            | Command::Hover { step_id, .. }
+            | Command::Drag { step_id, .. }
+            | Command::Select { step_id, .. }
+            | Command::Upload { step_id, .. }
+            | Command::Wait { step_id, .. }
+            | Command::WaitFor { step_id, .. }
+            | Command::Assert { step_id, .. }
+            | Command::Screenshot { step_id, .. }
+            | Command::Pause { step_id, .. } => *step_id,
+        }
+    }
+
+    /// Return a [`LineMeta`] view over this command's line/column + step_id.
+    pub fn meta(&self) -> LineMeta {
+        let s = self.span();
+        LineMeta {
+            line: s.line,
+            column: s.col,
+            step_id: self.step_id(),
+        }
+    }
+
+    /// Zero out the span (test helper for AST structural equality across a
+    /// parse-format-parse round-trip, where byte offsets are allowed to drift).
+    pub fn clear_span(&mut self) {
+        match self {
+            Command::Navigate { span, .. }
+            | Command::Click { span, .. }
+            | Command::Type { span, .. }
+            | Command::Scroll { span, .. }
+            | Command::Hover { span, .. }
+            | Command::Drag { span, .. }
+            | Command::Select { span, .. }
+            | Command::Upload { span, .. }
+            | Command::Wait { span, .. }
+            | Command::WaitFor { span, .. }
+            | Command::Assert { span, .. }
+            | Command::Screenshot { span, .. }
+            | Command::Pause { span, .. } => *span = Span::empty(),
         }
     }
 

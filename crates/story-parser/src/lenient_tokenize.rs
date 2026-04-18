@@ -26,6 +26,10 @@ pub enum LenientToken {
     Command {
         pair_kind: ParsedCommand,
         span: Span,
+        /// Raw UUID text from a trailing `# @id=<uuidv7>` comment, if any.
+        /// Layer 2 validates via `Uuid::parse_str`; invalid values become
+        /// a warn-level diagnostic and leave `step_id` as `None`.
+        step_id_raw: Option<String>,
     },
     /// A line layer 1 could not classify.
     Unknown {
@@ -199,14 +203,26 @@ fn walk_scene_block(pair: Pair<Rule>, out: &mut Vec<LenientToken>) {
                     match stmt_child.as_rule() {
                         Rule::command_line => {
                             let line_span = Span::from_pair(&stmt_child);
-                            // The first inner pair is `command`.
+                            // Collect children once so we can look at the
+                            // `command` pair AND the optional `step_id_comment`.
+                            let children: Vec<_> = stmt_child.into_inner().collect();
+                            let step_id_raw = children
+                                .iter()
+                                .find(|p| p.as_rule() == Rule::step_id_comment)
+                                .and_then(|sic| {
+                                    sic.clone()
+                                        .into_inner()
+                                        .find(|c| c.as_rule() == Rule::uuidv7_text)
+                                        .map(|t| t.as_str().to_string())
+                                });
                             if let Some(cmd) =
-                                stmt_child.into_inner().find(|p| p.as_rule() == Rule::command)
+                                children.into_iter().find(|p| p.as_rule() == Rule::command)
                             {
                                 if let Some(parsed) = parse_command(cmd) {
                                     out.push(LenientToken::Command {
                                         pair_kind: parsed,
                                         span: line_span,
+                                        step_id_raw,
                                     });
                                 }
                             }
