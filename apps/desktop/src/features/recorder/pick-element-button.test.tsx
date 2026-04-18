@@ -16,9 +16,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { emit } from "@tauri-apps/api/event";
 
 // Mock sonner so toasts don't blow up jsdom.
 vi.mock("sonner", () => ({
@@ -135,5 +136,77 @@ describe("PickElementButton", () => {
       await Promise.resolve();
     });
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  // Plan 07-04a — hover-preview chip. Subscribed via the Tauri event
+  // `picker_hover_preview`. The Rust forwarder task bridges the
+  // broadcast channel → emit('picker_hover_preview', params).
+  it("hover-preview chip renders with role+accessibleName from first event", async () => {
+    // shouldMockEvents wires listen/emit so we can drive the subscriber
+    // from the test without a real backend.
+    mockIPC(
+      (cmd) => {
+        if (cmd === "picker_start") {
+          // Keep the pick in flight; we assert on the chip mid-session.
+          return new Promise(() => {});
+        }
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+
+    const user = userEvent.setup();
+    render(<PickElementButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+
+    // Fire a hover-preview event — chip should render with role + name.
+    await act(async () => {
+      await emit("picker_hover_preview", {
+        role: "button",
+        accessibleName: "Save",
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const chip = screen.getByRole("note");
+      expect(chip).toHaveAttribute("aria-live", "polite");
+      expect(chip).toHaveTextContent(/button "Save"/);
+    });
+  });
+
+  it("hover-preview chip re-renders with testid on a second event", async () => {
+    mockIPC(
+      (cmd) => {
+        if (cmd === "picker_start") return new Promise(() => {});
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+
+    const user = userEvent.setup();
+    render(<PickElementButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+
+    // First event: role+name.
+    await act(async () => {
+      await emit("picker_hover_preview", {
+        role: "link",
+        accessibleName: "Docs",
+      });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("note")).toHaveTextContent(/link "Docs"/),
+    );
+
+    // Second event: testid. Chip should update, not stack.
+    await act(async () => {
+      await emit("picker_hover_preview", { testId: "save-btn" });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("note")).toHaveTextContent(/testid "save-btn"/),
+    );
   });
 });
