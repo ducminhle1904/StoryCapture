@@ -38,6 +38,8 @@ bytemuck = "1"
 # `audio::fifo::make_fifo` uses tempdir() to create the owner-only
 # parent directory for the mkfifo target (T-06-06 mitigation).
 tempfile = "3"
+# Unique-per-session suffix for Windows named-pipe paths (fifo.rs).
+uuid = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["fs"] }

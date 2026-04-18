@@ -85,7 +85,11 @@ pub fn make_fifo(name_hint: &str) -> Result<FifoHandle, AudioError> {
 
         // UUID-suffixed name collision-prevents T-06-04/06; session-scoped
         // namespace handles tampering by other sessions.
-        let pipe_name = format!("\\\\.\\pipe\\{}-{}", name_hint, uuid_like());
+        let pipe_name = format!(
+            "\\\\.\\pipe\\{}-{}",
+            name_hint,
+            uuid::Uuid::new_v4().simple()
+        );
         let wide: Vec<u16> = std::ffi::OsStr::new(&pipe_name)
             .encode_wide()
             .chain(std::iter::once(0))
@@ -128,16 +132,6 @@ pub fn make_fifo(name_hint: &str) -> Result<FifoHandle, AudioError> {
         let _ = name_hint;
         Err(AudioError::Fifo("unsupported platform".into()))
     }
-}
-
-#[cfg(windows)]
-fn uuid_like() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{:x}", nanos)
 }
 
 #[cfg(test)]
