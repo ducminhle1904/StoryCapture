@@ -39,7 +39,7 @@ pub use playwright_driver::{
     BrowserProcessInfo, Notification, PickCandidate, PickElementResponse, PickLocator,
     PlaywrightSidecarDriver,
 };
-pub use selector::SmartSelector;
+pub use selector::{SmartSelector, ValidationResult};
 pub use session::{
     NullRecorderHandle, RecorderHandle, SessionActor, SessionCmd, SessionId, SessionStatusSnapshot,
 };

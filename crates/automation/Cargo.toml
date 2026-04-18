@@ -27,6 +27,12 @@ uuid = { workspace = true }
 # URL handling for navigate / base-url joining
 url = "2"
 
+# Plan 07-05 — author-time DOM validator. Parses the snapshot HTML string
+# detached (no browser) to run deterministic locator strategies against the
+# cached DOM. Kept inside the automation crate so desktop callers only see
+# the typed `SmartSelector::validate_against_dom` surface.
+scraper = "0.20"
+
 # Pure-crate intra-workspace deps (zero Tauri).
 story-parser = { path = "../story-parser" }
 storage = { path = "../storage" }
