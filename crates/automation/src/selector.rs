@@ -154,6 +154,15 @@ fn explicit_strategy(target: &SelectorOrText) -> Option<(SelectorStrategy, Strin
             Some((SelectorStrategy::TestId, format!("[data-testid=\"{s}\"]")))
         }
         SelectorOrText::Aria(s) => Some((SelectorStrategy::Aria, s.clone())),
+        // Phase 7 Tier 1 (D-06 encoding — sidecar splits on FIRST ':' after "role=").
+        SelectorOrText::Role { role, name } => Some((
+            SelectorStrategy::Role,
+            format!("role={}:{name}", role.as_kebab()),
+        )),
+        SelectorOrText::Label(name) => Some((SelectorStrategy::Label, format!("label={name}"))),
+        SelectorOrText::TextExact(name) => {
+            Some((SelectorStrategy::TextExact, format!("text={name}")))
+        }
         SelectorOrText::Text(_) => None,
     }
 }
@@ -189,6 +198,8 @@ fn score_for(strategy: SelectorStrategy, action: ActionKind) -> f32 {
         (SelectorStrategy::FuzzyText, _) => 0.4,
         // Strict strategies never reach scoring.
         (SelectorStrategy::Css | SelectorStrategy::TestId | SelectorStrategy::Aria, _) => 1.0,
+        // Phase 7 Tier 1 strict strategies also never reach scoring.
+        (SelectorStrategy::Role | SelectorStrategy::Label | SelectorStrategy::TextExact, _) => 1.0,
     }
 }
 
@@ -204,12 +215,85 @@ fn synth_value_for(strategy: SelectorStrategy, text: &str) -> String {
         SelectorStrategy::Css | SelectorStrategy::TestId | SelectorStrategy::Aria => {
             text.to_string()
         }
+        // Phase 7 Tier 1 strict explicit strategies never reach ranked scoring —
+        // defense in depth: if a future refactor accidentally routes here, debug
+        // builds panic loudly so we notice before shipping.
+        SelectorStrategy::Role | SelectorStrategy::Label | SelectorStrategy::TextExact => {
+            debug_assert!(
+                false,
+                "synth_value_for called for strict explicit strategy {strategy:?}"
+            );
+            text.to_string()
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use story_parser::AriaRole;
+
+    #[test]
+    fn explicit_role_target_short_circuits_with_colon_encoding() {
+        let target = SelectorOrText::Role { role: AriaRole::Button, name: "Save".into() };
+        let (strat, val) = explicit_strategy(&target).unwrap();
+        assert_eq!(strat, SelectorStrategy::Role);
+        assert_eq!(val, "role=button:Save");
+    }
+
+    #[test]
+    fn explicit_role_preserves_colon_in_name() {
+        // Names may contain ':' — split on FIRST ':' on the sidecar side preserves this.
+        let target = SelectorOrText::Role { role: AriaRole::Link, name: "Go: now".into() };
+        let (_strat, val) = explicit_strategy(&target).unwrap();
+        assert_eq!(val, "role=link:Go: now");
+        let (role, name) = val["role=".len()..].split_once(':').unwrap();
+        assert_eq!(role, "link");
+        assert_eq!(name, "Go: now");
+    }
+
+    #[test]
+    fn explicit_label_short_circuits() {
+        let target = SelectorOrText::Label("Email".into());
+        let (strat, val) = explicit_strategy(&target).unwrap();
+        assert_eq!(strat, SelectorStrategy::Label);
+        assert_eq!(val, "label=Email");
+    }
+
+    #[test]
+    fn explicit_text_exact_short_circuits() {
+        let target = SelectorOrText::TextExact("Learn more".into());
+        let (strat, val) = explicit_strategy(&target).unwrap();
+        assert_eq!(strat, SelectorStrategy::TextExact);
+        assert_eq!(val, "text=Learn more");
+    }
+
+    #[test]
+    fn selector_strategy_as_str_matches_sidecar_contract() {
+        // These exact strings are the JSON-RPC `strategy` argument the sidecar switches on.
+        assert_eq!(SelectorStrategy::Role.as_str(), "role");
+        assert_eq!(SelectorStrategy::Label.as_str(), "label");
+        assert_eq!(SelectorStrategy::TextExact.as_str(), "text_exact");
+    }
+
+    #[tokio::test]
+    async fn smart_selector_role_single_attempt_no_fallback() {
+        use crate::driver::{ActionKind, BrowserDriver};
+        use crate::noop_driver::NoopDriver;
+        let driver: Box<dyn BrowserDriver> = Box::new(NoopDriver::default());
+        let target = SelectorOrText::Role { role: AriaRole::Button, name: "Save".into() };
+        let (resolved, attempts) =
+            SmartSelector::resolve_with_attempts(driver.as_ref(), ActionKind::Click, &target, 1000)
+                .await
+                .expect("strict resolve cannot fail");
+        assert_eq!(attempts.len(), 1, "strict strategy must be single-attempt");
+        assert_eq!(resolved.strategy, SelectorStrategy::Role);
+        assert_eq!(resolved.value, "role=button:Save");
+        match &attempts[0].outcome {
+            AttemptOutcome::Found { score } => assert_eq!(*score, 1.0),
+            other => panic!("expected Found{{1.0}}, got {:?}", other),
+        }
+    }
 
     #[test]
     fn explicit_css_selector_short_circuits() {

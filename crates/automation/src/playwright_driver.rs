@@ -362,5 +362,16 @@ fn target_to_json(t: &SelectorOrText) -> Value {
         SelectorOrText::Selector(s) => json!({ "kind": "selector", "value": s }),
         SelectorOrText::TestId(s) => json!({ "kind": "testid", "value": s }),
         SelectorOrText::Aria(s) => json!({ "kind": "aria", "value": s }),
+        // Phase 7 Tier 1 — bridging stub (Plan 07-02 Task 1).
+        // Task 4 replaces these with the full WIRE CONTRACT documentation
+        // and a tier1_target_to_json_tests module. Wire shapes below MUST
+        // stay in lockstep with scripts/playwright-sidecar/server.mjs
+        // `targetToLocator()`.
+        SelectorOrText::Role { role, name } => json!({
+            "kind": "role",
+            "value": { "role": role.as_kebab(), "name": name },
+        }),
+        SelectorOrText::Label(s) => json!({ "kind": "label", "value": s }),
+        SelectorOrText::TextExact(s) => json!({ "kind": "text_exact", "value": s }),
     }
 }
