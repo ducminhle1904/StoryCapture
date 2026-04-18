@@ -356,22 +356,105 @@ impl PlaywrightSidecarDriver {
     }
 }
 
+// WIRE CONTRACT — each variant below MUST be decodable by
+// `targetToLocator()` in scripts/playwright-sidecar/server.mjs:
+//
+//   kind           | value shape            | sidecar branch
+//   ---------------|------------------------|------------------------------------
+//   "text"         | string                 | `text=${value}` → waitForSelector
+//   "selector"     | string                 | target.value (raw CSS)
+//   "testid"       | string                 | `[data-testid="${value}"]`
+//   "aria"         | string                 | `[aria-label="${value}"]`
+//   "role"         | { role, name }         | page.getByRole(role, {name, exact})
+//   "label"        | string                 | page.getByLabel(value, {exact})
+//   "text_exact"   | string                 | page.getByText(value, {exact})
+//
+// If you add a variant here, add a branch to server.mjs `targetToLocator()`
+// AND a sidecar vitest case, in the SAME commit. No catch-all `_ =>` arm —
+// exhaustive matching is the drift guard that forces a compile error if
+// `SelectorOrText` gains another variant in a future phase.
 fn target_to_json(t: &SelectorOrText) -> Value {
     match t {
         SelectorOrText::Text(s) => json!({ "kind": "text", "value": s }),
         SelectorOrText::Selector(s) => json!({ "kind": "selector", "value": s }),
         SelectorOrText::TestId(s) => json!({ "kind": "testid", "value": s }),
         SelectorOrText::Aria(s) => json!({ "kind": "aria", "value": s }),
-        // Phase 7 Tier 1 — bridging stub (Plan 07-02 Task 1).
-        // Task 4 replaces these with the full WIRE CONTRACT documentation
-        // and a tier1_target_to_json_tests module. Wire shapes below MUST
-        // stay in lockstep with scripts/playwright-sidecar/server.mjs
-        // `targetToLocator()`.
+        // Phase 7 Tier 1 — Role uses an OBJECT value (role + name) so names
+        // may contain `:` / `=` / `"` without requiring the SmartSelector
+        // `role=<kebab>:<name>` wire encoding. Label and TextExact use
+        // plain string values. `text_exact` is snake_case (matches the
+        // sidecar branch `target.kind === 'text_exact'`); any drift here
+        // (e.g. "text-exact") routes silently to the legacy text fallback.
         SelectorOrText::Role { role, name } => json!({
             "kind": "role",
             "value": { "role": role.as_kebab(), "name": name },
         }),
         SelectorOrText::Label(s) => json!({ "kind": "label", "value": s }),
         SelectorOrText::TextExact(s) => json!({ "kind": "text_exact", "value": s }),
+    }
+}
+
+#[cfg(test)]
+mod tier1_target_to_json_tests {
+    use super::*;
+    use story_parser::AriaRole;
+
+    #[test]
+    fn role_encodes_as_object_value_with_kebab_role_and_name() {
+        let v = target_to_json(&SelectorOrText::Role {
+            role: AriaRole::Button,
+            name: "Save".into(),
+        });
+        assert_eq!(v["kind"], "role");
+        assert_eq!(v["value"]["role"], "button");
+        assert_eq!(v["value"]["name"], "Save");
+    }
+
+    #[test]
+    fn role_preserves_colon_in_name() {
+        // With the object-value shape, names may contain `:` without any
+        // split-on-first-colon handling — the sidecar reads target.value.name directly.
+        let v = target_to_json(&SelectorOrText::Role {
+            role: AriaRole::Link,
+            name: "Go: now".into(),
+        });
+        assert_eq!(v["value"]["name"], "Go: now");
+    }
+
+    #[test]
+    fn label_encodes_as_string_value() {
+        let v = target_to_json(&SelectorOrText::Label("Email".into()));
+        assert_eq!(v["kind"], "label");
+        assert_eq!(v["value"], "Email");
+    }
+
+    #[test]
+    fn text_exact_encodes_with_snake_case_kind() {
+        let v = target_to_json(&SelectorOrText::TextExact("Learn more".into()));
+        // CRITICAL: kind is "text_exact" (snake_case) to match the sidecar branch
+        // `target.kind === 'text_exact'`. Any drift here (e.g. "text-exact") routes
+        // silently to the legacy text fallback and breaks Tier 1 waits.
+        assert_eq!(v["kind"], "text_exact");
+        assert_eq!(v["value"], "Learn more");
+    }
+
+    #[test]
+    fn legacy_variants_unchanged() {
+        assert_eq!(
+            target_to_json(&SelectorOrText::Text("x".into()))["kind"],
+            "text"
+        );
+        assert_eq!(
+            target_to_json(&SelectorOrText::Selector("#x".into()))["kind"],
+            "selector"
+        );
+        assert_eq!(
+            target_to_json(&SelectorOrText::TestId("x".into()))["kind"],
+            "testid"
+        );
+        assert_eq!(
+            target_to_json(&SelectorOrText::Aria("x".into()))["kind"],
+            "aria"
+        );
     }
 }
