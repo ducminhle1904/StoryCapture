@@ -34,4 +34,6 @@ pub use executor::{Executor, PersistenceHandle};
 pub use noop_driver::NoopDriver;
 pub use playwright_driver::{BrowserProcessInfo, PlaywrightSidecarDriver};
 pub use selector::SmartSelector;
-pub use session::{SessionActor, SessionCmd, SessionId, SessionStatusSnapshot};
+pub use session::{
+    NullRecorderHandle, RecorderHandle, SessionActor, SessionCmd, SessionId, SessionStatusSnapshot,
+};
