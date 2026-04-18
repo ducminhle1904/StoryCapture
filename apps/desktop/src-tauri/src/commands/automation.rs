@@ -70,58 +70,12 @@ pub async fn launch_automation(
         project_folder = %project_folder,
         "launch_automation invoked"
     );
-    // Build LaunchOptions locally (backlog #1 — was previously threaded
-    // through `std::env::set_var` which is unsafe under Rust 1.80+ and
-    // racy across concurrent `launch_automation` invocations). The
-    // automation crate now takes `&LaunchOptions` by reference.
-    let settings = crate::commands::app_settings::load(&app);
-    let browser_executable = settings
-        .browser_executable
-        .as_ref()
-        .filter(|s| !s.is_empty())
-        .map(std::path::PathBuf::from);
-
-    // Plan 06-02 — chrome-hiding (D-09/D-10). Validate `meta.app` with
-    // `url::Url` here (T-06-09) so schemes outside http/https never
-    // reach the launch args. Parse the story up front to inspect meta
-    // before building LaunchOptions; the parser runs twice (once here
-    // for the URL gate, once below for the executor) but it's pure + fast.
-    let app_url_for_hiding = if chrome_hiding == Some(true) {
-        let preview = story_parser::parse(&story_source);
-        let app_url = preview
-            .ast
-            .as_ref()
-            .and_then(|a| a.meta.app.clone());
-        let safe = match app_url.as_deref() {
-            Some(raw) => match url::Url::parse(raw) {
-                Ok(u) => matches!(u.scheme(), "http" | "https"),
-                Err(_) => false,
-            },
-            None => false,
-        };
-        if safe {
-            tracing::info!(
-                target: "storycapture::automation",
-                "chrome-hiding ON — LaunchConfig::from_meta will append --app=<meta.app>"
-            );
-            app_url
-        } else {
-            tracing::warn!(
-                target: "storycapture::automation",
-                "chrome-hiding requested but meta.app is missing or not http/https — ignored"
-            );
-            None
-        }
-    } else {
-        None
-    };
-
-    let launch_opts = LaunchOptions {
-        browser_executable,
-        app_url_for_hiding,
-    };
-
-    // Parse the story (pure crate, no IO outside the input string).
+    // Parse the story ONCE (pure crate, no IO outside the input string).
+    // Backlog #8 — previously this file parsed twice: once up front for
+    // the chrome-hiding URL gate, once below to feed the executor. The
+    // parser is pure + fast but doing it twice for every `launch_automation`
+    // invocation was wasteful. Parse once and reuse the AST for both the
+    // URL-scheme validation below and `Executor::run`.
     let parse = story_parser::parse(&story_source);
     let story = match parse.ast {
         Some(ast) => {
@@ -140,6 +94,51 @@ pub async fn launch_automation(
             );
             return Err(AppError::InvalidArgument("story parse failed".into()));
         }
+    };
+
+    // Build LaunchOptions locally (backlog #1 — was previously threaded
+    // through `std::env::set_var` which is unsafe under Rust 1.80+ and
+    // racy across concurrent `launch_automation` invocations). The
+    // automation crate now takes `&LaunchOptions` by reference.
+    let settings = crate::commands::app_settings::load(&app);
+    let browser_executable = settings
+        .browser_executable
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+
+    // Plan 06-02 — chrome-hiding (D-09/D-10). Validate `meta.app` with
+    // `url::Url` here (T-06-09) so schemes outside http/https never reach
+    // the launch args.
+    let app_url_for_hiding = if chrome_hiding == Some(true) {
+        let app_url = story.meta.app.as_deref();
+        let safe = match app_url {
+            Some(raw) => match url::Url::parse(raw) {
+                Ok(u) => matches!(u.scheme(), "http" | "https"),
+                Err(_) => false,
+            },
+            None => false,
+        };
+        if safe {
+            tracing::info!(
+                target: "storycapture::automation",
+                "chrome-hiding ON — LaunchConfig::from_meta will append --app=<meta.app>"
+            );
+            app_url.map(str::to_owned)
+        } else {
+            tracing::warn!(
+                target: "storycapture::automation",
+                "chrome-hiding requested but meta.app is missing or not http/https — ignored"
+            );
+            None
+        }
+    } else {
+        None
+    };
+
+    let launch_opts = LaunchOptions {
+        browser_executable,
+        app_url_for_hiding,
     };
 
     // Open project DB for persistence (Plan 05).
