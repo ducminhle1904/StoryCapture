@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { exists } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 import { AlertTriangle, FolderSearch, X } from "lucide-react";
 
-interface AppSettings {
-  browser_executable: string | null;
-}
+import { getAppSettings, setBrowserExecutable } from "@/ipc/settings";
 
 const PRESETS = [
   { label: "Chrome", path: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" },
@@ -35,7 +32,7 @@ export function BrowserRow() {
   }, []);
 
   useEffect(() => {
-    invoke<AppSettings>("get_app_settings")
+    getAppSettings()
       .then((s) => {
         setPath(s.browser_executable);
         void checkPath(s.browser_executable);
@@ -61,7 +58,7 @@ export function BrowserRow() {
             return;
           }
         }
-        const next = await invoke<AppSettings>("set_browser_executable", { path: value });
+        const next = await setBrowserExecutable(value);
         setPath(next.browser_executable);
         await checkPath(next.browser_executable);
         toast.success(

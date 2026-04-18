@@ -46,7 +46,7 @@ import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { TargetThumbnail } from "./TargetThumbnail";
-import { invoke } from "@tauri-apps/api/core";
+import { getAppSettings } from "@/ipc/settings";
 
 interface RecordingViewProps {
   projectId: string | null;
@@ -129,7 +129,7 @@ export function RecordingView({
   // owns the source of truth; we just mirror it here.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   useEffect(() => {
-    invoke<{ browser_executable: string | null }>("get_app_settings")
+    getAppSettings()
       .then((s) => setBrowserPreset(s.browser_executable))
       .catch(() => {});
   }, []);
