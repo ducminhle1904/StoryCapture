@@ -47,3 +47,17 @@ Self-healing + picker stamp tests for plan 07-04c all pass:
 - `src/features/recorder/pick-element-button.test.tsx` — 6/6 pass
 - `cargo test -p automation --test self_healing` — 2 pass, 1 ignored (live)
 - `cargo test -p automation --lib targets_store_tests` — 7/7 pass
+
+## 07-05 — pre-existing typecheck error
+
+`src/features/recorder/pick-element-button.test.tsx(45,24)` —
+07-04c changed `editorController.insertAtCursor` return shape to
+`{ ok: true, lineNumber }` and updated the controller's own test,
+but this test file in a DIFFERENT directory still asserts the
+legacy `{ ok: true }` shape. Out of scope for 07-05 (author-time
+validator slice); fixing it would lie outside this plan's concern.
+
+Reproducer: `cd apps/desktop && pnpm typecheck` surfaces exactly
+one error in `pick-element-button.test.tsx:45`. Recommend folding
+this into the same polish pass that picks up the other 07-04a
+pre-existing failures above.

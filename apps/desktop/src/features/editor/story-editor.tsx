@@ -4,6 +4,7 @@ import { EditorView } from "@codemirror/view";
 
 import { storyEditorExtensions } from "./codemirror-setup";
 import { editorController } from "./controller";
+import { SelectorValidatorOverlay } from "./SelectorValidatorOverlay";
 import { useEditorStore } from "@/state/editor";
 import { parseStory } from "@/ipc/parse";
 
@@ -15,6 +16,12 @@ export interface EditorJumpTarget {
 interface StoryEditorProps {
   onAutosave?: (source: string) => void;
   jumpTarget?: EditorJumpTarget | null;
+  /**
+   * Plan 07-05 — absolute project directory used to locate the
+   * `.story.snapshots/` cache. When `null` the author-time validator
+   * stays idle (no IPC calls).
+   */
+  projectDir?: string | null;
 }
 
 /**
@@ -22,7 +29,7 @@ interface StoryEditorProps {
  * linter (UI-02). Autosave callback debounced 5s after last change; also
  * fires on blur.
  */
-export function StoryEditor({ onAutosave, jumpTarget }: StoryEditorProps) {
+export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorProps) {
   const source = useEditorStore((s) => s.source);
   const setSource = useEditorStore((s) => s.setSource);
   const setLastParse = useEditorStore((s) => s.setLastParse);
@@ -106,6 +113,10 @@ export function StoryEditor({ onAutosave, jumpTarget }: StoryEditorProps) {
         }}
         aria-label="Story DSL editor"
       />
+      {/* Plan 07-05 — author-time selector validator. Renders nothing
+          visible; writes validation state into useSelectorValidation
+          for the gutter markers + Preview panel bbox overlay. */}
+      <SelectorValidatorOverlay projectDir={projectDir ?? null} />
     </div>
   );
 }

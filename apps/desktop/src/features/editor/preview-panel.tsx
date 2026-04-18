@@ -9,6 +9,7 @@
 import { Globe, Monitor, Tablet, Smartphone } from "lucide-react";
 
 import { useEditorStore, type PreviewViewport } from "@/state/editor";
+import { useSelectorValidation } from "@/features/editor/SelectorValidatorOverlay";
 
 const VIEWPORT_SIZES: Record<
   PreviewViewport,
@@ -33,6 +34,12 @@ export function PreviewPanel({
   const viewport = useEditorStore((s) => s.previewViewport);
   const setViewport = useEditorStore((s) => s.setViewport);
   const size = VIEWPORT_SIZES[viewport];
+
+  // Plan 07-05 — aggregate author-time validator chip counts to display
+  // a compact "2G / 1Y / 0R" summary in the preview footer. Reads from
+  // the store that the SelectorValidatorOverlay populates.
+  const validationEntries = useSelectorValidation((s) => s.entries);
+  const chipCounts = summarizeValidation(validationEntries);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[var(--color-surface-100)]">
@@ -121,10 +128,65 @@ export function PreviewPanel({
           {sceneMeta ? <span>{sceneMeta}</span> : null}
           <span className="text-[var(--color-border-default)]">/</span>
           <span>{statusLabel}</span>
+          {chipCounts.total > 0 ? (
+            <>
+              <span className="text-[var(--color-border-default)]">/</span>
+              <span aria-label="Selector validator summary" data-testid="validator-summary">
+                <span className="text-[var(--color-success,#4ade80)]">
+                  {chipCounts.green}G
+                </span>
+                {" "}
+                <span className="text-[var(--color-warning,#fbbf24)]">
+                  {chipCounts.yellow}Y
+                </span>
+                {" "}
+                <span className="text-[var(--color-danger,#f87171)]">
+                  {chipCounts.red}R
+                </span>
+                {chipCounts.grey > 0 ? (
+                  <>
+                    {" "}
+                    <span>{chipCounts.grey}·</span>
+                  </>
+                ) : null}
+              </span>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * Plan 07-05 — aggregate the chip-state counts for the preview footer.
+ * `total = 0` when the validator hasn't run; the caller hides the chunk.
+ */
+function summarizeValidation(entries: Map<number, {
+  status: { status: string } | null;
+}>): { green: number; yellow: number; red: number; grey: number; total: number } {
+  let green = 0;
+  let yellow = 0;
+  let red = 0;
+  let grey = 0;
+  for (const e of entries.values()) {
+    if (!e.status) continue;
+    switch (e.status.status) {
+      case "unique":
+        green += 1;
+        break;
+      case "fuzzy":
+        yellow += 1;
+        break;
+      case "none":
+        red += 1;
+        break;
+      case "no_snapshot":
+        grey += 1;
+        break;
+    }
+  }
+  return { green, yellow, red, grey, total: green + yellow + red + grey };
 }
 
 function ViewportButton({
