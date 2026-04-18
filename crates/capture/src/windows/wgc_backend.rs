@@ -304,7 +304,18 @@ impl CaptureBackend for WgcBackend {
                     color_format,
                     flags,
                 );
-                WgcHandler::start_free_threaded(settings).map_err(map_start_err)?
+                let control = WgcHandler::start_free_threaded(settings).map_err(map_start_err)?;
+                // Evidence breadcrumb: WGC bound to a specific HWND via
+                // GraphicsCaptureItem::FromWindow is focus-independent per
+                // OS contract. Used to diagnose future "frames stopped on
+                // alt-tab" reports — absence means we fell through to a
+                // monitor target.
+                tracing::info!(
+                    target: "storycapture::capture",
+                    hwnd = window_id.0,
+                    "WgcBackend: window-target stream started — capture is focus-independent (GraphicsCaptureItem::FromWindow)"
+                );
+                control
             }
             CaptureTarget::WindowByPid { pid, ref title_hint } => {
                 let hwnd_opt = crate::windows::window::find_window_by_pid(
@@ -325,7 +336,14 @@ impl CaptureBackend for WgcBackend {
                     color_format,
                     flags,
                 );
-                WgcHandler::start_free_threaded(settings).map_err(map_start_err)?
+                let control = WgcHandler::start_free_threaded(settings).map_err(map_start_err)?;
+                tracing::info!(
+                    target: "storycapture::capture",
+                    hwnd = hwnd as u64,
+                    pid,
+                    "WgcBackend: window-target stream started — capture is focus-independent (GraphicsCaptureItem::FromWindow, pid-resolved)"
+                );
+                control
             }
             CaptureTarget::DisplayRegion { .. } => {
                 // Capture the primary display and crop in the callback.

@@ -278,6 +278,24 @@ impl CaptureBackend for SckBackend {
             CaptureError::Backend(format!("SCStream::start_capture: {e}"))
         })?;
 
+        // Evidence breadcrumb: when a window target is in use, the SCK stream
+        // is bound to a specific SCWindow id — it is focus-independent by the
+        // OS contract. If a future "lost frames on alt-tab" report appears,
+        // the absence of this log proves we dropped to a display-target path
+        // or the xcap fallback.
+        if matches!(
+            cfg.target,
+            CaptureTarget::Window { .. } | CaptureTarget::WindowByPid { .. }
+        ) {
+            tracing::info!(
+                target: "storycapture::capture",
+                target_kind = %cfg.target.kind_label(),
+                width_px,
+                height_px,
+                "SckBackend: window-target stream started — capture is focus-independent (SCContentFilter bound to window id)"
+            );
+        }
+
         let mut s = self.state.lock();
         s.started_at = Some(Instant::now());
         s.stream = Some(stream);
