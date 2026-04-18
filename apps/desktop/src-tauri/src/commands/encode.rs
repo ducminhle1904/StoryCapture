@@ -344,7 +344,7 @@ pub async fn start_recording(
     );
     let queue = ByteBoundedQueue::new(cap_cfg.queue_cap_bytes);
     let mut capture = CapturePipeline::new(backend, queue);
-    let (frame_tx, frame_rx) = mpsc::channel::<Frame>(64);
+    let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(64);
     capture
         .start(cap_cfg.clone(), frame_tx)
         .await
@@ -360,6 +360,50 @@ pub async fn start_recording(
         target: "storycapture::recording",
         "capture pipeline started"
     );
+
+    // Peek first frame to learn actual dimensions. Window-capture targets
+    // (Playwright auto-follow, specific window) deliver frames sized to
+    // the window, not the display — using args.width/height would cause
+    // FFmpeg's rawvideo input to reject every frame as "invalid buffer
+    // size". Worst case: 3s timeout, then we fall back to args dims.
+    let (actual_width, actual_height, first_frame) = match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        frame_rx.recv(),
+    )
+    .await
+    {
+        Ok(Some(frame)) => {
+            let w = frame.width_px;
+            let h = frame.height_px;
+            tracing::info!(
+                target: "storycapture::recording",
+                "first frame dims {}x{} (caller sent {}x{})",
+                w, h, args.width, args.height
+            );
+            (w, h, Some(frame))
+        }
+        _ => {
+            tracing::warn!(
+                target: "storycapture::recording",
+                "no first frame within 3s; encoder using caller dims {}x{}",
+                args.width, args.height
+            );
+            (args.width, args.height, None)
+        }
+    };
+    // Stitch peeked frame back in front of remaining frames.
+    let (enc_tx, enc_rx) = mpsc::channel::<Frame>(64);
+    if let Some(f) = first_frame {
+        let _ = enc_tx.send(f).await;
+    }
+    tokio::spawn(async move {
+        while let Some(f) = frame_rx.recv().await {
+            if enc_tx.send(f).await.is_err() {
+                break;
+            }
+        }
+    });
+    let frame_rx = enc_rx;
 
     // Create mic input before spawning FFmpeg.
     let audio_fifo: Option<FifoHandle> = if args.audio_device_id.is_some() {
@@ -377,8 +421,8 @@ pub async fn start_recording(
 
     let mut enc_cfg = EncodeConfig::new(
         output_path.clone(),
-        args.width,
-        args.height,
+        actual_width,
+        actual_height,
         args.fps,
         probe.preferred,
     );

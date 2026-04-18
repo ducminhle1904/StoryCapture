@@ -239,17 +239,11 @@ impl CaptureBackend for WgcBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
-        // Build the capture item from the target. Both arms produce a
-        // value implementing TryInto<GraphicsCaptureItemType>.
+        // Build the capture item from the target.
         let event_sink = self.event_sink.lock().clone();
         let start_epoch = Instant::now();
 
-        // Plan 06-02 — resolve the crop rect (physical pixels) for
-        // DisplayRegion targets. Logical-point rect × DPI scale =
-        // physical pixels. We pull the scale from the primary monitor's
-        // reported width via the shared xcap enumeration (same path
-        // `WgcBackend::list_displays` uses), so the rect matches what
-        // the user saw in the overlay.
+        // Resolve the crop rect for display-region targets.
         let crop_rect = match &cfg.target {
             CaptureTarget::DisplayRegion { display_id, rect } => Some(
                 crate::windows::helpers::resolve_region_to_physical(display_id, rect)?,
@@ -267,10 +261,7 @@ impl CaptureBackend for WgcBackend {
             frame_pool: self.frame_pool.clone(),
         };
 
-        // Plan 06-02 (D-19/D-20) — cursor is now a per-recording toggle
-        // plumbed through `cfg.include_cursor` (Phase 5 D-06 default =
-        // true). Color format BGRA8 so frame_from_wgc takes the fast
-        // path (no channel swap). Everything else at Default.
+        // Cursor is a per-recording toggle.
         let cursor = if cfg.include_cursor {
             CursorCaptureSettings::WithCursor
         } else {
@@ -282,8 +273,7 @@ impl CaptureBackend for WgcBackend {
         let dirty = DirtyRegionSettings::Default;
         let color_format = ColorFormat::Bgra8;
 
-        // Dispatch by target kind. `start_free_threaded` returns a
-        // `CaptureControl` we can `.stop()` later from `backend.stop()`.
+        // Dispatch by target kind.
         let control = match cfg.target {
             CaptureTarget::Display { .. } => {
                 let monitor = Monitor::primary()
@@ -301,8 +291,7 @@ impl CaptureBackend for WgcBackend {
                 WgcHandler::start_free_threaded(settings).map_err(map_start_err)?
             }
             CaptureTarget::Window { window_id } => {
-                // The isize HWND is packed into the u64 WindowId at the IPC
-                // boundary; unpack and re-wrap via Window::from_raw_hwnd.
+                // Unpack the HWND from WindowId.
                 let hwnd = window_id.0 as isize as *mut std::ffi::c_void;
                 let window = Window::from_raw_hwnd(hwnd);
                 let settings = Settings::new(
@@ -339,13 +328,7 @@ impl CaptureBackend for WgcBackend {
                 WgcHandler::start_free_threaded(settings).map_err(map_start_err)?
             }
             CaptureTarget::DisplayRegion { .. } => {
-                // Plan 06-02 — windows-capture 2.0.0 has no native region
-                // API (RESEARCH Pitfall 5). We capture the full primary
-                // display and crop in `on_frame_arrived` via the
-                // `crop_rect` threaded through `flags`. Falling back to
-                // the primary monitor matches the Phase 5 CaptureTarget::Display
-                // arm — a future plan can resolve the specific display
-                // once xcap/windows-capture display id mapping lands.
+                // Capture the primary display and crop in the callback.
                 let monitor = Monitor::primary()
                     .map_err(|e| CaptureError::Native(format!("Monitor::primary: {e}")))?;
                 let settings = Settings::new(
@@ -369,15 +352,13 @@ impl CaptureBackend for WgcBackend {
     }
 
     async fn stop(&mut self) -> Result<CaptureStats, CaptureError> {
-        // Take the control out of state so we can consume it. Stop posts
-        // WM_QUIT to the capture thread's message loop and joins.
+        // Take control out of state so we can stop it.
         let control_opt = {
             let mut s = self.state.lock();
             s.control.take()
         };
         if let Some(control) = control_opt {
-            // CaptureControl::stop consumes self and joins the thread. Run
-            // on a blocking scope so we don't stall the async runtime.
+            // Stop the capture control on a blocking thread.
             tokio::task::spawn_blocking(move || control.stop())
                 .await
                 .map_err(|e| CaptureError::Backend(format!("stop join: {e}")))?
@@ -401,10 +382,7 @@ fn map_start_err(e: GraphicsCaptureApiError<WgcHandlerError>) -> CaptureError {
     CaptureError::Native(format!("WgcHandler::start_free_threaded: {e}"))
 }
 
-/// Enumeration is shared with the xcap fallback backend: both go through
-/// `xcap::Monitor::all()` so they agree on ordering and physical-pixel
-/// dimensions. DPI awareness was set in `WgcBackend::new` before any
-/// HMONITOR query.
+/// Enumerate displays through xcap.
 pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
     crate::fallback::xcap_backend::enumerate()
 }

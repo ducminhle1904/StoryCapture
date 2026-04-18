@@ -1,9 +1,4 @@
-/**
- * Token breakdown popover.
- *
- * Popover showing last 20 turns: time, provider/model, input/output/cache tokens, cost.
- * data-testid="token-breakdown-popover"
- */
+/** Token breakdown popover. */
 
 import { cn } from "@/lib/utils";
 
@@ -29,8 +24,7 @@ export function TokenBreakdownPopover({
   onClose,
   className,
 }: TokenBreakdownPopoverProps) {
-  // TODO: Wire to Tauri command that queries llm_turn_metrics for this session
-  // For now, renders the popover shell with empty state
+  // TODO: Wire this to the session metrics command.
 
   return (
     <div

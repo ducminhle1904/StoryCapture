@@ -182,18 +182,18 @@ impl EncodeConfig {
         }
 
         args.extend([
-            // --- framing / packaging ---
+            // Framing and packaging.
             "-fps_mode".into(),
             "vfr".into(),
             "-movflags".into(),
             "+faststart".into(),
             "-shortest".into(),
-            // --- progress + logs ---
+            // Progress and logs.
             "-progress".into(),
             "pipe:2".into(),
             "-loglevel".into(),
             "info".into(),
-            // --- output ---
+            // Output.
             self.output_path.display().to_string(),
         ]);
 
@@ -237,26 +237,20 @@ mod tests {
         assert!(c.validate().is_err());
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Phase 6 plan 01 — audio dual-input arg shape.
-    // ──────────────────────────────────────────────────────────────
+    // Audio dual-input arg shape.
 
-    /// Regression guard: the no-audio path must stay byte-identical to
-    /// Phase 1's shape. A diff here means the silent-audio pipeline
-    /// behavior has changed and downstream (Phase 2 mux, web companion)
-    /// may be affected.
+    /// Regression guard for the silent-audio path.
     #[test]
     fn audio_none_path_preserves_phase1_args() {
         let args = cfg().to_ffmpeg_args().join(" ");
         assert!(args.contains("-f lavfi -i anullsrc=r=48000:cl=mono"));
         assert!(args.contains("-b:a 64k"));
-        // No explicit -map in the silent path (FFmpeg picks defaults).
+        // No explicit -map in the silent path.
         assert!(
             !args.contains("-map"),
             "silent-audio path must not add explicit stream mapping: {args}"
         );
-        // The 128k audio bitrate is the mic-path default, not the
-        // silent-path default.
+        // 128k is the mic-path default.
         assert!(!args.contains("-b:a 128k"));
     }
 
@@ -270,27 +264,23 @@ mod tests {
             format: AudioFormat::F32LE,
         });
         let args = c.to_ffmpeg_args().join(" ");
-        // Raw PCM input follows the video input (order matters — FFmpeg
-        // attaches -f/-ar/-ac to the NEXT -i).
+        // Raw PCM input follows the video input.
         assert!(args.contains("-f f32le"), "missing -f f32le: {args}");
         assert!(args.contains("-ar 48000"), "missing -ar 48000: {args}");
         assert!(args.contains("-ac 1"), "missing -ac 1 for mono mic: {args}");
         assert!(args.contains("-i /tmp/mic.fifo"), "missing fifo -i: {args}");
-        // Explicit mapping so FFmpeg picks the fifo audio (input 1) and
-        // NOT the silent anullsrc (which isn't generated on this path).
+        // Explicit mapping so FFmpeg uses the FIFO audio.
         assert!(args.contains("-map 0:v:0 -map 1:a:0"), "missing maps: {args}");
-        // AAC 128 kbps stereo output — mic path default per plan.
+        // AAC 128 kbps stereo output.
         assert!(args.contains("-b:a 128k"), "missing 128k audio: {args}");
         assert!(args.contains("-ac 2"), "missing stereo downmix: {args}");
-        // anullsrc must be absent on the mic path.
+        // `anullsrc` is absent on the mic path.
         assert!(!args.contains("anullsrc"), "mic path should not include anullsrc: {args}");
     }
 
     #[test]
     fn audio_input_args_ordered_correctly() {
-        // Verify -i pipe:0 (video) comes BEFORE the fifo -i. If they
-        // swap, FFmpeg attaches the -f/-ar/-ac flags to the wrong stream
-        // and everything breaks.
+        // Verify the video input comes before the FIFO input.
         let mut c = cfg();
         c.audio_input = Some(AudioInput {
             fifo_path: PathBuf::from("/tmp/x.fifo"),
@@ -313,9 +303,7 @@ mod tests {
         );
     }
 
-    /// Backlog #10 — at 4K the pixel-based formula must push bitrate
-    /// above the 12 Mbps default floor. Regression guard against the
-    /// old `clamp(floor, 40_000)` shape that left 4K pinned at 12 Mbps.
+    /// Regression guard for the 4K bitrate floor.
     #[test]
     fn test_4k_exceeds_floor() {
         let c = EncodeConfig::new(
@@ -331,7 +319,7 @@ mod tests {
             .position(|a| a == "-b:v")
             .expect("-b:v must be present");
         let bitrate = &args[bv_idx + 1];
-        // Parse "NNNNNk" → u32.
+        // Parse "NNNNNk" to `u32`.
         let kbps: u32 = bitrate
             .trim_end_matches('k')
             .parse()

@@ -1,24 +1,6 @@
 //! NL-to-DSL Tauri command surface.
 //!
-//! Eight commands bridging the Rust NL orchestrator (Plan 06) to the webview:
-//!
-//! | Command            | Purpose                                             |
-//! |--------------------|-----------------------------------------------------|
-//! | `nl_chat_send`     | Start an NL turn, stream events via Channel<T>      |
-//! | `nl_cancel`        | Abort an in-flight NL turn                          |
-//! | `nl_diff_apply`    | Apply (approve) steps from a completed turn         |
-//! | `nl_diff_reject`   | Reject a turn's output, drop cached doc             |
-//! | `nl_regen_step`    | Regenerate a single step via a new LLM turn         |
-//! | `nl_load_history`  | Load conversation history for a project             |
-//! | `nl_get_session_id`| Return the current NL session UUID                  |
-//! | `session_get_rollup`| Load aggregate token/cost metrics for a session    |
-//!
-//! Security:
-//! - T-03-07-01: `project_id` parsed as UUID before any write.
-//! - T-03-07-02: `NlChatEvent` never contains the API key.
-//! - T-03-07-03: Registry caps concurrent turns to 4 per project.
-//! - T-03-07-05: Each turn has a stable Uuid v7 `turn_id`.
-//! - T-03-07-06: `task_id` is server-generated (Uuid v7).
+//! Bridges the Rust NL orchestrator to the webview and streams events back.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -60,8 +42,6 @@ pub fn compute_cost(input: u32, output: u32, cache_read: u32, cache_write: u32) 
 // ---- IPC event type ----
 
 /// Event payload streamed to the webview via `Channel<NlChatEvent>`.
-///
-/// Serialised as `{ "kind": "text", "delta": "..." }` etc. via `#[serde(tag)]`.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum NlChatEvent {
@@ -89,8 +69,6 @@ pub enum NlChatEvent {
 }
 
 /// Serialisable DTO mirroring `intelligence::nl::schemas::StoryDoc`.
-/// The intelligence crate's types don't derive `specta::Type`, so we
-/// wrap them for the IPC boundary.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct NlStoryDocDto {
     pub title: String,
@@ -102,7 +80,7 @@ pub struct NlStoryStepDto {
     pub id: String,
     pub label: String,
     pub verb: String,
-    /// JSON-stringified step arguments. The renderer parses with `JSON.parse`.
+    /// JSON-stringified step arguments.
     pub args_json: String,
     pub narration: Option<String>,
 }
@@ -190,11 +168,7 @@ fn step_diff_to_dto(d: &StepDiff) -> NlStepDiffDto {
     }
 }
 
-/// Build an `AnthropicProvider` (or `OpenAiProvider` on override) from the
-/// keychain key, reusing the shared HTTP client for connection pool sharing.
-///
-/// TTS-only providers (Elevenlabs, OpenaiTts) are not valid LLM providers
-/// and return an error.
+/// Build an LLM provider from the keychain key.
 fn build_provider(
     http_client: reqwest::Client,
     provider_id: ProviderId,
@@ -244,33 +218,33 @@ pub async fn nl_chat_send(
     provider_override: Option<ProviderId>,
     on_event: Channel<NlChatEvent>,
 ) -> Result<String, NlCommandError> {
-    // validate project_id
+    // Validate project_id.
     let _pid = Uuid::parse_str(&project_id)
         .map_err(|_| NlCommandError::InvalidProject)?;
 
-    // Read API key from keychain
+    // Read the API key from keychain.
     let provider_id = provider_override.unwrap_or(ProviderId::Anthropic);
     let api_key = read_api_key(provider_id)?;
 
-    // Build provider with shared HTTP client for connection pool reuse
+    // Build the provider with the shared HTTP client.
     let app_state = app.state::<AppState>();
     let http_client = app_state.http_client.clone();
     let provider = build_provider(http_client, provider_id, &api_key)?;
 
-    // Generate task_id (Uuid v7 for time-ordering, T-03-07-05)
+    // Generate the task ID.
     let task_id = Uuid::now_v7().to_string();
 
-    // Clone Arc-wrapped registry for the spawned task
+    // Clone the registry for the spawned task.
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
 
-    // Load history (empty for now -- full history loading is in nl_load_history)
+    // History loading happens in `nl_load_history`.
     let history: Vec<ChatTurn> = Vec::new();
 
-    // Grab data_dir before spawning
+    // Capture the data dir before spawning.
     let data_dir = app_state.data_dir.clone();
     let started = Instant::now();
 
-    // Spawn the NL turn
+    // Spawn the NL turn.
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<NlTurnEvent>(64);
 
     let join_handle = tokio::spawn(async move {
@@ -284,7 +258,7 @@ pub async fn nl_chat_send(
         .await;
     });
 
-    // Store abort handle (T-03-07-03: concurrency cap)
+    // Store the abort handle.
     let inserted = registry.insert(
         task_id.clone(),
         project_id.clone(),
@@ -295,7 +269,7 @@ pub async fn nl_chat_send(
         return Err(NlCommandError::TooManyInFlight);
     }
 
-    // Spawn a forwarder that bridges NlTurnEvent -> Channel<NlChatEvent>
+    // Bridge `NlTurnEvent` to `Channel<NlChatEvent>`.
     let task_id_fwd = task_id.clone();
     let project_id_fwd = project_id.clone();
     let provider_name = provider_id.account().to_string();
@@ -308,11 +282,10 @@ pub async fn nl_chat_send(
                     let _ = on_event.send(NlChatEvent::Text { delta });
                 }
                 NlTurnEvent::StoryDocReady { doc, diff } => {
-                    // Store doc in registry for later nl_diff_apply
+                    // Store the doc for later `nl_diff_apply`.
                     registry_fwd.store_doc(task_id_fwd.clone(), doc.clone());
 
-                    // Persist user + assistant turns to nl_conversations
-                    // (best-effort -- don't fail the stream on DB errors)
+                    // Persist the turn best-effort.
                     if let Ok(pid) = Uuid::parse_str(&project_id_fwd) {
                         let _ = persist_turn(&data_dir, &pid, &task_id_fwd, &provider_name);
                     }
@@ -329,7 +302,7 @@ pub async fn nl_chat_send(
                     let cost_usd = compute_cost(input, output, cache_read, cache_write);
                     let total_ms = started.elapsed().as_millis() as i64;
 
-                    // Persist llm_turn_metrics row (best-effort)
+                    // Persist metrics best-effort.
                     if let Ok(pid) = Uuid::parse_str(&project_id_fwd) {
                         let _ = persist_llm_metric(
                             &data_dir, &pid, &task_id_fwd,
@@ -378,10 +351,7 @@ pub async fn nl_cancel(
     }
 }
 
-/// Apply (approve) steps from a completed NL turn.
-///
-/// If `step_ids` is empty, all steps from the stored doc are applied.
-/// Returns the rendered `.story` text with the approved steps merged.
+/// Apply steps from a completed NL turn.
 #[tauri::command]
 #[specta::specta]
 pub async fn nl_diff_apply(
@@ -398,7 +368,7 @@ pub async fn nl_diff_apply(
         .take_doc(&task_id)
         .ok_or_else(|| NlCommandError::TaskNotFound(task_id.clone()))?;
 
-    // Filter steps if step_ids is non-empty
+    // Filter steps if `step_ids` is non-empty.
     let filtered_doc = if step_ids.is_empty() {
         doc
     } else {
@@ -416,8 +386,7 @@ pub async fn nl_diff_apply(
     Ok(filtered_doc.render_dsl())
 }
 
-/// Reject a turn's output. Drops the cached doc so subsequent
-/// `nl_diff_apply` calls for this task_id will fail.
+/// Reject a turn's output and drop the cached doc.
 #[tauri::command]
 #[specta::specta]
 pub async fn nl_diff_reject(
@@ -433,8 +402,7 @@ pub async fn nl_diff_reject(
     Ok(())
 }
 
-/// Regenerate a single step. Builds a targeted regen prompt and spawns
-/// a new NL turn, streaming events via `on_event`.
+/// Regenerate a single step and stream events.
 #[tauri::command]
 #[specta::specta]
 pub async fn nl_regen_step(
@@ -489,7 +457,7 @@ pub async fn nl_regen_step(
         return Err(NlCommandError::TooManyInFlight);
     }
 
-    // Forward events (same pattern as nl_chat_send)
+    // Forward events with the same pattern as `nl_chat_send`.
     let task_id_fwd = task_id.clone();
     let provider_name = provider_id.account().to_string();
     let session_id = registry.session_id().to_string();

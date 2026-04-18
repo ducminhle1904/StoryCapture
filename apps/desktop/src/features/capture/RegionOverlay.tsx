@@ -1,24 +1,5 @@
 /**
- * RegionOverlay — Plan 06-02 Task 3.
- *
- * Transparent, fullscreen, always-on-top window opened by the host's
- * `open_region_overlay(display_id)` command. The user drags to draw a
- * rectangle; Enter or mouse-release commits; Esc cancels.
- *
- * Behavior:
- * - Coordinates are LOGICAL POINTS (pixels on Windows, points on macOS)
- *   matching the `window.screen`/`event.client*` reference frame — the
- *   same coordinate system SCK `source_rect` expects (D-06 / Pitfall 7).
- * - Confirm/cancel fires a Tauri event `region://selected` targeted at
- *   the main window:
- *     { display_id, x, y, w, h }   on confirm
- *     { cancelled: true }           on cancel
- * - The overlay window closes itself after emit so the host never needs
- *   to inspect lifecycle.
- *
- * Security (T-06-13 acceptance): this component is rendered only inside
- * the Tauri-owned `region-overlay` window; the OS window manager
- * prevents a foreign process from claiming that label.
+ * RegionOverlay for selecting a capture region.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -57,19 +38,17 @@ export function RegionOverlay() {
       if (confirmingRef.current) return;
       confirmingRef.current = true;
       try {
-        // Emit to main window only — avoids broadcasting to every
-        // window in the app, including ourselves.
+        // Emit to the main window only.
         await emitTo("main", "region://selected", payload);
       } catch (e) {
-        // Non-fatal: main window may have navigated away, but surface
-        // the reason so a stuck-open overlay isn't silent (backlog #16).
+        // Non-fatal: surface the reason if the main window is gone.
         // eslint-disable-next-line no-console
         console.warn("[RegionOverlay] emit region://selected failed:", e);
       } finally {
         try {
           await getCurrentWebviewWindow().close();
         } catch (e) {
-          // Overlay may already be closing (duplicate Enter/Esc).
+          // The overlay may already be closing.
           // eslint-disable-next-line no-console
           console.warn("[RegionOverlay] close overlay window failed:", e);
         }
@@ -120,9 +99,7 @@ export function RegionOverlay() {
       className="fixed inset-0 select-none"
       style={{
         cursor: "crosshair",
-        // Subtle dim to make the selection visible. Transparent window is
-        // configured on the Tauri window itself; this overlay is the body
-        // we draw into.
+        // Subtle dim for visibility.
         background: "rgba(0, 0, 0, 0.2)",
       }}
       onMouseDown={(e) => {
@@ -168,7 +145,7 @@ export function RegionOverlay() {
         </>
       )}
 
-      {/* Affordance hint — bottom-right corner */}
+      {/* Affordance hint */}
       <div
         className="pointer-events-none absolute bottom-4 right-4 rounded-md bg-black/70 px-3 py-1.5 text-[11px] text-white/90"
         aria-hidden="true"

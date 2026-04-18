@@ -1,17 +1,7 @@
 // capture IPC.
 //
-// Thin Tauri-side wrapper around the pure `capture` crate. Exposes:
-//   - list_displays                        — multi-display enumeration (CAP-06)
-//   - check_screen_capture_permission      — TCC preflight (CAP-04, mac only)
-//   - open_screen_capture_prefs            — deep-link to System Settings
-//   - relaunch_app                         — Sequoia post-grant relaunch
-//   - start_capture / stop_capture         — backend lifecycle
-//
-// Frame pixel data stays in-process (the encoder, Plan 01-08, consumes
-// the raw `mpsc::Receiver<Frame>` directly from the pipeline actor). The
-// `on_frame` channel here carries metadata only (sequence + pts + bytes)
-// so the renderer can drive HUD counters without copying pixels across
-// the IPC boundary.
+// Thin Tauri-side wrapper around the pure `capture` crate. Frame data
+// stays in-process; `on_frame` only carries metadata for the renderer.
 
 use crate::error::AppError;
 use capture::{
@@ -30,7 +20,6 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// macOS-only permission state mirroring `capture::macos::tcc::PermissionState`.
-/// On non-macOS this command always returns `Granted`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum PermissionState {
@@ -124,9 +113,7 @@ impl From<CaptureStats> for CaptureStatsDto {
     }
 }
 
-/// Wrapper around `capture::CaptureEvent` for the typed `Channel<T>` —
-/// same pattern as `AutomationEvent` in `commands/automation.rs`. Keeps
-/// the `capture` crate free of `specta`.
+/// Wrapper around `capture::CaptureEvent` for the typed `Channel<T>`.
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct CaptureEventDto {
     pub json: String,
@@ -143,8 +130,7 @@ impl From<CaptureEvent> for CaptureEventDto {
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct FrameMetaDto {
     pub sequence: u64,
-    /// PTS in nanoseconds (i128 doesn't cross IPC cleanly; values fit
-    /// comfortably in i64 over any realistic capture duration).
+    /// PTS in nanoseconds.
     pub pts_ns: i64,
     pub clock_source: ClockSourceDto,
     pub bytes: u64,
@@ -173,9 +159,7 @@ impl From<ClockSource> for ClockSourceDto {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct SessionId(pub String);
 
-/// Process-global session registry. Each `start_capture` allocates a
-/// `SessionId` and stores the pipeline's stop handle here so a later
-/// `stop_capture(session)` can drain the right pipeline.
+/// Process-global session registry for active capture sessions.
 #[derive(Default)]
 struct CaptureRegistry {
     sessions: Mutex<HashMap<String, SessionHandle>>,
@@ -235,15 +219,7 @@ pub async fn open_screen_capture_prefs(app: AppHandle) -> Result<(), AppError> {
     }
 }
 
-/// Calls `CGRequestScreenCaptureAccess()` on macOS. This triggers the
-/// native system permission prompt (first launch) AND registers the app
-/// in System Settings → Privacy & Security → Screen Recording so the
-/// user can toggle it on. Without this call, the app never appears in
-/// the Settings list.
-///
-/// Returns the state AFTER the request. On macOS Sequoia the OS may
-/// still require an app relaunch before the new grant attaches to the
-/// running process.
+/// Request macOS screen-capture access and return the resulting state.
 #[tauri::command]
 #[specta::specta]
 pub fn request_screen_capture_access() -> Result<PermissionState, AppError> {
@@ -252,10 +228,9 @@ pub fn request_screen_capture_access() -> Result<PermissionState, AppError> {
         use capture::macos::tcc::{
             preflight_screen_capture_access, request_access, PermissionState as P,
         };
-        // Fire the request — this registers the app in TCC so it appears in
-        // System Settings → Privacy → Screen Recording.
+        // Register the app in TCC.
         let _ = request_access();
-        // Re-check; note macOS may cache the pre-grant state for the current process.
+        // Re-check the current process state.
         Ok(match preflight_screen_capture_access() {
             P::Granted => PermissionState::Granted,
             P::Denied => PermissionState::Denied,
@@ -271,10 +246,7 @@ pub fn request_screen_capture_access() -> Result<PermissionState, AppError> {
 #[tauri::command]
 #[specta::specta]
 pub async fn relaunch_app(app: AppHandle) -> Result<(), AppError> {
-    // tauri-plugin-process exposes restart at the app handle level.
-    // `restart` is `-> !` on success (process is replaced), so this
-    // function returns `Ok(())` only on the unreachable arm; the call
-    // itself terminates the current process.
+    // Restart replaces the current process.
     app.restart();
 }
 
@@ -295,9 +267,7 @@ pub async fn start_capture(
         .await
         .map_err(|e| AppError::Capture(e.to_string()))?;
 
-    // Resolve the display info for the Started event. Best-effort: if
-    // enumeration fails here we skip the Started payload but keep the
-    // session running. Only applies to Display targets.
+    // Best-effort display info for the Started event.
     if let Some(display_id) = cap_cfg.display_id() {
         if let Ok(displays) = enumerate_displays() {
             if let Some(d) = displays.into_iter().find(|d| d.id == display_id) {
@@ -305,10 +275,9 @@ pub async fn start_capture(
             }
         }
     }
-    let _ = kind; // already encoded into the Started event via backend choice
+    let _ = kind;
 
-    // Forwarder task: pump frames from the consumer side, emit per-frame
-    // metadata to the renderer, drop the frame body to free its memory.
+    // Pump frame metadata to the renderer.
     let on_frame_clone = on_frame.clone();
     let forward_task = tokio::spawn(async move {
         while let Some(frame) = rx.recv().await {
@@ -320,13 +289,13 @@ pub async fn start_capture(
                 width_px: frame.width_px,
                 height_px: frame.height_px,
             };
-            // Best-effort send; renderer may have detached.
+            // Best-effort send.
             let _ = on_frame_clone.send(meta);
-            // Frame Drop fires here, releasing CFRetain / COM Release.
+            // Drop releases the frame buffer.
             drop(frame);
         }
     });
-    let _ = on_frame; // keep the original handle alive via clone above
+    let _ = on_frame;
 
     let session_id = Uuid::new_v4().to_string();
     let handle = SessionHandle {
@@ -355,17 +324,12 @@ pub async fn stop_capture(session: SessionId) -> Result<CaptureStatsDto, AppErro
             .await
             .map_err(|e| AppError::Capture(e.to_string()))?
     };
-    // Forwarder exits when its rx hits EOF (backend drops its tx on stop).
-    // Await so any final metadata events make it to the renderer before
-    // stats are reported.
+    // Wait for the forwarder to flush final events.
     let _ = handle.forward_task.await;
     Ok(stats.into())
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Plan 05-01: Window target support (list_windows, list_capture_targets,
-// start_capture_target, capture-target persistence).
-// ──────────────────────────────────────────────────────────────────────
+// Window target support.
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct WindowInfoDto {
@@ -381,12 +345,7 @@ pub struct WindowInfoDto {
     pub is_on_screen: bool,
 }
 
-/// Tagged CaptureTarget DTO. Mirrors `capture::CaptureTarget` with the
-/// same `kind` discriminator so the JSON wire format is identical.
-///
-/// Plan 06-02 adds `DisplayRegion { display_id, rect }` — a logical-point
-/// sub-rect of a display. The `rect` is validated against display bounds
-/// at the IPC boundary (T-06-08 mitigation) before it reaches SCK/WGC.
+/// Tagged `CaptureTarget` DTO.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CaptureTargetDto {
@@ -396,8 +355,7 @@ pub enum CaptureTargetDto {
     DisplayRegion { display_id: u64, rect: RegionRectDto },
 }
 
-/// Logical-point rect over a display. Serializes to/from `capture::RegionRect`
-/// with identical field order.
+/// Logical-point rect over a display.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 pub struct RegionRectDto {
     pub x: f64,
@@ -469,9 +427,7 @@ pub struct CaptureTargetsDto {
     pub playwright_auto_available: bool,
 }
 
-/// Allow-list of window ids returned by the most recent `list_windows`
-/// call. Used by `start_capture_target` to refuse unknown ids
-/// (T-05-01-01: WindowId injection).
+/// Allow-list of window ids from the latest `list_windows` call.
 #[derive(Default)]
 struct WindowAllowList {
     ids: Mutex<std::collections::HashSet<u64>>,
@@ -486,8 +442,7 @@ fn window_allow_list() -> &'static WindowAllowList {
 #[tauri::command]
 #[specta::specta]
 pub async fn list_windows() -> Result<Vec<WindowInfoDto>, AppError> {
-    // Enumeration is synchronous on both platforms (SCShareableContent / EnumChildWindows),
-    // so both paths run in spawn_blocking (Pitfall 7).
+    // Enumeration is synchronous, so run it in `spawn_blocking`.
     #[cfg(target_os = "macos")]
     let infos = tokio::task::spawn_blocking(capture::macos::window::list_windows)
         .await
@@ -532,8 +487,7 @@ pub async fn list_capture_targets() -> Result<CaptureTargetsDto, AppError> {
         .map(|v| v.into_iter().map(DisplayInfoDto::from).collect::<Vec<_>>())
         .map_err(|e| AppError::Capture(e.to_string()))?;
     let windows = list_windows().await?;
-    // Plan 05-02: Playwright availability = the pid stash currently holds
-    // a concrete pid (not None, not remote-browser).
+    // Playwright availability means the stash holds a concrete pid.
     let playwright_auto_available = crate::commands::automation::playwright_pid_stash()
         .get()
         .and_then(|i| i.pid)
@@ -554,9 +508,7 @@ pub struct StartCaptureTargetArgs {
     pub queue_cap_bytes: Option<u64>,
 }
 
-/// Extended `start_capture` that accepts a `CaptureTarget` and runs it
-/// through the fallback orchestrator. The existing `start_capture` is
-/// kept for backwards compat with the encoder path.
+/// Extended `start_capture` that accepts a `CaptureTarget`.
 #[tauri::command]
 #[specta::specta]
 pub async fn start_capture_target(
@@ -565,7 +517,7 @@ pub async fn start_capture_target(
     on_event: Channel<CaptureEventDto>,
     on_frame: Channel<FrameMetaDto>,
 ) -> Result<SessionId, AppError> {
-    // Validate WindowId against the most recent allow-list (T-05-01-01).
+    // Validate WindowId against the allow-list.
     if let CaptureTargetDto::Window { window_id } = &args.target {
         let ids = window_allow_list().ids.lock();
         if !ids.is_empty() && !ids.contains(window_id) {
@@ -574,9 +526,7 @@ pub async fn start_capture_target(
             )));
         }
     }
-    // Plan 05-02 (T-05-02-01, T-05-02-02): for `WindowByPid`, override any
-    // renderer-supplied pid with the host-side Playwright pid stash, and
-    // validate the title_hint.
+    // For `WindowByPid`, prefer the host-side Playwright pid stash.
     let target = if let CaptureTargetDto::WindowByPid { title_hint, .. } = &args.target {
         if let Some(h) = title_hint.as_deref() {
             if h.len() > 256 {
@@ -590,10 +540,7 @@ pub async fn start_capture_target(
                 ));
             }
         }
-        // Only rewrite pid when the stored hint matches the Playwright
-        // sentinel ("storycapture-playwright" OR "Chromium"). Generic
-        // renderer-supplied WindowByPid targets are left alone — a future
-        // plan may enable non-Playwright auto-follow workflows.
+        // Only rewrite pid for the Playwright sentinel.
         let is_playwright_sentinel = matches!(
             title_hint.as_deref(),
             Some("storycapture-playwright") | Some("Chromium")
@@ -607,17 +554,11 @@ pub async fn start_capture_target(
                     "Playwright auto-target requested but no Playwright pid is available — launch a story first".into(),
                 ));
             };
-            // Plan 06-03 — preset-driven title hint. Read the persisted
-            // browser_executable and resolve the chromium-family window
-            // title Chromium uses for its top-level frames (Edge, Brave,
-            // Chrome channels). When the preset is unknown or unset,
-            // `title_hint=None` lets find_window_by_pid fall back to
-            // "any window owned by the pid" (D-15 preserved).
+            // Use a preset-driven Chromium title hint when available.
             let settings = crate::commands::app_settings::load(&app);
             let resolved_hint =
                 crate::title_hints::title_hint_for(settings.browser_executable.as_deref());
-            // T-06-15 — truncate the hint for log emission only. The
-            // value we pass on through to SCK stays full-length.
+            // Truncate the hint only for logging.
             let redacted = crate::title_hints::redact_title_hint(resolved_hint.as_deref());
             tracing::info!(
                 pid,
@@ -634,12 +575,10 @@ pub async fn start_capture_target(
     } else {
         args.target.clone()
     };
-    // Overwrite the incoming target with the sanitized / pid-rewritten one.
+    // Overwrite the incoming target with the sanitized one.
     let args = StartCaptureTargetArgs { target, ..args };
 
-    // Plan 06-02 — validate region rect against display bounds at IPC
-    // boundary (T-06-08). Rejects NaN/Inf/negative/zero-area/out-of-bounds
-    // rects with a structured error — never reaches SCK/WGC.
+    // Validate the region rect before it reaches capture backends.
     if let CaptureTargetDto::DisplayRegion { display_id, rect } = &args.target {
         let displays = enumerate_displays()
             .map_err(|e| AppError::Capture(format!("enumerate displays for region validation: {e}")))?;
@@ -651,9 +590,7 @@ pub async fn start_capture_target(
                     "region target references unknown display_id={display_id}"
                 ))
             })?;
-        // `DisplayInfo.{width_px,height_px}` are physical pixels already
-        // scaled by `scale_factor`. The RegionRect is logical — divide to
-        // recover logical extents.
+        // Convert physical pixels back to logical extents.
         let logical_w = (disp.width_px as f64) / (disp.scale_factor as f64).max(1.0);
         let logical_h = (disp.height_px as f64) / (disp.scale_factor as f64).max(1.0);
         let rr: capture::RegionRect = (*rect).into();
@@ -661,7 +598,7 @@ pub async fn start_capture_target(
             .map_err(AppError::Capture)?;
     }
 
-    // Persist the target for stickiness (D-01).
+    // Persist the target.
     {
         let target: capture::CaptureTarget = args.target.clone().into();
         let mut settings = crate::commands::app_settings::load(&app);
@@ -685,12 +622,7 @@ pub async fn start_capture_target(
 
     let (tx, mut rx) = mpsc::channel::<Frame>(64);
 
-    // Native-first per platform; orchestrator falls back to xcap silently
-    // for window targets (D-07 / Plan 05-01 orchestrator).
-    //
-    // Plan 05-03: on Windows, wire the WgcBackend with its event sink so
-    // `on_closed` (target window disappears) surfaces as BackendFailed and
-    // the partial MP4 finalizes cleanly (parity with macOS SCK delegate).
+    // Native-first per platform; window targets fall back to xcap.
     let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<CaptureEvent>();
 
     #[cfg(target_os = "macos")]
@@ -725,7 +657,7 @@ pub async fn start_capture_target(
     .await
     .map_err(|e| AppError::Capture(e.to_string()))?;
 
-    // Emit a synthetic Started event (display name where applicable).
+    // Emit a synthetic Started event.
     if let capture::CaptureTarget::Display { display_id } = &target {
         if let Ok(displays) = enumerate_displays() {
             if let Some(d) = displays.into_iter().find(|d| d.id == *display_id) {
@@ -733,12 +665,10 @@ pub async fn start_capture_target(
             }
         }
     }
-    // Log fallback outcome so the UI can mirror it (the
-    // WindowCaptureFellBack event has already been emitted by the
-    // orchestrator for window targets).
+    // Log the fallback outcome for the UI.
     tracing::info!(?outcome, "capture started");
 
-    // Forwarder task: pump frames to renderer, dropping the body.
+    // Pump frames to the renderer.
     let on_frame_clone = on_frame.clone();
     let forward_task = tokio::spawn(async move {
         while let Some(frame) = rx.recv().await {
@@ -769,17 +699,7 @@ pub async fn start_capture_target(
     Ok(SessionId(session_id))
 }
 
-/// Plan 06-03 Task 3 — one-shot thumbnail capture for the recorder's
-/// live-preview box. Returns PNG bytes; the renderer wraps them in a
-/// `Blob`/`createObjectURL` for the `<img src>`.
-///
-/// Thumbnail failures are NON-FATAL from the UI's perspective — the
-/// React component surfaces a neutral placeholder on any Err and never
-/// unmounts the recorder view. We still emit a typed AppError for
-/// debugging / telemetry.
-///
-/// `max_width` / `max_height` default to 320×200 when callers pass
-/// `None` — matches the fixed UI frame size.
+/// One-shot thumbnail capture for the recorder preview box.
 #[tauri::command]
 #[specta::specta]
 pub async fn capture_target_thumbnail(
@@ -789,8 +709,7 @@ pub async fn capture_target_thumbnail(
 ) -> Result<Vec<u8>, AppError> {
     let max_w = max_width.unwrap_or(capture::thumbnail::DEFAULT_MAX_WIDTH);
     let max_h = max_height.unwrap_or(capture::thumbnail::DEFAULT_MAX_HEIGHT);
-    // Clamp upper bound at 2× the default for HiDPI preview + protect
-    // against renderer bugs flooding the native call with 4K requests.
+    // Clamp the preview size to a reasonable upper bound.
     let max_w = max_w.min(capture::thumbnail::DEFAULT_MAX_WIDTH * 2);
     let max_h = max_h.min(capture::thumbnail::DEFAULT_MAX_HEIGHT * 2);
     let native_target: capture::CaptureTarget = target.into();
@@ -834,7 +753,7 @@ mod tests {
 
     #[test]
     fn window_id_validation_rejects_unknown() {
-        // Populate the allow-list with id 100 only.
+        // Populate the allow-list.
         {
             let mut ids = window_allow_list().ids.lock();
             ids.clear();
@@ -847,7 +766,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_capture_targets_ipc_returns_struct() {
-        // Can't fully exercise without Tauri runtime; shape-check only.
+        // Shape-check only.
         let t = CaptureTargetsDto {
             displays: vec![],
             windows: vec![],
@@ -865,4 +784,3 @@ mod tests {
         assert_eq!(t, back);
     }
 }
-

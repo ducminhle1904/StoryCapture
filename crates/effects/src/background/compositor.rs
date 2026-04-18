@@ -1,17 +1,6 @@
-//! Background compositor (POST-04).
+//! Background compositor.
 //!
-//! Given a `VideoNode::Background`, emits:
-//!
-//!   1. Extra FFmpeg inputs (gradient PNG / user image / lavfi color source).
-//!   2. A filter-complex fragment that:
-//!      a. Prepares the background layer (scale to output dims).
-//!      b. Optionally emits a blurred/tinted drop shadow from the video.
-//!      c. Masks the foreground video with a rounded-corner alpha.
-//!      d. Overlays the shadow onto the background.
-//!      e. Overlays the rounded video on top at `padding_px`.
-//!
-//! The compositor owns **only** the filter segment; the ffmpeg emitter
-//! injects the `extra_inputs` into the `-i` list in canonical order.
+//! Emits the extra FFmpeg inputs and filter fragment for a background node.
 
 use std::path::PathBuf;
 
@@ -23,32 +12,27 @@ use crate::background::rounded_frame::{emit_rounded_mask, RoundedFrameParams};
 use crate::background::shadow::{emit_drop_shadow, ShadowParams};
 use crate::error::EffectsError;
 
-/// Extra `-i` inputs that the compositor needs prepended to the ffmpeg call.
+/// Extra `-i` inputs needed by the compositor.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtraInput {
-    /// The absolute (or repo-relative) filesystem path or lavfi expression.
+    /// Absolute or repo-relative path, or lavfi expression.
     pub uri: String,
-    /// If true, the input should be wrapped with `-loop 1` (single-frame PNG).
+    /// Wrap the input with `-loop 1`.
     pub loop_single_frame: bool,
-    /// If true, the input is a lavfi synthetic source (use `-f lavfi`).
+    /// Input is a lavfi synthetic source.
     pub lavfi: bool,
 }
 
-/// Result of emitting a Background node.
+/// Result of emitting a background node.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackgroundEmit {
-    /// Filter-complex fragment; contains `;`-separated filter chains.
-    /// Consumes `in_label` (the current video) and produces `out_label`.
+    /// Filter-complex fragment.
     pub filter_chain: String,
-    /// Additional inputs needed on the FFmpeg command-line.
+    /// Additional inputs for FFmpeg.
     pub extra_inputs: Vec<ExtraInput>,
 }
 
-/// Emit a Background node. `in_label` and `out_label` must include brackets.
-///
-/// The `bg_input_index` is the 0-based index of the **first** extra input
-/// this emitter will own (`[N:v]` where N == bg_input_index for a Gradient or
-/// Image, or a lavfi-synthesised source of the same index for Solid).
+/// Emit a background node.
 pub fn emit_background(
     node: &VideoNode,
     in_label: &str,
@@ -70,7 +54,7 @@ pub fn emit_background(
     let w = graph.output_width;
     let h = graph.output_height;
 
-    // 1. Extra input for the bg plate + the bg "label-before-scale".
+    // Extra input for the background plate.
     let (extra_inputs, bg_raw_label) = match kind {
         BackgroundKind::Gradient { preset_id } => {
             let preset = lookup(preset_id.as_str())
@@ -111,10 +95,10 @@ pub fn emit_background(
         ),
     };
 
-    // Helper: stable label core for this node.
+    // Stable label core for this node.
     let core = stable_core(id);
 
-    // 2. Scale the bg plate to output size.
+    // Scale the background plate to output size.
     let bg_scaled = format!("[{}_bg_scaled]", core);
     let mut chain = String::new();
     chain.push_str(&format!(
@@ -125,8 +109,7 @@ pub fn emit_background(
         bg_scaled = bg_scaled,
     ));
 
-    // 3. Determine foreground size after padding. The input video is scaled
-    // to (w - 2*padding) x (h - 2*padding) before the rounded mask is applied.
+    // Scale the foreground inside the padding box.
     let fg_w = w.saturating_sub(2 * padding_px);
     let fg_h = h.saturating_sub(2 * padding_px);
     let fg_scaled = format!("[{}_fg_scaled]", core);
@@ -139,7 +122,7 @@ pub fn emit_background(
         fg_scaled = fg_scaled,
     ));
 
-    // 4. Rounded mask on the scaled foreground.
+    // Apply the rounded mask.
     let fg_rounded = format!("[{}_fg_rounded]", core);
     chain.push(';');
     chain.push_str(&emit_rounded_mask(
@@ -148,9 +131,7 @@ pub fn emit_background(
         &fg_rounded,
     ));
 
-    // 5. Optional drop shadow. The shadow comes off the rounded foreground
-    //    (so corner shape is preserved) and we `split` so we can overlay the
-    //    original rounded video on top.
+    // Optional drop shadow from the rounded foreground.
     let (pre_overlay_label, shadow_overlay) = if let Some(sh) = shadow {
         let sp = ShadowParams {
             blur_px: sh.blur_px,
@@ -169,7 +150,7 @@ pub fn emit_background(
         ));
         chain.push(';');
         chain.push_str(&emit_drop_shadow(&sp, &split_b, &shadow_label));
-        // Overlay shadow onto bg at (padding + offset.x, padding + offset.y).
+        // Overlay the shadow onto the background.
         let ox = padding_px as f32 + sp.offset.x;
         let oy = padding_px as f32 + sp.offset.y;
         let bg_plus_shadow = format!("[{}_bg_sh]", core);
@@ -187,7 +168,7 @@ pub fn emit_background(
         (fg_rounded, bg_scaled)
     };
 
-    // 6. Final overlay: rounded video onto (bg [+ shadow]) at padding offset.
+    // Final overlay of the rounded video.
     chain.push(';');
     chain.push_str(&format!(
         "{bg}{fg}overlay=x={px}:y={py}{out_label}",
@@ -198,7 +179,7 @@ pub fn emit_background(
         out_label = out_label,
     ));
 
-    let _ = (kind, id); // silence unused if any
+    let _ = (kind, id);
 
     Ok(BackgroundEmit { filter_chain: chain, extra_inputs })
 }
@@ -207,8 +188,7 @@ fn stable_core(id: NodeId) -> String {
     id.stable_label("n")
 }
 
-/// Build a Background node-friendly shadow from the AST's `Shadow` type; a
-/// thin adaptor used by callers that only have a `Shadow` reference.
+/// Build `ShadowParams` from the AST `Shadow` type.
 pub fn shadow_params_from(s: &Shadow) -> ShadowParams {
     ShadowParams {
         blur_px: s.blur_px,

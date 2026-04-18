@@ -1,8 +1,4 @@
-/**
- * CodeMirror 6 linter extension backed by the host `parse_story` IPC command.
- * Feeds `Diagnostic[]` from `story-parser` back into CM as squiggles + tooltips
- * (UI-02). Debounced 300ms by CM's `linter` helper.
- */
+/** CodeMirror 6 linter backed by the host `parse_story` IPC command. */
 
 import { linter, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
 
@@ -14,7 +10,7 @@ function toCm(d: HostDiagnostic): CmDiagnostic {
   const message = d.suggestion
     ? `${d.message} (did you mean "${d.suggestion}"?)`
     : d.message;
-  // Guard against zero-width spans so the squiggle always has a range.
+  // Ensure the span is never zero-width.
   const from = Math.max(0, Math.floor(d.span.start));
   const to = Math.max(from + 1, Math.floor(d.span.end));
   return { from, to, severity, message };
@@ -27,8 +23,7 @@ export const storyDiagnosticsLinter = linter(
       const result = await parseStory(source);
       return result.diagnostics.map(toCm);
     } catch (e) {
-      // If the host command itself fails, show a single top-of-document info
-      // marker so the user knows the linter is offline but don't block typing.
+      // Show a top-of-document marker if the host linter fails.
       return [
         {
           from: 0,

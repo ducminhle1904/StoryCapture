@@ -1,43 +1,6 @@
-//! `EncodePipeline` — glues a `capture::Frame` mpsc receiver to an FFmpeg
-//! sidecar spawned via `SidecarCommand`.
+//! `EncodePipeline` connects capture frames to an FFmpeg sidecar.
 //!
-//! The pipeline runs two tokio tasks:
-//!   1. **Frame pump** — reads `Frame` from the input `mpsc::Receiver`,
-//!      extracts contiguous BGRA bytes (copying from native surfaces when
-//!      necessary — see note below), and writes them to FFmpeg stdin.
-//!      On receiver close, `stdin` is dropped, which sends EOF to FFmpeg.
-//!   2. **Progress parser** — consumes FFmpeg stderr and forwards every
-//!      `progress=` marker to a `mpsc::Sender<EncodeProgress>` provided
-//!      by the caller.
-//!
-//! On `BrokenPipe` (FFmpeg exited early — disk full, invalid args), the
-//! frame pump stops, the stderr tail is captured from the progress
-//! parser, and the final result wraps them into `EncoderError::FfmpegExit`.
-//!
-//! ## Zero-copy note
-//!
-//! True zero-copy from a native `CVPixelBuffer` / `ID3D11Texture2D` into
-//! FFmpeg is not possible across the subprocess boundary — FFmpeg stdin
-//! is a pipe of bytes. Phase 1 accepts the CPU copy cost (documented in
-//! the plan); Plan 11 or Phase 2 will optimize by linking against
-//! VideoToolbox/NVENC directly. For now we copy via `bgra_bytes_of_frame`.
-//!
-//! ## Audio pipeline start order (Phase 6 plan 01)
-//!
-//! When `EncodeConfig::audio_input` is `Some`, the host MUST start
-//! components in this exact order (RESEARCH Pitfall 8):
-//!
-//!   1. `capture::audio::make_fifo(name_hint)` — creates the named pipe.
-//!   2. `EncodePipeline::start(cfg, ...)` — spawns FFmpeg with the fifo
-//!      path in its arg vec. FFmpeg opens the fifo for read.
-//!   3. `AudioCaptureStream::start(device_id, fifo_path)` — the drain
-//!      thread opens the fifo for write, which blocks until step 2's
-//!      reader connects. If this step runs BEFORE step 2, the drain
-//!      thread blocks forever on the POSIX fifo open.
-//!
-//! Shutdown order is reversed: drop `AudioCaptureStream` BEFORE closing
-//! FFmpeg stdin so the audio tail flushes cleanly while FFmpeg is still
-//! consuming the fifo.
+//! It pumps frames to stdin, parses stderr progress, and handles audio FIFO startup.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -54,8 +17,7 @@ use crate::error::{EncoderError, Result};
 use crate::progress::{EncodeProgress, ProgressParser};
 use crate::sidecar::{FfmpegSidecar, SidecarCommand};
 
-/// Shutdown budget for the FFmpeg child once `stdin` is closed. 15 s
-/// is the "nice" window before SIGKILL (see `FfmpegSidecar::graceful_shutdown`).
+/// Shutdown budget for FFmpeg after stdin closes.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Result of a completed encode.
@@ -68,14 +30,7 @@ pub struct EncodeResult {
     pub frames_dropped: u64,
 }
 
-/// Convert a capture `Frame` into a contiguous BGRA byte slice suitable
-/// for FFmpeg's stdin. For native surfaces the caller platform must
-/// provide its own extraction path via `FrameData::Owned` — Phase 1's
-/// real-capture backends already convert through `Owned(Vec<u8>, stride)`
-/// when feeding the encoder (see `capture::CapturePipeline`).
-///
-/// Returns the raw bytes and the per-row stride (may be larger than
-/// `width * 4` due to row padding on some backends).
+/// Convert a capture frame into contiguous BGRA bytes for FFmpeg.
 pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Cow<'_, [u8]>, usize)> {
     match &frame.data {
         FrameData::Owned(bytes, stride) => Ok((Cow::Borrowed(bytes.as_slice()), *stride)),
@@ -97,15 +52,11 @@ pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Cow<'_, [u8]>, usize)> {
     }
 }
 
-/// Start an encode. Spawns two background tasks and returns a
-/// `JoinHandle<Result<EncodeResult>>` that resolves when FFmpeg has
-/// exited and the moov atom is written.
+/// Start an encode and return a join handle.
 pub struct EncodePipeline;
 
 impl EncodePipeline {
-    /// Spawn the pipeline. The returned join handle resolves to the
-    /// final `EncodeResult` when FFmpeg exits cleanly, or an
-    /// `EncoderError` if anything goes wrong.
+    /// Spawn the pipeline.
     pub async fn start(
         cfg: EncodeConfig,
         sidecar_cmd: &dyn SidecarCommand,
@@ -114,16 +65,8 @@ impl EncodePipeline {
     ) -> Result<JoinHandle<Result<EncodeResult>>> {
         cfg.validate()?;
 
-        // macOS fast path: if the first frame is NativeMacOS
-        // (CVPixelBuffer from SCK), route through AVAssetWriter +
-        // VideoToolbox and skip the FFmpeg subprocess entirely. Mixed
-        // streams (session-mid fallback to xcap) are not supported — we
-        // commit to one path based on the first frame.
-        //
-        // Phase 6 plan 01: VtWriter is video-only. When mic audio is
-        // enabled (audio_input is Some), fall back to the FFmpeg pipeline
-        // which mux's video + audio from the named pipe. The VT fast
-        // path can be extended with AVAssetWriter audio inputs later.
+        // macOS can use a VideoToolbox fast path for video-only captures.
+        // Audio input forces the FFmpeg path.
         #[cfg(target_os = "macos")]
         {
             if cfg.audio_input.is_none() {
@@ -143,11 +86,11 @@ impl EncodePipeline {
         let child = sidecar_cmd.spawn(args).await?;
         let mut sidecar = FfmpegSidecar::new(child);
 
-        // Extract handles for the two background tasks.
+        // Extract handles for the background tasks.
         let handles = sidecar
             .take()
             .ok_or_else(|| EncoderError::Io("sidecar yielded no handles".into()))?;
-        // Drop stdout — not used for encode (probe uses it instead).
+        // Drop stdout; probe uses it instead.
         drop(handles.stdout);
         let mut stdin = handles.stdin;
         let stderr = handles.stderr;
@@ -156,7 +99,7 @@ impl EncodePipeline {
         let output_path = cfg.output_path.clone();
         let start = Instant::now();
 
-        // Progress parser task.
+        // Parse FFmpeg progress on stderr.
         let parser = ProgressParser::new();
         let progress_task = tokio::spawn(async move { parser.pump(stderr, progress_tx).await });
 
@@ -196,7 +139,7 @@ impl EncodePipeline {
             tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, "frame channel closed; signaling FFmpeg EOF");
             drop(stdin);
 
-            // Wait for FFmpeg to flush + exit.
+            // Wait for FFmpeg to flush and exit.
             let status = match tokio::time::timeout(SHUTDOWN_TIMEOUT, child.wait()).await {
                 Ok(Ok(status)) => status,
                 Ok(Err(e)) => return Err(EncoderError::Io(format!("child wait: {e}"))),
@@ -214,7 +157,7 @@ impl EncodePipeline {
                 }
             };
 
-            // Join the progress parser to collect the stderr tail.
+            // Collect the stderr tail.
             let stderr_tail = match progress_task.await {
                 Ok(Ok(t)) => t,
                 Ok(Err(e)) => {
@@ -245,10 +188,7 @@ impl EncodePipeline {
                 .map(|m| m.len())
                 .unwrap_or(0);
 
-            // Keep `sidecar` alive through the task so its Drop impl is
-            // only invoked after FFmpeg has already exited (or been
-            // killed above). We took the handles out of it earlier;
-            // dropping it here is a no-op.
+            // Keep `sidecar` alive until FFmpeg is done.
             drop(sidecar);
 
             Ok(EncodeResult {
@@ -264,11 +204,7 @@ impl EncodePipeline {
     }
 }
 
-/// macOS AVAssetWriter fast path. Peeks the first frame; if it's a
-/// `NativeMacOS(CVPixelBuffer)`, spawns a `VtWriter` worker and returns
-/// a JoinHandle that resolves when the writer finalizes the MP4.
-/// Otherwise re-injects the peeked frame into a new channel and returns
-/// `None` so the caller falls back to the FFmpeg path.
+/// macOS AVAssetWriter fast path for video-only captures.
 #[cfg(target_os = "macos")]
 async fn try_start_vt_fast_path(
     cfg: &EncodeConfig,
@@ -277,9 +213,7 @@ async fn try_start_vt_fast_path(
 ) -> Result<Option<JoinHandle<Result<EncodeResult>>>> {
     use crate::macos::vt_writer::VtWriter;
 
-    // Peek the first frame to classify the stream. If the sender drops
-    // before delivering one, there's nothing to encode; bail to the
-    // FFmpeg path so it can produce an empty-encode error consistently.
+    // Peek the first frame to classify the stream.
     let first = match frames.recv().await {
         Some(f) => f,
         None => return Ok(None),
@@ -293,29 +227,14 @@ async fn try_start_vt_fast_path(
             );
         }
         _ => {
-            // Not a native frame — push it back onto a new channel so the
-            // caller's FFmpeg pump sees an unmodified stream. Since we
-            // consumed `frames`, we need to re-forward; but we only have
-            // the receiver reference, not the sender. Instead, stash the
-            // frame via a lightweight shim: build a new channel, forward
-            // the first frame + drain from the old receiver.
-            //
-            // We achieve this by spawning a shim task that forwards
-            // first+rest into a new receiver, and replacing the caller's
-            // `frames` is not possible from here. So we instead signal
-            // "not mine" and let the caller re-peek — but that would
-            // lose the frame.
-            //
-            // Simpler: we swap `frames` with a new channel whose sender
-            // is fed first + drained-from-original. Done via a helper
-            // below that returns the new receiver.
+            // Non-native frame: fall back to the FFmpeg path.
             let new_rx = forward_with_prefix(first, std::mem::replace(frames, tokio_placeholder()));
             *frames = new_rx;
             return Ok(None);
         }
     }
 
-    // Build writer and spawn the append pump.
+    // Build the writer and spawn the append pump.
     let handle = VtWriter::start(cfg.clone(), progress_tx.clone())?;
 
     // Queue the first frame we already popped.
@@ -340,10 +259,7 @@ async fn try_start_vt_fast_path(
                     frames_written += 1;
                 }
                 other => {
-                    // Stream switched backend mid-session — we can't
-                    // handle that cleanly here (the vt_writer has a
-                    // different output file). Drop with a log; the
-                    // orchestrator should drain+restart on backend switch.
+                    // Backend switched mid-session; let the orchestrator restart.
                     tracing::warn!(
                         target: "storycapture::encoder",
                         ?other,
@@ -359,8 +275,7 @@ async fn try_start_vt_fast_path(
             frames_dropped,
             "vt_writer input channel closed; finalizing MP4"
         );
-        // Move finish off the runtime thread — AVFoundation flush can
-        // block longer than the tokio worker budget.
+        // Move finish off the runtime thread.
         let out = tokio::task::spawn_blocking(move || handle.finish())
             .await
             .map_err(|e| EncoderError::Io(format!("vt_writer finish join: {e}")))?;
@@ -370,8 +285,7 @@ async fn try_start_vt_fast_path(
     Ok(Some(join))
 }
 
-/// Tiny helper: build a new mpsc pair where the receiver yields
-/// `prefix` first, then forwards items from `rest` until it closes.
+/// Build a receiver that yields `prefix` first, then forwards `rest`.
 #[cfg(target_os = "macos")]
 fn forward_with_prefix(
     prefix: Frame,
@@ -391,13 +305,11 @@ fn forward_with_prefix(
     rx
 }
 
-/// `std::mem::replace` needs an `mpsc::Receiver<Frame>` value. We build a
-/// throwaway closed-immediately receiver for the swap.
+/// Build a closed receiver for `std::mem::replace`.
 #[cfg(target_os = "macos")]
 fn tokio_placeholder() -> mpsc::Receiver<Frame> {
     let (_tx, rx) = mpsc::channel::<Frame>(1);
-    // Drop tx so the rx is already closed. Caller is expected to
-    // overwrite it immediately.
+    // Drop tx so the receiver is already closed.
     rx
 }
 

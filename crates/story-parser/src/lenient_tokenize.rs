@@ -1,7 +1,6 @@
-//! Layer 1 of the two-layer parse (D-08): walk pest pairs and produce a
-//! flat stream of `LenientToken`s. Unknown statements (matched by the
-//! `recovery_line` grammar rule) are kept as `LenientToken::Unknown`
-//! tokens so layer 2 can emit "did you mean" diagnostics.
+//! Layer 1 of the two-layer parse: walk pest pairs and produce
+//! `LenientToken`s. Unknown lines become `LenientToken::Unknown` so layer 2
+//! can emit suggestions.
 
 use pest::iterators::Pair;
 
@@ -28,7 +27,7 @@ pub enum LenientToken {
         pair_kind: ParsedCommand,
         span: Span,
     },
-    /// A line layer-1 couldn't classify — feed to suggest.rs in layer 2.
+    /// A line layer 1 could not classify.
     Unknown {
         text: String,
         span: Span,
@@ -176,8 +175,7 @@ fn parse_meta_value(pair: Pair<Rule>) -> MetaRawValue {
 
 fn walk_scene_block(pair: Pair<Rule>, out: &mut Vec<LenientToken>) {
     let span = Span::from_pair(&pair);
-    // Extract scene name first then push the SceneStart marker, so the
-    // semantic layer sees: SceneStart, Command*, SceneEnd in order.
+    // Extract the scene name before pushing `SceneStart`.
     let mut inner: Vec<_> = pair.into_inner().collect();
     let name = inner
         .iter()
@@ -193,7 +191,7 @@ fn walk_scene_block(pair: Pair<Rule>, out: &mut Vec<LenientToken>) {
                     match stmt_child.as_rule() {
                         Rule::command_line => {
                             let line_span = Span::from_pair(&stmt_child);
-                            // The first inner of command_line is `command`.
+                            // The first inner pair is `command`.
                             if let Some(cmd) =
                                 stmt_child.into_inner().find(|p| p.as_rule() == Rule::command)
                             {
@@ -295,9 +293,7 @@ fn parse_target_pair(pair: Pair<Rule>) -> RawTarget {
     let inner = pair.into_inner().next();
     match inner {
         Some(p) => match p.as_rule() {
-            // `first_string` descends to the inner `string` pair instead of
-            // returning the outer rule's full text, so prefixes like
-            // "selector", "testid", "aria" are correctly stripped.
+            // `first_string` strips the target prefix and returns the inner string.
             Rule::target_text => RawTarget::Text(first_string(p)),
             Rule::target_selector => RawTarget::Selector(first_string(p)),
             Rule::target_testid => RawTarget::TestId(first_string(p)),

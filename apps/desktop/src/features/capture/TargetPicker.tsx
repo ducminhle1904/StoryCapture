@@ -1,14 +1,5 @@
 /**
- * TargetPicker — grouped Select replacing the old Display dropdown
- * (Plan 05-01). Groups per D-09:
- *   - Playwright browser (auto) — shown first when available;
- *     disabled with hint otherwise (Plan 05-02 enables).
- *   - Full screen — one entry per display.
- *   - Specific window — one entry per visible non-StoryCapture window.
- *
- * Styling matches the existing shadcn+Base UI Select pattern (D-10).
- * Window list refreshes on dropdown open only (Claude's discretion per
- * CONTEXT.md) + a manual refresh icon.
+ * TargetPicker for capture targets.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -37,16 +28,11 @@ interface TargetPickerProps {
   onValueChange: (target: CaptureTarget) => void;
   onRefresh: () => void | Promise<void>;
   disabled?: boolean;
-  /**
-   * Plan 06-02 — invoked when the user clicks "Crop to region…". Only
-   * shown when a Display target is selected (NOT for window or Playwright
-   * auto). `displayId` is the selected display's id in the number space
-   * expected by `open_region_overlay`.
-   */
+  /** Called when the user clicks "Crop to region…". */
   onOpenRegion?: (displayId: number) => void | Promise<void>;
 }
 
-/** Truncate titles to 60 chars, dedupe (app, title) repeats with " (2)". */
+/** Truncate titles and dedupe repeated app/title pairs. */
 function formatWindowLabel(
   app: string,
   title: string | null,
@@ -92,8 +78,7 @@ export function TargetPicker({
   const handleOpen = useCallback(
     async (open: boolean) => {
       if (open) {
-        // Re-enumerate windows on dropdown open (cheapest cadence —
-        // avoids background jank).
+        // Re-enumerate windows on dropdown open.
         setRefreshing(true);
         try {
           await onRefresh();
@@ -114,7 +99,7 @@ export function TargetPicker({
     }
   }, [onRefresh]);
 
-  // Dedupe windows by (app, title) for repeat suffixes.
+  // Dedupe windows by app/title.
   const windowsWithOccurrence = useMemo(() => {
     if (!availableTargets) return [] as Array<{
       key: string;
@@ -137,8 +122,7 @@ export function TargetPicker({
 
   const selectedKey = value ? captureTargetKey(value) : "";
 
-  // Base UI's Select expects scalar values; we key by the serialized
-  // target key and keep a lookup map for onValueChange.
+  // Base UI Select expects scalar values.
   const lookup = useMemo(() => {
     const map = new Map<string, CaptureTarget>();
     map.set(captureTargetKey(PLAYWRIGHT_AUTO_TARGET), PLAYWRIGHT_AUTO_TARGET);

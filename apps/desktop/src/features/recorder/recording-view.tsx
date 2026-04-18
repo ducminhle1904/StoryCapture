@@ -66,9 +66,7 @@ function formatTime(ms: number): string {
   return `${hours}:${minutes}:${seconds}`;
 }
 
-/** Format any Tauri IPC error into a human-readable string.
- *  Tauri serializes Rust `AppError` variants as JSON objects, which
- *  `String(e)` renders as the useless `"[object Object]"`. */
+/** Format a Tauri IPC error into a readable string. */
 function formatIpcError(e: unknown): string {
   if (e == null) return "Unknown error";
   if (typeof e === "string") return e;
@@ -124,8 +122,7 @@ export function RecordingView({
     refreshPlaywrightAvailability,
   } = useRecorderStore();
 
-  // Mirror the active BrowserRow preset so ChromeHidingToggle can grey
-  // itself out for non-Chromium picks. Settings owns the source of truth.
+  // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   useEffect(() => {
     getAppSettings()
@@ -136,8 +133,7 @@ export function RecordingView({
   const reduceMotion = useReducedMotion();
   const [permission, setPermission] = useState<PermissionState>("undetermined");
   const [tccOpen, setTccOpen] = useState(false);
-  // `includeCursor` lives in the recorder store (non-sticky). Local
-  // state here drives only the decorative 3s countdown affordance.
+  // Local state only drives the countdown affordance.
   const [useCountdown, setUseCountdown] = useState(true);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
@@ -169,23 +165,17 @@ export function RecordingView({
       : null;
   }, [displays, selectedDisplay]);
 
-  // Preflight + display enumeration on mount.
+  // Preflight and enumerate targets on mount.
   useEffect(() => {
     (async () => {
       try {
         let perm = await checkScreenCapturePermission();
-        // If not granted, fire CGRequestScreenCaptureAccess. This registers
-        // the app in System Settings → Privacy → Screen Recording so the
-        // user has something to toggle. Without it, the app never appears
-        // in the list.
+        // Register the app in Screen Recording settings if needed.
         if (perm !== "granted") {
           perm = await requestScreenCaptureAccess();
         }
         setPermission(perm);
-        // We intentionally do NOT auto-open the TccPrompt modal here —
-        // Sequoia 15.1+ can false-negative the preflight even after the
-        // user has granted. The inline banner (with "Already granted"
-        // bypass) is less intrusive.
+        // Don't auto-open the prompt on Sequoia false-negatives.
         if (perm === "granted") {
           try {
             await loadCaptureTargets();
@@ -201,7 +191,7 @@ export function RecordingView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Derive steps from story so rail is meaningful before capture starts.
+  // Derive steps before capture starts.
   useEffect(() => {
     let cancelled = false;
     parseStory(storySource)
@@ -224,9 +214,7 @@ export function RecordingView({
     };
   }, [setSteps, storySource]);
 
-  // Listen for region-selection events emitted by the transparent
-  // overlay window. On confirm, promote the captureTarget to a
-  // DisplayRegion variant; on cancel, leave the target untouched.
+  // Handle region selections from the overlay window.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     listen<RegionSelectedPayload>("region://selected", (event) => {
@@ -258,11 +246,7 @@ export function RecordingView({
     };
   }, [setCaptureTarget]);
 
-  // Phase 6 plan 01 Task 6 — surface non-fatal mic degradation events.
-  // The host polls AudioCaptureStream::degraded every 500ms during a
-  // recording and emits `audio://disconnected` when the cpal err_cb
-  // flag flips (mic unplug / driver reset). Video pipeline is left
-  // alone; we just toast the user.
+  // Surface non-fatal mic degradation events.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     listen<string>("audio://disconnected", (event) => {
@@ -338,10 +322,7 @@ export function RecordingView({
     }
     setStatus("recording");
     startedAtRef.current = Date.now();
-    // Encoder must be told the *actual* pixel dimensions xcap delivers.
-    // A mismatch produces noise because FFmpeg slices the raw BGRA byte
-    // stream at the wrong frame boundaries. We take what the backend
-    // reports for this display (already in physical pixels).
+    // Use the actual pixel dimensions from the backend.
     const display = displays.find((d) => {
       const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
       return id === selectedDisplay;
@@ -349,10 +330,7 @@ export function RecordingView({
     const width = display?.width_px ?? 1920;
     const height = display?.height_px ?? 1080;
     try {
-      // Backlog #15 — start_recording now takes a full CaptureTarget
-      // (not just display_id). Constructing a display target here
-      // preserves pre-#15 behaviour; future window/region paths drop in
-      // as the picker's `captureTarget` flows through unchanged.
+      // Build a display target when no explicit target is selected.
       const recordingTarget = captureTarget ?? {
         kind: "display" as const,
         display_id: selectedDisplay,
@@ -364,10 +342,7 @@ export function RecordingView({
           width,
           height,
           fps: 30,
-          // Phase 6 plan 01: omit the field (undefined) when the user
-          // picked "No audio" so the host takes its Phase-1-compatible
-          // silent path. When "System default" is selected we pass
-          // "default" as a sentinel — the host resolves cpal's default.
+          // Omit the field for "No audio"; pass "default" for system input.
           audio_device_id: audioDeviceId ?? undefined,
           include_cursor: includeCursor,
         },
@@ -378,8 +353,7 @@ export function RecordingView({
         typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
       );
 
-      // Fire-and-forget: run the DSL against the browser driver in parallel
-      // with the screen capture. Events update the step rail via dispatchAutomation.
+      // Run DSL automation in parallel with capture.
       // eslint-disable-next-line no-console
       console.log("[recorder] invoking launchAutomation", {
         storyBytes: storySource.length,
@@ -395,18 +369,13 @@ export function RecordingView({
         toast.error(`Automation failed: ${msg}`);
         setError(msg);
       });
-      // Poll for Playwright window availability for up to 10s. The
-      // host's background probe stashes the pid once Playwright's
-      // launch() completes; this loop surfaces that to the UI and may
-      // auto-pre-select the "Playwright browser (auto)" target if the
-      // user hasn't made a non-auto choice this session.
+      // Poll for Playwright availability for up to 10s.
       (async () => {
         const deadline = Date.now() + 10_000;
         while (Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 800));
           await refreshPlaywrightAvailability();
-          // Backlog #13 — once the pid lands, stop polling; the prior
-          // loop ran to completion even after a hit, wasting IPCs.
+          // Stop polling once the pid lands.
           if (
             useRecorderStore.getState().availableTargets
               ?.playwright_auto_available
@@ -422,8 +391,7 @@ export function RecordingView({
     }
   };
 
-  // Map automation executor events onto the step rail. `ordinal` is 1-based
-  // in the Rust executor; the rail uses 0-based indices.
+  // Map automation events onto the step rail.
   const dispatchAutomation = (evt: ExecutorEvent) => {
     switch (evt.type) {
       case "step_started":
@@ -441,8 +409,7 @@ export function RecordingView({
         if (evt.status.failed > 0) {
           toast.warning(`Story finished with ${evt.status.failed} failure(s)`);
         }
-        // Auto-stop capture now that the DSL has finished executing.
-        // Small delay to let the last frame land in the encoder buffer.
+        // Stop capture after the DSL finishes.
         window.setTimeout(() => {
           if (sessionRef.current) void handleStop();
         }, 500);
@@ -462,7 +429,7 @@ export function RecordingView({
     }
   };
 
-  // ⌘R / Ctrl+R to start/stop recording.
+  // ⌘R / Ctrl+R toggles recording.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "r") {
@@ -477,9 +444,7 @@ export function RecordingView({
   }, [status, permission, selectedDisplay]);
 
   const canRecord = permission === "granted" && captureTarget != null;
-  // Separate flag for the display-only code path in `handleRecord` — window
-  // targets route through start_capture_target and don't need
-  // a display_id up front.
+  // Display-only code path for `handleRecord`.
   const canRecordDisplay = canRecord && selectedDisplay != null;
   const permissionDenied = permission === "denied";
   const permissionPending = permission === "undetermined";
@@ -549,16 +514,14 @@ export function RecordingView({
         <PermissionBanner
           state={permission}
           onOpenSettings={async () => {
-            // Register the app in TCC first — this makes it appear in the
-            // Screen Recording list in System Settings so the user has
-            // something to toggle on.
+            // Register the app in TCC first.
             try {
               await requestScreenCaptureAccess();
             } catch {
               /* non-fatal; still open Settings */
             }
             openScreenCapturePrefs().catch(() => {});
-            // Also pop the guided dialog for first-time onboarding.
+            // Open the guided dialog for first-time onboarding.
             setTccOpen(true);
           }}
           onRelaunch={() => {
@@ -582,9 +545,7 @@ export function RecordingView({
             }
           }}
           onBypass={async () => {
-            // Sequoia 15.1+ workaround: CGPreflightScreenCaptureAccess can
-            // return false even when permission IS granted. Let the user
-            // override — if they're wrong, recording will fail loudly.
+            // Let the user override Sequoia false-negatives.
             setPermission("granted");
             setTccOpen(false);
             try {

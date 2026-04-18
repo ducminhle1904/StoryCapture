@@ -1,8 +1,4 @@
 //! Structured output schemas for the NL-to-DSL pipeline.
-//!
-//! The `StoryDoc` type is the tool-use output schema: the LLM emits a
-//! `StoryDoc` via the `emit_story_doc` tool, and the orchestrator validates
-//! it against the pest grammar + verb whitelist before accepting.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -19,17 +15,17 @@ pub struct StoryDoc {
 pub struct StoryStep {
     /// Stable ID for per-step regen.
     pub id: String,
-    /// One-line user-intent summary, surfaced in the diff card.
+    /// One-line user-intent summary.
     pub label: String,
-    /// DSL verb -- restricted to the verb catalog.
+    /// DSL verb restricted to the verb catalog.
     pub verb: DslVerb,
-    /// Verb-specific args (selector, text, url, ...).
+    /// Verb-specific args.
     pub args: serde_json::Value,
-    /// Optional inline narration for the TTS auto-script.
+    /// Optional inline narration for TTS.
     pub narration: Option<String>,
 }
 
-/// DSL verbs matching Phase 1 DSL-02/03 grammar commands + "scene" block marker.
+/// DSL verbs matching the Phase 1 grammar plus the `scene` marker.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DslVerb {
@@ -50,10 +46,7 @@ pub enum DslVerb {
     Scene,
 }
 
-/// Returns the tool definition JSON for the `emit_story_doc` tool.
-///
-/// The `input_schema` is generated from the Rust type via `schemars`,
-/// ensuring the LLM's structured output matches our deserialization target.
+/// Returns the tool definition JSON for `emit_story_doc`.
 pub fn emit_story_doc_tool() -> serde_json::Value {
     let schema = schemars::schema_for!(StoryDoc);
     serde_json::json!({
@@ -78,7 +71,7 @@ impl StoryDoc {
         out
     }
 
-    /// Validate that the rendered DSL text parses successfully with story_parser.
+    /// Validate the rendered DSL with `story_parser`.
     pub fn validate_with_pest(&self) -> Result<(), String> {
         let text = self.render_dsl();
         let result = story_parser::parse(&text);
@@ -153,23 +146,23 @@ fn render_step(step: &StoryStep) -> String {
         }
         DslVerb::Pause => "pause".to_string(),
         DslVerb::PressKey => {
-            // press_key is not in Phase 1 grammar yet; render as a comment so it doesn't break pest parse
+            // Not in Phase 1 grammar yet, so render as a comment.
             let key = step.args.get("key").and_then(|v| v.as_str()).unwrap_or("Enter");
             format!("# press_key \"{key}\"")
         }
         DslVerb::Scene => {
-            // Scene is a structural marker, not a command; skip rendering
+            // Scene is structural, so skip rendering.
             String::new()
         }
     }
 }
 
-/// Public wrapper around `render_step` for use by the diff engine.
+/// Public wrapper around `render_step` for the diff engine.
 pub fn render_step_text(step: &StoryStep) -> String {
     render_step(step)
 }
 
-/// Render a target from the step args. Checks for selector/testid/aria/text fields.
+/// Render a target from step args.
 fn render_target(args: &serde_json::Value) -> String {
     if let Some(sel) = args.get("selector").and_then(|v| v.as_str()) {
         format!("selector \"{sel}\"")
@@ -178,8 +171,7 @@ fn render_target(args: &serde_json::Value) -> String {
     } else if let Some(aria) = args.get("aria").and_then(|v| v.as_str()) {
         format!("aria \"{aria}\"")
     } else if let Some(text) = args.get("text").and_then(|v| v.as_str()) {
-        // For type command, "text" is the typed text, not the target
-        // Fall back to a generic quoted string
+        // For `type`, `text` is the typed text, not the target.
         format!("\"{text}\"")
     } else if let Some(target) = args.get("target").and_then(|v| v.as_str()) {
         format!("\"{target}\"")
@@ -188,7 +180,7 @@ fn render_target(args: &serde_json::Value) -> String {
     }
 }
 
-/// Render a target from a named field in the args object (e.g., "from" or "to" for drag).
+/// Render a target from a named field in the args object.
 fn render_target_field(args: &serde_json::Value, field: &str) -> String {
     if let Some(obj) = args.get(field) {
         if let Some(sel) = obj.get("selector").and_then(|v| v.as_str()) {
@@ -213,14 +205,14 @@ mod tests {
         let schema = schemars::schema_for!(StoryDoc);
         let json = serde_json::to_value(&schema).unwrap();
 
-        // steps should be an array
+        // `steps` should be an array.
         let steps_schema = &json["definitions"]["StoryStep"];
         assert!(steps_schema.is_object(), "StoryStep definition should exist");
 
-        // verb should be an enum
+        // `verb` should be an enum.
         let verb_schema = &json["definitions"]["DslVerb"];
         assert!(verb_schema.is_object(), "DslVerb definition should exist");
-        // Check it has oneOf or enum
+        // Check it has `oneOf` or `enum`.
         let has_enum = verb_schema.get("enum").is_some()
             || verb_schema.get("oneOf").is_some();
         assert!(has_enum, "DslVerb should be an enum in JSON Schema");

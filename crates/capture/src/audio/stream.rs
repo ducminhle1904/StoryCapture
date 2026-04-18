@@ -278,12 +278,7 @@ mod mock {
         let stop_for_thread = stop_flag.clone();
 
         let fifo_path_clone = fifo_path.clone();
-        // Single thread — synthesizes samples AND writes them. No cpal
-        // callback to worry about; ringbuf hop is unnecessary for the
-        // mock because we're the sole producer AND consumer. The test
-        // verifies the wire-format byte rate, not the callback ↔ drain
-        // decoupling (which is tested by the real cpal path on CI
-        // hosts with mics).
+        // Single thread synthesizes and writes samples.
         let drain_thread = std::thread::Builder::new()
             .name("storycapture-audio-drain-mock".into())
             .spawn(move || {
@@ -298,11 +293,11 @@ mod mock {
                         return;
                     }
                 };
-                // 1 kHz sine, full-scale 0.5 amplitude
+                // 1 kHz sine, 0.5 amplitude.
                 let freq = 1_000.0f32;
                 let mut phase = 0.0f32;
                 let step = 2.0 * std::f32::consts::PI * freq / sample_rate as f32;
-                // ~10 ms chunks
+                // ~10 ms chunks.
                 let chunk = (sample_rate as usize) / 100;
                 let mut buf = vec![0f32; chunk];
                 while !stop_for_thread.load(Ordering::Relaxed) {
@@ -317,7 +312,7 @@ mod mock {
                     if fifo.write_all(bytes).is_err() {
                         break;
                     }
-                    // 10 ms sleep to pace the synth at realtime.
+                    // Pace the synth at realtime.
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             })
