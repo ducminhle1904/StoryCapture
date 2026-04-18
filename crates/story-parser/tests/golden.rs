@@ -114,3 +114,111 @@ fn click_target_text_extracted() {
         other => panic!("expected Click, got {:?}", other),
     }
 }
+
+// -------- Phase 7 Tier 1 golden fixtures --------
+
+#[test]
+fn tier1_new_forms_fixture_parses_clean_with_expected_variants() {
+    use story_parser::{AriaRole, SelectorOrText};
+
+    let path = fixture("valid/tier1_new_forms.story");
+    let src = std::fs::read_to_string(&path).expect("fixture exists");
+    let r = parse(&src);
+    let errs: Vec<_> = r
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+
+    let ast = r.ast.as_ref().expect("ast some");
+    let cmds: Vec<&Command> = ast.scenes.iter().flat_map(|s| &s.commands).collect();
+
+    let role_count = cmds
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                Command::Click { target: SelectorOrText::Role { .. }, .. }
+                    | Command::Hover { target: SelectorOrText::Role { .. }, .. }
+            )
+        })
+        .count();
+    let label_count = cmds
+        .iter()
+        .filter(|c| matches!(c, Command::Type { target: SelectorOrText::Label(_), .. }))
+        .count();
+    let text_exact_count = cmds
+        .iter()
+        .filter(|c| matches!(c, Command::Click { target: SelectorOrText::TextExact(_), .. }))
+        .count();
+    assert!(
+        role_count >= 4,
+        "expected ≥4 Role targets (button+link+image+img+hover), got {role_count}"
+    );
+    assert_eq!(label_count, 1, "expected exactly 1 fill→Label desugar, got {label_count}");
+    assert_eq!(text_exact_count, 1, "expected exactly 1 TextExact, got {text_exact_count}");
+
+    // Spot check the img-alias → AriaRole::Image normalization
+    let has_img_role = cmds.iter().any(|c| {
+        matches!(
+            c,
+            Command::Click {
+                target: SelectorOrText::Role { role: AriaRole::Image, name },
+                ..
+            } if name == "Hero"
+        )
+    });
+    assert!(has_img_role, "expected `click img \"Hero\"` to normalize to AriaRole::Image");
+}
+
+#[test]
+fn tier1_legacy_forms_fixture_uses_only_pre_phase7_variants() {
+    use story_parser::SelectorOrText;
+
+    let path = fixture("valid/tier1_legacy_forms.story");
+    let src = std::fs::read_to_string(&path).expect("fixture exists");
+    let r = parse(&src);
+    let errs: Vec<_> = r
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(errs.is_empty(), "legacy fixture must parse clean, got: {:?}", errs);
+
+    let ast = r.ast.as_ref().expect("ast some");
+    let cmds: Vec<&Command> = ast.scenes.iter().flat_map(|s| &s.commands).collect();
+    let target_is_pre_phase7 = |t: &SelectorOrText| {
+        matches!(
+            t,
+            SelectorOrText::Text(_)
+                | SelectorOrText::Selector(_)
+                | SelectorOrText::TestId(_)
+                | SelectorOrText::Aria(_)
+        )
+    };
+    for cmd in &cmds {
+        match cmd {
+            Command::Click { target, .. }
+            | Command::Hover { target, .. }
+            | Command::Assert { target, .. }
+            | Command::WaitFor { target, .. } => {
+                assert!(
+                    target_is_pre_phase7(target),
+                    "legacy form produced Phase-7 variant: {:?}",
+                    target
+                );
+            }
+            Command::Type { target, .. }
+            | Command::Select { target, .. }
+            | Command::Upload { target, .. } => {
+                assert!(
+                    target_is_pre_phase7(target),
+                    "legacy form produced Phase-7 variant: {:?}",
+                    target
+                );
+            }
+            _ => {}
+        }
+    }
+}
