@@ -8,36 +8,33 @@
  * succeeded via the pid fallback (D-15), but title-hint tie-breaking for
  * multi-window cases picked the wrong window.
  *
- * This map fixes that: given the BrowserRow preset (or executable-path
- * basename), return the localized window-title substring Chromium uses
- * for its own top-level frames on macOS. `find_window_by_pid` does a
- * case-insensitive substring match and falls back to "any window owned
- * by the pid" if no title matches — so an unknown key returns `undefined`
- * and the existing Phase 5 fallback path (D-15) preserves behavior.
+ * This module maps the BrowserRow preset (or executable-path basename)
+ * to the localized window-title substring Chromium uses for its own
+ * top-level frames on macOS. `find_window_by_pid` does a case-insensitive
+ * substring match and falls back to "any window owned by the pid" if no
+ * title matches — so an unknown key returns `undefined` and the existing
+ * Phase 5 fallback path (D-15) preserves behavior.
+ *
+ * Backlog #9: the preset table itself is no longer hand-maintained here.
+ * It is sourced from `@storycapture/shared-types` (canonical
+ * `packages/shared-types/browser-presets.json`), the same JSON the Rust
+ * side reads at build time. This module is now a thin adapter that
+ * preserves the public API (BROWSER_TITLE_HINTS, titleHintFor,
+ * redactTitleHint) so existing callers and tests keep working.
  *
  * T-06-15 mitigation: callers logging the resolved hint MUST truncate to
  * 40 chars at most. The hints themselves are short (<=25 chars) but the
  * field is user-controllable through BrowserRow's path entry.
  */
+import { BROWSER_PRESETS } from "@storycapture/shared-types";
 
 /**
- * Canonical preset-key → title-hint map. Keys intentionally use the
- * lowercase tokens `BrowserRow`'s preset labels (Plan 06-02) lowercase-map
- * to — keeping a single source of truth.
+ * Canonical preset-key → title-hint map. Preserved for back-compat with
+ * callers/tests that index the map directly; new code should call
+ * `titleHintFor` instead (which also handles the exec-path fallback).
  */
-export const BROWSER_TITLE_HINTS: Readonly<Record<string, string>> = {
-  chromium: "Chromium",
-  chrome: "Google Chrome",
-  "chrome-beta": "Google Chrome Beta",
-  "chrome-dev": "Google Chrome Dev",
-  "chrome-canary": "Google Chrome Canary",
-  msedge: "Microsoft Edge",
-  "msedge-beta": "Microsoft Edge Beta",
-  "msedge-dev": "Microsoft Edge Dev",
-  "msedge-canary": "Microsoft Edge Canary",
-  brave: "Brave Browser",
-  arc: "Arc",
-};
+export const BROWSER_TITLE_HINTS: Readonly<Record<string, string>> =
+  Object.fromEntries(BROWSER_PRESETS.map((p) => [p.id, p.title]));
 
 /**
  * Safe lookup. Returns `undefined` when:
@@ -52,37 +49,28 @@ export const BROWSER_TITLE_HINTS: Readonly<Record<string, string>> = {
  *
  * Accepts both raw preset keys ("msedge") and exec paths
  * ("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge").
- * The path branch matches on filename basename fragments, mirroring
- * `isChromiumFamily` (features/settings/browser-presets.ts).
+ * The path branch matches on filename basename fragments, iterating
+ * `BROWSER_PRESETS` in declared order (specific-first: Canary/Beta/Dev
+ * before the generic parent) — identical iteration strategy to the
+ * Rust side so both platforms agree on the resolved hint.
  */
 export function titleHintFor(
   preset: string | null | undefined,
 ): string | undefined {
   if (!preset) return undefined;
   const lower = preset.toLowerCase();
-  const direct = BROWSER_TITLE_HINTS[lower];
-  if (direct) return direct;
 
-  // Path heuristic: take the filename basename of the exec path (macOS
-  // app-wrapper: "/Applications/Foo.app/Contents/MacOS/Foo"). Order
-  // matters — canary before chrome, beta before chrome, edge before
-  // chrome (because Edge binaries don't contain "chrome").
+  // Direct preset-id lookup.
+  const direct = BROWSER_PRESETS.find((p) => p.id === lower);
+  if (direct) return direct.title;
+
+  // Exec-path basename heuristic. JSON order is specific-first; the first
+  // entry whose basename fragment appears in the basename wins.
   const basename = lower.split(/[\/\\]/).pop() ?? "";
   if (!basename) return undefined;
-  if (basename.includes("chrome canary")) return BROWSER_TITLE_HINTS["chrome-canary"];
-  if (basename.includes("chrome beta")) return BROWSER_TITLE_HINTS["chrome-beta"];
-  if (basename.includes("chrome dev")) return BROWSER_TITLE_HINTS["chrome-dev"];
-  if (basename.includes("microsoft edge canary"))
-    return BROWSER_TITLE_HINTS["msedge-canary"];
-  if (basename.includes("microsoft edge beta"))
-    return BROWSER_TITLE_HINTS["msedge-beta"];
-  if (basename.includes("microsoft edge dev"))
-    return BROWSER_TITLE_HINTS["msedge-dev"];
-  if (basename.includes("microsoft edge")) return BROWSER_TITLE_HINTS["msedge"];
-  if (basename.includes("brave")) return BROWSER_TITLE_HINTS["brave"];
-  if (basename.includes("arc")) return BROWSER_TITLE_HINTS["arc"];
-  if (basename.includes("google chrome")) return BROWSER_TITLE_HINTS["chrome"];
-  if (basename.includes("chromium")) return BROWSER_TITLE_HINTS["chromium"];
+  for (const p of BROWSER_PRESETS) {
+    if (p.basenames.some((b) => basename.includes(b))) return p.title;
+  }
   return undefined;
 }
 
