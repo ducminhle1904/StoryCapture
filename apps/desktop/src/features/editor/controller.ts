@@ -18,6 +18,10 @@
 import type { EditorView } from "@codemirror/view";
 
 let currentView: EditorView | null = null;
+// Plan 07-04c — the on-disk path of the story currently edited, used by
+// `picker_stamp_step_id` to locate the sibling `.story.targets.json`.
+// Null when the editor is showing unsaved / in-memory content.
+let currentStoryPath: string | null = null;
 
 export const editorController = {
   /** Register the active view. Called by StoryEditor on mount. */
@@ -28,19 +32,33 @@ export const editorController = {
   clearView() {
     currentView = null;
   },
+  /** Plan 07-04c — register the absolute path of the open `.story` file. */
+  setStoryPath(path: string | null) {
+    currentStoryPath = path;
+  },
+  /** Plan 07-04c — read the currently open `.story` path (may be null). */
+  getStoryPath(): string | null {
+    return currentStoryPath;
+  },
   /** True iff a view is registered. */
   isReady(): boolean {
     return currentView !== null;
   },
   /**
    * Insert `text` at the current cursor (snap to line-end if mid-line).
-   * Single dispatch — single undo entry. Returns `{ ok: false, reason: "no-view" }`
-   * without throwing when no view is registered (e.g. user invoked the
-   * picker before the editor mounted).
+   * Single dispatch — single undo entry.
+   *
+   * Plan 07-04c: on success returns `{ ok: true, lineNumber }` where
+   * `lineNumber` is 1-indexed and identifies the line the inserted DSL
+   * now lives on (i.e. the line of the first character of the inserted
+   * text, NOT the snap-origin). Callers use this to invoke
+   * `picker_stamp_step_id` so the UUIDv7 is stamped on the correct row.
    */
   insertAtCursor(
     text: string,
-  ): { ok: true } | { ok: false; reason: "no-view" } {
+  ):
+    | { ok: true; lineNumber: number }
+    | { ok: false; reason: "no-view" } {
     const v = currentView;
     if (!v) return { ok: false, reason: "no-view" };
 
@@ -55,7 +73,15 @@ export const editorController = {
       userEvent: "input.pick",
     });
     v.focus();
-    return { ok: true };
+    // After insertion, the inserted DSL's first character sits at `from`
+    // on the NEW document. `lineAt(from)` now points at the inserted row.
+    // If `from` was at the end of a pre-existing line (common case — we
+    // snap to line-end), the insert begins on a fresh line when the
+    // previous document had no trailing newline; otherwise it replaces
+    // the next line's leading boundary. Either way, lineAt(from) names
+    // the row where the new text begins.
+    const insertedLine = v.state.doc.lineAt(from).number;
+    return { ok: true, lineNumber: insertedLine };
   },
 };
 

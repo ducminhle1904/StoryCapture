@@ -51,6 +51,8 @@ pub fn builder() -> Builder<Wry> {
             picker::picker_start,
             picker::picker_cancel,
             picker::picker_is_active,
+            // Plan 07-04c — stamp UUIDv7 on first pick + seed targets sidecar.
+            picker::picker_stamp_step_id,
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
             // Phase 6 plan 01 — mic audio enumeration.

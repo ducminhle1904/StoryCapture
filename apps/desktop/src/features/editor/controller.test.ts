@@ -60,7 +60,10 @@ describe("editorController", () => {
     view.dispatch({ selection: { anchor: 0 } });
 
     const r = editorController.insertAtCursor("X");
-    expect(r).toEqual({ ok: true });
+    // Plan 07-04c — lineNumber is now returned so `pickerStampStepId`
+    // can stamp the UUIDv7 on the correct row; line 1 is where the
+    // snap-to-end-of-line insertion lands.
+    expect(r).toEqual({ ok: true, lineNumber: 1 });
     // Snapped to end of line 1 (offset 3), then "X" inserted.
     expect(view.state.doc.toString()).toBe("abcX\ndef");
     // Cursor lands at from + text.length = 3 + 1 = 4.

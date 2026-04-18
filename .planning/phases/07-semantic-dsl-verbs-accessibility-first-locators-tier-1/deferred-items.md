@@ -32,3 +32,18 @@ Confirmed via `git stash` test — these fail on HEAD before 07-04a's changes:
 Out of scope for 07-04a (hover-preview slice). Recommend a dedicated fix
 plan; these tests touch unrelated subsystems (settings keychain UI +
 NL-mode chat).
+
+## 07-04c — deferred pre-existing test failures
+
+The following 7 vitest failures are pre-existing on the 07-04c base
+(commit 8e45fd6, Wave 5 merge) and are NOT touched by this plan. Logged
+here so the verifier does not mistake them for regressions:
+
+- `src/features/nl-mode/ChatPanel.test.tsx > renders empty state heading…` — unrelated component
+- `src/features/settings/AccountsPage.test.tsx` — 6 failures, Vietnamese i18n regressions in `Them key` / `Kiem tra ket noi` strings
+
+Self-healing + picker stamp tests for plan 07-04c all pass:
+- `src/features/editor/controller.test.ts` — 5/5 pass
+- `src/features/recorder/pick-element-button.test.tsx` — 6/6 pass
+- `cargo test -p automation --test self_healing` — 2 pass, 1 ignored (live)
+- `cargo test -p automation --lib targets_store_tests` — 7/7 pass

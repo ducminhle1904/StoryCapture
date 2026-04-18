@@ -357,6 +357,27 @@ impl Command {
         }
     }
 
+    /// Set the trailing `# @id=<uuidv7>` step id on this command (plan
+    /// 07-04c). Used by `picker_stamp_step_id` after a first pick to
+    /// stamp a fresh UUIDv7 onto the source line before re-formatting.
+    pub fn set_step_id(&mut self, id: Option<Uuid>) {
+        match self {
+            Command::Navigate { step_id, .. }
+            | Command::Click { step_id, .. }
+            | Command::Type { step_id, .. }
+            | Command::Scroll { step_id, .. }
+            | Command::Hover { step_id, .. }
+            | Command::Drag { step_id, .. }
+            | Command::Select { step_id, .. }
+            | Command::Upload { step_id, .. }
+            | Command::Wait { step_id, .. }
+            | Command::WaitFor { step_id, .. }
+            | Command::Assert { step_id, .. }
+            | Command::Screenshot { step_id, .. }
+            | Command::Pause { step_id, .. } => *step_id = id,
+        }
+    }
+
     /// Verb string as written in source.
     pub fn verb(&self) -> &'static str {
         match self {

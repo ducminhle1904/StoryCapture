@@ -198,15 +198,21 @@ pub enum CommandDto {
 impl From<PCommand> for CommandDto {
     fn from(c: PCommand) -> Self {
         match c {
-            PCommand::Navigate { url, span } => CommandDto::Navigate {
+            // NOTE: Plan 07-04b added `step_id: Option<Uuid>` to every
+            // Command variant. The TS CommandDto mirror does not carry
+            // step_id (the renderer reads it via the story_parser AST
+            // directly, not through the parse command DTO). We ignore
+            // it here with `..`; 07-04c routes step ids via the picker
+            // + targets store, not this DTO.
+            PCommand::Navigate { url, span, .. } => CommandDto::Navigate {
                 url,
                 span: span.into(),
             },
-            PCommand::Click { target, span } => CommandDto::Click {
+            PCommand::Click { target, span, .. } => CommandDto::Click {
                 target: target.into(),
                 span: span.into(),
             },
-            PCommand::Type { target, text, span } => CommandDto::Type {
+            PCommand::Type { target, text, span, .. } => CommandDto::Type {
                 target: target.into(),
                 text,
                 span: span.into(),
@@ -215,16 +221,17 @@ impl From<PCommand> for CommandDto {
                 direction,
                 amount,
                 span,
+                ..
             } => CommandDto::Scroll {
                 direction: direction.into(),
                 amount,
                 span: span.into(),
             },
-            PCommand::Hover { target, span } => CommandDto::Hover {
+            PCommand::Hover { target, span, .. } => CommandDto::Hover {
                 target: target.into(),
                 span: span.into(),
             },
-            PCommand::Drag { from, to, span } => CommandDto::Drag {
+            PCommand::Drag { from, to, span, .. } => CommandDto::Drag {
                 from: from.into(),
                 to: to.into(),
                 span: span.into(),
@@ -233,17 +240,18 @@ impl From<PCommand> for CommandDto {
                 target,
                 value,
                 span,
+                ..
             } => CommandDto::Select {
                 target: target.into(),
                 value,
                 span: span.into(),
             },
-            PCommand::Upload { target, path, span } => CommandDto::Upload {
+            PCommand::Upload { target, path, span, .. } => CommandDto::Upload {
                 target: target.into(),
                 path,
                 span: span.into(),
             },
-            PCommand::Wait { duration_ms, span } => CommandDto::Wait {
+            PCommand::Wait { duration_ms, span, .. } => CommandDto::Wait {
                 duration_ms,
                 span: span.into(),
             },
@@ -251,20 +259,21 @@ impl From<PCommand> for CommandDto {
                 target,
                 timeout_ms,
                 span,
+                ..
             } => CommandDto::WaitFor {
                 target: target.into(),
                 timeout_ms,
                 span: span.into(),
             },
-            PCommand::Assert { target, span } => CommandDto::Assert {
+            PCommand::Assert { target, span, .. } => CommandDto::Assert {
                 target: target.into(),
                 span: span.into(),
             },
-            PCommand::Screenshot { name, span } => CommandDto::Screenshot {
+            PCommand::Screenshot { name, span, .. } => CommandDto::Screenshot {
                 name,
                 span: span.into(),
             },
-            PCommand::Pause { span } => CommandDto::Pause { span: span.into() },
+            PCommand::Pause { span, .. } => CommandDto::Pause { span: span.into() },
         }
     }
 }

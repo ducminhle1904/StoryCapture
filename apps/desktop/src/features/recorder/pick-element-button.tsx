@@ -29,6 +29,7 @@ import {
   listenPickerHoverPreview,
   pickElement,
   pickElementCancel,
+  pickerStampStepId,
   type PickHoverPayload,
 } from "@/ipc/picker";
 import { useRecorderStore } from "@/state/recorder";
@@ -117,6 +118,28 @@ export function PickElementButton() {
         const res = editorController.insertAtCursor(r.emitted + "\n");
         if (res.ok) {
           toast.success(`Inserted: ${r.emitted}`);
+          // Plan 07-04c — fire-and-forget: stamp a UUIDv7 on the newly
+          // inserted line AND seed the sibling `.story.targets.json`
+          // with the pick's primary + fallback locators. Skipped when
+          // the editor hasn't been told the on-disk path of the open
+          // story (unsaved / in-memory buffers have nowhere to stamp).
+          // Failure toasts but never blocks the user — the insert has
+          // already landed.
+          const storyPath = editorController.getStoryPath();
+          if (storyPath) {
+            pickerStampStepId({
+              storyPath,
+              lineOffset: res.lineNumber,
+              primary: { kind: r.locator.kind, value: r.locator.value },
+              fallbacks: r.candidates.map((c) => ({
+                kind: c.kind,
+                value: c.value,
+              })),
+            }).catch((e) => {
+              const msg = e instanceof Error ? e.message : String(e);
+              toast.error(`Stamp failed: ${msg}`);
+            });
+          }
         } else {
           toast.error("Editor not ready — focus the editor first");
         }
