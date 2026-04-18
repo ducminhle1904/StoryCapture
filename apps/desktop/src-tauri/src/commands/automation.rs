@@ -40,11 +40,17 @@ pub async fn launch_automation(
     project_folder: String,
     on_event: Channel<AutomationEvent>,
     chrome_hiding: Option<bool>,
+    // Optional recording session to tear down when the story ends. When set,
+    // the matching recording is stopped at the end of the event loop —
+    // normal completion, error, or channel close — so the encoder sidecar
+    // finalizes cleanly without depending on the UI.
+    recording_session_id: Option<String>,
 ) -> Result<(), AppError> {
     tracing::info!(
         target: "storycapture::automation",
         story_bytes = story_source.len(),
         project_folder = %project_folder,
+        recording_session_id = ?recording_session_id,
         "launch_automation invoked"
     );
     // Parse once and reuse the AST.
@@ -273,6 +279,27 @@ pub async fn launch_automation(
     tracing::info!(target: "storycapture::automation", "Executor channel closed (story ended)");
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
+
+    // Auto-stop the attached recording so the encoder sidecar doesn't wait
+    // on the UI to call stop_recording. Uses the same RecorderHandle shape
+    // the SessionActor will consume (kept symmetric for Phase 7).
+    if let Some(sid) = recording_session_id {
+        use automation::RecorderHandle as _;
+        let handle = crate::commands::encode::TauriRecorderHandle::new(sid.clone());
+        match handle.stop().await {
+            Ok(()) => tracing::info!(
+                target: "storycapture::automation",
+                session = %sid,
+                "auto-stopped attached recording at story end"
+            ),
+            Err(e) => tracing::warn!(
+                target: "storycapture::automation",
+                session = %sid,
+                error = %e,
+                "auto-stop of attached recording failed"
+            ),
+        }
+    }
 
     Ok(())
 }

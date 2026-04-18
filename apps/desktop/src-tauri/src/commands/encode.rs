@@ -598,13 +598,41 @@ pub async fn stop_recording(
     on_event: Channel<RecordingEvent>,
 ) -> Result<EncodeResultDto, AppError> {
     tracing::info!(target: "storycapture::recording", "stop_recording requested: session={}", session.0);
+    match stop_recording_inner(&session.0).await {
+        Ok(dto) => {
+            let _ = on_event.send(RecordingEvent::Completed { result: dto.clone() });
+            Ok(dto)
+        }
+        Err(e) => {
+            if let AppError::Encoder(msg) = &e {
+                let _ = on_event.send(RecordingEvent::Failed {
+                    message: msg.clone(),
+                });
+            }
+            Err(e)
+        }
+    }
+}
+
+/// Core stop logic shared by the `stop_recording` Tauri command and the
+/// [`TauriRecorderHandle`] used by the DSL session to auto-stop a recording
+/// when the story ends. Does not emit UI events — callers decide whether
+/// and how to notify the renderer.
+///
+/// Returns `NotFound` if the session has already been removed from the
+/// registry (idempotent: a second stop is not an error surface).
+pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResultDto, AppError> {
     let handle = registry()
         .sessions
         .lock()
-        .remove(&session.0)
+        .remove(session_id)
         .ok_or_else(|| {
-            tracing::error!(target: "storycapture::recording", "stop_recording: session {} not in registry", session.0);
-            AppError::NotFound(format!("recording session {}", session.0))
+            tracing::debug!(
+                target: "storycapture::recording",
+                "stop_recording_inner: session {} not in registry (already stopped?)",
+                session_id
+            );
+            AppError::NotFound(format!("recording session {session_id}"))
         })?;
 
     // Drop the audio stream before waiting on the encoder.
@@ -623,21 +651,48 @@ pub async fn stop_recording(
     }
     tracing::info!(target: "storycapture::recording", "stop_recording: capture stopped, waiting on encoder flush");
 
-    let result = handle.encode_join.await
+    let result = handle
+        .encode_join
+        .await
         .map_err(|e| {
             tracing::error!(target: "storycapture::recording", "encoder join error: {}", e);
             AppError::Encoder(format!("encoder join: {e}"))
         })?
         .map_err(|e| {
             tracing::error!(target: "storycapture::recording", "encoder returned error: {}", e);
-            let _ = on_event.send(RecordingEvent::Failed { message: e.to_string() });
             AppError::Encoder(e.to_string())
         })?;
     tracing::info!(target: "storycapture::recording", "stop_recording: encoder finalized output={:?}", result.output_path);
 
-    let dto: EncodeResultDto = result.into();
-    let _ = on_event.send(RecordingEvent::Completed { result: dto.clone() });
-    Ok(dto)
+    Ok(result.into())
+}
+
+/// [`automation::RecorderHandle`] impl backed by the recording registry.
+///
+/// Held by a DSL `SessionActor` (or the auto-stop branch of
+/// `launch_automation`) so that when the story ends — normally, on error,
+/// or on abort — the attached recording is torn down cleanly instead of
+/// leaving the sidecar running.
+pub struct TauriRecorderHandle {
+    session_id: String,
+}
+
+impl TauriRecorderHandle {
+    pub fn new(session_id: String) -> Self {
+        Self { session_id }
+    }
+}
+
+#[async_trait::async_trait]
+impl automation::RecorderHandle for TauriRecorderHandle {
+    async fn stop(&self) -> Result<(), String> {
+        match stop_recording_inner(&self.session_id).await {
+            Ok(_) => Ok(()),
+            // Already stopped (e.g. UI beat us to it) — treat as success.
+            Err(AppError::NotFound(_)) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
 }
 
 #[allow(dead_code)]

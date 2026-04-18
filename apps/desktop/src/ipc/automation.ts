@@ -27,6 +27,13 @@ export interface LaunchAutomationArgs {
    * D-10). Non-sticky: the recorder resets the backing toggle each run.
    */
   chromeHiding?: boolean;
+  /**
+   * Attach an active recording session to the DSL run. When set, the host
+   * auto-stops the matching recording at story end (normal, error, or
+   * channel close), so the encoder sidecar finalizes cleanly without the
+   * UI having to call `stopRecording` itself.
+   */
+  recordingSessionId?: string;
 }
 
 export async function launchAutomation(
@@ -47,5 +54,6 @@ export async function launchAutomation(
     projectFolder: args.projectFolder,
     onEvent: channel,
     chromeHiding: args.chromeHiding ?? false,
+    recordingSessionId: args.recordingSessionId ?? null,
   });
 }
