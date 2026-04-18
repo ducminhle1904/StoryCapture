@@ -226,7 +226,9 @@ pub async fn capture_thumbnail(
     .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))?
 }
 
-/// BGRA → RGBA swap + resize + PNG encode. Pure CPU.
+/// BGRA → RGBA swap, then delegate to the shared resize+encode tail
+/// (backlog #6). The swap loop cannot be elided today —
+/// `image::codecs::png::PngEncoder` does not accept `ExtendedColorType::Bgra8`.
 fn encode_bgra_to_png(
     bgra: &[u8],
     src_w: u32,
@@ -244,44 +246,12 @@ fn encode_bgra_to_png(
             src_h
         )));
     }
-    // Swap BGRA → RGBA in-place on a copy.
+    // Swap BGRA → RGBA into a fresh owned buffer (PngEncoder rejects BGRA).
     let mut rgba = Vec::with_capacity(expected);
     for px in bgra[..expected].chunks_exact(4) {
         rgba.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
     }
-    let img_buf: image::RgbaImage =
-        image::ImageBuffer::from_raw(src_w, src_h, rgba).ok_or_else(|| {
-            CaptureError::Native("image::ImageBuffer::from_raw returned None".into())
-        })?;
-
-    // Downscale — never upscale.
-    let scale_x = if src_w > 0 { max_w as f64 / src_w as f64 } else { 1.0 };
-    let scale_y = if src_h > 0 { max_h as f64 / src_h as f64 } else { 1.0 };
-    let scale = scale_x.min(scale_y).min(1.0);
-    let out_w = ((src_w as f64 * scale).max(1.0).round() as u32).max(1);
-    let out_h = ((src_h as f64 * scale).max(1.0).round() as u32).max(1);
-    let resized = if scale >= 0.999 {
-        img_buf
-    } else {
-        image::imageops::resize(
-            &img_buf,
-            out_w,
-            out_h,
-            image::imageops::FilterType::CatmullRom,
-        )
-    };
-
-    let mut out = Vec::with_capacity((out_w as usize) * (out_h as usize));
-    let encoder = image::codecs::png::PngEncoder::new(&mut out);
-    image::ImageEncoder::write_image(
-        encoder,
-        resized.as_raw(),
-        resized.width(),
-        resized.height(),
-        image::ExtendedColorType::Rgba8,
-    )
-    .map_err(|e| CaptureError::Native(format!("PNG encode: {e}")))?;
-    Ok(out)
+    crate::thumbnail::encode_rgba_to_png(rgba, src_w, src_h, max_w, max_h)
 }
 
 #[cfg(test)]

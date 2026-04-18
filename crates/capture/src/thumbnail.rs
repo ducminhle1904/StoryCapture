@@ -17,6 +17,77 @@
 use crate::error::CaptureError;
 use crate::target::CaptureTarget;
 
+/// Shared PNG-encode tail for thumbnail paths (backlog #6).
+///
+/// Takes a row-major RGBA buffer and bounds `max_w × max_h`, returns a
+/// PNG byte stream. Downscales preserving aspect ratio via `CatmullRom`
+/// when the source exceeds the bounds; passes through untouched when the
+/// source already fits (macOS asks SCK to downscale server-side, so its
+/// caller passes `max = src` to skip the resize).
+///
+/// Callers handle any format-specific prologue (e.g. BGRA→RGBA swap on
+/// Windows) before calling in.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) fn encode_rgba_to_png(
+    rgba: Vec<u8>,
+    src_w: u32,
+    src_h: u32,
+    max_w: u32,
+    max_h: u32,
+) -> Result<Vec<u8>, CaptureError> {
+    let expected = (src_w as usize) * (src_h as usize) * 4;
+    if rgba.len() != expected {
+        return Err(CaptureError::Native(format!(
+            "RGBA buffer length {} != expected {} for {}×{}",
+            rgba.len(),
+            expected,
+            src_w,
+            src_h
+        )));
+    }
+    let img_buf: image::RgbaImage =
+        image::ImageBuffer::from_raw(src_w, src_h, rgba).ok_or_else(|| {
+            CaptureError::Native("image::ImageBuffer::from_raw returned None".into())
+        })?;
+
+    // Downscale — never upscale.
+    let scale_x = if src_w > 0 {
+        max_w as f64 / src_w as f64
+    } else {
+        1.0
+    };
+    let scale_y = if src_h > 0 {
+        max_h as f64 / src_h as f64
+    } else {
+        1.0
+    };
+    let scale = scale_x.min(scale_y).min(1.0);
+    let out_w = ((src_w as f64 * scale).max(1.0).round() as u32).max(1);
+    let out_h = ((src_h as f64 * scale).max(1.0).round() as u32).max(1);
+    let resized = if scale >= 0.999 {
+        img_buf
+    } else {
+        image::imageops::resize(
+            &img_buf,
+            out_w,
+            out_h,
+            image::imageops::FilterType::CatmullRom,
+        )
+    };
+
+    let mut out = Vec::with_capacity((out_w as usize) * (out_h as usize));
+    let encoder = image::codecs::png::PngEncoder::new(&mut out);
+    image::ImageEncoder::write_image(
+        encoder,
+        resized.as_raw(),
+        resized.width(),
+        resized.height(),
+        image::ExtendedColorType::Rgba8,
+    )
+    .map_err(|e| CaptureError::Native(format!("PNG encode: {e}")))?;
+    Ok(out)
+}
+
 /// Default thumbnail bounds matching the recorder UI's fixed frame.
 pub const DEFAULT_MAX_WIDTH: u32 = 320;
 pub const DEFAULT_MAX_HEIGHT: u32 = 200;

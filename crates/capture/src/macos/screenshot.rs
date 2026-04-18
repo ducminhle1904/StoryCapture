@@ -112,33 +112,10 @@ fn encode_cg_image_to_png(image: &CGImage, out_w: u32, out_h: u32) -> Result<Vec
     let rgba = image
         .rgba_data()
         .map_err(|e| CaptureError::Native(format!("CGImage::rgba_data: {e}")))?;
-    let expected_len = (w as usize) * (h as usize) * 4;
-    if rgba.len() != expected_len {
-        return Err(CaptureError::Native(format!(
-            "CGImage rgba_data length {} != expected {} for {}×{}",
-            rgba.len(),
-            expected_len,
-            w,
-            h
-        )));
-    }
-
-    let img_buf: image::RgbaImage =
-        image::ImageBuffer::from_raw(w, h, rgba).ok_or_else(|| {
-            CaptureError::Native("image::ImageBuffer::from_raw returned None".into())
-        })?;
-
-    let mut out = Vec::with_capacity(expected_len / 8);
-    let encoder = image::codecs::png::PngEncoder::new(&mut out);
-    image::ImageEncoder::write_image(
-        encoder,
-        img_buf.as_raw(),
-        w,
-        h,
-        image::ExtendedColorType::Rgba8,
-    )
-    .map_err(|e| CaptureError::Native(format!("PNG encode: {e}")))?;
-    Ok(out)
+    // SCK already downscaled server-side (we passed out_w/out_h into
+    // SCStreamConfiguration), so pass `max = src` to skip the resize
+    // pass inside the shared helper (backlog #6).
+    crate::thumbnail::encode_rgba_to_png(rgba, w, h, w, h)
 }
 
 #[cfg(test)]
