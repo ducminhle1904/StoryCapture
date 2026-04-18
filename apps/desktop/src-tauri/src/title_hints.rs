@@ -14,43 +14,23 @@
 //!
 //! T-06-15 mitigation: `redact_title_hint` truncates long hints before
 //! they hit tracing fields; callers MUST route through it.
+//!
+//! Backlog #9: the preset data (ids, titles, basename fragments) is no
+//! longer hand-maintained here. `build.rs` reads
+//! `packages/shared-types/browser-presets.json` and emits a
+//! `BROWSER_PRESETS: &[PresetEntry]` slice into `$OUT_DIR/browser_presets.rs`
+//! which is `include!`d below. Edit the JSON to add/rename presets.
 
-/// Host-side mirror of `BROWSER_TITLE_HINTS` (features/recorder/title-hints.ts).
-/// Keys are lowercase preset tokens; values are the title substrings.
-const PRESET_TOKENS: &[(&str, &str)] = &[
-    ("chromium", "Chromium"),
-    ("chrome-canary", "Google Chrome Canary"),
-    ("chrome-beta", "Google Chrome Beta"),
-    ("chrome-dev", "Google Chrome Dev"),
-    ("chrome", "Google Chrome"),
-    ("msedge-canary", "Microsoft Edge Canary"),
-    ("msedge-beta", "Microsoft Edge Beta"),
-    ("msedge-dev", "Microsoft Edge Dev"),
-    ("msedge", "Microsoft Edge"),
-    ("brave", "Brave Browser"),
-    ("arc", "Arc"),
-];
-
-/// Path-basename fragments ordered most-specific first. Mirrors the TS
-/// `titleHintFor` fallback branch: "chrome canary" must match before
-/// "chrome"; "microsoft edge" matches before the Chrome branch; Brave
-/// binaries don't contain "chrome" so they're an independent check.
-const PATH_FRAGMENTS: &[(&str, &str)] = &[
-    ("chrome canary", "Google Chrome Canary"),
-    ("chrome beta", "Google Chrome Beta"),
-    ("chrome dev", "Google Chrome Dev"),
-    ("microsoft edge canary", "Microsoft Edge Canary"),
-    ("microsoft edge beta", "Microsoft Edge Beta"),
-    ("microsoft edge dev", "Microsoft Edge Dev"),
-    ("microsoft edge", "Microsoft Edge"),
-    ("brave", "Brave Browser"),
-    ("arc", "Arc"),
-    ("google chrome", "Google Chrome"),
-    ("chromium", "Chromium"),
-];
+include!(concat!(env!("OUT_DIR"), "/browser_presets.rs"));
 
 /// Safe lookup. Returns `Some(hint)` on a recognized preset/exec-path;
 /// `None` otherwise. Never panics.
+///
+/// Iteration uses the generated slice's order, which mirrors JSON order
+/// (specific-first: `chrome-canary` before `chrome`, `msedge-canary`
+/// before `msedge`). Adding a variant in the wrong position would let
+/// the parent preset's basename fragment shadow the variant — the JSON
+/// documents this invariant in its `_comment`.
 pub fn title_hint_for(preset: Option<&str>) -> Option<String> {
     let input = preset?.trim();
     if input.is_empty() {
@@ -58,11 +38,9 @@ pub fn title_hint_for(preset: Option<&str>) -> Option<String> {
     }
     let lower = input.to_lowercase();
 
-    // Direct preset-token lookup.
-    for (tok, hint) in PRESET_TOKENS {
-        if &lower == tok {
-            return Some((*hint).to_string());
-        }
+    // Direct preset-id lookup.
+    if let Some(p) = BROWSER_PRESETS.iter().find(|p| p.id == lower) {
+        return Some(p.title.to_string());
     }
 
     // Exec-path basename heuristic.
@@ -73,9 +51,9 @@ pub fn title_hint_for(preset: Option<&str>) -> Option<String> {
     if basename.is_empty() {
         return None;
     }
-    for (frag, hint) in PATH_FRAGMENTS {
-        if basename.contains(frag) {
-            return Some((*hint).to_string());
+    for p in BROWSER_PRESETS {
+        if p.basenames.iter().any(|b| basename.contains(b)) {
+            return Some(p.title.to_string());
         }
     }
     None
@@ -215,5 +193,37 @@ mod tests {
     #[test]
     fn redact_none_placeholder() {
         assert_eq!(redact_title_hint(None), "<none>");
+    }
+
+    /// Backlog #9 — codegen sanity: the generated table must contain the
+    /// 11 canonical presets including `msedge-canary` (the variant whose
+    /// absence originally motivated backlog #9). Catches accidental JSON
+    /// edits that drop an entry.
+    #[test]
+    fn codegen_table_contains_canonical_presets() {
+        assert_eq!(BROWSER_PRESETS.len(), 11);
+        let ids: Vec<&str> = BROWSER_PRESETS.iter().map(|p| p.id).collect();
+        for expected in [
+            "chromium",
+            "chrome-canary",
+            "chrome-beta",
+            "chrome-dev",
+            "chrome",
+            "msedge-canary",
+            "msedge-beta",
+            "msedge-dev",
+            "msedge",
+            "brave",
+            "arc",
+        ] {
+            assert!(
+                ids.contains(&expected),
+                "BROWSER_PRESETS missing id {expected}; generated ids = {ids:?}"
+            );
+        }
+        // Specific-first invariant: variants precede their parent preset.
+        let pos = |id: &str| ids.iter().position(|x| *x == id).expect(id);
+        assert!(pos("chrome-canary") < pos("chrome"));
+        assert!(pos("msedge-canary") < pos("msedge"));
     }
 }
