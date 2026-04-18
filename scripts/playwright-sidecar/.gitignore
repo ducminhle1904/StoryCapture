@@ -2,3 +2,6 @@
 node_modules/
 sea-prep.blob
 server.cjs
+# Plan 07-03a: overlay IIFE is a build artifact (rebuilt by `pretest` and
+# build-sea.mjs Step -1/5).
+picker/overlay/overlay.iife.js

@@ -9,6 +9,8 @@
     "dev": "node server.mjs",
     "install-browser": "playwright install chromium",
     "build:sea": "node build-sea.mjs",
+    "build:overlay": "esbuild picker/overlay/index.ts --bundle --format=iife --platform=browser --target=es2022 --outfile=picker/overlay/overlay.iife.js",
+    "pretest": "esbuild picker/overlay/index.ts --bundle --format=iife --platform=browser --target=es2022 --outfile=picker/overlay/overlay.iife.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

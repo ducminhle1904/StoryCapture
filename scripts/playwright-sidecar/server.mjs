@@ -20,7 +20,37 @@
 // via a JSON-RPC `notification` message.
 
 import { createInterface } from 'node:readline';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+
+// Plan 07-03a: the picker overlay IIFE is built by build-sea.mjs (Step -1/5)
+// into picker/overlay/overlay.iife.js. esbuild's `--loader:.iife.js=text`
+// flag inlines the file contents as a string literal at SEA build time, so
+// the sidecar does NOT read a sibling file at runtime (SEA has no FS access
+// to bundle-relative paths). For dev (`node server.mjs` outside SEA) the
+// catch-block falls back to a plain fs read.
+let OVERLAY_IIFE;
+try {
+  // SEA / esbuild path: `text` loader rewrites this import into the inlined
+  // string literal. Node's ESM loader does not understand this assertion,
+  // so the dev path always lands in the catch.
+  OVERLAY_IIFE = (
+    await import('./picker/overlay/overlay.iife.js', { with: { type: 'text' } })
+  ).default;
+} catch {
+  try {
+    const overlayPath = fileURLToPath(
+      new URL('./picker/overlay/overlay.iife.js', import.meta.url),
+    );
+    OVERLAY_IIFE = readFileSync(overlayPath, 'utf8');
+  } catch {
+    // Last resort: empty IIFE so the sidecar still boots when running tests
+    // that don't need the picker (e.g. browserProcess unit suite). Picker
+    // handlers will degrade — the build pipeline is the source of truth.
+    OVERLAY_IIFE = '';
+  }
+}
 
 let state = {
   browser: null,

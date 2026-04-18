@@ -48,9 +48,21 @@ mkdirSync(outDir, { recursive: true });
 //    to use `module.createRequire()` rooted at the executable's own
 //    directory so it resolves a sibling `node_modules/playwright-core/`.
 const bundlePath = resolve(__dirname, 'server.cjs');
+
+// Plan 07-03a: pre-build the picker overlay TS into a single browser-side
+// IIFE. Output is a sibling file under picker/overlay/overlay.iife.js — the
+// next esbuild step inlines it as a string constant via --loader:.iife.js=text.
+// SEA cannot read sibling files at runtime, so the overlay MUST be embedded.
+console.log('[playwright-sidecar] Step -1/5: bundle overlay IIFE');
+const overlayOut = resolve(__dirname, 'picker', 'overlay', 'overlay.iife.js');
+execSync(
+  `npx --yes esbuild picker/overlay/index.ts --bundle --format=iife --platform=browser --target=es2022 --outfile=${JSON.stringify(overlayOut)}`,
+  { cwd: __dirname, stdio: 'inherit' },
+);
+
 console.log('[playwright-sidecar] Step 0/5: esbuild server.mjs → server.cjs');
 execSync(
-  `npx --yes esbuild server.mjs --bundle --platform=node --format=cjs --external:playwright-core --outfile=server.cjs`,
+  `npx --yes esbuild server.mjs --bundle --platform=node --format=cjs --external:playwright-core --loader:.iife.js=text --outfile=server.cjs`,
   { cwd: __dirname, stdio: 'inherit' },
 );
 
