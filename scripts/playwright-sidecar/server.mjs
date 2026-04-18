@@ -23,6 +23,7 @@ import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { emitDsl } from './picker/generator.mjs';
 
 // Plan 07-03a: the picker overlay IIFE is built by build-sea.mjs (Step -1/5)
 // into picker/overlay/overlay.iife.js. esbuild's `--loader:.iife.js=text`
@@ -67,6 +68,14 @@ let state = {
   // response shape even though we launched locally. Flipped by the
   // `__test_set_remote_browser` verb exercised from vitest.
   fakeRemoteBrowser: false,
+  // Plan 07-03a: in-flight pickElement.start. Holds { resolve, cleanup }
+  // so pickElement.cancel + framenavigated can short-circuit the wait.
+  pickerPending: null,
+  // Plan 07-03a: page-level binding (`__sc_picker_emit`) is exposed once
+  // per page. We track which pages have it so a second pickElement.start
+  // on the same page doesn't re-expose (Playwright throws on duplicate
+  // exposeBinding for the same name).
+  pickerBoundPages: new WeakSet(),
 };
 
 const handlers = {
@@ -117,6 +126,20 @@ const handlers = {
         theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'no-preference',
       acceptDownloads: true,
     });
+    // Plan 07-03a: inject the picker overlay IIFE into every frame of every
+    // page in this context. addInitScript fires before page scripts so
+    // window.__sc_picker is available the moment the user clicks Pick.
+    if (OVERLAY_IIFE && OVERLAY_IIFE.length > 0) {
+      try {
+        await state.context.addInitScript({ content: OVERLAY_IIFE });
+      } catch (e) {
+        // Don't kill launch if overlay injection fails — picker handlers
+        // will surface the error when invoked. Other verbs keep working.
+        process.stderr.write(
+          `[playwright-sidecar] warn: addInitScript(overlay) failed: ${e.message}\n`,
+        );
+      }
+    }
     // Plan 06-02 (RESEARCH Pitfall 6): when `--app=<url>` is in the launch
     // args, Chromium creates an initial app-mode page/window with that URL
     // already loaded. Calling `context.newPage()` here would spawn a
@@ -153,6 +176,8 @@ const handlers = {
       downloadDir: null,
       browserServer: null,
       fakeRemoteBrowser: false,
+      pickerPending: null,
+      pickerBoundPages: new WeakSet(),
     };
     return { ok: true };
   },
@@ -381,6 +406,160 @@ const handlers = {
   // real capture paths ignore it unless a browser is actually attached.
   __test_set_remote_browser: async ({ enabled }) => {
     state.fakeRemoteBrowser = Boolean(enabled);
+    return { ok: true };
+  },
+
+  // Plan 07-03a — element picker.
+  //
+  // CONTRACT: pickElement.start response.emitted is the DSL line to insert at cursor. Drift breaks 07-03b UI flow.
+  //
+  // Activates the in-page overlay (window.__sc_picker.start), waits for ONE
+  // click (or Esc/cancel/navigation/timeout), runs the ranked DSL generator
+  // against the resulting candidate payload, and returns the verified DSL
+  // line as `result.emitted`. Per-frame overlay injection happens at
+  // launch via context.addInitScript(OVERLAY_IIFE).
+  //
+  // Response shapes:
+  //   success:      { emitted, locator: {kind, value}, candidates: [...] }
+  //   user-cancel:  { cancelled: true, reason: "user-cancel" }
+  //   navigation:   { cancelled: true, reason: "navigation" }
+  //   timeout:      { cancelled: true, reason: "timeout" }
+  //   bad URL:      { cancelled: true, reason: "unsupported-url" }
+  'pickElement.start': async ({ timeoutMs = 60000 } = {}) => {
+    if (!state.page) {
+      const err = new Error('browser not launched');
+      err.code = -32000;
+      throw err;
+    }
+    const url = state.page.url() || '';
+    if (/^(chrome|about|view-source):/i.test(url)) {
+      return { cancelled: true, reason: 'unsupported-url' };
+    }
+    if (state.pickerPending) {
+      const err = new Error('picker already active');
+      err.code = -32000;
+      throw err;
+    }
+
+    const page = state.page;
+    return await new Promise((resolveOuter, rejectOuter) => {
+      let timer = null;
+      let framenavListener = null;
+      let settled = false;
+
+      const cleanup = async () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (framenavListener) {
+          try { page.off('framenavigated', framenavListener); } catch {}
+          framenavListener = null;
+        }
+        try { await page.evaluate(() => window.__sc_picker?.stop()); } catch {}
+        state.pickerPending = null;
+      };
+
+      const settle = async (value) => {
+        if (settled) return;
+        settled = true;
+        await cleanup();
+        resolveOuter(value);
+      };
+
+      framenavListener = (frame) => {
+        // Only the main-frame navigation cancels the pick.
+        if (frame !== page.mainFrame()) return;
+        settle({ cancelled: true, reason: 'navigation' });
+      };
+      timer = setTimeout(
+        () => settle({ cancelled: true, reason: 'timeout' }),
+        Math.max(1, Number(timeoutMs) || 60000),
+      );
+
+      state.pickerPending = { settle, cleanup };
+      page.on('framenavigated', framenavListener);
+
+      const exposePromise = state.pickerBoundPages.has(page)
+        ? Promise.resolve()
+        : page
+            .exposeBinding('__sc_picker_emit', async ({ page: _p }, payload) => {
+              if (settled) return;
+              if (payload && payload.__cancel) {
+                await settle({ cancelled: true, reason: 'user-cancel' });
+                return;
+              }
+              try {
+                const result = await emitDsl(page, payload);
+                await settle(result);
+              } catch (e) {
+                await settle({
+                  cancelled: true,
+                  reason: `generator-error: ${e.message || e}`,
+                });
+              }
+            })
+            .then(() => {
+              state.pickerBoundPages.add(page);
+            })
+            .catch(() => {
+              // Already exposed — safe to ignore (e.g. previous start
+              // bound it; the binding is per-page-lifetime).
+              state.pickerBoundPages.add(page);
+            });
+
+      exposePromise
+        .then(() => page.evaluate(() => window.__sc_picker?.start()))
+        .catch(async (e) => {
+          await settle({
+            cancelled: true,
+            reason: `start-error: ${e.message || e}`,
+          });
+        });
+    });
+  },
+
+  'pickElement.cancel': async () => {
+    if (state.pickerPending) {
+      const pending = state.pickerPending;
+      await pending.settle({ cancelled: true, reason: 'user-cancel' });
+    }
+    return { ok: true };
+  },
+
+  'pickElement.isActive': async () => ({ active: !!state.pickerPending }),
+
+  // Plan 07-03a — test-only hooks. The Rust driver never calls these; they
+  // exist so vitest can synthesize click + Escape events deterministically
+  // (real mouse coordination in headless CI is flaky). Guarded by the
+  // `__test_` prefix convention already used by __test_set_remote_browser.
+  __test_simulate_pick: async ({ selector }) => {
+    if (!state.page) {
+      const err = new Error('browser not launched');
+      err.code = -32000;
+      throw err;
+    }
+    await state.page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (!el) throw new Error('no element for selector ' + sel);
+      el.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    }, selector);
+    return { ok: true };
+  },
+
+  __test_simulate_pick_cancel: async () => {
+    if (!state.page) {
+      const err = new Error('browser not launched');
+      err.code = -32000;
+      throw err;
+    }
+    await state.page.evaluate(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
     return { ok: true };
   },
 };
