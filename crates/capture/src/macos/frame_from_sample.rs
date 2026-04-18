@@ -33,6 +33,21 @@ pub fn to_frame(sample: &CMSampleBuffer) -> Option<Frame> {
     } else {
         (pts_cm.value as i128) * 1_000_000_000i128 / (pts_cm.timescale as i128)
     };
+    // One-time diagnostic: confirm SCK CMTime shape so downstream encoders
+    // can trust pts_ns. Fires once per process via Relaxed CAS.
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static LOGGED: AtomicBool = AtomicBool::new(false);
+        if !LOGGED.swap(true, Ordering::Relaxed) {
+            tracing::info!(
+                target: "storycapture::capture",
+                cm_value = pts_cm.value,
+                cm_timescale = pts_cm.timescale,
+                pts_ns = pts_ns as i64,
+                "SCK first frame CMTime"
+            );
+        }
+    }
 
     // Retain the CVPixelBuffer via CFRetain; RAII releases when Frame drops.
     let handle = unsafe { CVPixelBufferHandle::retain(pixel_buffer.as_ptr() as *mut _) }?;

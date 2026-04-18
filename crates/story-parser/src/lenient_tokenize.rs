@@ -295,10 +295,13 @@ fn parse_target_pair(pair: Pair<Rule>) -> RawTarget {
     let inner = pair.into_inner().next();
     match inner {
         Some(p) => match p.as_rule() {
-            Rule::target_text => RawTarget::Text(unquote(first_string_str(p))),
-            Rule::target_selector => RawTarget::Selector(unquote(first_string_str(p))),
-            Rule::target_testid => RawTarget::TestId(unquote(first_string_str(p))),
-            Rule::target_aria => RawTarget::Aria(unquote(first_string_str(p))),
+            // `first_string` descends to the inner `string` pair instead of
+            // returning the outer rule's full text, so prefixes like
+            // "selector", "testid", "aria" are correctly stripped.
+            Rule::target_text => RawTarget::Text(first_string(p)),
+            Rule::target_selector => RawTarget::Selector(first_string(p)),
+            Rule::target_testid => RawTarget::TestId(first_string(p)),
+            Rule::target_aria => RawTarget::Aria(first_string(p)),
             _ => RawTarget::Text(String::new()),
         },
         None => RawTarget::Text(String::new()),

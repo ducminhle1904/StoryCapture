@@ -177,13 +177,16 @@ Plans:
 **Goal:** Make the StoryCapture DSL authorable by non-developers. Tier 1 promotes accessibility-first locators (`click button "Save"`, `fill field "Email" with "..."`) into first-class DSL syntax that compiles to Playwright `getByRole`/`getByLabel`/`getByText`. Tier 2 adds a "Pick element" button that drives an in-browser overlay picker to emit the best Tier 1 DSL line at the editor cursor, with an MVP (primary locator) shipping first and a robustness plan (ranked fallback persistence + self-healing) landing after.
 **Requirements**: PHASE-7.1, PHASE-7.2, PHASE-7.3, PHASE-7.4, PHASE-7.5
 **Depends on:** Phase 5
-**Plans:** 4 plans
+**Plans:** 7 plans
 
 Plans:
 - [ ] 07-01-PLAN.md — Grammar + AST: role-qualified `target_role`, `target_field`, `target_text_kw` rules; `SelectorOrText::{Role,Label,TextExact}` variants; `AriaRole` enum; `cmd_fill` sugar desugaring to `Type`; did-you-mean role suggestions; backwards compat tests
 - [ ] 07-02-PLAN.md — SmartSelector + sidecar + driver marshalling: `SelectorStrategy::{Role,Label,TextExact}` short-circuits; sidecar `locate()` / `targetToLocator()` branches; `playwright_driver::target_to_json()` coverage for the three new variants; E2E fixture tests
-- [ ] 07-03-PLAN.md — Tier 2 MVP: "Pick element" button + overlay bundle (esbuild IIFE embedded in SEA) + `pickElement.start/cancel/isActive` sidecar methods + ranked generator (testid → role+name → label → text → css) + `editorController` singleton + CodeMirror atomic insertion + Esc-to-cancel banner + vitest + jsdom accessible-name matrix
-- [ ] 07-04-PLAN.md — Tier 2 robustness: JSON-RPC notification plumbing (`id: Option<u64>`) + `pickElement.hoverPreview` streaming + `.story.targets.json` schema + parser `# @id=<uuidv7>` trailing-comment round-trip + minimal story-parser formatter + executor self-healing fallback promotion
+- [ ] 07-03a-PLAN.md — Tier 2 MVP sidecar: overlay IIFE bundle (esbuild) + SEA embed + ranked generator (testid → role+name → label → text → css) + `pickElement.start/cancel/isActive` handlers + addInitScript injection + URL allowlist + framenavigated auto-cancel + real-Chromium vitest for all 5 ranks; wire contract `result.emitted`
+- [ ] 07-03b-PLAN.md — Tier 2 MVP desktop: Rust `PickElementResponse::Picked { emitted: String, ... }` + driver wrappers + Tauri `picker_*` commands + TS IPC + `editorController` singleton (atomic single-undo insertion) + `PickElementButton` + aria-live banner + desktop vitest proving end-to-end wire-contract flow (PHASE-7.4 final gate)
+- [ ] 07-04a-PLAN.md — Tier 2 robustness notifications: `JsonRpcResponse.id: Option<u64>` + broadcast channel + `subscribe_notifications()` + sidecar `writeNotification` + `pickElement.hoverPreview` + overlay rAF-throttled emit + Tauri event bridge + React preview chip
+- [ ] 07-04b-PLAN.md — Tier 2 robustness parser: additive pest `step_id_comment` rule (Tier 1 regression-guarded) + `LineMeta.step_id: Option<Uuid>` + warn-on-invalid-UUID + minimal `story_parser::formatter::format_story` + 3 parse-format-parse fixpoint tests + insta snapshot
+- [ ] 07-04c-PLAN.md — Tier 2 robustness self-healing: `targets_store.rs` with atomic tmp+rename + executor fallback promotion hook + `picker_stamp_step_id` Tauri command (stamps UUIDv7 on first pick via formatter, seeds targets.json) + integration test (primary-miss → fallback-promoted → targets rewritten, source untouched) + PHASE-7.5 final gate
 
 ---
 *Roadmap created: 2026-04-14*

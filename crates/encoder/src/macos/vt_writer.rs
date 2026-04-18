@@ -173,8 +173,17 @@ fn run_worker(
         let start = Instant::now();
 
         // --- Build AVAssetWriter ---
-        let url_str = NSString::from_str(&format!("file://{}", output_path.display()));
-        let url: Retained<NSURL> = NSURL::fileURLWithPath(&url_str);
+        // AVAssetWriter refuses to create over an existing file (returns
+        // NSFileWriteFileExistsError). Remove any prior artifact at the
+        // exact output path — UUID session ids normally prevent collisions,
+        // but retried sessions or leftover .mp4 files from crashes would
+        // break the writer silently otherwise.
+        let _ = std::fs::remove_file(&output_path);
+        // `fileURLWithPath:` takes a POSIX path, NOT a file:// URL. Passing
+        // a prefixed "file://…" string builds an invalid URL and
+        // startWriting fails with "Cannot create file".
+        let path_str = NSString::from_str(&output_path.display().to_string());
+        let url: Retained<NSURL> = NSURL::fileURLWithPath(&path_str);
 
         let file_type = unsafe { AVFileTypeMPEG4 }
             .ok_or_else(|| EncoderError::Io("AVFileTypeMPEG4 symbol missing".into()))?;
@@ -297,6 +306,16 @@ fn run_worker(
                     // Normalize PTS relative to first frame.
                     let rel_ns = (pts_ns - first_pts_ns).max(0) as i64;
                     let cm_pts = unsafe { CMTime::new(rel_ns, 1_000_000_000) };
+                    if frames_written < 5 {
+                        tracing::info!(
+                            target: "storycapture::encoder",
+                            n = frames_written,
+                            pts_ns = pts_ns as i64,
+                            first_pts_ns = first_pts_ns as i64,
+                            rel_ns,
+                            "vt_writer append"
+                        );
+                    }
 
                     // Backpressure: spin briefly while the input is not
                     // ready. If it's still not ready after a short window,

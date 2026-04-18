@@ -31,7 +31,12 @@ pub async fn wait_actionable(
             _ => false,
         };
 
-        if state.visible && state.in_viewport && !state.animating && stable {
+        // Match Playwright's actionability: visible + animation-stopped +
+        // bbox-stable. We DON'T require in_viewport — Playwright's click()
+        // automatically calls scrollIntoViewIfNeeded, so requiring the
+        // element to already be in-viewport just blocks clicks on
+        // below-the-fold links.
+        if state.visible && !state.animating && stable {
             return Ok(());
         }
 
