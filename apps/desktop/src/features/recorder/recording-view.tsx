@@ -314,15 +314,12 @@ export function RecordingView({
 
   const handleRecord = async () => {
     if (permission !== "granted") return;
-    if (selectedDisplay == null) {
-      toast.error(
-        "Window-target recording (via Start Recording button) is not yet wired to the encoder. Switch the Target to a Display, or run a story to let Playwright-auto capture the Chromium window.",
-      );
+    if (selectedDisplay == null && captureTarget?.kind !== "window_by_pid") {
+      toast.error("Pick a Target before recording.");
       return;
     }
     setStatus("recording");
     startedAtRef.current = Date.now();
-    // Use the actual pixel dimensions from the backend.
     const display = displays.find((d) => {
       const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
       return id === selectedDisplay;
@@ -330,11 +327,52 @@ export function RecordingView({
     const width = display?.width_px ?? 1920;
     const height = display?.height_px ?? 1080;
     try {
-      // Build a display target when no explicit target is selected.
-      const recordingTarget = captureTarget ?? {
+      const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
+      const userPickedDisplay = captureTarget?.kind === "display";
+      const shouldAutoFollow =
+        storyHasBrowser && (captureTarget == null || userPickedDisplay);
+      let recordingTarget: typeof captureTarget = captureTarget ?? {
         kind: "display" as const,
-        display_id: selectedDisplay,
+        display_id: selectedDisplay!,
       };
+      if (shouldAutoFollow) {
+        // Launch Playwright *before* capture so the window exists.
+        launchAutomation({ storySource, projectFolder, chromeHiding }, (evt) =>
+          dispatchAutomation(evt),
+        ).catch((e) => {
+          const msg = formatIpcError(e);
+          toast.error(`Automation failed: ${msg}`);
+          setError(msg);
+        });
+        // Poll for pid up to 5s. `playwright_auto_available` flips true
+        // once the host stash has the Chromium pid.
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          await refreshPlaywrightAvailability();
+          if (
+            useRecorderStore.getState().availableTargets
+              ?.playwright_auto_available
+          ) {
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        const auto =
+          useRecorderStore.getState().availableTargets
+            ?.playwright_auto_available ?? false;
+        if (auto) {
+          recordingTarget = {
+            kind: "window_by_pid" as const,
+            pid: -1,
+            title_hint: "storycapture-playwright",
+          };
+          toast.info("Recording just the browser window");
+        } else {
+          toast.warning(
+            "Playwright didn't launch in time — recording full display instead",
+          );
+        }
+      }
       const id = await startRecording(
         {
           project_folder: projectFolder,
@@ -353,37 +391,19 @@ export function RecordingView({
         typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
       );
 
-      // Run DSL automation in parallel with capture.
-      // eslint-disable-next-line no-console
-      console.log("[recorder] invoking launchAutomation", {
-        storyBytes: storySource.length,
-        projectFolder,
-      });
-      launchAutomation(
-        { storySource, projectFolder, chromeHiding },
-        (evt) => dispatchAutomation(evt),
-      ).catch((e) => {
-        const msg = formatIpcError(e);
-        // eslint-disable-next-line no-console
-        console.error("[recorder] launchAutomation rejected", e);
-        toast.error(`Automation failed: ${msg}`);
-        setError(msg);
-      });
-      // Poll for Playwright availability for up to 10s.
-      (async () => {
-        const deadline = Date.now() + 10_000;
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 800));
-          await refreshPlaywrightAvailability();
-          // Stop polling once the pid lands.
-          if (
-            useRecorderStore.getState().availableTargets
-              ?.playwright_auto_available
-          ) {
-            break;
-          }
-        }
-      })();
+      // Launch DSL automation here ONLY if we didn't already launch it
+      // for auto-follow (`shouldAutoFollow` fires launchAutomation BEFORE
+      // capture starts so the Chromium pid is resolvable). Otherwise, we'd
+      // spawn two Playwright sessions.
+      if (!shouldAutoFollow) {
+        launchAutomation({ storySource, projectFolder, chromeHiding }, (evt) =>
+          dispatchAutomation(evt),
+        ).catch((e) => {
+          const msg = formatIpcError(e);
+          toast.error(`Automation failed: ${msg}`);
+          setError(msg);
+        });
+      }
     } catch (e) {
       setError(formatIpcError(e));
       setStatus("failed");
@@ -608,7 +628,10 @@ export function RecordingView({
 
             <div className="flex items-center gap-2">
               {status === "idle" && (
-                <RecordButton disabled={!canRecordDisplay} onClick={handleRecord} />
+                <RecordButton
+                  disabled={!canRecordDisplay}
+                  onClick={handleRecord}
+                />
               )}
               {(status === "recording" || status === "paused") && (
                 <>
