@@ -44,10 +44,40 @@ impl Executor {
         launch_opts: LaunchOptions,
         control: Option<Arc<RunControl>>,
     ) -> mpsc::Receiver<ExecutorEvent> {
+        Self::run_with_story_path(
+            story,
+            None,
+            primary,
+            fallback,
+            persistence,
+            screenshot_dir,
+            launch_opts,
+            control,
+        )
+    }
+
+    /// Variant of [`Executor::run`] that threads a `.story` source path for
+    /// the self-healing sidecar targets store (plan 07-04c / PHASE-7.5).
+    /// When `story_path` is `Some`, a command whose `meta.step_id` is set
+    /// and whose primary selector fails `wait_actionable` will consult
+    /// `<story_path>.targets.json`, iterate fallbacks, and atomically
+    /// rewrite the sidecar on promotion. Passing `None` disables the
+    /// self-healing hook (legacy callers / headless usage).
+    pub fn run_with_story_path(
+        story: Story,
+        story_path: Option<PathBuf>,
+        primary: Box<dyn BrowserDriver>,
+        fallback: Box<dyn BrowserDriver>,
+        persistence: Option<PersistenceHandle>,
+        screenshot_dir: PathBuf,
+        launch_opts: LaunchOptions,
+        control: Option<Arc<RunControl>>,
+    ) -> mpsc::Receiver<ExecutorEvent> {
         let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
         tokio::spawn(async move {
             let _ = run_story(
                 story,
+                story_path,
                 primary,
                 fallback,
                 persistence,
@@ -76,6 +106,7 @@ impl Executor {
 
 async fn run_story(
     story: Story,
+    story_path: Option<PathBuf>,
     mut primary: Box<dyn BrowserDriver>,
     mut fallback: Box<dyn BrowserDriver>,
     persistence: Option<PersistenceHandle>,
@@ -163,6 +194,7 @@ async fn run_story(
                     &persistence,
                     step_id,
                     control.as_deref(),
+                    story_path.as_deref(),
                 )
                 .await;
 
@@ -243,9 +275,15 @@ async fn run_command(
     persistence: &Option<PersistenceHandle>,
     step_id: Option<uuid::Uuid>,
     control: Option<&RunControl>,
+    story_path: Option<&std::path::Path>,
 ) -> std::result::Result<(), (AutomationError, Vec<AttemptLog>)> {
     let mut attempts: Vec<AttemptLog> = Vec::new();
     checkpoint(control).await;
+
+    // Step_id from the DSL line itself (plan 07-04b `# @id=<uuidv7>`), used
+    // by the self-healing path to key into the targets sidecar. Distinct
+    // from the `step_id` param, which is the storage row id.
+    let cmd_step_id = cmd.step_id();
 
     macro_rules! resolve {
         ($target:expr, $action:expr) => {{
@@ -267,12 +305,41 @@ async fn run_command(
         }};
     }
 
-    macro_rules! wait_actionable {
-        ($sel:expr) => {{
-            if let Err(e) =
-                crate::auto_wait::wait_actionable(driver, &$sel, DEFAULT_ACTION_TIMEOUT_MS).await
+    // Wait-actionable with self-healing fallback promotion (plan 07-04c).
+    //
+    // When the primary selector's wait_actionable times out AND the command
+    // has a stamped step_id AND a `.story.targets.json` sidecar is present
+    // with fallbacks for that step, we iterate the fallbacks. The first one
+    // that resolves + passes wait_actionable is promoted to primary (the old
+    // primary becomes fallbacks[0]) and the sidecar JSON is rewritten
+    // atomically — the `.story` source is NEVER modified.
+    //
+    // The macro returns the (possibly promoted) `ResolvedSelector` to use
+    // for the subsequent action.
+    macro_rules! wait_actionable_or_heal {
+        ($sel:expr, $action:expr) => {{
+            let mut current: crate::driver::ResolvedSelector = $sel;
+            match crate::auto_wait::wait_actionable(driver, &current, DEFAULT_ACTION_TIMEOUT_MS)
+                .await
             {
-                return Err((e, attempts));
+                Ok(()) => current,
+                Err(primary_err) => {
+                    match try_promote_fallback(
+                        driver,
+                        cmd_step_id,
+                        story_path,
+                        $action,
+                    )
+                    .await
+                    {
+                        Ok(Some(promoted)) => {
+                            current = promoted;
+                            current
+                        }
+                        Ok(None) => return Err((primary_err, attempts)),
+                        Err(e) => return Err((e, attempts)),
+                    }
+                }
             }
         }};
     }
@@ -281,12 +348,12 @@ async fn run_command(
         Command::Navigate { url, .. } => driver.goto(url).await,
         Command::Click { target, .. } => {
             let sel = resolve!(target, ActionKind::Click);
-            wait_actionable!(sel);
+            let sel = wait_actionable_or_heal!(sel, ActionKind::Click);
             driver.click(&sel).await
         }
         Command::Type { target, text, .. } => {
             let sel = resolve!(target, ActionKind::Type);
-            wait_actionable!(sel);
+            let sel = wait_actionable_or_heal!(sel, ActionKind::Type);
             driver.type_text(&sel, text).await
         }
         Command::Scroll {
@@ -294,19 +361,26 @@ async fn run_command(
         } => driver.scroll(*direction, *amount).await,
         Command::Hover { target, .. } => {
             let sel = resolve!(target, ActionKind::Hover);
-            wait_actionable!(sel);
+            let sel = wait_actionable_or_heal!(sel, ActionKind::Hover);
             driver.hover(&sel).await
         }
         Command::Drag { from, to, .. } => {
             let sf = resolve!(from, ActionKind::Drag);
             let st = resolve!(to, ActionKind::Drag);
-            wait_actionable!(sf);
-            wait_actionable!(st);
+            // Self-healing for drag targets: only the FROM is healed; the
+            // TO side is a drop target whose identity is paired with the
+            // source, so mutating it in isolation is unsafe.
+            let sf = wait_actionable_or_heal!(sf, ActionKind::Drag);
+            if let Err(e) =
+                crate::auto_wait::wait_actionable(driver, &st, DEFAULT_ACTION_TIMEOUT_MS).await
+            {
+                return Err((e, attempts));
+            }
             driver.drag(&sf, &st).await
         }
         Command::Select { target, value, .. } => {
             let sel = resolve!(target, ActionKind::Select);
-            wait_actionable!(sel);
+            let sel = wait_actionable_or_heal!(sel, ActionKind::Select);
             driver.select_option(&sel, value).await
         }
         Command::Upload { target, path, .. } => {
@@ -327,6 +401,102 @@ async fn run_command(
     };
 
     result.map_err(|e| (e, attempts))
+}
+
+/// Plan 07-04c self-healing hook. On a primary `wait_actionable` miss,
+/// consult `<story_path>.targets.json` for the step's fallbacks, iterate
+/// them in order, and return the first one that resolves + passes
+/// `wait_actionable`. On success rewrites the sidecar JSON atomically —
+/// the old primary is demoted to `fallbacks[0]` and the winning fallback
+/// takes its place.
+///
+/// Returns:
+/// - `Ok(Some(resolved))` — promotion succeeded, caller should use the
+///   returned selector for the action.
+/// - `Ok(None)` — no step_id, no sidecar, or no fallback passed; caller
+///   should surface the original primary-miss error.
+/// - `Err(_)` — sidecar read/write or resolver error (distinct from the
+///   primary-miss, surfaced instead of it).
+///
+/// Commands with `step_id == None` skip the self-healing path entirely —
+/// legacy stories are NEVER touched by the targets store.
+async fn try_promote_fallback(
+    driver: &dyn BrowserDriver,
+    cmd_step_id: Option<uuid::Uuid>,
+    story_path: Option<&std::path::Path>,
+    action: ActionKind,
+) -> Result<Option<crate::driver::ResolvedSelector>> {
+    let Some(step_id) = cmd_step_id else {
+        return Ok(None);
+    };
+    let Some(story_path) = story_path else {
+        return Ok(None);
+    };
+
+    let targets_path = crate::targets_store::targets_path_for(story_path);
+    let mut store = match crate::targets_store::load(&targets_path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                target: "storycapture::automation::self_healing",
+                error = %e,
+                "failed to load targets sidecar; self-healing disabled for this step"
+            );
+            return Ok(None);
+        }
+    };
+
+    let Some(mut step) = store.steps.get(&step_id).cloned() else {
+        return Ok(None);
+    };
+    if step.fallbacks.is_empty() {
+        return Ok(None);
+    }
+
+    for (idx, fallback) in step.fallbacks.clone().into_iter().enumerate() {
+        let target = match crate::targets_store::target_record_to_selector(&fallback) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    target: "storycapture::automation::self_healing",
+                    kind = %fallback.kind,
+                    error = %e,
+                    "skipping malformed fallback record"
+                );
+                continue;
+            }
+        };
+        let resolved = match crate::selector::resolve_via_smart(
+            driver,
+            action,
+            &target,
+            DEFAULT_ACTION_TIMEOUT_MS,
+        )
+        .await
+        {
+            Ok((sel, _)) => sel,
+            Err(_) => continue,
+        };
+        if crate::auto_wait::wait_actionable(driver, &resolved, DEFAULT_ACTION_TIMEOUT_MS)
+            .await
+            .is_ok()
+        {
+            // Promote: swap primary with this fallback, old primary becomes fallbacks[0].
+            let old_primary = step.primary.clone();
+            step.fallbacks.remove(idx);
+            step.fallbacks.insert(0, old_primary);
+            step.primary = fallback;
+            store.steps.insert(step_id, step);
+            crate::targets_store::atomic_write(&targets_path, &store)?;
+            tracing::info!(
+                target: "storycapture::automation::self_healing",
+                step_id = %step_id,
+                "primary selector missed; fallback promoted and targets.json rewritten"
+            );
+            return Ok(Some(resolved));
+        }
+    }
+    Ok(None)
 }
 
 async fn checkpoint(control: Option<&RunControl>) {

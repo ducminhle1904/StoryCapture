@@ -24,6 +24,7 @@ pub mod noop_driver;
 pub mod playwright_driver;
 pub mod selector;
 pub mod session;
+pub mod targets_store;
 
 pub use driver::{
     ActionKind, BoundingBox, BrowserDriver, Capability, CapabilitySet, ElementState, LaunchConfig,
