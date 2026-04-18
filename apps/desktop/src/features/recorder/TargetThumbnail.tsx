@@ -63,30 +63,24 @@ export function TargetThumbnail({
     refetchOnMount: "always",
   });
 
-  // Convert PNG bytes → object URL; revoke the previous on data/target
-  // change + on unmount (T-06-20). `useMemo` recomputes on data change,
-  // `useEffect` cleanup fires with the *previous* url value.
-  const objectUrl = useMemo<string | null>(() => {
-    if (!query.data) return null;
-    return URL.createObjectURL(
+  // Backlog #11 — convert PNG bytes → object URL via a single effect.
+  // Prior shape tracked the URL through useMemo + urlRef + useEffect;
+  // React's built-in cleanup handles revocation cleanly on data change
+  // and unmount (T-06-20 mitigation preserved).
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!query.data) {
+      setObjectUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(
       new Blob([query.data as unknown as BlobPart], { type: "image/png" }),
     );
-  }, [query.data]);
-
-  const urlRef = useRef<string | null>(null);
-  useEffect(() => {
-    // Revoke whatever we had before.
-    if (urlRef.current && urlRef.current !== objectUrl) {
-      URL.revokeObjectURL(urlRef.current);
-    }
-    urlRef.current = objectUrl;
+    setObjectUrl(url);
     return () => {
-      if (urlRef.current) {
-        URL.revokeObjectURL(urlRef.current);
-        urlRef.current = null;
-      }
+      URL.revokeObjectURL(url);
     };
-  }, [objectUrl]);
+  }, [query.data]);
 
   const isPlaceholder = !target || query.isError || !objectUrl;
 
