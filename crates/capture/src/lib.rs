@@ -1,17 +1,12 @@
-//! `capture` — platform-native screen capture.
+//! Platform-native screen capture. Pure crate — zero Tauri/specta deps.
 //!
-//! Pure crate: zero Tauri / specta deps. The Tauri host wraps these
-//! types at the IPC boundary in `apps/desktop/src-tauri/src/commands/capture.rs`.
+//! Backends: `SckBackend` (macOS ScreenCaptureKit), `WgcBackend`
+//! (Windows.Graphics.Capture), `XcapBackend` (polling fallback, owned
+//! bytes — not zero-copy).
 //!
-//! Backends:
-//!   - **macOS**: `SckBackend` (ScreenCaptureKit, `screencapturekit = "=1.5.4"`)
-//!   - **Windows**: `WgcBackend` (Windows.Graphics.Capture, `windows-capture = "=2.0.0"`)
-//!   - **fallback**: `XcapBackend` (xcap polling, owned bytes — not zero-copy)
-//!
-//! Critical invariants (D-19 / D-21 / CAP-05 / CAP-07):
-//!   - Frame queue is byte-bounded (256 MiB default), not frame-count-bounded.
-//!   - Capture-API PTS preserved end-to-end; no Rust-side timestamp rewriting.
-//!   - Native surface handles wrapped in RAII (CFRelease / Release on Drop).
+//! Invariants: frame queue bounded in BYTES not frames (256 MiB default);
+//! capture-API PTS preserved end-to-end; native surface handles wrapped
+//! in RAII (CFRelease/Release on Drop).
 
 pub mod audio;
 mod backend;

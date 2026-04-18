@@ -1,15 +1,9 @@
-//! Byte-bounded frame queue (D-19, CAP-05).
+//! Byte-bounded frame queue. Cap is in BYTES, not frames — 4K60 BGRA
+//! is ~25 MiB per frame, so a naive 32-frame queue is 800 MiB.
 //!
-//! Critical invariant: cap is in **bytes**, not frames. 4K60 BGRA is
-//! ~25 MiB per frame; a naive 32-frame queue is 800 MiB. We bound by
-//! bytes so the cap stays meaningful regardless of resolution.
-//!
-//! Drop policy: if pushing the new frame would exceed `cap_bytes`, the
-//! NEW frame is dropped and `dropped_frames` is incremented. We choose
-//! drop-newest (rather than drop-oldest) because PTS continuity matters
-//! more than the most recent sample for video — losing the latest frame
-//! produces a brief stall, while losing older frames creates timeline
-//! holes the encoder has to interpolate.
+//! Drop policy: drop-newest on cap overflow. Losing the latest frame
+//! produces a brief stall; losing older frames would create timeline
+//! holes the encoder has to interpolate around.
 
 use crate::frame::Frame;
 use parking_lot::Mutex;

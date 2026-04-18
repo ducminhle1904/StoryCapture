@@ -1,15 +1,8 @@
-//! Capture target types (Plan 05-01).
-//!
-//! `CaptureTarget` replaces the old `CaptureConfig.display_id: DisplayId`
-//! with a richer variant that supports full-display, explicit-window, and
-//! "window owned by this PID" (Playwright auto-follow — resolved at
-//! `SckBackend::start` time, Plan 05-02 wires the sentinel).
-//!
-//! Plan 06-02 extends with `DisplayRegion { display_id, rect }` — a
-//! logical-point rect over a specific display, cropped at capture time
-//! (SCK `with_source_rect` on macOS, post-capture CPU crop on Windows per
-//! RESEARCH.md amendment to D-07: `windows-capture = 2.0.0` has no
-//! native region/crop API).
+//! Capture target variants: full display, explicit window, window-by-pid
+//! (Playwright auto-follow), and display-region (logical-point sub-rect).
+//! Regions are kernel-cropped on macOS (`with_source_rect`) but require
+//! post-capture CPU crop on Windows — `windows-capture = 2.0.0` has no
+//! native crop API.
 
 use crate::display::DisplayId;
 use serde::{Deserialize, Serialize};

@@ -1,18 +1,10 @@
-//! Cross-platform named-pipe / fifo factory.
+//! Cross-platform named-pipe / fifo factory for the FFmpeg audio sink.
 //!
-//! Why named pipes (not `FFmpeg -i pipe:3`): Tauri's `tauri-plugin-shell`
-//! `Command` only exposes stdin/stdout/stderr (fd 0/1/2). Additional fds
-//! are not plumbed through the plugin — see Tauri discussion #4440.
-//! Named pipes are the only portable path that works through the
-//! sidecar model.
-//!
-//! **Unix:** `mkfifo` with mode `0o600` (owner RW only). T-06-04 threat
-//! mitigation — limits reader connections to the same user. The fifo
-//! lives inside a process-private tempdir so the path itself is not
-//! discoverable to other local users (T-06-06).
-//!
-//! **Windows:** `\\.\pipe\<uuid>` is session-scoped by default.
-//! FFmpeg accepts the pipe path verbatim as an `-i` argument.
+//! Tauri's shell plugin only plumbs fds 0/1/2 to sidecars (discussion
+//! #4440), so named pipes are the only portable path. Unix: `mkfifo`
+//! mode `0o600` inside a process-private tempdir — threat mitigation
+//! T-06-04/06 (same-user reader, undiscoverable path). Windows:
+//! session-scoped `\\.\pipe\<uuid>`.
 
 use std::path::{Path, PathBuf};
 

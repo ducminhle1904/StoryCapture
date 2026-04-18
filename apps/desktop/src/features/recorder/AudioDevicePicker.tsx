@@ -1,10 +1,8 @@
 /**
- * AudioDevicePicker — Base UI Select wrapping the cpal device list.
- *
- * Laziness: listAudioInputs is gated on the trigger's `open` event —
- * querying at mount defeats the cpal#901 workaround (mic TCC prompt on
- * cold launch). The parent Zustand slice resets the selection to null
- * every render (non-sticky: "No audio" is the default every time).
+ * Base UI Select wrapping the cpal device list. Laziness: listAudioInputs
+ * fires on the trigger's `open` — querying at mount trips cpal#901 (mic
+ * TCC prompt on cold launch). Non-sticky: parent state resets to null
+ * every render so "No audio" is always the default.
  */
 
 import { useState } from "react";

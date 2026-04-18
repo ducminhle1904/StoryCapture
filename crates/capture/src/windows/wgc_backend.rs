@@ -1,62 +1,18 @@
-//! Windows.Graphics.Capture backend — `windows-capture = "=2.0.0"`.
+//! Windows.Graphics.Capture backend (`windows-capture = "=2.0.0"`).
 //!
-//! # Verified windows-capture 2.0.0 API surface (Plan 05-03 Task 0 spike)
+//! Frame ownership: `windows_capture::frame::Frame::buffer()` returns a
+//! borrow tied to the arrived-frame callback's lifetime. Copy out via
+//! `FrameBuffer::as_nopadding_buffer(&mut Vec<u8>)` before yielding
+//! control — the buffer is invalidated once `on_frame_arrived` returns.
 //!
-//! The following names were verified by reading the installed 2.0.0 source at
-//! `~/.cargo/registry/src/.../windows-capture-2.0.0/src/`. Downstream code
-//! relies on these:
+//! Settings::new is arg-rich in 2.0 (no longer generic): we pass
+//! `CursorCaptureSettings`, `DrawBorderSettings` etc. explicitly. The
+//! `include_cursor` flag threads through `CursorCaptureSettings::Default
+//! {With,Without}Cursor`; do not conflate with the SCK `shows_cursor`
+//! config as they diverge on click-visual affordance.
 //!
-//!   `windows_capture::window::Window::enumerate() -> Result<Vec<Window>, Error>`
-//!   `windows_capture::window::Window::from_raw_hwnd(*mut c_void) -> Window` (const)
-//!   `windows_capture::window::Window::from_name(&str) -> Result<Window, Error>`
-//!   `windows_capture::window::Window::foreground() -> Result<Window, Error>`
-//!   `windows_capture::window::Window::title() -> Result<String, Error>`
-//!   `windows_capture::window::Window::process_id() -> Result<u32, Error>` ← exists
-//!   `windows_capture::window::Window::rect() -> Result<RECT, Error>`
-//!   `windows_capture::window::Window::as_raw_hwnd() -> *mut c_void`
-//!   `windows_capture::window::Window::is_valid() -> bool` (visible + not self-pid +
-//!                                                         not tool/child window)
-//!   `windows_capture::monitor::Monitor::primary() -> Result<Monitor, Error>`
-//!   `windows_capture::monitor::Monitor::enumerate() -> Result<Vec<Monitor>, Error>`
-//!   `windows_capture::monitor::Monitor::width() / .height() -> Result<u32, Error>`
-//!
-//!   `windows_capture::capture::GraphicsCaptureApiHandler` (trait) — 2.0's
-//!     renamed trait (was `CaptureHandler` in 1.x):
-//!       type Flags
-//!       type Error: Send + Sync
-//!       fn new(Context<Flags>) -> Result<Self, Error>
-//!       fn on_frame_arrived(&mut self, frame: &mut Frame, InternalCaptureControl)
-//!           -> Result<(), Error>
-//!       fn on_closed(&mut self) -> Result<(), Error> (default = Ok(()))
-//!     Plus `Self::start(settings)` (blocking) and `Self::start_free_threaded(settings)
-//!          -> CaptureControl<Self, Error>` (non-blocking).
-//!
-//!   `windows_capture::settings::Settings::new(item, cursor, border, secondary,
-//!                                              min_interval, dirty, color_format, flags)`
-//!     — `item: T where T: TryInto<GraphicsCaptureItemType>`. Both `Window`
-//!     and `Monitor` implement the trait (see `settings::TryIntoCaptureItemWithDetails`).
-//!
-//!   `windows_capture::frame::Frame::width() / .height() -> u32`
-//!   `windows_capture::frame::Frame::color_format() -> ColorFormat`
-//!   `windows_capture::frame::Frame::buffer() -> Result<FrameBuffer, Error>`
-//!   `FrameBuffer::as_nopadding_buffer(&mut Vec<u8>) -> &[u8]`
-//!
-//!   `CaptureControl::stop() -> Result<(), CaptureControlError>` consumes self;
-//!     posts WM_QUIT to the capture thread's message loop.
-//!
-//! # Drift vs RESEARCH.md
-//!
-//! - Trait renamed: `CaptureHandler` → `GraphicsCaptureApiHandler` (docstring,
-//!   confirmed by reading `src/capture.rs`).
-//! - `Settings::new` is no longer generic over a single "capture_item"; it takes
-//!   a rich arg list with explicit settings structs (`CursorCaptureSettings`,
-//!   `DrawBorderSettings`, etc.). We pass `::Default` for everything except the
-//!   item + color format.
-//! - `Window::process_id()` **does** exist (returns `Result<u32, _>`) — no
-//!   fallback to `GetWindowThreadProcessId` needed for the primary path.
-//!   (We still use that API for the Chromium child-walk in window.rs.)
-//! - `Monitor::primary()` exists — simpler than filtering `Monitor::enumerate()`
-//!   by `is_primary()` (which is not a method on this crate's Monitor).
+//! Crate renamed the handler trait (`CaptureHandler` → `GraphicsCapture
+//! ApiHandler`) between 1.x and 2.0; re-verify when bumping.
 
 #![cfg(target_os = "windows")]
 
