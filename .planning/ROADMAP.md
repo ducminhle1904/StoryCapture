@@ -180,13 +180,14 @@ Plans:
 **Plans:** 7 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Grammar + AST: role-qualified `target_role`, `target_field`, `target_text_kw` rules; `SelectorOrText::{Role,Label,TextExact}` variants; `AriaRole` enum; `cmd_fill` sugar desugaring to `Type`; did-you-mean role suggestions; backwards compat tests
+- [x] 07-01-PLAN.md — Grammar + AST: role-qualified `target_role`, `target_field`, `target_text_kw` rules; `SelectorOrText::{Role,Label,TextExact}` variants; `AriaRole` enum; `cmd_fill` sugar desugaring to `Type`; did-you-mean role suggestions; backwards compat tests
 - [ ] 07-02-PLAN.md — SmartSelector + sidecar + driver marshalling: `SelectorStrategy::{Role,Label,TextExact}` short-circuits; sidecar `locate()` / `targetToLocator()` branches; `playwright_driver::target_to_json()` coverage for the three new variants; E2E fixture tests
 - [ ] 07-03a-PLAN.md — Tier 2 MVP sidecar: overlay IIFE bundle (esbuild) + SEA embed + ranked generator (testid → role+name → label → text → css) + `pickElement.start/cancel/isActive` handlers + addInitScript injection + URL allowlist + framenavigated auto-cancel + real-Chromium vitest for all 5 ranks; wire contract `result.emitted`
 - [ ] 07-03b-PLAN.md — Tier 2 MVP desktop: Rust `PickElementResponse::Picked { emitted: String, ... }` + driver wrappers + Tauri `picker_*` commands + TS IPC + `editorController` singleton (atomic single-undo insertion) + `PickElementButton` + aria-live banner + desktop vitest proving end-to-end wire-contract flow (PHASE-7.4 final gate)
 - [ ] 07-04a-PLAN.md — Tier 2 robustness notifications: `JsonRpcResponse.id: Option<u64>` + broadcast channel + `subscribe_notifications()` + sidecar `writeNotification` + `pickElement.hoverPreview` + overlay rAF-throttled emit + Tauri event bridge + React preview chip
 - [ ] 07-04b-PLAN.md — Tier 2 robustness parser: additive pest `step_id_comment` rule (Tier 1 regression-guarded) + `LineMeta.step_id: Option<Uuid>` + warn-on-invalid-UUID + minimal `story_parser::formatter::format_story` + 3 parse-format-parse fixpoint tests + insta snapshot
 - [ ] 07-04c-PLAN.md — Tier 2 robustness self-healing: `targets_store.rs` with atomic tmp+rename + executor fallback promotion hook + `picker_stamp_step_id` Tauri command (stamps UUIDv7 on first pick via formatter, seeds targets.json) + integration test (primary-miss → fallback-promoted → targets rewritten, source untouched) + PHASE-7.5 final gate
+- [ ] 07-05-PLAN.md — Author-time selector validator + hover-preview: DOM+screenshot snapshot cache per navigated URL; CodeMirror gutter chip (GREEN unique / YELLOW fuzzy / RED miss) driven by the same ranked locator engine as the picker (reverse direction); hover a DSL step → Preview panel shows the cached screenshot with the matched element boxed; "Promote to fallback" action writes into `.story.targets.json` — shares the 07-04c self-healing schema
 
 ### Phase 9: Live Preview pane — render Chromium automation inside the Recorder window via CDP Page.startScreencast
 
@@ -223,7 +224,45 @@ Plans (proposed split; finalized in /gsd-plan-phase 9):
 - [ ] 09-01 — Sidecar CDP screencast verbs + Rust event bridge
 - [ ] 09-02 — React `<LivePreview />` canvas renderer + Options toggle
 - [ ] 09-03 — Perf / backpressure hardening + fallback UX
+- [ ] 09-04 — Editor-surface Live Preview + viewport switcher: reuse `LivePreview.tsx` inside the Editor page; multi-stream sidecar (`streamId` param on `startPreviewStream`); ephemeral author-time Playwright session separate from recording; viewport switcher drives `page.setViewportSize()` via new `setViewport` RPC; default-off toggle to preserve cold-start budget
+
+### Phase 10: Author-time simulator — step-preview + dry-run walkthrough
+
+**Goal:** Give the Editor page an "execute without recording" mode so authors can validate a DSL before committing to a recording. Two user-visible features share one infrastructure layer: (a) "Preview to here" — run DSL from scene start up to the caret line, then pause and show the resulting page state in the Preview panel; (b) "Dry run" — replay the full DSL with per-step screenshots + matched-element bboxes + cursor trajectories into a scrubable timeline. DSL lines link bidirectionally to timeline frames.
+
+**Depends on:** Phase 7 (locator engine + `.story.targets.json`), Phase 9 (ephemeral Playwright session + CDP screencast pipeline), Phase 9-04 (Editor-surface Live Preview)
+
+**In scope:**
+- `Executor::run_to_step(n)` — accepts a stop-after-ordinal; emits `ExecutorEvent::RunPaused`; existing run-to-end path unchanged
+- Per-step frame capture: `StepFrame { ordinal, screenshot_path, cursor_xy, matched_selector, matched_bbox, duration_ms }`
+- Tauri commands `author_dry_run_start / _stop / _step_to(n)` running against the 09-04 ephemeral browser
+- `.story.dryrun/<timestamp>/` frame archive (retention: keep last 5)
+- `DryRunPanel.tsx` timeline UI + CodeMirror line decoration synced via `currentFrameOrdinal`
+- "Preview to here" editor action (keyboard shortcut Cmd-.)
+
+**Out of scope:**
+- Producing a final video during dry-run (Record button still the only path)
+- Running against the live recording session
+- Persistent dry-run archives across sessions
+- Snapshot-only (no-network) mode (future phase)
+
+**Acceptance criteria:**
+- Caret on step N + "Preview to here" → ephemeral browser is at the page state step N-1 would leave it in (≤10 s for a 20-step story on M2)
+- Dry-run replays a 20-step story, producing 20 `StepFrame` entries; scrub timeline → editor line highlighted + Preview panel shows the frame
+- Dry-run populates `.story.targets.json` fallbacks on first success (Phase 7-04c protocol)
+- Phase 9-04 Live Preview pauses/resumes cleanly when dry-run takes exclusive lock on the author session
+- Author session is never shared between dry-run and a concurrent recording; recording path untouched
+
+**Requirements:** TBD (to be allocated under PHASE-10.x)
+**Plans:** 3 plans (proposed)
+
+Plans (proposed split; finalized in /gsd-plan-phase 10):
+- [ ] 10-01 — Executor `run_to_step` + `StepFrame` capture + `ExecutorEvent::RunPaused` + unit tests
+- [ ] 10-02 — Author-time dry-run Tauri commands + `.story.dryrun/` storage + streaming event channel
+- [ ] 10-03 — Editor UI: `DryRunPanel` timeline + "Preview to here" action + CodeMirror decoration + Preview-panel scrubber
 
 ---
 *Roadmap created: 2026-04-14*
 *Phase 7 added: 2026-04-17*
+*Phase 9 added: 2026-04-18*
+*Phase 10 added: 2026-04-18*

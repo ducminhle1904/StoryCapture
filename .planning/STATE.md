@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-18T07:04:16.654Z"
+last_updated: "2026-04-18T11:09:15.050Z"
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 3
-  total_plans: 73
+  total_plans: 75
   completed_plans: 60
-  percent: 82
+  percent: 80
 ---
 
 # State: StoryCapture
@@ -20,17 +20,17 @@ progress:
 
 - **Name:** StoryCapture
 - **Core Value:** Turn a written story into a polished, shareable demo video automatically — no recording, editing, or video-production skill required.
-- **Current Focus:** Phase 05 code-complete pending verification gate — next: Phase 06 (Recording v2)
+- **Current Focus:** Phase 7 — Semantic DSL verbs + element picker (Tier 1 + Tier 2)
 
 ## Current Position
 
-Phase: 05 (window-targeted-screen-capture-with-playwright-auto-follow) — CODE-COMPLETE
-Plan: 3 of 3
+Phase: 7 (Semantic DSL verbs + element picker (Tier 1 + Tier 2)) — EXECUTING
+Plan: 1 of 8
 
 - **Milestone:** v1
 - **Phase:** 5 — Window-targeted screen capture with Playwright auto-follow
 - **Plan:** 3 of 3 complete (05-01/05-02/05-03 all code-committed; human-verify checkpoints auto-approved under workflow.auto_advance=true; 05-VERIFICATION.md written)
-- **Status:** Ready to execute
+- **Status:** Executing Phase 7
 - **Progress:** [█████████░] 89%
 
 ## Performance Metrics
