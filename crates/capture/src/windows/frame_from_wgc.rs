@@ -16,6 +16,7 @@
 
 use crate::error::CaptureError;
 use crate::frame::{self, ClockSource, Frame, FrameData, PixelFormat, Pts};
+use crate::windows::pool::{self, FramePool, PooledBuf};
 use std::time::Instant;
 use windows_capture::frame::Frame as WgcFrame;
 use windows_capture::settings::ColorFormat;
@@ -153,7 +154,11 @@ mod crop_tests {
 /// to i128 ns. For Plan 05-03 we use `ClockSource::Synthetic` (host-derived)
 /// which is what the xcap fallback already reports; a follow-up can swap
 /// to true-QPC once the encoder agrees.
-pub fn to_frame(frame: &mut WgcFrame, start_epoch: Instant) -> Result<Frame, CaptureError> {
+pub fn to_frame(
+    frame: &mut WgcFrame,
+    start_epoch: Instant,
+    pool: &FramePool,
+) -> Result<Frame, CaptureError> {
     let width_px = frame.width();
     let height_px = frame.height();
     let color_format = frame.color_format();
@@ -166,16 +171,39 @@ pub fn to_frame(frame: &mut WgcFrame, start_epoch: Instant) -> Result<Frame, Cap
     // user somehow ended up with Rgba8 we swap channels to match our Frame
     // convention (encoder expects BGRA).
     let stride = (width_px as usize) * 4;
-    let mut bgra = vec![0u8; stride * height_px as usize];
+    let needed = stride * height_px as usize;
+    // Acquire a pooled scratch buffer. `as_nopadding_buffer` may return a
+    // borrow of its own staging memory (same_buffer branch) or copy into
+    // ours — we size the scratch to `needed` and `resize` (not
+    // `with_capacity`-only) because the crate's API needs an initialized
+    // `&mut [u8]` of exact length.
+    let mut bgra = pool::acquire_or_new(pool, needed);
+    bgra.resize(needed, 0);
     let bgra_base = bgra.as_ptr();
-    let copied = buffer.as_nopadding_buffer(&mut bgra);
-    let same_buffer = std::ptr::eq(bgra_base, copied.as_ptr());
-    let copied_len = copied.len();
+    // `as_nopadding_buffer` either (a) fills our `bgra` and returns a
+    // prefix borrow of it (same_buffer=true), or (b) returns a borrow
+    // of the WGC staging buffer (same_buffer=false). Decide the branch
+    // up front: compute len + same-buffer, then drop the borrow before
+    // touching `bgra` again.
+    let (same_buffer, copied_len, staging_copy): (bool, usize, Option<Vec<u8>>) = {
+        let copied = buffer.as_nopadding_buffer(&mut bgra);
+        let same = std::ptr::eq(bgra_base, copied.as_ptr());
+        let len = copied.len();
+        if same {
+            (true, len, None)
+        } else {
+            // Copy the staging buffer before releasing the borrow so we
+            // never retain a dangling reference.
+            (false, len, Some(copied.to_vec()))
+        }
+    };
     let bgra_vec: Vec<u8> = if same_buffer {
         bgra.truncate(copied_len);
         bgra
     } else {
-        copied.to_vec()
+        // Return the unused pooled scratch to the pool.
+        let _stash = PooledBuf::new(std::mem::take(&mut bgra), pool);
+        staging_copy.expect("same_buffer=false implies staging_copy is Some")
     };
 
     // Rgba8 → Bgra8 swap if needed (MSFT default is Rgba8; we request Bgra8
@@ -190,6 +218,8 @@ pub fn to_frame(frame: &mut WgcFrame, start_epoch: Instant) -> Result<Frame, Cap
             v
         }
         ColorFormat::Rgba16F => {
+            // Return the buffer to the pool before bailing.
+            let _pooled = PooledBuf::new(bgra_vec, pool);
             return Err(CaptureError::Backend(
                 "Rgba16F from WGC not yet supported".into(),
             ));
@@ -206,7 +236,7 @@ pub fn to_frame(frame: &mut WgcFrame, start_epoch: Instant) -> Result<Frame, Cap
         width_px,
         height_px,
         format: PixelFormat::Bgra,
-        data: FrameData::Owned(final_bgra, stride),
+        data: FrameData::Pooled(PooledBuf::new(final_bgra, pool), stride),
         sequence,
     })
 }

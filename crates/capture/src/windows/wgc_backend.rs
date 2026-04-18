@@ -23,6 +23,7 @@ use crate::events::CaptureEvent;
 use crate::frame::Frame;
 use crate::target::CaptureTarget;
 use crate::windows::frame_from_wgc;
+use crate::windows::pool::{self, FramePool};
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -47,6 +48,11 @@ pub struct WgcBackend {
     event_sink: Arc<Mutex<Option<mpsc::UnboundedSender<CaptureEvent>>>>,
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    /// Shared BGRA scratch pool (backlog item #2 step A2). Lives on
+    /// the backend (not the handler) so late frame drops from the
+    /// encoder return their buffers here — even if the capture thread
+    /// has already stopped.
+    frame_pool: FramePool,
 }
 
 struct WgcState {
@@ -75,6 +81,10 @@ struct WgcHandler {
     /// `windows-capture = 2.0.0` has no native region/crop API (RESEARCH
     /// Pitfall 5 + amendment to D-07), so we crop in `on_frame_arrived`.
     crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
+    /// BGRA scratch pool (backlog item #2 step A2). Strong ref held by
+    /// the handler; each emitted `FrameData::Pooled` carries a `Weak`
+    /// so the buffer returns here on drop.
+    frame_pool: FramePool,
 }
 
 /// Per-session flags passed through `Settings::new(flags = ...)` into
@@ -87,6 +97,8 @@ struct WgcFlags {
     delivered: Arc<AtomicU64>,
     /// Plan 06-02 — optional crop rect (physical pixels).
     crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
+    /// Shared BGRA scratch pool (backlog item #2 step A2).
+    frame_pool: FramePool,
 }
 
 /// Handler-level error type. Only used to satisfy the trait bound; we never
@@ -115,6 +127,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             dropped,
             delivered,
             crop_rect,
+            frame_pool,
         } = ctx.flags;
         Ok(Self {
             out,
@@ -123,6 +136,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             dropped,
             delivered,
             crop_rect,
+            frame_pool,
         })
     }
 
@@ -133,7 +147,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
     ) -> Result<(), Self::Error> {
         // NEVER block or await inside on_frame_arrived — this is the
         // windows-capture delegate thread and backpressure becomes frame loss.
-        let f = match frame_from_wgc::to_frame(frame, self.start_epoch) {
+        let f = match frame_from_wgc::to_frame(frame, self.start_epoch, &self.frame_pool) {
             Ok(f) => f,
             Err(e) => {
                 tracing::warn!(error = %e, "frame_from_wgc failed; dropping frame");
@@ -150,10 +164,12 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             use crate::frame::FrameData;
             let (src_bytes, src_stride) = match &f.data {
                 FrameData::Owned(v, stride) => (v.as_slice(), *stride),
+                FrameData::Pooled(b, stride) => (b.as_slice(), *stride),
                 _ => {
                     // Native handle path would need a D3D11 readback;
-                    // to_frame currently returns Owned so this branch is
-                    // defensive. Drop the frame if the variant changes.
+                    // to_frame currently returns Owned/Pooled so this
+                    // branch is defensive. Drop the frame if the variant
+                    // changes.
                     self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
@@ -234,6 +250,7 @@ impl WgcBackend {
             event_sink: Arc::new(Mutex::new(None)),
             dropped: Arc::new(AtomicU64::new(0)),
             delivered: Arc::new(AtomicU64::new(0)),
+            frame_pool: pool::new_pool(),
         })
     }
 
@@ -291,6 +308,7 @@ impl CaptureBackend for WgcBackend {
             dropped: self.dropped.clone(),
             delivered: self.delivered.clone(),
             crop_rect,
+            frame_pool: self.frame_pool.clone(),
         };
 
         // Plan 06-02 (D-19/D-20) — cursor is now a per-recording toggle

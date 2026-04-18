@@ -87,6 +87,13 @@ pub enum FrameData {
     NativeWindows(crate::windows::raii::D3DTextureHandle),
     /// Owned BGRA/NV12 bytes + row stride. Used by xcap fallback.
     Owned(Vec<u8>, usize /* stride bytes */),
+    /// Pooled BGRA bytes + row stride. Used by the Windows.Graphics.Capture
+    /// path to avoid per-frame heap allocations: on `Drop`, the
+    /// underlying `Vec<u8>` returns to a small pool owned by
+    /// `WgcBackend` (backlog item #2 step A2). Behaves identically to
+    /// `Owned` for read access.
+    #[cfg(target_os = "windows")]
+    Pooled(crate::windows::pool::PooledBuf, usize /* stride bytes */),
 }
 
 impl std::fmt::Debug for FrameData {
@@ -98,6 +105,10 @@ impl std::fmt::Debug for FrameData {
             FrameData::NativeWindows(_) => write!(f, "FrameData::NativeWindows(<opaque>)"),
             FrameData::Owned(v, stride) => {
                 write!(f, "FrameData::Owned({} bytes, stride={})", v.len(), stride)
+            }
+            #[cfg(target_os = "windows")]
+            FrameData::Pooled(b, stride) => {
+                write!(f, "FrameData::Pooled({} bytes, stride={})", b.len(), stride)
             }
         }
     }
@@ -130,6 +141,8 @@ impl Frame {
     pub fn byte_size(&self) -> usize {
         match &self.data {
             FrameData::Owned(v, _stride) => v.len(),
+            #[cfg(target_os = "windows")]
+            FrameData::Pooled(b, _stride) => b.len(),
             #[cfg(target_os = "macos")]
             FrameData::NativeMacOS(_) => {
                 self.width_px as usize

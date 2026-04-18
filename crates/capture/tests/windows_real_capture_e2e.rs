@@ -63,6 +63,8 @@ fn owned_bgra(frame: &Frame) -> Option<&[u8]> {
     match &frame.data {
         FrameData::Owned(v, _stride) => Some(v.as_slice()),
         #[cfg(target_os = "windows")]
+        FrameData::Pooled(b, _stride) => Some(b.as_slice()),
+        #[cfg(target_os = "windows")]
         FrameData::NativeWindows(_) => None,
     }
 }

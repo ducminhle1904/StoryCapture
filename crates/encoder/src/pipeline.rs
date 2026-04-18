@@ -79,6 +79,8 @@ pub struct EncodeResult {
 pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Cow<'_, [u8]>, usize)> {
     match &frame.data {
         FrameData::Owned(bytes, stride) => Ok((Cow::Borrowed(bytes.as_slice()), *stride)),
+        #[cfg(target_os = "windows")]
+        FrameData::Pooled(buf, stride) => Ok((Cow::Borrowed(&buf[..]), *stride)),
         #[cfg(target_os = "macos")]
         FrameData::NativeMacOS(handle) => {
             let (bytes, stride) = handle.to_owned_bgra().map_err(|rc| {

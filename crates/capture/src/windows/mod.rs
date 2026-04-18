@@ -3,6 +3,7 @@
 
 pub mod frame_from_wgc;
 pub(crate) mod helpers;
+pub mod pool;
 pub mod raii;
 pub mod thumbnail;
 pub mod wgc_backend;
