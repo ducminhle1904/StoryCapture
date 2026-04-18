@@ -1,21 +1,18 @@
 /**
- * Plan 06-03 Task 3 — static 2-second-refresh preview thumbnail of the
- * currently-selected capture target. Sits between the Target dropdown
- * and the Start Recording button in the recorder view (D-16).
+ * Static 2s-refresh preview thumbnail of the selected capture target.
  *
  * Contract:
- *   - Refetches every 2s via TanStack Query `refetchInterval: 2000`
- *   - Pauses when a recording is in progress OR the target is null
- *     (D-18: no cycles stolen from the real capture pipeline)
- *   - On error (TCC denied, window closed, IPC failure) shows a neutral
- *     placeholder — never an error state
- *   - Revokes the previous `URL.createObjectURL` object on target change
- *     and on unmount (T-06-20 mitigation)
- *   - `cacheTime: 0` — no thumbnail bytes survive past the active
- *     refetch cycle (T-06-21)
+ *   - Refetches every 2s; pauses when recording or target is null (no
+ *     cycles stolen from the real capture pipeline).
+ *   - On error (TCC denied, window closed, IPC failure) renders a
+ *     neutral placeholder instead of surfacing an error state.
+ *   - Revokes the previous object URL on target change AND unmount
+ *     (threat-model mitigation T-06-20: no leaked Blob references).
+ *   - `gcTime: 0` — no thumbnail bytes survive past the active refetch
+ *     cycle (T-06-21: minimize in-memory image residency).
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
 

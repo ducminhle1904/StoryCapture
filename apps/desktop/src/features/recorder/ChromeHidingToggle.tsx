@@ -1,17 +1,8 @@
 /**
- * ChromeHidingToggle — Plan 06-02 (D-09 / D-10 / D-11).
- *
- * When on, StoryCapture appends `--app=<meta.app>` to Playwright's
- * `launchServer({ args })`, putting Chromium in app-mode (no tab bar, no
- * URL bar, no back/forward — OS title bar still visible per D-12).
- *
- * Disabled when the active browser preset is non-Chromium — Safari and
- * Firefox have no equivalent flag (D-11). The preset label is supplied
- * by the parent; `isChromiumFamily()` lives in features/settings.
- *
- * Non-sticky (D-10 pattern, mirrors D-19/D-20 cursor toggle): the
- * backing recorder-state field resets to `false` on recorder-view mount
- * AND on `reset()`, so every new recording starts with chrome-hiding off.
+ * Per-recording switch for Chromium app-mode (`--app=<meta.app>`): no
+ * tab bar, no URL bar, no back/forward. Disabled for non-Chromium
+ * presets since Safari/Firefox have no equivalent flag. Non-sticky —
+ * the recorder-state field resets to false on mount and after reset().
  */
 
 import { useId } from "react";

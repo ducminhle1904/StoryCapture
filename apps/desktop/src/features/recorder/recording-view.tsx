@@ -124,9 +124,8 @@ export function RecordingView({
     refreshPlaywrightAvailability,
   } = useRecorderStore();
 
-  // Plan 06-02 — read the active BrowserRow preset so ChromeHidingToggle
-  // can grey itself out for non-Chromium picks (D-11). The Settings page
-  // owns the source of truth; we just mirror it here.
+  // Mirror the active BrowserRow preset so ChromeHidingToggle can grey
+  // itself out for non-Chromium picks. Settings owns the source of truth.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   useEffect(() => {
     getAppSettings()
@@ -137,9 +136,8 @@ export function RecordingView({
   const reduceMotion = useReducedMotion();
   const [permission, setPermission] = useState<PermissionState>("undetermined");
   const [tccOpen, setTccOpen] = useState(false);
-  // Plan 06-02 — `showCursor` now lives in the Zustand store as
-  // `includeCursor` (D-20 non-sticky). Local state here drives only
-  // the decorative 3s countdown affordance.
+  // `includeCursor` lives in the recorder store (non-sticky). Local
+  // state here drives only the decorative 3s countdown affordance.
   const [useCountdown, setUseCountdown] = useState(true);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
@@ -226,9 +224,9 @@ export function RecordingView({
     };
   }, [setSteps, storySource]);
 
-  // Plan 06-02 — listen for region-selection events emitted by the
-  // transparent overlay window. On confirm, promote the captureTarget
-  // to a DisplayRegion variant; on cancel, leave the target untouched.
+  // Listen for region-selection events emitted by the transparent
+  // overlay window. On confirm, promote the captureTarget to a
+  // DisplayRegion variant; on cancel, leave the target untouched.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     listen<RegionSelectedPayload>("region://selected", (event) => {
@@ -371,7 +369,6 @@ export function RecordingView({
           // silent path. When "System default" is selected we pass
           // "default" as a sentinel — the host resolves cpal's default.
           audio_device_id: audioDeviceId ?? undefined,
-          // Plan 06-02 — per-recording include-cursor (D-19/D-20).
           include_cursor: includeCursor,
         },
         (event) => dispatch(event),
@@ -398,8 +395,8 @@ export function RecordingView({
         toast.error(`Automation failed: ${msg}`);
         setError(msg);
       });
-      // Plan 05-02: poll for Playwright window availability for up to 10s.
-      // The host's background probe stashes the pid once Playwright's
+      // Poll for Playwright window availability for up to 10s. The
+      // host's background probe stashes the pid once Playwright's
       // launch() completes; this loop surfaces that to the UI and may
       // auto-pre-select the "Playwright browser (auto)" target if the
       // user hasn't made a non-auto choice this session.
@@ -473,7 +470,7 @@ export function RecordingView({
 
   const canRecord = permission === "granted" && captureTarget != null;
   // Separate flag for the display-only code path in `handleRecord` — window
-  // targets route through start_capture_target (Plan 05-01) and don't need
+  // targets route through start_capture_target and don't need
   // a display_id up front.
   const canRecordDisplay = canRecord && selectedDisplay != null;
   const permissionDenied = permission === "denied";
@@ -718,9 +715,9 @@ export function RecordingView({
                 {displayLabel}
               </p>
             )}
-            {/* Plan 06-03 Task 3 — 2s static thumbnail of the selected
-                capture target. Paused during recording to prevent
-                contention with the main SCK/WGC session (D-18). */}
+            {/* 2s static thumbnail of the selected capture target.
+                Paused during recording to prevent contention with the
+                main SCK/WGC session. */}
             <div className="mt-2.5">
               <TargetThumbnail
                 target={captureTarget ?? null}
@@ -765,7 +762,7 @@ export function RecordingView({
 
           <SettingsGroup label="Options">
             <div className="space-y-2 text-xs">
-              {/* Plan 06-02 — D-19/D-20 cursor toggle (non-sticky, defaults ON). */}
+              {/* Cursor toggle (non-sticky, defaults ON). */}
               <CursorToggle
                 checked={includeCursor}
                 onChange={setIncludeCursor}
@@ -775,7 +772,7 @@ export function RecordingView({
                   status === "stopping"
                 }
               />
-              {/* Plan 06-02 — D-10 chrome-hiding toggle (non-sticky, defaults OFF). */}
+              {/* Chrome-hiding toggle (non-sticky, defaults OFF). */}
               <ChromeHidingToggle
                 checked={chromeHiding}
                 onChange={setChromeHiding}
