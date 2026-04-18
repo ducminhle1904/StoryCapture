@@ -10,6 +10,7 @@ use crate::lenient_tokenize::{
     LenientToken, MetaEntry, MetaRawValue, ParsedCommand, RawTarget,
 };
 use crate::suggest::{did_you_mean, KNOWN_META_KEYS, KNOWN_ROLES, KNOWN_VERBS};
+use uuid::Uuid;
 
 pub fn validate(tokens: Vec<LenientToken>, _source: &str) -> (Story, Vec<Diagnostic>) {
     let mut story = Story::default();
@@ -44,9 +45,27 @@ pub fn validate(tokens: Vec<LenientToken>, _source: &str) -> (Story, Vec<Diagnos
                     story.scenes.push(scene);
                 }
             }
-            LenientToken::Command { pair_kind, span } => {
+            LenientToken::Command { pair_kind, span, step_id_raw } => {
                 if let Some(scene) = current_scene.as_mut() {
-                    let (cmd, mut more) = build_command(pair_kind, span);
+                    // Validate trailing `# @id=<uuidv7>` — invalid UUIDs degrade
+                    // to `step_id = None` + a warn-level diagnostic (layer-2).
+                    let step_id = match step_id_raw.as_deref() {
+                        Some(raw) => match Uuid::parse_str(raw) {
+                            Ok(u) => Some(u),
+                            Err(_) => {
+                                diagnostics.push(Diagnostic::warning(
+                                    format!(
+                                        "invalid step id '{}' — expected UUIDv7, ignored",
+                                        raw
+                                    ),
+                                    span,
+                                ));
+                                None
+                            }
+                        },
+                        None => None,
+                    };
+                    let (cmd, mut more) = build_command(pair_kind, span, step_id);
                     diagnostics.append(&mut more);
                     if let Some(c) = cmd {
                         scene.commands.push(c);
@@ -194,7 +213,11 @@ fn build_meta(entries: Vec<MetaEntry>, span: Span) -> (Meta, Vec<Diagnostic>) {
     (meta, diagnostics)
 }
 
-fn build_command(parsed: ParsedCommand, span: Span) -> (Option<Command>, Vec<Diagnostic>) {
+fn build_command(
+    parsed: ParsedCommand,
+    span: Span,
+    step_id: Option<Uuid>,
+) -> (Option<Command>, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
     let cmd = match parsed {
         ParsedCommand::Navigate { url } => {
@@ -210,53 +233,62 @@ fn build_command(parsed: ParsedCommand, span: Span) -> (Option<Command>, Vec<Dia
                     span,
                 ));
             }
-            Command::Navigate { url, span }
+            Command::Navigate { url, span, step_id }
         }
         ParsedCommand::Click { target } => Command::Click {
             target: to_target(target, span, &mut diagnostics),
             span,
+            step_id,
         },
         ParsedCommand::Type { target, text } => Command::Type {
             target: to_target(target, span, &mut diagnostics),
             text,
             span,
+            step_id,
         },
         ParsedCommand::Scroll { direction, amount } => Command::Scroll {
             direction: parse_scroll_dir(&direction),
             amount,
             span,
+            step_id,
         },
         ParsedCommand::Hover { target } => Command::Hover {
             target: to_target(target, span, &mut diagnostics),
             span,
+            step_id,
         },
         ParsedCommand::Drag { from, to } => Command::Drag {
             from: to_target(from, span, &mut diagnostics),
             to: to_target(to, span, &mut diagnostics),
             span,
+            step_id,
         },
         ParsedCommand::Select { target, value } => Command::Select {
             target: to_target(target, span, &mut diagnostics),
             value,
             span,
+            step_id,
         },
         ParsedCommand::Upload { target, path } => Command::Upload {
             target: to_target(target, span, &mut diagnostics),
             path,
             span,
+            step_id,
         },
-        ParsedCommand::Wait { duration_ms } => Command::Wait { duration_ms, span },
+        ParsedCommand::Wait { duration_ms } => Command::Wait { duration_ms, span, step_id },
         ParsedCommand::WaitFor { target, timeout_ms } => Command::WaitFor {
             target: to_target(target, span, &mut diagnostics),
             timeout_ms,
             span,
+            step_id,
         },
         ParsedCommand::Assert { target } => Command::Assert {
             target: to_target(target, span, &mut diagnostics),
             span,
+            step_id,
         },
-        ParsedCommand::Screenshot { name } => Command::Screenshot { name, span },
-        ParsedCommand::Pause => Command::Pause { span },
+        ParsedCommand::Screenshot { name } => Command::Screenshot { name, span, step_id },
+        ParsedCommand::Pause => Command::Pause { span, step_id },
     };
     (Some(cmd), diagnostics)
 }

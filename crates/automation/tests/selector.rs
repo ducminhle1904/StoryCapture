@@ -95,6 +95,7 @@ fn capability_routing_upload() {
         target: SelectorOrText::Selector("#f".into()),
         path: "/tmp/x".into(),
         span: Span::empty(),
+        step_id: None,
     };
     assert_eq!(capability::required_for(&cmd), Capability::FileUpload);
 }
@@ -104,6 +105,7 @@ fn capability_routing_plain_click_is_none() {
     let cmd = story_parser::Command::Click {
         target: SelectorOrText::Text("Save".into()),
         span: Span::empty(),
+        step_id: None,
     };
     assert_eq!(capability::required_for(&cmd), Capability::None);
 }
@@ -113,6 +115,7 @@ fn capability_routing_shadow_dom_click() {
     let cmd = story_parser::Command::Click {
         target: SelectorOrText::Selector("div#host::shadow button".into()),
         span: Span::empty(),
+        step_id: None,
     };
     assert_eq!(
         capability::required_for(&cmd),
@@ -126,6 +129,7 @@ fn capability_routing_wait_for_download() {
         target: SelectorOrText::Text("download:report.pdf".into()),
         timeout_ms: Some(5_000),
         span: Span::empty(),
+        step_id: None,
     };
     assert_eq!(capability::required_for(&cmd), Capability::WaitForDownload);
 }
@@ -135,6 +139,7 @@ fn capability_routing_oauth_popup_click() {
     let cmd = story_parser::Command::Click {
         target: SelectorOrText::Text("oauth:Sign in with Google".into()),
         span: Span::empty(),
+        step_id: None,
     };
     assert_eq!(capability::required_for(&cmd), Capability::OAuthPopup);
 }

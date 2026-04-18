@@ -1,0 +1,11 @@
+# Tier 2 step-id round-trip fixture
+story "Tier 2 step ids" {
+  meta {
+    app: "https://example.com"
+  }
+  scene "picked" {
+    click button "Save"  # @id=018f4c1e-7b3a-7000-8000-000000000001
+    click link "Docs"    # @id=018f4c1e-7b3a-7000-8000-000000000002
+    click "No step id yet"
+  }
+}

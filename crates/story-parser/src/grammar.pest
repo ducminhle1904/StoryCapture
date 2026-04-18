@@ -7,7 +7,10 @@
 // because statement boundaries matter for panic-mode recovery (D-09).
 
 WHITESPACE = _{ " " | "\t" }
-COMMENT = _{ ("#" ~ (!NEWLINE ~ ANY)*) | ("/*" ~ (!"*/" ~ ANY)* ~ "*/") }
+// COMMENT intentionally refuses to match `# @id=...` (optionally with one
+// leading space) so the additive `step_id_comment` rule below can capture
+// it instead. See `step_id_comment`.
+COMMENT = _{ ("#" ~ !(" "? ~ "@id=") ~ (!NEWLINE ~ ANY)*) | ("/*" ~ (!"*/" ~ ANY)* ~ "*/") }
 NEWLINE = _{ "\r\n" | "\n" | "\r" }
 EOI_OR_NL = _{ NEWLINE+ | ";" | &EOI | &"}" }
 
@@ -53,7 +56,11 @@ scene_block = {
 }
 
 statement = { command_line | recovery_line }
-command_line = { command ~ EOI_OR_NL }
+// Additive: trailing step-id comment. Does not alter any Tier 1 target/command rule.
+// `step_id_comment?` preserves legacy lines (no comment) byte-for-byte identically.
+command_line = { command ~ step_id_comment? ~ EOI_OR_NL }
+step_id_comment = { "#" ~ "@id=" ~ uuidv7_text }
+uuidv7_text = @{ ASCII_ALPHANUMERIC ~ (ASCII_ALPHANUMERIC | "-")* }
 // Layer-1 lenient catch-all: any non-empty line that isn't a known command.
 recovery_line = @{ (!NEWLINE ~ !"}" ~ ANY)+ ~ (NEWLINE | &"}") }
 
