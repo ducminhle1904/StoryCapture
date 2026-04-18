@@ -307,6 +307,15 @@ Exception: the user may explicitly authorize a temporary workaround. In that cas
 
 **MANDATORY — Match the User's Language:** Agents MUST reply to the user in the SAME language the user wrote in. If the user prompts in Vietnamese, reply in Vietnamese. If the user prompts in English, reply in English. Do NOT default to English when the user is writing in another language. This applies to all user-facing text: explanations, status updates, questions, summaries, error reports. Code, identifiers, commit messages, file contents, and technical artifacts remain in their standard language (typically English) unless the user says otherwise.
 
+**MANDATORY — Concise Code Comments:** When writing comments in code, agents MUST keep them short and to the point. No long-winded, multi-paragraph, or multi-line explanatory comments.
+
+- Default to writing no comment at all. Only add one when the *why* is non-obvious (hidden constraint, subtle invariant, workaround rationale, surprising behavior).
+- If a comment is needed, prefer a single line. Never exceed ~2 short lines. No essay-style docstrings.
+- Do NOT restate what the code already says. Well-named identifiers and types are the primary documentation.
+- Do NOT narrate task history, PR context, ticket numbers, "added for X", "used by Y", or change-log entries — that belongs in commit messages / PR descriptions, not in source.
+- Do NOT leave chatter, decorative banners (`// ========`), or AI-style meta comments ("Now let's…", "This function will…").
+- Exception: API/public-interface doc comments (rustdoc, JSDoc on exported symbols) may be longer when they document contract, parameters, and invariants — but still written tightly, no filler.
+
 **MANDATORY — Plan Before Breaking / Big Changes:** When an agent is about to perform a **breaking change** or a **big change**, the agent MUST enter plan mode first and present the plan for user approval. Do NOT execute the change immediately.
 
 A change qualifies as "breaking" or "big" if it meets ANY of the following:
