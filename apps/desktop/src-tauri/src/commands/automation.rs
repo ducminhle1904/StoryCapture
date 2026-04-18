@@ -333,7 +333,7 @@ pub async fn resolve_playwright_target(
 
     #[cfg(target_os = "macos")]
     {
-        let resolved = capture::macos::window::find_window_by_pid(pid, Some("Chromium"))
+        let resolved = capture::macos::window::find_window_by_pid(pid, None)
             .await
             .map_err(|e| AppError::Capture(e.to_string()))?;
         let Some(window_id) = resolved else {

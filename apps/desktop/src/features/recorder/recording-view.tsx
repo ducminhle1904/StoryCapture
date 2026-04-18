@@ -359,7 +359,7 @@ export function RecordingView({
           } catch {
             /* keep polling */
           }
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 150));
         }
         if (autoResolved) {
           recordingTarget = {
