@@ -166,21 +166,16 @@ impl EncodeConfig {
             // Video encode.
             "-c:v".into(),
             codec.into(),
-            // `-b:v` is VT's soft target — it routinely undershoots on
-            // low-motion content (e.g. 900 kb/s on a near-static page)
-            // because VT treats bitrate as a ceiling, not a floor. Pair
-            // with -maxrate + -bufsize to enforce a minimum quality
-            // envelope (buffer-constrained VBR); kept simple to avoid
-            // breaking software-fallback libx264 behavior.
-            "-b:v".into(),
-            bitrate.clone(),
             "-pix_fmt".into(),
             "yuv420p".into(),
         ]);
         if is_videotoolbox {
-            // Constant-quality target (0-100 scale on VT). q=65 lands in
-            // the 6-12 Mbps range at 1080p60 on the M-series encoder,
-            // producing visibly crisp output even for static frames.
+            // Constant-quality VBR on VideoToolbox. MUST NOT pair with
+            // -b:v — VT silently picks one mode and ignores the other,
+            // typically favoring -b:v which treats bitrate as a
+            // ceiling and undershoots to ~1 Mbps on low-motion frames.
+            // -q:v 65 lands ~6-12 Mbps at 1080p60 on Apple Silicon;
+            // -maxrate/-bufsize cap peaks during high-motion bursts.
             args.extend([
                 "-q:v".into(),
                 "65".into(),
@@ -189,6 +184,9 @@ impl EncodeConfig {
                 "-bufsize".into(),
                 format!("{}k", target_kbps * 2),
             ]);
+        } else {
+            // Software fallback (libx264) still uses -b:v target.
+            args.extend(["-b:v".into(), bitrate.clone()]);
         }
         args.extend([
             // Audio encode.

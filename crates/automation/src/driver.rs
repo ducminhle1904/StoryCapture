@@ -66,8 +66,12 @@ impl LaunchConfig {
         // CHROME_BORDER_PX = 10 px window border on each side (x2) on
         // macOS Chromium — accounts for the 20 px width shortfall when
         // window.frame() reports 1900 for a 1920-requested window.
-        const CHROME_HEIGHT_PX: u32 = 87;
-        const CHROME_BORDER_PX: u32 = 20;
+        // Empirical values from macOS Chrome for Testing 2026-04:
+        // viewport 1920×1080 + 40/137 → recorded content 1920×1080.
+        // 40 = 20 px border × 2 sides. 137 = title bar + tab strip +
+        // URL bar + toolbar padding.
+        const CHROME_HEIGHT_PX: u32 = 137;
+        const CHROME_BORDER_PX: u32 = 40;
         let chrome_hidden = args.iter().any(|a| a.starts_with("--app="));
         let (window_w, window_h) = if chrome_hidden {
             (viewport.width, viewport.height)
@@ -300,8 +304,8 @@ mod launch_config_tests {
             cfg.args.iter().any(|a| {
                 a == &format!(
                     "--window-size={},{}",
-                    cfg.viewport.width + 20,
-                    cfg.viewport.height + 87
+                    cfg.viewport.width + 40,
+                    cfg.viewport.height + 137
                 )
             }),
             "expected --window-size compensating for chrome + borders in {:?}",
