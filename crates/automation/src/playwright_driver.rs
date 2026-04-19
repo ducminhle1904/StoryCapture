@@ -483,12 +483,40 @@ fn target_to_json(t: &SelectorOrText) -> Value {
 // in 07-03b. Grep-guarded by the plan's acceptance criteria.
 // ──────────────────────────────────────────────────────────────────────
 
+/// Discriminator for ranked DSL candidates emitted by the sidecar's picker
+/// generator. Wire format is snake_case so legacy JSON stays valid. An
+/// `Unknown` arm captures any future kind the sidecar adds without
+/// breaking decode.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PickKind {
+    Testid,
+    Role,
+    Label,
+    TextExact,
+    Selector,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Reason a pickElement session resolved without a pick.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickCancelReason {
+    UserCancel,
+    Navigation,
+    Timeout,
+    UnsupportedUrl,
+    #[serde(other)]
+    Unknown,
+}
+
 /// Locator description from the sidecar's ranked DSL generator.
 /// `value` is a string for testid/selector/label/text_exact, or an
 /// object `{ role, name }` for the role kind.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PickLocator {
-    pub kind: String,
+    pub kind: PickKind,
     pub value: Value,
 }
 
@@ -496,7 +524,7 @@ pub struct PickLocator {
 /// chosen locator plus a score and uniqueness flag).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PickCandidate {
-    pub kind: String,
+    pub kind: PickKind,
     pub value: Value,
     pub score: f64,
     #[serde(default)]
@@ -517,7 +545,7 @@ pub enum PickElementResponse {
     },
     Cancelled {
         cancelled: bool, // always true; kept for serde-untagged disambiguation
-        reason: String,
+        reason: PickCancelReason,
     },
 }
 
@@ -635,7 +663,7 @@ mod pick_element_serde_tests {
                 candidates,
             } => {
                 assert_eq!(emitted, "click testid \"save\"");
-                assert_eq!(locator.kind, "testid");
+                assert_eq!(locator.kind, PickKind::Testid);
                 assert_eq!(candidates.len(), 1);
                 assert!(candidates[0].unique);
             }
@@ -653,7 +681,7 @@ mod pick_element_serde_tests {
         let r: PickElementResponse = serde_json::from_value(json).unwrap();
         match r {
             PickElementResponse::Picked { locator, .. } => {
-                assert_eq!(locator.kind, "role");
+                assert_eq!(locator.kind, PickKind::Role);
                 assert_eq!(locator.value["role"], "button");
                 assert_eq!(locator.value["name"], "Save");
             }
@@ -668,7 +696,7 @@ mod pick_element_serde_tests {
         match r {
             PickElementResponse::Cancelled { cancelled, reason } => {
                 assert!(cancelled);
-                assert_eq!(reason, "navigation");
+                assert_eq!(reason, PickCancelReason::Navigation);
             }
             _ => panic!("expected Cancelled"),
         }
@@ -680,7 +708,10 @@ mod pick_element_serde_tests {
         let r: PickElementResponse = serde_json::from_value(json).unwrap();
         assert!(matches!(
             r,
-            PickElementResponse::Cancelled { reason, .. } if reason == "user-cancel"
+            PickElementResponse::Cancelled {
+                reason: PickCancelReason::UserCancel,
+                ..
+            }
         ));
     }
 
@@ -690,7 +721,10 @@ mod pick_element_serde_tests {
         let r: PickElementResponse = serde_json::from_value(json).unwrap();
         assert!(matches!(
             r,
-            PickElementResponse::Cancelled { reason, .. } if reason == "unsupported-url"
+            PickElementResponse::Cancelled {
+                reason: PickCancelReason::UnsupportedUrl,
+                ..
+            }
         ));
     }
 }

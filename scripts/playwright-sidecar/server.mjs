@@ -88,7 +88,38 @@ let state = {
   // with `state.browser` / `state.context` / `state.page`.
   authorBrowser: null,
   authorContext: null,
+  // Idle-close timer for the author browser. Closed after this many ms
+  // of no captureSnapshot activity so a long editor session doesn't pin
+  // ~80 MB of headless Chromium indefinitely. Re-launches on the next
+  // captureSnapshot call at ~500 ms cold-start cost.
+  authorIdleHandle: null,
 };
+
+const AUTHOR_IDLE_MS = 5 * 60 * 1000;
+
+async function closeAuthorBrowser() {
+  const b = state.authorBrowser;
+  state.authorBrowser = null;
+  state.authorContext = null;
+  if (state.authorIdleHandle) {
+    clearTimeout(state.authorIdleHandle);
+    state.authorIdleHandle = null;
+  }
+  if (b) {
+    try { await b.close(); } catch {}
+  }
+}
+
+function armAuthorIdleClose() {
+  if (state.authorIdleHandle) clearTimeout(state.authorIdleHandle);
+  state.authorIdleHandle = setTimeout(() => {
+    state.authorIdleHandle = null;
+    closeAuthorBrowser().catch(() => {});
+  }, AUTHOR_IDLE_MS);
+  if (typeof state.authorIdleHandle.unref === 'function') {
+    state.authorIdleHandle.unref();
+  }
+}
 
 const handlers = {
   capabilities: async () => ({
@@ -181,9 +212,7 @@ const handlers = {
       try { await state.browserServer.close(); } catch {}
     }
     // also tear down the author-time snapshot browser.
-    if (state.authorBrowser) {
-      try { await state.authorBrowser.close(); } catch {}
-    }
+    await closeAuthorBrowser();
     state = {
       browser: null,
       context: null,
@@ -197,6 +226,7 @@ const handlers = {
       pickerHoverBoundPages: new WeakSet(),
       authorBrowser: null,
       authorContext: null,
+      authorIdleHandle: null,
     };
     return { ok: true };
   },
@@ -496,10 +526,13 @@ const handlers = {
     } finally {
       // Close the page (not the browser/context) so we release memory
       // between snapshots. The context is reused for efficiency; it gets
-      // torn down alongside the author browser in `close`.
+      // torn down alongside the author browser in `close`. Idle-close
+      // timer re-armed on every call so a ~80 MB Chromium isn't pinned
+      // after the editor goes idle.
       try {
         await page.close();
       } catch {}
+      armAuthorIdleClose();
     }
   },
 

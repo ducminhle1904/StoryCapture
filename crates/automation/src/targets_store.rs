@@ -139,7 +139,6 @@ pub fn atomic_write(path: &Path, file: &TargetsFile) -> Result<()> {
             .map_err(|e| AutomationError::Io(format!("fsync tmp {}: {e}", tmp.display())))?;
     }
     fs::rename(&tmp, path).map_err(|e| {
-        // Best-effort cleanup if rename fails.
         let _ = fs::remove_file(&tmp);
         AutomationError::Io(format!(
             "rename {} -> {}: {e}",
