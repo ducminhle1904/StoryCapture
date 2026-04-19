@@ -272,9 +272,20 @@ Plans (to be produced by /gsd-plan-phase 10):
 - [ ] 10-02 — Simulator Tauri commands (`simulator_*`) + session registry + `.story.simulator/` storage with retention + `SimulatorEvent` streaming channel + coordination with 09-04 pause/resume
 - [ ] 10-03 — Editor UI: `SimulatorTimeline.tsx` + `simulatorStore.ts` + "Preview to here" action + Cmd-. shortcut + CodeMirror `StateField` line decoration + editor-lock banner + promote-to-fallback button
 
+### Phase 11: Author-time element picker — relocate Pick to Preview panel, route through author-session, record path becomes read-only
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 10
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 11 to break down)
+
 ---
 *Roadmap created: 2026-04-14*
 *Phase 7 added: 2026-04-17*
 *Phase 9 added: 2026-04-18*
 *Phase 10 added: 2026-04-18*
 *Phase 10 context locked (discuss-phase): 2026-04-19*
+*Phase 10 plans materialized: 2026-04-19*

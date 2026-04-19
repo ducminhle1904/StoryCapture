@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-19T02:38:06.548Z"
+last_updated: "2026-04-19T03:18:13.646Z"
 progress:
   total_phases: 9
   completed_phases: 4
-  total_plans: 75
+  total_plans: 78
   completed_plans: 68
-  percent: 91
+  percent: 87
 ---
 
 # State: StoryCapture
@@ -30,7 +30,7 @@ Plan: 1 of 8
 - **Milestone:** v1
 - **Phase:** 5 — Window-targeted screen capture with Playwright auto-follow
 - **Plan:** 3 of 3 complete (05-01/05-02/05-03 all code-committed; human-verify checkpoints auto-approved under workflow.auto_advance=true; 05-VERIFICATION.md written)
-- **Status:** Executing Phase 7
+- **Status:** Ready to execute
 - **Progress:** [█████████░] 89%
 
 ## Performance Metrics
@@ -46,6 +46,7 @@ Plan: 1 of 8
 - Phase 5 added: Window-targeted screen capture with Playwright auto-follow — replaces SckBackend stub with real SCK streaming + window/app target enum + Playwright PID→SCWindow bridge. Research done, stack corrections noted (`screencapturekit = =1.5.4`, not 1.70.x).
 - Phase 6 added: Recording v2 — promotes Phase 5's deferred list (audio capture, region capture, chrome-hiding, multi-browser auto-follow, live preview, per-recording cursor toggle, Windows E2E CI) into a dedicated polish phase. CONTEXT.md drafted with 24 locked decisions; groups into 4 plans.
 - Phase 9 added: Live Preview pane — render Chromium automation inside the Recorder window via CDP `Page.startScreencast`. Cosmetic companion to the shipped window-target capture; final video still uses real-Chromium pixels via SCK/WGC, not screencast frames. Proposed 3-plan split: sidecar CDP verbs + Rust event bridge, React canvas renderer + toggle, perf/backpressure hardening.
+- Phase 11 added: Author-time element picker — relocate Pick from the recording toolbar to the Preview panel, route through the Phase 10 author-session, and make the Record path read-only against `.story` + `.story.targets.json` (self-healing deferred to explicit Promote-to-fallback). Depends on Phase 10 author-session primitives and editor read-only lock.
 
 ### Decisions
 
