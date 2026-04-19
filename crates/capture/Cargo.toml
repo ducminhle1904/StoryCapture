@@ -74,6 +74,7 @@ windows-capture = "=2.0.0"
 # the 0.58 one directly.
 windows = { version = "0.58", features = [
     "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Gdi",
     "Win32_Graphics_Dxgi",
     "Win32_System_Performance",
     "Graphics_Capture",
@@ -84,6 +85,7 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     # Phase 6 plan 01 — audio named pipe factory (fifo.rs).
     "Win32_System_Pipes",
+    "Win32_Security",
     "Win32_Storage_FileSystem",
 ] }
 

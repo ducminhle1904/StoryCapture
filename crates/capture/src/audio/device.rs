@@ -7,6 +7,7 @@
 //! so no unnecessary default-device resolution happens on cold launch.
 
 use cpal::traits::{DeviceTrait, HostTrait};
+use cpal::{Device, DeviceId};
 use serde::{Deserialize, Serialize};
 
 use super::error::AudioError;
@@ -65,4 +66,41 @@ pub fn list_inputs() -> Result<Vec<AudioInputInfo>, AudioError> {
         });
     }
     Ok(out)
+}
+
+pub(crate) fn resolve_input_device(
+    host: &cpal::Host,
+    device_id: Option<&str>,
+) -> Result<Device, AudioError> {
+    match device_id {
+        None | Some("") | Some("default") => host
+            .default_input_device()
+            .ok_or(AudioError::NoDefaultInput),
+        Some(id) => resolve_explicit_input_device(host, id),
+    }
+}
+
+fn resolve_explicit_input_device(host: &cpal::Host, device_id: &str) -> Result<Device, AudioError> {
+    if let Ok(parsed) = device_id.parse::<DeviceId>() {
+        if let Some(device) = host.device_by_id(&parsed) {
+            return Ok(device);
+        }
+    }
+
+    // Backward-compatible fallback for pre-id sessions that persisted the
+    // human-readable device name instead of cpal's stable DeviceId.
+    for device in host
+        .input_devices()
+        .map_err(|e| AudioError::Cpal(e.to_string()))?
+    {
+        let name = match device.description() {
+            Ok(description) => description.name().to_string(),
+            Err(_) => continue,
+        };
+        if name == device_id {
+            return Ok(device);
+        }
+    }
+
+    Err(AudioError::DeviceNotFound(device_id.to_string()))
 }

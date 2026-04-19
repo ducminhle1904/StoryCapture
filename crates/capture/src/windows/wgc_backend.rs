@@ -38,11 +38,20 @@ pub struct WgcBackend {
     frame_pool: FramePool,
 }
 
+type WgcCaptureControl = windows_capture::capture::CaptureControl<WgcHandler, WgcHandlerError>;
+
 struct WgcState {
     started_at: Option<Instant>,
     stats: CaptureStats,
     /// `CaptureControl` returned by `start_free_threaded`.
-    control: Option<windows_capture::capture::CaptureControl<WgcHandler, WgcHandlerError>>,
+    control: Option<WgcCaptureControl>,
+    session: Option<WgcSession>,
+}
+
+#[derive(Clone)]
+struct WgcSession {
+    cfg: CaptureConfig,
+    out: mpsc::Sender<Frame>,
 }
 
 /// Handler passed to `start_free_threaded`.
@@ -207,6 +216,7 @@ impl WgcBackend {
                 started_at: None,
                 stats: CaptureStats::default(),
                 control: None,
+                session: None,
             })),
             event_sink: Arc::new(Mutex::new(None)),
             dropped: Arc::new(AtomicU64::new(0)),
@@ -230,19 +240,12 @@ impl WgcBackend {
     pub fn delivered_frames(&self) -> u64 {
         self.delivered.load(Ordering::Relaxed)
     }
-}
 
-#[async_trait]
-impl CaptureBackend for WgcBackend {
-    fn kind(&self) -> BackendKind {
-        BackendKind::Native
-    }
-
-    async fn start(
-        &mut self,
+    async fn start_control(
+        &self,
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
-    ) -> Result<(), CaptureError> {
+    ) -> Result<WgcCaptureControl, CaptureError> {
         // Build the capture item from the target.
         let event_sink = self.event_sink.lock().clone();
         let start_epoch = Instant::now();
@@ -278,8 +281,7 @@ impl CaptureBackend for WgcBackend {
         let dirty = DirtyRegionSettings::Default;
         let color_format = ColorFormat::Bgra8;
 
-        // Dispatch by target kind.
-        let control = match cfg.target {
+        match cfg.target {
             CaptureTarget::Display { display_id } => {
                 let monitor = crate::windows::helpers::resolve_monitor(&display_id)?;
                 let settings = Settings::new(
@@ -292,10 +294,9 @@ impl CaptureBackend for WgcBackend {
                     color_format,
                     flags,
                 );
-                WgcHandler::start_free_threaded(settings).map_err(map_start_err)?
+                WgcHandler::start_free_threaded(settings).map_err(map_start_err)
             }
             CaptureTarget::Window { window_id } => {
-                // Unpack the HWND from WindowId.
                 let hwnd = window_id.0 as isize as *mut std::ffi::c_void;
                 let window = Window::from_raw_hwnd(hwnd);
                 let settings = Settings::new(
@@ -309,17 +310,12 @@ impl CaptureBackend for WgcBackend {
                     flags,
                 );
                 let control = WgcHandler::start_free_threaded(settings).map_err(map_start_err)?;
-                // Evidence breadcrumb: WGC bound to a specific HWND via
-                // GraphicsCaptureItem::FromWindow is focus-independent per
-                // OS contract. Used to diagnose future "frames stopped on
-                // alt-tab" reports — absence means we fell through to a
-                // monitor target.
                 tracing::info!(
                     target: "storycapture::capture",
                     hwnd = window_id.0,
                     "WgcBackend: window-target stream started — capture is focus-independent (GraphicsCaptureItem::FromWindow)"
                 );
-                control
+                Ok(control)
             }
             CaptureTarget::WindowByPid {
                 pid,
@@ -346,7 +342,7 @@ impl CaptureBackend for WgcBackend {
                     pid,
                     "WgcBackend: window-target stream started — capture is focus-independent (GraphicsCaptureItem::FromWindow, pid-resolved)"
                 );
-                control
+                Ok(control)
             }
             CaptureTarget::DisplayRegion { display_id, .. } => {
                 let monitor = crate::windows::helpers::resolve_monitor(&display_id)?;
@@ -360,13 +356,39 @@ impl CaptureBackend for WgcBackend {
                     color_format,
                     flags,
                 );
-                WgcHandler::start_free_threaded(settings).map_err(map_start_err)?
+                WgcHandler::start_free_threaded(settings).map_err(map_start_err)
             }
-        };
+        }
+    }
+
+    async fn stop_control(control: WgcCaptureControl) -> Result<(), CaptureError> {
+        tokio::task::spawn_blocking(move || control.stop())
+            .await
+            .map_err(|e| CaptureError::Backend(format!("stop join: {e}")))?
+            .map_err(|e| CaptureError::Native(format!("CaptureControl::stop: {e}")))
+    }
+}
+
+#[async_trait]
+impl CaptureBackend for WgcBackend {
+    fn kind(&self) -> BackendKind {
+        BackendKind::Native
+    }
+
+    async fn start(
+        &mut self,
+        cfg: CaptureConfig,
+        out: mpsc::Sender<Frame>,
+    ) -> Result<(), CaptureError> {
+        self.dropped.store(0, Ordering::Relaxed);
+        self.delivered.store(0, Ordering::Relaxed);
+        let control = self.start_control(cfg.clone(), out.clone()).await?;
 
         let mut s = self.state.lock();
         s.started_at = Some(Instant::now());
+        s.stats = CaptureStats::default();
         s.control = Some(control);
+        s.session = Some(WgcSession { cfg, out });
         self.paused.store(false, Ordering::Release);
         Ok(())
     }
@@ -378,11 +400,7 @@ impl CaptureBackend for WgcBackend {
             s.control.take()
         };
         if let Some(control) = control_opt {
-            // Stop the capture control on a blocking thread.
-            tokio::task::spawn_blocking(move || control.stop())
-                .await
-                .map_err(|e| CaptureError::Backend(format!("stop join: {e}")))?
-                .map_err(|e| CaptureError::Native(format!("CaptureControl::stop: {e}")))?;
+            Self::stop_control(control).await?;
         }
         let mut s = self.state.lock();
         if let Some(t) = s.started_at.take() {
@@ -390,18 +408,49 @@ impl CaptureBackend for WgcBackend {
         }
         s.stats.frames_delivered = self.delivered.load(Ordering::Acquire);
         s.stats.frames_dropped = self.dropped.load(Ordering::Acquire);
+        s.session = None;
         self.paused.store(false, Ordering::Release);
         Ok(s.stats)
     }
 
     async fn pause(&mut self) -> Result<(), CaptureError> {
-        self.paused.store(true, Ordering::Release);
+        if self.paused.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+        let control = {
+            let mut s = self.state.lock();
+            s.control.take()
+        };
+        if let Some(control) = control {
+            if let Err(err) = Self::stop_control(control).await {
+                self.paused.store(false, Ordering::Release);
+                return Err(err);
+            }
+        }
         Ok(())
     }
 
     async fn resume(&mut self) -> Result<(), CaptureError> {
-        self.paused.store(false, Ordering::Release);
-        Ok(())
+        if !self.paused.swap(false, Ordering::AcqRel) {
+            return Ok(());
+        }
+        let session = {
+            self.state
+                .lock()
+                .session
+                .clone()
+                .ok_or_else(|| CaptureError::Backend("WGC session missing for resume".into()))?
+        };
+        match self.start_control(session.cfg, session.out).await {
+            Ok(control) => {
+                self.state.lock().control = Some(control);
+                Ok(())
+            }
+            Err(err) => {
+                self.paused.store(true, Ordering::Release);
+                Err(err)
+            }
+        }
     }
 
     fn list_displays(&self) -> Result<Vec<DisplayInfo>, CaptureError> {

@@ -10,12 +10,14 @@
 //!   - Lazy device enumeration — never touch cpal before the user opts
 //!     into audio, or macOS pops the mic TCC prompt at launch (cpal#901).
 
+pub mod config;
 pub mod device;
 pub mod error;
 pub mod fifo;
 pub mod stream;
 
+pub use config::{negotiate_input, AudioStreamInfo, NegotiatedAudioInput};
 pub use device::{list_inputs, AudioInputInfo};
 pub use error::AudioError;
 pub use fifo::{make_fifo, FifoHandle};
-pub use stream::{AudioCaptureStream, AudioStreamInfo};
+pub use stream::AudioCaptureStream;

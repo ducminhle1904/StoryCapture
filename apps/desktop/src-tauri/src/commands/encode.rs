@@ -5,7 +5,9 @@
 use crate::commands::capture::CaptureTargetDto;
 use crate::error::AppError;
 use crate::state::AppState;
-use capture::audio::{make_fifo, AudioCaptureStream, FifoHandle};
+use capture::audio::{
+    make_fifo, negotiate_input, AudioCaptureStream, FifoHandle, NegotiatedAudioInput,
+};
 use capture::{ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, Frame, PixelFormat};
 use encoder::{
     probe_encoders, AudioFormat, AudioInput, EncodeConfig, EncodePipeline, EncodeProgress,
@@ -330,8 +332,7 @@ pub async fn start_recording(
                 "start_recording: resolved Playwright auto sentinel to pid"
             );
             {
-                let paint_deadline = std::time::Instant::now()
-                    + std::time::Duration::from_secs(10);
+                let paint_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
                 let wait_start = std::time::Instant::now();
                 let mut paint_ready = false;
                 loop {
@@ -517,7 +518,44 @@ pub async fn start_recording(
     let frame_rx = enc_rx;
 
     // Create mic input before spawning FFmpeg.
-    let audio_fifo: Option<FifoHandle> = if args.audio_device_id.is_some() {
+    let negotiated_audio: Option<NegotiatedAudioInput> = if let Some(device_id) =
+        args.audio_device_id.clone()
+    {
+        match tokio::task::spawn_blocking(move || negotiate_input(Some(device_id.as_str()))).await {
+            Ok(Ok(negotiated)) => {
+                let info = negotiated.info();
+                tracing::info!(
+                    target: "storycapture::recording",
+                    device_id = negotiated.device_id(),
+                    device_name = negotiated.device_name(),
+                    sample_rate = info.sample_rate,
+                    channels = info.channels,
+                    "mic audio input negotiated"
+                );
+                Some(negotiated)
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    target: "storycapture::recording",
+                    error = %e,
+                    "mic audio negotiation failed; continuing video-only"
+                );
+                None
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "storycapture::recording",
+                    error = %e,
+                    "mic audio negotiation join error; continuing video-only"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let audio_fifo: Option<FifoHandle> = if negotiated_audio.is_some() {
         Some(make_fifo("storycapture-audio").map_err(|e| {
             tracing::error!(
                 target: "storycapture::recording",
@@ -538,11 +576,12 @@ pub async fn start_recording(
         probe.preferred,
     )
     .force_ffmpeg_path();
-    if let Some(f) = &audio_fifo {
+    if let (Some(f), Some(negotiated)) = (&audio_fifo, negotiated_audio.as_ref()) {
+        let info = negotiated.info();
         enc_cfg = enc_cfg.with_audio(AudioInput {
             fifo_path: f.path().to_path_buf(),
-            sample_rate: 48_000,
-            channels: 1,
+            sample_rate: info.sample_rate,
+            channels: info.channels,
             format: AudioFormat::F32LE,
         });
     }
@@ -566,14 +605,15 @@ pub async fn start_recording(
 
     // Let FFmpeg open the FIFO before starting capture.
     let app_for_audio_event = app.clone();
-    let audio_stream: Option<AudioCaptureStream> = if let Some(f) = &audio_fifo {
+    let audio_stream: Option<AudioCaptureStream> = if let (Some(f), Some(negotiated)) =
+        (&audio_fifo, negotiated_audio)
+    {
         let fifo_path = f.path().to_path_buf();
-        let device_id = args.audio_device_id.clone();
         // Small delay so FFmpeg can open the FIFO first.
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         // cpal work runs on a blocking thread.
         match tokio::task::spawn_blocking(move || {
-            AudioCaptureStream::start(device_id.as_deref(), fifo_path)
+            AudioCaptureStream::start_with_negotiated(negotiated, fifo_path)
         })
         .await
         {
@@ -759,7 +799,9 @@ async fn pause_recording_inner(session_id: &str) -> Result<(), AppError> {
     }
 
     if let Some(stream) = audio_stream.lock().await.as_ref() {
-        stream.pause().map_err(|e| AppError::Capture(e.to_string()))?;
+        stream
+            .pause()
+            .map_err(|e| AppError::Capture(e.to_string()))?;
     }
 
     crate::commands::automation::pause_active_automation();
@@ -784,7 +826,9 @@ async fn resume_recording_inner(session_id: &str) -> Result<(), AppError> {
     }
 
     if let Some(stream) = audio_stream.lock().await.as_ref() {
-        stream.resume().map_err(|e| AppError::Capture(e.to_string()))?;
+        stream
+            .resume()
+            .map_err(|e| AppError::Capture(e.to_string()))?;
     }
 
     crate::commands::automation::resume_active_automation();

@@ -10,7 +10,8 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use capture::audio::{list_inputs, make_fifo, AudioCaptureStream};
+use capture::audio::{list_inputs, make_fifo, negotiate_input, AudioCaptureStream};
+use cpal::SampleFormat;
 
 /// Test 1 — list_inputs() never triggers mic TCC and returns Ok(Vec).
 /// On a fresh macOS CI host with no mic, Vec is empty — we only check
@@ -22,16 +23,21 @@ fn list_inputs_lazy_enumeration() {
     let result = list_inputs();
     // We don't care about the content — just that enumeration is
     // non-panicking and returns a Result.
-    assert!(result.is_ok(), "list_inputs returned error: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "list_inputs returned error: {:?}",
+        result.err()
+    );
 }
 
-/// Test 2 — mock stream writes sample bytes to the fifo at ~48 kHz. The
+/// Test 2 — negotiation returns the config the mock stream later uses,
+/// and the stream writes sample bytes to the fifo at ~48 kHz. The
 /// reader thread counts bytes and the test asserts within ±15% of the
 /// expected rate over ~500 ms (generous tolerance because the mock paces
 /// itself with a 10 ms sleep loop and OS scheduling jitter on macOS can
 /// easily shift a single tick).
 #[test]
-fn mock_stream_writes_at_expected_rate() {
+fn negotiated_mock_stream_writes_at_expected_rate() {
     let fifo = make_fifo("smoke-rate").expect("make_fifo");
     let fifo_path: PathBuf = fifo.path().to_path_buf();
 
@@ -57,10 +63,21 @@ fn mock_stream_writes_at_expected_rate() {
         total
     });
 
-    let (_stream, info) =
-        AudioCaptureStream::start(Some("__mock__"), fifo_path).expect("start mock stream");
-    assert_eq!(info.sample_rate, 48_000);
-    assert_eq!(info.channels, 1);
+    let negotiated = negotiate_input(Some("__mock__")).expect("negotiate mock input");
+    assert_eq!(negotiated.device_id(), "__mock__");
+    assert_eq!(negotiated.device_name(), "Mock audio input");
+    assert_eq!(negotiated.input_sample_format(), SampleFormat::F32);
+    assert_eq!(negotiated.input_config().sample_rate, 48_000);
+    assert_eq!(negotiated.input_config().channels, 1);
+
+    let negotiated_info = negotiated.info();
+    assert_eq!(negotiated_info.sample_rate, 48_000);
+    assert_eq!(negotiated_info.channels, 1);
+    assert_eq!(negotiated_info.format, SampleFormat::F32);
+
+    let (_stream, started_info) = AudioCaptureStream::start_with_negotiated(negotiated, fifo_path)
+        .expect("start negotiated mock stream");
+    assert_eq!(started_info, negotiated_info);
 
     let total_bytes = reader.join().expect("reader join");
     // 48 kHz × 4 bytes/sample × 0.5 s = 96_000 bytes ideal.

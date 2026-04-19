@@ -1,10 +1,11 @@
-//! Fallback orchestrator — tries SCK for a window/display target, falls
-//! back to xcap full-display on failure (D-07), and surfaces a degraded
-//! event on the 2nd consecutive failure in a session (D-08).
+//! Fallback orchestrator — tries the preferred native backend first,
+//! falls back to xcap primary-display capture for eligible window
+//! targets on start failure (D-07), and surfaces a degraded event on the
+//! 2nd consecutive failure in a session (D-08).
 //!
 //! This is a helper — NOT a new `CaptureBackend` implementation. Callers
 //! (the Tauri `start_capture` command) build the requested backend and
-//! wire the orchestrator around it for the SCK → xcap path.
+//! wire the orchestrator around it for the native → xcap path.
 
 use crate::backend::CaptureBackend;
 use crate::error::CaptureError;
@@ -14,8 +15,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-/// Counts consecutive SCK→xcap fallbacks in a session. A successful SCK
-/// start resets the counter. On the 2nd consecutive failure we emit
+/// Counts consecutive native→xcap fallbacks in a session. A successful
+/// native start resets the counter. On the 2nd consecutive failure we emit
 /// `WindowCaptureDegraded` so the UI can show the "Open System Settings /
 /// Use full screen" modal.
 #[derive(Clone, Default)]
@@ -45,15 +46,40 @@ impl FallbackCounter {
 /// Outcome of orchestrated start.
 #[derive(Debug)]
 pub enum OrchestratedStart {
-    /// SCK started successfully.
+    /// The preferred native backend started successfully.
     Native,
-    /// SCK failed; xcap took over for the primary display.
+    /// Native start failed; xcap took over for the primary display.
     FellBackToXcap { reason: String },
 }
 
-/// Attempt a SCK-backed start for `cfg`. On error, fall back to an xcap
-/// backend bound to the primary display and emit appropriate events
-/// through `event_sink`.
+fn is_silent_fallback_eligible(target: &CaptureTarget) -> bool {
+    matches!(
+        target,
+        CaptureTarget::Window { .. } | CaptureTarget::WindowByPid { .. }
+    )
+}
+
+fn build_xcap_fallback_config(
+    cfg: &crate::backend::CaptureConfig,
+    displays: &[crate::display::DisplayInfo],
+) -> Result<crate::backend::CaptureConfig, CaptureError> {
+    let primary = displays
+        .iter()
+        .find(|d| d.is_primary)
+        .or_else(|| displays.first())
+        .ok_or_else(|| CaptureError::Native("no displays available for fallback".into()))?
+        .id;
+
+    let mut fallback_cfg = cfg.clone();
+    fallback_cfg.target = CaptureTarget::Display {
+        display_id: primary,
+    };
+    Ok(fallback_cfg)
+}
+
+/// Attempt a native-backed start for `cfg`. On eligible window-target
+/// errors, fall back to an xcap backend bound to the primary display and
+/// emit appropriate events through `event_sink`.
 ///
 /// Returns the backend that actually started so the caller can stop it
 /// at session end.
@@ -72,37 +98,18 @@ pub async fn orchestrate_start(
         }
         Err(primary_err) => {
             let reason = primary_err.to_string();
-            tracing::warn!(reason = %reason, "SckBackend start failed — trying xcap fallback");
+            tracing::warn!(reason = %reason, "Native capture start failed — trying xcap fallback");
 
             // Only window-targeted captures should silently fall back;
-            // display-targeted failures propagate (no fallback path adds
-            // value for them).
-            // Only window-targeted captures (and DisplayRegion, which is
-            // also native-only on Windows per RESEARCH amendment to D-07)
-            // go through the xcap fallback. Plain Display targets already
-            // work in xcap — if they fail, the failure is not something
-            // fallback can fix.
-            let is_window_target = matches!(
-                cfg.target,
-                CaptureTarget::Window { .. }
-                    | CaptureTarget::WindowByPid { .. }
-                    | CaptureTarget::DisplayRegion { .. }
-            );
-            if !is_window_target {
+            // display and region-targeted failures must preserve the
+            // caller's original target contract.
+            if !is_silent_fallback_eligible(&cfg.target) {
                 return Err(primary_err);
             }
 
             // Build an xcap backend for the primary display (best-effort).
             let displays = crate::display::enumerate_displays()?;
-            let primary = displays
-                .iter()
-                .find(|d| d.is_primary)
-                .or_else(|| displays.first())
-                .ok_or_else(|| CaptureError::Native("no displays available for fallback".into()))?
-                .id;
-
-            let mut fallback_cfg = cfg.clone();
-            fallback_cfg.target = CaptureTarget::Display { display_id: primary };
+            let fallback_cfg = build_xcap_fallback_config(&cfg, &displays)?;
 
             let mut xcap_backend: Box<dyn CaptureBackend> = Box::new(crate::XcapBackend::new());
             xcap_backend
@@ -122,10 +129,7 @@ pub async fn orchestrate_start(
                 }
             }
 
-            Ok((
-                xcap_backend,
-                OrchestratedStart::FellBackToXcap { reason },
-            ))
+            Ok((xcap_backend, OrchestratedStart::FellBackToXcap { reason }))
         }
     }
 }
@@ -202,13 +206,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fallback_orchestrator_display_region_target_propagates_error() {
+        let counter = FallbackCounter::new();
+        let (tx, _rx) = mpsc::channel::<Frame>(4);
+        let backend: Box<dyn CaptureBackend> = Box::new(FailingBackend {
+            fail_with: "primary failed",
+        });
+        let cfg = CaptureConfig::new_for_target(CaptureTarget::DisplayRegion {
+            display_id: DisplayId(7),
+            rect: crate::RegionRect {
+                x: 10.0,
+                y: 20.0,
+                w: 640.0,
+                h: 360.0,
+            },
+        });
+        let result = orchestrate_start(backend, cfg, tx, None, counter.clone()).await;
+        assert!(
+            result.is_err(),
+            "display-region failure must NOT silently degrade to full display"
+        );
+        assert_eq!(counter.get(), 0, "counter untouched on region path");
+    }
+
+    #[test]
+    fn fallback_orchestrator_only_allows_window_targets() {
+        assert!(!is_silent_fallback_eligible(&CaptureTarget::Display {
+            display_id: DisplayId(1),
+        }));
+        assert!(is_silent_fallback_eligible(&CaptureTarget::Window {
+            window_id: crate::WindowId(1),
+        }));
+        assert!(is_silent_fallback_eligible(&CaptureTarget::WindowByPid {
+            pid: 42,
+            title_hint: Some("Browser".into()),
+        }));
+        assert!(!is_silent_fallback_eligible(
+            &CaptureTarget::DisplayRegion {
+                display_id: DisplayId(1),
+                rect: crate::RegionRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 100.0,
+                    h: 100.0
+                },
+            }
+        ));
+    }
+
+    #[test]
+    fn fallback_orchestrator_rewrites_window_targets_to_primary_display() {
+        let cfg = CaptureConfig::new_for_target(CaptureTarget::Window {
+            window_id: crate::WindowId(9),
+        });
+        let displays = vec![
+            DisplayInfo {
+                id: DisplayId(2),
+                name: "External".into(),
+                width_px: 2560,
+                height_px: 1440,
+                scale_factor: 1.0,
+                is_primary: false,
+            },
+            DisplayInfo {
+                id: DisplayId(5),
+                name: "Internal".into(),
+                width_px: 3024,
+                height_px: 1964,
+                scale_factor: 2.0,
+                is_primary: true,
+            },
+        ];
+
+        let fallback_cfg = build_xcap_fallback_config(&cfg, &displays).expect("fallback config");
+
+        assert_eq!(
+            fallback_cfg.target,
+            CaptureTarget::Display {
+                display_id: DisplayId(5)
+            }
+        );
+        assert_eq!(fallback_cfg.include_cursor, cfg.include_cursor);
+        assert_eq!(fallback_cfg.fps_target, cfg.fps_target);
+        assert_eq!(fallback_cfg.pixel_format, cfg.pixel_format);
+        assert_eq!(fallback_cfg.queue_cap_bytes, cfg.queue_cap_bytes);
+    }
+
+    #[tokio::test]
     async fn fallback_orchestrator_resets_counter_on_success() {
         let counter = FallbackCounter::new();
         counter.tick(); // pretend we failed once before
         assert_eq!(counter.get(), 1);
 
         let started = Arc::new(AtomicBool::new(false));
-        let backend: Box<dyn CaptureBackend> = Box::new(OkBackend { started: started.clone() });
+        let backend: Box<dyn CaptureBackend> = Box::new(OkBackend {
+            started: started.clone(),
+        });
         let (tx, _rx) = mpsc::channel::<Frame>(4);
         let cfg = CaptureConfig::new_for_target(CaptureTarget::Window {
             window_id: crate::WindowId(1),
@@ -219,28 +312,5 @@ mod tests {
         assert!(matches!(outcome, OrchestratedStart::Native));
         assert_eq!(counter.get(), 0, "success resets counter");
         assert!(started.load(Ordering::Acquire));
-    }
-
-    #[tokio::test]
-    async fn fallback_orchestrator_counter_increments_on_failure() {
-        // Window target, primary backend fails — orchestrator should try
-        // xcap. xcap will also fail here (no displays available in tests),
-        // but the counter logic still holds for the first attempt.
-        let counter = FallbackCounter::new();
-        let (tx, _rx) = mpsc::channel::<Frame>(4);
-        let backend: Box<dyn CaptureBackend> = Box::new(FailingBackend {
-            fail_with: "TCC glitch",
-        });
-        let cfg = CaptureConfig::new_for_target(CaptureTarget::Window {
-            window_id: crate::WindowId(1),
-        });
-        let _ = orchestrate_start(backend, cfg, tx, None, counter.clone()).await;
-        // We can't assert success/failure of xcap fallback without a real
-        // display, but the counter stayed valid either way.
-        // Either: xcap succeeded → counter = 1 (we ticked before OK return)
-        // Or: xcap failed → we bailed out before ticking.
-        // The property we care about is "counter does not silently drift
-        // on the success path" which is covered by the reset test above.
-        let _ = counter.get();
     }
 }

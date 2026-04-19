@@ -85,9 +85,8 @@ impl SckBackend {
     ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>), CaptureError> {
         match target {
             CaptureTarget::Display { display_id } => {
-                let content = SCShareableContent::get().map_err(|e| {
-                    CaptureError::Native(format!("SCShareableContent::get: {e}"))
-                })?;
+                let content = SCShareableContent::get()
+                    .map_err(|e| CaptureError::Native(format!("SCShareableContent::get: {e}")))?;
                 // Use the requested display when possible, else fall back to the first.
                 let displays = content.displays();
                 let disp = displays
@@ -128,9 +127,7 @@ impl SckBackend {
                 // Command-layer callers already did the retry loop.
                 if let Some(h) = title_hint.as_deref() {
                     if h.len() > 256 {
-                        return Err(CaptureError::Backend(
-                            "title_hint exceeds 256 chars".into(),
-                        ));
+                        return Err(CaptureError::Backend("title_hint exceeds 256 chars".into()));
                     }
                     if h.chars().any(|c| c.is_ascii_control()) {
                         return Err(CaptureError::Backend(
@@ -154,9 +151,8 @@ impl SckBackend {
             }
             // Region capture uses logical-point source rects and pixel output sizes.
             CaptureTarget::DisplayRegion { display_id, rect } => {
-                let content = SCShareableContent::get().map_err(|e| {
-                    CaptureError::Native(format!("SCShareableContent::get: {e}"))
-                })?;
+                let content = SCShareableContent::get()
+                    .map_err(|e| CaptureError::Native(format!("SCShareableContent::get: {e}")))?;
                 let displays = content.displays();
                 let disp = displays
                     .iter()
@@ -175,6 +171,37 @@ impl SckBackend {
             }
         }
     }
+
+    async fn stop_stream(&self) -> Result<(), CaptureError> {
+        let stream = { self.state.lock().stream.clone() };
+        let Some(stream) = stream else {
+            return Ok(());
+        };
+        tokio::task::spawn_blocking(move || {
+            stream
+                .stop_capture()
+                .map_err(|e| CaptureError::Backend(format!("SCStream::stop_capture: {e}")))
+        })
+        .await
+        .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))?
+    }
+
+    async fn resume_stream(&self) -> Result<(), CaptureError> {
+        let stream = {
+            self.state
+                .lock()
+                .stream
+                .clone()
+                .ok_or_else(|| CaptureError::Backend("SCStream missing for resume".into()))?
+        };
+        tokio::task::spawn_blocking(move || {
+            stream
+                .start_capture()
+                .map_err(|e| CaptureError::Backend(format!("SCStream::start_capture: {e}")))
+        })
+        .await
+        .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))?
+    }
 }
 
 #[async_trait]
@@ -188,6 +215,9 @@ impl CaptureBackend for SckBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
+        self.dropped.store(0, Ordering::Relaxed);
+        self.delivered.store(0, Ordering::Relaxed);
+
         // Resolve the filter off the async runtime.
         let target = cfg.target.clone();
         let (filter, width_px, height_px, source_rect) =
@@ -292,9 +322,9 @@ impl CaptureBackend for SckBackend {
         }
 
         // Start after the output handler is attached.
-        stream.start_capture().map_err(|e| {
-            CaptureError::Backend(format!("SCStream::start_capture: {e}"))
-        })?;
+        stream
+            .start_capture()
+            .map_err(|e| CaptureError::Backend(format!("SCStream::start_capture: {e}")))?;
 
         // Evidence breadcrumb: when a window target is in use, the SCK stream
         // is bound to a specific SCWindow id — it is focus-independent by the
@@ -316,6 +346,7 @@ impl CaptureBackend for SckBackend {
 
         let mut s = self.state.lock();
         s.started_at = Some(Instant::now());
+        s.stats = CaptureStats::default();
         s.stream = Some(stream);
         self.paused.store(false, Ordering::Release);
         Ok(())
@@ -350,12 +381,24 @@ impl CaptureBackend for SckBackend {
     }
 
     async fn pause(&mut self) -> Result<(), CaptureError> {
-        self.paused.store(true, Ordering::Release);
+        if self.paused.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+        if let Err(err) = self.stop_stream().await {
+            self.paused.store(false, Ordering::Release);
+            return Err(err);
+        }
         Ok(())
     }
 
     async fn resume(&mut self) -> Result<(), CaptureError> {
-        self.paused.store(false, Ordering::Release);
+        if !self.paused.swap(false, Ordering::AcqRel) {
+            return Ok(());
+        }
+        if let Err(err) = self.resume_stream().await {
+            self.paused.store(true, Ordering::Release);
+            return Err(err);
+        }
         Ok(())
     }
 
@@ -389,7 +432,12 @@ mod region_tests {
     #[test]
     fn region_math_retina_2x() {
         // 1440 logical points backed by 2880 pixels -> 2x scale.
-        let rect = RegionRect { x: 100.0, y: 50.0, w: 640.0, h: 480.0 };
+        let rect = RegionRect {
+            x: 100.0,
+            y: 50.0,
+            w: 640.0,
+            h: 480.0,
+        };
         let (w_px, h_px, src) = compute_region_math(&rect, 1440.0, 2880);
         assert_eq!(w_px, 1280);
         assert_eq!(h_px, 960);
@@ -402,7 +450,12 @@ mod region_tests {
 
     #[test]
     fn region_math_non_retina_1x() {
-        let rect = RegionRect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
+        let rect = RegionRect {
+            x: 0.0,
+            y: 0.0,
+            w: 800.0,
+            h: 600.0,
+        };
         let (w_px, h_px, src) = compute_region_math(&rect, 1920.0, 1920);
         assert_eq!(w_px, 800);
         assert_eq!(h_px, 600);
@@ -412,7 +465,12 @@ mod region_tests {
     #[test]
     fn region_math_fractional_scale_1_5x() {
         // 1920 logical points backed by 2880 pixels -> 1.5x scale.
-        let rect = RegionRect { x: 0.0, y: 0.0, w: 640.0, h: 360.0 };
+        let rect = RegionRect {
+            x: 0.0,
+            y: 0.0,
+            w: 640.0,
+            h: 360.0,
+        };
         let (w_px, h_px, _src) = compute_region_math(&rect, 1920.0, 2880);
         assert_eq!(w_px, 960);
         assert_eq!(h_px, 540);

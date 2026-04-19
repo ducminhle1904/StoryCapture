@@ -1,8 +1,10 @@
-//! `Frame` — captured screen frame plus its capture-API timestamp.
+//! `Frame` — captured screen frame plus backend-supplied timing metadata.
 //!
-//! Per D-21 (CONTEXT.md), the PTS is preserved end-to-end from the capture
-//! API (CMTime on macOS, QueryPerformanceCounter on Windows) into the
-//! encoder. Nothing in this crate rewrites timestamps.
+//! `pts` records whatever timestamp the active backend emits, tagged with
+//! its clock source. The capture crate preserves that metadata as-is, but
+//! recorder sessions do not treat it as an end-to-end encode contract:
+//! some backends emit synthetic clocks and the current FFmpeg rawvideo
+//! recorder path runs CFR timing downstream.
 //!
 //! `FrameData` holds either a native surface handle (zero-copy on the
 //! primary backends — RAII wrappers below CFRelease / Release on Drop) or
@@ -55,12 +57,14 @@ pub enum ClockSource {
     /// Windows QueryPerformanceCounter scaled to nanoseconds via
     /// QueryPerformanceFrequency.
     Qpc,
-    /// Synthetic / mock clock — used in pipeline tests only.
+    /// Synthetic or host-derived clock. Used in tests and in paths that
+    /// cannot preserve a native capture timestamp end-to-end.
     Synthetic,
 }
 
-/// Capture-API presentation timestamp, in nanoseconds, tagged with its
-/// source clock so the encoder can detect a clock-base mismatch.
+/// Backend-supplied presentation timestamp, in nanoseconds, tagged with
+/// its source clock so downstream code can detect clock-base mismatches
+/// or synthetic timing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pts {
     pub ns: i128,
@@ -69,7 +73,10 @@ pub struct Pts {
 
 impl Pts {
     pub fn synthetic(ns: i128) -> Self {
-        Pts { ns, source: ClockSource::Synthetic }
+        Pts {
+            ns,
+            source: ClockSource::Synthetic,
+        }
     }
 }
 
@@ -93,7 +100,10 @@ pub enum FrameData {
     /// `WgcBackend` (backlog item #2 step A2). Behaves identically to
     /// `Owned` for read access.
     #[cfg(target_os = "windows")]
-    Pooled(crate::windows::pool::PooledBuf, usize /* stride bytes */),
+    Pooled(
+        crate::windows::pool::PooledBuf,
+        usize, /* stride bytes */
+    ),
 }
 
 impl std::fmt::Debug for FrameData {
@@ -117,7 +127,7 @@ impl std::fmt::Debug for FrameData {
 /// A single captured frame.
 #[derive(Debug)]
 pub struct Frame {
-    /// Capture-API timestamp, preserved verbatim (D-21).
+    /// Backend-supplied timestamp metadata for this frame.
     pub pts: Pts,
     /// Physical-pixel width (retina / per-monitor DPI corrected).
     pub width_px: u32,
@@ -145,15 +155,11 @@ impl Frame {
             FrameData::Pooled(b, _stride) => b.len(),
             #[cfg(target_os = "macos")]
             FrameData::NativeMacOS(_) => {
-                self.width_px as usize
-                    * self.height_px as usize
-                    * self.format.bytes_per_pixel()
+                self.width_px as usize * self.height_px as usize * self.format.bytes_per_pixel()
             }
             #[cfg(target_os = "windows")]
             FrameData::NativeWindows(_) => {
-                self.width_px as usize
-                    * self.height_px as usize
-                    * self.format.bytes_per_pixel()
+                self.width_px as usize * self.height_px as usize * self.format.bytes_per_pixel()
             }
         }
     }

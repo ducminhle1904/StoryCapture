@@ -5,8 +5,9 @@
 //! bytes — not zero-copy).
 //!
 //! Invariants: frame queue bounded in BYTES not frames (256 MiB default);
-//! capture-API PTS preserved through the capture crate; native surface handles wrapped
-//! in RAII (CFRelease/Release on Drop).
+//! frames carry backend-supplied timing metadata without crate-level
+//! normalization, but recorder sessions may be re-clocked downstream;
+//! native surface handles wrapped in RAII (CFRelease/Release on Drop).
 
 pub mod audio;
 mod backend;
