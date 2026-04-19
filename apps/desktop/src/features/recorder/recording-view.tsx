@@ -397,7 +397,7 @@ export function RecordingView({
           target: recordingTarget,
           width,
           height,
-          fps: 30,
+          fps: 60,
           // Omit the field for "No audio"; pass "default" for system input.
           audio_device_id: audioDeviceId ?? undefined,
           include_cursor: includeCursor,
@@ -810,7 +810,7 @@ export function RecordingView({
           <SettingsGroup label="Quality" icon={<SettingsIcon size={13} />}>
             <dl className="space-y-1 text-xs">
               <SettingsRow k="Resolution" v="1920×1080" />
-              <SettingsRow k="Frame rate" v="30 fps" />
+              <SettingsRow k="Frame rate" v="60 fps" />
               <SettingsRow k="Codec" v="H.264" />
             </dl>
           </SettingsGroup>

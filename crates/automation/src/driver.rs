@@ -62,14 +62,22 @@ impl LaunchConfig {
         // add CHROME_HEIGHT_PX so the rendered *content* matches the
         // requested viewport — otherwise viewport: 1920x1080 records at
         // 1920x1030 because the ~50 px of chrome eats into content area.
+        // CHROME_HEIGHT_PX = title bar + tab strip + URL bar.
+        // CHROME_BORDER_PX = 10 px window border on each side (x2) on
+        // macOS Chromium — accounts for the 20 px width shortfall when
+        // window.frame() reports 1900 for a 1920-requested window.
         const CHROME_HEIGHT_PX: u32 = 87;
+        const CHROME_BORDER_PX: u32 = 20;
         let chrome_hidden = args.iter().any(|a| a.starts_with("--app="));
-        let window_h = if chrome_hidden {
-            viewport.height
+        let (window_w, window_h) = if chrome_hidden {
+            (viewport.width, viewport.height)
         } else {
-            viewport.height + CHROME_HEIGHT_PX
+            (
+                viewport.width + CHROME_BORDER_PX,
+                viewport.height + CHROME_HEIGHT_PX,
+            )
         };
-        args.push(format!("--window-size={},{}", viewport.width, window_h));
+        args.push(format!("--window-size={},{}", window_w, window_h));
         Self {
             url: meta.app.clone(),
             viewport,
@@ -289,10 +297,14 @@ mod launch_config_tests {
         // No chrome-hiding → outer window must account for Chromium's
         // ~87 px of chrome so the rendered content matches the viewport.
         assert!(
-            cfg.args
-                .iter()
-                .any(|a| a == &format!("--window-size={},{}", cfg.viewport.width, cfg.viewport.height + 87)),
-            "expected --window-size compensating for chrome in {:?}",
+            cfg.args.iter().any(|a| {
+                a == &format!(
+                    "--window-size={},{}",
+                    cfg.viewport.width + 20,
+                    cfg.viewport.height + 87
+                )
+            }),
+            "expected --window-size compensating for chrome + borders in {:?}",
             cfg.args
         );
         // Chrome-hiding flag only appears when the host opts in.

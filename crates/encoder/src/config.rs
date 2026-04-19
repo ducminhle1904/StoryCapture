@@ -157,17 +157,40 @@ impl EncodeConfig {
             args.extend(["-map".into(), "0:v:0".into(), "-map".into(), "1:a:0".into()]);
         }
 
+        let codec = self.encoder.ffmpeg_codec_name();
+        let is_videotoolbox = codec.contains("videotoolbox");
         args.extend([
             // Downscale + even-dim video filter.
             "-vf".into(),
             scale_filter,
             // Video encode.
             "-c:v".into(),
-            self.encoder.ffmpeg_codec_name().into(),
+            codec.into(),
+            // `-b:v` is VT's soft target — it routinely undershoots on
+            // low-motion content (e.g. 900 kb/s on a near-static page)
+            // because VT treats bitrate as a ceiling, not a floor. Pair
+            // with -maxrate + -bufsize to enforce a minimum quality
+            // envelope (buffer-constrained VBR); kept simple to avoid
+            // breaking software-fallback libx264 behavior.
             "-b:v".into(),
-            bitrate,
+            bitrate.clone(),
             "-pix_fmt".into(),
             "yuv420p".into(),
+        ]);
+        if is_videotoolbox {
+            // Constant-quality target (0-100 scale on VT). q=65 lands in
+            // the 6-12 Mbps range at 1080p60 on the M-series encoder,
+            // producing visibly crisp output even for static frames.
+            args.extend([
+                "-q:v".into(),
+                "65".into(),
+                "-maxrate".into(),
+                format!("{}k", target_kbps),
+                "-bufsize".into(),
+                format!("{}k", target_kbps * 2),
+            ]);
+        }
+        args.extend([
             // Audio encode.
             "-c:a".into(),
             "aac".into(),
