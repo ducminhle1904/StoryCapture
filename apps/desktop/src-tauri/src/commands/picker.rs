@@ -9,9 +9,53 @@
 
 use crate::error::AppError;
 use crate::state::AppState;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio::task::JoinHandle;
+
+/// Typed mirror of `automation::targets_store::TargetRecord`. Each kind
+/// fully specifies its `value` shape (string for most, `{ role, name }`
+/// object for `role`) so specta can derive a real TS discriminated union
+/// — the picker IPC no longer needs a JSON-string envelope.
+///
+/// On-the-wire shape per arm: `{ kind: "<kind>", value: <typed> }` —
+/// matches the existing `.story.targets.json` schema byte-for-byte.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TargetRecordDto {
+    Testid { value: String },
+    Role { value: super::parse::RoleSelectorDto },
+    Label { value: String },
+    TextExact { value: String },
+    Selector { value: String },
+    Aria { value: String },
+    Text { value: String },
+}
+
+impl From<TargetRecordDto> for automation::targets_store::TargetRecord {
+    fn from(d: TargetRecordDto) -> Self {
+        let (kind, value) = match d {
+            TargetRecordDto::Testid { value } => ("testid", serde_json::Value::String(value)),
+            TargetRecordDto::Role { value } => (
+                "role",
+                serde_json::json!({ "role": value.role, "name": value.name }),
+            ),
+            TargetRecordDto::Label { value } => ("label", serde_json::Value::String(value)),
+            TargetRecordDto::TextExact { value } => {
+                ("text_exact", serde_json::Value::String(value))
+            }
+            TargetRecordDto::Selector { value } => {
+                ("selector", serde_json::Value::String(value))
+            }
+            TargetRecordDto::Aria { value } => ("aria", serde_json::Value::String(value)),
+            TargetRecordDto::Text { value } => ("text", serde_json::Value::String(value)),
+        };
+        automation::targets_store::TargetRecord {
+            kind: kind.to_string(),
+            value,
+        }
+    }
+}
 
 /// Tauri / specta DTO wrapping `automation::PickElementResponse` as a
 /// JSON string. The `automation` crate is pure-Rust (D-07: no Tauri /
@@ -129,31 +173,25 @@ pub async fn picker_is_active(state: State<'_, AppState>) -> Result<bool, AppErr
 /// `AppError::Automation` carries the underlying parse / io / protocol
 /// error as a string — the renderer toasts it without blocking the
 /// pick flow (fire-and-forget semantics on the UI side).
-/// Wire envelope: `primary_json` is a JSON-stringified
-/// `{ kind: string, value: unknown }` and `fallbacks_json` is a
-/// JSON-stringified `Array<{ kind, value }>`. Using strings keeps the
-/// `specta::Type`-bound command signature free of `serde_json::Value`
-/// (which specta 2.0.0-rc.22 rejects as a function arg).
+/// `primary` and `fallbacks` are typed `TargetRecordDto`s — see below.
+/// The shape mirrors `automation::targets_store::TargetRecord` exactly
+/// so the TS caller passes a real discriminated union, not a stringified
+/// envelope.
 #[tauri::command]
 #[specta::specta]
 pub async fn picker_stamp_step_id(
     story_path: String,
     line_offset: u32,
-    primary_json: String,
-    fallbacks_json: String,
+    primary: TargetRecordDto,
+    fallbacks: Vec<TargetRecordDto>,
 ) -> Result<String, AppError> {
-    // Path-traversal guard (T-07-04c-02). The Tauri FS scope is the
+    // Path-traversal guard. The Tauri FS scope is the
     // primary boundary; this is defense-in-depth.
     if story_path.split(['/', '\\']).any(|seg| seg == "..") {
         return Err(AppError::Automation(
             "path traversal rejected: story_path contains '..'".into(),
         ));
     }
-
-    let primary: serde_json::Value = serde_json::from_str(&primary_json)
-        .map_err(|e| AppError::Automation(format!("decode primary_json: {e}")))?;
-    let fallbacks: Vec<serde_json::Value> = serde_json::from_str(&fallbacks_json)
-        .map_err(|e| AppError::Automation(format!("decode fallbacks_json: {e}")))?;
 
     let path = std::path::PathBuf::from(&story_path);
     let src = std::fs::read_to_string(&path)
@@ -208,17 +246,11 @@ pub async fn picker_stamp_step_id(
     let mut store = automation::targets_store::load(&targets_path)
         .unwrap_or_else(|_| automation::targets_store::TargetsFile::empty());
 
-    let primary_record = target_record_from_json(&primary)?;
-    let fallback_records: Vec<automation::targets_store::TargetRecord> = fallbacks
-        .iter()
-        .filter_map(|v| target_record_from_json(v).ok())
-        .collect();
-
     store.steps.insert(
         stamped_id,
         automation::targets_store::StepTargets {
-            primary: primary_record,
-            fallbacks: fallback_records,
+            primary: primary.into(),
+            fallbacks: fallbacks.into_iter().map(Into::into).collect(),
         },
     );
 
@@ -226,26 +258,6 @@ pub async fn picker_stamp_step_id(
         .map_err(|e| AppError::Automation(format!("targets_store write: {e}")))?;
 
     Ok(stamped_id.to_string())
-}
-
-/// Coerce an incoming `{ kind, value }` JSON payload into a
-/// `targets_store::TargetRecord`. Emits `AppError::Automation` when the
-/// envelope is malformed — callers on the TS side (see
-/// `apps/desktop/src/ipc/picker.ts` `pickerStampStepId`) MUST pass the
-/// documented shape.
-fn target_record_from_json(
-    v: &serde_json::Value,
-) -> std::result::Result<automation::targets_store::TargetRecord, AppError> {
-    let kind = v
-        .get("kind")
-        .and_then(|k| k.as_str())
-        .ok_or_else(|| AppError::Automation("target record missing `kind`".into()))?
-        .to_string();
-    let value = v
-        .get("value")
-        .cloned()
-        .ok_or_else(|| AppError::Automation("target record missing `value`".into()))?;
-    Ok(automation::targets_store::TargetRecord { kind, value })
 }
 
 /// forward id-absent JSON-RPC notifications from the

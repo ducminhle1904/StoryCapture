@@ -117,29 +117,38 @@ export async function listenPickerHoverPreview(
  * has the text at the cursor by the time this is invoked).
  *
  * The Rust side (`picker_stamp_step_id`) accepts `primary` /
- * `fallbacks` as JSON-stringified envelopes — specta 2.0.0-rc.22 does
- * not accept `serde_json::Value` as a command arg, so we stringify
- * at the boundary. See `apps/desktop/src-tauri/src/commands/picker.rs`
- * for the decode + path-traversal guard.
+ * `fallbacks` as typed `TargetRecordDto` discriminated unions. Each
+ * record's `value` shape is `string` for most kinds and
+ * `{ role, name }` for the `role` kind — matching the
+ * `.story.targets.json` schema byte-for-byte.
  *
  * Returns the stamped UUIDv7 (as a string) on success. Idempotent —
  * re-picking an already-stamped line returns the existing id without
  * regenerating it.
  */
+export type TargetRecordDto =
+  | { kind: "testid"; value: string }
+  | { kind: "role"; value: { role: string; name: string } }
+  | { kind: "label"; value: string }
+  | { kind: "text_exact"; value: string }
+  | { kind: "selector"; value: string }
+  | { kind: "aria"; value: string }
+  | { kind: "text"; value: string };
+
 export interface PickerStampStepIdArgs {
   /** Absolute path of the open `.story` file on disk. */
   storyPath: string;
   /** 1-indexed line number where the picked DSL sits. */
   lineOffset: number;
   /** The picked element's primary locator (mirrors sidecar result.locator). */
-  primary: { kind: string; value: unknown };
+  primary: TargetRecordDto;
   /**
    * Full ranked fallback candidate list from the sidecar
    * (`result.candidates`), mapped to `{ kind, value }` tuples. Score /
    * unique fields are dropped — the targets sidecar keeps only the
    * locator identity.
    */
-  fallbacks: Array<{ kind: string; value: unknown }>;
+  fallbacks: TargetRecordDto[];
 }
 
 export async function pickerStampStepId(
@@ -148,7 +157,7 @@ export async function pickerStampStepId(
   return await invoke<string>("picker_stamp_step_id", {
     storyPath: args.storyPath,
     lineOffset: args.lineOffset,
-    primaryJson: JSON.stringify(args.primary),
-    fallbacksJson: JSON.stringify(args.fallbacks),
+    primary: args.primary,
+    fallbacks: args.fallbacks,
   });
 }

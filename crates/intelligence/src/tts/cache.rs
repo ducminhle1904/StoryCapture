@@ -9,21 +9,19 @@
 
 use std::path::{Path, PathBuf};
 
-use sha2::{Digest, Sha256};
-
 use crate::error::IntelError;
 
 /// Deterministic cache key from synthesis parameters.
 pub fn hash_key(provider: &str, model: &str, voice_id: &str, script_text: &str) -> String {
-    let mut h = Sha256::new();
-    h.update(provider.as_bytes());
-    h.update(b"|");
-    h.update(model.as_bytes());
-    h.update(b"|");
-    h.update(voice_id.as_bytes());
-    h.update(b"|");
-    h.update(script_text.as_bytes());
-    hex::encode(h.finalize())
+    util::sha256_hex(&[
+        provider.as_bytes(),
+        b"|",
+        model.as_bytes(),
+        b"|",
+        voice_id.as_bytes(),
+        b"|",
+        script_text.as_bytes(),
+    ])
 }
 
 /// Strip everything except `[A-Za-z0-9_-]` from a step ID.

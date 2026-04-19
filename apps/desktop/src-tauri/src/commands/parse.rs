@@ -83,6 +83,17 @@ impl From<PDiagnostic> for DiagnosticDto {
     }
 }
 
+/// Structured payload for the Tier 1 `Role` variant — both the ARIA
+/// role keyword and the accessible name as typed fields. Mirrors
+/// `story_parser::SelectorOrText::Role { role, name }` exactly so the
+/// TS-side discriminated union round-trips cleanly without ad-hoc
+/// `<role>:<name>` string packing.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct RoleSelectorDto {
+    pub role: String,
+    pub name: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum SelectorOrTextDto {
@@ -90,9 +101,7 @@ pub enum SelectorOrTextDto {
     Selector(String),
     TestId(String),
     Aria(String),
-    // Phase 7 Tier 1 variants — flattened to string for the DTO surface
-    // until the TS mirror is regenerated with structured shapes.
-    Role(String),
+    Role(RoleSelectorDto),
     Label(String),
     TextExact(String),
 }
@@ -104,12 +113,34 @@ impl From<PSelectorOrText> for SelectorOrTextDto {
             PSelectorOrText::Selector(v) => SelectorOrTextDto::Selector(v),
             PSelectorOrText::TestId(v) => SelectorOrTextDto::TestId(v),
             PSelectorOrText::Aria(v) => SelectorOrTextDto::Aria(v),
-            PSelectorOrText::Role { role, name } => {
-                SelectorOrTextDto::Role(format!("{}:{}", role.as_kebab(), name))
-            }
+            PSelectorOrText::Role { role, name } => SelectorOrTextDto::Role(RoleSelectorDto {
+                role: role.as_kebab().to_string(),
+                name,
+            }),
             PSelectorOrText::Label(v) => SelectorOrTextDto::Label(v),
             PSelectorOrText::TextExact(v) => SelectorOrTextDto::TextExact(v),
         }
+    }
+}
+
+impl SelectorOrTextDto {
+    /// Convert a typed DTO back into `story_parser::SelectorOrText` for
+    /// downstream consumers (validator, executor). Unknown role keywords
+    /// surface as a `Protocol` error rather than panicking.
+    pub fn into_selector_or_text(self) -> Result<PSelectorOrText, String> {
+        Ok(match self {
+            SelectorOrTextDto::Text(v) => PSelectorOrText::Text(v),
+            SelectorOrTextDto::Selector(v) => PSelectorOrText::Selector(v),
+            SelectorOrTextDto::TestId(v) => PSelectorOrText::TestId(v),
+            SelectorOrTextDto::Aria(v) => PSelectorOrText::Aria(v),
+            SelectorOrTextDto::Role(RoleSelectorDto { role, name }) => {
+                let parsed = story_parser::AriaRole::from_keyword(&role)
+                    .ok_or_else(|| format!("unknown ARIA role: {role}"))?;
+                PSelectorOrText::Role { role: parsed, name }
+            }
+            SelectorOrTextDto::Label(v) => PSelectorOrText::Label(v),
+            SelectorOrTextDto::TextExact(v) => PSelectorOrText::TextExact(v),
+        })
     }
 }
 

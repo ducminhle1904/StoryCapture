@@ -37,11 +37,13 @@ scraper = "0.20"
 story-parser = { path = "../story-parser" }
 storage = { path = "../storage" }
 
+# Atomic file writes for the targets sidecar (write-to-temp + persist).
+tempfile = "3"
+
 [features]
 default = []
 # Gate Node-process tests behind this so CI doesn't need Node + playwright-core.
 real-playwright-tests = []
 
 [dev-dependencies]
-tempfile = "3"
 tokio = { workspace = true, features = ["full", "test-util"] }

@@ -163,7 +163,7 @@ describe("SelectorValidatorOverlay", () => {
         expect.objectContaining({
           projectDir: "/fake/proj",
           url: "https://x.test/",
-          targetJson: expect.stringContaining("test_id"),
+          target: expect.objectContaining({ kind: "test_id" }),
         }),
       );
       const entry = useSelectorValidation.getState().entries.get(2);

@@ -31,6 +31,7 @@ import {
   type AuthorValidation,
 } from "@/ipc/author_snapshot";
 import type { SelectorOrText, Story } from "@/ipc/parse";
+import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 
 export interface ValidatorEntry {
   /** 1-indexed line number from the parse span. */
@@ -142,11 +143,34 @@ export function SelectorValidatorOverlay({
   const lastParse = useEditorStore((s) => s.lastParse);
   const setEntry = useSelectorValidation((s) => s.setEntry);
   const clear = useSelectorValidation((s) => s.clear);
-  const pending = useRef<Map<number, number>>(new Map());
   const lastKeys = useRef<Map<number, string>>(new Map());
   const steps = useMemo(
     () => (lastParse?.ast ? collectValidatableSteps(lastParse.ast) : null),
     [lastParse],
+  );
+
+  const validate = useDebouncedCallback(
+    (
+      line: number,
+      targetKey: string,
+      url: string,
+      target: SelectorOrText,
+      dir: string,
+    ) => {
+      authorSnapshotValidate(dir, url, target)
+        .then((status) => {
+          setEntry(line, { line, url, targetKey, status });
+        })
+        .catch(() => {
+          setEntry(line, {
+            line,
+            url,
+            targetKey,
+            status: { status: "none" },
+          });
+        });
+    },
+    debounceMs,
   );
 
   useEffect(() => {
@@ -160,73 +184,35 @@ export function SelectorValidatorOverlay({
       currentLines.add(step.line);
       const targetKey = `${step.url}|${JSON.stringify(step.target)}`;
       if (lastKeys.current.get(step.line) === targetKey) {
-        // No change for this step — skip re-validation.
         continue;
       }
       lastKeys.current.set(step.line, targetKey);
 
-      // Mark as pending so the UI can show a spinner rather than flashing
-      // the stale status while the debounced call resolves.
+      // Mark pending so the UI shows a spinner rather than the stale status.
       setEntry(step.line, {
         line: step.line,
         url: step.url,
         targetKey,
         status: null,
       });
-
-      // Debounce.
-      const prev = pending.current.get(step.line);
-      if (prev !== undefined) window.clearTimeout(prev);
-      const handle = window.setTimeout(() => {
-        authorSnapshotValidate(projectDir, step.url, step.target)
-          .then((status) => {
-            setEntry(step.line, {
-              line: step.line,
-              url: step.url,
-              targetKey,
-              status,
-            });
-          })
-          .catch((err) => {
-            // On IPC error, surface as `none` with reason in console —
-            // typing still works; the user sees a RED chip.
-            // eslint-disable-next-line no-console
-            console.warn(
-              `[07-05] validate failed for line ${step.line}: ${String(err)}`,
-            );
-            setEntry(step.line, {
-              line: step.line,
-              url: step.url,
-              targetKey,
-              status: { status: "none" },
-            });
-          });
-      }, debounceMs);
-      pending.current.set(step.line, handle);
+      validate.runKeyed(
+        step.line,
+        step.line,
+        targetKey,
+        step.url,
+        step.target,
+        projectDir,
+      );
     }
 
-    // Drop stale lines that no longer have a step (e.g. user deleted a line).
+    // Drop stale lines that no longer have a step.
     for (const line of Array.from(lastKeys.current.keys())) {
       if (!currentLines.has(line)) {
         lastKeys.current.delete(line);
-        const handle = pending.current.get(line);
-        if (handle !== undefined) {
-          window.clearTimeout(handle);
-          pending.current.delete(line);
-        }
+        validate.cancel(line);
       }
     }
-  }, [projectDir, steps, setEntry, clear, debounceMs]);
-
-  // Cleanup pending timers on unmount.
-  useEffect(() => {
-    return () => {
-      for (const handle of pending.current.values()) {
-        window.clearTimeout(handle);
-      }
-      pending.current.clear();
-    };
-  }, []);
+  }, [projectDir, steps, setEntry, clear, validate]);
 
   return null;
 }

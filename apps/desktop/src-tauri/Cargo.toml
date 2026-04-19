@@ -81,6 +81,7 @@ effects = { path = "../../../crates/effects" }
 story-parser = { path = "../../../crates/story-parser" }
 storage = { path = "../../../crates/storage" }
 intelligence = { path = "../../../crates/intelligence" }
+util = { path = "../../../crates/util" }
 parking_lot = { workspace = true }
 async-trait = "0.1"
 # Phase 03 plan 07: rusqlite for nl_conversations query in persist_turn helper.

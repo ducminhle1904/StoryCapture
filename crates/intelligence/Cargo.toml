@@ -54,6 +54,7 @@ toml = "0.8"
 
 # Workspace siblings
 story-parser = { path = "../story-parser" }
+util         = { path = "../util" }
 
 [[bin]]
 name = "eval_report"

@@ -119,33 +119,25 @@ pub fn load(path: &Path) -> Result<TargetsFile> {
     Ok(file)
 }
 
-/// Atomically rewrite the sidecar targets file — writes to
-/// `<path>.tmp.<pid>`, syncs, then `fs::rename`s over `path`. Never
-/// leaves a half-written file on success.
+/// Atomically rewrite the sidecar targets file via `NamedTempFile::persist`
+/// (write-to-temp in the same directory, fsync, atomic rename). Never leaves
+/// a half-written file on success; the temp file is auto-cleaned on drop if
+/// any step before persist fails.
 pub fn atomic_write(path: &Path, file: &TargetsFile) -> Result<()> {
-    let tmp: PathBuf = {
-        let mut s = path.as_os_str().to_os_string();
-        s.push(format!(".tmp.{}", std::process::id()));
-        PathBuf::from(s)
-    };
+    let parent = path.parent().ok_or_else(|| {
+        AutomationError::Io(format!("no parent dir for {}", path.display()))
+    })?;
     let raw = serde_json::to_vec_pretty(file)
         .map_err(|e| AutomationError::Protocol(format!("encode targets: {e}")))?;
-    {
-        let mut f = fs::File::create(&tmp)
-            .map_err(|e| AutomationError::Io(format!("create tmp {}: {e}", tmp.display())))?;
-        f.write_all(&raw)
-            .map_err(|e| AutomationError::Io(format!("write tmp {}: {e}", tmp.display())))?;
-        f.sync_data()
-            .map_err(|e| AutomationError::Io(format!("fsync tmp {}: {e}", tmp.display())))?;
-    }
-    fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        AutomationError::Io(format!(
-            "rename {} -> {}: {e}",
-            tmp.display(),
-            path.display()
-        ))
-    })?;
+    let mut tmp = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|e| AutomationError::Io(format!("create tmp in {}: {e}", parent.display())))?;
+    tmp.write_all(&raw)
+        .map_err(|e| AutomationError::Io(format!("write tmp: {e}")))?;
+    tmp.as_file()
+        .sync_data()
+        .map_err(|e| AutomationError::Io(format!("fsync tmp: {e}")))?;
+    tmp.persist(path)
+        .map_err(|e| AutomationError::Io(format!("persist to {}: {e}", path.display())))?;
     Ok(())
 }
 

@@ -65,12 +65,9 @@ export function authorSnapshotList(
 }
 
 /**
- * Validate a parsed DSL target against the cached snapshot DOM. Pass the
- * target as a JSON-stringified `SelectorOrText` envelope — the Tauri
- * command parses it server-side.
- *
- * The JSON-envelope pattern mirrors `pickerStampStepId` (specta rejects
- * `serde_json::Value` as a function arg).
+ * Validate a parsed DSL target against the cached snapshot DOM. `target`
+ * is the typed `SelectorOrText` discriminated union from the parsed AST
+ * (see `commands::parse::SelectorOrTextDto`).
  */
 export function authorSnapshotValidate(
   projectDir: string,
@@ -80,6 +77,6 @@ export function authorSnapshotValidate(
   return invoke<AuthorValidation>("author_snapshot_validate", {
     projectDir,
     url,
-    targetJson: JSON.stringify(target),
+    target,
   });
 }

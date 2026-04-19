@@ -7,6 +7,7 @@ import { editorController } from "./controller";
 import { SelectorValidatorOverlay } from "./SelectorValidatorOverlay";
 import { useEditorStore } from "@/state/editor";
 import { parseStory } from "@/ipc/parse";
+import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 
 export interface EditorJumpTarget {
   offset: number;
@@ -35,7 +36,10 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
   const setLastParse = useEditorStore((s) => s.setLastParse);
 
   const cmRef = useRef<ReactCodeMirrorRef>(null);
-  const autosaveTimer = useRef<number | null>(null);
+  const autosave = useDebouncedCallback(
+    (value: string) => onAutosave?.(value),
+    5000,
+  );
 
   const extensions = useMemo(() => storyEditorExtensions(), []);
 
@@ -59,9 +63,7 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
 
   const handleChange = (value: string) => {
     setSource(value);
-    if (!onAutosave) return;
-    if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = window.setTimeout(() => onAutosave(value), 5000);
+    if (onAutosave) autosave.run(value);
   };
 
   const handleBlur = () => {

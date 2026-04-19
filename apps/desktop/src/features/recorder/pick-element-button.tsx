@@ -31,6 +31,7 @@ import {
   pickElementCancel,
   pickerStampStepId,
   type PickHoverPayload,
+  type TargetRecordDto,
 } from "@/ipc/picker";
 import { useRecorderStore } from "@/state/recorder";
 
@@ -138,11 +139,10 @@ export function PickElementButton() {
             pickerStampStepId({
               storyPath,
               lineOffset: res.lineNumber,
-              primary: { kind: r.locator.kind, value: r.locator.value },
-              fallbacks: r.candidates.map((c) => ({
-                kind: c.kind,
-                value: c.value,
-              })),
+              primary: r.locator as TargetRecordDto,
+              fallbacks: r.candidates.map(
+                (c) => ({ kind: c.kind, value: c.value }) as TargetRecordDto,
+              ),
             }).catch((e) => {
               const msg = e instanceof Error ? e.message : String(e);
               toast.error(`Stamp failed: ${msg}`);

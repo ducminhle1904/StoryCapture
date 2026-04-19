@@ -84,10 +84,7 @@ impl From<automation::ValidationResult> for AuthorValidationDto {
 /// SHA-256 hex digest of a URL string — used as the filename stem for
 /// the snapshot trio (`.json`/`.html`/`.png`).
 fn url_key(url: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(url.as_bytes());
-    hex::encode(h.finalize())
+    util::sha256_hex(&[url.as_bytes()])
 }
 
 /// Validate that `project_dir` is absolute and does NOT contain `..`
@@ -252,18 +249,19 @@ pub async fn author_snapshot_list(
 /// DOM. Returns `NoSnapshot` if no snapshot exists for `url`; otherwise
 /// projects the Rust-side `ValidationResult` onto the wire DTO.
 ///
-/// `target_json` is the JSON-stringified `SelectorOrText` (specta
-/// 2.0.0-rc.22 rejects `serde_json::Value` as a function arg — same
-/// pattern as `picker_stamp_step_id`).
+/// `target` is a typed mirror of `story_parser::SelectorOrText` —
+/// see `commands::parse::SelectorOrTextDto` (carries Tier 1 `Role`
+/// with structured `{ role, name }` fields rather than a packed string).
 #[tauri::command]
 #[specta::specta]
 pub async fn author_snapshot_validate(
     project_dir: String,
     url: String,
-    target_json: String,
+    target: super::parse::SelectorOrTextDto,
 ) -> Result<AuthorValidationDto, AppError> {
-    let target: story_parser::SelectorOrText = serde_json::from_str(&target_json)
-        .map_err(|e| AppError::Automation(format!("decode target_json: {e}")))?;
+    let target = target
+        .into_selector_or_text()
+        .map_err(AppError::Automation)?;
 
     let dir = snapshot_dir(&project_dir)?;
     let html_path = dir.join(format!("{}.html", url_key(&url)));
