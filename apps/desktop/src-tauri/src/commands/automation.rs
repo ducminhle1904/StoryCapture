@@ -498,8 +498,12 @@ pub async fn resolve_playwright_target(
         let Some((window_id, frame_w, frame_h)) = resolved else {
             return Ok(None);
         };
-        let width_px = (frame_w * 2.0) as u32;
-        let height_px = (frame_h * 2.0) as u32;
+        // No retina multiplication — must match sck_backend.rs which
+        // configures the stream canvas at the raw frame dimensions.
+        // Multiplying here would give the encoder display-scale dims
+        // while SCK streams at window-scale → black padding.
+        let width_px = frame_w as u32;
+        let height_px = frame_h as u32;
         Ok(Some(ResolvedPlaywrightTarget {
             window_id: window_id.0,
             pid,

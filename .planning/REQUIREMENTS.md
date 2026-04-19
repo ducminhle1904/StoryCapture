@@ -117,6 +117,19 @@
 - [ ] **DIST-05**: No telemetry by default; opt-in local crash/log collection only
 - [ ] **DIST-06**: All web uploads encrypted in transit (HTTPS) and at rest (storage provider encryption)
 
+### Phase 10 — Author-time Simulator (PHASE-10.x)
+
+Added 2026-04-19 during /gsd-plan-phase 10. Internal identifier is "simulator"; user-visible term remains "dry-run / Preview to here". Phase 3's shipped `intelligence::dryrun` + `DryRunPanel.tsx` stay untouched (D-00).
+
+- [ ] **PHASE-10.1**: `Executor::run_story` parameterized with `stop_after_ordinal: Option<u32>` — when `Some(n)`, executor emits `ExecutorEvent::RunPaused { ordinal: n }` after the nth step's `StepSucceeded` and returns without tearing down drivers or emitting `StoryEnded`. Recording path passes `None` — unchanged behavior.
+- [ ] **PHASE-10.2**: Per-step `StepFrame { ordinal, screenshot_path, cursor_xy, matched_selector, matched_bbox: Option<BoundingBox>, duration_ms }` is captured inside the executor when `capture_frames=true`, written to `frame_dir`, and emitted via new `ExecutorEvent::StepFrameCaptured { ordinal, frame }`. `matched_bbox` is `None` for commands without a target (Navigate, Wait, Screenshot, WaitMs).
+- [ ] **PHASE-10.3**: New Tauri commands `simulator_start`, `simulator_step_to`, `simulator_cancel`, `simulator_promote_fallback` live in `apps/desktop/src-tauri/src/commands/simulator.rs`. A session registry (`HashMap<SimulatorSessionId, ResumableSession>` behind `tokio::Mutex`) keeps the driver pair + last ordinal + story alive between `step_to` calls so re-invocation does NOT relaunch Chromium. Ordinal input is validated against total steps.
+- [ ] **PHASE-10.4**: Simulator frame archive writes to `<project_folder>/.story.simulator/<run-uuid>/<ordinal>.png` (uuid v4). At `simulator_start` the code lists sibling run dirs, sorts by mtime descending, and unlinks all but the most recent 5 (retention policy).
+- [ ] **PHASE-10.5**: `SimulatorTimeline.tsx` (React) consumes `simulatorStore` (Zustand) `frames: StepFrame[]` + `currentFrameOrdinal`. Scrubbing dispatches a CodeMirror `StateEffect` (`setActiveFrame`) that a `StateField<DecorationSet>` renders as a line-background + 2px accent-primary left stripe on the matching span.
+- [ ] **PHASE-10.6**: Caret-context-menu item "Preview to here" + `Cmd-.` (macOS) / `Ctrl-.` (Windows) keyboard shortcut resolves caret line → ordinal via the parsed AST spans, then invokes `simulator_step_to(ordinal)`. Target: ≤10 s for a 20-step story on M2.
+- [ ] **PHASE-10.7**: Simulator acquires exclusive lock on the 9-04 author session by calling `pause_author_preview(streamId)` (PHASE-9.9) before the executor runs, and `resume_author_preview(streamId)` on `RunPaused`, `StoryEnded`, `SimulatorCancelled`, or error. `simulator_start` fails with a typed error if `previewEnabled=false` — never silently spawns a new session.
+- [ ] **PHASE-10.8**: Editor becomes `readOnly=true` and a banner ("Simulator running — edits paused · Step N / M") renders above the CodeMirror scroll area for the duration of an active run. Banner dismisses and editor re-enables on `RunPaused`, `StoryEnded`, or `SimulatorCancelled`. Scrubbing and line-highlight remain functional while `readOnly` is set.
+
 ## v2 Requirements (deferred, tracked)
 
 ### Advanced & Scale
@@ -163,6 +176,9 @@
 | WEB-01..08 | Phase 4 | Pending |
 | UI-06 (Accounts subset) | Phase 4 | Pending |
 | DIST-06 | Phase 4 | Pending |
+| PHASE-10.1..10.2 | Phase 10 (10-01) | Pending |
+| PHASE-10.3..10.4, 10.7 | Phase 10 (10-02) | Pending |
+| PHASE-10.5..10.6, 10.8 | Phase 10 (10-03) | Pending |
 
 **Coverage:**
 - v1 requirements: 73 total
@@ -171,4 +187,4 @@
 
 ---
 *Requirements defined: 2026-04-14*
-*Last updated: 2026-04-14 after initial definition*
+*Last updated: 2026-04-19 — added PHASE-10.1 … PHASE-10.8 for /gsd-plan-phase 10.*

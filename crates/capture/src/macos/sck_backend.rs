@@ -108,9 +108,19 @@ impl SckBackend {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
                     .ok_or(CaptureError::WindowNotFound(window_id.0))?;
                 let frame = window.frame();
-                // Approximate retina scale until we plumb the owning display.
-                let width = (frame.width * 2.0) as u32;
-                let height = (frame.height * 2.0) as u32;
+                // SCK composites the window at its native render resolution
+                // into a stream canvas of whatever width/height we specify.
+                // Multiplying by 2 (for retina) produces an oversized canvas
+                // which SCK fills with black in the unused area — that's
+                // the "browser top-left, rest black" bug. Use the raw
+                // frame dims so the canvas matches the window's actual
+                // rendered pixel size. True retina content still encodes
+                // legibly because Chromium's --window-size arg gives us
+                // 1280pt = 1280px on 1x and the same 1280pt = 2560px on
+                // 2x; SCK either way reports the correct pixel frame
+                // that matches the rendered content.
+                let width = frame.width as u32;
+                let height = frame.height as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
                 Ok((filter, width, height, None))
             }
@@ -134,9 +144,11 @@ impl SckBackend {
                 )?
                 .ok_or(CaptureError::WindowNotFound(*pid as u64))?;
                 let frame = window.frame();
-                // Same 2x retina approximation as the Window branch.
-                let width = (frame.width * 2.0) as u32;
-                let height = (frame.height * 2.0) as u32;
+                // See Window branch: no retina multiplication — raw frame
+                // dims match the SCK-composited window size and prevent
+                // the black-padding bug.
+                let width = frame.width as u32;
+                let height = frame.height as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
                 Ok((filter, width, height, None))
             }

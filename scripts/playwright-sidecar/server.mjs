@@ -23,36 +23,49 @@ import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { dirname as pathDirname, resolve as pathResolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { emitDsl } from './picker/generator.mjs';
 
-// the picker overlay IIFE is built by build-sea.mjs (Step -1/5)
-// into picker/overlay/overlay.iife.js. esbuild's `--loader:.iife.js=text`
-// flag inlines the file contents as a string literal at SEA build time, so
-// the sidecar does NOT read a sibling file at runtime (SEA has no FS access
-// to bundle-relative paths). For dev (`node server.mjs` outside SEA) the
-// catch-block falls back to a plain fs read.
-let OVERLAY_IIFE;
-try {
-  // SEA / esbuild path: `text` loader rewrites this import into the inlined
-  // string literal. Node's ESM loader does not understand this assertion,
-  // so the dev path always lands in the catch.
-  OVERLAY_IIFE = (
-    await import('./picker/overlay/overlay.iife.js', { with: { type: 'text' } })
-  ).default;
-} catch {
+// the picker overlay IIFE is built by build-sea.mjs (Step -1/5) into
+// picker/overlay/overlay.iife.js. We MUST use a synchronous loader because
+// esbuild bundles this file as CJS for the SEA binary, where top-level
+// `await` is rejected. Two paths:
+//   * dev (`node server.mjs`): file lives at import.meta.url-relative path.
+//   * SEA: build-sea.mjs copies the IIFE alongside the binary as
+//     <exeDir>/playwright-sidecar-modules/overlay.iife.js (next to
+//     playwright-core). At runtime we resolve via process.execPath.
+function loadOverlayIife() {
+  const candidates = [];
   try {
-    const overlayPath = fileURLToPath(
-      new URL('./picker/overlay/overlay.iife.js', import.meta.url),
+    candidates.push(
+      fileURLToPath(new URL('./picker/overlay/overlay.iife.js', import.meta.url)),
     );
-    OVERLAY_IIFE = readFileSync(overlayPath, 'utf8');
   } catch {
-    // Last resort: empty IIFE so the sidecar still boots when running tests
-    // that don't need the picker (e.g. browserProcess unit suite). Picker
-    // handlers will degrade — the build pipeline is the source of truth.
-    OVERLAY_IIFE = '';
+    /* import.meta.url unavailable in some embed contexts */
   }
+  try {
+    const exeDir = pathDirname(process.execPath);
+    candidates.push(pathResolve(exeDir, 'playwright-sidecar-modules', 'overlay.iife.js'));
+    candidates.push(
+      pathResolve(exeDir, '..', 'Resources', 'playwright-sidecar-modules', 'overlay.iife.js'),
+    );
+  } catch {
+    /* defensive — process.execPath should always exist */
+  }
+  for (const p of candidates) {
+    try {
+      return readFileSync(p, 'utf8');
+    } catch {
+      /* try next */
+    }
+  }
+  // Last resort: empty IIFE so the sidecar still boots when running tests
+  // that don't need the picker. Picker handlers will degrade — the build
+  // pipeline is the source of truth.
+  return '';
 }
+const OVERLAY_IIFE = loadOverlayIife();
 
 let state = {
   browser: null,

@@ -62,7 +62,7 @@ execSync(
 
 console.log('[playwright-sidecar] Step 0/5: esbuild server.mjs → server.cjs');
 execSync(
-  `npx --yes esbuild server.mjs --bundle --platform=node --format=cjs --external:playwright-core --loader:.iife.js=text --outfile=server.cjs`,
+  `npx --yes esbuild server.mjs --bundle --platform=node --format=cjs --external:playwright-core --outfile=server.cjs`,
   { cwd: __dirname, stdio: 'inherit' },
 );
 
@@ -154,6 +154,12 @@ if (existsSync(dstPw)) rmSync(dstPw, { recursive: true, force: true });
 // pnpm symlinks playwright-core into its .pnpm store — dereference so the
 // copied tree is self-contained and safe to ship in a bundle.
 cpSync(srcPw, dstPw, { recursive: true, dereference: true });
+
+// Also copy the picker overlay IIFE next to the binary. server.mjs reads it
+// synchronously via process.execPath at startup; SEA cannot read its own
+// bundle-relative paths so the file must live on disk beside the executable.
+const overlayDst = resolve(depsDir, 'overlay.iife.js');
+copyFileSync(overlayOut, overlayDst);
 
 // 6. Re-sign after postject injection. macOS kills unsigned Mach-O files
 //    modified by postject with SIGKILL before they reach userland. The
