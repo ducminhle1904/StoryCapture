@@ -100,6 +100,14 @@ async resolvePlaywrightTarget() : Promise<Result<ResolvedPlaywrightTarget | null
     else return { status: "error", error: e  as any };
 }
 },
+async isStageManagerEnabled() : Promise<Result<boolean, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("is_stage_manager_enabled") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getAppSettings() : Promise<Result<AppSettingsDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_app_settings") };
@@ -1066,7 +1074,7 @@ export type RenderProgressDto = { job_id: string; pct: number; frame: bigint; fp
  * actual WindowByPid resolve-at-start behavior in SckBackend always
  * re-resolves, so the stored pid is only a UI display hint).
  */
-export type ResolvedPlaywrightTarget = { window_id: bigint; pid: number }
+export type ResolvedPlaywrightTarget = { window_id: bigint; pid: number; width_px: number; height_px: number }
 export type SceneDto = { name: string; commands: CommandDto[]; span: SpanDto }
 export type ScrollDirDto = "up" | "down" | "left" | "right"
 export type SelectorOrTextDto = { kind: "text"; value: string } | { kind: "selector"; value: string } | { kind: "test_id"; value: string } | { kind: "aria"; value: string }

@@ -47,6 +47,7 @@ pub fn builder() -> Builder<Wry> {
             system::trigger_panic,
             automation::launch_automation,
             automation::resolve_playwright_target,
+            automation::is_stage_manager_enabled,
             // element picker.
             picker::picker_start,
             picker::picker_cancel,

@@ -309,6 +309,59 @@ pub async fn find_window_by_pid(
     Ok(None)
 }
 
+/// Like [`find_window_by_pid`] but also returns the resolved window's
+/// logical frame (points, not pixels). Callers that need retina pixels
+/// should multiply by 2.
+///
+/// Kept separate so the hot `find_window_by_pid` path stays byte-stable
+/// for existing callers — this helper is for the Recorder UI, which
+/// needs the dimensions up front so it can size the encoder canvas
+/// correctly instead of inheriting display dimensions.
+#[cfg(target_os = "macos")]
+pub async fn find_window_by_pid_with_frame(
+    pid: i32,
+    title_hint: Option<&str>,
+) -> Result<Option<(crate::target::WindowId, f64, f64)>, CaptureError> {
+    const MAX_RETRIES: u32 = 10;
+    const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
+    let owned_hint = match title_hint {
+        Some(h) => {
+            if h.len() > 256 {
+                return Err(CaptureError::Backend(
+                    "title_hint exceeds 256 chars".into(),
+                ));
+            }
+            if h.chars().any(|c| c.is_ascii_control()) {
+                return Err(CaptureError::Backend(
+                    "title_hint contains ASCII control chars".into(),
+                ));
+            }
+            Some(h.to_string())
+        }
+        None => None,
+    };
+    for attempt in 0..MAX_RETRIES {
+        let hint_clone = owned_hint.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            resolve_sc_window_by_pid_sync(pid, hint_clone.as_deref())
+        })
+        .await
+        .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
+        if let Some(w) = result {
+            let frame = w.frame();
+            return Ok(Some((
+                crate::target::WindowId(u64::from(w.window_id())),
+                frame.width,
+                frame.height,
+            )));
+        }
+        if attempt + 1 < MAX_RETRIES {
+            tokio::time::sleep(RETRY_DELAY).await;
+        }
+    }
+    Ok(None)
+}
+
 // Non-macOS stubs for cross-platform callers.
 #[cfg(not(target_os = "macos"))]
 pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
@@ -320,6 +373,14 @@ pub async fn find_window_by_pid(
     _pid: i32,
     _title_hint: Option<&str>,
 ) -> Result<Option<crate::target::WindowId>, CaptureError> {
+    Err(CaptureError::Unsupported)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub async fn find_window_by_pid_with_frame(
+    _pid: i32,
+    _title_hint: Option<&str>,
+) -> Result<Option<(crate::target::WindowId, f64, f64)>, CaptureError> {
     Err(CaptureError::Unsupported)
 }
 

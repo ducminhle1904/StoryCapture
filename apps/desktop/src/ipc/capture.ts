@@ -155,12 +155,23 @@ export const PLAYWRIGHT_AUTO_TARGET: CaptureTarget = {
 export interface ResolvedPlaywrightTarget {
   window_id: bigint | number;
   pid: number;
+  /** Window pixel width (retina-scaled on macOS). `0` when unknown —
+   *  callers should fall back to display dims. */
+  width_px: number;
+  /** Window pixel height (retina-scaled on macOS). See `width_px`. */
+  height_px: number;
 }
 
 /** Ask the host to resolve the current Playwright window. Returns `null`
  *  when no Playwright is running or the window isn't on-screen. */
 export function resolvePlaywrightTarget(): Promise<ResolvedPlaywrightTarget | null> {
   return invoke<ResolvedPlaywrightTarget | null>("resolve_playwright_target");
+}
+
+/** Read macOS Stage Manager's global-enable flag. Returns `false` on
+ *  non-macOS platforms or when the key has never been set. */
+export function isStageManagerEnabled(): Promise<boolean> {
+  return invoke<boolean>("is_stage_manager_enabled");
 }
 
 // ─── Plan 06-03 — one-shot recorder-preview thumbnail ─────────────────

@@ -492,15 +492,19 @@ pub async fn resolve_playwright_target(
 
     #[cfg(target_os = "macos")]
     {
-        let resolved = capture::macos::window::find_window_by_pid(pid, None)
+        let resolved = capture::macos::window::find_window_by_pid_with_frame(pid, None)
             .await
             .map_err(|e| AppError::Capture(e.to_string()))?;
-        let Some(window_id) = resolved else {
+        let Some((window_id, frame_w, frame_h)) = resolved else {
             return Ok(None);
         };
+        let width_px = (frame_w * 2.0) as u32;
+        let height_px = (frame_h * 2.0) as u32;
         Ok(Some(ResolvedPlaywrightTarget {
             window_id: window_id.0,
             pid,
+            width_px,
+            height_px,
         }))
     }
     #[cfg(target_os = "windows")]
@@ -511,9 +515,15 @@ pub async fn resolve_playwright_target(
         let Some(hwnd) = hwnd else {
             return Ok(None);
         };
+        // TODO(phase-9-follow-up): read GetWindowRect(hwnd) here; for now
+        // the frontend falls back to display dims on Windows, which is OK
+        // because WGC does NOT exhibit the same black-padding behavior
+        // (it sizes the output surface to the GraphicsCaptureItem).
         Ok(Some(ResolvedPlaywrightTarget {
             window_id: hwnd as u64,
             pid,
+            width_px: 0,
+            height_px: 0,
         }))
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -523,11 +533,52 @@ pub async fn resolve_playwright_target(
     }
 }
 
+/// Read macOS Stage Manager's global-enable flag.
+///
+/// Stage Manager (macOS 13+) groups windows into per-app "stages" and stops
+/// compositing off-stage windows, which silently breaks SCK window-target
+/// capture. We surface this as a pre-flight warning in the Recorder UI so
+/// users understand why recording another app blacks out — the workaround
+/// is to disable Stage Manager in Control Centre, matching Screen Studio's
+/// and CleanShot X's UX. Returns `false` on non-macOS platforms.
+#[tauri::command]
+#[specta::specta]
+pub async fn is_stage_manager_enabled() -> Result<bool, AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        // `defaults read com.apple.WindowManager GloballyEnabled` — the
+        // de-facto stable key used by Raycast/Alfred/BetterTouchTool. No
+        // entitlement needed; works sandboxed or not.
+        let output = tokio::process::Command::new("defaults")
+            .args(["read", "com.apple.WindowManager", "GloballyEnabled"])
+            .output()
+            .await
+            .map_err(|e| AppError::Capture(format!("defaults read failed: {e}")))?;
+        if !output.status.success() {
+            // Key not set on this user — Stage Manager has never been
+            // toggled, so effectively off.
+            return Ok(false);
+        }
+        let s = String::from_utf8_lossy(&output.stdout);
+        Ok(s.trim() == "1")
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(false)
+    }
+}
+
 /// Returned by `resolve_playwright_target`.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ResolvedPlaywrightTarget {
     pub window_id: u64,
     pub pid: i32,
+    /// Window pixel width (retina-scaled on macOS). `0` when unknown
+    /// (Windows path currently doesn't populate this — renderer treats 0
+    /// as "fall back to display dims").
+    pub width_px: u32,
+    /// Window pixel height (retina-scaled on macOS). See `width_px`.
+    pub height_px: u32,
 }
 
 #[cfg(test)]

@@ -18,6 +18,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import {
   checkScreenCapturePermission,
+  isStageManagerEnabled,
   openRegionOverlay,
   openScreenCapturePrefs,
   relaunchApp,
@@ -131,6 +132,10 @@ export function RecordingView({
   const [tccOpen, setTccOpen] = useState(false);
   // Local state only drives the countdown affordance.
   const [useCountdown, setUseCountdown] = useState(true);
+  // Stage Manager breaks SCK window-target capture for off-stage
+  // windows — surface a pre-flight warning so users can disable it
+  // before recording, matching Screen Studio / CleanShot X UX.
+  const [stageManagerWarning, setStageManagerWarning] = useState(false);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
   const startedAtRef = useRef<number | null>(null);
@@ -159,6 +164,16 @@ export function RecordingView({
     });
     return match ? `${match.name} · ${match.width_px}×${match.height_px}` : null;
   }, [displays, selectedDisplay]);
+
+  // Detect Stage Manager once on mount (user can toggle it at any time
+  // but the cost of not re-polling is a stale banner — acceptable).
+  useEffect(() => {
+    isStageManagerEnabled()
+      .then(setStageManagerWarning)
+      .catch(() => {
+        /* non-fatal; default off */
+      });
+  }, []);
 
   // Preflight and enumerate targets on mount.
   useEffect(() => {
@@ -316,8 +331,11 @@ export function RecordingView({
       const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
       return id === selectedDisplay;
     });
-    const width = display?.width_px ?? 1920;
-    const height = display?.height_px ?? 1080;
+    // Seed with display dims; auto-follow may overwrite with the
+    // resolved Playwright window's dims so the encoder canvas matches
+    // the actual SCK stream output.
+    let width = display?.width_px ?? 1920;
+    let height = display?.height_px ?? 1080;
     try {
       const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
       const userPickedDisplay = captureTarget?.kind === "display";
@@ -340,12 +358,12 @@ export function RecordingView({
         // resolvePlaywrightTarget returns non-null.
         const { resolvePlaywrightTarget } = await import("@/ipc/capture");
         const deadline = Date.now() + 8_000;
-        let autoResolved = false;
+        let resolved: Awaited<ReturnType<typeof resolvePlaywrightTarget>> = null;
         while (Date.now() < deadline) {
           try {
             const hit = await resolvePlaywrightTarget();
             if (hit && hit.window_id != null) {
-              autoResolved = true;
+              resolved = hit;
               break;
             }
           } catch {
@@ -353,12 +371,21 @@ export function RecordingView({
           }
           await new Promise((r) => setTimeout(r, 150));
         }
-        if (autoResolved) {
+        if (resolved) {
           recordingTarget = {
             kind: "window_by_pid" as const,
             pid: -1,
             title_hint: "storycapture-playwright",
           };
+          // Use the resolved window's pixel dimensions for the encoder
+          // canvas. Without this the encoder inherits display dims while
+          // SCK streams at window dims, producing black padding around
+          // the browser content (or buffer-size mismatch drops at
+          // FFmpeg). `0` signals "unknown" (Windows path) — fall back.
+          if (resolved.width_px > 0 && resolved.height_px > 0) {
+            width = resolved.width_px;
+            height = resolved.height_px;
+          }
           toast.info("Recording just the browser window");
         } else {
           toast.warning("Playwright didn't launch in time — recording full display instead");
@@ -604,6 +631,27 @@ export function RecordingView({
             }
           }}
         />
+      ) : null}
+
+      {/* ─── Stage Manager warning (inline, dismissible) ─── */}
+      {stageManagerWarning ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs">
+          <div className="flex min-w-0 items-center gap-2 text-[var(--color-warning)]">
+            <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
+            <span className="font-medium text-[var(--color-fg-primary)]">
+              Stage Manager is on — window capture will black out if you switch stages.
+            </span>
+            <span className="text-[var(--color-fg-secondary)]">
+              Turn it off in Control Centre for reliable browser recording.
+            </span>
+          </div>
+          <button
+            onClick={() => setStageManagerWarning(false)}
+            className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
+          >
+            Dismiss
+          </button>
+        </div>
       ) : null}
 
       {/* ─── Main workspace: 3-zone ─── */}
