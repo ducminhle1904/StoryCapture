@@ -356,6 +356,27 @@ Required protocol:
 
 Exception: the user may explicitly say "skip plan mode" or "just do it" for a specific change. That authorization applies only to that single change, not to future ones.
 
+**MANDATORY — Keep Agent Docs In Sync After Impactful Changes:** After any code change that alters knowledge other sessions rely on, the agent MUST update the agent-facing docs in the same task, so future sessions start from accurate state.
+
+A change is "impactful" (docs update required) if it touches ANY of:
+- Public APIs, IPC contracts (`ipc_spec.rs`, generated types), DSL grammar/verbs, database schema, file/config formats.
+- Trait boundaries, module ownership, or cross-crate data flow (anything described in `docs/ARCHITECTURE.md`).
+- Committed stack choices, dependency major versions, build/CI/signing/notarization pipelines, bundling rules.
+- Conventions: lint/format config, testing patterns, commit style, feature flags, platform gating rules (anything in `docs/CONVENTIONS.md`).
+- Domain/pipeline behavior, targets-store semantics, capture/encoder backends, intelligence providers (anything in `docs/DOMAIN.md`).
+- New/renamed/removed crates, packages, apps, scripts, or top-level directories.
+
+Trivial changes (bug fixes that preserve contracts, internal refactors with no surface change, comments, formatting, test additions that don't change patterns) do NOT require doc updates.
+
+Required protocol:
+1. Identify which agent doc(s) the change affects: `CLAUDE.md` (quick-rules block), `docs/ARCHITECTURE.md`, `docs/CONVENTIONS.md`, `docs/DOMAIN.md`, or phase artifacts under `.planning/`.
+2. **Token-optimize `CLAUDE.md`**: keep it lean. Only update the short quick-rules bullet if the headline fact changed. Put full detail in the relevant `docs/*.md` and, if useful, add a one-line `<!-- read on demand: docs/X.md#section -->` pointer rather than inlining prose.
+3. Push all detailed prose, tables, examples, and rationale into the matching `docs/*.md` section so it's available on demand but not loaded by default.
+4. Commit doc updates alongside the code change (same commit or an immediately-following commit in the same task). Do not defer.
+5. If the change invalidates existing doc content, remove or rewrite the stale text — never leave contradictions.
+
+Exception: the user may explicitly waive the doc update for a specific change ("skip docs"). That waiver applies only to that single change.
+
 
 
 <!-- GSD:profile-start -->
