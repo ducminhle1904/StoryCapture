@@ -224,7 +224,7 @@ Plans (proposed split; finalized in /gsd-plan-phase 9):
 - [ ] 09-01 — Sidecar CDP screencast verbs + Rust event bridge
 - [ ] 09-02 — React `<LivePreview />` canvas renderer + Options toggle
 - [ ] 09-03 — Perf / backpressure hardening + fallback UX
-- [ ] 09-04 — Editor-surface Live Preview + viewport switcher: reuse `LivePreview.tsx` inside the Editor page; multi-stream sidecar (`streamId` param on `startPreviewStream`); ephemeral author-time Playwright session separate from recording; viewport switcher drives `page.setViewportSize()` via new `setViewport` RPC; default-off toggle to preserve cold-start budget
+- [ ] 09-04 — Editor-surface Live Preview + viewport switcher: reuse `LivePreview.tsx` inside the Editor page; multi-stream sidecar (`streamId` param on `startPreviewStream`); ephemeral author-time Playwright session separate from recording; viewport switcher drives `page.setViewportSize()` via new `setViewport` RPC; default-off toggle to preserve cold-start budget. **Also (PHASE-9.8 / PHASE-9.9 — Phase 10 prerequisites):** expose the author-session `Page` handle to Rust (`attach_author_driver(streamId)`) so Phase 10 can drive verbs against it; add `pauseStream` / `resumeStream` sidecar RPCs + Tauri commands for exclusive-lock concurrency
 
 ### Phase 10: Author-time simulator — step-preview + dry-run walkthrough
 
@@ -232,37 +232,49 @@ Plans (proposed split; finalized in /gsd-plan-phase 9):
 
 **Depends on:** Phase 7 (locator engine + `.story.targets.json`), Phase 9 (ephemeral Playwright session + CDP screencast pipeline), Phase 9-04 (Editor-surface Live Preview)
 
+**Naming note:** User-visible term stays "dry-run" / "Preview to here". **Internal identifiers use "simulator"** (SimulatorTimeline.tsx, simulatorStore.ts, simulator_* commands, SimulatorEvent, .story.simulator/) to avoid collision with Phase 3's shipped DryRunPanel + intelligence::dryrun + dryrun_start/_cancel commands, which stay in place for the duration of Phase 10.
+
 **In scope:**
-- `Executor::run_to_step(n)` — accepts a stop-after-ordinal; emits `ExecutorEvent::RunPaused`; existing run-to-end path unchanged
-- Per-step frame capture: `StepFrame { ordinal, screenshot_path, cursor_xy, matched_selector, matched_bbox, duration_ms }`
-- Tauri commands `author_dry_run_start / _stop / _step_to(n)` running against the 09-04 ephemeral browser
-- `.story.dryrun/<timestamp>/` frame archive (retention: keep last 5)
-- `DryRunPanel.tsx` timeline UI + CodeMirror line decoration synced via `currentFrameOrdinal`
-- "Preview to here" editor action (keyboard shortcut Cmd-.)
+- `Executor::run_story` parameterized: threads `stop_after_ordinal: Option<u32>`, `capture_frames: bool`, `frame_dir: Option<PathBuf>`, `self_heal: bool`. Recording path unchanged.
+- New executor events: `ExecutorEvent::RunPaused { ordinal }` + `ExecutorEvent::StepFrameCaptured { ordinal, frame }`
+- Per-step frame capture: `StepFrame { ordinal, screenshot_path, cursor_xy, matched_selector, matched_bbox: Option<Bbox>, duration_ms }`
+- New `BrowserDriver::element_state` trait method wrapping sidecar `elementState` (NoopDriver returns `None`)
+- Simulator Tauri commands `simulator_start / _step_to / _cancel / _promote_fallback` running against the 09-04 author session via new `attach_author_driver(streamId)` (PHASE-9.8)
+- Exclusive-lock concurrency with Live Preview via `pause_author_preview` / `resume_author_preview` (PHASE-9.9)
+- `.story.simulator/<run-uuid>/` frame archive (retention: 5 most recent runs)
+- `SimulatorTimeline.tsx` + `simulatorStore.ts` (Zustand) + `ipc/simulator.ts`
+- CodeMirror line decoration synced via `currentFrameOrdinal` (StateField + StateEffect)
+- "Preview to here" caret-context-menu action + Cmd-. keyboard shortcut
+- Editor `readOnly = true` + "Simulator running — edits paused" banner during active runs (scrubbing stays functional)
+- Explicit "Promote to fallback" button on fuzzy-matched frames (self-healing is OFF by default during simulator runs)
 
 **Out of scope:**
-- Producing a final video during dry-run (Record button still the only path)
+- Producing a final video during a simulator run (Record button still the only path)
 - Running against the live recording session
-- Persistent dry-run archives across sessions
+- Persistent simulator archives beyond the 5-most-recent retention
 - Snapshot-only (no-network) mode (future phase)
+- Deleting Phase 3's `intelligence::dryrun::*` + `DryRunPanel.tsx` (scheduled as a follow-up phase once simulator stabilizes)
 
 **Acceptance criteria:**
-- Caret on step N + "Preview to here" → ephemeral browser is at the page state step N-1 would leave it in (≤10 s for a 20-step story on M2)
-- Dry-run replays a 20-step story, producing 20 `StepFrame` entries; scrub timeline → editor line highlighted + Preview panel shows the frame
-- Dry-run populates `.story.targets.json` fallbacks on first success (Phase 7-04c protocol)
-- Phase 9-04 Live Preview pauses/resumes cleanly when dry-run takes exclusive lock on the author session
-- Author session is never shared between dry-run and a concurrent recording; recording path untouched
+- Caret on step N + "Preview to here" → author session is at the page state step N-1 would leave it in (≤10 s for a 20-step story on M2)
+- A simulator run replays a 20-step story, producing 20 `StepFrame` entries; scrub timeline → editor line highlighted + Preview panel shows the frame
+- Simulator runs are read-only against `.story.targets.json` by default; `simulator_promote_fallback` is the only path that mutates it (Phase 7-04c protocol invoked on explicit promotion)
+- Phase 9-04 Live Preview pauses via `pauseStream` and resumes via `resumeStream` cleanly when the simulator takes exclusive lock on the author session
+- Editor is `readOnly` + banner visible for the duration of an active simulator run; scrubbing + line-highlight stay functional
+- Simulator session is never shared between simulator and a concurrent recording; recording path untouched
+- Adding `ExecutorEvent::RunPaused` + `::StepFrameCaptured` does not break existing exhaustive TS switches in `hud.tsx` / `recording-view.tsx` (default branches added)
 
-**Requirements:** TBD (to be allocated under PHASE-10.x)
-**Plans:** 3 plans (proposed)
+**Requirements:** PHASE-10.1 — PHASE-10.8 (allocated during /gsd-plan-phase 10)
+**Plans:** 3 plans
 
-Plans (proposed split; finalized in /gsd-plan-phase 10):
-- [ ] 10-01 — Executor `run_to_step` + `StepFrame` capture + `ExecutorEvent::RunPaused` + unit tests
-- [ ] 10-02 — Author-time dry-run Tauri commands + `.story.dryrun/` storage + streaming event channel
-- [ ] 10-03 — Editor UI: `DryRunPanel` timeline + "Preview to here" action + CodeMirror decoration + Preview-panel scrubber
+Plans (to be produced by /gsd-plan-phase 10):
+- [ ] 10-01 — Executor parameterization + `StepFrame` capture + `ExecutorEvent::RunPaused` / `::StepFrameCaptured` + `BrowserDriver::element_state` + TS switch defaults
+- [ ] 10-02 — Simulator Tauri commands (`simulator_*`) + session registry + `.story.simulator/` storage with retention + `SimulatorEvent` streaming channel + coordination with 09-04 pause/resume
+- [ ] 10-03 — Editor UI: `SimulatorTimeline.tsx` + `simulatorStore.ts` + "Preview to here" action + Cmd-. shortcut + CodeMirror `StateField` line decoration + editor-lock banner + promote-to-fallback button
 
 ---
 *Roadmap created: 2026-04-14*
 *Phase 7 added: 2026-04-17*
 *Phase 9 added: 2026-04-18*
 *Phase 10 added: 2026-04-18*
+*Phase 10 context locked (discuss-phase): 2026-04-19*
