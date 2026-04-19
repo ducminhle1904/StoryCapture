@@ -1,7 +1,8 @@
 ---
 phase: 13
 slug: video-output-customization-knobs-recording-export-ui
-status: draft
+status: approved
+reviewed_at: 2026-04-19
 shadcn_initialized: true
 preset: "new-york + base-ui registry (base-vega-equivalent)"
 created: 2026-04-19
