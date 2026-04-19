@@ -56,10 +56,20 @@ impl LaunchConfig {
             }
         }
         args.push("--window-position=-32000,-32000".to_string());
-        args.push(format!(
-            "--window-size={},{}",
-            viewport.width, viewport.height
-        ));
+        // --window-size is the OUTER window including Chromium chrome
+        // (title bar + tab strip + URL bar). In chrome-hiding mode
+        // (--app=<url>) chrome is absent so viewport maps 1:1. Otherwise
+        // add CHROME_HEIGHT_PX so the rendered *content* matches the
+        // requested viewport — otherwise viewport: 1920x1080 records at
+        // 1920x1030 because the ~50 px of chrome eats into content area.
+        const CHROME_HEIGHT_PX: u32 = 87;
+        let chrome_hidden = args.iter().any(|a| a.starts_with("--app="));
+        let window_h = if chrome_hidden {
+            viewport.height
+        } else {
+            viewport.height + CHROME_HEIGHT_PX
+        };
+        args.push(format!("--window-size={},{}", viewport.width, window_h));
         Self {
             url: meta.app.clone(),
             viewport,
@@ -276,11 +286,13 @@ mod launch_config_tests {
             "expected --window-position in {:?}",
             cfg.args
         );
+        // No chrome-hiding → outer window must account for Chromium's
+        // ~87 px of chrome so the rendered content matches the viewport.
         assert!(
             cfg.args
                 .iter()
-                .any(|a| a == &format!("--window-size={},{}", cfg.viewport.width, cfg.viewport.height)),
-            "expected --window-size matching viewport in {:?}",
+                .any(|a| a == &format!("--window-size={},{}", cfg.viewport.width, cfg.viewport.height + 87)),
+            "expected --window-size compensating for chrome in {:?}",
             cfg.args
         );
         // Chrome-hiding flag only appears when the host opts in.
@@ -301,6 +313,15 @@ mod launch_config_tests {
         assert!(
             cfg.args.iter().any(|a| a == "--app=https://demo.com"),
             "expected --app= in {:?}", cfg.args
+        );
+        // Chrome-hiding → window-size matches viewport 1:1 (no chrome
+        // compensation since chrome is absent in --app= mode).
+        assert!(
+            cfg.args.iter().any(|a| {
+                a == &format!("--window-size={},{}", cfg.viewport.width, cfg.viewport.height)
+            }),
+            "expected 1:1 --window-size under chrome-hiding in {:?}",
+            cfg.args
         );
     }
 
