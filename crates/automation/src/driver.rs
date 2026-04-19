@@ -62,26 +62,14 @@ impl LaunchConfig {
         // add CHROME_HEIGHT_PX so the rendered *content* matches the
         // requested viewport — otherwise viewport: 1920x1080 records at
         // 1920x1030 because the ~50 px of chrome eats into content area.
-        // CHROME_HEIGHT_PX = title bar + tab strip + URL bar.
-        // CHROME_BORDER_PX = 10 px window border on each side (x2) on
-        // macOS Chromium — accounts for the 20 px width shortfall when
-        // window.frame() reports 1900 for a 1920-requested window.
-        // Empirical values from macOS Chrome for Testing 2026-04:
-        // viewport 1920×1080 + 40/137 → recorded content 1920×1080.
-        // 40 = 20 px border × 2 sides. 137 = title bar + tab strip +
-        // URL bar + toolbar padding.
-        const CHROME_HEIGHT_PX: u32 = 137;
-        const CHROME_BORDER_PX: u32 = 40;
-        let chrome_hidden = args.iter().any(|a| a.starts_with("--app="));
-        let (window_w, window_h) = if chrome_hidden {
-            (viewport.width, viewport.height)
-        } else {
-            (
-                viewport.width + CHROME_BORDER_PX,
-                viewport.height + CHROME_HEIGHT_PX,
-            )
-        };
-        args.push(format!("--window-size={},{}", window_w, window_h));
+        // --window-size is ignored by the sidecar path — Playwright
+        // overrides it post-launch via Browser.setWindowBounds, and the
+        // sidecar then does a measured CDP resize to fit the viewport
+        // exactly (server.mjs `launch` verb). We still pass viewport
+        // dims here so the initial window is roughly the right size
+        // while the sidecar's measurement round-trip runs — a smaller
+        // initial saves a visible resize glitch.
+        args.push(format!("--window-size={},{}", viewport.width, viewport.height));
         Self {
             url: meta.app.clone(),
             viewport,
@@ -304,11 +292,10 @@ mod launch_config_tests {
             cfg.args.iter().any(|a| {
                 a == &format!(
                     "--window-size={},{}",
-                    cfg.viewport.width + 40,
-                    cfg.viewport.height + 137
+                    cfg.viewport.width, cfg.viewport.height
                 )
             }),
-            "expected --window-size compensating for chrome + borders in {:?}",
+            "expected --window-size matching viewport in {:?}",
             cfg.args
         );
         // Chrome-hiding flag only appears when the host opts in.

@@ -176,8 +176,15 @@ const handlers = {
     state.browser = await chromium.connect({
       wsEndpoint: state.browserServer.wsEndpoint(),
     });
+    // `viewport: null` disables Playwright's auto-resize
+    // (crPage.js::_updateViewport → Browser.setWindowBounds with
+    // hardcoded macOS insets {2,80}). Without this, Playwright
+    // overrides --window-size right after launch so SCK captures a
+    // window sized to viewport + {2,80} points, not whatever we asked
+    // for. We resize explicitly below via a measured CDP call so the
+    // content area matches the story viewport in real pixels.
     state.context = await state.browser.newContext({
-      viewport: viewport ? { width: viewport.width, height: viewport.height } : undefined,
+      viewport: null,
       colorScheme:
         theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'no-preference',
       acceptDownloads: true,
@@ -213,6 +220,39 @@ const handlers = {
       state.page = existingPages[0];
     } else {
       state.page = await state.context.newPage();
+    }
+    // Authoritative resize via CDP so the native window CONTENT
+    // matches `viewport` exactly. Playwright's own viewport math uses
+    // hardcoded darwin insets {2,80} which under-compensate for macOS
+    // Chromium's real chrome (~40 width + 137 height on Chrome for
+    // Testing). We measure the real chrome delta once, then call
+    // Browser.setWindowBounds with viewport + delta so the content
+    // area lands exactly on viewport dims. Non-fatal on failure —
+    // the launch itself succeeds regardless.
+    if (viewport && viewport.width && viewport.height) {
+      try {
+        const cdp = await state.context.newCDPSession(state.page);
+        const { windowId } = await cdp.send('Browser.getWindowForTarget');
+        const { bounds } = await cdp.send('Browser.getWindowBounds', { windowId });
+        const inner = await state.page.evaluate(() => ({
+          w: window.innerWidth,
+          h: window.innerHeight,
+        }));
+        const insetW = Math.max(0, (bounds.width | 0) - inner.w);
+        const insetH = Math.max(0, (bounds.height | 0) - inner.h);
+        await cdp.send('Browser.setWindowBounds', {
+          windowId,
+          bounds: {
+            width: viewport.width + insetW,
+            height: viewport.height + insetH,
+            windowState: 'normal',
+          },
+        });
+      } catch (e) {
+        process.stderr.write(
+          `[playwright-sidecar] warn: CDP content-size fit failed: ${e.message}\n`,
+        );
+      }
     }
     return { ok: true };
   },
