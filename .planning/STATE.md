@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-19T07:29:42.829Z"
+last_updated: "2026-04-19T14:15:00.000Z"
 progress:
-  total_phases: 10
+  total_phases: 12
   completed_phases: 4
-  total_plans: 78
+  total_plans: 83
   completed_plans: 68
-  percent: 87
+  percent: 82
 ---
 
 # State: StoryCapture
@@ -20,18 +20,18 @@ progress:
 
 - **Name:** StoryCapture
 - **Core Value:** Turn a written story into a polished, shareable demo video automatically — no recording, editing, or video-production skill required.
-- **Current Focus:** Phase 7 — Semantic DSL verbs + element picker (Tier 1 + Tier 2)
+- **Current Focus:** Phase 12 — Fix video output resolution lock (letterbox filter chain)
 
 ## Current Position
 
-Phase: 7 (Semantic DSL verbs + element picker (Tier 1 + Tier 2)) — EXECUTING
-Plan: 1 of 8
+Phase: 12 (Fix video output resolution lock — letterbox filter chain) — PLANNED, READY TO EXECUTE
+Plan: 0 of 5
 
 - **Milestone:** v1
-- **Phase:** 5 — Window-targeted screen capture with Playwright auto-follow
-- **Plan:** 3 of 3 complete (05-01/05-02/05-03 all code-committed; human-verify checkpoints auto-approved under workflow.auto_advance=true; 05-VERIFICATION.md written)
+- **Phase:** 12 — Fix video output resolution lock — letterbox filter chain
+- **Plan:** 5 plans across 3 waves, verified by gsd-plan-checker (VERIFICATION PASSED, 3 cosmetic warnings fixed)
 - **Status:** Ready to execute
-- **Progress:** [█████████░] 89%
+- **Progress:** [████████░░] 82%
 
 ## Performance Metrics
 
@@ -47,6 +47,8 @@ Plan: 1 of 8
 - Phase 6 added: Recording v2 — promotes Phase 5's deferred list (audio capture, region capture, chrome-hiding, multi-browser auto-follow, live preview, per-recording cursor toggle, Windows E2E CI) into a dedicated polish phase. CONTEXT.md drafted with 24 locked decisions; groups into 4 plans.
 - Phase 9 added: Live Preview pane — render Chromium automation inside the Recorder window via CDP `Page.startScreencast`. Cosmetic companion to the shipped window-target capture; final video still uses real-Chromium pixels via SCK/WGC, not screencast frames. Proposed 3-plan split: sidecar CDP verbs + Rust event bridge, React canvas renderer + toggle, perf/backpressure hardening.
 - Phase 11 added: Author-time element picker — relocate Pick from the recording toolbar to the Preview panel, route through the Phase 10 author-session, and make the Record path read-only against `.story` + `.story.targets.json` (self-healing deferred to explicit Promote-to-fallback). Depends on Phase 10 author-session primitives and editor read-only lock.
+- Phase 12 added (2026-04-19): Fix video output resolution lock — replace `scale='min(1920,iw)':-2,…` with letterbox chain (`scale … force_original_aspect_ratio=decrease:force_divisible_by=2 + pad + setsar + format=yuv420p`). Split capture dims from output dims in `EncodeConfig`. Add `OutputResolution` enum (720p/1080p/1440p/4K/MatchSource/Custom). Source < target stays at source size + letterbox (no upscale). Fix `bitrate_kbps`-as-floor tech-debt. Backend + IPC only (UI hard-codes default 1080p + letterbox + black pad).
+- Phase 13 added (2026-04-19): Video output customization knobs — expose recording-time (5 knobs) + export-time (expanded) UI; per-encoder quality preset mapping (VT bitrate-based, NVENC cq-based, libx264 CRF+tune=stillimage); persist via tauri-plugin-store with Phase 12 migration. Depends on Phase 12.
 
 ### Decisions
 
@@ -110,10 +112,10 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-18 - Completed quick task 260418-ios: fix focus-steal during recording (re-focus main window after Playwright launch + start_recording).
-- Last action: Phase 5 — all 3 plans executed (05-01 Wave 1 + 05-02/05-03 Wave 2 parallel worktrees merged to main). `cargo check -p capture` green on macOS + `x86_64-pc-windows-msvc` cross-target. 05-VERIFICATION.md written — phase code-complete pending operator-gated verification.
-- Next action: Phase 6 (Recording v2 — audio/region/chrome-hiding/multi-browser) OR complete operator-gated verification items across phases 1–5.
-- Files touched this session: `.planning/STATE.md`, `.planning/ROADMAP.md`, phase 05 directory (3 SUMMARYs + VERIFICATION), `crates/capture/**`, `crates/automation/**`, `apps/desktop/**`, `scripts/playwright-sidecar/**`, `tools/e2e-playwright-capture/**`, `.github/workflows/capture-windows.yml`.
+- Last activity: 2026-04-19 - Added Phase 12 + 13 to roadmap; planned Phase 12 (5 plans across 3 waves); plan-checker PASSED with 3 cosmetic warnings tidied.
+- Last action: Phase 12 planning complete — `/gsd-plan-phase 12` workflow executed end-to-end: allocated ENC-06..11 requirements, wrote 12-CONTEXT.md (D-12-01..D-12-12 locked) + 12-RESEARCH.md (letterbox filter chain + per-encoder quality mapping + L-01..L-10 landmines), spawned gsd-planner → 5 plans committed (ba82962), spawned gsd-plan-checker → VERIFICATION PASSED, revision pass for 3 cosmetic warnings committed (f95f133).
+- Next action: `/clear` then `/gsd-execute-phase 12` — execute the 5 plans wave-by-wave (12-01 + 12-02 parallel in Wave 1 → 12-03 in Wave 2 → 12-04 + 12-05 parallel in Wave 3).
+- Files touched this session: `.planning/ROADMAP.md`, `.planning/STATE.md`, `.planning/REQUIREMENTS.md`, `.planning/phases/12-fix-video-output-resolution-lock-letterbox/{12-CONTEXT.md,12-RESEARCH.md,12-{01..05}-PLAN.md}`. No source code changes yet.
 
 ---
-*State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17*
+*State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*

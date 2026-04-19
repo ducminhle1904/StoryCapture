@@ -52,6 +52,12 @@
 - [ ] **ENC-03**: Frame pipeline: native frames → stdin pipe → FFmpeg → MP4 (H.264 baseline) export
 - [ ] **ENC-04**: Build + notarization CI produces signed, notarized, auto-updater-compatible artifacts for macOS and signed artifacts for Windows
 - [ ] **ENC-05**: `ffprobe`-based audio/video alignment check passes in CI (no drift > 100ms across 10-minute recording)
+- [ ] **ENC-06** *(Phase 12)*: Output video resolution matches the selected `OutputResolution` preset exactly (verified by `ffprobe`). Presets: 720p (1280×720), 1080p (1920×1080), 1440p (2560×1440), 4K (3840×2160), MatchSource, Custom(w,h).
+- [ ] **ENC-07** *(Phase 12)*: Aspect-ratio mismatch between capture source and output preset is resolved by a **letterbox** filter chain (`scale=W:H:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos` → `pad=W:H:(ow-iw)/2:(oh-ih)/2:color=<pad_color>` → `setsar=1` → `format=yuv420p`). Default pad color is black; pad color is a parameter on `EncodeConfig`.
+- [ ] **ENC-08** *(Phase 12)*: `EncodeConfig` separates `capture_width/height` (native source dims) from `output_width/height` (target preset dims); the FFmpeg argv builder consumes only `output_*` for `-s`, `-vf`, and bitrate scaling. Rawvideo stdin `-s` is always the capture dimensions.
+- [ ] **ENC-09** *(Phase 12)*: When capture source is smaller than the chosen `OutputResolution` on either axis, the encoder must NOT upscale — the image is kept at source size and letterboxed/pillarboxed inside the output frame.
+- [ ] **ENC-10** *(Phase 12)*: `bitrate_kbps` is used as the **target bitrate** (not a floor). Resolves tech-debt in `06-CLEANUP-BACKLOG.md:99`. Renames/refactors the current `max(pixel_based_kbps, self.bitrate_kbps).min(40_000)` formula so `self.bitrate_kbps` is authoritative and a separate `auto_bitrate` helper derives pixel-based suggestions when the caller opts in.
+- [ ] **ENC-11** *(Phase 12)*: Filter chain is built programmatically (not string-formatted) via a new `crates/encoder/src/filters.rs` module exposing `build_vf(output: &OutputSpec) -> String` that validates inputs and never emits un-escaped user strings into `-vf`.
 
 ### Post-Production (POST)
 
@@ -165,6 +171,7 @@ Added 2026-04-19 during /gsd-plan-phase 10. Internal identifier is "simulator"; 
 | AUTO-01..06 | Phase 1 | Pending |
 | CAP-01..07 | Phase 1 | Pending |
 | ENC-01..05 | Phase 1 | Pending |
+| ENC-06..11 | Phase 12 | Planned |
 | UI-01..04 (editor/recorder subset) | Phase 1 | Pending |
 | UI-08, UI-09, UI-10 | Phase 1 | Pending |
 | DIST-01..05 | Phase 1 | Pending |
