@@ -276,13 +276,16 @@ Plans (to be produced by /gsd-plan-phase 10):
 
 ### Phase 11: Author-time element picker — relocate Pick to Preview panel, route through author-session, record path becomes read-only
 
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 10
-**Plans:** 0 plans
+**Goal:** The element picker lives in the Preview panel (not the recording toolbar), routes clicks through the Phase 9-04 author-session with a shared AuthorDriverState FSM that coordinates with the Phase 10 simulator, and the recording path becomes a strictly read-only consumer of .story + .story.targets.json — self-healing is deferred to Simulator + Promote-to-fallback only.
+**Requirements**: PHASE-11.1, PHASE-11.2, PHASE-11.3, PHASE-11.4, PHASE-11.5, PHASE-11.6, PHASE-11.7, PHASE-11.8, PHASE-11.9, PHASE-11.10, PHASE-11.11, PHASE-11.12, PHASE-11.13, PHASE-11.14
+**Depends on:** Phase 9-04 (author-session + pauseStream/resumeStream), Phase 10 (simulator registry + self_heal param + editor read-only lock)
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 11 to break down)
+- [ ] 11-01-PLAN.md — AuthorDriverRegistry 5-state FSM + PickerResumeGuard (RAII) + Pitfall 5 regression guard for picker_stamp_step_id (D-04 / D-13..D-16)
+- [ ] 11-02-PLAN.md — Record path self_heal=false + AutomationError::PrimaryMissNoHeal + HUD Open-in-Simulator action (D-06 / D-07)
+- [ ] 11-03-PLAN.md — Sidecar pickElement.start streamId routing + author.navigateTo warm-up + picker_start_author Tauri command with navigate-replay + pause/resume brackets (D-08 / D-10 / D-12)
+- [ ] 11-04-PLAN.md — PreviewPickerButton + authorDriverStore + Cmd-Shift-P keymap + delete recorder-side picker + 11-SMOKE.md (D-01 / D-02 / D-05 / D-09)
 
 ### Phase 12: Fix video output resolution lock — letterbox filter chain
 
