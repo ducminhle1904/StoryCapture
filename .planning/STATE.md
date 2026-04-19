@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-19T14:22:57.919Z"
+last_updated: "2026-04-19T15:56:24.543Z"
 progress:
   total_phases: 12
   completed_phases: 4
-  total_plans: 83
+  total_plans: 88
   completed_plans: 68
-  percent: 82
+  percent: 77
 ---
 
 # State: StoryCapture

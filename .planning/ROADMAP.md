@@ -304,12 +304,17 @@ Plans:
 ### Phase 13: Video output customization knobs — recording + export UI
 
 **Goal:** Expose video output parameters to users. Recording-time: Resolution / FPS / Fit mode / Pad color / Quality preset (5 knobs). Export-time: expand the existing Export modal with Container / Codec / Rate control / HW encoder / Preset / Keyframe / Downscale algo / Audio params. Per-encoder quality mapping (VideoToolbox bitrate-based, NVENC cq-based, libx264 CRF-based with `tune=stillimage`). Persist via `tauri-plugin-store` with migration from the Phase 12 hard-coded defaults.
-**Requirements**: TBD
+**Requirements**: ENC-12, ENC-13, ENC-14, ENC-15, ENC-16, ENC-17, ENC-18, ENC-19
 **Depends on:** Phase 12 (backend letterbox chain + OutputResolution enum must exist first)
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 13 to break down)
+- [ ] 13-01-PLAN.md — Backend ExportOutputDto extension: EncoderOptionsDto + 6 sub-DTOs + tauri-specta regen (ENC-13)
+- [ ] 13-02-PLAN.md — Infrastructure: tauri-plugin-store wiring + capabilities + 6 shadcn Base UI primitives + 2 bespoke wrappers (ENC-15)
+- [ ] 13-03-PLAN.md — Shared output-prefs Zustand store + persistence/migrator + per-project IO + IPC wrapper extensions + CONVENTIONS.md exception update (ENC-14, ENC-15)
+- [ ] 13-04-PLAN.md — Recording UI: VideoOutputSection (5 controls) + bitrate preview + warnings + summary badge + recording-view.tsx integration (ENC-12, ENC-17, ENC-18, ENC-19)
+- [ ] 13-05-PLAN.md — Export Modal Advanced disclosure: AdvancedOutputOptions (8 knobs, conditional decision table) + export-modal.tsx integration (ENC-13, ENC-16)
+
 
 ---
 *Roadmap created: 2026-04-14*
