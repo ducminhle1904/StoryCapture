@@ -1,0 +1,98 @@
+# StoryCapture — Conventions
+
+Concrete patterns actually used in the codebase. Read on demand; don't invent new patterns when an established one exists.
+
+## Rust
+
+- **Error types:** One `thiserror` enum per crate in `src/error.rs` (`CaptureError`, `EncoderError`, `StorageError`, `IntelError`, `AppError`, …). Crate exports `pub type Result<T> = std::result::Result<T, XxxError>`. Domain crates never cross-import each other's error types; host maps them into `AppError` at the IPC boundary.
+- **Async:** `tokio` multi-thread runtime everywhere. Async traits use `async_trait`. No blocking calls in async paths (use `tokio::task::spawn_blocking` / `block_in_place` only when necessary).
+- **Actor pattern (D-06):** Long-lived work goes through `tokio::sync::mpsc` channels wrapped in newtype senders stored on `AppState`. See `automation::SessionActor` + `encoder::RenderQueueActor`.
+- **Public surface:** Crates re-export everything public from `lib.rs` via `pub use module::*`; private helpers stay module-local. Don't reach into sub-modules across crates.
+- **Platform gating:** Use `#[cfg(target_os = "…")]` on module declarations and per-function where the API diverges. Cross-platform types live in `crates/<name>/src/*.rs`; platform-specific code in `crates/<name>/src/{macos,windows}/` submodules.
+- **Tauri commands:** One file per feature under `apps/desktop/src-tauri/src/commands/`. Each is a thin bridge: deserialize → call domain crate → convert to DTO → return `Result<T, AppError>`. No domain logic in command files. Register every command and every exported type in `ipc_spec.rs` via `collect_commands!` and `.typ::<T>()`.
+- **DTOs:** Crate-native types stay pure; the host defines `XxxDto` mirrors (Specta-friendly, lossy if needed) in `commands/` modules to keep the TS surface stable when Rust internals churn.
+- **Types for TS:** Add `#[cfg_attr(feature = "ts-export", derive(ts_rs::TS))]` for shared AST types (story, effects). For IPC payloads use `specta::Type`.
+- **Tracing:** `tracing` + `tracing-subscriber` wired through `tauri-plugin-log` + a `tracing-appender` file sink. `#[instrument]` spans are sparse today — add them in hot async paths, not everywhere.
+- **No panics in hot paths.** Use `Result`. `panic_hook.rs` catches unexpected panics → log file + `panic_event` IPC.
+
+## TypeScript / React
+
+- **File naming:** kebab-case files (`new-project-dialog.tsx`, `accounts-panel.tsx`). PascalCase reserved for legacy/dialog components already in that style (`WebAccountPanel.tsx`) — prefer kebab for new files. Hooks/stores: camelCase (`useNlChat.ts`, `nlStore.ts`).
+- **Folder layout:** feature-driven under `apps/desktop/src/features/<feature>/` — each owns its components, stores, hooks, tests. Shared UI primitives in `src/components/ui/`. IPC wrappers in `src/ipc/`. Top-level stores for cross-feature state in `src/state/` or `src/stores/`.
+- **Zustand stores:** two flavors in use.
+  - **Monolithic per feature** (default): single `create<T>()((set, get) => ({ state, actions }))` in one file, optional `persist()` middleware. Example: `features/nl-mode/nlStore.ts`.
+  - **Slice-composed** (only for the post-production editor): 6 slices merged in `features/post-production/state/store.ts`. Don't copy this pattern unless the store clearly warrants it — keep it monolithic.
+- **TanStack Query:** every IPC read/mutation goes through a hook in `src/ipc/*.ts`. Query-key factory pattern: `const KEYS = { all: ['projects'] as const, detail: (id) => [...] as const }`. Mutations invalidate with `qc.invalidateQueries({ queryKey: KEYS.all })`.
+- **Channels (streaming IPC):** Tauri `Channel<T>` returned from commands like `launch_automation`, `start_recording`, `render_*`, `upload_video`. Subscribe via `channel.onmessage = (e) => store.dispatch(e)` — always unsubscribe on unmount.
+- **Forms:** plain `useState` + inline validation in the submit handler. No react-hook-form / zod schema validation currently. Keep new forms small; reach for a schema lib only if a form grows past ~5 fields.
+- **UI primitives:** Base UI compound components (`Dialog.Root / Portal / Popup`, `Menu.*`, `Select.*`) — **not Radix**. Variants via CVA in `components/ui/`. Motion via `motion/react` (not `framer-motion`). Icons from `lucide-react`.
+- **Tokens:** never hardcode hex/spacing. Use CSS vars from `@storycapture/ui/tokens.css` (`var(--sc-color-bg-primary)`, `var(--sc-radius-md)`, etc.). Tailwind v4 `@theme` block is the source of truth.
+
+## Testing
+
+- **Rust:**
+  - Integration tests in `crates/<name>/tests/*.rs`. Unit tests inline with `#[cfg(test)] mod tests`.
+  - `insta` snapshot tests for `story-parser` (DSL round-trip), `effects` (AST emitter output), `intelligence` (LLM response parsing). Review with `cargo insta review`.
+  - `proptest` declared (parser fuzz) — use sparingly.
+  - `wiremock` mocks HTTP in `intelligence` tests.
+  - `criterion` benches under `crates/capture/benches/` (Windows CPU crop <5ms target on 1080p).
+  - Real-hardware / real-binary tests are **feature-gated** (see `docs/ARCHITECTURE.md` — feature table) and marked `#[ignore]` so default `cargo test` stays fast.
+- **Desktop frontend:** Vitest + `happy-dom` + `@testing-library/react`. Setup in `apps/desktop/test-setup.ts` (jest-dom matchers, matchMedia shim). Tests colocated next to code as `*.test.tsx`, or grouped in `__tests__/` subfolders for related integration suites. Stub IPC with `@tauri-apps/api/mocks::mockIPC` when a component talks to Tauri.
+- **Web (`apps/web`):** tRPC procedures tested via direct calls; Playwright for user-flow E2E.
+- **Tauri E2E:** WebdriverIO + `tauri-driver` (Windows primary; macOS `tauri-driver` unsupported — gate macOS E2E accordingly).
+
+## Commits
+
+- **Format:** `type(scope): subject`.
+- **Types:** `feat`, `fix`, `refactor`, `docs`, `chore`, `test`, `merge`. No other types.
+- **Scope:** phase/plan ID (`07-05`, `phase-07`), crate name (`capture`, `recording`), or cross-cutting area (`state`, `docs`). Phase IDs are preferred when the change belongs to a GSD plan.
+- **No `Co-Authored-By` trailers.** Hard rule (see CLAUDE.md "Agent Working Rules"). Strip them from commit messages.
+- **No `--no-verify`, no `@ts-ignore`, no skipped tests** to "make things green" — fix the root cause or stop and ask.
+
+## GSD workflow artifacts
+
+Every code change of non-trivial size goes through a GSD command. Artifacts land in `.planning/`:
+
+- `.planning/ROADMAP.md` — phase list with requirement coverage.
+- `.planning/STATE.md` — live status, current phase/plan, blockers.
+- `.planning/phases/NN-<slug>/`:
+  - `NN-CONTEXT.md` — phase-wide decisions, scope boundary.
+  - `NN-RESEARCH.md` / `NN-RESEARCH-TIER2.md` — optional research inputs.
+  - `NN-PP-PLAN.md` — frontmatter (`phase`, `plan`, `type`, `wave`, `depends_on`, `files_modified`, `requirements`, `tags`) + task breakdown.
+  - `NN-PP-SUMMARY.md` — post-execution retrospective, decisions locked, follow-ups.
+  - `NN-PP-RESUME.md` — operator-gated checklists (hardware/secrets required).
+  - `deferred-items.md` — out-of-scope follow-ups.
+- `.planning/quick/DDMMYY-xxx-<slug>/` — `/gsd-quick` tasks.
+- `.planning/research/{PROJECT,STACK,ARCHITECTURE,FEATURES,PITFALLS,SUMMARY}.md` — project-level research inputs (mostly historical reference now).
+
+Commit messages encode the plan ID (`feat(07-05): …` → phase 7, plan 5).
+
+## Lint / format
+
+- **TS/JS:** `biome` is the single tool (no ESLint/Prettier). Config: `biome.json` — 2-space indent, 100-col, double quotes, trailing commas `all`, semicolons `always`. Ignore globs: `target/`, `node_modules/`, `.next/`, `dist/`, `.planning/`, `**/binaries/**`. Run `pnpm lint` / `pnpm format`.
+- **Rust:** `rustfmt` defaults, `clippy` with workspace defaults. `rust-toolchain.toml` pins 1.88. `cargo-nextest` for faster tests, `cargo-deny` for license/advisory scan in CI.
+
+## CI workflows (`.github/workflows/`)
+
+| Workflow | Purpose |
+|---|---|
+| `ci.yml` | Multi-platform build + test (macOS arm64/x64, Windows x64). Biome, fmt, clippy, nextest, offline eval. |
+| `capture-soak.yml` | 30-min capture memory soak (operator-triggered on TCC-granted host). |
+| `capture-windows-e2e.yml` | WGC real-hardware E2E on Windows runner. |
+| `encoder-av-drift.yml` | Audio/video sync validation across HW encoders. |
+| `ffmpeg-build.yml` | Cross-compile LGPL FFmpeg 7.0.2 per-triple binaries. |
+| `release.yml` | Signed + notarized multi-platform release bundle. |
+| `notarize-smoke.yml` | Pre-release notarization smoke test. |
+| `release-soak.yml`, `release-benchmark.yml` | Post-release validation. |
+| `rust-check.yml` | Standalone clippy + cargo-deny. |
+| `playwright-sidecar-build.yml` | Build Node SEA sidecar per-triple. |
+
+## Agent / contributor hard rules
+
+Mirrored from CLAUDE.md "Agent Working Rules" — keep them top of mind:
+
+1. **No workarounds.** Fix at the root cause. Don't skip tests, `@ts-ignore`, `--no-verify`, or silence lints. Stop and ask if blocked.
+2. **No `Co-Authored-By` in commits.**
+3. **Match the user's language** in replies (code/commits stay in English).
+4. **Concise comments.** Default to no comment. Single-line when the *why* is non-obvious. Never restate what the code says.
+5. **Plan before breaking/big changes.** Enter plan mode for: public API / IPC / DSL / schema changes; >5-file cross-concern diffs; build/CI/signing changes; stack replacements; security-sensitive code; architectural refactors.

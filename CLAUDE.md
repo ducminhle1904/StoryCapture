@@ -260,13 +260,33 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+Full reference: **`docs/CONVENTIONS.md`** — load it before changing code style, testing patterns, or workflow. Quick rules:
+
+- **Rust:** one `thiserror` enum per crate in `src/error.rs`; `tokio` multi-thread; actor pattern via `mpsc` for long-lived work; platform code under `crates/<name>/src/{macos,windows}/` with `#[cfg(target_os=…)]`; Tauri commands are thin bridges under `apps/desktop/src-tauri/src/commands/` — register every command/type in `ipc_spec.rs`.
+- **TS/React:** kebab-case files, feature-folder layout in `apps/desktop/src/features/`, Zustand monolithic per feature (post-production is the one slice-composed exception), TanStack Query wraps every IPC call in `src/ipc/*.ts`, Tauri `Channel<T>` for streaming progress. Base UI (NOT Radix); `motion/react` (NOT framer-motion); tokens from `@storycapture/ui/tokens.css`. Plain `useState` forms — no react-hook-form/zod yet.
+- **Testing:** Rust integration tests in `crates/<name>/tests/`, `insta` snapshots for parser/effects/intelligence, real-hardware tests gated behind Cargo features (`real-capture`, `real-capture-windows`, `real-ffmpeg`, `real-playwright-tests`). Desktop: Vitest + happy-dom + `mockIPC`.
+- **Commits:** `type(scope): subject` — types = feat/fix/refactor/docs/chore/test/merge; scope = phase/plan id (`07-05`) or crate. **Never add `Co-Authored-By` trailers.**
+- **Lint/format:** Biome (`biome.json`, 2-space, 100-col, double quotes, trailing commas), rustfmt defaults + clippy, cargo-nextest, cargo-deny.
+- **GSD artifacts:** `.planning/phases/NN-<slug>/` holds `CONTEXT/RESEARCH/PLAN/SUMMARY/RESUME.md` per plan; `.planning/STATE.md` is live status.
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
 ## Architecture
 
-Architecture not yet mapped. Follow existing patterns found in the codebase.
+Full reference: **`docs/ARCHITECTURE.md`** — load it when touching cross-crate flows, IPC, or trait boundaries. Domain/DSL/pipeline details in **`docs/DOMAIN.md`**. Quick orientation:
+
+- **Repo:** Turborepo (pnpm workspaces `apps/*`, `packages/*`, `scripts/playwright-sidecar`) + Cargo workspace (`crates/*`, `apps/desktop/src-tauri`, `tools/e2e-playwright-capture`).
+- **Domain crates (pure, zero Tauri deps):** `story-parser`, `automation`, `capture`, `encoder`, `effects`, `storage`, `intelligence`, `util`. Tauri host in `apps/desktop/src-tauri` is a thin bridge.
+- **Four key trait boundaries:**
+  - `BrowserDriver` (`crates/automation/src/driver.rs`) — impls: `PlaywrightSidecarDriver`, `NoopDriver`. Capability-routed verb dispatch.
+  - `CaptureBackend` (`crates/capture/src/backend.rs`) — impls: `SckBackend` (macOS), `WgcBackend` (Windows), `XcapBackend` (fallback). `pick_default_backend()` + `orchestrate_start()` fallback.
+  - `LlmProvider` / `TtsProvider` (`crates/intelligence/src/{llm,tts}/mod.rs`) — impls: Anthropic/OpenAI, ElevenLabs/OpenAI-TTS.
+- **IPC:** single source of truth in `apps/desktop/src-tauri/src/ipc_spec.rs` (collect_commands! + `.typ::<T>()`). `tauri-specta` generates `packages/shared-types/src/ipc.ts` (auto-generated — never hand-edit). `ts-rs` generates story/effects AST types under `generated/`. Long-running ops use Tauri `Channel<T>`.
+- **Frontend desktop:** React 19 + Vite 6, React Router v7, 6-slice post-production Zustand store (`features/post-production/state/`), WebGPU/WebGL compositor, CodeMirror 6 DSL editor with LSP over Tauri IPC.
+- **Web companion:** Next.js 15 App Router + tRPC 11 + Prisma 6 (12 models: User/Workspace/Video/ViewEvent/DailyVideoStats/Template/SyncedProject/…) + NextAuth v5 + Cloudflare R2 multipart uploads + SSE sync.
+- **Playwright sidecar:** Node SEA at `scripts/playwright-sidecar/server.mjs`, JSON-RPC 2.0 over stdio, picker overlay bundled via `build-sea.mjs`.
+- **FFmpeg sidecar:** static universal LGPL-only build per triple (`scripts/build-ffmpeg/`), HW probe chooses VideoToolbox/NVENC/QSV/AMF/libopenh264 at runtime.
+- **DSL & pipeline:** grammar at `crates/story-parser/src/grammar.pest` (13 Tier-1 verbs + 23 ARIA roles). `.story.targets.json` self-healing store with atomic fallback promotion — `.story` source never modified. See `docs/DOMAIN.md` for full flow and phase roadmap status.
 <!-- GSD:architecture-end -->
 
 <!-- GSD:skills-start source:skills/ -->
