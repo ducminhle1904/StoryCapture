@@ -77,7 +77,9 @@ pub fn anim_scale_in_params(
     let in_s = (in_ms as f64 / 1000.0).max(1e-6);
     let scale = format!(
         "if(lt(t,{t0:.3}),0.8,if(lt(t,{t1:.3}),0.8+0.2*(t-{t0:.3})/{in_s:.3},1.0))",
-        t0 = t0, t1 = t1, in_s = in_s
+        t0 = t0,
+        t1 = t1,
+        in_s = in_s
     );
     (alpha, scale)
 }

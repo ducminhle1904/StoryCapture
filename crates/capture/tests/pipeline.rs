@@ -7,8 +7,8 @@ use capture::{
     BackendKind, ByteBoundedQueue, CaptureBackend, CaptureConfig, CaptureError, CapturePipeline,
     CaptureStats, DisplayId, DisplayInfo, Frame, FrameData, PixelFormat, Pts,
 };
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 struct MockBackend {

@@ -26,11 +26,11 @@ pub mod selector;
 pub mod session;
 pub mod targets_store;
 
+pub use control::RunControl;
 pub use driver::{
     ActionKind, BoundingBox, BrowserDriver, Capability, CapabilitySet, ElementState, LaunchConfig,
     LaunchOptions, ResolvedSelector,
 };
-pub use control::RunControl;
 pub use error::{AutomationError, Result};
 pub use events::{AttemptLog, AttemptOutcome, ExecutorEvent, SelectorStrategy, StorySummary};
 pub use executor::{Executor, PersistenceHandle};

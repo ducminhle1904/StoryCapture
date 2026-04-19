@@ -24,7 +24,9 @@ async fn sck_display_smoke() {
         .find(|d| d.is_primary)
         .unwrap_or(&displays[0])
         .id;
-    let mut cfg = CaptureConfig::new_for_target(CaptureTarget::Display { display_id: primary });
+    let mut cfg = CaptureConfig::new_for_target(CaptureTarget::Display {
+        display_id: primary,
+    });
     cfg.fps_target = 30;
     let (tx, mut rx) = mpsc::channel::<Frame>(16);
     backend.start(cfg, tx).await.expect("start");

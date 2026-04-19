@@ -152,12 +152,7 @@ pub fn emit_audio_mix(
             sfx_file: w.sfx_file.clone(),
         });
     }
-    let sfx_emit = emit_click_sfx(
-        &all_events,
-        cfg.click_level,
-        sound_root,
-        next_input_idx,
-    );
+    let sfx_emit = emit_click_sfx(&all_events, cfg.click_level, sound_root, next_input_idx);
     next_input_idx += sfx_emit.extra_inputs.len();
     extra.extend(sfx_emit.extra_inputs);
     let sfx_label = sfx_emit.out_label.clone();

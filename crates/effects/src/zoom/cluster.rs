@@ -222,7 +222,11 @@ pub fn enforce_change_budget(clusters: &mut Vec<ZoomCluster>, max_changes_per_mi
         let (drop_idx, _) = clusters
             .iter()
             .enumerate()
-            .min_by(|(_, a), (_, b)| a.weight.partial_cmp(&b.weight).unwrap_or(std::cmp::Ordering::Equal))
+            .min_by(|(_, a), (_, b)| {
+                a.weight
+                    .partial_cmp(&b.weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .expect("non-empty");
         clusters.remove(drop_idx);
     }
@@ -234,7 +238,11 @@ mod tests {
     use crate::math::min_jerk::Waypoint;
 
     fn wp(t_ms: u64, x: f32, y: f32, kind: WaypointKind) -> Waypoint {
-        Waypoint { t_ms, pos: Vec2::new(x, y), kind }
+        Waypoint {
+            t_ms,
+            pos: Vec2::new(x, y),
+            kind,
+        }
     }
 
     #[test]

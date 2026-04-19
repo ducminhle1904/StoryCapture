@@ -106,10 +106,7 @@ struct StubBrowserDriver;
 
 #[async_trait::async_trait]
 impl BrowserDriver for StubBrowserDriver {
-    async fn execute(
-        &self,
-        _step: &ExecStep,
-    ) -> Result<StepResult, DriverError> {
+    async fn execute(&self, _step: &ExecStep) -> Result<StepResult, DriverError> {
         // Simulate instant success with no selector attempts.
         Ok(StepResult {
             elapsed_ms: 1,

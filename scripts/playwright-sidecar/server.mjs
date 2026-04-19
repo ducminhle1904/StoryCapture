@@ -26,6 +26,11 @@ import { createHash } from 'node:crypto';
 import { dirname as pathDirname, resolve as pathResolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { emitDsl } from './picker/generator.mjs';
+import {
+  VIEWPORT_FIT_MAX_ATTEMPTS,
+  VIEWPORT_FIT_SETTLE_MS,
+  nextWindowBoundsForViewport,
+} from './viewport-fit.mjs';
 
 // the picker overlay IIFE is built by build-sea.mjs (Step -1/5) into
 // picker/overlay/overlay.iife.js. We MUST use a synchronous loader because
@@ -120,6 +125,60 @@ async function closeAuthorBrowser() {
   }
   if (b) {
     try { await b.close(); } catch {}
+  }
+}
+
+async function fitViewportToContent(page, context, viewport) {
+  if (!viewport || !viewport.width || !viewport.height) {
+    return null;
+  }
+
+  const cdp = await context.newCDPSession(page);
+  try {
+    const { windowId } = await cdp.send('Browser.getWindowForTarget');
+
+    for (let attempt = 1; attempt <= VIEWPORT_FIT_MAX_ATTEMPTS; attempt += 1) {
+      const { bounds } = await cdp.send('Browser.getWindowBounds', { windowId });
+      const inner = await page.evaluate(() => ({
+        w: window.innerWidth,
+        h: window.innerHeight,
+      }));
+      const fit = nextWindowBoundsForViewport(bounds, inner, viewport);
+
+      if (fit.done) {
+        return { ok: true, attempts: attempt, bounds, inner, fit };
+      }
+
+      await cdp.send('Browser.setWindowBounds', {
+        windowId,
+        bounds: {
+          width: fit.nextBounds.width,
+          height: fit.nextBounds.height,
+          windowState: 'normal',
+        },
+      });
+      await page.waitForTimeout(VIEWPORT_FIT_SETTLE_MS);
+    }
+
+    const { bounds } = await cdp.send('Browser.getWindowBounds', { windowId });
+    const inner = await page.evaluate(() => ({
+      w: window.innerWidth,
+      h: window.innerHeight,
+    }));
+    const fit = nextWindowBoundsForViewport(bounds, inner, viewport);
+    return {
+      ok: fit.done,
+      attempts: VIEWPORT_FIT_MAX_ATTEMPTS,
+      bounds,
+      inner,
+      fit,
+    };
+  } finally {
+    try {
+      await cdp.detach();
+    } catch {
+      /* detach is best-effort */
+    }
   }
 }
 
@@ -223,31 +282,20 @@ const handlers = {
     }
     // Authoritative resize via CDP so the native window CONTENT
     // matches `viewport` exactly. Playwright's own viewport math uses
-    // hardcoded darwin insets {2,80} which under-compensate for macOS
-    // Chromium's real chrome (~40 width + 137 height on Chrome for
-    // Testing). We measure the real chrome delta once, then call
-    // Browser.setWindowBounds with viewport + delta so the content
-    // area lands exactly on viewport dims. Non-fatal on failure —
-    // the launch itself succeeds regardless.
+    // hardcoded insets that are not stable across Chromium/macOS builds.
+    // Measure the current content box, adjust the outer bounds by the
+    // residual delta, and re-verify after each resize until the page
+    // reports the requested `window.innerWidth/innerHeight`.
     if (viewport && viewport.width && viewport.height) {
       try {
-        const cdp = await state.context.newCDPSession(state.page);
-        const { windowId } = await cdp.send('Browser.getWindowForTarget');
-        const { bounds } = await cdp.send('Browser.getWindowBounds', { windowId });
-        const inner = await state.page.evaluate(() => ({
-          w: window.innerWidth,
-          h: window.innerHeight,
-        }));
-        const insetW = Math.max(0, (bounds.width | 0) - inner.w);
-        const insetH = Math.max(0, (bounds.height | 0) - inner.h);
-        await cdp.send('Browser.setWindowBounds', {
-          windowId,
-          bounds: {
-            width: viewport.width + insetW,
-            height: viewport.height + insetH,
-            windowState: 'normal',
-          },
-        });
+        const result = await fitViewportToContent(state.page, state.context, viewport);
+        if (!result?.ok) {
+          process.stderr.write(
+            `[playwright-sidecar] warn: viewport fit incomplete after ${result?.attempts ?? 0} attempts; ` +
+              `wanted=${viewport.width}x${viewport.height} got=${result?.inner?.w ?? 0}x${result?.inner?.h ?? 0} ` +
+              `bounds=${result?.bounds?.width ?? 0}x${result?.bounds?.height ?? 0}\n`,
+          );
+        }
       } catch (e) {
         process.stderr.write(
           `[playwright-sidecar] warn: CDP content-size fit failed: ${e.message}\n`,

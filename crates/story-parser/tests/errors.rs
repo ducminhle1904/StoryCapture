@@ -22,7 +22,12 @@ fn typo_suggestion() {
         .iter()
         .filter(|d| d.message.contains("clik"))
         .collect();
-    assert_eq!(typo_diags.len(), 1, "expected 1 'clik' diagnostic, got {:?}", r.diagnostics);
+    assert_eq!(
+        typo_diags.len(),
+        1,
+        "expected 1 'clik' diagnostic, got {:?}",
+        r.diagnostics
+    );
     let d = typo_diags[0];
     assert_eq!(d.severity, Severity::Error);
     assert_eq!(d.suggestion.as_deref(), Some("click"));
@@ -48,8 +53,10 @@ fn multi_error_recovery() {
         r.diagnostics
     );
     // Verify did-you-mean is firing for each typo
-    let suggestions: Vec<&str> =
-        errs.iter().filter_map(|d| d.suggestion.as_deref()).collect();
+    let suggestions: Vec<&str> = errs
+        .iter()
+        .filter_map(|d| d.suggestion.as_deref())
+        .collect();
     for expected in &["click", "navigate", "assert", "scroll", "hover"] {
         assert!(
             suggestions.contains(expected),
@@ -160,9 +167,7 @@ fn missing_brace_recovers() {
     let r = parse(src);
     assert!(r.ast.is_some(), "ast still produced for missing brace");
     assert!(
-        r.diagnostics
-            .iter()
-            .any(|d| d.severity == Severity::Error),
+        r.diagnostics.iter().any(|d| d.severity == Severity::Error),
         "expected at least one error diagnostic"
     );
 }

@@ -7,7 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::video::{BackgroundKind, RippleEvent, TextBox, TrajectoryRef, VideoNode, ZoomKeyframe};
+use crate::ast::video::{
+    BackgroundKind, RippleEvent, TextBox, TrajectoryRef, VideoNode, ZoomKeyframe,
+};
 use crate::ast::{types::Vec2, Graph};
 
 /// Linear-interpolate the keyframe list at time `t_ms`, returning
@@ -126,8 +128,7 @@ pub fn emit_preview_plan(g: &Graph) -> PreviewRenderPlan {
                     let frame_ms = 1000.0 / fps as f32;
                     let t_start = keyframes.first().unwrap().t_ms;
                     let t_end = keyframes.last().unwrap().t_ms;
-                    let total_frames =
-                        (((t_end - t_start) as f32) / frame_ms).ceil() as u64 + 1;
+                    let total_frames = (((t_end - t_start) as f32) / frame_ms).ceil() as u64 + 1;
                     for i in 0..total_frames {
                         let t_ms = t_start + (i as f32 * frame_ms).round() as u64;
                         let sample = sample_keyframes_lerp(keyframes, t_ms);

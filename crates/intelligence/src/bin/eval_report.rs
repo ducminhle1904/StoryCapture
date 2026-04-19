@@ -14,8 +14,8 @@ fn main() {
         process::exit(0);
     }
 
-    let results_path = get_arg(&args, "--results")
-        .unwrap_or_else(|| "eval_result.json".to_string());
+    let results_path =
+        get_arg(&args, "--results").unwrap_or_else(|| "eval_result.json".to_string());
     let thresholds_path = get_arg(&args, "--thresholds")
         .unwrap_or_else(|| "crates/intelligence/tests/fixtures/eval_thresholds.toml".to_string());
     let ci_mode = args.iter().any(|a| a == "--ci");
@@ -41,7 +41,10 @@ fn main() {
     let thresholds_content = match std::fs::read_to_string(&thresholds_path) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("error: cannot read thresholds file '{}': {}", thresholds_path, e);
+            eprintln!(
+                "error: cannot read thresholds file '{}': {}",
+                thresholds_path, e
+            );
             process::exit(2);
         }
     };
@@ -64,7 +67,8 @@ fn main() {
         let (status, actual_val) = match actual {
             Some(val) => {
                 // For cost/latency metrics, lower is better (threshold is upper bound)
-                let is_lower_better = key.contains("cost") || key.contains("_ms") || key.contains("drift");
+                let is_lower_better =
+                    key.contains("cost") || key.contains("_ms") || key.contains("drift");
                 let passed = if is_lower_better {
                     val <= *threshold
                 } else {
@@ -100,7 +104,10 @@ fn main() {
     println!("| Metric | Threshold | Actual | Status |");
     println!("|--------|-----------|--------|--------|");
     for (key, threshold, actual, status) in &report_rows {
-        println!("| {} | {:.4} | {:.4} | {} |", key, threshold, actual, status);
+        println!(
+            "| {} | {:.4} | {:.4} | {} |",
+            key, threshold, actual, status
+        );
     }
     println!();
 

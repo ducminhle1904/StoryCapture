@@ -85,7 +85,11 @@ fn fanout_plan_mp4_webm() {
     );
     assert!(mp4.iter().any(|a| a == "h264_videotoolbox"));
     assert!(mp4.iter().any(|a| a == "+faststart"));
-    let webm = build_encode_args(Path::new("/tmp/interm.mkv"), &plan.outputs[1], "libopenh264");
+    let webm = build_encode_args(
+        Path::new("/tmp/interm.mkv"),
+        &plan.outputs[1],
+        "libopenh264",
+    );
     assert!(webm.iter().any(|a| a == "libvpx-vp9"));
     assert!(webm.iter().any(|a| a == "libopus"));
 }
@@ -129,7 +133,11 @@ async fn multi_encode_parallel_spawns_two_sidecars() {
     let outs = fanout_encode(
         &intermediate,
         &plan,
-        move || Arc::new(RecordingCmd { calls: calls_c.clone() }) as Arc<dyn SidecarCommand>,
+        move || {
+            Arc::new(RecordingCmd {
+                calls: calls_c.clone(),
+            }) as Arc<dyn SidecarCommand>
+        },
         "libopenh264",
     )
     .await

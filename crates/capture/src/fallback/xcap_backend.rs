@@ -12,8 +12,8 @@ use crate::error::CaptureError;
 use crate::frame::{self, ClockSource, Frame, FrameData, PixelFormat, Pts};
 use async_trait::async_trait;
 use parking_lot::Mutex;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 

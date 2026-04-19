@@ -35,11 +35,21 @@ pub struct Diagnostic {
 
 impl Diagnostic {
     pub fn error(message: impl Into<String>, span: Span) -> Self {
-        Self { severity: Severity::Error, message: message.into(), span, suggestion: None }
+        Self {
+            severity: Severity::Error,
+            message: message.into(),
+            span,
+            suggestion: None,
+        }
     }
 
     pub fn warning(message: impl Into<String>, span: Span) -> Self {
-        Self { severity: Severity::Warning, message: message.into(), span, suggestion: None }
+        Self {
+            severity: Severity::Warning,
+            message: message.into(),
+            span,
+            suggestion: None,
+        }
     }
 
     pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {

@@ -13,7 +13,11 @@ fn fixture(name: &str) -> PathBuf {
 #[test]
 fn empty_input_is_valid() {
     let r = parse("");
-    assert!(r.diagnostics.is_empty(), "empty input must produce no diagnostics; got {:?}", r.diagnostics);
+    assert!(
+        r.diagnostics.is_empty(),
+        "empty input must produce no diagnostics; got {:?}",
+        r.diagnostics
+    );
     let ast = r.ast.expect("ast must be Some for empty input");
     assert!(ast.scenes.is_empty());
 }
@@ -42,7 +46,11 @@ fn parses_simple_fixture() {
     assert_eq!(ast.scenes.len(), 1);
     let scene = &ast.scenes[0];
     assert_eq!(scene.name, "Login");
-    assert!(scene.commands.len() >= 4, "got {} commands", scene.commands.len());
+    assert!(
+        scene.commands.len() >= 4,
+        "got {} commands",
+        scene.commands.len()
+    );
 }
 
 #[test]
@@ -57,11 +65,27 @@ fn parses_all_verbs_fixture() {
     assert_eq!(ast.scenes.len(), 1);
     let scene = &ast.scenes[0];
     // 13 verbs.
-    assert_eq!(scene.commands.len(), 13, "expected 13 commands, got {}", scene.commands.len());
+    assert_eq!(
+        scene.commands.len(),
+        13,
+        "expected 13 commands, got {}",
+        scene.commands.len()
+    );
     let verbs: Vec<&str> = scene.commands.iter().map(|c| c.verb()).collect();
     let expected = [
-        "navigate", "click", "type", "scroll", "hover", "drag", "select",
-        "upload", "wait", "wait-for", "assert", "screenshot", "pause",
+        "navigate",
+        "click",
+        "type",
+        "scroll",
+        "hover",
+        "drag",
+        "select",
+        "upload",
+        "wait",
+        "wait-for",
+        "assert",
+        "screenshot",
+        "pause",
     ];
     assert_eq!(verbs, expected);
 }
@@ -71,10 +95,19 @@ fn every_node_has_nonzero_span() {
     let r = parse_file(&fixture("valid/all-verbs.story")).expect("io ok");
     let ast = r.ast.unwrap();
     for scene in &ast.scenes {
-        assert!(scene.span.start < scene.span.end, "scene span empty: {:?}", scene.span);
+        assert!(
+            scene.span.start < scene.span.end,
+            "scene span empty: {:?}",
+            scene.span
+        );
         for cmd in &scene.commands {
             let s = cmd.span();
-            assert!(s.start < s.end, "command span empty for verb {:?}: {:?}", cmd.verb(), s);
+            assert!(
+                s.start < s.end,
+                "command span empty for verb {:?}: {:?}",
+                cmd.verb(),
+                s
+            );
         }
     }
 }
@@ -139,25 +172,52 @@ fn tier1_new_forms_fixture_parses_clean_with_expected_variants() {
         .filter(|c| {
             matches!(
                 c,
-                Command::Click { target: SelectorOrText::Role { .. }, .. }
-                    | Command::Hover { target: SelectorOrText::Role { .. }, .. }
+                Command::Click {
+                    target: SelectorOrText::Role { .. },
+                    ..
+                } | Command::Hover {
+                    target: SelectorOrText::Role { .. },
+                    ..
+                }
             )
         })
         .count();
     let label_count = cmds
         .iter()
-        .filter(|c| matches!(c, Command::Type { target: SelectorOrText::Label(_), .. }))
+        .filter(|c| {
+            matches!(
+                c,
+                Command::Type {
+                    target: SelectorOrText::Label(_),
+                    ..
+                }
+            )
+        })
         .count();
     let text_exact_count = cmds
         .iter()
-        .filter(|c| matches!(c, Command::Click { target: SelectorOrText::TextExact(_), .. }))
+        .filter(|c| {
+            matches!(
+                c,
+                Command::Click {
+                    target: SelectorOrText::TextExact(_),
+                    ..
+                }
+            )
+        })
         .count();
     assert!(
         role_count >= 4,
         "expected ≥4 Role targets (button+link+image+img+hover), got {role_count}"
     );
-    assert_eq!(label_count, 1, "expected exactly 1 fill→Label desugar, got {label_count}");
-    assert_eq!(text_exact_count, 1, "expected exactly 1 TextExact, got {text_exact_count}");
+    assert_eq!(
+        label_count, 1,
+        "expected exactly 1 fill→Label desugar, got {label_count}"
+    );
+    assert_eq!(
+        text_exact_count, 1,
+        "expected exactly 1 TextExact, got {text_exact_count}"
+    );
 
     // Spot check the img-alias → AriaRole::Image normalization
     let has_img_role = cmds.iter().any(|c| {
@@ -169,7 +229,10 @@ fn tier1_new_forms_fixture_parses_clean_with_expected_variants() {
             } if name == "Hero"
         )
     });
-    assert!(has_img_role, "expected `click img \"Hero\"` to normalize to AriaRole::Image");
+    assert!(
+        has_img_role,
+        "expected `click img \"Hero\"` to normalize to AriaRole::Image"
+    );
 }
 
 #[test]
@@ -184,7 +247,11 @@ fn tier1_legacy_forms_fixture_uses_only_pre_phase7_variants() {
         .iter()
         .filter(|d| d.severity == Severity::Error)
         .collect();
-    assert!(errs.is_empty(), "legacy fixture must parse clean, got: {:?}", errs);
+    assert!(
+        errs.is_empty(),
+        "legacy fixture must parse clean, got: {:?}",
+        errs
+    );
 
     let ast = r.ast.as_ref().expect("ast some");
     let cmds: Vec<&Command> = ast.scenes.iter().flat_map(|s| &s.commands).collect();

@@ -58,9 +58,7 @@ pub(crate) fn scrub_value(input: &str) -> String {
 }
 
 fn is_denied_field(name: &str) -> bool {
-    DENY_FIELDS
-        .iter()
-        .any(|d| d.eq_ignore_ascii_case(name))
+    DENY_FIELDS.iter().any(|d| d.eq_ignore_ascii_case(name))
 }
 
 /// Layer that sanitises events and writes the sanitised form through an
@@ -144,12 +142,7 @@ where
         let mut visitor = SanitisingVisitor::new();
         event.record(&mut visitor);
 
-        let line = format!(
-            "{} {} {}\n",
-            meta.level(),
-            meta.target(),
-            visitor.buf
-        );
+        let line = format!("{} {} {}\n", meta.level(), meta.target(), visitor.buf);
         let mut writer = self.writer.make_writer();
         // Best-effort write — tracing layers must never panic on sink errors.
         let _ = writer.write_all(line.as_bytes());
@@ -167,7 +160,9 @@ where
 
 /// Install a subscriber (Registry + RedactionLayer) as the process-wide
 /// default. Returns `Err` if a global default is already set.
-pub fn install_redaction_layer<W>(writer: W) -> Result<(), tracing::subscriber::SetGlobalDefaultError>
+pub fn install_redaction_layer<W>(
+    writer: W,
+) -> Result<(), tracing::subscriber::SetGlobalDefaultError>
 where
     W: for<'w> MakeWriter<'w> + Send + Sync + 'static,
 {

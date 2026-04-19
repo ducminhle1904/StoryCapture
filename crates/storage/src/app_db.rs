@@ -59,7 +59,11 @@ impl AppDb {
                 let thumbnail_path: Option<String> = row.get(5)?;
                 Ok(Project {
                     id: Uuid::parse_str(&id).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
+                        rusqlite::Error::FromSqlConversionFailure(
+                            0,
+                            rusqlite::types::Type::Text,
+                            Box::new(e),
+                        )
                     })?,
                     name: row.get(1)?,
                     folder_path: PathBuf::from(folder_path),
@@ -99,9 +103,10 @@ impl AppDb {
     }
 
     pub fn remove_project(&mut self, id: Uuid) -> Result<(), StorageError> {
-        let n = self
-            .conn
-            .execute("DELETE FROM projects WHERE id = ?1", params![id.to_string()])?;
+        let n = self.conn.execute(
+            "DELETE FROM projects WHERE id = ?1",
+            params![id.to_string()],
+        )?;
         if n == 0 {
             return Err(StorageError::NotFound(format!("project {id}")));
         }
@@ -132,6 +137,8 @@ impl AppDb {
 
     /// Test/debug accessor: report on-disk user_version.
     pub fn schema_version(&self) -> Result<u32, StorageError> {
-        Ok(self.conn.pragma_query_value(None, "user_version", |r| r.get(0))?)
+        Ok(self
+            .conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))?)
     }
 }

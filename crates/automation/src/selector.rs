@@ -159,7 +159,11 @@ impl SmartSelector {
         }
 
         // Sort by descending score.
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Ambiguity guard: if the top two candidates score within 0.05 of
         // each other AND both are >= 0.8, error out — the user must scope
@@ -238,9 +242,7 @@ impl SmartSelector {
             }
             SelectorOrText::Label(name) => validate_label(&doc, name),
             SelectorOrText::TextExact(name) => validate_text_exact(&doc, name),
-            SelectorOrText::Role { role, name } => {
-                validate_role(&doc, role.as_kebab(), name)
-            }
+            SelectorOrText::Role { role, name } => validate_role(&doc, role.as_kebab(), name),
             SelectorOrText::Text(_) => ValidationResult::Fuzzy {
                 count: 0,
                 reason: "ranked text strategy requires live DOM — prefer an explicit locator"
@@ -257,11 +259,7 @@ fn css_escape_attr(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn count_css(
-    doc: &scraper::Html,
-    css: &str,
-    strategy: SelectorStrategy,
-) -> ValidationResult {
+fn count_css(doc: &scraper::Html, css: &str, strategy: SelectorStrategy) -> ValidationResult {
     match scraper::Selector::parse(css) {
         Ok(sel) => {
             let n = doc.select(&sel).count();
@@ -530,7 +528,10 @@ mod tests {
 
     #[test]
     fn explicit_role_target_short_circuits_with_colon_encoding() {
-        let target = SelectorOrText::Role { role: AriaRole::Button, name: "Save".into() };
+        let target = SelectorOrText::Role {
+            role: AriaRole::Button,
+            name: "Save".into(),
+        };
         let (strat, val) = explicit_strategy(&target).unwrap();
         assert_eq!(strat, SelectorStrategy::Role);
         assert_eq!(val, "role=button:Save");
@@ -539,7 +540,10 @@ mod tests {
     #[test]
     fn explicit_role_preserves_colon_in_name() {
         // Names may contain ':' — split on FIRST ':' on the sidecar side preserves this.
-        let target = SelectorOrText::Role { role: AriaRole::Link, name: "Go: now".into() };
+        let target = SelectorOrText::Role {
+            role: AriaRole::Link,
+            name: "Go: now".into(),
+        };
         let (_strat, val) = explicit_strategy(&target).unwrap();
         assert_eq!(val, "role=link:Go: now");
         let (role, name) = val["role=".len()..].split_once(':').unwrap();
@@ -576,7 +580,10 @@ mod tests {
         use crate::driver::{ActionKind, BrowserDriver};
         use crate::noop_driver::NoopDriver;
         let driver: Box<dyn BrowserDriver> = Box::new(NoopDriver::default());
-        let target = SelectorOrText::Role { role: AriaRole::Button, name: "Save".into() };
+        let target = SelectorOrText::Role {
+            role: AriaRole::Button,
+            name: "Save".into(),
+        };
         let (resolved, attempts) =
             SmartSelector::resolve_with_attempts(driver.as_ref(), ActionKind::Click, &target, 1000)
                 .await
@@ -671,7 +678,12 @@ mod tests {
             SAMPLE_HTML,
         );
         assert_eq!(r.status_char(), 'G');
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::TestId });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::TestId
+            }
+        );
     }
 
     #[test]
@@ -704,7 +716,12 @@ mod tests {
             &SelectorOrText::Selector("#email-input".into()),
             SAMPLE_HTML,
         );
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::Css });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::Css
+            }
+        );
     }
 
     #[test]
@@ -724,7 +741,12 @@ mod tests {
             &SelectorOrText::Aria("Save document".into()),
             SAMPLE_HTML,
         );
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::Aria });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::Aria
+            }
+        );
     }
 
     #[test]
@@ -733,7 +755,12 @@ mod tests {
             &SelectorOrText::Label("Email".into()),
             SAMPLE_HTML,
         );
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::Label });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::Label
+            }
+        );
     }
 
     #[test]
@@ -742,7 +769,12 @@ mod tests {
             &SelectorOrText::Label("Password".into()),
             SAMPLE_HTML,
         );
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::Label });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::Label
+            }
+        );
     }
 
     #[test]
@@ -770,40 +802,72 @@ mod tests {
             &SelectorOrText::TextExact("Welcome".into()),
             SAMPLE_HTML,
         );
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::TextExact });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::TextExact
+            }
+        );
     }
 
     #[test]
     fn validate_role_button_by_text_unique_green() {
         let r = SmartSelector::validate_against_dom(
-            &SelectorOrText::Role { role: AriaRole::Button, name: "Cancel".into() },
+            &SelectorOrText::Role {
+                role: AriaRole::Button,
+                name: "Cancel".into(),
+            },
             SAMPLE_HTML,
         );
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::Role });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::Role
+            }
+        );
     }
 
     #[test]
     fn validate_role_image_by_alt_unique_green() {
         let r = SmartSelector::validate_against_dom(
-            &SelectorOrText::Role { role: AriaRole::Image, name: "Dashboard preview".into() },
+            &SelectorOrText::Role {
+                role: AriaRole::Image,
+                name: "Dashboard preview".into(),
+            },
             SAMPLE_HTML,
         );
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::Role });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::Role
+            }
+        );
     }
 
     #[test]
     fn validate_role_dialog_by_aria_label_unique_green() {
         let r = SmartSelector::validate_against_dom(
-            &SelectorOrText::Role { role: AriaRole::Dialog, name: "Confirm".into() },
+            &SelectorOrText::Role {
+                role: AriaRole::Dialog,
+                name: "Confirm".into(),
+            },
             SAMPLE_HTML,
         );
-        assert_eq!(r, ValidationResult::Unique { strategy: SelectorStrategy::Role });
+        assert_eq!(
+            r,
+            ValidationResult::Unique {
+                strategy: SelectorStrategy::Role
+            }
+        );
     }
 
     #[test]
     fn validate_role_button_missing_red() {
         let r = SmartSelector::validate_against_dom(
-            &SelectorOrText::Role { role: AriaRole::Button, name: "Delete".into() },
+            &SelectorOrText::Role {
+                role: AriaRole::Button,
+                name: "Delete".into(),
+            },
             SAMPLE_HTML,
         );
         assert_eq!(r, ValidationResult::None);
@@ -812,10 +876,8 @@ mod tests {
     #[test]
     fn validate_bare_text_yellow_degrades() {
         // Bare `Text` is the ranked strategy — live-DOM required — always YELLOW.
-        let r = SmartSelector::validate_against_dom(
-            &SelectorOrText::Text("Save".into()),
-            SAMPLE_HTML,
-        );
+        let r =
+            SmartSelector::validate_against_dom(&SelectorOrText::Text("Save".into()), SAMPLE_HTML);
         assert_eq!(r.status_char(), 'Y');
         if let ValidationResult::Fuzzy { count, reason } = r {
             assert_eq!(count, 0);

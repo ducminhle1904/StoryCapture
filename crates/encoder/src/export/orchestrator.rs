@@ -235,7 +235,10 @@ mod tests {
         let rows = render_job_repo::list_by_batch(&conn, &expected_batch.to_string()).unwrap();
         assert_eq!(rows.len(), 3);
         for r in &rows {
-            assert_eq!(r.batch_id.as_deref(), Some(expected_batch.to_string().as_str()));
+            assert_eq!(
+                r.batch_id.as_deref(),
+                Some(expected_batch.to_string().as_str())
+            );
             assert_eq!(r.priority, 5);
         }
         // Snapshot written.
@@ -312,8 +315,7 @@ mod tests {
         // /etc/foo under /etc/ prefix.
         assert!(matches!(
             validate_folder(Path::new("/etc/foo")),
-            Err(ExportError::OutputFolderMissing(_))
-                | Err(ExportError::OutputFolderNotAllowed(_))
+            Err(ExportError::OutputFolderMissing(_)) | Err(ExportError::OutputFolderNotAllowed(_))
         ));
     }
 }

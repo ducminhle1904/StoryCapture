@@ -22,7 +22,9 @@
 //! All outputs are deterministic given `jitter_seed`.
 
 use crate::ast::types::Vec2;
-use crate::math::min_jerk::{detect_reversals, min_jerk_sample, peak_velocity, Waypoint, WaypointKind};
+use crate::math::min_jerk::{
+    detect_reversals, min_jerk_sample, peak_velocity, Waypoint, WaypointKind,
+};
 use crate::math::perlin::PerlinNoise2D;
 use crate::math::vec2::Vec2Ops;
 

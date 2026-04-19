@@ -10,9 +10,7 @@
 //! Chromium binary is gated behind the `real-playwright-tests` feature flag
 //! (and behind the build of the SEA artifact, which CI does on PR).
 
-use crate::driver::{
-    BrowserDriver, CapabilitySet, ElementState, LaunchConfig, ResolvedSelector,
-};
+use crate::driver::{BrowserDriver, CapabilitySet, ElementState, LaunchConfig, ResolvedSelector};
 use crate::error::{AutomationError, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -249,8 +247,11 @@ impl BrowserDriver for PlaywrightSidecarDriver {
     }
 
     async fn click(&self, sel: &ResolvedSelector) -> Result<()> {
-        self.call("click", json!({ "selector": sel.value, "strategy": sel.strategy.as_str() }))
-            .await?;
+        self.call(
+            "click",
+            json!({ "selector": sel.value, "strategy": sel.strategy.as_str() }),
+        )
+        .await?;
         Ok(())
     }
 
@@ -276,26 +277,23 @@ impl BrowserDriver for PlaywrightSidecarDriver {
     }
 
     async fn hover(&self, sel: &ResolvedSelector) -> Result<()> {
-        self.call("hover", json!({ "selector": sel.value, "strategy": sel.strategy.as_str() }))
-            .await?;
+        self.call(
+            "hover",
+            json!({ "selector": sel.value, "strategy": sel.strategy.as_str() }),
+        )
+        .await?;
         Ok(())
     }
 
     async fn drag(&self, from: &ResolvedSelector, to: &ResolvedSelector) -> Result<()> {
-        self.call(
-            "drag",
-            json!({ "from": from.value, "to": to.value }),
-        )
-        .await?;
+        self.call("drag", json!({ "from": from.value, "to": to.value }))
+            .await?;
         Ok(())
     }
 
     async fn select_option(&self, sel: &ResolvedSelector, value: &str) -> Result<()> {
-        self.call(
-            "select",
-            json!({ "selector": sel.value, "value": value }),
-        )
-        .await?;
+        self.call("select", json!({ "selector": sel.value, "value": value }))
+            .await?;
         Ok(())
     }
 
@@ -436,9 +434,8 @@ impl PlaywrightSidecarDriver {
             params["timeoutMs"] = serde_json::json!(t);
         }
         let v = self.call("captureSnapshot", params).await?;
-        let resp: SnapshotResponse = serde_json::from_value(v).map_err(|e| {
-            AutomationError::Protocol(format!("captureSnapshot decode: {e}"))
-        })?;
+        let resp: SnapshotResponse = serde_json::from_value(v)
+            .map_err(|e| AutomationError::Protocol(format!("captureSnapshot decode: {e}")))?;
         Ok(resp)
     }
 }
@@ -627,7 +624,8 @@ mod notification_tests {
 
     #[test]
     fn response_with_no_id_and_method_parses_as_notification() {
-        let line = r#"{"jsonrpc":"2.0","method":"pickElement.hoverPreview","params":{"role":"button"}}"#;
+        let line =
+            r#"{"jsonrpc":"2.0","method":"pickElement.hoverPreview","params":{"role":"button"}}"#;
         let r: JsonRpcResponse = serde_json::from_str(line).unwrap();
         assert!(r.id.is_none());
         assert_eq!(r.method.as_deref(), Some("pickElement.hoverPreview"));
@@ -770,9 +768,21 @@ mod tier1_target_to_json_tests {
 
     #[test]
     fn legacy_variants_unchanged() {
-        assert_eq!(target_to_json(&SelectorOrText::Text("x".into()))["kind"], "text");
-        assert_eq!(target_to_json(&SelectorOrText::Selector("#x".into()))["kind"], "selector");
-        assert_eq!(target_to_json(&SelectorOrText::TestId("x".into()))["kind"], "testid");
-        assert_eq!(target_to_json(&SelectorOrText::Aria("x".into()))["kind"], "aria");
+        assert_eq!(
+            target_to_json(&SelectorOrText::Text("x".into()))["kind"],
+            "text"
+        );
+        assert_eq!(
+            target_to_json(&SelectorOrText::Selector("#x".into()))["kind"],
+            "selector"
+        );
+        assert_eq!(
+            target_to_json(&SelectorOrText::TestId("x".into()))["kind"],
+            "testid"
+        );
+        assert_eq!(
+            target_to_json(&SelectorOrText::Aria("x".into()))["kind"],
+            "aria"
+        );
     }
 }

@@ -133,8 +133,8 @@ impl RenderProgressParser {
         let pct = if is_end {
             100.0
         } else {
-            ((self.out_time_ms as f64 / self.total_duration_ms as f64) * 100.0)
-                .clamp(0.0, 100.0) as f32
+            ((self.out_time_ms as f64 / self.total_duration_ms as f64) * 100.0).clamp(0.0, 100.0)
+                as f32
         };
         let remaining = self.total_duration_ms.saturating_sub(self.out_time_ms);
         let eta_ms = if self.speed > 0.01 {

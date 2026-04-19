@@ -26,9 +26,7 @@
 
 use std::fmt::Write;
 
-use crate::ast::{
-    AriaRole, Command, Meta, ScrollDir, SelectorOrText, Story, Theme, Viewport,
-};
+use crate::ast::{AriaRole, Command, Meta, ScrollDir, SelectorOrText, Story, Theme, Viewport};
 
 /// Format a [`Story`] as DSL text.
 ///
@@ -60,10 +58,7 @@ pub fn format_story(story: &Story) -> String {
 fn format_meta(out: &mut String, meta: &Meta) {
     // Emit only if at least one field is set — the parser's `Meta::default`
     // is structurally equivalent to an absent meta block.
-    if meta.app.is_none()
-        && meta.viewport.is_none()
-        && meta.theme.is_none()
-        && meta.speed.is_none()
+    if meta.app.is_none() && meta.viewport.is_none() && meta.theme.is_none() && meta.speed.is_none()
     {
         return;
     }
@@ -96,7 +91,9 @@ fn format_command(out: &mut String, cmd: &Command) {
         Command::Type { target, text, .. } => {
             format!("type {} {}", format_target(target), dsl_quote(text))
         }
-        Command::Scroll { direction, amount, .. } => {
+        Command::Scroll {
+            direction, amount, ..
+        } => {
             let dir = match direction {
                 ScrollDir::Up => "up",
                 ScrollDir::Down => "down",
@@ -119,7 +116,9 @@ fn format_command(out: &mut String, cmd: &Command) {
             format!("upload {} {}", format_target(target), dsl_quote(path))
         }
         Command::Wait { duration_ms, .. } => format!("wait {}ms", duration_ms),
-        Command::WaitFor { target, timeout_ms, .. } => match timeout_ms {
+        Command::WaitFor {
+            target, timeout_ms, ..
+        } => match timeout_ms {
             Some(t) => format!("wait-for {} timeout {}ms", format_target(target), t),
             None => format!("wait-for {}", format_target(target)),
         },

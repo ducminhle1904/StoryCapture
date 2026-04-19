@@ -24,10 +24,28 @@ pub const KNOWN_META_KEYS: &[&str] = &["app", "viewport", "theme", "speed"];
 /// `ast::AriaRole::from_keyword`. Both `image` and `img` are listed
 /// because both are valid DSL spellings (D-05 / RESEARCH Q5).
 pub const KNOWN_ROLES: &[&str] = &[
-    "button", "link", "heading", "image", "img", "checkbox", "radio",
-    "tab", "menuitem", "menu", "option", "combobox", "listbox",
-    "dialog", "alert", "tooltip", "switch", "slider", "row", "cell",
-    "navigation", "main",
+    "button",
+    "link",
+    "heading",
+    "image",
+    "img",
+    "checkbox",
+    "radio",
+    "tab",
+    "menuitem",
+    "menu",
+    "option",
+    "combobox",
+    "listbox",
+    "dialog",
+    "alert",
+    "tooltip",
+    "switch",
+    "slider",
+    "row",
+    "cell",
+    "navigation",
+    "main",
 ];
 
 /// Returns the best candidate within Levenshtein distance ≤ 2,
@@ -48,7 +66,10 @@ mod tests {
     #[test]
     fn finds_verb_typo() {
         assert_eq!(did_you_mean("clik", KNOWN_VERBS), Some("click".into()));
-        assert_eq!(did_you_mean("navigte", KNOWN_VERBS), Some("navigate".into()));
+        assert_eq!(
+            did_you_mean("navigte", KNOWN_VERBS),
+            Some("navigate".into())
+        );
         assert_eq!(did_you_mean("scrol", KNOWN_VERBS), Some("scroll".into()));
     }
 
@@ -60,7 +81,10 @@ mod tests {
     #[test]
     fn finds_meta_key_typo() {
         assert_eq!(did_you_mean("spped", KNOWN_META_KEYS), Some("speed".into()));
-        assert_eq!(did_you_mean("viewprt", KNOWN_META_KEYS), Some("viewport".into()));
+        assert_eq!(
+            did_you_mean("viewprt", KNOWN_META_KEYS),
+            Some("viewport".into())
+        );
     }
 
     #[test]

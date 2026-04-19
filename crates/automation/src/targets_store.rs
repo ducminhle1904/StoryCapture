@@ -124,9 +124,9 @@ pub fn load(path: &Path) -> Result<TargetsFile> {
 /// a half-written file on success; the temp file is auto-cleaned on drop if
 /// any step before persist fails.
 pub fn atomic_write(path: &Path, file: &TargetsFile) -> Result<()> {
-    let parent = path.parent().ok_or_else(|| {
-        AutomationError::Io(format!("no parent dir for {}", path.display()))
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| AutomationError::Io(format!("no parent dir for {}", path.display())))?;
     let raw = serde_json::to_vec_pretty(file)
         .map_err(|e| AutomationError::Protocol(format!("encode targets: {e}")))?;
     let mut tmp = tempfile::NamedTempFile::new_in(parent)
@@ -152,9 +152,7 @@ pub fn targets_path_for(story_path: &Path) -> PathBuf {
 /// Convert a [`TargetRecord`] into a `story_parser::SelectorOrText` so the
 /// executor can resolve it via the standard [`crate::selector::SmartSelector`]
 /// path. Unknown `kind` values surface as [`AutomationError::Protocol`].
-pub fn target_record_to_selector(
-    rec: &TargetRecord,
-) -> Result<story_parser::SelectorOrText> {
+pub fn target_record_to_selector(rec: &TargetRecord) -> Result<story_parser::SelectorOrText> {
     use story_parser::SelectorOrText;
     match rec.kind.as_str() {
         "selector" => Ok(SelectorOrText::Selector(
@@ -184,7 +182,9 @@ pub fn target_record_to_selector(
         "text_exact" => Ok(SelectorOrText::TextExact(
             rec.value
                 .as_str()
-                .ok_or_else(|| AutomationError::Protocol("text_exact value must be a string".into()))?
+                .ok_or_else(|| {
+                    AutomationError::Protocol("text_exact value must be a string".into())
+                })?
                 .to_string(),
         )),
         "text" => Ok(SelectorOrText::Text(
@@ -270,7 +270,11 @@ mod targets_store_tests {
             .unwrap()
             .filter_map(|e| e.ok())
             .collect();
-        assert_eq!(entries.len(), 1, "exactly one file should remain (no tmp leak)");
+        assert_eq!(
+            entries.len(),
+            1,
+            "exactly one file should remain (no tmp leak)"
+        );
         let name = entries[0].file_name();
         assert_eq!(name.to_string_lossy(), "t.json");
     }
@@ -286,19 +290,31 @@ mod targets_store_tests {
     fn target_record_to_selector_handles_all_kinds() {
         let cases = [
             (
-                TargetRecord { kind: "selector".into(), value: serde_json::json!("#id") },
+                TargetRecord {
+                    kind: "selector".into(),
+                    value: serde_json::json!("#id"),
+                },
                 story_parser::SelectorOrText::Selector("#id".into()),
             ),
             (
-                TargetRecord { kind: "testid".into(), value: serde_json::json!("email") },
+                TargetRecord {
+                    kind: "testid".into(),
+                    value: serde_json::json!("email"),
+                },
                 story_parser::SelectorOrText::TestId("email".into()),
             ),
             (
-                TargetRecord { kind: "label".into(), value: serde_json::json!("Email") },
+                TargetRecord {
+                    kind: "label".into(),
+                    value: serde_json::json!("Email"),
+                },
                 story_parser::SelectorOrText::Label("Email".into()),
             ),
             (
-                TargetRecord { kind: "text_exact".into(), value: serde_json::json!("Save") },
+                TargetRecord {
+                    kind: "text_exact".into(),
+                    value: serde_json::json!("Save"),
+                },
                 story_parser::SelectorOrText::TextExact("Save".into()),
             ),
             (

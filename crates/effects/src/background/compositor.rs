@@ -41,9 +41,13 @@ pub fn emit_background(
     bg_input_index: usize,
 ) -> Result<BackgroundEmit, EffectsError> {
     let (kind, radius_px, shadow, padding_px, id) = match node {
-        VideoNode::Background { kind, radius_px, shadow, padding_px, id } => {
-            (kind, *radius_px, shadow.clone(), *padding_px, *id)
-        }
+        VideoNode::Background {
+            kind,
+            radius_px,
+            shadow,
+            padding_px,
+            id,
+        } => (kind, *radius_px, shadow.clone(), *padding_px, *id),
         _ => {
             return Err(EffectsError::UnknownInputLabel(
                 "emit_background called on non-Background node".into(),
@@ -126,7 +130,11 @@ pub fn emit_background(
     let fg_rounded = format!("[{}_fg_rounded]", core);
     chain.push(';');
     chain.push_str(&emit_rounded_mask(
-        &RoundedFrameParams { width: fg_w, height: fg_h, radius_px },
+        &RoundedFrameParams {
+            width: fg_w,
+            height: fg_h,
+            radius_px,
+        },
         &fg_scaled,
         &fg_rounded,
     ));
@@ -181,7 +189,10 @@ pub fn emit_background(
 
     let _ = (kind, id);
 
-    Ok(BackgroundEmit { filter_chain: chain, extra_inputs })
+    Ok(BackgroundEmit {
+        filter_chain: chain,
+        extra_inputs,
+    })
 }
 
 fn stable_core(id: NodeId) -> String {

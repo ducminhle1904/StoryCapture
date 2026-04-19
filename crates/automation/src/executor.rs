@@ -170,33 +170,30 @@ async fn run_story(
 
             let step_id = if let (Some(db), Some(sid)) = (persistence.as_ref(), session_id) {
                 let mut g = db.lock().await;
-                Some(
-                    g.append_step(
-                        sid,
-                        NewStep {
-                            ordinal,
-                            command_json: serde_json::to_string(cmd).unwrap_or_default(),
-                        },
-                    )?,
-                )
+                Some(g.append_step(
+                    sid,
+                    NewStep {
+                        ordinal,
+                        command_json: serde_json::to_string(cmd).unwrap_or_default(),
+                    },
+                )?)
             } else {
                 None
             };
 
             let cmd_started = Instant::now();
-            let result =
-                run_command(
-                    driver,
-                    cmd,
-                    &screenshot_dir,
-                    &tx,
-                    ordinal,
-                    &persistence,
-                    step_id,
-                    control.as_deref(),
-                    story_path.as_deref(),
-                )
-                .await;
+            let result = run_command(
+                driver,
+                cmd,
+                &screenshot_dir,
+                &tx,
+                ordinal,
+                &persistence,
+                step_id,
+                control.as_deref(),
+                story_path.as_deref(),
+            )
+            .await;
 
             match result {
                 Ok(()) => {
@@ -217,7 +214,10 @@ async fn run_story(
                 }
                 Err((err, attempts)) => {
                     failed += 1;
-                    let screenshot_path = match driver.screenshot(&format!("step-{ordinal}-fail"), &screenshot_dir).await {
+                    let screenshot_path = match driver
+                        .screenshot(&format!("step-{ordinal}-fail"), &screenshot_dir)
+                        .await
+                    {
                         Ok(p) => Some(p),
                         Err(_) => None,
                     };
@@ -324,14 +324,7 @@ async fn run_command(
             {
                 Ok(()) => current,
                 Err(primary_err) => {
-                    match try_promote_fallback(
-                        driver,
-                        cmd_step_id,
-                        story_path,
-                        $action,
-                    )
-                    .await
-                    {
+                    match try_promote_fallback(driver, cmd_step_id, story_path, $action).await {
                         Ok(Some(promoted)) => {
                             current = promoted;
                             current
@@ -396,7 +389,9 @@ async fn run_command(
                 .await
         }
         Command::Assert { target, .. } => driver.assert_present(target).await,
-        Command::Screenshot { name, .. } => driver.screenshot(name, screenshot_dir).await.map(|_| ()),
+        Command::Screenshot { name, .. } => {
+            driver.screenshot(name, screenshot_dir).await.map(|_| ())
+        }
         Command::Pause { .. } => Ok(()),
     };
 

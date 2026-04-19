@@ -92,11 +92,7 @@ async fn find_window_by_pid_prefers_largest_window() {
     // Open a Chromium instance, then open a second window via CLI flag.
     let chromium_path = playwright_chromium_path().expect("chromium binary");
     let mut child = Command::new(&chromium_path)
-        .args([
-            "--new-window",
-            "--window-size=1600,1000",
-            "about:blank",
-        ])
+        .args(["--new-window", "--window-size=1600,1000", "about:blank"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -158,9 +154,8 @@ fn playwright_chromium_path() -> Option<std::path::PathBuf> {
             }
         }
     }
-    let fallback = std::path::PathBuf::from(
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    );
+    let fallback =
+        std::path::PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
     if fallback.exists() {
         Some(fallback)
     } else {

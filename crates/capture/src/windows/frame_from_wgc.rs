@@ -95,7 +95,12 @@ mod crop_tests {
     #[test]
     fn crop_1x1_returns_exactly_4_bytes_matching_source() {
         let src = synth_frame(10, 10, 40);
-        let rect = PhysicalRectU32 { x: 3, y: 5, w: 1, h: 1 };
+        let rect = PhysicalRectU32 {
+            x: 3,
+            y: 5,
+            w: 1,
+            h: 1,
+        };
         let out = cpu_crop_bgra(&src, 10, 10, 40, rect).expect("crop ok");
         assert_eq!(out.len(), 4);
         assert_eq!(out[0], 3);
@@ -105,7 +110,12 @@ mod crop_tests {
     #[test]
     fn crop_at_origin_full_width_matches_source_row() {
         let src = synth_frame(8, 4, 32);
-        let rect = PhysicalRectU32 { x: 0, y: 0, w: 8, h: 4 };
+        let rect = PhysicalRectU32 {
+            x: 0,
+            y: 0,
+            w: 8,
+            h: 4,
+        };
         let out = cpu_crop_bgra(&src, 8, 4, 32, rect).expect("crop ok");
         assert_eq!(out.len(), 32 * 4);
         assert_eq!(out, src);
@@ -116,13 +126,18 @@ mod crop_tests {
         // 1920×1080 @ stride = 1920*4 + 64 padding bytes per row
         let src_stride = 1920 * 4 + 64;
         let src = synth_frame(1920, 1080, src_stride);
-        let rect = PhysicalRectU32 { x: 100, y: 100, w: 640, h: 480 };
+        let rect = PhysicalRectU32 {
+            x: 100,
+            y: 100,
+            w: 640,
+            h: 480,
+        };
         let out = cpu_crop_bgra(&src, 1920, 1080, src_stride, rect).expect("crop ok");
         assert_eq!(out.len(), 640 * 480 * 4);
         // Spot-check: pixel (0,0) of output should be source (100,100).
         assert_eq!(out[0], 100); // B = src x
         assert_eq!(out[1], 100); // G = src y
-        // Last-row-last-pixel: out should be src (100+639, 100+479) = (739, 579).
+                                 // Last-row-last-pixel: out should be src (100+639, 100+479) = (739, 579).
         let last = out.len() - 4;
         assert_eq!(out[last], (739 & 0xff) as u8);
         assert_eq!(out[last + 1], (579 & 0xff) as u8);
@@ -132,14 +147,24 @@ mod crop_tests {
     #[test]
     fn crop_overflow_returns_none() {
         let src = synth_frame(10, 10, 40);
-        let rect = PhysicalRectU32 { x: 5, y: 5, w: 10, h: 10 };
+        let rect = PhysicalRectU32 {
+            x: 5,
+            y: 5,
+            w: 10,
+            h: 10,
+        };
         assert!(cpu_crop_bgra(&src, 10, 10, 40, rect).is_none());
     }
 
     #[test]
     fn crop_zero_size_returns_none() {
         let src = synth_frame(10, 10, 40);
-        let rect = PhysicalRectU32 { x: 0, y: 0, w: 0, h: 10 };
+        let rect = PhysicalRectU32 {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 10,
+        };
         assert!(cpu_crop_bgra(&src, 10, 10, 40, rect).is_none());
     }
 }

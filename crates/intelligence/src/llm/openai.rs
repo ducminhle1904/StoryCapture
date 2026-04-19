@@ -97,7 +97,9 @@ pub(crate) fn build_openai_request(req: &LlmRequest) -> OpenAiRequest {
         tools: req.tools.clone(),
         tool_choice,
         response_format,
-        stream_options: StreamOptions { include_usage: true },
+        stream_options: StreamOptions {
+            include_usage: true,
+        },
     }
 }
 
@@ -230,20 +232,13 @@ impl OpenAiProvider {
 #[async_trait::async_trait]
 impl LlmProvider for OpenAiProvider {
     #[instrument(skip_all, fields(model = %req.model))]
-    async fn stream(
-        &self,
-        req: LlmRequest,
-        tx: mpsc::Sender<LlmEvent>,
-    ) -> Result<(), LlmError> {
+    async fn stream(&self, req: LlmRequest, tx: mpsc::Sender<LlmEvent>) -> Result<(), LlmError> {
         let body = build_openai_request(&req);
 
         let resp = self
             .http
             .post(&self.base_url)
-            .header(
-                AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
-            )
+            .header(AUTHORIZATION, format!("Bearer {}", self.api_key.expose()))
             .header(CONTENT_TYPE, "application/json")
             .json(&body)
             .send()
@@ -356,15 +351,17 @@ async fn flush_tool_calls(
             LlmError::PartialJsonInvalid
         })?;
         let _ = tx
-            .send(LlmEvent::ToolUseComplete { index, input: value })
+            .send(LlmEvent::ToolUseComplete {
+                index,
+                input: value,
+            })
             .await;
     }
     Ok(())
 }
 
 async fn classify_http_error(status: StatusCode, resp: reqwest::Response) -> LlmError {
-    let (is_retryable, detail, retry_after) =
-        crate::http::classify_http_error(status, resp).await;
+    let (is_retryable, detail, retry_after) = crate::http::classify_http_error(status, resp).await;
     if is_retryable {
         return LlmError::RateLimited {
             retry_after_s: retry_after.unwrap_or(1),

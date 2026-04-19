@@ -30,7 +30,10 @@ pub struct StoryLanguageServer {
 
 impl StoryLanguageServer {
     pub fn new(client: Client) -> Self {
-        Self { client, docs: DashMap::new() }
+        Self {
+            client,
+            docs: DashMap::new(),
+        }
     }
 
     /// Test-only snapshot of a document's text.
@@ -125,10 +128,7 @@ impl LanguageServer for StoryLanguageServer {
         }))
     }
 
-    async fn completion(
-        &self,
-        params: CompletionParams,
-    ) -> LspResult<Option<CompletionResponse>> {
+    async fn completion(&self, params: CompletionParams) -> LspResult<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
         let pos = params.text_document_position.position;
         let prefix = self
@@ -205,7 +205,10 @@ pub mod testing {
 
     impl InProcessServer {
         pub fn new() -> Self {
-            Self { docs: DashMap::new(), published: Mutex::new(Vec::new()) }
+            Self {
+                docs: DashMap::new(),
+                published: Mutex::new(Vec::new()),
+            }
         }
 
         pub fn published(&self) -> Vec<DiagnosticsPublish> {
@@ -223,7 +226,10 @@ pub mod testing {
         }
 
         fn publish(&self, uri: Url, diagnostics: Vec<tower_lsp::lsp_types::Diagnostic>) {
-            self.published.lock().unwrap().push(DiagnosticsPublish { uri, diagnostics });
+            self.published
+                .lock()
+                .unwrap()
+                .push(DiagnosticsPublish { uri, diagnostics });
         }
 
         pub fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -257,11 +263,7 @@ pub mod testing {
             self.publish(uri, vec![]);
         }
 
-        pub fn hover_at(
-            &self,
-            uri: &Url,
-            pos: tower_lsp::lsp_types::Position,
-        ) -> Option<Hover> {
+        pub fn hover_at(&self, uri: &Url, pos: tower_lsp::lsp_types::Position) -> Option<Hover> {
             let rope = self.docs.get(uri)?;
             let (ident, range) = identifier_at(rope.value(), pos)?;
             let doc = verb_doc(&ident)?;

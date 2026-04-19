@@ -44,9 +44,7 @@ fn is_download_target(target: &SelectorOrText) -> bool {
         | SelectorOrText::Label(name)
         | SelectorOrText::TextExact(name) => name,
     };
-    s.starts_with("download:")
-        || s.starts_with("download://")
-        || s.ends_with(".download")
+    s.starts_with("download:") || s.starts_with("download://") || s.ends_with(".download")
 }
 
 /// OAuth-popup heuristic: `wait-for "oauth:..."` or `click "oauth:..."`.
@@ -63,7 +61,9 @@ fn is_oauth_target(target: &SelectorOrText) -> bool {
         | SelectorOrText::Label(name)
         | SelectorOrText::TextExact(name) => name,
     };
-    s.starts_with("oauth:") || s.contains("login.microsoftonline.com") || s.contains("accounts.google.com")
+    s.starts_with("oauth:")
+        || s.contains("login.microsoftonline.com")
+        || s.contains("accounts.google.com")
 }
 
 /// Map a [`Command`] to the [`Capability`] it requires from the driver.

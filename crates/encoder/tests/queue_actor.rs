@@ -9,9 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use encoder::queue::actor::{
-    spawn_render_queue, QueueMsg, RenderQueueConfig, RenderQueueHandle,
-};
+use encoder::queue::actor::{spawn_render_queue, QueueMsg, RenderQueueConfig, RenderQueueHandle};
 use encoder::queue::job::{JobExecutor, JobOutcome, NoopJobExecutor, SharedExecutor};
 use encoder::{PoolConfig, RenderProgress};
 use rusqlite::Connection;

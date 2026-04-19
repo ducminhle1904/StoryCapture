@@ -8,11 +8,18 @@ use effects::cursor::{sample_trajectory, TrajectoryOptions};
 use effects::math::min_jerk::{Waypoint, WaypointKind};
 
 fn wp(t_ms: u64, x: f32, y: f32, kind: WaypointKind) -> Waypoint {
-    Waypoint { t_ms, pos: Vec2::new(x, y), kind }
+    Waypoint {
+        t_ms,
+        pos: Vec2::new(x, y),
+        kind,
+    }
 }
 
 fn opts_no_jitter() -> TrajectoryOptions {
-    TrajectoryOptions { jitter_amplitude_px: 0.0, ..Default::default() }
+    TrajectoryOptions {
+        jitter_amplitude_px: 0.0,
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -37,8 +44,13 @@ fn jitter_bounded() {
         wp(0, 100.0, 200.0, WaypointKind::Hover),
         wp(1000, 500.0, 400.0, WaypointKind::Hover),
     ];
-    let with_jitter =
-        sample_trajectory(&wps, TrajectoryOptions { jitter_amplitude_px: 1.0, ..Default::default() });
+    let with_jitter = sample_trajectory(
+        &wps,
+        TrajectoryOptions {
+            jitter_amplitude_px: 1.0,
+            ..Default::default()
+        },
+    );
     let without_jitter = sample_trajectory(&wps, opts_no_jitter());
     assert_eq!(with_jitter.len(), without_jitter.len());
     for (j, n) in with_jitter.iter().zip(without_jitter.iter()) {
@@ -56,13 +68,35 @@ fn deterministic_with_seed() {
         wp(800, 400.0, 500.0, WaypointKind::Click),
         wp(1600, 700.0, 300.0, WaypointKind::Hover),
     ];
-    let a = sample_trajectory(&wps, TrajectoryOptions { jitter_seed: 42, ..Default::default() });
-    let b = sample_trajectory(&wps, TrajectoryOptions { jitter_seed: 42, ..Default::default() });
+    let a = sample_trajectory(
+        &wps,
+        TrajectoryOptions {
+            jitter_seed: 42,
+            ..Default::default()
+        },
+    );
+    let b = sample_trajectory(
+        &wps,
+        TrajectoryOptions {
+            jitter_seed: 42,
+            ..Default::default()
+        },
+    );
     assert_eq!(a.len(), b.len());
     for (x, y) in a.iter().zip(b.iter()) {
         assert_eq!(x.t_ms, y.t_ms);
-        assert_eq!(x.pos.x.to_bits(), y.pos.x.to_bits(), "x bits differ at t={}", x.t_ms);
-        assert_eq!(x.pos.y.to_bits(), y.pos.y.to_bits(), "y bits differ at t={}", x.t_ms);
+        assert_eq!(
+            x.pos.x.to_bits(),
+            y.pos.x.to_bits(),
+            "x bits differ at t={}",
+            x.t_ms
+        );
+        assert_eq!(
+            x.pos.y.to_bits(),
+            y.pos.y.to_bits(),
+            "y bits differ at t={}",
+            x.t_ms
+        );
     }
 }
 
@@ -109,7 +143,10 @@ fn velocity_cap_lengthens_segment() {
         wp(0, 0.0, 0.0, WaypointKind::Hover),
         wp(500, 3000.0, 0.0, WaypointKind::Hover),
     ];
-    let opts = TrajectoryOptions { jitter_amplitude_px: 0.0, ..Default::default() };
+    let opts = TrajectoryOptions {
+        jitter_amplitude_px: 0.0,
+        ..Default::default()
+    };
     let samples = sample_trajectory(&wps, opts);
     assert!(
         samples.len() > 30,

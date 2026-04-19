@@ -42,7 +42,10 @@ async fn initialized_bridge() -> Arc<LspBridge> {
         .expect("initialized notification should succeed");
 
     // Notifications return None.
-    assert!(notif_resp.is_none(), "initialized is a notification — no response");
+    assert!(
+        notif_resp.is_none(),
+        "initialized is a notification — no response"
+    );
 
     bridge
 }

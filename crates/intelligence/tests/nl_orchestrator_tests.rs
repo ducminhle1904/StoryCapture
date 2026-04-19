@@ -31,11 +31,7 @@ impl MockLlmProvider {
 
 #[async_trait::async_trait]
 impl LlmProvider for MockLlmProvider {
-    async fn stream(
-        &self,
-        _req: LlmRequest,
-        tx: mpsc::Sender<LlmEvent>,
-    ) -> Result<(), LlmError> {
+    async fn stream(&self, _req: LlmRequest, tx: mpsc::Sender<LlmEvent>) -> Result<(), LlmError> {
         let events = {
             let mut q = self.responses.lock().await;
             q.pop_front().unwrap_or_default()
@@ -136,7 +132,11 @@ fn compute_step_diff_classifies_unchanged_modified_added_removed() {
 
     let diff = compute_step_diff(old_text, &new_doc);
 
-    assert_eq!(diff.len(), 4, "should have 4 entries: s1 unchanged, s2 modified, s3 unchanged, s4 added");
+    assert_eq!(
+        diff.len(),
+        4,
+        "should have 4 entries: s1 unchanged, s2 modified, s3 unchanged, s4 added"
+    );
 
     assert_eq!(diff[0].step_id, "s1");
     assert_eq!(diff[0].kind, StepDiffKind::Unchanged);
@@ -165,8 +165,16 @@ async fn run_nl_turn_happy_path_emits_story_doc_ready_then_done() {
         // Single attempt: emit ToolUseComplete with valid doc
         vec![
             LlmEvent::TextDelta("Here is your story".to_string()),
-            LlmEvent::ToolUseComplete { index: 0, input: doc_json },
-            LlmEvent::Usage { input: 100, output: 50, cache_read: 80, cache_write: 20 },
+            LlmEvent::ToolUseComplete {
+                index: 0,
+                input: doc_json,
+            },
+            LlmEvent::Usage {
+                input: 100,
+                output: 50,
+                cache_read: 80,
+                cache_write: 20,
+            },
         ],
     ]));
 
@@ -185,9 +193,15 @@ async fn run_nl_turn_happy_path_emits_story_doc_ready_then_done() {
     let events = collect_events(rx).await;
 
     // Should have: TextDelta, Usage, StoryDocReady, Done
-    let has_text_delta = events.iter().any(|e| matches!(e, NlTurnEvent::TextDelta(_)));
-    let has_usage = events.iter().any(|e| matches!(e, NlTurnEvent::Usage { .. }));
-    let has_story_doc = events.iter().any(|e| matches!(e, NlTurnEvent::StoryDocReady { .. }));
+    let has_text_delta = events
+        .iter()
+        .any(|e| matches!(e, NlTurnEvent::TextDelta(_)));
+    let has_usage = events
+        .iter()
+        .any(|e| matches!(e, NlTurnEvent::Usage { .. }));
+    let has_story_doc = events
+        .iter()
+        .any(|e| matches!(e, NlTurnEvent::StoryDocReady { .. }));
     let has_done = events.iter().any(|e| matches!(e, NlTurnEvent::Done));
 
     assert!(has_text_delta, "should emit TextDelta");
@@ -220,9 +234,15 @@ async fn run_nl_turn_retries_on_pest_parse_failure_then_succeeds() {
 
     let provider = Arc::new(MockLlmProvider::new(vec![
         // Attempt 0: invalid (missing title)
-        vec![LlmEvent::ToolUseComplete { index: 0, input: invalid_json }],
+        vec![LlmEvent::ToolUseComplete {
+            index: 0,
+            input: invalid_json,
+        }],
         // Attempt 1: valid
-        vec![LlmEvent::ToolUseComplete { index: 0, input: valid_json }],
+        vec![LlmEvent::ToolUseComplete {
+            index: 0,
+            input: valid_json,
+        }],
     ]));
 
     let (tx, rx) = mpsc::channel(64);
@@ -238,9 +258,14 @@ async fn run_nl_turn_retries_on_pest_parse_failure_then_succeeds() {
     assert!(result.is_ok(), "should succeed after retry");
 
     let events = collect_events(rx).await;
-    let has_story_doc = events.iter().any(|e| matches!(e, NlTurnEvent::StoryDocReady { .. }));
+    let has_story_doc = events
+        .iter()
+        .any(|e| matches!(e, NlTurnEvent::StoryDocReady { .. }));
     let has_done = events.iter().any(|e| matches!(e, NlTurnEvent::Done));
-    assert!(has_story_doc, "should emit StoryDocReady after successful retry");
+    assert!(
+        has_story_doc,
+        "should emit StoryDocReady after successful retry"
+    );
     assert!(has_done, "should emit Done");
 }
 
@@ -266,11 +291,20 @@ async fn run_nl_turn_exhausts_retries_on_unknown_verb() {
 
     let provider = Arc::new(MockLlmProvider::new(vec![
         // Attempt 0: bad verb
-        vec![LlmEvent::ToolUseComplete { index: 0, input: bad_doc_json.clone() }],
+        vec![LlmEvent::ToolUseComplete {
+            index: 0,
+            input: bad_doc_json.clone(),
+        }],
         // Attempt 1: bad verb again
-        vec![LlmEvent::ToolUseComplete { index: 0, input: bad_doc_json.clone() }],
+        vec![LlmEvent::ToolUseComplete {
+            index: 0,
+            input: bad_doc_json.clone(),
+        }],
         // Attempt 2: bad verb again (exhausts retries)
-        vec![LlmEvent::ToolUseComplete { index: 0, input: bad_doc_json }],
+        vec![LlmEvent::ToolUseComplete {
+            index: 0,
+            input: bad_doc_json,
+        }],
     ]));
 
     let (tx, rx) = mpsc::channel(64);
@@ -288,7 +322,9 @@ async fn run_nl_turn_exhausts_retries_on_unknown_verb() {
     let err = result.unwrap_err();
     let err_str = err.to_string();
     assert!(
-        err_str.contains("StructuredOutput") || err_str.contains("structured output") || err_str.contains("deserialization"),
+        err_str.contains("StructuredOutput")
+            || err_str.contains("structured output")
+            || err_str.contains("deserialization"),
         "error should indicate structured output failure, got: {err_str}"
     );
 
@@ -455,9 +491,12 @@ async fn golden_fixtures_pass_schema_valid_and_verb_whitelist() {
             .unwrap_or_else(|e| panic!("{fixture_id}: first_try_parse failed: {e}"));
 
         // Run through mock provider to verify orchestrator accepts
-        let provider = Arc::new(MockLlmProvider::new(vec![
-            vec![LlmEvent::ToolUseComplete { index: 0, input: doc_json }],
-        ]));
+        let provider = Arc::new(MockLlmProvider::new(vec![vec![
+            LlmEvent::ToolUseComplete {
+                index: 0,
+                input: doc_json,
+            },
+        ]]));
 
         let (tx, rx) = mpsc::channel(64);
         let result = run_nl_turn(
@@ -472,7 +511,9 @@ async fn golden_fixtures_pass_schema_valid_and_verb_whitelist() {
         assert!(result.is_ok(), "{fixture_id}: run_nl_turn should succeed");
 
         let events = collect_events(rx).await;
-        let has_story_doc = events.iter().any(|e| matches!(e, NlTurnEvent::StoryDocReady { .. }));
+        let has_story_doc = events
+            .iter()
+            .any(|e| matches!(e, NlTurnEvent::StoryDocReady { .. }));
         assert!(has_story_doc, "{fixture_id}: should emit StoryDocReady");
     }
 }

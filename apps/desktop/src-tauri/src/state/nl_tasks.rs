@@ -115,7 +115,8 @@ fn test_abort_handle() -> AbortHandle {
         .build()
         .unwrap();
     rt.block_on(async {
-        let h = tokio::spawn(async { tokio::time::sleep(std::time::Duration::from_secs(3600)).await });
+        let h =
+            tokio::spawn(async { tokio::time::sleep(std::time::Duration::from_secs(3600)).await });
         h.abort_handle()
     })
 }

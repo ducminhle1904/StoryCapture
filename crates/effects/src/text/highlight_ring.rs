@@ -55,7 +55,8 @@ pub fn render_highlight_ring_png(spec: &RingSpec, out: &Path) -> Result<(u32, u3
         }
     }
 
-    img.save(out).map_err(|e| crate::error::EffectsError::ImageDecode(e.to_string()))?;
+    img.save(out)
+        .map_err(|e| crate::error::EffectsError::ImageDecode(e.to_string()))?;
     Ok((total_w, total_h))
 }
 

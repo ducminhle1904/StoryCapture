@@ -22,7 +22,11 @@ pub struct SkinBitmap {
 
 impl SkinBitmap {
     pub fn new(img: RgbaImage) -> Self {
-        Self { width: img.width(), height: img.height(), pixels: img }
+        Self {
+            width: img.width(),
+            height: img.height(),
+            pixels: img,
+        }
     }
 }
 

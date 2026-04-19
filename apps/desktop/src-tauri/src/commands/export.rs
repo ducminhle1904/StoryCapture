@@ -85,7 +85,9 @@ fn parse_format(s: &str) -> Result<OutputFormat, AppError> {
         "mp4" => Ok(OutputFormat::Mp4),
         "webm" => Ok(OutputFormat::WebM),
         "gif" => Ok(OutputFormat::Gif),
-        other => Err(AppError::InvalidArgument(format!("unknown format: {other}"))),
+        other => Err(AppError::InvalidArgument(format!(
+            "unknown format: {other}"
+        ))),
     }
 }
 
@@ -105,7 +107,9 @@ fn parse_quality(s: &str) -> Result<Quality, AppError> {
         "low" => Ok(Quality::Low),
         "med" | "medium" => Ok(Quality::Med),
         "high" => Ok(Quality::High),
-        other => Err(AppError::InvalidArgument(format!("unknown quality: {other}"))),
+        other => Err(AppError::InvalidArgument(format!(
+            "unknown quality: {other}"
+        ))),
     }
 }
 
@@ -189,12 +193,14 @@ pub fn export_get_presets() -> ExportPresetsCatalogue {
         fps: VALID_FPS.to_vec(),
         qualities: Quality::all()
             .iter()
-            .map(|q| match q {
-                Quality::Low => "low",
-                Quality::Med => "med",
-                Quality::High => "high",
-            }
-            .to_string())
+            .map(|q| {
+                match q {
+                    Quality::Low => "low",
+                    Quality::Med => "med",
+                    Quality::High => "high",
+                }
+                .to_string()
+            })
             .collect(),
     }
 }

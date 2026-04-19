@@ -276,8 +276,7 @@ pub async fn launch_automation(
     {
         let paint_driver = shared_pw.clone();
         tokio::spawn(async move {
-            let launch_deadline =
-                std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let launch_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             loop {
                 if playwright_pid_stash().get().is_some() {
                     break;

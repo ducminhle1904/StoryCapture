@@ -45,8 +45,8 @@ fn pan_scale_hold_separation() {
     for w in kfs.windows(2) {
         let a = &w[0];
         let b = &w[1];
-        let center_changed = (a.center.x - b.center.x).abs() > 0.5
-            || (a.center.y - b.center.y).abs() > 0.5;
+        let center_changed =
+            (a.center.x - b.center.x).abs() > 0.5 || (a.center.y - b.center.y).abs() > 0.5;
         // Scale is low-pass smoothed so it creeps every frame. For the D-06
         // check we look at "significant" scale changes (> 1%).
         let scale_changed = (a.scale - b.scale).abs() > 0.01;
@@ -123,11 +123,7 @@ fn low_pass_keeps_scale_within_bounds() {
     ];
     let kfs = plan_zoom(&wps, &DYNAMIC, 1920, 1080);
     for k in &kfs {
-        assert!(
-            k.scale >= 1.0 - 1e-3,
-            "scale dipped below 1.0: {}",
-            k.scale
-        );
+        assert!(k.scale >= 1.0 - 1e-3, "scale dipped below 1.0: {}", k.scale);
         assert!(
             k.scale <= DYNAMIC.max_zoom + 1e-3,
             "scale exceeded max_zoom {}: got {}",

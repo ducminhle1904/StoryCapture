@@ -40,8 +40,7 @@ pub fn init(log_dir: &Path) -> anyhow::Result<()> {
     // it spawns can outlive the runtime drop and leak file handles on
     // shutdown; the synchronous appender's overhead is negligible for the
     // log volumes a desktop app produces.
-    let file_appender =
-        tracing_appender::rolling::daily(log_dir, "storycapture.log");
+    let file_appender = tracing_appender::rolling::daily(log_dir, "storycapture.log");
 
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)

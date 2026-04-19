@@ -273,19 +273,102 @@ pub struct LineMeta {
 )]
 #[serde(tag = "verb", rename_all = "kebab-case")]
 pub enum Command {
-    Navigate { url: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Click { target: SelectorOrText, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Type { target: SelectorOrText, text: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Scroll { direction: ScrollDir, amount: Option<f32>, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Hover { target: SelectorOrText, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Drag { from: SelectorOrText, to: SelectorOrText, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Select { target: SelectorOrText, value: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Upload { target: SelectorOrText, path: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Wait { duration_ms: u64, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    WaitFor { target: WaitForTarget, timeout_ms: Option<u64>, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Assert { target: AssertTarget, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Screenshot { name: String, span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
-    Pause { span: Span, #[serde(default, skip_serializing_if = "Option::is_none")] #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))] step_id: Option<Uuid> },
+    Navigate {
+        url: String,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Click {
+        target: SelectorOrText,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Type {
+        target: SelectorOrText,
+        text: String,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Scroll {
+        direction: ScrollDir,
+        amount: Option<f32>,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Hover {
+        target: SelectorOrText,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Drag {
+        from: SelectorOrText,
+        to: SelectorOrText,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Select {
+        target: SelectorOrText,
+        value: String,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Upload {
+        target: SelectorOrText,
+        path: String,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Wait {
+        duration_ms: u64,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    WaitFor {
+        target: WaitForTarget,
+        timeout_ms: Option<u64>,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Assert {
+        target: AssertTarget,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Screenshot {
+        name: String,
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
+    Pause {
+        span: Span,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
+        step_id: Option<Uuid>,
+    },
 }
 
 impl Command {

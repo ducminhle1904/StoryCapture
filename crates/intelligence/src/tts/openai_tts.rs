@@ -102,10 +102,7 @@ impl TtsProvider for OpenAiTtsProvider {
         let resp = self
             .http
             .post(&url)
-            .header(
-                AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
-            )
+            .header(AUTHORIZATION, format!("Bearer {}", self.api_key.expose()))
             .header(CONTENT_TYPE, "application/json")
             .json(&body)
             .send()

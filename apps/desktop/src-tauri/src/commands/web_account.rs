@@ -81,9 +81,7 @@ use super::util::web_url as web_companion_url;
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(skip(app))]
-pub async fn start_web_oauth(
-    app: tauri::AppHandle<tauri::Wry>,
-) -> Result<u16, WebAccountError> {
+pub async fn start_web_oauth(app: tauri::AppHandle<tauri::Wry>) -> Result<u16, WebAccountError> {
     tracing::info!(target: "storycapture::web_account", "start_web_oauth");
 
     // Bind to a random available port on localhost.
@@ -144,14 +142,16 @@ pub async fn start_web_oauth(
     });
 
     // Store the receiver in Tauri managed state so `complete_web_oauth` can access it.
-    let state = OAuthPendingState { rx: tokio::sync::Mutex::new(Some(rx)), port };
+    let state = OAuthPendingState {
+        rx: tokio::sync::Mutex::new(Some(rx)),
+        port,
+    };
     app.manage(state);
 
     // Open the system browser to the OAuth URL.
     let base = web_companion_url();
-    let oauth_url = format!(
-        "{base}/api/auth/signin/github?callbackUrl=http://localhost:{port}/callback"
-    );
+    let oauth_url =
+        format!("{base}/api/auth/signin/github?callbackUrl=http://localhost:{port}/callback");
     tracing::info!(target: "storycapture::web_account", url = %oauth_url, "opening browser for OAuth");
 
     // Use tauri-plugin-opener to open the URL in the system browser.
@@ -178,12 +178,10 @@ pub async fn complete_web_oauth(
     })?;
 
     // Wait for the callback with a 30-second timeout.
-    let rx = state
-        .rx
-        .lock()
-        .await
-        .take()
-        .ok_or_else(|| WebAccountError::ServerError("OAuth callback already consumed".into()))?;
+    let rx =
+        state.rx.lock().await.take().ok_or_else(|| {
+            WebAccountError::ServerError("OAuth callback already consumed".into())
+        })?;
 
     let session_token = tokio::time::timeout(Duration::from_secs(30), rx)
         .await
@@ -227,8 +225,7 @@ pub async fn complete_web_oauth(
         .map_err(|e| WebAccountError::TokenExchangeFailed(e.to_string()))?;
 
     // Store the API token in keychain (T-04-10: never in SQLite or plaintext).
-    let token_entry = keyring::Entry::new(SERVICE, ACCOUNT_TOKEN)
-        .map_err(WebAccountError::from)?;
+    let token_entry = keyring::Entry::new(SERVICE, ACCOUNT_TOKEN).map_err(WebAccountError::from)?;
     token_entry
         .set_password(&token_resp.token)
         .map_err(WebAccountError::from)?;
@@ -248,8 +245,7 @@ pub async fn complete_web_oauth(
 
     let info_json = serde_json::to_string(&account_info)
         .map_err(|e| WebAccountError::TokenExchangeFailed(e.to_string()))?;
-    let info_entry = keyring::Entry::new(SERVICE, ACCOUNT_INFO)
-        .map_err(WebAccountError::from)?;
+    let info_entry = keyring::Entry::new(SERVICE, ACCOUNT_INFO).map_err(WebAccountError::from)?;
     info_entry
         .set_password(&info_json)
         .map_err(WebAccountError::from)?;

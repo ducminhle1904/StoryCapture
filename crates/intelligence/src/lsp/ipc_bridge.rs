@@ -59,7 +59,10 @@ impl LspBridge {
     /// The caller is responsible for spawning — this avoids requiring a
     /// live runtime at construction time (Tauri's `setup` runs before the
     /// async runtime is accessible via `tokio::spawn`).
-    pub fn new() -> (Arc<Self>, impl std::future::Future<Output = ()> + Send + 'static) {
+    pub fn new() -> (
+        Arc<Self>,
+        impl std::future::Future<Output = ()> + Send + 'static,
+    ) {
         let (service, socket) = LspService::new(StoryLanguageServer::new);
         let (tx, _rx) = broadcast::channel::<LspNotification>(64);
 
@@ -118,20 +121,14 @@ impl LspBridge {
     ///
     /// `ClientSocket` implements `Stream<Item = Request>` where each item is
     /// a server-initiated JSON-RPC message (notification or request to client).
-    async fn drain_notifications(
-        mut socket: ClientSocket,
-        tx: broadcast::Sender<LspNotification>,
-    ) {
+    async fn drain_notifications(mut socket: ClientSocket, tx: broadcast::Sender<LspNotification>) {
         while let Some(msg) = socket.next().await {
             // Each `msg` is a `tower_lsp::jsonrpc::Request`.
             // Server-initiated notifications (publishDiagnostics, etc.)
             // come through here.
             let method = msg.method().to_string();
 
-            let params = msg
-                .params()
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
+            let params = msg.params().cloned().unwrap_or(serde_json::Value::Null);
 
             let notification = LspNotification { method, params };
 

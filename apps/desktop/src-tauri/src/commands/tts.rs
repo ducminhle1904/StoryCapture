@@ -117,18 +117,18 @@ fn build_tts_provider(
     api_key: &str,
 ) -> Result<Arc<dyn TtsProvider>, TtsCommandError> {
     match provider {
-        ProviderId::Elevenlabs => {
-            Ok(Arc::new(intelligence::tts::elevenlabs::ElevenLabsProvider::with_client(
+        ProviderId::Elevenlabs => Ok(Arc::new(
+            intelligence::tts::elevenlabs::ElevenLabsProvider::with_client(
                 http_client,
                 api_key.to_string(),
-            )))
-        }
-        ProviderId::OpenaiTts => {
-            Ok(Arc::new(intelligence::tts::openai_tts::OpenAiTtsProvider::with_client(
+            ),
+        )),
+        ProviderId::OpenaiTts => Ok(Arc::new(
+            intelligence::tts::openai_tts::OpenAiTtsProvider::with_client(
                 http_client,
                 api_key.to_string(),
-            )))
-        }
+            ),
+        )),
         _ => Err(TtsCommandError::Provider(format!(
             "provider {:?} is not a TTS provider",
             provider
@@ -142,7 +142,7 @@ fn project_root(app_state: &AppState, project_id: &str) -> PathBuf {
     app_state.data_dir.join(format!("projects/{project_id}"))
 }
 
-use super::util::{project_db_path, now_epoch_ms};
+use super::util::{now_epoch_ms, project_db_path};
 
 // ---- Commands ----
 
@@ -159,8 +159,17 @@ pub async fn tts_generate(
     voice_id: String,
     model: String,
 ) -> Result<TtsGenerateResult, TtsCommandError> {
-    tts_generate_inner(app, project_id, step_id, script_text, provider, voice_id, model, false)
-        .await
+    tts_generate_inner(
+        app,
+        project_id,
+        step_id,
+        script_text,
+        provider,
+        voice_id,
+        model,
+        false,
+    )
+    .await
 }
 
 /// Regenerate a TTS clip, bypassing the cache.
@@ -176,8 +185,17 @@ pub async fn tts_regenerate_clip(
     voice_id: String,
     model: String,
 ) -> Result<TtsGenerateResult, TtsCommandError> {
-    tts_generate_inner(app, project_id, step_id, script_text, provider, voice_id, model, true)
-        .await
+    tts_generate_inner(
+        app,
+        project_id,
+        step_id,
+        script_text,
+        provider,
+        voice_id,
+        model,
+        true,
+    )
+    .await
 }
 
 /// Shared implementation for tts_generate and tts_regenerate_clip.
@@ -192,8 +210,7 @@ async fn tts_generate_inner(
     force: bool,
 ) -> Result<TtsGenerateResult, TtsCommandError> {
     // T-03-07-01 pattern: validate project_id as UUID
-    let _pid = Uuid::parse_str(&project_id)
-        .map_err(|_| TtsCommandError::InvalidProject)?;
+    let _pid = Uuid::parse_str(&project_id).map_err(|_| TtsCommandError::InvalidProject)?;
 
     let app_state = app.state::<AppState>();
     let root = project_root(&app_state, &project_id);
@@ -222,19 +239,17 @@ async fn tts_generate_inner(
 
                 // Use stored duration if available; only probe file as fallback
                 // for cache entries created before the duration_ms column existed.
-                let audio_duration_ms = entry.duration_ms
-                    .map(|d| d as u64)
-                    .unwrap_or_else(|| {
-                        let bytes = std::fs::read(&file_path).unwrap_or_default();
-                        let dur = probe_audio_duration_ms(&bytes).unwrap_or(0);
-                        // Backfill duration_ms for next time
-                        let backfill = storage::phase3::TtsCacheEntry {
-                            duration_ms: Some(dur as i64),
-                            ..entry.clone()
-                        };
-                        let _ = storage::phase3::upsert_tts_cache(&conn, &backfill);
-                        dur
-                    });
+                let audio_duration_ms = entry.duration_ms.map(|d| d as u64).unwrap_or_else(|| {
+                    let bytes = std::fs::read(&file_path).unwrap_or_default();
+                    let dur = probe_audio_duration_ms(&bytes).unwrap_or(0);
+                    // Backfill duration_ms for next time
+                    let backfill = storage::phase3::TtsCacheEntry {
+                        duration_ms: Some(dur as i64),
+                        ..entry.clone()
+                    };
+                    let _ = storage::phase3::upsert_tts_cache(&conn, &backfill);
+                    dur
+                });
 
                 // Insert metrics row for cache hit
                 let metric = storage::phase3::TtsClipMetric {
@@ -292,25 +307,22 @@ async fn tts_generate_inner(
         .map_err(|e| TtsCommandError::AudioProbe(e.to_string()))?;
 
     // Write to disk
-    let path = cache_path(&root, &step_id, &hash)
-        .map_err(|e| TtsCommandError::Io(e.to_string()))?;
+    let path =
+        cache_path(&root, &step_id, &hash).map_err(|e| TtsCommandError::Io(e.to_string()))?;
 
-    std::fs::write(&path, &audio_bytes)
-        .map_err(|e| TtsCommandError::Io(e.to_string()))?;
+    std::fs::write(&path, &audio_bytes).map_err(|e| TtsCommandError::Io(e.to_string()))?;
 
     // Compute cost
     let char_count = script_text.len();
     let cost_usd = compute_tts_cost(provider, &model, char_count);
 
     // Compute relative file_path for cache index (must start with "voiceover/")
-    let relative_path = path
-        .strip_prefix(&root)
-        .unwrap_or(&path);
+    let relative_path = path.strip_prefix(&root).unwrap_or(&path);
 
     // Upsert cache index
     let now = now_epoch_ms();
-    let conn = storage::Connection::open(&db_path)
-        .map_err(|e| TtsCommandError::Storage(e.to_string()))?;
+    let conn =
+        storage::Connection::open(&db_path).map_err(|e| TtsCommandError::Storage(e.to_string()))?;
 
     let cache_entry = storage::phase3::TtsCacheEntry {
         hash: hash.clone(),
@@ -374,7 +386,10 @@ pub async fn tts_voice_list(
     match provider {
         ProviderId::OpenaiTts => {
             // Static list — no network call needed
-            let p = intelligence::tts::openai_tts::OpenAiTtsProvider::with_client(http_client, "unused".to_string());
+            let p = intelligence::tts::openai_tts::OpenAiTtsProvider::with_client(
+                http_client,
+                "unused".to_string(),
+            );
             let voices = p
                 .list_voices()
                 .await
@@ -383,7 +398,10 @@ pub async fn tts_voice_list(
         }
         ProviderId::Elevenlabs => {
             let api_key = read_api_key(provider)?;
-            let p = intelligence::tts::elevenlabs::ElevenLabsProvider::with_client(http_client, api_key);
+            let p = intelligence::tts::elevenlabs::ElevenLabsProvider::with_client(
+                http_client,
+                api_key,
+            );
             let all_voices = p
                 .list_voices()
                 .await
@@ -423,19 +441,15 @@ pub async fn tts_voice_list(
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(skip(app))]
-pub async fn tts_gc_cache(
-    app: AppHandle,
-    project_id: String,
-) -> Result<u64, TtsCommandError> {
-    let _pid = Uuid::parse_str(&project_id)
-        .map_err(|_| TtsCommandError::InvalidProject)?;
+pub async fn tts_gc_cache(app: AppHandle, project_id: String) -> Result<u64, TtsCommandError> {
+    let _pid = Uuid::parse_str(&project_id).map_err(|_| TtsCommandError::InvalidProject)?;
 
     let app_state = app.state::<AppState>();
     let root = project_root(&app_state, &project_id);
     let db_path = project_db_path(&app_state, &project_id);
 
-    let conn = storage::Connection::open(&db_path)
-        .map_err(|e| TtsCommandError::Storage(e.to_string()))?;
+    let conn =
+        storage::Connection::open(&db_path).map_err(|e| TtsCommandError::Storage(e.to_string()))?;
 
     let seven_days_ms: i64 = 7 * 24 * 60 * 60 * 1000;
     let cutoff = now_epoch_ms() - seven_days_ms;
@@ -507,15 +521,14 @@ pub async fn tts_apply_sync(
     project_id: String,
     step_timings: Vec<StepTimingDto>,
 ) -> Result<SyncPlanDto, TtsCommandError> {
-    let _pid = Uuid::parse_str(&project_id)
-        .map_err(|_| TtsCommandError::InvalidProject)?;
+    let _pid = Uuid::parse_str(&project_id).map_err(|_| TtsCommandError::InvalidProject)?;
 
     let app_state = app.state::<AppState>();
     let root = project_root(&app_state, &project_id);
     let db_path = project_db_path(&app_state, &project_id);
 
-    let conn = storage::Connection::open(&db_path)
-        .map_err(|e| TtsCommandError::Storage(e.to_string()))?;
+    let conn =
+        storage::Connection::open(&db_path).map_err(|e| TtsCommandError::Storage(e.to_string()))?;
 
     // Convert DTO step timings to intelligence types.
     let steps: Vec<intelligence::tts::sync::StepTiming> = step_timings
@@ -529,13 +542,13 @@ pub async fn tts_apply_sync(
     // Load ClipMeta by scanning the tts_cache_index for this project's steps.
     let mut clip_metas: Vec<intelligence::tts::sync::ClipMeta> = Vec::new();
     for st in &steps {
-        if let Some(entry) = storage::phase3::lookup_tts_cache_by_step(&conn, &st.step_id)
-            .unwrap_or(None)
+        if let Some(entry) =
+            storage::phase3::lookup_tts_cache_by_step(&conn, &st.step_id).unwrap_or(None)
         {
             let abs_path = root.join(&entry.file_path);
             let audio_duration_ms = if abs_path.exists() {
-                let bytes = std::fs::read(&abs_path)
-                    .map_err(|e| TtsCommandError::Io(e.to_string()))?;
+                let bytes =
+                    std::fs::read(&abs_path).map_err(|e| TtsCommandError::Io(e.to_string()))?;
                 probe_audio_duration_ms(&bytes).unwrap_or(0)
             } else {
                 0
@@ -565,11 +578,7 @@ pub async fn tts_apply_sync(
 
     // Persist drift_ms in tts_clip_metrics for each adjusted step.
     for adj in &plan.adjusted_steps {
-        let _ = storage::phase3::update_tts_metric_drift(
-            &conn,
-            &adj.step_id,
-            adj.drift_ms,
-        );
+        let _ = storage::phase3::update_tts_metric_drift(&conn, &adj.step_id, adj.drift_ms);
     }
 
     // Convert to DTO.

@@ -17,7 +17,7 @@ use automation::driver::{ActionKind, BrowserDriver};
 use automation::events::{AttemptOutcome, SelectorStrategy};
 use automation::noop_driver::NoopDriver;
 use automation::selector::SmartSelector;
-use story_parser::{Command, Severity, SelectorOrText};
+use story_parser::{Command, SelectorOrText, Severity};
 
 /// Compile-only: parse the mixed fixture + walk every command through the
 /// SmartSelector public API against a NoopDriver. This forces the compiler
@@ -57,14 +57,10 @@ async fn tier1_new_and_legacy_forms_compile_against_smart_selector() {
                 Command::Hover { target, .. } => (target, ActionKind::Hover),
                 _ => continue,
             };
-            let (resolved, attempts) = SmartSelector::resolve_with_attempts(
-                driver.as_ref(),
-                action,
-                target,
-                5_000,
-            )
-            .await
-            .unwrap_or_else(|e| panic!("resolve failed for {target:?}: {e:?}"));
+            let (resolved, attempts) =
+                SmartSelector::resolve_with_attempts(driver.as_ref(), action, target, 5_000)
+                    .await
+                    .unwrap_or_else(|e| panic!("resolve failed for {target:?}: {e:?}"));
 
             match target {
                 SelectorOrText::Role { .. } => {
@@ -115,8 +111,8 @@ async fn tier1_live_run_against_real_chromium() {
     // exists; spawning the sidecar is deferred to future plans that need
     // a `spawn_for_test` helper on `PlaywrightSidecarDriver`. For now the
     // vitest suite is the live gate.
-    let html_path = std::fs::canonicalize("tests/fixtures/tier1.html")
-        .expect("tier1.html fixture must exist");
+    let html_path =
+        std::fs::canonicalize("tests/fixtures/tier1.html").expect("tier1.html fixture must exist");
     let _html_url = url::Url::from_file_path(&html_path)
         .expect("fixture path must be absolute")
         .to_string();

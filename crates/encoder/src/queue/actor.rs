@@ -135,8 +135,12 @@ impl RenderQueueActor {
 
     async fn spawn_job(&mut self, job: storage::RenderJob) -> Result<()> {
         let cancel = CancellationToken::new();
-        self.running
-            .insert(job.id, RunningJob { cancel: cancel.clone() });
+        self.running.insert(
+            job.id,
+            RunningJob {
+                cancel: cancel.clone(),
+            },
+        );
 
         {
             let conn = self.db.lock().await;

@@ -41,7 +41,9 @@ fn build_full() -> effects::Graph {
         )
         .background(
             fixed_id(0x33),
-            BackgroundKind::Solid { color: Rgba::new(10, 10, 16, 255) },
+            BackgroundKind::Solid {
+                color: Rgba::new(10, 10, 16, 255),
+            },
             24.0,
             None,
         )
@@ -85,7 +87,11 @@ fn build_full() -> effects::Graph {
             "a_8282",
             SidechainParams::default(),
         )
-        .audio_mix(fixed_id(0x84), vec!["a_8383".into(), "a_8282".into()], false)
+        .audio_mix(
+            fixed_id(0x84),
+            vec!["a_8383".into(), "a_8282".into()],
+            false,
+        )
         .audio_limiter(fixed_id(0x85), "a_8484", 0.97)
         .build()
         .expect("full scene must satisfy canonical order")
@@ -99,7 +105,10 @@ fn full_scene_filter_complex_snapshot() {
     // Shape sanity checks (insta holds the byte-for-byte lock).
     assert!(out.contains("zoompan"), "expected zoompan token");
     assert!(out.contains("xfade=transition=fade"), "expected xfade");
-    assert!(out.contains("sidechaincompress"), "expected sidechain audio");
+    assert!(
+        out.contains("sidechaincompress"),
+        "expected sidechain audio"
+    );
     assert!(out.contains("[out_v]") && out.contains("[out_a]"));
 
     insta::with_settings!({
@@ -143,6 +152,9 @@ fn full_scene_drawtext_escapes_colon_and_apostrophe() {
     let g = build_full();
     let out = FfmpegEmit::emit(&g);
     // `:` must be escaped as `\:` and `'` as `\'` (T-02-02).
-    assert!(out.contains("3\\:14"), "colon must be escaped in drawtext: {out}");
+    assert!(
+        out.contains("3\\:14"),
+        "colon must be escaped in drawtext: {out}"
+    );
     assert!(out.contains("It\\'s"), "apostrophe must be escaped: {out}");
 }

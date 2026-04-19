@@ -8,11 +8,11 @@
 // sequentially, and the probe task polls at 200ms granularity. Contention
 // is negligible.
 
+use async_trait::async_trait;
 use automation::{
     BrowserDriver, CapabilitySet, ElementState, LaunchConfig, PlaywrightSidecarDriver,
     ResolvedSelector,
 };
-use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use story_parser::{ScrollDir, SelectorOrText};

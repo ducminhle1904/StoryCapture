@@ -97,8 +97,7 @@ pub fn analyze_selector(selector: &str, has_fallback: bool) -> Vec<SelectorWarni
             message: "Selector uses 3+ :nth-child() levels — highly fragile to DOM changes."
                 .to_string(),
             suggestion: Some(
-                "Replace positional selectors with data-testid or semantic attributes."
-                    .to_string(),
+                "Replace positional selectors with data-testid or semantic attributes.".to_string(),
             ),
         });
     }
@@ -198,7 +197,11 @@ mod tests {
     #[test]
     fn test2_data_testid_returns_empty() {
         let result = issues("button[data-testid='signup']", false);
-        assert!(result.is_empty(), "data-testid selector should pass: {:?}", result);
+        assert!(
+            result.is_empty(),
+            "data-testid selector should pass: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -246,7 +249,10 @@ mod tests {
 
     #[test]
     fn test_brittle_class_long() {
-        let result = issues(r#"div[class="very-long-class-name-that-is-really-specific"]"#, false);
+        let result = issues(
+            r#"div[class="very-long-class-name-that-is-really-specific"]"#,
+            false,
+        );
         assert!(result.contains(&SelectorIssue::BrittleAttribute));
     }
 

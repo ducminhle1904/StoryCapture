@@ -70,7 +70,10 @@ pub(crate) fn resolve_sc_window_by_id(
     })?;
     let content = SCShareableContent::get()
         .map_err(|e| CaptureError::Native(format!("SCShareableContent::get: {e}")))?;
-    Ok(content.windows().into_iter().find(|w| w.window_id() == target_id_u32))
+    Ok(content
+        .windows()
+        .into_iter()
+        .find(|w| w.window_id() == target_id_u32))
 }
 
 /// Resolve the best on-screen window for a pid and optional title hint.
@@ -108,7 +111,9 @@ fn resolve_sc_window_by_pid_once(
     const MIN_CONTENT_W: f64 = 800.0;
     const MIN_CONTENT_H: f64 = 600.0;
     let is_chromium_family = |w: &screencapturekit::shareable_content::SCWindow| -> bool {
-        let Some(app) = w.owning_application() else { return false };
+        let Some(app) = w.owning_application() else {
+            return false;
+        };
         let bundle = app.bundle_identifier().to_ascii_lowercase();
         let name = app.application_name().to_ascii_lowercase();
         bundle.contains("chromium")
@@ -143,10 +148,7 @@ fn resolve_sc_window_by_pid_once(
                     .title()
                     .map(|t| t.to_ascii_lowercase().contains(hint))
                     .unwrap_or(false);
-                let app_matches = app
-                    .application_name()
-                    .to_ascii_lowercase()
-                    .contains(hint);
+                let app_matches = app.application_name().to_ascii_lowercase().contains(hint);
                 if !title_matches && !app_matches {
                     return false;
                 }
@@ -188,17 +190,15 @@ fn resolve_sc_window_by_pid_once(
     // Sort: prefer windows with a non-empty title (the real browser
     // window has a page title; launch-time helpers don't), then by
     // descending area.
-    candidates.sort_by(|a, b| {
-        match (has_title(a), has_title(b)) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => {
-                let af = a.frame();
-                let bf = b.frame();
-                let aa = af.width * af.height;
-                let ba = bf.width * bf.height;
-                ba.partial_cmp(&aa).unwrap_or(std::cmp::Ordering::Equal)
-            }
+    candidates.sort_by(|a, b| match (has_title(a), has_title(b)) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => {
+            let af = a.frame();
+            let bf = b.frame();
+            let aa = af.width * af.height;
+            let ba = bf.width * bf.height;
+            ba.partial_cmp(&aa).unwrap_or(std::cmp::Ordering::Equal)
         }
     });
     // Shadow for later diagnostics access.
@@ -279,9 +279,7 @@ pub async fn find_window_by_pid(
     let owned_hint = match title_hint {
         Some(h) => {
             if h.len() > 256 {
-                return Err(CaptureError::Backend(
-                    "title_hint exceeds 256 chars".into(),
-                ));
+                return Err(CaptureError::Backend("title_hint exceeds 256 chars".into()));
             }
             if h.chars().any(|c| c.is_ascii_control()) {
                 return Err(CaptureError::Backend(
@@ -327,9 +325,7 @@ pub async fn find_window_by_pid_with_frame(
     let owned_hint = match title_hint {
         Some(h) => {
             if h.len() > 256 {
-                return Err(CaptureError::Backend(
-                    "title_hint exceeds 256 chars".into(),
-                ));
+                return Err(CaptureError::Backend("title_hint exceeds 256 chars".into()));
             }
             if h.chars().any(|c| c.is_ascii_control()) {
                 return Err(CaptureError::Backend(

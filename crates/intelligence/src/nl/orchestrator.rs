@@ -3,11 +3,11 @@
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use crate::llm::{LlmEvent, LlmError, LlmProvider, LlmRequest};
 use super::diff::{compute_step_diff, StepDiff};
 use super::prompts::build_system_blocks;
 use super::schemas::{emit_story_doc_tool, StoryDoc};
 use super::verb_whitelist::check_verb_whitelist;
+use crate::llm::{LlmError, LlmEvent, LlmProvider, LlmRequest};
 
 /// Maximum number of retries.
 const MAX_RETRIES: u32 = 2;
@@ -27,7 +27,12 @@ pub enum NlTurnEvent {
     /// Structured DSL diff arrived.
     StoryDocReady { doc: StoryDoc, diff: Vec<StepDiff> },
     /// Cost and cache stats.
-    Usage { input: u32, output: u32, cache_read: u32, cache_write: u32 },
+    Usage {
+        input: u32,
+        output: u32,
+        cache_read: u32,
+        cache_write: u32,
+    },
     /// Error message.
     Error(String),
     /// Turn complete.
@@ -36,11 +41,7 @@ pub enum NlTurnEvent {
 
 impl LlmRequest {
     /// Build an NL-to-DSL request.
-    pub fn nl_to_dsl(
-        user_message: String,
-        current_story: String,
-        history: Vec<ChatTurn>,
-    ) -> Self {
+    pub fn nl_to_dsl(user_message: String, current_story: String, history: Vec<ChatTurn>) -> Self {
         let mut messages: Vec<serde_json::Value> = Vec::new();
 
         // Replay history.
@@ -107,9 +108,7 @@ pub async fn run_nl_turn(
         let (tx, mut rx) = mpsc::channel::<LlmEvent>(64);
         let provider_clone = provider.clone();
         let req_clone = req.clone();
-        let stream_task = tokio::spawn(async move {
-            provider_clone.stream(req_clone, tx).await
-        });
+        let stream_task = tokio::spawn(async move { provider_clone.stream(req_clone, tx).await });
 
         // Collect events.
         let mut tool_input: Option<serde_json::Value> = None;
@@ -121,10 +120,20 @@ pub async fn run_nl_turn(
                 LlmEvent::ToolUseComplete { input, .. } => {
                     tool_input = Some(input);
                 }
-                LlmEvent::Usage { input, output, cache_read, cache_write } => {
-                    let _ = out_tx.send(NlTurnEvent::Usage {
-                        input, output, cache_read, cache_write,
-                    }).await;
+                LlmEvent::Usage {
+                    input,
+                    output,
+                    cache_read,
+                    cache_write,
+                } => {
+                    let _ = out_tx
+                        .send(NlTurnEvent::Usage {
+                            input,
+                            output,
+                            cache_read,
+                            cache_write,
+                        })
+                        .await;
                 }
             }
         }
@@ -188,5 +197,7 @@ pub async fn run_nl_turn(
     // Exhausted retries.
     let err_msg = last_err.unwrap_or_else(|| "unknown validation error".to_string());
     let _ = out_tx.send(NlTurnEvent::Error(err_msg.clone())).await;
-    Err(crate::error::IntelError::Llm(LlmError::StructuredOutput(err_msg)))
+    Err(crate::error::IntelError::Llm(LlmError::StructuredOutput(
+        err_msg,
+    )))
 }

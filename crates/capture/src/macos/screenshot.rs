@@ -48,8 +48,16 @@ pub async fn capture_thumbnail(
     .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
 
     // Compute downscale factor — never upscales (scale ≤ 1.0).
-    let scale_x = if src_w > 0 { max_width as f64 / src_w as f64 } else { 1.0 };
-    let scale_y = if src_h > 0 { max_height as f64 / src_h as f64 } else { 1.0 };
+    let scale_x = if src_w > 0 {
+        max_width as f64 / src_w as f64
+    } else {
+        1.0
+    };
+    let scale_y = if src_h > 0 {
+        max_height as f64 / src_h as f64
+    } else {
+        1.0
+    };
     let scale = scale_x.min(scale_y).min(1.0);
     let out_w = ((src_w as f64 * scale).max(1.0).round() as u32).max(1);
     let out_h = ((src_h as f64 * scale).max(1.0).round() as u32).max(1);
@@ -101,7 +109,11 @@ fn classify_sck_error(msg: &str) -> CaptureError {
 /// `out_w` / `out_h` are the pixel dimensions requested of SCK. We use
 /// them to construct the `RgbaImage` container; the actual buffer length
 /// from `rgba_data()` is `4 × w × h`.
-fn encode_cg_image_to_png(image: &CGImage, out_w: u32, out_h: u32) -> Result<Vec<u8>, CaptureError> {
+fn encode_cg_image_to_png(
+    image: &CGImage,
+    out_w: u32,
+    out_h: u32,
+) -> Result<Vec<u8>, CaptureError> {
     // Defensive: use the image's reported dims when the FFI returns a
     // different size than we asked for (SCK may clamp to source extent).
     let actual_w = image.width() as u32;
@@ -128,9 +140,7 @@ mod tests {
     /// taxonomy without a display handle.
     #[test]
     fn classify_permission_error() {
-        let err = classify_sck_error(
-            "SCScreenshotManager: permission denied for screen capture",
-        );
+        let err = classify_sck_error("SCScreenshotManager: permission denied for screen capture");
         match err {
             CaptureError::PermissionDenied(_) => {}
             other => panic!("expected PermissionDenied, got {other:?}"),

@@ -165,8 +165,7 @@ mod cost_computation {
         // 2000 input, 300 output, 1000 cache_read, 500 cache_write
         // uncached = 2000 - 1000 - 500 = 500
         let cost = compute_cost(2000, 300, 1000, 500);
-        let expected =
-            (500.0 * 3.0 + 1000.0 * 0.30 + 500.0 * 6.0 + 300.0 * 15.0) / 1_000_000.0;
+        let expected = (500.0 * 3.0 + 1000.0 * 0.30 + 500.0 * 6.0 + 300.0 * 15.0) / 1_000_000.0;
         assert!(
             (cost - expected).abs() < 1e-12,
             "cost={cost}, expected={expected}"

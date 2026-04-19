@@ -46,13 +46,16 @@ async fn main() -> Result<()> {
         .spawn()
         .context("spawn node sidecar")?;
 
-    let mut driver = PlaywrightSidecarDriver::from_child(child)
-        .map_err(|e| anyhow!("wrap sidecar: {e}"))?;
+    let mut driver =
+        PlaywrightSidecarDriver::from_child(child).map_err(|e| anyhow!("wrap sidecar: {e}"))?;
 
     // Launch visible Chromium.
     let cfg = LaunchConfig {
         url: None,
-        viewport: story_parser::Viewport { width: 1280, height: 800 },
+        viewport: story_parser::Viewport {
+            width: 1280,
+            height: 800,
+        },
         theme: story_parser::Theme::Auto,
         base_url: None,
         headless: false, // SCK only captures visible windows.
@@ -75,9 +78,12 @@ async fn main() -> Result<()> {
         .browser_process()
         .await
         .map_err(|e| anyhow!("browser_process: {e}"))?;
-    let pid = info
-        .pid
-        .ok_or_else(|| anyhow!("sidecar returned null pid (remote-browser? reason={:?})", info.reason))?;
+    let pid = info.pid.ok_or_else(|| {
+        anyhow!(
+            "sidecar returned null pid (remote-browser? reason={:?})",
+            info.reason
+        )
+    })?;
     tracing::info!(pid, "Playwright Chromium pid resolved");
 
     // Best-effort window lookup; backend start still does the real retry loop.
@@ -88,9 +94,7 @@ async fn main() -> Result<()> {
                 tracing::info!(window_id = id.0, "resolved WindowId");
             }
             Ok(None) => {
-                tracing::warn!(
-                    "find_window_by_pid returned None — backend will retry"
-                );
+                tracing::warn!("find_window_by_pid returned None — backend will retry");
             }
             Err(e) => return Err(anyhow!("find_window_by_pid: {e}")),
         }
@@ -136,7 +140,10 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        let stats = backend.stop().await.map_err(|e| anyhow!("backend stop: {e}"))?;
+        let stats = backend
+            .stop()
+            .await
+            .map_err(|e| anyhow!("backend stop: {e}"))?;
         tracing::info!(
             frame_count,
             width = first_width,

@@ -91,14 +91,13 @@ pub fn compute_sync_plan(steps: &[StepTiming], clips: &[ClipMeta]) -> SyncPlan {
     for s in steps {
         match clip_by_id.get(s.step_id.as_str()) {
             Some(c) => {
-                let (new_dur, freeze, silence) =
-                    if c.audio_duration_ms > s.original_duration_ms {
-                        let extra = c.audio_duration_ms - s.original_duration_ms;
-                        (c.audio_duration_ms, extra, 0)
-                    } else {
-                        let gap = s.original_duration_ms - c.audio_duration_ms;
-                        (s.original_duration_ms, 0, gap)
-                    };
+                let (new_dur, freeze, silence) = if c.audio_duration_ms > s.original_duration_ms {
+                    let extra = c.audio_duration_ms - s.original_duration_ms;
+                    (c.audio_duration_ms, extra, 0)
+                } else {
+                    let gap = s.original_duration_ms - c.audio_duration_ms;
+                    (s.original_duration_ms, 0, gap)
+                };
 
                 let drift = c.audio_duration_ms as i64 - s.original_duration_ms as i64;
 

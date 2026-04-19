@@ -53,25 +53,61 @@ pub enum MetaRawValue {
     Number(f64),
     Ident(String),
     /// `1280x800` literal pair.
-    ViewportPair { width: u32, height: u32 },
+    ViewportPair {
+        width: u32,
+        height: u32,
+    },
     /// `{ width: N, height: N }` struct.
-    ViewportStruct { width: u32, height: u32 },
+    ViewportStruct {
+        width: u32,
+        height: u32,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum ParsedCommand {
-    Navigate { url: String },
-    Click { target: RawTarget },
-    Type { target: RawTarget, text: String },
-    Scroll { direction: String, amount: Option<f32> },
-    Hover { target: RawTarget },
-    Drag { from: RawTarget, to: RawTarget },
-    Select { target: RawTarget, value: String },
-    Upload { target: RawTarget, path: String },
-    Wait { duration_ms: u64 },
-    WaitFor { target: RawTarget, timeout_ms: Option<u64> },
-    Assert { target: RawTarget },
-    Screenshot { name: String },
+    Navigate {
+        url: String,
+    },
+    Click {
+        target: RawTarget,
+    },
+    Type {
+        target: RawTarget,
+        text: String,
+    },
+    Scroll {
+        direction: String,
+        amount: Option<f32>,
+    },
+    Hover {
+        target: RawTarget,
+    },
+    Drag {
+        from: RawTarget,
+        to: RawTarget,
+    },
+    Select {
+        target: RawTarget,
+        value: String,
+    },
+    Upload {
+        target: RawTarget,
+        path: String,
+    },
+    Wait {
+        duration_ms: u64,
+    },
+    WaitFor {
+        target: RawTarget,
+        timeout_ms: Option<u64>,
+    },
+    Assert {
+        target: RawTarget,
+    },
+    Screenshot {
+        name: String,
+    },
     Pause,
 }
 
@@ -84,7 +120,10 @@ pub enum RawTarget {
     /// `<role> "name"`. `role` is kept stringly-typed at
     /// layer 1; layer 2 (`semantic.rs`) validates against `AriaRole` and
     /// emits a did-you-mean diagnostic on miss.
-    Role { role: String, name: String },
+    Role {
+        role: String,
+        name: String,
+    },
     /// `field "Label"`.
     Label(String),
     /// `text "Verbatim"` — distinct from bare `Text`.
@@ -155,7 +194,13 @@ fn parse_meta_entry(pair: Pair<Rule>) -> MetaEntry {
             _ => {}
         }
     }
-    MetaEntry { key, key_span, value, value_span, entry_span }
+    MetaEntry {
+        key,
+        key_span,
+        value,
+        value_span,
+        entry_span,
+    }
 }
 
 fn parse_meta_value(pair: Pair<Rule>) -> MetaRawValue {
@@ -175,9 +220,18 @@ fn parse_meta_value(pair: Pair<Rule>) -> MetaRawValue {
             }
             Rule::viewport_struct => {
                 let mut nums = p.into_inner().filter(|c| c.as_rule() == Rule::number);
-                let w: u32 = nums.next().and_then(|n| n.as_str().parse().ok()).unwrap_or(0);
-                let h: u32 = nums.next().and_then(|n| n.as_str().parse().ok()).unwrap_or(0);
-                MetaRawValue::ViewportStruct { width: w, height: h }
+                let w: u32 = nums
+                    .next()
+                    .and_then(|n| n.as_str().parse().ok())
+                    .unwrap_or(0);
+                let h: u32 = nums
+                    .next()
+                    .and_then(|n| n.as_str().parse().ok())
+                    .unwrap_or(0);
+                MetaRawValue::ViewportStruct {
+                    width: w,
+                    height: h,
+                }
             }
             _ => MetaRawValue::Ident(String::new()),
         },
@@ -251,7 +305,9 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
             let url = first_string(cmd);
             ParsedCommand::Navigate { url }
         }
-        Rule::cmd_click => ParsedCommand::Click { target: parse_target(cmd) },
+        Rule::cmd_click => ParsedCommand::Click {
+            target: parse_target(cmd),
+        },
         Rule::cmd_fill => {
             // `fill <target> with "<text>"` desugars to Type at layer 1 (D-03).
             // No new ParsedCommand variant — the executor sees an ordinary Type.
@@ -272,7 +328,9 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
             let amount = inner.next().and_then(|n| n.as_str().parse().ok());
             ParsedCommand::Scroll { direction, amount }
         }
-        Rule::cmd_hover => ParsedCommand::Hover { target: parse_target(cmd) },
+        Rule::cmd_hover => ParsedCommand::Hover {
+            target: parse_target(cmd),
+        },
         Rule::cmd_drag => {
             let mut inner = cmd.into_inner();
             let from = parse_target_pair(inner.next()?);
@@ -293,7 +351,9 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
         }
         Rule::cmd_wait => {
             let dur = cmd.into_inner().find(|p| p.as_rule() == Rule::duration)?;
-            ParsedCommand::Wait { duration_ms: parse_duration(dur.as_str()) }
+            ParsedCommand::Wait {
+                duration_ms: parse_duration(dur.as_str()),
+            }
         }
         Rule::cmd_wait_for => {
             let mut inner = cmd.into_inner().peekable();
@@ -303,7 +363,9 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
                 .map(|d| parse_duration(d.as_str()));
             ParsedCommand::WaitFor { target, timeout_ms }
         }
-        Rule::cmd_assert => ParsedCommand::Assert { target: parse_target(cmd) },
+        Rule::cmd_assert => ParsedCommand::Assert {
+            target: parse_target(cmd),
+        },
         Rule::cmd_screenshot => {
             let name = first_string(cmd);
             ParsedCommand::Screenshot { name }
@@ -367,7 +429,10 @@ fn first_string_str(pair: Pair<Rule>) -> &str {
 
 fn unquote(s: &str) -> String {
     let trimmed = s.trim();
-    let inner = trimmed.strip_prefix('"').and_then(|x| x.strip_suffix('"')).unwrap_or(trimmed);
+    let inner = trimmed
+        .strip_prefix('"')
+        .and_then(|x| x.strip_suffix('"'))
+        .unwrap_or(trimmed);
     // Unescape \" and \\
     let mut out = String::with_capacity(inner.len());
     let mut chars = inner.chars();

@@ -53,7 +53,10 @@ pub fn to_frame(sample: &CMSampleBuffer) -> Option<Frame> {
     let handle = unsafe { CVPixelBufferHandle::retain(pixel_buffer.as_ptr() as *mut _) }?;
 
     Some(Frame {
-        pts: Pts { ns: pts_ns, source: ClockSource::HostTime },
+        pts: Pts {
+            ns: pts_ns,
+            source: ClockSource::HostTime,
+        },
         width_px,
         height_px,
         format: PixelFormat::Bgra,

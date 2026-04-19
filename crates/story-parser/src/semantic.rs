@@ -6,9 +6,7 @@ use crate::ast::{
     AriaRole, Command, Meta, Scene, ScrollDir, SelectorOrText, Span, Story, Theme, Viewport,
 };
 use crate::diagnostic::Diagnostic;
-use crate::lenient_tokenize::{
-    LenientToken, MetaEntry, MetaRawValue, ParsedCommand, RawTarget,
-};
+use crate::lenient_tokenize::{LenientToken, MetaEntry, MetaRawValue, ParsedCommand, RawTarget};
 use crate::suggest::{did_you_mean, KNOWN_META_KEYS, KNOWN_ROLES, KNOWN_VERBS};
 use uuid::Uuid;
 
@@ -38,14 +36,22 @@ pub fn validate(tokens: Vec<LenientToken>, _source: &str) -> (Story, Vec<Diagnos
                 if let Some(scene) = current_scene.take() {
                     story.scenes.push(scene);
                 }
-                current_scene = Some(Scene { name, commands: vec![], span });
+                current_scene = Some(Scene {
+                    name,
+                    commands: vec![],
+                    span,
+                });
             }
             LenientToken::SceneEnd => {
                 if let Some(scene) = current_scene.take() {
                     story.scenes.push(scene);
                 }
             }
-            LenientToken::Command { pair_kind, span, step_id_raw } => {
+            LenientToken::Command {
+                pair_kind,
+                span,
+                step_id_raw,
+            } => {
                 if let Some(scene) = current_scene.as_mut() {
                     // Validate trailing `# @id=<uuidv7>` — invalid UUIDs degrade
                     // to `step_id = None` + a warn-level diagnostic (layer-2).
@@ -54,10 +60,7 @@ pub fn validate(tokens: Vec<LenientToken>, _source: &str) -> (Story, Vec<Diagnos
                             Ok(u) => Some(u),
                             Err(_) => {
                                 diagnostics.push(Diagnostic::warning(
-                                    format!(
-                                        "invalid step id '{}' — expected UUIDv7, ignored",
-                                        raw
-                                    ),
+                                    format!("invalid step id '{}' — expected UUIDv7, ignored", raw),
                                     span,
                                 ));
                                 None
@@ -71,10 +74,7 @@ pub fn validate(tokens: Vec<LenientToken>, _source: &str) -> (Story, Vec<Diagnos
                         scene.commands.push(c);
                     }
                 } else {
-                    diagnostics.push(Diagnostic::error(
-                        "command outside of scene block",
-                        span,
-                    ));
+                    diagnostics.push(Diagnostic::error("command outside of scene block", span));
                 }
             }
             LenientToken::Unknown { text, span } => {
@@ -86,16 +86,13 @@ pub fn validate(tokens: Vec<LenientToken>, _source: &str) -> (Story, Vec<Diagnos
                 if first_word.is_empty() {
                     continue;
                 }
-                let mut diag = Diagnostic::error(
-                    format!("unknown command '{}'", first_word),
-                    span,
-                );
+                let mut diag = Diagnostic::error(format!("unknown command '{}'", first_word), span);
                 if let Some(suggestion) = did_you_mean(first_word, KNOWN_VERBS) {
-                    diag = diag
-                        .with_suggestion(suggestion.clone())
-                        .clone();
-                    diag.message =
-                        format!("unknown command '{}' — did you mean '{}'?", first_word, suggestion);
+                    diag = diag.with_suggestion(suggestion.clone()).clone();
+                    diag.message = format!(
+                        "unknown command '{}' — did you mean '{}'?",
+                        first_word, suggestion
+                    );
                 }
                 diagnostics.push(diag);
             }
@@ -106,7 +103,10 @@ pub fn validate(tokens: Vec<LenientToken>, _source: &str) -> (Story, Vec<Diagnos
 }
 
 fn build_meta(entries: Vec<MetaEntry>, span: Span) -> (Meta, Vec<Diagnostic>) {
-    let mut meta = Meta { span, ..Default::default() };
+    let mut meta = Meta {
+        span,
+        ..Default::default()
+    };
     let mut diagnostics = Vec::new();
 
     for entry in entries {
@@ -275,7 +275,11 @@ fn build_command(
             span,
             step_id,
         },
-        ParsedCommand::Wait { duration_ms } => Command::Wait { duration_ms, span, step_id },
+        ParsedCommand::Wait { duration_ms } => Command::Wait {
+            duration_ms,
+            span,
+            step_id,
+        },
         ParsedCommand::WaitFor { target, timeout_ms } => Command::WaitFor {
             target: to_target(target, span, &mut diagnostics),
             timeout_ms,
@@ -287,7 +291,11 @@ fn build_command(
             span,
             step_id,
         },
-        ParsedCommand::Screenshot { name } => Command::Screenshot { name, span, step_id },
+        ParsedCommand::Screenshot { name } => Command::Screenshot {
+            name,
+            span,
+            step_id,
+        },
         ParsedCommand::Pause => Command::Pause { span, step_id },
     };
     (Some(cmd), diagnostics)
@@ -317,15 +325,15 @@ fn to_target(t: RawTarget, span: Span, diagnostics: &mut Vec<Diagnostic>) -> Sel
             // this `None` branch means grammar.pest and `AriaRole::from_keyword`
             // have drifted apart. `KNOWN_ROLES` mirrors the grammar keyword list.
             match AriaRole::from_keyword(&role) {
-                Some(aria_role) => SelectorOrText::Role { role: aria_role, name },
+                Some(aria_role) => SelectorOrText::Role {
+                    role: aria_role,
+                    name,
+                },
                 None => {
-                    let mut diag =
-                        Diagnostic::error(format!("unknown role '{}'", role), span);
+                    let mut diag = Diagnostic::error(format!("unknown role '{}'", role), span);
                     if let Some(suggestion) = did_you_mean(&role, KNOWN_ROLES) {
-                        diag.message = format!(
-                            "unknown role '{}' — did you mean '{}'?",
-                            role, suggestion
-                        );
+                        diag.message =
+                            format!("unknown role '{}' — did you mean '{}'?", role, suggestion);
                         diag.suggestion = Some(suggestion);
                     }
                     diagnostics.push(diag);
@@ -376,7 +384,10 @@ mod tier1_tests {
     fn click_button_parses_to_role_button() {
         let cmd = single_command("story { scene \"s\" { click button \"Save\" } }");
         match cmd {
-            Command::Click { target: SelectorOrText::Role { role, name }, .. } => {
+            Command::Click {
+                target: SelectorOrText::Role { role, name },
+                ..
+            } => {
                 assert_eq!(role, AriaRole::Button);
                 assert_eq!(name, "Save");
             }
@@ -388,7 +399,10 @@ mod tier1_tests {
     fn click_img_alias_maps_to_image_role() {
         let cmd = single_command("story { scene \"s\" { click img \"Hero\" } }");
         match cmd {
-            Command::Click { target: SelectorOrText::Role { role, .. }, .. } => {
+            Command::Click {
+                target: SelectorOrText::Role { role, .. },
+                ..
+            } => {
                 assert_eq!(role, AriaRole::Image);
             }
             other => panic!("expected Role(Image), got {:?}", other),
@@ -397,11 +411,13 @@ mod tier1_tests {
 
     #[test]
     fn fill_field_desugars_to_type_label() {
-        let cmd = single_command(
-            "story { scene \"s\" { fill field \"Email\" with \"a@x\" } }",
-        );
+        let cmd = single_command("story { scene \"s\" { fill field \"Email\" with \"a@x\" } }");
         match cmd {
-            Command::Type { target: SelectorOrText::Label(name), text, .. } => {
+            Command::Type {
+                target: SelectorOrText::Label(name),
+                text,
+                ..
+            } => {
                 assert_eq!(name, "Email");
                 assert_eq!(text, "a@x");
             }
@@ -411,11 +427,12 @@ mod tier1_tests {
 
     #[test]
     fn click_text_keyword_is_text_exact() {
-        let cmd = single_command(
-            "story { scene \"s\" { click text \"Learn more\" } }",
-        );
+        let cmd = single_command("story { scene \"s\" { click text \"Learn more\" } }");
         match cmd {
-            Command::Click { target: SelectorOrText::TextExact(s), .. } => {
+            Command::Click {
+                target: SelectorOrText::TextExact(s),
+                ..
+            } => {
                 assert_eq!(s, "Learn more");
             }
             other => panic!("expected TextExact, got {:?}", other),
@@ -427,7 +444,10 @@ mod tier1_tests {
         // Backwards-compat regression guard.
         let cmd = single_command("story { scene \"s\" { click \"Learn more\" } }");
         match cmd {
-            Command::Click { target: SelectorOrText::Text(s), .. } => {
+            Command::Click {
+                target: SelectorOrText::Text(s),
+                ..
+            } => {
                 assert_eq!(s, "Learn more");
             }
             other => panic!("expected Text (bare), got {:?}", other),
@@ -478,7 +498,10 @@ mod tier1_tests {
         let mut diags: Vec<Diagnostic> = Vec::new();
         let span = Span::default();
         let result = to_target_for_test(
-            RawTarget::Role { role: "buton".into(), name: "Save".into() },
+            RawTarget::Role {
+                role: "buton".into(),
+                name: "Save".into(),
+            },
             span,
             &mut diags,
         );

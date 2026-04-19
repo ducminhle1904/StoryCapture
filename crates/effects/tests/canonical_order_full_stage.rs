@@ -50,7 +50,9 @@ fn full_stage_graph() -> effects::Graph {
         )
         .background(
             fid(0x33),
-            BackgroundKind::Solid { color: Rgba::new(5, 10, 20, 255) },
+            BackgroundKind::Solid {
+                color: Rgba::new(5, 10, 20, 255),
+            },
             16.0,
             None,
         )

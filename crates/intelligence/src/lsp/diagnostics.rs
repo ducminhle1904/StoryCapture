@@ -21,18 +21,48 @@ use crate::lsp::selector_lint;
 /// can produce hover/completion content without depending on a
 /// yet-to-land shared catalog.
 pub const VERB_CATALOG: &[(&str, &str)] = &[
-    ("navigate", "`navigate <url>` — open the given URL in the target app."),
+    (
+        "navigate",
+        "`navigate <url>` — open the given URL in the target app.",
+    ),
     ("click", "`click <selector|\"text\">` — click an element."),
-    ("type", "`type <selector|\"text\"> \"…\"` — type text into an input."),
-    ("scroll", "`scroll <up|down|left|right> [amount]` — scroll the viewport."),
-    ("hover", "`hover <selector|\"text\">` — hover over an element."),
+    (
+        "type",
+        "`type <selector|\"text\"> \"…\"` — type text into an input.",
+    ),
+    (
+        "scroll",
+        "`scroll <up|down|left|right> [amount]` — scroll the viewport.",
+    ),
+    (
+        "hover",
+        "`hover <selector|\"text\">` — hover over an element.",
+    ),
     ("drag", "`drag <from> to <to>` — drag between two targets."),
-    ("select", "`select <selector|\"text\"> \"value\"` — pick a dropdown option."),
-    ("upload", "`upload <selector|\"text\"> \"path\"` — attach a file to an input."),
-    ("wait", "`wait <ms>` — pause for a fixed duration (milliseconds)."),
-    ("wait-for", "`wait-for <selector|\"text\"> [timeout <ms>]` — wait for an element to appear."),
-    ("assert", "`assert <selector|\"text\">` — assert an element is visible."),
-    ("screenshot", "`screenshot \"name\"` — take a named screenshot."),
+    (
+        "select",
+        "`select <selector|\"text\"> \"value\"` — pick a dropdown option.",
+    ),
+    (
+        "upload",
+        "`upload <selector|\"text\"> \"path\"` — attach a file to an input.",
+    ),
+    (
+        "wait",
+        "`wait <ms>` — pause for a fixed duration (milliseconds).",
+    ),
+    (
+        "wait-for",
+        "`wait-for <selector|\"text\"> [timeout <ms>]` — wait for an element to appear.",
+    ),
+    (
+        "assert",
+        "`assert <selector|\"text\">` — assert an element is visible.",
+    ),
+    (
+        "screenshot",
+        "`screenshot \"name\"` — take a named screenshot.",
+    ),
     ("pause", "`pause` — pause story execution until resumed."),
 ];
 
@@ -217,7 +247,10 @@ fn code_for(d: &ParserDiag, is_unknown_verb: bool) -> String {
 /// Lookup the Markdown-ish doc for a verb identifier; returns `None` if
 /// the identifier is not a known verb.
 pub fn verb_doc(ident: &str) -> Option<&'static str> {
-    VERB_CATALOG.iter().find(|(v, _)| *v == ident).map(|(_, d)| *d)
+    VERB_CATALOG
+        .iter()
+        .find(|(v, _)| *v == ident)
+        .map(|(_, d)| *d)
 }
 
 /// List of verb identifiers for completion.

@@ -24,10 +24,7 @@ fn offsets_single_transition() {
 fn offsets_chained_three() {
     let tl = XfadeTimeline {
         clip_durations_ms: vec![10_000, 10_000, 10_000],
-        transitions: vec![
-            (0, XfadeKind::Fade, 1000),
-            (1, XfadeKind::Dissolve, 1000),
-        ],
+        transitions: vec![(0, XfadeKind::Fade, 1000), (1, XfadeKind::Dissolve, 1000)],
     };
     assert_eq!(compute_offsets(&tl), vec![9_000, 18_000]);
 }
@@ -36,10 +33,7 @@ fn offsets_chained_three() {
 fn offsets_varying_durations() {
     let tl = XfadeTimeline {
         clip_durations_ms: vec![5_000, 8_000, 12_000],
-        transitions: vec![
-            (0, XfadeKind::Fade, 500),
-            (1, XfadeKind::WipeLeft, 300),
-        ],
+        transitions: vec![(0, XfadeKind::Fade, 500), (1, XfadeKind::WipeLeft, 300)],
     };
     assert_eq!(compute_offsets(&tl), vec![4_500, 12_200]);
 }
@@ -96,10 +90,7 @@ fn transitions_chained_filter_complex_snapshot() {
     // 3-clip timeline with Fade + Dissolve, offsets from compute_offsets.
     let tl = XfadeTimeline {
         clip_durations_ms: vec![10_000, 10_000, 10_000],
-        transitions: vec![
-            (0, XfadeKind::Fade, 1000),
-            (1, XfadeKind::Dissolve, 1000),
-        ],
+        transitions: vec![(0, XfadeKind::Fade, 1000), (1, XfadeKind::Dissolve, 1000)],
     };
     let offsets = compute_offsets(&tl);
     let mut out = String::new();

@@ -31,7 +31,11 @@ const BUNDLED_FILES: &[(&str, &str)] = &[
 fn all_five_bundled_presets_parse() {
     for (fname, expected_name) in BUNDLED_FILES {
         let path = bundled_dir().join(fname);
-        assert!(path.exists(), "missing bundled preset file: {}", path.display());
+        assert!(
+            path.exists(),
+            "missing bundled preset file: {}",
+            path.display()
+        );
         let preset = import_preset(&path).expect(&format!("failed to import {fname}"));
         assert_eq!(preset.name, *expected_name, "name mismatch for {fname}");
         assert_eq!(preset.version, 2, "version != 2 for {fname}");
@@ -105,8 +109,7 @@ fn too_new_version_rejected() {
 fn install_bundled_is_idempotent() {
     let dir = tempdir().unwrap();
     let db = ProjectDb::open(dir.path()).unwrap();
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     let n1 = preset_repo::install_bundled(&conn, PresetTier::Project, &bundled_dir()).unwrap();
     assert_eq!(n1, 5, "expected all 5 bundled presets installed first run");
@@ -118,8 +121,7 @@ fn install_bundled_is_idempotent() {
     let listed = preset_repo::list_by_scope(&conn, PresetTier::Project).unwrap();
     assert_eq!(listed.len(), 5);
     // Each listed preset's name must match one from the fixture table.
-    let expected: std::collections::HashSet<_> =
-        BUNDLED_FILES.iter().map(|(_, n)| *n).collect();
+    let expected: std::collections::HashSet<_> = BUNDLED_FILES.iter().map(|(_, n)| *n).collect();
     for p in &listed {
         assert!(
             expected.contains(p.name.as_str()),

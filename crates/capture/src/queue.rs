@@ -8,8 +8,8 @@
 use crate::frame::Frame;
 use parking_lot::Mutex;
 use std::collections::VecDeque;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::sync::Notify;
 
 /// Counters maintained over the queue's lifetime. Exposed via

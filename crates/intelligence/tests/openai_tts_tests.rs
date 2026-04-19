@@ -90,10 +90,7 @@ async fn invalid_voice_returns_voice_not_found_before_network_call() {
     // No mock server because we expect zero network traffic — the whitelist
     // guard (T-03-09-02) must reject the voice before `.send()` is called.
     // We use an unreachable base URL so any accidental request fails loudly.
-    let provider = OpenAiTtsProvider::with_base_url(
-        "k".into(),
-        "http://127.0.0.1:1/".into(),
-    );
+    let provider = OpenAiTtsProvider::with_base_url("k".into(), "http://127.0.0.1:1/".into());
     let err = provider
         .synthesize(sample_req_with_voice("nonexistent"))
         .await

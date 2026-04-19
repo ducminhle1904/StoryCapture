@@ -67,5 +67,8 @@ fn downgrade_detected_project() {
         Ok(_) => panic!("expected SchemaVersionMismatch"),
         Err(e) => e,
     };
-    assert!(matches!(err, StorageError::SchemaVersionMismatch { found: 42, .. }));
+    assert!(matches!(
+        err,
+        StorageError::SchemaVersionMismatch { found: 42, .. }
+    ));
 }

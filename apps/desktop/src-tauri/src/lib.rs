@@ -99,11 +99,13 @@ pub fn run() {
             // Re-focus the existing main window when a second instance is launched.
             focus_main_window(app);
         }))
-        .plugin(tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .max_file_size(50 * 1024 * 1024 /* 50 MiB */)
-            .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
-            .build())
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .max_file_size(50 * 1024 * 1024 /* 50 MiB */)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .build(),
+        )
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -144,7 +146,9 @@ pub fn run() {
             // NL task registry (Plan 03-07): abort handles for in-flight NL turns.
             // Wrapped in Arc so spawned tasks can clone and hold a reference
             // beyond the Tauri command lifetime.
-            app.manage(std::sync::Arc::new(state::nl_tasks::NlTaskRegistry::default()));
+            app.manage(std::sync::Arc::new(
+                state::nl_tasks::NlTaskRegistry::default(),
+            ));
 
             // Panic hook last — needs an AppHandle for event emit.
             panic_hook::install(app.handle().clone());

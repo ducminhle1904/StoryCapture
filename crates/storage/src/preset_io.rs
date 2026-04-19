@@ -53,7 +53,9 @@ pub struct ScpresetFile {
 /// cover IO + JSON. We fold preset-specific errors into `Serialization` with
 /// a descriptive message to avoid a breaking change to the enum.
 fn err_invalid_kind(got: &str) -> StorageError {
-    StorageError::Serialization(format!("invalid .scpreset kind: expected 'effect_preset', got {got:?}"))
+    StorageError::Serialization(format!(
+        "invalid .scpreset kind: expected 'effect_preset', got {got:?}"
+    ))
 }
 fn err_too_new(got: u32) -> StorageError {
     StorageError::Serialization(format!(

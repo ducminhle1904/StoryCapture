@@ -80,7 +80,10 @@ pub fn create_project(parent: &Path, name: &str) -> Result<ProjectFolder, Storag
     std::fs::create_dir_all(root.join(EXPORTS_DIRNAME))?;
     std::fs::create_dir_all(root.join(META_DIRNAME))?;
 
-    std::fs::write(root.join(META_DIRNAME).join(VERSION_FILENAME), FOLDER_FORMAT_VERSION)?;
+    std::fs::write(
+        root.join(META_DIRNAME).join(VERSION_FILENAME),
+        FOLDER_FORMAT_VERSION,
+    )?;
     std::fs::write(root.join(STORY_FILENAME), starter_story_content(name))?;
 
     let db = ProjectDb::open(&root)?;

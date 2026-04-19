@@ -39,11 +39,7 @@ pub struct OutputSpec {
 
 /// Validate a single (format, resolution, fps) combination. Called during
 /// batch-building and from the Tauri `export_validate_config` command.
-pub fn validate(
-    fmt: OutputFormat,
-    res: Resolution,
-    fps: u32,
-) -> Result<(), ExportError> {
+pub fn validate(fmt: OutputFormat, res: Resolution, fps: u32) -> Result<(), ExportError> {
     if !VALID_FPS.contains(&fps) {
         return Err(ExportError::InvalidFps(fps));
     }
@@ -145,8 +141,7 @@ mod tests {
                     let ok = validate(fmt, res, fps).is_ok();
                     let is_forbidden = matches!(
                         (fmt, res, fps),
-                        (OutputFormat::Gif, Resolution::R4k, _)
-                            | (OutputFormat::Gif, _, 60)
+                        (OutputFormat::Gif, Resolution::R4k, _) | (OutputFormat::Gif, _, 60)
                     );
                     assert_eq!(ok, !is_forbidden, "fmt={fmt:?} res={res:?} fps={fps}");
                 }

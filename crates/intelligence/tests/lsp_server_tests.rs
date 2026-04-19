@@ -34,14 +34,12 @@ fn open(server: &InProcessServer, u: &Url, text: &str) {
     });
 }
 
-fn change_incremental(
-    server: &InProcessServer,
-    u: &Url,
-    version: i32,
-    edits: Vec<(Range, &str)>,
-) {
+fn change_incremental(server: &InProcessServer, u: &Url, version: i32, edits: Vec<(Range, &str)>) {
     server.did_change(DidChangeTextDocumentParams {
-        text_document: VersionedTextDocumentIdentifier { uri: u.clone(), version },
+        text_document: VersionedTextDocumentIdentifier {
+            uri: u.clone(),
+            version,
+        },
         content_changes: edits
             .into_iter()
             .map(|(r, t)| TextDocumentContentChangeEvent {
@@ -64,10 +62,21 @@ fn did_open_stores_doc_and_hover_returns_verb_doc() {
     open(&server, &u, src);
 
     assert!(server.docs.contains_key(&u));
-    assert!(server.latest(&u).is_some(), "did_open should publish diagnostics");
+    assert!(
+        server.latest(&u).is_some(),
+        "did_open should publish diagnostics"
+    );
 
     // Position on 'click' (line 2 = "    click \"Login\"", char 6 is inside 'click').
-    let hover = server.hover_at(&u, Position { line: 2, character: 6 }).unwrap();
+    let hover = server
+        .hover_at(
+            &u,
+            Position {
+                line: 2,
+                character: 6,
+            },
+        )
+        .unwrap();
     match hover.contents {
         HoverContents::Markup(m) => {
             assert!(
@@ -100,15 +109,24 @@ fn did_change_applies_incremental_edits_and_publishes_diagnostics() {
         2,
         vec![(
             Range {
-                start: Position { line: 2, character: 4 },
-                end: Position { line: 2, character: 9 },
+                start: Position {
+                    line: 2,
+                    character: 4,
+                },
+                end: Position {
+                    line: 2,
+                    character: 9,
+                },
             },
             "clik",
         )],
     );
 
     let after = server.published();
-    assert!(after.len() > initial_count, "did_change should publish diagnostics");
+    assert!(
+        after.len() > initial_count,
+        "did_change should publish diagnostics"
+    );
     let last = after.last().unwrap();
     assert_eq!(last.uri, u);
     // Rope should now contain "clik".
@@ -124,7 +142,11 @@ fn did_change_applies_incremental_edits_and_publishes_diagnostics() {
 fn did_close_removes_doc_and_stale_hover_returns_none() {
     let server = InProcessServer::new();
     let u = uri("t3.story");
-    open(&server, &u, "story \"t\" {\n  scene \"s\" {\n    click \"x\"\n  }\n}\n");
+    open(
+        &server,
+        &u,
+        "story \"t\" {\n  scene \"s\" {\n    click \"x\"\n  }\n}\n",
+    );
     assert!(server.docs.contains_key(&u));
 
     server.did_close(DidCloseTextDocumentParams {
@@ -132,7 +154,13 @@ fn did_close_removes_doc_and_stale_hover_returns_none() {
     });
 
     assert!(!server.docs.contains_key(&u));
-    let hover = server.hover_at(&u, Position { line: 2, character: 6 });
+    let hover = server.hover_at(
+        &u,
+        Position {
+            line: 2,
+            character: 6,
+        },
+    );
     assert!(hover.is_none());
 
     // did_close should have published an empty diagnostic set.
@@ -154,7 +182,9 @@ fn grammar_error_produces_error_diagnostic() {
     let src = "@@@ not a story file\n";
     open(&server, &u, src);
 
-    let published = server.latest(&u).expect("should have published diagnostics");
+    let published = server
+        .latest(&u)
+        .expect("should have published diagnostics");
     let errors: Vec<_> = published
         .diagnostics
         .iter()
@@ -189,7 +219,9 @@ fn unknown_verb_produces_did_you_mean_warning() {
     let src = "story \"t\" {\n  scene \"s\" {\n    clik \"x\"\n  }\n}\n";
     open(&server, &u, src);
 
-    let published = server.latest(&u).expect("should have published diagnostics");
+    let published = server
+        .latest(&u)
+        .expect("should have published diagnostics");
     let warnings: Vec<_> = published
         .diagnostics
         .iter()
@@ -241,7 +273,13 @@ fn completion_filters_by_prefix() {
     open(&server, &u, src);
 
     // Line 2 = "    cl" — cursor at end of "cl" is char 6.
-    let items = server.complete_at(&u, Position { line: 2, character: 6 });
+    let items = server.complete_at(
+        &u,
+        Position {
+            line: 2,
+            character: 6,
+        },
+    );
     assert!(
         items.iter().any(|i| i.label == "click"),
         "completion should include `click`, got labels: {:?}",

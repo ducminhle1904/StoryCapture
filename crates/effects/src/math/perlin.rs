@@ -27,7 +27,11 @@ impl PerlinNoise2D {
             *b = i as u8;
         }
         // Xorshift64* — deterministic across platforms.
-        let mut state = if seed == 0 { 0x9E3779B97F4A7C15u64 } else { seed };
+        let mut state = if seed == 0 {
+            0x9E3779B97F4A7C15u64
+        } else {
+            seed
+        };
         let mut next = || {
             state ^= state << 13;
             state ^= state >> 7;

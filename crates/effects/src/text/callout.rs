@@ -70,7 +70,13 @@ pub fn render_callout_png(spec: &CalloutSpec, out: &Path) -> Result<(u32, u32)> 
 
     // Reserve an extra strip for the arrow triangle.
     let (total_w, total_h, rect_y0, arrow_y0, _arrow_y1) = match spec.arrow {
-        Some(ArrowDir::Down) => (rect_w, rect_h + ARROW_STRIP, 0, rect_h, rect_h + ARROW_STRIP),
+        Some(ArrowDir::Down) => (
+            rect_w,
+            rect_h + ARROW_STRIP,
+            0,
+            rect_h,
+            rect_h + ARROW_STRIP,
+        ),
         Some(ArrowDir::Up) => (rect_w, rect_h + ARROW_STRIP, ARROW_STRIP, 0, ARROW_STRIP),
         Some(ArrowDir::Left) | Some(ArrowDir::Right) => (rect_w + ARROW_STRIP, rect_h, 0, 0, 0),
         None => (rect_w, rect_h, 0, 0, 0),
@@ -115,7 +121,8 @@ pub fn render_callout_png(spec: &CalloutSpec, out: &Path) -> Result<(u32, u32)> 
         draw_arrow(&mut img, dir, rect_w, rect_h, rect_y0, arrow_y0, fill);
     }
 
-    img.save(out).map_err(|e| crate::error::EffectsError::ImageDecode(e.to_string()))?;
+    img.save(out)
+        .map_err(|e| crate::error::EffectsError::ImageDecode(e.to_string()))?;
     Ok((total_w, total_h))
 }
 

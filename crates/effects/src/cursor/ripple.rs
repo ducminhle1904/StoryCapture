@@ -27,7 +27,12 @@ impl Default for RippleOptions {
             anticipate_ms: 60,
             duration_ms: 300,
             max_radius_px: 60.0,
-            color: Rgba { r: 255, g: 255, b: 255, a: 229 },
+            color: Rgba {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 229,
+            },
         }
     }
 }

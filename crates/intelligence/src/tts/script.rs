@@ -103,7 +103,9 @@ pub async fn generate_narration_script(
     let system_prompt = build_system_prompt();
     let user_message = build_user_message(story, brand_tone);
 
-    let max_tokens = MAX_TOKENS_PER_STEP.saturating_mul(story.steps.len() as u32).min(8192);
+    let max_tokens = MAX_TOKENS_PER_STEP
+        .saturating_mul(story.steps.len() as u32)
+        .min(8192);
 
     let req = LlmRequest {
         model: crate::llm::DEFAULT_NL_MODEL.to_string(),
@@ -148,9 +150,7 @@ pub async fn generate_narration_script(
         }
     }
 
-    let value = tool_input.ok_or_else(|| {
-        IntelError::Llm(crate::llm::LlmError::NoToolCall)
-    })?;
+    let value = tool_input.ok_or_else(|| IntelError::Llm(crate::llm::LlmError::NoToolCall))?;
 
     // Deserialize NarrationBatch
     let batch: NarrationBatch = serde_json::from_value(value)?;
@@ -260,8 +260,15 @@ fn check_faithfulness(narration: &str, story: &StoryDoc, step_id: &str) {
     // Check for suspicious terms that shouldn't appear
     // Simple heuristic: common feature-terms that would indicate hallucination
     let suspicious = [
-        "pricing", "oauth", "2fa", "two-factor", "billing",
-        "subscription", "payment", "checkout", "cart",
+        "pricing",
+        "oauth",
+        "2fa",
+        "two-factor",
+        "billing",
+        "subscription",
+        "payment",
+        "checkout",
+        "cart",
     ];
 
     for term in &suspicious {

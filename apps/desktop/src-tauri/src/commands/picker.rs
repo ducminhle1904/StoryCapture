@@ -23,13 +23,27 @@ use tokio::task::JoinHandle;
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TargetRecordDto {
-    Testid { value: String },
-    Role { value: super::parse::RoleSelectorDto },
-    Label { value: String },
-    TextExact { value: String },
-    Selector { value: String },
-    Aria { value: String },
-    Text { value: String },
+    Testid {
+        value: String,
+    },
+    Role {
+        value: super::parse::RoleSelectorDto,
+    },
+    Label {
+        value: String,
+    },
+    TextExact {
+        value: String,
+    },
+    Selector {
+        value: String,
+    },
+    Aria {
+        value: String,
+    },
+    Text {
+        value: String,
+    },
 }
 
 impl From<TargetRecordDto> for automation::targets_store::TargetRecord {
@@ -44,9 +58,7 @@ impl From<TargetRecordDto> for automation::targets_store::TargetRecord {
             TargetRecordDto::TextExact { value } => {
                 ("text_exact", serde_json::Value::String(value))
             }
-            TargetRecordDto::Selector { value } => {
-                ("selector", serde_json::Value::String(value))
-            }
+            TargetRecordDto::Selector { value } => ("selector", serde_json::Value::String(value)),
             TargetRecordDto::Aria { value } => ("aria", serde_json::Value::String(value)),
             TargetRecordDto::Text { value } => ("text", serde_json::Value::String(value)),
         };

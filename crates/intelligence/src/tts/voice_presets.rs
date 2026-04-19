@@ -82,7 +82,11 @@ mod tests {
     #[test]
     fn curated_preset_voice_ids_are_nonempty() {
         for preset in CURATED_PRESETS {
-            assert!(!preset.voice_id.is_empty(), "{}: empty voice_id", preset.slug);
+            assert!(
+                !preset.voice_id.is_empty(),
+                "{}: empty voice_id",
+                preset.slug
+            );
             assert!(
                 !preset.display_name.is_empty(),
                 "{}: empty display_name",

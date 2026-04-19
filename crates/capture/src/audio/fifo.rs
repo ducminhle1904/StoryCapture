@@ -50,8 +50,7 @@ pub fn make_fifo(name_hint: &str) -> Result<FifoHandle, AudioError> {
         use nix::sys::stat::Mode;
         use nix::unistd::mkfifo;
 
-        let td = tempfile::tempdir()
-            .map_err(|e| AudioError::Fifo(format!("tempdir: {e}")))?;
+        let td = tempfile::tempdir().map_err(|e| AudioError::Fifo(format!("tempdir: {e}")))?;
         let path = td.path().join(format!("{name_hint}.fifo"));
         mkfifo(
             &path,
@@ -69,7 +68,7 @@ pub fn make_fifo(name_hint: &str) -> Result<FifoHandle, AudioError> {
         use std::os::windows::ffi::OsStrExt;
         use windows::core::PCWSTR;
         use windows::Win32::Storage::FileSystem::{
-            PIPE_ACCESS_OUTBOUND, FILE_FLAG_FIRST_PIPE_INSTANCE,
+            FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_OUTBOUND,
         };
         use windows::Win32::System::Pipes::{
             CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_WAIT,
@@ -96,7 +95,7 @@ pub fn make_fifo(name_hint: &str) -> Result<FifoHandle, AudioError> {
                 PCWSTR(wide.as_ptr()),
                 PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
                 PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-                1, // one instance — single writer, single reader
+                1,       // one instance — single writer, single reader
                 1 << 16, // out buffer 64k
                 1 << 16, // in buffer 64k
                 0,

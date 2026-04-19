@@ -8,7 +8,9 @@ pub mod rounded_frame;
 pub mod shadow;
 
 pub use compositor::{emit_background, BackgroundEmit, ExtraInput};
-pub use gradients::{load_gradient_png, lookup, resolve_asset_path, GradientPreset, GRADIENT_PRESETS};
+pub use gradients::{
+    load_gradient_png, lookup, resolve_asset_path, GradientPreset, GRADIENT_PRESETS,
+};
 pub use rounded_frame::{emit_rounded_mask, RoundedFrameParams};
 pub use shadow::{emit_drop_shadow, ShadowParams};
 
@@ -69,8 +71,7 @@ mod tests {
 
     fn write_png(dir: &Path, name: &str, w: u32, h: u32) -> PathBuf {
         let path = dir.join(name);
-        let img: image::RgbaImage =
-            ImageBuffer::from_pixel(w, h, Rgba([128, 128, 128, 255]));
+        let img: image::RgbaImage = ImageBuffer::from_pixel(w, h, Rgba([128, 128, 128, 255]));
         img.save(&path).expect("save png");
         path
     }

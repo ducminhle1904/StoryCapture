@@ -61,9 +61,8 @@ pub fn render_png_sequence(
                 .collect();
             let img = compose_frame(canvas_w, canvas_h, sample, skin, &ripple_state);
             let path = out_dir.join(format!("frame_{:05}.png", i));
-            img.save(&path).map_err(|e| {
-                EffectsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
-            })
+            img.save(&path)
+                .map_err(|e| EffectsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))
         })?;
 
     Ok(PngSequenceResult {

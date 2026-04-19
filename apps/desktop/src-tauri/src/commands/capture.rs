@@ -6,8 +6,7 @@
 use crate::error::AppError;
 use capture::{
     enumerate_displays, pick_default_backend, ByteBoundedQueue, CaptureBackend, CaptureConfig,
-    CaptureEvent, CaptureStats, ClockSource, DisplayId, DisplayInfo, Frame,
-    PixelFormat,
+    CaptureEvent, CaptureStats, ClockSource, DisplayId, DisplayInfo, Frame, PixelFormat,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -349,10 +348,20 @@ pub struct WindowInfoDto {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CaptureTargetDto {
-    Display { display_id: u64 },
-    Window { window_id: u64 },
-    WindowByPid { pid: i32, title_hint: Option<String> },
-    DisplayRegion { display_id: u64, rect: RegionRectDto },
+    Display {
+        display_id: u64,
+    },
+    Window {
+        window_id: u64,
+    },
+    WindowByPid {
+        pid: i32,
+        title_hint: Option<String>,
+    },
+    DisplayRegion {
+        display_id: u64,
+        rect: RegionRectDto,
+    },
 }
 
 /// Logical-point rect over a display.
@@ -366,25 +375,35 @@ pub struct RegionRectDto {
 
 impl From<RegionRectDto> for capture::RegionRect {
     fn from(r: RegionRectDto) -> Self {
-        capture::RegionRect { x: r.x, y: r.y, w: r.w, h: r.h }
+        capture::RegionRect {
+            x: r.x,
+            y: r.y,
+            w: r.w,
+            h: r.h,
+        }
     }
 }
 
 impl From<capture::RegionRect> for RegionRectDto {
     fn from(r: capture::RegionRect) -> Self {
-        RegionRectDto { x: r.x, y: r.y, w: r.w, h: r.h }
+        RegionRectDto {
+            x: r.x,
+            y: r.y,
+            w: r.w,
+            h: r.h,
+        }
     }
 }
 
 impl From<CaptureTargetDto> for capture::CaptureTarget {
     fn from(dto: CaptureTargetDto) -> Self {
         match dto {
-            CaptureTargetDto::Display { display_id } => {
-                capture::CaptureTarget::Display { display_id: DisplayId(display_id) }
-            }
-            CaptureTargetDto::Window { window_id } => {
-                capture::CaptureTarget::Window { window_id: capture::WindowId(window_id) }
-            }
+            CaptureTargetDto::Display { display_id } => capture::CaptureTarget::Display {
+                display_id: DisplayId(display_id),
+            },
+            CaptureTargetDto::Window { window_id } => capture::CaptureTarget::Window {
+                window_id: capture::WindowId(window_id),
+            },
             CaptureTargetDto::WindowByPid { pid, title_hint } => {
                 capture::CaptureTarget::WindowByPid { pid, title_hint }
             }
@@ -401,12 +420,12 @@ impl From<CaptureTargetDto> for capture::CaptureTarget {
 impl From<capture::CaptureTarget> for CaptureTargetDto {
     fn from(t: capture::CaptureTarget) -> Self {
         match t {
-            capture::CaptureTarget::Display { display_id } => {
-                CaptureTargetDto::Display { display_id: display_id.0 }
-            }
-            capture::CaptureTarget::Window { window_id } => {
-                CaptureTargetDto::Window { window_id: window_id.0 }
-            }
+            capture::CaptureTarget::Display { display_id } => CaptureTargetDto::Display {
+                display_id: display_id.0,
+            },
+            capture::CaptureTarget::Window { window_id } => CaptureTargetDto::Window {
+                window_id: window_id.0,
+            },
             capture::CaptureTarget::WindowByPid { pid, title_hint } => {
                 CaptureTargetDto::WindowByPid { pid, title_hint }
             }
@@ -530,9 +549,7 @@ pub async fn start_capture_target(
     let target = if let CaptureTargetDto::WindowByPid { title_hint, .. } = &args.target {
         if let Some(h) = title_hint.as_deref() {
             if h.len() > 256 {
-                return Err(AppError::Capture(
-                    "title_hint exceeds 256 chars".into(),
-                ));
+                return Err(AppError::Capture("title_hint exceeds 256 chars".into()));
             }
             if h.chars().any(|c| c.is_ascii_control()) {
                 return Err(AppError::Capture(
@@ -580,8 +597,9 @@ pub async fn start_capture_target(
 
     // Validate the region rect before it reaches capture backends.
     if let CaptureTargetDto::DisplayRegion { display_id, rect } = &args.target {
-        let displays = enumerate_displays()
-            .map_err(|e| AppError::Capture(format!("enumerate displays for region validation: {e}")))?;
+        let displays = enumerate_displays().map_err(|e| {
+            AppError::Capture(format!("enumerate displays for region validation: {e}"))
+        })?;
         let disp = displays
             .into_iter()
             .find(|d| d.id.0 == *display_id)
@@ -727,10 +745,7 @@ pub async fn get_capture_target(app: AppHandle) -> Result<Option<CaptureTargetDt
 
 #[tauri::command]
 #[specta::specta]
-pub async fn set_capture_target(
-    app: AppHandle,
-    target: CaptureTargetDto,
-) -> Result<(), AppError> {
+pub async fn set_capture_target(app: AppHandle, target: CaptureTargetDto) -> Result<(), AppError> {
     let mut settings = crate::commands::app_settings::load(&app);
     settings.capture_target = Some(target.into());
     crate::commands::app_settings::save(&app, &settings)
@@ -778,7 +793,9 @@ mod tests {
 
     #[test]
     fn capture_target_persistence_round_trips() {
-        let t = capture::CaptureTarget::Window { window_id: capture::WindowId(7) };
+        let t = capture::CaptureTarget::Window {
+            window_id: capture::WindowId(7),
+        };
         let dto: CaptureTargetDto = t.clone().into();
         let back: capture::CaptureTarget = dto.into();
         assert_eq!(t, back);

@@ -303,10 +303,7 @@ pub fn upsert_tts_cache(conn: &Connection, entry: &TtsCacheEntry) -> rusqlite::R
     Ok(())
 }
 
-pub fn lookup_tts_cache(
-    conn: &Connection,
-    hash: &str,
-) -> rusqlite::Result<Option<TtsCacheEntry>> {
+pub fn lookup_tts_cache(conn: &Connection, hash: &str) -> rusqlite::Result<Option<TtsCacheEntry>> {
     conn.query_row(
         "SELECT hash, step_id, project_id, file_path, provider, model, voice_id, \
                 script_sha, byte_size, duration_ms, created_at, last_used_at \
@@ -346,9 +343,8 @@ pub fn gc_tts_cache_older_than<F>(
 where
     F: FnMut(&Path) -> std::io::Result<()>,
 {
-    let mut stmt = conn.prepare(
-        "SELECT hash, file_path FROM tts_cache_index WHERE last_used_at < ?1",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT hash, file_path FROM tts_cache_index WHERE last_used_at < ?1")?;
     let victims: Vec<(String, PathBuf)> = stmt
         .query_map(params![cutoff_ms], |row| {
             let hash: String = row.get(0)?;
@@ -367,10 +363,7 @@ where
                 return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e)));
             }
         }
-        let n = conn.execute(
-            "DELETE FROM tts_cache_index WHERE hash = ?1",
-            params![hash],
-        )?;
+        let n = conn.execute("DELETE FROM tts_cache_index WHERE hash = ?1", params![hash])?;
         removed += n as u64;
     }
     Ok(removed)

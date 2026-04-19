@@ -11,7 +11,11 @@ use effects::cursor::{
 use effects::math::min_jerk::{Waypoint, WaypointKind};
 
 fn wp(t_ms: u64, x: f32, y: f32, kind: WaypointKind) -> Waypoint {
-    Waypoint { t_ms, pos: Vec2::new(x, y), kind }
+    Waypoint {
+        t_ms,
+        pos: Vec2::new(x, y),
+        kind,
+    }
 }
 
 #[test]
@@ -28,7 +32,15 @@ fn build_ripples_defaults() {
         assert_eq!(r.t_anticipate_ms, expected_t - 60);
         assert_eq!(r.duration_ms, 300);
         assert!((r.max_radius_px - 60.0).abs() < 1e-5);
-        assert_eq!(r.color, Rgba { r: 255, g: 255, b: 255, a: 229 });
+        assert_eq!(
+            r.color,
+            Rgba {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 229
+            }
+        );
     }
 }
 
@@ -64,7 +76,15 @@ fn load_skin_all_five() {
 #[test]
 fn apply_tint_preserves_alpha() {
     let skin = load_skin(CursorSkin::MacDefault).expect("mac-default must load");
-    let tinted = apply_tint(&skin, Rgba { r: 255, g: 0, b: 0, a: 255 });
+    let tinted = apply_tint(
+        &skin,
+        Rgba {
+            r: 255,
+            g: 0,
+            b: 0,
+            a: 255,
+        },
+    );
     assert_eq!(tinted.width, skin.width);
     assert_eq!(tinted.height, skin.height);
     for (src, dst) in skin.pixels.pixels().zip(tinted.pixels.pixels()) {
@@ -83,12 +103,16 @@ fn render_png_sequence_creates_n_frames() {
     let traj = sample_trajectory(&wps, TrajectoryOptions::default());
     let ripples = build_ripples(&wps, &RippleOptions::default());
     assert_eq!(ripples.len(), 2);
-    assert!(traj.len() >= 60, "trajectory should be ≥60 samples, got {}", traj.len());
+    assert!(
+        traj.len() >= 60,
+        "trajectory should be ≥60 samples, got {}",
+        traj.len()
+    );
 
     let skin = load_skin(CursorSkin::MacDefault).expect("skin");
     let tmp = tempfile::tempdir().expect("tmp");
-    let result = render_png_sequence(&traj, &ripples, &skin, tmp.path(), 320, 240, 60)
-        .expect("render");
+    let result =
+        render_png_sequence(&traj, &ripples, &skin, tmp.path(), 320, 240, 60).expect("render");
 
     assert_eq!(result.frame_count as usize, traj.len());
     assert_eq!(result.fps, 60);
@@ -123,10 +147,7 @@ fn ripple_alpha_decay() {
     let half_t = ev.t_impact_ms + (ev.duration_ms as u64 / 2);
     let a = ripple_alpha(&ev, half_t);
     let expected = 0.25 * base;
-    assert!(
-        (a - expected).abs() < 1e-3,
-        "expected {expected}, got {a}"
-    );
+    assert!((a - expected).abs() < 1e-3, "expected {expected}, got {a}");
     // Radius at half duration ≈ 0.5 * max_radius.
     let r = ripple_radius(&ev, half_t);
     assert!(
@@ -147,7 +168,10 @@ fn png_sequence_is_deterministic() {
     ];
     let traj = sample_trajectory(
         &wps,
-        TrajectoryOptions { jitter_seed: 777, ..Default::default() },
+        TrajectoryOptions {
+            jitter_seed: 777,
+            ..Default::default()
+        },
     );
     let ripples = build_ripples(&wps, &RippleOptions::default());
     let skin = load_skin(CursorSkin::MacDefault).expect("skin");

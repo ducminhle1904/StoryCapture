@@ -68,7 +68,10 @@ fn perlin_reproducible_across_instances() {
     let a = PerlinNoise2D::new(42);
     let b = PerlinNoise2D::new(42);
     assert_eq!(a.sample(1.5, 2.3).to_bits(), b.sample(1.5, 2.3).to_bits());
-    assert_eq!(a.sample(10.2, -4.7).to_bits(), b.sample(10.2, -4.7).to_bits());
+    assert_eq!(
+        a.sample(10.2, -4.7).to_bits(),
+        b.sample(10.2, -4.7).to_bits()
+    );
 }
 
 #[test]

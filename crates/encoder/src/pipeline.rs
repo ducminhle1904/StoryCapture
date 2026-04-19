@@ -371,10 +371,7 @@ async fn try_start_vt_fast_path(
 
 /// Build a receiver that yields `prefix` first, then forwards `rest`.
 #[cfg(target_os = "macos")]
-fn forward_with_prefix(
-    prefix: Frame,
-    mut rest: mpsc::Receiver<Frame>,
-) -> mpsc::Receiver<Frame> {
+fn forward_with_prefix(prefix: Frame, mut rest: mpsc::Receiver<Frame>) -> mpsc::Receiver<Frame> {
     let (tx, rx) = mpsc::channel::<Frame>(64);
     tokio::spawn(async move {
         if tx.send(prefix).await.is_err() {

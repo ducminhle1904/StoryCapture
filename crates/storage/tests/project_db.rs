@@ -1,7 +1,5 @@
 use std::path::PathBuf;
-use storage::{
-    NewAttempt, NewExport, NewSession, NewStep, ProjectDb, SessionStatus, StepStatus,
-};
+use storage::{NewAttempt, NewExport, NewSession, NewStep, ProjectDb, SessionStatus, StepStatus};
 use tempfile::tempdir;
 
 #[test]
@@ -58,9 +56,12 @@ fn session_step_attempt_cascade() {
         .unwrap();
     }
 
-    db.complete_step(step1, StepStatus::Succeeded, None).unwrap();
-    db.complete_step(step2, StepStatus::Failed, Some("boom")).unwrap();
-    db.complete_session(session_id, SessionStatus::Failed).unwrap();
+    db.complete_step(step1, StepStatus::Succeeded, None)
+        .unwrap();
+    db.complete_step(step2, StepStatus::Failed, Some("boom"))
+        .unwrap();
+    db.complete_session(session_id, SessionStatus::Failed)
+        .unwrap();
 
     let steps = db.list_steps(session_id).unwrap();
     assert_eq!(steps.len(), 2);
@@ -127,5 +128,8 @@ fn uuid_v7_monotonic() {
     }
     let mut sorted = ids.clone();
     sorted.sort();
-    assert_eq!(ids, sorted, "UUID v7 string order should match insertion order");
+    assert_eq!(
+        ids, sorted,
+        "UUID v7 string order should match insertion order"
+    );
 }

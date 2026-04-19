@@ -175,18 +175,18 @@ fn build_provider(
     api_key: &str,
 ) -> Result<Arc<dyn LlmProvider>, NlCommandError> {
     match provider_id {
-        ProviderId::Anthropic => {
-            Ok(Arc::new(intelligence::llm::anthropic::AnthropicProvider::with_client(
+        ProviderId::Anthropic => Ok(Arc::new(
+            intelligence::llm::anthropic::AnthropicProvider::with_client(
                 http_client,
                 api_key.to_string(),
-            )))
-        }
-        ProviderId::Openai => {
-            Ok(Arc::new(intelligence::llm::openai::OpenAiProvider::with_client(
+            ),
+        )),
+        ProviderId::Openai => Ok(Arc::new(
+            intelligence::llm::openai::OpenAiProvider::with_client(
                 http_client,
                 api_key.to_string(),
-            )))
-        }
+            ),
+        )),
         ProviderId::Elevenlabs | ProviderId::OpenaiTts => {
             Err(NlCommandError::InvalidProvider(format!(
                 "{:?} is a TTS-only provider, not a valid LLM provider",
@@ -219,8 +219,7 @@ pub async fn nl_chat_send(
     on_event: Channel<NlChatEvent>,
 ) -> Result<String, NlCommandError> {
     // Validate project_id.
-    let _pid = Uuid::parse_str(&project_id)
-        .map_err(|_| NlCommandError::InvalidProject)?;
+    let _pid = Uuid::parse_str(&project_id).map_err(|_| NlCommandError::InvalidProject)?;
 
     // Read the API key from keychain.
     let provider_id = provider_override.unwrap_or(ProviderId::Anthropic);
@@ -248,14 +247,7 @@ pub async fn nl_chat_send(
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<NlTurnEvent>(64);
 
     let join_handle = tokio::spawn(async move {
-        let _ = run_nl_turn(
-            provider,
-            user_message,
-            current_story,
-            history,
-            out_tx,
-        )
-        .await;
+        let _ = run_nl_turn(provider, user_message, current_story, history, out_tx).await;
     });
 
     // Store the abort handle.
@@ -298,16 +290,29 @@ pub async fn nl_chat_send(
                         task_id: task_id_fwd.clone(),
                     });
                 }
-                NlTurnEvent::Usage { input, output, cache_read, cache_write } => {
+                NlTurnEvent::Usage {
+                    input,
+                    output,
+                    cache_read,
+                    cache_write,
+                } => {
                     let cost_usd = compute_cost(input, output, cache_read, cache_write);
                     let total_ms = started.elapsed().as_millis() as i64;
 
                     // Persist metrics best-effort.
                     if let Ok(pid) = Uuid::parse_str(&project_id_fwd) {
                         let _ = persist_llm_metric(
-                            &data_dir, &pid, &task_id_fwd,
-                            &provider_name, &session_id, input, output,
-                            cache_read, cache_write, cost_usd, total_ms,
+                            &data_dir,
+                            &pid,
+                            &task_id_fwd,
+                            &provider_name,
+                            &session_id,
+                            input,
+                            output,
+                            cache_read,
+                            cache_write,
+                            cost_usd,
+                            total_ms,
                         );
                     }
 
@@ -339,10 +344,7 @@ pub async fn nl_chat_send(
 /// Cancel an in-flight NL turn.
 #[tauri::command]
 #[specta::specta]
-pub async fn nl_cancel(
-    app: AppHandle,
-    task_id: String,
-) -> Result<(), NlCommandError> {
+pub async fn nl_cancel(app: AppHandle, task_id: String) -> Result<(), NlCommandError> {
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
     if registry.abort(&task_id) {
         Ok(())
@@ -360,8 +362,7 @@ pub async fn nl_diff_apply(
     task_id: String,
     step_ids: Vec<String>,
 ) -> Result<String, NlCommandError> {
-    let _pid = Uuid::parse_str(&project_id)
-        .map_err(|_| NlCommandError::InvalidProject)?;
+    let _pid = Uuid::parse_str(&project_id).map_err(|_| NlCommandError::InvalidProject)?;
 
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
     let doc = registry
@@ -394,8 +395,7 @@ pub async fn nl_diff_reject(
     project_id: String,
     task_id: String,
 ) -> Result<(), NlCommandError> {
-    let _pid = Uuid::parse_str(&project_id)
-        .map_err(|_| NlCommandError::InvalidProject)?;
+    let _pid = Uuid::parse_str(&project_id).map_err(|_| NlCommandError::InvalidProject)?;
 
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
     registry.drop_doc(&task_id);
@@ -412,8 +412,7 @@ pub async fn nl_regen_step(
     current_story: String,
     on_event: Channel<NlChatEvent>,
 ) -> Result<String, NlCommandError> {
-    let _pid = Uuid::parse_str(&project_id)
-        .map_err(|_| NlCommandError::InvalidProject)?;
+    let _pid = Uuid::parse_str(&project_id).map_err(|_| NlCommandError::InvalidProject)?;
 
     let provider_id = ProviderId::Anthropic;
     let api_key = read_api_key(provider_id)?;
@@ -437,14 +436,7 @@ pub async fn nl_regen_step(
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<NlTurnEvent>(64);
 
     let join_handle = tokio::spawn(async move {
-        let _ = run_nl_turn(
-            provider,
-            regen_message,
-            current_story,
-            Vec::new(),
-            out_tx,
-        )
-        .await;
+        let _ = run_nl_turn(provider, regen_message, current_story, Vec::new(), out_tx).await;
     });
 
     let inserted = registry.insert(
@@ -478,18 +470,35 @@ pub async fn nl_regen_step(
                         task_id: task_id_fwd.clone(),
                     });
                 }
-                NlTurnEvent::Usage { input, output, cache_read, cache_write } => {
+                NlTurnEvent::Usage {
+                    input,
+                    output,
+                    cache_read,
+                    cache_write,
+                } => {
                     let cost_usd = compute_cost(input, output, cache_read, cache_write);
                     let total_ms = started.elapsed().as_millis() as i64;
                     if let Ok(pid) = Uuid::parse_str(&project_id_clone) {
                         let _ = persist_llm_metric(
-                            &data_dir, &pid, &task_id_fwd,
-                            &provider_name, &session_id, input, output,
-                            cache_read, cache_write, cost_usd, total_ms,
+                            &data_dir,
+                            &pid,
+                            &task_id_fwd,
+                            &provider_name,
+                            &session_id,
+                            input,
+                            output,
+                            cache_read,
+                            cache_write,
+                            cost_usd,
+                            total_ms,
                         );
                     }
                     let _ = on_event.send(NlChatEvent::Usage {
-                        input, output, cache_read, cache_write, cost_usd,
+                        input,
+                        output,
+                        cache_read,
+                        cache_write,
+                        cost_usd,
                     });
                 }
                 NlTurnEvent::Error(message) => {
@@ -516,14 +525,13 @@ pub async fn nl_load_history(
     app: AppHandle,
     project_id: String,
 ) -> Result<Vec<NlTurnDto>, NlCommandError> {
-    let pid = Uuid::parse_str(&project_id)
-        .map_err(|_| NlCommandError::InvalidProject)?;
+    let pid = Uuid::parse_str(&project_id).map_err(|_| NlCommandError::InvalidProject)?;
 
     let app_state = app.state::<AppState>();
     let db_path = super::util::project_db_path(&app_state, &project_id);
 
-    let conn = storage::Connection::open(&db_path)
-        .map_err(|e| NlCommandError::Storage(e.to_string()))?;
+    let conn =
+        storage::Connection::open(&db_path).map_err(|e| NlCommandError::Storage(e.to_string()))?;
 
     let turns = storage::phase3::load_nl_history(&conn, &pid)
         .map_err(|e| NlCommandError::Storage(e.to_string()))?;
@@ -562,8 +570,8 @@ pub async fn session_get_rollup(
     let _pid = Uuid::parse_str(&project_id).map_err(|_| NlCommandError::InvalidProject)?;
     let app_state = app.state::<AppState>();
     let db_path = super::util::project_db_path(app_state.inner(), &project_id);
-    let conn = storage::Connection::open(&db_path)
-        .map_err(|e| NlCommandError::Storage(e.to_string()))?;
+    let conn =
+        storage::Connection::open(&db_path).map_err(|e| NlCommandError::Storage(e.to_string()))?;
 
     let rollup = conn
         .query_row(
@@ -600,8 +608,7 @@ fn persist_turn(
     _provider: &str,
 ) -> Result<(), String> {
     let db_path = super::util::project_db_path_from_dir(data_dir, &project_id.to_string());
-    let conn = storage::Connection::open(&db_path)
-        .map_err(|e| e.to_string())?;
+    let conn = storage::Connection::open(&db_path).map_err(|e| e.to_string())?;
 
     // Get next turn_index
     let max_idx: i64 = conn
@@ -627,8 +634,7 @@ fn persist_turn(
         created_at: now,
     };
 
-    storage::phase3::insert_nl_turn(&conn, &turn)
-        .map_err(|e| e.to_string())
+    storage::phase3::insert_nl_turn(&conn, &turn).map_err(|e| e.to_string())
 }
 
 /// Persist an LLM turn metric row.
@@ -646,8 +652,7 @@ fn persist_llm_metric(
     total_ms: i64,
 ) -> Result<(), String> {
     let db_path = super::util::project_db_path_from_dir(data_dir, &project_id.to_string());
-    let conn = storage::Connection::open(&db_path)
-        .map_err(|e| e.to_string())?;
+    let conn = storage::Connection::open(&db_path).map_err(|e| e.to_string())?;
 
     let metric = storage::phase3::LlmTurnMetric {
         turn_id: task_id.to_string(),
@@ -665,6 +670,5 @@ fn persist_llm_metric(
         timestamp: super::util::now_epoch_secs(),
     };
 
-    storage::phase3::insert_llm_metric(&conn, &metric)
-        .map_err(|e| e.to_string())
+    storage::phase3::insert_llm_metric(&conn, &metric).map_err(|e| e.to_string())
 }

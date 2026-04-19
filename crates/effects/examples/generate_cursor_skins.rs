@@ -110,25 +110,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&out_dir)?;
 
     // mac-default: black fill, white outline (classic macOS pointer).
-    render([0, 0, 0, 255], [255, 255, 255, 255], 1.0)
-        .save(out_dir.join("mac-default.png"))?;
+    render([0, 0, 0, 255], [255, 255, 255, 255], 1.0).save(out_dir.join("mac-default.png"))?;
 
     // win-default: same silhouette, slightly lighter fill to read as "thinner"
     // on light backgrounds.
-    render([20, 20, 20, 255], [240, 240, 240, 255], 1.0)
-        .save(out_dir.join("win-default.png"))?;
+    render([20, 20, 20, 255], [240, 240, 240, 255], 1.0).save(out_dir.join("win-default.png"))?;
 
     // dark: pure black fill on a mid-grey outline (for dark backgrounds).
-    render([0, 0, 0, 255], [160, 160, 160, 255], 1.0)
-        .save(out_dir.join("dark.png"))?;
+    render([0, 0, 0, 255], [160, 160, 160, 255], 1.0).save(out_dir.join("dark.png"))?;
 
     // light: white fill on black outline (inverted, for light backgrounds).
-    render([255, 255, 255, 255], [20, 20, 20, 255], 1.0)
-        .save(out_dir.join("light.png"))?;
+    render([255, 255, 255, 255], [20, 20, 20, 255], 1.0).save(out_dir.join("light.png"))?;
 
     // big-arrow: 2× scaled arrow for presentation mode.
-    render([0, 0, 0, 255], [255, 255, 255, 255], 2.0)
-        .save(out_dir.join("big-arrow.png"))?;
+    render([0, 0, 0, 255], [255, 255, 255, 255], 2.0).save(out_dir.join("big-arrow.png"))?;
 
     println!("Wrote 5 cursor skins to {}", out_dir.display());
     Ok(())

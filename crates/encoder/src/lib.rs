@@ -31,8 +31,7 @@ pub use pipeline::{bgra_bytes_of_frame, EncodePipeline, EncodeResult, SHUTDOWN_T
 pub use pool::{PoolConfig, SidecarHandle, SidecarPermit, SidecarPool};
 pub use probe::{probe_encoders, EncoderProbe, HardwareEncoder};
 pub use progress::{
-    parse_line, EncodeProgress, ProgressFrag, ProgressParser, RenderProgress,
-    RenderProgressParser,
+    parse_line, EncodeProgress, ProgressFrag, ProgressParser, RenderProgress, RenderProgressParser,
 };
 pub use queue::{
     open_project_conn, spawn_render_queue, JobExecutor, JobOutcome, NoopJobExecutor, QueueMsg,

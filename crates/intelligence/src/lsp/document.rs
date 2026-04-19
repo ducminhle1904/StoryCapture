@@ -63,7 +63,10 @@ pub fn byte_offset_to_position(rope: &Rope, byte_offset: usize) -> Position {
     let line = rope.char_to_line(char_idx);
     let line_start = rope.line_to_char(line);
     let col = char_idx - line_start;
-    Position { line: line as u32, character: col as u32 }
+    Position {
+        line: line as u32,
+        character: col as u32,
+    }
 }
 
 /// Range covering `[start_byte, end_byte)` in rope coordinates.
@@ -124,7 +127,10 @@ mod tests {
     #[test]
     fn position_to_char_clamps_past_eol() {
         let r = Rope::from_str("abc\ndef");
-        let p = Position { line: 0, character: 100 };
+        let p = Position {
+            line: 0,
+            character: 100,
+        };
         // ropey includes the trailing newline in line 0's length (4 chars:
         // 'a','b','c','\n'), so clamped col = 4 (pointing at the start of
         // the next line in char coordinates). This keeps multi-byte-safe
@@ -144,7 +150,10 @@ mod tests {
     #[test]
     fn identifier_at_finds_hyphenated_verb() {
         let r = Rope::from_str("  wait-for \"#btn\"\n");
-        let p = Position { line: 0, character: 5 };
+        let p = Position {
+            line: 0,
+            character: 5,
+        };
         let (ident, _) = identifier_at(&r, p).unwrap();
         assert_eq!(ident, "wait-for");
     }
@@ -154,8 +163,14 @@ mod tests {
         let mut r = Rope::from_str("click x\n");
         let changes = vec![TextDocumentContentChangeEvent {
             range: Some(Range {
-                start: Position { line: 0, character: 0 },
-                end: Position { line: 0, character: 5 },
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 0,
+                    character: 5,
+                },
             }),
             range_length: None,
             text: "hover".into(),

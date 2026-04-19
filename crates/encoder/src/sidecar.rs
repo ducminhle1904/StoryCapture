@@ -132,7 +132,10 @@ impl FfmpegSidecar {
     ///
     /// Callers should drop `stdin` BEFORE invoking this so FFmpeg sees
     /// EOF and writes the moov atom cleanly.
-    pub async fn graceful_shutdown(mut self, timeout: Duration) -> Result<std::process::ExitStatus> {
+    pub async fn graceful_shutdown(
+        mut self,
+        timeout: Duration,
+    ) -> Result<std::process::ExitStatus> {
         let Some(mut child) = self.inner.take().map(|c| c.child) else {
             return Err(EncoderError::Io("sidecar already taken".into()));
         };

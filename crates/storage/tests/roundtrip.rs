@@ -38,7 +38,11 @@ fn create_project_produces_full_layout() {
         ".storycapture/version.txt missing"
     );
     // Slug derivation
-    assert!(root.file_name().unwrap().to_string_lossy().contains("my-demo-story"));
+    assert!(root
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .contains("my-demo-story"));
 }
 
 #[test]

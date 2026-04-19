@@ -178,10 +178,7 @@ pub async fn render_enqueue(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn render_cancel(
-    state: State<'_, AppState>,
-    job_id: String,
-) -> Result<(), AppError> {
+pub async fn render_cancel(state: State<'_, AppState>, job_id: String) -> Result<(), AppError> {
     let uuid =
         Uuid::parse_str(&job_id).map_err(|e| AppError::InvalidArgument(format!("job_id: {e}")))?;
     let queue = state
@@ -236,10 +233,7 @@ pub async fn stream_render_progress(
 
 /// Host-side helper: re-park a fresh receiver (used by integration tests /
 /// when the host re-opens a project).
-pub fn park_progress_receiver(
-    state: &RenderQueueState,
-    rx: mpsc::Receiver<RenderProgress>,
-) {
+pub fn park_progress_receiver(state: &RenderQueueState, rx: mpsc::Receiver<RenderProgress>) {
     // This fn is sync — it just drops `rx` into the Mutex. We use
     // blocking_lock because it's called from setup(), not an async task.
     let mut guard = state.progress_rx.blocking_lock();

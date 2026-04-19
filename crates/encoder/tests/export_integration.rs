@@ -161,14 +161,12 @@ fn benchmark_render_dry_run() {
     // Locate the compiled binary; `cargo test` builds both bins because
     // we run `cargo test --package encoder`. Cargo places them under
     // `target/debug/benchmark-render`.
-    let candidates = [
-        std::env::current_exe().ok().and_then(|p| {
-            // current_exe -> target/debug/deps/<testbin>-hash
-            p.parent()
-                .and_then(|d| d.parent())
-                .map(|td| td.join("benchmark-render"))
-        }),
-    ];
+    let candidates = [std::env::current_exe().ok().and_then(|p| {
+        // current_exe -> target/debug/deps/<testbin>-hash
+        p.parent()
+            .and_then(|d| d.parent())
+            .map(|td| td.join("benchmark-render"))
+    })];
     let bin = match candidates.into_iter().flatten().find(|p| p.exists()) {
         Some(p) => p,
         None => {

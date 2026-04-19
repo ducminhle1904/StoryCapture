@@ -53,7 +53,10 @@ mod platform {
             let raw = unsafe { mach_absolute_time() };
             let tb = timebase();
             let ns = (raw as u128 * tb.numer as u128 / tb.denom as u128) as i128;
-            Pts { ns, source: ClockSource::HostTime }
+            Pts {
+                ns,
+                source: ClockSource::HostTime,
+            }
         }
         fn source(&self) -> ClockSource {
             ClockSource::HostTime
@@ -69,17 +72,21 @@ mod platform {
 mod platform {
     use super::*;
     use std::sync::OnceLock;
-    use windows::Win32::System::Performance::{
-        QueryPerformanceCounter, QueryPerformanceFrequency,
-    };
+    use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 
     static FREQ: OnceLock<i64> = OnceLock::new();
 
     fn freq() -> i64 {
         *FREQ.get_or_init(|| {
             let mut f = 0i64;
-            unsafe { let _ = QueryPerformanceFrequency(&mut f); }
-            if f == 0 { 1 } else { f }
+            unsafe {
+                let _ = QueryPerformanceFrequency(&mut f);
+            }
+            if f == 0 {
+                1
+            } else {
+                f
+            }
         })
     }
 
@@ -88,10 +95,15 @@ mod platform {
     impl Clock for QpcClock {
         fn now(&self) -> Pts {
             let mut counter = 0i64;
-            unsafe { let _ = QueryPerformanceCounter(&mut counter); }
+            unsafe {
+                let _ = QueryPerformanceCounter(&mut counter);
+            }
             // counter / freq * 1e9
             let ns = (counter as i128) * 1_000_000_000i128 / freq() as i128;
-            Pts { ns, source: ClockSource::Qpc }
+            Pts {
+                ns,
+                source: ClockSource::Qpc,
+            }
         }
         fn source(&self) -> ClockSource {
             ClockSource::Qpc
@@ -106,8 +118,8 @@ mod platform {
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod platform {
     use super::*;
-    use std::time::Instant;
     use std::sync::OnceLock;
+    use std::time::Instant;
 
     static EPOCH: OnceLock<Instant> = OnceLock::new();
 
@@ -117,7 +129,10 @@ mod platform {
         fn now(&self) -> Pts {
             let epoch = *EPOCH.get_or_init(Instant::now);
             let ns = epoch.elapsed().as_nanos() as i128;
-            Pts { ns, source: ClockSource::Synthetic }
+            Pts {
+                ns,
+                source: ClockSource::Synthetic,
+            }
         }
         fn source(&self) -> ClockSource {
             ClockSource::Synthetic

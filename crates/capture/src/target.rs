@@ -42,13 +42,8 @@ impl RegionRect {
     ///
     /// Returns a structured error string rather than a backend panic
     /// (T-06-08 mitigation).
-    pub fn validate(
-        &self,
-        display_logical_w: f64,
-        display_logical_h: f64,
-    ) -> Result<(), String> {
-        if !self.x.is_finite() || !self.y.is_finite()
-            || !self.w.is_finite() || !self.h.is_finite()
+    pub fn validate(&self, display_logical_w: f64, display_logical_h: f64) -> Result<(), String> {
+        if !self.x.is_finite() || !self.y.is_finite() || !self.w.is_finite() || !self.h.is_finite()
         {
             return Err(format!(
                 "RegionRect contains non-finite coordinate: {:?}",
@@ -72,8 +67,7 @@ impl RegionRect {
         {
             return Err(format!(
                 "RegionRect ({},{},{}×{}) exceeds display bounds {}×{}",
-                self.x, self.y, self.w, self.h,
-                display_logical_w, display_logical_h
+                self.x, self.y, self.w, self.h, display_logical_w, display_logical_h
             ));
         }
         Ok(())
@@ -86,9 +80,7 @@ impl RegionRect {
 /// We widen to `u64` so the IPC wire format is stable across platforms —
 /// platform-scope awareness is enforced by the backends (Window variant
 /// only works on platforms that implemented it).
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WindowId(pub u64);
 
 /// What the capture backend should capture.
@@ -148,7 +140,9 @@ mod tests {
 
     #[test]
     fn target_display_round_trips_json() {
-        let t = CaptureTarget::Display { display_id: DisplayId(7) };
+        let t = CaptureTarget::Display {
+            display_id: DisplayId(7),
+        };
         let s = serde_json::to_string(&t).unwrap();
         let back: CaptureTarget = serde_json::from_str(&s).unwrap();
         assert_eq!(t, back);
@@ -157,7 +151,9 @@ mod tests {
 
     #[test]
     fn target_window_round_trips_json() {
-        let t = CaptureTarget::Window { window_id: WindowId(42) };
+        let t = CaptureTarget::Window {
+            window_id: WindowId(42),
+        };
         let s = serde_json::to_string(&t).unwrap();
         let back: CaptureTarget = serde_json::from_str(&s).unwrap();
         assert_eq!(t, back);
@@ -177,7 +173,10 @@ mod tests {
 
     #[test]
     fn enum_round_trip_without_hint() {
-        let t = CaptureTarget::WindowByPid { pid: -1, title_hint: None };
+        let t = CaptureTarget::WindowByPid {
+            pid: -1,
+            title_hint: None,
+        };
         let s = serde_json::to_string(&t).unwrap();
         let back: CaptureTarget = serde_json::from_str(&s).unwrap();
         assert_eq!(t, back);
@@ -187,7 +186,12 @@ mod tests {
 
     #[test]
     fn region_rect_round_trips_json_preserving_f64_precision() {
-        let r = RegionRect { x: 100.25, y: 50.75, w: 640.125, h: 480.875 };
+        let r = RegionRect {
+            x: 100.25,
+            y: 50.75,
+            w: 640.125,
+            h: 480.875,
+        };
         let s = serde_json::to_string(&r).unwrap();
         let back: RegionRect = serde_json::from_str(&s).unwrap();
         assert_eq!(r, back);
@@ -199,7 +203,12 @@ mod tests {
     fn target_display_region_round_trips_json() {
         let t = CaptureTarget::DisplayRegion {
             display_id: DisplayId(3),
-            rect: RegionRect { x: 0.0, y: 0.0, w: 1280.0, h: 720.0 },
+            rect: RegionRect {
+                x: 0.0,
+                y: 0.0,
+                w: 1280.0,
+                h: 720.0,
+            },
         };
         let s = serde_json::to_string(&t).unwrap();
         let back: CaptureTarget = serde_json::from_str(&s).unwrap();
@@ -210,42 +219,82 @@ mod tests {
 
     #[test]
     fn region_rect_validate_accepts_in_bounds() {
-        let r = RegionRect { x: 100.0, y: 100.0, w: 640.0, h: 480.0 };
+        let r = RegionRect {
+            x: 100.0,
+            y: 100.0,
+            w: 640.0,
+            h: 480.0,
+        };
         assert!(r.validate(1920.0, 1080.0).is_ok());
     }
 
     #[test]
     fn region_rect_validate_rejects_zero_area() {
-        let r = RegionRect { x: 0.0, y: 0.0, w: 0.0, h: 480.0 };
+        let r = RegionRect {
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 480.0,
+        };
         assert!(r.validate(1920.0, 1080.0).is_err());
-        let r = RegionRect { x: 0.0, y: 0.0, w: 640.0, h: 0.0 };
+        let r = RegionRect {
+            x: 0.0,
+            y: 0.0,
+            w: 640.0,
+            h: 0.0,
+        };
         assert!(r.validate(1920.0, 1080.0).is_err());
     }
 
     #[test]
     fn region_rect_validate_rejects_negative_size() {
-        let r = RegionRect { x: 0.0, y: 0.0, w: -10.0, h: 480.0 };
+        let r = RegionRect {
+            x: 0.0,
+            y: 0.0,
+            w: -10.0,
+            h: 480.0,
+        };
         assert!(r.validate(1920.0, 1080.0).is_err());
     }
 
     #[test]
     fn region_rect_validate_rejects_negative_origin() {
-        let r = RegionRect { x: -1.0, y: 0.0, w: 100.0, h: 100.0 };
+        let r = RegionRect {
+            x: -1.0,
+            y: 0.0,
+            w: 100.0,
+            h: 100.0,
+        };
         assert!(r.validate(1920.0, 1080.0).is_err());
     }
 
     #[test]
     fn region_rect_validate_rejects_overflow() {
         // origin+size exceeds display bounds
-        let r = RegionRect { x: 1500.0, y: 100.0, w: 640.0, h: 480.0 };
+        let r = RegionRect {
+            x: 1500.0,
+            y: 100.0,
+            w: 640.0,
+            h: 480.0,
+        };
         assert!(r.validate(1920.0, 1080.0).is_err());
     }
 
     #[test]
     fn region_rect_validate_rejects_non_finite() {
-        let r = RegionRect { x: f64::NAN, y: 0.0, w: 640.0, h: 480.0 };
+        let r = RegionRect {
+            x: f64::NAN,
+            y: 0.0,
+            w: 640.0,
+            h: 480.0,
+        };
         assert!(r.validate(1920.0, 1080.0).is_err());
-        let r = RegionRect { x: 0.0, y: 0.0, w: f64::INFINITY, h: 480.0 };
+        let r = RegionRect {
+            x: 0.0,
+            y: 0.0,
+            w: f64::INFINITY,
+            h: 480.0,
+        };
         assert!(r.validate(1920.0, 1080.0).is_err());
     }
 }

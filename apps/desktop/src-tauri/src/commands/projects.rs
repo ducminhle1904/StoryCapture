@@ -95,8 +95,7 @@ pub fn create_project(
         return Err(AppError::InvalidArgument("project name required".into()));
     }
     let parent = PathBuf::from(&args.parent);
-    let folder =
-        storage::create_project(&parent, &args.name).map_err(map_storage_err)?;
+    let folder = storage::create_project(&parent, &args.name).map_err(map_storage_err)?;
     let folder_path = folder.root().to_path_buf();
     // Register in AppDb.
     let mut db = open_app_db(&state)?;
@@ -140,11 +139,14 @@ pub fn open_project(
         .find(|p| p.id == id)
         .ok_or_else(|| AppError::NotFound(format!("project {id}")))?;
 
-    let folder =
-        storage::open_project(&row.folder_path).map_err(map_storage_err)?;
+    let folder = storage::open_project(&row.folder_path).map_err(map_storage_err)?;
     let story_path = folder.story_path();
     let exports_dir = folder.exports_dir();
-    let session_count = folder.db().list_sessions().map(|v| v.len() as u64).unwrap_or(0);
+    let session_count = folder
+        .db()
+        .list_sessions()
+        .map(|v| v.len() as u64)
+        .unwrap_or(0);
 
     // Update last-opened so the dashboard reorders.
     let _ = db.touch_project(id);
@@ -161,10 +163,7 @@ pub fn open_project(
 
 #[tauri::command]
 #[specta::specta]
-pub fn remove_project(
-    state: State<'_, AppState>,
-    args: ProjectIdArg,
-) -> Result<(), AppError> {
+pub fn remove_project(state: State<'_, AppState>, args: ProjectIdArg) -> Result<(), AppError> {
     let id = uuid::Uuid::parse_str(&args.id)
         .map_err(|e| AppError::InvalidArgument(format!("invalid project id: {e}")))?;
     let mut db = open_app_db(&state)?;

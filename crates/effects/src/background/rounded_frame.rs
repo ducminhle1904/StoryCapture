@@ -44,7 +44,11 @@ mod tests {
     #[test]
     fn emits_geq_for_nonzero_radius() {
         let out = emit_rounded_mask(
-            &RoundedFrameParams { width: 1920, height: 1080, radius_px: 24.0 },
+            &RoundedFrameParams {
+                width: 1920,
+                height: 1080,
+                radius_px: 24.0,
+            },
             "[in]",
             "[out]",
         );
@@ -56,7 +60,11 @@ mod tests {
     #[test]
     fn zero_radius_emits_null() {
         let out = emit_rounded_mask(
-            &RoundedFrameParams { width: 800, height: 600, radius_px: 0.0 },
+            &RoundedFrameParams {
+                width: 800,
+                height: 600,
+                radius_px: 0.0,
+            },
             "[in]",
             "[out]",
         );

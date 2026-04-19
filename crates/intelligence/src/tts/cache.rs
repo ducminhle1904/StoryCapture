@@ -93,12 +93,7 @@ pub fn probe_audio_duration_ms(bytes: &[u8]) -> Result<u64, IntelError> {
     hint.with_extension("mp3");
 
     let probed = symphonia::default::get_probe()
-        .format(
-            &hint,
-            mss,
-            &Default::default(),
-            &Default::default(),
-        )
+        .format(&hint, mss, &Default::default(), &Default::default())
         .map_err(|e| {
             IntelError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -123,9 +118,10 @@ pub fn probe_audio_duration_ms(bytes: &[u8]) -> Result<u64, IntelError> {
     // track's duration in time-base units.
     if let Some(track) = format.default_track() {
         if let Some(dur) = track.codec_params.n_frames {
-            let tb = track.codec_params.time_base.unwrap_or(
-                symphonia::core::units::TimeBase::new(1, 44100),
-            );
+            let tb = track
+                .codec_params
+                .time_base
+                .unwrap_or(symphonia::core::units::TimeBase::new(1, 44100));
             let time = tb.calc_time(dur);
             let ms = (time.seconds as u64) * 1000 + (time.frac * 1000.0) as u64;
             return Ok(ms);
@@ -206,10 +202,7 @@ mod tests {
         // Allow +-200ms tolerance since the minimal fixture may not have perfect metadata
         match duration {
             Ok(ms) => {
-                assert!(
-                    ms > 500 && ms < 2000,
-                    "expected ~1000ms, got {ms}ms"
-                );
+                assert!(ms > 500 && ms < 2000, "expected ~1000ms, got {ms}ms");
             }
             Err(e) => {
                 // If symphonia can't probe our minimal fixture, that's acceptable

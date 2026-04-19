@@ -130,7 +130,10 @@ fn zoompan_expr_single_keyframe_is_constant() {
     }];
     let z = zoompan_expr(&kfs, ExprAxis::Z);
     // Single keyframe collapses to a literal scale value, no if(...) ladder.
-    assert!(!z.contains("if("), "single keyframe must not emit if(): {z}");
+    assert!(
+        !z.contains("if("),
+        "single keyframe must not emit if(): {z}"
+    );
     assert!(z.contains("1.5000"), "expected 1.5000 literal: {z}");
 }
 

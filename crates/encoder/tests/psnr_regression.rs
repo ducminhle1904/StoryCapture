@@ -40,7 +40,10 @@ fn ffmpeg_path() -> Option<PathBuf> {
         }
     }
     // Fallback: look up on PATH.
-    let out = std::process::Command::new("which").arg("ffmpeg").output().ok()?;
+    let out = std::process::Command::new("which")
+        .arg("ffmpeg")
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }
@@ -65,13 +68,23 @@ async fn render_reference_graph(
     // Touch the shared Graph so future additions stay in sync.
     let _graph = build_reference_graph(source, 1920, 1080, 30);
     let status = tokio::process::Command::new(ffmpeg)
-        .args([
-            "-y", "-hide_banner", "-i",
-        ])
+        .args(["-y", "-hide_banner", "-i"])
         .arg(source)
         .args([
-            "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-r", "30",
-            "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            "30",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "64k",
+            "-movflags",
+            "+faststart",
         ])
         .arg(candidate)
         .status()
@@ -126,9 +139,7 @@ async fn post_08_psnr_regression() {
 fn reference_fixture_committed_with_prefix() {
     let reference = reference_fixture();
     if !reference.exists() {
-        eprintln!(
-            "skip: fixture not yet committed — Phase A seeding required. See module docs."
-        );
+        eprintln!("skip: fixture not yet committed — Phase A seeding required. See module docs.");
         return;
     }
     // `git log -1 --format=%s -- <path>` returns the subject of the most

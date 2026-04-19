@@ -86,7 +86,14 @@ mod tests {
 
     #[test]
     fn disabled_returns_none() {
-        let s = FakeStep { v: "click", t: Some("Save"), c: None };
-        assert_eq!(auto_annotate_step(&s, &AutoAnnotateOptions::default()), None);
+        let s = FakeStep {
+            v: "click",
+            t: Some("Save"),
+            c: None,
+        };
+        assert_eq!(
+            auto_annotate_step(&s, &AutoAnnotateOptions::default()),
+            None
+        );
     }
 }

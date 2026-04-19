@@ -141,11 +141,7 @@ pub fn update_progress(conn: &Connection, id: Uuid, pct: f32) -> Result<(), Stor
     Ok(())
 }
 
-pub fn mark_completed(
-    conn: &Connection,
-    id: Uuid,
-    output_path: &Path,
-) -> Result<(), StorageError> {
+pub fn mark_completed(conn: &Connection, id: Uuid, output_path: &Path) -> Result<(), StorageError> {
     let now = now_millis();
     let out = output_path.to_string_lossy().to_string();
     let n = conn.execute(
@@ -281,7 +277,10 @@ mod tests {
         let c = conn();
         let id = enqueue(&c, &new_job("s1", 0)).unwrap();
         cancel(&c, id).unwrap();
-        assert_eq!(get(&c, id).unwrap().unwrap().status, RenderJobStatus::Cancelled);
+        assert_eq!(
+            get(&c, id).unwrap().unwrap().status,
+            RenderJobStatus::Cancelled
+        );
         // Second cancel fails (not in pending/running).
         assert!(cancel(&c, id).is_err());
     }

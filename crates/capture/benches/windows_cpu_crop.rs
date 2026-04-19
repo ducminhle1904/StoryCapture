@@ -36,7 +36,12 @@ fn bench_cpu_crop(c: &mut Criterion) {
     }
 
     // Typical demo region: 1280×720 centered crop (cinematic 16:9).
-    let rect = PhysicalRectU32 { x: 320, y: 180, w: 1280, h: 720 };
+    let rect = PhysicalRectU32 {
+        x: 320,
+        y: 180,
+        w: 1280,
+        h: 720,
+    };
 
     c.bench_function("cpu_crop_bgra_1080p_to_720p", |b| {
         b.iter(|| {

@@ -6,9 +6,7 @@
 //! `capabilities()` reports an all-false set so the executor's capability
 //! router always prefers the primary driver.
 
-use crate::driver::{
-    BrowserDriver, CapabilitySet, ElementState, LaunchConfig, ResolvedSelector,
-};
+use crate::driver::{BrowserDriver, CapabilitySet, ElementState, LaunchConfig, ResolvedSelector};
 use crate::error::{AutomationError, Result};
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -36,20 +34,48 @@ impl BrowserDriver for NoopDriver {
     async fn close(&mut self) -> Result<()> {
         Ok(())
     }
-    async fn goto(&self, _url: &str) -> Result<()> { Self::unavailable() }
-    async fn click(&self, _s: &ResolvedSelector) -> Result<()> { Self::unavailable() }
-    async fn type_text(&self, _s: &ResolvedSelector, _t: &str) -> Result<()> { Self::unavailable() }
-    async fn scroll(&self, _d: ScrollDir, _a: Option<f32>) -> Result<()> { Self::unavailable() }
-    async fn hover(&self, _s: &ResolvedSelector) -> Result<()> { Self::unavailable() }
-    async fn drag(&self, _f: &ResolvedSelector, _t: &ResolvedSelector) -> Result<()> { Self::unavailable() }
-    async fn select_option(&self, _s: &ResolvedSelector, _v: &str) -> Result<()> { Self::unavailable() }
-    async fn upload_file(&self, _s: &ResolvedSelector, _p: &Path) -> Result<()> { Self::unavailable() }
-    async fn wait_ms(&self, _ms: u64) -> Result<()> { Self::unavailable() }
-    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> Result<()> { Self::unavailable() }
-    async fn assert_present(&self, _t: &SelectorOrText) -> Result<()> { Self::unavailable() }
-    async fn screenshot(&self, _n: &str, _d: &Path) -> Result<PathBuf> { Self::unavailable() }
-    async fn element_state(&self, _s: &ResolvedSelector) -> Result<ElementState> { Self::unavailable() }
-    async fn current_cursor_position(&self) -> Result<(i32, i32)> { Self::unavailable() }
+    async fn goto(&self, _url: &str) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn click(&self, _s: &ResolvedSelector) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn type_text(&self, _s: &ResolvedSelector, _t: &str) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn scroll(&self, _d: ScrollDir, _a: Option<f32>) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn hover(&self, _s: &ResolvedSelector) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn drag(&self, _f: &ResolvedSelector, _t: &ResolvedSelector) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn select_option(&self, _s: &ResolvedSelector, _v: &str) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn upload_file(&self, _s: &ResolvedSelector, _p: &Path) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn wait_ms(&self, _ms: u64) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn assert_present(&self, _t: &SelectorOrText) -> Result<()> {
+        Self::unavailable()
+    }
+    async fn screenshot(&self, _n: &str, _d: &Path) -> Result<PathBuf> {
+        Self::unavailable()
+    }
+    async fn element_state(&self, _s: &ResolvedSelector) -> Result<ElementState> {
+        Self::unavailable()
+    }
+    async fn current_cursor_position(&self) -> Result<(i32, i32)> {
+        Self::unavailable()
+    }
     fn capabilities(&self) -> CapabilitySet {
         CapabilitySet {
             file_upload: false,
@@ -60,5 +86,7 @@ impl BrowserDriver for NoopDriver {
             iframes: false,
         }
     }
-    fn name(&self) -> &'static str { "noop" }
+    fn name(&self) -> &'static str {
+        "noop"
+    }
 }

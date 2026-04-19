@@ -18,7 +18,7 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        app_settings, audio, automation, author_snapshot, capture, dryrun, encode, export, keys,
+        app_settings, audio, author_snapshot, automation, capture, dryrun, encode, export, keys,
         lsp, nl, parse, picker, preset, projects, region_overlay, render, sound_library, system,
         timeline, tts, updater, upload, web_account, web_sync,
     },

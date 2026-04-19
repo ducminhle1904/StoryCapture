@@ -27,7 +27,9 @@ fn build_bg_graph() -> effects::Graph {
     b.source(fid(0x11), PathBuf::from("in.mp4"), 0)
         .background_with_padding(
             fid(0x33),
-            BackgroundKind::Gradient { preset_id: "runway-dark".into() },
+            BackgroundKind::Gradient {
+                preset_id: "runway-dark".into(),
+            },
             24.0,
             Some(Shadow {
                 blur_px: 32.0,
@@ -55,7 +57,10 @@ fn background_emits_geq_rounded_mask() {
 fn background_emits_boxblur_shadow() {
     let g = build_bg_graph();
     let out = FfmpegEmit::emit(&g);
-    assert!(out.contains("boxblur=32:1"), "expected 32-px boxblur: {out}");
+    assert!(
+        out.contains("boxblur=32:1"),
+        "expected 32-px boxblur: {out}"
+    );
 }
 
 #[test]
@@ -63,7 +68,11 @@ fn background_extra_inputs_point_at_gradient_png() {
     let g = build_bg_graph();
     let inputs = collect_extra_inputs(&g);
     assert_eq!(inputs.len(), 1);
-    let ExtraInput { uri, loop_single_frame, lavfi } = &inputs[0];
+    let ExtraInput {
+        uri,
+        loop_single_frame,
+        lavfi,
+    } = &inputs[0];
     assert!(*loop_single_frame, "gradient PNG must loop as single frame");
     assert!(!*lavfi, "gradient is a real PNG input, not lavfi");
     assert!(
@@ -78,17 +87,28 @@ fn unknown_gradient_preset_errors() {
     b.source(fid(0x11), PathBuf::from("in.mp4"), 0)
         .background_with_padding(
             fid(0x33),
-            BackgroundKind::Gradient { preset_id: "does-not-exist".into() },
+            BackgroundKind::Gradient {
+                preset_id: "does-not-exist".into(),
+            },
             0.0,
             None,
             0,
         );
-    let g = b.build().expect("graph builds; preset validated at emit time");
+    let g = b
+        .build()
+        .expect("graph builds; preset validated at emit time");
     // emit_background surfaces UnknownGradient.
-    let node = g.video.iter().find(|n| matches!(n, effects::ast::video::VideoNode::Background { .. })).unwrap();
+    let node = g
+        .video
+        .iter()
+        .find(|n| matches!(n, effects::ast::video::VideoNode::Background { .. }))
+        .unwrap();
     let err = emit_background(node, "[in]", "[out]", &g, 1).expect_err("should error");
     let msg = format!("{err}");
-    assert!(msg.contains("does-not-exist"), "expected preset id in err: {msg}");
+    assert!(
+        msg.contains("does-not-exist"),
+        "expected preset id in err: {msg}"
+    );
 }
 
 #[test]

@@ -279,10 +279,7 @@ mod tests {
 
     #[test]
     fn provider_url_formatting() {
-        let p = ElevenLabsProvider::with_base_url(
-            "k".into(),
-            "https://example.test/".into(),
-        );
+        let p = ElevenLabsProvider::with_base_url("k".into(), "https://example.test/".into());
         assert_eq!(
             p.synth_url("voice-xyz"),
             "https://example.test/v1/text-to-speech/voice-xyz/stream"

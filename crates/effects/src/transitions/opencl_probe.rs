@@ -30,7 +30,10 @@ pub fn probe_from_stdout(stdout: &str) -> OpenClAvailability {
         .find(|l| l.starts_with("ffmpeg version"))
         .unwrap_or("")
         .to_string();
-    OpenClAvailability { xfade_opencl, ffmpeg_version }
+    OpenClAvailability {
+        xfade_opencl,
+        ffmpeg_version,
+    }
 }
 
 /// Run `ffmpeg -hide_banner -filters`, then also `ffmpeg -version` for the

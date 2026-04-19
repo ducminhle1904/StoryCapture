@@ -333,10 +333,8 @@ mod tests {
 
         // SelectorOrText uses tag "kind" with serde rename_all = "kebab-case" →
         // TestId serializes as {"kind":"test-id","value":"save"}.
-        let target_json = serde_json::to_string(&story_parser::SelectorOrText::TestId(
-            "save".into(),
-        ))
-        .unwrap();
+        let target_json =
+            serde_json::to_string(&story_parser::SelectorOrText::TestId("save".into())).unwrap();
         let r = author_snapshot_validate(
             d.path().to_string_lossy().to_string(),
             url.into(),

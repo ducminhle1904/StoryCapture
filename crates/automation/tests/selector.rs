@@ -164,10 +164,9 @@ async fn explicit_css_selector_resolves_strict() {
 async fn explicit_testid_does_not_fall_back() {
     let driver = StubDriver;
     let target = SelectorOrText::TestId("missing".into());
-    let (sel, _) =
-        SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, 1_000)
-            .await
-            .unwrap();
+    let (sel, _) = SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, 1_000)
+        .await
+        .unwrap();
     // Strict — never collapses into a CSS / text strategy.
     assert_eq!(sel.strategy, SelectorStrategy::TestId);
     assert_eq!(sel.value, "[data-testid=\"missing\"]");
@@ -177,10 +176,9 @@ async fn explicit_testid_does_not_fall_back() {
 async fn explicit_aria_resolves_strict() {
     let driver = StubDriver;
     let target = SelectorOrText::Aria("Sign in".into());
-    let (sel, _) =
-        SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, 1_000)
-            .await
-            .unwrap();
+    let (sel, _) = SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, 1_000)
+        .await
+        .unwrap();
     assert_eq!(sel.strategy, SelectorStrategy::Aria);
     assert_eq!(sel.value, "Sign in");
 }
@@ -204,7 +202,10 @@ async fn text_target_for_type_prefers_label_assoc_over_visible_text() {
         .iter()
         .position(|a| a.strategy == SelectorStrategy::VisibleText)
         .unwrap();
-    assert!(label_pos < visible_pos, "label assoc should be tried before visible text for Type action");
+    assert!(
+        label_pos < visible_pos,
+        "label assoc should be tried before visible text for Type action"
+    );
 }
 
 #[tokio::test]

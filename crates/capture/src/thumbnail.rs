@@ -45,10 +45,8 @@ pub(crate) fn encode_rgba_to_png(
             src_h
         )));
     }
-    let img_buf: image::RgbaImage =
-        image::ImageBuffer::from_raw(src_w, src_h, rgba).ok_or_else(|| {
-            CaptureError::Native("image::ImageBuffer::from_raw returned None".into())
-        })?;
+    let img_buf: image::RgbaImage = image::ImageBuffer::from_raw(src_w, src_h, rgba)
+        .ok_or_else(|| CaptureError::Native("image::ImageBuffer::from_raw returned None".into()))?;
 
     // Downscale — never upscale.
     let scale_x = if src_w > 0 {

@@ -243,7 +243,9 @@ impl From<PCommand> for CommandDto {
                 target: target.into(),
                 span: span.into(),
             },
-            PCommand::Type { target, text, span, .. } => CommandDto::Type {
+            PCommand::Type {
+                target, text, span, ..
+            } => CommandDto::Type {
                 target: target.into(),
                 text,
                 span: span.into(),
@@ -277,12 +279,16 @@ impl From<PCommand> for CommandDto {
                 value,
                 span: span.into(),
             },
-            PCommand::Upload { target, path, span, .. } => CommandDto::Upload {
+            PCommand::Upload {
+                target, path, span, ..
+            } => CommandDto::Upload {
                 target: target.into(),
                 path,
                 span: span.into(),
             },
-            PCommand::Wait { duration_ms, span, .. } => CommandDto::Wait {
+            PCommand::Wait {
+                duration_ms, span, ..
+            } => CommandDto::Wait {
                 duration_ms,
                 span: span.into(),
             },

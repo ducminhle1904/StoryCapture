@@ -115,7 +115,10 @@ fn main() -> ExitCode {
                 "-f",
                 "lavfi",
                 "-i",
-                &format!("testsrc2=size=1920x1080:rate=30:duration={}", args.duration_s),
+                &format!(
+                    "testsrc2=size=1920x1080:rate=30:duration={}",
+                    args.duration_s
+                ),
                 "-f",
                 "lavfi",
                 "-i",
@@ -156,11 +159,7 @@ fn main() -> ExitCode {
     // re-encode. When downstream plans add zooms/overlays, expand the
     // filter_complex here via `effects::emit::FfmpegEmit::emit(&_graph)`.
     let status = std::process::Command::new(ffmpeg)
-        .args([
-            "-y",
-            "-hide_banner",
-            "-i",
-        ])
+        .args(["-y", "-hide_banner", "-i"])
         .arg(&args.source)
         .args([
             "-c:v",

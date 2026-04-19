@@ -66,10 +66,7 @@ pub fn path_to_ffmpeg_arg(p: &Path) -> String {
 }
 
 fn rgba_to_hex(c: &Rgba) -> String {
-    format!(
-        "{:02X}{:02X}{:02X}{:02X}",
-        c.r, c.g, c.b, c.a
-    )
+    format!("{:02X}{:02X}{:02X}{:02X}", c.r, c.g, c.b, c.a)
 }
 
 /// Map the AST's `FontChoice` to a bundled TTF filename. `SystemDefault`
@@ -126,7 +123,11 @@ pub fn emit_drawtext(
         None => format!("{}", tb.pos.y as i32),
     };
     let fontsize_arg = match size_scale_expr {
-        Some(scale) => format!("'{size}*({scale})'", size = tb.size_pt as u32, scale = scale),
+        Some(scale) => format!(
+            "'{size}*({scale})'",
+            size = tb.size_pt as u32,
+            scale = scale
+        ),
         None => format!("{}", tb.size_pt as u32),
     };
 

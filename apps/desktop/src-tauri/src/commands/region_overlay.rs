@@ -47,9 +47,7 @@ pub async fn open_region_overlay(app: AppHandle, display_id: u64) -> Result<(), 
     // (no hash). The index.html served by Vite/the dist bundle is mounted
     // at the root and will route the fresh overlay window to the
     // `/region-overlay` entry below. `display_id` rides as a query param.
-    let url = WebviewUrl::App(
-        format!("region-overlay?display_id={display_id}").into(),
-    );
+    let url = WebviewUrl::App(format!("region-overlay?display_id={display_id}").into());
     let builder = WebviewWindowBuilder::new(&app, OVERLAY_LABEL, url)
         .title("Select region")
         .transparent(true)

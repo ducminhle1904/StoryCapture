@@ -44,10 +44,7 @@ pub fn title_hint_for(preset: Option<&str>) -> Option<String> {
     }
 
     // Exec-path basename heuristic.
-    let basename = lower
-        .rsplit(|c| c == '/' || c == '\\')
-        .next()
-        .unwrap_or("");
+    let basename = lower.rsplit(|c| c == '/' || c == '\\').next().unwrap_or("");
     if basename.is_empty() {
         return None;
     }
@@ -67,11 +64,7 @@ pub fn redact_title_hint(h: Option<&str>) -> String {
         Some(s) => {
             // Keep first 40 chars, then append ellipsis. Walk by
             // char_indices to stay on a char boundary under multi-byte UTF-8.
-            let end = s
-                .char_indices()
-                .nth(40)
-                .map(|(i, _)| i)
-                .unwrap_or(s.len());
+            let end = s.char_indices().nth(40).map(|(i, _)| i).unwrap_or(s.len());
             format!("{}\u{2026}", &s[..end])
         }
     }
@@ -83,19 +76,31 @@ mod tests {
 
     #[test]
     fn preset_token_lookup_exact() {
-        assert_eq!(title_hint_for(Some("msedge")).as_deref(), Some("Microsoft Edge"));
-        assert_eq!(title_hint_for(Some("chrome")).as_deref(), Some("Google Chrome"));
+        assert_eq!(
+            title_hint_for(Some("msedge")).as_deref(),
+            Some("Microsoft Edge")
+        );
+        assert_eq!(
+            title_hint_for(Some("chrome")).as_deref(),
+            Some("Google Chrome")
+        );
         assert_eq!(
             title_hint_for(Some("chrome-canary")).as_deref(),
             Some("Google Chrome Canary")
         );
-        assert_eq!(title_hint_for(Some("brave")).as_deref(), Some("Brave Browser"));
+        assert_eq!(
+            title_hint_for(Some("brave")).as_deref(),
+            Some("Brave Browser")
+        );
         assert_eq!(title_hint_for(Some("arc")).as_deref(), Some("Arc"));
     }
 
     #[test]
     fn preset_token_lookup_case_insensitive() {
-        assert_eq!(title_hint_for(Some("MSEDGE")).as_deref(), Some("Microsoft Edge"));
+        assert_eq!(
+            title_hint_for(Some("MSEDGE")).as_deref(),
+            Some("Microsoft Edge")
+        );
         assert_eq!(
             title_hint_for(Some("Chrome-Canary")).as_deref(),
             Some("Google Chrome Canary")

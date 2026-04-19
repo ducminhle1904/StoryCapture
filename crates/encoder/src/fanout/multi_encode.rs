@@ -257,8 +257,14 @@ mod tests {
             "clip",
         );
         assert_eq!(plan.outputs.len(), 2);
-        assert!(plan.outputs[0].output_path.to_string_lossy().ends_with("clip.mp4"));
-        assert!(plan.outputs[1].output_path.to_string_lossy().ends_with("clip.webm"));
+        assert!(plan.outputs[0]
+            .output_path
+            .to_string_lossy()
+            .ends_with("clip.mp4"));
+        assert!(plan.outputs[1]
+            .output_path
+            .to_string_lossy()
+            .ends_with("clip.webm"));
 
         let mp4 = build_encode_args(
             Path::new("/tmp/interm.mkv"),
@@ -266,7 +272,11 @@ mod tests {
             "h264_videotoolbox",
         );
         assert!(mp4.iter().any(|a| a == "h264_videotoolbox"));
-        let webm = build_encode_args(Path::new("/tmp/interm.mkv"), &plan.outputs[1], "libopenh264");
+        let webm = build_encode_args(
+            Path::new("/tmp/interm.mkv"),
+            &plan.outputs[1],
+            "libopenh264",
+        );
         assert!(webm.iter().any(|a| a == "libvpx-vp9"));
     }
 
@@ -343,7 +353,11 @@ mod tests {
         let outputs = fanout_encode(
             &intermediate,
             &plan,
-            move || Arc::new(RecordingCmd { calls: calls_c.clone() }) as Arc<dyn SidecarCommand>,
+            move || {
+                Arc::new(RecordingCmd {
+                    calls: calls_c.clone(),
+                }) as Arc<dyn SidecarCommand>
+            },
             "libopenh264",
         )
         .await

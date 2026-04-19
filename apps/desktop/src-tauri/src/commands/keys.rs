@@ -180,21 +180,14 @@ pub async fn key_test(provider: ProviderId) -> Result<KeyTestReport, KeyError> {
 // with a developer's real `com.storycapture.keys` keychain entries. In
 // production, the four Tauri commands above pass `SERVICE` unconditionally.
 
-pub fn key_set_for_test(
-    service: &str,
-    provider: ProviderId,
-    key: String,
-) -> Result<(), KeyError> {
+pub fn key_set_for_test(service: &str, provider: ProviderId, key: String) -> Result<(), KeyError> {
     validate_key_format(provider, &key)?;
     let entry = keyring::Entry::new(service, provider.account()).map_err(KeyError::from)?;
     entry.set_password(&key).map_err(KeyError::from)?;
     Ok(())
 }
 
-pub fn key_get_presence_for_test(
-    service: &str,
-    provider: ProviderId,
-) -> Result<bool, KeyError> {
+pub fn key_get_presence_for_test(service: &str, provider: ProviderId) -> Result<bool, KeyError> {
     let entry = keyring::Entry::new(service, provider.account()).map_err(KeyError::from)?;
     match entry.get_password() {
         Ok(_) => Ok(true),
@@ -225,7 +218,11 @@ pub async fn key_test_for_test(
     // 2. Resolve the probe URL. Env-var override wins (tests); otherwise use
     //    the hard-coded production URL for the provider.
     let base = probe_base_url();
-    let url = format!("{}{}", base.as_deref().unwrap_or(production_base(provider)), probe_path(provider));
+    let url = format!(
+        "{}{}",
+        base.as_deref().unwrap_or(production_base(provider)),
+        probe_path(provider)
+    );
 
     // 3. Dedicated rustls client — no native-tls, no plaintext fallback.
     //    10s timeout keeps the UI responsive even against a dead provider.
@@ -254,11 +251,19 @@ pub async fn key_test_for_test(
             // reflect back here.
             let detail = status.to_string();
             if status.is_success() {
-                Ok(KeyTestReport { ok: true, latency_ms, detail })
+                Ok(KeyTestReport {
+                    ok: true,
+                    latency_ms,
+                    detail,
+                })
             } else if status.as_u16() == 401 || status.as_u16() == 403 {
                 Err(KeyError::ProviderAuthFailed)
             } else {
-                Ok(KeyTestReport { ok: false, latency_ms, detail })
+                Ok(KeyTestReport {
+                    ok: false,
+                    latency_ms,
+                    detail,
+                })
             }
         }
         Err(e) => Err(KeyError::ProviderNetworkError(e.without_url().to_string())),

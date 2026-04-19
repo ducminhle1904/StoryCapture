@@ -127,7 +127,11 @@ async fn vt_writer_produces_h264_mp4() {
         .expect("join")
         .expect("finish");
 
-    assert!(result.bytes >= 5_000, "mp4 too small: {} bytes", result.bytes);
+    assert!(
+        result.bytes >= 5_000,
+        "mp4 too small: {} bytes",
+        result.bytes
+    );
     assert_eq!(result.frames_written, 30);
 
     // Validate MP4 box: bytes 4..8 should be `ftyp`.

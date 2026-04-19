@@ -84,10 +84,7 @@ pub struct SoundManifest {
 
 /// Upsert every entry from the manifest. Returns the number of new rows
 /// inserted (updates don't count).
-pub fn sync_from_manifest(
-    conn: &Connection,
-    manifest_path: &Path,
-) -> Result<usize, StorageError> {
+pub fn sync_from_manifest(conn: &Connection, manifest_path: &Path) -> Result<usize, StorageError> {
     let txt = std::fs::read_to_string(manifest_path)?;
     let manifest: SoundManifest = serde_json::from_str(&txt)?;
     let mut inserted = 0usize;

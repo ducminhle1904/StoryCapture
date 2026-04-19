@@ -218,10 +218,7 @@ fn probe_duration_seconds(mp4: &std::path::Path) -> anyhow::Result<f64> {
 
 /// Record ~3 seconds (~90 frames at 30fps) into `out_frames`. Stops early
 /// if `max_frames` is reached. Returns the collected frames.
-async fn drain_for(
-    rx: &mut mpsc::Receiver<Frame>,
-    window: Duration,
-) -> Vec<Frame> {
+async fn drain_for(rx: &mut mpsc::Receiver<Frame>, window: Duration) -> Vec<Frame> {
     let deadline = Instant::now() + window;
     let mut frames = Vec::with_capacity(128);
     while Instant::now() < deadline {
@@ -275,7 +272,9 @@ async fn windows_e2e_display_happy_path() {
         .id;
 
     let mut backend = WgcBackend::new().expect("WgcBackend::new");
-    let cfg = make_config(CaptureTarget::Display { display_id: primary });
+    let cfg = make_config(CaptureTarget::Display {
+        display_id: primary,
+    });
     let (tx, mut rx) = mpsc::channel::<Frame>(256);
     backend.start(cfg, tx).await.expect("start");
 

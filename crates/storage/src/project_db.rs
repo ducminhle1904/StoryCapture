@@ -92,7 +92,11 @@ impl ProjectDb {
                     started_at: row.get(2)?,
                     ended_at: row.get(3)?,
                     status: SessionStatus::parse(&status).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, e.into())
+                        rusqlite::Error::FromSqlConversionFailure(
+                            0,
+                            rusqlite::types::Type::Text,
+                            e.into(),
+                        )
                     })?,
                     meta_json: row.get(5)?,
                 })
@@ -129,7 +133,12 @@ impl ProjectDb {
         let ended_at = now_millis();
         let n = self.conn.execute(
             "UPDATE steps SET ended_at = ?1, status = ?2, error_message = ?3 WHERE id = ?4",
-            params![ended_at, status.as_str(), error_message, step_id.to_string()],
+            params![
+                ended_at,
+                status.as_str(),
+                error_message,
+                step_id.to_string()
+            ],
         )?;
         if n == 0 {
             return Err(StorageError::NotFound(format!("step {step_id}")));
@@ -155,7 +164,11 @@ impl ProjectDb {
                     started_at: row.get(4)?,
                     ended_at: row.get(5)?,
                     status: StepStatus::parse(&status).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, e.into())
+                        rusqlite::Error::FromSqlConversionFailure(
+                            0,
+                            rusqlite::types::Type::Text,
+                            e.into(),
+                        )
                     })?,
                     error_message: row.get(7)?,
                 })
@@ -294,7 +307,11 @@ impl ProjectDb {
                     id: parse_uuid(&id)?,
                     name: row.get(1)?,
                     scope: PresetScope::parse(&scope).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, e.into())
+                        rusqlite::Error::FromSqlConversionFailure(
+                            0,
+                            rusqlite::types::Type::Text,
+                            e.into(),
+                        )
                     })?,
                     config_json: row.get(3)?,
                     created_at: row.get(4)?,
@@ -305,6 +322,8 @@ impl ProjectDb {
     }
 
     pub fn schema_version(&self) -> Result<u32, StorageError> {
-        Ok(self.conn.pragma_query_value(None, "user_version", |r| r.get(0))?)
+        Ok(self
+            .conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))?)
     }
 }

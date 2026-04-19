@@ -43,11 +43,7 @@ fn sample_path_length_matches_fps_times_duration() {
 #[test]
 fn detect_reversals_u_turn() {
     // Synthetic U-turn: out-and-back.
-    let wps = [
-        wp(0, 0.0, 0.0),
-        wp(500, 200.0, 0.0),
-        wp(1000, 0.0, 0.0),
-    ];
+    let wps = [wp(0, 0.0, 0.0), wp(500, 200.0, 0.0), wp(1000, 0.0, 0.0)];
     let rev = detect_reversals(&wps, 135.0);
     assert_eq!(rev, vec![1]);
 }

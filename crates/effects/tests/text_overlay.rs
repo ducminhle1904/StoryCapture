@@ -104,11 +104,7 @@ fn ensure_fonts_extracted_no_spaces_in_path() {
         .and_then(|s| s.to_str())
         .unwrap()
         .to_string();
-    assert!(
-        !leaf.contains(' '),
-        "leaf dir has spaces: {:?}",
-        leaf
-    );
+    assert!(!leaf.contains(' '), "leaf dir has spaces: {:?}", leaf);
     assert!(leaf.starts_with("storycapture_fonts_"));
 
     // All 5 files copied.
@@ -130,7 +126,11 @@ fn drawtext_emits_forward_slashes_on_windowsy_path() {
     // No *path-separator* backslashes — the only backslashes allowed are
     // the ones escaping the drive-letter colon.
     assert!(!got.contains(r"\\"), "still has path backslash: {:?}", got);
-    assert!(!got.contains(r"\U"), "backslash-before-letter leak: {:?}", got);
+    assert!(
+        !got.contains(r"\U"),
+        "backslash-before-letter leak: {:?}",
+        got
+    );
     assert!(got.contains('/'), "no forward slash: {:?}", got);
     // Drive-letter colon must be escaped so the filter-arg parser does
     // not treat it as a separator.
@@ -256,8 +256,15 @@ impl StepAstRef for FakeStep {
 #[test]
 fn auto_annotate_default_off() {
     // D-27: default Options has enabled=false.
-    let s = FakeStep { v: "click", t: Some("Save button"), c: None };
-    assert_eq!(auto_annotate_step(&s, &AutoAnnotateOptions::default()), None);
+    let s = FakeStep {
+        v: "click",
+        t: Some("Save button"),
+        c: None,
+    };
+    assert_eq!(
+        auto_annotate_step(&s, &AutoAnnotateOptions::default()),
+        None
+    );
 }
 
 #[test]
@@ -266,7 +273,11 @@ fn auto_annotate_click_verb_when_enabled() {
         enabled: true,
         prefer_comment_over_synthesis: true,
     };
-    let s = FakeStep { v: "click", t: Some("Save button"), c: None };
+    let s = FakeStep {
+        v: "click",
+        t: Some("Save button"),
+        c: None,
+    };
     assert_eq!(
         auto_annotate_step(&s, &opts),
         Some("Click Save button".into())
@@ -292,8 +303,15 @@ fn auto_annotate_prefers_comment() {
 
 #[test]
 fn auto_annotate_unknown_verb_returns_none() {
-    let opts = AutoAnnotateOptions { enabled: true, prefer_comment_over_synthesis: false };
-    let s = FakeStep { v: "teleport", t: Some("home"), c: None };
+    let opts = AutoAnnotateOptions {
+        enabled: true,
+        prefer_comment_over_synthesis: false,
+    };
+    let s = FakeStep {
+        v: "teleport",
+        t: Some("home"),
+        c: None,
+    };
     assert_eq!(auto_annotate_step(&s, &opts), None);
 }
 
@@ -312,7 +330,10 @@ fn snapshot_text_overlay_filter_complex() {
         t_end_ms: 3_500,
         text: "Step 1: open the panel".into(), // exercises `:` escape
         pos: Vec2::new(120.0, 80.0),
-        font: FontChoice::Bundled { family: "Geist".into(), weight: 400 },
+        font: FontChoice::Bundled {
+            family: "Geist".into(),
+            weight: 400,
+        },
         size_pt: 32.0,
         color: Rgba::new(240, 240, 240, 255),
         box_style: None,
@@ -324,7 +345,10 @@ fn snapshot_text_overlay_filter_complex() {
         t_end_ms: 6_000,
         text: "It's 100% ready".into(), // `'` and `%`
         pos: Vec2::new(200.0, 400.0),
-        font: FontChoice::Bundled { family: "Inter".into(), weight: 700 },
+        font: FontChoice::Bundled {
+            family: "Inter".into(),
+            weight: 700,
+        },
         size_pt: 44.0,
         color: Rgba::new(255, 255, 255, 255),
         box_style: None,
@@ -343,7 +367,10 @@ fn snapshot_text_overlay_filter_complex() {
         &CalloutSpec {
             text: "Primary CTA".into(),
             size_pt: 22.0,
-            font: FontChoice::Bundled { family: "Inter".into(), weight: 700 },
+            font: FontChoice::Bundled {
+                family: "Inter".into(),
+                weight: 700,
+            },
             fg: Rgba::new(240, 240, 240, 255),
             bg: Rgba::new(20, 20, 20, 230),
             border: Some(Rgba::new(255, 255, 255, 255)),
@@ -459,7 +486,10 @@ fn render_callout_png_with_arrow_adds_strip() {
     };
     let (_, h0) = render_callout_png(&base, &plain).unwrap();
     let (_, h1) = render_callout_png(
-        &CalloutSpec { arrow: Some(ArrowDir::Down), ..base },
+        &CalloutSpec {
+            arrow: Some(ArrowDir::Down),
+            ..base
+        },
         &arrow,
     )
     .unwrap();

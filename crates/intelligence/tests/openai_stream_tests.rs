@@ -124,11 +124,7 @@ async fn tool_use_fixture_flushes_single_tool_event_with_concatenated_args() {
     match tool_events[0] {
         LlmEvent::ToolUseComplete { index, input } => {
             assert_eq!(*index, 0);
-            let steps = input
-                .get("steps")
-                .expect("steps field")
-                .as_array()
-                .unwrap();
+            let steps = input.get("steps").expect("steps field").as_array().unwrap();
             assert_eq!(steps.len(), 1);
             assert_eq!(steps[0].get("id").unwrap(), "s1");
         }
@@ -148,10 +144,7 @@ async fn done_sentinel_terminates_without_error() {
     let (tx, _rx) = mpsc::channel(4);
     let mut accum: ToolCallAccumulator = HashMap::new();
     let outcome = process_event("[DONE]", &mut accum, &tx).await.unwrap();
-    assert!(matches!(
-        outcome,
-        intelligence::llm::EventOutcome::Stop
-    ));
+    assert!(matches!(outcome, intelligence::llm::EventOutcome::Stop));
 }
 
 #[tokio::test]

@@ -115,13 +115,7 @@ fn skipping_optional_stages_is_allowed() {
     // Source -> Cursor directly (skipping Zoom + Background): gaps allowed.
     let g = GraphBuilder::new(1920, 1080, 60)
         .source(NodeId::new(), "in.mp4", 0)
-        .cursor(
-            NodeId::new(),
-            CursorSkin::Light,
-            1.0,
-            None,
-            fresh_traj(),
-        )
+        .cursor(NodeId::new(), CursorSkin::Light, 1.0, None, fresh_traj())
         .build()
         .expect("gaps must be allowed");
     assert_eq!(g.video.len(), 2);

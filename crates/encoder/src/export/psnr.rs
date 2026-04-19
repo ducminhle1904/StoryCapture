@@ -74,9 +74,7 @@ fn extract_num(line: &str, key: &str) -> Result<f64, ExportError> {
     let idx = line.find(key).ok_or(ExportError::PsnrParse)?;
     let rest = &line[idx + key.len()..];
     // Take the leading numeric/`inf` token.
-    let end = rest
-        .find(|c: char| c.is_whitespace())
-        .unwrap_or(rest.len());
+    let end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
     let tok = rest[..end].trim_end_matches(|c: char| c == ',' || c == ';');
     if tok.eq_ignore_ascii_case("inf") {
         return Ok(f64::INFINITY);

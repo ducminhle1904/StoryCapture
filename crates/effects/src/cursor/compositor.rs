@@ -24,7 +24,8 @@ pub fn compose_frame(
     ripples_at_t: &[(RippleEvent, f32, f32)],
 ) -> RgbaImage {
     // Fully transparent canvas.
-    let mut canvas: RgbaImage = ImageBuffer::from_pixel(canvas_w, canvas_h, ImageRgba([0, 0, 0, 0]));
+    let mut canvas: RgbaImage =
+        ImageBuffer::from_pixel(canvas_w, canvas_h, ImageRgba([0, 0, 0, 0]));
 
     // --- Ripples (drawn first so the cursor sits on top).
     for (event, alpha, radius) in ripples_at_t {
@@ -118,7 +119,9 @@ fn over(dst: &mut ImageRgba<u8>, src: ImageRgba<u8>) {
     let blend = |s: u8, d: u8| -> u8 {
         let sf = s as f32;
         let df = d as f32;
-        ((sf * sa + df * da * (1.0 - sa)) / out_a).round().clamp(0.0, 255.0) as u8
+        ((sf * sa + df * da * (1.0 - sa)) / out_a)
+            .round()
+            .clamp(0.0, 255.0) as u8
     };
     *dst = ImageRgba([
         blend(src.0[0], dst.0[0]),

@@ -23,11 +23,7 @@ fn sound_root() -> PathBuf {
 /// Returns the `Overall.RMS_level` reported by `ffmpeg -af astats`, in dB.
 fn measure_rms_db(file: &Path) -> Result<f64, String> {
     let output = Command::new("ffmpeg")
-        .args([
-            "-hide_banner",
-            "-nostats",
-            "-i",
-        ])
+        .args(["-hide_banner", "-nostats", "-i"])
         .arg(file)
         .args(["-af", "astats=metadata=1:reset=1", "-f", "null", "-"])
         .output()

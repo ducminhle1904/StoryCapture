@@ -51,7 +51,11 @@ where
             Err(LlmError::RateLimited { retry_after_s }) => {
                 let hdr_wait = Duration::from_secs(retry_after_s);
                 let back_wait = backoff_delay(attempt);
-                let wait = if hdr_wait > back_wait { hdr_wait } else { back_wait };
+                let wait = if hdr_wait > back_wait {
+                    hdr_wait
+                } else {
+                    back_wait
+                };
                 sleep_fn(wait).await;
             }
             Err(other) => return Err(other),
@@ -137,7 +141,11 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(LlmError::AuthFailed)));
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "should not retry on non-RateLimited");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "should not retry on non-RateLimited"
+        );
     }
 
     #[tokio::test]

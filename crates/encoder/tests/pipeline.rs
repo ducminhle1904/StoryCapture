@@ -8,9 +8,7 @@ mod fixtures {
     include!("fixtures/synthetic.rs");
 }
 
-use encoder::{
-    EncodeConfig, EncodePipeline, EncoderError, HardwareEncoder, LocalFfmpegCommand,
-};
+use encoder::{EncodeConfig, EncodePipeline, EncoderError, HardwareEncoder, LocalFfmpegCommand};
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
@@ -78,7 +76,11 @@ async fn synthetic_five_second_encode() {
     drop(frame_tx); // EOF
 
     let result = join.await.expect("join").expect("encode ok");
-    assert!(result.frames_written >= 150, "too few frames written: {}", result.frames_written);
+    assert!(
+        result.frames_written >= 150,
+        "too few frames written: {}",
+        result.frames_written
+    );
     assert!(out_path.exists(), "output file missing");
     let size = std::fs::metadata(&out_path).unwrap().len();
     assert!(size > 1024, "output too small: {size} bytes");

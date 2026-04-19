@@ -287,9 +287,7 @@ pub async fn update_recording_status(
 /// reopen the connection to delete successfully sent items.
 #[tauri::command]
 #[specta::specta]
-pub async fn flush_sync_queue(
-    state: State<'_, AppState>,
-) -> Result<FlushResult, WebSyncError> {
+pub async fn flush_sync_queue(state: State<'_, AppState>) -> Result<FlushResult, WebSyncError> {
     tracing::info!(target: "storycapture::web_sync", "flush_sync_queue");
 
     let token = get_api_token().await?;
@@ -371,9 +369,7 @@ pub async fn flush_sync_queue(
 /// Get the current sync status: connected, pending queue count, last sync time.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_sync_status(
-    state: State<'_, AppState>,
-) -> Result<SyncStatusDto, WebSyncError> {
+pub async fn get_sync_status(state: State<'_, AppState>) -> Result<SyncStatusDto, WebSyncError> {
     let connected = get_api_token().await.is_ok();
 
     let conn = open_app_db(&state)?;

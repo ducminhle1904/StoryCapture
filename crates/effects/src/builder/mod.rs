@@ -45,12 +45,30 @@ impl GraphBuilder {
 
     // ---- video stages ----
 
-    pub fn source(&mut self, id: NodeId, path: impl Into<PathBuf>, pts_offset_ms: u64) -> &mut Self {
-        self.push_video(VideoNode::Source { id, path: path.into(), pts_offset_ms })
+    pub fn source(
+        &mut self,
+        id: NodeId,
+        path: impl Into<PathBuf>,
+        pts_offset_ms: u64,
+    ) -> &mut Self {
+        self.push_video(VideoNode::Source {
+            id,
+            path: path.into(),
+            pts_offset_ms,
+        })
     }
 
-    pub fn zoom_pan(&mut self, id: NodeId, target: ZoomTarget, keyframes: Vec<ZoomKeyframe>) -> &mut Self {
-        self.push_video(VideoNode::ZoomPan { id, target, keyframes })
+    pub fn zoom_pan(
+        &mut self,
+        id: NodeId,
+        target: ZoomTarget,
+        keyframes: Vec<ZoomKeyframe>,
+    ) -> &mut Self {
+        self.push_video(VideoNode::ZoomPan {
+            id,
+            target,
+            keyframes,
+        })
     }
 
     pub fn background(
@@ -72,7 +90,13 @@ impl GraphBuilder {
         shadow: Option<Shadow>,
         padding_px: u32,
     ) -> &mut Self {
-        self.push_video(VideoNode::Background { id, kind, radius_px, shadow, padding_px })
+        self.push_video(VideoNode::Background {
+            id,
+            kind,
+            radius_px,
+            shadow,
+            padding_px,
+        })
     }
 
     pub fn cursor(
@@ -83,7 +107,13 @@ impl GraphBuilder {
         color_tint: Option<Rgba>,
         trajectory: TrajectoryRef,
     ) -> &mut Self {
-        self.push_video(VideoNode::CursorOverlay { id, skin, size_scale, color_tint, trajectory })
+        self.push_video(VideoNode::CursorOverlay {
+            id,
+            skin,
+            size_scale,
+            color_tint,
+            trajectory,
+        })
     }
 
     pub fn ripple(&mut self, id: NodeId, events: Vec<RippleEvent>) -> &mut Self {
@@ -94,18 +124,47 @@ impl GraphBuilder {
         self.push_video(VideoNode::TextOverlay { id, boxes })
     }
 
-    pub fn transition(&mut self, id: NodeId, kind: XfadeKind, duration_ms: u32, offset_ms: u32) -> &mut Self {
-        self.push_video(VideoNode::Transition { id, kind, duration_ms, offset_ms })
+    pub fn transition(
+        &mut self,
+        id: NodeId,
+        kind: XfadeKind,
+        duration_ms: u32,
+        offset_ms: u32,
+    ) -> &mut Self {
+        self.push_video(VideoNode::Transition {
+            id,
+            kind,
+            duration_ms,
+            offset_ms,
+        })
     }
 
     // ---- audio stages ----
 
-    pub fn audio_source(&mut self, id: NodeId, path: impl Into<PathBuf>, pts_offset_ms: u64) -> &mut Self {
-        self.push_audio(AudioNode::AudioSource { id, path: path.into(), pts_offset_ms })
+    pub fn audio_source(
+        &mut self,
+        id: NodeId,
+        path: impl Into<PathBuf>,
+        pts_offset_ms: u64,
+    ) -> &mut Self {
+        self.push_audio(AudioNode::AudioSource {
+            id,
+            path: path.into(),
+            pts_offset_ms,
+        })
     }
 
-    pub fn audio_volume(&mut self, id: NodeId, input_label: impl Into<String>, volume: f32) -> &mut Self {
-        self.push_audio(AudioNode::Volume { id, input_label: input_label.into(), volume })
+    pub fn audio_volume(
+        &mut self,
+        id: NodeId,
+        input_label: impl Into<String>,
+        volume: f32,
+    ) -> &mut Self {
+        self.push_audio(AudioNode::Volume {
+            id,
+            input_label: input_label.into(),
+            volume,
+        })
     }
 
     pub fn audio_sidechain(
@@ -124,15 +183,32 @@ impl GraphBuilder {
     }
 
     pub fn audio_mix(&mut self, id: NodeId, inputs: Vec<String>, normalize: bool) -> &mut Self {
-        self.push_audio(AudioNode::Amix { id, inputs, normalize })
+        self.push_audio(AudioNode::Amix {
+            id,
+            inputs,
+            normalize,
+        })
     }
 
     pub fn audio_limiter(&mut self, id: NodeId, input: impl Into<String>, limit: f32) -> &mut Self {
-        self.push_audio(AudioNode::Alimiter { id, input: input.into(), limit })
+        self.push_audio(AudioNode::Alimiter {
+            id,
+            input: input.into(),
+            limit,
+        })
     }
 
-    pub fn audio_delay(&mut self, id: NodeId, input_label: impl Into<String>, ms: u64) -> &mut Self {
-        self.push_audio(AudioNode::Delay { id, input_label: input_label.into(), ms })
+    pub fn audio_delay(
+        &mut self,
+        id: NodeId,
+        input_label: impl Into<String>,
+        ms: u64,
+    ) -> &mut Self {
+        self.push_audio(AudioNode::Delay {
+            id,
+            input_label: input_label.into(),
+            ms,
+        })
     }
 
     /// Validate + consume. Performs:

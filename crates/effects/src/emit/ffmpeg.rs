@@ -116,7 +116,9 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
         let out_label = format!("[{}]", node.id().stable_label("v"));
 
         match node {
-            VideoNode::Source { id, pts_offset_ms, .. } => {
+            VideoNode::Source {
+                id, pts_offset_ms, ..
+            } => {
                 // Retarget to the underlying input stream.
                 let in_label = format!("[{}:v]", source_count);
                 source_count += 1;
@@ -163,7 +165,11 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 out.push_str(&bge.filter_chain);
                 cur = out_label;
             }
-            VideoNode::CursorOverlay { trajectory, size_scale, .. } => {
+            VideoNode::CursorOverlay {
+                trajectory,
+                size_scale,
+                ..
+            } => {
                 // Cursor frames come from a PNG sequence input.
                 let cursor_src_label = format!("[{}_cursor]", node_label_core(node.id()));
                 write!(
@@ -182,13 +188,25 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
             VideoNode::RippleOverlay { events, .. } => {
                 // Ripples are baked into the cursor sequence, so this is a passthrough.
                 let _ = events;
-                write!(out, "{cur}null{out_label}", cur = cur, out_label = out_label).unwrap();
+                write!(
+                    out,
+                    "{cur}null{out_label}",
+                    cur = cur,
+                    out_label = out_label
+                )
+                .unwrap();
                 cur = out_label;
             }
             VideoNode::TextOverlay { boxes, .. } => {
                 // One drawtext per TextBox.
                 if boxes.is_empty() {
-                    write!(out, "{cur}null{out_label}", cur = cur, out_label = out_label).unwrap();
+                    write!(
+                        out,
+                        "{cur}null{out_label}",
+                        cur = cur,
+                        out_label = out_label
+                    )
+                    .unwrap();
                 } else {
                     let mut text_cur = cur.clone();
                     for (i, tb) in boxes.iter().enumerate() {
@@ -213,7 +231,12 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 }
                 cur = out_label;
             }
-            VideoNode::Transition { kind, duration_ms, offset_ms, .. } => {
+            VideoNode::Transition {
+                kind,
+                duration_ms,
+                offset_ms,
+                ..
+            } => {
                 // xfade requires two inputs; we lift the previous chain as
                 // `prev` and assume a `[next]` label is declared upstream in a
                 // multi-scene graph (Plan 10 wires this). Here we emit the
@@ -250,7 +273,9 @@ fn drawtext_args(tb: &TextBox) -> String {
     let enable_to = (tb.t_end_ms as f64) / 1000.0;
     // Optional alpha ramp if anim_in/out is Fade — shape only.
     let alpha_expr = match (tb.anim_in, tb.anim_out) {
-        (TextAnim::Fade, _) | (_, TextAnim::Fade) => ":alpha='min(1,max(0,(t-{in})/0.3))'".to_string(),
+        (TextAnim::Fade, _) | (_, TextAnim::Fade) => {
+            ":alpha='min(1,max(0,(t-{in})/0.3))'".to_string()
+        }
         _ => String::new(),
     };
     let _ = alpha_expr;
@@ -299,7 +324,11 @@ fn emit_audio_chain(out: &mut String, g: &Graph) {
                 .unwrap();
                 cur = out_label;
             }
-            AudioNode::Volume { input_label, volume, .. } => {
+            AudioNode::Volume {
+                input_label,
+                volume,
+                ..
+            } => {
                 write!(
                     out,
                     "[{inp}]volume={v:.3}{out_label}",
@@ -310,7 +339,9 @@ fn emit_audio_chain(out: &mut String, g: &Graph) {
                 .unwrap();
                 cur = out_label;
             }
-            AudioNode::Delay { input_label, ms, .. } => {
+            AudioNode::Delay {
+                input_label, ms, ..
+            } => {
                 write!(
                     out,
                     "[{inp}]adelay={ms}|{ms}{out_label}",
@@ -321,7 +352,12 @@ fn emit_audio_chain(out: &mut String, g: &Graph) {
                 .unwrap();
                 cur = out_label;
             }
-            AudioNode::Sidechain { carrier, sidechain, params, .. } => {
+            AudioNode::Sidechain {
+                carrier,
+                sidechain,
+                params,
+                ..
+            } => {
                 write!(
                     out,
                     "[{c}][{sc}]sidechaincompress={args}{out_label}",
@@ -333,7 +369,9 @@ fn emit_audio_chain(out: &mut String, g: &Graph) {
                 .unwrap();
                 cur = out_label;
             }
-            AudioNode::Amix { inputs, normalize, .. } => {
+            AudioNode::Amix {
+                inputs, normalize, ..
+            } => {
                 let joined: String = inputs
                     .iter()
                     .map(|s| format!("[{}]", s))

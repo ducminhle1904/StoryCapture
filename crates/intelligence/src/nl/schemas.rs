@@ -75,7 +75,11 @@ impl StoryDoc {
     pub fn validate_with_pest(&self) -> Result<(), String> {
         let text = self.render_dsl();
         let result = story_parser::parse(&text);
-        if result.diagnostics.iter().any(|d| d.severity == story_parser::Severity::Error) {
+        if result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == story_parser::Severity::Error)
+        {
             let errors: Vec<String> = result
                 .diagnostics
                 .iter()
@@ -93,7 +97,11 @@ impl StoryDoc {
 fn render_step(step: &StoryStep) -> String {
     match step.verb {
         DslVerb::Navigate => {
-            let url = step.args.get("url").and_then(|v| v.as_str()).unwrap_or("\"\"");
+            let url = step
+                .args
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("\"\"");
             format!("navigate \"{}\"", url)
         }
         DslVerb::Click => {
@@ -106,7 +114,11 @@ fn render_step(step: &StoryStep) -> String {
             format!("type {target} \"{text}\"")
         }
         DslVerb::Wait => {
-            let ms = step.args.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(1000);
+            let ms = step
+                .args
+                .get("duration_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1000);
             format!("wait {ms}ms")
         }
         DslVerb::WaitFor => {
@@ -122,7 +134,11 @@ fn render_step(step: &StoryStep) -> String {
             format!("hover {target}")
         }
         DslVerb::Scroll => {
-            let dir = step.args.get("direction").and_then(|v| v.as_str()).unwrap_or("down");
+            let dir = step
+                .args
+                .get("direction")
+                .and_then(|v| v.as_str())
+                .unwrap_or("down");
             format!("scroll {dir}")
         }
         DslVerb::Upload => {
@@ -137,17 +153,29 @@ fn render_step(step: &StoryStep) -> String {
         }
         DslVerb::Select => {
             let target = render_target(&step.args);
-            let value = step.args.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            let value = step
+                .args
+                .get("value")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             format!("select {target} \"{value}\"")
         }
         DslVerb::Screenshot => {
-            let name = step.args.get("name").and_then(|v| v.as_str()).unwrap_or("shot");
+            let name = step
+                .args
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("shot");
             format!("screenshot \"{name}\"")
         }
         DslVerb::Pause => "pause".to_string(),
         DslVerb::PressKey => {
             // Not in Phase 1 grammar yet, so render as a comment.
-            let key = step.args.get("key").and_then(|v| v.as_str()).unwrap_or("Enter");
+            let key = step
+                .args
+                .get("key")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Enter");
             format!("# press_key \"{key}\"")
         }
         DslVerb::Scene => {
@@ -207,14 +235,16 @@ mod tests {
 
         // `steps` should be an array.
         let steps_schema = &json["definitions"]["StoryStep"];
-        assert!(steps_schema.is_object(), "StoryStep definition should exist");
+        assert!(
+            steps_schema.is_object(),
+            "StoryStep definition should exist"
+        );
 
         // `verb` should be an enum.
         let verb_schema = &json["definitions"]["DslVerb"];
         assert!(verb_schema.is_object(), "DslVerb definition should exist");
         // Check it has `oneOf` or `enum`.
-        let has_enum = verb_schema.get("enum").is_some()
-            || verb_schema.get("oneOf").is_some();
+        let has_enum = verb_schema.get("enum").is_some() || verb_schema.get("oneOf").is_some();
         assert!(has_enum, "DslVerb should be an enum in JSON Schema");
     }
 
@@ -222,7 +252,10 @@ mod tests {
     fn emit_story_doc_tool_returns_correct_shape() {
         let tool = emit_story_doc_tool();
         assert_eq!(tool["name"], "emit_story_doc");
-        assert!(tool.get("input_schema").is_some(), "should have input_schema");
+        assert!(
+            tool.get("input_schema").is_some(),
+            "should have input_schema"
+        );
         assert!(tool.get("description").is_some(), "should have description");
     }
 }

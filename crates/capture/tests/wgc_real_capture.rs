@@ -35,7 +35,9 @@ async fn wgc_monitor_smoke() {
         .find(|d| d.is_primary)
         .unwrap_or(&displays[0])
         .id;
-    let mut cfg = CaptureConfig::new_for_target(CaptureTarget::Display { display_id: primary });
+    let mut cfg = CaptureConfig::new_for_target(CaptureTarget::Display {
+        display_id: primary,
+    });
     cfg.fps_target = 30;
     let (tx, mut rx) = mpsc::channel::<Frame>(16);
     backend.start(cfg, tx).await.expect("start");
@@ -145,13 +147,10 @@ async fn wgc_find_window_by_pid_chromium() {
         }
     };
     let start = std::time::Instant::now();
-    let hwnd = capture::windows::window::find_window_by_pid(
-        sidecar_pid,
-        Some("Chrome"),
-    )
-    .await
-    .expect("find_window_by_pid")
-    .expect("chromium hwnd");
+    let hwnd = capture::windows::window::find_window_by_pid(sidecar_pid, Some("Chrome"))
+        .await
+        .expect("find_window_by_pid")
+        .expect("chromium hwnd");
     let elapsed = start.elapsed();
     assert!(
         elapsed < Duration::from_secs(1),

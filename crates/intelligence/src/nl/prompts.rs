@@ -135,9 +135,18 @@ mod tests {
     fn build_system_blocks_contains_required_sections() {
         let blocks = build_system_blocks();
         let text = blocks[0]["text"].as_str().unwrap();
-        assert!(text.contains("pest grammar"), "should contain pest grammar section");
-        assert!(text.contains("verb catalog"), "should contain verb catalog section");
-        assert!(text.contains("style guide"), "should contain style guide section");
+        assert!(
+            text.contains("pest grammar"),
+            "should contain pest grammar section"
+        );
+        assert!(
+            text.contains("verb catalog"),
+            "should contain verb catalog section"
+        );
+        assert!(
+            text.contains("style guide"),
+            "should contain style guide section"
+        );
         // At least 3 few-shot examples
         assert!(text.contains("Example 1"), "should have example 1");
         assert!(text.contains("Example 2"), "should have example 2");

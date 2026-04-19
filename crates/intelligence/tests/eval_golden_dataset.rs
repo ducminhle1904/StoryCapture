@@ -185,7 +185,10 @@ fn build_mock_response(fixture: &GoldenFixture) -> intelligence::nl::schemas::St
 }
 
 /// Evaluate a single fixture against a mock or live response.
-fn evaluate_fixture(fixture: &GoldenFixture, doc: &intelligence::nl::schemas::StoryDoc) -> FixtureResult {
+fn evaluate_fixture(
+    fixture: &GoldenFixture,
+    doc: &intelligence::nl::schemas::StoryDoc,
+) -> FixtureResult {
     use intelligence::nl::verb_whitelist::check_verb_whitelist;
 
     // Check schema validity via pest parse
@@ -277,7 +280,10 @@ fn compute_metrics(results: &[FixtureResult]) -> HashMap<String, f64> {
     metrics.insert("verb_whitelist_compliance".to_string(), verb_ok / total);
 
     // E12: Adversarial pass rate (only adversarial bucket)
-    let adversarial: Vec<_> = results.iter().filter(|r| r.bucket == "adversarial").collect();
+    let adversarial: Vec<_> = results
+        .iter()
+        .filter(|r| r.bucket == "adversarial")
+        .collect();
     if !adversarial.is_empty() {
         let adv_pass = adversarial.iter().filter(|r| r.adversarial_pass).count() as f64;
         metrics.insert(
@@ -405,8 +411,7 @@ mod verb_whitelist_grep {
 
     #[test]
     fn script_passes_on_clean_tree() {
-        let repo_root =
-            env!("CARGO_MANIFEST_DIR").replace("/crates/intelligence", "");
+        let repo_root = env!("CARGO_MANIFEST_DIR").replace("/crates/intelligence", "");
         let output = Command::new("bash")
             .arg(format!("{}/scripts/verb-whitelist-grep.sh", repo_root))
             .current_dir(&repo_root)
@@ -450,8 +455,7 @@ assert:
         .expect("failed to write rogue fixture");
 
         // Run the script from the temp dir root (which has the expected directory structure)
-        let repo_root =
-            env!("CARGO_MANIFEST_DIR").replace("/crates/intelligence", "");
+        let repo_root = env!("CARGO_MANIFEST_DIR").replace("/crates/intelligence", "");
         let output = Command::new("bash")
             .arg(format!("{}/scripts/verb-whitelist-grep.sh", repo_root))
             .current_dir(tmp.path())
@@ -491,8 +495,7 @@ mod offline_eval {
         };
 
         // Write eval_result.json at repo root
-        let repo_root =
-            env!("CARGO_MANIFEST_DIR").replace("/crates/intelligence", "");
+        let repo_root = env!("CARGO_MANIFEST_DIR").replace("/crates/intelligence", "");
         let result_path = format!("{}/eval_result.json", repo_root);
         let json = serde_json::to_string_pretty(&eval).unwrap();
         std::fs::write(&result_path, &json).unwrap();
@@ -522,7 +525,11 @@ mod offline_eval {
             .iter()
             .filter(|f| f.bucket == "adversarial")
             .collect();
-        assert_eq!(adversarial.len(), 2, "should have exactly 2 adversarial fixtures");
+        assert_eq!(
+            adversarial.len(),
+            2,
+            "should have exactly 2 adversarial fixtures"
+        );
 
         for fixture in &adversarial {
             let doc = build_mock_response(fixture);

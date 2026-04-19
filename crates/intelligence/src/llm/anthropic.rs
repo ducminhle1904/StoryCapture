@@ -185,11 +185,7 @@ impl AnthropicProvider {
 #[async_trait::async_trait]
 impl LlmProvider for AnthropicProvider {
     #[instrument(skip_all, fields(model = %req.model))]
-    async fn stream(
-        &self,
-        req: LlmRequest,
-        tx: mpsc::Sender<LlmEvent>,
-    ) -> Result<(), LlmError> {
+    async fn stream(&self, req: LlmRequest, tx: mpsc::Sender<LlmEvent>) -> Result<(), LlmError> {
         let body = build_anthropic_request(&req);
 
         let resp = self
@@ -249,7 +245,10 @@ pub async fn process_event(
             index,
             delta: Delta::InputJson { partial_json },
         } => {
-            tool_json_bufs.entry(index).or_default().push_str(&partial_json);
+            tool_json_bufs
+                .entry(index)
+                .or_default()
+                .push_str(&partial_json);
         }
         SseEvent::ContentBlockStop { index } => {
             if let Some(buf) = tool_json_bufs.remove(&index) {
@@ -259,7 +258,10 @@ pub async fn process_event(
                         LlmError::PartialJsonInvalid
                     })?;
                     let _ = tx
-                        .send(LlmEvent::ToolUseComplete { index, input: value })
+                        .send(LlmEvent::ToolUseComplete {
+                            index,
+                            input: value,
+                        })
                         .await;
                 }
             }
@@ -273,9 +275,7 @@ pub async fn process_event(
         SseEvent::Error { error } => {
             return Err(LlmError::Provider(error.to_string()));
         }
-        SseEvent::MessageStart { .. }
-        | SseEvent::ContentBlockStart { .. }
-        | SseEvent::Ping => {
+        SseEvent::MessageStart { .. } | SseEvent::ContentBlockStart { .. } | SseEvent::Ping => {
             // bookkeeping — nothing to forward
         }
     }
@@ -284,9 +284,7 @@ pub async fn process_event(
 
 fn parse_usage(usage: &Value) -> Option<LlmEvent> {
     let obj = usage.as_object()?;
-    let u32_field = |k: &str| -> u32 {
-        obj.get(k).and_then(|v| v.as_u64()).unwrap_or(0) as u32
-    };
+    let u32_field = |k: &str| -> u32 { obj.get(k).and_then(|v| v.as_u64()).unwrap_or(0) as u32 };
     // Only emit if at least one field is present (message_delta without
     // usage leaves this as an empty object).
     if obj.is_empty() {
@@ -301,8 +299,7 @@ fn parse_usage(usage: &Value) -> Option<LlmEvent> {
 }
 
 async fn classify_http_error(status: StatusCode, resp: reqwest::Response) -> LlmError {
-    let (is_retryable, detail, retry_after) =
-        crate::http::classify_http_error(status, resp).await;
+    let (is_retryable, detail, retry_after) = crate::http::classify_http_error(status, resp).await;
     if is_retryable {
         return LlmError::RateLimited {
             retry_after_s: retry_after.unwrap_or(1),
@@ -336,7 +333,9 @@ mod tests {
         assert!(built.stream);
         assert_eq!(built.system.len(), 2);
         assert!(built.system[0].get("cache_control").is_none());
-        let cc = built.system[1].get("cache_control").expect("cache_control on last");
+        let cc = built.system[1]
+            .get("cache_control")
+            .expect("cache_control on last");
         assert_eq!(cc["type"], "ephemeral");
         assert_eq!(cc["ttl"], "1h");
     }
@@ -357,7 +356,12 @@ mod tests {
             "cache_read_input_tokens": 8, "cache_creation_input_tokens": 2
         });
         match parse_usage(&u).expect("usage") {
-            LlmEvent::Usage { input, output, cache_read, cache_write } => {
+            LlmEvent::Usage {
+                input,
+                output,
+                cache_read,
+                cache_write,
+            } => {
                 assert_eq!((input, output, cache_read, cache_write), (10, 25, 8, 2));
             }
             other => panic!("expected Usage, got {:?}", other),

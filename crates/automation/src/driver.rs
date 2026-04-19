@@ -56,20 +56,16 @@ impl LaunchConfig {
             }
         }
         args.push("--window-position=-32000,-32000".to_string());
-        // --window-size is the OUTER window including Chromium chrome
-        // (title bar + tab strip + URL bar). In chrome-hiding mode
-        // (--app=<url>) chrome is absent so viewport maps 1:1. Otherwise
-        // add CHROME_HEIGHT_PX so the rendered *content* matches the
-        // requested viewport — otherwise viewport: 1920x1080 records at
-        // 1920x1030 because the ~50 px of chrome eats into content area.
-        // --window-size is ignored by the sidecar path — Playwright
-        // overrides it post-launch via Browser.setWindowBounds, and the
-        // sidecar then does a measured CDP resize to fit the viewport
-        // exactly (server.mjs `launch` verb). We still pass viewport
-        // dims here so the initial window is roughly the right size
-        // while the sidecar's measurement round-trip runs — a smaller
-        // initial saves a visible resize glitch.
-        args.push(format!("--window-size={},{}", viewport.width, viewport.height));
+        // --window-size is a bootstrap hint only. In the shared
+        // Playwright sidecar path we now verify the actual
+        // `window.innerWidth/innerHeight` after launch and retry CDP
+        // resizes until the page content matches the requested viewport.
+        // Keep the bootstrap size near the target so the user does not
+        // see a large visible resize before the verification loop settles.
+        args.push(format!(
+            "--window-size={},{}",
+            viewport.width, viewport.height
+        ));
         Self {
             url: meta.app.clone(),
             viewport,
@@ -282,12 +278,14 @@ mod launch_config_tests {
             &LaunchOptions::default(),
         );
         assert!(
-            cfg.args.iter().any(|a| a == "--window-position=-32000,-32000"),
+            cfg.args
+                .iter()
+                .any(|a| a == "--window-position=-32000,-32000"),
             "expected --window-position in {:?}",
             cfg.args
         );
-        // No chrome-hiding → outer window must account for Chromium's
-        // ~87 px of chrome so the rendered content matches the viewport.
+        // Non chrome-hiding still bootstraps with the requested viewport;
+        // the sidecar performs the authoritative post-launch content fit.
         assert!(
             cfg.args.iter().any(|a| {
                 a == &format!(
@@ -295,7 +293,7 @@ mod launch_config_tests {
                     cfg.viewport.width, cfg.viewport.height
                 )
             }),
-            "expected --window-size matching viewport in {:?}",
+            "expected bootstrap --window-size matching viewport in {:?}",
             cfg.args
         );
         // Chrome-hiding flag only appears when the host opts in.
@@ -315,13 +313,17 @@ mod launch_config_tests {
         let cfg = LaunchConfig::from_meta(&meta_with_app(Some("https://demo.com")), &opts);
         assert!(
             cfg.args.iter().any(|a| a == "--app=https://demo.com"),
-            "expected --app= in {:?}", cfg.args
+            "expected --app= in {:?}",
+            cfg.args
         );
         // Chrome-hiding → window-size matches viewport 1:1 (no chrome
         // compensation since chrome is absent in --app= mode).
         assert!(
             cfg.args.iter().any(|a| {
-                a == &format!("--window-size={},{}", cfg.viewport.width, cfg.viewport.height)
+                a == &format!(
+                    "--window-size={},{}",
+                    cfg.viewport.width, cfg.viewport.height
+                )
             }),
             "expected 1:1 --window-size under chrome-hiding in {:?}",
             cfg.args
@@ -350,8 +352,10 @@ mod launch_config_tests {
         let mut cfg = LaunchConfig::default();
         cfg.args = vec!["--app=https://example.com".into()];
         let json = serde_json::to_string(&cfg).unwrap();
-        assert!(json.contains("\"args\":[\"--app=https://example.com\"]"),
-            "unexpected JSON: {json}");
+        assert!(
+            json.contains("\"args\":[\"--app=https://example.com\"]"),
+            "unexpected JSON: {json}"
+        );
     }
 
     #[test]

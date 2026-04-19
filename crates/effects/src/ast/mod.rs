@@ -63,7 +63,10 @@ mod tests {
     fn graph_new_sets_schema_version() {
         let g = Graph::new(1920, 1080, 60);
         assert_eq!(g.schema_version, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 2, "schema version should track Phase 1 D-28 project.sqlite v2");
+        assert_eq!(
+            SCHEMA_VERSION, 2,
+            "schema version should track Phase 1 D-28 project.sqlite v2"
+        );
         assert_eq!(g.output_width, 1920);
         assert_eq!(g.output_height, 1080);
         assert_eq!(g.output_fps, 60);
@@ -84,7 +87,7 @@ mod tests {
 
     #[test]
     fn node_id_stable_label_is_deterministic() {
-        let id = NodeId::from_bytes([0xAB, 0xCD, 0xEF, 0x01, 0,0,0,0, 0,0,0,0, 0,0,0,0]);
+        let id = NodeId::from_bytes([0xAB, 0xCD, 0xEF, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         let a = id.stable_label("v");
         let b = id.stable_label("v");
         assert_eq!(a, b, "same UUID must yield same label");

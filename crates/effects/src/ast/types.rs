@@ -29,9 +29,7 @@ pub const SCHEMA_VERSION: u32 = 2;
         export_to = "../../../packages/shared-types/src/generated/effects.ts"
     )
 )]
-pub struct NodeId(
-    #[cfg_attr(feature = "ts-export", ts(type = "string"))] pub Uuid,
-);
+pub struct NodeId(#[cfg_attr(feature = "ts-export", ts(type = "string"))] pub Uuid);
 
 impl NodeId {
     /// Fresh random v4 UUID.
@@ -76,9 +74,21 @@ pub struct Rgba {
 }
 
 impl Rgba {
-    pub const WHITE: Rgba = Rgba { r: 255, g: 255, b: 255, a: 255 };
-    pub const BLACK: Rgba = Rgba { r: 0, g: 0, b: 0, a: 255 };
-    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self { Self { r, g, b, a } }
+    pub const WHITE: Rgba = Rgba {
+        r: 255,
+        g: 255,
+        b: 255,
+        a: 255,
+    };
+    pub const BLACK: Rgba = Rgba {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 255,
+    };
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self { r, g, b, a }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -96,7 +106,9 @@ pub struct Vec2 {
 }
 
 impl Vec2 {
-    pub const fn new(x: f32, y: f32) -> Self { Self { x, y } }
+    pub const fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
     pub const ZERO: Vec2 = Vec2 { x: 0.0, y: 0.0 };
 }
 
@@ -114,7 +126,9 @@ pub struct Duration {
 }
 
 impl Duration {
-    pub const fn from_ms(ms: u64) -> Self { Self { ms } }
+    pub const fn from_ms(ms: u64) -> Self {
+        Self { ms }
+    }
 }
 
 /// Easing functions for keyframe interpolation. Details live in Plan 05;

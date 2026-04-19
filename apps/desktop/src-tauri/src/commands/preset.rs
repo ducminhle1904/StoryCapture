@@ -14,8 +14,8 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use storage::{export_preset, import_preset, EffectPreset, NewEffectPreset, PresetTier};
 use storage::repos::preset_repo;
+use storage::{export_preset, import_preset, EffectPreset, NewEffectPreset, PresetTier};
 use tauri::State;
 use uuid::Uuid;
 
@@ -175,8 +175,8 @@ pub async fn preset_export(
     id: String,
     out: String,
 ) -> Result<(), AppError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|e| AppError::InvalidArgument(format!("preset id: {e}")))?;
+    let uuid =
+        Uuid::parse_str(&id).map_err(|e| AppError::InvalidArgument(format!("preset id: {e}")))?;
     // Allow export to any writable path under home/tmp — the file dialog
     // already gated the choice.
     let out_path = PathBuf::from(&out);

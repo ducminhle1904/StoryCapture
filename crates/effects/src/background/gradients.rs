@@ -183,7 +183,11 @@ mod tests {
             .filter_map(|p| p.get("id").and_then(|s| s.as_str()).map(String::from))
             .collect();
         for preset in GRADIENT_PRESETS {
-            assert!(ids.iter().any(|i| i == preset.id), "missing {} in manifest", preset.id);
+            assert!(
+                ids.iter().any(|i| i == preset.id),
+                "missing {} in manifest",
+                preset.id
+            );
         }
     }
 }

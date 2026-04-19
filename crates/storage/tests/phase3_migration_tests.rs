@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use storage::phase3::{
-    gc_tts_cache_older_than, insert_llm_metric, insert_nl_turn, insert_tts_metric,
-    load_nl_history, lookup_tts_cache, session_total_cost, upsert_tts_cache, LlmTurnMetric,
-    NlTurn, NlTurnInsert, TtsCacheEntry, TtsClipMetric,
+    gc_tts_cache_older_than, insert_llm_metric, insert_nl_turn, insert_tts_metric, load_nl_history,
+    lookup_tts_cache, session_total_cost, upsert_tts_cache, LlmTurnMetric, NlTurn, NlTurnInsert,
+    TtsCacheEntry, TtsClipMetric,
 };
 use storage::ProjectDb;
 use tempfile::tempdir;
@@ -47,8 +47,7 @@ fn migration_v5_creates_all_tables() {
     let dir = tempdir().unwrap();
     let _ = ProjectDb::open(dir.path()).unwrap();
 
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     for t in [
         "nl_conversations",
@@ -81,8 +80,7 @@ fn migrations_v3_are_idempotent() {
 #[test]
 fn nl_conversations_rejects_duplicate_turn_index_per_project() {
     let (dir, _db) = open_db();
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     let project_id = Uuid::now_v7();
     let t0 = NlTurnInsert {
@@ -111,8 +109,7 @@ fn nl_conversations_rejects_duplicate_turn_index_per_project() {
 #[test]
 fn nl_turn_roundtrip_preserves_fields() {
     let (dir, _db) = open_db();
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     let project_id = Uuid::now_v7();
     let a = NlTurnInsert {
@@ -162,8 +159,7 @@ fn nl_turn_roundtrip_preserves_fields() {
 #[test]
 fn tts_cache_upsert_updates_last_used_at() {
     let (dir, _db) = open_db();
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     let entry_v1 = TtsCacheEntry {
         hash: "deadbeef".into(),
@@ -210,8 +206,7 @@ fn tts_cache_upsert_updates_last_used_at() {
 #[test]
 fn session_total_cost_sums_llm_turn_metrics() {
     let (dir, _db) = open_db();
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     let session_id = Uuid::now_v7();
     let m1 = LlmTurnMetric {
@@ -245,8 +240,7 @@ fn session_total_cost_sums_llm_turn_metrics() {
 #[test]
 fn gc_tts_cache_removes_old_rows_and_calls_delete_fn() {
     let (dir, _db) = open_db();
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     let now: i64 = 1_700_000_100_000;
     let week = 7 * 24 * 60 * 60 * 1000;
@@ -297,8 +291,7 @@ fn gc_tts_cache_removes_old_rows_and_calls_delete_fn() {
 #[test]
 fn upsert_tts_cache_rejects_path_traversal() {
     let (dir, _db) = open_db();
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     let bad_absolute = TtsCacheEntry {
         hash: "h1".into(),
@@ -339,8 +332,7 @@ fn upsert_tts_cache_rejects_path_traversal() {
 #[test]
 fn tts_clip_metric_insert_roundtrips() {
     let (dir, _db) = open_db();
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     let m = TtsClipMetric {
         clip_id: Uuid::now_v7().to_string(),

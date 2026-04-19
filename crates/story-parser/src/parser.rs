@@ -30,7 +30,10 @@ pub fn parse(source: &str) -> ParseResult {
 
     // Empty input is valid.
     if source.trim().is_empty() {
-        return ParseResult { ast: Some(Story::default()), diagnostics: vec![] };
+        return ParseResult {
+            ast: Some(Story::default()),
+            diagnostics: vec![],
+        };
     }
 
     match StoryParser::parse(Rule::file, source) {
@@ -38,15 +41,20 @@ pub fn parse(source: &str) -> ParseResult {
             let file_pair = pairs.next().expect("file rule always produces one pair");
             let tokens = crate::lenient_tokenize::tokenize(file_pair);
             let (story, diagnostics) = crate::semantic::validate(tokens, source);
-            ParseResult { ast: Some(story), diagnostics }
+            ParseResult {
+                ast: Some(story),
+                diagnostics,
+            }
         }
         Err(err) => {
             // Fall back to line-based recovery when pest stops early.
-            let (tokens, mut diagnostics) =
-                crate::recover::recover_from_pest_error(source, &err);
+            let (tokens, mut diagnostics) = crate::recover::recover_from_pest_error(source, &err);
             let (story, more) = crate::semantic::validate(tokens, source);
             diagnostics.extend(more);
-            ParseResult { ast: Some(story), diagnostics }
+            ParseResult {
+                ast: Some(story),
+                diagnostics,
+            }
         }
     }
 }

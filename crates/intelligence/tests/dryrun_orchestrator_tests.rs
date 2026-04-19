@@ -158,7 +158,9 @@ async fn happy_path_three_steps_all_pass() {
         passed,
         failed,
         total_ms,
-    }) = events.iter().find(|e| matches!(e, DryRunEvent::Summary { .. }))
+    }) = events
+        .iter()
+        .find(|e| matches!(e, DryRunEvent::Summary { .. }))
     {
         assert_eq!(*total_steps, 3);
         assert_eq!(*passed, 3);
@@ -214,9 +216,9 @@ async fn failure_stops_on_first_error() {
     assert_eq!(running_count, 2, "step 2 should never start");
 
     // Summary should show passed=1, failed=1.
-    if let Some(DryRunEvent::Summary {
-        passed, failed, ..
-    }) = events.iter().find(|e| matches!(e, DryRunEvent::Summary { .. }))
+    if let Some(DryRunEvent::Summary { passed, failed, .. }) = events
+        .iter()
+        .find(|e| matches!(e, DryRunEvent::Summary { .. }))
     {
         assert_eq!(*passed, 1);
         assert_eq!(*failed, 1);

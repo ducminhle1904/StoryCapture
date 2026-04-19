@@ -10,8 +10,8 @@ pub use crate::window::WindowInfo;
 pub fn list_windows() -> Result<Vec<WindowInfo>, CaptureError> {
     use windows_capture::window::Window;
 
-    let wins = Window::enumerate()
-        .map_err(|e| CaptureError::Native(format!("Window::enumerate: {e}")))?;
+    let wins =
+        Window::enumerate().map_err(|e| CaptureError::Native(format!("Window::enumerate: {e}")))?;
 
     let self_session = current_session_id();
     let self_pid = std::process::id() as i32;
@@ -95,7 +95,7 @@ pub async fn find_window_by_pid(
     tracing::debug!(
         parent_pid = pid,
         child_count = children.len(),
-                "find_window_by_pid: falling back to Chromium child-pid walk"
+        "find_window_by_pid: falling back to Chromium child-pid walk"
     );
     for child_pid in children {
         if let Some(hwnd) = try_find_window_by_pid(child_pid as i32, title_hint)? {
@@ -117,8 +117,8 @@ fn try_find_window_by_pid(
 ) -> Result<Option<isize>, CaptureError> {
     use windows_capture::window::Window;
 
-    let wins = Window::enumerate()
-        .map_err(|e| CaptureError::Native(format!("Window::enumerate: {e}")))?;
+    let wins =
+        Window::enumerate().map_err(|e| CaptureError::Native(format!("Window::enumerate: {e}")))?;
     let mut best: Option<(isize, i64)> = None;
     for w in wins {
         let owner = match w.process_id() {
@@ -171,10 +171,7 @@ fn chromium_child_pids(parent_pid: i32) -> Result<Vec<u32>, CaptureError> {
                 if entry.th32ParentProcessID as i32 == parent_pid {
                     let name = widestr_to_string(&entry.szExeFile);
                     let lower = name.to_ascii_lowercase();
-                    if matches!(
-                        lower.as_str(),
-                        "chrome.exe" | "msedge.exe" | "chromium.exe"
-                    ) {
+                    if matches!(lower.as_str(), "chrome.exe" | "msedge.exe" | "chromium.exe") {
                         pids.push(entry.th32ProcessID);
                     }
                 }
@@ -205,10 +202,7 @@ fn pid_to_session(pid: u32) -> Option<u32> {
     // from kernel32. We pass a valid outparam; the function is stateless.
     #[link(name = "kernel32")]
     unsafe extern "system" {
-        fn ProcessIdToSessionId(
-            dw_process_id: u32,
-            p_session_id: *mut u32,
-        ) -> i32;
+        fn ProcessIdToSessionId(dw_process_id: u32, p_session_id: *mut u32) -> i32;
     }
     let mut sid: u32 = 0;
     let ok = unsafe { ProcessIdToSessionId(pid, &mut sid as *mut u32) };

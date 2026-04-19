@@ -93,10 +93,7 @@ impl VtWriter {
         // AVAssetWriter won't overwrite.
         if cfg.output_path.exists() {
             std::fs::remove_file(&cfg.output_path).map_err(|e| {
-                EncoderError::Io(format!(
-                    "remove existing output {:?}: {e}",
-                    cfg.output_path
-                ))
+                EncoderError::Io(format!("remove existing output {:?}: {e}", cfg.output_path))
             })?;
         }
 
@@ -146,11 +143,8 @@ fn run_worker(
 
         let writer = unsafe { AVAssetWriter::assetWriterWithURL_fileType_error(&url, file_type) }
             .map_err(|e| {
-                EncoderError::Io(format!(
-                    "AVAssetWriter init: {}",
-                    e.localizedDescription()
-                ))
-            })?;
+            EncoderError::Io(format!("AVAssetWriter init: {}", e.localizedDescription()))
+        })?;
 
         // Build video output settings.
         let bitrate_bps: i64 = (cfg.bitrate_kbps as i64) * 1000;
@@ -164,8 +158,9 @@ fn run_worker(
             .ok_or_else(|| EncoderError::Io("AVVideoWidthKey symbol missing".into()))?;
         let height_key = unsafe { AVVideoHeightKey }
             .ok_or_else(|| EncoderError::Io("AVVideoHeightKey symbol missing".into()))?;
-        let compression_key = unsafe { AVVideoCompressionPropertiesKey }
-            .ok_or_else(|| EncoderError::Io("AVVideoCompressionPropertiesKey symbol missing".into()))?;
+        let compression_key = unsafe { AVVideoCompressionPropertiesKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoCompressionPropertiesKey symbol missing".into())
+        })?;
         let bitrate_key = unsafe { AVVideoAverageBitRateKey }
             .ok_or_else(|| EncoderError::Io("AVVideoAverageBitRateKey symbol missing".into()))?;
         let codec_h264 = unsafe { AVVideoCodecTypeH264 }
@@ -173,10 +168,7 @@ fn run_worker(
 
         // Compression properties.
         let compression_dict: Retained<NSDictionary<NSString, AnyObject>> =
-            NSDictionary::from_slices(
-                &[bitrate_key],
-                &[&*bitrate_num as &AnyObject],
-            );
+            NSDictionary::from_slices(&[bitrate_key], &[&*bitrate_num as &AnyObject]);
 
         // Top-level settings.
         let settings: Retained<NSDictionary<NSString, AnyObject>> = NSDictionary::from_slices(
@@ -223,7 +215,9 @@ fn run_worker(
             let msg = err
                 .map(|e| e.localizedDescription().to_string())
                 .unwrap_or_else(|| "startWriting returned NO".into());
-            return Err(EncoderError::Io(format!("AVAssetWriter startWriting: {msg}")));
+            return Err(EncoderError::Io(format!(
+                "AVAssetWriter startWriting: {msg}"
+            )));
         }
 
         // --- Frame loop ---
@@ -284,9 +278,7 @@ fn run_worker(
                     // Cast raw CVPixelBufferRef pointer to objc2 type.
                     let raw: *mut c_void = buffer.as_ptr();
                     let pb: &CVPixelBuffer = unsafe { &*(raw as *const CVPixelBuffer) };
-                    let ok = unsafe {
-                        adaptor.appendPixelBuffer_withPresentationTime(pb, cm_pts)
-                    };
+                    let ok = unsafe { adaptor.appendPixelBuffer_withPresentationTime(pb, cm_pts) };
                     drop(buffer); // release our retain; AVFoundation holds its own.
 
                     if ok {
@@ -301,9 +293,7 @@ fn run_worker(
                             let msg = err
                                 .map(|e| e.localizedDescription().to_string())
                                 .unwrap_or_else(|| "appendPixelBuffer failed".into());
-                            return Err(EncoderError::Io(format!(
-                                "AVAssetWriter failed: {msg}"
-                            )));
+                            return Err(EncoderError::Io(format!("AVAssetWriter failed: {msg}")));
                         }
                     }
 

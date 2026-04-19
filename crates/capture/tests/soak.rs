@@ -74,13 +74,15 @@ async fn thirty_minute_memory_stability() {
             true,
             sysinfo::ProcessRefreshKind::new().with_memory(),
         );
-        let rss = sys
-            .process(pid)
-            .map(|p| p.memory())
-            .unwrap_or(0);
+        let rss = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
         let elapsed = start.elapsed().as_secs();
         samples.push((elapsed, rss));
-        eprintln!("t={}s rss={} MB drops={}", elapsed, rss / (1024 * 1024), queue.stats().dropped_frames);
+        eprintln!(
+            "t={}s rss={} MB drops={}",
+            elapsed,
+            rss / (1024 * 1024),
+            queue.stats().dropped_frames
+        );
         tokio::time::sleep(Duration::from_secs(SAMPLE_INTERVAL_SEC)).await;
     }
 

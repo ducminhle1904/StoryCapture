@@ -54,8 +54,12 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, AppError> {
 }
 
 pub fn load(app: &AppHandle) -> AppSettings {
-    let Ok(path) = settings_path(app) else { return AppSettings::default(); };
-    let Ok(bytes) = std::fs::read(&path) else { return AppSettings::default(); };
+    let Ok(path) = settings_path(app) else {
+        return AppSettings::default();
+    };
+    let Ok(bytes) = std::fs::read(&path) else {
+        return AppSettings::default();
+    };
     serde_json::from_slice(&bytes).unwrap_or_default()
 }
 

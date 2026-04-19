@@ -30,7 +30,7 @@ pub mod system;
 pub mod timeline;
 pub mod tts;
 pub mod updater;
-pub mod util;
 pub mod upload;
+pub mod util;
 pub mod web_account;
 pub mod web_sync;

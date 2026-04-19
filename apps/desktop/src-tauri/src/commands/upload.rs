@@ -31,8 +31,8 @@ use tauri::Manager;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
-use crate::state::AppState;
 use super::web_account::WebAccountError;
+use crate::state::AppState;
 
 // ---- Constants ----------------------------------------------------------------
 
@@ -223,9 +223,7 @@ pub async fn upload_video(
 
     let video_path = PathBuf::from(&video_path);
     if !video_path.exists() {
-        return Err(UploadError::FileNotFound(
-            video_path.display().to_string(),
-        ));
+        return Err(UploadError::FileNotFound(video_path.display().to_string()));
     }
 
     // Get the API token from keychain
@@ -303,9 +301,7 @@ pub async fn upload_video(
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(skip(app))]
-pub async fn cancel_upload(
-    app: tauri::AppHandle<tauri::Wry>,
-) -> Result<(), UploadError> {
+pub async fn cancel_upload(app: tauri::AppHandle<tauri::Wry>) -> Result<(), UploadError> {
     tracing::info!(target: "storycapture::upload", "cancel_upload");
 
     if let Some(manager) = app.try_state::<UploadManagerState>() {
@@ -483,7 +479,8 @@ async fn do_upload(
             .unwrap_or(false)
         {
             // Seek past this chunk
-            let skip_bytes = CHUNK_SIZE.min((file_size - (part_num as u64 - 1) * CHUNK_SIZE as u64) as usize);
+            let skip_bytes =
+                CHUNK_SIZE.min((file_size - (part_num as u64 - 1) * CHUNK_SIZE as u64) as usize);
             let mut skip_buf = vec![0u8; skip_bytes];
             let _ = file.read_exact(&mut skip_buf).await;
             continue;
@@ -590,7 +587,10 @@ async fn do_upload(
         .map_err(|e| UploadError::NetworkError(e.without_url().to_string()))?;
 
     let mut thumbnail_r2_key = r2_key.replace(
-        &format!(".{}", video_path.extension().unwrap_or_default().to_string_lossy()),
+        &format!(
+            ".{}",
+            video_path.extension().unwrap_or_default().to_string_lossy()
+        ),
         "-thumb.jpg",
     );
 
@@ -689,9 +689,7 @@ async fn generate_thumbnail(video_path: &Path) -> Result<PathBuf, UploadError> {
         .output()
         .await
         .map_err(|e| {
-            UploadError::FfmpegError(format!(
-                "failed to spawn ffmpeg: {e}. Is FFmpeg installed?"
-            ))
+            UploadError::FfmpegError(format!("failed to spawn ffmpeg: {e}. Is FFmpeg installed?"))
         })?;
 
     if !output.status.success() {

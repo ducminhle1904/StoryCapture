@@ -41,7 +41,12 @@ pub fn recover_from_pest_error(
     // a Story to attach scenes to.
     tokens.push(LenientToken::StoryStart {
         name: None,
-        span: Span { start: 0, end: 0, line: 1, col: 1 },
+        span: Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            col: 1,
+        },
     });
 
     // Scan line-by-line for command-shaped fragments and emit Unknowns.

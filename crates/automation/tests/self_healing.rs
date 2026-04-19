@@ -64,16 +64,21 @@ impl HealingMockDriver {
         // `#save-v2` resolves via `explicit_strategy` as (Css, "#save-v2").
         // `role=button:Save` resolves as (Role, "role=button:Save").
         matches!(sel.strategy, SelectorStrategy::Css) && sel.value == "#save-v2"
-            || matches!(sel.strategy, SelectorStrategy::Role)
-                && sel.value == "role=button:Save"
+            || matches!(sel.strategy, SelectorStrategy::Role) && sel.value == "role=button:Save"
     }
 }
 
 #[async_trait]
 impl BrowserDriver for HealingMockDriver {
-    async fn launch(&mut self, _c: LaunchConfig) -> AutoResult<()> { Ok(()) }
-    async fn close(&mut self) -> AutoResult<()> { Ok(()) }
-    async fn goto(&self, _u: &str) -> AutoResult<()> { Ok(()) }
+    async fn launch(&mut self, _c: LaunchConfig) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn close(&mut self) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn goto(&self, _u: &str) -> AutoResult<()> {
+        Ok(())
+    }
 
     async fn click(&self, sel: &ResolvedSelector) -> AutoResult<()> {
         self.clicks.fetch_add(1, Ordering::SeqCst);
@@ -81,15 +86,33 @@ impl BrowserDriver for HealingMockDriver {
         Ok(())
     }
 
-    async fn type_text(&self, _s: &ResolvedSelector, _t: &str) -> AutoResult<()> { Ok(()) }
-    async fn scroll(&self, _d: ScrollDir, _a: Option<f32>) -> AutoResult<()> { Ok(()) }
-    async fn hover(&self, _s: &ResolvedSelector) -> AutoResult<()> { Ok(()) }
-    async fn drag(&self, _f: &ResolvedSelector, _t: &ResolvedSelector) -> AutoResult<()> { Ok(()) }
-    async fn select_option(&self, _s: &ResolvedSelector, _v: &str) -> AutoResult<()> { Ok(()) }
-    async fn upload_file(&self, _s: &ResolvedSelector, _p: &Path) -> AutoResult<()> { Ok(()) }
-    async fn wait_ms(&self, _ms: u64) -> AutoResult<()> { Ok(()) }
-    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> { Ok(()) }
-    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> { Ok(()) }
+    async fn type_text(&self, _s: &ResolvedSelector, _t: &str) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn scroll(&self, _d: ScrollDir, _a: Option<f32>) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn hover(&self, _s: &ResolvedSelector) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn drag(&self, _f: &ResolvedSelector, _t: &ResolvedSelector) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn select_option(&self, _s: &ResolvedSelector, _v: &str) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn upload_file(&self, _s: &ResolvedSelector, _p: &Path) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn wait_ms(&self, _ms: u64) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> {
+        Ok(())
+    }
     async fn screenshot(&self, _n: &str, _d: &Path) -> AutoResult<PathBuf> {
         Ok(PathBuf::from("/tmp/nope.png"))
     }
@@ -98,7 +121,12 @@ impl BrowserDriver for HealingMockDriver {
         if Self::matches_save_v2(sel) {
             // Bbox-stable after the first poll so wait_actionable's
             // two-tick stability check flips to true.
-            let bbox = BoundingBox { x: 10.0, y: 10.0, w: 100.0, h: 40.0 };
+            let bbox = BoundingBox {
+                x: 10.0,
+                y: 10.0,
+                w: 100.0,
+                h: 40.0,
+            };
             let mut g = self.last_bbox.lock().await;
             *g = Some(bbox);
             Ok(ElementState {
@@ -117,9 +145,15 @@ impl BrowserDriver for HealingMockDriver {
         }
     }
 
-    async fn current_cursor_position(&self) -> AutoResult<(i32, i32)> { Ok((0, 0)) }
-    fn capabilities(&self) -> CapabilitySet { CapabilitySet::PLAYWRIGHT }
-    fn name(&self) -> &'static str { "healing-mock" }
+    async fn current_cursor_position(&self) -> AutoResult<(i32, i32)> {
+        Ok((0, 0))
+    }
+    fn capabilities(&self) -> CapabilitySet {
+        CapabilitySet::PLAYWRIGHT
+    }
+    fn name(&self) -> &'static str {
+        "healing-mock"
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -156,8 +190,7 @@ async fn primary_miss_promotes_first_passing_fallback() {
     let story = parsed.ast.expect("story must parse");
 
     // Sanity: the command must carry the step_id from the fixture.
-    let expected_step_id =
-        uuid::Uuid::parse_str("018f4c1e-7b3a-7000-8000-0000000000aa").unwrap();
+    let expected_step_id = uuid::Uuid::parse_str("018f4c1e-7b3a-7000-8000-0000000000aa").unwrap();
     let parsed_step_id = story.scenes[0].commands[0].step_id();
     assert_eq!(
         parsed_step_id,
@@ -188,9 +221,7 @@ async fn primary_miss_promotes_first_passing_fallback() {
 
     // Drain events with a hard timeout so a hang fails the test rather
     // than the runner.
-    let drain = async {
-        while rx.recv().await.is_some() {}
-    };
+    let drain = async { while rx.recv().await.is_some() {} };
     timeout(Duration::from_secs(30), drain)
         .await
         .expect("executor must complete within 30s");
@@ -258,7 +289,10 @@ fn legacy_story_without_step_id_does_not_touch_targets_store() {
         "/nonexistent/nowhere.story.targets.json",
     );
     let result = targets_store::load(&tp).unwrap();
-    assert!(result.steps.is_empty(), "missing sidecar must decode as empty");
+    assert!(
+        result.steps.is_empty(),
+        "missing sidecar must decode as empty"
+    );
 }
 
 /// Live-sidecar variant — requires a running Playwright sidecar + real

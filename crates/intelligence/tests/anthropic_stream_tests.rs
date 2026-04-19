@@ -12,8 +12,7 @@ use eventsource_stream::Eventsource;
 use futures_util::stream;
 use futures_util::StreamExt;
 use intelligence::llm::anthropic::{
-    process_event, AnthropicProvider, ANTHROPIC_PROMPT_CACHING_BETA,
-    ANTHROPIC_VERSION,
+    process_event, AnthropicProvider, ANTHROPIC_PROMPT_CACHING_BETA, ANTHROPIC_VERSION,
 };
 use intelligence::llm::EventOutcome;
 use intelligence::llm::{LlmEvent, LlmProvider, LlmRequest};

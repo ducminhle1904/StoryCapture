@@ -94,7 +94,11 @@ async fn list_voices_parses_catalog_fixture() {
 
     let provider = ElevenLabsProvider::with_base_url("test-elev-key".into(), server.uri());
     let voices = provider.list_voices().await.expect("list ok");
-    assert!(voices.len() >= 3, "expected ≥3 voices, got {}", voices.len());
+    assert!(
+        voices.len() >= 3,
+        "expected ≥3 voices, got {}",
+        voices.len()
+    );
     let rachel = voices
         .iter()
         .find(|v| v.name == "Rachel")
@@ -111,7 +115,10 @@ fn curated_presets_meets_d11_minimum() {
         "D-11 requires ≥6 curated voice presets, got {}",
         CURATED_PRESETS.len()
     );
-    assert!(CURATED_PRESETS.len() <= 8, "D-11 caps at 8 to avoid menu bloat");
+    assert!(
+        CURATED_PRESETS.len() <= 8,
+        "D-11 caps at 8 to avoid menu bloat"
+    );
 }
 
 #[tokio::test]

@@ -66,10 +66,7 @@ mod tests {
     fn offsets_chained_three() {
         let tl = XfadeTimeline {
             clip_durations_ms: vec![10_000, 10_000, 10_000],
-            transitions: vec![
-                (0, XfadeKind::Fade, 1000),
-                (1, XfadeKind::Dissolve, 1000),
-            ],
+            transitions: vec![(0, XfadeKind::Fade, 1000), (1, XfadeKind::Dissolve, 1000)],
         };
         // Per Research §5 Code Example 3:
         //   offset_0 = 10000 - 0 - 1000 = 9000
@@ -81,10 +78,7 @@ mod tests {
     fn offsets_varying_durations() {
         let tl = XfadeTimeline {
             clip_durations_ms: vec![5000, 8000, 12000],
-            transitions: vec![
-                (0, XfadeKind::Fade, 500),
-                (1, XfadeKind::WipeLeft, 300),
-            ],
+            transitions: vec![(0, XfadeKind::Fade, 500), (1, XfadeKind::WipeLeft, 300)],
         };
         // offset_0 = 5000 - 0 - 500 = 4500
         // offset_1 = (5000+8000) - 500 - 300 = 12200

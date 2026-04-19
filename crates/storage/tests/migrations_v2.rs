@@ -27,8 +27,7 @@ fn fresh_project_db_has_all_v2_tables() {
     let _ = ProjectDb::open(dir.path()).unwrap();
 
     // Re-open raw to inspect sqlite_master.
-    let conn =
-        rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join(storage::PROJECT_DB_FILENAME)).unwrap();
 
     for t in [
         // v1
@@ -44,7 +43,10 @@ fn fresh_project_db_has_all_v2_tables() {
         "render_jobs",
         "sound_library_index",
     ] {
-        assert!(table_exists(&conn, t), "expected table {t} after migrations");
+        assert!(
+            table_exists(&conn, t),
+            "expected table {t} after migrations"
+        );
     }
 
     let user_version: u32 = conn

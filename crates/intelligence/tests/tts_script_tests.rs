@@ -17,11 +17,7 @@ struct MockScriptProvider {
 
 #[async_trait::async_trait]
 impl LlmProvider for MockScriptProvider {
-    async fn stream(
-        &self,
-        _req: LlmRequest,
-        tx: mpsc::Sender<LlmEvent>,
-    ) -> Result<(), LlmError> {
+    async fn stream(&self, _req: LlmRequest, tx: mpsc::Sender<LlmEvent>) -> Result<(), LlmError> {
         let _ = tx
             .send(LlmEvent::ToolUseComplete {
                 index: 0,
@@ -83,7 +79,9 @@ async fn happy_path_returns_3_narration_drafts_with_matching_step_ids() {
     });
 
     let story = make_3step_story();
-    let drafts = generate_narration_script(provider, &story, None).await.unwrap();
+    let drafts = generate_narration_script(provider, &story, None)
+        .await
+        .unwrap();
 
     assert_eq!(drafts.len(), 3);
     assert_eq!(drafts[0].step_id, "s1");
@@ -134,14 +132,19 @@ async fn text_over_80_words_is_truncated_at_sentence_boundary() {
         }],
     };
 
-    let drafts = generate_narration_script(provider, &story, None).await.unwrap();
+    let drafts = generate_narration_script(provider, &story, None)
+        .await
+        .unwrap();
     assert_eq!(drafts.len(), 1);
     assert!(
         drafts[0].word_count <= 80,
         "word_count should be <= 80, got {}",
         drafts[0].word_count
     );
-    assert_eq!(drafts[0].word_count, drafts[0].text.split_whitespace().count() as u32);
+    assert_eq!(
+        drafts[0].word_count,
+        drafts[0].text.split_whitespace().count() as u32
+    );
 }
 
 /// Test 3 (cost estimate): 150-char narration with ElevenLabs default → ~0.045.
@@ -150,7 +153,11 @@ async fn cost_estimate_matches_elevenlabs_pricing() {
     // Build a narration that is exactly 150 characters
     let text_150 = "We navigate to the login page where users can enter their credentials to access the application dashboard and begin their daily workflow sessions.xxxx";
     // Ensure exactly 150 chars
-    assert_eq!(text_150.chars().count(), 150, "fixture text must be 150 chars");
+    assert_eq!(
+        text_150.chars().count(),
+        150,
+        "fixture text must be 150 chars"
+    );
 
     let provider = Arc::new(MockScriptProvider {
         response_json: serde_json::json!({
@@ -171,7 +178,9 @@ async fn cost_estimate_matches_elevenlabs_pricing() {
         }],
     };
 
-    let drafts = generate_narration_script(provider, &story, None).await.unwrap();
+    let drafts = generate_narration_script(provider, &story, None)
+        .await
+        .unwrap();
     assert_eq!(drafts.len(), 1);
     let expected = 150.0 * 0.30 / 1000.0; // 0.045
     let diff = (drafts[0].cost_estimate_usd - expected).abs();
@@ -207,7 +216,9 @@ async fn faithfulness_check_flags_hallucinated_content() {
     };
 
     // Should succeed (does NOT fail on hallucination), just logs a warning
-    let drafts = generate_narration_script(provider, &story, None).await.unwrap();
+    let drafts = generate_narration_script(provider, &story, None)
+        .await
+        .unwrap();
     assert_eq!(drafts.len(), 1);
     // The text should still be returned (user reviews before TTS synthesis)
     assert!(!drafts[0].text.is_empty());
@@ -261,7 +272,9 @@ async fn unknown_step_ids_dropped_missing_steps_get_fallback() {
     });
 
     let story = make_3step_story();
-    let drafts = generate_narration_script(provider, &story, None).await.unwrap();
+    let drafts = generate_narration_script(provider, &story, None)
+        .await
+        .unwrap();
 
     // Should have 3 drafts (s1 from batch, s2 and s3 as fallbacks)
     assert_eq!(drafts.len(), 3);
@@ -320,11 +333,17 @@ async fn prompt_includes_step_context() {
     // The user message should contain each step's info
     let user_msg = req.messages.last().unwrap();
     let content = user_msg["content"].as_str().unwrap();
-    assert!(content.contains("navigate"), "should contain verb 'navigate'");
+    assert!(
+        content.contains("navigate"),
+        "should contain verb 'navigate'"
+    );
     assert!(content.contains("click"), "should contain verb 'click'");
     assert!(content.contains("Open login page"), "should contain label");
     assert!(content.contains("/login"), "should contain args url");
-    assert!(content.contains("confident, warm"), "should contain brand tone");
+    assert!(
+        content.contains("confident, warm"),
+        "should contain brand tone"
+    );
 
     // Should have temperature 0.4
     assert!(
