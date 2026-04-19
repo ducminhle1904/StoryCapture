@@ -171,6 +171,8 @@ Relocate the element picker out of the recording flow and into the **Preview pan
 - **Persistent author-session across project switches** — out of scope; each project gets a fresh author-session.
 - **Cross-frame / cross-origin picker** — Phase 7 limitation (cross-origin iframe contexts). Not solved here.
 - **"Pick multiple" batch mode** — picking several elements before resolving. Out of scope for v1.
+- **D-11 idle-timeout ownership (added 2026-04-19 via planner-revision):** The 10-min author-session idle timeout is a Phase 9-04 surface. Phase 11 does not implement, configure, or verify the timeout — it merely assumes a warm session exists. If 9-04 does not ship a 10-min timeout, Phase 11 still functions (lazy-start in D-09 covers dormant sessions); the timeout duration itself is out of scope for Phase 11 acceptance.
+- **In-memory open-story-source plumbing (D-10 scope refinement, added 2026-04-19 via planner-revision):** Phase 11 navigate-replay reads the `.story` from disk via `AppState.open_story_path`, NOT from the CodeMirror buffer. Dirty-buffer cases are handled by a renderer-side toast warning in `PreviewPickerButton` (11-04 Task 1). Full in-memory buffer plumbing (e.g. a `get_editor_buffer` Tauri command) is deferred until a user-reported pain case justifies it.
 
 </deferred>
 

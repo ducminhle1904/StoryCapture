@@ -136,6 +136,25 @@ Added 2026-04-19 during /gsd-plan-phase 10. Internal identifier is "simulator"; 
 - [ ] **PHASE-10.7**: Simulator acquires exclusive lock on the 9-04 author session by calling `pause_author_preview(streamId)` (PHASE-9.9) before the executor runs, and `resume_author_preview(streamId)` on `RunPaused`, `StoryEnded`, `SimulatorCancelled`, or error. `simulator_start` fails with a typed error if `previewEnabled=false` — never silently spawns a new session.
 - [ ] **PHASE-10.8**: Editor becomes `readOnly=true` and a banner ("Simulator running — edits paused · Step N / M") renders above the CodeMirror scroll area for the duration of an active run. Banner dismisses and editor re-enables on `RunPaused`, `StoryEnded`, or `SimulatorCancelled`. Scrubbing and line-highlight remain functional while `readOnly` is set.
 
+### Phase 11 — Author-time Element Picker (PHASE-11.x)
+
+Added 2026-04-19 during /gsd-plan-phase 11. Relocates the picker from the recording flow into the Preview panel (D-01..D-05) and turns the Record path into a strictly read-only consumer (D-06..D-08). All IDs trace to 11-CONTEXT.md D-01 … D-16 and 11-UI-SPEC.md locked copy.
+
+- [ ] **PHASE-11.1**: A shared `AuthorDriverState` registry (`tokio::Mutex<AuthorDriverState>`) lives in `apps/desktop/src-tauri/src/author_driver.rs` with exactly five variants: `Idle`, `LivePreview { stream_id }`, `Picking { stream_id, resume_to }`, `SimulatorRunning { session }`, `SimulatorPaused { session }`. Both `commands/picker.rs` and `commands/simulator.rs` acquire the same lock. (D-16)
+- [ ] **PHASE-11.2**: `PickerResumeGuard` provides RAII cleanup: Drop reverts the registry to the pre-pick state and best-effort calls `resume_author_preview`. Drop is shutdown-safe via `tokio::runtime::Handle::try_current().ok()` gate. (Pitfall 2)
+- [ ] **PHASE-11.3**: The recording path (`commands/automation.rs launch_automation`) passes `self_heal=false` to the executor. Record runs never mutate `.story.targets.json`. (D-06)
+- [ ] **PHASE-11.4**: A primary-miss during recording produces `AutomationError::PrimaryMissNoHeal { step_ordinal, step_id, verb }`. `try_promote_fallback` is unreachable from the record path. The error `Display` string matches the UI-SPEC-locked copy verbatim. (D-06)
+- [ ] **PHASE-11.5**: The recorder HUD surfaces the D-06 error with the UI-SPEC-locked 2-line copy and an "Open in Simulator →" action that opens the Editor on the failed step (no auto-simulator start). A Sonner destructive toast shadows the HUD with the same copy + action. (D-06, UI-SPEC §5)
+- [ ] **PHASE-11.6**: The sidecar `pickElement.start` accepts an optional `streamId` and routes to `state.previewPagesByStreamId.get(streamId)`. Unknown streamId throws with JSON-RPC code -32000; no fall-through to `state.page`. `state.authorBrowser` (Phase 7 snapshot browser) is NOT reused. (Pitfall 1, Pitfall 3)
+- [ ] **PHASE-11.7**: `picker_stamp_step_id` is provably byte-idempotent on re-pick of an already-stamped line: source bytes + mtime unchanged; `.story.targets.json` IS rewritten. The command returns a `was_freshly_stamped: bool` flag so callers can dispatch the correct UI copy. (D-04, Pitfall 5)
+- [ ] **PHASE-11.8**: Host-layer state machine enforces concurrency: `can_start_pick()` rejects when state is `SimulatorRunning` or `Picking`; `can_start_simulator()` rejects when state is `Picking`. `Picking` entered from `SimulatorPaused` carries `resume_to` and restores on exit. (D-13, D-14, D-15)
+- [ ] **PHASE-11.9**: A new Tauri command `picker_start_author(stream_id, cursor_line)` orchestrates: acquire registry → transition to `Picking{resume_to}` → `replay_navigate_verbs` → `pause_author_preview` → sidecar pick → `resume_author_preview` (on ALL exit paths: success, user-cancel, navigation, unsupported-url, timeout, driver error, panic via guard). (D-12)
+- [ ] **PHASE-11.10**: `replay_navigate_verbs` walks `story.scenes[*].commands[*]`; for every command with `meta().line <= cursor_line` and variant `Command::Navigate`, emits the URL via sidecar `author.navigateTo`. If list is empty, falls back to `story.meta.app`. Sidecar nav errors are best-effort (logged, not propagated). (D-10)
+- [ ] **PHASE-11.11**: A new sidecar RPC `author.navigateTo(streamId, url)` performs `page.goto(url)` + `waitForLoadState('networkidle', { timeout: 10_000 })` against the streamId-keyed author page. Times out silently to unblock picker start. (Pitfall 4)
+- [ ] **PHASE-11.12**: A `PreviewPickerButton` component (`apps/desktop/src/features/editor/PreviewPickerButton.tsx`) is mounted inside `preview-panel.tsx` toolbar, left of the viewport/quality controls, with five visual states (Idle/LivePreview default, Picking active, Starting spinner, Disabled-SimulatorRunning, Active-from-SimulatorPaused). Tooltip + toast + banner copy strings appear verbatim per UI-SPEC §Copywriting. (D-01, D-02, UI-SPEC)
+- [ ] **PHASE-11.13**: `Cmd-Shift-P` / `Ctrl-Shift-P` triggers the pick action via a CodeMirror 6 keymap extension in `codemirror-setup.ts` (NOT `document.addEventListener`). Behavior: editor focused + not `SimulatorRunning` → trigger pick; focused during `SimulatorRunning` → no-op (optional banner shake); focused during `Picking` → cancel. (D-01, UI-SPEC §6)
+- [ ] **PHASE-11.14**: The Phase 7 recorder-side picker is deleted: `pick-element-button.tsx`, `pick-element-button.test.tsx`, and the import + mount sites in `recording-view.tsx`. A new `11-SMOKE.md` operator runbook supersedes the record-path sections of `07-03b-SMOKE.md` and `07-04c-SMOKE.md`. (D-05)
+
 ## v2 Requirements (deferred, tracked)
 
 ### Advanced & Scale
@@ -186,12 +205,16 @@ Added 2026-04-19 during /gsd-plan-phase 10. Internal identifier is "simulator"; 
 | PHASE-10.1..10.2 | Phase 10 (10-01) | Pending |
 | PHASE-10.3..10.4, 10.7 | Phase 10 (10-02) | Pending |
 | PHASE-10.5..10.6, 10.8 | Phase 10 (10-03) | Pending |
+| PHASE-11.1, 11.2, 11.7, 11.8 | Phase 11 (11-01) | Pending |
+| PHASE-11.3..11.5 | Phase 11 (11-02) | Pending |
+| PHASE-11.6, 11.9..11.11 | Phase 11 (11-03) | Pending |
+| PHASE-11.12..11.14 | Phase 11 (11-04) | Pending |
 
 **Coverage:**
-- v1 requirements: 73 total
-- Mapped to phases: 73
+- v1 requirements: 87 total
+- Mapped to phases: 87
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-14*
-*Last updated: 2026-04-19 — added PHASE-10.1 … PHASE-10.8 for /gsd-plan-phase 10.*
+*Last updated: 2026-04-19 — added PHASE-11.1 … PHASE-11.14 for /gsd-plan-phase 11.*
