@@ -44,6 +44,10 @@ pub struct LaunchConfig {
 impl LaunchConfig {
     /// Build a launch config from story metadata and host options.
     pub fn from_meta(meta: &story_parser::Meta, opts: &LaunchOptions) -> Self {
+        let viewport = meta.viewport.unwrap_or(Viewport {
+            width: 1280,
+            height: 800,
+        });
         let mut args = Vec::new();
         if let Some(url) = opts.app_url_for_hiding.as_deref() {
             // Defensive second check.
@@ -51,12 +55,14 @@ impl LaunchConfig {
                 args.push(format!("--app={}", url));
             }
         }
+        args.push("--window-position=-32000,-32000".to_string());
+        args.push(format!(
+            "--window-size={},{}",
+            viewport.width, viewport.height
+        ));
         Self {
             url: meta.app.clone(),
-            viewport: meta.viewport.unwrap_or(Viewport {
-                width: 1280,
-                height: 800,
-            }),
+            viewport,
             theme: meta.theme.unwrap_or(Theme::Auto),
             headless: false,
             base_url: meta.app.clone(),
@@ -260,12 +266,29 @@ mod launch_config_tests {
     }
 
     #[test]
-    fn from_meta_without_chrome_hiding_has_empty_args() {
+    fn from_meta_always_includes_offscreen_window_flags() {
         let cfg = LaunchConfig::from_meta(
             &meta_with_app(Some("https://example.com")),
             &LaunchOptions::default(),
         );
-        assert!(cfg.args.is_empty());
+        assert!(
+            cfg.args.iter().any(|a| a == "--window-position=-32000,-32000"),
+            "expected --window-position in {:?}",
+            cfg.args
+        );
+        assert!(
+            cfg.args
+                .iter()
+                .any(|a| a == &format!("--window-size={},{}", cfg.viewport.width, cfg.viewport.height)),
+            "expected --window-size matching viewport in {:?}",
+            cfg.args
+        );
+        // Chrome-hiding flag only appears when the host opts in.
+        assert!(
+            !cfg.args.iter().any(|a| a.starts_with("--app=")),
+            "--app= must not appear without chrome-hiding opt-in: {:?}",
+            cfg.args
+        );
     }
 
     #[test]
@@ -290,7 +313,12 @@ mod launch_config_tests {
             ..Default::default()
         };
         let cfg = LaunchConfig::from_meta(&meta_with_app(Some("javascript:alert(1)")), &opts);
-        assert!(cfg.args.is_empty(), "javascript: URL leaked into args: {:?}", cfg.args);
+        // Only the unconditional off-screen window flags are allowed; no --app=.
+        assert!(
+            !cfg.args.iter().any(|a| a.starts_with("--app=")),
+            "javascript: URL leaked into args: {:?}",
+            cfg.args
+        );
     }
 
     #[test]
