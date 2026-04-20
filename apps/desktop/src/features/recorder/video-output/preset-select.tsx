@@ -36,7 +36,7 @@ export function PresetSelect({ disabled }: Props) {
       }}
       disabled={disabled}
     >
-      <SelectTrigger aria-label={LABEL_PRESET} className="w-[170px]">
+      <SelectTrigger aria-label={LABEL_PRESET} className="w-full min-w-0">
         <SelectValue>{PRESET_OPTION_LABELS[activePreset]}</SelectValue>
       </SelectTrigger>
       <SelectContent>

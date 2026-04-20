@@ -782,7 +782,7 @@ export function RecordingView({
         </section>
 
         {/* RIGHT: settings rail */}
-        <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto bg-[var(--color-surface-100)] px-4 py-4">
+        <aside className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-100)] px-4 py-4">
           <SettingsGroup label="Source" icon={<Monitor size={13} />}>
             <label
               htmlFor="target-select"

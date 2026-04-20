@@ -18,7 +18,7 @@ export const ToggleGroup = React.forwardRef<
   <BaseToggleGroup
     ref={ref}
     className={cn(
-      "inline-flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] p-1",
+      "flex flex-wrap items-center gap-1 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] p-1",
       className,
     )}
     {...props}
