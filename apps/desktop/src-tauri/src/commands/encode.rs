@@ -147,6 +147,106 @@ impl From<HardwareEncoder> for HardwareEncoderDto {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum FitModeDto {
+    Letterbox,
+    FillCrop,
+    Stretch,
+}
+
+impl From<FitModeDto> for FitMode {
+    fn from(v: FitModeDto) -> Self {
+        match v {
+            FitModeDto::Letterbox => FitMode::Letterbox,
+            FitModeDto::FillCrop => FitMode::FillCrop,
+            FitModeDto::Stretch => FitMode::Stretch,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScaleAlgoDto {
+    Lanczos,
+    Bicubic,
+    Bilinear,
+    Area,
+}
+
+impl From<ScaleAlgoDto> for ScaleAlgo {
+    fn from(v: ScaleAlgoDto) -> Self {
+        match v {
+            ScaleAlgoDto::Lanczos => ScaleAlgo::Lanczos,
+            ScaleAlgoDto::Bicubic => ScaleAlgo::Bicubic,
+            ScaleAlgoDto::Bilinear => ScaleAlgo::Bilinear,
+            ScaleAlgoDto::Area => ScaleAlgo::Area,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum QualityPresetDto {
+    Low,
+    Med,
+    High,
+    Lossless,
+}
+
+impl From<QualityPresetDto> for QualityPreset {
+    fn from(v: QualityPresetDto) -> Self {
+        match v {
+            QualityPresetDto::Low => QualityPreset::Low,
+            QualityPresetDto::Med => QualityPreset::Med,
+            QualityPresetDto::High => QualityPreset::High,
+            QualityPresetDto::Lossless => QualityPreset::Lossless,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum PadColorDto {
+    Black,
+    White,
+    Custom { r: u8, g: u8, b: u8 },
+}
+
+impl From<PadColorDto> for PadColor {
+    fn from(v: PadColorDto) -> Self {
+        match v {
+            PadColorDto::Black => PadColor::Black,
+            PadColorDto::White => PadColor::White,
+            PadColorDto::Custom { r, g, b } => PadColor::Custom { r, g, b },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum OutputResolutionDto {
+    P720,
+    P1080,
+    P1440,
+    P2160,
+    MatchSource,
+    Custom { w: u32, h: u32 },
+}
+
+impl From<OutputResolutionDto> for OutputResolution {
+    fn from(v: OutputResolutionDto) -> Self {
+        match v {
+            OutputResolutionDto::P720 => OutputResolution::P720,
+            OutputResolutionDto::P1080 => OutputResolution::P1080,
+            OutputResolutionDto::P1440 => OutputResolution::P1440,
+            OutputResolutionDto::P2160 => OutputResolution::P2160,
+            OutputResolutionDto::MatchSource => OutputResolution::MatchSource,
+            OutputResolutionDto::Custom { w, h } => OutputResolution::Custom { w, h },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct EncoderProbeDto {
     pub available: Vec<HardwareEncoderDto>,
@@ -261,6 +361,16 @@ pub struct StartRecordingArgs {
     /// Optional per-recording cursor toggle.
     #[serde(default)]
     pub include_cursor: Option<bool>,
+    #[serde(default)]
+    pub output_resolution: Option<OutputResolutionDto>,
+    #[serde(default)]
+    pub fit_mode: Option<FitModeDto>,
+    #[serde(default)]
+    pub pad_color: Option<PadColorDto>,
+    #[serde(default)]
+    pub quality_preset: Option<QualityPresetDto>,
+    #[serde(default)]
+    pub scale_algo: Option<ScaleAlgoDto>,
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +679,19 @@ pub async fn start_recording(
         None
     };
 
-    // Phase 12 defaults per D-12-10; Phase 13 will expose these to UI.
+    // Phase 12 defaults per D-12-10; optional DTO fields override them (Phase 13 UI).
+    let output_res: OutputResolution = args
+        .output_resolution
+        .map(Into::into)
+        .unwrap_or(OutputResolution::P1080);
+    let fit: FitMode = args.fit_mode.map(Into::into).unwrap_or(FitMode::Letterbox);
+    let pad: PadColor = args.pad_color.map(Into::into).unwrap_or(PadColor::Black);
+    let algo: ScaleAlgo = args.scale_algo.map(Into::into).unwrap_or(ScaleAlgo::Lanczos);
+    let qp: QualityPreset = args
+        .quality_preset
+        .map(Into::into)
+        .unwrap_or(QualityPreset::Med);
+
     let mut enc_cfg = EncodeConfig::new(
         output_path.clone(),
         actual_width,
@@ -577,12 +699,12 @@ pub async fn start_recording(
         args.fps,
         probe.preferred,
     )
-    .with_output_resolution(OutputResolution::P1080)
+    .with_output_resolution(output_res)
     .map_err(|e| AppError::Encoder(e.to_string()))?
-    .with_fit_mode(FitMode::Letterbox)
-    .with_pad_color(PadColor::Black)
-    .with_scale_algo(ScaleAlgo::Lanczos)
-    .with_quality_preset(QualityPreset::Med)
+    .with_fit_mode(fit)
+    .with_pad_color(pad)
+    .with_scale_algo(algo)
+    .with_quality_preset(qp)
     .force_ffmpeg_path();
     if let (Some(f), Some(negotiated)) = (&audio_fifo, negotiated_audio.as_ref()) {
         let info = negotiated.info();
