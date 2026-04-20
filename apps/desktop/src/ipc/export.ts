@@ -6,6 +6,7 @@
  * (Plan 02-12b) consumes these.
  */
 
+import type { EncoderOptionsDto } from "@storycapture/shared-types";
 import { invoke } from "@tauri-apps/api/core";
 
 export type ExportFormat = "mp4" | "webm" | "gif";
@@ -17,6 +18,8 @@ export interface ExportOutput {
   resolution: ExportResolution | string;
   fps: number;
   quality: ExportQuality | string;
+  /** Phase 13 — export-only encoder knobs. Undefined → Phase 12 defaults. */
+  encoder_options?: EncoderOptionsDto | null;
 }
 
 export interface ExportRunArgs {

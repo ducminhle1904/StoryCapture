@@ -21,7 +21,11 @@ Concrete patterns actually used in the codebase. Read on demand; don't invent ne
 - **Folder layout:** feature-driven under `apps/desktop/src/features/<feature>/` — each owns its components, stores, hooks, tests. Shared UI primitives in `src/components/ui/`. IPC wrappers in `src/ipc/`. Top-level stores for cross-feature state in `src/state/` or `src/stores/`.
 - **Zustand stores:** two flavors in use.
   - **Monolithic per feature** (default): single `create<T>()((set, get) => ({ state, actions }))` in one file, optional `persist()` middleware. Example: `features/nl-mode/nlStore.ts`.
-  - **Slice-composed** (only for the post-production editor): 6 slices merged in `features/post-production/state/store.ts`. Don't copy this pattern unless the store clearly warrants it — keep it monolithic.
+  - **Slice-composed / cross-feature shared** (two documented exceptions only):
+    1. Post-production editor: 6 slices merged in `features/post-production/state/store.ts`.
+    2. Phase 13 output-prefs (`state/output-prefs.ts`): cross-feature shared store for the 5 recording-time + 8 export-time output knobs, consumed by both the recorder and the post-production export modal. Persisted via `tauri-plugin-store` + per-project `<project>/.storycapture/output.json`.
+
+    Don't copy these patterns unless the store clearly warrants it — keep it monolithic per feature.
 - **TanStack Query:** every IPC read/mutation goes through a hook in `src/ipc/*.ts`. Query-key factory pattern: `const KEYS = { all: ['projects'] as const, detail: (id) => [...] as const }`. Mutations invalidate with `qc.invalidateQueries({ queryKey: KEYS.all })`.
 - **Channels (streaming IPC):** Tauri `Channel<T>` returned from commands like `launch_automation`, `start_recording`, `render_*`, `upload_video`. Subscribe via `channel.onmessage = (e) => store.dispatch(e)` — always unsubscribe on unmount.
 - **Forms:** plain `useState` + inline validation in the submit handler. No react-hook-form / zod schema validation currently. Keep new forms small; reach for a schema lib only if a form grows past ~5 fields.
