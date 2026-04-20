@@ -51,7 +51,7 @@ export function computeBitratePreview({
 }
 
 export function formatBitratePreview(mbps: number, mbPerMin: number): string {
-  return `~${mbps.toFixed(1)} Mbps • ~${Math.round(mbPerMin)} MB/phút`;
+  return `~${mbps.toFixed(1)} Mbps • ~${Math.round(mbPerMin)} MB/min`;
 }
 
 export type ValidationResult =

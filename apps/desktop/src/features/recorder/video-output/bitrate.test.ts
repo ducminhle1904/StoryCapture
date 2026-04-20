@@ -33,8 +33,8 @@ describe("computeBitratePreview", () => {
 });
 
 describe("formatBitratePreview", () => {
-  it("formats with one-decimal Mbps + integer MB/phút", () => {
-    expect(formatBitratePreview(6.22, 45)).toBe("~6.2 Mbps • ~45 MB/phút");
+  it("formats with one-decimal Mbps + integer MB/min", () => {
+    expect(formatBitratePreview(6.22, 45)).toBe("~6.2 Mbps • ~45 MB/min");
   });
 });
 

@@ -21,14 +21,14 @@ beforeEach(() => {
 });
 
 describe("VideoOutputSection", () => {
-  it("renders all 5 knob labels in Vietnamese at Standard preset", () => {
+  it("renders all 5 knob labels in English at Standard preset", () => {
     render(<VideoOutputSection />);
-    expect(screen.getByText("Đầu ra video")).toBeInTheDocument();
-    expect(screen.getByLabelText("Độ phân giải")).toBeInTheDocument();
+    expect(screen.getByText("Video output")).toBeInTheDocument();
+    expect(screen.getByLabelText("Resolution")).toBeInTheDocument();
     expect(screen.getByLabelText("FPS")).toBeInTheDocument();
-    expect(screen.getByLabelText("Chế độ lấp khung")).toBeInTheDocument();
-    expect(screen.getByLabelText("Màu viền")).toBeInTheDocument();
-    expect(screen.getByLabelText("Chất lượng")).toBeInTheDocument();
+    expect(screen.getByLabelText("Fit mode")).toBeInTheDocument();
+    expect(screen.getByLabelText("Pad color")).toBeInTheDocument();
+    expect(screen.getByLabelText("Quality")).toBeInTheDocument();
   });
 
   it("typing 1281 into Custom W flags the hard error + aria-invalid", async () => {
@@ -41,11 +41,11 @@ describe("VideoOutputSection", () => {
       },
     });
     render(<VideoOutputSection />);
-    const wInput = screen.getByLabelText("Rộng") as HTMLInputElement;
+    const wInput = screen.getByLabelText("Width") as HTMLInputElement;
     await user.clear(wInput);
     await user.type(wInput, "1281");
     expect(
-      screen.getByText("Chiều rộng/cao phải là số chẵn và trong khoảng 16–7680 × 16–4320."),
+      screen.getByText("Width/height must be even numbers within 16–7680 × 16–4320."),
     ).toBeInTheDocument();
     expect(wInput).toHaveAttribute("aria-invalid", "true");
   });
@@ -61,10 +61,10 @@ describe("VideoOutputSection", () => {
     expect(live).toHaveTextContent(/Lossless.*4K.*HW encoder/);
   });
 
-  it("picking Pad = Tùy chỉnh reveals ColorField starting at #000000 and syncs hex → store", async () => {
+  it("picking Pad = Custom reveals ColorField starting at #000000 and syncs hex → store", async () => {
     const user = userEvent.setup();
     render(<VideoOutputSection />);
-    const customToggle = screen.getAllByRole("button", { name: "Tùy chỉnh" })[0];
+    const customToggle = screen.getAllByRole("button", { name: "Custom" })[0];
     await user.click(customToggle);
     const picker = screen.getByLabelText("Pad color picker") as HTMLInputElement;
     expect(picker.value).toBe("#000000");
@@ -89,15 +89,15 @@ describe("VideoOutputSection", () => {
     const user = userEvent.setup();
     render(<VideoOutputSection />);
     await user.click(screen.getByLabelText("60"));
-    await user.click(screen.getByLabelText("Cao"));
+    await user.click(screen.getByLabelText("High"));
     expect(useOutputPrefsStore.getState().activePreset).toBe("High Quality");
   });
 });
 
 describe("OutputSummaryBadge", () => {
-  it("renders '1080p • 30fps • Letterbox • Trung bình' at Standard preset", () => {
+  it("renders '1080p • 30fps • Letterbox • Medium' at Standard preset", () => {
     render(<OutputSummaryBadge onActivate={() => {}} />);
-    expect(screen.getByRole("button")).toHaveTextContent("1080p • 30fps • Letterbox • Trung bình");
+    expect(screen.getByRole("button")).toHaveTextContent("1080p • 30fps • Letterbox • Medium");
   });
 
   it("invokes scrollIntoView through onActivate when clicked", async () => {
