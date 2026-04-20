@@ -38,6 +38,84 @@ impl From<ExportError> for AppError {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum ContainerDto {
+    Mp4,
+    Mov,
+    #[serde(rename = "webm")]
+    WebM,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum CodecDto {
+    H264,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum RateControlDto {
+    Auto,
+    Cbr,
+    Vbr,
+    Crf,
+    Cq,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum X264PresetDto {
+    Ultrafast,
+    Superfast,
+    Veryfast,
+    Faster,
+    Fast,
+    Medium,
+    Slow,
+    Slower,
+    Veryslow,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum AudioCodecDto {
+    Aac,
+    Opus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct AudioOptionsDto {
+    #[serde(default)]
+    pub codec: Option<AudioCodecDto>,
+    #[serde(default)]
+    pub bitrate_kbps: Option<u32>,
+    #[serde(default)]
+    pub channels: Option<u8>,
+    #[serde(default)]
+    pub sample_rate_hz: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct EncoderOptionsDto {
+    #[serde(default)]
+    pub container: Option<ContainerDto>,
+    #[serde(default)]
+    pub codec: Option<CodecDto>,
+    #[serde(default)]
+    pub rate_control: Option<RateControlDto>,
+    #[serde(default)]
+    pub hw_encoder: Option<crate::commands::encode::HardwareEncoderDto>,
+    #[serde(default)]
+    pub x264_preset: Option<X264PresetDto>,
+    #[serde(default)]
+    pub keyframe_interval_sec: Option<u32>,
+    #[serde(default)]
+    pub downscale_algo: Option<crate::commands::encode::ScaleAlgoDto>,
+    #[serde(default)]
+    pub audio: Option<AudioOptionsDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ExportOutputDto {
     /// "mp4" | "webm" | "gif"
     pub format: String,
@@ -46,6 +124,8 @@ pub struct ExportOutputDto {
     pub fps: u32,
     /// "low" | "med" | "high"
     pub quality: String,
+    #[serde(default)]
+    pub encoder_options: Option<EncoderOptionsDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -210,12 +290,112 @@ pub fn export_get_presets() -> ExportPresetsCatalogue {
 pub fn export_validate_config(cfg: ExportOutputDto) -> Result<(), AppError> {
     let fmt = parse_format(&cfg.format)?;
     let res = parse_resolution(&cfg.resolution)?;
-    validate_spec(fmt, res, cfg.fps).map_err(AppError::from)
+    validate_spec(fmt, res, cfg.fps).map_err(AppError::from)?;
+
+    if let Some(opts) = cfg.encoder_options.as_ref() {
+        if let Some(k) = opts.keyframe_interval_sec {
+            if !(1..=10).contains(&k) {
+                return Err(AppError::InvalidArgument(format!(
+                    "keyframe_interval_sec must be 1..=10, got {k}"
+                )));
+            }
+        }
+        if let Some(audio) = opts.audio.as_ref() {
+            if let Some(br) = audio.bitrate_kbps {
+                if !(64..=320).contains(&br) {
+                    return Err(AppError::InvalidArgument(format!(
+                        "audio.bitrate_kbps must be 64..=320, got {br}"
+                    )));
+                }
+            }
+            if let Some(ch) = audio.channels {
+                if !matches!(ch, 1 | 2) {
+                    return Err(AppError::InvalidArgument(format!(
+                        "audio.channels must be 1 or 2, got {ch}"
+                    )));
+                }
+            }
+        }
+        // encoder_options: validated; runtime consumption deferred (see Phase 13 13-01-PLAN scope note).
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn encoder_options_absent_deserializes_as_none() {
+        let v = json!({
+            "format": "mp4",
+            "resolution": "1080p",
+            "fps": 30,
+            "quality": "med"
+        });
+        let dto: ExportOutputDto = serde_json::from_value(v).unwrap();
+        assert!(dto.encoder_options.is_none());
+    }
+
+    #[test]
+    fn encoder_options_fully_populated_roundtrip() {
+        let v = json!({
+            "format": "mp4",
+            "resolution": "1080p",
+            "fps": 30,
+            "quality": "high",
+            "encoder_options": {
+                "container": "mp4",
+                "codec": "h264",
+                "rate_control": "crf",
+                "hw_encoder": "video-toolbox-h264",
+                "x264_preset": "medium",
+                "keyframe_interval_sec": 2,
+                "downscale_algo": "lanczos",
+                "audio": {
+                    "codec": "aac",
+                    "bitrate_kbps": 160,
+                    "channels": 2,
+                    "sample_rate_hz": 48000
+                }
+            }
+        });
+        let dto: ExportOutputDto = serde_json::from_value(v).unwrap();
+        let opts = dto.encoder_options.expect("encoder_options present");
+        assert!(matches!(opts.container, Some(ContainerDto::Mp4)));
+        assert!(matches!(opts.codec, Some(CodecDto::H264)));
+        assert!(matches!(opts.rate_control, Some(RateControlDto::Crf)));
+        assert!(matches!(opts.x264_preset, Some(X264PresetDto::Medium)));
+        assert_eq!(opts.keyframe_interval_sec, Some(2));
+        let audio = opts.audio.expect("audio present");
+        assert!(matches!(audio.codec, Some(AudioCodecDto::Aac)));
+        assert_eq!(audio.bitrate_kbps, Some(160));
+        assert_eq!(audio.channels, Some(2));
+        assert_eq!(audio.sample_rate_hz, Some(48_000));
+    }
+
+    #[test]
+    fn encoder_options_partial_leaves_other_fields_none() {
+        let v = json!({
+            "format": "mp4",
+            "resolution": "1080p",
+            "fps": 30,
+            "quality": "med",
+            "encoder_options": { "keyframe_interval_sec": 2 }
+        });
+        let dto: ExportOutputDto = serde_json::from_value(v).unwrap();
+        let opts = dto.encoder_options.expect("encoder_options present");
+        assert_eq!(opts.keyframe_interval_sec, Some(2));
+        assert!(opts.container.is_none());
+        assert!(opts.codec.is_none());
+        assert!(opts.rate_control.is_none());
+        assert!(opts.hw_encoder.is_none());
+        assert!(opts.x264_preset.is_none());
+        assert!(opts.downscale_algo.is_none());
+        assert!(opts.audio.is_none());
+    }
 
     #[test]
     fn presets_catalogue_shape() {
@@ -233,6 +413,7 @@ mod tests {
             resolution: "1080p".into(),
             fps: 60,
             quality: "high".into(),
+            encoder_options: None,
         })
         .is_ok());
     }
@@ -244,8 +425,106 @@ mod tests {
             resolution: "4k".into(),
             fps: 30,
             quality: "med".into(),
+            encoder_options: None,
         })
         .unwrap_err();
         assert!(matches!(e, AppError::InvalidArgument(_)));
+    }
+
+    fn base_cfg() -> ExportOutputDto {
+        ExportOutputDto {
+            format: "mp4".into(),
+            resolution: "1080p".into(),
+            fps: 30,
+            quality: "med".into(),
+            encoder_options: None,
+        }
+    }
+
+    #[test]
+    fn validate_rejects_keyframe_out_of_range() {
+        let mut cfg = base_cfg();
+        cfg.encoder_options = Some(EncoderOptionsDto {
+            container: None,
+            codec: None,
+            rate_control: None,
+            hw_encoder: None,
+            x264_preset: None,
+            keyframe_interval_sec: Some(0),
+            downscale_algo: None,
+            audio: None,
+        });
+        let e = export_validate_config(cfg).unwrap_err();
+        assert!(matches!(e, AppError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn validate_rejects_audio_bitrate_too_low() {
+        let mut cfg = base_cfg();
+        cfg.encoder_options = Some(EncoderOptionsDto {
+            container: None,
+            codec: None,
+            rate_control: None,
+            hw_encoder: None,
+            x264_preset: None,
+            keyframe_interval_sec: None,
+            downscale_algo: None,
+            audio: Some(AudioOptionsDto {
+                codec: None,
+                bitrate_kbps: Some(32),
+                channels: None,
+                sample_rate_hz: None,
+            }),
+        });
+        let e = export_validate_config(cfg).unwrap_err();
+        assert!(matches!(e, AppError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn validate_rejects_audio_channels_not_mono_or_stereo() {
+        let mut cfg = base_cfg();
+        cfg.encoder_options = Some(EncoderOptionsDto {
+            container: None,
+            codec: None,
+            rate_control: None,
+            hw_encoder: None,
+            x264_preset: None,
+            keyframe_interval_sec: None,
+            downscale_algo: None,
+            audio: Some(AudioOptionsDto {
+                codec: None,
+                bitrate_kbps: None,
+                channels: Some(3),
+                sample_rate_hz: None,
+            }),
+        });
+        let e = export_validate_config(cfg).unwrap_err();
+        assert!(matches!(e, AppError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn validate_accepts_valid_encoder_options() {
+        let mut cfg = base_cfg();
+        cfg.encoder_options = Some(EncoderOptionsDto {
+            container: Some(ContainerDto::Mp4),
+            codec: Some(CodecDto::H264),
+            rate_control: Some(RateControlDto::Crf),
+            hw_encoder: None,
+            x264_preset: Some(X264PresetDto::Medium),
+            keyframe_interval_sec: Some(2),
+            downscale_algo: None,
+            audio: Some(AudioOptionsDto {
+                codec: Some(AudioCodecDto::Aac),
+                bitrate_kbps: Some(160),
+                channels: Some(2),
+                sample_rate_hz: Some(48_000),
+            }),
+        });
+        assert!(export_validate_config(cfg).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_none_encoder_options_backcompat() {
+        assert!(export_validate_config(base_cfg()).is_ok());
     }
 }

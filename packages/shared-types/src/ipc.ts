@@ -1060,12 +1060,14 @@ export type AdjustedStepDto = { step_id: string; new_duration_ms: bigint; freeze
 export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"; message: string } | { kind: "Keyring"; message: string } | { kind: "Automation"; message: string } | { kind: "Capture"; message: string } | { kind: "Encoder"; message: string } | { kind: "Storage"; message: string } | { kind: "NotFound"; message: string } | { kind: "InvalidArgument"; message: string } | { kind: "Internal"; message: string }
 export type AppInfo = { version: string; platform: string; arch: string; data_dir: string; log_dir: string }
 export type AppSettingsDto = { browser_executable: string | null }
+export type AudioCodecDto = "aac" | "opus"
 /**
  * Serializable DTO for the audio-device picker. Mirrors
  * `capture::audio::AudioInputInfo` but lives in the host crate so
  * specta can derive TS bindings without reaching into `capture`.
  */
 export type AudioInputInfoDto = { id: string; name: string; is_default: boolean; channels: number; sample_rate_hz: number }
+export type AudioOptionsDto = { codec?: AudioCodecDto | null; bitrate_kbps?: number | null; channels?: number | null; sample_rate_hz?: number | null }
 /**
  * Manifest entry persisted alongside the HTML + PNG snapshot files.
  */
@@ -1120,7 +1122,9 @@ export type CaptureStatsDto = { frames_delivered: bigint; frames_dropped: bigint
 export type CaptureTargetDto = { kind: "display"; display_id: bigint } | { kind: "window"; window_id: bigint } | { kind: "window_by_pid"; pid: number; title_hint: string | null } | { kind: "display_region"; display_id: bigint; rect: RegionRectDto }
 export type CaptureTargetsDto = { displays: DisplayInfoDto[]; windows: WindowInfoDto[]; playwright_auto_available: boolean }
 export type ClockSourceDto = "host-time" | "qpc" | "synthetic"
+export type CodecDto = "h264"
 export type CommandDto = { verb: "navigate"; url: string; span: SpanDto } | { verb: "click"; target: SelectorOrTextDto; span: SpanDto } | { verb: "type"; target: SelectorOrTextDto; text: string; span: SpanDto } | { verb: "scroll"; direction: ScrollDirDto; amount: number | null; span: SpanDto } | { verb: "hover"; target: SelectorOrTextDto; span: SpanDto } | { verb: "drag"; from: SelectorOrTextDto; to: SelectorOrTextDto; span: SpanDto } | { verb: "select"; target: SelectorOrTextDto; value: string; span: SpanDto } | { verb: "upload"; target: SelectorOrTextDto; path: string; span: SpanDto } | { verb: "wait"; duration_ms: bigint; span: SpanDto } | { verb: "wait-for"; target: SelectorOrTextDto; timeout_ms: bigint | null; span: SpanDto } | { verb: "assert"; target: SelectorOrTextDto; span: SpanDto } | { verb: "screenshot"; name: string; span: SpanDto } | { verb: "pause"; span: SpanDto }
+export type ContainerDto = "mp4" | "mov" | "webm"
 export type CreateProjectArgs = { name: string; 
 /**
  * Parent directory to create the project folder under. The folder
@@ -1154,6 +1158,7 @@ export type EffectPresetDto = { id: string;
 scope: string; name: string; description: string; ast_json: string; version: number; bundled: boolean; created_at: bigint; author: string | null; tags: string[] }
 export type EncodeProgressDto = { frame: bigint; fps: number; bitrate_kbps: number; out_time_ms: bigint; drop_frames: bigint; dup_frames: bigint; speed: number; finished: boolean }
 export type EncodeResultDto = { output_path: string; duration_ms: bigint; bytes: bigint; frames_written: bigint; frames_dropped: bigint }
+export type EncoderOptionsDto = { container?: ContainerDto | null; codec?: CodecDto | null; rate_control?: RateControlDto | null; hw_encoder?: HardwareEncoderDto | null; x264_preset?: X264PresetDto | null; keyframe_interval_sec?: number | null; downscale_algo?: ScaleAlgoDto | null; audio?: AudioOptionsDto | null }
 export type EncoderProbeDto = { available: HardwareEncoderDto[]; preferred: HardwareEncoderDto }
 export type ExportOutputDto = { 
 /**
@@ -1167,7 +1172,7 @@ resolution: string; fps: number;
 /**
  * "low" | "med" | "high"
  */
-quality: string }
+quality: string; encoder_options?: EncoderOptionsDto | null }
 export type ExportPresetsCatalogue = { formats: string[]; resolutions: string[]; fps: number[]; qualities: string[] }
 export type ExportResultDto = { batch_id: string; job_ids: string[]; graph_snapshot_path: string }
 export type ExportRunArgs = { story_id: string; 
@@ -1278,6 +1283,7 @@ export type ProjectIdArg = { id: string }
  */
 export type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts"
 export type QualityPresetDto = "low" | "med" | "high" | "lossless"
+export type RateControlDto = "auto" | "cbr" | "vbr" | "crf" | "cq"
 /**
  * Unified recording event from capture / encode progress and terminal results.
  */
@@ -1430,6 +1436,7 @@ export type WebAccountInfo = { email: string; name: string | null; avatarUrl: st
  */
 export type WebSyncError = { kind: "NotConnected" } | { kind: "NetworkError"; message: string } | { kind: "ServerError"; message: string } | { kind: "DatabaseError"; message: string }
 export type WindowInfoDto = { window_id: bigint; title: string | null; app_name: string; pid: number; bundle_id: string; x: number; y: number; width: number; height: number; is_on_screen: boolean }
+export type X264PresetDto = "ultrafast" | "superfast" | "veryfast" | "faster" | "fast" | "medium" | "slow" | "slower" | "veryslow"
 
 /** tauri-specta globals **/
 

@@ -309,8 +309,7 @@ mod tests {
     #[tokio::test]
     async fn validate_returns_nosnapshot_when_missing() {
         let d = tempdir().unwrap();
-        let target =
-            serde_json::to_string(&story_parser::SelectorOrText::TestId("x".into())).unwrap();
+        let target = super::super::parse::SelectorOrTextDto::TestId("x".into());
         let r = author_snapshot_validate(
             d.path().to_string_lossy().to_string(),
             "https://example.com/".into(),
@@ -331,14 +330,11 @@ mod tests {
         let html = r#"<html><body><button data-testid="save">Save</button></body></html>"#;
         std::fs::write(dir.join(format!("{key}.html")), html).unwrap();
 
-        // SelectorOrText uses tag "kind" with serde rename_all = "kebab-case" →
-        // TestId serializes as {"kind":"test-id","value":"save"}.
-        let target_json =
-            serde_json::to_string(&story_parser::SelectorOrText::TestId("save".into())).unwrap();
+        let target = super::super::parse::SelectorOrTextDto::TestId("save".into());
         let r = author_snapshot_validate(
             d.path().to_string_lossy().to_string(),
             url.into(),
-            target_json,
+            target,
         )
         .await
         .unwrap();
