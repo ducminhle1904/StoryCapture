@@ -8,14 +8,14 @@
 import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 
-import { getStore, LATEST_VERSION, STORE_KEY } from "@/ipc/output-prefs";
+import { LATEST_VERSION, STORE_KEY, getStore } from "@/ipc/output-prefs";
 import {
   DEFAULT_EXPORT_KNOBS,
-  PRESET_BUNDLES,
-  useOutputPrefsStore,
   type ExportKnobs,
+  PRESET_BUNDLES,
   type PresetName,
   type RecordingKnobs,
+  useOutputPrefsStore,
 } from "@/state/output-prefs";
 
 export interface PersistShape {
@@ -112,9 +112,7 @@ export async function initOutputPrefs(): Promise<void> {
 
 const PROJECT_FILE_REL = ".storycapture/output.json";
 
-export async function loadProjectOverride(
-  projectFolder: string,
-): Promise<PartialPersist | null> {
+export async function loadProjectOverride(projectFolder: string): Promise<PartialPersist | null> {
   const path = `${projectFolder}/${PROJECT_FILE_REL}`;
   try {
     if (!(await exists(path))) return null;

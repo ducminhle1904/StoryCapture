@@ -1,3 +1,9 @@
+import type {
+  FitModeDto,
+  OutputResolutionDto,
+  PadColorDto,
+  QualityPresetDto,
+} from "@storycapture/shared-types";
 /**
  * Shared output-prefs store. Cross-feature: consumed by the Recording View
  * (5 knobs) AND the Export Modal (8 export-only knobs on top).
@@ -5,12 +11,6 @@
  * Phase 13 — second documented slice-composition exception (see docs/CONVENTIONS.md).
  */
 import { create } from "zustand";
-import type {
-  FitModeDto,
-  OutputResolutionDto,
-  PadColorDto,
-  QualityPresetDto,
-} from "@storycapture/shared-types";
 
 export type PresetName = "Quick" | "Standard" | "High Quality" | "Custom";
 
@@ -96,9 +96,7 @@ export const DEFAULT_EXPORT_KNOBS: ExportKnobs = {
   qualityValue: null,
 };
 
-export function matchPreset(
-  knobs: RecordingKnobs,
-): Exclude<PresetName, "Custom"> | null {
+export function matchPreset(knobs: RecordingKnobs): Exclude<PresetName, "Custom"> | null {
   for (const [name, bundle] of Object.entries(PRESET_BUNDLES)) {
     if (deepEqual(knobs, bundle)) return name as Exclude<PresetName, "Custom">;
   }
@@ -133,10 +131,8 @@ export const useOutputPrefsStore = create<State>((set) => ({
       const matched = matchPreset(next);
       return { recordingKnobs: next, activePreset: matched ?? "Custom" };
     }),
-  setExportKnob: (k, v) =>
-    set((s) => ({ exportKnobs: { ...s.exportKnobs, [k]: v } })),
-  applyPreset: (name) =>
-    set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
+  setExportKnob: (k, v) => set((s) => ({ exportKnobs: { ...s.exportKnobs, [k]: v } })),
+  applyPreset: (name) => set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
   hydrate: ({ activePreset, recordingKnobs, exportKnobs }) =>
     set({ activePreset, recordingKnobs, exportKnobs }),
 }));

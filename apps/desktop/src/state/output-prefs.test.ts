@@ -61,9 +61,7 @@ describe("useOutputPrefsStore", () => {
 
   it("re-applying the same value keeps the named preset", () => {
     useOutputPrefsStore.getState().applyPreset("Quick");
-    useOutputPrefsStore
-      .getState()
-      .setRecordingKnob("resolution", { kind: "p720" });
+    useOutputPrefsStore.getState().setRecordingKnob("resolution", { kind: "p720" });
     const s = useOutputPrefsStore.getState();
     expect(s.activePreset).toBe("Quick");
   });

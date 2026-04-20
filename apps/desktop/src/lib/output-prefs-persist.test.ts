@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  DEFAULT_EXPORT_KNOBS,
-  PRESET_BUNDLES,
-} from "@/state/output-prefs";
+import { DEFAULT_EXPORT_KNOBS, PRESET_BUNDLES } from "@/state/output-prefs";
 
-import { migrate, resolveOverride, type PersistShape } from "./output-prefs-persist";
+import { type PersistShape, migrate, resolveOverride } from "./output-prefs-persist";
 
 const SEED: PersistShape = {
   activePreset: "Standard",
