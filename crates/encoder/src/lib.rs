@@ -16,12 +16,14 @@ mod config;
 mod error;
 pub mod export;
 pub mod fanout;
+pub mod filters;
 #[cfg(target_os = "macos")]
 pub mod macos;
 mod pipeline;
 pub mod pool;
 mod probe;
 pub mod progress;
+pub mod quality;
 pub mod queue;
 mod sidecar;
 
@@ -30,6 +32,7 @@ pub use error::{EncoderError, Result};
 pub use pipeline::{bgra_bytes_of_frame, EncodePipeline, EncodeResult, SHUTDOWN_TIMEOUT};
 pub use pool::{PoolConfig, SidecarHandle, SidecarPermit, SidecarPool};
 pub use probe::{probe_encoders, EncoderProbe, HardwareEncoder};
+pub use quality::{pixel_based_kbps, resolve as resolve_quality_args};
 pub use progress::{
     parse_line, EncodeProgress, ProgressFrag, ProgressParser, RenderProgress, RenderProgressParser,
 };
