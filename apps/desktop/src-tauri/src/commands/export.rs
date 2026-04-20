@@ -216,6 +216,77 @@ pub fn export_validate_config(cfg: ExportOutputDto) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn encoder_options_absent_deserializes_as_none() {
+        let v = json!({
+            "format": "mp4",
+            "resolution": "1080p",
+            "fps": 30,
+            "quality": "med"
+        });
+        let dto: ExportOutputDto = serde_json::from_value(v).unwrap();
+        assert!(dto.encoder_options.is_none());
+    }
+
+    #[test]
+    fn encoder_options_fully_populated_roundtrip() {
+        let v = json!({
+            "format": "mp4",
+            "resolution": "1080p",
+            "fps": 30,
+            "quality": "high",
+            "encoder_options": {
+                "container": "mp4",
+                "codec": "h264",
+                "rate_control": "crf",
+                "hw_encoder": "video-toolbox-h264",
+                "x264_preset": "medium",
+                "keyframe_interval_sec": 2,
+                "downscale_algo": "lanczos",
+                "audio": {
+                    "codec": "aac",
+                    "bitrate_kbps": 160,
+                    "channels": 2,
+                    "sample_rate_hz": 48000
+                }
+            }
+        });
+        let dto: ExportOutputDto = serde_json::from_value(v).unwrap();
+        let opts = dto.encoder_options.expect("encoder_options present");
+        assert!(matches!(opts.container, Some(ContainerDto::Mp4)));
+        assert!(matches!(opts.codec, Some(CodecDto::H264)));
+        assert!(matches!(opts.rate_control, Some(RateControlDto::Crf)));
+        assert!(matches!(opts.x264_preset, Some(X264PresetDto::Medium)));
+        assert_eq!(opts.keyframe_interval_sec, Some(2));
+        let audio = opts.audio.expect("audio present");
+        assert!(matches!(audio.codec, Some(AudioCodecDto::Aac)));
+        assert_eq!(audio.bitrate_kbps, Some(160));
+        assert_eq!(audio.channels, Some(2));
+        assert_eq!(audio.sample_rate_hz, Some(48_000));
+    }
+
+    #[test]
+    fn encoder_options_partial_leaves_other_fields_none() {
+        let v = json!({
+            "format": "mp4",
+            "resolution": "1080p",
+            "fps": 30,
+            "quality": "med",
+            "encoder_options": { "keyframe_interval_sec": 2 }
+        });
+        let dto: ExportOutputDto = serde_json::from_value(v).unwrap();
+        let opts = dto.encoder_options.expect("encoder_options present");
+        assert_eq!(opts.keyframe_interval_sec, Some(2));
+        assert!(opts.container.is_none());
+        assert!(opts.codec.is_none());
+        assert!(opts.rate_control.is_none());
+        assert!(opts.hw_encoder.is_none());
+        assert!(opts.x264_preset.is_none());
+        assert!(opts.downscale_algo.is_none());
+        assert!(opts.audio.is_none());
+    }
 
     #[test]
     fn presets_catalogue_shape() {
