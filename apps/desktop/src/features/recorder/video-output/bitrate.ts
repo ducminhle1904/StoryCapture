@@ -1,9 +1,3 @@
-/**
- * Phase 13 D-13-11 bitrate preview + D-13-08 custom-dims validator.
- * Pure, no React / store coupling; consumed by bitrate-preview.tsx and
- * resolution-control.tsx.
- */
-
 import type { OutputResolutionDto, QualityPresetDto } from "@storycapture/shared-types";
 
 export interface Dims {

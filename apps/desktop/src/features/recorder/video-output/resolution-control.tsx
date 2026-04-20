@@ -1,10 +1,3 @@
-/**
- * Phase 13 D-13-08 resolution control.
- * Select with 6 options. Custom kind reveals W/H NumberFields + validation.
- * Lifts customDimsError to parent via onErrorChange so VideoOutputSection
- * can block the Record button on hard errors.
- */
-
 import type { OutputResolutionDto } from "@storycapture/shared-types";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useId, useState } from "react";
@@ -33,10 +26,6 @@ import {
 type ResKind = OutputResolutionDto["kind"];
 
 const KIND_OPTIONS: ResKind[] = ["p720", "p1080", "p1440", "p2160", "match-source", "custom"];
-
-function kindOf(res: OutputResolutionDto): ResKind {
-  return res.kind;
-}
 
 interface Props {
   disabled?: boolean;
@@ -73,15 +62,13 @@ export function ResolutionControl({ disabled, onErrorChange }: Props) {
 
   const w = typeof wRaw === "number" ? wRaw : 0;
   const h = typeof hRaw === "number" ? hRaw : 0;
-  const validation = isCustom ? validateCustomDims(w, h) : { valid: true as const };
-  const invalid = !validation.valid;
+  const invalid = isCustom && !validateCustomDims(w, h).valid;
 
   return (
     <div className="flex flex-col gap-2">
       <Select
-        value={kindOf(resolution)}
+        value={resolution.kind}
         onValueChange={(raw) => {
-          if (typeof raw !== "string") return;
           const k = raw as ResKind;
           if (k === "custom") {
             const cw = typeof wRaw === "number" ? wRaw : 1280;
@@ -96,7 +83,7 @@ export function ResolutionControl({ disabled, onErrorChange }: Props) {
         disabled={disabled}
       >
         <SelectTrigger aria-label={LABEL_RESOLUTION} className="w-full">
-          <SelectValue>{RESOLUTION_OPTION_LABELS[kindOf(resolution)]}</SelectValue>
+          <SelectValue>{RESOLUTION_OPTION_LABELS[resolution.kind]}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>

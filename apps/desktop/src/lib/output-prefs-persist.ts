@@ -1,11 +1,4 @@
-/**
- * Output-prefs persistence: global (plugin-store) + per-project
- * (`<project>/.storycapture/output.json`) IO + migrator.
- *
- * Phase 13 — silent seed on first launch (D-13-06), debounced write-back
- * (250ms), precedence project > global > seed (D-13-05).
- */
-import { exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 
 import { LATEST_VERSION, STORE_KEY, getStore } from "@/ipc/output-prefs";
@@ -90,7 +83,20 @@ export async function initOutputPrefs(): Promise<void> {
   useOutputPrefsStore.getState().hydrate(hydrated);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let last = {
+    activePreset: hydrated.activePreset,
+    recordingKnobs: hydrated.recordingKnobs,
+    exportKnobs: hydrated.exportKnobs,
+  };
   useOutputPrefsStore.subscribe((s) => {
+    if (
+      s.activePreset === last.activePreset &&
+      s.recordingKnobs === last.recordingKnobs &&
+      s.exportKnobs === last.exportKnobs
+    ) {
+      return;
+    }
+    last = { activePreset: s.activePreset, recordingKnobs: s.recordingKnobs, exportKnobs: s.exportKnobs };
     if (timer) clearTimeout(timer);
     timer = setTimeout(async () => {
       try {
@@ -114,9 +120,13 @@ const PROJECT_FILE_REL = ".storycapture/output.json";
 
 export async function loadProjectOverride(projectFolder: string): Promise<PartialPersist | null> {
   const path = `${projectFolder}/${PROJECT_FILE_REL}`;
+  let text: string;
   try {
-    if (!(await exists(path))) return null;
-    const text = await readTextFile(path);
+    text = await readTextFile(path);
+  } catch {
+    return null;
+  }
+  try {
     return JSON.parse(text) as PartialPersist;
   } catch {
     toast("Không đọc được tùy chọn riêng của dự án. Đang dùng mặc định chung.");

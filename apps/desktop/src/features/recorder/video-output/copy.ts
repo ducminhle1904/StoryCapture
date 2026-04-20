@@ -1,8 +1,3 @@
-/**
- * Phase 13 CD-13-03 Vietnamese copy for the Recording-time Video Output
- * section. All user-facing strings live here; no inline JSX literals.
- */
-
 import type { PresetName } from "@/state/output-prefs";
 import type {
   FitModeDto,

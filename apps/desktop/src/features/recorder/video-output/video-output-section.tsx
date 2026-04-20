@@ -1,9 +1,3 @@
-/**
- * Phase 13 D-13-01 Recording-time Video Output section.
- * Composes preset + 5 knobs + bitrate preview + warnings. Lifts custom-dims
- * validation from ResolutionControl and exports useIsRecordingBlocked().
- */
-
 import { forwardRef, useCallback, useEffect } from "react";
 import { create } from "zustand";
 

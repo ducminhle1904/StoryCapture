@@ -4,12 +4,6 @@ import type {
   PadColorDto,
   QualityPresetDto,
 } from "@storycapture/shared-types";
-/**
- * Shared output-prefs store. Cross-feature: consumed by the Recording View
- * (5 knobs) AND the Export Modal (8 export-only knobs on top).
- *
- * Phase 13 — second documented slice-composition exception (see docs/CONVENTIONS.md).
- */
 import { create } from "zustand";
 
 export type PresetName = "Quick" | "Standard" | "High Quality" | "Custom";
@@ -48,15 +42,11 @@ export interface ExportKnobs {
   container: ExportContainer;
   codec: ExportCodec;
   rateControl: ExportRateControl;
-  /** `"auto"` | `"software"` | a probed HW encoder name. Free-form at the
-   *  UI layer; Plan 13-05 maps it to HardwareEncoderDto for IPC. */
   hwEncoder: string;
   x264Preset: ExportX264Preset;
   keyframeSec: number;
   downscaleAlgo: ExportDownscaleAlgo;
   audio: AudioKnobs;
-  /** Discriminated by (codec, hwEncoder, rateControl) via Plan 13-05's
-   *  deriveQualityControls(). Null = Phase 12 pixel_based default (CD-13-04). */
   qualityValue: number | null;
 }
 
@@ -98,13 +88,35 @@ export const DEFAULT_EXPORT_KNOBS: ExportKnobs = {
 
 export function matchPreset(knobs: RecordingKnobs): Exclude<PresetName, "Custom"> | null {
   for (const [name, bundle] of Object.entries(PRESET_BUNDLES)) {
-    if (deepEqual(knobs, bundle)) return name as Exclude<PresetName, "Custom">;
+    if (knobsEqual(knobs, bundle)) return name as Exclude<PresetName, "Custom">;
   }
   return null;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+function knobsEqual(a: RecordingKnobs, b: RecordingKnobs): boolean {
+  return (
+    a.fps === b.fps &&
+    a.fit === b.fit &&
+    a.quality === b.quality &&
+    resolutionEqual(a.resolution, b.resolution) &&
+    padEqual(a.pad, b.pad)
+  );
+}
+
+function resolutionEqual(a: OutputResolutionDto, b: OutputResolutionDto): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "custom" && b.kind === "custom") {
+    return a.w === b.w && a.h === b.h;
+  }
+  return true;
+}
+
+function padEqual(a: PadColorDto, b: PadColorDto): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "custom" && b.kind === "custom") {
+    return a.r === b.r && a.g === b.g && a.b === b.b;
+  }
+  return true;
 }
 
 interface State {
@@ -127,11 +139,16 @@ export const useOutputPrefsStore = create<State>((set) => ({
   exportKnobs: DEFAULT_EXPORT_KNOBS,
   setRecordingKnob: (k, v) =>
     set((s) => {
+      if (s.recordingKnobs[k] === v) return s;
       const next = { ...s.recordingKnobs, [k]: v };
       const matched = matchPreset(next);
       return { recordingKnobs: next, activePreset: matched ?? "Custom" };
     }),
-  setExportKnob: (k, v) => set((s) => ({ exportKnobs: { ...s.exportKnobs, [k]: v } })),
+  setExportKnob: (k, v) =>
+    set((s) => {
+      if (s.exportKnobs[k] === v) return s;
+      return { exportKnobs: { ...s.exportKnobs, [k]: v } };
+    }),
   applyPreset: (name) => set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
   hydrate: ({ activePreset, recordingKnobs, exportKnobs }) =>
     set({ activePreset, recordingKnobs, exportKnobs }),

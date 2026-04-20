@@ -1,8 +1,3 @@
-/**
- * Phase 13 D-13-11 live bitrate preview strip.
- * Pure presentation — reads store + optional capture dims prop.
- */
-
 import { useOutputPrefsStore } from "@/state/output-prefs";
 import { computeBitratePreview, formatBitratePreview, resolveDims } from "./bitrate";
 
