@@ -1,6 +1,6 @@
 {
   "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "new-york",
+  "style": "base-vega",
   "rsc": false,
   "tsx": true,
   "tailwind": {
@@ -15,6 +15,5 @@
     "lib": "@/lib",
     "utils": "@/lib/utils"
   },
-  "registries": ["base-ui"],
   "iconLibrary": "lucide"
 }

@@ -11,8 +11,8 @@
  * `base-vega` v4 entry is verified.
  */
 
+import { type VariantProps, cva } from "class-variance-authority";
 import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
@@ -28,8 +28,7 @@ const buttonVariants = cva(
         ghost:
           "bg-[rgba(38,37,30,0.06)] text-[var(--color-fg-secondary)] hover:text-[var(--color-hover)]",
         destructive: "bg-[var(--color-danger)] text-[var(--color-fg-primary)] hover:opacity-90",
-        pill:
-          "bg-[var(--color-bg-surface)] text-[var(--color-fg-secondary)] rounded-[var(--radius-pill)] hover:text-[var(--color-hover)]",
+        pill: "bg-[var(--color-bg-surface)] text-[var(--color-fg-secondary)] rounded-[var(--radius-pill)] hover:text-[var(--color-hover)]",
       },
       size: {
         default: "h-9 px-4 py-2",

@@ -38,8 +38,7 @@ export const dialogBackdropMotionClassName =
   "data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 " +
   "data-[starting-style]:backdrop-blur-none data-[ending-style]:backdrop-blur-none";
 
-export const dialogViewportClassName =
-  "fixed inset-0 z-50 flex items-center justify-center p-4";
+export const dialogViewportClassName = "fixed inset-0 z-50 flex items-center justify-center p-4";
 
 export const dialogSideSheetViewportClassName =
   "fixed inset-0 z-50 flex items-stretch justify-end p-3 pl-10";

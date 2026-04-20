@@ -9,9 +9,9 @@
  * `data-[ending-style]` attributes — same pattern as `dialog-motion.ts`.
  */
 
-import * as React from "react";
 import { Select as BaseSelect } from "@base-ui-components/react/select";
 import { Check, ChevronDown } from "lucide-react";
+import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -36,11 +36,7 @@ export const SelectTrigger = React.forwardRef<
   >
     {children}
     <BaseSelect.Icon className="text-[var(--color-fg-muted)]">
-      <ChevronDown
-        size={13}
-        aria-hidden="true"
-        className="transition-transform duration-150"
-      />
+      <ChevronDown size={13} aria-hidden="true" className="transition-transform duration-150" />
     </BaseSelect.Icon>
   </BaseSelect.Trigger>
 ));
@@ -88,11 +84,7 @@ export const SelectItem = React.forwardRef<
   >
     <span className="absolute left-1.5 flex h-3 w-3 items-center justify-center">
       <BaseSelect.ItemIndicator>
-        <Check
-          size={11}
-          className="text-[var(--color-accent-primary)]"
-          aria-hidden="true"
-        />
+        <Check size={11} className="text-[var(--color-accent-primary)]" aria-hidden="true" />
       </BaseSelect.ItemIndicator>
     </span>
     <BaseSelect.ItemText>{children}</BaseSelect.ItemText>
@@ -128,10 +120,7 @@ export const SelectSeparator = React.forwardRef<
   <div
     ref={ref}
     role="separator"
-    className={cn(
-      "my-1 h-px bg-[var(--color-border-subtle)]",
-      className,
-    )}
+    className={cn("my-1 h-px bg-[var(--color-border-subtle)]", className)}
     {...props}
   />
 ));
