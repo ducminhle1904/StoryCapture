@@ -38,6 +38,83 @@ impl From<ExportError> for AppError {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum ContainerDto {
+    Mp4,
+    Mov,
+    WebM,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum CodecDto {
+    H264,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum RateControlDto {
+    Auto,
+    Cbr,
+    Vbr,
+    Crf,
+    Cq,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum X264PresetDto {
+    Ultrafast,
+    Superfast,
+    Veryfast,
+    Faster,
+    Fast,
+    Medium,
+    Slow,
+    Slower,
+    Veryslow,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum AudioCodecDto {
+    Aac,
+    Opus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct AudioOptionsDto {
+    #[serde(default)]
+    pub codec: Option<AudioCodecDto>,
+    #[serde(default)]
+    pub bitrate_kbps: Option<u32>,
+    #[serde(default)]
+    pub channels: Option<u8>,
+    #[serde(default)]
+    pub sample_rate_hz: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct EncoderOptionsDto {
+    #[serde(default)]
+    pub container: Option<ContainerDto>,
+    #[serde(default)]
+    pub codec: Option<CodecDto>,
+    #[serde(default)]
+    pub rate_control: Option<RateControlDto>,
+    #[serde(default)]
+    pub hw_encoder: Option<crate::commands::encode::HardwareEncoderDto>,
+    #[serde(default)]
+    pub x264_preset: Option<X264PresetDto>,
+    #[serde(default)]
+    pub keyframe_interval_sec: Option<u32>,
+    #[serde(default)]
+    pub downscale_algo: Option<crate::commands::encode::ScaleAlgoDto>,
+    #[serde(default)]
+    pub audio: Option<AudioOptionsDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct ExportOutputDto {
     /// "mp4" | "webm" | "gif"
     pub format: String,
@@ -46,6 +123,8 @@ pub struct ExportOutputDto {
     pub fps: u32,
     /// "low" | "med" | "high"
     pub quality: String,
+    #[serde(default)]
+    pub encoder_options: Option<EncoderOptionsDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -304,6 +383,7 @@ mod tests {
             resolution: "1080p".into(),
             fps: 60,
             quality: "high".into(),
+            encoder_options: None,
         })
         .is_ok());
     }
@@ -315,6 +395,7 @@ mod tests {
             resolution: "4k".into(),
             fps: 30,
             quality: "med".into(),
+            encoder_options: None,
         })
         .unwrap_err();
         assert!(matches!(e, AppError::InvalidArgument(_)));
