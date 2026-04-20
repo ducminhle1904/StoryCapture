@@ -12,17 +12,11 @@ import { useOutputPrefsStore } from "@/state/output-prefs";
 import { resolveDims } from "./bitrate";
 import { WARN_SOFT_LOSSLESS_4K_HW, WARN_SOFT_OUTPUT_GT_CAPTURE } from "./copy";
 
-export interface HardError {
-  id: string;
-  msg: string;
-}
-
 interface Props {
-  hardErrors?: HardError[];
   captureDims?: { w: number; h: number };
 }
 
-export function Warnings({ hardErrors = [], captureDims }: Props) {
+export function Warnings({ captureDims }: Props) {
   const resolution = useOutputPrefsStore((s) => s.recordingKnobs.resolution);
   const quality = useOutputPrefsStore((s) => s.recordingKnobs.quality);
   const hwEncoder = useOutputPrefsStore((s) => s.exportKnobs.hwEncoder);
@@ -38,14 +32,6 @@ export function Warnings({ hardErrors = [], captureDims }: Props) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      {hardErrors.map((e) => (
-        <p
-          key={e.id}
-          className="rounded-[var(--radius-sm)] border-l-2 border-[var(--color-danger)] bg-[var(--color-danger)]/5 px-3 py-1.5 text-[11px] text-[var(--color-danger)]"
-        >
-          {e.msg}
-        </p>
-      ))}
       <output aria-live="polite" className="flex flex-col gap-1.5">
         {soft.map((msg) => (
           <p
