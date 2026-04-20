@@ -50,6 +50,21 @@
         { "path": "$DESKTOP/**" }
       ]
     },
+    "store:default",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [
+        { "path": "$APPDATA/**" },
+        { "path": "$APPCONFIG/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [
+        { "path": "$APPDATA/**" },
+        { "path": "$APPCONFIG/**" }
+      ]
+    },
     "dialog:default",
     "updater:default",
     "window-state:default",
