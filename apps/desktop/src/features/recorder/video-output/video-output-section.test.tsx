@@ -35,7 +35,10 @@ describe("VideoOutputSection", () => {
     const user = userEvent.setup();
     useOutputPrefsStore.setState({
       activePreset: "Custom",
-      recordingKnobs: { ...PRESET_BUNDLES.Standard, resolution: { kind: "custom", w: 1280, h: 720 } },
+      recordingKnobs: {
+        ...PRESET_BUNDLES.Standard,
+        resolution: { kind: "custom", w: 1280, h: 720 },
+      },
     });
     render(<VideoOutputSection />);
     const wInput = screen.getByLabelText("Rộng") as HTMLInputElement;

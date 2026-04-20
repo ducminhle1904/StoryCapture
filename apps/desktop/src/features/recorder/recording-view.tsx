@@ -47,6 +47,9 @@ import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { TargetThumbnail } from "./TargetThumbnail";
+import { VideoOutputSection, useIsRecordingBlocked } from "./video-output/video-output-section";
+import { OutputSummaryBadge } from "./video-output/output-summary-badge";
+import { useOutputPrefsStore } from "@/state/output-prefs";
 import { getAppSettings } from "@/ipc/settings";
 
 interface RecordingViewProps {
@@ -141,6 +144,8 @@ export function RecordingView({
   const startedAtRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
   const automationOwnsStopRef = useRef(false);
+  const videoOutputSectionRef = useRef<HTMLDivElement | null>(null);
+  const isOutputBlocked = useIsRecordingBlocked();
 
   const displays = availableTargets?.displays ?? [];
   const selectedDisplay: number | null =
@@ -391,16 +396,23 @@ export function RecordingView({
           toast.warning("Playwright didn't launch in time — recording full display instead");
         }
       }
+      // Phase 13 — output knobs from useOutputPrefsStore (one-shot read).
+      const prefs = useOutputPrefsStore.getState().recordingKnobs;
+      const exportPrefs = useOutputPrefsStore.getState().exportKnobs;
       const id = await startRecording(
         {
           project_folder: projectFolder,
           target: recordingTarget,
           width,
           height,
-          fps: 60,
-          // Omit the field for "No audio"; pass "default" for system input.
+          fps: prefs.fps,
           audio_device_id: audioDeviceId ?? undefined,
           include_cursor: includeCursor,
+          output_resolution: prefs.resolution,
+          fit_mode: prefs.fit,
+          pad_color: prefs.pad,
+          quality_preset: prefs.quality,
+          scale_algo: exportPrefs.downscaleAlgo,
         },
         (event) => dispatch(event),
       );
@@ -418,7 +430,8 @@ export function RecordingView({
             storySource,
             projectFolder,
             chromeHiding,
-            recordingSessionId: typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
+            recordingSessionId:
+              typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
           },
           (evt) => dispatchAutomation(evt),
         ).catch((e) => {
@@ -696,7 +709,20 @@ export function RecordingView({
 
             <div className="flex items-center gap-2">
               {status === "idle" && (
-                <RecordButton disabled={!canRecordDisplay} onClick={handleRecord} />
+                <>
+                  <OutputSummaryBadge
+                    onActivate={() => {
+                      videoOutputSectionRef.current?.scrollIntoView({
+                        behavior: reduceMotion ? "auto" : "smooth",
+                        block: "center",
+                      });
+                    }}
+                  />
+                  <RecordButton
+                    disabled={!canRecordDisplay || isOutputBlocked}
+                    onClick={handleRecord}
+                  />
+                </>
               )}
               {status === "recording" && (
                 <>
@@ -772,7 +798,9 @@ export function RecordingView({
               }}
               onRefresh={() => loadCaptureTargets()}
               onOpenRegion={(id) => openRegionOverlay(id)}
-              disabled={!canRecord || status === "recording" || status === "paused" || status === "stopping"}
+              disabled={
+                !canRecord || status === "recording" || status === "paused" || status === "stopping"
+              }
             />
             {displayLabel && (
               <p className="mt-1.5 font-mono text-[10px] text-[var(--color-fg-muted)]">
@@ -833,6 +861,11 @@ export function RecordingView({
               <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
             </div>
           </SettingsGroup>
+
+          <VideoOutputSection
+            ref={videoOutputSectionRef}
+            disabled={status === "recording" || status === "paused" || status === "stopping"}
+          />
 
           <div className="mt-auto rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-2.5">
             <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">

@@ -17,7 +17,9 @@ import {
   RESOLUTION_OPTION_LABELS,
 } from "./copy";
 
-function resLabel(res: ReturnType<typeof useOutputPrefsStore.getState>["recordingKnobs"]["resolution"]): string {
+function resLabel(
+  res: ReturnType<typeof useOutputPrefsStore.getState>["recordingKnobs"]["resolution"],
+): string {
   if (res.kind === "custom") return `${res.w}×${res.h}`;
   return RESOLUTION_OPTION_LABELS[res.kind];
 }
