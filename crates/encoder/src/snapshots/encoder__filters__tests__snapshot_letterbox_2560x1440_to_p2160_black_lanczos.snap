@@ -1,0 +1,5 @@
+---
+source: crates/encoder/src/filters.rs
+expression: build_vf(&s).unwrap()
+---
+scale=3840:2160:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,pad=3840:2160:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p

@@ -1619,6 +1619,7 @@ dependencies = [
  "capture",
  "effects",
  "futures",
+ "insta",
  "libc",
  "objc2 0.6.4",
  "objc2-av-foundation",

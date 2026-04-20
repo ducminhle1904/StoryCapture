@@ -1,0 +1,5 @@
+---
+source: crates/encoder/src/filters.rs
+expression: build_vf(&s).unwrap()
+---
+format=yuv420p

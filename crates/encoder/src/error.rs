@@ -28,6 +28,9 @@ pub enum EncoderError {
 
     #[error("probe failed: {0}")]
     ProbeFailed(String),
+
+    #[error("invalid filter spec: {0}")]
+    InvalidFilterSpec(String),
 }
 
 impl From<std::io::Error> for EncoderError {
