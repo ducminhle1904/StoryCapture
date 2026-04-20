@@ -1,11 +1,17 @@
 //! `EncodeConfig` values for one recording.
 //!
-//! Resolution and framerate come from capture. Audio defaults to a silent AAC track.
+//! Capture dims drive the rawvideo stdin (`-s`); output dims drive the
+//! `scale+pad` filter target. `to_ffmpeg_args` delegates filter-graph
+//! synthesis to `crate::filters::build_vf` and rate-control flag synthesis
+//! to `crate::quality::resolve` — nothing in this file hand-rolls FFmpeg
+//! argv fragments for either.
 
 use std::path::PathBuf;
 
 use crate::error::{EncoderError, Result};
+use crate::filters::{self, FilterSpec, FitMode, OutputResolution, PadColor, QualityPreset, ScaleAlgo};
 use crate::probe::HardwareEncoder;
+use crate::quality;
 
 /// Raw PCM format for the mic audio FIFO.
 #[derive(Debug, Clone, Copy)]
@@ -35,13 +41,21 @@ pub struct AudioInput {
 #[derive(Debug, Clone)]
 pub struct EncodeConfig {
     pub output_path: PathBuf,
-    pub width: u32,
-    pub height: u32,
+    /// Source frame dimensions for rawvideo stdin `-s WxH`. Always native capture dims.
+    pub capture_width: u32,
+    pub capture_height: u32,
+    /// Target output frame dimensions after scale+pad. Must be even.
+    pub output_width: u32,
+    pub output_height: u32,
+    pub fit_mode: FitMode,
+    pub pad_color: PadColor,
+    pub scale_algo: ScaleAlgo,
+    pub quality_preset: QualityPreset,
     /// Fixed output cadence for the FFmpeg stdin path. The macOS VT fast
     /// path preserves native capture PTS; raw BGRA over stdin does not.
     pub fps_advisory: u32,
     pub encoder: HardwareEncoder,
-    /// Video bitrate in kbps.
+    /// Manual target bitrate override in kbps. 0 = preset-driven. Reserved for Phase 13.
     pub bitrate_kbps: u32,
     /// Optional mic input.
     pub audio_input: Option<AudioInput>,
@@ -54,21 +68,62 @@ pub struct EncodeConfig {
 impl EncodeConfig {
     pub fn new(
         output_path: PathBuf,
-        width: u32,
-        height: u32,
+        capture_width: u32,
+        capture_height: u32,
         fps_advisory: u32,
         encoder: HardwareEncoder,
     ) -> Self {
+        let out_w = capture_width & !1;
+        let out_h = capture_height & !1;
         EncodeConfig {
             output_path,
-            width,
-            height,
+            capture_width,
+            capture_height,
+            output_width: out_w,
+            output_height: out_h,
+            fit_mode: FitMode::Letterbox,
+            pad_color: PadColor::Black,
+            scale_algo: ScaleAlgo::Lanczos,
+            quality_preset: QualityPreset::Med,
             fps_advisory,
             encoder,
-            bitrate_kbps: 12_000,
+            bitrate_kbps: 0,
             audio_input: None,
             force_ffmpeg_path: false,
         }
+    }
+
+    pub fn with_output_resolution(mut self, preset: OutputResolution) -> Result<Self> {
+        let (w, h) = preset.resolve_even(self.capture_width, self.capture_height)?;
+        self.output_width = w;
+        self.output_height = h;
+        Ok(self)
+    }
+
+    pub fn with_fit_mode(mut self, fit: FitMode) -> Self {
+        self.fit_mode = fit;
+        self
+    }
+
+    pub fn with_pad_color(mut self, color: PadColor) -> Self {
+        self.pad_color = color;
+        self
+    }
+
+    pub fn with_scale_algo(mut self, algo: ScaleAlgo) -> Self {
+        self.scale_algo = algo;
+        self
+    }
+
+    pub fn with_quality_preset(mut self, preset: QualityPreset) -> Self {
+        self.quality_preset = preset;
+        self
+    }
+
+    /// Sets `bitrate_kbps` to the pixel-based target for the current output dims.
+    pub fn with_auto_bitrate(mut self) -> Self {
+        self.bitrate_kbps = quality::pixel_based_kbps(self.output_width, self.output_height);
+        self
     }
 
     /// Attach mic input.
@@ -83,10 +138,22 @@ impl EncodeConfig {
     }
 
     pub fn validate(&self) -> Result<()> {
-        if self.width == 0 || self.height == 0 {
+        if self.capture_width == 0 || self.capture_height == 0 {
             return Err(EncoderError::InvalidConfig(format!(
-                "zero dimension: {}x{}",
-                self.width, self.height
+                "zero capture dimension: {}x{}",
+                self.capture_width, self.capture_height
+            )));
+        }
+        if self.output_width == 0 || self.output_height == 0 {
+            return Err(EncoderError::InvalidConfig(format!(
+                "zero output dimension: {}x{}",
+                self.output_width, self.output_height
+            )));
+        }
+        if self.output_width % 2 != 0 || self.output_height % 2 != 0 {
+            return Err(EncoderError::InvalidConfig(format!(
+                "output dims must be even: {}x{}",
+                self.output_width, self.output_height
             )));
         }
         if self.fps_advisory == 0 {
@@ -102,31 +169,35 @@ impl EncodeConfig {
 
     /// Render the FFmpeg argv without the binary path.
     pub fn to_ffmpeg_args(&self) -> Vec<String> {
-        // Bitrate scales with pixel count.
-        let pixel_based_kbps = ((self.width as u64 * self.height as u64 * 3) / 1000) as u32;
-        let target_kbps = pixel_based_kbps.max(self.bitrate_kbps).min(40_000);
-        let bitrate = format!("{}k", target_kbps);
-        let scale_filter = "scale='min(1920,iw)':-2,scale=trunc(iw/2)*2:trunc(ih/2)*2".to_string();
+        let spec = FilterSpec {
+            capture_w: self.capture_width,
+            capture_h: self.capture_height,
+            output_w: self.output_width,
+            output_h: self.output_height,
+            fit: self.fit_mode,
+            pad_color: self.pad_color,
+            scale_algo: self.scale_algo,
+        };
+        let vf = filters::build_vf(&spec)
+            .expect("EncodeConfig was not validated before to_ffmpeg_args");
 
         let mut args: Vec<String> = vec![
             "-hide_banner".into(),
             "-y".into(),
             "-thread_queue_size".into(),
             "1024".into(),
-            // Raw BGRA input on stdin at a fixed cadence.
             "-f".into(),
             "rawvideo".into(),
             "-pix_fmt".into(),
             "bgra".into(),
             "-s".into(),
-            format!("{}x{}", self.width, self.height),
+            format!("{}x{}", self.capture_width, self.capture_height),
             "-r".into(),
             self.fps_advisory.to_string(),
             "-i".into(),
             "pipe:0".into(),
         ];
 
-        // Audio input. Silence is the fallback.
         match &self.audio_input {
             Some(audio) => {
                 args.extend([
@@ -152,49 +223,28 @@ impl EncodeConfig {
             }
         }
 
-        // Explicit mapping only when real audio is present.
         if self.audio_input.is_some() {
             args.extend(["-map".into(), "0:v:0".into(), "-map".into(), "1:a:0".into()]);
         }
 
         let codec = self.encoder.ffmpeg_codec_name();
-        let is_videotoolbox = codec.contains("videotoolbox");
         args.extend([
-            // Downscale + even-dim video filter.
             "-vf".into(),
-            scale_filter,
-            // Video encode.
+            vf,
             "-c:v".into(),
             codec.into(),
             "-pix_fmt".into(),
             "yuv420p".into(),
         ]);
-        if is_videotoolbox {
-            // Constant-quality VBR on VideoToolbox. MUST NOT pair with
-            // -b:v — VT silently picks one mode and ignores the other,
-            // typically favoring -b:v which treats bitrate as a
-            // ceiling and undershoots to ~1 Mbps on low-motion frames.
-            // -q:v 65 lands ~6-12 Mbps at 1080p60 on Apple Silicon;
-            // -maxrate/-bufsize cap peaks during high-motion bursts.
-            args.extend([
-                "-q:v".into(),
-                "65".into(),
-                "-maxrate".into(),
-                format!("{}k", target_kbps),
-                "-bufsize".into(),
-                format!("{}k", target_kbps * 2),
-            ]);
-        } else {
-            // Software fallback (libx264) still uses -b:v target.
-            args.extend(["-b:v".into(), bitrate.clone()]);
-        }
-        args.extend([
-            // Audio encode.
-            "-c:a".into(),
-            "aac".into(),
-        ]);
+        args.extend(quality::resolve(
+            self.quality_preset,
+            self.encoder,
+            self.output_width,
+            self.output_height,
+        ));
 
-        // Mic input gets a higher bitrate than the silent fallback.
+        args.extend(["-c:a".into(), "aac".into()]);
+
         if self.audio_input.is_some() {
             args.extend(["-b:a".into(), "128k".into(), "-ac".into(), "2".into()]);
         } else {
@@ -202,18 +252,15 @@ impl EncodeConfig {
         }
 
         args.extend([
-            // Framing and packaging.
             "-fps_mode".into(),
             "cfr".into(),
             "-movflags".into(),
             "+faststart".into(),
             "-shortest".into(),
-            // Progress and logs.
             "-progress".into(),
             "pipe:2".into(),
             "-loglevel".into(),
             "info".into(),
-            // Output.
             self.output_path.display().to_string(),
         ]);
 
@@ -259,30 +306,32 @@ mod tests {
         assert!(args.contains("pipe:0"), "stdin input missing: {args}");
         assert!(args.contains("anullsrc"), "silent audio missing: {args}");
         assert!(args.contains("libopenh264"), "encoder name missing: {args}");
-        assert!(args.contains("1280x720"), "resolution missing: {args}");
+        assert!(args.contains("-s 1280x720"), "capture dims missing: {args}");
     }
 
     #[test]
     fn validate_rejects_zero_dims() {
         let mut c = cfg();
-        c.width = 0;
+        c.capture_width = 0;
         assert!(c.validate().is_err());
     }
 
-    // Audio dual-input arg shape.
+    #[test]
+    fn test_validate_rejects_odd_output_dims() {
+        let mut c = cfg();
+        c.output_width = 1919;
+        assert!(c.validate().is_err());
+    }
 
-    /// Regression guard for the silent-audio path.
     #[test]
     fn audio_none_path_preserves_phase1_args() {
         let args = cfg().to_ffmpeg_args().join(" ");
         assert!(args.contains("-f lavfi -i anullsrc=r=48000:cl=mono"));
         assert!(args.contains("-b:a 64k"));
-        // No explicit -map in the silent path.
         assert!(
             !args.contains("-map"),
             "silent-audio path must not add explicit stream mapping: {args}"
         );
-        // 128k is the mic-path default.
         assert!(!args.contains("-b:a 128k"));
     }
 
@@ -296,20 +345,16 @@ mod tests {
             format: AudioFormat::F32LE,
         });
         let args = c.to_ffmpeg_args().join(" ");
-        // Raw PCM input follows the video input.
         assert!(args.contains("-f f32le"), "missing -f f32le: {args}");
         assert!(args.contains("-ar 48000"), "missing -ar 48000: {args}");
         assert!(args.contains("-ac 1"), "missing -ac 1 for mono mic: {args}");
         assert!(args.contains("-i /tmp/mic.fifo"), "missing fifo -i: {args}");
-        // Explicit mapping so FFmpeg uses the FIFO audio.
         assert!(
             args.contains("-map 0:v:0 -map 1:a:0"),
             "missing maps: {args}"
         );
-        // AAC 128 kbps stereo output.
         assert!(args.contains("-b:a 128k"), "missing 128k audio: {args}");
         assert!(args.contains("-ac 2"), "missing stereo downmix: {args}");
-        // `anullsrc` is absent on the mic path.
         assert!(
             !args.contains("anullsrc"),
             "mic path should not include anullsrc: {args}"
@@ -318,7 +363,6 @@ mod tests {
 
     #[test]
     fn audio_input_args_ordered_correctly() {
-        // Verify the video input comes before the FIFO input.
         let mut c = cfg();
         c.audio_input = Some(AudioInput {
             fifo_path: PathBuf::from("/tmp/x.fifo"),
@@ -341,34 +385,80 @@ mod tests {
         );
     }
 
-    /// Regression guard for the 4K bitrate floor.
+    /// Bitrate is target, not floor (Phase 12 / D-12-08).
     #[test]
-    fn test_4k_exceeds_floor() {
-        let c = EncodeConfig::new(
+    fn test_4k_uses_target_bitrate() {
+        let cfg = EncodeConfig::new(
             PathBuf::from("/tmp/4k.mp4"),
             3840,
             2160,
             30,
             HardwareEncoder::Openh264Software,
+        )
+        .with_output_resolution(OutputResolution::P2160)
+        .unwrap()
+        .with_auto_bitrate();
+        assert_eq!(
+            cfg.bitrate_kbps, 24_883,
+            "auto_bitrate must equal pixel_based for 3840x2160"
         );
-        let args = c.to_ffmpeg_args();
-        let bv_idx = args
+        let args = cfg.to_ffmpeg_args();
+        assert!(
+            !args.iter().any(|a| a == "-b:v"),
+            "libopenh264 Med must use CRF, not -b:v"
+        );
+        assert!(
+            args.windows(2).any(|w| w[0] == "-crf" && w[1] == "23"),
+            "Med preset → -crf 23"
+        );
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "-tune" && w[1] == "stillimage")
+        );
+    }
+
+    #[test]
+    fn test_letterbox_vf_wired() {
+        let cfg = EncodeConfig::new(
+            PathBuf::from("/tmp/lb.mp4"),
+            1920,
+            1130,
+            30,
+            HardwareEncoder::Openh264Software,
+        )
+        .with_output_resolution(OutputResolution::P1080)
+        .unwrap();
+        let args = cfg.to_ffmpeg_args();
+        let vf_idx = args
             .iter()
-            .position(|a| a == "-b:v")
-            .expect("-b:v must be present");
-        let bitrate = &args[bv_idx + 1];
-        // Parse "NNNNNk" to `u32`.
-        let kbps: u32 = bitrate
-            .trim_end_matches('k')
-            .parse()
-            .expect("bitrate is numeric kbps");
+            .position(|a| a == "-vf")
+            .expect("-vf must be present");
+        let vf = &args[vf_idx + 1];
         assert!(
-            kbps > 12_000,
-            "4K bitrate must exceed the 12 Mbps default floor; got {kbps}k"
+            vf.contains("force_original_aspect_ratio=decrease"),
+            "letterbox scale flag missing: {vf}"
         );
-        assert!(
-            kbps <= 40_000,
-            "4K bitrate must stay within the 40 Mbps cap; got {kbps}k"
+        assert!(vf.contains("pad=1920:1080"), "pad target missing: {vf}");
+        assert!(vf.contains("setsar=1"), "setsar missing: {vf}");
+    }
+
+    #[test]
+    fn test_output_dims_differ_from_capture_in_minus_s() {
+        let cfg = EncodeConfig::new(
+            PathBuf::from("/tmp/s.mp4"),
+            1920,
+            1130,
+            30,
+            HardwareEncoder::Openh264Software,
+        )
+        .with_output_resolution(OutputResolution::P1080)
+        .unwrap();
+        let args = cfg.to_ffmpeg_args();
+        let s_idx = args.iter().position(|a| a == "-s").expect("-s present");
+        assert_eq!(
+            &args[s_idx + 1],
+            "1920x1130",
+            "-s must carry capture dims, not output dims"
         );
     }
 
