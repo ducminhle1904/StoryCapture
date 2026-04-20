@@ -400,4 +400,101 @@ mod tests {
         .unwrap_err();
         assert!(matches!(e, AppError::InvalidArgument(_)));
     }
+
+    fn base_cfg() -> ExportOutputDto {
+        ExportOutputDto {
+            format: "mp4".into(),
+            resolution: "1080p".into(),
+            fps: 30,
+            quality: "med".into(),
+            encoder_options: None,
+        }
+    }
+
+    #[test]
+    fn validate_rejects_keyframe_out_of_range() {
+        let mut cfg = base_cfg();
+        cfg.encoder_options = Some(EncoderOptionsDto {
+            container: None,
+            codec: None,
+            rate_control: None,
+            hw_encoder: None,
+            x264_preset: None,
+            keyframe_interval_sec: Some(0),
+            downscale_algo: None,
+            audio: None,
+        });
+        let e = export_validate_config(cfg).unwrap_err();
+        assert!(matches!(e, AppError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn validate_rejects_audio_bitrate_too_low() {
+        let mut cfg = base_cfg();
+        cfg.encoder_options = Some(EncoderOptionsDto {
+            container: None,
+            codec: None,
+            rate_control: None,
+            hw_encoder: None,
+            x264_preset: None,
+            keyframe_interval_sec: None,
+            downscale_algo: None,
+            audio: Some(AudioOptionsDto {
+                codec: None,
+                bitrate_kbps: Some(32),
+                channels: None,
+                sample_rate_hz: None,
+            }),
+        });
+        let e = export_validate_config(cfg).unwrap_err();
+        assert!(matches!(e, AppError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn validate_rejects_audio_channels_not_mono_or_stereo() {
+        let mut cfg = base_cfg();
+        cfg.encoder_options = Some(EncoderOptionsDto {
+            container: None,
+            codec: None,
+            rate_control: None,
+            hw_encoder: None,
+            x264_preset: None,
+            keyframe_interval_sec: None,
+            downscale_algo: None,
+            audio: Some(AudioOptionsDto {
+                codec: None,
+                bitrate_kbps: None,
+                channels: Some(3),
+                sample_rate_hz: None,
+            }),
+        });
+        let e = export_validate_config(cfg).unwrap_err();
+        assert!(matches!(e, AppError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn validate_accepts_valid_encoder_options() {
+        let mut cfg = base_cfg();
+        cfg.encoder_options = Some(EncoderOptionsDto {
+            container: Some(ContainerDto::Mp4),
+            codec: Some(CodecDto::H264),
+            rate_control: Some(RateControlDto::Crf),
+            hw_encoder: None,
+            x264_preset: Some(X264PresetDto::Medium),
+            keyframe_interval_sec: Some(2),
+            downscale_algo: None,
+            audio: Some(AudioOptionsDto {
+                codec: Some(AudioCodecDto::Aac),
+                bitrate_kbps: Some(160),
+                channels: Some(2),
+                sample_rate_hz: Some(48_000),
+            }),
+        });
+        assert!(export_validate_config(cfg).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_none_encoder_options_backcompat() {
+        assert!(export_validate_config(base_cfg()).is_ok());
+    }
 }
