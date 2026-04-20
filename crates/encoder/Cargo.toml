@@ -53,3 +53,4 @@ async-trait = "0.1"
 tokio-util = "0.7"
 rusqlite = { version = "0.34", features = ["bundled"] }
 insta = { version = "1", features = ["yaml"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
