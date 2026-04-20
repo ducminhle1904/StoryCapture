@@ -3,6 +3,13 @@
  * `apps/desktop/src-tauri/src/commands/encode.rs`.
  */
 
+import type {
+  FitModeDto,
+  OutputResolutionDto,
+  PadColorDto,
+  QualityPresetDto,
+  ScaleAlgoDto,
+} from "@storycapture/shared-types";
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 import type { CaptureTarget } from "./capture";
@@ -33,6 +40,16 @@ export interface StartRecordingArgs {
    * recorder store resets this to true on mount and on recording-complete.
    */
   include_cursor?: boolean | null;
+  /** Phase 13 D-13-08 — output resolution. undefined → backend default (1080p). */
+  output_resolution?: OutputResolutionDto | null;
+  /** Phase 13 D-13-12 — fit mode. undefined → backend default (letterbox). */
+  fit_mode?: FitModeDto | null;
+  /** Phase 13 D-13-09 — pad color. undefined → backend default (black). */
+  pad_color?: PadColorDto | null;
+  /** Phase 13 D-13-11 — quality preset. undefined → backend default (med). */
+  quality_preset?: QualityPresetDto | null;
+  /** Phase 13 D-13-08 — scale algorithm. undefined → backend default (lanczos). */
+  scale_algo?: ScaleAlgoDto | null;
 }
 
 export interface RecordingSessionId {
