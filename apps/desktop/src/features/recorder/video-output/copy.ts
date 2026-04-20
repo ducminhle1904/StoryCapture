@@ -3,13 +3,13 @@
  * section. All user-facing strings live here; no inline JSX literals.
  */
 
+import type { PresetName } from "@/state/output-prefs";
 import type {
   FitModeDto,
   OutputResolutionDto,
   PadColorDto,
   QualityPresetDto,
 } from "@storycapture/shared-types";
-import type { PresetName } from "@/state/output-prefs";
 
 /* Section */
 export const SECTION_TITLE = "Đầu ra video";
