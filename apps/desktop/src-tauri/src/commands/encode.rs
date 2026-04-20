@@ -11,7 +11,8 @@ use capture::audio::{
 use capture::{ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, Frame, PixelFormat};
 use encoder::{
     probe_encoders, AudioFormat, AudioInput, EncodeConfig, EncodePipeline, EncodeProgress,
-    EncodeResult, EncoderError, EncoderProbe, HardwareEncoder, SidecarChild, SidecarCommand,
+    EncodeResult, EncoderError, EncoderProbe, FitMode, HardwareEncoder, OutputResolution, PadColor,
+    QualityPreset, ScaleAlgo, SidecarChild, SidecarCommand,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -568,6 +569,7 @@ pub async fn start_recording(
         None
     };
 
+    // Phase 12 defaults per D-12-10; Phase 13 will expose these to UI.
     let mut enc_cfg = EncodeConfig::new(
         output_path.clone(),
         actual_width,
@@ -575,6 +577,12 @@ pub async fn start_recording(
         args.fps,
         probe.preferred,
     )
+    .with_output_resolution(OutputResolution::P1080)
+    .map_err(|e| AppError::Encoder(e.to_string()))?
+    .with_fit_mode(FitMode::Letterbox)
+    .with_pad_color(PadColor::Black)
+    .with_scale_algo(ScaleAlgo::Lanczos)
+    .with_quality_preset(QualityPreset::Med)
     .force_ffmpeg_path();
     if let (Some(f), Some(negotiated)) = (&audio_fifo, negotiated_audio.as_ref()) {
         let info = negotiated.info();

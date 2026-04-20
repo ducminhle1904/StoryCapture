@@ -147,9 +147,17 @@ fn run_worker(
         })?;
 
         // Build video output settings.
-        let bitrate_bps: i64 = (cfg.bitrate_kbps as i64) * 1000;
-        let width_num = NSNumber::new_u32(cfg.width);
-        let height_num = NSNumber::new_u32(cfg.height);
+        // VT writer is a native fast-path that bypasses the filter graph; it
+        // encodes at capture dims. Bitrate 0 (Phase 12 preset-driven default)
+        // maps to pixel-based target so AVAssetWriter has a sane target.
+        let effective_kbps = if cfg.bitrate_kbps == 0 {
+            crate::quality::pixel_based_kbps(cfg.capture_width, cfg.capture_height)
+        } else {
+            cfg.bitrate_kbps
+        };
+        let bitrate_bps: i64 = (effective_kbps as i64) * 1000;
+        let width_num = NSNumber::new_u32(cfg.capture_width);
+        let height_num = NSNumber::new_u32(cfg.capture_height);
         let bitrate_num = NSNumber::new_i64(bitrate_bps);
 
         let codec_key = unsafe { AVVideoCodecKey }
