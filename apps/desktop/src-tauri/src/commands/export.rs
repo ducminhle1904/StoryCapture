@@ -38,10 +38,11 @@ impl From<ExportError> for AppError {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "lowercase")]
 pub enum ContainerDto {
     Mp4,
     Mov,
+    #[serde(rename = "webm")]
     WebM,
 }
 
@@ -289,7 +290,36 @@ pub fn export_get_presets() -> ExportPresetsCatalogue {
 pub fn export_validate_config(cfg: ExportOutputDto) -> Result<(), AppError> {
     let fmt = parse_format(&cfg.format)?;
     let res = parse_resolution(&cfg.resolution)?;
-    validate_spec(fmt, res, cfg.fps).map_err(AppError::from)
+    validate_spec(fmt, res, cfg.fps).map_err(AppError::from)?;
+
+    if let Some(opts) = cfg.encoder_options.as_ref() {
+        if let Some(k) = opts.keyframe_interval_sec {
+            if !(1..=10).contains(&k) {
+                return Err(AppError::InvalidArgument(format!(
+                    "keyframe_interval_sec must be 1..=10, got {k}"
+                )));
+            }
+        }
+        if let Some(audio) = opts.audio.as_ref() {
+            if let Some(br) = audio.bitrate_kbps {
+                if !(64..=320).contains(&br) {
+                    return Err(AppError::InvalidArgument(format!(
+                        "audio.bitrate_kbps must be 64..=320, got {br}"
+                    )));
+                }
+            }
+            if let Some(ch) = audio.channels {
+                if !matches!(ch, 1 | 2) {
+                    return Err(AppError::InvalidArgument(format!(
+                        "audio.channels must be 1 or 2, got {ch}"
+                    )));
+                }
+            }
+        }
+        // encoder_options: validated; runtime consumption deferred (see Phase 13 13-01-PLAN scope note).
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
