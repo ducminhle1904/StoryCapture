@@ -17,7 +17,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 - [x] **Phase 3: Intelligence Layer — AI Authoring & Voiceover** - Natural-language → DSL chat, AI TTS synced to steps, LSP-powered editor assistance (code-complete; 1 operator-gated verification step pending)
 - [x] **Phase 4: Web Companion & Sharing** - Next.js 15 companion with OAuth, upload, shareable embed, workspaces, analytics, and desktop↔web sync (code-complete; 1 operator-gated verification step pending)
 - [x] **Phase 12: Fix video output resolution lock — letterbox filter chain** - Backend + IPC only. Output video matches user-selected resolution exactly via `scale + pad + setsar` letterbox chain. Splits capture dims from output dims in `EncodeConfig`. Fixes `bitrate_kbps`-as-floor tech-debt. (completed 2026-04-20)
-- [ ] **Phase 13: Video output customization knobs — recording + export UI** - UI exposure of resolution/FPS/fit-mode/pad-color/quality at recording time and container/codec/rate-control/HW-encoder/preset/keyframe/downscale/audio at export time. Per-encoder quality preset mapping. Depends on Phase 12.
+- [x] **Phase 13: Video output customization knobs — recording + export UI** - UI exposure of resolution/FPS/fit-mode/pad-color/quality at recording time and container/codec/rate-control/HW-encoder/preset/keyframe/downscale/audio at export time. Per-encoder quality preset mapping. Depends on Phase 12. (completed 2026-04-20)
 
 ## Phase Details
 
@@ -309,11 +309,11 @@ Plans:
 **Plans:** 5 plans
 
 Plans:
-- [ ] 13-01-PLAN.md — Backend ExportOutputDto extension: EncoderOptionsDto + 6 sub-DTOs + tauri-specta regen (ENC-13)
-- [ ] 13-02-PLAN.md — Infrastructure: tauri-plugin-store wiring + capabilities + 6 shadcn Base UI primitives + 2 bespoke wrappers (ENC-15)
-- [ ] 13-03-PLAN.md — Shared output-prefs Zustand store + persistence/migrator + per-project IO + IPC wrapper extensions + CONVENTIONS.md exception update (ENC-14, ENC-15)
-- [ ] 13-04-PLAN.md — Recording UI: VideoOutputSection (5 controls) + bitrate preview + warnings + summary badge + recording-view.tsx integration (ENC-12, ENC-17, ENC-18, ENC-19)
-- [ ] 13-05-PLAN.md — Export Modal Advanced disclosure: AdvancedOutputOptions (8 knobs, conditional decision table) + export-modal.tsx integration (ENC-13, ENC-16)
+- [x] 13-01-PLAN.md — Backend ExportOutputDto extension: EncoderOptionsDto + 6 sub-DTOs + tauri-specta regen (ENC-13)
+- [x] 13-02-PLAN.md — Infrastructure: tauri-plugin-store wiring + capabilities + 6 shadcn Base UI primitives + 2 bespoke wrappers (ENC-15)
+- [x] 13-03-PLAN.md — Shared output-prefs Zustand store + persistence/migrator + per-project IO + IPC wrapper extensions + CONVENTIONS.md exception update (ENC-14, ENC-15)
+- [x] 13-04-PLAN.md — Recording UI: VideoOutputSection (5 controls) + bitrate preview + warnings + summary badge + recording-view.tsx integration (ENC-12, ENC-17, ENC-18, ENC-19)
+- [x] 13-05-PLAN.md — Export Modal Advanced disclosure: AdvancedOutputOptions (8 knobs, conditional decision table) + export-modal.tsx integration (ENC-13, ENC-16)
 
 
 ---
