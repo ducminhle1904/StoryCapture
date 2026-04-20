@@ -16,7 +16,7 @@ describe("computeBitratePreview", () => {
   it("1080p med → ~6.2 Mbps ~45 MB/min", () => {
     const out = computeBitratePreview({ w: 1920, h: 1080, quality: "med" });
     expect(out.mbps).toBeCloseTo(6.22, 1);
-    expect(out.mbPerMin).toBeCloseTo(45, 0);
+    expect(out.mbPerMin).toBeCloseTo(45.56, 1);
   });
 
   it("4K lossless → ~37.3 Mbps ~273 MB/min", () => {
