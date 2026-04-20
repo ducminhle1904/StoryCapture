@@ -1,0 +1,5 @@
+---
+source: crates/encoder/src/filters.rs
+expression: build_vf(&s).unwrap()
+---
+scale=1280:720:flags=bilinear,setsar=1,format=yuv420p

@@ -29,6 +29,9 @@ mod sidecar;
 
 pub use config::{AudioFormat, AudioInput, EncodeConfig};
 pub use error::{EncoderError, Result};
+pub use filters::{
+    build_vf, FilterSpec, FitMode, OutputResolution, PadColor, QualityPreset, ScaleAlgo,
+};
 pub use pipeline::{bgra_bytes_of_frame, EncodePipeline, EncodeResult, SHUTDOWN_TIMEOUT};
 pub use pool::{PoolConfig, SidecarHandle, SidecarPermit, SidecarPool};
 pub use probe::{probe_encoders, EncoderProbe, HardwareEncoder};
