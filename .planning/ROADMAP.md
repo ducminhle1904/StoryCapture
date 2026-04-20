@@ -16,7 +16,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 - [x] **Phase 2: Cinematic Post-Production & Export** - Screen Studio-grade polish layer (auto-zoom, cursor, transitions, sound, overlays) with multi-format export and post-pro editor UI (code-complete; 2 operator-gated verification steps pending)
 - [x] **Phase 3: Intelligence Layer — AI Authoring & Voiceover** - Natural-language → DSL chat, AI TTS synced to steps, LSP-powered editor assistance (code-complete; 1 operator-gated verification step pending)
 - [x] **Phase 4: Web Companion & Sharing** - Next.js 15 companion with OAuth, upload, shareable embed, workspaces, analytics, and desktop↔web sync (code-complete; 1 operator-gated verification step pending)
-- [ ] **Phase 12: Fix video output resolution lock — letterbox filter chain** - Backend + IPC only. Output video matches user-selected resolution exactly via `scale + pad + setsar` letterbox chain. Splits capture dims from output dims in `EncodeConfig`. Fixes `bitrate_kbps`-as-floor tech-debt.
+- [x] **Phase 12: Fix video output resolution lock — letterbox filter chain** - Backend + IPC only. Output video matches user-selected resolution exactly via `scale + pad + setsar` letterbox chain. Splits capture dims from output dims in `EncodeConfig`. Fixes `bitrate_kbps`-as-floor tech-debt. (completed 2026-04-20)
 - [ ] **Phase 13: Video output customization knobs — recording + export UI** - UI exposure of resolution/FPS/fit-mode/pad-color/quality at recording time and container/codec/rate-control/HW-encoder/preset/keyframe/downscale/audio at export time. Per-encoder quality preset mapping. Depends on Phase 12.
 
 ## Phase Details
@@ -292,14 +292,14 @@ Plans:
 **Goal:** Output video resolution matches the user-selected preset exactly (e.g., 1920×1080 → produces 1920×1080, never 1920×1130). Replace the current `scale='min(1920,iw)':-2,…` filter with a letterbox chain (`scale … force_original_aspect_ratio=decrease:force_divisible_by=2 + pad + setsar + format=yuv420p`). Separate capture dimensions from output dimensions in `EncodeConfig`. Introduce `OutputResolution` enum (720p / 1080p / 1440p / 4K / MatchSource / Custom). If source < target, keep source at native size and letterbox (no upscale). Also resolve the `bitrate_kbps`-as-floor tech-debt (06-CLEANUP-BACKLOG.md:99). **Backend + IPC only — no UI changes in this phase** (hard-coded default 1080p + letterbox + black pad). UI knobs ship in Phase 13.
 **Requirements**: ENC-06, ENC-07, ENC-08, ENC-09, ENC-10, ENC-11
 **Depends on:** Phase 1 (encoder crate) — independent of Phases 5–11
-**Plans:** 5 plans
+**Plans:** 5/5 plans complete
 
 Plans:
-- [ ] 12-01-PLAN.md — filters module (FilterSpec + build_vf letterbox/fillcrop/stretch emitters + enums + snapshot tests)
-- [ ] 12-02-PLAN.md — quality resolver (per-encoder QualityPreset→FFmpeg argv mapping per D-12-04)
-- [ ] 12-03-PLAN.md — EncodeConfig refactor: split capture/output dims, delegate -vf + RC, fix bitrate-floor tech-debt
-- [ ] 12-04-PLAN.md — IPC DTOs (OutputResolution/FitMode/PadColor/QualityPreset/ScaleAlgo) + StartRecordingArgs optional fields + regen TS bindings
-- [ ] 12-05-PLAN.md — real-ffmpeg integration tests: resolution lock via ffprobe + pad color pixel sampling
+- [x] 12-01-PLAN.md — filters module (FilterSpec + build_vf letterbox/fillcrop/stretch emitters + enums + snapshot tests)
+- [x] 12-02-PLAN.md — quality resolver (per-encoder QualityPreset→FFmpeg argv mapping per D-12-04)
+- [x] 12-03-PLAN.md — EncodeConfig refactor: split capture/output dims, delegate -vf + RC, fix bitrate-floor tech-debt
+- [x] 12-04-PLAN.md — IPC DTOs (OutputResolution/FitMode/PadColor/QualityPreset/ScaleAlgo) + StartRecordingArgs optional fields + regen TS bindings
+- [x] 12-05-PLAN.md — real-ffmpeg integration tests: resolution lock via ffprobe + pad color pixel sampling
 
 ### Phase 13: Video output customization knobs — recording + export UI
 
