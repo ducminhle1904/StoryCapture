@@ -388,30 +388,44 @@ body {
   width: 100%;
   cursor: pointer;
 }
+.sc-slider-control {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
 .sc-slider-track {
   height: 4px;
   background: var(--sc-surface-4);
   border-radius: 2px;
   width: 100%;
   position: relative;
-  overflow: hidden;
 }
 .sc-slider-fill {
   position: absolute;
-  inset: 0 auto 0 0;
+  top: 0;
+  left: 0;
+  bottom: 0;
   background: var(--sc-accent-400);
   border-radius: 2px;
 }
 .sc-slider-thumb {
-  position: absolute;
-  top: 50%;
-  width: 14px; height: 14px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--sc-n-50);
   border: 1px solid var(--sc-border-strong);
-  transform: translate(-50%, -50%);
   box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  cursor: grab;
 }
+.sc-slider-thumb:active { cursor: grabbing; }
+.sc-slider-thumb:focus-visible {
+  outline: 2px solid var(--sc-focus);
+  outline-offset: 2px;
+}
+.sc-slider[data-disabled] { opacity: 0.5; cursor: not-allowed; }
+.sc-slider[data-disabled] .sc-slider-thumb { cursor: not-allowed; }
 
 /* Switch */
 .sc-switch {

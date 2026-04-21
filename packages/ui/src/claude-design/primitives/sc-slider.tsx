@@ -14,11 +14,11 @@ export const ScSlider = forwardRef<ElementRef<typeof Slider.Root>, ScSliderProps
       className={cn("sc-slider", className)}
       {...props}
     >
-      <Slider.Control className="sc-slider-control" style={{ position: "relative", width: "100%", display: "flex", alignItems: "center" }}>
+      <Slider.Control className="sc-slider-control">
         <Slider.Track className="sc-slider-track">
           <Slider.Indicator className="sc-slider-fill" />
-          <Slider.Thumb className="sc-slider-thumb" />
         </Slider.Track>
+        <Slider.Thumb className="sc-slider-thumb" />
       </Slider.Control>
     </Slider.Root>
   ),
