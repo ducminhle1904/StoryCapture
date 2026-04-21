@@ -28,10 +28,19 @@ export interface ProjectFolderInfo {
   session_count: number;
 }
 
+export interface RecordingInfo {
+  path: string;
+  captured_at: number;
+  duration_ms: number | null;
+  width: number | null;
+  height: number | null;
+}
+
 const KEYS = {
   all: ["projects"] as const,
   detail: (id: string) => ["projects", id] as const,
   folder: (id: string) => ["projects", id, "folder"] as const,
+  recordings: (id: string) => ["projects", id, "recordings"] as const,
 };
 
 export function useProjects() {
@@ -53,8 +62,7 @@ export function useCreateProject() {
 export function useOpenProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      invoke<ProjectFolderInfo>("open_project", { args: { id } }),
+    mutationFn: (id: string) => invoke<ProjectFolderInfo>("open_project", { args: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
   });
 }
@@ -62,8 +70,7 @@ export function useOpenProject() {
 export function useRemoveProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      invoke<void>("remove_project", { args: { id } }),
+    mutationFn: (id: string) => invoke<void>("remove_project", { args: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
   });
 }
@@ -77,6 +84,15 @@ export function useProjectFolder(projectId: string | undefined) {
   return useQuery({
     queryKey: projectId ? KEYS.folder(projectId) : ["projects", "__disabled__", "folder"],
     queryFn: () => fetchProjectFolder(projectId as string),
+    enabled: !!projectId,
+  });
+}
+
+export function useProjectRecordings(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectId ? KEYS.recordings(projectId) : ["projects", "__disabled__", "recordings"],
+    queryFn: () =>
+      invoke<RecordingInfo[]>("list_project_recordings", { args: { id: projectId as string } }),
     enabled: !!projectId,
   });
 }
