@@ -316,6 +316,20 @@ Plans:
 - [x] 13-05-PLAN.md — Export Modal Advanced disclosure: AdvancedOutputOptions (8 knobs, conditional decision table) + export-modal.tsx integration (ENC-13, ENC-16)
 
 
+### Phase 14: Port Claude Design into apps/desktop
+
+**Goal:** Visual re-skin of apps/desktop using the Claude Design handoff bundle. Every mocked route (Dashboard, Editor, Post-production, Settings, Export) renders in the new dark-first sc-* design with custom Tauri chrome (decorations:false), on both macOS + Windows, while preserving every IPC call, Zustand slice, hotkey, motion transition, CodeMirror/LSP, WebGPU preview, and Phase 13 output-prefs wiring. Both dark + light themes pass WCAG 2.1 AA.
+**Requirements**: D-01, D-02, D-03, D-04, D-05a, D-05b, D-05c, D-05d, D-05e, D-06a, D-06b, D-06c, D-06d, D-06e, D-06f, D-07, D-08, D-09, D-10, D-11
+**Depends on:** Phase 13
+**Plans:** 5 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Wave 1 Foundation: retire tokens.css + swap fonts to Inter/JetBrains Mono variable + 9 Sc* primitives + hidden /_design-system showcase
+- [ ] 14-02-PLAN.md — Wave 2 Chrome: tauri.conf decorations:false + platform boot probe + ScTitleBar/ScSideNav/ScShell port of chrome.jsx + Windows resize QA
+- [ ] 14-03-PLAN.md — Wave 3 Screens: port Dashboard + Editor shell + Post-Production editor-shell + Settings routes (behavior preserved)
+- [ ] 14-04-PLAN.md — Wave 4 Overlays+Export: CommandPalette (cmdk+Base UI) + RecordingIndicator + Sonner CSS-var skin + export-modal restyle (Phase 13 wiring intact)
+- [ ] 14-05-PLAN.md — Wave 5 Tweaks+Polish: tweaks-store via plugin-store + TweaksPanel (dev-only Cmd/Ctrl+Shift+.) + Settings Appearance + recorder cosmetic + vitest-axe WCAG AA under jsdom
+
 ---
 *Roadmap created: 2026-04-14*
 *Phase 7 added: 2026-04-17*
