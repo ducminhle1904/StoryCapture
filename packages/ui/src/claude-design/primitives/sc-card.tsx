@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 
 import { cn } from "../../lib/cn";
 
-export interface ScCardProps extends HTMLAttributes<HTMLDivElement> {
+export interface ScCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
   title?: ReactNode;
   action?: ReactNode;
 }

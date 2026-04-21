@@ -22,12 +22,11 @@ export const ScSegmented = forwardRef<ElementRef<typeof ToggleGroup>, ScSegmente
   ({ value, defaultValue, onValueChange, options, size = "md", className, ...rest }, ref) => (
     <ToggleGroup
       ref={ref}
-      toggleMultiple={false}
       value={value === undefined ? undefined : [value]}
       defaultValue={defaultValue === undefined ? undefined : [defaultValue]}
       onValueChange={(next) => {
         const [first] = next;
-        if (first !== undefined) onValueChange?.(first);
+        if (first !== undefined) onValueChange?.(first as string);
       }}
       className={cn("sc-segmented", size === "sm" && "sm", className)}
       {...rest}
