@@ -4,13 +4,13 @@
  * always-visible scene tree with active scene highlighting.
  */
 
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { Layers, ChevronRight } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { ScBadge } from "@storycapture/ui";
 
 import { useEditorStore } from "@/state/editor";
-import type { Scene, Story } from "@/ipc/parse";
+import type { Scene } from "@/ipc/parse";
 
 const EMPTY_DIAGNOSTICS: never[] = [];
 
@@ -35,17 +35,13 @@ export function SceneListPanel({
   const currentAst = useEditorStore((s) => s.lastParse?.ast ?? null);
   const diagnostics =
     useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
+  const lastValidAst = useEditorStore((s) => s.lastValidStoryAst);
   const reduceMotion = useReducedMotion();
 
   const hasParseError = diagnostics.some((d) => d.severity === "error");
-  const lastValidAstRef = useRef<Story | null>(null);
-  if (currentAst && !hasParseError) {
-    lastValidAstRef.current = currentAst;
-  }
   // Show last-valid tree when current parse failed; falls back to null → empty state.
-  const renderAst =
-    currentAst && !hasParseError ? currentAst : lastValidAstRef.current;
-  const showStaleChip = hasParseError && lastValidAstRef.current !== null;
+  const renderAst = currentAst && !hasParseError ? currentAst : lastValidAst;
+  const showStaleChip = hasParseError && lastValidAst !== null;
 
   const scenes = useMemo(() => {
     if (!renderAst) return [];
