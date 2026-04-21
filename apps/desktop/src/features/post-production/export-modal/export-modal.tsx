@@ -27,13 +27,13 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Button } from "@/components/ui/button";
 import {
   dialogBackdropMotionClassName,
   dialogSideSheetPopupMotionClassName,
   dialogSideSheetViewportClassName,
 } from "@/components/ui/dialog-motion";
 import { AiDisclosureModal } from "@/features/export/AiDisclosureModal";
+import { ScButton } from "@storycapture/ui";
 import { useVoiceoverStore } from "@/features/voiceover/voiceoverStore";
 import { type ExportOutput, exportRun, exportValidateConfig } from "@/ipc/export";
 import { type ExportKnobs, useOutputPrefsStore } from "@/state/output-prefs";
@@ -208,62 +208,62 @@ export function ExportModal({ storyId }: ExportModalProps) {
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Portal>
           <Dialog.Backdrop
-            className={`fixed inset-0 z-30 bg-[var(--color-fg-primary)/50] backdrop-blur-md ${dialogBackdropMotionClassName}`}
+            className={`fixed inset-0 z-30 bg-[var(--sc-text)/50] backdrop-blur-md ${dialogBackdropMotionClassName}`}
           />
           <Dialog.Viewport className={dialogSideSheetViewportClassName}>
             <Dialog.Popup
               aria-labelledby="export-modal-title"
-              className={`pointer-events-auto flex h-full w-[min(460px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)] ${dialogSideSheetPopupMotionClassName}`}
+              className={`pointer-events-auto flex h-full w-[min(460px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border-2)] bg-[var(--sc-surface)] shadow-[var(--shadow-card)] ${dialogSideSheetPopupMotionClassName}`}
             >
-              <header className="relative overflow-hidden border-b border-[var(--color-border-subtle)] px-5 py-5">
+              <header className="relative overflow-hidden border-b border-[var(--sc-border)] px-5 py-5">
                 <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_left,rgba(255,106,124,0.2),transparent_58%)]" />
                 <div className="relative flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[var(--color-fg-muted)]">
+                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[var(--sc-text-4)]">
                       <Sparkles className="h-3.5 w-3.5" />
                       Export queue
                     </div>
                     <h2
                       id="export-modal-title"
-                      className="mt-3 text-2xl font-semibold tracking-[-0.045em] text-[var(--color-fg-primary)]"
+                      className="mt-3 text-2xl font-semibold tracking-[-0.045em] text-[var(--sc-text)]"
                     >
                       Ship this cut
                     </h2>
-                    <p className="font-serif mt-2 max-w-sm text-sm leading-6 text-[var(--color-fg-secondary)]">
+                    <p className="font-serif mt-2 max-w-sm text-sm leading-6 text-[var(--sc-text-3)]">
                       Choose formats, quality, and destination before sending the render job to the
                       queue.
                     </p>
                   </div>
                   <Dialog.Close
                     render={<button type="button" aria-label="Close export dialog" />}
-                    className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-2 text-[var(--color-fg-muted)] transition hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+                    className="rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface)] p-2 text-[var(--sc-text-4)] transition hover:bg-[var(--sc-surface-2)] hover:text-[var(--sc-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-accent-500)]"
                   >
                     <X className="h-4 w-4" />
                   </Dialog.Close>
                 </div>
 
                 <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                  <div className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-4 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--sc-text-4)]">
                       Formats
                     </div>
-                    <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                    <div className="mt-2 text-sm font-medium text-[var(--sc-text)]">
                       {selectedFormatsLabel}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                  <div className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-4 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--sc-text-4)]">
                       Resolution
                     </div>
-                    <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                    <div className="mt-2 text-sm font-medium text-[var(--sc-text)]">
                       {form.resolution.toUpperCase()}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
+                  <div className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-4 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--sc-text-4)]">
                       FPS
                     </div>
-                    <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
+                    <div className="mt-2 text-sm font-medium text-[var(--sc-text)]">
                       {form.fps} fps
                     </div>
                   </div>
@@ -271,16 +271,16 @@ export function ExportModal({ storyId }: ExportModalProps) {
               </header>
 
               <div className="flex-1 space-y-4 overflow-auto px-5 py-5">
-                <section className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
+                <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
                   <FormatCheckboxes value={form.formats} onChange={setFormats} />
                 </section>
 
-                <section className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
+                <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
                   <ResolutionPicker value={form.resolution} onChange={setResolution} />
                 </section>
 
-                <section className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+                <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--sc-text-4)]">
                     Motion fidelity
                   </div>
                   <div className="mt-3 flex gap-2">
@@ -289,8 +289,8 @@ export function ExportModal({ storyId }: ExportModalProps) {
                         key={n}
                         className={`flex-1 cursor-pointer rounded-2xl border px-3 py-3 text-center text-sm font-medium transition ${
                           form.fps === n
-                            ? "border-[var(--color-accent-primary)]/50 bg-[var(--color-accent-primary)]/10 text-[var(--color-fg-primary)] shadow-[0_16px_32px_rgba(0,0,0,0.18)]"
-                            : "border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] text-[var(--color-fg-secondary)] hover:border-[var(--color-border-default)] hover:bg-[var(--color-surface-100)] hover:text-[var(--color-fg-primary)]"
+                            ? "border-[var(--sc-accent-500)]/50 bg-[var(--sc-accent-500)]/10 text-[var(--sc-text)] shadow-[0_16px_32px_rgba(0,0,0,0.18)]"
+                            : "border-[var(--sc-border)] bg-[var(--sc-surface-2)] text-[var(--sc-text-3)] hover:border-[var(--sc-border-2)] hover:bg-[var(--sc-surface)] hover:text-[var(--sc-text)]"
                         }`}
                       >
                         <input
@@ -307,12 +307,12 @@ export function ExportModal({ storyId }: ExportModalProps) {
                   </div>
                 </section>
 
-                <section className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
+                <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
                   <div className="grid gap-4">
                     <div>
                       <label
                         htmlFor="export-quality"
-                        className="block text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]"
+                        className="block text-[11px] uppercase tracking-[0.2em] text-[var(--sc-text-4)]"
                       >
                         Quality
                       </label>
@@ -320,7 +320,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
                         id="export-quality"
                         value={form.quality}
                         onChange={(e) => setQuality(e.target.value as "low" | "med" | "high")}
-                        className="mt-3 w-full rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3 text-sm text-[var(--color-fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+                        className="mt-3 w-full rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-4 py-3 text-sm text-[var(--sc-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-accent-500)]"
                       >
                         <option value="low">Low</option>
                         <option value="med">Medium</option>
@@ -331,7 +331,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
                     <div>
                       <label
                         htmlFor="export-basename"
-                        className="block text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]"
+                        className="block text-[11px] uppercase tracking-[0.2em] text-[var(--sc-text-4)]"
                       >
                         Base file name
                       </label>
@@ -340,17 +340,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
                         type="text"
                         value={form.baseName}
                         onChange={(e) => setBaseName(e.target.value)}
-                        className="mt-3 w-full rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3 text-sm text-[var(--color-fg-primary)] placeholder:text-[var(--color-fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+                        className="mt-3 w-full rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-4 py-3 text-sm text-[var(--sc-text)] placeholder:text-[var(--sc-text-4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-accent-500)]"
                         aria-label="Export base file name"
                       />
                     </div>
 
                     <div>
-                      <span className="block text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+                      <span className="block text-[11px] uppercase tracking-[0.2em] text-[var(--sc-text-4)]">
                         Output folder
                       </span>
-                      <div className="mt-3 flex items-center gap-2 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-2">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] text-[var(--color-fg-muted)]">
+                      <div className="mt-3 flex items-center gap-2 rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-2">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-4)]">
                           <FolderOpen className="h-4 w-4" />
                         </div>
                         <input
@@ -358,22 +358,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
                           value={form.outFolder ?? ""}
                           aria-label="Output folder"
                           placeholder="Pick a folder…"
-                          className="min-w-0 flex-1 bg-transparent text-sm text-[var(--color-fg-secondary)] placeholder:text-[var(--color-fg-muted)] focus:outline-none"
+                          className="min-w-0 flex-1 bg-transparent text-sm text-[var(--sc-text-3)] placeholder:text-[var(--sc-text-4)] focus:outline-none"
                         />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={pickFolder}
-                          className="rounded-xl border-[var(--color-border-default)] bg-[var(--color-surface-100)] px-3 text-[var(--color-fg-primary)] hover:bg-[var(--color-surface-300)]"
-                        >
+                        <ScButton variant="default" size="sm" onClick={pickFolder}>
                           Pick
-                        </Button>
+                        </ScButton>
                       </div>
                     </div>
                   </div>
                 </section>
 
-                <section className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4">
+                <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
                   <Accordion>
                     <AccordionItem value="advanced">
                       <AccordionTrigger>Tùy chọn nâng cao</AccordionTrigger>
@@ -385,16 +380,16 @@ export function ExportModal({ storyId }: ExportModalProps) {
                 </section>
 
                 {!graphAvailable ? (
-                  <section className="rounded-[var(--radius-2xl)] border border-[var(--color-accent-primary)]/20 bg-[var(--color-accent-primary)]/8 p-4">
+                  <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-accent-500)]/20 bg-[var(--sc-accent-500)]/8 p-4">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 rounded-xl border border-[var(--color-accent-primary)]/20 bg-[var(--color-surface-400)] p-2 text-[var(--color-accent-primary)]">
+                      <div className="mt-0.5 rounded-xl border border-[var(--sc-accent-500)]/20 bg-[var(--sc-surface-2)] p-2 text-[var(--sc-accent-500)]">
                         <ChevronRight className="h-4 w-4" />
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-[var(--color-fg-primary)]">
+                        <div className="text-sm font-medium text-[var(--sc-text)]">
                           Export execution is still gated
                         </div>
-                        <p className="font-serif mt-1 text-sm leading-6 text-[var(--color-fg-secondary)]">
+                        <p className="font-serif mt-1 text-sm leading-6 text-[var(--sc-text-3)]">
                           The drawer is ready, but graph computation is not wired yet, so this
                           screen can validate config and collect export choices only.
                         </p>
@@ -406,7 +401,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
                 {warnings.length > 0 ? (
                   <div
                     role="alert"
-                    className="rounded-[var(--radius-2xl)] border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"
+                    className="rounded-[var(--sc-r-xl)] border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"
                   >
                     <div className="flex items-center gap-2 font-medium">
                       <TriangleAlert className="h-4 w-4" />
@@ -421,27 +416,21 @@ export function ExportModal({ storyId }: ExportModalProps) {
                 ) : null}
               </div>
 
-              <footer className="flex items-center justify-between border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-5 py-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={runValidate}
-                  className="rounded-xl px-4 text-[var(--color-fg-secondary)] hover:bg-white/6 hover:text-[var(--color-fg-primary)]"
-                >
+              <footer className="flex items-center justify-between border-t border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-5 py-4">
+                <ScButton variant="ghost" size="sm" onClick={runValidate}>
                   Validate
-                </Button>
-                <Button
-                  variant="default"
+                </ScButton>
+                <ScButton
+                  variant="primary"
                   size="sm"
                   disabled={!canSubmit}
                   aria-disabled={!canSubmit}
                   onClick={onSubmit}
                   aria-label="Start export"
                   title={!graphAvailable ? "Graph computation pending (Plan 02-13b)" : undefined}
-                  className="brand-button rounded-xl px-4 text-[var(--color-fg-primary)] disabled:bg-[var(--color-surface-300)] disabled:text-[var(--color-fg-muted)] disabled:shadow-none"
                 >
                   {submitting ? "Submitting…" : "Export"}
-                </Button>
+                </ScButton>
               </footer>
             </Dialog.Popup>
           </Dialog.Viewport>
