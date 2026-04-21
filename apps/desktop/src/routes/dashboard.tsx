@@ -133,6 +133,8 @@ export default function DashboardRoute() {
   const navigate = useNavigate();
   const { data: projects, isLoading, error } = useProjects();
   const { searchQuery, sortMode, setSearchQuery } = useDashboardStore();
+  const newProjectRequested = useDashboardStore((s) => s.newProjectRequested);
+  const consumeNewProjectRequest = useDashboardStore((s) => s.consumeNewProjectRequest);
   const [dialogOpen, setDialogOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -144,14 +146,12 @@ export default function DashboardRoute() {
   const openProject = (id: string) => navigate(`/editor/${id}`);
   const openNewStory = () => setDialogOpen(true);
 
-  useHotkeys(
-    "mod+n",
-    (e) => {
-      e.preventDefault();
+  useEffect(() => {
+    if (newProjectRequested) {
       setDialogOpen(true);
-    },
-    { preventDefault: true },
-  );
+      consumeNewProjectRequest();
+    }
+  }, [newProjectRequested, consumeNewProjectRequest]);
 
   useHotkeys(
     "mod+f",

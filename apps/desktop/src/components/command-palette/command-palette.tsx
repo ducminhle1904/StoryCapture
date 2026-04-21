@@ -1,45 +1,55 @@
 import { Command } from "cmdk";
 import {
+  Circle,
   Code,
   Download,
-  FileText,
-  Film,
   Grid,
   Home,
   Layers,
+  Plus,
+  Scissors,
   Search,
   Settings as SettingsIcon,
-  Video,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
 
+import { useDashboardStore } from "@/state/projects";
+
+type NavigateFn = ReturnType<typeof useNavigate>;
+
+interface PaletteActions {
+  navigate: NavigateFn;
+  requestNewProject: () => void;
+}
+
 interface PaletteItem {
   id: string;
   label: string;
-  group: string;
-  path: string;
+  group: "Navigate" | "Actions";
   icon: React.ReactNode;
   kbd?: string;
+  run: (ctx: PaletteActions) => void;
 }
 
 const ITEMS: PaletteItem[] = [
-  { id: "dashboard", label: "Go to Projects", group: "Navigate", path: "/", icon: <Home size={13} /> },
-  { id: "editor", label: "Go to Editor", group: "Navigate", path: "/editor", icon: <Code size={13} /> },
-  { id: "post", label: "Go to Post-Production", group: "Navigate", path: "/post-production", icon: <Film size={13} /> },
-  { id: "recorder", label: "Go to Recorder", group: "Navigate", path: "/recorder", icon: <Video size={13} /> },
-  { id: "settings", label: "Open Settings", group: "Navigate", path: "/settings", icon: <SettingsIcon size={13} />, kbd: "⌘," },
-  { id: "tokens", label: "Open Design Tokens", group: "Design System", path: "/_design-system/tokens", icon: <Layers size={13} /> },
-  { id: "components", label: "Open Component Samples", group: "Design System", path: "/_design-system/components", icon: <Grid size={13} /> },
-  { id: "docs", label: "Open DSL reference", group: "Help", path: "/_design-system/tokens", icon: <FileText size={13} /> },
-  { id: "export", label: "Render & Export…", group: "Actions", path: "/post-production", icon: <Download size={13} />, kbd: "⌘E" },
+  { id: "dashboard", label: "Go to Projects", group: "Navigate", icon: <Home size={13} />, kbd: "⌘1", run: ({ navigate }) => navigate("/") },
+  { id: "editor", label: "Go to Story Editor", group: "Navigate", icon: <Code size={13} />, kbd: "⌘2", run: ({ navigate }) => navigate("/") },
+  { id: "post", label: "Go to Post-Production", group: "Navigate", icon: <Scissors size={13} />, kbd: "⌘3", run: ({ navigate }) => navigate("/") },
+  { id: "export", label: "Render & Export…", group: "Navigate", icon: <Download size={13} />, kbd: "⌘E", run: ({ navigate }) => navigate("/post-production") },
+  { id: "settings", label: "Open Settings", group: "Navigate", icon: <SettingsIcon size={13} />, kbd: "⌘,", run: ({ navigate }) => navigate("/settings") },
+  { id: "tokens", label: "Open Design Tokens", group: "Navigate", icon: <Layers size={13} />, run: ({ navigate }) => navigate("/_design-system/tokens") },
+  { id: "components", label: "Open Component Samples", group: "Navigate", icon: <Grid size={13} />, run: ({ navigate }) => navigate("/_design-system/components") },
+  { id: "new", label: "New Story…", group: "Actions", icon: <Plus size={13} />, kbd: "⌘N", run: ({ navigate, requestNewProject }) => { navigate("/"); requestNewProject(); } },
+  { id: "record", label: "Start Recording", group: "Actions", icon: <Circle size={13} />, kbd: "⌘⇧R", run: ({ navigate }) => navigate("/recorder") },
 ];
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const requestNewProject = useDashboardStore((s) => s.requestNewProject);
 
   useHotkeys(
     "mod+k",
@@ -62,13 +72,18 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [open]);
 
-  const run = useCallback(
-    (path: string) => {
-      navigate(path);
+  const runItem = useCallback(
+    (item: PaletteItem) => {
+      item.run({ navigate, requestNewProject });
       setOpen(false);
     },
-    [navigate],
+    [navigate, requestNewProject],
   );
+
+  useHotkeys("mod+n", (e) => { e.preventDefault(); navigate("/"); requestNewProject(); }, { enableOnFormTags: true });
+  useHotkeys("mod+e", (e) => { e.preventDefault(); navigate("/post-production"); }, { enableOnFormTags: true });
+  useHotkeys("mod+comma", (e) => { e.preventDefault(); navigate("/settings"); }, { enableOnFormTags: true });
+  useHotkeys("mod+shift+r", (e) => { e.preventDefault(); navigate("/recorder"); }, { enableOnFormTags: true });
 
   const groups = useMemo(() => {
     const map = new Map<string, PaletteItem[]>();
@@ -145,7 +160,7 @@ export function CommandPalette() {
                       <Command.Item
                         key={it.id}
                         value={`${it.label} ${it.id}`}
-                        onSelect={() => run(it.path)}
+                        onSelect={() => runItem(it)}
                         className="flex cursor-default items-center gap-2.5 rounded-[var(--sc-r-md)] px-2.5 py-2 text-[12.5px] data-[selected=true]:bg-[var(--sc-hover)]"
                         style={{ color: "var(--sc-text)" }}
                       >
@@ -169,6 +184,7 @@ export function CommandPalette() {
                 <span>
                   <span className="sc-kbd">↵</span> select
                 </span>
+                <span className="ml-auto">Powered by fuzzy search</span>
               </div>
             </Command>
           </motion.div>
