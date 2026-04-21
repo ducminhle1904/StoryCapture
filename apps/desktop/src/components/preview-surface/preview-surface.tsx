@@ -1,13 +1,3 @@
-/**
- * PreviewSurface (Phase 15, D-04).
- *
- * Single mode-aware surface consumed by both Editor and Post-Production.
- *   - mode="composited" → delegates verbatim to the existing PreviewPlayer
- *     (WebGPU engine init/dispose stays inside PreviewPlayer, D-11).
- *   - mode="recording"  → empty-state stage only this phase. Scrubbable
- *     playback deferred: no latest-recording IPC signal exists today.
- */
-
 import { useQuery } from "@tanstack/react-query";
 import { Film } from "lucide-react";
 import { motion } from "motion/react";
@@ -15,20 +5,21 @@ import { motion } from "motion/react";
 import { PreviewPlayer } from "@/features/post-production/preview/preview-player";
 import { fetchProjectFolder } from "@/ipc/projects";
 
-export interface PreviewSurfaceProps {
-  mode: "recording" | "composited";
-  projectId?: string;
-  storyId?: string;
-  videoSrc?: string;
-  width?: number;
-  height?: number;
-}
+export type PreviewSurfaceProps =
+  | {
+      mode: "composited";
+      storyId: string;
+      videoSrc?: string;
+      width?: number;
+      height?: number;
+    }
+  | {
+      mode: "recording";
+      projectId: string;
+    };
 
 export function PreviewSurface(props: PreviewSurfaceProps) {
   if (props.mode === "composited") {
-    if (!props.storyId) {
-      throw new Error("PreviewSurface(composited) requires storyId");
-    }
     return (
       <PreviewPlayer
         storyId={props.storyId}
@@ -38,14 +29,9 @@ export function PreviewSurface(props: PreviewSurfaceProps) {
       />
     );
   }
-
-  if (!props.projectId) {
-    throw new Error("PreviewSurface(recording) requires projectId");
-  }
   return <RecordingPreview projectId={props.projectId} />;
 }
 
-// Scrubbable playback deferred: no latest-recording IPC signal this phase (CONTEXT.md).
 function RecordingPreview({ projectId }: { projectId: string }) {
   const folderQuery = useQuery({
     queryKey: ["projects", projectId, "folder"],

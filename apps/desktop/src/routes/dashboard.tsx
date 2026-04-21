@@ -4,41 +4,14 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { AlertTriangle, File, FolderOpen, Plus, Search } from "lucide-react";
 
 import { ScButton, ScCard, ScInput, ScSegmented } from "@storycapture/ui";
-import { useProjects, type Project } from "@/ipc/projects";
+import { useProjects } from "@/ipc/projects";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { useDashboardStore } from "@/state/projects";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { NewProjectDialog } from "@/features/dashboard/new-project-dialog";
 import { relativeTime } from "@/lib/utils";
 
-function filterAndSort(
-  projects: Project[],
-  query: string,
-  sortMode: "recent" | "name",
-): Project[] {
-  const q = query.trim().toLowerCase();
-  const out = q
-    ? projects.filter((p) => p.name.toLowerCase().includes(q))
-    : [...projects];
-  if (sortMode === "name") {
-    out.sort((a, b) => a.name.localeCompare(b.name));
-  } else {
-    out.sort(
-      (a, b) =>
-        (b.last_opened_at ?? b.created_at) - (a.last_opened_at ?? a.created_at),
-    );
-  }
-  return out;
-}
-
-function mostRecentTimestamp(projects: Project[]): number | null {
-  let best: number | null = null;
-  for (const p of projects) {
-    const t = p.last_opened_at ?? p.created_at;
-    if (best === null || t > best) best = t;
-  }
-  return best;
-}
+import { filterAndSort, mostRecentTimestamp } from "@/features/dashboard/project-utils";
 
 function EmptyDashboard({ onNewStory }: { onNewStory: () => void }) {
   return (
@@ -170,7 +143,7 @@ export default function DashboardRoute() {
 
   const count = projects?.length ?? 0;
   const isEmpty = !isLoading && !error && count === 0;
-  const lastOpened = mostRecentTimestamp(projects ?? []);
+  const lastOpened = useMemo(() => mostRecentTimestamp(projects ?? []), [projects]);
   const metaLine = isEmpty
     ? "No stories yet"
     : `${count} ${count === 1 ? "story" : "stories"} · last opened ${relativeTime(lastOpened)}`;
