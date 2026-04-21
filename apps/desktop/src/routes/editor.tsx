@@ -25,10 +25,25 @@ import {
 } from "@/features/editor/story-editor";
 import { TimelinePanel } from "@/features/editor/timeline-panel";
 import { parseStory, type Story } from "@/ipc/parse";
-import { fetchProjectFolder, type ProjectFolderInfo } from "@/ipc/projects";
+import {
+  fetchProjectFolder,
+  type ProjectFolderInfo,
+  useProjectRecordings,
+} from "@/ipc/projects";
 import { useEditorStore } from "@/state/editor";
 
 const EMPTY_DIAGNOSTICS: never[] = [];
+
+function formatRelative(ts: number): string {
+  const deltaSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (deltaSec < 60) return `${deltaSec}s ago`;
+  const m = Math.round(deltaSec / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  return `${d}d ago`;
+}
 
 function findSceneIndexForOffset(story: Story | null, offset: number): number {
   if (!story || story.scenes.length === 0) return 0;
@@ -43,6 +58,8 @@ function findSceneIndexForOffset(story: Story | null, offset: number): number {
 
 export default function EditorRoute() {
   const { projectId } = useParams<{ projectId: string }>();
+  const recordingsQuery = useProjectRecordings(projectId);
+  const latest = recordingsQuery.data?.[0] ?? null;
   const [folder, setFolder] = useState<ProjectFolderInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeSceneIndex, setActiveSceneIndex] = useState(0);
@@ -422,6 +439,36 @@ export default function EditorRoute() {
                   {projectId ? (
                     <PreviewSurface mode="recording" projectId={projectId} />
                   ) : null}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "6px 12px",
+                    borderTop: "1px solid var(--sc-border)",
+                    background: "var(--sc-surface-2)",
+                    fontSize: 11,
+                    color: "var(--sc-text-3)",
+                    fontFamily: "var(--sc-font-mono)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <ScBadge tone="muted" dot>
+                    {latest ? `Latest: ${formatRelative(latest.captured_at)}` : "Idle"}
+                  </ScBadge>
+                  <span>
+                    {latest?.width && latest.height
+                      ? `${latest.width} × ${latest.height}`
+                      : "1440 × 900"}
+                  </span>
+                  <span>·</span>
+                  <span>Chromium 125</span>
+                  <span>·</span>
+                  <span>SCK capture</span>
+                  <span style={{ flex: 1 }} />
+                  <span>60 fps</span>
                 </div>
               </div>
             </Panel>
