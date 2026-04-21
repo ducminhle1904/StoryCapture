@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Mic2, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { TtsClipInspector } from "@/features/voiceover/TtsClipInspector";
 import { TtsScriptEditor } from "@/features/voiceover/TtsScriptEditor";
@@ -123,8 +123,6 @@ export function VoiceoverCompact({
   const setClip = useVoiceoverStore((s) => s.setClip);
   const setGenerating = useVoiceoverStore((s) => s.setGenerating);
   const setEditedAfterGen = useVoiceoverStore((s) => s.setEditedAfterGen);
-  const selectedPresetRef = useRef(selectedPreset);
-  selectedPresetRef.current = selectedPreset;
 
   const sceneSteps = useMemo(
     () => steps.filter((step) => step.sceneIndex === activeSceneIndex),
@@ -172,7 +170,7 @@ export function VoiceoverCompact({
   );
 
   const handleRegenerate = useCallback(async () => {
-    const preset = selectedPresetRef.current;
+    const preset = useVoiceoverStore.getState().selectedPreset;
     if (!selectedStep || !preset || !selectedScript.trim()) return;
     setGenerating(selectedStep.id, true);
     try {
