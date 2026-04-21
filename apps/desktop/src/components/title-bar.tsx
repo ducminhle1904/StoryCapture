@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 
+import { CommandPalette } from "@/components/command-palette";
 import { Sidebar } from "@/components/sidebar";
 import { StatusBar } from "@/components/status-bar";
 
@@ -16,6 +17,7 @@ export function AppLayout() {
         </div>
       </div>
       <StatusBar />
+      <CommandPalette />
     </div>
   );
 }
@@ -33,6 +35,7 @@ export function FullscreenLayout() {
         <Outlet />
       </div>
       <StatusBar />
+      <CommandPalette />
     </div>
   );
 }
