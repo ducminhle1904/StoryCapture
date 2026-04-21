@@ -1,46 +1,71 @@
-import { BrandMark, BrandWordmark } from "@/components/brand";
+import { Plus } from "lucide-react";
+import { ScCard } from "@storycapture/ui";
+
 import type { Project } from "@/ipc/projects";
 import { ProjectCard } from "./project-card";
 
 interface ProjectGridProps {
   projects: Project[];
   onOpen: (id: string) => void;
-  emptyHint?: string;
+  onNewStory: () => void;
 }
 
-export function ProjectGrid({ projects, onOpen, emptyHint }: ProjectGridProps) {
-  if (projects.length === 0) {
-    return (
-      <div
-        role="status"
-        className="brand-panel rounded-[var(--radius-2xl)] border border-dashed border-[var(--color-border-default)] p-12 text-center text-[var(--color-fg-muted)]"
-      >
-        <div className="mx-auto flex max-w-sm flex-col items-center gap-4">
-          <div className="rounded-[var(--radius-2xl)] bg-[var(--color-surface-100)] p-3 ring-1 ring-[var(--color-border-subtle)]">
-            <BrandMark size={56} />
-          </div>
-          <div className="space-y-2">
-            <BrandWordmark className="text-xl text-[var(--color-fg-primary)]" />
-            <p className="text-sm text-[var(--color-fg-muted)]">
-              {emptyHint ??
-                "No projects yet. Start your first story and turn it into a polished demo video."}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+export function ProjectGrid({ projects, onOpen, onNewStory }: ProjectGridProps) {
   return (
-    <ul
+    <div
       role="list"
-      className="grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+        gap: 14,
+      }}
     >
       {projects.map((p) => (
-        <li key={p.id}>
+        <div key={p.id} role="listitem">
           <ProjectCard project={p} onOpen={onOpen} />
-        </li>
+        </div>
       ))}
-    </ul>
+      <ScCard
+        role="button"
+        tabIndex={0}
+        aria-label="Create new story"
+        onClick={onNewStory}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onNewStory();
+          }
+        }}
+        style={{
+          padding: 10,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: 232,
+          borderStyle: "dashed",
+          borderColor: "var(--sc-border-2)",
+          cursor: "default",
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 99,
+            background: "var(--sc-surface-3)",
+            display: "grid",
+            placeItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <Plus size={16} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>New Story</div>
+        <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 2 }}>
+          ⌘N · blank, template, or import .story
+        </div>
+      </ScCard>
+    </div>
   );
 }
