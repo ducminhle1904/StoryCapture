@@ -5,8 +5,10 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
+  File,
   FolderOpen,
   Mic2,
+  Plus,
   Sparkles,
   Video,
   Terminal,
@@ -15,7 +17,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { ScBadge, ScButton } from "@storycapture/ui";
+import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 
 import previewBackdrop from "@/assets/gradients/warm-sunset.png";
 import { PageContentTransition } from "@/components/page-content-transition";
@@ -740,6 +742,69 @@ export default function EditorRoute() {
             {/* Script editor — primary workspace */}
             <Panel defaultSize={sceneCount > 0 ? 54 : 62} minSize={32} maxSize={68}>
               <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+                {/* File tabs strip — single tab reflects real single-buffer state. */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    height: 30,
+                    paddingLeft: 8,
+                    background: "var(--sc-chrome-2)",
+                    borderBottom: "1px solid var(--sc-border)",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "0 12px",
+                      height: "100%",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "var(--sc-surface)",
+                      borderRight: "1px solid var(--sc-border)",
+                      fontSize: 12,
+                      color: "var(--sc-text)",
+                      borderTop: "1.5px solid var(--sc-accent-400)",
+                      fontFamily: "var(--sc-font-mono)",
+                    }}
+                  >
+                    <File size={11} aria-hidden="true" />
+                    {folder?.name ? `${folder.name}.story` : "story"}
+                    <span
+                      aria-label="Modified (placeholder)"
+                      title="Modified indicator (placeholder)"
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 99,
+                        background: "var(--sc-text-4)",
+                        marginLeft: 4,
+                        opacity: 0.6,
+                      }}
+                    />
+                  </div>
+                  <ScButton
+                    size="sm"
+                    variant="ghost"
+                    disabled
+                    icon={<Plus size={11} aria-hidden="true" />}
+                    title="Multi-file buffers coming soon"
+                    aria-label="New tab (coming soon)"
+                    style={{ marginLeft: 4 }}
+                  />
+                  <span style={{ flex: 1 }} />
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "var(--sc-text-4)",
+                      padding: "0 10px",
+                      fontFamily: "var(--sc-font-mono)",
+                    }}
+                  >
+                    Ln —, Col — · SC-DSL · UTF-8
+                  </span>
+                </div>
+
                 <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
                   <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
                     Script
@@ -753,6 +818,30 @@ export default function EditorRoute() {
                     onAutosave={autosave}
                     jumpTarget={editorJumpTarget}
                   />
+                </div>
+
+                {/* Console strip — collapsed placeholder. */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    height: 28,
+                    padding: "0 12px",
+                    borderTop: "1px solid var(--sc-border)",
+                    background: "var(--sc-surface-2)",
+                    flexShrink: 0,
+                    fontSize: 11,
+                    color: "var(--sc-text-4)",
+                    fontFamily: "var(--sc-font-mono)",
+                  }}
+                >
+                  <Terminal size={11} aria-hidden="true" />
+                  <span style={{ color: "var(--sc-text-3)", fontWeight: 500 }}>
+                    Console
+                  </span>
+                  <span>·</span>
+                  <span>Console output will appear here.</span>
                 </div>
               </div>
             </Panel>
@@ -780,9 +869,23 @@ export default function EditorRoute() {
                         onClick={() => setRailTab("voiceover")}
                       />
                     </div>
-                    <span className="truncate pl-3 font-mono text-[10px] tabular-nums text-[var(--sc-text-4)]">
-                      {selectedSceneName ?? "No scene selected"}
-                    </span>
+                    {railTab === "preview" ? (
+                      <ScSegmented
+                        size="sm"
+                        value="desktop"
+                        disabled
+                        aria-label="Viewport size (coming soon)"
+                        options={[
+                          { value: "mobile", label: "Mobile" },
+                          { value: "tablet", label: "Tablet" },
+                          { value: "desktop", label: "Desktop" },
+                        ]}
+                      />
+                    ) : (
+                      <span className="truncate pl-3 font-mono text-[10px] tabular-nums text-[var(--sc-text-4)]">
+                        {selectedSceneName ?? "No scene selected"}
+                      </span>
+                    )}
                   </div>
                 ) : null}
 
