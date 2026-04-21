@@ -12,12 +12,14 @@ interface DashboardState {
   filterTags: string[];
   sortMode: SortMode;
   newProjectRequested: boolean;
+  paletteOpen: boolean;
   setSearchQuery: (q: string) => void;
   toggleTag: (tag: string) => void;
   clearTags: () => void;
   setSortMode: (m: SortMode) => void;
   requestNewProject: () => void;
   consumeNewProjectRequest: () => void;
+  setPaletteOpen: (open: boolean) => void;
 }
 
 export const useDashboardStore = create<DashboardState>((set) => ({
@@ -25,6 +27,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   filterTags: [],
   sortMode: "recent",
   newProjectRequested: false,
+  paletteOpen: false,
   setSearchQuery: (q) => set({ searchQuery: q }),
   toggleTag: (tag) =>
     set((s) => ({
@@ -36,4 +39,5 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   setSortMode: (m) => set({ sortMode: m }),
   requestNewProject: () => set({ newProjectRequested: true }),
   consumeNewProjectRequest: () => set({ newProjectRequested: false }),
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
 }));

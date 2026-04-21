@@ -12,7 +12,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
 
@@ -47,7 +47,8 @@ const ITEMS: PaletteItem[] = [
 ];
 
 export function CommandPalette() {
-  const [open, setOpen] = useState(false);
+  const open = useDashboardStore((s) => s.paletteOpen);
+  const setOpen = useDashboardStore((s) => s.setPaletteOpen);
   const navigate = useNavigate();
   const requestNewProject = useDashboardStore((s) => s.requestNewProject);
 
@@ -55,7 +56,7 @@ export function CommandPalette() {
     "mod+k",
     (e) => {
       e.preventDefault();
-      setOpen((o) => !o);
+      setOpen(!open);
     },
     { enableOnFormTags: true, preventDefault: true },
   );
@@ -105,7 +106,7 @@ export function CommandPalette() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.18 }}
           onClick={() => setOpen(false)}
-          className="fixed inset-0 z-[200] grid place-items-start justify-center pt-[120px] backdrop-blur-md"
+          className="fixed inset-0 z-[200] grid place-items-center backdrop-blur-md"
           style={{ background: "rgba(0,0,0,0.4)" }}
         >
           <motion.div
@@ -113,7 +114,7 @@ export function CommandPalette() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.18 }}
             onClick={(e) => e.stopPropagation()}
-            className="sc-palette w-[560px] max-w-[90%] overflow-hidden"
+            className="sc-palette w-[720px] max-w-[90%] overflow-hidden"
             style={{
               background: "var(--sc-surface)",
               border: "1px solid var(--sc-border-2)",
@@ -145,7 +146,7 @@ export function CommandPalette() {
                 />
                 <span className="sc-kbd">esc</span>
               </div>
-              <Command.List className="max-h-[360px] overflow-y-auto p-1.5">
+              <Command.List className="max-h-[480px] overflow-y-auto p-1.5">
                 <Command.Empty className="px-4 py-8 text-center text-xs" style={{ color: "var(--sc-text-4)" }}>
                   No commands found.
                 </Command.Empty>

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { BrandMark } from "@/components/brand";
+import { useDashboardStore } from "@/state/projects";
 
 interface NavItem {
   id: string;
@@ -77,12 +78,9 @@ function isActive(item: NavItem, pathname: string): boolean {
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const setPaletteOpen = useDashboardStore((s) => s.setPaletteOpen);
 
-  const openPalette = () => {
-    window.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "k", metaKey: true, ctrlKey: true, bubbles: true }),
-    );
-  };
+  const openPalette = () => setPaletteOpen(true);
 
   const startRecord = () => navigate("/recorder");
 
