@@ -1,0 +1,53 @@
+import { useEffect, useState } from "react";
+import { getVersion, getTauriVersion } from "@tauri-apps/api/app";
+
+import { SettingsPanel } from "../settings-row";
+
+// Live: app + Tauri versions read from the Tauri API.
+export function AboutCategory() {
+  const [appVersion, setAppVersion] = useState<string>("…");
+  const [tauriVersion, setTauriVersion] = useState<string>("…");
+
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion("unknown"));
+    getTauriVersion()
+      .then(setTauriVersion)
+      .catch(() => setTauriVersion("unknown"));
+  }, []);
+
+  return (
+    <SettingsPanel title="About">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          padding: 16,
+          border: "1px solid var(--sc-border)",
+          borderRadius: "var(--sc-r-lg)",
+          background: "var(--sc-surface)",
+        }}
+      >
+        <div className="sc-brand-mark" style={{ width: 48, height: 48, borderRadius: 12 }} />
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>StoryCapture</div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--sc-text-4)",
+              marginTop: 2,
+              fontFamily: "var(--sc-font-mono)",
+            }}
+          >
+            v{appVersion} · tauri {tauriVersion}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--sc-text-3)", marginTop: 8 }}>
+            DSL → polished demo videos. Built for teams who ship demos daily.
+          </div>
+        </div>
+      </div>
+    </SettingsPanel>
+  );
+}
