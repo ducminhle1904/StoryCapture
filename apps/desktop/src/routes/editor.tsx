@@ -3,6 +3,9 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
+  ChevronRight,
+  FolderOpen,
   Mic2,
   Sparkles,
   Video,
@@ -12,7 +15,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { ScButton } from "@storycapture/ui";
+import { ScBadge, ScButton } from "@storycapture/ui";
 
 import previewBackdrop from "@/assets/gradients/warm-sunset.png";
 import { PageContentTransition } from "@/components/page-content-transition";
@@ -640,48 +643,52 @@ export default function EditorRoute() {
       className="relative flex h-full flex-col bg-[var(--sc-bg)]"
     >
       {/* ─── Toolbar ─── */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-1.5">
-        <div className="flex items-center gap-3">
-          {/* Back to dashboard */}
+      <div className="sc-toolbar">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Link
             to="/"
             aria-label="Back to projects"
-            className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--sc-text-2)] transition-colors hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sc-focus-ring)]"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              color: "var(--sc-text-2)",
+              marginRight: 2,
+            }}
           >
             <ArrowLeft size={14} aria-hidden="true" />
           </Link>
-
-          {/* Project name as breadcrumb */}
-          <div className="flex items-center gap-1.5 text-xs text-[var(--sc-text-4)]">
-            <Link
-              to="/"
-              className="transition-colors hover:text-[var(--sc-text)]"
-            >
-              Projects
-            </Link>
-            <span>/</span>
-            <span className="font-medium text-[var(--sc-text)]">
-              {folder?.name ?? "Loading..."}
-            </span>
-          </div>
-
-          {/* Diagnostics badges */}
+          <FolderOpen size={14} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
+          <Link
+            to="/"
+            style={{ fontSize: 12.5, color: "var(--sc-text-3)", textDecoration: "none" }}
+          >
+            Projects
+          </Link>
+          <ChevronRight size={10} style={{ color: "var(--sc-text-4)" }} aria-hidden="true" />
+          <span style={{ fontSize: 13, fontWeight: 600 }}>
+            {folder?.name ?? "Loading..."}
+          </span>
           {errorCount > 0 && (
-            <span className="rounded-[var(--radius-xs)] bg-[var(--sc-record)]/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--sc-record)]">
+            <ScBadge tone="record">
               {errorCount} {errorCount === 1 ? "error" : "errors"}
-            </span>
+            </ScBadge>
           )}
           {warningCount > 0 && (
-            <span className="rounded-[var(--radius-xs)] bg-[var(--sc-warn)]/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--sc-warn)]">
-              {warningCount}
-            </span>
+            <ScBadge tone="warn">
+              {warningCount} {warningCount === 1 ? "warning" : "warnings"}
+            </ScBadge>
           )}
         </div>
-
-        {/* Right actions */}
-        <div className="flex items-center gap-2">
+        <span className="sc-spacer" />
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {ready && errorCount === 0 && warningCount === 0 && (
+            <ScBadge tone="muted" icon={<Check size={10} aria-hidden="true" />}>
+              Lint clean
+            </ScBadge>
+          )}
           {projectId && (
             <>
+              <div style={{ width: 1, height: 18, background: "var(--sc-border)", margin: "0 4px" }} />
               <ScButton
                 size="sm"
                 icon={<Terminal size={12} aria-hidden="true" />}
@@ -698,7 +705,7 @@ export default function EditorRoute() {
             </>
           )}
         </div>
-      </header>
+      </div>
 
       {/* ─── Main workspace ─── */}
       {!ready ? (
