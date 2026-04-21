@@ -16,9 +16,23 @@
  */
 
 import { useEffect } from "react";
-import { Music2, Scissors } from "lucide-react";
+import {
+  Eye,
+  Maximize2,
+  Mic,
+  MousePointer2,
+  Music2,
+  Pause,
+  Play,
+  Scissors,
+  SkipBack,
+  SkipForward,
+  Sparkles,
+  Volume2,
+  ZoomIn,
+} from "lucide-react";
 
-import { ScBadge, ScButton } from "@storycapture/ui";
+import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { useEditorStore } from "./state/store";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
@@ -70,6 +84,33 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         <span className="sc-spacer" />
         <ScButton
           size="sm"
+          variant="ghost"
+          icon={<Sparkles size={12} aria-hidden="true" />}
+          disabled
+          title="AI pass coming soon"
+        >
+          AI pass
+        </ScButton>
+        <ScButton
+          size="sm"
+          variant="ghost"
+          icon={<Eye size={12} aria-hidden="true" />}
+          disabled
+          title="Fullscreen preview coming soon"
+        >
+          Preview
+        </ScButton>
+        <div
+          style={{
+            width: 1,
+            height: 18,
+            background: "var(--sc-border)",
+            margin: "0 4px",
+          }}
+          aria-hidden="true"
+        />
+        <ScButton
+          size="sm"
           icon={<Music2 size={12} aria-hidden="true" />}
           onClick={() => setSoundDrawerOpen(true)}
           aria-label="Open sound library"
@@ -95,10 +136,159 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         >
           <section
             className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
-            style={{ width: `${previewWidthPct}%` }}
+            style={{
+              width: `${previewWidthPct}%`,
+              display: "flex",
+              flexDirection: "column",
+            }}
             aria-label="Preview"
           >
-            <PreviewPlayer storyId={storyId} videoSrc={videoSrc} />
+            {/* Canvas sub-toolbar — placeholder */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "6px 12px",
+                borderBottom: "1px solid var(--sc-border)",
+                background: "var(--sc-chrome)",
+                height: 36,
+                flexShrink: 0,
+              }}
+            >
+              <ScSegmented
+                size="sm"
+                value="fit"
+                disabled
+                aria-label="Canvas zoom (coming soon)"
+                options={[
+                  { value: "fit", label: "Fit" },
+                  { value: "100", label: "100%" },
+                  { value: "zoom", label: "Zoom" },
+                ]}
+              />
+              <div style={{ width: 1, height: 16, background: "var(--sc-border)" }} />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<MousePointer2 size={12} aria-hidden="true" />}
+                title="Cursor overlay — coming soon"
+                aria-label="Cursor overlay"
+              />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<ZoomIn size={12} aria-hidden="true" />}
+                title="Add zoom keyframe — coming soon"
+                aria-label="Add zoom keyframe"
+              />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<Sparkles size={12} aria-hidden="true" />}
+                title="AI auto-zoom — coming soon"
+                aria-label="AI auto-zoom"
+              />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<Mic size={12} aria-hidden="true" />}
+                title="Voiceover overlay — coming soon"
+                aria-label="Voiceover overlay"
+              />
+              <span style={{ flex: 1 }} />
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "var(--sc-text-4)",
+                  fontFamily: "var(--sc-font-mono)",
+                }}
+              >
+                — × — · — fps
+              </span>
+            </div>
+
+            <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+              <PreviewPlayer storyId={storyId} videoSrc={videoSrc} />
+            </div>
+
+            {/* Shell transport — placeholder; PreviewPlayer owns the real transport. */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 14px",
+                background: "var(--sc-chrome)",
+                borderTop: "1px solid var(--sc-border)",
+                flexShrink: 0,
+              }}
+            >
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<SkipBack size={12} aria-hidden="true" />}
+                title="Shell transport — coming soon"
+                aria-label="Previous scene"
+              />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<Play size={11} aria-hidden="true" />}
+                title="Shell transport — coming soon"
+                aria-label="Play"
+              />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<Pause size={11} aria-hidden="true" />}
+                title="Shell transport — coming soon"
+                aria-label="Pause"
+              />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<SkipForward size={12} aria-hidden="true" />}
+                title="Shell transport — coming soon"
+                aria-label="Next scene"
+              />
+              <div
+                style={{
+                  fontFamily: "var(--sc-font-mono)",
+                  fontSize: 12,
+                  color: "var(--sc-text-4)",
+                  letterSpacing: "0.02em",
+                  minWidth: 130,
+                }}
+              >
+                —:—:— / —:—:—
+              </div>
+              <span style={{ flex: 1 }} />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<Volume2 size={12} aria-hidden="true" />}
+                title="Volume — coming soon"
+                aria-label="Volume"
+              />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                disabled
+                icon={<Maximize2 size={12} aria-hidden="true" />}
+                title="Fullscreen — coming soon"
+                aria-label="Fullscreen"
+              />
+            </div>
           </section>
           <section
             className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
