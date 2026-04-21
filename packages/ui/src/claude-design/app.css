@@ -415,7 +415,11 @@ body {
 
 /* Switch */
 .sc-switch {
-  width: 28px; height: 16px;
+  display: inline-block;
+  width: 28px;
+  height: 16px;
+  padding: 0;
+  border: 0;
   border-radius: 999px;
   background: var(--sc-surface-4);
   position: relative;
@@ -423,18 +427,23 @@ body {
   transition: background 0.15s;
   flex-shrink: 0;
 }
-.sc-switch::after {
-  content: "";
-  position: absolute;
-  top: 2px; left: 2px;
-  width: 12px; height: 12px;
+.sc-switch-thumb {
+  display: block;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--sc-n-100);
-  transition: left 0.15s;
+  transform: translate(2px, 2px);
+  transition: transform 0.15s, background 0.15s;
   box-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
-.sc-switch.on { background: var(--sc-accent-400); }
-.sc-switch.on::after { left: 14px; background: oklch(0.15 0.02 var(--sc-accent-h)); }
+.sc-switch[data-checked] { background: var(--sc-accent-400); }
+.sc-switch[data-checked] .sc-switch-thumb {
+  transform: translate(14px, 2px);
+  background: oklch(0.15 0.02 var(--sc-accent-h));
+}
+.sc-switch[data-disabled] { opacity: 0.5; cursor: not-allowed; }
+.sc-switch:focus-visible { outline: 2px solid var(--sc-focus); outline-offset: 2px; }
 
 /* Segmented control */
 .sc-segmented {
