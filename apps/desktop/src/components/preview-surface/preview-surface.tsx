@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { Film } from "lucide-react";
 import { motion } from "motion/react";
 
 import { PreviewPlayer } from "@/features/post-production/preview/preview-player";
-import { fetchProjectFolder } from "@/ipc/projects";
+import { useProjectFolder } from "@/ipc/projects";
 
 export type PreviewSurfaceProps =
   | {
@@ -33,10 +32,7 @@ export function PreviewSurface(props: PreviewSurfaceProps) {
 }
 
 function RecordingPreview({ projectId }: { projectId: string }) {
-  const folderQuery = useQuery({
-    queryKey: ["projects", projectId, "folder"],
-    queryFn: () => fetchProjectFolder(projectId),
-  });
+  const folderQuery = useProjectFolder(projectId);
 
   const sessionCount = folderQuery.data?.session_count ?? 0;
   const hasRecording = sessionCount > 0;
