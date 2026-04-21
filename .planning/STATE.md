@@ -8,7 +8,7 @@ progress:
   total_phases: 15
   completed_phases: 7
   total_plans: 106
-  completed_plans: 87
+  completed_plans: 88
   percent: 82
 ---
 
@@ -25,7 +25,7 @@ progress:
 ## Current Position
 
 Phase: 15 — Editor/Post-Production feature boundary cleanup — EXECUTING
-Plan: 15-02 complete (Wave 2 — shared PreviewSurface component, recording mode = empty-state only). 3 waves remain (15-03 Post-Prod landing, 15-04 Send-to-Post-Prod + scene-list gate, 15-05 cleanup). Pause for user QA before Wave 3.
+Plan: 15-03 complete (Wave 3 — /post-production landing route under AppLayout; ProjectGrid + useProjects reused; onOpen → /post-production/:id; empty-state CTA; zero sidebar edits). 2 waves remain (15-04 Send-to-Post-Prod + scene-list gate, 15-05 cleanup). Pause for user QA before Wave 4.
 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
@@ -87,6 +87,7 @@ See PROJECT.md → Key Decisions. Highlights:
 - [Phase 14-01]: Retired Cursor-warm tokens (D-01); kept packages/ui/src/tokens.css as TRANSITIONAL alias layer mapping 770 legacy --color-* onto --sc-* (Wave 5 cleanup). Swapped to @fontsource-variable/{inter,jetbrains-mono} (D-11). Shipped 9 Sc* primitives (ScButton/Input/Badge/Switch/Card/Kbd/Slider/Select/Segmented) over Base UI in packages/ui. Dark default (D-02). Hidden /_design-system/{tokens,components} routes (D-06f).
 - [Phase 14-03]: Wave 3 routes restyled inside legacy AppLayout shell (D-03/D-06a permanently dropped). Dashboard+Settings+Editor-shell+post-production editor-shell use sc-* tokens + ScButton/ScCard from @storycapture/ui. Every IPC/Zustand/CodeMirror/LSP/WebGPU/motion wire preserved per D-09.
 - [Phase 14-04]: Wave 4 overlays + Export restyle. CommandPalette (cmdk + Cmd/Ctrl+K) mounts inside AppLayout + FullscreenLayout (useNavigate needs RouterProvider descendant context; plan's "sibling to RouterProvider" language predates react-router-dom v7 data router). RecordingIndicator driven by useRecorderStore.status. Sonner skinned via --normal-bg/--normal-text/--normal-border/--border-radius/--toast-animation-duration pulling from --sc-surface / --sc-text / --sc-border-2 / --sc-r-lg. theme="dark" hard-coded until Wave 5 tweaks-store swap. Export-modal retokened to --sc-* + ScButton; ENC-12..ENC-19 Phase 13 wiring preserved verbatim (71/71 post-production tests green).
+- [Phase 15-03]: Wave 3 Post-Production landing route. New `apps/desktop/src/routes/post-production-landing.tsx` (182 LoC) reuses ProjectGrid + useProjects verbatim; onOpen → `/post-production/:projectId` (vs dashboard's `/editor/:id`). Toolbar omits New Story; empty-state CTA "Go to Projects" → `/`. Router gains `{ path: "/post-production", element: <PostProductionLandingRoute /> }` under AppLayout; `/post-production/:storyId` stays under FullscreenLayout. Zero sidebar/command-palette edits — matchPattern already covers both routes. Typecheck + build green; 201/209 vitest (8 pre-existing failures, not regressions). session_count split deferred (needs list_project_recordings IPC).
 - [Phase 15-01]: Wave 1 VoiceoverCompact relocation. Moved component + helpers verbatim (D-11) from routes/editor.tsx into features/post-production/voiceover-compact/{voiceover-compact.tsx,index.ts}. VoiceCatalogDialog now mounts only inside post-production EditorShell (D-10). Editor right rail collapsed to single preview rail (RailTabButton + motion cross-fade + railTab state removed). findSceneIndexForOffset stayed in editor.tsx (not voiceover-specific). VoiceoverCompact mounted in a dormant hidden slot in EditorShell pending full story-data wiring in a later wave. Net −115 LoC; typecheck + build green; 201/209 vitest pass (8 failures pre-existing, not regressions).
 
 ### Open Todos
@@ -120,9 +121,9 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-21 — Executed Phase 15 Plan 01 (Wave 1 — Relocate VoiceoverCompact): extracted component + helpers verbatim into features/post-production/voiceover-compact/, mounted in post-production EditorShell, collapsed Editor right rail to preview-only.
-- Last action: Plan 15-01 complete — 3 atomic commits (55a44ab extract, 35e426c mount, 0da8b81 strip). Typecheck + build green; 201/209 vitest pass (8 pre-existing failures, not regressions). SUMMARY at `.planning/phases/15-editor-post-production-feature-boundary-cleanup/15-01-SUMMARY.md`.
-- Next action: Wave 1 human QA pause, then `/gsd-execute-phase 15` Wave 2 (PreviewSurface component with `mode` prop).
+- Last activity: 2026-04-21 — Executed Phase 15 Plan 03 (Wave 3 — Post-Production landing route): new PostProductionLandingRoute reusing ProjectGrid + useProjects; router registration under AppLayout; zero sidebar edits.
+- Last action: Plan 15-03 complete — 2 atomic commits (7fd93be route, ea10dd4 router). Typecheck + build green; 201/209 vitest pass (baseline preserved). SUMMARY at `.planning/phases/15-editor-post-production-feature-boundary-cleanup/15-03-SUMMARY.md`.
+- Next action: Wave 3 human QA pause, then `/gsd-execute-phase 15` Wave 4 ("Send to Post-Production" button + always-visible SceneListPanel).
 - Files touched this session: `apps/desktop/{package.json,src/styles.css,src/lib/theme.ts,src/lib/fonts.ts,src/routes/index.tsx,src/routes/_design-system/*}`, `packages/ui/{package.json,tsconfig.json,vitest.config.ts,src/index.ts,src/lib/cn.ts,src/claude-design/{index.ts,primitives/**},src/tokens.css}`.
 
 ---
