@@ -330,6 +330,16 @@ Plans:
 - [x] 14-04-PLAN.md — Wave 4 Overlays+Export: CommandPalette (cmdk+Base UI) + RecordingIndicator + Sonner CSS-var skin + export-modal restyle (Phase 13 wiring intact)
 - [ ] 14-05-PLAN.md — Wave 5 Tweaks+Polish: tweaks-store via plugin-store + TweaksPanel (dev-only Cmd/Ctrl+Shift+.) + Settings Appearance + recorder cosmetic + vitest-axe WCAG AA under jsdom
 
+### Phase 15: Editor/Post-Production feature boundary cleanup
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 14
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 15 to break down)
+
 ---
 *Roadmap created: 2026-04-14*
 *Phase 7 added: 2026-04-17*
