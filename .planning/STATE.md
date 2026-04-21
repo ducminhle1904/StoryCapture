@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-21T17:00:00.000Z"
+last_updated: "2026-04-21T10:20:00.000Z"
 progress:
   total_phases: 15
   completed_phases: 7
   total_plans: 106
-  completed_plans: 88
-  percent: 82
+  completed_plans: 89
+  percent: 83
 ---
 
 # State: StoryCapture
@@ -25,7 +25,7 @@ progress:
 ## Current Position
 
 Phase: 15 — Editor/Post-Production feature boundary cleanup — EXECUTING
-Plan: 15-03 complete (Wave 3 — /post-production landing route under AppLayout; ProjectGrid + useProjects reused; onOpen → /post-production/:id; empty-state CTA; zero sidebar edits). 2 waves remain (15-04 Send-to-Post-Prod + scene-list gate, 15-05 cleanup). Pause for user QA before Wave 4.
+Plan: 15-04 complete (Wave 4 — Editor additions: Send-to-Post-Production toolbar button bound to folder?.session_count; always-visible SceneListPanel with last-valid-AST parse-error fallback chip). 1 wave remains (15-05 cleanup + regression matrix). Pause for user QA before Wave 5.
 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
@@ -89,6 +89,7 @@ See PROJECT.md → Key Decisions. Highlights:
 - [Phase 14-04]: Wave 4 overlays + Export restyle. CommandPalette (cmdk + Cmd/Ctrl+K) mounts inside AppLayout + FullscreenLayout (useNavigate needs RouterProvider descendant context; plan's "sibling to RouterProvider" language predates react-router-dom v7 data router). RecordingIndicator driven by useRecorderStore.status. Sonner skinned via --normal-bg/--normal-text/--normal-border/--border-radius/--toast-animation-duration pulling from --sc-surface / --sc-text / --sc-border-2 / --sc-r-lg. theme="dark" hard-coded until Wave 5 tweaks-store swap. Export-modal retokened to --sc-* + ScButton; ENC-12..ENC-19 Phase 13 wiring preserved verbatim (71/71 post-production tests green).
 - [Phase 15-03]: Wave 3 Post-Production landing route. New `apps/desktop/src/routes/post-production-landing.tsx` (182 LoC) reuses ProjectGrid + useProjects verbatim; onOpen → `/post-production/:projectId` (vs dashboard's `/editor/:id`). Toolbar omits New Story; empty-state CTA "Go to Projects" → `/`. Router gains `{ path: "/post-production", element: <PostProductionLandingRoute /> }` under AppLayout; `/post-production/:storyId` stays under FullscreenLayout. Zero sidebar/command-palette edits — matchPattern already covers both routes. Typecheck + build green; 201/209 vitest (8 pre-existing failures, not regressions). session_count split deferred (needs list_project_recordings IPC).
 - [Phase 15-01]: Wave 1 VoiceoverCompact relocation. Moved component + helpers verbatim (D-11) from routes/editor.tsx into features/post-production/voiceover-compact/{voiceover-compact.tsx,index.ts}. VoiceCatalogDialog now mounts only inside post-production EditorShell (D-10). Editor right rail collapsed to single preview rail (RailTabButton + motion cross-fade + railTab state removed). findSceneIndexForOffset stayed in editor.tsx (not voiceover-specific). VoiceoverCompact mounted in a dormant hidden slot in EditorShell pending full story-data wiring in a later wave. Net −115 LoC; typecheck + build green; 201/209 vitest pass (8 failures pre-existing, not regressions).
+- [Phase 15-04]: Wave 4 Editor additions. Added "Send to Post-Production" toolbar button in editor.tsx right-side action cluster (after Record) — disabled ScButton when folder?.session_count === 0, enabled `<Link to={`/post-production/${projectId}`} className="sc-btn sm">` once a recording exists; uses Scissors icon for parity with sidebar. Dropped `sceneCount > 0 &&` gate on SceneListPanel; rail always mounts. SceneListPanel adds useRef Story cache updated on successful parse; under hasParseError it renders the cached tree with `<ScBadge tone="warn">parse error — showing last known</ScBadge>` in the header. Empty-state refined to "No scenes yet". layoutId motion pill + click-to-jump preserved (D-11). Plan's `.sc-btn.secondary` class doesn't exist — used bare `.sc-btn sm` (base IS secondary per claude-design/app.css). Accent-pulse on enable transition deferred (Claude's Discretion). 2 files modified; typecheck + build green; 201/209 vitest (baseline preserved).
 
 ### Open Todos
 
@@ -121,10 +122,10 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-21 — Executed Phase 15 Plan 03 (Wave 3 — Post-Production landing route): new PostProductionLandingRoute reusing ProjectGrid + useProjects; router registration under AppLayout; zero sidebar edits.
-- Last action: Plan 15-03 complete — 2 atomic commits (7fd93be route, ea10dd4 router). Typecheck + build green; 201/209 vitest pass (baseline preserved). SUMMARY at `.planning/phases/15-editor-post-production-feature-boundary-cleanup/15-03-SUMMARY.md`.
-- Next action: Wave 3 human QA pause, then `/gsd-execute-phase 15` Wave 4 ("Send to Post-Production" button + always-visible SceneListPanel).
-- Files touched this session: `apps/desktop/{package.json,src/styles.css,src/lib/theme.ts,src/lib/fonts.ts,src/routes/index.tsx,src/routes/_design-system/*}`, `packages/ui/{package.json,tsconfig.json,vitest.config.ts,src/index.ts,src/lib/cn.ts,src/claude-design/{index.ts,primitives/**},src/tokens.css}`.
+- Last activity: 2026-04-21 — Executed Phase 15 Plan 04 (Wave 4 — Editor additions): Send-to-Post-Production toolbar button + unconditional SceneListPanel with parse-error fallback chip.
+- Last action: Plan 15-04 complete — 2 atomic commits (ce7e8cb toolbar button, 7f5856c scene list fallback). Typecheck + build green; 201/209 vitest pass (baseline preserved). SUMMARY at `.planning/phases/15-editor-post-production-feature-boundary-cleanup/15-04-SUMMARY.md`.
+- Next action: Wave 4 human QA pause, then `/gsd-execute-phase 15` Wave 5 (regression matrix + 15-SUMMARY + docs/ARCHITECTURE sync).
+- Files touched this session: `apps/desktop/src/routes/editor.tsx`, `apps/desktop/src/features/editor/scene-list-panel.tsx`.
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
