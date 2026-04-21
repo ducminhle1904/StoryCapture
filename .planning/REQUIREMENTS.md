@@ -7,10 +7,12 @@
 
 ### Foundation (FOUND)
 
-- [ ] **FOUND-01**: Turborepo + Cargo workspace scaffolded with `apps/desktop`, `apps/web`, `packages/{shared-types,story-dsl,ui,config}`, `crates/{story-parser,automation,capture,effects,encoder,storage}`
+- [x] **FOUND-01
+**: Turborepo + Cargo workspace scaffolded with `apps/desktop`, `apps/web`, `packages/{shared-types,story-dsl,ui,config}`, `crates/{story-parser,automation,capture,effects,encoder,storage}`
 - [ ] **FOUND-02**: Tauri v2 desktop shell boots on macOS (arm64 + x64) and Windows x64 with React 19 + Vite + Tailwind v4 + shadcn/ui + Base UI (`base-vega`) initialized
 - [ ] **FOUND-03**: Typed IPC codegen via `tauri-specta` (or `specta`) emits shared TypeScript types for all Tauri commands and events
-- [ ] **FOUND-04**: Structured logging via `tracing` + `tauri-plugin-log` with local log files (no telemetry by default)
+- [x] **FOUND-04
+**: Structured logging via `tracing` + `tauri-plugin-log` with local log files (no telemetry by default)
 - [ ] **FOUND-05**: Error taxonomy established (`thiserror` in crates, `anyhow` at boundaries); panics captured and reported to UI
 - [ ] **FOUND-06**: SQLite via `rusqlite` with `rusqlite_migration`; two-tier layout (`app.sqlite` global + per-project `project.sqlite`)
 - [ ] **FOUND-07**: OS-keychain secret storage via `tauri-plugin-keyring` (NOT Stronghold) for LLM/TTS API keys
@@ -154,13 +156,16 @@ Added 2026-04-19 during /gsd-plan-phase 11. Relocates the picker from the record
 - [ ] **PHASE-11.4**: A primary-miss during recording produces `AutomationError::PrimaryMissNoHeal { step_ordinal, step_id, verb }`. `try_promote_fallback` is unreachable from the record path. The error `Display` string matches the UI-SPEC-locked copy verbatim. (D-06)
 - [ ] **PHASE-11.5**: The recorder HUD surfaces the D-06 error with the UI-SPEC-locked 2-line copy and an "Open in Simulator →" action that opens the Editor on the failed step (no auto-simulator start). A Sonner destructive toast shadows the HUD with the same copy + action. (D-06, UI-SPEC §5)
 - [ ] **PHASE-11.6**: The sidecar `pickElement.start` accepts an optional `streamId` and routes to `state.previewPagesByStreamId.get(streamId)`. Unknown streamId throws with JSON-RPC code -32000; no fall-through to `state.page`. `state.authorBrowser` (Phase 7 snapshot browser) is NOT reused. (Pitfall 1, Pitfall 3)
-- [ ] **PHASE-11.7**: `picker_stamp_step_id` is provably byte-idempotent on re-pick of an already-stamped line: source bytes + mtime unchanged; `.story.targets.json` IS rewritten. The command returns a `was_freshly_stamped: bool` flag so callers can dispatch the correct UI copy. (D-04, Pitfall 5)
+- [x] **PHASE-11.7**: `picker_stamp_step_id` is provably byte-idempotent on re-pick of an already-stamped line: source bytes + mtime unchanged; `.story.targets.json` IS rewritten. The command returns a `was_freshly_stamped: bool` flag so callers can dispatch the correct UI copy. (D-04
+, Pitfall 5)
 - [ ] **PHASE-11.8**: Host-layer state machine enforces concurrency: `can_start_pick()` rejects when state is `SimulatorRunning` or `Picking`; `can_start_simulator()` rejects when state is `Picking`. `Picking` entered from `SimulatorPaused` carries `resume_to` and restores on exit. (D-13, D-14, D-15)
 - [ ] **PHASE-11.9**: A new Tauri command `picker_start_author(stream_id, cursor_line)` orchestrates: acquire registry → transition to `Picking{resume_to}` → `replay_navigate_verbs` → `pause_author_preview` → sidecar pick → `resume_author_preview` (on ALL exit paths: success, user-cancel, navigation, unsupported-url, timeout, driver error, panic via guard). (D-12)
 - [ ] **PHASE-11.10**: `replay_navigate_verbs` walks `story.scenes[*].commands[*]`; for every command with `meta().line <= cursor_line` and variant `Command::Navigate`, emits the URL via sidecar `author.navigateTo`. If list is empty, falls back to `story.meta.app`. Sidecar nav errors are best-effort (logged, not propagated). (D-10)
 - [ ] **PHASE-11.11**: A new sidecar RPC `author.navigateTo(streamId, url)` performs `page.goto(url)` + `waitForLoadState('networkidle', { timeout: 10_000 })` against the streamId-keyed author page. Times out silently to unblock picker start. (Pitfall 4)
-- [ ] **PHASE-11.12**: A `PreviewPickerButton` component (`apps/desktop/src/features/editor/PreviewPickerButton.tsx`) is mounted inside `preview-panel.tsx` toolbar, left of the viewport/quality controls, with five visual states (Idle/LivePreview default, Picking active, Starting spinner, Disabled-SimulatorRunning, Active-from-SimulatorPaused). Tooltip + toast + banner copy strings appear verbatim per UI-SPEC §Copywriting. (D-01, D-02, UI-SPEC)
-- [ ] **PHASE-11.13**: `Cmd-Shift-P` / `Ctrl-Shift-P` triggers the pick action via a CodeMirror 6 keymap extension in `codemirror-setup.ts` (NOT `document.addEventListener`). Behavior: editor focused + not `SimulatorRunning` → trigger pick; focused during `SimulatorRunning` → no-op (optional banner shake); focused during `Picking` → cancel. (D-01, UI-SPEC §6)
+- [x] **PHASE-11.12**: A `PreviewPickerButton` component (`apps/desktop/src/features/editor/PreviewPickerButton.tsx`) is mounted inside `preview-panel.tsx` toolbar, left of the viewport/quality controls, with five visual states (Idle/LivePreview default, Picking active, Starting spinner, Disabled-SimulatorRunning, Active-from-SimulatorPaused). Tooltip + toast + banner copy strings appear verbatim per UI-SPEC §Copywriting. (D-01
+, D-02, UI-SPEC)
+- [x] **PHASE-11.13**: `Cmd-Shift-P` / `Ctrl-Shift-P` triggers the pick action via a CodeMirror 6 keymap extension in `codemirror-setup.ts` (NOT `document.addEventListener`). Behavior: editor focused + not `SimulatorRunning` → trigger pick; focused during `SimulatorRunning` → no-op (optional banner shake); focused during `Picking` → cancel. (D-01
+, UI-SPEC §6)
 - [ ] **PHASE-11.14**: The Phase 7 recorder-side picker is deleted: `pick-element-button.tsx`, `pick-element-button.test.tsx`, and the import + mount sites in `recording-view.tsx`. A new `11-SMOKE.md` operator runbook supersedes the record-path sections of `07-03b-SMOKE.md` and `07-04c-SMOKE.md`. (D-05)
 
 ## v2 Requirements (deferred, tracked)

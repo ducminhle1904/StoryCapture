@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-last_updated: "2026-04-21T04:33:35.938Z"
+status: executing
+last_updated: "2026-04-21T04:52:20.602Z"
 progress:
   total_phases: 13
   completed_phases: 6
   total_plans: 97
-  completed_plans: 78
-  percent: 80
+  completed_plans: 79
+  percent: 81
 ---
 
 # State: StoryCapture
@@ -20,18 +20,18 @@ progress:
 
 - **Name:** StoryCapture
 - **Core Value:** Turn a written story into a polished, shareable demo video automatically — no recording, editing, or video-production skill required.
-- **Current Focus:** Phase 13 complete — ready to plan next phase
+- **Current Focus:** Phase --phase — 14
 
 ## Current Position
 
-Phase: 13 (video-output-customization-knobs-recording-export-ui) — COMPLETE
-Plan: 5 of 5
+Phase: 14 — Port Claude Design into apps/desktop — EXECUTING
+Plan: 2 of 5 (14-01 complete — Wave 1 foundation)
 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
 - **Plan:** All 5 plans complete; verified 8/8 (ENC-12..ENC-19 PASS)
-- **Status:** Ready to plan next phase
-- **Progress:** [█████████░] 85%
+- **Status:** Executing Phase --phase
+- **Progress:** [████████░░] 81%
 
 ## Performance Metrics
 
@@ -84,6 +84,7 @@ See PROJECT.md → Key Decisions. Highlights:
 - [Phase 05]: Plan 05-02: launchServer+connect in sidecar (Browser class has no .process()); process-global PlaywrightPidStash + background probe task for pid acquisition; SharedPlaywrightDriver adapter so probe+executor share the driver; host-side pid rewrite in start_capture_target for WindowByPid sentinel (T-05-02-01)
 - [Phase 05]: Plan 05-03: Chromium parent/child resolution via ToolHelp snapshot walk restricted to chrome.exe/msedge.exe/chromium.exe process names (T-05-03-07)
 - [Phase 05]: Plan 05-03: PTS clock source set to ClockSource::Synthetic on WGC path (QPC plumbing deferred to encoder-coordinated follow-up)
+- [Phase 14-01]: Retired Cursor-warm tokens (D-01); kept packages/ui/src/tokens.css as TRANSITIONAL alias layer mapping 770 legacy --color-* onto --sc-* (Wave 5 cleanup). Swapped to @fontsource-variable/{inter,jetbrains-mono} (D-11). Shipped 9 Sc* primitives (ScButton/Input/Badge/Switch/Card/Kbd/Slider/Select/Segmented) over Base UI in packages/ui. Dark default (D-02). Hidden /_design-system/{tokens,components} routes (D-06f).
 
 ### Open Todos
 
@@ -110,13 +111,14 @@ currently blocking post-v1 work. All six verification items above are operator-g
 |---|-------------|------|--------|-----------|
 | 260418-gkg | Recording engine quick fixes: drop Chromium sentinel, panic guard on frame-pump, export drop counts | 2026-04-18 | 1fe6fe8 | [260418-gkg-recording-engine-quick-fixes-drop-chromi](./quick/260418-gkg-recording-engine-quick-fixes-drop-chromi/) |
 | 260418-ios | Fix focus-steal during recording: re-focus main window after Playwright launch + start_recording | 2026-04-18 | 9fad310 | [260418-ios-fix-focus-steal-during-recording-so-play](./quick/260418-ios-fix-focus-steal-during-recording-so-play/) |
+| Phase 14 P01 | 25m | 3 tasks | 23 files |
 
 ## Session Continuity
 
-- Last activity: 2026-04-19 - Added Phase 12 + 13 to roadmap; planned Phase 12 (5 plans across 3 waves); plan-checker PASSED with 3 cosmetic warnings tidied.
-- Last action: Phase 12 planning complete — `/gsd-plan-phase 12` workflow executed end-to-end: allocated ENC-06..11 requirements, wrote 12-CONTEXT.md (D-12-01..D-12-12 locked) + 12-RESEARCH.md (letterbox filter chain + per-encoder quality mapping + L-01..L-10 landmines), spawned gsd-planner → 5 plans committed (ba82962), spawned gsd-plan-checker → VERIFICATION PASSED, revision pass for 3 cosmetic warnings committed (f95f133).
-- Next action: `/clear` then `/gsd-execute-phase 12` — execute the 5 plans wave-by-wave (12-01 + 12-02 parallel in Wave 1 → 12-03 in Wave 2 → 12-04 + 12-05 parallel in Wave 3).
-- Files touched this session: `.planning/ROADMAP.md`, `.planning/STATE.md`, `.planning/REQUIREMENTS.md`, `.planning/phases/12-fix-video-output-resolution-lock-letterbox/{12-CONTEXT.md,12-RESEARCH.md,12-{01..05}-PLAN.md}`. No source code changes yet.
+- Last activity: 2026-04-21 — Executed Phase 14 Plan 01 (Wave 1 foundation): font swap, sc-* token wire-up with transitional alias, 9 Sc* primitives + tests, hidden /_design-system routes.
+- Last action: Plan 14-01 complete — 3 atomic commits (6bdc9f4 tokens+fonts, f6c1881 primitives+20 tests, 635141e showcase routes). `pnpm --filter @storycapture/desktop build` + `pnpm --filter @storycapture/ui test` both green. SUMMARY at `.planning/phases/14-port-claude-design-into-apps-desktop/14-01-SUMMARY.md`.
+- Next action: Wave 1 human QA on the /_design-system showcase routes, then `/gsd-execute-phase 14` Wave 2 (window chrome + side-nav shell).
+- Files touched this session: `apps/desktop/{package.json,src/styles.css,src/lib/theme.ts,src/lib/fonts.ts,src/routes/index.tsx,src/routes/_design-system/*}`, `packages/ui/{package.json,tsconfig.json,vitest.config.ts,src/index.ts,src/lib/cn.ts,src/claude-design/{index.ts,primitives/**},src/tokens.css}`.
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
