@@ -139,6 +139,17 @@ Plans:
 | 2. Cinematic Post-Production & Export | 14/14 | Code-complete (2 verification steps pending) | 2026-04-15 |
 | 3. Intelligence Layer — AI Authoring & Voiceover | 21/21 | Code-complete (1 verification step pending) | 2026-04-15 |
 | 4. Web Companion & Sharing | 10/10 | Code-complete (1 verification step pending) | 2026-04-15 |
+| 5. Window-targeted capture + Playwright auto-follow | 3/3 | Shipped | 2026-04-17 |
+| 6. Recording v2 — audio, region, chrome-hiding | 3/4 | Shipped (06-03 live-preview deferred to Phase 9) | 2026-04-17 |
+| 7. Semantic DSL verbs + element picker | 7/7 | Shipped | 2026-04-19 |
+| 8. Recording engine polish — GPU downscale + live cursor overlay | 0/5 | **Planned, not started** | — |
+| 9. Live Preview pane (CDP-driven) | 0/4 | **Planned, not started** — prereq for Phase 10 | — |
+| 10. Author-time simulator | 0/3 | **Blocked on Phase 9-04 extensions (PHASE-9.8/9.9)** | — |
+| 11. Author-time element picker relocation | 0/4 | **Blocked on Phase 10-01/02** (11-01 can run in parallel with 10-01) | — |
+| 12. Fix video output resolution | 4/4 | Shipped | 2026-04-19 |
+| 13. Video output customization knobs | shipped | Shipped | 2026-04-19 |
+| 14. Port Claude Design into apps/desktop | 4/4 (waves 1, 3-5; Wave 2 dropped) | **In progress** — Waves 1/3/4 shipped, polish ongoing, Wave 5 a11y checkpoint pending | — |
+| 15. Editor/Post-Production feature boundary cleanup | 4/5 | **In progress** — Waves 1-4 shipped, Wave 5 a11y checkpoint pending | — |
 
 ## Coverage
 
@@ -190,6 +201,24 @@ Plans:
 - [x] 07-04b-PLAN.md — Tier 2 robustness parser: additive pest `step_id_comment` rule (Tier 1 regression-guarded) + `LineMeta.step_id: Option<Uuid>` + warn-on-invalid-UUID + minimal `story_parser::formatter::format_story` + 3 parse-format-parse fixpoint tests + insta snapshot
 - [x] 07-04c-PLAN.md — Tier 2 robustness self-healing: `targets_store.rs` with atomic tmp+rename + executor fallback promotion hook + `picker_stamp_step_id` Tauri command (stamps UUIDv7 on first pick via formatter, seeds targets.json) + integration test (primary-miss → fallback-promoted → targets rewritten, source untouched) + PHASE-7.5 final gate
 - [x] 07-05-PLAN.md — Author-time selector validator + hover-preview: DOM+screenshot snapshot cache per navigated URL; CodeMirror gutter chip (GREEN unique / YELLOW fuzzy / RED miss) driven by the same ranked locator engine as the picker (reverse direction); hover a DSL step → Preview panel shows the cached screenshot with the matched element boxed; "Promote to fallback" action writes into `.story.targets.json` — shares the 07-04c self-healing schema
+
+### Phase 8: Recording engine polish — GPU downscale + live cursor overlay
+
+**Goal:** Two recording-engine polish items that unblock 4K→1080p downscaled captures and visually-consistent cursor rendering across platforms. GPU-side downscale path avoids CPU-bound FFmpeg software scale on high-resolution sources; live cursor overlay composites a synthetic cursor sprite on the captured frames when the native OS cursor is hidden (e.g. Chromium `--app` chrome-hide mode from Phase 6).
+
+**Depends on:** Phase 6 (CaptureConfig + include_cursor shipped ✓)
+**Plans:** 5 plans (CONTEXT.md locked)
+
+**Status:** Planned, not started. Blocking state: `crates/gpu_scale/` scaffolding (08-01 wave 1) never executed. No executor has picked this up yet.
+
+Plans:
+- [ ] 08-01 — `crates/gpu_scale/` scaffold (trait + error + platform stubs) + `EncodeConfig.upstream_scale_applied` field + `RecordingEvent::GpuScaleFailed` variant
+- [ ] 08-02 — macOS GPU scaler impl (Metal / VideoToolbox)
+- [ ] 08-03 — Windows GPU scaler impl (D3D11)
+- [ ] 08-04 — Live cursor overlay crate + composite pipeline
+- [ ] 08-05 — Recording UI toggles + integration tests
+
+---
 
 ### Phase 9: Live Preview pane — render Chromium automation inside the Recorder window via CDP Page.startScreencast
 

@@ -27,6 +27,19 @@ progress:
 Phase: 15 — Editor/Post-Production feature boundary cleanup — EXECUTING
 Plan: 15-04 complete (Wave 4 — Editor additions: Send-to-Post-Production toolbar button bound to folder?.session_count; always-visible SceneListPanel with last-valid-AST parse-error fallback chip). 1 wave remains (15-05 cleanup + regression matrix). Pause for user QA before Wave 5.
 
+## Phase 8-11 Planning Audit (2026-04-21)
+
+Full audit of Phases 8-11 planning validity vs. current codebase:
+
+- **Phase 8** (GPU downscale + cursor overlay): Planned, not started. `crates/gpu_scale/` scaffolding (08-01) never executed. ROADMAP entry + Progress row added this date.
+- **Phase 9** (Live Preview CDP pane): Planned, not started. Backfilled `09-CONTEXT.md` this date (was missing). `09-01` sidecar plumbing not executed; all 4 waves pending. Phase 9-04 carries PHASE-9.8/9.9 extensions (`attach_author_driver`, `pauseStream`/`resumeStream`) required as prereqs by Phase 10.
+- **Phase 10** (Author-time simulator): Planned, **hard-blocked** on Phase 9-04 extensions per `10-CONTEXT.md` D-06. `run_story` executor signature + `ExecutorEvent::RunPaused/StepFrameCaptured` + `StepFrame` struct not yet in codebase. Phase 3's `DryRunPanel.tsx` still present — naming-collision is by design per 10-CONTEXT D-00.
+- **Phase 11** (Element picker relocation): Planned, **hard-blocked** on Phase 10-02 (for 11-02/03/04). `AuthorDriverState` / `AuthorDriverRegistry` not yet in codebase. Phase 11-01 (registry foundation) can run in parallel with Phase 10-01 since they own disjoint registry types.
+
+Phase 6 + Phase 7 confirmed fully shipped. Phase 7's `PickElementButton` at `apps/desktop/src/features/recorder/pick-element-button.tsx` — Phase 11-05's relocation target path is correct.
+
+No Phase 15 rearrangement invalidates file-path references in Phase 8-11 plans. Proceed-when-unblocked.
+
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
 - **Plan:** All 5 plans complete; verified 8/8 (ENC-12..ENC-19 PASS)
