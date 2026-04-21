@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, AlertTriangle } from "lucide-react";
+import { ScButton, ScCard } from "@storycapture/ui";
 import { useProjects, type Project } from "@/ipc/projects";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { useDashboardStore } from "@/state/projects";
@@ -44,23 +45,23 @@ export default function DashboardRoute() {
   return (
     <main id="main-content" className="flex h-full flex-col">
       {/* Page header — sticky at top of content pane */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-6 py-3">
+      <header className="flex shrink-0 items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-bg)] px-6 py-3">
         <div className="flex items-center gap-4">
-          <h1 className="text-sm font-semibold text-[var(--color-fg-primary)]">
+          <h1 className="text-sm font-semibold text-[var(--sc-text)]">
             Projects
           </h1>
-          <span className="text-xs text-[var(--color-fg-muted)]">
+          <span className="text-xs text-[var(--sc-text-4)]">
             {visible.length} {visible.length === 1 ? "project" : "projects"}
           </span>
         </div>
-        <button
+        <ScButton
+          variant="primary"
+          icon={<Plus size={14} aria-hidden="true" />}
           onClick={() => setDialogOpen(true)}
           aria-label="Create new project"
-          className="brand-button inline-flex items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
         >
-          <Plus size={14} aria-hidden="true" />
           New Project
-        </button>
+        </ScButton>
       </header>
 
       {/* Scrollable body */}
@@ -73,22 +74,24 @@ export default function DashboardRoute() {
 
       <section aria-label="Projects" className="mt-6">
         {isLoading ? (
-          <div
+          <ScCard
             role="status"
-            className="brand-panel rounded-[var(--radius-2xl)] p-8 text-sm text-[var(--color-fg-muted)]"
+            className="p-8 text-sm text-[var(--sc-text-4)]"
           >
             Loading projects…
-          </div>
+          </ScCard>
         ) : error ? (
           <div
             role="alert"
-            className="flex items-center gap-3 rounded-[var(--radius-2xl)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]"
+            className="flex items-center gap-3 rounded-[var(--sc-r-lg)] border border-[oklch(0.65_0.20_22/0.28)] bg-[oklch(0.65_0.20_22/0.10)] p-4 text-sm text-[oklch(0.80_0.18_22)]"
           >
             <AlertTriangle size={16} aria-hidden="true" />
             Failed to load projects: {String(error)}
           </div>
         ) : (
-          <ProjectGrid projects={visible} onOpen={openProject} />
+          <ScCard className="p-3">
+            <ProjectGrid projects={visible} onOpen={openProject} />
+          </ScCard>
         )}
       </section>
 

@@ -4,8 +4,8 @@ import { AccountsPage } from "@/features/settings/AccountsPage";
 export default function SettingsRoute() {
   return (
     <main id="main-content" className="flex h-full flex-col">
-      <header className="flex shrink-0 items-center border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-6 py-3">
-        <h1 className="text-sm font-semibold text-[var(--color-fg-primary)]">
+      <header className="flex shrink-0 items-center border-b border-[var(--sc-border)] bg-[var(--sc-bg)] px-6 py-3">
+        <h1 className="text-sm font-semibold text-[var(--sc-text)]">
           Settings
         </h1>
       </header>
