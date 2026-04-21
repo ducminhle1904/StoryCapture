@@ -65,6 +65,19 @@ function buildSuggestedScript(cmd: Command, sceneName: string): string {
   }
 }
 
+type StepStatus = "regenerating" | "out-of-sync-with-script" | "generated";
+
+function computeStepStatus(
+  stepId: string | null,
+  generating: Set<string>,
+  editedAfterGen: Record<string, boolean>,
+): StepStatus {
+  if (!stepId) return "generated";
+  if (generating.has(stepId)) return "regenerating";
+  if (editedAfterGen[stepId]) return "out-of-sync-with-script";
+  return "generated";
+}
+
 function buildVoiceoverSteps(story: Story | null): VoiceoverStep[] {
   if (!story) return [];
   return story.scenes.flatMap((scene, sceneIndex) =>
@@ -152,13 +165,11 @@ export function VoiceoverCompact({
   const selectedScript = selectedStep
     ? (scriptByStepId[selectedStep.id] ?? "")
     : "";
-  const selectedStatus = selectedStep
-    ? generating.has(selectedStep.id)
-      ? "regenerating"
-      : editedAfterGenByStepId[selectedStep.id]
-        ? "out-of-sync-with-script"
-        : "generated"
-    : "generated";
+  const selectedStatus = computeStepStatus(
+    selectedStep?.id ?? null,
+    generating,
+    editedAfterGenByStepId,
+  );
 
   const handleRegenerate = useCallback(async () => {
     const preset = selectedPresetRef.current;
