@@ -1,7 +1,7 @@
 import { Clock, MoreHorizontal, Play } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { ScButton, ScCard } from "@storycapture/ui";
+import { ScBadge, ScButton, ScCard } from "@storycapture/ui";
 import { relativeTime } from "@/lib/utils";
 import type { Project } from "@/ipc/projects";
 import { projectAccent } from "./hash-accent";
@@ -112,12 +112,14 @@ function ThumbMock({ hue, hash }: { hue: number; hash: string }) {
   );
 }
 
-export function ProjectCard({ project, sessionCount, onOpen, onMore }: ProjectCardProps) {
+export function ProjectCard({ project, sessionCount, onOpen }: ProjectCardProps) {
   const { hue, hash } = projectAccent(project.id);
   const subtitle =
     sessionCount && sessionCount > 0
       ? `${sessionCount} session${sessionCount === 1 ? "" : "s"}`
       : "No sessions yet";
+  // Scene/duration metadata placeholder — no scene model yet.
+  const metaLine = "— scenes · —:—";
 
   return (
     <ScCard
@@ -170,9 +172,15 @@ export function ProjectCard({ project, sessionCount, onOpen, onMore }: ProjectCa
             {project.name}
           </div>
           <div style={{ fontSize: 11.5, color: "var(--sc-text-4)", marginTop: 2 }}>
+            {metaLine}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 1 }}>
             {subtitle}
           </div>
         </div>
+        <ScBadge tone="muted" dot>
+          Draft
+        </ScBadge>
       </div>
       <div
         style={{
@@ -205,11 +213,10 @@ export function ProjectCard({ project, sessionCount, onOpen, onMore }: ProjectCa
           size="sm"
           variant="ghost"
           icon={<MoreHorizontal size={14} aria-hidden="true" />}
-          onClick={(e) => {
-            e.stopPropagation();
-            onMore?.(project.id);
-          }}
-          aria-label={`More actions for ${project.name}`}
+          disabled
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`More actions for ${project.name} (coming soon)`}
+          title="More actions coming soon"
         />
       </div>
     </ScCard>

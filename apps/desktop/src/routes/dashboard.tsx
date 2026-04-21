@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useHotkeys } from "react-hotkeys-hook";
 import { AlertTriangle, File, FolderOpen, Plus, Search } from "lucide-react";
 
-import { ScButton, ScCard, ScInput } from "@storycapture/ui";
+import { ScButton, ScCard, ScInput, ScSegmented } from "@storycapture/ui";
 import { useProjects, type Project } from "@/ipc/projects";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { useDashboardStore } from "@/state/projects";
@@ -198,6 +198,18 @@ export default function DashboardRoute() {
           aria-label="Search stories"
           style={{ width: 240 }}
         />
+        <ScSegmented
+          size="sm"
+          value="all"
+          disabled
+          aria-label="Filter by status (coming soon)"
+          options={[
+            { value: "all", label: "All" },
+            { value: "ready", label: "Ready" },
+            { value: "rendering", label: "Rendering" },
+            { value: "draft", label: "Drafts" },
+          ]}
+        />
         <ScButton
           variant="primary"
           icon={<Plus size={13} aria-hidden="true" />}
@@ -256,11 +268,58 @@ export default function DashboardRoute() {
         )}
       </PageContentTransition>
 
+      {!isEmpty && !isLoading && !error && <RecentRenderRail />}
+
       <NewProjectDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onCreated={openProject}
       />
     </main>
+  );
+}
+
+function RecentRenderRail() {
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--sc-border)",
+        background: "var(--sc-chrome-2)",
+      }}
+    >
+      <div
+        style={{
+          padding: "12px 20px 8px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            color: "var(--sc-text-3)",
+          }}
+        >
+          Recent renders
+        </div>
+        <span style={{ flex: 1 }} />
+        <ScButton size="sm" variant="ghost" disabled title="Render history coming soon">
+          View all
+        </ScButton>
+      </div>
+      <div
+        style={{
+          padding: "0 20px 16px",
+          fontSize: 12,
+          color: "var(--sc-text-4)",
+        }}
+      >
+        No recent renders yet.
+      </div>
+    </div>
   );
 }
