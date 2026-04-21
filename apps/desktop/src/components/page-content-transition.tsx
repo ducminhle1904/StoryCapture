@@ -1,13 +1,15 @@
-import type { PropsWithChildren } from "react";
+import type { CSSProperties, PropsWithChildren } from "react";
 import { motion, useReducedMotion } from "motion/react";
 
 interface PageContentTransitionProps extends PropsWithChildren {
   className?: string;
+  style?: CSSProperties;
 }
 
 export function PageContentTransition({
   children,
   className,
+  style,
 }: PageContentTransitionProps) {
   const reduceMotion = useReducedMotion();
 
@@ -20,6 +22,7 @@ export function PageContentTransition({
         ease: [0.22, 1, 0.36, 1],
       }}
       className={className}
+      style={style}
     >
       {children}
     </motion.div>
