@@ -34,6 +34,7 @@ import {
 
 import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 import { PageContentTransition } from "@/components/page-content-transition";
+import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
 import { useEditorStore } from "./state/store";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { Timeline } from "./timeline/timeline";
@@ -42,6 +43,7 @@ import { InspectorPanel } from "./inspector/inspector-panel";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
 import { ExportModal } from "./export-modal/export-modal";
 import { QueueWidget } from "./render-queue/queue-widget";
+import { VoiceoverCompact } from "./voiceover-compact";
 
 export interface EditorShellProps {
   storyId: string;
@@ -310,6 +312,16 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
       <SoundDrawer />
       <ExportModal storyId={storyId} />
+      {/* Wave 1 relocation: mounted but not wired to story data yet. */}
+      <div className="hidden" aria-hidden="true">
+        <VoiceoverCompact
+          projectId={storyId}
+          story={null}
+          activeSceneIndex={0}
+          onSelectScene={() => {}}
+        />
+      </div>
+      <VoiceCatalogDialog projectId={storyId} />
     </div>
   );
 }
