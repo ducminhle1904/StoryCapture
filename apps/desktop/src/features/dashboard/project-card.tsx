@@ -1,76 +1,217 @@
-import { motion } from "motion/react";
+import { Clock, MoreHorizontal, Play } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import coolOceanSrc from "@/assets/gradients/cool-ocean.png";
-import elevenLabsVioletSrc from "@/assets/gradients/elevenlabs-violet.png";
-import forestEmeraldSrc from "@/assets/gradients/forest-emerald.png";
-import linearSlateSrc from "@/assets/gradients/linear-slate.png";
-import runwayDarkSrc from "@/assets/gradients/runway-dark.png";
-import warmSunsetSrc from "@/assets/gradients/warm-sunset.png";
+import { ScButton, ScCard } from "@storycapture/ui";
 import { relativeTime } from "@/lib/utils";
 import type { Project } from "@/ipc/projects";
+import { projectAccent } from "./hash-accent";
 
 interface ProjectCardProps {
   project: Project;
+  sessionCount?: number;
   onOpen: (id: string) => void;
+  onMore?: (id: string) => void;
 }
 
-const PLACEHOLDER_BACKGROUNDS = [
-  runwayDarkSrc,
-  linearSlateSrc,
-  warmSunsetSrc,
-  coolOceanSrc,
-  forestEmeraldSrc,
-  elevenLabsVioletSrc,
-] as const;
-
-function pickPlaceholderBackground(project: Project): string {
-  const seed = `${project.id}:${project.name}`;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-
-  return PLACEHOLDER_BACKGROUNDS[hash % PLACEHOLDER_BACKGROUNDS.length];
+function ThumbMock({ hue, hash }: { hue: number; hash: string }) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        aspectRatio: "16/10",
+        borderRadius: "var(--sc-r-md)",
+        background: `
+          radial-gradient(ellipse 60% 80% at 20% 10%, oklch(0.45 0.12 ${hue}) 0%, transparent 60%),
+          radial-gradient(ellipse 80% 60% at 80% 100%, oklch(0.32 0.10 ${(hue + 40) % 360}) 0%, transparent 60%),
+          linear-gradient(180deg, oklch(0.18 0.04 ${hue}), oklch(0.12 0.02 ${hue}))`,
+        overflow: "hidden",
+        border: "1px solid var(--sc-border-2)",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: "14% 10% 14% 10%",
+          background: "oklch(0.97 0.004 80)",
+          borderRadius: 3,
+          boxShadow: "0 8px 20px rgba(0,0,0,0.4)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            height: 10,
+            background: "oklch(0.93 0.004 80)",
+            display: "flex",
+            alignItems: "center",
+            gap: 3,
+            padding: "0 4px",
+            borderBottom: "0.5px solid #0001",
+          }}
+        >
+          <span style={{ width: 2, height: 2, borderRadius: 99, background: "#ff5f57" }} />
+          <span style={{ width: 2, height: 2, borderRadius: 99, background: "#febc2e" }} />
+          <span style={{ width: 2, height: 2, borderRadius: 99, background: "#28c840" }} />
+        </div>
+        <div
+          style={{
+            flex: 1,
+            display: "grid",
+            gridTemplateColumns: "30% 1fr",
+            gap: 3,
+            padding: 4,
+          }}
+        >
+          <div style={{ background: "oklch(0.88 0.004 80)", borderRadius: 2 }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <div
+              style={{
+                height: 6,
+                background: `oklch(0.78 0.14 ${hue})`,
+                borderRadius: 2,
+                width: "70%",
+              }}
+            />
+            <div style={{ height: 3, background: "oklch(0.85 0.004 80)", borderRadius: 2 }} />
+            <div
+              style={{
+                height: 3,
+                background: "oklch(0.85 0.004 80)",
+                borderRadius: 2,
+                width: "80%",
+              }}
+            />
+            <div
+              style={{
+                flex: 1,
+                background:
+                  "repeating-linear-gradient(135deg, oklch(0.88 0.004 80) 0 3px, oklch(0.94 0.004 80) 3px 6px)",
+                borderRadius: 2,
+              }}
+            />
+          </div>
+        </div>
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          top: 6,
+          right: 6,
+          fontFamily: "var(--sc-font-mono)",
+          fontSize: 9,
+          color: "rgba(255,255,255,0.6)",
+          background: "rgba(0,0,0,0.4)",
+          padding: "1px 4px",
+          borderRadius: 3,
+        }}
+      >
+        #{hash}
+      </div>
+    </div>
+  );
 }
 
-export function ProjectCard({ project, onOpen }: ProjectCardProps) {
-  const placeholderBackground = pickPlaceholderBackground(project);
+export function ProjectCard({ project, sessionCount, onOpen, onMore }: ProjectCardProps) {
+  const { hue, hash } = projectAccent(project.id);
+  const subtitle =
+    sessionCount && sessionCount > 0
+      ? `${sessionCount} session${sessionCount === 1 ? "" : "s"}`
+      : "No sessions yet";
 
   return (
-    <motion.button
-      whileHover={{ y: -2 }}
-      transition={{ duration: 0.15 }}
-      onClick={() => onOpen(project.id)}
+    <ScCard
+      role="button"
+      tabIndex={0}
       aria-label={`Open project ${project.name}`}
-      className="brand-panel group flex h-full w-full flex-col overflow-hidden rounded-[var(--radius-2xl)] text-left transition-colors hover:border-[var(--color-border-default)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+      onClick={() => onOpen(project.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(project.id);
+        }
+      }}
+      style={{ padding: 10, cursor: "default" }}
+      className="sc-project-card"
     >
       {project.thumbnail_path ? (
         <img
           src={convertFileSrc(project.thumbnail_path)}
           alt=""
-          className="aspect-[16/10] w-full object-cover"
+          style={{
+            aspectRatio: "16/10",
+            width: "100%",
+            objectFit: "cover",
+            borderRadius: "var(--sc-r-md)",
+            border: "1px solid var(--sc-border-2)",
+          }}
         />
       ) : (
-        <div
-          className="relative aspect-[16/10] w-full overflow-hidden"
-          style={{
-            backgroundImage: `linear-gradient(180deg, rgba(7, 9, 14, 0.06), rgba(7, 9, 14, 0.48)), url(${placeholderBackground})`,
-            backgroundPosition: "center",
-            backgroundSize: "cover",
-          }}
-        >
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(38,37,30,0.03),transparent_42%,rgba(38,37,30,0.06))]" />
-        </div>
+        <ThumbMock hue={hue} hash={hash} />
       )}
-      <div className="p-4">
-        <h3 className="truncate text-base font-medium text-[var(--color-fg-primary)]">
-          {project.name}
-        </h3>
-        <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-          {relativeTime(project.last_opened_at)}
-        </p>
+      <div
+        style={{
+          padding: "10px 4px 2px",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 8,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {project.name}
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--sc-text-4)", marginTop: 2 }}>
+            {subtitle}
+          </div>
+        </div>
       </div>
-    </motion.button>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 4px 0",
+          borderTop: "1px solid var(--sc-border)",
+          marginTop: 8,
+          fontSize: 11,
+          color: "var(--sc-text-4)",
+        }}
+      >
+        <Clock size={11} aria-hidden="true" />
+        {relativeTime(project.last_opened_at)}
+        <span style={{ flex: 1 }} />
+        <ScButton
+          size="sm"
+          variant="ghost"
+          icon={<Play size={11} aria-hidden="true" />}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(project.id);
+          }}
+          aria-label={`Play ${project.name}`}
+        >
+          Play
+        </ScButton>
+        <ScButton
+          size="sm"
+          variant="ghost"
+          icon={<MoreHorizontal size={14} aria-hidden="true" />}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMore?.(project.id);
+          }}
+          aria-label={`More actions for ${project.name}`}
+        />
+      </div>
+    </ScCard>
   );
 }
