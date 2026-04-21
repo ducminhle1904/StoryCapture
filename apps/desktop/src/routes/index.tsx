@@ -2,8 +2,6 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppLayout, FullscreenLayout } from "@/components/title-bar";
 import DashboardRoute from "./dashboard";
-import DesignSystemComponentsRoute from "./_design-system/components";
-import DesignSystemTokensRoute from "./_design-system/tokens";
 import EditorRoute from "./editor";
 import PostProductionRoute from "./post-production";
 import RecorderRoute from "./recorder";
@@ -17,9 +15,6 @@ export const router = createBrowserRouter([
     children: [
       { path: "/", element: <DashboardRoute /> },
       { path: "/settings", element: <SettingsRoute /> },
-      // Hidden design-system showcase (D-06f); reachable by URL only, not linked.
-      { path: "/_design-system/tokens", element: <DesignSystemTokensRoute /> },
-      { path: "/_design-system/components", element: <DesignSystemComponentsRoute /> },
     ],
   },
   {

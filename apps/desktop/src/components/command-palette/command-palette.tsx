@@ -3,9 +3,7 @@ import {
   Circle,
   Code,
   Download,
-  Grid,
   Home,
-  Layers,
   Plus,
   Scissors,
   Search,
@@ -40,8 +38,6 @@ const ITEMS: PaletteItem[] = [
   { id: "post", label: "Go to Post-Production", group: "Navigate", icon: <Scissors size={13} />, kbd: "⌘3", run: ({ navigate }) => navigate("/") },
   { id: "export", label: "Render & Export…", group: "Navigate", icon: <Download size={13} />, kbd: "⌘E", run: ({ navigate }) => navigate("/post-production") },
   { id: "settings", label: "Open Settings", group: "Navigate", icon: <SettingsIcon size={13} />, kbd: "⌘,", run: ({ navigate }) => navigate("/settings") },
-  { id: "tokens", label: "Open Design Tokens", group: "Navigate", icon: <Layers size={13} />, run: ({ navigate }) => navigate("/_design-system/tokens") },
-  { id: "components", label: "Open Component Samples", group: "Navigate", icon: <Grid size={13} />, run: ({ navigate }) => navigate("/_design-system/components") },
   { id: "new", label: "New Story…", group: "Actions", icon: <Plus size={13} />, kbd: "⌘N", run: ({ navigate, requestNewProject }) => { navigate("/"); requestNewProject(); } },
   { id: "record", label: "Start Recording", group: "Actions", icon: <Circle size={13} />, kbd: "⌘⇧R", run: ({ navigate }) => navigate("/recorder") },
 ];
