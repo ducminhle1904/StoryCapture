@@ -436,6 +436,45 @@ body {
 .sc-switch.on { background: var(--sc-accent-400); }
 .sc-switch.on::after { left: 14px; background: oklch(0.15 0.02 var(--sc-accent-h)); }
 
+/* Segmented control */
+.sc-segmented {
+  display: inline-flex;
+  background: var(--sc-surface-2);
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-r-md);
+  padding: 2px;
+  height: 28px;
+}
+.sc-segmented.sm { height: 24px; }
+.sc-segmented-item {
+  height: 24px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  color: var(--sc-text-3);
+  border: none;
+  border-radius: calc(var(--sc-r-md) - 1px);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: default;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.sc-segmented.sm .sc-segmented-item { height: 20px; padding: 0 8px; font-size: 11.5px; }
+.sc-segmented-item:hover:not([data-pressed]):not([disabled]) { color: var(--sc-text-2); }
+.sc-segmented-item[data-pressed] {
+  background: var(--sc-surface-4);
+  color: var(--sc-text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.06) inset;
+}
+.sc-segmented-item:focus-visible {
+  outline: 2px solid var(--sc-focus);
+  outline-offset: 1px;
+}
+.sc-segmented-item[disabled] { opacity: 0.5; cursor: not-allowed; }
+
 /* Card */
 .sc-card {
   background: var(--sc-surface);
