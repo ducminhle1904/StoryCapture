@@ -90,6 +90,7 @@ pub fn builder() -> Builder<Wry> {
             projects::create_project,
             projects::open_project,
             projects::remove_project,
+            projects::list_project_recordings,
             render::render_enqueue,
             render::render_cancel,
             render::render_list_active,
@@ -198,6 +199,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<projects::ProjectFolderInfoDto>()
         .typ::<projects::CreateProjectArgs>()
         .typ::<projects::ProjectIdArg>()
+        .typ::<projects::RecordingInfoDto>()
         // Plan 02-10 (render queue)
         .typ::<render::NewRenderJobDto>()
         .typ::<render::RenderJobDto>()
