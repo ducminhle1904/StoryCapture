@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getVersion, getTauriVersion } from "@tauri-apps/api/app";
 
+import AutoUpdaterSettings from "../auto-updater";
 import { SettingsPanel } from "../settings-row";
 
 // Live: app + Tauri versions read from the Tauri API.
@@ -47,6 +48,22 @@ export function AboutCategory() {
             DSL → polished demo videos. Built for teams who ship demos daily.
           </div>
         </div>
+      </div>
+
+      <div style={{ marginTop: 28 }}>
+        <h3
+          style={{
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--sc-text-4)",
+            marginBottom: 12,
+          }}
+        >
+          Updates
+        </h3>
+        <AutoUpdaterSettings />
       </div>
     </SettingsPanel>
   );

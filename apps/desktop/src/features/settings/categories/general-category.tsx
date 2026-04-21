@@ -1,6 +1,7 @@
 import { FolderOpen } from "lucide-react";
 import { ScInput, ScSegmented, ScSwitch } from "@storycapture/ui";
 
+import { BrowserRow } from "../BrowserRow";
 import {
   NotWiredCaption,
   SettingsCard,
@@ -53,6 +54,25 @@ export function GeneralCategory() {
         />
       </SettingsCard>
       <NotWiredCaption>Not yet wired — values shown are defaults.</NotWiredCaption>
+
+      <div style={{ marginTop: 28 }}>
+        <h3
+          style={{
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--sc-text-4)",
+            marginBottom: 6,
+          }}
+        >
+          Automation
+        </h3>
+        <div style={{ fontSize: 12, color: "var(--sc-text-3)", marginBottom: 12 }}>
+          Any Chromium-based browser works (Chrome, Brave, Edge, Arc, Chromium).
+        </div>
+        <BrowserRow />
+      </div>
     </SettingsPanel>
   );
 }

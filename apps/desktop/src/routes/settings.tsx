@@ -7,12 +7,10 @@ import {
   Lock,
   Monitor,
   Settings as SettingsIcon,
-  UserCircle,
 } from "lucide-react";
 import { ScBadge, ScButton } from "@storycapture/ui";
 
 import { PageContentTransition } from "@/components/page-content-transition";
-import { AccountsPage } from "@/features/settings/AccountsPage";
 import { GeneralCategory } from "@/features/settings/categories/general-category";
 import { ApiKeysCategory } from "@/features/settings/categories/api-keys-category";
 import { CaptureCategory } from "@/features/settings/categories/capture-category";
@@ -28,8 +26,7 @@ type SectionId =
   | "render"
   | "kbd"
   | "privacy"
-  | "about"
-  | "accounts";
+  | "about";
 
 interface Section {
   id: SectionId;
@@ -37,8 +34,6 @@ interface Section {
   icon: ReactNode;
 }
 
-// 7 mock categories + `accounts` which owns StoryCapture-specific surfaces
-// (Web account, Updates, Automation) that the mock doesn't model.
 const SECTIONS: Section[] = [
   { id: "general", label: "General", icon: <SettingsIcon size={12} /> },
   { id: "keys", label: "API keys", icon: <Key size={12} /> },
@@ -47,7 +42,6 @@ const SECTIONS: Section[] = [
   { id: "kbd", label: "Keyboard", icon: <Keyboard size={12} /> },
   { id: "privacy", label: "Privacy & telemetry", icon: <Lock size={12} /> },
   { id: "about", label: "About", icon: <Info size={12} /> },
-  { id: "accounts", label: "Accounts", icon: <UserCircle size={12} /> },
 ];
 
 export default function SettingsRoute() {
@@ -126,7 +120,6 @@ export default function SettingsRoute() {
           {section === "kbd" && <KeyboardCategory />}
           {section === "privacy" && <PrivacyCategory />}
           {section === "about" && <AboutCategory />}
-          {section === "accounts" && <AccountsPage />}
         </PageContentTransition>
       </div>
     </main>

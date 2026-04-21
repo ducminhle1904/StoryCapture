@@ -28,7 +28,7 @@ export function PrivacyCategory() {
         />
         <SettingsRow
           label="Auto-update"
-          hint="Managed under Accounts → Updates"
+          hint="Managed under About → Updates"
           control={<ScSwitch checked disabled />}
         />
         <SettingsRow

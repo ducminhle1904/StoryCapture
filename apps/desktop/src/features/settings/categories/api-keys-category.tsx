@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Lock, Info } from "lucide-react";
 
 import { ApiKeyRow } from "../ApiKeyRow";
+import { WebAccountPanel } from "../accounts-panel";
 import { SettingsPanel } from "../settings-row";
 
 interface ProviderState {
@@ -73,6 +74,13 @@ export function ApiKeysCategory() {
       title="API keys"
       desc="Keys are stored in the OS keychain (Keychain on macOS, Credential Manager on Windows). StoryCapture never sends them to its own servers."
     >
+      <div className="mb-5">
+        <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--sc-text-4)]">
+          Web account
+        </h3>
+        <WebAccountPanel />
+      </div>
+
       <div className="mb-4 flex items-center gap-1.5 text-xs text-[var(--sc-text-3)]">
         <Lock size={11} />
         Stored in OS keychain
