@@ -327,7 +327,7 @@ Plans:
 - [ ] 14-01-PLAN.md — Wave 1 Foundation: retire tokens.css + swap fonts to Inter/JetBrains Mono variable + 9 Sc* primitives + hidden /_design-system showcase
 - [ ] 14-02-PLAN.md — Wave 2 Chrome: tauri.conf decorations:false + platform boot probe + ScTitleBar/ScSideNav/ScShell port of chrome.jsx + Windows resize QA
 - [ ] 14-03-PLAN.md — Wave 3 Screens: port Dashboard + Editor shell + Post-Production editor-shell + Settings routes (behavior preserved)
-- [ ] 14-04-PLAN.md — Wave 4 Overlays+Export: CommandPalette (cmdk+Base UI) + RecordingIndicator + Sonner CSS-var skin + export-modal restyle (Phase 13 wiring intact)
+- [x] 14-04-PLAN.md — Wave 4 Overlays+Export: CommandPalette (cmdk+Base UI) + RecordingIndicator + Sonner CSS-var skin + export-modal restyle (Phase 13 wiring intact)
 - [ ] 14-05-PLAN.md — Wave 5 Tweaks+Polish: tweaks-store via plugin-store + TweaksPanel (dev-only Cmd/Ctrl+Shift+.) + Settings Appearance + recorder cosmetic + vitest-axe WCAG AA under jsdom
 
 ---
