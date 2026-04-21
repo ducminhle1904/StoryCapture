@@ -24,7 +24,7 @@ Out of scope: new capabilities, new IPC commands, new Rust code (except Tauri wi
 - **D-04:** The `.sc-*` CSS classes (`.sc-btn`, `.sc-input`, `.sc-badge`, `.sc-switch`, `.sc-card`, `.sc-kbd`, `.sc-slider`) are wrapped as typed React components under `packages/ui/src/claude-design/` (e.g. `ScButton`, `ScInput`, `ScBadge`, `ScSwitch`, `ScCard`, `ScKbd`, `ScSlider`). Ported screens consume the React components; raw classNames are not used in ported JSX. Existing shadcn+Base UI components stay in place for features that have not been ported — no shadcn churn this phase. Committed stack (`shadcn/ui + Base UI`, not Radix) is unchanged.
 
 ### Window Chrome
-- **D-03:** Adopt Claude Design's custom titlebar. Flip `tauri.conf.json` → `decorations: false` on both macOS and Windows. Port `chrome.jsx` to React: drag region, macOS traffic-light cluster (red/yellow/green with hover + focus states), Windows caption buttons (min/max/close), `data-platform` attribute driven by `@tauri-apps/plugin-os` at boot. Side-nav + toolbar shell that every screen composes inside lives in this same component. Wire window-control handlers via `@tauri-apps/api/window`.
+- **D-03 (DROPPED 2026-04-21):** ~~Adopt Claude Design's custom titlebar. Flip `tauri.conf.json` → `decorations: false`...~~ **Dropped permanently from Phase 14** after initial Wave 2 implementation was reverted. The app keeps native Tauri decorations. Routes re-skin inside the existing `AppLayout` / `title-bar.tsx` / `sidebar.tsx` shell using the new `sc-*` tokens. Custom chrome may be revisited in a future phase but is out of scope for this port.
 
 ### Screen Scope (routes ported this phase)
 - **D-05a:** `apps/desktop/src/routes/dashboard.tsx` ← `project/screens/dashboard.jsx`
@@ -34,7 +34,7 @@ Out of scope: new capabilities, new IPC commands, new Rust code (except Tauri wi
 - **D-05e:** `apps/desktop/src/routes/recorder.tsx` and `apps/desktop/src/routes/index.tsx` — **not explicitly mocked** by Claude Design. They inherit the new chrome + primitives + tokens but retain their current layout. Cosmetic consistency pass only; no screen redesign.
 
 ### Overlays (shipped this phase)
-- **D-06a:** `chrome.jsx` — titlebar + side-nav + toolbar shell. Wraps every route.
+- **D-06a (DROPPED 2026-04-21):** ~~`chrome.jsx` — titlebar + side-nav + toolbar shell.~~ **Dropped with D-03.** Existing `AppLayout` + `title-bar.tsx` + `sidebar.tsx` shell is retained; routes re-skin their contents but the chrome stays as-is (visual token swap only, no structural port).
 - **D-06b:** `CommandPalette` (Cmd/Ctrl-K) — ported into `apps/desktop/src/components/` (or appropriate feature location), wired to the existing route surface.
 - **D-06c:** `ToastStack` — replace any existing toast infra (likely `sonner`) with Claude Design's `ToastStack`, OR keep `sonner` skinned to look like Claude Design's — planner's discretion based on what `sonner` exposes. Ship a single toast system.
 - **D-06d:** `RecordingIndicator` — floating badge shown during active recording. Wires to existing recorder state.
@@ -52,11 +52,11 @@ Out of scope: new capabilities, new IPC commands, new Rust code (except Tauri wi
 
 ### Rollout Strategy
 - **D-10:** **Big-bang per wave.** Each wave ships one self-contained layer of the port:
-  - Wave 1: Token replacement + font stack migration + `sc-*` React primitives in `packages/ui/src/claude-design/` (foundation; no routes change visually yet, primitives just available).
-  - Wave 2: Window chrome (`decorations: false`, titlebar, platform plumbing) + side-nav shell.
-  - Wave 3: Routes — Dashboard → Editor → Post-production → Settings (parallel plans, each deletes old route when the new one lands).
-  - Wave 4: Overlays (CommandPalette, ToastStack, RecordingIndicator) + Export restyle.
-  - Wave 5: TweaksPanel (dev) + `/_design-system` showcase + Settings → Appearance user-facing theme toggle.
+  - Wave 1: Token replacement + font stack migration + `sc-*` React primitives in `packages/ui/src/claude-design/` (foundation; no routes change visually yet, primitives just available). ✅ shipped.
+  - ~~Wave 2: Window chrome.~~ **DROPPED 2026-04-21** with D-03/D-06a. The phase now has 4 waves, not 5.
+  - Wave 3 (renumbered Wave 2): Routes — Dashboard → Editor → Post-production → Settings. Re-skin inside existing `AppLayout` / `title-bar.tsx` / `sidebar.tsx` shell; do NOT touch chrome structure.
+  - Wave 4 (renumbered Wave 3): Overlays (CommandPalette, ToastStack, RecordingIndicator) + Export restyle. `RecordingIndicator` mounts via existing `App.tsx` / `AppLayout`, not ScShell.
+  - Wave 5 (renumbered Wave 4): TweaksPanel (dev) + `/_design-system` showcase + Settings → Appearance user-facing theme toggle. Existing `sidebar.tsx` theme toggle stays until Settings → Appearance replaces it; no "transient ScSideNav toggle" needed since the real sidebar already has one.
   - No feature flag; no long-lived side-by-side old/new. Each wave must ship a working app. Old route files are deleted in the same commit that introduces the new one.
 
 ### Claude's Discretion
@@ -173,5 +173,12 @@ Out of scope: new capabilities, new IPC commands, new Rust code (except Tauri wi
 
 ---
 
+## Amendment log
+
+- **2026-04-21 — D-03 + D-06a dropped.** Custom Tauri window chrome port removed from Phase 14 scope after Wave 2 initial implementation (`decdf5c`, `bd4e784`) was reverted. The native Tauri decorations + existing `AppLayout` / `title-bar.tsx` / `sidebar.tsx` stay in place. Remaining waves re-skin their contents only. Phase drops from 5 waves to 4.
+
+---
+
 *Phase: 14-port-claude-design-into-apps-desktop*
 *Context gathered: 2026-04-21*
+*Amended: 2026-04-21 (D-03/D-06a dropped)*
