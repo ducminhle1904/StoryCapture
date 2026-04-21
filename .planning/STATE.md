@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-21T04:52:20.602Z"
+last_updated: "2026-04-21T05:34:35.954Z"
 progress:
   total_phases: 13
   completed_phases: 6
-  total_plans: 97
-  completed_plans: 79
-  percent: 81
+  total_plans: 96
+  completed_plans: 80
+  percent: 83
 ---
 
 # State: StoryCapture
@@ -25,13 +25,13 @@ progress:
 ## Current Position
 
 Phase: 14 — Port Claude Design into apps/desktop — EXECUTING
-Plan: 2 of 5 (14-01 complete — Wave 1 foundation)
+Plan: 14-01 + 14-03 complete (4 waves total; Wave 2 D-03 dropped; next: Wave 4 overlays + export restyle)
 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
 - **Plan:** All 5 plans complete; verified 8/8 (ENC-12..ENC-19 PASS)
 - **Status:** Executing Phase --phase
-- **Progress:** [████████░░] 81%
+- **Progress:** [████████░░] 83%
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ See PROJECT.md → Key Decisions. Highlights:
 - [Phase 05]: Plan 05-03: Chromium parent/child resolution via ToolHelp snapshot walk restricted to chrome.exe/msedge.exe/chromium.exe process names (T-05-03-07)
 - [Phase 05]: Plan 05-03: PTS clock source set to ClockSource::Synthetic on WGC path (QPC plumbing deferred to encoder-coordinated follow-up)
 - [Phase 14-01]: Retired Cursor-warm tokens (D-01); kept packages/ui/src/tokens.css as TRANSITIONAL alias layer mapping 770 legacy --color-* onto --sc-* (Wave 5 cleanup). Swapped to @fontsource-variable/{inter,jetbrains-mono} (D-11). Shipped 9 Sc* primitives (ScButton/Input/Badge/Switch/Card/Kbd/Slider/Select/Segmented) over Base UI in packages/ui. Dark default (D-02). Hidden /_design-system/{tokens,components} routes (D-06f).
+- [Phase 14-03]: Wave 3 routes restyled inside legacy AppLayout shell (D-03/D-06a permanently dropped). Dashboard+Settings+Editor-shell+post-production editor-shell use sc-* tokens + ScButton/ScCard from @storycapture/ui. Every IPC/Zustand/CodeMirror/LSP/WebGPU/motion wire preserved per D-09.
 
 ### Open Todos
 
@@ -112,12 +113,13 @@ currently blocking post-v1 work. All six verification items above are operator-g
 | 260418-gkg | Recording engine quick fixes: drop Chromium sentinel, panic guard on frame-pump, export drop counts | 2026-04-18 | 1fe6fe8 | [260418-gkg-recording-engine-quick-fixes-drop-chromi](./quick/260418-gkg-recording-engine-quick-fixes-drop-chromi/) |
 | 260418-ios | Fix focus-steal during recording: re-focus main window after Playwright launch + start_recording | 2026-04-18 | 9fad310 | [260418-ios-fix-focus-steal-during-recording-so-play](./quick/260418-ios-fix-focus-steal-during-recording-so-play/) |
 | Phase 14 P01 | 25m | 3 tasks | 23 files |
+| Phase 14 P03 | 20m | 3 tasks | 4 files |
 
 ## Session Continuity
 
-- Last activity: 2026-04-21 — Executed Phase 14 Plan 01 (Wave 1 foundation): font swap, sc-* token wire-up with transitional alias, 9 Sc* primitives + tests, hidden /_design-system routes.
-- Last action: Plan 14-01 complete — 3 atomic commits (6bdc9f4 tokens+fonts, f6c1881 primitives+20 tests, 635141e showcase routes). `pnpm --filter @storycapture/desktop build` + `pnpm --filter @storycapture/ui test` both green. SUMMARY at `.planning/phases/14-port-claude-design-into-apps-desktop/14-01-SUMMARY.md`.
-- Next action: Wave 1 human QA on the /_design-system showcase routes, then `/gsd-execute-phase 14` Wave 2 (window chrome + side-nav shell).
+- Last activity: 2026-04-21 — Executed Phase 14 Plan 03 (Wave 3 routes re-skin): Dashboard, Editor shell, Post-Production editor-shell, Settings header re-toketed to `--sc-*` inside LEGACY AppLayout shell.
+- Last action: Plan 14-03 complete — 3 atomic commits (d04b76b dashboard+settings, 24f474a editor shell, 7817b53 editor-shell). Typecheck + build + 71 post-production vitest tests green. Legacy chrome (App.tsx, title-bar.tsx, sidebar.tsx) untouched. SUMMARY at `.planning/phases/14-port-claude-design-into-apps-desktop/14-03-SUMMARY.md`.
+- Next action: Wave 3 human QA pause, then `/gsd-execute-phase 14` Wave 4 (overlays: CommandPalette, ToastStack, RecordingIndicator + Export modal restyle).
 - Files touched this session: `apps/desktop/{package.json,src/styles.css,src/lib/theme.ts,src/lib/fonts.ts,src/routes/index.tsx,src/routes/_design-system/*}`, `packages/ui/{package.json,tsconfig.json,vitest.config.ts,src/index.ts,src/lib/cn.ts,src/claude-design/{index.ts,primitives/**},src/tokens.css}`.
 
 ---
