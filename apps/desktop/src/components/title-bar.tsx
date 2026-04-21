@@ -2,7 +2,6 @@ import { Outlet } from "react-router-dom";
 
 import { CommandPalette } from "@/components/command-palette";
 import { Sidebar } from "@/components/sidebar";
-import { StatusBar } from "@/components/status-bar";
 
 /**
  * Layout with left sidebar — for top-level routes (dashboard, settings).
@@ -16,7 +15,6 @@ export function AppLayout() {
           <Outlet />
         </div>
       </div>
-      <StatusBar />
       <CommandPalette />
     </div>
   );
@@ -34,7 +32,6 @@ export function FullscreenLayout() {
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         <Outlet />
       </div>
-      <StatusBar />
       <CommandPalette />
     </div>
   );
