@@ -96,6 +96,35 @@ function buildVoiceoverSteps(story: Story | null): VoiceoverStep[] {
 
 /* Voiceover panel */
 
+function VoiceoverHeader({
+  onCatalogOpen,
+  preset,
+}: {
+  onCatalogOpen?: () => void;
+  preset?: { name: string } | null;
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
+      <div className="flex items-center gap-2">
+        <Mic2 size={11} className="text-[var(--sc-text-4)]" />
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+          Voiceover
+        </span>
+      </div>
+      {onCatalogOpen ? (
+        <button
+          type="button"
+          onClick={onCatalogOpen}
+          className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-0.5 text-[10px] text-[var(--sc-text-2)] transition-colors hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)]"
+        >
+          <Sparkles size={10} />
+          {preset ? preset.name : "Choose voice"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function VoiceoverCompact({
   projectId,
   story,
@@ -208,12 +237,7 @@ export function VoiceoverCompact({
   if (steps.length === 0) {
     return (
       <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-        <div className="flex items-center gap-2 border-b border-[var(--sc-border)] px-3 py-1.5">
-          <Mic2 size={11} className="text-[var(--sc-text-4)]" />
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
-            Voiceover
-          </span>
-        </div>
+        <VoiceoverHeader />
         <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--sc-text-4)]">
           Parse a story to start attaching voiceover clips.
         </div>
@@ -224,22 +248,10 @@ export function VoiceoverCompact({
   if (sceneSteps.length === 0) {
     return (
       <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-        <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
-          <div className="flex items-center gap-2">
-            <Mic2 size={11} className="text-[var(--sc-text-4)]" />
-            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
-              Voiceover
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setCatalogOpen(true)}
-            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-0.5 text-[10px] text-[var(--sc-text-2)] transition-colors hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)]"
-          >
-            <Sparkles size={10} />
-            {selectedPreset ? selectedPreset.name : "Choose voice"}
-          </button>
-        </div>
+        <VoiceoverHeader
+          onCatalogOpen={() => setCatalogOpen(true)}
+          preset={selectedPreset}
+        />
         <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--sc-text-4)]">
           The selected scene has no voiceover steps yet.
         </div>
@@ -249,23 +261,10 @@ export function VoiceoverCompact({
 
   return (
     <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-      {/* Header — compact */}
-      <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
-        <div className="flex items-center gap-2">
-          <Mic2 size={11} className="text-[var(--sc-text-4)]" />
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
-            Voiceover
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setCatalogOpen(true)}
-          className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-0.5 text-[10px] text-[var(--sc-text-2)] transition-colors hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)]"
-        >
-          <Sparkles size={10} />
-          {selectedPreset ? selectedPreset.name : "Choose voice"}
-        </button>
-      </div>
+      <VoiceoverHeader
+        onCatalogOpen={() => setCatalogOpen(true)}
+        preset={selectedPreset}
+      />
 
       {story && story.scenes.length > 1 ? (
         <div className="flex gap-1 overflow-x-auto border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-1">
