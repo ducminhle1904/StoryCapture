@@ -12,6 +12,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { ScButton } from "@storycapture/ui";
 
 import previewBackdrop from "@/assets/gradients/warm-sunset.png";
 import { PageContentTransition } from "@/components/page-content-transition";
@@ -238,14 +239,14 @@ function VoiceoverCompact({
 
   if (steps.length === 0) {
     return (
-      <div className="flex h-full flex-col bg-[var(--color-surface-100)]">
-        <div className="flex items-center gap-2 border-b border-[var(--color-border-subtle)] px-3 py-1.5">
-          <Mic2 size={11} className="text-[var(--color-fg-muted)]" />
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+      <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+        <div className="flex items-center gap-2 border-b border-[var(--sc-border)] px-3 py-1.5">
+          <Mic2 size={11} className="text-[var(--sc-text-4)]" />
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
             Voiceover
           </span>
         </div>
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--color-fg-muted)]">
+        <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--sc-text-4)]">
           Parse a story to start attaching voiceover clips.
         </div>
       </div>
@@ -254,24 +255,24 @@ function VoiceoverCompact({
 
   if (sceneSteps.length === 0) {
     return (
-      <div className="flex h-full flex-col bg-[var(--color-surface-100)]">
-        <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-1.5">
+      <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+        <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
           <div className="flex items-center gap-2">
-            <Mic2 size={11} className="text-[var(--color-fg-muted)]" />
-            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+            <Mic2 size={11} className="text-[var(--sc-text-4)]" />
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
               Voiceover
             </span>
           </div>
           <button
             type="button"
             onClick={() => setCatalogOpen(true)}
-            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-2 py-0.5 text-[10px] text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
+            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-0.5 text-[10px] text-[var(--sc-text-2)] transition-colors hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)]"
           >
             <Sparkles size={10} />
             {selectedPreset ? selectedPreset.name : "Choose voice"}
           </button>
         </div>
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--color-fg-muted)]">
+        <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--sc-text-4)]">
           The selected scene has no voiceover steps yet.
         </div>
       </div>
@@ -279,19 +280,19 @@ function VoiceoverCompact({
   }
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-surface-100)]">
+    <div className="flex h-full flex-col bg-[var(--sc-surface)]">
       {/* Header — compact */}
-      <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-1.5">
+      <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
         <div className="flex items-center gap-2">
-          <Mic2 size={11} className="text-[var(--color-fg-muted)]" />
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+          <Mic2 size={11} className="text-[var(--sc-text-4)]" />
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
             Voiceover
           </span>
         </div>
         <button
           type="button"
           onClick={() => setCatalogOpen(true)}
-          className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-2 py-0.5 text-[10px] text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
+          className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-0.5 text-[10px] text-[var(--sc-text-2)] transition-colors hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)]"
         >
           <Sparkles size={10} />
           {selectedPreset ? selectedPreset.name : "Choose voice"}
@@ -299,7 +300,7 @@ function VoiceoverCompact({
       </div>
 
       {story && story.scenes.length > 1 ? (
-        <div className="flex gap-1 overflow-x-auto border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-2 py-1">
+        <div className="flex gap-1 overflow-x-auto border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-1">
           {story.scenes.map((scene, sceneIndex) => {
             const isSelected = sceneIndex === activeSceneIndex;
             const label = scene.name || `Scene ${sceneIndex + 1}`;
@@ -312,12 +313,12 @@ function VoiceoverCompact({
                 onClick={() => onSelectScene(sceneIndex)}
                 className={`inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-xs)] px-2 py-1 text-[10px] transition-colors ${
                   isSelected
-                    ? "bg-[var(--color-accent-primary)]/10 text-[var(--color-fg-primary)]"
-                    : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg-secondary)]"
+                    ? "bg-[var(--sc-accent-500)]/10 text-[var(--sc-text)]"
+                    : "text-[var(--sc-text-4)] hover:text-[var(--sc-text-2)]"
                 }`}
               >
                 <span className="truncate max-w-[140px]">{label}</span>
-                <span className="font-mono tabular-nums text-[9px] text-[var(--color-fg-muted)]">
+                <span className="font-mono tabular-nums text-[9px] text-[var(--sc-text-4)]">
                   {clipCount}/{voiceSteps.length}
                 </span>
               </button>
@@ -326,18 +327,18 @@ function VoiceoverCompact({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2.5">
+      <div className="flex items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-2.5">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-[var(--color-fg-primary)]">
+          <div className="truncate text-sm font-semibold text-[var(--sc-text)]">
             {sceneLabel}
           </div>
-          <div className="text-[11px] text-[var(--color-fg-muted)]">
+          <div className="text-[11px] text-[var(--sc-text-4)]">
             {sceneGeneratedCount === sceneSteps.length
               ? "All takes ready"
               : `${sceneGeneratedCount} of ${sceneSteps.length} ready`}
           </div>
         </div>
-        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-200)] px-2 py-1 text-[10px] text-[var(--color-fg-muted)]">
+        <div className="rounded-[var(--radius-sm)] bg-[var(--sc-surface-2)] px-2 py-1 text-[10px] text-[var(--sc-text-4)]">
           {sceneSteps.length} steps
         </div>
       </div>
@@ -345,9 +346,9 @@ function VoiceoverCompact({
       <div className="grid min-h-0 flex-1 md:grid-cols-[220px_minmax(0,1fr)]">
         <nav
           aria-label="Voiceover step navigation"
-          className="min-h-0 overflow-y-auto border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-200)]"
+          className="min-h-0 overflow-y-auto border-r border-[var(--sc-border)] bg-[var(--sc-surface-2)]"
         >
-          <div className="divide-y divide-[var(--color-border-subtle)]">
+          <div className="divide-y divide-[var(--sc-border)]">
             {sceneSteps.map((step) => {
               const isSelected = step.id === selectedStepId;
               const hasClip = Boolean(clipByStepId[step.id]);
@@ -357,10 +358,10 @@ function VoiceoverCompact({
                 scriptByStepId[step.id] ?? step.suggestedScript,
               );
 
-              let toneClass = "bg-[var(--color-fg-muted)]/35";
-              if (isRegenerating) toneClass = "bg-[var(--color-timeline-read)]";
-              else if (isDirty) toneClass = "bg-[var(--color-warning)]";
-              else if (hasClip) toneClass = "bg-[var(--color-success)]";
+              let toneClass = "bg-[var(--sc-text-4)]/35";
+              if (isRegenerating) toneClass = "bg-[var(--sc-accent-500)]";
+              else if (isDirty) toneClass = "bg-[var(--sc-warn)]";
+              else if (hasClip) toneClass = "bg-[var(--sc-success)]";
 
               return (
                 <button
@@ -373,21 +374,21 @@ function VoiceoverCompact({
                   }}
                   className={`flex w-full items-start gap-3 px-3 py-3 text-left transition-colors ${
                     isSelected
-                      ? "bg-[var(--color-accent-primary)]/7"
-                      : "bg-transparent hover:bg-[var(--color-surface-100)]/70"
+                      ? "bg-[var(--sc-accent-500)]/7"
+                      : "bg-transparent hover:bg-[var(--sc-surface)]/70"
                   }`}
                 >
-                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-[var(--color-surface-300)] font-mono text-[10px] text-[var(--color-fg-secondary)]">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius-xs)] bg-[var(--sc-surface-3)] font-mono text-[10px] text-[var(--sc-text-2)]">
                     {step.commandIndex + 1}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${toneClass}`} />
-                      <span className="truncate text-xs font-medium text-[var(--color-fg-primary)]">
+                      <span className="truncate text-xs font-medium text-[var(--sc-text)]">
                         {step.verb}
                       </span>
                     </div>
-                    <div className="mt-1 truncate text-[11px] leading-relaxed text-[var(--color-fg-muted)]">
+                    <div className="mt-1 truncate text-[11px] leading-relaxed text-[var(--sc-text-4)]">
                       {linePreview}
                     </div>
                   </div>
@@ -400,22 +401,22 @@ function VoiceoverCompact({
         <div className="min-h-0 overflow-y-auto p-3">
           {selectedStep ? (
             <div className="space-y-3">
-              <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border-subtle)] pb-3">
+              <div className="flex items-start justify-between gap-3 border-b border-[var(--sc-border)] pb-3">
                 <div className="min-w-0">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
                     Active Step
                   </div>
-                  <div className="mt-1 truncate text-sm font-semibold text-[var(--color-fg-primary)]">
+                  <div className="mt-1 truncate text-sm font-semibold text-[var(--sc-text)]">
                     Step {selectedStep.commandIndex + 1} · {selectedStep.verb}
                   </div>
-                  <div className="mt-1 text-xs text-[var(--color-fg-secondary)]">
+                  <div className="mt-1 text-xs text-[var(--sc-text-2)]">
                     {selectedStep.label}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => onJumpTo?.(selectedStep.spanStart)}
-                  className="shrink-0 rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2 py-1 text-[10px] text-[var(--color-fg-secondary)] transition-colors hover:text-[var(--color-fg-primary)]"
+                  className="shrink-0 rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 py-1 text-[10px] text-[var(--sc-text-2)] transition-colors hover:text-[var(--sc-text)]"
                 >
                   Jump to script
                 </button>
@@ -436,7 +437,7 @@ function VoiceoverCompact({
                   }}
                 />
               ) : (
-                <div className="border-t border-[var(--color-border-subtle)] pt-3 text-xs text-[var(--color-fg-muted)]">
+                <div className="border-t border-[var(--sc-border)] pt-3 text-xs text-[var(--sc-text-4)]">
                   No take yet.
                 </div>
               )}
@@ -468,14 +469,14 @@ function RailTabButton({
       whileTap={reduceMotion ? undefined : { scale: 0.985 }}
       className={`relative rounded-[var(--radius-xs)] px-2 py-1 text-[10px] font-medium transition-colors ${
         active
-          ? "text-[var(--color-fg-primary)]"
-          : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
+          ? "text-[var(--sc-text)]"
+          : "text-[var(--sc-text-4)] hover:text-[var(--sc-text)]"
       }`}
     >
       {active ? (
         <motion.span
           layoutId="editor-rail-tab-pill"
-          className="absolute inset-0 rounded-[var(--radius-xs)] bg-[var(--color-surface-100)] shadow-sm"
+          className="absolute inset-0 rounded-[var(--radius-xs)] bg-[var(--sc-surface)] shadow-sm"
           transition={
             reduceMotion
               ? { duration: 0.12 }
@@ -601,14 +602,14 @@ export default function EditorRoute() {
   if (loadError) {
     return (
       <main id="main-content" className="mx-auto max-w-2xl p-8" role="alert">
-        <div className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/8 p-4 text-sm text-[var(--color-danger)]">
+        <div className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[var(--sc-record)]/40 bg-[var(--sc-record)]/8 p-4 text-sm text-[var(--sc-record)]">
           <AlertTriangle size={16} aria-hidden="true" className="mt-0.5" />
           <div>
             <p className="font-medium">Failed to open project</p>
-            <p className="mt-1 text-[var(--color-fg-secondary)]">{loadError}</p>
+            <p className="mt-1 text-[var(--sc-text-2)]">{loadError}</p>
             <Link
               to="/"
-              className="mt-3 inline-flex items-center gap-1 text-[var(--color-accent-secondary)] hover:underline"
+              className="mt-3 inline-flex items-center gap-1 text-[var(--sc-accent-400)] hover:underline"
             >
               <ArrowLeft size={14} aria-hidden="true" /> Back to dashboard
             </Link>
@@ -636,42 +637,42 @@ export default function EditorRoute() {
   return (
     <main
       id="main-content"
-      className="relative flex h-full flex-col bg-[var(--color-bg-primary)]"
+      className="relative flex h-full flex-col bg-[var(--sc-bg)]"
     >
       {/* ─── Toolbar ─── */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
+      <header className="flex shrink-0 items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-1.5">
         <div className="flex items-center gap-3">
           {/* Back to dashboard */}
           <Link
             to="/"
             aria-label="Back to projects"
-            className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+            className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--sc-text-2)] transition-colors hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sc-focus-ring)]"
           >
             <ArrowLeft size={14} aria-hidden="true" />
           </Link>
 
           {/* Project name as breadcrumb */}
-          <div className="flex items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
+          <div className="flex items-center gap-1.5 text-xs text-[var(--sc-text-4)]">
             <Link
               to="/"
-              className="transition-colors hover:text-[var(--color-fg-primary)]"
+              className="transition-colors hover:text-[var(--sc-text)]"
             >
               Projects
             </Link>
             <span>/</span>
-            <span className="font-medium text-[var(--color-fg-primary)]">
+            <span className="font-medium text-[var(--sc-text)]">
               {folder?.name ?? "Loading..."}
             </span>
           </div>
 
           {/* Diagnostics badges */}
           {errorCount > 0 && (
-            <span className="rounded-[var(--radius-xs)] bg-[var(--color-danger)]/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-danger)]">
+            <span className="rounded-[var(--radius-xs)] bg-[var(--sc-record)]/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--sc-record)]">
               {errorCount} {errorCount === 1 ? "error" : "errors"}
             </span>
           )}
           {warningCount > 0 && (
-            <span className="rounded-[var(--radius-xs)] bg-[var(--color-warning)]/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-warning)]">
+            <span className="rounded-[var(--radius-xs)] bg-[var(--sc-warn)]/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--sc-warn)]">
               {warningCount}
             </span>
           )}
@@ -681,16 +682,15 @@ export default function EditorRoute() {
         <div className="flex items-center gap-2">
           {projectId && (
             <>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-2.5 py-1 text-[11px] text-[var(--color-fg-secondary)] transition-colors hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)] active:scale-[0.98]"
+              <ScButton
+                size="sm"
+                icon={<Terminal size={12} aria-hidden="true" />}
               >
-                <Terminal size={12} aria-hidden="true" />
                 Dry run
-              </button>
+              </ScButton>
               <Link
                 to={`/recorder/${projectId}`}
-                className="brand-button inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 text-[11px] font-medium text-[var(--color-fg-primary)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+                className="sc-btn primary sm"
               >
                 <Video size={12} aria-hidden="true" />
                 Record
@@ -703,11 +703,11 @@ export default function EditorRoute() {
       {/* ─── Main workspace ─── */}
       {!ready ? (
         <div
-          className="flex min-h-0 flex-1 items-center justify-center bg-[var(--color-bg-primary)]"
+          className="flex min-h-0 flex-1 items-center justify-center bg-[var(--sc-bg)]"
           role="status"
           aria-live="polite"
         >
-          <span className="text-xs text-[var(--color-fg-muted)]">
+          <span className="text-xs text-[var(--sc-text-4)]">
             Opening project…
           </span>
         </div>
@@ -726,18 +726,18 @@ export default function EditorRoute() {
                     onSelectScene={handleSelectScene}
                   />
                 </Panel>
-                <PanelResizeHandle className="group relative w-px bg-[var(--color-border-subtle)] transition-colors hover:bg-[var(--color-accent-primary)]/30 active:bg-[var(--color-accent-primary)]/50" />
+                <PanelResizeHandle className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
               </>
             )}
 
             {/* Script editor — primary workspace */}
             <Panel defaultSize={sceneCount > 0 ? 54 : 62} minSize={32} maxSize={68}>
-              <div className="flex h-full flex-col bg-[var(--color-surface-100)]">
-                <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-1.5">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+                <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
                     Script
                   </span>
-                  <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+                  <span className="font-mono text-[10px] tabular-nums text-[var(--sc-text-4)]">
                     {source.split("\n").length} lines
                   </span>
                 </div>
@@ -750,17 +750,17 @@ export default function EditorRoute() {
               </div>
             </Panel>
 
-            <PanelResizeHandle className="group relative w-px bg-[var(--color-border-subtle)] transition-colors hover:bg-[var(--color-accent-primary)]/30 active:bg-[var(--color-accent-primary)]/50" />
+            <PanelResizeHandle className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
 
             {/* Right side: contextual rail */}
             <Panel defaultSize={sceneCount > 0 ? 34 : 38} minSize={24} maxSize={44}>
-              <div className="flex h-full flex-col bg-[var(--color-surface-100)]">
+              <div className="flex h-full flex-col bg-[var(--sc-surface)]">
                 {projectId ? (
-                  <div className="flex items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5">
+                  <div className="flex items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-3 py-1.5">
                     <div
                       role="tablist"
                       aria-label="Editor side rail"
-                      className="flex gap-px rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] p-px"
+                      className="flex gap-px rounded-[var(--radius-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface-3)] p-px"
                     >
                       <RailTabButton
                         active={railTab === "preview"}
@@ -773,7 +773,7 @@ export default function EditorRoute() {
                         onClick={() => setRailTab("voiceover")}
                       />
                     </div>
-                    <span className="truncate pl-3 font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+                    <span className="truncate pl-3 font-mono text-[10px] tabular-nums text-[var(--sc-text-4)]">
                       {selectedSceneName ?? "No scene selected"}
                     </span>
                   </div>
@@ -845,7 +845,7 @@ export default function EditorRoute() {
         </Panel>
 
         {/* Bottom: Timeline */}
-        <PanelResizeHandle className="group relative h-px bg-[var(--color-border-subtle)] transition-colors hover:bg-[var(--color-accent-primary)]/30 active:bg-[var(--color-accent-primary)]/50" />
+        <PanelResizeHandle className="group relative h-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
 
         <Panel defaultSize={22} minSize={12} maxSize={40}>
           <TimelinePanel onJumpTo={handleNavigateToOffset} />
