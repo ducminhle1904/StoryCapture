@@ -7,6 +7,7 @@ import {
   File,
   FolderOpen,
   Plus,
+  Scissors,
   Video,
   Terminal,
 } from "lucide-react";
@@ -237,6 +238,26 @@ export default function EditorRoute() {
                 <Video size={12} aria-hidden="true" />
                 Record
               </Link>
+              {(folder?.session_count ?? 0) > 0 ? (
+                <Link
+                  to={`/post-production/${projectId}`}
+                  className="sc-btn sm"
+                  aria-label="Send to Post-Production"
+                >
+                  <Scissors size={12} aria-hidden="true" />
+                  Post-Production
+                </Link>
+              ) : (
+                <ScButton
+                  size="sm"
+                  disabled
+                  icon={<Scissors size={12} aria-hidden="true" />}
+                  aria-label="Send to Post-Production"
+                  title="Record a story first"
+                >
+                  Post-Production
+                </ScButton>
+              )}
             </>
           )}
         </div>
