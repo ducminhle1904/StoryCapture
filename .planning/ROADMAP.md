@@ -373,6 +373,16 @@ Plans:
 - [x] 15-04-PLAN.md — Wave 4: Editor toolbar "Send to Post-Production" button (disabled until session_count>0) + always-visible SceneListPanel with parse-error fallback chip (D-02, D-07, D-08) — complete 2026-04-21
 - [ ] 15-05-PLAN.md — Wave 5: Regression matrix + operator a11y spot-check + 15-SUMMARY + docs/ARCHITECTURE.md sync + STATE/ROADMAP updates (D-11, D-12, D-13)
 
+### Phase 16: Upgrade all dependencies to latest — bump every JS/TS package and Rust crate across monorepo per .planning/notes/deps-upgrade-plan.md
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 15
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 16 to break down)
+
 ---
 *Roadmap created: 2026-04-14*
 *Phase 7 added: 2026-04-17*
