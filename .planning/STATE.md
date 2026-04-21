@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-21T16:45:00.000Z"
+last_updated: "2026-04-21T17:00:00.000Z"
 progress:
   total_phases: 15
   completed_phases: 7
   total_plans: 106
-  completed_plans: 86
-  percent: 81
+  completed_plans: 87
+  percent: 82
 ---
 
 # State: StoryCapture
@@ -25,7 +25,7 @@ progress:
 ## Current Position
 
 Phase: 15 — Editor/Post-Production feature boundary cleanup — EXECUTING
-Plan: 15-01 complete (Wave 1 — VoiceoverCompact relocation). 4 waves remain (15-02 PreviewSurface, 15-03 Post-Prod landing, 15-04 Send-to-Post-Prod + scene-list gate, 15-05 cleanup). Pause for user QA before Wave 2.
+Plan: 15-02 complete (Wave 2 — shared PreviewSurface component, recording mode = empty-state only). 3 waves remain (15-03 Post-Prod landing, 15-04 Send-to-Post-Prod + scene-list gate, 15-05 cleanup). Pause for user QA before Wave 3.
 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
