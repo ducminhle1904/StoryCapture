@@ -166,7 +166,7 @@ Downstream agents MUST read these before planning or implementing.
 - **Automatic handoff from recording-complete → Post-Production** (D-02 rules this out in favor of an explicit button).
 - **Strict workflow gating** (D-03 rules this out — empty-state access is always allowed).
 - **Right-rail content for Editor after removing VoiceoverCompact** — may start empty; lint / target-reference / quickstart are candidate fillers, picked by planner or deferred.
-- **Cross-phase doc sync** — `docs/ARCHITECTURE.md` Editor/Post-Prod boundary update after Phase 15 lands.
+- **Scrubbable playback of the latest recording in `PreviewSurface` mode="recording"** — deferred because no latest-recording signal exists in IPC this phase (`ProjectFolderInfo` has only `session_count`, no recordings path) and CONTEXT.md "Out of scope" forbids new IPC. Phase 15 ships the empty-state only; a future phase adds an IPC like `list_project_recordings` and wires real playback.
 
 </deferred>
 
@@ -174,7 +174,7 @@ Downstream agents MUST read these before planning or implementing.
 
 ## Amendment log
 
-(none yet)
+- **2026-04-21** — Promoted **docs/ARCHITECTURE.md cross-phase sync** out of Deferred Ideas into Plan 05 (Wave 5) scope. Rationale: CLAUDE.md "MANDATORY — Keep Agent Docs In Sync After Impactful Changes" makes Editor/Post-Production boundary realignment non-deferrable — the boundary description in `docs/ARCHITECTURE.md` must land in the same phase that changes the boundary. Plan 05 Task 3 owns this sync.
 
 ---
 
