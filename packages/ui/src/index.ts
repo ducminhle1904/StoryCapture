@@ -1,4 +1,4 @@
 // @storycapture/ui
-// Shared shadcn/ui + Base UI components (DESIGN.md tokens via getdesign).
-// Scaffold stub — implementation lives in later plans.
-export {};
+// Shared design system — Claude Design sc-* primitives + cn helper.
+export { cn } from "./lib/cn";
+export * from "./claude-design";
