@@ -15,9 +15,8 @@ import { Link, useParams } from "react-router-dom";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 
-import previewBackdrop from "@/assets/gradients/warm-sunset.png";
 import { PageContentTransition } from "@/components/page-content-transition";
-import { PreviewPanel } from "@/features/editor/preview-panel";
+import { PreviewSurface } from "@/components/preview-surface";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
 import {
   StoryEditor,
@@ -172,15 +171,6 @@ export default function EditorRoute() {
     (d) => d.severity === "warning",
   ).length;
   const sceneCount = story?.scenes.length ?? 0;
-  const selectedScene = story?.scenes[activeSceneIndex] ?? null;
-  const selectedSceneName = selectedScene
-    ? selectedScene.name || `Scene ${activeSceneIndex + 1}`
-    : null;
-  const selectedSceneMeta = selectedScene
-    ? `${selectedScene.commands.length} steps`
-    : sceneCount > 0
-      ? `${sceneCount} scenes`
-      : null;
 
   return (
     <main
@@ -414,11 +404,9 @@ export default function EditorRoute() {
                 ) : null}
 
                 <div className="relative min-h-0 flex-1 overflow-hidden">
-                  <PreviewPanel
-                    thumbnailPath={previewBackdrop}
-                    sceneName={selectedSceneName}
-                    sceneMeta={selectedSceneMeta}
-                  />
+                  {projectId ? (
+                    <PreviewSurface mode="recording" projectId={projectId} />
+                  ) : null}
                 </div>
               </div>
             </Panel>

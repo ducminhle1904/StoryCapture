@@ -37,8 +37,8 @@ import { PageContentTransition } from "@/components/page-content-transition";
 import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
 import { useEditorStore } from "./state/store";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
+import { PreviewSurface } from "@/components/preview-surface";
 import { Timeline } from "./timeline/timeline";
-import { PreviewPlayer } from "./preview/preview-player";
 import { InspectorPanel } from "./inspector/inspector-panel";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
 import { ExportModal } from "./export-modal/export-modal";
@@ -215,10 +215,10 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-              <PreviewPlayer storyId={storyId} videoSrc={videoSrc} />
+              <PreviewSurface mode="composited" storyId={storyId} videoSrc={videoSrc} />
             </div>
 
-            {/* Shell transport — placeholder; PreviewPlayer owns the real transport. */}
+            {/* Shell transport — placeholder; PreviewSurface owns the real transport. */}
             <div
               style={{
                 display: "flex",
