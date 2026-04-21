@@ -171,8 +171,6 @@ export default function EditorRoute() {
   const warningCount = diagnostics.filter(
     (d) => d.severity === "warning",
   ).length;
-  const sceneCount = story?.scenes.length ?? 0;
-
   return (
     <main
       id="main-content"
@@ -280,21 +278,17 @@ export default function EditorRoute() {
         {/* Top: scene list + script + preview + voiceover */}
         <Panel defaultSize={75} minSize={45}>
           <PanelGroup direction="horizontal">
-            {/* Scene list — narrow left panel */}
-            {sceneCount > 0 && (
-              <>
-                <Panel defaultSize={12} minSize={8} maxSize={18}>
-                  <SceneListPanel
-                    activeSceneIndex={activeSceneIndex}
-                    onSelectScene={handleSelectScene}
-                  />
-                </Panel>
-                <PanelResizeHandle className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
-              </>
-            )}
+            {/* Scene list — narrow left panel, always visible (D-08). */}
+            <Panel defaultSize={12} minSize={8} maxSize={18}>
+              <SceneListPanel
+                activeSceneIndex={activeSceneIndex}
+                onSelectScene={handleSelectScene}
+              />
+            </Panel>
+            <PanelResizeHandle className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
 
             {/* Script editor — primary workspace */}
-            <Panel defaultSize={sceneCount > 0 ? 54 : 62} minSize={32} maxSize={68}>
+            <Panel defaultSize={54} minSize={32} maxSize={68}>
               <div className="flex h-full flex-col bg-[var(--sc-surface)]">
                 {/* File tabs strip — single tab reflects real single-buffer state. */}
                 <div
@@ -403,7 +397,7 @@ export default function EditorRoute() {
             <PanelResizeHandle className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
 
             {/* Right side: preview rail */}
-            <Panel defaultSize={sceneCount > 0 ? 34 : 38} minSize={24} maxSize={44}>
+            <Panel defaultSize={34} minSize={24} maxSize={44}>
               <div className="flex h-full flex-col bg-[var(--sc-surface)]">
                 {projectId ? (
                   <div className="flex items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-3 py-1.5">

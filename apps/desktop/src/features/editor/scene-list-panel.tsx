@@ -4,12 +4,15 @@
  * always-visible scene tree with active scene highlighting.
  */
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { Layers, ChevronRight } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
+import { ScBadge } from "@storycapture/ui";
 
 import { useEditorStore } from "@/state/editor";
-import type { Scene } from "@/ipc/parse";
+import type { Scene, Story } from "@/ipc/parse";
+
+const EMPTY_DIAGNOSTICS: never[] = [];
 
 const DEFAULT_STEP_MS = 1500;
 
@@ -29,17 +32,29 @@ export function SceneListPanel({
   activeSceneIndex?: number;
   onSelectScene?: (index: number) => void;
 }) {
-  const ast = useEditorStore((s) => s.lastParse?.ast ?? null);
+  const currentAst = useEditorStore((s) => s.lastParse?.ast ?? null);
+  const diagnostics =
+    useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
   const reduceMotion = useReducedMotion();
 
+  const hasParseError = diagnostics.some((d) => d.severity === "error");
+  const lastValidAstRef = useRef<Story | null>(null);
+  if (currentAst && !hasParseError) {
+    lastValidAstRef.current = currentAst;
+  }
+  // Show last-valid tree when current parse failed; falls back to null → empty state.
+  const renderAst =
+    currentAst && !hasParseError ? currentAst : lastValidAstRef.current;
+  const showStaleChip = hasParseError && lastValidAstRef.current !== null;
+
   const scenes = useMemo(() => {
-    if (!ast) return [];
-    return ast.scenes.map((scene, idx) => ({
+    if (!renderAst) return [];
+    return renderAst.scenes.map((scene, idx) => ({
       ...scene,
       index: idx,
       duration: estimateSceneDuration(scene),
     }));
-  }, [ast]);
+  }, [renderAst]);
 
   return (
     <div className="flex h-full flex-col border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
@@ -49,9 +64,14 @@ export function SceneListPanel({
         <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
           Scenes
         </span>
-        {scenes.length > 0 && (
+        {scenes.length > 0 && !showStaleChip && (
           <span className="ml-auto font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
             {scenes.length}
+          </span>
+        )}
+        {showStaleChip && (
+          <span className="ml-auto">
+            <ScBadge tone="warn">parse error — showing last known</ScBadge>
           </span>
         )}
       </div>
@@ -60,7 +80,7 @@ export function SceneListPanel({
       {scenes.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-3">
           <p className="text-center text-[11px] leading-relaxed text-[var(--color-fg-muted)]">
-            Add <code className="font-mono text-[var(--color-fg-secondary)]">scene &quot;...&quot;</code> blocks
+            No scenes yet. Add <code className="font-mono text-[var(--color-fg-secondary)]">scene &quot;...&quot;</code> blocks
             to your script.
           </p>
         </div>
