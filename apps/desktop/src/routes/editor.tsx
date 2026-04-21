@@ -6,10 +6,14 @@ import {
   ChevronRight,
   File,
   FolderOpen,
+  Maximize2,
+  Play,
   Plus,
   Scissors,
+  SkipBack,
+  SkipForward,
+  Trash2,
   Video,
-  Terminal,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -23,8 +27,7 @@ import {
   StoryEditor,
   type EditorJumpTarget,
 } from "@/features/editor/story-editor";
-import { TimelinePanel } from "@/features/editor/timeline-panel";
-import { parseStory, type Story } from "@/ipc/parse";
+import { parseStory } from "@/ipc/parse";
 import {
   fetchProjectFolder,
   type ProjectFolderInfo,
@@ -45,12 +48,92 @@ function formatRelative(ts: number): string {
   return `${d}d ago`;
 }
 
-function findSceneIndexForOffset(story: Story | null, offset: number): number {
-  if (!story || story.scenes.length === 0) return 0;
-  const idx = story.scenes.findIndex(
-    (scene) => offset >= scene.span.start && offset <= scene.span.end,
+type ConsoleRow = { t: string; k: "info" | "success" | "warn"; m: string };
+
+const CONSOLE_PLACEHOLDER_ROWS: ConsoleRow[] = [
+  { t: "00.00", k: "info", m: 'scene "landing" started' },
+  { t: "00.12", k: "info", m: "navigate → acme.test/shop (312 ms)" },
+  { t: "00.44", k: "info", m: "wait page.ready → ok (144 ms)" },
+  { t: "00.58", k: "success", m: "narrate queued · 7.2s · elevenlabs.rachel" },
+  { t: "01.80", k: "info", m: "zoom .hero-cta → 1.8× in 1.2s" },
+  { t: "03.02", k: "warn", m: "cursor path=arc · fallback to linear on headless" },
+  { t: "03.20", k: "info", m: "click .hero-cta → target matched (1)" },
+  { t: "03.55", k: "info", m: "transition fade 0.3s" },
+];
+
+function ConsolePane() {
+  return (
+    <div
+      style={{
+        height: 140,
+        borderTop: "1px solid var(--sc-border)",
+        background: "var(--sc-surface)",
+        display: "flex",
+        flexDirection: "column",
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 12px",
+          borderBottom: "1px solid var(--sc-border)",
+        }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--sc-text-2)" }}>
+          Console
+        </div>
+        <ScBadge tone="muted" dot>
+          {CONSOLE_PLACEHOLDER_ROWS.length} events
+        </ScBadge>
+        <ScBadge tone="record">1 warning</ScBadge>
+        <span style={{ flex: 1 }} />
+        <ScButton
+          size="sm"
+          variant="ghost"
+          icon={<Trash2 size={11} aria-hidden="true" />}
+          disabled
+          title="Clear console — coming soon"
+        >
+          Clear
+        </ScButton>
+      </div>
+      <div
+        className="sc-scroll"
+        style={{
+          flex: 1,
+          padding: "4px 12px",
+          fontFamily: "var(--sc-font-mono)",
+          fontSize: 11.5,
+          lineHeight: "18px",
+        }}
+      >
+        {CONSOLE_PLACEHOLDER_ROWS.map((r, i) => (
+          <div
+            key={i}
+            style={{ display: "grid", gridTemplateColumns: "48px 12px 1fr", gap: 8 }}
+          >
+            <span style={{ color: "var(--sc-text-4)" }}>{r.t}</span>
+            <span
+              style={{
+                color:
+                  r.k === "warn"
+                    ? "var(--sc-warn)"
+                    : r.k === "success"
+                      ? "var(--sc-success)"
+                      : "var(--sc-text-4)",
+              }}
+            >
+              {r.k === "warn" ? "!" : r.k === "success" ? "✓" : "·"}
+            </span>
+            <span style={{ color: "var(--sc-text-2)" }}>{r.m}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
-  return idx >= 0 ? idx : 0;
 }
 
 
@@ -156,14 +239,6 @@ export default function EditorRoute() {
     [queueEditorJump, story],
   );
 
-  const handleNavigateToOffset = useCallback(
-    (offset: number) => {
-      setActiveSceneIndex(findSceneIndexForOffset(story, offset));
-      queueEditorJump(offset);
-    },
-    [queueEditorJump, story],
-  );
-
   if (loadError) {
     return (
       <main id="main-content" className="mx-auto max-w-2xl p-8" role="alert">
@@ -242,10 +317,31 @@ export default function EditorRoute() {
               <div style={{ width: 1, height: 18, background: "var(--sc-border)", margin: "0 4px" }} />
               <ScButton
                 size="sm"
-                icon={<Terminal size={12} aria-hidden="true" />}
+                variant="ghost"
+                icon={<SkipBack size={11} aria-hidden="true" />}
+                disabled
+                aria-label="Previous scene (coming soon)"
+                title="Previous scene — coming soon"
+              />
+              <ScButton
+                size="sm"
+                variant="primary"
+                icon={<Play size={11} aria-hidden="true" />}
+                disabled
+                aria-label="Run dry-run (coming soon)"
+                title="Dry-run playback — coming soon"
               >
-                Dry run
+                Run
               </ScButton>
+              <ScButton
+                size="sm"
+                variant="ghost"
+                icon={<SkipForward size={11} aria-hidden="true" />}
+                disabled
+                aria-label="Next scene (coming soon)"
+                title="Next scene — coming soon"
+              />
+              <div style={{ width: 1, height: 18, background: "var(--sc-border)", margin: "0 4px" }} />
               <Link
                 to={`/recorder/${projectId}`}
                 className="sc-btn primary sm"
@@ -291,10 +387,7 @@ export default function EditorRoute() {
         </div>
       ) : (
       <PageContentTransition className="min-h-0 flex-1">
-        <PanelGroup direction="vertical" className="min-h-0 flex-1">
-        {/* Top: scene list + script + preview + voiceover */}
-        <Panel defaultSize={75} minSize={45}>
-          <PanelGroup direction="horizontal">
+          <PanelGroup direction="horizontal" className="min-h-0 flex-1">
             {/* Scene list — narrow left panel, always visible (D-08). */}
             <Panel defaultSize={12} minSize={8} maxSize={18}>
               <SceneListPanel
@@ -385,29 +478,7 @@ export default function EditorRoute() {
                   />
                 </div>
 
-                {/* Console strip — collapsed placeholder. */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    height: 28,
-                    padding: "0 12px",
-                    borderTop: "1px solid var(--sc-border)",
-                    background: "var(--sc-surface-2)",
-                    flexShrink: 0,
-                    fontSize: 11,
-                    color: "var(--sc-text-4)",
-                    fontFamily: "var(--sc-font-mono)",
-                  }}
-                >
-                  <Terminal size={11} aria-hidden="true" />
-                  <span style={{ color: "var(--sc-text-3)", fontWeight: 500 }}>
-                    Console
-                  </span>
-                  <span>·</span>
-                  <span>Console output will appear here.</span>
-                </div>
+                <ConsolePane />
               </div>
             </Panel>
 
@@ -416,24 +487,43 @@ export default function EditorRoute() {
             {/* Right side: preview rail */}
             <Panel defaultSize={34} minSize={24} maxSize={44}>
               <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-                {projectId ? (
-                  <div className="flex items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-3 py-1.5">
-                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
-                      Preview
-                    </span>
-                    <ScSegmented
-                      size="sm"
-                      value="desktop"
-                      disabled
-                      aria-label="Viewport size (coming soon)"
-                      options={[
-                        { value: "mobile", label: "Mobile" },
-                        { value: "tablet", label: "Tablet" },
-                        { value: "desktop", label: "Desktop" },
-                      ]}
-                    />
-                  </div>
-                ) : null}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    height: 32,
+                    padding: "0 12px",
+                    borderBottom: "1px solid var(--sc-border)",
+                    background: "var(--sc-chrome-2)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Live Preview</span>
+                  <ScBadge tone="muted" dot>
+                    {latest ? "ready" : "paused"}
+                  </ScBadge>
+                  <span style={{ flex: 1 }} />
+                  <ScSegmented
+                    size="sm"
+                    value="desktop"
+                    disabled
+                    aria-label="Viewport size (coming soon)"
+                    options={[
+                      { value: "mobile", label: "Mobile" },
+                      { value: "tablet", label: "Tablet" },
+                      { value: "desktop", label: "Desktop" },
+                    ]}
+                  />
+                  <ScButton
+                    size="sm"
+                    variant="ghost"
+                    icon={<Maximize2 size={12} aria-hidden="true" />}
+                    disabled
+                    aria-label="Maximize preview (coming soon)"
+                    title="Maximize — coming soon"
+                  />
+                </div>
 
                 <div className="relative min-h-0 flex-1 overflow-hidden">
                   {projectId ? (
@@ -473,15 +563,6 @@ export default function EditorRoute() {
               </div>
             </Panel>
           </PanelGroup>
-        </Panel>
-
-        {/* Bottom: Timeline */}
-        <PanelResizeHandle className="group relative h-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
-
-        <Panel defaultSize={22} minSize={12} maxSize={40}>
-          <TimelinePanel onJumpTo={handleNavigateToOffset} />
-        </Panel>
-        </PanelGroup>
       </PageContentTransition>
       )}
 

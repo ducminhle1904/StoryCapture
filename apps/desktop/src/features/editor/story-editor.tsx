@@ -94,14 +94,13 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
 
   return (
     <div
-      className="h-full w-full overflow-hidden bg-transparent [&_.cm-editor]:h-full [&_.cm-editor]:bg-transparent [&_.cm-gutters]:border-r-0 [&_.cm-gutters]:bg-transparent [&_.cm-scroller]:font-mono [&_.cm-activeLine]:bg-[var(--color-surface-100)] [&_.cm-activeLineGutter]:bg-[var(--color-surface-100)] [&_.cm-cursor]:border-l-[var(--color-accent-primary)] [&_.cm-content]:py-5 [&_.cm-line]:px-2 [&_.cm-selectionBackground]:bg-[rgba(255,107,115,0.22)]"
+      className="h-full w-full overflow-hidden bg-transparent [&_.cm-editor]:h-full [&_.cm-editor]:bg-transparent [&_.cm-gutters]:border-r-0 [&_.cm-gutters]:bg-transparent [&_.cm-scroller]:font-mono [&_.cm-activeLine]:bg-[color-mix(in_oklch,var(--sc-accent-400)_8%,transparent)] [&_.cm-activeLineGutter]:bg-[color-mix(in_oklch,var(--sc-accent-400)_8%,transparent)] [&_.cm-cursor]:border-l-[var(--sc-accent-400)] [&_.cm-content]:py-5 [&_.cm-line]:px-2 [&_.cm-selectionBackground]:bg-[color-mix(in_oklch,var(--sc-accent-400)_22%,transparent)]"
       onBlur={handleBlur}
     >
       <CodeMirror
         ref={cmRef}
         value={source}
         height="100%"
-        theme="dark"
         extensions={extensions}
         onChange={handleChange}
         basicSetup={{
