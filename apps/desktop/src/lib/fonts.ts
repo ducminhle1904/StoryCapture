@@ -1,18 +1,13 @@
 /**
- * Font loading strategy (decision recorded for SUMMARY.md):
+ * Font loading strategy.
  *
- * - **Geist Sans** is loaded via `@fontsource/geist-sans`. The Vercel-official
- *   `geist` npm package only works inside Next.js (it imports `next/font/local`),
- *   so we use Fontsource's framework-agnostic CSS distribution instead.
- * - **JetBrains Mono** is loaded via `@fontsource/jetbrains-mono` for the same
- *   reason — per-weight CSS files we can `@import` from `styles.css`, letting
- *   Vite tree-shake unused weights at build time.
- *
- * The actual `@font-face` registrations live in `styles.css`.
+ * Phase 14 (D-11) collapsed the stack to Inter + JetBrains Mono variable
+ * fonts via `@fontsource-variable/inter` and `@fontsource-variable/jetbrains-mono`.
+ * The `@import` registrations live in `styles.css`.
  */
 
 export const fontFamilies = {
-  sans: "Geist Sans, system-ui, sans-serif",
+  sans: "Inter, system-ui, sans-serif",
   mono: "JetBrains Mono, Menlo, monospace",
 } as const;
 

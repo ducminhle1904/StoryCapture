@@ -1,36 +1,30 @@
 @import "tailwindcss";
 
-/* Fonts via @fontsource (CSS-only, framework-agnostic). */
-/* Display/UI: Inter (gothic sans — substitute for CursorGothic) */
-@import "@fontsource/inter/400.css";
-@import "@fontsource/inter/500.css";
-@import "@fontsource/inter/600.css";
-@import "@fontsource/inter/700.css";
-/* Body/Editorial: Lora (warm serif — substitute for jjannon) */
-@import "@fontsource/lora/400.css";
-@import "@fontsource/lora/500.css";
-@import "@fontsource/lora/400-italic.css";
-/* Code/Technical: JetBrains Mono */
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
-/* Brand wordmark: Outfit (geometric modern) */
-@import "@fontsource-variable/outfit";
+/* Fonts — Inter + JetBrains Mono only (D-11). Variable fonts, offline. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 
-/* Shared design tokens — Cursor-inspired warm minimalism. */
+/* Canonical Claude Design tokens + primitive CSS (D-01, D-04). */
+@import "@storycapture/ui/claude-design/tokens.css";
+@import "@storycapture/ui/claude-design/app.css";
+
+/* TRANSITIONAL alias layer — maps legacy --color-* onto --sc-* for
+   existing routes/features not yet ported to sc-* directly. Deleted
+   in Phase 14 Wave 5 cleanup. */
 @import "@storycapture/ui/tokens.css";
 
 :root {
-  color-scheme: light;
-}
-
-:root[data-theme="dark"] {
   color-scheme: dark;
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 body {
-  background: var(--color-bg-primary);
-  color: var(--color-fg-primary);
-  font-family: var(--font-sans);
+  background: var(--sc-bg);
+  color: var(--sc-text);
+  font-family: var(--sc-font-ui);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
@@ -41,9 +35,9 @@ body {
   min-height: 100vh;
 }
 
-/* Serif voice for editorial/body passages */
+/* Legacy font utilities — collapsed onto Inter + JetBrains Mono (D-11). */
 .font-serif {
-  font-family: var(--font-serif);
+  font-family: var(--sc-font-ui);
 }
 
 .font-mono,
@@ -51,7 +45,7 @@ code,
 pre,
 kbd,
 samp {
-  font-family: var(--font-mono);
+  font-family: var(--sc-font-mono);
 }
 
 button,
@@ -61,49 +55,49 @@ select {
   font-family: inherit;
 }
 
-/* Display heading utilities — tight tracking scaled by size (Cursor pattern) */
+/* Display heading utilities — remapped to Inter. */
 .text-display-hero {
-  font-family: var(--font-display);
-  font-size: 4.5rem;    /* 72px */
-  font-weight: 400;
+  font-family: var(--sc-font-ui);
+  font-size: 4.5rem;
+  font-weight: 600;
   line-height: 1.10;
   letter-spacing: -2.16px;
 }
 
 .text-display-section {
-  font-family: var(--font-display);
-  font-size: 2.25rem;   /* 36px */
-  font-weight: 400;
+  font-family: var(--sc-font-ui);
+  font-size: 2.25rem;
+  font-weight: 600;
   line-height: 1.20;
   letter-spacing: -0.72px;
 }
 
 .text-display-sub {
-  font-family: var(--font-display);
-  font-size: 1.625rem;  /* 26px */
-  font-weight: 400;
+  font-family: var(--sc-font-ui);
+  font-size: 1.625rem;
+  font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.325px;
 }
 
 .text-display-title {
-  font-family: var(--font-display);
-  font-size: 1.375rem;  /* 22px */
-  font-weight: 400;
+  font-family: var(--sc-font-ui);
+  font-size: 1.375rem;
+  font-weight: 600;
   line-height: 1.30;
   letter-spacing: -0.11px;
 }
 
 .text-body-serif {
-  font-family: var(--font-serif);
-  font-size: 1.2rem;    /* 19.2px */
+  font-family: var(--sc-font-ui);
+  font-size: 1.2rem;
   font-weight: 500;
   line-height: 1.50;
 }
 
 .text-body-serif-sm {
-  font-family: var(--font-serif);
-  font-size: 1.08rem;   /* 17.28px */
+  font-family: var(--sc-font-ui);
+  font-size: 1.08rem;
   font-weight: 400;
   line-height: 1.35;
 }
@@ -113,8 +107,8 @@ select {
   position: absolute;
   left: -9999px;
   top: 0;
-  background: var(--color-accent-primary);
-  color: #ffffff;
+  background: var(--sc-accent-500);
+  color: var(--sc-text-inverse);
   padding: 0.5rem 1rem;
   z-index: 100;
   border-radius: 0 0 0.375rem 0;
@@ -123,35 +117,34 @@ select {
   left: 0;
 }
 
-/* Global focus-visible baseline — all custom interactive controls */
+/* Global focus-visible baseline. */
 :focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: 2px solid var(--sc-focus);
   outline-offset: 2px;
 }
 
-/* App shell — warm cream with subtle tonal variation */
+/* App shell */
 .app-shell {
   min-height: 100vh;
-  background: var(--color-bg-primary);
+  background: var(--sc-bg);
 }
 
-/* Elevated card panels — atmospheric depth with warm oklab border ring */
+/* Elevated card panels (legacy utility — retained for un-ported features). */
 .brand-panel {
-  background: var(--color-surface-100);
-  border: 1px solid var(--color-border-subtle);
-  box-shadow: var(--shadow-card);
-  border-radius: var(--radius-default);
+  background: var(--sc-surface);
+  border: 1px solid var(--sc-border);
+  box-shadow: var(--sc-sh-2);
+  border-radius: var(--sc-r-md);
 }
 
-/* Primary CTA button — warm surface with crimson hover shift */
 .brand-button {
-  background: var(--color-bg-elevated);
-  color: var(--color-fg-primary);
-  border-radius: var(--radius-default);
+  background: var(--sc-surface-3);
+  color: var(--sc-text);
+  border-radius: var(--sc-r-md);
   padding: 10px 14px;
   transition: color 150ms ease;
 }
 
 .brand-button:hover {
-  color: var(--color-hover);
+  color: var(--sc-accent-400);
 }

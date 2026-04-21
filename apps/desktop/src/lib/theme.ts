@@ -12,9 +12,9 @@ export type Theme = "dark" | "light";
 const STORAGE_KEY = "storycapture.theme";
 
 export function getTheme(): Theme {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark";
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  return stored === "dark" ? "dark" : "light";
+  return stored === "light" ? "light" : "dark";
 }
 
 export function setTheme(theme: Theme): void {
