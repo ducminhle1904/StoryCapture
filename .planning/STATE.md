@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-last_updated: "2026-04-20T10:30:00.000Z"
+status: planning
+last_updated: "2026-04-21T04:01:54.036Z"
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 6
   total_plans: 92
   completed_plans: 78
@@ -49,6 +49,7 @@ Plan: 5 of 5
 - Phase 11 added: Author-time element picker — relocate Pick from the recording toolbar to the Preview panel, route through the Phase 10 author-session, and make the Record path read-only against `.story` + `.story.targets.json` (self-healing deferred to explicit Promote-to-fallback). Depends on Phase 10 author-session primitives and editor read-only lock.
 - Phase 12 added (2026-04-19): Fix video output resolution lock — replace `scale='min(1920,iw)':-2,…` with letterbox chain (`scale … force_original_aspect_ratio=decrease:force_divisible_by=2 + pad + setsar + format=yuv420p`). Split capture dims from output dims in `EncodeConfig`. Add `OutputResolution` enum (720p/1080p/1440p/4K/MatchSource/Custom). Source < target stays at source size + letterbox (no upscale). Fix `bitrate_kbps`-as-floor tech-debt. Backend + IPC only (UI hard-codes default 1080p + letterbox + black pad).
 - Phase 13 added (2026-04-19): Video output customization knobs — expose recording-time (5 knobs) + export-time (expanded) UI; per-encoder quality preset mapping (VT bitrate-based, NVENC cq-based, libx264 CRF+tune=stillimage); persist via tauri-plugin-store with Phase 12 migration. Depends on Phase 12.
+- Phase 14 added (2026-04-21): Port Claude Design into apps/desktop — wire `packages/ui/src/claude-design/` (tokens.css + app.css + `.sc-*` primitives) into the desktop app and port JSX screens/overlays/primitives from `.planning/design/storycapture-claude-design/project/`. Open decision: reconcile `sc-*` tokens with existing Cursor-inspired `packages/ui/src/tokens.css` (merge into single system vs namespace alongside).
 
 ### Decisions
 
