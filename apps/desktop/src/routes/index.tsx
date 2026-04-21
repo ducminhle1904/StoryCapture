@@ -4,6 +4,7 @@ import { AppLayout, FullscreenLayout } from "@/components/title-bar";
 import DashboardRoute from "./dashboard";
 import EditorRoute from "./editor";
 import PostProductionRoute from "./post-production";
+import PostProductionLandingRoute from "./post-production-landing";
 import RecorderRoute from "./recorder";
 import SettingsRoute from "./settings";
 // Plan 06-02 — transparent region-selection overlay window.
@@ -14,6 +15,7 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { path: "/", element: <DashboardRoute /> },
+      { path: "/post-production", element: <PostProductionLandingRoute /> },
       { path: "/settings", element: <SettingsRoute /> },
     ],
   },
