@@ -6,6 +6,7 @@ import { AlertTriangle, File, FolderOpen, Plus, Search } from "lucide-react";
 import { ScButton, ScCard, ScInput, ScSegmented } from "@storycapture/ui";
 import { useProjects } from "@/ipc/projects";
 import { PageContentTransition } from "@/components/page-content-transition";
+import { EmptyState } from "@/components/empty-state/empty-state";
 import { useDashboardStore } from "@/state/projects";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { NewProjectDialog } from "@/features/dashboard/new-project-dialog";
@@ -13,64 +14,63 @@ import { relativeTime } from "@/lib/utils";
 
 import { filterAndSort, mostRecentTimestamp } from "@/features/dashboard/project-utils";
 
-function EmptyDashboard({ onNewStory }: { onNewStory: () => void }) {
+function FilmStripsIllustration() {
   return (
-    <div style={{ display: "grid", placeItems: "center", minHeight: 400, padding: 40 }}>
-      <div style={{ textAlign: "center", maxWidth: 460 }}>
-        <div style={{ position: "relative", width: 160, height: 110, margin: "0 auto 24px" }}>
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              style={{
-                position: "absolute",
-                inset: `${i * 8}px ${i * 14}px`,
-                background: `linear-gradient(135deg, oklch(${0.35 - i * 0.06} 0.08 78), oklch(${0.22 - i * 0.04} 0.04 78))`,
-                border: "1px solid var(--sc-border-2)",
-                borderRadius: 8,
-                transform: `rotate(${-4 + i * 3}deg)`,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 6,
-                  left: 6,
-                  right: 6,
-                  height: 3,
-                  background: "oklch(0.78 0.14 78 / 0.6)",
-                  borderRadius: 1,
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  top: 14,
-                  left: 6,
-                  right: 30,
-                  height: 2,
-                  background: "rgba(255,255,255,0.2)",
-                  borderRadius: 1,
-                }}
-              />
-            </div>
-          ))}
-        </div>
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
-          Write your first story
-        </div>
+    <div style={{ position: "relative", width: 160, height: 110 }}>
+      {[0, 1, 2].map((i) => (
         <div
+          key={i}
           style={{
-            fontSize: 13,
-            color: "var(--sc-text-3)",
-            lineHeight: 1.5,
-            marginBottom: 20,
+            position: "absolute",
+            inset: `${i * 8}px ${i * 14}px`,
+            background: `linear-gradient(135deg, oklch(${0.35 - i * 0.06} 0.08 78), oklch(${0.22 - i * 0.04} 0.04 78))`,
+            border: "1px solid var(--sc-border-2)",
+            borderRadius: 8,
+            transform: `rotate(${-4 + i * 3}deg)`,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
           }}
         >
+          <div
+            style={{
+              position: "absolute",
+              top: 6,
+              left: 6,
+              right: 6,
+              height: 3,
+              background: "oklch(0.78 0.14 78 / 0.6)",
+              borderRadius: 1,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: 14,
+              left: 6,
+              right: 30,
+              height: 2,
+              background: "rgba(255,255,255,0.2)",
+              borderRadius: 1,
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyDashboard({ onNewStory }: { onNewStory: () => void }) {
+  return (
+    <EmptyState
+      illustration={<FilmStripsIllustration />}
+      title="Write your first story"
+      body={
+        <>
           StoryCapture turns a 30-line DSL into a polished demo video. Start with a
           template — or paste a <code>.story</code> file from your repo.
-        </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+        </>
+      }
+      actions={
+        <>
           <ScButton
             variant="primary"
             icon={<Plus size={13} aria-hidden="true" />}
@@ -93,12 +93,14 @@ function EmptyDashboard({ onNewStory }: { onNewStory: () => void }) {
           >
             Browse templates
           </ScButton>
-        </div>
-        <div style={{ marginTop: 24, fontSize: 11, color: "var(--sc-text-4)" }}>
+        </>
+      }
+      footer={
+        <>
           Try <span className="sc-kbd">⌘K</span> for commands.
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }
 

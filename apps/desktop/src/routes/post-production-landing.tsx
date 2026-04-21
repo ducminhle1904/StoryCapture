@@ -6,6 +6,7 @@ import { AlertTriangle, Film, Search } from "lucide-react";
 import { ScButton, ScCard, ScInput } from "@storycapture/ui";
 import { useProjects } from "@/ipc/projects";
 import { PageContentTransition } from "@/components/page-content-transition";
+import { EmptyState } from "@/components/empty-state/empty-state";
 import { useDashboardStore } from "@/state/projects";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { filterAndSort, mostRecentTimestamp } from "@/features/dashboard/project-utils";
@@ -13,45 +14,21 @@ import { relativeTime } from "@/lib/utils";
 
 function EmptyPostProduction({ onGoToProjects }: { onGoToProjects: () => void }) {
   return (
-    <div style={{ display: "grid", placeItems: "center", minHeight: 400, padding: 40 }}>
-      <div style={{ textAlign: "center", maxWidth: 460 }}>
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            margin: "0 auto 20px",
-            borderRadius: 12,
-            background: "var(--sc-surface-3)",
-            border: "1px solid var(--sc-border-2)",
-            display: "grid",
-            placeItems: "center",
-          }}
-        >
-          <Film size={22} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
-        </div>
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
-          No recordings yet
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--sc-text-3)",
-            lineHeight: 1.5,
-            marginBottom: 20,
-          }}
-        >
-          Record a story to start post-production.
-        </div>
-        <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-          <ScButton variant="primary" onClick={onGoToProjects}>
-            Go to Projects
-          </ScButton>
-        </div>
-        <div style={{ marginTop: 24, fontSize: 11, color: "var(--sc-text-4)" }}>
+    <EmptyState
+      icon={Film}
+      title="No recordings yet"
+      body="Record a story to start post-production."
+      actions={
+        <ScButton variant="primary" onClick={onGoToProjects}>
+          Go to Projects
+        </ScButton>
+      }
+      footer={
+        <>
           Try <span className="sc-kbd">⌘K</span> for commands.
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }
 
