@@ -18,7 +18,7 @@
 import { useEffect } from "react";
 import { Music2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { ScButton } from "@storycapture/ui";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { useEditorStore } from "./state/store";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
@@ -56,37 +56,34 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   return (
     <div
-      className="flex h-full w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-fg)]"
+      className="flex h-full w-full flex-col bg-[var(--sc-bg)] text-[var(--sc-text)]"
       data-editor-shell="true"
       data-story-id={storyId}
     >
       {/* Top bar */}
-      <header className="flex items-center justify-between gap-4 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-4 py-2">
-        <div className="flex min-w-0 items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-fg-muted)]">
+      <header className="flex items-center justify-between gap-4 border-b border-[var(--sc-border)] bg-[var(--sc-chrome)] px-4 py-2">
+        <div className="flex min-w-0 items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.2em] text-[var(--sc-text-4)]">
           <span>post-production</span>
-          <span className="text-[var(--color-fg-primary)]">story {storyId}</span>
+          <span className="text-[var(--sc-text)]">story {storyId}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
+          <ScButton
             size="sm"
+            icon={<Music2 className="h-4 w-4" />}
             onClick={() => setSoundDrawerOpen(true)}
             aria-label="Open sound library"
-            className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 text-[var(--color-fg-secondary)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
           >
-            <Music2 className="mr-1 h-4 w-4" />
             Sounds
-          </Button>
+          </ScButton>
           <QueueWidget storyId={storyId} />
-          <Button
-            variant="default"
+          <ScButton
+            variant="primary"
             size="sm"
             onClick={() => setExportModalOpen(true)}
             aria-label="Open export dialog"
-            className="rounded-xl px-4"
           >
             Export
-          </Button>
+          </ScButton>
         </div>
       </header>
 
@@ -97,14 +94,14 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
           style={{ height: `${topHeightPct}%` }}
         >
           <section
-            className="min-w-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
+            className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
             style={{ width: `${previewWidthPct}%` }}
             aria-label="Preview"
           >
             <PreviewPlayer storyId={storyId} videoSrc={videoSrc} />
           </section>
           <section
-            className="min-w-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
+            className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
             style={{ width: `${inspectorWidthPct}%` }}
           >
             <InspectorPanel />
@@ -113,7 +110,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
         {/* Bottom region: timeline */}
         <section
-          className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] shadow-[var(--shadow-card)]"
+          className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
           style={{ height: `${timelineHeightPct}%` }}
           aria-label="Timeline area"
         >
