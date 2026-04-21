@@ -332,13 +332,17 @@ Plans:
 
 ### Phase 15: Editor/Post-Production feature boundary cleanup
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Realign Editor ("does it work?") and Post-Production ("does it feel right?") route concerns. Relocate `VoiceoverCompact` into Post-Production, introduce a shared `PreviewSurface` (mode="recording" | "composited"), add a `/post-production` landing route with empty-state, add an explicit "Send to Post-Production" toolbar button in Editor, and make the derived scene list always visible with a parse-error fallback. Preserve Phase 13 export wiring and Phase 14 sc-* chrome verbatim.
+**Requirements**: D-01..D-13 (Phase 15 decision IDs; no new REQ-IDs — all v1 requirements already mapped to earlier phases)
 **Depends on:** Phase 14
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 15 to break down)
+- [ ] 15-01-PLAN.md — Wave 1: Relocate VoiceoverCompact from routes/editor.tsx into features/post-production/voiceover-compact/; mount from EditorShell; collapse Editor right-rail to single preview (D-10, D-11)
+- [ ] 15-02-PLAN.md — Wave 2: Shared PreviewSurface component (mode prop); composited delegates to existing PreviewPlayer (WebGPU lifecycle intact); Editor rail consumes recording mode (D-04, D-11)
+- [ ] 15-03-PLAN.md — Wave 3: New /post-production landing route under AppLayout — reuses ProjectGrid + useProjects; empty-state CTA; sidebar already wired (D-03, D-06)
+- [ ] 15-04-PLAN.md — Wave 4: Editor toolbar "Send to Post-Production" button (disabled until session_count>0) + always-visible SceneListPanel with parse-error fallback chip (D-02, D-07, D-08)
+- [ ] 15-05-PLAN.md — Wave 5: Regression matrix + operator a11y spot-check + 15-SUMMARY + docs/ARCHITECTURE.md sync + STATE/ROADMAP updates (D-11, D-12, D-13)
 
 ---
 *Roadmap created: 2026-04-14*
@@ -349,3 +353,4 @@ Plans:
 *Phase 10 plans materialized: 2026-04-19*
 *Phase 12 added: 2026-04-19*
 *Phase 13 added: 2026-04-19*
+*Phase 15 plans materialized: 2026-04-21*
