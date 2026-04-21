@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-21T09:31:54.624Z"
+last_updated: "2026-04-21T16:45:00.000Z"
 progress:
-  total_phases: 14
+  total_phases: 15
   completed_phases: 7
-  total_plans: 101
-  completed_plans: 85
-  percent: 84
+  total_plans: 106
+  completed_plans: 86
+  percent: 81
 ---
 
 # State: StoryCapture
@@ -24,8 +24,8 @@ progress:
 
 ## Current Position
 
-Phase: 14 — Port Claude Design into apps/desktop — EXECUTING
-Plan: 14-01 + 14-03 + 14-04 complete (4 waves total; Wave 2 D-03 dropped; next: Wave 5 — TweaksPanel dev + Settings Appearance + cleanup)
+Phase: 15 — Editor/Post-Production feature boundary cleanup — EXECUTING
+Plan: 15-01 complete (Wave 1 — VoiceoverCompact relocation). 4 waves remain (15-02 PreviewSurface, 15-03 Post-Prod landing, 15-04 Send-to-Post-Prod + scene-list gate, 15-05 cleanup). Pause for user QA before Wave 2.
 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
@@ -87,6 +87,7 @@ See PROJECT.md → Key Decisions. Highlights:
 - [Phase 14-01]: Retired Cursor-warm tokens (D-01); kept packages/ui/src/tokens.css as TRANSITIONAL alias layer mapping 770 legacy --color-* onto --sc-* (Wave 5 cleanup). Swapped to @fontsource-variable/{inter,jetbrains-mono} (D-11). Shipped 9 Sc* primitives (ScButton/Input/Badge/Switch/Card/Kbd/Slider/Select/Segmented) over Base UI in packages/ui. Dark default (D-02). Hidden /_design-system/{tokens,components} routes (D-06f).
 - [Phase 14-03]: Wave 3 routes restyled inside legacy AppLayout shell (D-03/D-06a permanently dropped). Dashboard+Settings+Editor-shell+post-production editor-shell use sc-* tokens + ScButton/ScCard from @storycapture/ui. Every IPC/Zustand/CodeMirror/LSP/WebGPU/motion wire preserved per D-09.
 - [Phase 14-04]: Wave 4 overlays + Export restyle. CommandPalette (cmdk + Cmd/Ctrl+K) mounts inside AppLayout + FullscreenLayout (useNavigate needs RouterProvider descendant context; plan's "sibling to RouterProvider" language predates react-router-dom v7 data router). RecordingIndicator driven by useRecorderStore.status. Sonner skinned via --normal-bg/--normal-text/--normal-border/--border-radius/--toast-animation-duration pulling from --sc-surface / --sc-text / --sc-border-2 / --sc-r-lg. theme="dark" hard-coded until Wave 5 tweaks-store swap. Export-modal retokened to --sc-* + ScButton; ENC-12..ENC-19 Phase 13 wiring preserved verbatim (71/71 post-production tests green).
+- [Phase 15-01]: Wave 1 VoiceoverCompact relocation. Moved component + helpers verbatim (D-11) from routes/editor.tsx into features/post-production/voiceover-compact/{voiceover-compact.tsx,index.ts}. VoiceCatalogDialog now mounts only inside post-production EditorShell (D-10). Editor right rail collapsed to single preview rail (RailTabButton + motion cross-fade + railTab state removed). findSceneIndexForOffset stayed in editor.tsx (not voiceover-specific). VoiceoverCompact mounted in a dormant hidden slot in EditorShell pending full story-data wiring in a later wave. Net −115 LoC; typecheck + build green; 201/209 vitest pass (8 failures pre-existing, not regressions).
 
 ### Open Todos
 
@@ -119,9 +120,9 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-21 — Executed Phase 14 Plan 04 (Wave 4 overlays + export): CommandPalette (cmdk + Cmd/Ctrl+K) mounted in AppLayout/FullscreenLayout, RecordingIndicator driven by useRecorderStore, Sonner skinned via sc-* CSS vars, export-modal restyled with ScButton + sc-* tokens (Phase 13 ENC-12..ENC-19 wiring preserved).
-- Last action: Plan 14-03 complete — 3 atomic commits (d04b76b dashboard+settings, 24f474a editor shell, 7817b53 editor-shell). Typecheck + build + 71 post-production vitest tests green. Legacy chrome (App.tsx, title-bar.tsx, sidebar.tsx) untouched. SUMMARY at `.planning/phases/14-port-claude-design-into-apps-desktop/14-03-SUMMARY.md`.
-- Next action: Wave 3 human QA pause, then `/gsd-execute-phase 14` Wave 4 (overlays: CommandPalette, ToastStack, RecordingIndicator + Export modal restyle).
+- Last activity: 2026-04-21 — Executed Phase 15 Plan 01 (Wave 1 — Relocate VoiceoverCompact): extracted component + helpers verbatim into features/post-production/voiceover-compact/, mounted in post-production EditorShell, collapsed Editor right rail to preview-only.
+- Last action: Plan 15-01 complete — 3 atomic commits (55a44ab extract, 35e426c mount, 0da8b81 strip). Typecheck + build green; 201/209 vitest pass (8 pre-existing failures, not regressions). SUMMARY at `.planning/phases/15-editor-post-production-feature-boundary-cleanup/15-01-SUMMARY.md`.
+- Next action: Wave 1 human QA pause, then `/gsd-execute-phase 15` Wave 2 (PreviewSurface component with `mode` prop).
 - Files touched this session: `apps/desktop/{package.json,src/styles.css,src/lib/theme.ts,src/lib/fonts.ts,src/routes/index.tsx,src/routes/_design-system/*}`, `packages/ui/{package.json,tsconfig.json,vitest.config.ts,src/index.ts,src/lib/cn.ts,src/claude-design/{index.ts,primitives/**},src/tokens.css}`.
 
 ---

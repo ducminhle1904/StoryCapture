@@ -338,7 +338,7 @@ Plans:
 **Plans:** 5 plans
 
 Plans:
-- [ ] 15-01-PLAN.md — Wave 1: Relocate VoiceoverCompact from routes/editor.tsx into features/post-production/voiceover-compact/; mount from EditorShell; collapse Editor right-rail to single preview (D-10, D-11)
+- [x] 15-01-PLAN.md — Wave 1: Relocate VoiceoverCompact from routes/editor.tsx into features/post-production/voiceover-compact/; mount from EditorShell; collapse Editor right-rail to single preview (D-10, D-11) — complete 2026-04-21
 - [ ] 15-02-PLAN.md — Wave 2: Shared PreviewSurface component (mode prop); composited delegates to existing PreviewPlayer (WebGPU lifecycle intact); Editor rail consumes recording mode (D-04, D-11)
 - [ ] 15-03-PLAN.md — Wave 3: New /post-production landing route under AppLayout — reuses ProjectGrid + useProjects; empty-state CTA; sidebar already wired (D-03, D-06)
 - [ ] 15-04-PLAN.md — Wave 4: Editor toolbar "Send to Post-Production" button (disabled until session_count>0) + always-visible SceneListPanel with parse-error fallback chip (D-02, D-07, D-08)
