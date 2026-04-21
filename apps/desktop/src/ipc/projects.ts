@@ -31,6 +31,7 @@ export interface ProjectFolderInfo {
 const KEYS = {
   all: ["projects"] as const,
   detail: (id: string) => ["projects", id] as const,
+  folder: (id: string) => ["projects", id, "folder"] as const,
 };
 
 export function useProjects() {
@@ -70,4 +71,12 @@ export function useRemoveProject() {
 /** One-shot (non-hook) fetch for loaders + imperative flows. */
 export async function fetchProjectFolder(id: string): Promise<ProjectFolderInfo> {
   return invoke<ProjectFolderInfo>("open_project", { args: { id } });
+}
+
+export function useProjectFolder(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectId ? KEYS.folder(projectId) : ["projects", "__disabled__", "folder"],
+    queryFn: () => fetchProjectFolder(projectId as string),
+    enabled: !!projectId,
+  });
 }
