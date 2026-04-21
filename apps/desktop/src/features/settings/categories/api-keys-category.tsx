@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Lock, Info } from "lucide-react";
+import { Info } from "lucide-react";
 
 import { ApiKeyRow } from "../ApiKeyRow";
-import { WebAccountPanel } from "../accounts-panel";
 import { SettingsPanel } from "../settings-row";
 
 interface ProviderState {
@@ -12,10 +11,10 @@ interface ProviderState {
 }
 
 const PROVIDERS = [
-  { id: "anthropic", displayName: "Anthropic", group: "LLM" as const, sub: "DSL assist, lint suggestions" },
-  { id: "openai", displayName: "OpenAI", group: "LLM" as const, sub: "Narration transcripts, scene summaries" },
-  { id: "elevenlabs", displayName: "ElevenLabs", group: "TTS" as const, sub: "Voice synthesis for narrate() directives" },
-  { id: "openai_tts", displayName: "OpenAI TTS", group: "TTS" as const, sub: "Backup voice provider" },
+  { id: "openai", displayName: "OpenAI", sub: "Narration transcripts, scene summaries" },
+  { id: "anthropic", displayName: "Anthropic", sub: "DSL assist, lint suggestions" },
+  { id: "elevenlabs", displayName: "ElevenLabs", sub: "Voice synthesis for narrate() directives" },
+  { id: "openai_tts", displayName: "OpenAI TTS", sub: "Backup voice provider" },
 ] as const;
 
 // Wired: reuses the existing keychain-backed ApiKeyRow from AccountsPage.
@@ -66,64 +65,23 @@ export function ApiKeysCategory() {
     [],
   );
 
-  const llmProviders = PROVIDERS.filter((p) => p.group === "LLM");
-  const ttsProviders = PROVIDERS.filter((p) => p.group === "TTS");
-
   return (
     <SettingsPanel
       title="API keys"
       desc="Keys are stored in the OS keychain (Keychain on macOS, Credential Manager on Windows). StoryCapture never sends them to its own servers."
     >
-      <div className="mb-5">
-        <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--sc-text-4)]">
-          Web account
-        </h3>
-        <WebAccountPanel />
-      </div>
-
-      <div className="mb-4 flex items-center gap-1.5 text-xs text-[var(--sc-text-3)]">
-        <Lock size={11} />
-        Stored in OS keychain
-      </div>
-
-      <div className="space-y-6">
-        <div>
-          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--sc-text-4)]">
-            Language models
-          </h3>
-          <div className="space-y-2">
-            {llmProviders.map((p) => (
-              <ApiKeyRow
-                key={p.id}
-                providerId={p.id}
-                displayName={p.displayName}
-                present={providers[p.id]?.present ?? false}
-                testStatus={providers[p.id]?.testStatus}
-                onPresenceChange={(present) => handlePresenceChange(p.id, present)}
-                onTestStatusChange={(status) => handleTestStatusChange(p.id, status)}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--sc-text-4)]">
-            Voice services
-          </h3>
-          <div className="space-y-2">
-            {ttsProviders.map((p) => (
-              <ApiKeyRow
-                key={p.id}
-                providerId={p.id}
-                displayName={p.displayName}
-                present={providers[p.id]?.present ?? false}
-                testStatus={providers[p.id]?.testStatus}
-                onPresenceChange={(present) => handlePresenceChange(p.id, present)}
-                onTestStatusChange={(status) => handleTestStatusChange(p.id, status)}
-              />
-            ))}
-          </div>
-        </div>
+      <div className="space-y-2">
+        {PROVIDERS.map((p) => (
+          <ApiKeyRow
+            key={p.id}
+            providerId={p.id}
+            displayName={p.displayName}
+            present={providers[p.id]?.present ?? false}
+            testStatus={providers[p.id]?.testStatus}
+            onPresenceChange={(present) => handlePresenceChange(p.id, present)}
+            onTestStatusChange={(status) => handleTestStatusChange(p.id, status)}
+          />
+        ))}
       </div>
 
       <div
@@ -142,8 +100,9 @@ export function ApiKeysCategory() {
       >
         <Info size={14} style={{ color: "var(--sc-accent-400)", marginTop: 1 }} />
         <div>
-          Keys stay on this device. Team-wide BYOK sharing arrives with the web
-          companion workspace plan.
+          <b style={{ color: "var(--sc-accent-300)" }}>Team BYOK</b> &mdash; workspace
+          admins can share keys scoped by scene type. Keys stay on this device;
+          team-wide sharing arrives with the web companion workspace plan.
         </div>
       </div>
     </SettingsPanel>
