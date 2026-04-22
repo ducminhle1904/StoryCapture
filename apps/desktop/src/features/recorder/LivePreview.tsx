@@ -1,11 +1,17 @@
 /**
- * Phase 09-02 — <LivePreview /> canvas renderer.
+ * Phase 09-02 / 09-03 — <LivePreview /> canvas renderer + status machine.
  *
  * Subscribes to the `preview://frame` Tauri event, decodes each base64
  * JPEG into an ImageBitmap off-main-thread, and draws the latest one on
  * a `<canvas>` at requestAnimationFrame cadence. Backpressure is
  * naturally coalesced — a new frame arriving before rAF drew the last
- * simply replaces it.
+ * simply replaces it and increments a dev-visible drop counter.
+ *
+ * 09-03 hardening:
+ *  - 5-state status machine: attaching → streaming/recovering/unavailable.
+ *  - Exactly ONE retry with 500ms backoff on transient startPreviewStream
+ *    failures. UnavailableOnBackend is terminal (no retry).
+ *  - Saturation counter on the listener; periodic 30s warn-log.
  *
  * Preview failure MUST NOT disturb recording — the try/catch around
  * start and the silent-on-error unmount path are intentional isolation
@@ -26,7 +32,11 @@ interface LivePreviewProps {
   height?: number;
 }
 
-type Status = "attaching" | "streaming" | "unavailable";
+export type PreviewStatus =
+  | "attaching"
+  | "streaming"
+  | "recovering"
+  | "unavailable";
 
 function isUnavailableBackend(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
@@ -34,35 +44,29 @@ function isUnavailableBackend(err: unknown): boolean {
   return typeof kind === "string" && kind === "UnavailableOnBackend";
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+const SATURATION_LOG_INTERVAL_MS = 30_000;
+const RETRY_BACKOFF_MS = 500;
+
 export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pendingBitmap = useRef<ImageBitmap | null>(null);
   const rafRef = useRef<number | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
-  const [status, setStatus] = useState<Status>("attaching");
+  const dropCountRef = useRef(0);
+  const saturationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [status, setStatus] = useState<PreviewStatus>("attaching");
+  // Dev-visible drop count via data attribute. Mirrors ref so assertions can
+  // read from the DOM without racing React state updates on every frame.
+  const [dropTick, setDropTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
-      try {
-        await startPreviewStream();
-      } catch (err) {
-        if (isUnavailableBackend(err)) {
-          if (!cancelled) setStatus("unavailable");
-          return;
-        }
-        // Other errors: log and render the same neutral placeholder —
-        // preview is cosmetic, do not surface via toasts.
-        console.warn("startPreviewStream failed:", err);
-        if (!cancelled) setStatus("unavailable");
-        return;
-      }
-      if (cancelled) {
-        stopPreviewStream().catch(() => {});
-        return;
-      }
-
+    const attachListener = async (): Promise<boolean> => {
       const unlisten = await listen<PreviewFramePayload>(
         "preview://frame",
         async (ev) => {
@@ -73,37 +77,80 @@ export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
             const bmp = await createImageBitmap(blob);
             if (pendingBitmap.current) {
               pendingBitmap.current.close();
+              dropCountRef.current += 1;
+              setDropTick((t) => t + 1);
             }
             pendingBitmap.current = bmp;
           } catch (e) {
-            // Malformed payload or decode failure — drop the frame.
             console.debug("preview frame decode skipped:", e);
           }
         },
       );
       if (cancelled) {
         unlisten();
+        return false;
+      }
+      unlistenRef.current = unlisten;
+      return true;
+    };
+
+    const startWithRetry = async (retriesLeft: number): Promise<void> => {
+      try {
+        await startPreviewStream();
+      } catch (err) {
+        if (isUnavailableBackend(err)) {
+          if (!cancelled) setStatus("unavailable");
+          return;
+        }
+        if (retriesLeft > 0) {
+          if (!cancelled) setStatus("recovering");
+          await delay(RETRY_BACKOFF_MS);
+          if (cancelled) return;
+          return startWithRetry(retriesLeft - 1);
+        }
+        console.warn("startPreviewStream failed after retry:", err);
+        if (!cancelled) setStatus("unavailable");
+        return;
+      }
+
+      if (cancelled) {
         stopPreviewStream().catch(() => {});
         return;
       }
-      unlistenRef.current = unlisten;
+
+      const attached = await attachListener();
+      if (!attached) {
+        stopPreviewStream().catch(() => {});
+        return;
+      }
       setStatus("streaming");
 
-      const draw = () => {
-        const canvas = canvasRef.current;
-        const bmp = pendingBitmap.current;
-        if (canvas && bmp) {
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+      if (rafRef.current == null) {
+        const draw = () => {
+          const canvas = canvasRef.current;
+          const bmp = pendingBitmap.current;
+          if (canvas && bmp) {
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+            }
+            bmp.close();
+            pendingBitmap.current = null;
           }
-          bmp.close();
-          pendingBitmap.current = null;
-        }
+          rafRef.current = requestAnimationFrame(draw);
+        };
         rafRef.current = requestAnimationFrame(draw);
-      };
-      rafRef.current = requestAnimationFrame(draw);
-    })();
+      }
+    };
+
+    saturationTimerRef.current = setInterval(() => {
+      if (dropCountRef.current > 0) {
+        console.warn("[preview] frames dropped", dropCountRef.current);
+        dropCountRef.current = 0;
+      }
+    }, SATURATION_LOG_INTERVAL_MS);
+
+    void startWithRetry(1);
 
     return () => {
       cancelled = true;
@@ -119,6 +166,10 @@ export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
         pendingBitmap.current.close();
         pendingBitmap.current = null;
       }
+      if (saturationTimerRef.current) {
+        clearInterval(saturationTimerRef.current);
+        saturationTimerRef.current = null;
+      }
       stopPreviewStream().catch(() => {});
     };
   }, []);
@@ -129,7 +180,7 @@ export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
         data-testid="live-preview-unavailable"
         className="flex aspect-video w-full max-w-5xl items-center justify-center rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] text-xs text-[var(--color-fg-muted)]"
       >
-        Live preview unavailable on this capture target
+        Live preview unavailable on this backend
       </div>
     );
   }
@@ -138,6 +189,8 @@ export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
     <canvas
       ref={canvasRef}
       data-testid="live-preview-canvas"
+      data-status={status}
+      data-drop-count={dropTick === 0 ? dropCountRef.current : dropCountRef.current}
       width={width}
       height={height}
       className="aspect-video w-full max-w-5xl rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-black"

@@ -186,4 +186,116 @@ describe("<LivePreview />", () => {
       expect.any(Function),
     );
   });
+
+  // Phase 09-03 — exactly ONE retry on transient failure, 500ms backoff.
+  it("ε — transient start failure retries once and reaches streaming", async () => {
+    let startCalls = 0;
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "start_preview_stream") {
+        startCalls++;
+        if (startCalls === 1) {
+          throw { kind: "Automation", message: "transient sidecar blip" };
+        }
+        return null;
+      }
+      if (cmd === "stop_preview_stream") return null;
+      throw new Error(`unexpected invoke ${cmd}`);
+    });
+
+    render(<LivePreview />);
+    // Retry happens after 500ms real backoff; give it room.
+    await waitFor(
+      () => {
+        expect(startCalls).toBe(2);
+      },
+      { timeout: 2000 },
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("live-preview-canvas"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // Second failure after retry → terminal 'unavailable'. No third attempt.
+  it("ζ — two transient failures land in unavailable (no third retry)", async () => {
+    let startCalls = 0;
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "start_preview_stream") {
+        startCalls++;
+        throw { kind: "Automation", message: "blip " + startCalls };
+      }
+      if (cmd === "stop_preview_stream") return null;
+      throw new Error(`unexpected invoke ${cmd}`);
+    });
+
+    render(<LivePreview />);
+    await waitFor(
+      () => {
+        expect(
+          screen.getByTestId("live-preview-unavailable"),
+        ).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+    expect(screen.getByTestId("live-preview-unavailable").textContent).toMatch(
+      /Live preview unavailable on this backend/i,
+    );
+    // Ensure no third retry fires.
+    await new Promise((r) => setTimeout(r, 700));
+    expect(startCalls).toBe(2);
+  });
+
+  // UnavailableOnBackend is terminal — no retry scheduled.
+  it("η — UnavailableOnBackend is terminal (no retry)", async () => {
+    let startCalls = 0;
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "start_preview_stream") {
+        startCalls++;
+        throw { kind: "UnavailableOnBackend", message: "no session" };
+      }
+      if (cmd === "stop_preview_stream") return null;
+      throw new Error(`unexpected invoke ${cmd}`);
+    });
+
+    render(<LivePreview />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("live-preview-unavailable"),
+      ).toBeInTheDocument();
+    });
+    // Give extra macrotasks a chance — terminal path must not retry.
+    await new Promise((r) => setTimeout(r, 700));
+    expect(startCalls).toBe(1);
+  });
+
+  // Saturation — two frames arriving back-to-back before rAF draws bumps
+  // data-drop-count from "0" to "1".
+  it("θ — webview drop counter increments on back-to-back frames", async () => {
+    // Hold rAF so pendingBitmap.current never clears between frames.
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation(() => 1);
+
+    render(<LivePreview />);
+    await flush();
+    expect(capturedHandler).not.toBeNull();
+
+    await act(async () => {
+      await capturedHandler!({
+        payload: { data: "AAAA", width: 1, height: 1, timestamp: 1 },
+      });
+    });
+    await act(async () => {
+      await capturedHandler!({
+        payload: { data: "BBBB", width: 1, height: 1, timestamp: 2 },
+      });
+    });
+
+    const canvas = screen.getByTestId("live-preview-canvas");
+    await waitFor(() => {
+      expect(canvas.getAttribute("data-drop-count")).toBe("1");
+    });
+    rafSpy.mockRestore();
+  });
 });
