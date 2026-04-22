@@ -93,7 +93,7 @@ time = { version = "0.3.47", features = ["formatting"] }
 
 # Phase 03 plan 03: provider probe HTTPS client (rustls only — no native-tls,
 # no plaintext HTTP). `json` parses error bodies for safe `detail` strings.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
 
 # Plan 06-02: validate meta.app before forwarding as Chromium --app= arg
 # (T-06-09 — reject javascript:/data: schemes).
