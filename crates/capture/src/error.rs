@@ -49,4 +49,10 @@ pub enum CaptureError {
     /// instead of tripping undefined behaviour inside WGC (D-05).
     #[error("window no longer exists (hwnd={hwnd})")]
     WindowGone { hwnd: u64 },
+
+    /// The requested `PixelFormat` is not supported by the active backend.
+    /// D-16: NV12 currently fails loudly instead of being silently coerced
+    /// to BGRA. Remove this rejection when a native NV12 pipeline lands.
+    #[error("unsupported pixel format: {format}")]
+    UnsupportedPixelFormat { format: String },
 }

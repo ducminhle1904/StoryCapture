@@ -231,6 +231,13 @@ impl CaptureBackend for SckBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
+        // D-16: reject NV12 explicitly. Native NV12 pipeline is deferred;
+        // until it lands, fail loudly instead of silently coercing to BGRA.
+        if matches!(cfg.pixel_format, crate::frame::PixelFormat::Nv12) {
+            return Err(CaptureError::UnsupportedPixelFormat {
+                format: "NV12".into(),
+            });
+        }
         self.dropped.store(0, Ordering::Relaxed);
         self.delivered.store(0, Ordering::Relaxed);
 
@@ -259,8 +266,8 @@ impl CaptureBackend for SckBackend {
 
         let sck_pf = match cfg.pixel_format {
             crate::frame::PixelFormat::Bgra => SckPixelFormat::BGRA,
-            // Force BGRA until we add native NV12 handling.
-            crate::frame::PixelFormat::Nv12 => SckPixelFormat::BGRA,
+            // D-16: Nv12 is rejected at start() entry above; unreachable here.
+            crate::frame::PixelFormat::Nv12 => unreachable!("NV12 rejected at start()"),
         };
 
         let mut config = SCStreamConfiguration::new()
@@ -318,10 +325,12 @@ impl CaptureBackend for SckBackend {
                 if let Some(frame) = crate::macos::frame_from_sample::to_frame(&sample) {
                     match out_for_handler.try_send(frame) {
                         Ok(()) => {
-                            delivered_for_handler.fetch_add(1, Ordering::Relaxed);
+                            // D-18: AcqRel — value is read with Acquire in stop().
+                            delivered_for_handler.fetch_add(1, Ordering::AcqRel);
                         }
                         Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                            dropped_for_handler.fetch_add(1, Ordering::Relaxed);
+                            // D-18: AcqRel — value is read with Acquire in stop().
+                            dropped_for_handler.fetch_add(1, Ordering::AcqRel);
                         }
                         Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
                             // Consumer went away; drop the frame.
@@ -392,11 +401,12 @@ impl CaptureBackend for SckBackend {
             }
             s.stats
         };
-        stats.frames_delivered = self.delivered.load(Ordering::Relaxed);
-        stats.frames_dropped = self.dropped.load(Ordering::Relaxed);
+        // D-18: Acquire pairs with AcqRel increments in the SCK handler.
+        stats.frames_delivered = self.delivered.load(Ordering::Acquire);
+        stats.frames_dropped = self.dropped.load(Ordering::Acquire);
         // Reset counters for the next session.
-        self.delivered.store(0, Ordering::Relaxed);
-        self.dropped.store(0, Ordering::Relaxed);
+        self.delivered.store(0, Ordering::Release);
+        self.dropped.store(0, Ordering::Release);
         self.paused.store(false, Ordering::Release);
         // D-06: session ended, state machine back to Running baseline.
         *self.pause_state.lock().await = PauseState::Running;
@@ -616,6 +626,40 @@ pub(crate) fn build_filter_for_test_region(
     SckBackend::build_filter(&target)
         .ok()
         .map(|(_, w, h, r)| (w, h, r))
+}
+
+#[cfg(test)]
+mod nv12_reject_tests {
+    use super::*;
+    use crate::display::DisplayId;
+    use crate::frame::PixelFormat;
+    use crate::target::CaptureTarget;
+
+    /// D-16: Nv12 must be rejected at `start()` entry before any OS
+    /// resource is acquired. We don't need SCK permissions or a real
+    /// display for this — the guard runs before `build_filter`.
+    #[tokio::test]
+    async fn start_with_nv12_returns_unsupported_pixel_format() {
+        let Ok(mut backend) = SckBackend::new() else {
+            // CI macOS runners may lack the SCK framework at link time.
+            return;
+        };
+        let mut cfg = CaptureConfig::new(DisplayId(1));
+        cfg.pixel_format = PixelFormat::Nv12;
+        // Use a display target; the guard fires before any filter build.
+        cfg.target = CaptureTarget::Display {
+            display_id: DisplayId(1),
+        };
+        let (tx, _rx) = tokio::sync::mpsc::channel(1);
+        let err = backend
+            .start(cfg, tx)
+            .await
+            .expect_err("Nv12 must be rejected");
+        assert!(
+            matches!(err, CaptureError::UnsupportedPixelFormat { ref format } if format == "NV12"),
+            "expected UnsupportedPixelFormat{{format=NV12}}, got {err:?}"
+        );
+    }
 }
 
 /// Enumerate displays without constructing an `SckBackend`.

@@ -134,7 +134,8 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             Ok(f) => f,
             Err(e) => {
                 tracing::warn!(error = %e, "frame_from_wgc failed; dropping frame");
-                self.dropped.fetch_add(1, Ordering::Relaxed);
+                // D-18: AcqRel — value is read with Acquire in stop().
+                self.dropped.fetch_add(1, Ordering::AcqRel);
                 return Ok(());
             }
         };
@@ -146,7 +147,8 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 FrameData::Pooled(b, stride) => (b.as_slice(), *stride),
                 _ => {
                     // Defensive fallback if the frame variant changes.
-                    self.dropped.fetch_add(1, Ordering::Relaxed);
+                    // D-18: AcqRel — value is read with Acquire in stop().
+                    self.dropped.fetch_add(1, Ordering::AcqRel);
                     return Ok(());
                 }
             };
@@ -170,7 +172,8 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 }
                 None => {
                     // Drop overflowed crops.
-                    self.dropped.fetch_add(1, Ordering::Relaxed);
+                    // D-18: AcqRel — value is read with Acquire in stop().
+                    self.dropped.fetch_add(1, Ordering::AcqRel);
                     return Ok(());
                 }
             }
@@ -179,10 +182,12 @@ impl GraphicsCaptureApiHandler for WgcHandler {
         };
         match self.out.try_send(f) {
             Ok(()) => {
-                self.delivered.fetch_add(1, Ordering::Relaxed);
+                // D-18: AcqRel — value is read with Acquire in stop().
+                self.delivered.fetch_add(1, Ordering::AcqRel);
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
-                self.dropped.fetch_add(1, Ordering::Relaxed);
+                // D-18: AcqRel — value is read with Acquire in stop().
+                self.dropped.fetch_add(1, Ordering::AcqRel);
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 capture_control.stop();
@@ -408,6 +413,13 @@ impl CaptureBackend for WgcBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
+        // D-16: reject NV12 explicitly. Native NV12 pipeline is deferred;
+        // fail loudly instead of silently coercing to BGRA.
+        if matches!(cfg.pixel_format, crate::frame::PixelFormat::Nv12) {
+            return Err(CaptureError::UnsupportedPixelFormat {
+                format: "NV12".into(),
+            });
+        }
         self.dropped.store(0, Ordering::Relaxed);
         self.delivered.store(0, Ordering::Relaxed);
         let control = self.start_control(cfg.clone(), out.clone()).await?;
@@ -493,4 +505,35 @@ fn map_start_err(e: GraphicsCaptureApiError<WgcHandlerError>) -> CaptureError {
 /// Enumerate displays through xcap.
 pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
     crate::fallback::xcap_backend::enumerate()
+}
+
+#[cfg(test)]
+mod nv12_reject_tests {
+    use super::*;
+    use crate::display::DisplayId;
+    use crate::frame::PixelFormat;
+    use crate::target::CaptureTarget;
+
+    /// D-16: Nv12 must be rejected at `start()` entry before any OS
+    /// resource is acquired.
+    #[tokio::test]
+    async fn start_with_nv12_returns_unsupported_pixel_format() {
+        let Ok(mut backend) = WgcBackend::new() else {
+            return;
+        };
+        let mut cfg = CaptureConfig::new(DisplayId(1));
+        cfg.pixel_format = PixelFormat::Nv12;
+        cfg.target = CaptureTarget::Display {
+            display_id: DisplayId(1),
+        };
+        let (tx, _rx) = tokio::sync::mpsc::channel(1);
+        let err = backend
+            .start(cfg, tx)
+            .await
+            .expect_err("Nv12 must be rejected");
+        assert!(
+            matches!(err, CaptureError::UnsupportedPixelFormat { ref format } if format == "NV12"),
+            "expected UnsupportedPixelFormat{{format=NV12}}, got {err:?}"
+        );
+    }
 }
