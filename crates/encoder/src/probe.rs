@@ -23,7 +23,7 @@ use crate::sidecar::SidecarCommand;
 
 /// D-17: process-wide cache of the last successful probe result. A
 /// `parking_lot::RwLock<Option<EncoderProbe>>` lets `force_reprobe`
-/// overwrite atomically — `OnceLock` / `OnceCell` cannot be reset.
+/// overwrite atomically — a one-shot static cell cannot be reset.
 static PROBE_CACHE: LazyLock<RwLock<Option<EncoderProbe>>> =
     LazyLock::new(|| RwLock::new(None));
 
