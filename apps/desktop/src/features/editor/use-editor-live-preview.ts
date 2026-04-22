@@ -1,14 +1,3 @@
-// Phase 09-04 — editor-surface Live Preview hook.
-//
-// Manages the ephemeral author-time Playwright session lifecycle for the
-// editor preview rail: spawn on toggle-on, teardown on toggle-off /
-// unmount, update viewport on switcher change. Cold-start budget is
-// preserved by defaulting the toggle OFF (D-17); caller opts in.
-//
-// If meta.app is missing or not http(s), the backend spawns the session
-// on about:blank and the canvas shows the usual muted placeholder until
-// the user edits meta.app.
-
 import { useEffect, useRef } from "react";
 
 import {
@@ -41,19 +30,21 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
 
   // Guard against React strict-mode double-invoke and racey toggles.
   const startingRef = useRef(false);
+  const appUrlRef = useRef(appUrl);
+  const viewportRef = useRef(viewport);
+  appUrlRef.current = appUrl;
+  viewportRef.current = viewport;
 
-  // Lifecycle — mount a session when enabled, tear it down when disabled
-  // or on unmount.
   useEffect(() => {
     let cancelled = false;
 
     const start = async () => {
-      if (startingRef.current || streamId != null) return;
+      if (startingRef.current || useEditorStore.getState().previewStreamId != null) return;
       startingRef.current = true;
       try {
-        const { w, h } = VIEWPORT_SIZES[viewport];
+        const { w, h } = VIEWPORT_SIZES[viewportRef.current];
         const id = await startAuthorPreview({
-          initialUrl: sanitizeAppUrl(appUrl),
+          initialUrl: sanitizeAppUrl(appUrlRef.current),
           viewportWidth: w,
           viewportHeight: h,
         });
@@ -69,40 +60,29 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
       }
     };
 
-    const stop = async (id: string) => {
-      try {
-        await stopAuthorPreview(id);
-      } catch (err) {
-        console.warn("stop_author_preview failed:", err);
-      }
-    };
-
-    if (enabled && streamId == null) {
+    if (enabled) {
       void start();
-    } else if (!enabled && streamId != null) {
-      const id = streamId;
-      setStreamId(null);
-      void stop(id);
+    } else {
+      const id = useEditorStore.getState().previewStreamId;
+      if (id != null) {
+        setStreamId(null);
+        stopAuthorPreview(id).catch((err) => {
+          console.warn("stop_author_preview failed:", err);
+        });
+      }
     }
 
     return () => {
       cancelled = true;
-    };
-  }, [enabled, streamId, viewport, appUrl, setStreamId]);
-
-  // Final unmount — kill any still-running session.
-  useEffect(() => {
-    return () => {
+      if (!enabled) return;
       const id = useEditorStore.getState().previewStreamId;
       if (id != null) {
+        setStreamId(null);
         stopAuthorPreview(id).catch(() => {});
-        useEditorStore.getState().setPreviewStreamId(null);
       }
     };
-  }, []);
+  }, [enabled, setStreamId]);
 
-  // Viewport switcher → setViewport RPC. Debounced-free: happens on every
-  // click, cheap page.setViewportSize call.
   const lastSentViewport = useRef<PreviewViewport | null>(null);
   useEffect(() => {
     if (streamId == null) return;

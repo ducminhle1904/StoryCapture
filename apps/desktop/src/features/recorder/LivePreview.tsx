@@ -1,23 +1,3 @@
-/**
- * Phase 09-02 / 09-03 — <LivePreview /> canvas renderer + status machine.
- *
- * Subscribes to the `preview://frame` Tauri event, decodes each base64
- * JPEG into an ImageBitmap off-main-thread, and draws the latest one on
- * a `<canvas>` at requestAnimationFrame cadence. Backpressure is
- * naturally coalesced — a new frame arriving before rAF drew the last
- * simply replaces it and increments a dev-visible drop counter.
- *
- * 09-03 hardening:
- *  - 5-state status machine: attaching → streaming/recovering/unavailable.
- *  - Exactly ONE retry with 500ms backoff on transient startPreviewStream
- *    failures. UnavailableOnBackend is terminal (no retry).
- *  - Saturation counter on the listener; periodic 30s warn-log.
- *
- * Preview failure MUST NOT disturb recording — the try/catch around
- * start and the silent-on-error unmount path are intentional isolation
- * (CLAUDE.md), not a workaround.
- */
-
 import { useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -30,12 +10,8 @@ import {
 interface LivePreviewProps {
   width?: number;
   height?: number;
-  // Phase 09-04 — when set, the canvas only renders frames whose payload
-  // carries this streamId. The component no longer manages lifecycle
-  // itself (caller owns start/stop via `start_author_preview` etc.); it
-  // just subscribes to `preview://frame` and demuxes by streamId.
-  // When absent, preserves the 09-02 behavior (owns start/stop of the
-  // recording-session stream).
+  // When set, lifecycle is owned externally and the component only
+  // renders frames whose payload matches this streamId.
   streamId?: string | null;
 }
 
@@ -66,9 +42,6 @@ export function LivePreview({ width = 1280, height = 720, streamId = null }: Liv
   const dropCountRef = useRef(0);
   const saturationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [status, setStatus] = useState<PreviewStatus>("attaching");
-  // Dev-visible drop count via data attribute. Mirrors ref so assertions can
-  // read from the DOM without racing React state updates on every frame.
-  const [dropTick, setDropTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,10 +51,6 @@ export function LivePreview({ width = 1280, height = 720, streamId = null }: Liv
         "preview://frame",
         async (ev) => {
           try {
-            // Phase 09-04 — multi-stream demux. Recording consumer (no
-            // streamId prop) only accepts recording-session frames
-            // (payload.streamId is null/undefined). Author consumer only
-            // accepts its own streamId.
             const payloadStreamId = ev.payload.streamId ?? null;
             if ((streamId ?? null) !== payloadStreamId) return;
             const { data } = ev.payload;
@@ -91,7 +60,9 @@ export function LivePreview({ width = 1280, height = 720, streamId = null }: Liv
             if (pendingBitmap.current) {
               pendingBitmap.current.close();
               dropCountRef.current += 1;
-              setDropTick((t) => t + 1);
+              if (canvasRef.current) {
+                canvasRef.current.dataset.dropCount = String(dropCountRef.current);
+              }
             }
             pendingBitmap.current = bmp;
           } catch (e) {
@@ -126,9 +97,6 @@ export function LivePreview({ width = 1280, height = 720, streamId = null }: Liv
     };
 
     const startWithRetry = async (retriesLeft: number): Promise<void> => {
-      // Phase 09-04 — when a streamId is provided, the editor surface
-      // owns the start/stop lifecycle (via start_author_preview). The
-      // component just attaches a filtered listener.
       if (streamId != null) {
         if (cancelled) return;
         const attached = await attachListener();
@@ -196,8 +164,6 @@ export function LivePreview({ width = 1280, height = 720, streamId = null }: Liv
         clearInterval(saturationTimerRef.current);
         saturationTimerRef.current = null;
       }
-      // When an external streamId owns the lifecycle, the editor-surface
-      // caller calls stop_author_preview — don't double-stop.
       if (streamId == null) {
         stopPreviewStream().catch(() => {});
       }
@@ -220,7 +186,7 @@ export function LivePreview({ width = 1280, height = 720, streamId = null }: Liv
       ref={canvasRef}
       data-testid="live-preview-canvas"
       data-status={status}
-      data-drop-count={dropTick === 0 ? dropCountRef.current : dropCountRef.current}
+      data-drop-count="0"
       width={width}
       height={height}
       className="aspect-video w-full max-w-5xl rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-black"

@@ -20,9 +20,6 @@ interface EditorState {
   // Most recent parse with zero error diagnostics. Survives transient parse errors so
   // scene-list-panel can keep showing the last-valid tree instead of blanking.
   lastValidStoryAst: Story | null;
-  // Phase 09-04 — editor-surface Live Preview toggle (D-17 default OFF to
-  // preserve cold-start budget). `previewStreamId` is populated once an
-  // ephemeral author-session spawns; `null` means no session.
   previewEnabled: boolean;
   previewStreamId: string | null;
   setSource: (s: string) => void;
@@ -51,11 +48,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   previewStreamId: null,
   setSource: (s) => set({ source: s }),
   setSplitRatio: (r) => set({ splitRatio: Math.max(20, Math.min(80, r)) }),
-  setViewport: (v) => set({ previewViewport: v }),
+  setViewport: (v) => {
+    if (get().previewViewport === v) return;
+    set({ previewViewport: v });
+  },
   setLastParse: (r) =>
     set((s) => ({ lastParse: r, lastValidStoryAst: pickValidAst(r, s.lastValidStoryAst) })),
-  setPreviewEnabled: (v) => set({ previewEnabled: v }),
-  setPreviewStreamId: (id) => set({ previewStreamId: id }),
+  setPreviewEnabled: (v) => {
+    if (get().previewEnabled === v) return;
+    set({ previewEnabled: v });
+  },
+  setPreviewStreamId: (id) => {
+    if (get().previewStreamId === id) return;
+    set({ previewStreamId: id });
+  },
   diagnostics: () => get().lastParse?.diagnostics ?? [],
   // Clear per-project fields so navigating A→B doesn't flash A's content.
   resetProjectState: () =>

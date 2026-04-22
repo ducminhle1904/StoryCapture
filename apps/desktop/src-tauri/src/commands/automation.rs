@@ -542,6 +542,17 @@ pub(crate) async fn stop_preview_stream_inner(state: &AppState) {
 // against the same session without a third Chromium instance.
 // ──────────────────────────────────────────────────────────────────────
 
+async fn author_driver(
+    state: &AppState,
+    stream_id: &str,
+) -> Result<Arc<Mutex<PlaywrightSidecarDriver>>, AppError> {
+    let sessions = state.author_preview_sessions.lock().await;
+    sessions
+        .get(stream_id)
+        .map(|s| s.driver.clone())
+        .ok_or_else(|| AppError::InvalidArgument(format!("unknown author stream: {stream_id}")))
+}
+
 async fn spawn_author_sidecar(
     app: &AppHandle,
 ) -> Result<Arc<Mutex<PlaywrightSidecarDriver>>, AppError> {
@@ -623,30 +634,22 @@ pub async fn start_author_preview(
             .map_err(|e| AppError::Automation(format!("startPreviewStream: {e}")))?;
     }
 
-    // Per-stream pump — filters the watch channel by streamId so multiple
-    // author sessions can coexist with the recording stream.
+    // Each author session owns its own sidecar + watch channel, so every
+    // frame delivered here already belongs to this stream.
     let mut rx = { driver_arc.lock().await.subscribe_preview() };
     let app_for_emit = app.clone();
-    let stream_id_for_emit = stream_id.clone();
+    let stream_id_for_log = stream_id.clone();
     let pump = tokio::spawn(async move {
         while rx.changed().await.is_ok() {
             let snapshot = rx.borrow_and_update().clone();
             if let Some(frame) = snapshot {
-                // Only emit frames that belong to OUR stream. Other
-                // authors' frames (or the recording stream) fan out
-                // through their own pumps.
-                match &frame.stream_id {
-                    Some(sid) if sid == &stream_id_for_emit => {
-                        if let Err(err) = app_for_emit.emit("preview://frame", &frame) {
-                            tracing::warn!(
-                                target: "storycapture::preview",
-                                error = %err,
-                                stream_id = %stream_id_for_emit,
-                                "author preview emit failed"
-                            );
-                        }
-                    }
-                    _ => {}
+                if let Err(err) = app_for_emit.emit("preview://frame", &frame) {
+                    tracing::warn!(
+                        target: "storycapture::preview",
+                        error = %err,
+                        stream_id = %stream_id_for_log,
+                        "author preview emit failed"
+                    );
                 }
             }
         }
@@ -663,9 +666,7 @@ pub async fn start_author_preview(
     Ok(stream_id)
 }
 
-/// Phase 09-04 — teardown an ephemeral author-time session. Closes the
-/// Chromium + aborts the pump so the streamId's CDP resources are freed.
-/// Idempotent.
+/// Teardown an ephemeral author-time session. Idempotent.
 #[tauri::command]
 #[specta::specta]
 pub async fn stop_author_preview(
@@ -687,55 +688,38 @@ pub async fn stop_author_preview(
     Ok(())
 }
 
-/// PHASE-9.9 — pause an author-time screencast without tearing it down.
-/// Exclusive-lock primitive consumed by Phase 10 simulator + Phase 11 picker.
 #[tauri::command]
 #[specta::specta]
 pub async fn pause_author_preview(
     state: State<'_, AppState>,
     stream_id: String,
 ) -> Result<(), AppError> {
-    let driver_opt = {
-        let sessions = state.author_preview_sessions.lock().await;
-        sessions.get(&stream_id).map(|s| s.driver.clone())
-    };
-    let Some(driver) = driver_opt else {
-        return Err(AppError::InvalidArgument(format!(
-            "unknown author stream: {stream_id}"
-        )));
-    };
-    let d = driver.lock().await;
-    d.call_pause_stream(&stream_id)
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .call_pause_stream(&stream_id)
         .await
         .map_err(|e| AppError::Automation(e.to_string()))?;
     Ok(())
 }
 
-/// PHASE-9.9 — resume a paused author-time screencast.
 #[tauri::command]
 #[specta::specta]
 pub async fn resume_author_preview(
     state: State<'_, AppState>,
     stream_id: String,
 ) -> Result<(), AppError> {
-    let driver_opt = {
-        let sessions = state.author_preview_sessions.lock().await;
-        sessions.get(&stream_id).map(|s| s.driver.clone())
-    };
-    let Some(driver) = driver_opt else {
-        return Err(AppError::InvalidArgument(format!(
-            "unknown author stream: {stream_id}"
-        )));
-    };
-    let d = driver.lock().await;
-    d.call_resume_stream(&stream_id)
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .call_resume_stream(&stream_id)
         .await
         .map_err(|e| AppError::Automation(e.to_string()))?;
     Ok(())
 }
 
-/// Phase 09-04 D-16 — update the author session's `page.setViewportSize`.
-/// Editor preview-panel viewport switcher wires here.
 #[tauri::command]
 #[specta::specta]
 pub async fn set_author_preview_viewport(
@@ -743,48 +727,28 @@ pub async fn set_author_preview_viewport(
     stream_id: String,
     args: AuthorViewportArgs,
 ) -> Result<(), AppError> {
-    let driver_opt = {
-        let sessions = state.author_preview_sessions.lock().await;
-        sessions.get(&stream_id).map(|s| s.driver.clone())
-    };
-    let Some(driver) = driver_opt else {
-        return Err(AppError::InvalidArgument(format!(
-            "unknown author stream: {stream_id}"
-        )));
-    };
-    let d = driver.lock().await;
-    d.call_author_set_viewport(&stream_id, args.width, args.height)
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .call_author_set_viewport(&stream_id, args.width, args.height)
         .await
         .map_err(|e| AppError::Automation(e.to_string()))?;
     Ok(())
 }
 
-/// PHASE-9.8 — confirm an author-session streamId is live and the
-/// sidecar accepts verb RPCs against it. Phase 10 simulator calls this as
-/// a readiness gate before dispatching DSL verbs; the command succeeding
-/// proves (a) the streamId is registered, (b) the driver is alive, (c)
-/// `pickElement.isActive` round-trips without error. The actual Phase 10
-/// driver wrapper will be constructed from the same registry entry.
+/// Readiness probe: confirms streamId is registered + sidecar is alive.
 #[tauri::command]
 #[specta::specta]
 pub async fn attach_author_driver(
     state: State<'_, AppState>,
     stream_id: String,
 ) -> Result<(), AppError> {
-    let driver_opt = {
-        let sessions = state.author_preview_sessions.lock().await;
-        sessions.get(&stream_id).map(|s| s.driver.clone())
-    };
-    let Some(driver) = driver_opt else {
-        return Err(AppError::InvalidArgument(format!(
-            "unknown author stream: {stream_id}"
-        )));
-    };
-    // Round-trip a cheap verb to prove the sidecar is alive + the
-    // streamId is routable. Phase 10 will replace this with the real
-    // verb-dispatch wrapper; today this guarantees the contract surface.
-    let d = driver.lock().await;
-    d.pick_element_is_active()
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .pick_element_is_active()
         .await
         .map_err(|e| AppError::Automation(format!("attach_author_driver probe: {e}")))?;
     Ok(())
