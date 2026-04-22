@@ -141,73 +141,12 @@ pub async fn launch_automation(
             tracing::error!(target: "storycapture::automation", error = %e, "shell.sidecar resolve failed");
             AppError::Automation(format!("sidecar resolve: {e}"))
         })?;
-    // Re-spawn the resolved binary through tokio so we own stdio.
     drop(sidecar);
-    let sidecar_path = match crate::commands::encode::resolve_sidecar_path("playwright-sidecar") {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!(target: "storycapture::automation", "playwright sidecar path unresolved ({e}); falling back to PATH lookup");
-            std::path::PathBuf::from("playwright-sidecar")
-        }
-    };
-    tracing::info!(
-        target: "storycapture::automation",
-        sidecar_path = %sidecar_path.display(),
-        "spawning playwright sidecar"
-    );
-    // Point the sidecar at the bundled modules dir explicitly.
-    let modules_dir = app
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|r| r.join("binaries").join("playwright-sidecar-modules"));
-    let mut tokio_cmd = TokioCommand::new(&sidecar_path);
-    tokio_cmd
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    if let Some(dir) = modules_dir.as_ref() {
-        tracing::info!(
-            target: "storycapture::automation",
-            modules_dir = %dir.display(),
-            "setting STORYCAPTURE_SIDECAR_MODULES for sidecar"
-        );
-        tokio_cmd.env("STORYCAPTURE_SIDECAR_MODULES", dir);
-    }
-    let playwright = match tokio_cmd.spawn() {
-        Ok(mut child) => {
-            if let Some(stderr) = child.stderr.take() {
-                tokio::spawn(async move {
-                    use tokio::io::{AsyncBufReadExt, BufReader};
-                    let mut lines = BufReader::new(stderr).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        tracing::warn!(target: "storycapture::automation", sidecar_stderr = %line);
-                    }
-                });
-            }
-            match PlaywrightSidecarDriver::from_child(child) {
-                Ok(d) => Some(d),
-                Err(e) => {
-                    tracing::warn!(target: "storycapture::automation", "playwright sidecar wrap failed: {e}");
-                    None
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!(target: "storycapture::automation", "playwright sidecar spawn failed (binary not built?): {e}");
-            None
-        }
-    };
-
-    // Playwright is the only automation driver.
-    let playwright = match playwright {
-        Some(pw) => pw,
-        None => {
-            return Err(AppError::Automation(
-                "Playwright sidecar failed to spawn — check that Node.js is installed and `scripts/playwright-sidecar` has `pnpm install` run".into(),
-            ));
-        }
-    };
+    let playwright = spawn_playwright_sidecar(&app).await.map_err(|e| {
+        AppError::Automation(format!(
+            "Playwright sidecar failed to spawn — check Node.js install and `scripts/playwright-sidecar` pnpm install. ({e})"
+        ))
+    })?;
     // Share the driver with the pid probe task.
     let shared_pw: Arc<Mutex<PlaywrightSidecarDriver>> = Arc::new(Mutex::new(playwright));
     // publish to AppState so the picker_* commands can issue
@@ -553,16 +492,21 @@ async fn author_driver(
         .ok_or_else(|| AppError::InvalidArgument(format!("unknown author stream: {stream_id}")))
 }
 
-async fn spawn_author_sidecar(
-    app: &AppHandle,
-) -> Result<Arc<Mutex<PlaywrightSidecarDriver>>, AppError> {
+/// Spawn a Playwright sidecar child process and wrap it as a driver. Shared
+/// by `launch_automation` and `start_author_preview`.
+async fn spawn_playwright_sidecar(app: &AppHandle) -> Result<PlaywrightSidecarDriver, AppError> {
     let sidecar_path = match crate::commands::encode::resolve_sidecar_path("playwright-sidecar") {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!(target: "storycapture::preview", "author-sidecar path unresolved ({e}); falling back to PATH");
+            tracing::warn!(target: "storycapture::automation", "playwright sidecar path unresolved ({e}); falling back to PATH lookup");
             std::path::PathBuf::from("playwright-sidecar")
         }
     };
+    tracing::info!(
+        target: "storycapture::automation",
+        sidecar_path = %sidecar_path.display(),
+        "spawning playwright sidecar"
+    );
     let modules_dir = app
         .path()
         .resource_dir()
@@ -574,23 +518,27 @@ async fn spawn_author_sidecar(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(dir) = modules_dir.as_ref() {
+        tracing::info!(
+            target: "storycapture::automation",
+            modules_dir = %dir.display(),
+            "setting STORYCAPTURE_SIDECAR_MODULES for sidecar"
+        );
         tokio_cmd.env("STORYCAPTURE_SIDECAR_MODULES", dir);
     }
     let mut child = tokio_cmd
         .spawn()
-        .map_err(|e| AppError::Automation(format!("author sidecar spawn: {e}")))?;
+        .map_err(|e| AppError::Automation(format!("sidecar spawn: {e}")))?;
     if let Some(stderr) = child.stderr.take() {
         tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                tracing::warn!(target: "storycapture::preview", author_sidecar_stderr = %line);
+                tracing::warn!(target: "storycapture::automation", sidecar_stderr = %line);
             }
         });
     }
-    let driver = PlaywrightSidecarDriver::from_child(child)
-        .map_err(|e| AppError::Automation(format!("author sidecar wrap: {e}")))?;
-    Ok(Arc::new(Mutex::new(driver)))
+    PlaywrightSidecarDriver::from_child(child)
+        .map_err(|e| AppError::Automation(format!("sidecar wrap: {e}")))
 }
 
 /// Arguments for the editor-surface viewport switcher.
@@ -617,7 +565,7 @@ pub async fn start_author_preview(
     viewport_height: Option<u32>,
 ) -> Result<String, AppError> {
     let stream_id = format!("author-{}", uuid::Uuid::new_v4());
-    let driver_arc = spawn_author_sidecar(&app).await?;
+    let driver_arc = Arc::new(Mutex::new(spawn_playwright_sidecar(&app).await?));
 
     // Spawn + load URL + start screencast under this streamId.
     {
