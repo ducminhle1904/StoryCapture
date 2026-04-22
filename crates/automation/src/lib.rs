@@ -37,7 +37,7 @@ pub use executor::{Executor, PersistenceHandle};
 pub use noop_driver::NoopDriver;
 pub use playwright_driver::{
     BrowserProcessInfo, Notification, PickCandidate, PickElementResponse, PickLocator,
-    PlaywrightSidecarDriver, SnapshotResponse,
+    PlaywrightSidecarDriver, PreviewFrame, SnapshotResponse,
 };
 pub use selector::{SmartSelector, ValidationResult};
 pub use session::{
