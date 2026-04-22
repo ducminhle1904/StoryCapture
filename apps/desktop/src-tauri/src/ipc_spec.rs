@@ -51,6 +51,13 @@ pub fn builder() -> Builder<Wry> {
             // Phase 09-02 — live preview pump (Rust → `preview://frame`).
             automation::start_preview_stream,
             automation::stop_preview_stream,
+            // Phase 09-04 — author-time preview (PHASE-9.8 / PHASE-9.9).
+            automation::start_author_preview,
+            automation::stop_author_preview,
+            automation::pause_author_preview,
+            automation::resume_author_preview,
+            automation::set_author_preview_viewport,
+            automation::attach_author_driver,
             // element picker.
             picker::picker_start,
             picker::picker_cancel,
@@ -157,6 +164,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<system::AppInfo>()
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<automation::ResolvedPlaywrightTarget>()
+        .typ::<automation::AuthorViewportArgs>()
         .typ::<picker::PickElementResponseDto>()
         // author-time validator DTOs.
         .typ::<author_snapshot::AuthorSnapshotEntry>()

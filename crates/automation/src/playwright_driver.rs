@@ -66,8 +66,14 @@ pub struct Notification {
 /// Phase 09-01 — decoded `preview/frame` notification payload.
 /// `data` is a base64-encoded JPEG; width/height in device pixels;
 /// timestamp is Chromium's screencast metadata timestamp (seconds).
+///
+/// Phase 09-04 — `stream_id` identifies which session the frame belongs
+/// to. `None` is the recording session (legacy); `Some(_)` is an author-
+/// time session spawned per editor preview.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewFrame {
+    #[serde(default, rename = "streamId", skip_serializing_if = "Option::is_none")]
+    pub stream_id: Option<String>,
     pub data: String,
     pub width: u32,
     pub height: u32,
@@ -203,6 +209,93 @@ impl PlaywrightSidecarDriver {
                 "stopPreviewStream failed; continuing"
             );
         }
+        Ok(())
+    }
+
+    /// Phase 09-04 — spawn an ephemeral author-time Chromium session keyed
+    /// by `stream_id`. Separate from the recording session; initial URL is
+    /// optional. Required by editor-surface Live Preview + Phase 10 simulator.
+    pub async fn call_author_launch(
+        &self,
+        stream_id: &str,
+        url: Option<&str>,
+        viewport: Option<(u32, u32)>,
+    ) -> Result<()> {
+        let mut params = json!({ "streamId": stream_id, "headless": true });
+        if let Some(u) = url {
+            params["url"] = json!(u);
+        }
+        if let Some((w, h)) = viewport {
+            params["viewport"] = json!({ "width": w, "height": h });
+        }
+        self.call("author.launch", params).await?;
+        Ok(())
+    }
+
+    /// Phase 09-04 — tear down an author-time session. Idempotent.
+    pub async fn call_author_close(&self, stream_id: &str) -> Result<()> {
+        if let Err(err) = self.call("author.close", json!({ "streamId": stream_id })).await {
+            tracing::warn!(
+                target: "storycapture::preview",
+                error = %err,
+                stream_id,
+                "author.close failed; continuing"
+            );
+        }
+        Ok(())
+    }
+
+    /// Phase 09-04 — drive `page.setViewportSize` on an author session.
+    pub async fn call_author_set_viewport(
+        &self,
+        stream_id: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<()> {
+        self.call(
+            "author.setViewport",
+            json!({ "streamId": stream_id, "width": width, "height": height }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Phase 09-04 — start the CDP screencast for a named author session.
+    pub async fn call_preview_start_stream(&self, stream_id: &str) -> Result<()> {
+        self.call("startPreviewStream", json!({ "streamId": stream_id }))
+            .await?;
+        Ok(())
+    }
+
+    /// Phase 09-04 — stop the CDP screencast for a named author session.
+    pub async fn call_preview_stop_stream(&self, stream_id: &str) -> Result<()> {
+        if let Err(err) = self
+            .call("stopPreviewStream", json!({ "streamId": stream_id }))
+            .await
+        {
+            tracing::warn!(
+                target: "storycapture::preview",
+                error = %err,
+                stream_id,
+                "stopPreviewStream(streamId) failed; continuing"
+            );
+        }
+        Ok(())
+    }
+
+    /// PHASE-9.9 — pause screencast on a live session without tearing it down.
+    /// Phase 10 simulator + Phase 11 picker use this as an exclusive-lock
+    /// primitive. Idempotent.
+    pub async fn call_pause_stream(&self, stream_id: &str) -> Result<()> {
+        self.call("pauseStream", json!({ "streamId": stream_id }))
+            .await?;
+        Ok(())
+    }
+
+    /// PHASE-9.9 — resume a paused screencast. Idempotent.
+    pub async fn call_resume_stream(&self, stream_id: &str) -> Result<()> {
+        self.call("resumeStream", json!({ "streamId": stream_id }))
+            .await?;
         Ok(())
     }
 
