@@ -32,7 +32,7 @@ Plan: 15-04 complete (Wave 4 — Editor additions: Send-to-Post-Production toolb
 Full audit of Phases 8-11 planning validity vs. current codebase:
 
 - **Phase 8** (GPU downscale + cursor overlay): Planned, not started. `crates/gpu_scale/` scaffolding (08-01) never executed. ROADMAP entry + Progress row added this date.
-- **Phase 9** (Live Preview CDP pane): Wave 1 complete (2026-04-22). Sidecar `startPreviewStream`/`stopPreviewStream` JSON-RPC verbs + `preview/frame` notifications shipped (`c80c7a9`); Rust bridge `SidecarMsg::Notification` + `PlaywrightSidecarDriver::subscribe_preview()` + `PreviewFrame` struct shipped (`1814088`). Waves 2–4 pending: React canvas renderer + Options toggle (09-02), perf/backpressure hardening (09-03), editor-surface preview + PHASE-9.8/9.9 author-session extensions (09-04, prereqs for Phase 10).
+- **Phase 9** (Live Preview CDP pane): Waves 1–2 complete (2026-04-22). Wave 1 — sidecar JSON-RPC verbs `startPreviewStream`/`stopPreviewStream` + `preview/frame` notifications (`c80c7a9`); Rust `SidecarMsg::Notification` + `PlaywrightSidecarDriver::subscribe_preview()` + `PreviewFrame` struct (`1814088`). Wave 2 — Tauri `preview_start`/`preview_stop` commands + pump task emitting `preview://frame` event + `app_settings` live-preview toggle (`461d1fa`); React `<LivePreview />` canvas renderer mounted in Recorder left zone + Options toggle default-ON (`b19cabe`). Waves 3–4 pending: perf/backpressure hardening + fallback UX (09-03), editor-surface preview + PHASE-9.8/9.9 author-session extensions (09-04, prereqs for Phase 10).
 - **Phase 10** (Author-time simulator): Planned, **hard-blocked** on Phase 9-04 extensions per `10-CONTEXT.md` D-06. `run_story` executor signature + `ExecutorEvent::RunPaused/StepFrameCaptured` + `StepFrame` struct not yet in codebase. Phase 3's `DryRunPanel.tsx` still present — naming-collision is by design per 10-CONTEXT D-00.
 - **Phase 11** (Element picker relocation): Planned, **hard-blocked** on Phase 10-02 (for 11-02/03/04). `AuthorDriverState` / `AuthorDriverRegistry` not yet in codebase. Phase 11-01 (registry foundation) can run in parallel with Phase 10-01 since they own disjoint registry types.
 
@@ -137,9 +137,9 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-22 — Executed Phase 9 Wave 1 (Sidecar CDP verbs + Rust event bridge).
-- Last action: Plan 09-01 complete — 2 atomic commits (c80c7a9 sidecar screencast verbs + preview/frame notifications, 1814088 Rust SidecarMsg::Notification + watch-channel preview frames). Sidecar vitest 6/6 + server regression 25/25; Rust `preview_notification` integration 5/5; `cargo test -p automation --lib` 61/61; `cargo check` clean. SUMMARY at `.planning/phases/09-live-preview-pane-render-chromium-automation-inside-the-reco/09-01-SUMMARY.md`.
-- Next action: `/gsd-execute-phase 9 --wave 2` (React canvas renderer + Options toggle) OR parallel tracks Phase 14 Wave 5 / Phase 15 Wave 5 Task 3 (both have a11y checkpoints waiting).
+- Last activity: 2026-04-22 — Executed Phase 9 Wave 2 (Tauri preview command/event bridge + React `<LivePreview />` canvas + Options toggle).
+- Last action: Plan 09-02 complete — 2 atomic commits (461d1fa Tauri preview-stream commands + pump + app_settings toggle, b19cabe React LivePreview canvas + Options toggle). `cargo test --lib` 62 passing; `pnpm typecheck` clean; vitest LivePreview 4/4 green. Capture/encoder untouched. Task 3 operator smoke auto-approved per `workflow.auto_advance=true`. SUMMARY at `.planning/phases/09-live-preview-pane-render-chromium-automation-inside-the-reco/09-02-SUMMARY.md`.
+- Next action: `/gsd-execute-phase 9 --wave 3` (perf / backpressure hardening + fallback UX) then `--wave 4` (editor-surface preview + PHASE-9.8/9.9 author-session extensions required by Phase 10).
 - Files touched this session: `apps/desktop/src/routes/editor.tsx`, `apps/desktop/src/features/editor/scene-list-panel.tsx`.
 
 ---
