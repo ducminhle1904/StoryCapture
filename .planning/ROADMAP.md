@@ -385,7 +385,7 @@ Plans:
 - [x] 16-02-PLAN.md — Phase B: Tauri group lockstep (Rust tauri* + JS @tauri-apps/*) + Playwright sidecar Vitest 2→4 (B3 + B4) — complete 2026-04-22
 - [x] 16-03-PLAN.md — Phase C: Coordinated 0.x breaking bumps (objc2, rusqlite, reqwest, sha2, scraper, nix, tower/schemars/rand/toml/ts-rs, serde_yaml replacement) (C5–C12) — complete 2026-04-22 (12 atomic commits c29118e..d095a54)
 - [x] 16-04-PLAN.md — Phase D: JS major bumps (tailwind-merge, sonner/cmdk/react-*, zod, jose, pino, resend, vite, typescript, biome) (D13–D21) — complete 2026-04-22 (12 atomic commits 7f8e3ef..4981679)
-- [ ] 16-05-PLAN.md — Phase E: Gated framework majors (next-auth, Next 15→16, Prisma 6→7, windows 0.58→0.62, tauri-specta RC, docs sync) (E22–E28)
+- [x] 16-05-PLAN.md — Phase E: Gated framework majors (next-auth, Next 15→16, Prisma 6→7, windows 0.58→0.62, tauri-specta RC, docs sync) (E22–E28) — complete 2026-04-22 (2 atomic commits ac8e8f8 E24 next 16 + 3d1625b E28 docs sync; E22 skipped per dist-tags; E25 deferred per adapter peerDep; E26 deferred per Windows-CI gap; E27 blocked-no-op per specta nightly-MSRV requirement)
 
 ---
 *Roadmap created: 2026-04-14*

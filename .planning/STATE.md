@@ -6,10 +6,10 @@ status: executing
 last_updated: "2026-04-22T08:45:00.000Z"
 progress:
   total_phases: 16
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 111
-  completed_plans: 93
-  percent: 84
+  completed_plans: 94
+  percent: 85
 ---
 
 # State: StoryCapture
@@ -24,8 +24,8 @@ progress:
 
 ## Current Position
 
-Phase: 16 — Upgrade all dependencies to latest — EXECUTING
-Plan: 16-04 complete (Wave D JS major bumps: 12 atomic commits landed — D13 tailwind-merge 3, D14a sonner 2, D14b cmdk no-op (already on 1.1.1 from Wave A), D14c react-resizable-panels 4 with v4 API migration (Group/Separator/orientation/percentage-string sizes/onLayoutChanged map), D14d react-hotkeys-hook 5, D14e lucide-react 1.8, D15 zod 4 (tRPC 11.16 native compat), D16 jose 6, D17 pino 10 + pino-pretty 13, D18 resend 6, D19 vite 8 + @vitejs/plugin-react 6, D20 typescript 6.0.3 repo-wide (removed deprecated baseUrl + added src/types/css.d.ts), D21 Biome 2 + migrate. Per-commit gates all green — turbo typecheck + turbo build + vitest 201/209 baseline. pnpm audit 0 vulnerabilities. No new @ts-ignore/as any. 1 plan remains (16-05 gated framework majors).
+Phase: 16 — Upgrade all dependencies to latest — COMPLETE (5/5 plans landed)
+Plan: 16-05 complete (Wave E gated framework majors + docs sync: 2 atomic commits landed — E24 ac8e8f8 next 15 → 16.2.4 in apps/web (Turbopack now default; no middleware/unstable_cache migration needed; next-env.d.ts auto-regen with typed routes.d.ts import); E28 3d1625b CLAUDE.md + docs/ARCHITECTURE.md synced to final Phase 16 pins + stale objc2-0.5 comment in crates/encoder/Cargo.toml removed. E22 skipped (no newer next-auth beta on npm dist-tags). E25 deferred (@auth/prisma-adapter peerDeps do not list Prisma 7). E26 deferred (no Windows CI runner). E27 blocked-no-op (specta rc.24 requires nightly Rust: `const_type_id` + `debug_closure_helpers`). Gate: turbo typecheck + turbo build + cargo check --workspace + cargo test --workspace all green. Biome has 130 pre-existing errors in apps/web/src (generated Prisma client, a11y/useButtonType, etc.) — out of scope per executor boundary.
 
 ## Phase 8-11 Planning Audit (2026-04-21)
 
@@ -136,10 +136,10 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-22 — Executed Phase 16 Plan 04 (Wave D JS major bumps).
-- Last action: Plan 16-04 complete — 12 atomic commits (D13 7f8e3ef tailwind-merge 3, D14a 05368fe sonner 2, D14b no-op (cmdk already 1.1.1 from Wave A), D14c 065e40f react-resizable-panels 4 + v4 API migration Group/Separator/orientation/percentage-string/onLayoutChanged, D14d 8ea6cd8 react-hotkeys-hook 5, D14e 9d864ef lucide-react 1.8, D15 311d8e3 zod 4, D16 78c12f0 jose 6, D17 ecbe951 pino 10 + pino-pretty 13, D18 a393b33 resend 6, D19 d702129 vite 8 + @vitejs/plugin-react 6, D20 73d2c67 typescript 6.0.3 repo-wide + dropped deprecated baseUrl + added src/types/css.d.ts, D21 4981679 Biome 2.4.12 + migrated biome.json). Per-commit gates all green — turbo typecheck + turbo build + vitest 201/209 baseline. pnpm audit 0 vulnerabilities. 3 Rule-1 migrations (react-resizable-panels v4 API overhaul, TS 6 baseUrl deprecation, TS 6 CSS side-effect declare). NO workarounds, NO @ts-ignore, NO as any. SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-04-SUMMARY.md`.
-- Next action: `/gsd-execute-phase 16` Wave E (16-05 gated framework majors: next-auth, Next 16, Prisma 7, windows 0.62, tauri-specta RC, docs sync).
-- Files touched this session: 5 package.json manifests + biome.json + apps/desktop/tsconfig.json + apps/web/src/types/css.d.ts (new) + apps/desktop/src/features/editor/split-pane.tsx + apps/desktop/src/routes/editor.tsx + pnpm-lock.yaml (across 12 atomic commits).
+- Last activity: 2026-04-22 — Executed Phase 16 Plan 05 (Wave E gated framework majors + docs sync). **Phase 16 COMPLETE.**
+- Last action: Plan 16-05 complete — 2 atomic commits (E24 `ac8e8f8` next 15 → 16.2.4 in apps/web; E28 `3d1625b` CLAUDE.md + docs/ARCHITECTURE.md synced to final Phase 16 pins). E22 skipped (no newer next-auth beta on npm dist-tags — 5.0.0-beta.31 is current). E25 deferred (@auth/prisma-adapter peerDeps list `>=6` only). E26 deferred (no Windows CI runner available). E27 blocked-no-op (specta 2.0.0-rc.24 requires nightly Rust — `const_type_id` + `debug_closure_helpers`; Cargo.toml files reverted to rc.21/rc.22/0.0.9 pins). Gate: turbo typecheck + turbo build + cargo check --workspace + cargo test --workspace all green. Biome has 130 pre-existing errors in apps/web/src (generated Prisma + a11y) — out of scope; files I touched are biome-clean. SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-05-SUMMARY.md`.
+- Next action: Phase 16 is complete. Three deferred bumps remain for future dedicated phases: (a) Prisma 7 once `@auth/prisma-adapter` publishes `>=7` peerDep support; (b) windows 0.58 → 0.62 once a Windows CI runner is available; (c) tauri-specta/specta rc.24 once specta reverts to stable-Rust features or we bump MSRV to nightly.
+- Files touched this session: apps/web/package.json + apps/web/next-env.d.ts + pnpm-lock.yaml + CLAUDE.md + docs/ARCHITECTURE.md + crates/encoder/Cargo.toml (across 2 atomic commits).
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
