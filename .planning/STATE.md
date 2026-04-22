@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-22T14:40:00.000Z"
+last_updated: "2026-04-22T14:55:00.000Z"
 progress:
   total_phases: 16
   completed_phases: 7
   total_plans: 111
-  completed_plans: 90
+  completed_plans: 91
   percent: 81
 ---
 
@@ -25,7 +25,7 @@ progress:
 ## Current Position
 
 Phase: 16 — Upgrade all dependencies to latest — EXECUTING
-Plan: 16-01 complete (Wave A safe patch/minor bumps: Rust workspace A1 + per-workspace npm A2 landed as atomic commits 24f7b31 + 1eb1542; gates green — cargo check + cargo test + turbo typecheck + turbo build + apps/desktop vitest 201/209 baseline). 4 plans remain (16-02 Tauri group, 16-03 Rust 0.x breaking, 16-04 JS majors, 16-05 gated framework majors).
+Plan: 16-02 complete (Wave B Tauri group lockstep + Playwright sidecar Vitest unification: B3 Rust tauri* 2.10.x + JS @tauri-apps/* 2.x latest landed as 90c6846; B4 sidecar vitest 2→4.1.5 landed as 33e37a7; gates green — cargo check + cargo test 89/89 + turbo typecheck + turbo build + apps/desktop vitest 201/209 baseline + sidecar vitest 60/60). 3 plans remain (16-03 Rust 0.x breaking, 16-04 JS majors, 16-05 gated framework majors).
 
 ## Phase 8-11 Planning Audit (2026-04-21)
 
@@ -136,10 +136,10 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-22 — Executed Phase 16 Plan 01 (Wave A safe Rust + npm patch/minor bumps).
-- Last action: Plan 16-01 complete — 2 atomic commits (24f7b31 A1 Rust workspace, 1eb1542 A2 npm workspaces). cargo check + cargo test + turbo typecheck + turbo build all green; apps/desktop vitest 201/209 (baseline preserved). Two deviations auto-fixed (specta-typescript stays 0.0.9 pending Phase E27; rusqlite_migration pinned 2.0.0 pending Phase C6). SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-01-SUMMARY.md`.
-- Next action: `/gsd-execute-phase 16` Wave B (16-02 Tauri group + Playwright sidecar Vitest 2→4).
-- Files touched this session: 12 Cargo.toml manifests + Cargo.lock + 5 package.json manifests + pnpm-lock.yaml.
+- Last activity: 2026-04-22 — Executed Phase 16 Plan 02 (Wave B Tauri group lockstep + Playwright sidecar Vitest unification).
+- Last action: Plan 16-02 complete — 2 atomic commits (90c6846 B3 Tauri Rust tauri* 2.10.x + JS @tauri-apps/* 2.x latest across 6 manifests, 33e37a7 B4 sidecar vitest 2→4.1.5). cargo check + cargo test 89/89 + turbo typecheck + turbo build all green; apps/desktop vitest 201/209 (baseline preserved); playwright-sidecar vitest 60/60 on v4. Zero deviations — all bumps hit PRD exact targets. Cargo.lock had no diff (resolver already at targets — verified); pnpm-lock.yaml regenerated in both commits. SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-02-SUMMARY.md`.
+- Next action: `/gsd-execute-phase 16` Wave C (16-03 Rust 0.x breaking: rusqlite across 4 crates, objc2 0.5→0.6 unify, reqwest/sha2/scraper/nix/tower/schemars/rand/toml/ts-rs, serde_yaml replacement).
+- Files touched this session: 2 Cargo.toml manifests + 4 package.json manifests + pnpm-lock.yaml (across both commits).
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
