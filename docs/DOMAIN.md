@@ -1,6 +1,8 @@
 # StoryCapture — Domain & Pipeline
 
-The business layer: DSL grammar, the recording → encode → post-production pipeline, the intelligence layer, and the current roadmap status. Read-on-demand.
+The business layer: DSL grammar, the recording → encode → post-production
+pipeline, the intelligence layer, and a compact live roadmap summary.
+Read-on-demand.
 
 ## DSL (`.story` format)
 
@@ -92,7 +94,9 @@ Sidecar file paired with each `.story`, keyed by step_id. Store: `crates/automat
                       └─► Chromium via playwright-core CDP
   ┌─► capture::CapturePipeline              (parallel, started on record)
   │    ├─► SckBackend (macOS) / WgcBackend (Windows) / XcapBackend (fallback)
+  │    ├─► target kinds: display, window, WindowByPid, region
   │    ├─► ByteBoundedQueue (default 256 MiB)
+  │    ├─► one-shot thumbnails for picker/recorder preview
   │    └─► cpal+ringbuf audio (Phase 6)
   └─► encoder::EncodePipeline
        ├─► probe_encoders() → VideoToolbox | NVENC | QSV | AMF | libopenh264
@@ -110,6 +114,21 @@ Render queue: encoder::RenderQueueActor drives MP4/WebM/GIF × resolution × qua
 Web companion (Phase 4):
   upload to R2 (multipart presigned URLs, SSE-S3) → Prisma Video row → shareable /watch/<slug> + embed + analytics + desktop-web sync.
 ```
+
+## Storage and project model
+
+- `storage::AppDb` stores global app-level data such as projects, recent state,
+  and cross-project metadata.
+- `storage::ProjectDb` stores per-project timeline/render/preset state.
+- `storage::ProjectFolder` defines the on-disk project layout, including
+  stories, exports, simulator artifacts, and sidecar files.
+- `.scpreset` import/export and migrations live in the storage boundary, not in
+  the Tauri host.
+
+## Utility boundary
+
+`crates/util` stays intentionally small. Today it mainly provides common helper
+surfaces like content hashing and frame-drop callbacks used across crates.
 
 ## Effects AST & post-production model
 
@@ -150,35 +169,27 @@ Prisma models (12) + tRPC surface summary — details in `docs/ARCHITECTURE.md`.
 - **Templates:** 9 categories (SAAS_ONBOARDING, ECOMMERCE_CHECKOUT, API_WALKTHROUGH, MOBILE_DEMO, CLI_TOOL, LANDING_PAGE, FEATURE_ANNOUNCEMENT, BUG_REPRODUCTION, INTERNAL_TRAINING), system templates have `workspaceId = null`.
 - **Desktop ↔ web sync:** `SyncedProject` mirrors desktop project metadata (desktopId, recordingStatus, lastSyncedAt). SSE with short-lived JWT (`/api/auth/mint-sse-jwt`).
 
-## Roadmap status (v1 milestone)
+## Live roadmap summary
 
-From `.planning/STATE.md` as of 2026-04-19. Overall progress ~87%.
+Source of truth: `.planning/STATE.md`.
 
-| Phase | Title | Status |
-|---|---|---|
-| 01 | Foundation — DSL, automation, capture, encode | Code-complete; operator gates pending (capture-soak CI, release secrets + first signed build) |
-| 02 | Cinematic post-production + export | Code-complete; blocked on sound-library curation (02-08) + Post-Production Editor walkthrough (02-12b) |
-| 03 | Intelligence — NL→DSL, TTS, LSP, Dry-Run | Code-complete; blocked on Accounts settings walkthrough (03-20, G7/G8/G9 AI-disclosure) |
-| 04 | Web companion + sharing + workspaces + analytics | Code-complete; blocked on integration walkthrough (04-10) |
-| 05 | Window-targeted capture + Playwright auto-follow | Code-complete; operator-gated macOS/Windows verification |
-| 06 | Recording v2 — mic audio, region capture, chrome-hiding, multi-browser | 01/02/04 shipped; 03 deferred pending Phase 9 live preview |
-| 07 | Semantic DSL verbs + element picker (Tier 1 + Tier 2) | Executing; plans 01–07 code-complete (grammar/Smart-Selector/picker-MVP/hover-preview/step-id/self-healing/validator) |
-| 08 | Recording engine polish — GPU downscale, live cursor overlay, scene-end transitions | Planned |
-| 09 | Live Preview pane — CDP `Page.startScreencast` inside Recorder | Planned |
-| 10 | Author-time simulator — step-preview / dry-run walkthrough | Planned |
-| 11 | Author-time element picker — relocate Pick to Preview panel, read-only Record path | Planned |
+As of 2026-04-22:
 
-### Currently blocking (all operator-gated)
+- Phases 1-5 are code-complete, with remaining operator-gated verification on
+  capture soak, release signing, audio curation, accounts walkthrough, and web
+  integration walkthrough.
+- Phase 6 shipped mic audio, region capture, and chrome-hiding foundations.
+- Phase 7 semantic verbs, picker, step IDs, and self-healing targets are in
+  code.
+- Phase 9 live preview is code-complete.
+- Phase 10 author-time simulator is code-complete.
+- Phase 11 author-time picker relocation is partially landed in source and no
+  longer belongs in the “planned from scratch” bucket.
+- Phase 16 dependency refresh and Phase 17 recording lifecycle hardening are
+  complete.
 
-- `01-07` CI capture-soak workflow run (30-min, <800 MB RAM).
-- `01-10` 13 release secrets + first tagged `v0.1.0-beta.1` on clean VMs.
-- `02-08` Audio curation + listen-test (20 files → manifest + attribution + unignore tests).
-- `02-12b` Post-Production Editor walkthrough (scrub 60fps, presets, export, undo/redo, a11y).
-- `03-20` Accounts settings + AI disclosure walkthrough (WCAG 2.1 AA).
-- `04-10` Landing page + integration walkthrough (OAuth, upload, viewer, invite, analytics, sync).
-- `05-01/02/03` Window-capture + Playwright auto-follow + Windows E2E verification.
-
-No architectural blockers — all v1 code committed.
+Do not duplicate the full phase ledger here. Read `.planning/STATE.md` for the
+live milestone position and operator blockers.
 
 ## References
 

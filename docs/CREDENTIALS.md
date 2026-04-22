@@ -1,100 +1,132 @@
 # Credentials & Signing Secrets
 
-This document is the **single source of truth** for every external credential
-StoryCapture needs to ship signed, notarized, auto-updateable releases. Phase
-1 ships before any of these are provisioned (no_credentials_mode), so every
-script and CI workflow that depends on them is guarded by env-var presence
-checks and exits cleanly when absent.
+Single source of truth for external credentials used by release, notarization,
+desktop auth, web uploads, and transactional email.
 
-When you provision a credential, add it to the repo's GitHub Secrets *and*
-the matching local-dev environment (e.g., `~/.zshrc`, `direnv`, or a
-`.env.local` consumed by `dotenv`).
+When you provision a credential, add it to GitHub Actions secrets and the
+matching local environment if the flow is run outside CI.
 
----
+## macOS signing and notarization
 
-## macOS — Developer ID signing + notarization (Phase 1 release gate)
+Used by:
 
-| Secret name in CI            | Local env var               | Required by                                               | Where to get it                                                                                       |
-| ---------------------------- | --------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `APPLE_ID`                   | `APPLE_ID`                  | `notarize-mac.sh`, `notarize-smoke.yml`                   | The Apple ID email tied to your paid Apple Developer Program account ($99/yr).                        |
-| `APPLE_APP_PASSWORD`         | `APPLE_APP_PASSWORD`        | `notarize-mac.sh`, `notarize-smoke.yml`                   | App-specific password — generate at <https://appleid.apple.com> → Sign-In and Security → App-Specific Passwords. **Not** your real Apple ID password. |
-| `APPLE_TEAM_ID`              | `APPLE_TEAM_ID`             | `notarize-mac.sh`, `notarize-smoke.yml`                   | 10-character team ID — find at <https://developer.apple.com/account> → Membership → Team ID.          |
-| `APPLE_SIGNING_IDENTITY`     | `APPLE_SIGNING_IDENTITY`    | `notarize-mac.sh`, `notarize-smoke.yml`                   | Full string, e.g. `Developer ID Application: Acme Inc (TEAMID)`. Run `security find-identity -v -p codesigning` after importing your cert to see the exact label. |
-| `APPLE_CERTIFICATE_P12_BASE64` | n/a (CI only)             | `notarize-smoke.yml` (cert import on a fresh runner)      | `base64 -i DeveloperIDApplication.p12 \| pbcopy`. Export the cert from Keychain Access as `.p12`.    |
-| `APPLE_CERTIFICATE_PASSWORD` | n/a (CI only)               | `notarize-smoke.yml` (decrypts the .p12 above)            | The password you set when exporting the .p12.                                                         |
+- `scripts/notarize/notarize-mac.sh`
+- `scripts/notarize/notarize-smoke.sh`
+- `.github/workflows/notarize-smoke.yml`
+- `.github/workflows/release.yml`
 
-**How to provision (one-time):**
+Required secrets:
 
-1. Pay $99 to enroll in the Apple Developer Program.
-2. In Xcode → Settings → Accounts, add your Apple ID and **Manage Certificates → +
-   Developer ID Application**. Apple issues the cert to your team.
-3. In Keychain Access, locate the new cert (`Developer ID Application: <Team>`),
-   right-click → Export → save as `.p12` with a strong password.
-4. Generate an app-specific password at appleid.apple.com (label it
-   "StoryCapture notarytool").
-5. Add all six secrets above to GitHub: **Settings → Secrets and variables →
-   Actions → New repository secret**.
-6. Re-run the `notarize-smoke` workflow. The credential gate now flips and
-   the full pipeline runs end-to-end.
+| CI secret | Local env | Purpose |
+|---|---|---|
+| `APPLE_ID` | `APPLE_ID` | Apple account for notarization |
+| `APPLE_APP_PASSWORD` | `APPLE_APP_PASSWORD` | App-specific password for `notarytool` |
+| `APPLE_TEAM_ID` | `APPLE_TEAM_ID` | Apple developer team |
+| `APPLE_SIGNING_IDENTITY` | `APPLE_SIGNING_IDENTITY` | Developer ID Application identity |
+| `APPLE_CERTIFICATE_P12_BASE64` | n/a | Import signing cert on clean runners |
+| `APPLE_CERTIFICATE_PASSWORD` | n/a | Unlock exported `.p12` |
 
-**Until then:** every guarded step prints
-`[notarize-mac] skipped — credentials pending` and exits 0. CI stays green.
+Notes:
 
----
+- The smoke path intentionally stays green when these secrets are absent.
+- `scripts/notarize/adhoc-sign.sh` does not use paid credentials.
+- `scripts/notarize/smoke-app/` is a standalone Tauri fixture used to prove the
+  notarization pipeline before shipping the real app.
 
-## Windows — code signing (deferred to Plan 10)
+## Windows signing
 
-Per D-42, Windows signing is a small spike, not a Phase-1 blocker. Unsigned
-PR builds are acceptable. The variable names are reserved here so Plan 10
-can drop them in without renaming.
+Used by:
 
-| Secret name in CI                | Local env var                  | Required by                          | Where to get it                                                                                  |
-| -------------------------------- | ------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `WINDOWS_TRUSTED_SIGNING_ENDPOINT` | `WINDOWS_TRUSTED_SIGNING_ENDPOINT` | future `sign-windows.ps1`        | Microsoft Trusted Signing endpoint URL (preferred 2026 default).                                 |
-| `WINDOWS_TRUSTED_SIGNING_ACCOUNT`  | `WINDOWS_TRUSTED_SIGNING_ACCOUNT`  | future `sign-windows.ps1`        | Trusted Signing account name.                                                                    |
-| `WINDOWS_TRUSTED_SIGNING_PROFILE`  | `WINDOWS_TRUSTED_SIGNING_PROFILE`  | future `sign-windows.ps1`        | Trusted Signing certificate profile name.                                                        |
-| `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET` | same | future `sign-windows.ps1`        | Azure AD service principal with permissions on the Trusted Signing resource.                     |
-| `WINDOWS_EV_CERT_THUMBPRINT` (alt) | `WINDOWS_EV_CERT_THUMBPRINT`   | fallback signtool path               | If using EV cert via Azure Key Vault instead of Trusted Signing.                                 |
+- `scripts/release/sign-windows.ps1`
+- `.github/workflows/release.yml`
 
-**Status:** all dormant. No script in Phase 1 references these.
+Supported modes:
 
----
+- `TrustedSigning`
+  Microsoft Trusted Signing via AzureSignTool
+- `EvCert`
+  EV certificate stored in Azure Key Vault, also via AzureSignTool
 
-## LLM / TTS API keys (Phase 3)
+Required secrets:
 
-Per D-29, secrets land in the OS keychain at runtime via
-`tauri-plugin-keyring`. They are **never** stored as repo secrets and never
-committed in plaintext. Listed here for visibility only:
+| CI secret | Local env | Purpose |
+|---|---|---|
+| `AZURE_TENANT_ID` | `AZURE_TENANT_ID` | Azure AD tenant |
+| `AZURE_CLIENT_ID` | `AZURE_CLIENT_ID` | Service principal client ID |
+| `AZURE_CLIENT_SECRET` | `AZURE_CLIENT_SECRET` | Service principal client secret |
+| `AZURE_KEY_VAULT_URL` | `AZURE_KEY_VAULT_URL` | Azure Key Vault URL |
+| `WINDOWS_SIGNING_CERT_NAME` | `WINDOWS_SIGNING_CERT_NAME` | Trusted Signing cert/profile name |
+| `EV_CERT_AZURE_KV_NAME` | `EV_CERT_AZURE_KV_NAME` | EV cert name for fallback mode |
 
-| Key name (in OS keychain) | Service           | Required by                |
-| ------------------------- | ----------------- | -------------------------- |
-| `storycapture.anthropic`  | Anthropic Claude  | Phase 3 NL → DSL           |
-| `storycapture.openai`     | OpenAI            | Phase 3 NL → DSL fallback  |
-| `storycapture.elevenlabs` | ElevenLabs TTS    | Phase 3 voiceover          |
+Notes:
 
-The Phase-1 keyring scaffold lands without using any of these keys (per D-29:
-"so Phase 3 drops in without plumbing").
+- This is no longer a deferred placeholder; the release workflow already calls
+  `sign-windows.ps1`.
+- Provisioning details belong in `scripts/release/WINDOWS-SIGNING.md`.
 
----
+## Tauri updater signing
 
-## Web companion (Phase 4)
+Used by:
 
-Deferred — see Phase 4 plan when scoped. Will include `DATABASE_URL`,
-`NEXTAUTH_SECRET`, OAuth client IDs/secrets, S3/R2 access keys, JWT signing
-keys.
+- `scripts/release/generate-updater-signing-key.sh`
+- `.github/workflows/release.yml`
+- `apps/desktop/src-tauri/tauri.conf.json`
 
----
+Required secrets:
 
-## How scripts behave when secrets are missing
+| CI secret | Purpose |
+|---|---|
+| `TAURI_UPDATER_PRIVATE_KEY` | Private key used to sign updater artifacts |
+| `TAURI_UPDATER_KEY_PASSWORD` | Password chosen during key generation |
 
-| Script / workflow             | With creds                                          | Without creds                                              |
-| ----------------------------- | --------------------------------------------------- | ---------------------------------------------------------- |
-| `scripts/notarize/notarize-mac.sh`   | Full sign + notarize + staple; non-zero on reject. | Prints "skipped — credentials pending"; exits 0.            |
-| `scripts/notarize/notarize-smoke.sh` | Builds smoke binary, notarizes it, asserts spctl.  | Prints skip message; exits 0.                               |
-| `scripts/notarize/adhoc-sign.sh`     | (n/a — never uses paid creds)                      | Applies ad-hoc signature so dev TCC entries stay stable.    |
-| `.github/workflows/notarize-smoke.yml` | Runs full pipeline on macos-14; uploads `.app`. | Lints scripts + verifies the credential gate; exits green. |
-| `.github/workflows/ffmpeg-build.yml`   | (n/a — no signing here)                          | Builds + verifies static FFmpeg unconditionally.            |
+Notes:
 
----
+- Generate once, never commit the private key.
+- Copy the public key into `tauri.conf.json`.
 
-*Last updated: 2026-04-14 (Phase 1, plan 01-02).*
+## Desktop AI and TTS keys
+
+Stored in the OS keychain at runtime, not in repo secrets.
+
+| Key name | Service |
+|---|---|
+| `storycapture.anthropic` | Anthropic |
+| `storycapture.openai` | OpenAI |
+| `storycapture.elevenlabs` | ElevenLabs |
+
+## Web companion secrets
+
+Required by the deployed Next.js app:
+
+| Env var | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL for Prisma |
+| `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` | GitHub OAuth |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth |
+| `NEXTAUTH_URL` | Base URL used in invite and auth flows |
+| `JWT_SECRET` | Signs desktop tokens and short-lived SSE JWTs |
+| `R2_ACCOUNT_ID` | Cloudflare R2 account |
+| `R2_ACCESS_KEY_ID` | R2 access key |
+| `R2_SECRET_ACCESS_KEY` | R2 secret |
+| `R2_BUCKET` | Bucket name, defaults to `storycapture-media` |
+| `RESEND_API_KEY` | Invite emails |
+| `CRON_SECRET` | Guards `/api/cron/aggregate-analytics` |
+
+Notes:
+
+- Analytics GeoIP uses `@maxmind/geoip2-node` plus the local database at
+  `apps/web/public/geolite2/GeoLite2-Country.mmdb`.
+- Vercel cron runs `/api/cron/aggregate-analytics` every minute via
+  `apps/web/vercel.json`.
+
+## Missing-secret behavior
+
+| Script / workflow | Behavior when secret is missing |
+|---|---|
+| `scripts/notarize/notarize-mac.sh` | Prints skip message and exits 0 |
+| `scripts/notarize/notarize-smoke.sh` | Prints skip message and exits 0 |
+| `.github/workflows/notarize-smoke.yml` | Verifies gating path still works |
+| `.github/workflows/ffmpeg-build.yml` | Unaffected |
+| `.github/workflows/release.yml` | Requires release secrets to complete successfully |
+
+Last updated: 2026-04-22

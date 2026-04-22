@@ -23,7 +23,7 @@ Concrete patterns actually used in the codebase. Read on demand; don't invent ne
   - **Monolithic per feature** (default): single `create<T>()((set, get) => ({ state, actions }))` in one file, optional `persist()` middleware. Example: `features/nl-mode/nlStore.ts`.
   - **Slice-composed / cross-feature shared** (two documented exceptions only):
     1. Post-production editor: 6 slices merged in `features/post-production/state/store.ts`.
-    2. Phase 13 output-prefs (`state/output-prefs.ts`): cross-feature shared store for the 5 recording-time + 8 export-time output knobs, consumed by both the recorder and the post-production export modal. Persisted via `tauri-plugin-store` + per-project `<project>/.storycapture/output.json`.
+    2. Phase 13 output-prefs (`state/output-prefs.ts`): cross-feature shared store for the 5 recording-time + 8 export-time output knobs, consumed by both the recorder and the post-production export modal. Persistence bridge lives in `ipc/output-prefs.ts` + `lib/output-prefs-persist.ts`, backed by `tauri-plugin-store` and per-project `<project>/.storycapture/output.json`.
 
     Don't copy these patterns unless the store clearly warrants it — keep it monolithic per feature.
 - **TanStack Query:** every IPC read/mutation goes through a hook in `src/ipc/*.ts`. Query-key factory pattern: `const KEYS = { all: ['projects'] as const, detail: (id) => [...] as const }`. Mutations invalidate with `qc.invalidateQueries({ queryKey: KEYS.all })`.
@@ -50,7 +50,7 @@ Concrete patterns actually used in the codebase. Read on demand; don't invent ne
 - **Format:** `type(scope): subject`.
 - **Types:** `feat`, `fix`, `refactor`, `docs`, `chore`, `test`, `merge`. No other types.
 - **Scope:** phase/plan ID (`07-05`, `phase-07`), crate name (`capture`, `recording`), or cross-cutting area (`state`, `docs`). Phase IDs are preferred when the change belongs to a GSD plan.
-- **No `Co-Authored-By` trailers.** Hard rule (see CLAUDE.md "Agent Working Rules"). Strip them from commit messages.
+- **No `Co-Authored-By` trailers.** Hard rule (see `AGENTS.md` / `CLAUDE.md`). Strip them from commit messages.
 - **No `--no-verify`, no `@ts-ignore`, no skipped tests** to "make things green" — fix the root cause or stop and ask.
 
 ## GSD workflow artifacts
@@ -82,9 +82,13 @@ Commit messages encode the plan ID (`feat(07-05): …` → phase 7, plan 5).
 |---|---|
 | `ci.yml` | Multi-platform build + test (macOS arm64/x64, Windows x64). Biome, fmt, clippy, nextest, offline eval. |
 | `capture-soak.yml` | 30-min capture memory soak (operator-triggered on TCC-granted host). |
+| `capture-windows.yml` | Windows compile and no-run gate for WGC-specific capture code. |
 | `capture-windows-e2e.yml` | WGC real-hardware E2E on Windows runner. |
 | `encoder-av-drift.yml` | Audio/video sync validation across HW encoders. |
 | `ffmpeg-build.yml` | Cross-compile LGPL FFmpeg 7.0.2 per-triple binaries. |
+| `installer-size-budget.yml` | Enforces residual installer size budget after excluding bundled sidecars. |
+| `nightly-eval.yml` | Live nightly eval against the golden AI dataset. |
+| `render-benchmark.yml` | PR speed-factor render benchmark gate. |
 | `release.yml` | Signed + notarized multi-platform release bundle. |
 | `notarize-smoke.yml` | Pre-release notarization smoke test. |
 | `release-soak.yml`, `release-benchmark.yml` | Post-release validation. |
@@ -93,7 +97,7 @@ Commit messages encode the plan ID (`feat(07-05): …` → phase 7, plan 5).
 
 ## Agent / contributor hard rules
 
-Mirrored from CLAUDE.md "Agent Working Rules" — keep them top of mind:
+Mirrored from `AGENTS.md` / `CLAUDE.md` "Working Rules" — keep them top of mind:
 
 1. **No workarounds.** Fix at the root cause. Don't skip tests, `@ts-ignore`, `--no-verify`, or silence lints. Stop and ask if blocked.
 2. **No `Co-Authored-By` in commits.**
