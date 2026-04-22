@@ -8,9 +8,9 @@
 //! 4. [`crate::auto_wait::wait_actionable`] — Playwright-style precondition.
 //! 5. The verb-specific driver method.
 //!
-//! Events flow out through an `mpsc::Receiver<ExecutorEvent>` (D-06 actor
-//! pattern). The optional `ProjectDb` writer persists the session/step/
-//! attempt rows (Plan 05 surface).
+//! Events flow out through an `mpsc::Receiver<ExecutorEvent>` (actor
+//! pattern). The optional `ProjectDb` writer persists session / step /
+//! attempt rows.
 
 use crate::capability::{driver_for, required_for};
 use crate::control::RunControl;
@@ -57,8 +57,8 @@ impl Executor {
     }
 
     /// Variant of [`Executor::run`] that threads a `.story` source path for
-    /// the self-healing sidecar targets store (plan 07-04c / PHASE-7.5).
-    /// When `story_path` is `Some`, a command whose `meta.step_id` is set
+    /// the self-healing sidecar targets store. When `story_path` is `Some`,
+    /// a command whose `meta.step_id` is set
     /// and whose primary selector fails `wait_actionable` will consult
     /// `<story_path>.targets.json`, iterate fallbacks, and atomically
     /// rewrite the sidecar on promotion. Passing `None` disables the
@@ -97,8 +97,8 @@ impl Executor {
         rx
     }
 
-    /// Simulator-mode runner (Phase 10-01). Variant of `run_with_story_path`
-    /// that threads the four new simulator params — `stop_after_ordinal`,
+    /// Simulator-mode runner — variant of `run_with_story_path`
+    /// that threads four simulator params — `stop_after_ordinal`,
     /// `capture_frames`, `frame_dir`, `self_heal` — through to `run_story`.
     /// Recording path callers should stay on `run_with_story_path`.
     #[allow(clippy::too_many_arguments)]
@@ -399,7 +399,7 @@ async fn run_command(
     let mut last_resolved: Option<(ResolvedSelector, MatchKind)> = None;
     checkpoint(control).await;
 
-    // Step_id from the DSL line itself (plan 07-04b `# @id=<uuidv7>`), used
+    // Step_id from the DSL line itself (`# @id=<uuidv7>`), used
     // by the self-healing path to key into the targets sidecar. Distinct
     // from the `step_id` param, which is the storage row id.
     let cmd_step_id = cmd.step_id();
@@ -429,7 +429,7 @@ async fn run_command(
         }};
     }
 
-    // Wait-actionable with self-healing fallback promotion (plan 07-04c).
+    // Wait-actionable with self-healing fallback promotion.
     //
     // When the primary selector's wait_actionable times out AND the command
     // has a stamped step_id AND a `.story.targets.json` sidecar is present
@@ -451,7 +451,7 @@ async fn run_command(
                     // Probe fallbacks regardless of self_heal so the
                     // simulator can surface match_kind=Fuzzy even in
                     // read-only runs; only persist the promotion when
-                    // self_heal=true (D-07).
+                    // self_heal=true.
                     match try_promote_fallback(
                         driver,
                         cmd_step_id,
@@ -578,7 +578,7 @@ pub async fn continue_run(
     .await
 }
 
-/// Plan 07-04c self-healing hook. On a primary `wait_actionable` miss,
+/// Self-healing hook. On a primary `wait_actionable` miss,
 /// consult `<story_path>.targets.json` for the step's fallbacks, iterate
 /// them in order, and return the first one that resolves + passes
 /// `wait_actionable`. On success rewrites the sidecar JSON atomically —

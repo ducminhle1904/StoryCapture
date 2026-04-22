@@ -36,6 +36,8 @@ pub struct ResumableSession {
     pub project_folder: PathBuf,
     pub story_path: PathBuf,
     pub story_source: String,
+    /// Parsed AST — shared across step_to/promote to avoid re-parsing.
+    pub story: Arc<story_parser::Story>,
     pub run_id: String,
     pub frame_dir: PathBuf,
     pub total_steps: u32,
@@ -275,10 +277,11 @@ pub async fn simulator_start(
     channel: Channel<SimulatorEvent>,
 ) -> Result<String, AppError> {
     let parse = story_parser::parse(&story_source);
-    let story = parse
+    let story_ast = parse
         .ast
         .ok_or_else(|| AppError::InvalidArgument("story parse failed".into()))?;
-    let total_steps = count_total_steps(&story);
+    let total_steps = count_total_steps(&story_ast);
+    let story = Arc::new(story_ast);
 
     if let Some(ord) = stop_after_ordinal {
         if ord == 0 || ord > total_steps {
@@ -301,7 +304,12 @@ pub async fn simulator_start(
             })?
     };
 
-    // Readiness probe + pause the author screencast for exclusive CDP use.
+    // Readiness probe + pause the author screencast for exclusive CDP use,
+    // in parallel with the blocking filesystem retention trim.
+    let project_path = PathBuf::from(&project_folder);
+    let prune_path = project_path.clone();
+    let prune_task = tokio::task::spawn_blocking(move || prune_runs_retain_5(&prune_path));
+
     {
         let d = driver_arc.lock().await;
         d.pick_element_is_active()
@@ -312,8 +320,9 @@ pub async fn simulator_start(
             .map_err(|e| AppError::Automation(e.to_string()))?;
     }
 
-    let project_path = PathBuf::from(&project_folder);
-    prune_runs_retain_5(&project_path)
+    prune_task
+        .await
+        .map_err(|e| AppError::Io(format!("prune task join: {e}")))?
         .map_err(|e| AppError::Io(format!("prune simulator runs: {e}")))?;
 
     let run_id = Uuid::new_v4().to_string();
@@ -329,7 +338,7 @@ pub async fn simulator_start(
 
     let forwarder = spawn_run(
         session_id.clone(),
-        story,
+        (*story).clone(),
         story_path_buf.clone(),
         frame_dir.clone(),
         screenshot_dir,
@@ -353,6 +362,7 @@ pub async fn simulator_start(
             project_folder: project_path,
             story_path: story_path_buf,
             story_source,
+            story,
             run_id,
             frame_dir,
             total_steps,
@@ -399,14 +409,9 @@ pub async fn simulator_step_to(
         task.abort();
     }
 
-    let parse = story_parser::parse(&session.story_source);
-    let story = parse
-        .ast
-        .ok_or_else(|| AppError::InvalidArgument("stored story failed to re-parse".into()))?;
-
     let forwarder = spawn_run(
         session_id.clone(),
-        story,
+        (*session.story).clone(),
         session.story_path.clone(),
         session.frame_dir.clone(),
         session.frame_dir.clone(),
@@ -483,10 +488,7 @@ pub async fn simulator_promote_fallback(
 
     // Locate the command at `ordinal` in the parsed story to extract its
     // step_id + ActionKind.
-    let parse = story_parser::parse(&session.story_source);
-    let story = parse
-        .ast
-        .ok_or_else(|| AppError::InvalidArgument("stored story failed to re-parse".into()))?;
+    let story = &session.story;
     let mut running: u32 = 0;
     let mut located: Option<&story_parser::Command> = None;
     'outer: for scene in &story.scenes {

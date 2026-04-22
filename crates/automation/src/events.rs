@@ -1,11 +1,8 @@
 //! Public event types emitted by the executor.
 //!
-//! These cross the Tauri `Channel<ExecutorEvent>` boundary in
-//! `apps/desktop/src-tauri/src/commands/automation.rs`. They are also
-//! consumed in pure-Rust contexts (Phase 5 headless CLI). `serde::Serialize`
-//! is the only required derive — `specta::Type` would couple this crate to
-//! the Tauri side, which D-07/D-11 forbids; the host adds a thin specta
-//! wrapper if needed.
+//! Crosses the Tauri `Channel<ExecutorEvent>` boundary and also runs in
+//! pure-Rust (headless) contexts. Only `serde` derives are required here —
+//! the Tauri host wraps its own specta mirror so this crate stays decoupled.
 
 use crate::driver::BoundingBox;
 use serde::{Deserialize, Serialize};
@@ -81,7 +78,7 @@ pub struct StorySummary {
 }
 
 /// Resolve outcome for a single step. Drives the simulator UI's
-/// "Promote to fallback" button gate (D-07).
+/// "Promote to fallback" button gate — only `Fuzzy` matches are promotable.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MatchKind {

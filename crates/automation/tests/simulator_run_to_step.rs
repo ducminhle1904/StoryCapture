@@ -1,6 +1,6 @@
-//! Phase 10-01 simulator executor tests.
+//! Simulator executor tests.
 //!
-//! Cover the four new `run_story` parameters (`stop_after_ordinal`,
+//! Cover the four simulator `run_story` parameters (`stop_after_ordinal`,
 //! `capture_frames`, `frame_dir`, `self_heal`) + the two new
 //! `ExecutorEvent` variants (`RunPaused`, `StepFrameCaptured`) + the
 //! `StepFrame.match_kind` discriminator.
