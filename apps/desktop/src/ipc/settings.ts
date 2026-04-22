@@ -11,6 +11,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface AppSettings {
   browser_executable: string | null;
+  /** Phase 09-02 — persisted live-preview toggle. */
+  live_preview_enabled: boolean;
 }
 
 export function getAppSettings(): Promise<AppSettings> {
@@ -21,4 +23,8 @@ export function setBrowserExecutable(
   path: string | null,
 ): Promise<AppSettings> {
   return invoke<AppSettings>("set_browser_executable", { path });
+}
+
+export function setLivePreviewEnabled(enabled: boolean): Promise<AppSettings> {
+  return invoke<AppSettings>("set_live_preview_enabled", { enabled });
 }

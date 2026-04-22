@@ -10,6 +10,7 @@ import {
   type CaptureTargets,
 } from "@/ipc/capture";
 import type { AudioPickerValue } from "@/ipc/audio";
+import { getAppSettings, setLivePreviewEnabled as ipcSetLivePreviewEnabled } from "@/ipc/settings";
 
 export type RecorderStatus =
   | "idle"
@@ -85,6 +86,11 @@ export interface RecorderData {
    *  When true, the recorder appends `--app=<meta.app>` to
    *  LaunchConfig.args before automation starts. */
   chromeHiding: boolean;
+
+  /** Phase 09-02 — persisted Options toggle for the in-recorder live
+   *  preview pane. Default ON (D-11); hydrated from app_settings on
+   *  first access. */
+  livePreviewEnabled: boolean;
 }
 
 export interface RecorderActions {
@@ -108,6 +114,13 @@ export interface RecorderActions {
 
   setIncludeCursor: (v: boolean) => void;
   setChromeHiding: (v: boolean) => void;
+
+  /** Phase 09-02 — flip the live-preview toggle; persists through
+   *  `set_live_preview_enabled` so the choice survives app restarts. */
+  setLivePreviewEnabled: (v: boolean) => void;
+  /** Phase 09-02 — hydrate `livePreviewEnabled` from app_settings. Safe
+   *  to call more than once; silently no-ops on IPC error. */
+  hydrateLivePreviewEnabled: () => Promise<void>;
 }
 
 export type RecorderState = RecorderData & RecorderActions;
@@ -130,6 +143,9 @@ const INITIAL: RecorderData = {
   audioDeviceId: null,
   includeCursor: true,
   chromeHiding: false,
+  // Default ON per D-11; hydrated from app_settings by
+  // `hydrateLivePreviewEnabled` on recorder-view mount.
+  livePreviewEnabled: true,
 };
 
 export const useRecorderStore = create<RecorderState>((set) => ({
@@ -164,6 +180,20 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
   setIncludeCursor: (includeCursor) => set({ includeCursor }),
   setChromeHiding: (chromeHiding) => set({ chromeHiding }),
+  setLivePreviewEnabled: (livePreviewEnabled) => {
+    set({ livePreviewEnabled });
+    ipcSetLivePreviewEnabled(livePreviewEnabled).catch(() => {
+      /* non-fatal: persistence failure shouldn't block the UI choice */
+    });
+  },
+  hydrateLivePreviewEnabled: async () => {
+    try {
+      const s = await getAppSettings();
+      set({ livePreviewEnabled: s.live_preview_enabled });
+    } catch {
+      /* non-fatal: stick with the INITIAL default */
+    }
+  },
 
   loadCaptureTargets: async () => {
     const [targets, persisted] = await Promise.all([

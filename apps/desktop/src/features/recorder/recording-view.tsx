@@ -46,6 +46,7 @@ import { PickElementButton } from "./pick-element-button";
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
+import { LivePreview } from "./LivePreview";
 import { TargetThumbnail } from "./TargetThumbnail";
 import { VideoOutputSection, useIsRecordingBlocked } from "./video-output/video-output-section";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
@@ -109,6 +110,9 @@ export function RecordingView({
     setIncludeCursor,
     chromeHiding,
     setChromeHiding,
+    livePreviewEnabled,
+    setLivePreviewEnabled,
+    hydrateLivePreviewEnabled,
     setStatus,
     setSession,
     setSteps,
@@ -179,6 +183,11 @@ export function RecordingView({
         /* non-fatal; default off */
       });
   }, []);
+
+  // Hydrate the persisted live-preview toggle once per recorder mount.
+  useEffect(() => {
+    void hydrateLivePreviewEnabled();
+  }, [hydrateLivePreviewEnabled]);
 
   // Preflight and enumerate targets on mount.
   useEffect(() => {
@@ -672,16 +681,22 @@ export function RecordingView({
         {/* LEFT: preview/stage */}
         <section className="flex min-h-0 flex-col border-r border-[var(--color-border-subtle)]">
           <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-            <PreviewStage
-              status={status}
-              elapsedMs={elapsedMs}
-              currentStepLabel={currentStepEntry?.verb ?? null}
-              currentStepIndex={currentStep}
-              totalSteps={steps.length}
-              error={error}
-              outputPath={outputPath}
-              reduceMotion={!!reduceMotion}
-            />
+            {status === "recording" &&
+            livePreviewEnabled &&
+            captureTarget?.kind === "window_by_pid" ? (
+              <LivePreview />
+            ) : (
+              <PreviewStage
+                status={status}
+                elapsedMs={elapsedMs}
+                currentStepLabel={currentStepEntry?.verb ?? null}
+                currentStepIndex={currentStep}
+                totalSteps={steps.length}
+                error={error}
+                outputPath={outputPath}
+                reduceMotion={!!reduceMotion}
+              />
+            )}
           </div>
 
           {/* Step rail — horizontal chips */}
@@ -859,6 +874,12 @@ export function RecordingView({
                 disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
               <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
+              {/* Phase 09-02 — live preview toggle (persisted, default ON). */}
+              <Toggle
+                label="Live preview"
+                checked={livePreviewEnabled}
+                onChange={setLivePreviewEnabled}
+              />
             </div>
           </SettingsGroup>
 
