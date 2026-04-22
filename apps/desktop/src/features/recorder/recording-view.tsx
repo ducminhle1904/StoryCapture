@@ -35,7 +35,11 @@ import {
   type RecordingEvent,
   type RecordingSessionId,
 } from "@/ipc/encode";
-import { launchAutomation, type ExecutorEvent } from "@/ipc/automation";
+import {
+  launchAutomation,
+  type AutomationChannelHandle,
+  type ExecutorEvent,
+} from "@/ipc/automation";
 import { parseStory } from "@/ipc/parse";
 import { useRecorderStore, type RecorderStatus, type StepProgress } from "@/state/recorder";
 
@@ -140,7 +144,7 @@ export function RecordingView({
   // unmount so pending IPC never resolves into a stale component.
   const abortControllerRef = useRef<AbortController | null>(null);
   // Reference to the automation Channel so unmount can null its handler.
-  const automationChannelRef = useRef<{ onmessage: ((e: unknown) => void) | null } | null>(null);
+  const automationChannelRef = useRef<AutomationChannelHandle | null>(null);
 
   // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
@@ -438,8 +442,12 @@ export function RecordingView({
       };
       if (shouldAutoFollow) {
         // Launch Playwright *before* capture so the window exists.
-        launchAutomation({ storySource, projectFolder, chromeHiding }, (evt) =>
-          dispatchAutomation(evt),
+        launchAutomation(
+          { storySource, projectFolder, chromeHiding },
+          (evt) => dispatchAutomation(evt),
+          (ch) => {
+            automationChannelRef.current = ch;
+          },
         ).catch((e) => {
           const msg = formatIpcError(e);
           toast.error(`Automation failed: ${msg}`);
@@ -525,6 +533,9 @@ export function RecordingView({
               typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
           },
           (evt) => dispatchAutomation(evt),
+          (ch) => {
+            automationChannelRef.current = ch;
+          },
         ).catch((e) => {
           automationOwnsStopRef.current = false;
           const msg = formatIpcError(e);

@@ -36,9 +36,21 @@ export interface LaunchAutomationArgs {
   recordingSessionId?: string;
 }
 
+/**
+ * Shape returned to the caller when they need a handle to the live
+ * automation Channel — e.g., to null `onmessage` during React unmount
+ * cleanup (D-14) so no stale event dispatch runs against an unmounted
+ * component tree.
+ */
+export interface AutomationChannelHandle {
+  /** Null this to stop forwarding events to `onEvent`. */
+  onmessage: ((e: { json: string }) => void) | null;
+}
+
 export async function launchAutomation(
   args: LaunchAutomationArgs,
   onEvent: (e: ExecutorEvent) => void,
+  onChannelReady?: (channel: AutomationChannelHandle) => void,
 ): Promise<void> {
   const channel = new Channel<{ json: string }>();
   channel.onmessage = (wrapper) => {
@@ -49,6 +61,7 @@ export async function launchAutomation(
       // ignore malformed events
     }
   };
+  onChannelReady?.(channel);
   await invoke("launch_automation", {
     storySource: args.storySource,
     projectFolder: args.projectFolder,
