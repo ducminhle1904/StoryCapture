@@ -46,7 +46,7 @@ uuid     = { version = "1.23.1", features = ["v4", "v7"] }
 sha2     = "0.11"
 hex      = "0.4.3"
 symphonia = { version = "0.5.5", default-features = false, features = ["mp3"] }
-rand     = "0.8"
+rand     = "0.10"
 httpdate = "1.0.3"
 
 # Config parsing (eval_report binary)
