@@ -591,14 +591,11 @@ pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppErr
 }
 
 /// Re-probe HW encoders bypassing any cached result (D-17).
-/// Stub in Wave 0 — Wave 4 wires `encoder::probe::force_reprobe()`.
 #[tauri::command]
 #[specta::specta]
 pub async fn refresh_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
-    // Wave 0 stub: today the probe isn't cached, so this is equivalent to
-    // `probe_hw_encoders`. Wave 4 will route through `force_reprobe()`.
     let cmd = TauriSidecar::new(app);
-    let probe = probe_encoders(&cmd)
+    let probe = encoder::probe::force_reprobe(&cmd)
         .await
         .map_err(|e| AppError::Encoder(e.to_string()))?;
     Ok(probe.into())

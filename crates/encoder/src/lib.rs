@@ -21,7 +21,7 @@ pub mod filters;
 pub mod macos;
 mod pipeline;
 pub mod pool;
-mod probe;
+pub mod probe;
 pub mod progress;
 pub mod quality;
 pub mod queue;
