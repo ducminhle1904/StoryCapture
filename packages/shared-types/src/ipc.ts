@@ -545,8 +545,7 @@ async probeHwEncoders() : Promise<Result<EncoderProbeDto, AppError>> {
 }
 },
 /**
- * Re-probe HW encoders bypassing any cached result (D-17).
- * Stub in Wave 0 — Wave 4 wires `encoder::probe::force_reprobe()`.
+ * Re-probe HW encoders bypassing any cached result.
  */
 async refreshHwEncoders() : Promise<Result<EncoderProbeDto, AppError>> {
     try {
@@ -1519,11 +1518,11 @@ audio_device_id?: string | null;
  */
 include_cursor?: boolean | null; output_resolution?: OutputResolutionDto | null; fit_mode?: FitModeDto | null; pad_color?: PadColorDto | null; quality_preset?: QualityPresetDto | null; scale_algo?: ScaleAlgoDto | null; 
 /**
- * First-frame wait budget (D-09). Default 3000ms if None. Wave 2/3 consumes.
+ * First-frame wait budget in milliseconds. Defaults to 3000 when `None`.
  */
 first_frame_timeout_ms?: bigint | null; 
 /**
- * Force keyframe every N seconds (D-11). None => encoder default. Wave 2/3 consumes.
+ * Force a keyframe every N seconds. `None` keeps FFmpeg's default GOP.
  */
 keyframe_interval_sec?: number | null }
 /**

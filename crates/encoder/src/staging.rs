@@ -3,13 +3,23 @@
 
 use std::path::{Path, PathBuf};
 
-/// Derive the staging path `<target>.partial`. Stays in the same directory
-/// as `target` so the subsequent rename is guaranteed atomic (same
-/// filesystem). Preserves the original extension: `out.mp4` -> `out.mp4.partial`.
+/// Derive the staging path for `target`, preserving the original extension
+/// so FFmpeg / AVAssetWriter can auto-detect the output format:
+/// `out.mp4` -> `out.partial.mp4`; `out` (no extension) -> `out.partial`.
+/// Stays in the same directory as `target` so the subsequent rename is
+/// guaranteed atomic (same filesystem).
 pub fn partial_path_of(target: &Path) -> PathBuf {
-    let mut s = target.as_os_str().to_os_string();
-    s.push(".partial");
-    PathBuf::from(s)
+    let stem = target.file_stem().unwrap_or_default();
+    let mut name = std::ffi::OsString::from(stem);
+    name.push(".partial");
+    if let Some(ext) = target.extension() {
+        name.push(".");
+        name.push(ext);
+    }
+    match target.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.join(name),
+        _ => PathBuf::from(name),
+    }
 }
 
 /// RAII guard: removes a staging file unless `disarm()` is called first.
@@ -42,9 +52,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn partial_path_appends_dot_partial() {
+    fn partial_path_inserts_partial_before_extension() {
         let p = partial_path_of(Path::new("/tmp/out.mp4"));
-        assert_eq!(p.as_os_str(), "/tmp/out.mp4.partial");
+        assert_eq!(p.as_os_str(), "/tmp/out.partial.mp4");
+    }
+
+    #[test]
+    fn partial_path_appends_partial_when_no_extension() {
+        let p = partial_path_of(Path::new("/tmp/out"));
+        assert_eq!(p.as_os_str(), "/tmp/out.partial");
     }
 
     #[test]
