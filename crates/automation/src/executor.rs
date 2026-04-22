@@ -14,9 +14,9 @@
 
 use crate::capability::{driver_for, required_for};
 use crate::control::RunControl;
-use crate::driver::{ActionKind, BrowserDriver, LaunchConfig, LaunchOptions};
+use crate::driver::{ActionKind, BrowserDriver, LaunchConfig, LaunchOptions, ResolvedSelector};
 use crate::error::{AutomationError, Result};
-use crate::events::{AttemptLog, ExecutorEvent, StorySummary};
+use crate::events::{AttemptLog, ExecutorEvent, MatchKind, StepFrame, StorySummary};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -84,6 +84,51 @@ impl Executor {
                 screenshot_dir,
                 launch_opts,
                 control,
+                None,
+                false,
+                None,
+                true,
+                tx,
+            )
+            .await;
+        });
+        rx
+    }
+
+    /// Simulator-mode runner (Phase 10-01). Variant of `run_with_story_path`
+    /// that threads the four new simulator params — `stop_after_ordinal`,
+    /// `capture_frames`, `frame_dir`, `self_heal` — through to `run_story`.
+    /// Recording path callers should stay on `run_with_story_path`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_simulator(
+        story: Story,
+        story_path: Option<PathBuf>,
+        primary: Box<dyn BrowserDriver>,
+        fallback: Box<dyn BrowserDriver>,
+        persistence: Option<PersistenceHandle>,
+        screenshot_dir: PathBuf,
+        launch_opts: LaunchOptions,
+        control: Option<Arc<RunControl>>,
+        stop_after_ordinal: Option<u32>,
+        capture_frames: bool,
+        frame_dir: Option<PathBuf>,
+        self_heal: bool,
+    ) -> mpsc::Receiver<ExecutorEvent> {
+        let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
+        tokio::spawn(async move {
+            let _ = run_story(
+                story,
+                story_path,
+                primary,
+                fallback,
+                persistence,
+                screenshot_dir,
+                launch_opts,
+                control,
+                stop_after_ordinal,
+                capture_frames,
+                frame_dir,
+                self_heal,
                 tx,
             )
             .await;
@@ -104,6 +149,7 @@ impl Executor {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_story(
     story: Story,
     story_path: Option<PathBuf>,
@@ -113,6 +159,10 @@ async fn run_story(
     screenshot_dir: PathBuf,
     launch_opts: LaunchOptions,
     control: Option<Arc<RunControl>>,
+    stop_after_ordinal: Option<u32>,
+    capture_frames: bool,
+    frame_dir: Option<PathBuf>,
+    self_heal: bool,
     tx: mpsc::Sender<ExecutorEvent>,
 ) -> Result<()> {
     let started = Instant::now();
@@ -192,17 +242,19 @@ async fn run_story(
                 step_id,
                 control.as_deref(),
                 story_path.as_deref(),
+                self_heal,
             )
             .await;
 
             match result {
-                Ok(()) => {
+                Ok(last_resolved) => {
                     succeeded += 1;
                     let (cx, cy) = driver.current_cursor_position().await.unwrap_or((0, 0));
+                    let duration_ms = cmd_started.elapsed().as_millis() as u64;
                     let _ = tx
                         .send(ExecutorEvent::StepSucceeded {
                             ordinal,
-                            duration_ms: cmd_started.elapsed().as_millis() as u64,
+                            duration_ms,
                             cursor_x: cx,
                             cursor_y: cy,
                         })
@@ -210,6 +262,47 @@ async fn run_story(
                     if let (Some(db), Some(sid)) = (persistence.as_ref(), step_id) {
                         let mut g = db.lock().await;
                         let _ = g.complete_step(sid, StepStatus::Succeeded, None);
+                    }
+
+                    if capture_frames {
+                        let shot_path = if let Some(dir) = frame_dir.as_deref() {
+                            driver
+                                .screenshot(&format!("frame-{ordinal}"), dir)
+                                .await
+                                .ok()
+                        } else {
+                            None
+                        };
+                        let (matched_selector, matched_bbox, match_kind) = match last_resolved
+                            .as_ref()
+                        {
+                            Some((rs, kind)) => {
+                                let state = driver.element_state(rs).await.ok();
+                                (
+                                    Some(rs.value.clone()),
+                                    state.and_then(|s| s.bbox),
+                                    *kind,
+                                )
+                            }
+                            None => (None, None, MatchKind::None),
+                        };
+                        let frame = StepFrame {
+                            ordinal,
+                            screenshot_path: shot_path,
+                            cursor_xy: (cx, cy),
+                            matched_selector,
+                            matched_bbox,
+                            match_kind,
+                            duration_ms,
+                        };
+                        let _ = tx
+                            .send(ExecutorEvent::StepFrameCaptured { ordinal, frame })
+                            .await;
+                    }
+
+                    if stop_after_ordinal == Some(ordinal) {
+                        let _ = tx.send(ExecutorEvent::RunPaused { ordinal }).await;
+                        return Ok(());
                     }
                 }
                 Err((err, attempts)) => {
@@ -266,6 +359,7 @@ async fn run_story(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_command(
     driver: &dyn BrowserDriver,
     cmd: &Command,
@@ -276,8 +370,11 @@ async fn run_command(
     step_id: Option<uuid::Uuid>,
     control: Option<&RunControl>,
     story_path: Option<&std::path::Path>,
-) -> std::result::Result<(), (AutomationError, Vec<AttemptLog>)> {
+    self_heal: bool,
+) -> std::result::Result<Option<(ResolvedSelector, MatchKind)>, (AutomationError, Vec<AttemptLog>)>
+{
     let mut attempts: Vec<AttemptLog> = Vec::new();
+    let mut last_resolved: Option<(ResolvedSelector, MatchKind)> = None;
     checkpoint(control).await;
 
     // Step_id from the DSL line itself (plan 07-04b `# @id=<uuidv7>`), used
@@ -298,6 +395,11 @@ async fn run_command(
                 Ok((sel, atts)) => {
                     push_attempts(&atts, tx, ordinal, persistence, step_id, None).await;
                     attempts.extend(atts);
+                    // First resolve wins for simulator display (Drag's
+                    // `from` carries the user-authored target identity).
+                    if last_resolved.is_none() {
+                        last_resolved = Some((sel.clone(), MatchKind::Primary));
+                    }
                     sel
                 }
                 Err(e) => return Err((e, attempts)),
@@ -324,8 +426,21 @@ async fn run_command(
             {
                 Ok(()) => current,
                 Err(primary_err) => {
-                    match try_promote_fallback(driver, cmd_step_id, story_path, $action).await {
+                    // Probe fallbacks regardless of self_heal so the
+                    // simulator can surface match_kind=Fuzzy even in
+                    // read-only runs; only persist the promotion when
+                    // self_heal=true (D-07).
+                    match try_promote_fallback(
+                        driver,
+                        cmd_step_id,
+                        story_path,
+                        $action,
+                        self_heal,
+                    )
+                    .await
+                    {
                         Ok(Some(promoted)) => {
+                            last_resolved = Some((promoted.clone(), MatchKind::Fuzzy));
                             current = promoted;
                             current
                         }
@@ -395,7 +510,7 @@ async fn run_command(
         Command::Pause { .. } => Ok(()),
     };
 
-    result.map_err(|e| (e, attempts))
+    result.map(|()| last_resolved).map_err(|e| (e, attempts))
 }
 
 /// Plan 07-04c self-healing hook. On a primary `wait_actionable` miss,
@@ -415,11 +530,12 @@ async fn run_command(
 ///
 /// Commands with `step_id == None` skip the self-healing path entirely —
 /// legacy stories are NEVER touched by the targets store.
-async fn try_promote_fallback(
+pub async fn try_promote_fallback(
     driver: &dyn BrowserDriver,
     cmd_step_id: Option<uuid::Uuid>,
     story_path: Option<&std::path::Path>,
     action: ActionKind,
+    persist: bool,
 ) -> Result<Option<crate::driver::ResolvedSelector>> {
     let Some(step_id) = cmd_step_id else {
         return Ok(None);
@@ -476,18 +592,20 @@ async fn try_promote_fallback(
             .await
             .is_ok()
         {
-            // Promote: swap primary with this fallback, old primary becomes fallbacks[0].
-            let old_primary = step.primary.clone();
-            step.fallbacks.remove(idx);
-            step.fallbacks.insert(0, old_primary);
-            step.primary = fallback;
-            store.steps.insert(step_id, step);
-            crate::targets_store::atomic_write(&targets_path, &store)?;
-            tracing::info!(
-                target: "storycapture::automation::self_healing",
-                step_id = %step_id,
-                "primary selector missed; fallback promoted and targets.json rewritten"
-            );
+            if persist {
+                // Promote: swap primary with this fallback, old primary becomes fallbacks[0].
+                let old_primary = step.primary.clone();
+                step.fallbacks.remove(idx);
+                step.fallbacks.insert(0, old_primary);
+                step.primary = fallback;
+                store.steps.insert(step_id, step);
+                crate::targets_store::atomic_write(&targets_path, &store)?;
+                tracing::info!(
+                    target: "storycapture::automation::self_healing",
+                    step_id = %step_id,
+                    "primary selector missed; fallback promoted and targets.json rewritten"
+                );
+            }
             return Ok(Some(resolved));
         }
     }
