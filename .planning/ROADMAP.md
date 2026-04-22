@@ -18,6 +18,7 @@ The ordering is dependency-forced: DSL → Automation → Capture → Encode is 
 - [x] **Phase 4: Web Companion & Sharing** - Next.js 15 companion with OAuth, upload, shareable embed, workspaces, analytics, and desktop↔web sync (code-complete; 1 operator-gated verification step pending)
 - [x] **Phase 12: Fix video output resolution lock — letterbox filter chain** - Backend + IPC only. Output video matches user-selected resolution exactly via `scale + pad + setsar` letterbox chain. Splits capture dims from output dims in `EncodeConfig`. Fixes `bitrate_kbps`-as-floor tech-debt. (completed 2026-04-20)
 - [x] **Phase 13: Video output customization knobs — recording + export UI** - UI exposure of resolution/FPS/fit-mode/pad-color/quality at recording time and container/codec/rate-control/HW-encoder/preset/keyframe/downscale/audio at export time. Per-encoder quality preset mapping. Depends on Phase 12. (completed 2026-04-20)
+- [x] **Phase 17: Record engine lifecycle hardening** - Fix 19 capture/encoder/IPC/frontend issues surfaced by the 2026-04-22 4-agent investigation (shutdown drain, start-race, backpressure, UX feedback). Additive IPC only — no public contract regressions. (completed 2026-04-22)
 
 ## Phase Details
 
@@ -391,12 +392,12 @@ Plans:
 **Plans:** 6 plans
 
 Plans:
-- [ ] 17-01-PLAN.md — Wave 0: additive IPC surface (events, config fields, refresh_hw_encoders stub)
-- [ ] 17-02-PLAN.md — Wave 1 CLEANUP: exit drain, orphan-abort, XCap bounded stop (D-01, D-02, D-03)
-- [ ] 17-03-PLAN.md — Wave 1 START-SAFETY: double-start guard, WGC HWND validation, SCK pause/resume mutex (D-04, D-05, D-06)
-- [ ] 17-04-PLAN.md — Wave 2 ENCODER-ROBUST: stdin backpressure, staging+rename, first-frame timeout, FIFO handshake, keyframe knob, VT clamp warn (D-07..D-12)
-- [ ] 17-05-PLAN.md — Wave 3 UX-FEEDBACK: AudioUnavailable, unmount cleanup, heartbeat watchdog (D-13, D-14, D-15)
-- [ ] 17-06-PLAN.md — Wave 4 POLISH: NV12 reject, probe reprobe, AcqRel ordering, remove @ts-ignore (D-16..D-19)
+- [x] 17-01-PLAN.md — Wave 0: additive IPC surface (events, config fields, refresh_hw_encoders stub) — complete 2026-04-22
+- [x] 17-02-PLAN.md — Wave 1 CLEANUP: exit drain, orphan-abort, XCap bounded stop (D-01, D-02, D-03) — complete 2026-04-22
+- [x] 17-03-PLAN.md — Wave 1 START-SAFETY: double-start guard, WGC HWND validation, SCK pause/resume mutex (D-04, D-05, D-06) — complete 2026-04-22
+- [x] 17-04-PLAN.md — Wave 2 ENCODER-ROBUST: stdin backpressure, staging+rename, first-frame timeout, FIFO handshake, keyframe knob, VT clamp warn (D-07..D-12) — complete 2026-04-22
+- [x] 17-05-PLAN.md — Wave 3 UX-FEEDBACK: AudioUnavailable, unmount cleanup, heartbeat watchdog (D-13, D-14, D-15) — complete 2026-04-22
+- [x] 17-06-PLAN.md — Wave 4 POLISH: NV12 reject, probe reprobe, AcqRel ordering, remove @ts-ignore (D-16..D-19) — complete 2026-04-22
 
 ---
 *Roadmap created: 2026-04-14*

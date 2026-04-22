@@ -24,8 +24,10 @@ progress:
 
 ## Current Position
 
-Phase: 15 — Editor/Post-Production feature boundary cleanup — EXECUTING
-Plan: 15-04 complete (Wave 4 — Editor additions: Send-to-Post-Production toolbar button bound to folder?.session_count; always-visible SceneListPanel with last-valid-AST parse-error fallback chip). 1 wave remains (15-05 cleanup + regression matrix). Pause for user QA before Wave 5.
+Phase: 17 — Record engine lifecycle hardening — COMPLETE (2026-04-22)
+Plan: All 6 plans complete (17-01..17-06). 22 commits on main. 19/19 decisions (D-01..D-19) verified by gsd-verifier — decision matrix full PASS, contract invariants preserved (additive IPC only), no workarounds, all 6 success criteria met.
+
+Prior executing phase: 15 — Editor/Post-Production boundary cleanup — Wave 4 complete; 15-05 cleanup + regression matrix still pending user QA.
 
 ## Phase 8-11 Planning Audit (2026-04-21)
 
