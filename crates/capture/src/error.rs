@@ -42,4 +42,11 @@ pub enum CaptureError {
     /// and proceed with teardown rather than await indefinitely (D-03).
     #[error("capture stop timed out after {timeout_ms}ms")]
     StopTimedOut { timeout_ms: u64 },
+
+    /// Target HWND no longer refers to a live window. Emitted by the WGC
+    /// backend before calling `Window::from_raw_hwnd` so a stale pid→HWND
+    /// resolution fails fast and the orchestrator can fall back to xcap
+    /// instead of tripping undefined behaviour inside WGC (D-05).
+    #[error("window no longer exists (hwnd={hwnd})")]
+    WindowGone { hwnd: u64 },
 }

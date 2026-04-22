@@ -298,6 +298,20 @@ impl WgcBackend {
             }
             CaptureTarget::Window { window_id } => {
                 let hwnd = window_id.0 as isize as *mut std::ffi::c_void;
+                // D-05: reject a stale HWND before handing it to WGC,
+                // which would otherwise hit undefined behaviour inside
+                // GraphicsCaptureItem::FromWindow.
+                let is_valid = unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::IsWindow(
+                        windows::Win32::Foundation::HWND(hwnd),
+                    )
+                    .as_bool()
+                };
+                if !is_valid {
+                    return Err(CaptureError::WindowGone {
+                        hwnd: window_id.0,
+                    });
+                }
                 let window = Window::from_raw_hwnd(hwnd);
                 let settings = Settings::new(
                     window,
@@ -324,7 +338,21 @@ impl WgcBackend {
                 let hwnd_opt =
                     crate::windows::window::find_window_by_pid(pid, title_hint.as_deref()).await?;
                 let hwnd = hwnd_opt.ok_or(CaptureError::WindowNotFound(pid as u64))?;
-                let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
+                // D-05: resolved HWND may have closed between enumeration
+                // and start; validate before WGC touches it.
+                let raw = hwnd as *mut std::ffi::c_void;
+                let is_valid = unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::IsWindow(
+                        windows::Win32::Foundation::HWND(raw),
+                    )
+                    .as_bool()
+                };
+                if !is_valid {
+                    return Err(CaptureError::WindowGone {
+                        hwnd: hwnd as u64,
+                    });
+                }
+                let window = Window::from_raw_hwnd(raw);
                 let settings = Settings::new(
                     window,
                     cursor,
