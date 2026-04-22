@@ -30,9 +30,8 @@ libc = "0.2.185"
 
 # macOS-only: AVAssetWriter fast path (VtWriter) for zero-copy encode from
 # CVPixelBuffer handles delivered by the SCK backend. See
-# `src/macos/vt_writer.rs`. These crates pull in objc2 0.6.x transitively;
-# the `capture` crate still uses objc2 0.5 — two versions coexist benignly
-# because the FFI types we touch are CF types (pointer-stable ABI).
+# `src/macos/vt_writer.rs`. Phase 16 unified objc2 on 0.6 across capture +
+# encoder (previously split 0.5/0.6).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSDictionary", "NSURL", "NSError", "NSArray", "NSValue", "NSObject"] }

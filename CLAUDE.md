@@ -37,13 +37,13 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 | XCap fallback | ✅ Validated | MEDIUM | `xcap` 0.8.x, actively maintained; screenshots solid, video recording still WIP — reasonable fallback only. |
 | pest DSL parser | ✅ Validated | HIGH | Good choice for DSL with a grammar file. Consider chumsky later if IDE-quality error recovery becomes a priority. |
 | rusqlite | ✅ Validated | HIGH | Idiomatic for Tauri: sync is fine on desktop, `bundled` feature gives zero-system-dep builds. Pair with `rusqlite_migration` or `refinery`. |
-| Next.js 15 App Router + Prisma + PostgreSQL + tRPC + NextAuth + R2/S3 | ✅ Validated | HIGH | Canonical 2026 typesafe stack. Use NextAuth v5 (Auth.js) with Prisma adapter. |
+| Next.js 16 App Router + Prisma + PostgreSQL + tRPC + NextAuth + R2/S3 | ✅ Validated | HIGH | Canonical 2026 typesafe stack. NextAuth v5-beta.31 (Auth.js) with Prisma adapter; Prisma 7 pending adapter peerDep update. |
 | Turborepo (apps/desktop, apps/web, packages/*, crates/*) | ✅ Validated | HIGH | Turborepo 2.x has first-class Rust/Go task support; shared TS packages + Cargo workspace coexist cleanly. |
 ## Recommended Stack (Prescriptive Versions)
 ### Desktop Core — Rust
 | Crate | Version | Purpose | Why |
 |---|---|---|---|
-| `tauri` | 2.8.x | App shell, IPC, windowing | Stable v2 line; sidecar + updater support |
+| `tauri` | 2.10.x | App shell, IPC, windowing | Stable v2 line; sidecar + updater support |
 | `tauri-build` | 2.x | Build-time codegen | Required |
 | `tauri-plugin-log` | 2.8.x | Structured logs to stdout + file | Official; integrates with `log` crate |
 | `tauri-plugin-store` | 2.4.x | Persistent JSON key/value for non-secret prefs | Official |
@@ -60,11 +60,12 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 ### Desktop — Rust Domain Crates
 | Crate | Version | Purpose | Why |
 |---|---|---|---|
-| `tokio` | 1.40+ | Async runtime | Required by chromiumoxide + sqlx-style async |
-| `pest`, `pest_derive` | 2.7.x | DSL grammar + parser | Committed; good DX |
+| `tokio` | 1.52.x | Async runtime | Required by chromiumoxide + sqlx-style async |
+| `pest`, `pest_derive` | 2.8.x | DSL grammar + parser | Committed; good DX |
 | `chromiumoxide` | 0.7.x | CDP browser automation | Primary path; prototype coverage early |
-| `rusqlite` (feature = `bundled`) | 0.33.x | Embedded SQLite | Zero system deps; sync is fine for desktop |
-| `rusqlite_migration` | 1.3.x | Versioned schema migrations for rusqlite | Simple, stable |
+| `rusqlite` (feature = `bundled`) | 0.39.x | Embedded SQLite | Zero system deps; sync is fine for desktop |
+| `rusqlite_migration` | 2.5.x | Versioned schema migrations for rusqlite | Simple, stable |
+| `reqwest` (rustls) | 0.13.x | HTTPS client for provider probes + uploads | default-features off, rustls + json |
 | `serde`, `serde_json` | 1.x | IPC serialization | Required by Tauri |
 | `thiserror` | 2.x | Structured error enums for commands/libs | Standard |
 | `anyhow` | 1.x | Top-level error handling in main + handlers | Standard pair with thiserror |
@@ -81,11 +82,11 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 ### Desktop — Platform-Native Capture
 | Crate | Version | Purpose | Why |
 |---|---|---|---|
-| `screencapturekit` (doom-fish) | 1.70.x | Safe ergonomic ScreenCaptureKit wrapper | **Recommended over raw objc2** — handles streaming, audio, window/display filtering |
-| `objc2`, `objc2-foundation`, `objc2-core-media`, `objc2-screen-capture-kit` | current | Drop-down when `screencapturekit` crate lacks a capability | Use surgically |
-| `windows-capture` (NiiightmareXD) | 1.5.x | High-level Windows.Graphics.Capture wrapper | **Recommended over raw `windows` crate** — async API, D3D11 frame acquisition, cursor toggle |
-| `windows` (windows-rs) | 0.58+ | Escape hatch for WGC features not in the wrapper | Only as needed |
-| `xcap` | 0.8.x | Cross-platform fallback for screenshot/edge-case capture | As documented fallback |
+| `screencapturekit` (doom-fish) | =1.5.4 | Safe ergonomic ScreenCaptureKit wrapper | **Recommended over raw objc2** — handles streaming, audio, window/display filtering. Pinned (see Risk Flags). |
+| `objc2`, `objc2-foundation`, `objc2-core-media`, `objc2-screen-capture-kit` | 0.6.x | Drop-down when `screencapturekit` crate lacks a capability | Unified on 0.6 across capture + encoder (see `docs/ARCHITECTURE.md` for history). |
+| `windows-capture` (NiiightmareXD) | =2.0.0 | High-level Windows.Graphics.Capture wrapper | **Recommended over raw `windows` crate** — async API, D3D11 frame acquisition, cursor toggle |
+| `windows` (windows-rs) | 0.58 | Escape hatch for WGC features not in the wrapper | Deferred bump to 0.62 until Windows-CI runner available (see `docs/ARCHITECTURE.md`). |
+| `xcap` | 0.9.x | Cross-platform fallback for screenshot/edge-case capture | As documented fallback |
 ### Desktop — Browser Automation
 | Crate | Version | Purpose | Why |
 |---|---|---|---|
@@ -100,9 +101,9 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 | Package | Version | Purpose |
 |---|---|---|
 | `react`, `react-dom` | 19.x | UI runtime |
-| `vite` | 6.x | Dev server + build |
-| `@vitejs/plugin-react` | 4.x | React Fast Refresh |
-| `typescript` | 5.7+ | Types |
+| `vite` | 8.x | Dev server + build |
+| `@vitejs/plugin-react` | 6.x | React Fast Refresh |
+| `typescript` | 6.x | Types |
 | `tailwindcss` | 4.x | Styling (CSS-first `@theme`) |
 | `@tailwindcss/vite` | 4.x | Vite plugin for Tailwind v4 |
 | `tailwind-merge`, `clsx` | latest | Class composition helpers |
@@ -110,42 +111,45 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 | shadcn/ui CLI (`shadcn`) | latest | Component scaffolding (Base UI + Vega style) |
 | `@base-ui-components/react` | 1.x | Base UI primitives |
 | `motion` (Framer Motion successor) | 12.x | Animations (`import { motion } from 'motion/react'`) |
-| `lucide-react` | 0.460+ | Icons |
+| `lucide-react` | 1.8.x | Icons |
 | `zustand` | 5.x | Client UI state |
 | `@tanstack/react-query` | 5.x | Server/IPC cached state (wrap Tauri `invoke` in query functions) |
 | `@tanstack/react-query-devtools` | 5.x | Dev UX |
-| `react-hook-form` + `zod` + `@hookform/resolvers` | latest | Form/validation (export settings, project metadata) |
+| `zod` | 4.x | Validation (tRPC 11 native-compat) |
 | `@codemirror/*` + `@uiw/react-codemirror` | 6.x / 4.25.x | DSL editor with syntax highlighting + autocomplete |
 | `@codemirror/autocomplete`, `@codemirror/language`, `@codemirror/lint`, `@lezer/highlight` | 6.x | DSL-specific language support |
-| `react-router-dom` | 7.x (data router) or TanStack Router 1.x | Desktop routing |
-| `sonner` | 1.x | Toasts (shadcn idiom) |
+| `react-router-dom` | 7.x (data router) | Desktop routing |
+| `sonner` | 2.x | Toasts (shadcn idiom) |
 | `cmdk` | 1.x | Command palette |
+| `react-resizable-panels` | 4.x | Resizable layout (Group/Separator API, percentage-string sizes) |
+| `react-hotkeys-hook` | 5.x | Keyboard shortcut hook |
+| `tailwind-merge` | 3.x | Class composition helper |
 | `@tauri-apps/api` | 2.x | IPC bindings |
 | `@tauri-apps/plugin-*` | 2.x | JS sides of the Tauri plugins above |
-### Web Companion (Next.js 15)
+### Web Companion (Next.js 16)
 | Package | Version | Purpose |
 |---|---|---|
-| `next` | 15.x (App Router) | Framework |
+| `next` | 16.x (App Router) | Framework (Turbopack default bundler) |
 | `react`, `react-dom` | 19.x | Match desktop |
-| `typescript` | 5.7+ | Types |
+| `typescript` | 6.x | Types |
 | `tailwindcss` | 4.x | Styling (shared tokens package) |
-| `@trpc/server`, `@trpc/client`, `@trpc/react-query`, `@trpc/next` | 11.x | Typed RPC |
-| `zod` | 3.x | tRPC input validation |
-| `@prisma/client`, `prisma` | 6.x | ORM + migrations |
-| `next-auth` (Auth.js) | 5.x (beta stable in 2026) | OAuth (Google/GitHub) |
-| `@auth/prisma-adapter` | latest | User/session persistence |
+| `@trpc/server`, `@trpc/client`, `@trpc/tanstack-react-query` | 11.x | Typed RPC |
+| `zod` | 4.x | tRPC input validation |
+| `@prisma/client`, `prisma` | 6.x | ORM + migrations (Prisma 7 deferred: `@auth/prisma-adapter` peerDeps only list `>=6`) |
+| `next-auth` (Auth.js) | 5.0.0-beta.31 | OAuth (GitHub/Google); no newer beta on npm dist-tags |
+| `@auth/prisma-adapter` | 2.x | User/session persistence |
 | `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner` | 3.x | R2/S3 uploads via presigned URLs |
 | `@tanstack/react-query` | 5.x | Must match desktop major |
-| `ws` + `@trpc/server/adapters/ws` **or** `y-websocket`-style worker | latest | Desktop↔web WebSocket sync endpoint |
-| `jose` | 5.x | JWT verification for desktop session tokens |
-| `pino` + `pino-pretty` | 9.x / 11.x | Server logs |
+| `jose` | 6.x | JWT verification for desktop session tokens |
+| `pino` + `pino-pretty` | 10.x / 13.x | Server logs |
+| `resend` | 6.x | Transactional email |
 ### Monorepo & Tooling
 | Tool | Version | Purpose |
 |---|---|---|
 | Turborepo | 2.5+ | Task orchestration, remote cache |
 | pnpm | 9.x | Workspace package manager |
 | Cargo workspaces (crates/*) | — | Shared Rust crates (story-parser, capture, automation, effects) |
-| Biome or ESLint + Prettier | latest | Lint/format JS/TS (**Biome** recommended 2026: one tool, Rust-fast) |
+| Biome | 2.x | Lint/format JS/TS (one tool, Rust-fast) |
 | `rustfmt`, `clippy` | pinned via `rust-toolchain.toml` | Rust lint/format |
 | `cargo-edit`, `cargo-nextest`, `cargo-deny` | latest | Rust DX/CI |
 | `changesets` | latest | Versioning shared packages |
@@ -205,7 +209,7 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 - **Mitigation:** (1) Build FFmpeg **statically** for macOS so there are no inner dylibs — preferred. (2) If dynamic, add a post-bundle step that walks the `.app` and signs every Mach-O with `codesign --force --timestamp --options runtime --sign "$CERT"`. Run notarytool in CI on every PR that touches the bundle.
 ### ScreenCaptureKit bindings — MEDIUM risk
 - Three competing crates (`screencapturekit`, `objc2-screen-capture-kit`, `screen-capture-kit`) with overlapping but non-identical coverage. API breakage possible.
-- **Mitigation:** Pin `screencapturekit = "=1.70.x"` exactly. Wrap all SCK usage behind a thin internal trait in `crates/capture` so swapping the backing crate is a one-file change. Budget a small Swift shim if a specific capability (e.g., cursor-exclusion, per-window audio) is missing from all three crates.
+- **Mitigation:** Pin `screencapturekit = "=1.5.4"` exactly (highest 1.x published on crates.io for the doom-fish line). Wrap all SCK usage behind a thin internal trait in `crates/capture` so swapping the backing crate is a one-file change. Budget a small Swift shim if a specific capability (e.g., cursor-exclusion, per-window audio) is missing from all three crates.
 ### Additional flags
 - **macOS permission UX:** Screen Recording + Accessibility permissions require app restart on first grant. Non-obvious; plan an onboarding flow.
 - **Hardware encoder variance:** NVENC on consumer laptops caps concurrent sessions; QSV support varies by CPU gen. Feature-detect; fall back to libx264.
@@ -217,9 +221,9 @@ StoryCapture is a cross-platform desktop application (Windows + macOS) that turn
 | React 19 + `@uiw/react-codemirror` 4.25+ | Confirmed OK in releases through March 2026. |
 | Zustand 5 + React 19 | Drop of deprecated default-export semantics; update imports if coming from v4. |
 | TanStack Query 5 + React 19 Suspense | `useSuspenseQuery` is the preferred surface for IPC calls that gate UI. |
-| Tauri 2.8 + plugins 2.x | Plugin major must match Tauri major; check minors at update time. |
+| Tauri 2.10 + plugins 2.x | Plugin major must match Tauri major; check minors at update time. |
 | chromiumoxide + tokio 1.40+ | Required; avoid tokio 1.38/1.39 due to Send bounds regressions. |
-| Prisma 6 + Next.js 15 App Router | Use the Prisma Next.js guide; generate client to `./generated` and import from there to avoid RSC bundling bloat. |
+| Prisma 6 + Next.js 16 App Router | Client generated to `./generated`; Turbopack warns on Prisma runtime dynamic requires — resolves with Prisma 7 (deferred). |
 | Auth.js v5 + Prisma 6 | Use `@auth/prisma-adapter` matching v5. |
 ## Sources
 - Tauri v2 stable release — https://v2.tauri.app/blog/tauri-20/
@@ -283,7 +287,7 @@ Full reference: **`docs/ARCHITECTURE.md`** — load it when touching cross-crate
   - `LlmProvider` / `TtsProvider` (`crates/intelligence/src/{llm,tts}/mod.rs`) — impls: Anthropic/OpenAI, ElevenLabs/OpenAI-TTS.
 - **IPC:** single source of truth in `apps/desktop/src-tauri/src/ipc_spec.rs` (collect_commands! + `.typ::<T>()`). `tauri-specta` generates `packages/shared-types/src/ipc.ts` (auto-generated — never hand-edit). `ts-rs` generates story/effects AST types under `generated/`. Long-running ops use Tauri `Channel<T>`.
 - **Frontend desktop:** React 19 + Vite 6, React Router v7, 6-slice post-production Zustand store (`features/post-production/state/`), WebGPU/WebGL compositor, CodeMirror 6 DSL editor with LSP over Tauri IPC.
-- **Web companion:** Next.js 15 App Router + tRPC 11 + Prisma 6 (12 models: User/Workspace/Video/ViewEvent/DailyVideoStats/Template/SyncedProject/…) + NextAuth v5 + Cloudflare R2 multipart uploads + SSE sync.
+- **Web companion:** Next.js 16 App Router (Turbopack default) + tRPC 11 + Prisma 6 (12 models: User/Workspace/Video/ViewEvent/DailyVideoStats/Template/SyncedProject/…) + NextAuth v5-beta + Cloudflare R2 multipart uploads + SSE sync.
 - **Playwright sidecar:** Node SEA at `scripts/playwright-sidecar/server.mjs`, JSON-RPC 2.0 over stdio, picker overlay bundled via `build-sea.mjs`.
 - **FFmpeg sidecar:** static universal LGPL-only build per triple (`scripts/build-ffmpeg/`), HW probe chooses VideoToolbox/NVENC/QSV/AMF/libopenh264 at runtime.
 - **DSL & pipeline:** grammar at `crates/story-parser/src/grammar.pest` (13 Tier-1 verbs + 23 ARIA roles). `.story.targets.json` self-healing store with atomic fallback promotion — `.story` source never modified. See `docs/DOMAIN.md` for full flow and phase roadmap status.
