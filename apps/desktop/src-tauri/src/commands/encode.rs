@@ -406,6 +406,10 @@ struct RecordingHandle {
     /// Named-pipe handle.
     #[allow(dead_code)]
     audio_fifo: Option<FifoHandle>,
+    /// D-15: handle for the 2s heartbeat ticker. Aborted by
+    /// `stop_recording_inner`, `drain_one`, or the SpawnAbortGuard on
+    /// an early-return from `start_recording`.
+    heartbeat_abort: Option<AbortHandle>,
 }
 
 #[derive(Default)]
@@ -552,6 +556,10 @@ pub fn drain_recording_sessions(_app_handle: &tauri::AppHandle) {
 }
 
 async fn drain_one(_session_id: &str, handle: RecordingHandle) -> Result<(), String> {
+    // D-15: kill the heartbeat ticker so it doesn't race past teardown.
+    if let Some(hb) = handle.heartbeat_abort.as_ref() {
+        hb.abort();
+    }
     if let Some(audio) = handle.audio_stream.lock().await.take() {
         drop(audio);
     }
@@ -1071,6 +1079,29 @@ pub async fn start_recording(
     });
     spawn_guard.push(progress_fwd_join.abort_handle());
 
+    // D-15: 2s heartbeat ticker. Pushed into the abort guard so an
+    // early-failure before registry-insert cleans it up, AND stored on
+    // the handle so stop/drain abort it on session teardown.
+    let on_event_for_hb = on_event.clone();
+    let heartbeat_join = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(2));
+        // Skip the immediate first tick so seq=0 fires ~2s after start.
+        interval.tick().await;
+        let mut seq: u64 = 0;
+        loop {
+            interval.tick().await;
+            if on_event_for_hb
+                .send(RecordingEvent::Heartbeat { seq })
+                .is_err()
+            {
+                break;
+            }
+            seq = seq.wrapping_add(1);
+        }
+    });
+    let heartbeat_abort = heartbeat_join.abort_handle();
+    spawn_guard.push(heartbeat_abort.clone());
+
     registry().sessions.lock().insert(
         session_id.clone(),
         RecordingHandle {
@@ -1079,6 +1110,7 @@ pub async fn start_recording(
             output_path,
             audio_stream: Arc::new(tokio::sync::Mutex::new(audio_stream)),
             audio_fifo,
+            heartbeat_abort: Some(heartbeat_abort),
         },
     );
 
@@ -1148,6 +1180,13 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
         })?;
 
     crate::commands::automation::resume_active_automation();
+
+    // D-15: stop the 2s heartbeat ticker before we begin teardown so the
+    // renderer doesn't observe a tick after it's already surfaced
+    // Completed/Failed.
+    if let Some(hb) = handle.heartbeat_abort.as_ref() {
+        hb.abort();
+    }
 
     // Drop the audio stream before waiting on the encoder.
     if let Some(audio) = handle.audio_stream.lock().await.take() {
@@ -1386,6 +1425,105 @@ mod first_frame_and_fifo_tests {
         }
         // First streak of 3 consecutive Ok lands at index 6 (true,true,true).
         assert_eq!(broke_at, Some(6));
+    }
+
+    /// D-15: the heartbeat loop emits monotonically-increasing seq values
+    /// on each tick and breaks cleanly when the sink reports closed. This
+    /// mirrors the loop body spawned inside `start_recording`.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn heartbeat_loop_emits_monotonic_seq_and_breaks_on_closed_sink() {
+        use std::sync::{Arc, Mutex};
+
+        let emitted: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+        let emitted_clone = Arc::clone(&emitted);
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let closed_clone = Arc::clone(&closed);
+
+        let send = move |seq: u64| -> std::result::Result<(), ()> {
+            if closed_clone.load(std::sync::atomic::Ordering::Acquire) {
+                return Err(());
+            }
+            emitted_clone.lock().unwrap().push(seq);
+            Ok(())
+        };
+
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(2));
+            interval.tick().await; // skip immediate tick
+            let mut seq: u64 = 0;
+            loop {
+                interval.tick().await;
+                if send(seq).is_err() {
+                    break;
+                }
+                seq = seq.wrapping_add(1);
+            }
+        });
+
+        // Drive 3 emissions. The first `interval.tick()` after the skip
+        // is immediate on the freshly-started interval, so we need a few
+        // extra yields + advances to land all three.
+        tokio::task::yield_now().await;
+        for _ in 0..4 {
+            tokio::time::advance(Duration::from_millis(2_050)).await;
+            for _ in 0..4 {
+                tokio::task::yield_now().await;
+            }
+        }
+        // Close the sink; the next tick will observe Err and break.
+        closed.store(true, std::sync::atomic::Ordering::Release);
+        tokio::time::advance(Duration::from_millis(2_100)).await;
+        tokio::task::yield_now().await;
+
+        handle.abort();
+        let _ = handle.await;
+
+        let got = emitted.lock().unwrap().clone();
+        assert!(
+            got.len() >= 3,
+            "expected at least 3 emissions, got {got:?}"
+        );
+        for pair in got.windows(2) {
+            assert_eq!(
+                pair[1],
+                pair[0] + 1,
+                "seq must increment monotonically by 1: {got:?}"
+            );
+        }
+        assert_eq!(got[0], 0, "seq must start at 0: {got:?}");
+    }
+
+    /// D-15: aborting the spawn handle stops further emissions
+    /// immediately, matching what `stop_recording_inner` / `drain_one` do.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn heartbeat_abort_handle_stops_emissions() {
+        use std::sync::{Arc, Mutex};
+        let emitted: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+        let emitted_clone = Arc::clone(&emitted);
+
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(2));
+            interval.tick().await;
+            let mut seq: u64 = 0;
+            loop {
+                interval.tick().await;
+                emitted_clone.lock().unwrap().push(seq);
+                seq = seq.wrapping_add(1);
+            }
+        });
+        let abort = handle.abort_handle();
+
+        for _ in 0..2 {
+            tokio::time::advance(Duration::from_millis(2_050)).await;
+            tokio::task::yield_now().await;
+            tokio::task::yield_now().await;
+        }
+        abort.abort();
+        tokio::time::advance(Duration::from_millis(10_000)).await;
+        tokio::task::yield_now().await;
+
+        let got = emitted.lock().unwrap().clone();
+        assert!(got.len() <= 2, "abort must stop future ticks (got {got:?})");
     }
 
     /// D-10: deadline exceeded returns FifoHandshakeTimeout. Uses a

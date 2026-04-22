@@ -125,7 +125,7 @@ objc2-foundation = { version = "0.2", features = [
 [dev-dependencies]
 # Phase 03 plan 03: mock HTTP server for `key_test` leak-proof integration tests.
 wiremock = "0.6"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 tracing-subscriber = { workspace = true }
 # Plan 07-05: tempdir fixtures for author_snapshot store tests.
 tempfile = "3"
