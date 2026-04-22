@@ -1,14 +1,3 @@
-/**
- * Phase 09-02 — <LivePreview /> vitest coverage.
- *
- * Exercises the 4 behaviors called out in the plan:
- *   α) listener lifecycle (start + unsubscribe + stop on unmount)
- *   β) frame decode + rAF draw + ImageBitmap.close() discipline
- *   γ) graceful fallback when start_preview_stream rejects with
- *      UnavailableOnBackend
- *   δ) re-mount resumes the stream
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
@@ -28,7 +17,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: (event: string, handler: PreviewListener) => listenMock(event, handler),
 }));
 
-import { LivePreview } from "./LivePreview";
+import { LivePreview } from "./live-preview";
 
 // ─── fakes ─────────────────────────────────────────────────────────────
 

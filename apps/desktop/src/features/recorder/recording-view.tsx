@@ -46,7 +46,7 @@ import { PickElementButton } from "./pick-element-button";
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
-import { LivePreview } from "./LivePreview";
+import { LivePreview } from "./live-preview";
 import { TargetThumbnail } from "./TargetThumbnail";
 import { VideoOutputSection, useIsRecordingBlocked } from "./video-output/video-output-section";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";

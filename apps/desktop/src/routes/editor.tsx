@@ -15,14 +15,14 @@ import {
   Trash2,
   Video,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { ScBadge, ScButton, ScSegmented, ScSwitch } from "@storycapture/ui";
 
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
-import { LivePreview } from "@/features/recorder/LivePreview";
+import { LivePreview } from "@/features/recorder/live-preview";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
 import {
   StoryEditor,
@@ -159,9 +159,8 @@ export default function EditorRoute() {
   const story = useEditorStore((s) => s.lastParse?.ast ?? null);
   const diagnostics =
     useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
+  const lineCount = useMemo(() => source.split("\n").length, [source]);
 
-  // Phase 09-04 — editor-surface Live Preview (default OFF per D-17).
-  // Tracks meta.app so the author-session launches on the right URL.
   const previewEnabled = useEditorStore((s) => s.previewEnabled);
   const setPreviewEnabled = useEditorStore((s) => s.setPreviewEnabled);
   const previewViewport = useEditorStore((s) => s.previewViewport);
@@ -480,7 +479,7 @@ export default function EditorRoute() {
                     Script
                   </span>
                   <span className="font-mono text-[10px] tabular-nums text-[var(--sc-text-4)]">
-                    {source.split("\n").length} lines
+                    {lineCount} lines
                   </span>
                 </div>
                 <div className="min-h-0 flex-1">

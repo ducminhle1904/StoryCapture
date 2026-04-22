@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   setAuthorPreviewViewport,
@@ -25,10 +25,10 @@ function sanitizeAppUrl(raw: string | null | undefined): string | null {
 export function useEditorLivePreview(appUrl: string | null | undefined) {
   const enabled = useEditorStore((s) => s.previewEnabled);
   const viewport = useEditorStore((s) => s.previewViewport);
-  const streamId = useEditorStore((s) => s.previewStreamId);
-  const setStreamId = useEditorStore((s) => s.setPreviewStreamId);
+  const [streamId, setStreamId] = useState<string | null>(null);
+  const streamIdRef = useRef<string | null>(null);
+  streamIdRef.current = streamId;
 
-  // Guard against React strict-mode double-invoke and racey toggles.
   const startingRef = useRef(false);
   const appUrlRef = useRef(appUrl);
   const viewportRef = useRef(viewport);
@@ -39,7 +39,7 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
     let cancelled = false;
 
     const start = async () => {
-      if (startingRef.current || useEditorStore.getState().previewStreamId != null) return;
+      if (startingRef.current || streamIdRef.current != null) return;
       startingRef.current = true;
       try {
         const { w, h } = VIEWPORT_SIZES[viewportRef.current];
@@ -62,26 +62,23 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
 
     if (enabled) {
       void start();
-    } else {
-      const id = useEditorStore.getState().previewStreamId;
-      if (id != null) {
-        setStreamId(null);
-        stopAuthorPreview(id).catch((err) => {
-          console.warn("stop_author_preview failed:", err);
-        });
-      }
+    } else if (streamIdRef.current != null) {
+      const id = streamIdRef.current;
+      setStreamId(null);
+      stopAuthorPreview(id).catch((err) => {
+        console.warn("stop_author_preview failed:", err);
+      });
     }
 
     return () => {
       cancelled = true;
-      if (!enabled) return;
-      const id = useEditorStore.getState().previewStreamId;
-      if (id != null) {
+      if (enabled && streamIdRef.current != null) {
+        const id = streamIdRef.current;
         setStreamId(null);
         stopAuthorPreview(id).catch(() => {});
       }
     };
-  }, [enabled, setStreamId]);
+  }, [enabled]);
 
   const lastSentViewport = useRef<PreviewViewport | null>(null);
   useEffect(() => {
