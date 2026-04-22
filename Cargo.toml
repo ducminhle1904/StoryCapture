@@ -23,25 +23,25 @@ repository = "https://github.com/storycapture/storycapture"
 
 [workspace.dependencies]
 # Async runtime
-tokio = { version = "1.40", features = ["rt-multi-thread", "sync", "macros", "time", "io-util", "fs", "process"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "sync", "macros", "time", "io-util", "fs", "process"] }
 
 # Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
 
 # Errors
-thiserror = "2"
-anyhow = "1"
+thiserror = "2.0.18"
+anyhow = "1.0.102"
 
 # Observability
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 # IDs
-uuid = { version = "1", features = ["v4", "v7", "serde"] }
+uuid = { version = "1.23.1", features = ["v4", "v7", "serde"] }
 
 # Concurrency primitives
-parking_lot = "0.12"
+parking_lot = "0.12.5"
 
 # Platform-gated native deps. Per-crate Cargo.toml files opt-in via
 # `[target.'cfg(target_os = "macos")'.dependencies]` and friends; features are

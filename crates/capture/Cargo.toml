@@ -9,18 +9,18 @@ description = "Platform-native screen capture (ScreenCaptureKit / Windows.Graphi
 [lib]
 
 [dependencies]
-async-trait = "0.1"
+async-trait = "0.1.89"
 tokio = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 parking_lot = { workspace = true }
-xcap = "0.9"
+xcap = "0.9.4"
 # Plan 06-03 Task 1 — PNG encoding for the `capture_thumbnail` API
 # (SCScreenshotManager rgba_data → PNG bytes). Only default-features
 # off + "png" keeps the bloat under 200 KB. Already transitively pulled
 # in by xcap 0.9, so we just surface it.
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 # Phase 6 plan 01 — mic audio capture.
 # cpal 0.17.3 is the current published line (2026-02-18). The 0.16→0.17
@@ -33,11 +33,11 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 cpal = "=0.17.3"
 ringbuf = "=0.4.8"
 rubato = "0.16"
-bytemuck = "1"
+bytemuck = "1.25.0"
 # tempfile was a dev-dep before Phase 6; promoted to a runtime dep because
 # `audio::fifo::make_fifo` uses tempdir() to create the owner-only
 # parent directory for the mkfifo target (T-06-06 mitigation).
-tempfile = "3"
+tempfile = "3.27.0"
 # Unique-per-session suffix for Windows named-pipe paths (fifo.rs).
 uuid = { workspace = true }
 
@@ -62,7 +62,7 @@ sysinfo = { version = "0.32", optional = true }
 screencapturekit = "=1.5.4"
 objc2 = "0.5"
 objc2-foundation = "0.2"
-core-foundation = "0.10"
+core-foundation = "0.10.1"
 core-graphics = "0.24"
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -105,7 +105,7 @@ real-capture-windows = []
 audio-mock = []
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.27.0"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 serde_json = "1"
 # Plan 06-04 Windows E2E tests: encode captured frames via sibling FFmpeg

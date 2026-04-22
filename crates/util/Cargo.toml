@@ -9,4 +9,4 @@ path = "src/lib.rs"
 
 [dependencies]
 sha2 = "0.10"
-hex = "0.4"
+hex = "0.4.3"

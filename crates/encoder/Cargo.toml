@@ -9,24 +9,24 @@ description = "FFmpeg sidecar encoder. Pure crate — sidecar command injected b
 [lib]
 
 [dependencies]
-async-trait = "0.1"
+async-trait = "0.1.89"
 tokio = { workspace = true }
-tokio-util = "0.7"
+tokio-util = "0.7.18"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-bytes = "1"
+bytes = "1.11.1"
 capture = { path = "../capture" }
 effects = { path = "../effects" }
 storage = { path = "../storage" }
 rusqlite = { version = "0.34", features = ["bundled"] }
 uuid = { workspace = true }
-futures = "0.3"
-tempfile = "3"
+futures = "0.3.32"
+tempfile = "3.27.0"
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc = "0.2.185"
 
 # macOS-only: AVAssetWriter fast path (VtWriter) for zero-copy encode from
 # CVPixelBuffer handles delivered by the SCK backend. See
@@ -48,9 +48,9 @@ default = []
 real-ffmpeg = []
 
 [dev-dependencies]
-tempfile = "3"
-async-trait = "0.1"
-tokio-util = "0.7"
+tempfile = "3.27.0"
+async-trait = "0.1.89"
+tokio-util = "0.7.18"
 rusqlite = { version = "0.34", features = ["bundled"] }
-insta = { version = "1", features = ["yaml"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+insta = { version = "1.47.2", features = ["yaml"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
