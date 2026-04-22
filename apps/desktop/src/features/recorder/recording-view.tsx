@@ -552,6 +552,10 @@ export function RecordingView({
 
   // Map automation events onto the step rail.
   const dispatchAutomation = (evt: ExecutorEvent) => {
+    // D-10: recording path never emits run_paused or step_frame_captured
+    // (capture_frames=false, stop_after_ordinal=None). Defaulted cases stay
+    // no-op; Phase 10 simulator consumes those variants via simulatorStore,
+    // not this switch.
     switch (evt.type) {
       case "step_started":
         advanceStep(evt.ordinal - 1, "running");
