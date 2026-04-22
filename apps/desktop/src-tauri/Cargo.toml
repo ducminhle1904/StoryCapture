@@ -86,7 +86,7 @@ util = { path = "../../../crates/util" }
 parking_lot = { workspace = true }
 async-trait = "0.1.89"
 # Phase 03 plan 07: rusqlite for nl_conversations query in persist_turn helper.
-rusqlite = { version = "0.34", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 
 # Phase 04 plan 03: timestamp formatting for web account connected_at.
 time = { version = "0.3.47", features = ["formatting"] }

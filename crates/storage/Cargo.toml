@@ -8,8 +8,8 @@ license.workspace = true
 [lib]
 
 [dependencies]
-rusqlite = { version = "0.34", features = ["bundled", "time", "uuid"] }
-rusqlite_migration = "2.0.0"
+rusqlite = { version = "0.39", features = ["bundled", "time", "uuid"] }
+rusqlite_migration = "2.5.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -21,4 +21,4 @@ slug = "0.1.6"
 [dev-dependencies]
 tempfile = "3.27.0"
 story-parser = { path = "../story-parser", default-features = false }
-rusqlite = { version = "0.34", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
