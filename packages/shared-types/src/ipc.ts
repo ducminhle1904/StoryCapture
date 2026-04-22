@@ -103,6 +103,36 @@ async isStageManagerEnabled() : Promise<Result<boolean, AppError>> {
 }
 },
 /**
+ * Start the CDP screencast and pump decoded frames into a Tauri event.
+ * 
+ * Returns `UnavailableOnBackend` when no Playwright driver is registered
+ * with `AppState::preview_driver` — the frontend uses this to fall back
+ * to the static preview stage. A second invocation aborts any prior
+ * pump task so frames are not double-emitted.
+ */
+async startPreviewStream() : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_preview_stream") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Stop the preview pump and instruct the sidecar to end the CDP
+ * screencast. Idempotent — a second call without an active stream is a
+ * no-op. Preview-stop errors are swallowed (CLAUDE.md: intentional
+ * isolation — preview lifecycle MUST NOT cascade into recording).
+ */
+async stopPreviewStream() : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("stop_preview_stream") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Start an element-picker session against the in-flight Playwright
  * sidecar. Returns the ranked DSL line (`emitted`) on a successful
  * pick, or a `Cancelled` variant on Esc / navigation / unsupported
@@ -259,6 +289,14 @@ async getAppSettings() : Promise<Result<AppSettingsDto, AppError>> {
 async setBrowserExecutable(path: string | null) : Promise<Result<AppSettingsDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_browser_executable", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setLivePreviewEnabled(enabled: boolean) : Promise<Result<AppSettingsDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_live_preview_enabled", { enabled }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1064,9 +1102,9 @@ async getSyncStatus() : Promise<Result<SyncStatusDto, WebSyncError>> {
 /** user-defined types **/
 
 export type AdjustedStepDto = { step_id: string; new_duration_ms: bigint; freeze_frame_extension_ms: bigint; silence_padding_ms: bigint; clip_start_ms: bigint; drift_ms: bigint }
-export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"; message: string } | { kind: "Keyring"; message: string } | { kind: "Automation"; message: string } | { kind: "Capture"; message: string } | { kind: "Encoder"; message: string } | { kind: "Storage"; message: string } | { kind: "NotFound"; message: string } | { kind: "InvalidArgument"; message: string } | { kind: "Internal"; message: string }
+export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"; message: string } | { kind: "Keyring"; message: string } | { kind: "Automation"; message: string } | { kind: "Capture"; message: string } | { kind: "Encoder"; message: string } | { kind: "Storage"; message: string } | { kind: "NotFound"; message: string } | { kind: "InvalidArgument"; message: string } | { kind: "Internal"; message: string } | { kind: "UnavailableOnBackend"; message: string }
 export type AppInfo = { version: string; platform: string; arch: string; data_dir: string; log_dir: string }
-export type AppSettingsDto = { browser_executable: string | null }
+export type AppSettingsDto = { browser_executable: string | null; live_preview_enabled: boolean }
 export type AudioCodecDto = "aac" | "opus"
 /**
  * Serializable DTO for the audio-device picker. Mirrors

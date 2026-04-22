@@ -68,6 +68,18 @@ pub struct AppState {
     /// picker commands read this to issue `pickElement.*` against the
     /// same sidecar the executor is driving.
     pub playwright_driver: SharedPlaywrightDriverHandle,
+
+    /// Phase 09-02 — Playwright driver slot dedicated to the live-preview
+    /// pump. Populated when a recording against a Playwright auto-target
+    /// starts; cleared when the recording ends. Kept separate from
+    /// `playwright_driver` (which spans the whole story lifetime) so the
+    /// pump task can abort before automation teardown.
+    pub preview_driver: TokioMutex<Option<Arc<TokioMutex<automation::PlaywrightSidecarDriver>>>>,
+
+    /// Phase 09-02 — join handle of the task draining the watch channel
+    /// and emitting `preview://frame` events. `Some` while a stream is
+    /// active; aborted and replaced on start/stop.
+    pub preview_pump: TokioMutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl AppState {
@@ -85,6 +97,8 @@ impl AppState {
             render_queue: PLMutex::new(None),
             http_client,
             playwright_driver: Arc::new(TokioMutex::new(None)),
+            preview_driver: TokioMutex::new(None),
+            preview_pump: TokioMutex::new(None),
         }
     }
 

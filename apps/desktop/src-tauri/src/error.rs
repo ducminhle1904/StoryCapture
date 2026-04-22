@@ -42,6 +42,9 @@ pub enum AppError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("unavailable on backend: {0}")]
+    UnavailableOnBackend(String),
 }
 
 // Manual Serialize impl produces the `{ kind, message }` shape that matches
@@ -63,6 +66,7 @@ impl Serialize for AppError {
             AppError::NotFound(m) => ("NotFound", m.as_str()),
             AppError::InvalidArgument(m) => ("InvalidArgument", m.as_str()),
             AppError::Internal(m) => ("Internal", m.as_str()),
+            AppError::UnavailableOnBackend(m) => ("UnavailableOnBackend", m.as_str()),
         };
         let mut s = ser.serialize_struct("AppError", 2)?;
         s.serialize_field("kind", kind)?;

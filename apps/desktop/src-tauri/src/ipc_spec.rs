@@ -48,6 +48,9 @@ pub fn builder() -> Builder<Wry> {
             automation::launch_automation,
             automation::resolve_playwright_target,
             automation::is_stage_manager_enabled,
+            // Phase 09-02 — live preview pump (Rust → `preview://frame`).
+            automation::start_preview_stream,
+            automation::stop_preview_stream,
             // element picker.
             picker::picker_start,
             picker::picker_cancel,
@@ -61,6 +64,7 @@ pub fn builder() -> Builder<Wry> {
             author_snapshot::author_snapshot_validate,
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
+            app_settings::set_live_preview_enabled,
             // Phase 6 plan 01 — mic audio enumeration.
             audio::list_audio_inputs,
             capture::list_displays,

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::Mutex;
@@ -218,6 +218,12 @@ pub async fn launch_automation(
         *slot = Some(shared_pw.clone());
         tracing::info!(target: "storycapture::automation", "published shared Playwright driver to AppState (picker enabled)");
     }
+    // Phase 09-02 — publish to preview_driver so `start_preview_stream`
+    // can attach the CDP screencast to the same sidecar instance.
+    {
+        let mut slot = state.preview_driver.lock().await;
+        *slot = Some(shared_pw.clone());
+    }
     // wire the id-absent JSON-RPC notification forwarder
     // that bridges the sidecar's broadcast channel to a Tauri event
     // (`picker_hover_preview`). One forwarder per driver lifetime; the
@@ -356,6 +362,14 @@ pub async fn launch_automation(
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
     playwright_first_paint_stash().set(false);
+    // Phase 09-02 — preview teardown precedes automation teardown so the
+    // pump task's watch-channel exits cleanly. Preview failure here does
+    // not propagate (intentional isolation, CLAUDE.md).
+    stop_preview_stream_inner(&state).await;
+    {
+        let mut slot = state.preview_driver.lock().await;
+        *slot = None;
+    }
     // drop the shared driver handle so the picker disables
     // until the next launch.
     {
@@ -416,6 +430,82 @@ pub(crate) fn pause_active_automation() {
 pub(crate) fn resume_active_automation() {
     if let Some(control) = active_run_control().lock().clone() {
         control.resume();
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 09-02 — live preview pump (Rust → `preview://frame` event)
+// ──────────────────────────────────────────────────────────────────────
+
+/// Start the CDP screencast and pump decoded frames into a Tauri event.
+///
+/// Returns `UnavailableOnBackend` when no Playwright driver is registered
+/// with `AppState::preview_driver` — the frontend uses this to fall back
+/// to the static preview stage. A second invocation aborts any prior
+/// pump task so frames are not double-emitted.
+#[tauri::command]
+#[specta::specta]
+pub async fn start_preview_stream(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let shared = {
+        let guard = state.preview_driver.lock().await;
+        guard.clone().ok_or_else(|| {
+            AppError::UnavailableOnBackend("no active Playwright session".into())
+        })?
+    };
+
+    {
+        let driver = shared.lock().await;
+        driver
+            .call_preview_start()
+            .await
+            .map_err(|e| AppError::Automation(e.to_string()))?;
+    }
+
+    if let Some(prev) = state.preview_pump.lock().await.take() {
+        prev.abort();
+    }
+
+    let mut rx = { shared.lock().await.subscribe_preview() };
+    let app_for_emit = app.clone();
+    let handle = tokio::spawn(async move {
+        while rx.changed().await.is_ok() {
+            let snapshot = rx.borrow_and_update().clone();
+            if let Some(frame) = snapshot {
+                if let Err(err) = app_for_emit.emit("preview://frame", &frame) {
+                    tracing::warn!(target: "storycapture::preview", error = %err, "preview emit failed");
+                }
+            }
+        }
+        tracing::debug!(target: "storycapture::preview", "preview pump exited (sender dropped)");
+    });
+    *state.preview_pump.lock().await = Some(handle);
+    Ok(())
+}
+
+/// Stop the preview pump and instruct the sidecar to end the CDP
+/// screencast. Idempotent — a second call without an active stream is a
+/// no-op. Preview-stop errors are swallowed (CLAUDE.md: intentional
+/// isolation — preview lifecycle MUST NOT cascade into recording).
+#[tauri::command]
+#[specta::specta]
+pub async fn stop_preview_stream(state: State<'_, AppState>) -> Result<(), AppError> {
+    stop_preview_stream_inner(&state).await;
+    Ok(())
+}
+
+/// Shared teardown used by both the Tauri command and the
+/// recording-lifecycle hook so preview always stops before automation.
+pub(crate) async fn stop_preview_stream_inner(state: &AppState) {
+    if let Some(h) = state.preview_pump.lock().await.take() {
+        h.abort();
+    }
+    let shared_opt = state.preview_driver.lock().await.clone();
+    if let Some(shared) = shared_opt {
+        let driver = shared.lock().await;
+        let _ = driver.call_preview_stop().await;
     }
 }
 
