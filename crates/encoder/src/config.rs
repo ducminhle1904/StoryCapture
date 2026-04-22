@@ -239,6 +239,18 @@ impl EncodeConfig {
             codec.into(),
             "-pix_fmt".into(),
             "yuv420p".into(),
+            // Explicit BT.709 tagging so every player (QuickTime, Safari,
+            // Chrome, VLC) interprets the same color range — otherwise the
+            // MP4 can look washed-out or over-saturated depending on the
+            // player's guess.
+            "-color_range".into(),
+            "tv".into(),
+            "-colorspace".into(),
+            "bt709".into(),
+            "-color_primaries".into(),
+            "bt709".into(),
+            "-color_trc".into(),
+            "bt709".into(),
         ]);
         args.extend(quality::resolve(
             self.quality_preset,
@@ -396,7 +408,8 @@ mod tests {
         );
     }
 
-    /// Bitrate is target, not floor (Phase 12 / D-12-08).
+    /// Bitrate is target, not floor (Phase 12 / D-12-08). Phase 18: formula
+    /// bumped to 5 bits/pixel — 4K now hits the 40 Mbps cap.
     #[test]
     fn test_4k_uses_target_bitrate() {
         let cfg = EncodeConfig::new(
@@ -410,8 +423,8 @@ mod tests {
         .unwrap()
         .with_auto_bitrate();
         assert_eq!(
-            cfg.bitrate_kbps, 24_883,
-            "auto_bitrate must equal pixel_based for 3840x2160"
+            cfg.bitrate_kbps, 40_000,
+            "auto_bitrate must clamp to MAX_KBPS for 3840x2160 at 5 bits/pixel"
         );
         let args = cfg.to_ffmpeg_args();
         assert!(
@@ -419,8 +432,8 @@ mod tests {
             "libopenh264 Med must use CRF, not -b:v"
         );
         assert!(
-            args.windows(2).any(|w| w[0] == "-crf" && w[1] == "23"),
-            "Med preset → -crf 23"
+            args.windows(2).any(|w| w[0] == "-crf" && w[1] == "20"),
+            "Med preset → -crf 20 (screen content tune)"
         );
         assert!(
             args.windows(2)

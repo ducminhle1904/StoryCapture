@@ -16,10 +16,13 @@ use crate::probe::HardwareEncoder;
 const MAX_KBPS: u32 = 40_000;
 
 /// Pixel-based target bitrate in kbps, clamped to `MAX_KBPS`.
+/// Screen content (sharp edges, text, high-contrast UI) needs denser bitrate
+/// than natural video; 5 bits/pixel is the empirical floor for crisp text at
+/// H.264 High profile.
 pub fn pixel_based_kbps(output_w: u32, output_h: u32) -> u32 {
     let raw = (output_w as u64)
         .saturating_mul(output_h as u64)
-        .saturating_mul(3)
+        .saturating_mul(5)
         / 1000;
     raw.min(MAX_KBPS as u64) as u32
 }
@@ -44,17 +47,17 @@ pub fn resolve(
 ) -> Vec<String> {
     match encoder {
         HardwareEncoder::Openh264Software => match preset {
-            QualityPreset::Low => vec_of!["-crf", "28", "-preset", "veryfast", "-tune", "stillimage"],
-            QualityPreset::Med => vec_of!["-crf", "23", "-preset", "medium", "-tune", "stillimage"],
-            QualityPreset::High => vec_of!["-crf", "20", "-preset", "slow", "-tune", "stillimage"],
-            QualityPreset::Lossless => vec_of!["-crf", "18", "-preset", "slow", "-tune", "stillimage"],
+            QualityPreset::Low => vec_of!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"],
+            QualityPreset::Med => vec_of!["-crf", "20", "-preset", "medium", "-tune", "stillimage"],
+            QualityPreset::High => vec_of!["-crf", "18", "-preset", "slow", "-tune", "stillimage"],
+            QualityPreset::Lossless => vec_of!["-crf", "15", "-preset", "slow", "-tune", "stillimage"],
         },
         HardwareEncoder::VideoToolboxH264 | HardwareEncoder::VideoToolboxHevc => {
             let b = pixel_based_kbps(output_w, output_h);
             match preset {
                 QualityPreset::Low => vec![
                     "-q:v".into(),
-                    "50".into(),
+                    "60".into(),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 3, 4)),
                     "-bufsize".into(),
@@ -62,7 +65,7 @@ pub fn resolve(
                 ],
                 QualityPreset::Med => vec![
                     "-q:v".into(),
-                    "65".into(),
+                    "72".into(),
                     "-maxrate".into(),
                     format!("{}k", b),
                     "-bufsize".into(),
@@ -70,7 +73,7 @@ pub fn resolve(
                 ],
                 QualityPreset::High => vec![
                     "-q:v".into(),
-                    "75".into(),
+                    "82".into(),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 5, 4)),
                     "-bufsize".into(),
@@ -78,7 +81,7 @@ pub fn resolve(
                 ],
                 QualityPreset::Lossless => vec![
                     "-q:v".into(),
-                    "85".into(),
+                    "92".into(),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 3, 2)),
                     "-bufsize".into(),
@@ -95,7 +98,7 @@ pub fn resolve(
                     "-rc".into(),
                     "vbr".into(),
                     "-cq".into(),
-                    "28".into(),
+                    "26".into(),
                     "-b:v".into(),
                     format!("{}k", kbps_scaled(b, 3, 4)),
                     "-maxrate".into(),
@@ -107,7 +110,7 @@ pub fn resolve(
                     "-rc".into(),
                     "vbr".into(),
                     "-cq".into(),
-                    "23".into(),
+                    "20".into(),
                     "-b:v".into(),
                     format!("{}k", b),
                     "-maxrate".into(),
@@ -119,7 +122,7 @@ pub fn resolve(
                     "-rc".into(),
                     "vbr".into(),
                     "-cq".into(),
-                    "20".into(),
+                    "18".into(),
                     "-b:v".into(),
                     format!("{}k", kbps_scaled(b, 5, 4)),
                     "-maxrate".into(),
@@ -131,7 +134,7 @@ pub fn resolve(
                     "-rc".into(),
                     "vbr".into(),
                     "-cq".into(),
-                    "18".into(),
+                    "15".into(),
                     "-b:v".into(),
                     format!("{}k", kbps_scaled(b, 3, 2)),
                     "-maxrate".into(),
@@ -140,16 +143,16 @@ pub fn resolve(
             }
         }
         HardwareEncoder::QsvH264 => match preset {
-            QualityPreset::Low => vec_of!["-preset", "medium", "-global_quality", "28", "-look_ahead", "0"],
-            QualityPreset::Med => vec_of!["-preset", "medium", "-global_quality", "23"],
-            QualityPreset::High => vec_of!["-preset", "slow", "-global_quality", "20"],
-            QualityPreset::Lossless => vec_of!["-preset", "veryslow", "-global_quality", "18"],
+            QualityPreset::Low => vec_of!["-preset", "medium", "-global_quality", "26", "-look_ahead", "0"],
+            QualityPreset::Med => vec_of!["-preset", "medium", "-global_quality", "20"],
+            QualityPreset::High => vec_of!["-preset", "slow", "-global_quality", "18"],
+            QualityPreset::Lossless => vec_of!["-preset", "veryslow", "-global_quality", "15"],
         },
         HardwareEncoder::AmfH264 => match preset {
-            QualityPreset::Low => vec_of!["-quality", "balanced", "-rc", "cqp", "-qp_i", "28", "-qp_p", "30"],
-            QualityPreset::Med => vec_of!["-quality", "balanced", "-rc", "cqp", "-qp_i", "22", "-qp_p", "24"],
-            QualityPreset::High => vec_of!["-quality", "quality", "-rc", "cqp", "-qp_i", "20", "-qp_p", "22"],
-            QualityPreset::Lossless => vec_of!["-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "20"],
+            QualityPreset::Low => vec_of!["-quality", "balanced", "-rc", "cqp", "-qp_i", "26", "-qp_p", "28"],
+            QualityPreset::Med => vec_of!["-quality", "balanced", "-rc", "cqp", "-qp_i", "20", "-qp_p", "22"],
+            QualityPreset::High => vec_of!["-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "20"],
+            QualityPreset::Lossless => vec_of!["-quality", "quality", "-rc", "cqp", "-qp_i", "15", "-qp_p", "17"],
         },
     }
 }
@@ -159,13 +162,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pixel_based_1920x1080_is_6220() {
-        assert_eq!(pixel_based_kbps(1920, 1080), 6220);
+    fn pixel_based_1920x1080_is_10368() {
+        // 1920*1080*5/1000 = 10368
+        assert_eq!(pixel_based_kbps(1920, 1080), 10368);
     }
 
     #[test]
-    fn pixel_based_3840x2160_is_24883() {
-        assert_eq!(pixel_based_kbps(3840, 2160), 24883);
+    fn pixel_based_3840x2160_clamps_to_40000() {
+        // 3840*2160*5/1000 = 41472 > cap
+        assert_eq!(pixel_based_kbps(3840, 2160), 40_000);
     }
 
     #[test]
@@ -176,32 +181,32 @@ mod tests {
     #[test]
     fn openh264_med_args() {
         let got = resolve(QualityPreset::Med, HardwareEncoder::Openh264Software, 1920, 1080);
-        assert_eq!(got, vec!["-crf", "23", "-preset", "medium", "-tune", "stillimage"]);
+        assert_eq!(got, vec!["-crf", "20", "-preset", "medium", "-tune", "stillimage"]);
     }
 
     #[test]
     fn openh264_low_args() {
         let got = resolve(QualityPreset::Low, HardwareEncoder::Openh264Software, 1920, 1080);
         assert!(got.iter().any(|a| a == "-tune"));
-        assert_eq!(got, vec!["-crf", "28", "-preset", "veryfast", "-tune", "stillimage"]);
+        assert_eq!(got, vec!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"]);
     }
 
     #[test]
     fn openh264_high_args() {
         let got = resolve(QualityPreset::High, HardwareEncoder::Openh264Software, 1920, 1080);
-        assert_eq!(got, vec!["-crf", "20", "-preset", "slow", "-tune", "stillimage"]);
+        assert_eq!(got, vec!["-crf", "18", "-preset", "slow", "-tune", "stillimage"]);
     }
 
     #[test]
     fn openh264_lossless_args() {
         let got = resolve(QualityPreset::Lossless, HardwareEncoder::Openh264Software, 1920, 1080);
-        assert_eq!(got, vec!["-crf", "18", "-preset", "slow", "-tune", "stillimage"]);
+        assert_eq!(got, vec!["-crf", "15", "-preset", "slow", "-tune", "stillimage"]);
     }
 
     #[test]
     fn videotoolbox_med_1080p_parity_with_current_config() {
         let got = resolve(QualityPreset::Med, HardwareEncoder::VideoToolboxH264, 1920, 1080);
-        assert_eq!(got, vec!["-q:v", "65", "-maxrate", "6220k", "-bufsize", "12440k"]);
+        assert_eq!(got, vec!["-q:v", "72", "-maxrate", "10368k", "-bufsize", "20736k"]);
     }
 
     #[test]
@@ -224,16 +229,17 @@ mod tests {
     #[test]
     fn nvenc_low_1080p_args() {
         let got = resolve(QualityPreset::Low, HardwareEncoder::NvencH264, 1920, 1080);
+        // b = 10368, 3/4 = 7776, 5/4 = 12960
         assert_eq!(
             got,
-            vec!["-preset", "p5", "-rc", "vbr", "-cq", "28", "-b:v", "4665k", "-maxrate", "7775k"]
+            vec!["-preset", "p5", "-rc", "vbr", "-cq", "26", "-b:v", "7776k", "-maxrate", "12960k"]
         );
     }
 
     #[test]
     fn qsv_med_args() {
         let got = resolve(QualityPreset::Med, HardwareEncoder::QsvH264, 1920, 1080);
-        assert_eq!(got, vec!["-preset", "medium", "-global_quality", "23"]);
+        assert_eq!(got, vec!["-preset", "medium", "-global_quality", "20"]);
     }
 
     #[test]
@@ -241,7 +247,7 @@ mod tests {
         let got = resolve(QualityPreset::Lossless, HardwareEncoder::AmfH264, 1920, 1080);
         assert_eq!(
             got,
-            vec!["-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "20"]
+            vec!["-quality", "quality", "-rc", "cqp", "-qp_i", "15", "-qp_p", "17"]
         );
     }
 
