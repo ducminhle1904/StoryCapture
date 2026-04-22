@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  setAuthorPreviewUrl,
   setAuthorPreviewViewport,
   startAuthorPreview,
   stopAuthorPreview,
@@ -90,6 +91,18 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
       console.warn("set_author_preview_viewport failed:", err);
     });
   }, [streamId, viewport]);
+
+  const lastSentUrl = useRef<string | null>(null);
+  useEffect(() => {
+    if (streamId == null) return;
+    const url = sanitizeAppUrl(appUrl);
+    if (url == null) return;
+    if (lastSentUrl.current === url) return;
+    lastSentUrl.current = url;
+    setAuthorPreviewUrl(streamId, url).catch((err) => {
+      console.warn("set_author_preview_url failed:", err);
+    });
+  }, [streamId, appUrl]);
 
   return { streamId, enabled };
 }

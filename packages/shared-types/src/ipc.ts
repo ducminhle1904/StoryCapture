@@ -185,6 +185,19 @@ async setAuthorPreviewViewport(streamId: string, args: AuthorViewportArgs) : Pro
 }
 },
 /**
+ * Navigate a live author-preview session to a new URL without relaunch.
+ * Caller must pass an http(s) URL; the sidecar re-validates and rejects
+ * otherwise.
+ */
+async setAuthorPreviewUrl(streamId: string, url: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_author_preview_url", { streamId, url }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Readiness probe: confirms streamId is registered + sidecar is alive.
  */
 async attachAuthorDriver(streamId: string) : Promise<Result<null, AppError>> {

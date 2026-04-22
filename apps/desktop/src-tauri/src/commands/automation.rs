@@ -685,6 +685,26 @@ pub async fn set_author_preview_viewport(
     Ok(())
 }
 
+/// Navigate a live author-preview session to a new URL without relaunch.
+/// Caller must pass an http(s) URL; the sidecar re-validates and rejects
+/// otherwise.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_author_preview_url(
+    state: State<'_, AppState>,
+    stream_id: String,
+    url: String,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .call_author_goto(&stream_id, &url)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
 /// Readiness probe: confirms streamId is registered + sidecar is alive.
 #[tauri::command]
 #[specta::specta]

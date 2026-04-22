@@ -57,6 +57,7 @@ pub fn builder() -> Builder<Wry> {
             automation::pause_author_preview,
             automation::resume_author_preview,
             automation::set_author_preview_viewport,
+            automation::set_author_preview_url,
             automation::attach_author_driver,
             // element picker.
             picker::picker_start,

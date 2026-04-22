@@ -260,6 +260,13 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
+    /// Navigate an author session's page to a new URL without relaunching.
+    pub async fn call_author_goto(&self, stream_id: &str, url: &str) -> Result<()> {
+        self.call("author.goto", json!({ "streamId": stream_id, "url": url }))
+            .await?;
+        Ok(())
+    }
+
     /// Phase 09-04 — start the CDP screencast for a named author session.
     pub async fn call_preview_start_stream(&self, stream_id: &str) -> Result<()> {
         self.call("startPreviewStream", json!({ "streamId": stream_id }))

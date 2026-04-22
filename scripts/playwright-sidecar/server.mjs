@@ -833,6 +833,23 @@ const handlers = {
     return { ok: true, width, height };
   },
 
+  'author.goto': async ({ streamId, url } = {}) => {
+    const s = getAuthorSession(streamId);
+    if (typeof url !== 'string' || !url) {
+      throw Object.assign(new Error('invalid url'), { code: -32602 });
+    }
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        throw new Error('non-http(s) url');
+      }
+    } catch {
+      throw Object.assign(new Error('invalid url'), { code: -32602 });
+    }
+    await s.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    return { ok: true, url };
+  },
+
   startPreviewStream: async ({ streamId } = {}) => {
     if (typeof streamId === 'string' && streamId.length > 0) {
       const s = getAuthorSession(streamId);

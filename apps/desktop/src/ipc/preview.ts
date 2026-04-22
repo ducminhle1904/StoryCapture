@@ -1,12 +1,3 @@
-/**
- * Phase 09-02 — live preview IPC wrappers.
- *
- * Routes to the pump task in `apps/desktop/src-tauri/src/commands/automation.rs`
- * which drains the 09-01 `watch::Receiver<Option<PreviewFrame>>` and emits a
- * Tauri `preview://frame` event per payload. Payload shape mirrors
- * `automation::PreviewFrame` (base64 JPEG + dims + timestamp).
- */
-
 import { invoke } from "@tauri-apps/api/core";
 
 export interface PreviewFramePayload {
@@ -14,8 +5,6 @@ export interface PreviewFramePayload {
   width: number;
   height: number;
   timestamp: number;
-  // Phase 09-04 — multi-stream demux. Absent for recording-session frames;
-  // set to the author-session streamId for editor-surface previews.
   streamId?: string | null;
 }
 
@@ -27,7 +16,6 @@ export async function stopPreviewStream(): Promise<void> {
   await invoke("stop_preview_stream");
 }
 
-// Phase 09-04 — ephemeral author-time preview (editor surface).
 export async function startAuthorPreview(params: {
   initialUrl: string | null;
   viewportWidth: number;
@@ -61,6 +49,10 @@ export async function setAuthorPreviewViewport(
     streamId,
     args: { width, height },
   });
+}
+
+export async function setAuthorPreviewUrl(streamId: string, url: string): Promise<void> {
+  await invoke("set_author_preview_url", { streamId, url });
 }
 
 export async function attachAuthorDriver(streamId: string): Promise<void> {
