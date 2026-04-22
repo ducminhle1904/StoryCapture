@@ -95,10 +95,14 @@ impl SckBackend {
 
     /// Build an `SCContentFilter` and output dimensions for a target.
     ///
+    /// Returns `(filter, width_px, height_px, source_rect_opt, needs_scales_to_fit)`.
     /// `source_rect_opt` is in logical points when present.
+    /// `needs_scales_to_fit` is true for window captures so SCK composites the
+    /// native Retina backing store onto our physical-pixel canvas instead of
+    /// padding the unused area with black (Phase 18).
     pub(crate) fn build_filter(
         target: &CaptureTarget,
-    ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>), CaptureError> {
+    ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>, bool), CaptureError> {
         match target {
             CaptureTarget::Display { display_id } => {
                 let content = SCShareableContent::get()
@@ -117,27 +121,24 @@ impl SckBackend {
                     .with_excluding_windows(&[])
                     .build();
                 // The builder handles an empty exclusion list safely.
-                Ok((filter, width, height, None))
+                Ok((filter, width, height, None, false))
             }
             CaptureTarget::Window { window_id } => {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
                     .ok_or(CaptureError::WindowNotFound(window_id.0))?;
                 let frame = window.frame();
-                // SCK composites the window at its native render resolution
-                // into a stream canvas of whatever width/height we specify.
-                // Multiplying by 2 (for retina) produces an oversized canvas
-                // which SCK fills with black in the unused area — that's
-                // the "browser top-left, rest black" bug. Use the raw
-                // frame dims so the canvas matches the window's actual
-                // rendered pixel size. True retina content still encodes
-                // legibly because Chromium's --window-size arg gives us
-                // 1280pt = 1280px on 1x and the same 1280pt = 2560px on
-                // 2x; SCK either way reports the correct pixel frame
-                // that matches the rendered content.
-                let width = frame.width as u32;
-                let height = frame.height as u32;
+                // Phase 18: request the canvas at physical (Retina) pixels
+                // and let SCK composite the native window backing store via
+                // scales_to_fit(true). Before, we requested logical-point
+                // dims and SCK downsampled the 2× backing store, softening
+                // text on Retina playback. scales_to_fit(true) also prevents
+                // the "browser top-left, rest black" padding bug that a
+                // naive 2× multiplication previously triggered.
+                let scale = primary_display_scale() as f64;
+                let width = (frame.width * scale).round().max(1.0) as u32;
+                let height = (frame.height * scale).round().max(1.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
-                Ok((filter, width, height, None))
+                Ok((filter, width, height, None, true))
             }
             CaptureTarget::WindowByPid { pid, title_hint } => {
                 // Command-layer callers already did the retry loop.
@@ -157,13 +158,14 @@ impl SckBackend {
                 )?
                 .ok_or(CaptureError::WindowNotFound(*pid as u64))?;
                 let frame = window.frame();
-                // See Window branch: no retina multiplication — raw frame
-                // dims match the SCK-composited window size and prevent
-                // the black-padding bug.
-                let width = frame.width as u32;
-                let height = frame.height as u32;
+                // Phase 18: same physical-pixel treatment as Window — see
+                // the Window branch comment. Without this, Retina window
+                // recordings render soft when played back on 2× displays.
+                let scale = primary_display_scale() as f64;
+                let width = (frame.width * scale).round().max(1.0) as u32;
+                let height = (frame.height * scale).round().max(1.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
-                Ok((filter, width, height, None))
+                Ok((filter, width, height, None, true))
             }
             // Region capture uses logical-point source rects and pixel output sizes.
             CaptureTarget::DisplayRegion { display_id, rect } => {
@@ -183,7 +185,7 @@ impl SckBackend {
                     .with_display(disp)
                     .with_excluding_windows(&[])
                     .build();
-                Ok((filter, width_px, height_px, Some(source_rect)))
+                Ok((filter, width_px, height_px, Some(source_rect), false))
             }
         }
     }
@@ -237,7 +239,7 @@ impl CaptureBackend for SckBackend {
 
         // Resolve the filter off the async runtime.
         let target = cfg.target.clone();
-        let (filter, width_px, height_px, source_rect) =
+        let (filter, width_px, height_px, source_rect, needs_scales_to_fit) =
             tokio::task::spawn_blocking(move || Self::build_filter(&target))
                 .await
                 .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
@@ -279,6 +281,11 @@ impl CaptureBackend for SckBackend {
                 .with_source_rect(src)
                 .with_destination_rect(dest)
                 .with_scales_to_fit(false);
+        } else if needs_scales_to_fit {
+            // Phase 18: window capture at physical (Retina) pixels requires
+            // scales_to_fit so SCK composites the native backing store onto
+            // the canvas instead of leaving unused area black.
+            config = config.with_scales_to_fit(true);
         }
 
         // Forward delegate failures to the optional event sink.
@@ -465,6 +472,20 @@ impl CaptureBackend for SckBackend {
     }
 }
 
+/// Phase 18: pick the primary display's backing scale factor. Used by window
+/// capture to request a physical-pixel canvas on Retina displays. Falls back
+/// to 1.0 (non-Retina) when enumeration fails, so a failure degrades to the
+/// pre-Phase-18 behavior instead of crashing.
+fn primary_display_scale() -> f32 {
+    enumerate()
+        .unwrap_or_default()
+        .iter()
+        .find(|d| d.is_primary)
+        .map(|d| d.scale_factor)
+        .unwrap_or(1.0)
+        .max(1.0)
+}
+
 /// Compute a region source rect and pixel size for display-region capture.
 pub(crate) fn compute_region_math(
     rect: &crate::target::RegionRect,
@@ -619,7 +640,7 @@ pub(crate) fn build_filter_for_test_region(
     };
     SckBackend::build_filter(&target)
         .ok()
-        .map(|(_, w, h, r)| (w, h, r))
+        .map(|(_, w, h, r, _)| (w, h, r))
 }
 
 #[cfg(test)]
