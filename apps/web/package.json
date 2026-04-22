@@ -26,7 +26,7 @@
     "@auth/prisma-adapter": "^2.11.2",
     "zod": "^4.3.6",
     "superjson": "^2.2.6",
-    "jose": "^5.0.0",
+    "jose": "^6.2.2",
     "@aws-sdk/client-s3": "^3.1033.0",
     "@aws-sdk/s3-request-presigner": "^3.1033.0",
     "@maxmind/geoip2-node": "^6.3.4",
