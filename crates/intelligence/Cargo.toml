@@ -50,7 +50,7 @@ rand     = "0.10"
 httpdate = "1.0.3"
 
 # Config parsing (eval_report binary)
-toml = "0.8"
+toml = "1.1.2"
 
 # Workspace siblings
 story-parser = { path = "../story-parser" }
