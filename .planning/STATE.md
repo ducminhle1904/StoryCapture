@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-22T05:55:06.567Z"
+last_updated: "2026-04-22T08:45:00.000Z"
 progress:
   total_phases: 17
-  completed_phases: 8
-  total_plans: 112
-  completed_plans: 93
-  percent: 83
+  completed_phases: 10
+  total_plans: 118
+  completed_plans: 100
+  percent: 85
 ---
 
 # State: StoryCapture
@@ -24,8 +24,13 @@ progress:
 
 ## Current Position
 
-Phase: 17 — Record engine lifecycle hardening — COMPLETE (2026-04-22)
-Plan: All 6 plans complete (17-01..17-06). 22 commits on main. 19/19 decisions (D-01..D-19) verified by gsd-verifier — decision matrix full PASS, contract invariants preserved (additive IPC only), no workarounds, all 6 success criteria met.
+Phase: 16 — Upgrade all dependencies to latest — COMPLETE (5/5 plans landed, 2026-04-22)
+Plan: 16-05 complete (Wave E gated framework majors + docs sync: 2 atomic commits landed — E24 ac8e8f8 next 15 → 16.2.4 in apps/web; E28 3d1625b CLAUDE.md + docs/ARCHITECTURE.md synced to final Phase 16 pins. E22 skipped (no newer next-auth beta). E25 deferred (adapter peerDeps). E26 deferred (no Windows CI). E27 blocked-no-op (specta rc.24 requires nightly Rust). Gate: turbo typecheck + turbo build + cargo check --workspace + cargo test --workspace all green.
+
+Also complete (merged from origin 2026-04-22):
+- Phase 17 — Record engine lifecycle hardening — COMPLETE (all 6 plans, 22 commits, 19/19 decisions verified).
+- Phase 10 Wave 1 — Author-time simulator (executor parameterization + RunControl + pause/step events).
+- Phase 9 all 4 waves code-complete.
 
 Prior executing phase: 15 — Editor/Post-Production boundary cleanup — Wave 4 complete; 15-05 cleanup + regression matrix still pending user QA.
 
@@ -45,7 +50,7 @@ No Phase 15 rearrangement invalidates file-path references in Phase 8-11 plans. 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
 - **Plan:** All 5 plans complete; verified 8/8 (ENC-12..ENC-19 PASS)
-- **Status:** Executing Phase --phase
+- **Status:** Ready to execute
 - **Progress:** [████████░░] 84%
 
 ## Performance Metrics
@@ -140,10 +145,12 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-22 — Executed Phase 10 Wave 3 (frontend simulator shell: simulatorStore + SceneTimeline + Promote-to-fallback gate + locked-run dry-run + preview swap). **Phase 10 now code-complete end-to-end.**
-- Last action: Plan 10-03 complete — 5 atomic commits (d5fcc44 simulatorStore + reducer tests, 199f335 CodeMirror simulator line decoration + theme, 65df041 SimulatorTimeline filmstrip + scrubber + Promote gate + error bar, 1daf3b3 editor banner + readOnly + Cmd-. keymap + context menu + timeline mount, bc0df39 preview panel swaps live canvas for static StepFrame during simulator runs). `pnpm tsc` clean; vitest editor+recorder+live-preview 112/112 (+40 new Wave 3 coverage vs 72/72 baseline). Zero changes under `apps/desktop/src-tauri/` or `crates/`; shared-types ipc.ts untouched; Phase 3 DryRunPanel surfaces preserved. Promote button strictly gated on `match_kind === "fuzzy"` (D-07). SUMMARY + SMOKE at `.planning/phases/10-author-time-simulator-step-preview-dry-run-walkthrough/10-03-{SUMMARY,SMOKE}.md`.
-- Next action: Operator smoke on real project to validate end-to-end simulator flow, then `/gsd-execute-phase 11 --wave 1` (picker registry foundation) — Phase 11 fully unblocked now that Phase 10 is complete. Or tackle Phase 8 (GPU downscale) / Phase 14 Wave 5 / Phase 15 Wave 5 in parallel.
-- Files touched this session: `scripts/playwright-sidecar/server.mjs`, `scripts/playwright-sidecar/preview.test.mjs`, `crates/automation/src/playwright_driver.rs`, `apps/desktop/src-tauri/src/commands/automation.rs`, `apps/desktop/src-tauri/src/state/mod.rs`, `apps/desktop/src-tauri/src/ipc_spec.rs`, `apps/desktop/src/features/recorder/LivePreview.tsx`, `apps/desktop/src/features/recorder/LivePreview.test.tsx`, `apps/desktop/src/features/editor/use-editor-live-preview.ts` (new), `apps/desktop/src/ipc/preview.ts`, `apps/desktop/src/state/editor.ts`, `apps/desktop/src/routes/editor.tsx`, `packages/shared-types/src/ipc.ts` (regenerated).
+- Last activity: 2026-04-22 — Recording quality hardening (ad-hoc, post-Phase-17): bitrate formula 3→5 bits/px + fps scaling; VT switched from `-q:v` quality-ceiling to `-b:v` VBR target; H.264 High + CABAC + BT.709 tagging on VT fast path; physical-pixel Retina window capture with `scales_to_fit(true)`; HEVC preferred on macOS with forced `hvc1` fourcc for QuickTime/Safari compat; observed_kbps logged at finalize for diagnosis.
+- Last action (local): 11 commits (7c12d95, 15bf206, 47221db, ef47cdf, 82c9517, 47df538, 1b0650d, a1bd389, 8db1230, 5e1b1be). Verified end-to-end: recording `64148249` probes as `hevc (Main) (hvc1)` 3560×2220 @ 60fps, opens natively in QuickTime.
+- Earlier local action: Phase 16 Plan 05 — Wave E gated framework majors + docs sync (`ac8e8f8` / `3d1625b` / `e5d7fab`). E22/E25/E26/E27 deferred per plan stop-conditions.
+- Earlier local action: Phase 10 Wave 3 — simulatorStore + SceneTimeline + Promote-to-fallback gate + locked-run dry-run + preview swap (`d5fcc44` / `199f335` / `65df041` / `1daf3b3` / `bc0df39`). Phase 10 code-complete.
+- Last action (origin): Phase 17 complete (22 commits, 19/19 decisions verified); Phase 10 Wave 1 complete; Phase 9 all waves code-complete.
+- Next action: operator smoke on recording quality (subjective crispness on real projects); `/gsd-execute-phase 11 --wave 1` (picker registry foundation); or Phase 8 (GPU downscale) / Phase 14 Wave 5 / Phase 15 Wave 5 in parallel. Three Phase 16 bumps still deferred: (a) Prisma 7, (b) windows 0.62, (c) tauri-specta/specta rc.24.
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*

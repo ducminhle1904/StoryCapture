@@ -19,7 +19,6 @@
     "noEmit": true,
     "useDefineForClassFields": true,
     "allowImportingTsExtensions": false,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@shared-types": ["../../packages/shared-types/src"],

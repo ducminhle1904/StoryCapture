@@ -34,7 +34,7 @@ fn load_yaml(filename: &str) -> Vec<FixtureEntry> {
     );
     let content =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
-    serde_yaml::from_str(&content).unwrap_or_else(|e| panic!("failed to parse {path}: {e}"))
+    serde_yaml_ng::from_str(&content).unwrap_or_else(|e| panic!("failed to parse {path}: {e}"))
 }
 
 #[test]

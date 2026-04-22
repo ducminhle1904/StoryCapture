@@ -156,7 +156,7 @@ fn cumulative_timeline_duck_events_use_adjusted_durations() {
 #[test]
 fn drift_p95_leq_150ms() {
     use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
+    use rand::{RngExt, SeedableRng};
 
     let mut rng = StdRng::seed_from_u64(42);
     let n = 20;
@@ -165,9 +165,9 @@ fn drift_p95_leq_150ms() {
     let mut clips = Vec::with_capacity(n);
 
     for i in 0..n {
-        let base_dur: u64 = rng.gen_range(1000..5000);
+        let base_dur: u64 = rng.random_range(1000..5000);
         // |clip - step| <= 150ms
-        let delta: i64 = rng.gen_range(-150..=150);
+        let delta: i64 = rng.random_range(-150..=150);
         let clip_dur = (base_dur as i64 + delta).max(100) as u64;
 
         let step_id = format!("step-{i}");

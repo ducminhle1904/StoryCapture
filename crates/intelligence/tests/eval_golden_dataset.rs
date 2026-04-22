@@ -91,7 +91,7 @@ fn load_all_fixtures() -> Vec<GoldenFixture> {
 
         for entry in entries {
             let content = std::fs::read_to_string(entry.path()).unwrap();
-            let fixture: GoldenFixture = serde_yaml::from_str(&content)
+            let fixture: GoldenFixture = serde_yaml_ng::from_str(&content)
                 .unwrap_or_else(|e| panic!("Failed to parse {}: {e}", entry.path().display()));
             assert_eq!(
                 fixture.bucket, *bucket,

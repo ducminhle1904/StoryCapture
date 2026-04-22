@@ -11,7 +11,7 @@ description = "BrowserDriver trait + Playwright sidecar driver (pure crate, no T
 [dependencies]
 # Async runtime + utilities
 tokio = { workspace = true }
-async-trait = "0.1"
+async-trait = "0.1.89"
 
 # Serde
 serde = { workspace = true }
@@ -25,20 +25,20 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 # URL handling for navigate / base-url joining
-url = "2"
+url = "2.5.8"
 
 # Plan 07-05 — author-time DOM validator. Parses the snapshot HTML string
 # detached (no browser) to run deterministic locator strategies against the
 # cached DOM. Kept inside the automation crate so desktop callers only see
 # the typed `SmartSelector::validate_against_dom` surface.
-scraper = "0.20"
+scraper = "0.26"
 
 # Pure-crate intra-workspace deps (zero Tauri).
 story-parser = { path = "../story-parser" }
 storage = { path = "../storage" }
 
 # Atomic file writes for the targets sidecar (write-to-temp + persist).
-tempfile = "3"
+tempfile = "3.27.0"
 
 [features]
 default = []

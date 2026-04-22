@@ -214,7 +214,7 @@ fn drain_author_preview_sessions(app_handle: &AppHandle) {
 /// not need this path, but calling it unconditionally is harmless.
 #[cfg(target_os = "macos")]
 fn set_macos_dock_icon() {
-    use objc2::ClassType;
+    use objc2::AnyThread;
     use objc2_app_kit::{NSApplication, NSImage};
     use objc2_foundation::{MainThreadMarker, NSData};
 

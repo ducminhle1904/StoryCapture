@@ -233,17 +233,20 @@ mod tests {
         let schema = schemars::schema_for!(StoryDoc);
         let json = serde_json::to_value(&schema).unwrap();
 
-        // `steps` should be an array.
-        let steps_schema = &json["definitions"]["StoryStep"];
+        // schemars 1.x emits draft-2020-12 (`$defs`); 0.8 used draft-07 (`definitions`).
+        let defs = json
+            .get("$defs")
+            .or_else(|| json.get("definitions"))
+            .expect("schema should expose $defs or definitions");
+
+        let steps_schema = &defs["StoryStep"];
         assert!(
             steps_schema.is_object(),
             "StoryStep definition should exist"
         );
 
-        // `verb` should be an enum.
-        let verb_schema = &json["definitions"]["DslVerb"];
+        let verb_schema = &defs["DslVerb"];
         assert!(verb_schema.is_object(), "DslVerb definition should exist");
-        // Check it has `oneOf` or `enum`.
         let has_enum = verb_schema.get("enum").is_some() || verb_schema.get("oneOf").is_some();
         assert!(has_enum, "DslVerb should be an enum in JSON Schema");
     }

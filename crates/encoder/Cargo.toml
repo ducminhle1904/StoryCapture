@@ -9,32 +9,31 @@ description = "FFmpeg sidecar encoder. Pure crate — sidecar command injected b
 [lib]
 
 [dependencies]
-async-trait = "0.1"
+async-trait = "0.1.89"
 tokio = { workspace = true }
-tokio-util = "0.7"
+tokio-util = "0.7.18"
 serde = { workspace = true }
 serde_json = { workspace = true }
 util = { path = "../util" }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-bytes = "1"
+bytes = "1.11.1"
 parking_lot = { workspace = true }
 capture = { path = "../capture" }
 effects = { path = "../effects" }
 storage = { path = "../storage" }
-rusqlite = { version = "0.34", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 uuid = { workspace = true }
-futures = "0.3"
-tempfile = "3"
+futures = "0.3.32"
+tempfile = "3.27.0"
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc = "0.2.185"
 
 # macOS-only: AVAssetWriter fast path (VtWriter) for zero-copy encode from
 # CVPixelBuffer handles delivered by the SCK backend. See
-# `src/macos/vt_writer.rs`. These crates pull in objc2 0.6.x transitively;
-# the `capture` crate still uses objc2 0.5 — two versions coexist benignly
-# because the FFI types we touch are CF types (pointer-stable ABI).
+# `src/macos/vt_writer.rs`. Phase 16 unified objc2 on 0.6 across capture +
+# encoder (previously split 0.5/0.6).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSDictionary", "NSURL", "NSError", "NSArray", "NSValue", "NSObject"] }
@@ -50,9 +49,9 @@ default = []
 real-ffmpeg = []
 
 [dev-dependencies]
-tempfile = "3"
-async-trait = "0.1"
-tokio-util = "0.7"
-rusqlite = { version = "0.34", features = ["bundled"] }
-insta = { version = "1", features = ["yaml"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+tempfile = "3.27.0"
+async-trait = "0.1.89"
+tokio-util = "0.7.18"
+rusqlite = { version = "0.39", features = ["bundled"] }
+insta = { version = "1.47.2", features = ["yaml"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }

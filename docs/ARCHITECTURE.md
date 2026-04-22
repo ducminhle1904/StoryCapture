@@ -8,10 +8,10 @@ Read-on-demand reference. Keep CLAUDE.md lean; load this when touching structure
 
 ```
 apps/
-  desktop/              React 19 + Vite 6 + Tauri 2 shell
-    src/                frontend
+  desktop/              React 19 + Vite 8 + Tauri 2.10 shell
+    src/                frontend (TypeScript 6)
     src-tauri/          Tauri host (Rust) — thin IPC/plugin wiring
-  web/                  Next.js 15 App Router + tRPC 11 + Prisma 6 + R2/S3
+  web/                  Next.js 16 (Turbopack) + tRPC 11 + Prisma 6 + R2/S3
 
 crates/                 Rust workspace (pure domain crates, zero Tauri deps)
   story-parser/         pest DSL grammar + AST + formatter + suggest
@@ -90,10 +90,10 @@ Plus `effects::emit::{FfmpegEmit, PreviewEmit}` emitters on `Graph` AST (not a t
 
 ## Web companion (`apps/web`)
 
-- **Next.js 15 App Router**, src/app organized as `(auth)/`, `(dashboard)/`, public (`/`, `/watch/[slug]`, `/embed/[id]`, `/invite/[token]`), and `api/` for tRPC/auth/upload/oembed/analytics/cron.
+- **Next.js 16 App Router** (Turbopack is the default bundler as of Next 16), src/app organized as `(auth)/`, `(dashboard)/`, public (`/`, `/watch/[slug]`, `/embed/[id]`, `/invite/[token]`), and `api/` for tRPC/auth/upload/oembed/analytics/cron.
 - **tRPC 11:** `src/trpc/init.ts` — protectedProcedure gates on NextAuth session. Routers in `src/trpc/routers/`: `_app`, `video`, `workspace`, `user`, `analytics`, `template`, `sync`, `health`. Superjson transformer.
 - **Prisma 6 schema (`prisma/schema.prisma`, 12 models):** Auth (`User`/`Account`/`Session`/`VerificationToken`), RBAC (`Workspace`/`WorkspaceMember`/`WorkspaceInvite`), media (`Video` with r2Key + multipart uploadId + storySource + sceneBoundaries), analytics (`ViewEvent`, `DailyVideoStats`), `Template` (9 categories), `SyncedProject` (desktop mirror).
-- **Auth:** NextAuth v5 (Auth.js) in `src/lib/auth.ts` — GitHub + Google OAuth, Prisma adapter, database session strategy, auto-creates personal workspace on first sign-in.
+- **Auth:** NextAuth v5 (pinned at `5.0.0-beta.31` — no newer beta on npm dist-tags) in `src/lib/auth.ts` — GitHub + Google OAuth, Prisma adapter, database session strategy, auto-creates personal workspace on first sign-in.
 - **R2/S3:** `src/lib/r2.ts` — Cloudflare R2 via AWS SDK v3. Multipart via `UploadPartCommand` presigned URLs (1h expiry); `GetObjectCommand` cached 55min; PUT uses SSE-S3.
 - **Desktop ↔ web sync:** SSE + short-lived JWT (`/api/auth/mint-sse-jwt`). Desktop→web via `sync.*` tRPC + `web_sync::*` IPC on desktop side.
 
@@ -122,6 +122,72 @@ Plus `effects::emit::{FfmpegEmit, PreviewEmit}` emitters on `Graph` AST (not a t
 - `capture::windows::{wgc_backend, frame_from_wgc, pool, thumbnail}` under `cfg(target_os = "windows")`.
 - `encoder::macos::vt_writer` — AVAssetWriter zero-copy fastpath (CVPixelBuffer → MP4) via `objc2-av-foundation`.
 - `capture::fallback` (xcap) always compiled cross-platform.
+
+## Phase 16 final pinned versions (post deps-upgrade)
+
+Rust workspace:
+
+| Crate | Version | Notes |
+|---|---|---|
+| `tauri` | 2.10.3 | Plugins 2.x line |
+| `tokio` | 1.52.x | rt-multi-thread, sync, macros, time, io-util, fs, process |
+| `serde` / `serde_json` | 1.0.228 / 1.0.149 | Stable |
+| `thiserror` | 2.0.18 | Stable |
+| `anyhow` | 1.0.102 | Stable |
+| `tracing` / `tracing-subscriber` | 0.1.44 / 0.3.23 | env-filter |
+| `rusqlite` | 0.39 | `bundled` — unified across 4 crates (storage, encoder, effects, src-tauri) |
+| `rusqlite_migration` | 2.5.0 | Stable |
+| `reqwest` | 0.13 | default-features off; rustls + json (+ stream/gzip for intelligence) |
+| `pest` / `pest_derive` | 2.8.6 | DSL |
+| `screencapturekit` (doom-fish) | =1.5.4 | Highest 1.x on crates.io; pinned (risk flag) |
+| `windows-capture` | =2.0.0 | WGC wrapper |
+| `windows` (windows-rs) | 0.58 | Direct dep kept at 0.58; windows-capture pulls 0.62 transitively (benign). Bump to 0.62 deferred — needs Windows CI runner to verify WGC surface. |
+| `objc2` family | 0.6 | Unified across capture + encoder in Phase 16 (prior stale comment in encoder Cargo.toml removed). |
+| `xcap` | 0.9.4 | Fallback |
+| `tauri-specta` | =2.0.0-rc.21 | Bump to rc.24 blocked — rc.24 requires nightly Rust (`const_type_id`, `debug_closure_helpers`). See Phase 16-05 SUMMARY. |
+| `specta` | =2.0.0-rc.22 | Same nightly-MSRV blocker as tauri-specta. |
+| `specta-typescript` | 0.0.9 | Bump to 0.0.11 requires specta rc.24. |
+
+Desktop frontend:
+
+| Package | Version |
+|---|---|
+| React / React-DOM | 19.2 |
+| TypeScript | 6.0.3 (repo-wide; `baseUrl` removed as deprecated in TS 6) |
+| Vite / `@vitejs/plugin-react` | 8.0 / 6.0 |
+| Tailwind CSS | 4.x |
+| Zustand | 5.0.12 |
+| TanStack Query | 5.99 |
+| motion | 12.38 |
+| lucide-react | 1.8 |
+| zod | 4.x |
+| sonner | 2.0 |
+| cmdk | 1.1.1 |
+| react-resizable-panels | 4.x (Group/Separator/percentage-string sizes API) |
+| react-hotkeys-hook | 5.x |
+| tailwind-merge | 3.x |
+| Biome | 2.4.12 |
+
+Web companion:
+
+| Package | Version |
+|---|---|
+| next | 16.2.4 (Turbopack default) |
+| @prisma/client / prisma | 6.x (Prisma 7 deferred — `@auth/prisma-adapter` peerDeps still list `>=6` only) |
+| next-auth | 5.0.0-beta.31 (no newer beta on npm dist-tags) |
+| @auth/prisma-adapter | 2.11 |
+| @trpc/* | 11.16 |
+| zod | 4.x |
+| jose | 6.2 |
+| pino / pino-pretty | 10.3 / 13.1 |
+| resend | 6.12 |
+| TypeScript | 6.0.3 |
+
+Intentionally deferred in Phase 16 (each needs its own phase):
+
+- **Prisma 6 → 7:** `@auth/prisma-adapter` peerDep does not list Prisma 7. Reattempt when adapter publishes Prisma 7 support.
+- **windows 0.58 → 0.62:** Requires a Windows CI runner to verify WGC surface. Two versions coexist transitively today (capture crate direct 0.58; windows-capture 2.0 pulls 0.62).
+- **tauri-specta rc.21 → rc.24 + specta rc.22 → rc.24 + specta-typescript 0.0.11:** The latest release of `specta` depends on unstable Rust features (`const_type_id`, `debug_closure_helpers`). Our workspace `rust-version = "1.88"` stable. Revisit when specta stabilizes or we bump MSRV to a nightly-tracking toolchain.
 
 ## References
 
