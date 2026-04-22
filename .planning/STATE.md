@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-21T10:20:00.000Z"
+last_updated: "2026-04-22T14:40:00.000Z"
 progress:
-  total_phases: 15
+  total_phases: 16
   completed_phases: 7
-  total_plans: 106
-  completed_plans: 89
-  percent: 83
+  total_plans: 111
+  completed_plans: 90
+  percent: 81
 ---
 
 # State: StoryCapture
@@ -24,8 +24,8 @@ progress:
 
 ## Current Position
 
-Phase: 15 — Editor/Post-Production feature boundary cleanup — EXECUTING
-Plan: 15-04 complete (Wave 4 — Editor additions: Send-to-Post-Production toolbar button bound to folder?.session_count; always-visible SceneListPanel with last-valid-AST parse-error fallback chip). 1 wave remains (15-05 cleanup + regression matrix). Pause for user QA before Wave 5.
+Phase: 16 — Upgrade all dependencies to latest — EXECUTING
+Plan: 16-01 complete (Wave A safe patch/minor bumps: Rust workspace A1 + per-workspace npm A2 landed as atomic commits 24f7b31 + 1eb1542; gates green — cargo check + cargo test + turbo typecheck + turbo build + apps/desktop vitest 201/209 baseline). 4 plans remain (16-02 Tauri group, 16-03 Rust 0.x breaking, 16-04 JS majors, 16-05 gated framework majors).
 
 ## Phase 8-11 Planning Audit (2026-04-21)
 
@@ -43,7 +43,7 @@ No Phase 15 rearrangement invalidates file-path references in Phase 8-11 plans. 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
 - **Plan:** All 5 plans complete; verified 8/8 (ENC-12..ENC-19 PASS)
-- **Status:** Executing Phase --phase
+- **Status:** Ready to execute
 - **Progress:** [████████░░] 84%
 
 ## Performance Metrics
@@ -136,10 +136,10 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-21 — Executed Phase 15 Plan 04 (Wave 4 — Editor additions): Send-to-Post-Production toolbar button + unconditional SceneListPanel with parse-error fallback chip.
-- Last action: Plan 15-04 complete — 2 atomic commits (ce7e8cb toolbar button, 7f5856c scene list fallback). Typecheck + build green; 201/209 vitest pass (baseline preserved). SUMMARY at `.planning/phases/15-editor-post-production-feature-boundary-cleanup/15-04-SUMMARY.md`.
-- Next action: Wave 4 human QA pause, then `/gsd-execute-phase 15` Wave 5 (regression matrix + 15-SUMMARY + docs/ARCHITECTURE sync).
-- Files touched this session: `apps/desktop/src/routes/editor.tsx`, `apps/desktop/src/features/editor/scene-list-panel.tsx`.
+- Last activity: 2026-04-22 — Executed Phase 16 Plan 01 (Wave A safe Rust + npm patch/minor bumps).
+- Last action: Plan 16-01 complete — 2 atomic commits (24f7b31 A1 Rust workspace, 1eb1542 A2 npm workspaces). cargo check + cargo test + turbo typecheck + turbo build all green; apps/desktop vitest 201/209 (baseline preserved). Two deviations auto-fixed (specta-typescript stays 0.0.9 pending Phase E27; rusqlite_migration pinned 2.0.0 pending Phase C6). SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-01-SUMMARY.md`.
+- Next action: `/gsd-execute-phase 16` Wave B (16-02 Tauri group + Playwright sidecar Vitest 2→4).
+- Files touched this session: 12 Cargo.toml manifests + Cargo.lock + 5 package.json manifests + pnpm-lock.yaml.
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*

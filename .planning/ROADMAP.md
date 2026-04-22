@@ -381,7 +381,7 @@ Plans:
 **Plans:** 5 plans
 
 Plans:
-- [ ] 16-01-PLAN.md — Phase A: Safe patch/minor-only Rust workspace + per-workspace npm bumps (A1 + A2)
+- [x] 16-01-PLAN.md — Phase A: Safe patch/minor-only Rust workspace + per-workspace npm bumps (A1 + A2) — complete 2026-04-22
 - [ ] 16-02-PLAN.md — Phase B: Tauri group lockstep (Rust tauri* + JS @tauri-apps/*) + Playwright sidecar Vitest 2→4 (B3 + B4)
 - [ ] 16-03-PLAN.md — Phase C: Coordinated 0.x breaking bumps (objc2, rusqlite, reqwest, sha2, scraper, nix, tower/schemars/rand/toml/ts-rs, serde_yaml replacement) (C5–C12)
 - [ ] 16-04-PLAN.md — Phase D: JS major bumps (tailwind-merge, sonner/cmdk/react-*, zod, jose, pino, resend, vite, typescript, biome) (D13–D21)
