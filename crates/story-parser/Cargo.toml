@@ -16,7 +16,7 @@ thiserror = { workspace = true }
 strsim = "0.11.1"
 uuid = { version = "1.23.1", features = ["v4", "v7", "serde"] }
 specta = { version = "2.0.0-rc.22", features = ["derive"], optional = true }
-ts-rs = { version = "10", optional = true }
+ts-rs = { version = "12.0.1", optional = true }
 
 [features]
 default = ["ts-export"]
