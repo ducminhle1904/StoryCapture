@@ -258,8 +258,9 @@ describe("<LivePreview />", () => {
     expect(startCalls).toBe(1);
   });
 
-  // Phase 09-04 — streamId prop skips start/stop and filters frames.
-  it("ι — streamId prop skips start_preview_stream and filters by streamId", async () => {
+  // When streamId is set, the component listens on the per-stream event
+  // channel and skips the recording-session start/stop lifecycle.
+  it("ι — streamId prop listens on preview://frame/<id> and skips start_preview_stream", async () => {
     let pendingRaf: FrameRequestCallback | null = null;
     const rafSpy = vi
       .spyOn(window, "requestAnimationFrame")
@@ -271,42 +272,16 @@ describe("<LivePreview />", () => {
     render(<LivePreview streamId="author-123" />);
     await flush();
 
-    // start/stop _preview_stream must NOT fire — editor owns lifecycle.
     expect(invokeMock).not.toHaveBeenCalledWith("start_preview_stream");
+    expect(listenMock).toHaveBeenCalledWith(
+      "preview://frame/author-123",
+      expect.any(Function),
+    );
     expect(capturedHandler).not.toBeNull();
 
-    // Frames carrying the recording-session tag (no streamId) are ignored.
     await act(async () => {
       await capturedHandler!({
         payload: { data: "AAAA", width: 1, height: 1, timestamp: 1 },
-      });
-    });
-    expect(createdBitmaps.length).toBe(0);
-
-    // Frames with the wrong streamId are ignored.
-    await act(async () => {
-      await capturedHandler!({
-        payload: {
-          streamId: "author-other",
-          data: "BBBB",
-          width: 1,
-          height: 1,
-          timestamp: 2,
-        },
-      });
-    });
-    expect(createdBitmaps.length).toBe(0);
-
-    // Frames matching our streamId are accepted.
-    await act(async () => {
-      await capturedHandler!({
-        payload: {
-          streamId: "author-123",
-          data: "CCCC",
-          width: 1,
-          height: 1,
-          timestamp: 3,
-        },
       });
     });
     expect(createdBitmaps.length).toBe(1);

@@ -10,8 +10,8 @@ import {
 interface LivePreviewProps {
   width?: number;
   height?: number;
-  // When set, lifecycle is owned externally and the component only
-  // renders frames whose payload matches this streamId.
+  // When set, lifecycle is owned externally and frames arrive on the
+  // per-stream event channel `preview://frame/${streamId}`.
   streamId?: string | null;
 }
 
@@ -45,31 +45,28 @@ export function LivePreview({ width = 1280, height = 720, streamId = null }: Liv
 
   useEffect(() => {
     let cancelled = false;
+    const eventName =
+      streamId != null ? `preview://frame/${streamId}` : "preview://frame";
 
     const attachListener = async (): Promise<boolean> => {
-      const unlisten = await listen<PreviewFramePayload>(
-        "preview://frame",
-        async (ev) => {
-          try {
-            const payloadStreamId = ev.payload.streamId ?? null;
-            if ((streamId ?? null) !== payloadStreamId) return;
-            const { data } = ev.payload;
-            const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
-            const blob = new Blob([bytes], { type: "image/jpeg" });
-            const bmp = await createImageBitmap(blob);
-            if (pendingBitmap.current) {
-              pendingBitmap.current.close();
-              dropCountRef.current += 1;
-              if (canvasRef.current) {
-                canvasRef.current.dataset.dropCount = String(dropCountRef.current);
-              }
+      const unlisten = await listen<PreviewFramePayload>(eventName, async (ev) => {
+        try {
+          const { data } = ev.payload;
+          const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+          const blob = new Blob([bytes], { type: "image/jpeg" });
+          const bmp = await createImageBitmap(blob);
+          if (pendingBitmap.current) {
+            pendingBitmap.current.close();
+            dropCountRef.current += 1;
+            if (canvasRef.current) {
+              canvasRef.current.dataset.dropCount = String(dropCountRef.current);
             }
-            pendingBitmap.current = bmp;
-          } catch (e) {
-            console.debug("preview frame decode skipped:", e);
           }
-        },
-      );
+          pendingBitmap.current = bmp;
+        } catch (e) {
+          console.debug("preview frame decode skipped:", e);
+        }
+      });
       if (cancelled) {
         unlisten();
         return false;

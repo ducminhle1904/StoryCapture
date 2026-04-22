@@ -583,15 +583,18 @@ pub async fn start_author_preview(
     }
 
     // Each author session owns its own sidecar + watch channel, so every
-    // frame delivered here already belongs to this stream.
+    // frame delivered here already belongs to this stream. Emit on a
+    // per-stream Tauri event so the webview can listen without payload-side
+    // demuxing — one channel per session, one listener per component.
     let mut rx = { driver_arc.lock().await.subscribe_preview() };
     let app_for_emit = app.clone();
+    let event_name = format!("preview://frame/{stream_id}");
     let stream_id_for_log = stream_id.clone();
     let pump = tokio::spawn(async move {
         while rx.changed().await.is_ok() {
             let snapshot = rx.borrow_and_update().clone();
             if let Some(frame) = snapshot {
-                if let Err(err) = app_for_emit.emit("preview://frame", &frame) {
+                if let Err(err) = app_for_emit.emit(&event_name, &frame) {
                     tracing::warn!(
                         target: "storycapture::preview",
                         error = %err,
