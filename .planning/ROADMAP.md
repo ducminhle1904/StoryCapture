@@ -383,6 +383,21 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd-plan-phase 16 to break down)
 
+### Phase 17: Record engine lifecycle hardening — fix 19 capture/encoder/IPC/frontend issues (shutdown drain, start-race, backpressure, UX feedback)
+
+**Goal:** Fix 19 capture/encoder/IPC/frontend issues surfaced by the 2026-04-22 4-agent investigation (shutdown drain, start-race, backpressure, UX feedback). No public IPC/DSL contract regressions; only additive event variants allowed.
+**Requirements**: D-01..D-19 (see 17-CONTEXT.md)
+**Depends on:** Phase 16
+**Plans:** 6 plans
+
+Plans:
+- [ ] 17-01-PLAN.md — Wave 0: additive IPC surface (events, config fields, refresh_hw_encoders stub)
+- [ ] 17-02-PLAN.md — Wave 1 CLEANUP: exit drain, orphan-abort, XCap bounded stop (D-01, D-02, D-03)
+- [ ] 17-03-PLAN.md — Wave 1 START-SAFETY: double-start guard, WGC HWND validation, SCK pause/resume mutex (D-04, D-05, D-06)
+- [ ] 17-04-PLAN.md — Wave 2 ENCODER-ROBUST: stdin backpressure, staging+rename, first-frame timeout, FIFO handshake, keyframe knob, VT clamp warn (D-07..D-12)
+- [ ] 17-05-PLAN.md — Wave 3 UX-FEEDBACK: AudioUnavailable, unmount cleanup, heartbeat watchdog (D-13, D-14, D-15)
+- [ ] 17-06-PLAN.md — Wave 4 POLISH: NV12 reject, probe reprobe, AcqRel ordering, remove @ts-ignore (D-16..D-19)
+
 ---
 *Roadmap created: 2026-04-14*
 *Phase 7 added: 2026-04-17*
@@ -393,3 +408,4 @@ Plans:
 *Phase 12 added: 2026-04-19*
 *Phase 13 added: 2026-04-19*
 *Phase 15 plans materialized: 2026-04-21*
+*Phase 17 added: 2026-04-22*
