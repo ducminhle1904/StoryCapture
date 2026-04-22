@@ -851,6 +851,10 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio negotiation failed; continuing video-only"
                 );
+                // D-13: surface to renderer so UI can show a toast + badge.
+                let _ = on_event.send(RecordingEvent::AudioUnavailable {
+                    reason: format!("{e}"),
+                });
                 None
             }
             Err(e) => {
@@ -859,6 +863,9 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio negotiation join error; continuing video-only"
                 );
+                let _ = on_event.send(RecordingEvent::AudioUnavailable {
+                    reason: format!("{e}"),
+                });
                 None
             }
         }
@@ -1033,6 +1040,10 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio start failed; continuing video-only"
                 );
+                // D-13.
+                let _ = on_event.send(RecordingEvent::AudioUnavailable {
+                    reason: format!("{e}"),
+                });
                 None
             }
             Err(e) => {
@@ -1041,6 +1052,9 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio spawn_blocking join error; continuing video-only"
                 );
+                let _ = on_event.send(RecordingEvent::AudioUnavailable {
+                    reason: format!("{e}"),
+                });
                 None
             }
         }

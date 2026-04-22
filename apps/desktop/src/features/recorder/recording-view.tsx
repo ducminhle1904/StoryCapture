@@ -126,6 +126,22 @@ export function RecordingView({
     setCaptureTarget,
   } = useRecorderStore();
 
+  // D-13: audio-negotiation failure persists a session-scoped flag so a
+  // "video-only" badge stays visible next to the Live pill until the user
+  // starts a new recording.
+  const [audioUnavailable, setAudioUnavailable] = useState(false);
+
+  // D-15: host heartbeat watchdog. `lastHeartbeatRef` is last-tick epoch-ms
+  // (null before first heartbeat). `desynced` surfaces the "out of sync" UI.
+  const lastHeartbeatRef = useRef<number | null>(null);
+  const [desynced, setDesynced] = useState(false);
+
+  // D-14: in-flight mutation abort signal. Reset per start; aborted on
+  // unmount so pending IPC never resolves into a stale component.
+  const abortControllerRef = useRef<AbortController | null>(null);
+  // Reference to the automation Channel so unmount can null its handler.
+  const automationChannelRef = useRef<{ onmessage: ((e: unknown) => void) | null } | null>(null);
+
   // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   useEffect(() => {
@@ -211,7 +227,29 @@ export function RecordingView({
         setError(formatIpcError(e));
       }
     })();
-    return () => reset();
+    // D-14: unmount teardown. Cleanup MUST be synchronous; the
+    // detached stopRecording promise handles any backend teardown.
+    return () => {
+      // (a) null the automation Channel handler so no stale event
+      //     dispatch runs against an unmounted tree.
+      if (automationChannelRef.current) {
+        automationChannelRef.current.onmessage = null;
+      }
+      // (b) if a session is live server-side, fire-and-forget a stop so
+      //     the host drain doesn't leak a session. Capture the id before
+      //     nulling the ref so a re-mount can't double-free.
+      const sid = sessionRef.current;
+      sessionRef.current = null;
+      if (sid) {
+        void stopRecording(sid).catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn("stopRecording on unmount failed", e);
+        });
+      }
+      // (c) abort any in-flight mutations tracked by this view.
+      abortControllerRef.current?.abort();
+      reset();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -302,6 +340,21 @@ export function RecordingView({
     return () => window.clearInterval(handle);
   }, [status, setElapsed]);
 
+  // D-15: heartbeat watchdog. Runs only while recording; flips `desynced`
+  // when >5s since the last heartbeat tick. A fresh `heartbeat` event
+  // clears it (handled in the dispatch switch above).
+  useEffect(() => {
+    if (status !== "recording") return;
+    const handle = window.setInterval(() => {
+      const last = lastHeartbeatRef.current;
+      if (last == null) return;
+      if (Date.now() - last > 5000) {
+        setDesynced(true);
+      }
+    }, 1000);
+    return () => window.clearInterval(handle);
+  }, [status]);
+
   const dispatch = (event: RecordingEvent) => {
     switch (event.type) {
       case "completed":
@@ -326,6 +379,16 @@ export function RecordingView({
         setError(event.message);
         toast.error(`Recording failed: ${event.message}`);
         break;
+      case "audio-unavailable":
+        // D-13: mic negotiation failed; recording continues video-only.
+        toast.error(`Audio unavailable: ${event.reason}`);
+        setAudioUnavailable(true);
+        break;
+      case "heartbeat":
+        // D-15: host liveness signal; watchdog clears any desync banner.
+        lastHeartbeatRef.current = Date.now();
+        if (desynced) setDesynced(false);
+        break;
       default:
         break;
     }
@@ -336,6 +399,14 @@ export function RecordingView({
     // so a 10 ms double-click cannot enter this function twice.
     if (status !== "idle") return;
     setStatus("starting");
+    // D-13 / D-15: fresh per-session UX state.
+    setAudioUnavailable(false);
+    setDesynced(false);
+    lastHeartbeatRef.current = null;
+    // D-14: create a new AbortController scoped to this start attempt;
+    // unmount / next-start aborts any outstanding IPC.
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
     if (permission !== "granted") {
       setStatus("idle");
       return;
@@ -519,6 +590,32 @@ export function RecordingView({
     }
   };
 
+  // D-15: "Force stop" escape hatch surfaced when the heartbeat watchdog
+  // declares a desync. Always resets local state to idle regardless of
+  // IPC outcome — NotFound is treated as success (session already gone).
+  const forceStop = async () => {
+    const sid = sessionRef.current;
+    sessionRef.current = null;
+    setSession(null);
+    setDesynced(false);
+    try {
+      if (sid) {
+        await stopRecording(sid);
+      }
+    } catch (e) {
+      const msg = formatIpcError(e);
+      if (!/NotFound/i.test(msg)) {
+        // eslint-disable-next-line no-console
+        console.warn("forceStop: stopRecording error", msg);
+      }
+    }
+    startedAtRef.current = null;
+    pausedAtRef.current = null;
+    automationOwnsStopRef.current = false;
+    setStatus("idle");
+    setElapsed(0);
+  };
+
   const handlePause = async () => {
     if (!sessionRef.current || status !== "recording") return;
     try {
@@ -613,6 +710,16 @@ export function RecordingView({
           {(status === "recording" || status === "paused") && (
             <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
           )}
+          {/* D-13: persistent badge while a mic failure is active. */}
+          {audioUnavailable && (
+            <span
+              role="status"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-warning)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--color-warning)]"
+            >
+              <AlertTriangle size={11} aria-hidden="true" />
+              Audio unavailable — recording video only
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
           {sessionId ? <span className="font-mono">session · {sessionId.slice(0, 8)}</span> : null}
@@ -685,6 +792,28 @@ export function RecordingView({
             className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
           >
             Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {/* D-15: heartbeat-watchdog banner. Renders only while recording and
+          the host has gone >5s without a heartbeat. */}
+      {desynced && (status === "recording" || status === "paused") ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 text-xs">
+          <div className="flex min-w-0 items-center gap-2 text-[var(--color-danger)]">
+            <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
+            <span className="font-medium text-[var(--color-fg-primary)]">
+              Recording state out of sync
+            </span>
+            <span className="text-[var(--color-fg-secondary)]">
+              No heartbeat from the recorder for 5s. Force stop to recover.
+            </span>
+          </div>
+          <button
+            onClick={() => void forceStop()}
+            className="rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2.5 py-1 text-[11px] font-medium text-white transition-[filter] duration-150 hover:brightness-110"
+          >
+            Force stop
           </button>
         </div>
       ) : null}
