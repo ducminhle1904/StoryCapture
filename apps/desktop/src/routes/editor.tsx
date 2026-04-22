@@ -18,15 +18,17 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { ScBadge, ScButton, ScSegmented, ScSwitch } from "@storycapture/ui";
 
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
+import { LivePreview } from "@/features/recorder/LivePreview";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
 import {
   StoryEditor,
   type EditorJumpTarget,
 } from "@/features/editor/story-editor";
+import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
 import { parseStory } from "@/ipc/parse";
 import {
   fetchProjectFolder,
@@ -157,6 +159,16 @@ export default function EditorRoute() {
   const story = useEditorStore((s) => s.lastParse?.ast ?? null);
   const diagnostics =
     useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
+
+  // Phase 09-04 — editor-surface Live Preview (default OFF per D-17).
+  // Tracks meta.app so the author-session launches on the right URL.
+  const previewEnabled = useEditorStore((s) => s.previewEnabled);
+  const setPreviewEnabled = useEditorStore((s) => s.setPreviewEnabled);
+  const previewViewport = useEditorStore((s) => s.previewViewport);
+  const setPreviewViewport = useEditorStore((s) => s.setViewport);
+  const { streamId: authorStreamId } = useEditorLivePreview(
+    story?.meta?.app ?? null,
+  );
 
   useEffect(() => {
     if (!projectId) return;
@@ -501,14 +513,34 @@ export default function EditorRoute() {
                 >
                   <span style={{ fontSize: 12, fontWeight: 600 }}>Live Preview</span>
                   <ScBadge tone="muted" dot>
-                    {latest ? "ready" : "paused"}
+                    {previewEnabled
+                      ? authorStreamId
+                        ? "live"
+                        : "starting"
+                      : latest
+                        ? "ready"
+                        : "paused"}
                   </ScBadge>
                   <span style={{ flex: 1 }} />
+                  {/* Phase 09-04 D-17 — default-OFF toggle preserves cold-start. */}
+                  <label
+                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}
+                    title="Launches a hidden Chromium to mirror your story as you edit."
+                  >
+                    <ScSwitch
+                      checked={previewEnabled}
+                      onCheckedChange={setPreviewEnabled}
+                      aria-label="Toggle Live Preview"
+                    />
+                    <span>{previewEnabled ? "On" : "Off"}</span>
+                  </label>
                   <ScSegmented
                     size="sm"
-                    value="desktop"
-                    disabled
-                    aria-label="Viewport size (coming soon)"
+                    value={previewViewport}
+                    onValueChange={(v) =>
+                      setPreviewViewport(v as typeof previewViewport)
+                    }
+                    aria-label="Viewport size"
                     options={[
                       { value: "mobile", label: "Mobile" },
                       { value: "tablet", label: "Tablet" },
@@ -526,7 +558,11 @@ export default function EditorRoute() {
                 </div>
 
                 <div className="relative min-h-0 flex-1 overflow-hidden">
-                  {projectId ? (
+                  {previewEnabled && authorStreamId ? (
+                    <div className="flex h-full w-full items-center justify-center p-3">
+                      <LivePreview streamId={authorStreamId} />
+                    </div>
+                  ) : projectId ? (
                     <PreviewSurface mode="recording" projectId={projectId} />
                   ) : null}
                 </div>

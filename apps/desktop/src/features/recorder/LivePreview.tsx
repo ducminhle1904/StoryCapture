@@ -30,6 +30,13 @@ import {
 interface LivePreviewProps {
   width?: number;
   height?: number;
+  // Phase 09-04 — when set, the canvas only renders frames whose payload
+  // carries this streamId. The component no longer manages lifecycle
+  // itself (caller owns start/stop via `start_author_preview` etc.); it
+  // just subscribes to `preview://frame` and demuxes by streamId.
+  // When absent, preserves the 09-02 behavior (owns start/stop of the
+  // recording-session stream).
+  streamId?: string | null;
 }
 
 export type PreviewStatus =
@@ -51,7 +58,7 @@ function delay(ms: number): Promise<void> {
 const SATURATION_LOG_INTERVAL_MS = 30_000;
 const RETRY_BACKOFF_MS = 500;
 
-export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
+export function LivePreview({ width = 1280, height = 720, streamId = null }: LivePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pendingBitmap = useRef<ImageBitmap | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -71,6 +78,12 @@ export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
         "preview://frame",
         async (ev) => {
           try {
+            // Phase 09-04 — multi-stream demux. Recording consumer (no
+            // streamId prop) only accepts recording-session frames
+            // (payload.streamId is null/undefined). Author consumer only
+            // accepts its own streamId.
+            const payloadStreamId = ev.payload.streamId ?? null;
+            if ((streamId ?? null) !== payloadStreamId) return;
             const { data } = ev.payload;
             const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
             const blob = new Blob([bytes], { type: "image/jpeg" });
@@ -94,7 +107,36 @@ export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
       return true;
     };
 
+    const scheduleDraw = () => {
+      if (rafRef.current != null) return;
+      const draw = () => {
+        const canvas = canvasRef.current;
+        const bmp = pendingBitmap.current;
+        if (canvas && bmp) {
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+          }
+          bmp.close();
+          pendingBitmap.current = null;
+        }
+        rafRef.current = requestAnimationFrame(draw);
+      };
+      rafRef.current = requestAnimationFrame(draw);
+    };
+
     const startWithRetry = async (retriesLeft: number): Promise<void> => {
+      // Phase 09-04 — when a streamId is provided, the editor surface
+      // owns the start/stop lifecycle (via start_author_preview). The
+      // component just attaches a filtered listener.
+      if (streamId != null) {
+        if (cancelled) return;
+        const attached = await attachListener();
+        if (!attached) return;
+        setStatus("streaming");
+        scheduleDraw();
+        return;
+      }
       try {
         await startPreviewStream();
       } catch (err) {
@@ -124,23 +166,7 @@ export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
         return;
       }
       setStatus("streaming");
-
-      if (rafRef.current == null) {
-        const draw = () => {
-          const canvas = canvasRef.current;
-          const bmp = pendingBitmap.current;
-          if (canvas && bmp) {
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-              ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-            }
-            bmp.close();
-            pendingBitmap.current = null;
-          }
-          rafRef.current = requestAnimationFrame(draw);
-        };
-        rafRef.current = requestAnimationFrame(draw);
-      }
+      scheduleDraw();
     };
 
     saturationTimerRef.current = setInterval(() => {
@@ -170,9 +196,13 @@ export function LivePreview({ width = 1280, height = 720 }: LivePreviewProps) {
         clearInterval(saturationTimerRef.current);
         saturationTimerRef.current = null;
       }
-      stopPreviewStream().catch(() => {});
+      // When an external streamId owns the lifecycle, the editor-surface
+      // caller calls stop_author_preview — don't double-stop.
+      if (streamId == null) {
+        stopPreviewStream().catch(() => {});
+      }
     };
-  }, []);
+  }, [streamId]);
 
   if (status === "unavailable") {
     return (
