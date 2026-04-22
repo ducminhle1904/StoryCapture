@@ -34,15 +34,21 @@ beforeEach(() => {
   revokedUrls.length = 0;
   nextUrlId = 0;
   invokeMock.mockReset();
-  // @ts-ignore — spy override
-  globalThis.URL.createObjectURL = vi.fn((blob: Blob) => {
-    const url = `blob:test:${++nextUrlId}:${blob.size}`;
-    createdUrls.push(url);
-    return url;
+  Object.defineProperty(globalThis.URL, "createObjectURL", {
+    value: vi.fn((blob: Blob) => {
+      const url = `blob:test:${++nextUrlId}:${blob.size}`;
+      createdUrls.push(url);
+      return url;
+    }),
+    writable: true,
+    configurable: true,
   });
-  // @ts-ignore — spy override
-  globalThis.URL.revokeObjectURL = vi.fn((url: string) => {
-    revokedUrls.push(url);
+  Object.defineProperty(globalThis.URL, "revokeObjectURL", {
+    value: vi.fn((url: string) => {
+      revokedUrls.push(url);
+    }),
+    writable: true,
+    configurable: true,
   });
 });
 
