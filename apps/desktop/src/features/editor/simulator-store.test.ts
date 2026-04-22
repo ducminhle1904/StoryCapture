@@ -126,6 +126,10 @@ describe("simulatorStore", () => {
   it("dismissCoexistenceHint persists to localStorage", () => {
     useSimulatorStore.getState().dismissCoexistenceHint();
     expect(useSimulatorStore.getState().dismissedCoexistenceHint).toBe(true);
-    expect(localStorage.getItem("simulator:hintDismissed")).toBe("1");
+    const raw = localStorage.getItem("simulator:hintDismissed");
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw!)).toMatchObject({
+      state: { dismissedCoexistenceHint: true },
+    });
   });
 });

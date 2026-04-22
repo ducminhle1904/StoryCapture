@@ -272,54 +272,51 @@ function FrameCard({ frame, isActive, isFailed, onClick, onPromote }: FrameCardP
     frame.match_kind === SimulatorMatchKind.Fuzzy && !isActive && !isFailed ? "dashed" : "solid";
   const borderWidth = isActive || isFailed ? 2 : 1;
 
+  const showPromote = frame.match_kind === SimulatorMatchKind.Fuzzy && !promoted;
+
   return (
-    <button
-      type="button"
-      role="button"
-      aria-label={`Simulator frame ${frame.ordinal}`}
-      aria-current={isActive ? "true" : undefined}
-      onClick={onClick}
-      className="relative flex flex-shrink-0 flex-col overflow-hidden rounded-[var(--radius-md)] bg-[var(--color-surface-200)] text-left"
+    <div
+      className="relative flex-shrink-0 rounded-[var(--radius-md)] bg-[var(--color-surface-200)]"
       style={{ width: 80, height: 56, border: `${borderWidth}px ${borderStyle} ${borderColor}` }}
     >
-      <span className="flex flex-1 items-center justify-center font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
-        {String(frame.ordinal).padStart(2, "0")}
-      </span>
-      <span className="flex items-center justify-between px-1 py-0.5 text-[9px] uppercase tracking-[0.08em]">
-        <MatchChip kind={frame.match_kind} />
-        <span className="font-mono tabular-nums text-[var(--color-fg-muted)]">
-          {frame.duration_ms}ms
+      <button
+        type="button"
+        aria-label={`Simulator frame ${frame.ordinal}`}
+        aria-current={isActive ? "true" : undefined}
+        onClick={onClick}
+        className="flex h-full w-full flex-col overflow-hidden rounded-[var(--radius-md)] text-left"
+      >
+        <span className="flex flex-1 items-center justify-center font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+          {String(frame.ordinal).padStart(2, "0")}
         </span>
-      </span>
+        <span className="flex items-center justify-between px-1 py-0.5 text-[9px] uppercase tracking-[0.08em]">
+          <MatchChip kind={frame.match_kind} />
+          <span className="font-mono tabular-nums text-[var(--color-fg-muted)]">
+            {frame.duration_ms}ms
+          </span>
+        </span>
+      </button>
       {isFailed && (
         <span className="pointer-events-none absolute right-0.5 top-0.5 text-[var(--color-danger)]">
           <AlertTriangle size={10} aria-hidden="true" />
         </span>
       )}
-      {frame.match_kind === SimulatorMatchKind.Fuzzy && !promoted && (
-        <span
-          role="button"
+      {showPromote && (
+        <button
+          type="button"
           aria-label={`Promote matched selector for step ${frame.ordinal} to fallback`}
-          tabIndex={0}
           onClick={(e) => {
             e.stopPropagation();
             setPromoted(true);
             onPromote();
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-              setPromoted(true);
-              onPromote();
-            }
-          }}
           className="absolute bottom-0.5 right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-[var(--radius-xs)] bg-[var(--color-surface-300)] text-[var(--color-warning)] hover:bg-[var(--color-warning)]/18"
           title="Promote to fallback"
         >
           <ArrowUpRight size={9} aria-hidden="true" />
-        </span>
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
