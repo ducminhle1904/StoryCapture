@@ -6,9 +6,20 @@
 
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::thread;
 use std::time::Instant;
+
+/// Lifetime counter of PTS-clamp events across all VtWriter sessions (D-12).
+/// Non-zero after a run signals clock-jump or source PTS regression — the
+/// renderer/telemetry surface can read this to flag sessions for review.
+static PTS_CLAMP_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Return the lifetime PTS-clamp event count.
+pub fn clamp_count() -> u64 {
+    PTS_CLAMP_COUNT.load(Ordering::Acquire)
+}
 
 use capture::macos::raii::CVPixelBufferHandle;
 
@@ -250,8 +261,20 @@ fn run_worker(
                         session_started = true;
                     }
 
-                    // Normalize PTS relative to first frame.
-                    let rel_ns = (pts_ns - first_pts_ns).max(0) as i64;
+                    // Normalize PTS relative to first frame (D-12: warn on clamp).
+                    let rel_ns: i64 = if pts_ns < first_pts_ns {
+                        let n = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
+                        tracing::warn!(
+                            target: "storycapture::encoder::vt",
+                            pts_ns = pts_ns as i64,
+                            first_pts_ns = first_pts_ns as i64,
+                            clamp_count = n,
+                            "vt_writer: pts < first_pts, clamping to 0 (clock jump?)"
+                        );
+                        0
+                    } else {
+                        (pts_ns - first_pts_ns) as i64
+                    };
                     let cm_pts = unsafe { CMTime::new(rel_ns, 1_000_000_000) };
                     if frames_written < 5 {
                         tracing::info!(
@@ -379,4 +402,39 @@ fn run_worker(
             frames_dropped,
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pts_clamp_increments_counter() {
+        let before = PTS_CLAMP_COUNT.load(Ordering::Acquire);
+        let first_pts_ns: i128 = 1_000_000_000;
+        let pts_ns: i128 = 500_000_000;
+        let rel_ns: i64 = if pts_ns < first_pts_ns {
+            let _ = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
+            0
+        } else {
+            (pts_ns - first_pts_ns) as i64
+        };
+        assert_eq!(rel_ns, 0);
+        assert_eq!(PTS_CLAMP_COUNT.load(Ordering::Acquire), before + 1);
+    }
+
+    #[test]
+    fn pts_normal_no_clamp() {
+        let before = PTS_CLAMP_COUNT.load(Ordering::Acquire);
+        let first_pts_ns: i128 = 1_000;
+        let pts_ns: i128 = 2_000;
+        let rel_ns: i64 = if pts_ns < first_pts_ns {
+            let _ = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel);
+            0
+        } else {
+            (pts_ns - first_pts_ns) as i64
+        };
+        assert_eq!(rel_ns, 1_000);
+        assert_eq!(PTS_CLAMP_COUNT.load(Ordering::Acquire), before);
+    }
 }

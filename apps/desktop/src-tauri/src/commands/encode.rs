@@ -913,7 +913,28 @@ pub async fn start_recording(
     }
     let (prog_tx, mut prog_rx) = mpsc::channel::<EncodeProgress>(32);
     let sidecar = TauriSidecar::new(app.clone());
-    let encode_join = EncodePipeline::start(enc_cfg, &sidecar, frame_rx, prog_tx)
+    // D-07: encoder stdin-write timeouts surface to renderer as FramesDropped.
+    let on_event_for_bp = on_event.clone();
+    let bp_cb: encoder::BackpressureCallback = Box::new(move |total, delta| {
+        if let Err(e) =
+            on_event_for_bp.send(RecordingEvent::FramesDropped { total, delta })
+        {
+            tracing::debug!(
+                target: "storycapture::recording",
+                error = %e,
+                total,
+                delta,
+                "FramesDropped (stdin backpressure) send failed"
+            );
+        }
+    });
+    let encode_join = EncodePipeline::start_with_backpressure(
+        enc_cfg,
+        &sidecar,
+        frame_rx,
+        prog_tx,
+        Some(bp_cb),
+    )
         .await
         .map_err(|e| {
             tracing::error!(

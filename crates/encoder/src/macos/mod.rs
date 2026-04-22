@@ -6,4 +6,4 @@
 
 pub mod vt_writer;
 
-pub use vt_writer::{VtWriter, VtWriterHandle};
+pub use vt_writer::{clamp_count as vt_pts_clamp_count, VtWriter, VtWriterHandle};
