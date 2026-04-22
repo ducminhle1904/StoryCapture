@@ -101,8 +101,8 @@ pub async fn probe_encoders(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
     })
 }
 
-/// D-17: cached probe. Returns the last successful result if present,
-/// otherwise runs `probe_encoders` and caches the outcome.
+/// Returns the cached probe if present, otherwise runs `probe_encoders`
+/// and caches the outcome.
 pub async fn probe_cached(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
     if let Some(cached) = PROBE_CACHE.read().clone() {
         return Ok(cached);
@@ -112,9 +112,8 @@ pub async fn probe_cached(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
     Ok(fresh)
 }
 
-/// D-17: bypass and overwrite the cached probe. Used by the
-/// `refresh_hw_encoders` Tauri command so the UI can force a fresh
-/// re-probe after an eGPU dock/undock or driver update.
+/// Bypass the cache and overwrite it with a fresh probe. Call after an
+/// eGPU dock/undock or driver update to reflect the new encoder list.
 pub async fn force_reprobe(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
     let fresh = probe_encoders(cmd).await?;
     *PROBE_CACHE.write() = Some(fresh.clone());

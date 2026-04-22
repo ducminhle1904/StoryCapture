@@ -50,9 +50,8 @@ pub enum CaptureError {
     #[error("window no longer exists (hwnd={hwnd})")]
     WindowGone { hwnd: u64 },
 
-    /// The requested `PixelFormat` is not supported by the active backend.
-    /// D-16: NV12 currently fails loudly instead of being silently coerced
-    /// to BGRA. Remove this rejection when a native NV12 pipeline lands.
-    #[error("unsupported pixel format: {format}")]
-    UnsupportedPixelFormat { format: String },
+    /// The requested [`PixelFormat`](crate::frame::PixelFormat) is not supported
+    /// by the active backend. Fails loudly instead of being silently coerced.
+    #[error("unsupported pixel format: {format:?}")]
+    UnsupportedPixelFormat { format: crate::frame::PixelFormat },
 }

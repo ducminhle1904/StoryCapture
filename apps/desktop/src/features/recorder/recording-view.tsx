@@ -72,6 +72,13 @@ function formatTime(ms: number): string {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+/** True if a Tauri IPC error is the typed `NotFound` variant. */
+function isNotFoundIpcError(e: unknown): boolean {
+  return (
+    typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound"
+  );
+}
+
 /** Format a Tauri IPC error into a readable string. */
 function formatIpcError(e: unknown): string {
   if (e == null) return "Unknown error";
@@ -140,9 +147,6 @@ export function RecordingView({
   const lastHeartbeatRef = useRef<number | null>(null);
   const [desynced, setDesynced] = useState(false);
 
-  // D-14: in-flight mutation abort signal. Reset per start; aborted on
-  // unmount so pending IPC never resolves into a stale component.
-  const abortControllerRef = useRef<AbortController | null>(null);
   // Reference to the automation Channel so unmount can null its handler.
   const automationChannelRef = useRef<AutomationChannelHandle | null>(null);
 
@@ -250,8 +254,6 @@ export function RecordingView({
           console.warn("stopRecording on unmount failed", e);
         });
       }
-      // (c) abort any in-flight mutations tracked by this view.
-      abortControllerRef.current?.abort();
       reset();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -403,14 +405,10 @@ export function RecordingView({
     // so a 10 ms double-click cannot enter this function twice.
     if (status !== "idle") return;
     setStatus("starting");
-    // D-13 / D-15: fresh per-session UX state.
+    // Fresh per-session UX state for the audio/heartbeat badges.
     setAudioUnavailable(false);
     setDesynced(false);
     lastHeartbeatRef.current = null;
-    // D-14: create a new AbortController scoped to this start attempt;
-    // unmount / next-start aborts any outstanding IPC.
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
     if (permission !== "granted") {
       setStatus("idle");
       return;
@@ -614,10 +612,9 @@ export function RecordingView({
         await stopRecording(sid);
       }
     } catch (e) {
-      const msg = formatIpcError(e);
-      if (!/NotFound/i.test(msg)) {
+      if (!isNotFoundIpcError(e)) {
         // eslint-disable-next-line no-console
-        console.warn("forceStop: stopRecording error", msg);
+        console.warn("forceStop: stopRecording error", formatIpcError(e));
       }
     }
     startedAtRef.current = null;

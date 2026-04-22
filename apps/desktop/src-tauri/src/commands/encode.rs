@@ -321,6 +321,12 @@ pub enum RecordingEvent {
     },
 }
 
+fn emit_audio_unavailable<E: std::fmt::Display>(channel: &Channel<RecordingEvent>, err: &E) {
+    let _ = channel.send(RecordingEvent::AudioUnavailable {
+        reason: err.to_string(),
+    });
+}
+
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct EncodeProgressDto {
     pub frame: u64,
@@ -590,7 +596,7 @@ pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppErr
     Ok(probe.into())
 }
 
-/// Re-probe HW encoders bypassing any cached result (D-17).
+/// Re-probe HW encoders bypassing any cached result.
 #[tauri::command]
 #[specta::specta]
 pub async fn refresh_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
@@ -857,9 +863,7 @@ pub async fn start_recording(
                     "mic audio negotiation failed; continuing video-only"
                 );
                 // D-13: surface to renderer so UI can show a toast + badge.
-                let _ = on_event.send(RecordingEvent::AudioUnavailable {
-                    reason: format!("{e}"),
-                });
+                emit_audio_unavailable(&on_event, &e);
                 None
             }
             Err(e) => {
@@ -868,9 +872,7 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio negotiation join error; continuing video-only"
                 );
-                let _ = on_event.send(RecordingEvent::AudioUnavailable {
-                    reason: format!("{e}"),
-                });
+                emit_audio_unavailable(&on_event, &e);
                 None
             }
         }
@@ -1046,9 +1048,7 @@ pub async fn start_recording(
                     "mic audio start failed; continuing video-only"
                 );
                 // D-13.
-                let _ = on_event.send(RecordingEvent::AudioUnavailable {
-                    reason: format!("{e}"),
-                });
+                emit_audio_unavailable(&on_event, &e);
                 None
             }
             Err(e) => {
@@ -1057,9 +1057,7 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio spawn_blocking join error; continuing video-only"
                 );
-                let _ = on_event.send(RecordingEvent::AudioUnavailable {
-                    reason: format!("{e}"),
-                });
+                emit_audio_unavailable(&on_event, &e);
                 None
             }
         }

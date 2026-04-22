@@ -413,13 +413,7 @@ impl CaptureBackend for WgcBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
-        // D-16: reject NV12 explicitly. Native NV12 pipeline is deferred;
-        // fail loudly instead of silently coercing to BGRA.
-        if matches!(cfg.pixel_format, crate::frame::PixelFormat::Nv12) {
-            return Err(CaptureError::UnsupportedPixelFormat {
-                format: "NV12".into(),
-            });
-        }
+        cfg.require_supported_pixel_format()?;
         self.dropped.store(0, Ordering::Relaxed);
         self.delivered.store(0, Ordering::Relaxed);
         let control = self.start_control(cfg.clone(), out.clone()).await?;
@@ -532,8 +526,13 @@ mod nv12_reject_tests {
             .await
             .expect_err("Nv12 must be rejected");
         assert!(
-            matches!(err, CaptureError::UnsupportedPixelFormat { ref format } if format == "NV12"),
-            "expected UnsupportedPixelFormat{{format=NV12}}, got {err:?}"
+            matches!(
+                err,
+                CaptureError::UnsupportedPixelFormat {
+                    format: PixelFormat::Nv12
+                }
+            ),
+            "expected UnsupportedPixelFormat{{format=Nv12}}, got {err:?}"
         );
     }
 }

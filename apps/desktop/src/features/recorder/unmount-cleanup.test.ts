@@ -1,31 +1,22 @@
-// D-14 — unmount cleanup behavioral test.
-//
-// Verifies the teardown contract landed in `recording-view.tsx`:
+// Unmount cleanup behavioral test — verifies the teardown contract in
+// `recording-view.tsx`:
 //   1. automationChannel.onmessage is set to null on cleanup
 //   2. if a session is live, stopRecording is invoked with that id
-//   3. any in-flight AbortController is aborted
-//
-// Matches the pattern of `double-start-guard.test.ts` — no full mount; we
-// exercise the cleanup closure directly against mock refs.
 
 import { describe, expect, it, vi } from "vitest";
 
 describe("D-14 unmount cleanup", () => {
-  it("nulls automation channel handler, calls stopRecording, aborts mutations", () => {
+  it("nulls automation channel handler and calls stopRecording", () => {
     const stopRecording = vi.fn<(id: string) => Promise<{ output_path: string }>>(
       async () => ({ output_path: "/tmp/x.mp4" }),
     );
     const automationChannel = { onmessage: vi.fn() as ((e: unknown) => void) | null };
-    const abortController = new AbortController();
-    const abortSpy = vi.spyOn(abortController, "abort");
 
     const refs = {
       session: "session-xyz" as string | null,
       automationChannel: automationChannel as { onmessage: ((e: unknown) => void) | null } | null,
-      abort: abortController as AbortController | null,
     };
 
-    // This mirrors the useEffect cleanup in recording-view.tsx.
     const cleanup = () => {
       if (refs.automationChannel) {
         refs.automationChannel.onmessage = null;
@@ -35,7 +26,6 @@ describe("D-14 unmount cleanup", () => {
       if (sid) {
         void stopRecording(sid).catch(() => {});
       }
-      refs.abort?.abort();
     };
 
     cleanup();
@@ -43,7 +33,6 @@ describe("D-14 unmount cleanup", () => {
     expect(automationChannel.onmessage).toBeNull();
     expect(stopRecording).toHaveBeenCalledTimes(1);
     expect(stopRecording).toHaveBeenCalledWith("session-xyz");
-    expect(abortSpy).toHaveBeenCalledTimes(1);
     expect(refs.session).toBeNull();
   });
 
