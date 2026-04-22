@@ -15,8 +15,9 @@ use automation::driver::{
 };
 use automation::error::{AutomationError, Result as AutoResult};
 use automation::events::{ExecutorEvent, MatchKind, SelectorStrategy};
-use automation::executor::Executor;
+use automation::executor::{continue_run, Executor};
 use automation::noop_driver::NoopDriver;
+use automation::RunControl;
 use story_parser::{ScrollDir, SelectorOrText};
 use tokio::time::{timeout, Duration};
 
@@ -446,6 +447,334 @@ async fn navigate_and_waitms_yield_null_bbox_and_none_kind() {
         assert!(f.matched_selector.is_none(), "no target → no selector");
         assert_eq!(f.match_kind, MatchKind::None);
     }
+}
+
+// Counting driver — wraps stub action behavior but tracks `launch()` calls.
+struct CountingDriver {
+    launches: Arc<AtomicU32>,
+}
+
+impl CountingDriver {
+    fn new() -> Self {
+        Self {
+            launches: Arc::new(AtomicU32::new(0)),
+        }
+    }
+}
+
+#[async_trait]
+impl BrowserDriver for CountingDriver {
+    async fn launch(&mut self, _c: LaunchConfig) -> AutoResult<()> {
+        self.launches.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+    async fn close(&mut self) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn goto(&self, _u: &str) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn click(&self, _s: &ResolvedSelector) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn type_text(&self, _s: &ResolvedSelector, _t: &str) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn scroll(&self, _d: ScrollDir, _a: Option<f32>) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn hover(&self, _s: &ResolvedSelector) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn drag(&self, _f: &ResolvedSelector, _t: &ResolvedSelector) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn select_option(&self, _s: &ResolvedSelector, _v: &str) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn upload_file(&self, _s: &ResolvedSelector, _p: &Path) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn wait_ms(&self, _ms: u64) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn screenshot(&self, name: &str, out_dir: &Path) -> AutoResult<PathBuf> {
+        std::fs::create_dir_all(out_dir).ok();
+        let path = out_dir.join(format!("{name}.png"));
+        std::fs::write(&path, [137, 80, 78, 71, 13, 10, 26, 10]).ok();
+        Ok(path)
+    }
+    async fn element_state(&self, _s: &ResolvedSelector) -> AutoResult<ElementState> {
+        Ok(ElementState {
+            visible: true,
+            bbox: Some(BoundingBox {
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+            }),
+            animating: false,
+            in_viewport: true,
+        })
+    }
+    async fn current_cursor_position(&self) -> AutoResult<(i32, i32)> {
+        Ok((0, 0))
+    }
+    fn capabilities(&self) -> CapabilitySet {
+        CapabilitySet::PLAYWRIGHT
+    }
+    fn name(&self) -> &'static str {
+        "counting"
+    }
+}
+
+#[tokio::test]
+async fn continue_run_reuses_already_launched_drivers() {
+    let src = r#"story "s6" {
+  meta { app: "about:blank" }
+  scene "sc" {
+    wait 1ms
+    wait 1ms
+    wait 1ms
+    wait 1ms
+    wait 1ms
+  }
+}
+"#;
+    let story = parse_story(src);
+    let tmp = tempfile::tempdir().unwrap();
+
+    let primary = CountingDriver::new();
+    let primary_launches = primary.launches.clone();
+    let fallback = CountingDriver::new();
+    let fallback_launches = fallback.launches.clone();
+
+    let mut rx = Executor::run_simulator(
+        story.clone(),
+        None,
+        Box::new(primary),
+        Box::new(fallback),
+        None,
+        tmp.path().join("shots"),
+        Default::default(),
+        None,
+        Some(2),
+        false,
+        None,
+        true,
+    );
+    let first_events = drain(&mut rx).await;
+    // After pausing, launch must have been called exactly once per driver.
+    assert_eq!(primary_launches.load(Ordering::SeqCst), 1);
+    assert_eq!(fallback_launches.load(Ordering::SeqCst), 1);
+    let paused = first_events
+        .iter()
+        .any(|e| matches!(e, ExecutorEvent::RunPaused { ordinal: 2 }));
+    assert!(paused, "expected RunPaused{{2}} in {:?}", first_events);
+
+    // Resume with fresh drivers whose launch counters start fresh — the
+    // point of continue_run is that it does NOT call launch(). We simulate
+    // this by passing drivers that have never been launched; if
+    // continue_run did call launch, the counter would go to 1.
+    let primary2 = CountingDriver::new();
+    let p2_launches = primary2.launches.clone();
+    let fallback2 = CountingDriver::new();
+    let f2_launches = fallback2.launches.clone();
+
+    let (tx, mut rx2) = tokio::sync::mpsc::channel(256);
+    let screenshot_dir = tmp.path().join("shots2");
+    tokio::spawn(async move {
+        let _ = continue_run(
+            story,
+            None,
+            Box::new(primary2),
+            Box::new(fallback2),
+            None,
+            screenshot_dir,
+            None,
+            2,
+            None,
+            false,
+            None,
+            true,
+            tx,
+        )
+        .await;
+    });
+    let events = drain(&mut rx2).await;
+    // continue_run must NOT have called launch().
+    assert_eq!(
+        p2_launches.load(Ordering::SeqCst),
+        0,
+        "continue_run must not launch the primary",
+    );
+    assert_eq!(
+        f2_launches.load(Ordering::SeqCst),
+        0,
+        "continue_run must not launch the fallback",
+    );
+    // Steps 3..=5 must have fired (step 1 and 2 were skipped).
+    let succeeded_ordinals: Vec<u32> = events
+        .iter()
+        .filter_map(|e| match e {
+            ExecutorEvent::StepSucceeded { ordinal, .. } => Some(*ordinal),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(succeeded_ordinals, vec![3, 4, 5]);
+    // No StoryStarted on resume.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, ExecutorEvent::StoryStarted { .. })),
+        "continue_run must not re-emit StoryStarted"
+    );
+}
+
+// Slow driver — adds a real sleep to wait_ms so cancellation has time to
+// interrupt a multi-step run.
+struct SlowDriver;
+
+#[async_trait]
+impl BrowserDriver for SlowDriver {
+    async fn launch(&mut self, _c: LaunchConfig) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn close(&mut self) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn goto(&self, _u: &str) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn click(&self, _s: &ResolvedSelector) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn type_text(&self, _s: &ResolvedSelector, _t: &str) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn scroll(&self, _d: ScrollDir, _a: Option<f32>) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn hover(&self, _s: &ResolvedSelector) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn drag(&self, _f: &ResolvedSelector, _t: &ResolvedSelector) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn select_option(&self, _s: &ResolvedSelector, _v: &str) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn upload_file(&self, _s: &ResolvedSelector, _p: &Path) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn wait_ms(&self, ms: u64) -> AutoResult<()> {
+        tokio::time::sleep(Duration::from_millis(ms)).await;
+        Ok(())
+    }
+    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> {
+        Ok(())
+    }
+    async fn screenshot(&self, name: &str, out_dir: &Path) -> AutoResult<PathBuf> {
+        std::fs::create_dir_all(out_dir).ok();
+        let path = out_dir.join(format!("{name}.png"));
+        std::fs::write(&path, [137, 80, 78, 71, 13, 10, 26, 10]).ok();
+        Ok(path)
+    }
+    async fn element_state(&self, _s: &ResolvedSelector) -> AutoResult<ElementState> {
+        Ok(ElementState {
+            visible: true,
+            bbox: None,
+            animating: false,
+            in_viewport: true,
+        })
+    }
+    async fn current_cursor_position(&self) -> AutoResult<(i32, i32)> {
+        Ok((0, 0))
+    }
+    fn capabilities(&self) -> CapabilitySet {
+        CapabilitySet::PLAYWRIGHT
+    }
+    fn name(&self) -> &'static str {
+        "slow"
+    }
+}
+
+#[tokio::test]
+async fn cancel_exits_scene_loop_after_current_step() {
+    // Ten 100ms waits so real wall-clock time elapses between steps and
+    // the cancel signal propagates before the next step starts.
+    let src = r#"story "s7" {
+  meta { app: "about:blank" }
+  scene "sc" {
+    wait 100ms
+    wait 100ms
+    wait 100ms
+    wait 100ms
+    wait 100ms
+    wait 100ms
+    wait 100ms
+    wait 100ms
+    wait 100ms
+    wait 100ms
+  }
+}
+"#;
+    let story = parse_story(src);
+    let tmp = tempfile::tempdir().unwrap();
+    let control = Arc::new(RunControl::new());
+    let primary: Box<dyn BrowserDriver> = Box::new(SlowDriver);
+    let fallback: Box<dyn BrowserDriver> = Box::new(NoopDriver::new());
+    let mut rx = Executor::run_simulator(
+        story,
+        None,
+        primary,
+        fallback,
+        None,
+        tmp.path().join("shots"),
+        Default::default(),
+        Some(control.clone()),
+        None,
+        false,
+        None,
+        true,
+    );
+
+    let mut seen_succeeded = 0u32;
+    let mut highest_started = 0u32;
+    let fut = async {
+        while let Some(ev) = rx.recv().await {
+            match ev {
+                ExecutorEvent::StepSucceeded { ordinal, .. } => {
+                    seen_succeeded = ordinal;
+                    if ordinal == 1 {
+                        control.cancel();
+                    }
+                }
+                ExecutorEvent::StepStarted { ordinal, .. } => {
+                    highest_started = ordinal.max(highest_started);
+                }
+                _ => {}
+            }
+        }
+    };
+    timeout(Duration::from_secs(30), fut)
+        .await
+        .expect("must complete");
+    assert!(seen_succeeded >= 1);
+    assert!(
+        highest_started < 10,
+        "cancel must stop before the 10th step started (saw up to {})",
+        highest_started,
+    );
 }
 
 #[tokio::test]

@@ -88,6 +88,8 @@ impl Executor {
                 false,
                 None,
                 true,
+                0,
+                false,
                 tx,
             )
             .await;
@@ -129,6 +131,8 @@ impl Executor {
                 capture_frames,
                 frame_dir,
                 self_heal,
+                0,
+                false,
                 tx,
             )
             .await;
@@ -163,21 +167,28 @@ async fn run_story(
     capture_frames: bool,
     frame_dir: Option<PathBuf>,
     self_heal: bool,
+    start_after_ordinal: u32,
+    already_launched: bool,
     tx: mpsc::Sender<ExecutorEvent>,
 ) -> Result<()> {
     let started = Instant::now();
     let story_hash = hash_story(&story);
-    let _ = tx
-        .send(ExecutorEvent::StoryStarted {
-            story_hash: story_hash.clone(),
-        })
-        .await;
+    if !already_launched {
+        let _ = tx
+            .send(ExecutorEvent::StoryStarted {
+                story_hash: story_hash.clone(),
+            })
+            .await;
+    }
 
-    // Launch both drivers. Errors during launch are fatal for the session
-    // (we can't dispatch anything without an open page).
-    let launch_cfg = LaunchConfig::from_meta(&story.meta, &launch_opts);
-    primary.launch(launch_cfg.clone()).await?;
-    fallback.launch(launch_cfg.clone()).await.ok(); // playwright sidecar may not be wired in unit tests
+    // Launch both drivers unless the caller supplied pre-launched ones
+    // (simulator `continue_run`). Errors during launch are fatal for the
+    // session — we can't dispatch anything without an open page.
+    if !already_launched {
+        let launch_cfg = LaunchConfig::from_meta(&story.meta, &launch_opts);
+        primary.launch(launch_cfg.clone()).await?;
+        fallback.launch(launch_cfg.clone()).await.ok(); // playwright sidecar may not be wired in unit tests
+    }
 
     // Persistence: open a session row.
     let session_id = if let Some(db) = persistence.as_ref() {
@@ -197,6 +208,9 @@ async fn run_story(
 
     'scenes: for (i, scene) in story.scenes.iter().enumerate() {
         checkpoint(control.as_deref()).await;
+        if is_cancelled(control.as_deref()) {
+            break 'scenes;
+        }
         let _ = tx
             .send(ExecutorEvent::SceneEntered {
                 name: scene.name.clone(),
@@ -205,8 +219,16 @@ async fn run_story(
             .await;
         for cmd in &scene.commands {
             checkpoint(control.as_deref()).await;
+            if is_cancelled(control.as_deref()) {
+                break 'scenes;
+            }
             ordinal += 1;
             total += 1;
+            // continue_run fast-forward: skip commands the caller already
+            // observed in a prior pause-ending run.
+            if ordinal <= start_after_ordinal {
+                continue;
+            }
             let driver = Executor::pick_driver_for_cmd(primary.as_ref(), fallback.as_ref(), cmd);
             let driver_name = driver.name();
 
@@ -513,6 +535,49 @@ async fn run_command(
     result.map(|()| last_resolved).map_err(|e| (e, attempts))
 }
 
+/// Resume a simulator session with an already-launched driver pair.
+///
+/// Unlike [`Executor::run_simulator`], this does NOT call
+/// `primary.launch()` / `fallback.launch()` — the caller passes the same
+/// drivers returned from a previous run that terminated with `RunPaused`.
+/// The caller is responsible for tracking `start_after_ordinal` so already-
+/// executed steps are skipped silently (no events emitted for them).
+#[allow(clippy::too_many_arguments)]
+pub async fn continue_run(
+    story: Story,
+    story_path: Option<PathBuf>,
+    primary: Box<dyn BrowserDriver>,
+    fallback: Box<dyn BrowserDriver>,
+    persistence: Option<PersistenceHandle>,
+    screenshot_dir: PathBuf,
+    control: Option<Arc<RunControl>>,
+    start_after_ordinal: u32,
+    stop_after_ordinal: Option<u32>,
+    capture_frames: bool,
+    frame_dir: Option<PathBuf>,
+    self_heal: bool,
+    tx: mpsc::Sender<ExecutorEvent>,
+) -> Result<()> {
+    run_story(
+        story,
+        story_path,
+        primary,
+        fallback,
+        persistence,
+        screenshot_dir,
+        LaunchOptions::default(),
+        control,
+        stop_after_ordinal,
+        capture_frames,
+        frame_dir,
+        self_heal,
+        start_after_ordinal,
+        true,
+        tx,
+    )
+    .await
+}
+
 /// Plan 07-04c self-healing hook. On a primary `wait_actionable` miss,
 /// consult `<story_path>.targets.json` for the step's fallbacks, iterate
 /// them in order, and return the first one that resolves + passes
@@ -616,6 +681,10 @@ async fn checkpoint(control: Option<&RunControl>) {
     if let Some(control) = control {
         control.checkpoint().await;
     }
+}
+
+fn is_cancelled(control: Option<&RunControl>) -> bool {
+    control.map(|c| c.is_cancelled()).unwrap_or(false)
 }
 
 async fn wait_with_pause(
