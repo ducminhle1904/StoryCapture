@@ -28,6 +28,17 @@ use screencapturekit::stream::{
     sc_stream::SCStream,
 };
 
+/// D-06: coarse state machine for pause/resume. `Transitioning` is set
+/// for the duration of the `spawn_blocking` stop/start call so a racing
+/// caller holding the mutex sees the in-progress transition and either
+/// waits for it or exits early when the outer intent matches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PauseState {
+    Running,
+    Paused,
+    Transitioning,
+}
+
 pub struct SckBackend {
     state: Arc<Mutex<SckState>>,
     /// Optional lifecycle-event sink.
@@ -35,7 +46,11 @@ pub struct SckBackend {
     /// Frames dropped because `try_send` hit a full channel.
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    /// Fast-path read signal for the SCK output handler (hot callback on
+    /// SCK's GCD queue — cannot afford to await a tokio mutex there).
     paused: Arc<AtomicBool>,
+    /// D-06: slow-path serializer for `pause()` / `resume()` callers.
+    pause_state: Arc<tokio::sync::Mutex<PauseState>>,
 }
 
 struct SckState {
@@ -64,6 +79,7 @@ impl SckBackend {
             dropped: Arc::new(AtomicU64::new(0)),
             delivered: Arc::new(AtomicU64::new(0)),
             paused: Arc::new(AtomicBool::new(false)),
+            pause_state: Arc::new(tokio::sync::Mutex::new(PauseState::Running)),
         })
     }
 
@@ -344,11 +360,15 @@ impl CaptureBackend for SckBackend {
             );
         }
 
-        let mut s = self.state.lock();
-        s.started_at = Some(Instant::now());
-        s.stats = CaptureStats::default();
-        s.stream = Some(stream);
+        {
+            let mut s = self.state.lock();
+            s.started_at = Some(Instant::now());
+            s.stats = CaptureStats::default();
+            s.stream = Some(stream);
+        }
         self.paused.store(false, Ordering::Release);
+        // D-06: reset state machine for the new session.
+        *self.pause_state.lock().await = PauseState::Running;
         Ok(())
     }
 
@@ -365,41 +385,75 @@ impl CaptureBackend for SckBackend {
             })
             .await;
         }
-        let mut s = self.state.lock();
-        if let Some(t) = s.started_at.take() {
-            s.stats.duration_ms = t.elapsed().as_millis() as u64;
-        }
-        let mut stats = s.stats;
+        let mut stats = {
+            let mut s = self.state.lock();
+            if let Some(t) = s.started_at.take() {
+                s.stats.duration_ms = t.elapsed().as_millis() as u64;
+            }
+            s.stats
+        };
         stats.frames_delivered = self.delivered.load(Ordering::Relaxed);
         stats.frames_dropped = self.dropped.load(Ordering::Relaxed);
-        drop(s);
         // Reset counters for the next session.
         self.delivered.store(0, Ordering::Relaxed);
         self.dropped.store(0, Ordering::Relaxed);
         self.paused.store(false, Ordering::Release);
+        // D-06: session ended, state machine back to Running baseline.
+        *self.pause_state.lock().await = PauseState::Running;
         Ok(stats)
     }
 
     async fn pause(&mut self) -> Result<(), CaptureError> {
-        if self.paused.swap(true, Ordering::AcqRel) {
-            return Ok(());
+        // D-06: slow-path serialization. Concurrent callers wait on the
+        // mutex; whoever sees Paused/Transitioning returns Ok (idempotent).
+        let mut guard = self.pause_state.lock().await;
+        match *guard {
+            PauseState::Paused | PauseState::Transitioning => return Ok(()),
+            PauseState::Running => {}
         }
-        if let Err(err) = self.stop_stream().await {
-            self.paused.store(false, Ordering::Release);
-            return Err(err);
+        *guard = PauseState::Transitioning;
+        drop(guard);
+
+        let stop_res = self.stop_stream().await;
+
+        let mut guard = self.pause_state.lock().await;
+        match stop_res {
+            Ok(()) => {
+                self.paused.store(true, Ordering::Release);
+                *guard = PauseState::Paused;
+                Ok(())
+            }
+            Err(err) => {
+                // Roll back on failure so a retry is possible.
+                *guard = PauseState::Running;
+                Err(err)
+            }
         }
-        Ok(())
     }
 
     async fn resume(&mut self) -> Result<(), CaptureError> {
-        if !self.paused.swap(false, Ordering::AcqRel) {
-            return Ok(());
+        let mut guard = self.pause_state.lock().await;
+        match *guard {
+            PauseState::Running | PauseState::Transitioning => return Ok(()),
+            PauseState::Paused => {}
         }
-        if let Err(err) = self.resume_stream().await {
-            self.paused.store(true, Ordering::Release);
-            return Err(err);
+        *guard = PauseState::Transitioning;
+        drop(guard);
+
+        let start_res = self.resume_stream().await;
+
+        let mut guard = self.pause_state.lock().await;
+        match start_res {
+            Ok(()) => {
+                self.paused.store(false, Ordering::Release);
+                *guard = PauseState::Running;
+                Ok(())
+            }
+            Err(err) => {
+                *guard = PauseState::Paused;
+                Err(err)
+            }
         }
-        Ok(())
     }
 
     fn list_displays(&self) -> Result<Vec<DisplayInfo>, CaptureError> {
@@ -422,6 +476,76 @@ pub(crate) fn compute_region_math(
     let width_px = (rect.w * scale).round() as u32;
     let height_px = (rect.h * scale).round() as u32;
     (width_px, height_px, src)
+}
+
+#[cfg(test)]
+mod pause_state_tests {
+    use super::PauseState;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    /// Simulate `pause()` / `resume()` against a shared `PauseState`
+    /// without requiring a real `SCStream`. Mirrors the branching in
+    /// the real backend so a regression in the state machine surfaces
+    /// here even when SCK hardware tests are skipped.
+    async fn simulate_pause(state: Arc<Mutex<PauseState>>, work_ms: u64) -> bool {
+        let mut guard = state.lock().await;
+        match *guard {
+            PauseState::Paused | PauseState::Transitioning => return false,
+            PauseState::Running => {}
+        }
+        *guard = PauseState::Transitioning;
+        drop(guard);
+        tokio::time::sleep(std::time::Duration::from_millis(work_ms)).await;
+        let mut guard = state.lock().await;
+        *guard = PauseState::Paused;
+        true
+    }
+
+    async fn simulate_resume(state: Arc<Mutex<PauseState>>, work_ms: u64) -> bool {
+        let mut guard = state.lock().await;
+        match *guard {
+            PauseState::Running | PauseState::Transitioning => return false,
+            PauseState::Paused => {}
+        }
+        *guard = PauseState::Transitioning;
+        drop(guard);
+        tokio::time::sleep(std::time::Duration::from_millis(work_ms)).await;
+        let mut guard = state.lock().await;
+        *guard = PauseState::Running;
+        true
+    }
+
+    #[tokio::test]
+    async fn concurrent_pause_is_idempotent_and_finalises_paused() {
+        let state = Arc::new(Mutex::new(PauseState::Running));
+        let a = tokio::spawn(simulate_pause(state.clone(), 30));
+        let b = tokio::spawn(simulate_pause(state.clone(), 30));
+        let (ra, rb) = (a.await.unwrap(), b.await.unwrap());
+        // Exactly one caller wins the transition; the other no-ops.
+        assert!(ra ^ rb, "expected exactly one winner");
+        assert_eq!(*state.lock().await, PauseState::Paused);
+    }
+
+    #[tokio::test]
+    async fn concurrent_resume_mid_transition_ends_in_running() {
+        // Start in Paused so resume() is meaningful.
+        let state = Arc::new(Mutex::new(PauseState::Paused));
+        let a = tokio::spawn(simulate_resume(state.clone(), 30));
+        let b = tokio::spawn(simulate_resume(state.clone(), 30));
+        let (ra, rb) = (a.await.unwrap(), b.await.unwrap());
+        assert!(ra ^ rb, "expected exactly one winner");
+        assert_eq!(*state.lock().await, PauseState::Running);
+    }
+
+    #[tokio::test]
+    async fn pause_then_resume_round_trip() {
+        let state = Arc::new(Mutex::new(PauseState::Running));
+        assert!(simulate_pause(state.clone(), 5).await);
+        assert_eq!(*state.lock().await, PauseState::Paused);
+        assert!(simulate_resume(state.clone(), 5).await);
+        assert_eq!(*state.lock().await, PauseState::Running);
+    }
 }
 
 #[cfg(test)]

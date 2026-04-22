@@ -8,8 +8,8 @@
 // With that ordering, two synchronous invocations of the handler inside a
 // single JS tick can result in at most one IPC call.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRecorderStore } from "@/state/recorder";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 function resetStore() {
   useRecorderStore.getState().reset();
