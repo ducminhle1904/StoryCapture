@@ -14,9 +14,11 @@ tokio = { workspace = true }
 tokio-util = "0.7.18"
 serde = { workspace = true }
 serde_json = { workspace = true }
+util = { path = "../util" }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 bytes = "1.11.1"
+parking_lot = { workspace = true }
 capture = { path = "../capture" }
 effects = { path = "../effects" }
 storage = { path = "../storage" }

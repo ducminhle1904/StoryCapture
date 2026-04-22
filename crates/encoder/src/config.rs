@@ -63,6 +63,9 @@ pub struct EncodeConfig {
     /// path is available. Recorder sessions use this so pause/resume shortens
     /// the timeline instead of preserving native timestamp gaps.
     pub force_ffmpeg_path: bool,
+    /// Optional keyframe interval in seconds. `Some(n)` emits `-g (fps * n)`;
+    /// `None` omits the flag and keeps FFmpeg's default GOP.
+    pub keyframe_interval_sec: Option<u32>,
 }
 
 impl EncodeConfig {
@@ -90,6 +93,7 @@ impl EncodeConfig {
             bitrate_kbps: 0,
             audio_input: None,
             force_ffmpeg_path: false,
+            keyframe_interval_sec: None,
         }
     }
 
@@ -120,9 +124,13 @@ impl EncodeConfig {
         self
     }
 
-    /// Sets `bitrate_kbps` to the pixel-based target for the current output dims.
+    /// Sets `bitrate_kbps` to the pixel-based target for the current output dims and fps.
     pub fn with_auto_bitrate(mut self) -> Self {
-        self.bitrate_kbps = quality::pixel_based_kbps(self.output_width, self.output_height);
+        self.bitrate_kbps = quality::pixel_based_kbps(
+            self.output_width,
+            self.output_height,
+            self.fps_advisory,
+        );
         self
     }
 
@@ -236,12 +244,44 @@ impl EncodeConfig {
             "-pix_fmt".into(),
             "yuv420p".into(),
         ]);
+        // HEVC in MP4: FFmpeg defaults to `hev1` fourcc (parameter sets in
+        // SPS/PPS NALUs), which QuickTime / Safari / Finder preview refuse
+        // to open. Force `hvc1` (inline parameter sets) so macOS players
+        // accept the file.
+        if matches!(
+            self.encoder,
+            HardwareEncoder::VideoToolboxHevc
+        ) {
+            args.extend(["-tag:v".into(), "hvc1".into()]);
+        }
+        args.extend([
+            // Explicit BT.709 tagging so every player (QuickTime, Safari,
+            // Chrome, VLC) interprets the same color range — otherwise the
+            // MP4 can look washed-out or over-saturated depending on the
+            // player's guess.
+            "-color_range".into(),
+            "tv".into(),
+            "-colorspace".into(),
+            "bt709".into(),
+            "-color_primaries".into(),
+            "bt709".into(),
+            "-color_trc".into(),
+            "bt709".into(),
+        ]);
         args.extend(quality::resolve(
             self.quality_preset,
             self.encoder,
             self.output_width,
             self.output_height,
+            self.fps_advisory,
         ));
+
+        // D-11: keyframe interval (forces GOP). None => default FFmpeg
+        // behavior — argv must be byte-identical to pre-D-11.
+        if let Some(sec) = self.keyframe_interval_sec {
+            let gop = (self.fps_advisory).saturating_mul(sec).max(1);
+            args.extend(["-g".into(), gop.to_string()]);
+        }
 
         args.extend(["-c:a".into(), "aac".into()]);
 
@@ -385,7 +425,8 @@ mod tests {
         );
     }
 
-    /// Bitrate is target, not floor (Phase 12 / D-12-08).
+    /// Bitrate is target, not floor (Phase 12 / D-12-08). Phase 18: formula
+    /// bumped to 5 bits/pixel — 4K now hits the 40 Mbps cap.
     #[test]
     fn test_4k_uses_target_bitrate() {
         let cfg = EncodeConfig::new(
@@ -399,8 +440,8 @@ mod tests {
         .unwrap()
         .with_auto_bitrate();
         assert_eq!(
-            cfg.bitrate_kbps, 24_883,
-            "auto_bitrate must equal pixel_based for 3840x2160"
+            cfg.bitrate_kbps, 40_000,
+            "auto_bitrate must clamp to MAX_KBPS for 3840x2160 at 5 bits/pixel"
         );
         let args = cfg.to_ffmpeg_args();
         assert!(
@@ -408,8 +449,8 @@ mod tests {
             "libopenh264 Med must use CRF, not -b:v"
         );
         assert!(
-            args.windows(2).any(|w| w[0] == "-crf" && w[1] == "23"),
-            "Med preset → -crf 23"
+            args.windows(2).any(|w| w[0] == "-crf" && w[1] == "20"),
+            "Med preset → -crf 20 (screen content tune)"
         );
         assert!(
             args.windows(2)
@@ -459,6 +500,28 @@ mod tests {
             &args[s_idx + 1],
             "1920x1130",
             "-s must carry capture dims, not output dims"
+        );
+    }
+
+    /// D-11: keyframe_interval_sec = Some(2) @ 30fps -> `-g 60`.
+    #[test]
+    fn keyframe_interval_emits_g_flag() {
+        let mut c = cfg();
+        c.keyframe_interval_sec = Some(2);
+        let args = c.to_ffmpeg_args();
+        let g_idx = args.iter().position(|a| a == "-g").expect("-g must be present");
+        assert_eq!(args[g_idx + 1], "60", "expected -g 60 for 30fps * 2s");
+    }
+
+    /// D-11: None keeps argv byte-identical to pre-D-11 (no -g flag).
+    #[test]
+    fn keyframe_interval_none_omits_g_flag() {
+        let c = cfg();
+        assert!(c.keyframe_interval_sec.is_none());
+        let args = c.to_ffmpeg_args();
+        assert!(
+            !args.iter().any(|a| a == "-g"),
+            "default config must not emit -g: {args:?}"
         );
     }
 

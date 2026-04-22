@@ -13,11 +13,10 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-/// Boxed callback for per-session drop telemetry. Invoked with
-/// `(total, delta)` each time the queue reports newly dropped frames.
-/// The callback MUST be cheap and non-blocking (e.g. a best-effort channel
-/// send) — capture throughput is never gated on its completion.
-pub type DropEventCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
+/// Re-exported for historical call-site names. The callback MUST be cheap
+/// and non-blocking (e.g. a best-effort channel send) — capture throughput
+/// is never gated on its completion.
+pub use util::FrameDropCallback as DropEventCallback;
 
 /// Small burst buffer between native capture callbacks and the byte-bounded
 /// queue. Keeping this intentionally low prevents multiple large BGRA frames

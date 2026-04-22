@@ -68,6 +68,37 @@ pub struct AppState {
     /// picker commands read this to issue `pickElement.*` against the
     /// same sidecar the executor is driving.
     pub playwright_driver: SharedPlaywrightDriverHandle,
+
+    /// Phase 09-02 — Playwright driver slot dedicated to the live-preview
+    /// pump. Populated when a recording against a Playwright auto-target
+    /// starts; cleared when the recording ends. Kept separate from
+    /// `playwright_driver` (which spans the whole story lifetime) so the
+    /// pump task can abort before automation teardown.
+    pub preview_driver: TokioMutex<Option<Arc<TokioMutex<automation::PlaywrightSidecarDriver>>>>,
+
+    /// Phase 09-02 — join handle of the task draining the watch channel
+    /// and emitting `preview://frame` events. `Some` while a stream is
+    /// active; aborted and replaced on start/stop.
+    pub preview_pump: TokioMutex<Option<tokio::task::JoinHandle<()>>>,
+
+    /// Phase 09-04 — author-time preview sessions keyed by streamId.
+    /// Each entry owns a dedicated Playwright sidecar process (separate
+    /// from the recording session) plus the pump task emitting that
+    /// stream's frames. Teardown on drop closes the Chromium so expired
+    /// streamIds cannot leak CDP resources (09-CONTEXT §Specifics).
+    pub author_preview_sessions: TokioMutex<HashMap<String, AuthorPreviewSession>>,
+}
+
+/// Phase 09-04 — per-streamId author-session handle.
+///
+/// Holds an owned Playwright sidecar driver + the pump task draining the
+/// watch channel into `preview://frame` Tauri events. `attach_author_driver`
+/// (PHASE-9.8) hands out an `Arc<TokioMutex<PlaywrightSidecarDriver>>` so
+/// Phase 10's simulator can run DSL verbs against the same session without
+/// spawning a third Chromium.
+pub struct AuthorPreviewSession {
+    pub driver: Arc<TokioMutex<automation::PlaywrightSidecarDriver>>,
+    pub pump: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl AppState {
@@ -85,6 +116,9 @@ impl AppState {
             render_queue: PLMutex::new(None),
             http_client,
             playwright_driver: Arc::new(TokioMutex::new(None)),
+            preview_driver: TokioMutex::new(None),
+            preview_pump: TokioMutex::new(None),
+            author_preview_sessions: TokioMutex::new(HashMap::new()),
         }
     }
 

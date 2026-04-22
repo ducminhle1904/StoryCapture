@@ -134,6 +134,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             Ok(f) => f,
             Err(e) => {
                 tracing::warn!(error = %e, "frame_from_wgc failed; dropping frame");
+                // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
                 self.dropped.fetch_add(1, Ordering::Relaxed);
                 return Ok(());
             }
@@ -146,6 +147,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 FrameData::Pooled(b, stride) => (b.as_slice(), *stride),
                 _ => {
                     // Defensive fallback if the frame variant changes.
+                    // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
                     self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
@@ -170,6 +172,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 }
                 None => {
                     // Drop overflowed crops.
+                    // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
                     self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
@@ -179,9 +182,11 @@ impl GraphicsCaptureApiHandler for WgcHandler {
         };
         match self.out.try_send(f) {
             Ok(()) => {
+                // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
                 self.delivered.fetch_add(1, Ordering::Relaxed);
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
+                // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
                 self.dropped.fetch_add(1, Ordering::Relaxed);
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -298,6 +303,20 @@ impl WgcBackend {
             }
             CaptureTarget::Window { window_id } => {
                 let hwnd = window_id.0 as isize as *mut std::ffi::c_void;
+                // D-05: reject a stale HWND before handing it to WGC,
+                // which would otherwise hit undefined behaviour inside
+                // GraphicsCaptureItem::FromWindow.
+                let is_valid = unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::IsWindow(
+                        windows::Win32::Foundation::HWND(hwnd),
+                    )
+                    .as_bool()
+                };
+                if !is_valid {
+                    return Err(CaptureError::WindowGone {
+                        hwnd: window_id.0,
+                    });
+                }
                 let window = Window::from_raw_hwnd(hwnd);
                 let settings = Settings::new(
                     window,
@@ -324,7 +343,21 @@ impl WgcBackend {
                 let hwnd_opt =
                     crate::windows::window::find_window_by_pid(pid, title_hint.as_deref()).await?;
                 let hwnd = hwnd_opt.ok_or(CaptureError::WindowNotFound(pid as u64))?;
-                let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
+                // D-05: resolved HWND may have closed between enumeration
+                // and start; validate before WGC touches it.
+                let raw = hwnd as *mut std::ffi::c_void;
+                let is_valid = unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::IsWindow(
+                        windows::Win32::Foundation::HWND(raw),
+                    )
+                    .as_bool()
+                };
+                if !is_valid {
+                    return Err(CaptureError::WindowGone {
+                        hwnd: hwnd as u64,
+                    });
+                }
+                let window = Window::from_raw_hwnd(raw);
                 let settings = Settings::new(
                     window,
                     cursor,
@@ -380,6 +413,7 @@ impl CaptureBackend for WgcBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
+        cfg.require_supported_pixel_format()?;
         self.dropped.store(0, Ordering::Relaxed);
         self.delivered.store(0, Ordering::Relaxed);
         let control = self.start_control(cfg.clone(), out.clone()).await?;
@@ -406,8 +440,8 @@ impl CaptureBackend for WgcBackend {
         if let Some(t) = s.started_at.take() {
             s.stats.duration_ms = t.elapsed().as_millis() as u64;
         }
-        s.stats.frames_delivered = self.delivered.load(Ordering::Acquire);
-        s.stats.frames_dropped = self.dropped.load(Ordering::Acquire);
+        s.stats.frames_delivered = self.delivered.load(Ordering::Relaxed);
+        s.stats.frames_dropped = self.dropped.load(Ordering::Relaxed);
         s.session = None;
         self.paused.store(false, Ordering::Release);
         Ok(s.stats)
@@ -465,4 +499,40 @@ fn map_start_err(e: GraphicsCaptureApiError<WgcHandlerError>) -> CaptureError {
 /// Enumerate displays through xcap.
 pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
     crate::fallback::xcap_backend::enumerate()
+}
+
+#[cfg(test)]
+mod nv12_reject_tests {
+    use super::*;
+    use crate::display::DisplayId;
+    use crate::frame::PixelFormat;
+    use crate::target::CaptureTarget;
+
+    /// D-16: Nv12 must be rejected at `start()` entry before any OS
+    /// resource is acquired.
+    #[tokio::test]
+    async fn start_with_nv12_returns_unsupported_pixel_format() {
+        let Ok(mut backend) = WgcBackend::new() else {
+            return;
+        };
+        let mut cfg = CaptureConfig::new(DisplayId(1));
+        cfg.pixel_format = PixelFormat::Nv12;
+        cfg.target = CaptureTarget::Display {
+            display_id: DisplayId(1),
+        };
+        let (tx, _rx) = tokio::sync::mpsc::channel(1);
+        let err = backend
+            .start(cfg, tx)
+            .await
+            .expect_err("Nv12 must be rejected");
+        assert!(
+            matches!(
+                err,
+                CaptureError::UnsupportedPixelFormat {
+                    format: PixelFormat::Nv12
+                }
+            ),
+            "expected UnsupportedPixelFormat{{format=Nv12}}, got {err:?}"
+        );
+    }
 }

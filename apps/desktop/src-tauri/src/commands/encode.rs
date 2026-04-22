@@ -19,13 +19,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
+use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
 const ENCODER_FRAME_CHANNEL_CAPACITY: usize = 4;
@@ -307,6 +309,22 @@ pub enum RecordingEvent {
     Failed {
         message: String,
     },
+    /// Mic/audio negotiation failed or the device vanished mid-session.
+    /// Recording continues video-only (D-13).
+    AudioUnavailable {
+        reason: String,
+    },
+    /// Periodic liveness signal from the host so the renderer can detect
+    /// state-sync drift (>5s missed => offer Force Stop) (D-15).
+    Heartbeat {
+        seq: u64,
+    },
+}
+
+fn emit_audio_unavailable<E: std::fmt::Display>(channel: &Channel<RecordingEvent>, err: &E) {
+    let _ = channel.send(RecordingEvent::AudioUnavailable {
+        reason: err.to_string(),
+    });
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -371,6 +389,12 @@ pub struct StartRecordingArgs {
     pub quality_preset: Option<QualityPresetDto>,
     #[serde(default)]
     pub scale_algo: Option<ScaleAlgoDto>,
+    /// First-frame wait budget in milliseconds. Defaults to 3000 when `None`.
+    #[serde(default)]
+    pub first_frame_timeout_ms: Option<u64>,
+    /// Force a keyframe every N seconds. `None` keeps FFmpeg's default GOP.
+    #[serde(default)]
+    pub keyframe_interval_sec: Option<u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +412,10 @@ struct RecordingHandle {
     /// Named-pipe handle.
     #[allow(dead_code)]
     audio_fifo: Option<FifoHandle>,
+    /// D-15: handle for the 2s heartbeat ticker. Aborted by
+    /// `stop_recording_inner`, `drain_one`, or the SpawnAbortGuard on
+    /// an early-return from `start_recording`.
+    heartbeat_abort: Option<AbortHandle>,
 }
 
 #[derive(Default)]
@@ -399,6 +427,158 @@ fn registry() -> &'static RecordingRegistry {
     use std::sync::OnceLock;
     static REG: OnceLock<RecordingRegistry> = OnceLock::new();
     REG.get_or_init(RecordingRegistry::default)
+}
+
+/// D-04: process-wide "a start_recording is currently in flight" flag.
+/// Set via `compare_exchange(false, true)` at the entry of `start_recording`;
+/// always cleared on return (Drop of `StartingGuard`) regardless of success,
+/// error, or panic.
+static GLOBAL_STARTING: AtomicBool = AtomicBool::new(false);
+
+struct StartingGuard;
+
+impl Drop for StartingGuard {
+    fn drop(&mut self) {
+        GLOBAL_STARTING.store(false, Ordering::Release);
+    }
+}
+
+/// D-02: aborts its collected spawn handles on drop. Callers push every
+/// auxiliary task spawned during `start_recording` before registry insert,
+/// then call [`SpawnAbortGuard::disarm`] on the success path. Any early
+/// return or panic between spawn and registry-insert will abort the tasks
+/// so no orphan outlives `start_recording`.
+struct SpawnAbortGuard {
+    handles: Vec<AbortHandle>,
+    armed: bool,
+}
+
+impl SpawnAbortGuard {
+    fn new() -> Self {
+        Self {
+            handles: Vec::new(),
+            armed: true,
+        }
+    }
+
+    fn push(&mut self, handle: AbortHandle) {
+        self.handles.push(handle);
+    }
+
+    fn disarm(mut self) {
+        self.armed = false;
+        self.handles.clear();
+    }
+}
+
+impl Drop for SpawnAbortGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        for h in self.handles.drain(..) {
+            h.abort();
+        }
+    }
+}
+
+/// D-01: best-effort synchronous teardown of recording sessions at app
+/// exit. Mirrors `drain_author_preview_sessions` in `lib.rs` — takes an
+/// `AppHandle` for API parity, even though the recording registry is a
+/// process-static (not on `AppState`). Uses `try_lock` so the exit hook
+/// never deadlocks; on timeout aborts `encode_join` and surrenders the
+/// slot. Output MP4s that flushed `moov` before the deadline remain
+/// playable; the rest are left as-is for the OS to clean up.
+pub fn drain_recording_sessions(_app_handle: &tauri::AppHandle) {
+    const PER_SESSION_TIMEOUT_MS: u64 = 5000;
+
+    let Some(mut sessions) = registry().sessions.try_lock() else {
+        tracing::warn!("drain_recording_sessions: registry locked, skipping");
+        return;
+    };
+    let drained: Vec<(String, RecordingHandle)> = sessions.drain().collect();
+    drop(sessions);
+
+    let count = drained.len();
+    if count == 0 {
+        return;
+    }
+    tracing::info!(count, "drain_recording_sessions: draining sessions on exit");
+
+    // Use a transient runtime handle if present; otherwise run a one-shot
+    // blocking runtime. The Tauri exit hook runs on the main thread with
+    // no ambient tokio runtime by default.
+    let rt_handle = tokio::runtime::Handle::try_current();
+    for (session_id, handle) in drained {
+        let encode_abort = handle.encode_join.abort_handle();
+        let id = session_id.clone();
+        let result = match &rt_handle {
+            Ok(h) => h.block_on(async move {
+                tokio::time::timeout(
+                    Duration::from_millis(PER_SESSION_TIMEOUT_MS),
+                    drain_one(&id, handle),
+                )
+                .await
+            }),
+            Err(_) => {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        tracing::warn!(session_id, error = %e, "drain_recording_sessions: failed to build runtime");
+                        encode_abort.abort();
+                        continue;
+                    }
+                };
+                rt.block_on(async move {
+                    tokio::time::timeout(
+                        Duration::from_millis(PER_SESSION_TIMEOUT_MS),
+                        drain_one(&id, handle),
+                    )
+                    .await
+                })
+            }
+        };
+        match result {
+            Ok(Ok(())) => {
+                tracing::info!(session_id, "drain_recording_sessions: session finalized");
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(session_id, error = %e, "drain_recording_sessions: session stop error");
+            }
+            Err(_) => {
+                tracing::warn!(
+                    session_id,
+                    timeout_ms = PER_SESSION_TIMEOUT_MS,
+                    "drain_recording_sessions: timed out, aborting encode"
+                );
+                encode_abort.abort();
+            }
+        }
+    }
+    tracing::info!(count, "drain_recording_sessions: complete");
+}
+
+async fn drain_one(_session_id: &str, handle: RecordingHandle) -> Result<(), String> {
+    // D-15: kill the heartbeat ticker so it doesn't race past teardown.
+    if let Some(hb) = handle.heartbeat_abort.as_ref() {
+        hb.abort();
+    }
+    if let Some(audio) = handle.audio_stream.lock().await.take() {
+        drop(audio);
+    }
+    {
+        let mut p = handle.capture.lock().await;
+        p.stop().await.map_err(|e| e.to_string())?;
+    }
+    handle
+        .encode_join
+        .await
+        .map_err(|e| format!("encode join: {e}"))?
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +596,17 @@ pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppErr
     Ok(probe.into())
 }
 
+/// Re-probe HW encoders bypassing any cached result.
+#[tauri::command]
+#[specta::specta]
+pub async fn refresh_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
+    let cmd = TauriSidecar::new(app);
+    let probe = encoder::probe::force_reprobe(&cmd)
+        .await
+        .map_err(|e| AppError::Encoder(e.to_string()))?;
+    Ok(probe.into())
+}
+
 /// Start an end-to-end recording.
 #[tauri::command]
 #[specta::specta]
@@ -425,6 +616,16 @@ pub async fn start_recording(
     args: StartRecordingArgs,
     on_event: Channel<RecordingEvent>,
 ) -> Result<RecordingSessionId, AppError> {
+    // D-04: reject concurrent starts. The Drop guard clears the flag on
+    // every return path (success, error, panic).
+    if GLOBAL_STARTING
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err(AppError::AlreadyStarting);
+    }
+    let _starting_guard = StartingGuard;
+
     let capture_target: capture::CaptureTarget = match &args.target {
         crate::commands::capture::CaptureTargetDto::WindowByPid { title_hint, .. }
             if matches!(title_hint.as_deref(), Some("storycapture-playwright")) =>
@@ -539,12 +740,17 @@ pub async fn start_recording(
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let preferred: Box<dyn capture::CaptureBackend> = Box::new(capture::XcapBackend::new());
 
+    // D-02: collect every auxiliary spawn so any early return between
+    // here and the registry insert aborts them rather than leaking.
+    let mut spawn_guard = SpawnAbortGuard::new();
+
     let on_event_for_capture = on_event.clone();
-    tokio::spawn(async move {
+    let capture_fwd_join = tokio::spawn(async move {
         while let Some(evt) = evt_rx.recv().await {
             let _ = on_event_for_capture.send(evt.into());
         }
     });
+    spawn_guard.push(capture_fwd_join.abort_handle());
 
     let queue = ByteBoundedQueue::new(cap_cfg.queue_cap_bytes);
     let mut capture = CapturePipeline::new(preferred, queue);
@@ -592,9 +798,12 @@ pub async fn start_recording(
     // (Playwright auto-follow, specific window) deliver frames sized to
     // the window, not the display — using args.width/height would cause
     // FFmpeg's rawvideo input to reject every frame as "invalid buffer
-    // size". Worst case: 3s timeout, then we fall back to args dims.
+    // size". Worst case: `first_frame_timeout_ms` (default 3000ms) then we
+    // fall back to args dims (D-09).
+    let first_frame_timeout =
+        std::time::Duration::from_millis(args.first_frame_timeout_ms.unwrap_or(3000));
     let (actual_width, actual_height, first_frame) =
-        match tokio::time::timeout(std::time::Duration::from_secs(3), frame_rx.recv()).await {
+        match tokio::time::timeout(first_frame_timeout, frame_rx.recv()).await {
             Ok(Some(frame)) => {
                 let w = frame.width_px;
                 let h = frame.height_px;
@@ -608,7 +817,8 @@ pub async fn start_recording(
             _ => {
                 tracing::warn!(
                     target: "storycapture::recording",
-                    "no first frame within 3s; encoder using caller dims {}x{}",
+                    timeout_ms = first_frame_timeout.as_millis() as u64,
+                    "no first frame within budget; encoder using caller dims {}x{}",
                     args.width, args.height
                 );
                 (args.width, args.height, None)
@@ -619,13 +829,14 @@ pub async fn start_recording(
     if let Some(f) = first_frame {
         let _ = enc_tx.send(f).await;
     }
-    tokio::spawn(async move {
+    let frame_fwd_join = tokio::spawn(async move {
         while let Some(f) = frame_rx.recv().await {
             if enc_tx.send(f).await.is_err() {
                 break;
             }
         }
     });
+    spawn_guard.push(frame_fwd_join.abort_handle());
     let frame_rx = enc_rx;
 
     // Create mic input before spawning FFmpeg.
@@ -651,6 +862,8 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio negotiation failed; continuing video-only"
                 );
+                // D-13: surface to renderer so UI can show a toast + badge.
+                emit_audio_unavailable(&on_event, &e);
                 None
             }
             Err(e) => {
@@ -659,6 +872,7 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio negotiation join error; continuing video-only"
                 );
+                emit_audio_unavailable(&on_event, &e);
                 None
             }
         }
@@ -680,10 +894,16 @@ pub async fn start_recording(
     };
 
     // Phase 12 defaults per D-12-10; optional DTO fields override them (Phase 13 UI).
-    let output_res: OutputResolution = args
-        .output_resolution
-        .map(Into::into)
-        .unwrap_or(OutputResolution::P1080);
+    // Phase 18: when the caller did NOT pin an output resolution and the
+    // capture is ≥ 2× a 1080p canvas (Retina / HiDPI), prefer MatchSource so
+    // we don't throw away real pixel detail on the way to a 1920×1080 MP4.
+    let retina_default_match_source =
+        (actual_width as u64) * (actual_height as u64) >= (1920u64 * 2) * (1080u64 * 2);
+    let output_res: OutputResolution = match args.output_resolution {
+        Some(dto) => dto.into(),
+        None if retina_default_match_source => OutputResolution::MatchSource,
+        None => OutputResolution::P1080,
+    };
     let fit: FitMode = args.fit_mode.map(Into::into).unwrap_or(FitMode::Letterbox);
     let pad: PadColor = args.pad_color.map(Into::into).unwrap_or(PadColor::Black);
     let algo: ScaleAlgo = args.scale_algo.map(Into::into).unwrap_or(ScaleAlgo::Lanczos);
@@ -706,6 +926,10 @@ pub async fn start_recording(
     .with_scale_algo(algo)
     .with_quality_preset(qp)
     .force_ffmpeg_path();
+    // D-11: forward the optional keyframe knob from the IPC DTO into the
+    // encoder config so FFmpeg emits `-g <fps * interval>`. None keeps the
+    // default (no `-g`) so existing argv is byte-identical.
+    enc_cfg.keyframe_interval_sec = args.keyframe_interval_sec;
     if let (Some(f), Some(negotiated)) = (&audio_fifo, negotiated_audio.as_ref()) {
         let info = negotiated.info();
         enc_cfg = enc_cfg.with_audio(AudioInput {
@@ -717,7 +941,28 @@ pub async fn start_recording(
     }
     let (prog_tx, mut prog_rx) = mpsc::channel::<EncodeProgress>(32);
     let sidecar = TauriSidecar::new(app.clone());
-    let encode_join = EncodePipeline::start(enc_cfg, &sidecar, frame_rx, prog_tx)
+    // D-07: encoder stdin-write timeouts surface to renderer as FramesDropped.
+    let on_event_for_bp = on_event.clone();
+    let bp_cb: encoder::BackpressureCallback = Box::new(move |total, delta| {
+        if let Err(e) =
+            on_event_for_bp.send(RecordingEvent::FramesDropped { total, delta })
+        {
+            tracing::debug!(
+                target: "storycapture::recording",
+                error = %e,
+                total,
+                delta,
+                "FramesDropped (stdin backpressure) send failed"
+            );
+        }
+    });
+    let encode_join = EncodePipeline::start_with_backpressure(
+        enc_cfg,
+        &sidecar,
+        frame_rx,
+        prog_tx,
+        Some(bp_cb),
+    )
         .await
         .map_err(|e| {
             tracing::error!(
@@ -739,8 +984,33 @@ pub async fn start_recording(
         (&audio_fifo, negotiated_audio)
     {
         let fifo_path = f.path().to_path_buf();
-        // Small delay so FFmpeg can open the FIFO first.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // D-10: FIFO handshake. Poll metadata every 20ms; treat 3
+        // consecutive Ok results (60ms of stable existence) as "FFmpeg
+        // has opened the FIFO". Deadline at 2s.
+        let fifo_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut ok_ticks: u8 = 0;
+        loop {
+            match tokio::fs::metadata(&fifo_path).await {
+                Ok(_) => {
+                    ok_ticks += 1;
+                    if ok_ticks >= 3 {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    ok_ticks = 0;
+                }
+            }
+            if tokio::time::Instant::now() >= fifo_deadline {
+                tracing::error!(
+                    target: "storycapture::recording",
+                    path = %fifo_path.display(),
+                    "fifo handshake timed out after 2s"
+                );
+                return Err(AppError::FifoHandshakeTimeout);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
         // cpal work runs on a blocking thread.
         match tokio::task::spawn_blocking(move || {
             AudioCaptureStream::start_with_negotiated(negotiated, fifo_path)
@@ -756,7 +1026,7 @@ pub async fn start_recording(
                 );
                 // Poll for a mic disconnect and emit a warning event.
                 let flag = stream.degraded_flag();
-                tokio::spawn(async move {
+                let audio_degraded_join = tokio::spawn(async move {
                     let mut ticker = tokio::time::interval(std::time::Duration::from_millis(500));
                     loop {
                         ticker.tick().await;
@@ -773,6 +1043,7 @@ pub async fn start_recording(
                         }
                     }
                 });
+                spawn_guard.push(audio_degraded_join.abort_handle());
                 Some(stream)
             }
             Ok(Err(e)) => {
@@ -782,6 +1053,8 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio start failed; continuing video-only"
                 );
+                // D-13.
+                emit_audio_unavailable(&on_event, &e);
                 None
             }
             Err(e) => {
@@ -790,6 +1063,7 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio spawn_blocking join error; continuing video-only"
                 );
+                emit_audio_unavailable(&on_event, &e);
                 None
             }
         }
@@ -799,11 +1073,35 @@ pub async fn start_recording(
 
     // Progress fan-out to the renderer.
     let on_event_clone = on_event.clone();
-    tokio::spawn(async move {
+    let progress_fwd_join = tokio::spawn(async move {
         while let Some(p) = prog_rx.recv().await {
             let _ = on_event_clone.send(RecordingEvent::EncodeProgress { progress: p.into() });
         }
     });
+    spawn_guard.push(progress_fwd_join.abort_handle());
+
+    // D-15: 2s heartbeat ticker. Pushed into the abort guard so an
+    // early-failure before registry-insert cleans it up, AND stored on
+    // the handle so stop/drain abort it on session teardown.
+    let on_event_for_hb = on_event.clone();
+    let heartbeat_join = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(2));
+        // Skip the immediate first tick so seq=0 fires ~2s after start.
+        interval.tick().await;
+        let mut seq: u64 = 0;
+        loop {
+            interval.tick().await;
+            if on_event_for_hb
+                .send(RecordingEvent::Heartbeat { seq })
+                .is_err()
+            {
+                break;
+            }
+            seq = seq.wrapping_add(1);
+        }
+    });
+    let heartbeat_abort = heartbeat_join.abort_handle();
+    spawn_guard.push(heartbeat_abort.clone());
 
     registry().sessions.lock().insert(
         session_id.clone(),
@@ -813,8 +1111,13 @@ pub async fn start_recording(
             output_path,
             audio_stream: Arc::new(tokio::sync::Mutex::new(audio_stream)),
             audio_fifo,
+            heartbeat_abort: Some(heartbeat_abort),
         },
     );
+
+    // Success path: disarm guard so pushed tasks keep running for the
+    // lifetime of the session (stop_recording_inner tears them down).
+    spawn_guard.disarm();
 
     Ok(RecordingSessionId(session_id))
 }
@@ -879,6 +1182,13 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
 
     crate::commands::automation::resume_active_automation();
 
+    // D-15: stop the 2s heartbeat ticker before we begin teardown so the
+    // renderer doesn't observe a tick after it's already surfaced
+    // Completed/Failed.
+    if let Some(hb) = handle.heartbeat_abort.as_ref() {
+        hb.abort();
+    }
+
     // Drop the audio stream before waiting on the encoder.
     if let Some(audio) = handle.audio_stream.lock().await.take() {
         tracing::info!(target: "storycapture::recording", "stop_recording: dropping audio stream to flush tail");
@@ -906,7 +1216,24 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
             tracing::error!(target: "storycapture::recording", "encoder returned error: {}", e);
             AppError::Encoder(e.to_string())
         })?;
-    tracing::info!(target: "storycapture::recording", "stop_recording: encoder finalized output={:?}", result.output_path);
+    // Phase 18: surface observed bitrate so we can diagnose encoder under-shoot
+    // (VT quality-mode used to produce ~1 Mbps files against a 10 Mbps target).
+    // bytes*8 = bits; bits / ms = kbps.
+    let observed_kbps = if result.duration_ms > 0 {
+        result.bytes.saturating_mul(8) / result.duration_ms
+    } else {
+        0
+    };
+    tracing::info!(
+        target: "storycapture::recording",
+        "stop_recording: encoder finalized output={:?} bytes={} duration_ms={} frames={} dropped={} observed_kbps={}",
+        result.output_path,
+        result.bytes,
+        result.duration_ms,
+        result.frames_written,
+        result.frames_dropped,
+        observed_kbps
+    );
 
     Ok(result.into())
 }
@@ -996,4 +1323,256 @@ impl automation::RecorderHandle for TauriRecorderHandle {
 #[allow(dead_code)]
 fn _silence_unused_output_path(p: &PathBuf) -> &PathBuf {
     p
+}
+
+#[cfg(test)]
+mod double_start_guard_tests {
+    use super::{StartingGuard, GLOBAL_STARTING};
+    use std::sync::atomic::Ordering;
+
+    /// Serialize tests that poke `GLOBAL_STARTING` so they can't alias
+    /// each other under `--test-threads=N`. A static `Mutex` is the
+    /// simplest way to do this without cross-test plumbing.
+    fn lock() -> std::sync::MutexGuard<'static, ()> {
+        use std::sync::{Mutex, OnceLock};
+        static M: OnceLock<Mutex<()>> = OnceLock::new();
+        M.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    #[test]
+    fn cas_rejects_second_caller_and_guard_clears_on_drop() {
+        let _g = lock();
+        GLOBAL_STARTING.store(false, Ordering::Release);
+
+        // First caller claims the flag.
+        assert!(GLOBAL_STARTING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok());
+        let guard = StartingGuard;
+
+        // Second caller sees it set and fails the CAS.
+        assert!(GLOBAL_STARTING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err());
+
+        // Drop clears the flag for the next session.
+        drop(guard);
+        assert!(!GLOBAL_STARTING.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn guard_clears_on_panic() {
+        let _g = lock();
+        GLOBAL_STARTING.store(false, Ordering::Release);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert!(GLOBAL_STARTING
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok());
+            let _guard = StartingGuard;
+            panic!("synthetic");
+        }));
+        assert!(result.is_err());
+        assert!(
+            !GLOBAL_STARTING.load(Ordering::Acquire),
+            "panic must still clear GLOBAL_STARTING via Drop"
+        );
+    }
+}
+
+/// D-09 + D-10 covering the two pieces of start_recording that are
+/// testable without plumbing the whole Tauri runtime: the configurable
+/// first-frame timeout derivation and the FIFO metadata-poll handshake.
+#[cfg(test)]
+mod first_frame_and_fifo_tests {
+    use crate::error::AppError;
+    use std::time::Duration;
+
+    /// D-09: Some(500) yields ~500ms; None yields default 3000ms.
+    #[test]
+    fn first_frame_timeout_respects_arg_or_defaults_to_3000() {
+        let explicit: Option<u64> = Some(500);
+        let default: Option<u64> = None;
+        assert_eq!(
+            Duration::from_millis(explicit.unwrap_or(3000)),
+            Duration::from_millis(500)
+        );
+        assert_eq!(
+            Duration::from_millis(default.unwrap_or(3000)),
+            Duration::from_millis(3000)
+        );
+    }
+
+    /// D-09: Some(100) -> elapsed wait fires in ~100ms, NOT the 3000ms default.
+    #[tokio::test(flavor = "current_thread")]
+    async fn first_frame_timeout_fires_at_configured_budget() {
+        let budget = Duration::from_millis(Some(100u64).unwrap_or(3000));
+        let (_tx, mut rx) = tokio::sync::mpsc::channel::<u32>(1);
+        let start = tokio::time::Instant::now();
+        let out = tokio::time::timeout(budget, rx.recv()).await;
+        let elapsed = start.elapsed();
+        assert!(out.is_err(), "timeout must elapse when nothing arrives");
+        assert!(
+            elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(800),
+            "elapsed {:?} must be near 100ms, not 3000ms",
+            elapsed
+        );
+    }
+
+    /// D-10: model the FIFO handshake loop. Feed a sequence of metadata
+    /// results (simulating FFmpeg not-yet-open → open) and assert the
+    /// loop breaks after 3 consecutive Ok, and NOT before.
+    #[test]
+    fn fifo_handshake_requires_3_consecutive_ok() {
+        // Simulate metadata() results as a scripted sequence.
+        let script: Vec<bool> = vec![false, false, true, false, true, true, true];
+        let mut ok_ticks: u8 = 0;
+        let mut broke_at: Option<usize> = None;
+        for (i, ok) in script.iter().enumerate() {
+            if *ok {
+                ok_ticks += 1;
+                if ok_ticks >= 3 {
+                    broke_at = Some(i);
+                    break;
+                }
+            } else {
+                ok_ticks = 0;
+            }
+        }
+        // First streak of 3 consecutive Ok lands at index 6 (true,true,true).
+        assert_eq!(broke_at, Some(6));
+    }
+
+    /// D-15: the heartbeat loop emits monotonically-increasing seq values
+    /// on each tick and breaks cleanly when the sink reports closed. This
+    /// mirrors the loop body spawned inside `start_recording`.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn heartbeat_loop_emits_monotonic_seq_and_breaks_on_closed_sink() {
+        use std::sync::{Arc, Mutex};
+
+        let emitted: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+        let emitted_clone = Arc::clone(&emitted);
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let closed_clone = Arc::clone(&closed);
+
+        let send = move |seq: u64| -> std::result::Result<(), ()> {
+            if closed_clone.load(std::sync::atomic::Ordering::Acquire) {
+                return Err(());
+            }
+            emitted_clone.lock().unwrap().push(seq);
+            Ok(())
+        };
+
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(2));
+            interval.tick().await; // skip immediate tick
+            let mut seq: u64 = 0;
+            loop {
+                interval.tick().await;
+                if send(seq).is_err() {
+                    break;
+                }
+                seq = seq.wrapping_add(1);
+            }
+        });
+
+        // Drive 3 emissions. The first `interval.tick()` after the skip
+        // is immediate on the freshly-started interval, so we need a few
+        // extra yields + advances to land all three.
+        tokio::task::yield_now().await;
+        for _ in 0..4 {
+            tokio::time::advance(Duration::from_millis(2_050)).await;
+            for _ in 0..4 {
+                tokio::task::yield_now().await;
+            }
+        }
+        // Close the sink; the next tick will observe Err and break.
+        closed.store(true, std::sync::atomic::Ordering::Release);
+        tokio::time::advance(Duration::from_millis(2_100)).await;
+        tokio::task::yield_now().await;
+
+        handle.abort();
+        let _ = handle.await;
+
+        let got = emitted.lock().unwrap().clone();
+        assert!(
+            got.len() >= 3,
+            "expected at least 3 emissions, got {got:?}"
+        );
+        for pair in got.windows(2) {
+            assert_eq!(
+                pair[1],
+                pair[0] + 1,
+                "seq must increment monotonically by 1: {got:?}"
+            );
+        }
+        assert_eq!(got[0], 0, "seq must start at 0: {got:?}");
+    }
+
+    /// D-15: aborting the spawn handle stops further emissions
+    /// immediately, matching what `stop_recording_inner` / `drain_one` do.
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn heartbeat_abort_handle_stops_emissions() {
+        use std::sync::{Arc, Mutex};
+        let emitted: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+        let emitted_clone = Arc::clone(&emitted);
+
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(2));
+            interval.tick().await;
+            let mut seq: u64 = 0;
+            loop {
+                interval.tick().await;
+                emitted_clone.lock().unwrap().push(seq);
+                seq = seq.wrapping_add(1);
+            }
+        });
+        let abort = handle.abort_handle();
+
+        for _ in 0..2 {
+            tokio::time::advance(Duration::from_millis(2_050)).await;
+            tokio::task::yield_now().await;
+            tokio::task::yield_now().await;
+        }
+        abort.abort();
+        tokio::time::advance(Duration::from_millis(10_000)).await;
+        tokio::task::yield_now().await;
+
+        let got = emitted.lock().unwrap().clone();
+        assert!(got.len() <= 2, "abort must stop future ticks (got {got:?})");
+    }
+
+    /// D-10: deadline exceeded returns FifoHandshakeTimeout. Uses a
+    /// compressed deadline (200ms) so the test runs fast — the real
+    /// budget in start_recording is 2s.
+    #[tokio::test(flavor = "current_thread")]
+    async fn fifo_handshake_deadline_returns_timeout_error() {
+        let fifo_path = std::path::PathBuf::from(
+            "/tmp/storycapture-nonexistent-fifo-for-handshake-test-xyz",
+        );
+        let _ = std::fs::remove_file(&fifo_path);
+
+        let fifo_deadline = tokio::time::Instant::now() + Duration::from_millis(200);
+        let mut ok_ticks: u8 = 0;
+        let result: Result<(), AppError> = loop {
+            match tokio::fs::metadata(&fifo_path).await {
+                Ok(_) => {
+                    ok_ticks += 1;
+                    if ok_ticks >= 3 {
+                        break Ok(());
+                    }
+                }
+                Err(_) => {
+                    ok_ticks = 0;
+                }
+            }
+            if tokio::time::Instant::now() >= fifo_deadline {
+                break Err(AppError::FifoHandshakeTimeout);
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        };
+        assert!(matches!(result, Err(AppError::FifoHandshakeTimeout)));
+    }
 }

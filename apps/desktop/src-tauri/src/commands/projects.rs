@@ -13,9 +13,10 @@ use crate::error::AppError;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use storage::StorageError;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 /// DTO mirror of `storage::Project`. Serializes `Uuid` as a string and
 /// `PathBuf` as a string so the renderer sees plain JSON. `last_opened_at`
@@ -161,6 +162,91 @@ pub fn open_project(
     })
 }
 
+/// File-system metadata for a single `.mp4` under `<project>/exports/`.
+/// Dimensions/duration are left `None` in this first pass — the frontend
+/// falls back to hardcoded strings when absent.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct RecordingInfoDto {
+    pub path: String,
+    pub captured_at: i64,
+    pub duration_ms: Option<u64>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+/// Pure scan of a directory: enumerates `*.mp4` (case-insensitive), pulls
+/// `modified` (then `created`, then now) as unix millis, sorts newest-first.
+/// Non-existent dirs and non-mp4 entries yield an empty/filtered result.
+fn scan_exports_dir(dir: &Path) -> Vec<RecordingInfoDto> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<RecordingInfoDto> = entries
+        .filter_map(|e| e.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_file() {
+                return None;
+            }
+            let ext_ok = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("mp4"))
+                .unwrap_or(false);
+            if !ext_ok {
+                return None;
+            }
+            let meta = entry.metadata().ok()?;
+            let ts = meta
+                .modified()
+                .or_else(|_| meta.created())
+                .unwrap_or_else(|_| SystemTime::now());
+            let captured_at = ts
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            Some(RecordingInfoDto {
+                path: path.to_string_lossy().into_owned(),
+                captured_at,
+                duration_ms: None,
+                width: None,
+                height: None,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b.captured_at.cmp(&a.captured_at));
+    out
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_project_recordings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    args: ProjectIdArg,
+) -> Result<Vec<RecordingInfoDto>, AppError> {
+    let id = uuid::Uuid::parse_str(&args.id)
+        .map_err(|e| AppError::InvalidArgument(format!("invalid project id: {e}")))?;
+
+    let db = open_app_db(&state)?;
+    let row = db
+        .list_projects()
+        .map_err(map_storage_err)?
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("project {id}")))?;
+
+    let exports_dir = row.folder_path.join("exports");
+    if !exports_dir.exists() {
+        return Ok(Vec::new());
+    }
+    // Grant the renderer's asset:// protocol access to this project's exports
+    // so <video src={convertFileSrc(path)} /> can resolve. Idempotent on Tauri's
+    // Scope; safe to call on every listing.
+    app.asset_protocol_scope().allow_directory(&exports_dir, false).ok();
+    Ok(scan_exports_dir(&exports_dir))
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn remove_project(state: State<'_, AppState>, args: ProjectIdArg) -> Result<(), AppError> {
@@ -168,4 +254,48 @@ pub fn remove_project(state: State<'_, AppState>, args: ProjectIdArg) -> Result<
         .map_err(|e| AppError::InvalidArgument(format!("invalid project id: {e}")))?;
     let mut db = open_app_db(&state)?;
     db.remove_project(id).map_err(map_storage_err)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    #[test]
+    fn scan_missing_dir_returns_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("exports");
+        assert!(scan_exports_dir(&missing).is_empty());
+    }
+
+    #[test]
+    fn scan_empty_dir_returns_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(scan_exports_dir(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn scan_filters_non_mp4_and_sorts_newest_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let older = dir.join("older.mp4");
+        fs::write(&older, b"x").unwrap();
+        // Ensure a detectable mtime difference across filesystems.
+        sleep(Duration::from_millis(20));
+        let newer = dir.join("newer.MP4");
+        fs::write(&newer, b"x").unwrap();
+        fs::write(dir.join("readme.txt"), b"x").unwrap();
+        fs::write(dir.join("frame.png"), b"x").unwrap();
+
+        let got = scan_exports_dir(dir);
+        assert_eq!(got.len(), 2, "only .mp4 files should appear");
+        assert!(got[0].path.ends_with("newer.MP4"), "newest-first");
+        assert!(got[1].path.ends_with("older.mp4"));
+        assert!(got[0].captured_at >= got[1].captured_at);
+        assert!(got[0].duration_ms.is_none());
+        assert!(got[0].width.is_none());
+        assert!(got[0].height.is_none());
+    }
 }

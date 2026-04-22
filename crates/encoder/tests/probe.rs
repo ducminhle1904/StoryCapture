@@ -4,37 +4,10 @@
 
 #![cfg(feature = "real-ffmpeg")]
 
+include!("fixtures/ffmpeg_env.rs");
+
 use encoder::{probe_encoders, HardwareEncoder, LocalFfmpegCommand};
 use std::path::PathBuf;
-
-fn host_triple() -> &'static str {
-    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        "aarch64-apple-darwin"
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        "x86_64-apple-darwin"
-    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        "x86_64-pc-windows-msvc"
-    } else {
-        "unknown"
-    }
-}
-
-fn ffmpeg_path() -> Option<PathBuf> {
-    let triple = host_triple();
-    let ws_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf())?;
-    let ext = if cfg!(windows) { ".exe" } else { "" };
-    let p = ws_root
-        .join("scripts/build-ffmpeg/out")
-        .join(format!("ffmpeg-{triple}{ext}"));
-    if p.exists() {
-        Some(p)
-    } else {
-        None
-    }
-}
 
 #[tokio::test]
 async fn probe_returns_nonempty() {
@@ -61,7 +34,11 @@ async fn probe_picks_videotoolbox_on_mac() {
     };
     let cmd = LocalFfmpegCommand::new(path);
     let probe = probe_encoders(&cmd).await.expect("probe");
-    if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
+    // Phase 18: HEVC is now preferred on macOS when present; H.264 wins only
+    // if HEVC is absent.
+    if probe.available.contains(&HardwareEncoder::VideoToolboxHevc) {
+        assert_eq!(probe.preferred, HardwareEncoder::VideoToolboxHevc);
+    } else if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
         assert_eq!(probe.preferred, HardwareEncoder::VideoToolboxH264);
     }
 }

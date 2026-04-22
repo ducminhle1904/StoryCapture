@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::Mutex;
@@ -141,73 +141,12 @@ pub async fn launch_automation(
             tracing::error!(target: "storycapture::automation", error = %e, "shell.sidecar resolve failed");
             AppError::Automation(format!("sidecar resolve: {e}"))
         })?;
-    // Re-spawn the resolved binary through tokio so we own stdio.
     drop(sidecar);
-    let sidecar_path = match crate::commands::encode::resolve_sidecar_path("playwright-sidecar") {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!(target: "storycapture::automation", "playwright sidecar path unresolved ({e}); falling back to PATH lookup");
-            std::path::PathBuf::from("playwright-sidecar")
-        }
-    };
-    tracing::info!(
-        target: "storycapture::automation",
-        sidecar_path = %sidecar_path.display(),
-        "spawning playwright sidecar"
-    );
-    // Point the sidecar at the bundled modules dir explicitly.
-    let modules_dir = app
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|r| r.join("binaries").join("playwright-sidecar-modules"));
-    let mut tokio_cmd = TokioCommand::new(&sidecar_path);
-    tokio_cmd
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    if let Some(dir) = modules_dir.as_ref() {
-        tracing::info!(
-            target: "storycapture::automation",
-            modules_dir = %dir.display(),
-            "setting STORYCAPTURE_SIDECAR_MODULES for sidecar"
-        );
-        tokio_cmd.env("STORYCAPTURE_SIDECAR_MODULES", dir);
-    }
-    let playwright = match tokio_cmd.spawn() {
-        Ok(mut child) => {
-            if let Some(stderr) = child.stderr.take() {
-                tokio::spawn(async move {
-                    use tokio::io::{AsyncBufReadExt, BufReader};
-                    let mut lines = BufReader::new(stderr).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        tracing::warn!(target: "storycapture::automation", sidecar_stderr = %line);
-                    }
-                });
-            }
-            match PlaywrightSidecarDriver::from_child(child) {
-                Ok(d) => Some(d),
-                Err(e) => {
-                    tracing::warn!(target: "storycapture::automation", "playwright sidecar wrap failed: {e}");
-                    None
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!(target: "storycapture::automation", "playwright sidecar spawn failed (binary not built?): {e}");
-            None
-        }
-    };
-
-    // Playwright is the only automation driver.
-    let playwright = match playwright {
-        Some(pw) => pw,
-        None => {
-            return Err(AppError::Automation(
-                "Playwright sidecar failed to spawn — check that Node.js is installed and `scripts/playwright-sidecar` has `pnpm install` run".into(),
-            ));
-        }
-    };
+    let playwright = spawn_playwright_sidecar(&app).await.map_err(|e| {
+        AppError::Automation(format!(
+            "Playwright sidecar failed to spawn — check Node.js install and `scripts/playwright-sidecar` pnpm install. ({e})"
+        ))
+    })?;
     // Share the driver with the pid probe task.
     let shared_pw: Arc<Mutex<PlaywrightSidecarDriver>> = Arc::new(Mutex::new(playwright));
     // publish to AppState so the picker_* commands can issue
@@ -217,6 +156,12 @@ pub async fn launch_automation(
         let mut slot = state.playwright_driver.lock().await;
         *slot = Some(shared_pw.clone());
         tracing::info!(target: "storycapture::automation", "published shared Playwright driver to AppState (picker enabled)");
+    }
+    // Phase 09-02 — publish to preview_driver so `start_preview_stream`
+    // can attach the CDP screencast to the same sidecar instance.
+    {
+        let mut slot = state.preview_driver.lock().await;
+        *slot = Some(shared_pw.clone());
     }
     // wire the id-absent JSON-RPC notification forwarder
     // that bridges the sidecar's broadcast channel to a Tauri event
@@ -356,6 +301,14 @@ pub async fn launch_automation(
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
     playwright_first_paint_stash().set(false);
+    // Phase 09-02 — preview teardown precedes automation teardown so the
+    // pump task's watch-channel exits cleanly. Preview failure here does
+    // not propagate (intentional isolation, CLAUDE.md).
+    stop_preview_stream_inner(&state).await;
+    {
+        let mut slot = state.preview_driver.lock().await;
+        *slot = None;
+    }
     // drop the shared driver handle so the picker disables
     // until the next launch.
     {
@@ -417,6 +370,359 @@ pub(crate) fn resume_active_automation() {
     if let Some(control) = active_run_control().lock().clone() {
         control.resume();
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 09-02 — live preview pump (Rust → `preview://frame` event)
+// ──────────────────────────────────────────────────────────────────────
+
+/// Start the CDP screencast and pump decoded frames into a Tauri event.
+///
+/// Returns `UnavailableOnBackend` when no Playwright driver is registered
+/// with `AppState::preview_driver` — the frontend uses this to fall back
+/// to the static preview stage. A second invocation aborts any prior
+/// pump task so frames are not double-emitted.
+#[tauri::command]
+#[specta::specta]
+pub async fn start_preview_stream(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let shared = {
+        let guard = state.preview_driver.lock().await;
+        guard.clone().ok_or_else(|| {
+            AppError::UnavailableOnBackend("no active Playwright session".into())
+        })?
+    };
+
+    {
+        let driver = shared.lock().await;
+        driver
+            .call_preview_start()
+            .await
+            .map_err(|e| AppError::Automation(e.to_string()))?;
+    }
+
+    if let Some(prev) = state.preview_pump.lock().await.take() {
+        prev.abort();
+    }
+
+    let mut rx = { shared.lock().await.subscribe_preview() };
+    let app_for_emit = app.clone();
+    // Phase 09-03 — drop-counter + periodic window log. watch::changed()
+    // already coalesces multiple sends into one wake, so drop_count here
+    // tracks emit failures, not sidecar-level backpressure (that lives on
+    // sidecar state.previewDropCount). Env-tunable window length for tests.
+    let log_interval = std::time::Duration::from_secs(
+        std::env::var("PREVIEW_PUMP_LOG_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30),
+    );
+    let handle = tokio::spawn(async move {
+        let mut drop_count: u64 = 0;
+        let mut last_log = tokio::time::Instant::now();
+        while rx.changed().await.is_ok() {
+            let snapshot = rx.borrow_and_update().clone();
+            if let Some(frame) = snapshot {
+                if let Err(err) = app_for_emit.emit("preview://frame", &frame) {
+                    tracing::warn!(target: "storycapture::preview", error = %err, "preview emit failed");
+                    drop_count += 1;
+                }
+            }
+            if last_log.elapsed() >= log_interval {
+                if drop_count > 0 {
+                    tracing::warn!(
+                        target: "storycapture::preview",
+                        dropped = drop_count,
+                        "preview frames dropped in window"
+                    );
+                }
+                drop_count = 0;
+                last_log = tokio::time::Instant::now();
+            }
+        }
+        tracing::debug!(target: "storycapture::preview", "preview pump exited (sender dropped)");
+    });
+    *state.preview_pump.lock().await = Some(handle);
+    Ok(())
+}
+
+/// Stop the preview pump and instruct the sidecar to end the CDP
+/// screencast. Idempotent — a second call without an active stream is a
+/// no-op. Preview-stop errors are swallowed (CLAUDE.md: intentional
+/// isolation — preview lifecycle MUST NOT cascade into recording).
+#[tauri::command]
+#[specta::specta]
+pub async fn stop_preview_stream(state: State<'_, AppState>) -> Result<(), AppError> {
+    stop_preview_stream_inner(&state).await;
+    Ok(())
+}
+
+/// Shared teardown used by both the Tauri command and the
+/// recording-lifecycle hook so preview always stops before automation.
+pub(crate) async fn stop_preview_stream_inner(state: &AppState) {
+    if let Some(h) = state.preview_pump.lock().await.take() {
+        h.abort();
+    }
+    let shared_opt = state.preview_driver.lock().await.clone();
+    if let Some(shared) = shared_opt {
+        let driver = shared.lock().await;
+        let _ = driver.call_preview_stop().await;
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 09-04 — author-time preview sessions (PHASE-9.8 / PHASE-9.9)
+//
+// Separate Playwright sidecar per editor-surface preview streamId. Never
+// reuses the recording driver (D-13). `attach_author_driver(streamId)`
+// hands back the driver handle so Phase 10's simulator can run DSL verbs
+// against the same session without a third Chromium instance.
+// ──────────────────────────────────────────────────────────────────────
+
+async fn author_driver(
+    state: &AppState,
+    stream_id: &str,
+) -> Result<Arc<Mutex<PlaywrightSidecarDriver>>, AppError> {
+    let sessions = state.author_preview_sessions.lock().await;
+    sessions
+        .get(stream_id)
+        .map(|s| s.driver.clone())
+        .ok_or_else(|| AppError::InvalidArgument(format!("unknown author stream: {stream_id}")))
+}
+
+/// Spawn a Playwright sidecar child process and wrap it as a driver. Shared
+/// by `launch_automation` and `start_author_preview`.
+async fn spawn_playwright_sidecar(app: &AppHandle) -> Result<PlaywrightSidecarDriver, AppError> {
+    let sidecar_path = match crate::commands::encode::resolve_sidecar_path("playwright-sidecar") {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(target: "storycapture::automation", "playwright sidecar path unresolved ({e}); falling back to PATH lookup");
+            std::path::PathBuf::from("playwright-sidecar")
+        }
+    };
+    tracing::info!(
+        target: "storycapture::automation",
+        sidecar_path = %sidecar_path.display(),
+        "spawning playwright sidecar"
+    );
+    let modules_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|r| r.join("binaries").join("playwright-sidecar-modules"));
+    let mut tokio_cmd = TokioCommand::new(&sidecar_path);
+    tokio_cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(dir) = modules_dir.as_ref() {
+        tracing::info!(
+            target: "storycapture::automation",
+            modules_dir = %dir.display(),
+            "setting STORYCAPTURE_SIDECAR_MODULES for sidecar"
+        );
+        tokio_cmd.env("STORYCAPTURE_SIDECAR_MODULES", dir);
+    }
+    let mut child = tokio_cmd
+        .spawn()
+        .map_err(|e| AppError::Automation(format!("sidecar spawn: {e}")))?;
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::warn!(target: "storycapture::automation", sidecar_stderr = %line);
+            }
+        });
+    }
+    PlaywrightSidecarDriver::from_child(child)
+        .map_err(|e| AppError::Automation(format!("sidecar wrap: {e}")))
+}
+
+/// Arguments for the editor-surface viewport switcher.
+#[derive(Debug, Deserialize, specta::Type)]
+pub struct AuthorViewportArgs {
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Phase 09-04 — spawn an ephemeral author-time Playwright session and
+/// start its CDP screencast. Returns the generated streamId; frontend
+/// binds `<LivePreview streamId=... />` to the matching `preview://frame`
+/// events.
+///
+/// `initial_url` is usually `story.meta.app`; `None` launches on
+/// about:blank and caller-side state stays happy for missing meta.app.
+#[tauri::command]
+#[specta::specta]
+pub async fn start_author_preview(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    initial_url: Option<String>,
+    viewport_width: Option<u32>,
+    viewport_height: Option<u32>,
+) -> Result<String, AppError> {
+    let stream_id = format!("author-{}", uuid::Uuid::new_v4());
+    let driver_arc = Arc::new(Mutex::new(spawn_playwright_sidecar(&app).await?));
+
+    // Spawn + load URL + start screencast under this streamId.
+    {
+        let d = driver_arc.lock().await;
+        let vp = match (viewport_width, viewport_height) {
+            (Some(w), Some(h)) if w > 0 && h > 0 => Some((w, h)),
+            _ => Some((1280u32, 800u32)),
+        };
+        d.call_author_launch(&stream_id, initial_url.as_deref(), vp)
+            .await
+            .map_err(|e| AppError::Automation(format!("author.launch: {e}")))?;
+        d.call_preview_start_stream(&stream_id)
+            .await
+            .map_err(|e| AppError::Automation(format!("startPreviewStream: {e}")))?;
+    }
+
+    // Each author session owns its own sidecar + watch channel, so every
+    // frame delivered here already belongs to this stream. Emit on a
+    // per-stream Tauri event so the webview can listen without payload-side
+    // demuxing — one channel per session, one listener per component.
+    let mut rx = { driver_arc.lock().await.subscribe_preview() };
+    let app_for_emit = app.clone();
+    let event_name = format!("preview://frame/{stream_id}");
+    let stream_id_for_log = stream_id.clone();
+    let pump = tokio::spawn(async move {
+        while rx.changed().await.is_ok() {
+            let snapshot = rx.borrow_and_update().clone();
+            if let Some(frame) = snapshot {
+                if let Err(err) = app_for_emit.emit(&event_name, &frame) {
+                    tracing::warn!(
+                        target: "storycapture::preview",
+                        error = %err,
+                        stream_id = %stream_id_for_log,
+                        "author preview emit failed"
+                    );
+                }
+            }
+        }
+    });
+
+    let mut sessions = state.author_preview_sessions.lock().await;
+    sessions.insert(
+        stream_id.clone(),
+        crate::state::AuthorPreviewSession {
+            driver: driver_arc,
+            pump: Some(pump),
+        },
+    );
+    Ok(stream_id)
+}
+
+/// Teardown an ephemeral author-time session. Idempotent.
+#[tauri::command]
+#[specta::specta]
+pub async fn stop_author_preview(
+    state: State<'_, AppState>,
+    stream_id: String,
+) -> Result<(), AppError> {
+    let session_opt = {
+        let mut sessions = state.author_preview_sessions.lock().await;
+        sessions.remove(&stream_id)
+    };
+    if let Some(mut session) = session_opt {
+        if let Some(pump) = session.pump.take() {
+            pump.abort();
+        }
+        let driver = session.driver.lock().await;
+        let _ = driver.call_preview_stop_stream(&stream_id).await;
+        let _ = driver.call_author_close(&stream_id).await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn pause_author_preview(
+    state: State<'_, AppState>,
+    stream_id: String,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .call_pause_stream(&stream_id)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn resume_author_preview(
+    state: State<'_, AppState>,
+    stream_id: String,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .call_resume_stream(&stream_id)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_author_preview_viewport(
+    state: State<'_, AppState>,
+    stream_id: String,
+    args: AuthorViewportArgs,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .call_author_set_viewport(&stream_id, args.width, args.height)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
+/// Navigate a live author-preview session to a new URL without relaunch.
+/// Caller must pass an http(s) URL; the sidecar re-validates and rejects
+/// otherwise.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_author_preview_url(
+    state: State<'_, AppState>,
+    stream_id: String,
+    url: String,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .call_author_goto(&stream_id, &url)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
+/// Readiness probe: confirms streamId is registered + sidecar is alive.
+#[tauri::command]
+#[specta::specta]
+pub async fn attach_author_driver(
+    state: State<'_, AppState>,
+    stream_id: String,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .lock()
+        .await
+        .pick_element_is_active()
+        .await
+        .map_err(|e| AppError::Automation(format!("attach_author_driver probe: {e}")))?;
+    Ok(())
 }
 
 // ──────────────────────────────────────────────────────────────────────

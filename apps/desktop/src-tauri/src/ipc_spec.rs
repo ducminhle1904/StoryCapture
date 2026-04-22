@@ -48,6 +48,17 @@ pub fn builder() -> Builder<Wry> {
             automation::launch_automation,
             automation::resolve_playwright_target,
             automation::is_stage_manager_enabled,
+            // Phase 09-02 — live preview pump (Rust → `preview://frame`).
+            automation::start_preview_stream,
+            automation::stop_preview_stream,
+            // Phase 09-04 — author-time preview (PHASE-9.8 / PHASE-9.9).
+            automation::start_author_preview,
+            automation::stop_author_preview,
+            automation::pause_author_preview,
+            automation::resume_author_preview,
+            automation::set_author_preview_viewport,
+            automation::set_author_preview_url,
+            automation::attach_author_driver,
             // element picker.
             picker::picker_start,
             picker::picker_cancel,
@@ -61,6 +72,7 @@ pub fn builder() -> Builder<Wry> {
             author_snapshot::author_snapshot_validate,
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
+            app_settings::set_live_preview_enabled,
             // Phase 6 plan 01 — mic audio enumeration.
             audio::list_audio_inputs,
             capture::list_displays,
@@ -81,6 +93,7 @@ pub fn builder() -> Builder<Wry> {
             region_overlay::open_region_overlay,
             region_overlay::close_region_overlay,
             encode::probe_hw_encoders,
+            encode::refresh_hw_encoders,
             encode::start_recording,
             encode::pause_recording,
             encode::resume_recording,
@@ -90,6 +103,7 @@ pub fn builder() -> Builder<Wry> {
             projects::create_project,
             projects::open_project,
             projects::remove_project,
+            projects::list_project_recordings,
             render::render_enqueue,
             render::render_cancel,
             render::render_list_active,
@@ -152,6 +166,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<system::AppInfo>()
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<automation::ResolvedPlaywrightTarget>()
+        .typ::<automation::AuthorViewportArgs>()
         .typ::<picker::PickElementResponseDto>()
         // author-time validator DTOs.
         .typ::<author_snapshot::AuthorSnapshotEntry>()
@@ -198,6 +213,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<projects::ProjectFolderInfoDto>()
         .typ::<projects::CreateProjectArgs>()
         .typ::<projects::ProjectIdArg>()
+        .typ::<projects::RecordingInfoDto>()
         // Plan 02-10 (render queue)
         .typ::<render::NewRenderJobDto>()
         .typ::<render::RenderJobDto>()

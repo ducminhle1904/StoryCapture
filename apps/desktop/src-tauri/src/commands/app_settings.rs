@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
     /// Absolute path to a Chromium-family browser executable. When unset,
@@ -25,21 +25,45 @@ pub struct AppSettings {
     /// get_capture_target / set_capture_target in commands/capture.rs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capture_target: Option<capture::CaptureTarget>,
+    /// Phase 09-02 — persisted Options toggle for the in-recorder live
+    /// preview pane. Default `true` (D-11).
+    pub live_preview_enabled: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            browser_executable: None,
+            capture_target: None,
+            live_preview_enabled: true,
+        }
+    }
 }
 
 // Specta-visible DTO exposed to the frontend — mirrors the persisted
 // fields that the frontend cares about (the capture_target is exposed
 // through dedicated get/set commands).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct AppSettingsDto {
     pub browser_executable: Option<String>,
+    pub live_preview_enabled: bool,
+}
+
+impl Default for AppSettingsDto {
+    fn default() -> Self {
+        Self {
+            browser_executable: None,
+            live_preview_enabled: true,
+        }
+    }
 }
 
 impl From<&AppSettings> for AppSettingsDto {
     fn from(s: &AppSettings) -> Self {
         Self {
             browser_executable: s.browser_executable.clone(),
+            live_preview_enabled: s.live_preview_enabled,
         }
     }
 }
@@ -85,6 +109,18 @@ pub async fn set_browser_executable(
 ) -> Result<AppSettingsDto, AppError> {
     let mut s = load(&app);
     s.browser_executable = path.filter(|p| !p.is_empty());
+    save(&app, &s)?;
+    Ok((&s).into())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_live_preview_enabled(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<AppSettingsDto, AppError> {
+    let mut s = load(&app);
+    s.live_preview_enabled = enabled;
     save(&app, &s)?;
     Ok((&s).into())
 }

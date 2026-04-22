@@ -6,6 +6,36 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 /**
+ * Mirror of `automation::BoundingBox` (Phase 10-01 — carried on StepFrame).
+ */
+export interface BoundingBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Resolve outcome for a simulator frame (D-07). Gates the UI's
+ * "Promote to fallback" button: visible only for `"fuzzy"`.
+ */
+export type MatchKind = "primary" | "fuzzy" | "none";
+
+/**
+ * Mirror of `automation::StepFrame` — per-step capture emitted when the
+ * simulator runs with `capture_frames=true`.
+ */
+export interface StepFrame {
+  ordinal: number;
+  screenshot_path: string | null;
+  cursor_xy: [number, number];
+  matched_selector: string | null;
+  matched_bbox: BoundingBox | null;
+  match_kind: MatchKind;
+  duration_ms: number;
+}
+
+/**
  * Mirror of `automation::ExecutorEvent` (Rust uses `#[serde(tag="type",
  * rename_all="snake_case")]`, so JSON looks like `{ type: "step_started", ... }`).
  */
@@ -16,7 +46,9 @@ export type ExecutorEvent =
   | { type: "step_attempt"; step_ordinal: number; attempt: unknown }
   | { type: "step_succeeded"; ordinal: number; duration_ms: number; cursor_x: number; cursor_y: number }
   | { type: "step_failed"; ordinal: number; attempts: unknown[]; error_message: string; screenshot_path?: string }
-  | { type: "story_ended"; status: { total_steps: number; succeeded: number; failed: number; duration_ms: number } };
+  | { type: "story_ended"; status: { total_steps: number; succeeded: number; failed: number; duration_ms: number } }
+  | { type: "run_paused"; ordinal: number }
+  | { type: "step_frame_captured"; ordinal: number; frame: StepFrame };
 
 export interface LaunchAutomationArgs {
   storySource: string;
@@ -36,9 +68,21 @@ export interface LaunchAutomationArgs {
   recordingSessionId?: string;
 }
 
+/**
+ * Shape returned to the caller when they need a handle to the live
+ * automation Channel — e.g., to null `onmessage` during React unmount
+ * cleanup (D-14) so no stale event dispatch runs against an unmounted
+ * component tree.
+ */
+export interface AutomationChannelHandle {
+  /** Null this to stop forwarding events to `onEvent`. */
+  onmessage: ((e: { json: string }) => void) | null;
+}
+
 export async function launchAutomation(
   args: LaunchAutomationArgs,
   onEvent: (e: ExecutorEvent) => void,
+  onChannelReady?: (channel: AutomationChannelHandle) => void,
 ): Promise<void> {
   const channel = new Channel<{ json: string }>();
   channel.onmessage = (wrapper) => {
@@ -49,6 +93,7 @@ export async function launchAutomation(
       // ignore malformed events
     }
   };
+  onChannelReady?.(channel);
   await invoke("launch_automation", {
     storySource: args.storySource,
     projectFolder: args.projectFolder,

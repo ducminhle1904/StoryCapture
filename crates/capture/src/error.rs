@@ -37,4 +37,21 @@ pub enum CaptureError {
     /// may have closed between enumeration and capture-start.
     #[error("window not found (id={0})")]
     WindowNotFound(u64),
+
+    /// Backend `stop()` exceeded its bounded deadline. Caller should log
+    /// and proceed with teardown rather than await indefinitely (D-03).
+    #[error("capture stop timed out after {timeout_ms}ms")]
+    StopTimedOut { timeout_ms: u64 },
+
+    /// Target HWND no longer refers to a live window. Emitted by the WGC
+    /// backend before calling `Window::from_raw_hwnd` so a stale pid→HWND
+    /// resolution fails fast and the orchestrator can fall back to xcap
+    /// instead of tripping undefined behaviour inside WGC (D-05).
+    #[error("window no longer exists (hwnd={hwnd})")]
+    WindowGone { hwnd: u64 },
+
+    /// The requested [`PixelFormat`](crate::frame::PixelFormat) is not supported
+    /// by the active backend. Fails loudly instead of being silently coerced.
+    #[error("unsupported pixel format: {format:?}")]
+    UnsupportedPixelFormat { format: crate::frame::PixelFormat },
 }

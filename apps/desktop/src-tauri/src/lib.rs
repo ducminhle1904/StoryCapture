@@ -169,8 +169,35 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(invoke_handler)
-        .run(tauri::generate_context!())
-        .expect("tauri::run failed");
+        .build(tauri::generate_context!())
+        .expect("tauri::run failed")
+        .run(|app_handle, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                drain_author_preview_sessions(app_handle);
+                crate::commands::encode::drain_recording_sessions(app_handle);
+            }
+        });
+}
+
+/// Best-effort synchronous teardown of author-preview sessions at app exit.
+/// Aborts pump tasks and drops the driver Arcs so the sidecar children
+/// close stdin → Chromium exits cleanly. Tolerates mid-flight locks by
+/// giving up after `try_lock` — the OS will reap leaked processes.
+fn drain_author_preview_sessions(app_handle: &AppHandle) {
+    let Some(state) = app_handle.try_state::<crate::state::AppState>() else {
+        return;
+    };
+    let Ok(mut sessions) = state.author_preview_sessions.try_lock() else {
+        return;
+    };
+    for (_stream_id, mut session) in sessions.drain() {
+        if let Some(pump) = session.pump.take() {
+            pump.abort();
+        }
+    }
 }
 
 /// Set the macOS Dock icon at runtime from the compiled-in PNG.

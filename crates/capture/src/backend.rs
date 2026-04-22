@@ -58,6 +58,18 @@ impl CaptureConfig {
             _ => None,
         }
     }
+
+    /// Rejects pixel formats no backend can honor yet. Call from each
+    /// backend's `start()` so the contract failure is identical regardless
+    /// of platform.
+    pub fn require_supported_pixel_format(&self) -> Result<(), CaptureError> {
+        match self.pixel_format {
+            PixelFormat::Bgra => Ok(()),
+            PixelFormat::Nv12 => Err(CaptureError::UnsupportedPixelFormat {
+                format: PixelFormat::Nv12,
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]

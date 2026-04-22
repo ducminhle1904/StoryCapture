@@ -6,9 +6,20 @@
 
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::thread;
 use std::time::Instant;
+
+/// Lifetime counter of PTS-clamp events across all VtWriter sessions (D-12).
+/// Non-zero after a run signals clock-jump or source PTS regression — the
+/// renderer/telemetry surface can read this to flag sessions for review.
+static PTS_CLAMP_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Return the lifetime PTS-clamp event count.
+pub fn clamp_count() -> u64 {
+    PTS_CLAMP_COUNT.load(Ordering::Acquire)
+}
 
 use capture::macos::raii::CVPixelBufferHandle;
 
@@ -17,7 +28,12 @@ use objc2::runtime::AnyObject;
 use objc2_av_foundation::{
     AVAssetWriter, AVAssetWriterInput, AVAssetWriterInputPixelBufferAdaptor, AVAssetWriterStatus,
     AVFileTypeMPEG4, AVMediaTypeVideo, AVVideoAverageBitRateKey, AVVideoCodecKey,
-    AVVideoCodecTypeH264, AVVideoCompressionPropertiesKey, AVVideoHeightKey, AVVideoWidthKey,
+    AVVideoCodecTypeH264, AVVideoColorPrimariesKey, AVVideoColorPrimaries_ITU_R_709_2,
+    AVVideoColorPropertiesKey, AVVideoCompressionPropertiesKey,
+    AVVideoExpectedSourceFrameRateKey, AVVideoH264EntropyModeCABAC, AVVideoH264EntropyModeKey,
+    AVVideoHeightKey, AVVideoMaxKeyFrameIntervalKey, AVVideoProfileLevelH264HighAutoLevel,
+    AVVideoProfileLevelKey, AVVideoTransferFunctionKey, AVVideoTransferFunction_ITU_R_709_2,
+    AVVideoWidthKey, AVVideoYCbCrMatrixKey, AVVideoYCbCrMatrix_ITU_R_709_2,
 };
 use objc2_core_media::CMTime;
 use objc2_core_video::CVPixelBuffer;
@@ -129,10 +145,16 @@ fn run_worker(
 ) -> Result<EncodeResult> {
     // Keep transient Objective-C objects scoped.
     objc2::rc::autoreleasepool(|_| -> Result<EncodeResult> {
-        let output_path = cfg.output_path.clone();
+        let target_path = cfg.output_path.clone();
+        // Stage writer output at `<target>.partial`; rename atomically on
+        // success; drop-cleanup on any failure path.
+        let partial_path = crate::staging::partial_path_of(&target_path);
+        let _ = std::fs::remove_file(&partial_path);
+        let _guard = crate::staging::PartialFileGuard::new(partial_path.clone());
+        let output_path = partial_path.clone();
         let start = Instant::now();
 
-        // Build AVAssetWriter.
+        // Build AVAssetWriter (writes to `.partial`).
         let _ = std::fs::remove_file(&output_path);
         // `fileURLWithPath:` wants a POSIX path, not a file URL.
         let path_str = NSString::from_str(&output_path.display().to_string());
@@ -151,7 +173,7 @@ fn run_worker(
         // encodes at capture dims. Bitrate 0 (Phase 12 preset-driven default)
         // maps to pixel-based target so AVAssetWriter has a sane target.
         let effective_kbps = if cfg.bitrate_kbps == 0 {
-            crate::quality::pixel_based_kbps(cfg.capture_width, cfg.capture_height)
+            crate::quality::pixel_based_kbps(cfg.capture_width, cfg.capture_height, cfg.fps_advisory)
         } else {
             cfg.bitrate_kbps
         };
@@ -159,6 +181,10 @@ fn run_worker(
         let width_num = NSNumber::new_u32(cfg.capture_width);
         let height_num = NSNumber::new_u32(cfg.capture_height);
         let bitrate_num = NSNumber::new_i64(bitrate_bps);
+        // Keyframe every 2s (Phase 18) — balances seekability against bitrate.
+        let keyframe_interval_num =
+            NSNumber::new_u32(cfg.fps_advisory.saturating_mul(2).max(1));
+        let fps_num = NSNumber::new_u32(cfg.fps_advisory.max(1));
 
         let codec_key = unsafe { AVVideoCodecKey }
             .ok_or_else(|| EncoderError::Io("AVVideoCodecKey symbol missing".into()))?;
@@ -173,10 +199,76 @@ fn run_worker(
             .ok_or_else(|| EncoderError::Io("AVVideoAverageBitRateKey symbol missing".into()))?;
         let codec_h264 = unsafe { AVVideoCodecTypeH264 }
             .ok_or_else(|| EncoderError::Io("AVVideoCodecTypeH264 symbol missing".into()))?;
+        // Phase 18 quality upgrade: explicit High profile, CABAC entropy,
+        // keyframe cadence, frame-rate hint, and BT.709 color tagging.
+        let profile_key = unsafe { AVVideoProfileLevelKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoProfileLevelKey symbol missing".into()))?;
+        let profile_high = unsafe { AVVideoProfileLevelH264HighAutoLevel }.ok_or_else(|| {
+            EncoderError::Io("AVVideoProfileLevelH264HighAutoLevel symbol missing".into())
+        })?;
+        let entropy_key = unsafe { AVVideoH264EntropyModeKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoH264EntropyModeKey symbol missing".into()))?;
+        let entropy_cabac = unsafe { AVVideoH264EntropyModeCABAC }
+            .ok_or_else(|| EncoderError::Io("AVVideoH264EntropyModeCABAC symbol missing".into()))?;
+        let max_keyframe_key = unsafe { AVVideoMaxKeyFrameIntervalKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoMaxKeyFrameIntervalKey symbol missing".into())
+        })?;
+        let expected_fps_key = unsafe { AVVideoExpectedSourceFrameRateKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoExpectedSourceFrameRateKey symbol missing".into())
+        })?;
+        let color_props_key = unsafe { AVVideoColorPropertiesKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoColorPropertiesKey symbol missing".into())
+        })?;
+        let color_primaries_key = unsafe { AVVideoColorPrimariesKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoColorPrimariesKey symbol missing".into())
+        })?;
+        let color_primaries_709 = unsafe { AVVideoColorPrimaries_ITU_R_709_2 }.ok_or_else(|| {
+            EncoderError::Io("AVVideoColorPrimaries_ITU_R_709_2 symbol missing".into())
+        })?;
+        let transfer_key = unsafe { AVVideoTransferFunctionKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoTransferFunctionKey symbol missing".into())
+        })?;
+        let transfer_709 = unsafe { AVVideoTransferFunction_ITU_R_709_2 }.ok_or_else(|| {
+            EncoderError::Io("AVVideoTransferFunction_ITU_R_709_2 symbol missing".into())
+        })?;
+        let ycbcr_key = unsafe { AVVideoYCbCrMatrixKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoYCbCrMatrixKey symbol missing".into()))?;
+        let ycbcr_709 = unsafe { AVVideoYCbCrMatrix_ITU_R_709_2 }.ok_or_else(|| {
+            EncoderError::Io("AVVideoYCbCrMatrix_ITU_R_709_2 symbol missing".into())
+        })?;
 
-        // Compression properties.
+        // BT.709 color properties sub-dict.
+        let color_props_dict: Retained<NSDictionary<NSString, AnyObject>> =
+            NSDictionary::from_slices(
+                &[color_primaries_key, transfer_key, ycbcr_key],
+                &[
+                    &**color_primaries_709 as &AnyObject,
+                    &**transfer_709 as &AnyObject,
+                    &**ycbcr_709 as &AnyObject,
+                ],
+            );
+
+        // Compression properties: bitrate + profile + entropy + keyframe +
+        // frame-rate hint + color tagging.
         let compression_dict: Retained<NSDictionary<NSString, AnyObject>> =
-            NSDictionary::from_slices(&[bitrate_key], &[&*bitrate_num as &AnyObject]);
+            NSDictionary::from_slices(
+                &[
+                    bitrate_key,
+                    profile_key,
+                    entropy_key,
+                    max_keyframe_key,
+                    expected_fps_key,
+                    color_props_key,
+                ],
+                &[
+                    &*bitrate_num as &AnyObject,
+                    &**profile_high as &AnyObject,
+                    &**entropy_cabac as &AnyObject,
+                    &*keyframe_interval_num as &AnyObject,
+                    &*fps_num as &AnyObject,
+                    &*color_props_dict as &AnyObject,
+                ],
+            );
 
         // Top-level settings.
         let settings: Retained<NSDictionary<NSString, AnyObject>> = NSDictionary::from_slices(
@@ -250,8 +342,20 @@ fn run_worker(
                         session_started = true;
                     }
 
-                    // Normalize PTS relative to first frame.
-                    let rel_ns = (pts_ns - first_pts_ns).max(0) as i64;
+                    // Normalize PTS relative to first frame (D-12: warn on clamp).
+                    let rel_ns: i64 = if pts_ns < first_pts_ns {
+                        let n = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
+                        tracing::warn!(
+                            target: "storycapture::encoder::vt",
+                            pts_ns = pts_ns as i64,
+                            first_pts_ns = first_pts_ns as i64,
+                            clamp_count = n,
+                            "vt_writer: pts < first_pts, clamping to 0 (clock jump?)"
+                        );
+                        0
+                    } else {
+                        (pts_ns - first_pts_ns) as i64
+                    };
                     let cm_pts = unsafe { CMTime::new(rel_ns, 1_000_000_000) };
                     if frames_written < 5 {
                         tracing::info!(
@@ -359,6 +463,18 @@ fn run_worker(
             .map(|m| m.len())
             .unwrap_or(0);
 
+        // D-08: atomic rename `.partial` -> target. Same dir = atomic on
+        // HFS+/APFS. Disarm the guard so Drop does not delete the renamed
+        // file.
+        std::fs::rename(&partial_path, &target_path).map_err(|e| {
+            EncoderError::Io(format!(
+                "rename {} -> {}: {e}",
+                partial_path.display(),
+                target_path.display()
+            ))
+        })?;
+        _guard.disarm();
+
         // Final progress snapshot.
         let _ = progress_tx.blocking_send(EncodeProgress {
             frame: frames_written,
@@ -372,11 +488,47 @@ fn run_worker(
         });
 
         Ok(EncodeResult {
-            output_path,
+            output_path: target_path,
             duration_ms,
             bytes,
             frames_written,
             frames_dropped,
         })
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pts_clamp_increments_counter() {
+        let before = PTS_CLAMP_COUNT.load(Ordering::Acquire);
+        let first_pts_ns: i128 = 1_000_000_000;
+        let pts_ns: i128 = 500_000_000;
+        let rel_ns: i64 = if pts_ns < first_pts_ns {
+            let _ = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
+            0
+        } else {
+            (pts_ns - first_pts_ns) as i64
+        };
+        assert_eq!(rel_ns, 0);
+        assert_eq!(PTS_CLAMP_COUNT.load(Ordering::Acquire), before + 1);
+    }
+
+    #[test]
+    fn pts_normal_no_clamp() {
+        let before = PTS_CLAMP_COUNT.load(Ordering::Acquire);
+        let first_pts_ns: i128 = 1_000;
+        let pts_ns: i128 = 2_000;
+        let rel_ns: i64 = if pts_ns < first_pts_ns {
+            let _ = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel);
+            0
+        } else {
+            (pts_ns - first_pts_ns) as i64
+        };
+        assert_eq!(rel_ns, 1_000);
+        assert_eq!(PTS_CLAMP_COUNT.load(Ordering::Acquire), before);
+    }
 }

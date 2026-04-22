@@ -13,11 +13,19 @@
 //! probe returns `EncoderError::NoEncoderAvailable` with a diagnostic
 //! pointing at the LGPL build recipe (Plan 01-02).
 
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 use tokio::io::AsyncReadExt;
 
 use crate::error::{EncoderError, Result};
 use crate::sidecar::SidecarCommand;
+
+/// D-17: process-wide cache of the last successful probe result. A
+/// `parking_lot::RwLock<Option<EncoderProbe>>` lets `force_reprobe`
+/// overwrite atomically — a one-shot static cell cannot be reset.
+static PROBE_CACHE: LazyLock<RwLock<Option<EncoderProbe>>> =
+    LazyLock::new(|| RwLock::new(None));
 
 /// Encoders the runtime probe can select. Kept deliberately small — Phase 1
 /// scope is H.264 only (D-25). HEVC variants listed for completeness but
@@ -93,6 +101,38 @@ pub async fn probe_encoders(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
     })
 }
 
+/// Returns the cached probe if present, otherwise runs `probe_encoders`
+/// and caches the outcome.
+pub async fn probe_cached(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
+    if let Some(cached) = PROBE_CACHE.read().clone() {
+        return Ok(cached);
+    }
+    let fresh = probe_encoders(cmd).await?;
+    *PROBE_CACHE.write() = Some(fresh.clone());
+    Ok(fresh)
+}
+
+/// Bypass the cache and overwrite it with a fresh probe. Call after an
+/// eGPU dock/undock or driver update to reflect the new encoder list.
+pub async fn force_reprobe(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
+    let fresh = probe_encoders(cmd).await?;
+    *PROBE_CACHE.write() = Some(fresh.clone());
+    Ok(fresh)
+}
+
+/// Test hook: seed the cache directly. `cfg(test)` only — callers in
+/// production must go through `probe_cached` / `force_reprobe`.
+#[cfg(test)]
+pub(crate) fn __test_set_cache(p: Option<EncoderProbe>) {
+    *PROBE_CACHE.write() = p;
+}
+
+/// Test hook: observe current cache contents without taking a write lock.
+#[cfg(test)]
+pub(crate) fn __test_peek_cache() -> Option<EncoderProbe> {
+    PROBE_CACHE.read().clone()
+}
+
 /// Parse the output of `ffmpeg -hide_banner -encoders` and return the
 /// encoders we care about.
 ///
@@ -144,6 +184,12 @@ fn parse_encoders_output(out: &str) -> Vec<HardwareEncoder> {
 fn pick_preferred(available: &[HardwareEncoder]) -> HardwareEncoder {
     #[cfg(target_os = "macos")]
     let order = &[
+        // Phase 18: HEVC first — Apple Silicon's VT HEVC encoder gives ~40%
+        // better compression at the same perceptual quality than H.264, which
+        // matters on Retina-sized (3560×2220) captures where VT's internal
+        // quality heuristic undershoots `-b:v` anyway. Fall back to H.264
+        // if HEVC isn't available for any reason.
+        HardwareEncoder::VideoToolboxHevc,
         HardwareEncoder::VideoToolboxH264,
         HardwareEncoder::Openh264Software,
     ][..];
@@ -204,11 +250,121 @@ Encoders:
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn preferred_picks_videotoolbox_on_mac() {
+    fn preferred_picks_hevc_over_h264_on_mac() {
+        let avail = vec![
+            HardwareEncoder::VideoToolboxHevc,
+            HardwareEncoder::VideoToolboxH264,
+            HardwareEncoder::Openh264Software,
+        ];
+        assert_eq!(pick_preferred(&avail), HardwareEncoder::VideoToolboxHevc);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn preferred_falls_back_to_h264_when_hevc_absent() {
         let avail = vec![
             HardwareEncoder::VideoToolboxH264,
             HardwareEncoder::Openh264Software,
         ];
         assert_eq!(pick_preferred(&avail), HardwareEncoder::VideoToolboxH264);
+    }
+
+    // ─── D-17 cache / force_reprobe tests ─────────────────────────────
+
+    use crate::sidecar::{SidecarChild, SidecarCommand};
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// Mock sidecar that returns a canned `ffmpeg -encoders` stdout.
+    struct MockCmd {
+        calls: Arc<AtomicUsize>,
+        payload: &'static str,
+    }
+
+    #[async_trait]
+    impl SidecarCommand for MockCmd {
+        async fn spawn(&self, _args: Vec<String>) -> Result<SidecarChild> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            // Pipe the payload through `cat` so the returned child has
+            // real `tokio::process` stdio handles the probe can read.
+            let mut cmd = tokio::process::Command::new("sh");
+            cmd.arg("-c")
+                .arg(format!("printf '%s' {}", shell_escape(self.payload)))
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            let mut child = cmd
+                .spawn()
+                .map_err(|e| EncoderError::SpawnFailed(format!("mock spawn: {e}")))?;
+            let stdin = child.stdin.take().unwrap();
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+            Ok(SidecarChild {
+                stdin,
+                stdout,
+                stderr,
+                child,
+            })
+        }
+    }
+
+    fn shell_escape(s: &str) -> String {
+        let mut out = String::from("'");
+        for ch in s.chars() {
+            if ch == '\'' {
+                out.push_str("'\\''");
+            } else {
+                out.push(ch);
+            }
+        }
+        out.push('\'');
+        out
+    }
+
+    /// D-17: force_reprobe must bypass the cache and overwrite it so the
+    /// next `probe_cached` observes the fresh value.
+    #[tokio::test]
+    async fn test_probe_force_reprobe() {
+        // Seed with a sentinel value so probe_cached short-circuits.
+        let sentinel = EncoderProbe {
+            available: vec![HardwareEncoder::Openh264Software],
+            preferred: HardwareEncoder::Openh264Software,
+        };
+        __test_set_cache(Some(sentinel.clone()));
+        assert_eq!(
+            __test_peek_cache().as_ref().map(|p| p.available.len()),
+            Some(1)
+        );
+
+        // Fresh probe result: VideoToolbox + libopenh264 from a two-line
+        // sample. force_reprobe must ignore the cache and replace it.
+        let payload = "\
+ V..... h264_videotoolbox    VideoToolbox H.264 Encoder
+ V..... libopenh264          OpenH264 H.264 / MPEG-4 AVC encoder
+";
+        let calls = Arc::new(AtomicUsize::new(0));
+        let cmd = MockCmd {
+            calls: calls.clone(),
+            payload,
+        };
+
+        let fresh = force_reprobe(&cmd).await.expect("force_reprobe");
+        assert!(fresh
+            .available
+            .contains(&HardwareEncoder::Openh264Software));
+        assert!(fresh
+            .available
+            .contains(&HardwareEncoder::VideoToolboxH264));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Cache now holds the fresh value, so a subsequent probe_cached
+        // short-circuits without invoking the sidecar again.
+        let cached = probe_cached(&cmd).await.expect("probe_cached");
+        assert_eq!(cached.available, fresh.available);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "cache must short-circuit");
+
+        // Reset for any other tests in this module.
+        __test_set_cache(None);
     }
 }

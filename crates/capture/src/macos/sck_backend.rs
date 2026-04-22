@@ -28,6 +28,17 @@ use screencapturekit::stream::{
     sc_stream::SCStream,
 };
 
+/// D-06: coarse state machine for pause/resume. `Transitioning` is set
+/// for the duration of the `spawn_blocking` stop/start call so a racing
+/// caller holding the mutex sees the in-progress transition and either
+/// waits for it or exits early when the outer intent matches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PauseState {
+    Running,
+    Paused,
+    Transitioning,
+}
+
 pub struct SckBackend {
     state: Arc<Mutex<SckState>>,
     /// Optional lifecycle-event sink.
@@ -35,7 +46,11 @@ pub struct SckBackend {
     /// Frames dropped because `try_send` hit a full channel.
     dropped: Arc<AtomicU64>,
     delivered: Arc<AtomicU64>,
+    /// Fast-path read signal for the SCK output handler (hot callback on
+    /// SCK's GCD queue — cannot afford to await a tokio mutex there).
     paused: Arc<AtomicBool>,
+    /// D-06: slow-path serializer for `pause()` / `resume()` callers.
+    pause_state: Arc<tokio::sync::Mutex<PauseState>>,
 }
 
 struct SckState {
@@ -64,6 +79,7 @@ impl SckBackend {
             dropped: Arc::new(AtomicU64::new(0)),
             delivered: Arc::new(AtomicU64::new(0)),
             paused: Arc::new(AtomicBool::new(false)),
+            pause_state: Arc::new(tokio::sync::Mutex::new(PauseState::Running)),
         })
     }
 
@@ -79,10 +95,14 @@ impl SckBackend {
 
     /// Build an `SCContentFilter` and output dimensions for a target.
     ///
+    /// Returns `(filter, width_px, height_px, source_rect_opt, needs_scales_to_fit)`.
     /// `source_rect_opt` is in logical points when present.
+    /// `needs_scales_to_fit` is true for window captures so SCK composites the
+    /// native Retina backing store onto our physical-pixel canvas instead of
+    /// padding the unused area with black (Phase 18).
     pub(crate) fn build_filter(
         target: &CaptureTarget,
-    ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>), CaptureError> {
+    ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>, bool), CaptureError> {
         match target {
             CaptureTarget::Display { display_id } => {
                 let content = SCShareableContent::get()
@@ -101,27 +121,24 @@ impl SckBackend {
                     .with_excluding_windows(&[])
                     .build();
                 // The builder handles an empty exclusion list safely.
-                Ok((filter, width, height, None))
+                Ok((filter, width, height, None, false))
             }
             CaptureTarget::Window { window_id } => {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
                     .ok_or(CaptureError::WindowNotFound(window_id.0))?;
                 let frame = window.frame();
-                // SCK composites the window at its native render resolution
-                // into a stream canvas of whatever width/height we specify.
-                // Multiplying by 2 (for retina) produces an oversized canvas
-                // which SCK fills with black in the unused area — that's
-                // the "browser top-left, rest black" bug. Use the raw
-                // frame dims so the canvas matches the window's actual
-                // rendered pixel size. True retina content still encodes
-                // legibly because Chromium's --window-size arg gives us
-                // 1280pt = 1280px on 1x and the same 1280pt = 2560px on
-                // 2x; SCK either way reports the correct pixel frame
-                // that matches the rendered content.
-                let width = frame.width as u32;
-                let height = frame.height as u32;
+                // Phase 18: request the canvas at physical (Retina) pixels
+                // and let SCK composite the native window backing store via
+                // scales_to_fit(true). Before, we requested logical-point
+                // dims and SCK downsampled the 2× backing store, softening
+                // text on Retina playback. scales_to_fit(true) also prevents
+                // the "browser top-left, rest black" padding bug that a
+                // naive 2× multiplication previously triggered.
+                let scale = primary_display_scale() as f64;
+                let width = (frame.width * scale).round().max(1.0) as u32;
+                let height = (frame.height * scale).round().max(1.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
-                Ok((filter, width, height, None))
+                Ok((filter, width, height, None, true))
             }
             CaptureTarget::WindowByPid { pid, title_hint } => {
                 // Command-layer callers already did the retry loop.
@@ -141,13 +158,14 @@ impl SckBackend {
                 )?
                 .ok_or(CaptureError::WindowNotFound(*pid as u64))?;
                 let frame = window.frame();
-                // See Window branch: no retina multiplication — raw frame
-                // dims match the SCK-composited window size and prevent
-                // the black-padding bug.
-                let width = frame.width as u32;
-                let height = frame.height as u32;
+                // Phase 18: same physical-pixel treatment as Window — see
+                // the Window branch comment. Without this, Retina window
+                // recordings render soft when played back on 2× displays.
+                let scale = primary_display_scale() as f64;
+                let width = (frame.width * scale).round().max(1.0) as u32;
+                let height = (frame.height * scale).round().max(1.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
-                Ok((filter, width, height, None))
+                Ok((filter, width, height, None, true))
             }
             // Region capture uses logical-point source rects and pixel output sizes.
             CaptureTarget::DisplayRegion { display_id, rect } => {
@@ -167,7 +185,7 @@ impl SckBackend {
                     .with_display(disp)
                     .with_excluding_windows(&[])
                     .build();
-                Ok((filter, width_px, height_px, Some(source_rect)))
+                Ok((filter, width_px, height_px, Some(source_rect), false))
             }
         }
     }
@@ -215,12 +233,13 @@ impl CaptureBackend for SckBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
+        cfg.require_supported_pixel_format()?;
         self.dropped.store(0, Ordering::Relaxed);
         self.delivered.store(0, Ordering::Relaxed);
 
         // Resolve the filter off the async runtime.
         let target = cfg.target.clone();
-        let (filter, width_px, height_px, source_rect) =
+        let (filter, width_px, height_px, source_rect, needs_scales_to_fit) =
             tokio::task::spawn_blocking(move || Self::build_filter(&target))
                 .await
                 .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
@@ -243,8 +262,8 @@ impl CaptureBackend for SckBackend {
 
         let sck_pf = match cfg.pixel_format {
             crate::frame::PixelFormat::Bgra => SckPixelFormat::BGRA,
-            // Force BGRA until we add native NV12 handling.
-            crate::frame::PixelFormat::Nv12 => SckPixelFormat::BGRA,
+            // D-16: Nv12 is rejected at start() entry above; unreachable here.
+            crate::frame::PixelFormat::Nv12 => unreachable!("NV12 rejected at start()"),
         };
 
         let mut config = SCStreamConfiguration::new()
@@ -262,6 +281,11 @@ impl CaptureBackend for SckBackend {
                 .with_source_rect(src)
                 .with_destination_rect(dest)
                 .with_scales_to_fit(false);
+        } else if needs_scales_to_fit {
+            // Phase 18: window capture at physical (Retina) pixels requires
+            // scales_to_fit so SCK composites the native backing store onto
+            // the canvas instead of leaving unused area black.
+            config = config.with_scales_to_fit(true);
         }
 
         // Forward delegate failures to the optional event sink.
@@ -302,9 +326,11 @@ impl CaptureBackend for SckBackend {
                 if let Some(frame) = crate::macos::frame_from_sample::to_frame(&sample) {
                     match out_for_handler.try_send(frame) {
                         Ok(()) => {
+                            // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
                             delivered_for_handler.fetch_add(1, Ordering::Relaxed);
                         }
                         Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                            // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
                             dropped_for_handler.fetch_add(1, Ordering::Relaxed);
                         }
                         Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
@@ -344,11 +370,15 @@ impl CaptureBackend for SckBackend {
             );
         }
 
-        let mut s = self.state.lock();
-        s.started_at = Some(Instant::now());
-        s.stats = CaptureStats::default();
-        s.stream = Some(stream);
+        {
+            let mut s = self.state.lock();
+            s.started_at = Some(Instant::now());
+            s.stats = CaptureStats::default();
+            s.stream = Some(stream);
+        }
         self.paused.store(false, Ordering::Release);
+        // D-06: reset state machine for the new session.
+        *self.pause_state.lock().await = PauseState::Running;
         Ok(())
     }
 
@@ -365,46 +395,95 @@ impl CaptureBackend for SckBackend {
             })
             .await;
         }
-        let mut s = self.state.lock();
-        if let Some(t) = s.started_at.take() {
-            s.stats.duration_ms = t.elapsed().as_millis() as u64;
-        }
-        let mut stats = s.stats;
+        let mut stats = {
+            let mut s = self.state.lock();
+            if let Some(t) = s.started_at.take() {
+                s.stats.duration_ms = t.elapsed().as_millis() as u64;
+            }
+            s.stats
+        };
+        // Relaxed load: stream stop provides happens-before for the final count.
         stats.frames_delivered = self.delivered.load(Ordering::Relaxed);
         stats.frames_dropped = self.dropped.load(Ordering::Relaxed);
-        drop(s);
         // Reset counters for the next session.
-        self.delivered.store(0, Ordering::Relaxed);
-        self.dropped.store(0, Ordering::Relaxed);
+        self.delivered.store(0, Ordering::Release);
+        self.dropped.store(0, Ordering::Release);
         self.paused.store(false, Ordering::Release);
+        // D-06: session ended, state machine back to Running baseline.
+        *self.pause_state.lock().await = PauseState::Running;
         Ok(stats)
     }
 
     async fn pause(&mut self) -> Result<(), CaptureError> {
-        if self.paused.swap(true, Ordering::AcqRel) {
-            return Ok(());
+        // D-06: slow-path serialization. Concurrent callers wait on the
+        // mutex; whoever sees Paused/Transitioning returns Ok (idempotent).
+        let mut guard = self.pause_state.lock().await;
+        match *guard {
+            PauseState::Paused | PauseState::Transitioning => return Ok(()),
+            PauseState::Running => {}
         }
-        if let Err(err) = self.stop_stream().await {
-            self.paused.store(false, Ordering::Release);
-            return Err(err);
+        *guard = PauseState::Transitioning;
+        drop(guard);
+
+        let stop_res = self.stop_stream().await;
+
+        let mut guard = self.pause_state.lock().await;
+        match stop_res {
+            Ok(()) => {
+                self.paused.store(true, Ordering::Release);
+                *guard = PauseState::Paused;
+                Ok(())
+            }
+            Err(err) => {
+                // Roll back on failure so a retry is possible.
+                *guard = PauseState::Running;
+                Err(err)
+            }
         }
-        Ok(())
     }
 
     async fn resume(&mut self) -> Result<(), CaptureError> {
-        if !self.paused.swap(false, Ordering::AcqRel) {
-            return Ok(());
+        let mut guard = self.pause_state.lock().await;
+        match *guard {
+            PauseState::Running | PauseState::Transitioning => return Ok(()),
+            PauseState::Paused => {}
         }
-        if let Err(err) = self.resume_stream().await {
-            self.paused.store(true, Ordering::Release);
-            return Err(err);
+        *guard = PauseState::Transitioning;
+        drop(guard);
+
+        let start_res = self.resume_stream().await;
+
+        let mut guard = self.pause_state.lock().await;
+        match start_res {
+            Ok(()) => {
+                self.paused.store(false, Ordering::Release);
+                *guard = PauseState::Running;
+                Ok(())
+            }
+            Err(err) => {
+                *guard = PauseState::Paused;
+                Err(err)
+            }
         }
-        Ok(())
     }
 
     fn list_displays(&self) -> Result<Vec<DisplayInfo>, CaptureError> {
         enumerate()
     }
+}
+
+/// Phase 18: pick the primary display's backing scale factor. Used by window
+/// capture to request a physical-pixel canvas on Retina displays. Falls back
+/// to 1.0 (non-Retina) when enumeration fails, so a failure degrades to the
+/// pre-Phase-18 behavior instead of crashing.
+fn primary_display_scale() -> f32 {
+    enumerate()
+        .unwrap_or_default()
+        .iter()
+        .find(|d| d.is_primary)
+        .map(|d| d.scale_factor)
+        .unwrap_or(1.0)
+        .max(1.0)
 }
 
 /// Compute a region source rect and pixel size for display-region capture.
@@ -422,6 +501,76 @@ pub(crate) fn compute_region_math(
     let width_px = (rect.w * scale).round() as u32;
     let height_px = (rect.h * scale).round() as u32;
     (width_px, height_px, src)
+}
+
+#[cfg(test)]
+mod pause_state_tests {
+    use super::PauseState;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    /// Simulate `pause()` / `resume()` against a shared `PauseState`
+    /// without requiring a real `SCStream`. Mirrors the branching in
+    /// the real backend so a regression in the state machine surfaces
+    /// here even when SCK hardware tests are skipped.
+    async fn simulate_pause(state: Arc<Mutex<PauseState>>, work_ms: u64) -> bool {
+        let mut guard = state.lock().await;
+        match *guard {
+            PauseState::Paused | PauseState::Transitioning => return false,
+            PauseState::Running => {}
+        }
+        *guard = PauseState::Transitioning;
+        drop(guard);
+        tokio::time::sleep(std::time::Duration::from_millis(work_ms)).await;
+        let mut guard = state.lock().await;
+        *guard = PauseState::Paused;
+        true
+    }
+
+    async fn simulate_resume(state: Arc<Mutex<PauseState>>, work_ms: u64) -> bool {
+        let mut guard = state.lock().await;
+        match *guard {
+            PauseState::Running | PauseState::Transitioning => return false,
+            PauseState::Paused => {}
+        }
+        *guard = PauseState::Transitioning;
+        drop(guard);
+        tokio::time::sleep(std::time::Duration::from_millis(work_ms)).await;
+        let mut guard = state.lock().await;
+        *guard = PauseState::Running;
+        true
+    }
+
+    #[tokio::test]
+    async fn concurrent_pause_is_idempotent_and_finalises_paused() {
+        let state = Arc::new(Mutex::new(PauseState::Running));
+        let a = tokio::spawn(simulate_pause(state.clone(), 30));
+        let b = tokio::spawn(simulate_pause(state.clone(), 30));
+        let (ra, rb) = (a.await.unwrap(), b.await.unwrap());
+        // Exactly one caller wins the transition; the other no-ops.
+        assert!(ra ^ rb, "expected exactly one winner");
+        assert_eq!(*state.lock().await, PauseState::Paused);
+    }
+
+    #[tokio::test]
+    async fn concurrent_resume_mid_transition_ends_in_running() {
+        // Start in Paused so resume() is meaningful.
+        let state = Arc::new(Mutex::new(PauseState::Paused));
+        let a = tokio::spawn(simulate_resume(state.clone(), 30));
+        let b = tokio::spawn(simulate_resume(state.clone(), 30));
+        let (ra, rb) = (a.await.unwrap(), b.await.unwrap());
+        assert!(ra ^ rb, "expected exactly one winner");
+        assert_eq!(*state.lock().await, PauseState::Running);
+    }
+
+    #[tokio::test]
+    async fn pause_then_resume_round_trip() {
+        let state = Arc::new(Mutex::new(PauseState::Running));
+        assert!(simulate_pause(state.clone(), 5).await);
+        assert_eq!(*state.lock().await, PauseState::Paused);
+        assert!(simulate_resume(state.clone(), 5).await);
+        assert_eq!(*state.lock().await, PauseState::Running);
+    }
 }
 
 #[cfg(test)]
@@ -491,7 +640,46 @@ pub(crate) fn build_filter_for_test_region(
     };
     SckBackend::build_filter(&target)
         .ok()
-        .map(|(_, w, h, r)| (w, h, r))
+        .map(|(_, w, h, r, _)| (w, h, r))
+}
+
+#[cfg(test)]
+mod nv12_reject_tests {
+    use super::*;
+    use crate::display::DisplayId;
+    use crate::frame::PixelFormat;
+    use crate::target::CaptureTarget;
+
+    /// D-16: Nv12 must be rejected at `start()` entry before any OS
+    /// resource is acquired. We don't need SCK permissions or a real
+    /// display for this — the guard runs before `build_filter`.
+    #[tokio::test]
+    async fn start_with_nv12_returns_unsupported_pixel_format() {
+        let Ok(mut backend) = SckBackend::new() else {
+            // CI macOS runners may lack the SCK framework at link time.
+            return;
+        };
+        let mut cfg = CaptureConfig::new(DisplayId(1));
+        cfg.pixel_format = PixelFormat::Nv12;
+        // Use a display target; the guard fires before any filter build.
+        cfg.target = CaptureTarget::Display {
+            display_id: DisplayId(1),
+        };
+        let (tx, _rx) = tokio::sync::mpsc::channel(1);
+        let err = backend
+            .start(cfg, tx)
+            .await
+            .expect_err("Nv12 must be rejected");
+        assert!(
+            matches!(
+                err,
+                CaptureError::UnsupportedPixelFormat {
+                    format: PixelFormat::Nv12
+                }
+            ),
+            "expected UnsupportedPixelFormat{{format=Nv12}}, got {err:?}"
+        );
+    }
 }
 
 /// Enumerate displays without constructing an `SckBackend`.

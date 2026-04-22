@@ -76,7 +76,11 @@ export type RecordingEvent =
   | { type: "capture-status"; json: string }
   | { type: "frames-dropped"; total: number; delta: number }
   | { type: "completed"; result: EncodeResultDto }
-  | { type: "failed"; message: string };
+  | { type: "failed"; message: string }
+  // D-13: mic negotiation/start failure — recording continues video-only.
+  | { type: "audio-unavailable"; reason: string }
+  // D-15: 2s liveness tick from the host; renderer watchdog detects gaps.
+  | { type: "heartbeat"; seq: number | bigint };
 
 export async function probeHwEncoders(): Promise<unknown> {
   return invoke("probe_hw_encoders");

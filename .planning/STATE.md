@@ -5,10 +5,10 @@ milestone_name: milestone
 status: executing
 last_updated: "2026-04-22T08:45:00.000Z"
 progress:
-  total_phases: 16
-  completed_phases: 8
-  total_plans: 111
-  completed_plans: 94
+  total_phases: 17
+  completed_phases: 10
+  total_plans: 118
+  completed_plans: 100
   percent: 85
 ---
 
@@ -24,17 +24,24 @@ progress:
 
 ## Current Position
 
-Phase: 16 — Upgrade all dependencies to latest — COMPLETE (5/5 plans landed)
-Plan: 16-05 complete (Wave E gated framework majors + docs sync: 2 atomic commits landed — E24 ac8e8f8 next 15 → 16.2.4 in apps/web (Turbopack now default; no middleware/unstable_cache migration needed; next-env.d.ts auto-regen with typed routes.d.ts import); E28 3d1625b CLAUDE.md + docs/ARCHITECTURE.md synced to final Phase 16 pins + stale objc2-0.5 comment in crates/encoder/Cargo.toml removed. E22 skipped (no newer next-auth beta on npm dist-tags). E25 deferred (@auth/prisma-adapter peerDeps do not list Prisma 7). E26 deferred (no Windows CI runner). E27 blocked-no-op (specta rc.24 requires nightly Rust: `const_type_id` + `debug_closure_helpers`). Gate: turbo typecheck + turbo build + cargo check --workspace + cargo test --workspace all green. Biome has 130 pre-existing errors in apps/web/src (generated Prisma client, a11y/useButtonType, etc.) — out of scope per executor boundary.
+Phase: 16 — Upgrade all dependencies to latest — COMPLETE (5/5 plans landed, 2026-04-22)
+Plan: 16-05 complete (Wave E gated framework majors + docs sync: 2 atomic commits landed — E24 ac8e8f8 next 15 → 16.2.4 in apps/web; E28 3d1625b CLAUDE.md + docs/ARCHITECTURE.md synced to final Phase 16 pins. E22 skipped (no newer next-auth beta). E25 deferred (adapter peerDeps). E26 deferred (no Windows CI). E27 blocked-no-op (specta rc.24 requires nightly Rust). Gate: turbo typecheck + turbo build + cargo check --workspace + cargo test --workspace all green.
+
+Also complete (merged from origin 2026-04-22):
+- Phase 17 — Record engine lifecycle hardening — COMPLETE (all 6 plans, 22 commits, 19/19 decisions verified).
+- Phase 10 Wave 1 — Author-time simulator (executor parameterization + RunControl + pause/step events).
+- Phase 9 all 4 waves code-complete.
+
+Prior executing phase: 15 — Editor/Post-Production boundary cleanup — Wave 4 complete; 15-05 cleanup + regression matrix still pending user QA.
 
 ## Phase 8-11 Planning Audit (2026-04-21)
 
 Full audit of Phases 8-11 planning validity vs. current codebase:
 
 - **Phase 8** (GPU downscale + cursor overlay): Planned, not started. `crates/gpu_scale/` scaffolding (08-01) never executed. ROADMAP entry + Progress row added this date.
-- **Phase 9** (Live Preview CDP pane): Planned, not started. Backfilled `09-CONTEXT.md` this date (was missing). `09-01` sidecar plumbing not executed; all 4 waves pending. Phase 9-04 carries PHASE-9.8/9.9 extensions (`attach_author_driver`, `pauseStream`/`resumeStream`) required as prereqs by Phase 10.
-- **Phase 10** (Author-time simulator): Planned, **hard-blocked** on Phase 9-04 extensions per `10-CONTEXT.md` D-06. `run_story` executor signature + `ExecutorEvent::RunPaused/StepFrameCaptured` + `StepFrame` struct not yet in codebase. Phase 3's `DryRunPanel.tsx` still present — naming-collision is by design per 10-CONTEXT D-00.
-- **Phase 11** (Element picker relocation): Planned, **hard-blocked** on Phase 10-02 (for 11-02/03/04). `AuthorDriverState` / `AuthorDriverRegistry` not yet in codebase. Phase 11-01 (registry foundation) can run in parallel with Phase 10-01 since they own disjoint registry types.
+- **Phase 9** (Live Preview CDP pane): All 4 waves code-complete (2026-04-22). Wave 3 Task 3 (operator perf battery on 2023 M2 MBP) is a `checkpoint:human-verify` pending phase sign-off. Wave 1 — sidecar verbs + `preview/frame` notifications (`c80c7a9`); Rust `SidecarMsg::Notification` + `subscribe_preview()` + `PreviewFrame` (`1814088`). Wave 2 — Tauri `preview_start`/`preview_stop` + pump + `app_settings` toggle (`461d1fa`); React `<LivePreview />` canvas + Options toggle default-ON (`b19cabe`). Wave 3 — sidecar drop counter + HiDPI `everyNthFrame` + Rust pump log window (`09a816b`); LivePreview status machine + auto-recovery + drop counter (`c8236f2`). Wave 4 — multi-stream sidecar + `author.launch`/`close`/`setViewport` + `pauseStream`/`resumeStream` (`d0bc481`); `AuthorPreviewSession` registry in AppState + `attach_author_driver` Tauri command + per-stream wrappers (`ffbcc46`); editor-surface Live Preview + viewport switcher + `useEditorLivePreview` hook (default OFF per D-17) (`2cf1fca`). **PHASE-9.8/9.9 contract surface LOCKED as shipped — Phases 10 and 11 are unblocked.**
+- **Phase 10** (Author-time simulator): Wave 1 complete (2026-04-22). Wave 1 — `MatchKind` + `StepFrame` + `RunPaused`/`StepFrameCaptured` events (`678eca6`); `run_story` parameterized with simulator knobs + `StepFrameCaptured` emission (`d1fd0ef`); TS `ExecutorEvent` mirror (`7f2566a`); `RunControl::cancel` + `pub continue_run` (`c8cbf4e`). Waves 2–3 pending: Tauri simulator commands wiring author-session (uses `AuthorPreviewSession.driver` from 9-04) + simulatorStore + SceneTimeline UI (10-02), Promote-to-fallback gating + locked-run dry-run variant (10-03). Phase 3's `DryRunPanel.tsx` preserved unchanged (D-00).
+- **Phase 11** (Element picker relocation): Phase 9-04 primitives (`pauseStream`/`resumeStream`, shared author-preview registry) shipped 2026-04-22 — 11-01 registry + 11-02 picker-in-preview are unblocked. 11-02/03/04 still depend on Phase 10-02 for the author-session executor integration.
 
 Phase 6 + Phase 7 confirmed fully shipped. Phase 7's `PickElementButton` at `apps/desktop/src/features/recorder/pick-element-button.tsx` — Phase 11-05's relocation target path is correct.
 
@@ -64,6 +71,7 @@ No Phase 15 rearrangement invalidates file-path references in Phase 8-11 plans. 
 - Phase 13 added (2026-04-19): Video output customization knobs — expose recording-time (5 knobs) + export-time (expanded) UI; per-encoder quality preset mapping (VT bitrate-based, NVENC cq-based, libx264 CRF+tune=stillimage); persist via tauri-plugin-store with Phase 12 migration. Depends on Phase 12.
 - Phase 16 added (2026-04-21): Upgrade all dependencies to latest — bump every JS/TS package and Rust crate across the monorepo (apps/desktop, apps/web, packages/*, crates/*, tools/*, scripts/*) per `.planning/notes/deps-upgrade-plan.md`. Scope: ~173 deps audited (~18 patch, ~60 minor, ~33 major). Coordinated groups: Tauri + plugins (Rust↔JS major alignment), tRPC 11 suite, Prisma client+CLI. Rust 0.x breakers: rusqlite across 4 crates, objc2 0.5→0.6 unify, intelligence stack (serde_yaml replacement, schemars 1, rand 0.10, toml 1, reqwest 0.13). JS majors gated on user approval: Next 16, Prisma 7, jose 6, NextAuth. Also resync CLAUDE.md (windows-capture 2.x, screencapturekit pin, chromiumoxide presence check). Every bump group = atomic commit; verify with cargo nextest + pnpm build + biome per step.
 - Phase 14 added (2026-04-21): Port Claude Design into apps/desktop — wire `packages/ui/src/claude-design/` (tokens.css + app.css + `.sc-*` primitives) into the desktop app and port JSX screens/overlays/primitives from `.planning/design/storycapture-claude-design/project/`. Open decision: reconcile `sc-*` tokens with existing Cursor-inspired `packages/ui/src/tokens.css` (merge into single system vs namespace alongside).
+- Phase 17 added (2026-04-22): Record engine lifecycle hardening — fix 19 issues found via 4-agent deep-dive investigation across capture / encoder / IPC / frontend layers. Clusters: (1) CLEANUP — exit-drain recording sessions, orphan spawn tasks on start-fail, xcap thread-join hang; (2) START-SAFETY — FE+BE double-start race, WGC HWND live-check, SCK pause/resume atomicity; (3) ENCODER-ROBUST — FFmpeg stdin backpressure, staging+atomic-rename output, first-frame timeout config, 200ms FIFO hardcode, explicit `-g` keyframe, PTS clamp; (4) UX-FEEDBACK — `RecordingEvent::AudioUnavailable` new variant, state-desync heartbeat, dangling automation Channel on unmount, no auto-nav to editor; (5) POLISH — NV12 config-coerce reject, HW encoder re-probe, atomic counter ordering, `@ts-ignore` test cleanup. No public IPC / DSL contract changes beyond additive event variants. Investigation report in conversation (not archived — re-derive from `crates/capture` + `crates/encoder` + `apps/desktop/src-tauri/src/commands/encode.rs` + `apps/desktop/src/features/recorder/`).
 
 ### Decisions
 
@@ -130,18 +138,20 @@ currently blocking post-v1 work. All six verification items above are operator-g
 |---|-------------|------|--------|-----------|
 | 260418-gkg | Recording engine quick fixes: drop Chromium sentinel, panic guard on frame-pump, export drop counts | 2026-04-18 | 1fe6fe8 | [260418-gkg-recording-engine-quick-fixes-drop-chromi](./quick/260418-gkg-recording-engine-quick-fixes-drop-chromi/) |
 | 260418-ios | Fix focus-steal during recording: re-focus main window after Playwright launch + start_recording | 2026-04-18 | 9fad310 | [260418-ios-fix-focus-steal-during-recording-so-play](./quick/260418-ios-fix-focus-steal-during-recording-so-play/) |
+| 260421-t83 | Recording playback in Editor Preview pane — `list_project_recordings` IPC + scrubbable `<video>` + live status strip | 2026-04-21 | f902ec7 | [260421-t83-recording-playback-in-editor-preview-pan](./quick/260421-t83-recording-playback-in-editor-preview-pan/) |
 | Phase 14 P01 | 25m | 3 tasks | 23 files |
 | Phase 14 P03 | 20m | 3 tasks | 4 files |
 | Phase 14 P04 | 35m | 3 tasks | 7 files |
 
 ## Session Continuity
 
-- Last activity: 2026-04-22 — Executed Phase 16 Plan 05 (Wave E gated framework majors + docs sync). **Phase 16 COMPLETE.**
-- Last action: Plan 16-05 complete — 2 atomic commits (E24 `ac8e8f8` next 15 → 16.2.4 in apps/web; E28 `3d1625b` CLAUDE.md + docs/ARCHITECTURE.md synced to final Phase 16 pins). E22 skipped (no newer next-auth beta on npm dist-tags — 5.0.0-beta.31 is current). E25 deferred (@auth/prisma-adapter peerDeps list `>=6` only). E26 deferred (no Windows CI runner available). E27 blocked-no-op (specta 2.0.0-rc.24 requires nightly Rust — `const_type_id` + `debug_closure_helpers`; Cargo.toml files reverted to rc.21/rc.22/0.0.9 pins). Gate: turbo typecheck + turbo build + cargo check --workspace + cargo test --workspace all green. Biome has 130 pre-existing errors in apps/web/src (generated Prisma + a11y) — out of scope; files I touched are biome-clean. SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-05-SUMMARY.md`.
-- Next action: Phase 16 is complete. Three deferred bumps remain for future dedicated phases: (a) Prisma 7 once `@auth/prisma-adapter` publishes `>=7` peerDep support; (b) windows 0.58 → 0.62 once a Windows CI runner is available; (c) tauri-specta/specta rc.24 once specta reverts to stable-Rust features or we bump MSRV to nightly.
-- Files touched this session: apps/web/package.json + apps/web/next-env.d.ts + pnpm-lock.yaml + CLAUDE.md + docs/ARCHITECTURE.md + crates/encoder/Cargo.toml (across 2 atomic commits).
+- Last activity: 2026-04-22 — Merged origin/main (Phase 10 Wave 1 + Phase 17 complete + Phase 9 complete) into Phase 16 branch.
+- Last action (local): Phase 16 Plan 05 complete — Wave E gated framework majors + docs sync (commits `ac8e8f8` next 15 → 16.2.4, `3d1625b` CLAUDE.md + docs/ARCHITECTURE.md synced, `e5d7fab` plan closeout). E22/E25/E26/E27 deferred per plan stop-conditions.
+- Last action (origin): Phase 17 complete (22 commits, 19/19 decisions verified); Phase 10 Wave 1 complete (4 commits); Phase 9 all waves code-complete.
+- Next action: resume Phase 15-05 cleanup + regression matrix (still pending user QA) OR start Phase 10 Wave 2 / Phase 11 Wave 1. Three Phase 16 bumps deferred: (a) Prisma 7 (adapter peerDep), (b) windows 0.62 (Windows CI), (c) tauri-specta/specta rc.24 (stable-Rust revert or nightly MSRV).
+- Files touched this session: merged 68 origin commits + 38 local commits.
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
 
-**Planned Phase:** 15 (Editor/Post-Production feature boundary cleanup) — 5 plans — 2026-04-21T09:31:54.621Z
+**Planned Phase:** 17 (Record engine lifecycle hardening) — 6 plans — 2026-04-22T05:55:06.563Z

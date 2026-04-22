@@ -41,7 +41,7 @@ pub async fn capture_thumbnail(
 
     // Phase 1: resolve filter + source dimensions on a blocking thread
     // (SCShareableContent::get is synchronous 50-200ms — Pitfall 7).
-    let (filter, src_w, src_h, _source_rect) = tokio::task::spawn_blocking(move || {
+    let (filter, src_w, src_h, _source_rect, _needs_scales_to_fit) = tokio::task::spawn_blocking(move || {
         crate::macos::sck_backend::SckBackend::build_filter(&target_owned)
     })
     .await

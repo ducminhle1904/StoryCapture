@@ -111,9 +111,63 @@ let state = {
   // ~80 MB of headless Chromium indefinitely. Re-launches on the next
   // captureSnapshot call at ~500 ms cold-start cost.
   authorIdleHandle: null,
+  // Preview (Phase 09-01): CDP screencast → preview/frame notifications.
+  // Preview failure must not cascade into recording (intentional isolation,
+  // not a workaround per CLAUDE.md).
+  cdp: null,
+  latestFrame: null,
+  flushScheduled: false,
+  previewEveryNth: 1,
+  // Phase 09-03 — bounded in-flight counter. Incremented each time a
+  // screencastFrame arrives while state.latestFrame is still pending
+  // flush (single-slot overwrite == dropped frame).
+  previewDropCount: 0,
+  // Phase 09-04 — author-time sessions keyed by streamId. Each entry is
+  // an independent Chromium session (separate browserServer + context +
+  // page + cdp). Isolation from the recording session is a correctness
+  // requirement, not a workaround.
+  //   Map<streamId, {
+  //     browserServer, browser, context, page,
+  //     cdp, latestFrame, flushScheduled, previewEveryNth,
+  //     previewDropCount, paused
+  //   }>
+  authorSessions: new Map(),
 };
 
 const AUTHOR_IDLE_MS = 5 * 60 * 1000;
+
+// Phase 09-04 — helpers for per-streamId author sessions. Each session is
+// an independent Chromium launch, tracked in `state.authorSessions`.
+function getAuthorSession(streamId) {
+  if (typeof streamId !== 'string' || streamId.length === 0) {
+    throw Object.assign(new Error('streamId required'), { code: -32602 });
+  }
+  const s = state.authorSessions.get(streamId);
+  if (!s) {
+    throw Object.assign(new Error(`author session not found: ${streamId}`), {
+      code: -32000,
+    });
+  }
+  return s;
+}
+
+async function teardownAuthorSession(session) {
+  if (session.cdp) {
+    try { await session.cdp.send('Page.stopScreencast', {}); } catch {}
+    try { await session.cdp.detach(); } catch {}
+    session.cdp = null;
+  }
+  if (session.browser) {
+    try { await session.browser.close(); } catch {}
+  }
+  if (session.browserServer) {
+    try { await session.browserServer.close(); } catch {}
+  }
+  session.browser = null;
+  session.browserServer = null;
+  session.context = null;
+  session.page = null;
+}
 
 async function closeAuthorBrowser() {
   const b = state.authorBrowser;
@@ -191,6 +245,62 @@ function armAuthorIdleClose() {
   if (typeof state.authorIdleHandle.unref === 'function') {
     state.authorIdleHandle.unref();
   }
+}
+
+// Attach a Page.startScreencast session to `target` (either the top-level
+// `state` or an entry in `state.authorSessions`). Mutates target.cdp /
+// latestFrame / previewDropCount / flushScheduled / previewEveryNth.
+async function attachScreencast(target, page, { streamId, scheduleFlush, isPaused } = {}) {
+  target.cdp = await page.context().newCDPSession(page);
+  target.cdp.on('Page.screencastFrame', (frame) => {
+    if (isPaused && isPaused()) return;
+    if (target.latestFrame !== null) target.previewDropCount++;
+    target.latestFrame = {
+      data: frame.data,
+      width: frame.metadata?.deviceWidth ?? 0,
+      height: frame.metadata?.deviceHeight ?? 0,
+      timestamp: frame.metadata?.timestamp ?? Date.now() / 1000,
+      sessionId: frame.sessionId,
+    };
+    if (!target.flushScheduled) {
+      target.flushScheduled = true;
+      setImmediate(scheduleFlush);
+    }
+  });
+  const probe = await page
+    .evaluate(() => ({
+      dpr: window.devicePixelRatio,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }))
+    .catch(() => ({ dpr: 1, width: 1280, height: 720 }));
+  target.previewEveryNth = probe.dpr >= 2 || probe.width > 1600 ? 2 : 1;
+  if (process.env.DEBUG && /storycapture-sidecar/.test(process.env.DEBUG)) {
+    process.stderr.write(
+      `[debug] previewEveryNth=${target.previewEveryNth} dpr=${probe.dpr} vp=${probe.width}x${probe.height}${streamId ? ` streamId=${streamId}` : ''}\n`,
+    );
+  }
+  await target.cdp.send('Page.startScreencast', {
+    format: 'jpeg',
+    quality: 80,
+    maxWidth: 1280,
+    maxHeight: 720,
+    everyNthFrame: target.previewEveryNth,
+  });
+  return target.previewEveryNth;
+}
+
+async function detachScreencast(target) {
+  if (!target.cdp) return 0;
+  const cdp = target.cdp;
+  try { await cdp.send('Page.stopScreencast', {}); } catch {}
+  try { await cdp.detach(); } catch {}
+  const dropped = target.previewDropCount;
+  target.cdp = null;
+  target.latestFrame = null;
+  target.flushScheduled = false;
+  target.previewDropCount = 0;
+  return dropped;
 }
 
 const handlers = {
@@ -306,6 +416,15 @@ const handlers = {
   },
 
   close: async () => {
+    // Preview teardown first — must never throw and must never block close.
+    if (state.cdp) {
+      try {
+        await state.cdp.send("Page.stopScreencast", {});
+      } catch (e) {
+        process.stderr.write(`[playwright-sidecar] warn: stopScreencast on close: ${e.message}\n`);
+      }
+      try { await state.cdp.detach(); } catch {}
+    }
     if (state.browser) {
       try { await state.browser.close(); } catch {}
     }
@@ -314,6 +433,10 @@ const handlers = {
     }
     // also tear down the author-time snapshot browser.
     await closeAuthorBrowser();
+    // Phase 09-04 — close every author-session Chromium.
+    for (const [, s] of state.authorSessions) {
+      await teardownAuthorSession(s);
+    }
     state = {
       browser: null,
       context: null,
@@ -328,6 +451,12 @@ const handlers = {
       authorBrowser: null,
       authorContext: null,
       authorIdleHandle: null,
+      cdp: null,
+      latestFrame: null,
+      flushScheduled: false,
+      previewEveryNth: 1,
+      previewDropCount: 0,
+      authorSessions: new Map(),
     };
     return { ok: true };
   },
@@ -637,12 +766,208 @@ const handlers = {
     }
   },
 
+  // Phase 09-04 — author-session lifecycle (separate Chromium per streamId).
+  // Keyed by caller-supplied streamId; recording session (state.page) is
+  // never shared. Used by editor-surface Live Preview + Phase 10 simulator.
+  'author.launch': async ({ streamId, url, viewport, headless, executable, channel, theme } = {}) => {
+    if (typeof streamId !== 'string' || streamId.length === 0) {
+      throw Object.assign(new Error('streamId required'), { code: -32602 });
+    }
+    if (state.authorSessions.has(streamId)) {
+      throw Object.assign(new Error(`author session exists: ${streamId}`), {
+        code: -32000,
+      });
+    }
+    const launchOpts = { headless: headless !== false, args: [] };
+    if (executable) launchOpts.executablePath = executable;
+    else if (channel) launchOpts.channel = channel;
+    const browserServer = await chromium.launchServer(launchOpts);
+    const browser = await chromium.connect({ wsEndpoint: browserServer.wsEndpoint() });
+    const context = await browser.newContext({
+      viewport: viewport && viewport.width && viewport.height
+        ? { width: viewport.width, height: viewport.height }
+        : { width: 1280, height: 800 },
+      colorScheme:
+        theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'no-preference',
+      acceptDownloads: true,
+    });
+    const page = await context.newPage();
+    if (typeof url === 'string' && url.length > 0) {
+      try {
+        await page.goto(url, { waitUntil: 'load', timeout: 15000 });
+      } catch (e) {
+        process.stderr.write(
+          `[playwright-sidecar] warn: author.launch goto failed: ${e.message}\n`,
+        );
+      }
+    }
+    state.authorSessions.set(streamId, {
+      browserServer,
+      browser,
+      context,
+      page,
+      cdp: null,
+      latestFrame: null,
+      flushScheduled: false,
+      previewEveryNth: 1,
+      previewDropCount: 0,
+      paused: false,
+    });
+    return { ok: true, streamId };
+  },
+
+  'author.close': async ({ streamId } = {}) => {
+    const s = state.authorSessions.get(streamId);
+    if (!s) return { ok: true, closed: false };
+    state.authorSessions.delete(streamId);
+    await teardownAuthorSession(s);
+    return { ok: true, closed: true };
+  },
+
+  'author.setViewport': async ({ streamId, width, height } = {}) => {
+    const s = getAuthorSession(streamId);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      throw Object.assign(new Error('invalid viewport'), { code: -32602 });
+    }
+    await s.page.setViewportSize({ width, height });
+    return { ok: true, width, height };
+  },
+
+  'author.goto': async ({ streamId, url } = {}) => {
+    const s = getAuthorSession(streamId);
+    if (typeof url !== 'string' || !url) {
+      throw Object.assign(new Error('invalid url'), { code: -32602 });
+    }
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        throw new Error('non-http(s) url');
+      }
+    } catch {
+      throw Object.assign(new Error('invalid url'), { code: -32602 });
+    }
+    await s.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    return { ok: true, url };
+  },
+
+  startPreviewStream: async ({ streamId } = {}) => {
+    if (typeof streamId === 'string' && streamId.length > 0) {
+      const s = getAuthorSession(streamId);
+      if (s.cdp) return { ok: true, alreadyRunning: true };
+      const everyNthFrame = await attachScreencast(s, s.page, {
+        streamId,
+        scheduleFlush: () => flushAuthorPreviewFrame(streamId),
+        isPaused: () => s.paused,
+      });
+      return { ok: true, everyNthFrame, streamId };
+    }
+    if (!state.page) {
+      throw Object.assign(new Error('page not launched'), { code: -32000 });
+    }
+    if (state.cdp) return { ok: true, alreadyRunning: true };
+    const everyNthFrame = await attachScreencast(state, state.page, {
+      scheduleFlush: flushPreviewFrame,
+    });
+    return { ok: true, everyNthFrame };
+  },
+
+  stopPreviewStream: async ({ streamId } = {}) => {
+    if (typeof streamId === 'string' && streamId.length > 0) {
+      const s = state.authorSessions.get(streamId);
+      if (!s) return { ok: true };
+      const dropped = await detachScreencast(s);
+      return { ok: true, dropped };
+    }
+    const dropped = await detachScreencast(state);
+    if (dropped > 0) {
+      process.stderr.write(
+        JSON.stringify({ evt: 'preview_drop_summary', dropped }) + '\n',
+      );
+    }
+    return { ok: true, dropped };
+  },
+
+  // PHASE-9.9 — pause/resume a running screencast without tearing it down.
+  // Wraps Page.stopScreencast/Page.startScreencast on the existing CDP
+  // session. Idempotent; required by Phase 10 simulator + Phase 11 picker
+  // for exclusive-lock concurrency.
+  pauseStream: async ({ streamId } = {}) => {
+    const s = getAuthorSession(streamId);
+    if (!s.cdp) return { ok: true, paused: false };
+    if (s.paused) return { ok: true, paused: true };
+    try { await s.cdp.send('Page.stopScreencast', {}); } catch {}
+    s.paused = true;
+    return { ok: true, paused: true };
+  },
+
+  resumeStream: async ({ streamId } = {}) => {
+    const s = getAuthorSession(streamId);
+    if (!s.cdp) return { ok: true, paused: false };
+    if (!s.paused) return { ok: true, paused: false };
+    try {
+      await s.cdp.send('Page.startScreencast', {
+        format: 'jpeg',
+        quality: 80,
+        maxWidth: 1280,
+        maxHeight: 720,
+        everyNthFrame: s.previewEveryNth,
+      });
+    } catch {}
+    s.paused = false;
+    return { ok: true, paused: false };
+  },
+
   // Test-only shim (Plan 05-02 Task 0): let vitest exercise the
   // remote-browser response shape without a real remote CDP endpoint.
   // Safe to ship because it only mutates a non-observable flag — all
   // real capture paths ignore it unless a browser is actually attached.
   __test_set_remote_browser: async ({ enabled }) => {
     state.fakeRemoteBrowser = Boolean(enabled);
+    return { ok: true };
+  },
+
+  // Test-only debug introspection for backpressure test (gated by env).
+  __debugPreviewState: async () => {
+    if (process.env.SIDECAR_TEST !== "1") {
+      throw Object.assign(new Error("debug verb disabled"), { code: -32601 });
+    }
+    return {
+      hasLatest: !!state.latestFrame,
+      flushScheduled: state.flushScheduled,
+      cdpAttached: !!state.cdp,
+      previewDropCount: state.previewDropCount,
+      previewEveryNth: state.previewEveryNth,
+    };
+  },
+
+  // Test-only: force pause the setImmediate flusher so synthetic
+  // screencastFrame events can accumulate drops deterministically.
+  __debugPausePreviewFlush: async ({ paused } = {}) => {
+    if (process.env.SIDECAR_TEST !== "1") {
+      throw Object.assign(new Error("debug verb disabled"), { code: -32601 });
+    }
+    state.__flushPaused = !!paused;
+    return { ok: true, paused: state.__flushPaused };
+  },
+
+  // Test-only: synthesize a screencastFrame path through the handler
+  // without a real Chromium. Exercises the drop-counter invariant.
+  __debugInjectFrame: async () => {
+    if (process.env.SIDECAR_TEST !== "1") {
+      throw Object.assign(new Error("debug verb disabled"), { code: -32601 });
+    }
+    if (state.latestFrame !== null) state.previewDropCount++;
+    state.latestFrame = {
+      data: "AAAA",
+      width: 1,
+      height: 1,
+      timestamp: Date.now() / 1000,
+      sessionId: 0,
+    };
+    if (!state.flushScheduled && !state.__flushPaused) {
+      state.flushScheduled = true;
+      setImmediate(flushPreviewFrame);
+    }
     return { ok: true };
   },
 
@@ -962,6 +1287,10 @@ rl.on('line', async (line) => {
 });
 
 rl.on('close', async () => {
+  if (state.cdp) {
+    try { await state.cdp.send('Page.stopScreencast', {}); } catch {}
+    try { await state.cdp.detach(); } catch {}
+  }
   if (state.browser) {
     try {
       await state.browser.close();
@@ -978,6 +1307,10 @@ rl.on('close', async () => {
       await state.authorBrowser.close();
     } catch {}
   }
+  // Phase 09-04 — kill every per-streamId author session on exit.
+  for (const [, s] of state.authorSessions) {
+    await teardownAuthorSession(s);
+  }
   process.exit(0);
 });
 
@@ -993,4 +1326,52 @@ function writeNotification(method, params) {
   process.stdout.write(
     JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n',
   );
+}
+
+// Phase 09-01 — latest-wins preview flusher. Emits one preview/frame
+// notification per setImmediate tick and acks the latest sessionId so
+// Chromium keeps streaming. Never logs `data` (info-disclosure T-09-01-03).
+function flushPreviewFrame() {
+  state.flushScheduled = false;
+  // Phase 09-03 test hook — paused flusher lets synthetic frames pile up.
+  if (state.__flushPaused) return;
+  const f = state.latestFrame;
+  if (!f) return;
+  state.latestFrame = null;
+  writeNotification('preview/frame', {
+    data: f.data,
+    width: f.width,
+    height: f.height,
+    timestamp: f.timestamp,
+  });
+  if (state.cdp) {
+    state.cdp
+      .send('Page.screencastFrameAck', { sessionId: f.sessionId })
+      .catch(() => {});
+  }
+}
+
+// Phase 09-04 — per-streamId author-session flusher. Payload carries
+// streamId so Rust/webview can multiplex frames across concurrent
+// sessions (recording + editor).
+function flushAuthorPreviewFrame(streamId) {
+  const s = state.authorSessions.get(streamId);
+  if (!s) return;
+  s.flushScheduled = false;
+  if (s.paused) return;
+  const f = s.latestFrame;
+  if (!f) return;
+  s.latestFrame = null;
+  writeNotification('preview/frame', {
+    streamId,
+    data: f.data,
+    width: f.width,
+    height: f.height,
+    timestamp: f.timestamp,
+  });
+  if (s.cdp) {
+    s.cdp
+      .send('Page.screencastFrameAck', { sessionId: f.sessionId })
+      .catch(() => {});
+  }
 }

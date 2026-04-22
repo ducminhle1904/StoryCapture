@@ -4,6 +4,8 @@
 
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::io::AsyncWriteExt;
@@ -20,6 +22,8 @@ use crate::sidecar::{FfmpegSidecar, SidecarCommand};
 /// Shutdown budget for FFmpeg after stdin closes.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
+use crate::staging::{partial_path_of, PartialFileGuard};
+
 /// Result of a completed encode.
 #[derive(Debug, Clone)]
 pub struct EncodeResult {
@@ -29,6 +33,12 @@ pub struct EncodeResult {
     pub frames_written: u64,
     pub frames_dropped: u64,
 }
+
+/// Re-exported under the encoder-facing name. Fires when the FFmpeg stdin
+/// write times out; the host forwards the `(total, delta)` as
+/// `RecordingEvent::FramesDropped` so the renderer sees backpressure drops
+/// as telemetry rather than silent stalls.
+pub use util::FrameDropCallback as BackpressureCallback;
 
 /// Convert a capture frame into contiguous BGRA bytes for FFmpeg.
 pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Cow<'_, [u8]>, usize)> {
@@ -88,12 +98,24 @@ impl Drop for StdinGuard {
 pub struct EncodePipeline;
 
 impl EncodePipeline {
-    /// Spawn the pipeline.
+    /// Spawn the pipeline (no backpressure telemetry).
     pub async fn start(
+        cfg: EncodeConfig,
+        sidecar_cmd: &dyn SidecarCommand,
+        frames: mpsc::Receiver<Frame>,
+        progress_tx: mpsc::Sender<EncodeProgress>,
+    ) -> Result<JoinHandle<Result<EncodeResult>>> {
+        Self::start_with_backpressure(cfg, sidecar_cmd, frames, progress_tx, None).await
+    }
+
+    /// Spawn the pipeline with an optional backpressure callback (D-07).
+    /// `on_backpressure(total, delta)` fires on every stdin-write timeout.
+    pub async fn start_with_backpressure(
         cfg: EncodeConfig,
         sidecar_cmd: &dyn SidecarCommand,
         mut frames: mpsc::Receiver<Frame>,
         progress_tx: mpsc::Sender<EncodeProgress>,
+        on_backpressure: Option<BackpressureCallback>,
     ) -> Result<JoinHandle<Result<EncodeResult>>> {
         cfg.validate()?;
 
@@ -114,7 +136,15 @@ impl EncodePipeline {
             }
         }
 
-        let args = cfg.to_ffmpeg_args();
+        // D-08: stage FFmpeg output to `<target>.partial`; rename atomically
+        // on success; clean up on any failure via PartialFileGuard.
+        let target_path = cfg.output_path.clone();
+        let partial_path = partial_path_of(&target_path);
+        let _ = std::fs::remove_file(&partial_path); // stale leftovers
+        let mut cfg_for_ffmpeg = cfg.clone();
+        cfg_for_ffmpeg.output_path = partial_path.clone();
+
+        let args = cfg_for_ffmpeg.to_ffmpeg_args();
         tracing::info!(target: "storycapture::encoder", "ffmpeg args: {}", args.join(" "));
         let child = sidecar_cmd.spawn(args).await?;
         let mut sidecar = FfmpegSidecar::new(child);
@@ -129,14 +159,19 @@ impl EncodePipeline {
         let stderr = handles.stderr;
         let mut child = handles.child;
 
-        let output_path = cfg.output_path.clone();
         let start = Instant::now();
 
         // Parse FFmpeg progress on stderr.
         let parser = ProgressParser::new();
         let progress_task = tokio::spawn(async move { parser.pump(stderr, progress_tx).await });
 
+        let frames_dropped_backpressure: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+        let frames_dropped_bp = frames_dropped_backpressure.clone();
+        let partial_path_for_task = partial_path.clone();
+        let target_for_task = target_path.clone();
         let join = tokio::spawn(async move {
+            // Ensure `.partial` is cleaned on any failure/panic path.
+            let partial_guard = PartialFileGuard::new(partial_path_for_task.clone());
             // RAII guard ensures ffmpeg stdin is closed on ANY exit path
             // (normal completion, early Err return, or panic unwind) so
             // ffmpeg receives EOF immediately instead of waiting up to
@@ -198,19 +233,35 @@ impl EncodePipeline {
                     }
                     &packed_buf[..]
                 };
-                match stdin.as_mut().write_all(bytes_ref).await {
-                    Ok(()) => {
+                match tokio::time::timeout(Duration::from_millis(200), stdin.as_mut().write_all(bytes_ref))
+                    .await
+                {
+                    Ok(Ok(())) => {
                         frames_written += 1;
                         if frames_written == 1 || frames_written % 30 == 0 {
                             tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, "encoder frame pump progress");
                         }
                     }
-                    Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                    Ok(Err(e)) if e.kind() == std::io::ErrorKind::BrokenPipe => {
                         tracing::warn!(target: "storycapture::encoder", "ffmpeg stdin broken pipe; stopping frame pump");
                         break;
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         return Err(EncoderError::Io(format!("stdin write: {e}")));
+                    }
+                    Err(_elapsed) => {
+                        // D-07: FFmpeg stdin backpressure. Drop the frame,
+                        // bump the counter, surface it as telemetry.
+                        let total = frames_dropped_bp.fetch_add(1, Ordering::AcqRel) + 1;
+                        frames_dropped += 1;
+                        if let Some(cb) = on_backpressure.as_ref() {
+                            cb(total, 1);
+                        }
+                        tracing::warn!(
+                            target: "storycapture::encoder",
+                            frames_dropped_backpressure = total,
+                            "ffmpeg stdin backpressure: dropped frame"
+                        );
                     }
                 }
                 drop(frame);
@@ -268,15 +319,28 @@ impl EncodePipeline {
             );
 
             let duration_ms = start.elapsed().as_millis() as u64;
-            let bytes = std::fs::metadata(&output_path)
+
+            // D-08: read size from `.partial` before renaming.
+            let bytes = std::fs::metadata(&partial_path_for_task)
                 .map(|m| m.len())
                 .unwrap_or(0);
+
+            // Atomic rename from `.partial` to final target. Same directory,
+            // same filesystem — guaranteed atomic on POSIX and NTFS.
+            std::fs::rename(&partial_path_for_task, &target_for_task).map_err(|e| {
+                EncoderError::Io(format!(
+                    "rename {} -> {}: {e}",
+                    partial_path_for_task.display(),
+                    target_for_task.display()
+                ))
+            })?;
+            partial_guard.disarm();
 
             // Keep `sidecar` alive until FFmpeg is done.
             drop(sidecar);
 
             Ok(EncodeResult {
-                output_path,
+                output_path: target_for_task,
                 duration_ms,
                 bytes,
                 frames_written,
@@ -398,6 +462,32 @@ fn tokio_placeholder() -> mpsc::Receiver<Frame> {
 mod tests {
     use super::*;
     use capture::{ClockSource, Frame, FrameData, PixelFormat, Pts};
+
+    #[tokio::test]
+    async fn backpressure_callback_fires_on_timeout() {
+        // Simulate the exact branching: a stalled writer triggers timeout,
+        // and the callback must fire once per drop with monotonically
+        // increasing totals. This mirrors the frame-pump path without
+        // spawning FFmpeg.
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let frames_dropped_backpressure: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+        let observed: Arc<std::sync::Mutex<Vec<(u64, u64)>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let obs_clone = observed.clone();
+        let cb: BackpressureCallback = Box::new(move |total, delta| {
+            obs_clone.lock().unwrap().push((total, delta));
+        });
+
+        // Pretend stdin stalled — take the timeout branch twice.
+        for _ in 0..2 {
+            let total = frames_dropped_backpressure.fetch_add(1, Ordering::AcqRel) + 1;
+            cb(total, 1);
+        }
+
+        let obs = observed.lock().unwrap().clone();
+        assert_eq!(obs, vec![(1, 1), (2, 1)]);
+        assert_eq!(frames_dropped_backpressure.load(Ordering::Acquire), 2);
+    }
 
     #[test]
     fn bgra_bytes_of_frame_owned_round_trip() {

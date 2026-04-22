@@ -22,7 +22,7 @@ use std::sync::Arc;
 use story_parser::{ScrollDir, SelectorOrText};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin};
-use tokio::sync::{broadcast, oneshot, Mutex};
+use tokio::sync::{broadcast, oneshot, watch, Mutex};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JsonRpcRequest<'a> {
@@ -63,6 +63,41 @@ pub struct Notification {
     pub params: Value,
 }
 
+/// Phase 09-01 — decoded `preview/frame` notification payload.
+/// `data` is a base64-encoded JPEG; width/height in device pixels;
+/// timestamp is Chromium's screencast metadata timestamp (seconds).
+///
+/// Phase 09-04 — `stream_id` identifies which session the frame belongs
+/// to. `None` is the recording session (legacy); `Some(_)` is an author-
+/// time session spawned per editor preview.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PreviewFrame {
+    #[serde(default, rename = "streamId", skip_serializing_if = "Option::is_none")]
+    pub stream_id: Option<String>,
+    pub data: String,
+    pub width: u32,
+    pub height: u32,
+    pub timestamp: f64,
+}
+
+// Phase 09-01 — Untagged serde enum over the two sidecar stdout shapes.
+// `Response` matches the existing id-carrying line; `Notification` matches
+// id-less method+params lines. Exists primarily as a named type for the
+// reader-loop dispatch — the existing `JsonRpcResponse` already handles
+// both shapes via Option fields; this alias keeps the acceptance-criteria
+// grep anchor stable.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum SidecarMsg {
+    Response(JsonRpcResponse),
+    Notification {
+        method: String,
+        #[serde(default)]
+        params: Value,
+    },
+}
+
 #[derive(Debug, Deserialize)]
 struct JsonRpcError {
     #[allow(dead_code)]
@@ -70,7 +105,8 @@ struct JsonRpcError {
     message: String,
 }
 
-type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<std::result::Result<Value, String>>>>>;
+#[doc(hidden)]
+pub type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<std::result::Result<Value, String>>>>>;
 
 pub struct PlaywrightSidecarDriver {
     stdin: Mutex<ChildStdin>,
@@ -82,6 +118,10 @@ pub struct PlaywrightSidecarDriver {
     /// `pickElement.hoverPreview`). Capacity 128 — lagged subscribers
     /// receive `RecvError::Lagged(n)` and are logged, not panicked.
     notifications: broadcast::Sender<Notification>,
+    /// Phase 09-01 — latest-wins watch channel for decoded preview frames.
+    /// `watch::send` overwrites on every update so slow consumers naturally
+    /// drop intermediate frames (CONTEXT D-03 backpressure).
+    preview_frames_tx: watch::Sender<Option<PreviewFrame>>,
 }
 
 impl PlaywrightSidecarDriver {
@@ -110,6 +150,12 @@ impl PlaywrightSidecarDriver {
         let (notifications, _keep_open) = broadcast::channel::<Notification>(128);
         let notifications_for_reader = notifications.clone();
 
+        // Phase 09-01 — watch channel for decoded preview/frame notifications.
+        // Latest-wins by construction; keep the sender in the driver so
+        // subscribers can be added after driver construction.
+        let (preview_frames_tx, _preview_seed_rx) = watch::channel::<Option<PreviewFrame>>(None);
+        let preview_tx_for_reader = preview_frames_tx.clone();
+
         // Reader task: parse stdout lines, dispatch to the pending map or
         // the notifications broadcast channel.
         tokio::spawn(async move {
@@ -118,44 +164,13 @@ impl PlaywrightSidecarDriver {
                 if line.is_empty() {
                     continue;
                 }
-                let parsed: std::result::Result<JsonRpcResponse, _> = serde_json::from_str(&line);
-                let resp = match parsed {
-                    Ok(r) => r,
-                    Err(e) => {
-                        tracing::warn!(target: "automation::playwright", "bad JSON from sidecar: {e}: {line}");
-                        continue;
-                    }
-                };
-                match (resp.id, resp.method.as_deref()) {
-                    (Some(id), _) => {
-                        // Id-present → request/response path (unchanged).
-                        let mut p = pending_for_reader.lock().await;
-                        if let Some(tx) = p.remove(&id) {
-                            let _ = tx.send(if let Some(err) = resp.error {
-                                Err(err.message)
-                            } else {
-                                Ok(resp.result.unwrap_or(Value::Null))
-                            });
-                        }
-                    }
-                    (None, Some(method)) => {
-                        // Id-absent + method → notification (fan-out).
-                        let note = Notification {
-                            method: method.to_string(),
-                            params: resp.params.unwrap_or(Value::Null),
-                        };
-                        // `send` errors only when there are zero live
-                        // receivers — ignore so startup before any
-                        // subscriber attaches doesn't log-spam.
-                        let _ = notifications_for_reader.send(note);
-                    }
-                    _ => {
-                        tracing::warn!(
-                            target: "automation::playwright",
-                            "malformed line (no id, no method): {line}"
-                        );
-                    }
-                }
+                handle_sidecar_line(
+                    &line,
+                    &pending_for_reader,
+                    &notifications_for_reader,
+                    &preview_tx_for_reader,
+                )
+                .await;
             }
         });
 
@@ -165,7 +180,130 @@ impl PlaywrightSidecarDriver {
             pending,
             _child: Arc::new(Mutex::new(Some(child))),
             notifications,
+            preview_frames_tx,
         })
+    }
+
+    /// Phase 09-01 — subscribe to the latest-wins preview-frame channel.
+    /// Returns `watch::Receiver<Option<PreviewFrame>>`; initial value is
+    /// `None`. Each subscriber sees the MOST RECENT frame on `changed()`
+    /// — intermediate frames are dropped by design.
+    pub fn subscribe_preview(&self) -> watch::Receiver<Option<PreviewFrame>> {
+        self.preview_frames_tx.subscribe()
+    }
+
+    /// Phase 09-01 — start the CDP screencast in the sidecar.
+    pub async fn call_preview_start(&self) -> Result<()> {
+        self.call("startPreviewStream", json!({})).await?;
+        Ok(())
+    }
+
+    /// Phase 09-01 — stop the CDP screencast. Preview lifecycle errors
+    /// must not cascade into recording lifecycle (CLAUDE.md: intentional
+    /// isolation, not a workaround). Caller always sees Ok.
+    pub async fn call_preview_stop(&self) -> Result<()> {
+        if let Err(err) = self.call("stopPreviewStream", json!({})).await {
+            tracing::warn!(
+                target: "storycapture::preview",
+                error = %err,
+                "stopPreviewStream failed; continuing"
+            );
+        }
+        Ok(())
+    }
+
+    /// Phase 09-04 — spawn an ephemeral author-time Chromium session keyed
+    /// by `stream_id`. Separate from the recording session; initial URL is
+    /// optional. Required by editor-surface Live Preview + Phase 10 simulator.
+    pub async fn call_author_launch(
+        &self,
+        stream_id: &str,
+        url: Option<&str>,
+        viewport: Option<(u32, u32)>,
+    ) -> Result<()> {
+        let mut params = json!({ "streamId": stream_id, "headless": true });
+        if let Some(u) = url {
+            params["url"] = json!(u);
+        }
+        if let Some((w, h)) = viewport {
+            params["viewport"] = json!({ "width": w, "height": h });
+        }
+        self.call("author.launch", params).await?;
+        Ok(())
+    }
+
+    /// Phase 09-04 — tear down an author-time session. Idempotent.
+    pub async fn call_author_close(&self, stream_id: &str) -> Result<()> {
+        if let Err(err) = self.call("author.close", json!({ "streamId": stream_id })).await {
+            tracing::warn!(
+                target: "storycapture::preview",
+                error = %err,
+                stream_id,
+                "author.close failed; continuing"
+            );
+        }
+        Ok(())
+    }
+
+    /// Phase 09-04 — drive `page.setViewportSize` on an author session.
+    pub async fn call_author_set_viewport(
+        &self,
+        stream_id: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<()> {
+        self.call(
+            "author.setViewport",
+            json!({ "streamId": stream_id, "width": width, "height": height }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Navigate an author session's page to a new URL without relaunching.
+    pub async fn call_author_goto(&self, stream_id: &str, url: &str) -> Result<()> {
+        self.call("author.goto", json!({ "streamId": stream_id, "url": url }))
+            .await?;
+        Ok(())
+    }
+
+    /// Phase 09-04 — start the CDP screencast for a named author session.
+    pub async fn call_preview_start_stream(&self, stream_id: &str) -> Result<()> {
+        self.call("startPreviewStream", json!({ "streamId": stream_id }))
+            .await?;
+        Ok(())
+    }
+
+    /// Phase 09-04 — stop the CDP screencast for a named author session.
+    pub async fn call_preview_stop_stream(&self, stream_id: &str) -> Result<()> {
+        if let Err(err) = self
+            .call("stopPreviewStream", json!({ "streamId": stream_id }))
+            .await
+        {
+            tracing::warn!(
+                target: "storycapture::preview",
+                error = %err,
+                stream_id,
+                "stopPreviewStream(streamId) failed; continuing"
+            );
+        }
+        Ok(())
+    }
+
+    /// PHASE-9.9 — pause screencast on a live session without tearing it down.
+    /// Phase 10 simulator + Phase 11 picker use this as an exclusive-lock
+    /// primitive. Idempotent.
+    pub async fn call_pause_stream(&self, stream_id: &str) -> Result<()> {
+        self.call("pauseStream", json!({ "streamId": stream_id }))
+            .await?;
+        Ok(())
+    }
+
+    /// PHASE-9.9 — resume a paused screencast. Idempotent.
+    pub async fn call_resume_stream(&self, stream_id: &str) -> Result<()> {
+        self.call("resumeStream", json!({ "streamId": stream_id }))
+            .await?;
+        Ok(())
     }
 
     /// subscribe to id-absent JSON-RPC messages. Multiple
@@ -452,6 +590,71 @@ pub struct SnapshotResponse {
     pub screenshot_base64: String,
     #[serde(rename = "capturedAt")]
     pub captured_at: String,
+}
+
+// Phase 09-01 — parse+dispatch for a single stdout line. Extracted from
+// the reader task so integration tests can drive it without spawning a
+// Node sidecar child process. Doc-hidden: not part of the public API.
+#[doc(hidden)]
+pub async fn handle_sidecar_line(
+    line: &str,
+    pending: &Pending,
+    notifications: &broadcast::Sender<Notification>,
+    preview_tx: &watch::Sender<Option<PreviewFrame>>,
+) {
+    let resp: JsonRpcResponse = match serde_json::from_str(line) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(target: "automation::playwright", "bad JSON from sidecar: {e}: {line}");
+            return;
+        }
+    };
+    match (resp.id, resp.method.as_deref()) {
+        (Some(id), _) => {
+            let mut p = pending.lock().await;
+            if let Some(tx) = p.remove(&id) {
+                let _ = tx.send(if let Some(err) = resp.error {
+                    Err(err.message)
+                } else {
+                    Ok(resp.result.unwrap_or(Value::Null))
+                });
+            }
+        }
+        (None, Some(method)) => {
+            let params = resp.params.unwrap_or(Value::Null);
+            if method == "preview/frame" {
+                match serde_json::from_value::<PreviewFrame>(params.clone()) {
+                    Ok(frame) => {
+                        let _ = preview_tx.send(Some(frame));
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            target: "automation::playwright",
+                            error = %err,
+                            "malformed preview/frame params"
+                        );
+                    }
+                }
+            } else {
+                tracing::debug!(
+                    target: "automation::playwright",
+                    method,
+                    "sidecar notification"
+                );
+            }
+            let note = Notification {
+                method: method.to_string(),
+                params,
+            };
+            let _ = notifications.send(note);
+        }
+        _ => {
+            tracing::warn!(
+                target: "automation::playwright",
+                "malformed line (no id, no method): {line}"
+            );
+        }
+    }
 }
 
 fn target_to_json(t: &SelectorOrText) -> Value {

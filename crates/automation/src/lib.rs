@@ -32,12 +32,14 @@ pub use driver::{
     LaunchOptions, ResolvedSelector,
 };
 pub use error::{AutomationError, Result};
-pub use events::{AttemptLog, AttemptOutcome, ExecutorEvent, SelectorStrategy, StorySummary};
-pub use executor::{Executor, PersistenceHandle};
+pub use events::{
+    AttemptLog, AttemptOutcome, ExecutorEvent, MatchKind, SelectorStrategy, StepFrame, StorySummary,
+};
+pub use executor::{continue_run, try_promote_fallback, Executor, PersistenceHandle};
 pub use noop_driver::NoopDriver;
 pub use playwright_driver::{
     BrowserProcessInfo, Notification, PickCandidate, PickElementResponse, PickLocator,
-    PlaywrightSidecarDriver, SnapshotResponse,
+    PlaywrightSidecarDriver, PreviewFrame, SnapshotResponse,
 };
 pub use selector::{SmartSelector, ValidationResult};
 pub use session::{

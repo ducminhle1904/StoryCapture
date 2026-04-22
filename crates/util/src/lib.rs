@@ -1,10 +1,15 @@
 //! Cross-crate helpers that don't fit any single domain crate.
-//!
-//! Currently: a single SHA-256 hex helper used by the TTS cache and the
-//! author-time snapshot store to derive stable filenames from variable-length
-//! inputs.
 
 use sha2::{Digest, Sha256};
+
+/// Callback fired when a frame is dropped somewhere in the capture→encoder
+/// pipeline. Arguments are `(total_dropped, delta)` where `total_dropped` is
+/// the monotonic running total and `delta` is the number of frames just
+/// dropped by the current event (usually 1).
+///
+/// Used by both the capture backend (queue overflow) and the encoder (FFmpeg
+/// stdin backpressure) so downstream telemetry can surface drops uniformly.
+pub type FrameDropCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 
 /// SHA-256 over the concatenation of `parts`, returned as a 64-char lowercase
 /// hex string. Equivalent to `hex(sha256(parts[0] || parts[1] || ...))`.

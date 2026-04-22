@@ -20,40 +20,37 @@ export function storyEditorExtensions(): Extension[] {
     storyDiagnosticsLinter,
     storyAutocomplete,
     indentUnit.of("  "),
-    EditorView.theme(
-      {
+    EditorView.theme({
       "&": {
         height: "100%",
-        backgroundColor: "var(--color-bg-primary)",
-        color: "var(--color-fg-primary)",
+        backgroundColor: "var(--sc-surface)",
+        color: "var(--sc-text)",
       },
       ".cm-content": {
-        fontFamily: "var(--font-mono)",
+        fontFamily: "var(--sc-font-mono)",
         fontSize: "13px",
-        caretColor: "var(--color-accent-primary)",
+        caretColor: "var(--sc-accent-400)",
       },
       ".cm-gutters": {
-        backgroundColor: "var(--color-bg-surface)",
-        color: "var(--color-fg-muted)",
-        borderRight: "1px solid var(--color-border-subtle)",
+        backgroundColor: "var(--sc-surface)",
+        color: "var(--sc-text-4)",
+        borderRight: "1px solid var(--sc-border)",
       },
       ".cm-activeLine": {
-        backgroundColor: "var(--color-bg-surface)",
+        backgroundColor: "var(--sc-surface-2)",
       },
       ".cm-activeLineGutter": {
-        backgroundColor: "var(--color-bg-elevated)",
+        backgroundColor: "var(--sc-surface-3)",
       },
       ".cm-diagnostic-error": {
-        borderLeftColor: "var(--color-danger)",
+        borderLeftColor: "var(--sc-record)",
       },
       ".cm-diagnostic-warning": {
-        borderLeftColor: "var(--color-warning)",
+        borderLeftColor: "var(--sc-warn)",
       },
       "&.cm-focused": {
         outline: "none",
       },
-      },
-      { dark: true },
-    ),
+    }),
   ];
 }

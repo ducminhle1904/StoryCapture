@@ -35,7 +35,11 @@ import {
   type RecordingEvent,
   type RecordingSessionId,
 } from "@/ipc/encode";
-import { launchAutomation, type ExecutorEvent } from "@/ipc/automation";
+import {
+  launchAutomation,
+  type AutomationChannelHandle,
+  type ExecutorEvent,
+} from "@/ipc/automation";
 import { parseStory } from "@/ipc/parse";
 import { useRecorderStore, type RecorderStatus, type StepProgress } from "@/state/recorder";
 
@@ -46,6 +50,7 @@ import { PickElementButton } from "./pick-element-button";
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
+import { LivePreview } from "./live-preview";
 import { TargetThumbnail } from "./TargetThumbnail";
 import { VideoOutputSection, useIsRecordingBlocked } from "./video-output/video-output-section";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
@@ -65,6 +70,13 @@ function formatTime(ms: number): string {
   const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
   const seconds = String(totalSeconds % 60).padStart(2, "0");
   return `${hours}:${minutes}:${seconds}`;
+}
+
+/** True if a Tauri IPC error is the typed `NotFound` variant. */
+function isNotFoundIpcError(e: unknown): boolean {
+  return (
+    typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound"
+  );
 }
 
 /** Format a Tauri IPC error into a readable string. */
@@ -109,6 +121,9 @@ export function RecordingView({
     setIncludeCursor,
     chromeHiding,
     setChromeHiding,
+    livePreviewEnabled,
+    setLivePreviewEnabled,
+    hydrateLivePreviewEnabled,
     setStatus,
     setSession,
     setSteps,
@@ -121,6 +136,19 @@ export function RecordingView({
     loadCaptureTargets,
     setCaptureTarget,
   } = useRecorderStore();
+
+  // D-13: audio-negotiation failure persists a session-scoped flag so a
+  // "video-only" badge stays visible next to the Live pill until the user
+  // starts a new recording.
+  const [audioUnavailable, setAudioUnavailable] = useState(false);
+
+  // D-15: host heartbeat watchdog. `lastHeartbeatRef` is last-tick epoch-ms
+  // (null before first heartbeat). `desynced` surfaces the "out of sync" UI.
+  const lastHeartbeatRef = useRef<number | null>(null);
+  const [desynced, setDesynced] = useState(false);
+
+  // Reference to the automation Channel so unmount can null its handler.
+  const automationChannelRef = useRef<AutomationChannelHandle | null>(null);
 
   // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
@@ -180,6 +208,11 @@ export function RecordingView({
       });
   }, []);
 
+  // Hydrate the persisted live-preview toggle once per recorder mount.
+  useEffect(() => {
+    void hydrateLivePreviewEnabled();
+  }, [hydrateLivePreviewEnabled]);
+
   // Preflight and enumerate targets on mount.
   useEffect(() => {
     (async () => {
@@ -202,7 +235,27 @@ export function RecordingView({
         setError(formatIpcError(e));
       }
     })();
-    return () => reset();
+    // D-14: unmount teardown. Cleanup MUST be synchronous; the
+    // detached stopRecording promise handles any backend teardown.
+    return () => {
+      // (a) null the automation Channel handler so no stale event
+      //     dispatch runs against an unmounted tree.
+      if (automationChannelRef.current) {
+        automationChannelRef.current.onmessage = null;
+      }
+      // (b) if a session is live server-side, fire-and-forget a stop so
+      //     the host drain doesn't leak a session. Capture the id before
+      //     nulling the ref so a re-mount can't double-free.
+      const sid = sessionRef.current;
+      sessionRef.current = null;
+      if (sid) {
+        void stopRecording(sid).catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn("stopRecording on unmount failed", e);
+        });
+      }
+      reset();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -293,6 +346,21 @@ export function RecordingView({
     return () => window.clearInterval(handle);
   }, [status, setElapsed]);
 
+  // D-15: heartbeat watchdog. Runs only while recording; flips `desynced`
+  // when >5s since the last heartbeat tick. A fresh `heartbeat` event
+  // clears it (handled in the dispatch switch above).
+  useEffect(() => {
+    if (status !== "recording") return;
+    const handle = window.setInterval(() => {
+      const last = lastHeartbeatRef.current;
+      if (last == null) return;
+      if (Date.now() - last > 5000) {
+        setDesynced(true);
+      }
+    }, 1000);
+    return () => window.clearInterval(handle);
+  }, [status]);
+
   const dispatch = (event: RecordingEvent) => {
     switch (event.type) {
       case "completed":
@@ -317,18 +385,39 @@ export function RecordingView({
         setError(event.message);
         toast.error(`Recording failed: ${event.message}`);
         break;
+      case "audio-unavailable":
+        // D-13: mic negotiation failed; recording continues video-only.
+        toast.error(`Audio unavailable: ${event.reason}`);
+        setAudioUnavailable(true);
+        break;
+      case "heartbeat":
+        // D-15: host liveness signal; watchdog clears any desync banner.
+        lastHeartbeatRef.current = Date.now();
+        if (desynced) setDesynced(false);
+        break;
       default:
         break;
     }
   };
 
   const handleRecord = async () => {
-    if (permission !== "granted") return;
-    if (selectedDisplay == null && captureTarget?.kind !== "window_by_pid") {
-      toast.error("Pick a Target before recording.");
+    // D-04: double-start guard. Synchronous status flip before any await
+    // so a 10 ms double-click cannot enter this function twice.
+    if (status !== "idle") return;
+    setStatus("starting");
+    // Fresh per-session UX state for the audio/heartbeat badges.
+    setAudioUnavailable(false);
+    setDesynced(false);
+    lastHeartbeatRef.current = null;
+    if (permission !== "granted") {
+      setStatus("idle");
       return;
     }
-    setStatus("recording");
+    if (selectedDisplay == null && captureTarget?.kind !== "window_by_pid") {
+      toast.error("Pick a Target before recording.");
+      setStatus("idle");
+      return;
+    }
     startedAtRef.current = Date.now();
     pausedAtRef.current = null;
     automationOwnsStopRef.current = false;
@@ -351,8 +440,12 @@ export function RecordingView({
       };
       if (shouldAutoFollow) {
         // Launch Playwright *before* capture so the window exists.
-        launchAutomation({ storySource, projectFolder, chromeHiding }, (evt) =>
-          dispatchAutomation(evt),
+        launchAutomation(
+          { storySource, projectFolder, chromeHiding },
+          (evt) => dispatchAutomation(evt),
+          (ch) => {
+            automationChannelRef.current = ch;
+          },
         ).catch((e) => {
           const msg = formatIpcError(e);
           toast.error(`Automation failed: ${msg}`);
@@ -418,6 +511,10 @@ export function RecordingView({
       );
       sessionRef.current = id;
       setSession(typeof (id as unknown) === "string" ? (id as unknown as string) : id.id);
+      // D-04: transition starting -> recording only after the host has
+      // confirmed the session. If we error out above, the catch arm
+      // resets to "idle" so the Start button re-enables.
+      setStatus("recording");
 
       // Launch DSL automation here ONLY if we didn't already launch it
       // for auto-follow (`shouldAutoFollow` fires launchAutomation BEFORE
@@ -434,6 +531,9 @@ export function RecordingView({
               typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
           },
           (evt) => dispatchAutomation(evt),
+          (ch) => {
+            automationChannelRef.current = ch;
+          },
         ).catch((e) => {
           automationOwnsStopRef.current = false;
           const msg = formatIpcError(e);
@@ -443,13 +543,19 @@ export function RecordingView({
       }
     } catch (e) {
       setError(formatIpcError(e));
-      setStatus("failed");
+      // D-04: error path resets to idle so the Start button re-enables;
+      // the toast + error banner still surface the failure to the user.
+      setStatus("idle");
       toast.error(`Recording failed to start: ${formatIpcError(e)}`);
     }
   };
 
   // Map automation events onto the step rail.
   const dispatchAutomation = (evt: ExecutorEvent) => {
+    // D-10: recording path never emits run_paused or step_frame_captured
+    // (capture_frames=false, stop_after_ordinal=None). Defaulted cases stay
+    // no-op; Phase 10 simulator consumes those variants via simulatorStore,
+    // not this switch.
     switch (evt.type) {
       case "step_started":
         advanceStep(evt.ordinal - 1, "running");
@@ -495,6 +601,31 @@ export function RecordingView({
       setError(message);
       toast.error(`Stop failed: ${message}`);
     }
+  };
+
+  // D-15: "Force stop" escape hatch surfaced when the heartbeat watchdog
+  // declares a desync. Always resets local state to idle regardless of
+  // IPC outcome — NotFound is treated as success (session already gone).
+  const forceStop = async () => {
+    const sid = sessionRef.current;
+    sessionRef.current = null;
+    setSession(null);
+    setDesynced(false);
+    try {
+      if (sid) {
+        await stopRecording(sid);
+      }
+    } catch (e) {
+      if (!isNotFoundIpcError(e)) {
+        // eslint-disable-next-line no-console
+        console.warn("forceStop: stopRecording error", formatIpcError(e));
+      }
+    }
+    startedAtRef.current = null;
+    pausedAtRef.current = null;
+    automationOwnsStopRef.current = false;
+    setStatus("idle");
+    setElapsed(0);
   };
 
   const handlePause = async () => {
@@ -591,6 +722,16 @@ export function RecordingView({
           {(status === "recording" || status === "paused") && (
             <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
           )}
+          {/* D-13: persistent badge while a mic failure is active. */}
+          {audioUnavailable && (
+            <span
+              role="status"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-warning)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--color-warning)]"
+            >
+              <AlertTriangle size={11} aria-hidden="true" />
+              Audio unavailable — recording video only
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
           {sessionId ? <span className="font-mono">session · {sessionId.slice(0, 8)}</span> : null}
@@ -667,21 +808,49 @@ export function RecordingView({
         </div>
       ) : null}
 
+      {/* D-15: heartbeat-watchdog banner. Renders only while recording and
+          the host has gone >5s without a heartbeat. */}
+      {desynced && (status === "recording" || status === "paused") ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 text-xs">
+          <div className="flex min-w-0 items-center gap-2 text-[var(--color-danger)]">
+            <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
+            <span className="font-medium text-[var(--color-fg-primary)]">
+              Recording state out of sync
+            </span>
+            <span className="text-[var(--color-fg-secondary)]">
+              No heartbeat from the recorder for 5s. Force stop to recover.
+            </span>
+          </div>
+          <button
+            onClick={() => void forceStop()}
+            className="rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2.5 py-1 text-[11px] font-medium text-white transition-[filter] duration-150 hover:brightness-110"
+          >
+            Force stop
+          </button>
+        </div>
+      ) : null}
+
       {/* ─── Main workspace: 3-zone ─── */}
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px]">
         {/* LEFT: preview/stage */}
         <section className="flex min-h-0 flex-col border-r border-[var(--color-border-subtle)]">
           <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-            <PreviewStage
-              status={status}
-              elapsedMs={elapsedMs}
-              currentStepLabel={currentStepEntry?.verb ?? null}
-              currentStepIndex={currentStep}
-              totalSteps={steps.length}
-              error={error}
-              outputPath={outputPath}
-              reduceMotion={!!reduceMotion}
-            />
+            {status === "recording" &&
+            livePreviewEnabled &&
+            captureTarget?.kind === "window_by_pid" ? (
+              <LivePreview />
+            ) : (
+              <PreviewStage
+                status={status}
+                elapsedMs={elapsedMs}
+                currentStepLabel={currentStepEntry?.verb ?? null}
+                currentStepIndex={currentStep}
+                totalSteps={steps.length}
+                error={error}
+                outputPath={outputPath}
+                reduceMotion={!!reduceMotion}
+              />
+            )}
           </div>
 
           {/* Step rail — horizontal chips */}
@@ -859,6 +1028,12 @@ export function RecordingView({
                 disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
               <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
+              {/* Phase 09-02 — live preview toggle (persisted, default ON). */}
+              <Toggle
+                label="Live preview"
+                checked={livePreviewEnabled}
+                onChange={setLivePreviewEnabled}
+              />
             </div>
           </SettingsGroup>
 
