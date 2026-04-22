@@ -15,6 +15,7 @@ import { getAppSettings, setLivePreviewEnabled as ipcSetLivePreviewEnabled } fro
 export type RecorderStatus =
   | "idle"
   | "preflight"
+  | "starting"
   | "recording"
   | "paused"
   | "stopping"

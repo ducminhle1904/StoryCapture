@@ -332,12 +332,19 @@ export function RecordingView({
   };
 
   const handleRecord = async () => {
-    if (permission !== "granted") return;
-    if (selectedDisplay == null && captureTarget?.kind !== "window_by_pid") {
-      toast.error("Pick a Target before recording.");
+    // D-04: double-start guard. Synchronous status flip before any await
+    // so a 10 ms double-click cannot enter this function twice.
+    if (status !== "idle") return;
+    setStatus("starting");
+    if (permission !== "granted") {
+      setStatus("idle");
       return;
     }
-    setStatus("recording");
+    if (selectedDisplay == null && captureTarget?.kind !== "window_by_pid") {
+      toast.error("Pick a Target before recording.");
+      setStatus("idle");
+      return;
+    }
     startedAtRef.current = Date.now();
     pausedAtRef.current = null;
     automationOwnsStopRef.current = false;
@@ -427,6 +434,10 @@ export function RecordingView({
       );
       sessionRef.current = id;
       setSession(typeof (id as unknown) === "string" ? (id as unknown as string) : id.id);
+      // D-04: transition starting -> recording only after the host has
+      // confirmed the session. If we error out above, the catch arm
+      // resets to "idle" so the Start button re-enables.
+      setStatus("recording");
 
       // Launch DSL automation here ONLY if we didn't already launch it
       // for auto-follow (`shouldAutoFollow` fires launchAutomation BEFORE
@@ -452,7 +463,9 @@ export function RecordingView({
       }
     } catch (e) {
       setError(formatIpcError(e));
-      setStatus("failed");
+      // D-04: error path resets to idle so the Start button re-enables;
+      // the toast + error banner still surface the failure to the user.
+      setStatus("idle");
       toast.error(`Recording failed to start: ${formatIpcError(e)}`);
     }
   };

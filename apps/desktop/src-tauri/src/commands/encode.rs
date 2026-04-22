@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::ipc::Channel;
@@ -418,6 +419,20 @@ fn registry() -> &'static RecordingRegistry {
     REG.get_or_init(RecordingRegistry::default)
 }
 
+/// D-04: process-wide "a start_recording is currently in flight" flag.
+/// Set via `compare_exchange(false, true)` at the entry of `start_recording`;
+/// always cleared on return (Drop of `StartingGuard`) regardless of success,
+/// error, or panic.
+static GLOBAL_STARTING: AtomicBool = AtomicBool::new(false);
+
+struct StartingGuard;
+
+impl Drop for StartingGuard {
+    fn drop(&mut self) {
+        GLOBAL_STARTING.store(false, Ordering::Release);
+    }
+}
+
 /// D-02: aborts its collected spawn handles on drop. Callers push every
 /// auxiliary task spawned during `start_recording` before registry insert,
 /// then call [`SpawnAbortGuard::disarm`] on the success path. Any early
@@ -590,6 +605,16 @@ pub async fn start_recording(
     args: StartRecordingArgs,
     on_event: Channel<RecordingEvent>,
 ) -> Result<RecordingSessionId, AppError> {
+    // D-04: reject concurrent starts. The Drop guard clears the flag on
+    // every return path (success, error, panic).
+    if GLOBAL_STARTING
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err(AppError::AlreadyStarting);
+    }
+    let _starting_guard = StartingGuard;
+
     let capture_target: capture::CaptureTarget = match &args.target {
         crate::commands::capture::CaptureTargetDto::WindowByPid { title_hint, .. }
             if matches!(title_hint.as_deref(), Some("storycapture-playwright")) =>
@@ -1173,4 +1198,61 @@ impl automation::RecorderHandle for TauriRecorderHandle {
 #[allow(dead_code)]
 fn _silence_unused_output_path(p: &PathBuf) -> &PathBuf {
     p
+}
+
+#[cfg(test)]
+mod double_start_guard_tests {
+    use super::{StartingGuard, GLOBAL_STARTING};
+    use std::sync::atomic::Ordering;
+
+    /// Serialize tests that poke `GLOBAL_STARTING` so they can't alias
+    /// each other under `--test-threads=N`. A static `Mutex` is the
+    /// simplest way to do this without cross-test plumbing.
+    fn lock() -> std::sync::MutexGuard<'static, ()> {
+        use std::sync::{Mutex, OnceLock};
+        static M: OnceLock<Mutex<()>> = OnceLock::new();
+        M.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    #[test]
+    fn cas_rejects_second_caller_and_guard_clears_on_drop() {
+        let _g = lock();
+        GLOBAL_STARTING.store(false, Ordering::Release);
+
+        // First caller claims the flag.
+        assert!(GLOBAL_STARTING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok());
+        let guard = StartingGuard;
+
+        // Second caller sees it set and fails the CAS.
+        assert!(GLOBAL_STARTING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err());
+
+        // Drop clears the flag for the next session.
+        drop(guard);
+        assert!(!GLOBAL_STARTING.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn guard_clears_on_panic() {
+        let _g = lock();
+        GLOBAL_STARTING.store(false, Ordering::Release);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert!(GLOBAL_STARTING
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok());
+            let _guard = StartingGuard;
+            panic!("synthetic");
+        }));
+        assert!(result.is_err());
+        assert!(
+            !GLOBAL_STARTING.load(Ordering::Acquire),
+            "panic must still clear GLOBAL_STARTING via Drop"
+        );
+    }
 }

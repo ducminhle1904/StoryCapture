@@ -45,6 +45,13 @@ pub enum AppError {
 
     #[error("unavailable on backend: {0}")]
     UnavailableOnBackend(String),
+
+    /// D-04: another `start_recording` is already in-flight. The global
+    /// `compare_exchange` guard at the command entry returns this when a
+    /// concurrent caller beats the current one. Frontend treats this as a
+    /// benign no-op (retry is the user clicking Start again).
+    #[error("a recording is already starting")]
+    AlreadyStarting,
 }
 
 // Manual Serialize impl produces the `{ kind, message }` shape that matches
@@ -67,6 +74,7 @@ impl Serialize for AppError {
             AppError::InvalidArgument(m) => ("InvalidArgument", m.as_str()),
             AppError::Internal(m) => ("Internal", m.as_str()),
             AppError::UnavailableOnBackend(m) => ("UnavailableOnBackend", m.as_str()),
+            AppError::AlreadyStarting => ("AlreadyStarting", "a recording is already starting"),
         };
         let mut s = ser.serialize_struct("AppError", 2)?;
         s.serialize_field("kind", kind)?;
