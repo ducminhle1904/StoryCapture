@@ -28,7 +28,12 @@ use objc2::runtime::AnyObject;
 use objc2_av_foundation::{
     AVAssetWriter, AVAssetWriterInput, AVAssetWriterInputPixelBufferAdaptor, AVAssetWriterStatus,
     AVFileTypeMPEG4, AVMediaTypeVideo, AVVideoAverageBitRateKey, AVVideoCodecKey,
-    AVVideoCodecTypeH264, AVVideoCompressionPropertiesKey, AVVideoHeightKey, AVVideoWidthKey,
+    AVVideoCodecTypeH264, AVVideoColorPrimariesKey, AVVideoColorPrimaries_ITU_R_709_2,
+    AVVideoColorPropertiesKey, AVVideoCompressionPropertiesKey,
+    AVVideoExpectedSourceFrameRateKey, AVVideoH264EntropyModeCABAC, AVVideoH264EntropyModeKey,
+    AVVideoHeightKey, AVVideoMaxKeyFrameIntervalKey, AVVideoProfileLevelH264HighAutoLevel,
+    AVVideoProfileLevelKey, AVVideoTransferFunctionKey, AVVideoTransferFunction_ITU_R_709_2,
+    AVVideoWidthKey, AVVideoYCbCrMatrixKey, AVVideoYCbCrMatrix_ITU_R_709_2,
 };
 use objc2_core_media::CMTime;
 use objc2_core_video::CVPixelBuffer;
@@ -176,6 +181,10 @@ fn run_worker(
         let width_num = NSNumber::new_u32(cfg.capture_width);
         let height_num = NSNumber::new_u32(cfg.capture_height);
         let bitrate_num = NSNumber::new_i64(bitrate_bps);
+        // Keyframe every 2s (Phase 18) — balances seekability against bitrate.
+        let keyframe_interval_num =
+            NSNumber::new_u32(cfg.fps_advisory.saturating_mul(2).max(1));
+        let fps_num = NSNumber::new_u32(cfg.fps_advisory.max(1));
 
         let codec_key = unsafe { AVVideoCodecKey }
             .ok_or_else(|| EncoderError::Io("AVVideoCodecKey symbol missing".into()))?;
@@ -190,10 +199,76 @@ fn run_worker(
             .ok_or_else(|| EncoderError::Io("AVVideoAverageBitRateKey symbol missing".into()))?;
         let codec_h264 = unsafe { AVVideoCodecTypeH264 }
             .ok_or_else(|| EncoderError::Io("AVVideoCodecTypeH264 symbol missing".into()))?;
+        // Phase 18 quality upgrade: explicit High profile, CABAC entropy,
+        // keyframe cadence, frame-rate hint, and BT.709 color tagging.
+        let profile_key = unsafe { AVVideoProfileLevelKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoProfileLevelKey symbol missing".into()))?;
+        let profile_high = unsafe { AVVideoProfileLevelH264HighAutoLevel }.ok_or_else(|| {
+            EncoderError::Io("AVVideoProfileLevelH264HighAutoLevel symbol missing".into())
+        })?;
+        let entropy_key = unsafe { AVVideoH264EntropyModeKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoH264EntropyModeKey symbol missing".into()))?;
+        let entropy_cabac = unsafe { AVVideoH264EntropyModeCABAC }
+            .ok_or_else(|| EncoderError::Io("AVVideoH264EntropyModeCABAC symbol missing".into()))?;
+        let max_keyframe_key = unsafe { AVVideoMaxKeyFrameIntervalKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoMaxKeyFrameIntervalKey symbol missing".into())
+        })?;
+        let expected_fps_key = unsafe { AVVideoExpectedSourceFrameRateKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoExpectedSourceFrameRateKey symbol missing".into())
+        })?;
+        let color_props_key = unsafe { AVVideoColorPropertiesKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoColorPropertiesKey symbol missing".into())
+        })?;
+        let color_primaries_key = unsafe { AVVideoColorPrimariesKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoColorPrimariesKey symbol missing".into())
+        })?;
+        let color_primaries_709 = unsafe { AVVideoColorPrimaries_ITU_R_709_2 }.ok_or_else(|| {
+            EncoderError::Io("AVVideoColorPrimaries_ITU_R_709_2 symbol missing".into())
+        })?;
+        let transfer_key = unsafe { AVVideoTransferFunctionKey }.ok_or_else(|| {
+            EncoderError::Io("AVVideoTransferFunctionKey symbol missing".into())
+        })?;
+        let transfer_709 = unsafe { AVVideoTransferFunction_ITU_R_709_2 }.ok_or_else(|| {
+            EncoderError::Io("AVVideoTransferFunction_ITU_R_709_2 symbol missing".into())
+        })?;
+        let ycbcr_key = unsafe { AVVideoYCbCrMatrixKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoYCbCrMatrixKey symbol missing".into()))?;
+        let ycbcr_709 = unsafe { AVVideoYCbCrMatrix_ITU_R_709_2 }.ok_or_else(|| {
+            EncoderError::Io("AVVideoYCbCrMatrix_ITU_R_709_2 symbol missing".into())
+        })?;
 
-        // Compression properties.
+        // BT.709 color properties sub-dict.
+        let color_props_dict: Retained<NSDictionary<NSString, AnyObject>> =
+            NSDictionary::from_slices(
+                &[color_primaries_key, transfer_key, ycbcr_key],
+                &[
+                    &**color_primaries_709 as &AnyObject,
+                    &**transfer_709 as &AnyObject,
+                    &**ycbcr_709 as &AnyObject,
+                ],
+            );
+
+        // Compression properties: bitrate + profile + entropy + keyframe +
+        // frame-rate hint + color tagging.
         let compression_dict: Retained<NSDictionary<NSString, AnyObject>> =
-            NSDictionary::from_slices(&[bitrate_key], &[&*bitrate_num as &AnyObject]);
+            NSDictionary::from_slices(
+                &[
+                    bitrate_key,
+                    profile_key,
+                    entropy_key,
+                    max_keyframe_key,
+                    expected_fps_key,
+                    color_props_key,
+                ],
+                &[
+                    &*bitrate_num as &AnyObject,
+                    &**profile_high as &AnyObject,
+                    &**entropy_cabac as &AnyObject,
+                    &*keyframe_interval_num as &AnyObject,
+                    &*fps_num as &AnyObject,
+                    &*color_props_dict as &AnyObject,
+                ],
+            );
 
         // Top-level settings.
         let settings: Retained<NSDictionary<NSString, AnyObject>> = NSDictionary::from_slices(
