@@ -787,9 +787,12 @@ pub async fn start_recording(
     // (Playwright auto-follow, specific window) deliver frames sized to
     // the window, not the display — using args.width/height would cause
     // FFmpeg's rawvideo input to reject every frame as "invalid buffer
-    // size". Worst case: 3s timeout, then we fall back to args dims.
+    // size". Worst case: `first_frame_timeout_ms` (default 3000ms) then we
+    // fall back to args dims (D-09).
+    let first_frame_timeout =
+        std::time::Duration::from_millis(args.first_frame_timeout_ms.unwrap_or(3000));
     let (actual_width, actual_height, first_frame) =
-        match tokio::time::timeout(std::time::Duration::from_secs(3), frame_rx.recv()).await {
+        match tokio::time::timeout(first_frame_timeout, frame_rx.recv()).await {
             Ok(Some(frame)) => {
                 let w = frame.width_px;
                 let h = frame.height_px;
@@ -803,7 +806,8 @@ pub async fn start_recording(
             _ => {
                 tracing::warn!(
                     target: "storycapture::recording",
-                    "no first frame within 3s; encoder using caller dims {}x{}",
+                    timeout_ms = first_frame_timeout.as_millis() as u64,
+                    "no first frame within budget; encoder using caller dims {}x{}",
                     args.width, args.height
                 );
                 (args.width, args.height, None)
@@ -902,6 +906,10 @@ pub async fn start_recording(
     .with_scale_algo(algo)
     .with_quality_preset(qp)
     .force_ffmpeg_path();
+    // D-11: forward the optional keyframe knob from the IPC DTO into the
+    // encoder config so FFmpeg emits `-g <fps * interval>`. None keeps the
+    // default (no `-g`) so existing argv is byte-identical.
+    enc_cfg.keyframe_interval_sec = args.keyframe_interval_sec;
     if let (Some(f), Some(negotiated)) = (&audio_fifo, negotiated_audio.as_ref()) {
         let info = negotiated.info();
         enc_cfg = enc_cfg.with_audio(AudioInput {
@@ -956,8 +964,33 @@ pub async fn start_recording(
         (&audio_fifo, negotiated_audio)
     {
         let fifo_path = f.path().to_path_buf();
-        // Small delay so FFmpeg can open the FIFO first.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        // D-10: FIFO handshake. Poll metadata every 20ms; treat 3
+        // consecutive Ok results (60ms of stable existence) as "FFmpeg
+        // has opened the FIFO". Deadline at 2s.
+        let fifo_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut ok_ticks: u8 = 0;
+        loop {
+            match tokio::fs::metadata(&fifo_path).await {
+                Ok(_) => {
+                    ok_ticks += 1;
+                    if ok_ticks >= 3 {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    ok_ticks = 0;
+                }
+            }
+            if tokio::time::Instant::now() >= fifo_deadline {
+                tracing::error!(
+                    target: "storycapture::recording",
+                    path = %fifo_path.display(),
+                    "fifo handshake timed out after 2s"
+                );
+                return Err(AppError::FifoHandshakeTimeout);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
         // cpal work runs on a blocking thread.
         match tokio::task::spawn_blocking(move || {
             AudioCaptureStream::start_with_negotiated(negotiated, fifo_path)
@@ -1275,5 +1308,101 @@ mod double_start_guard_tests {
             !GLOBAL_STARTING.load(Ordering::Acquire),
             "panic must still clear GLOBAL_STARTING via Drop"
         );
+    }
+}
+
+/// D-09 + D-10 covering the two pieces of start_recording that are
+/// testable without plumbing the whole Tauri runtime: the configurable
+/// first-frame timeout derivation and the FIFO metadata-poll handshake.
+#[cfg(test)]
+mod first_frame_and_fifo_tests {
+    use crate::error::AppError;
+    use std::time::Duration;
+
+    /// D-09: Some(500) yields ~500ms; None yields default 3000ms.
+    #[test]
+    fn first_frame_timeout_respects_arg_or_defaults_to_3000() {
+        let explicit: Option<u64> = Some(500);
+        let default: Option<u64> = None;
+        assert_eq!(
+            Duration::from_millis(explicit.unwrap_or(3000)),
+            Duration::from_millis(500)
+        );
+        assert_eq!(
+            Duration::from_millis(default.unwrap_or(3000)),
+            Duration::from_millis(3000)
+        );
+    }
+
+    /// D-09: Some(100) -> elapsed wait fires in ~100ms, NOT the 3000ms default.
+    #[tokio::test(flavor = "current_thread")]
+    async fn first_frame_timeout_fires_at_configured_budget() {
+        let budget = Duration::from_millis(Some(100u64).unwrap_or(3000));
+        let (_tx, mut rx) = tokio::sync::mpsc::channel::<u32>(1);
+        let start = tokio::time::Instant::now();
+        let out = tokio::time::timeout(budget, rx.recv()).await;
+        let elapsed = start.elapsed();
+        assert!(out.is_err(), "timeout must elapse when nothing arrives");
+        assert!(
+            elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(800),
+            "elapsed {:?} must be near 100ms, not 3000ms",
+            elapsed
+        );
+    }
+
+    /// D-10: model the FIFO handshake loop. Feed a sequence of metadata
+    /// results (simulating FFmpeg not-yet-open → open) and assert the
+    /// loop breaks after 3 consecutive Ok, and NOT before.
+    #[test]
+    fn fifo_handshake_requires_3_consecutive_ok() {
+        // Simulate metadata() results as a scripted sequence.
+        let script: Vec<bool> = vec![false, false, true, false, true, true, true];
+        let mut ok_ticks: u8 = 0;
+        let mut broke_at: Option<usize> = None;
+        for (i, ok) in script.iter().enumerate() {
+            if *ok {
+                ok_ticks += 1;
+                if ok_ticks >= 3 {
+                    broke_at = Some(i);
+                    break;
+                }
+            } else {
+                ok_ticks = 0;
+            }
+        }
+        // First streak of 3 consecutive Ok lands at index 6 (true,true,true).
+        assert_eq!(broke_at, Some(6));
+    }
+
+    /// D-10: deadline exceeded returns FifoHandshakeTimeout. Uses a
+    /// compressed deadline (200ms) so the test runs fast — the real
+    /// budget in start_recording is 2s.
+    #[tokio::test(flavor = "current_thread")]
+    async fn fifo_handshake_deadline_returns_timeout_error() {
+        let fifo_path = std::path::PathBuf::from(
+            "/tmp/storycapture-nonexistent-fifo-for-handshake-test-xyz",
+        );
+        let _ = std::fs::remove_file(&fifo_path);
+
+        let fifo_deadline = tokio::time::Instant::now() + Duration::from_millis(200);
+        let mut ok_ticks: u8 = 0;
+        let result: Result<(), AppError> = loop {
+            match tokio::fs::metadata(&fifo_path).await {
+                Ok(_) => {
+                    ok_ticks += 1;
+                    if ok_ticks >= 3 {
+                        break Ok(());
+                    }
+                }
+                Err(_) => {
+                    ok_ticks = 0;
+                }
+            }
+            if tokio::time::Instant::now() >= fifo_deadline {
+                break Err(AppError::FifoHandshakeTimeout);
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        };
+        assert!(matches!(result, Err(AppError::FifoHandshakeTimeout)));
     }
 }

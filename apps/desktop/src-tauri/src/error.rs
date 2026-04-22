@@ -52,6 +52,12 @@ pub enum AppError {
     /// benign no-op (retry is the user clicking Start again).
     #[error("a recording is already starting")]
     AlreadyStarting,
+
+    /// D-10: FFmpeg did not open the audio FIFO within the 2s handshake
+    /// window. Surfaces the failure instead of dangling the AudioCaptureStream
+    /// start on a pipe that FFmpeg will never read.
+    #[error("ffmpeg did not open the audio fifo within 2s")]
+    FifoHandshakeTimeout,
 }
 
 // Manual Serialize impl produces the `{ kind, message }` shape that matches
@@ -75,6 +81,10 @@ impl Serialize for AppError {
             AppError::Internal(m) => ("Internal", m.as_str()),
             AppError::UnavailableOnBackend(m) => ("UnavailableOnBackend", m.as_str()),
             AppError::AlreadyStarting => ("AlreadyStarting", "a recording is already starting"),
+            AppError::FifoHandshakeTimeout => (
+                "FifoHandshakeTimeout",
+                "ffmpeg did not open the audio fifo within 2s",
+            ),
         };
         let mut s = ser.serialize_struct("AppError", 2)?;
         s.serialize_field("kind", kind)?;

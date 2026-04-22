@@ -1197,7 +1197,13 @@ export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"
  * concurrent caller beats the current one. Frontend treats this as a
  * benign no-op (retry is the user clicking Start again).
  */
-{ kind: "AlreadyStarting" }
+{ kind: "AlreadyStarting" } | 
+/**
+ * D-10: FFmpeg did not open the audio FIFO within the 2s handshake
+ * window. Surfaces the failure instead of dangling the AudioCaptureStream
+ * start on a pipe that FFmpeg will never read.
+ */
+{ kind: "FifoHandshakeTimeout" }
 export type AppInfo = { version: string; platform: string; arch: string; data_dir: string; log_dir: string }
 export type AppSettingsDto = { browser_executable: string | null; live_preview_enabled: boolean }
 export type AudioCodecDto = "aac" | "opus"
