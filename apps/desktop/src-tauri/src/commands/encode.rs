@@ -1216,7 +1216,24 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
             tracing::error!(target: "storycapture::recording", "encoder returned error: {}", e);
             AppError::Encoder(e.to_string())
         })?;
-    tracing::info!(target: "storycapture::recording", "stop_recording: encoder finalized output={:?}", result.output_path);
+    // Phase 18: surface observed bitrate so we can diagnose encoder under-shoot
+    // (VT quality-mode used to produce ~1 Mbps files against a 10 Mbps target).
+    // bytes*8 = bits; bits / ms = kbps.
+    let observed_kbps = if result.duration_ms > 0 {
+        result.bytes.saturating_mul(8) / result.duration_ms
+    } else {
+        0
+    };
+    tracing::info!(
+        target: "storycapture::recording",
+        "stop_recording: encoder finalized output={:?} bytes={} duration_ms={} frames={} dropped={} observed_kbps={}",
+        result.output_path,
+        result.bytes,
+        result.duration_ms,
+        result.frames_written,
+        result.frames_dropped,
+        observed_kbps
+    );
 
     Ok(result.into())
 }
