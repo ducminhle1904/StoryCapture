@@ -1190,7 +1190,14 @@ async getSyncStatus() : Promise<Result<SyncStatusDto, WebSyncError>> {
 /** user-defined types **/
 
 export type AdjustedStepDto = { step_id: string; new_duration_ms: bigint; freeze_frame_extension_ms: bigint; silence_padding_ms: bigint; clip_start_ms: bigint; drift_ms: bigint }
-export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"; message: string } | { kind: "Keyring"; message: string } | { kind: "Automation"; message: string } | { kind: "Capture"; message: string } | { kind: "Encoder"; message: string } | { kind: "Storage"; message: string } | { kind: "NotFound"; message: string } | { kind: "InvalidArgument"; message: string } | { kind: "Internal"; message: string } | { kind: "UnavailableOnBackend"; message: string }
+export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"; message: string } | { kind: "Keyring"; message: string } | { kind: "Automation"; message: string } | { kind: "Capture"; message: string } | { kind: "Encoder"; message: string } | { kind: "Storage"; message: string } | { kind: "NotFound"; message: string } | { kind: "InvalidArgument"; message: string } | { kind: "Internal"; message: string } | { kind: "UnavailableOnBackend"; message: string } | 
+/**
+ * D-04: another `start_recording` is already in-flight. The global
+ * `compare_exchange` guard at the command entry returns this when a
+ * concurrent caller beats the current one. Frontend treats this as a
+ * benign no-op (retry is the user clicking Start again).
+ */
+{ kind: "AlreadyStarting" }
 export type AppInfo = { version: string; platform: string; arch: string; data_dir: string; log_dir: string }
 export type AppSettingsDto = { browser_executable: string | null; live_preview_enabled: boolean }
 export type AudioCodecDto = "aac" | "opus"
