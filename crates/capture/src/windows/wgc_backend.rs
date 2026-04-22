@@ -134,8 +134,8 @@ impl GraphicsCaptureApiHandler for WgcHandler {
             Ok(f) => f,
             Err(e) => {
                 tracing::warn!(error = %e, "frame_from_wgc failed; dropping frame");
-                // D-18: AcqRel — value is read with Acquire in stop().
-                self.dropped.fetch_add(1, Ordering::AcqRel);
+                // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
+                self.dropped.fetch_add(1, Ordering::Relaxed);
                 return Ok(());
             }
         };
@@ -147,8 +147,8 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 FrameData::Pooled(b, stride) => (b.as_slice(), *stride),
                 _ => {
                     // Defensive fallback if the frame variant changes.
-                    // D-18: AcqRel — value is read with Acquire in stop().
-                    self.dropped.fetch_add(1, Ordering::AcqRel);
+                    // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
+                    self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
             };
@@ -172,8 +172,8 @@ impl GraphicsCaptureApiHandler for WgcHandler {
                 }
                 None => {
                     // Drop overflowed crops.
-                    // D-18: AcqRel — value is read with Acquire in stop().
-                    self.dropped.fetch_add(1, Ordering::AcqRel);
+                    // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
+                    self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
             }
@@ -182,12 +182,12 @@ impl GraphicsCaptureApiHandler for WgcHandler {
         };
         match self.out.try_send(f) {
             Ok(()) => {
-                // D-18: AcqRel — value is read with Acquire in stop().
-                self.delivered.fetch_add(1, Ordering::AcqRel);
+                // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
+                self.delivered.fetch_add(1, Ordering::Relaxed);
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
-                // D-18: AcqRel — value is read with Acquire in stop().
-                self.dropped.fetch_add(1, Ordering::AcqRel);
+                // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
+                self.dropped.fetch_add(1, Ordering::Relaxed);
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 capture_control.stop();
@@ -440,8 +440,8 @@ impl CaptureBackend for WgcBackend {
         if let Some(t) = s.started_at.take() {
             s.stats.duration_ms = t.elapsed().as_millis() as u64;
         }
-        s.stats.frames_delivered = self.delivered.load(Ordering::Acquire);
-        s.stats.frames_dropped = self.dropped.load(Ordering::Acquire);
+        s.stats.frames_delivered = self.delivered.load(Ordering::Relaxed);
+        s.stats.frames_dropped = self.dropped.load(Ordering::Relaxed);
         s.session = None;
         self.paused.store(false, Ordering::Release);
         Ok(s.stats)

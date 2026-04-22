@@ -12,6 +12,7 @@ description = "Platform-native screen capture (ScreenCaptureKit / Windows.Graphi
 async-trait = "0.1"
 tokio = { workspace = true }
 serde = { workspace = true }
+util = { path = "../util" }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 parking_lot = { workspace = true }

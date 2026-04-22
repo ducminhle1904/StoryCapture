@@ -389,10 +389,10 @@ pub struct StartRecordingArgs {
     pub quality_preset: Option<QualityPresetDto>,
     #[serde(default)]
     pub scale_algo: Option<ScaleAlgoDto>,
-    /// First-frame wait budget (D-09). Default 3000ms if None. Wave 2/3 consumes.
+    /// First-frame wait budget in milliseconds. Defaults to 3000 when `None`.
     #[serde(default)]
     pub first_frame_timeout_ms: Option<u64>,
-    /// Force keyframe every N seconds (D-11). None => encoder default. Wave 2/3 consumes.
+    /// Force a keyframe every N seconds. `None` keeps FFmpeg's default GOP.
     #[serde(default)]
     pub keyframe_interval_sec: Option<u32>,
 }

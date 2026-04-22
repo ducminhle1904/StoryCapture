@@ -319,12 +319,12 @@ impl CaptureBackend for SckBackend {
                 if let Some(frame) = crate::macos::frame_from_sample::to_frame(&sample) {
                     match out_for_handler.try_send(frame) {
                         Ok(()) => {
-                            // D-18: AcqRel — value is read with Acquire in stop().
-                            delivered_for_handler.fetch_add(1, Ordering::AcqRel);
+                            // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
+                            delivered_for_handler.fetch_add(1, Ordering::Relaxed);
                         }
                         Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                            // D-18: AcqRel — value is read with Acquire in stop().
-                            dropped_for_handler.fetch_add(1, Ordering::AcqRel);
+                            // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
+                            dropped_for_handler.fetch_add(1, Ordering::Relaxed);
                         }
                         Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
                             // Consumer went away; drop the frame.
@@ -395,9 +395,9 @@ impl CaptureBackend for SckBackend {
             }
             s.stats
         };
-        // D-18: Acquire pairs with AcqRel increments in the SCK handler.
-        stats.frames_delivered = self.delivered.load(Ordering::Acquire);
-        stats.frames_dropped = self.dropped.load(Ordering::Acquire);
+        // Relaxed load: stream stop provides happens-before for the final count.
+        stats.frames_delivered = self.delivered.load(Ordering::Relaxed);
+        stats.frames_dropped = self.dropped.load(Ordering::Relaxed);
         // Reset counters for the next session.
         self.delivered.store(0, Ordering::Release);
         self.dropped.store(0, Ordering::Release);

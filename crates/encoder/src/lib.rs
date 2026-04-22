@@ -21,6 +21,7 @@ pub mod filters;
 pub mod macos;
 mod pipeline;
 pub mod pool;
+mod staging;
 pub mod probe;
 pub mod progress;
 pub mod quality;

@@ -18,12 +18,11 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 pub struct XcapBackend {
-    running: Arc<AtomicBool>,
+    /// Single "capture loop is active" flag: set true by `start()` via
+    /// compare_exchange (also guards double-start); cleared false by
+    /// `stop()` or on thread exit. The loop breaks as soon as this flips.
+    active: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
-    /// D-03: explicit shutdown signal checked each tick. `running` is the
-    /// legacy signal; `cancel_flag` is the bounded-stop trigger and is
-    /// latched on timeout so a subsequent start() sees a clean flag.
-    cancel_flag: Arc<AtomicBool>,
     started_at: Arc<Mutex<Option<Instant>>>,
     stats: Arc<Mutex<CaptureStats>>,
     // `xcap::Monitor` is NOT `Send` on Windows (it holds an HMONITOR
@@ -36,9 +35,8 @@ pub struct XcapBackend {
 impl XcapBackend {
     pub fn new() -> Self {
         Self {
-            running: Arc::new(AtomicBool::new(false)),
+            active: Arc::new(AtomicBool::new(false)),
             paused: Arc::new(AtomicBool::new(false)),
-            cancel_flag: Arc::new(AtomicBool::new(false)),
             started_at: Arc::new(Mutex::new(None)),
             stats: Arc::new(Mutex::new(CaptureStats::default())),
             handle: None,
@@ -63,32 +61,34 @@ impl CaptureBackend for XcapBackend {
         cfg: CaptureConfig,
         out: mpsc::Sender<Frame>,
     ) -> Result<(), CaptureError> {
-        if self.running.swap(true, Ordering::AcqRel) {
+        if self
+            .active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return Err(CaptureError::Backend("xcap backend already running".into()));
         }
-        self.cancel_flag.store(false, Ordering::Release);
         // xcap is display-only: no window-capture API exists in 0.9.x.
         // Reject Window / WindowByPid variants with a typed error so the
         // fallback orchestrator can decide whether to degrade to primary
-        // display (D-07) or surface the failure.
+        // display or surface the failure.
         let display_id = match cfg.target {
             crate::target::CaptureTarget::Display { display_id } => display_id,
             crate::target::CaptureTarget::Window { .. } => {
-                self.running.store(false, Ordering::Release);
+                self.active.store(false, Ordering::Release);
                 return Err(CaptureError::UnsupportedTarget("window"));
             }
             crate::target::CaptureTarget::WindowByPid { .. } => {
-                self.running.store(false, Ordering::Release);
+                self.active.store(false, Ordering::Release);
                 return Err(CaptureError::UnsupportedTarget("window_by_pid"));
             }
-            // Plan 06-02: region capture has no xcap fallback path in v1.
-            // The orchestrator's fallback heuristic only degrades window
-            // targets; a user-chosen region requires the native backend
-            // (SCK source_rect or WGC CPU crop). Surface an explicit error
-            // so callers see a structured reason rather than a silent
-            // full-display capture.
+            // Region capture has no xcap fallback path. The orchestrator's
+            // fallback heuristic only degrades window targets; a user-chosen
+            // region requires the native backend (SCK source_rect or WGC
+            // CPU crop). Surface an explicit error so callers see a
+            // structured reason rather than a silent full-display capture.
             crate::target::CaptureTarget::DisplayRegion { .. } => {
-                self.running.store(false, Ordering::Release);
+                self.active.store(false, Ordering::Release);
                 return Err(CaptureError::UnsupportedTarget("display_region"));
             }
         };
@@ -106,9 +106,8 @@ impl CaptureBackend for XcapBackend {
         let fps = cfg.fps_target.max(1);
         let interval_ms = (1000 / fps as u64).max(1);
 
-        let running = self.running.clone();
+        let active = self.active.clone();
         let paused = self.paused.clone();
-        let cancel_flag = self.cancel_flag.clone();
         let stats = self.stats.clone();
         let start_epoch = Instant::now();
 
@@ -119,12 +118,7 @@ impl CaptureBackend for XcapBackend {
             let interval = Duration::from_millis(interval_ms);
             let mut next_tick = Instant::now();
             loop {
-                // D-03: cancel_flag is the bounded-stop signal; check it
-                // first so a timed-out stop() unblocks the loop promptly.
-                if cancel_flag.load(Ordering::Acquire) {
-                    break;
-                }
-                if !running.load(Ordering::Acquire) {
+                if !active.load(Ordering::Acquire) {
                     break;
                 }
                 if paused.load(Ordering::Acquire) {
@@ -190,8 +184,7 @@ impl CaptureBackend for XcapBackend {
 
     async fn stop(&mut self) -> Result<CaptureStats, CaptureError> {
         const STOP_TIMEOUT_MS: u64 = 2000;
-        self.running.store(false, Ordering::Release);
-        self.cancel_flag.store(true, Ordering::Release);
+        self.active.store(false, Ordering::Release);
         let mut timed_out = false;
         if let Some(h) = self.handle.take() {
             // D-03: bound the join. xcap's `capture_image()` can block
@@ -279,7 +272,7 @@ impl XcapBackend {
     /// Test-only: install a pre-built capture-thread handle so `stop()`
     /// can be exercised in isolation (no real display needed).
     fn inject_handle(&mut self, handle: std::thread::JoinHandle<()>) {
-        self.running.store(true, Ordering::Release);
+        self.active.store(true, Ordering::Release);
         *self.started_at.lock() = Some(Instant::now());
         self.handle = Some(handle);
     }
@@ -351,15 +344,14 @@ mod tests {
         );
     }
 
-    /// Normal path: a capture thread that observes `cancel_flag` (here
-    /// via an early exit on an AtomicBool we control through the same
-    /// handle ownership) joins cleanly and `stop()` returns Ok.
+    /// Normal path: a capture thread that exits promptly lets `stop()`
+    /// join cleanly and return Ok.
     #[tokio::test]
     async fn stop_returns_ok_when_thread_exits_promptly() {
         let mut backend = XcapBackend::new();
         let thread = std::thread::spawn(|| {
-            // Exits immediately — simulates a well-behaved loop that
-            // observed the cancel flag on its next tick.
+            // Exits immediately — simulates a well-behaved loop that saw
+            // the active flag flip to false on its next tick.
         });
         backend.inject_handle(thread);
 

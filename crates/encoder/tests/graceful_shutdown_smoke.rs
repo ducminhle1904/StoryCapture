@@ -8,42 +8,12 @@
 mod fixtures {
     include!("fixtures/synthetic.rs");
 }
+include!("fixtures/ffmpeg_env.rs");
 
 use encoder::{EncodeConfig, EncodePipeline, HardwareEncoder, LocalFfmpegCommand};
 use std::path::PathBuf;
 use std::process::Command;
 use tokio::sync::mpsc;
-
-fn host_triple() -> &'static str {
-    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        "aarch64-apple-darwin"
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        "x86_64-apple-darwin"
-    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        "x86_64-pc-windows-msvc"
-    } else {
-        "unknown"
-    }
-}
-
-fn ffmpeg_path() -> Option<PathBuf> {
-    let ws_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf())?;
-    let ext = if cfg!(windows) { ".exe" } else { "" };
-    let p = ws_root
-        .join("scripts/build-ffmpeg/out")
-        .join(format!("ffmpeg-{}{ext}", host_triple()));
-    p.exists().then_some(p)
-}
-
-fn ffprobe_path(ffmpeg: &PathBuf) -> Option<PathBuf> {
-    let dir = ffmpeg.parent()?;
-    let ext = if cfg!(windows) { ".exe" } else { "" };
-    let candidate = dir.join(format!("ffprobe-{}{ext}", host_triple()));
-    candidate.exists().then_some(candidate)
-}
 
 /// D-01 smoke: half-second of synthetic frames then graceful shutdown
 /// (drop frame_tx). Output MP4 must have a `moov` atom.
@@ -90,7 +60,7 @@ async fn test_graceful_shutdown_finalizes_moov() {
 
     // Probe for moov atom. Prefer sibling ffprobe; otherwise use FFmpeg's
     // -f null null output which re-muxes and fails on a missing moov.
-    if let Some(ffprobe) = ffprobe_path(&ffmpeg) {
+    if let Some(ffprobe) = ffprobe_path() {
         let out = Command::new(&ffprobe)
             .args([
                 "-v",

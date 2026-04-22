@@ -141,11 +141,11 @@ fn run_worker(
     // Keep transient Objective-C objects scoped.
     objc2::rc::autoreleasepool(|_| -> Result<EncodeResult> {
         let target_path = cfg.output_path.clone();
-        // D-08: stage writer output at `<target>.partial`; atomic rename
-        // on success; remove on any failure path via PartialVtGuard.
-        let partial_path = crate::pipeline::partial_path_of(&target_path);
+        // Stage writer output at `<target>.partial`; rename atomically on
+        // success; drop-cleanup on any failure path.
+        let partial_path = crate::staging::partial_path_of(&target_path);
         let _ = std::fs::remove_file(&partial_path);
-        let _guard = PartialVtGuard::new(partial_path.clone());
+        let _guard = crate::staging::PartialFileGuard::new(partial_path.clone());
         let output_path = partial_path.clone();
         let start = Instant::now();
 
@@ -422,30 +422,6 @@ fn run_worker(
     })
 }
 
-/// D-08: Drop guard that removes a `.partial` file if the worker aborted
-/// without disarming. `disarm()` is called on the success path right
-/// before the atomic rename.
-struct PartialVtGuard {
-    path: Option<PathBuf>,
-}
-
-impl PartialVtGuard {
-    fn new(path: PathBuf) -> Self {
-        Self { path: Some(path) }
-    }
-
-    fn disarm(mut self) {
-        self.path.take();
-    }
-}
-
-impl Drop for PartialVtGuard {
-    fn drop(&mut self) {
-        if let Some(p) = self.path.take() {
-            let _ = std::fs::remove_file(&p);
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
