@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-21T10:20:00.000Z"
+last_updated: "2026-04-22T05:55:06.567Z"
 progress:
-  total_phases: 15
-  completed_phases: 7
-  total_plans: 106
-  completed_plans: 89
+  total_phases: 17
+  completed_phases: 8
+  total_plans: 112
+  completed_plans: 93
   percent: 83
 ---
 
@@ -64,6 +64,7 @@ No Phase 15 rearrangement invalidates file-path references in Phase 8-11 plans. 
 - Phase 13 added (2026-04-19): Video output customization knobs — expose recording-time (5 knobs) + export-time (expanded) UI; per-encoder quality preset mapping (VT bitrate-based, NVENC cq-based, libx264 CRF+tune=stillimage); persist via tauri-plugin-store with Phase 12 migration. Depends on Phase 12.
 - Phase 16 added (2026-04-21): Upgrade all dependencies to latest — bump every JS/TS package and Rust crate across the monorepo (apps/desktop, apps/web, packages/*, crates/*, tools/*, scripts/*) per `.planning/notes/deps-upgrade-plan.md`. Scope: ~173 deps audited (~18 patch, ~60 minor, ~33 major). Coordinated groups: Tauri + plugins (Rust↔JS major alignment), tRPC 11 suite, Prisma client+CLI. Rust 0.x breakers: rusqlite across 4 crates, objc2 0.5→0.6 unify, intelligence stack (serde_yaml replacement, schemars 1, rand 0.10, toml 1, reqwest 0.13). JS majors gated on user approval: Next 16, Prisma 7, jose 6, NextAuth. Also resync CLAUDE.md (windows-capture 2.x, screencapturekit pin, chromiumoxide presence check). Every bump group = atomic commit; verify with cargo nextest + pnpm build + biome per step.
 - Phase 14 added (2026-04-21): Port Claude Design into apps/desktop — wire `packages/ui/src/claude-design/` (tokens.css + app.css + `.sc-*` primitives) into the desktop app and port JSX screens/overlays/primitives from `.planning/design/storycapture-claude-design/project/`. Open decision: reconcile `sc-*` tokens with existing Cursor-inspired `packages/ui/src/tokens.css` (merge into single system vs namespace alongside).
+- Phase 17 added (2026-04-22): Record engine lifecycle hardening — fix 19 issues found via 4-agent deep-dive investigation across capture / encoder / IPC / frontend layers. Clusters: (1) CLEANUP — exit-drain recording sessions, orphan spawn tasks on start-fail, xcap thread-join hang; (2) START-SAFETY — FE+BE double-start race, WGC HWND live-check, SCK pause/resume atomicity; (3) ENCODER-ROBUST — FFmpeg stdin backpressure, staging+atomic-rename output, first-frame timeout config, 200ms FIFO hardcode, explicit `-g` keyframe, PTS clamp; (4) UX-FEEDBACK — `RecordingEvent::AudioUnavailable` new variant, state-desync heartbeat, dangling automation Channel on unmount, no auto-nav to editor; (5) POLISH — NV12 config-coerce reject, HW encoder re-probe, atomic counter ordering, `@ts-ignore` test cleanup. No public IPC / DSL contract changes beyond additive event variants. Investigation report in conversation (not archived — re-derive from `crates/capture` + `crates/encoder` + `apps/desktop/src-tauri/src/commands/encode.rs` + `apps/desktop/src/features/recorder/`).
 
 ### Decisions
 
@@ -145,4 +146,4 @@ currently blocking post-v1 work. All six verification items above are operator-g
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
 
-**Planned Phase:** 15 (Editor/Post-Production feature boundary cleanup) — 5 plans — 2026-04-21T09:31:54.621Z
+**Planned Phase:** 17 (Record engine lifecycle hardening) — 6 plans — 2026-04-22T05:55:06.563Z
