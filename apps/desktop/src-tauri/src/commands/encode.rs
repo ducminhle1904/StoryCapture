@@ -20,12 +20,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::process::Command as TokioCommand;
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
+use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
 const ENCODER_FRAME_CHANNEL_CAPACITY: usize = 4;
@@ -417,6 +418,140 @@ fn registry() -> &'static RecordingRegistry {
     REG.get_or_init(RecordingRegistry::default)
 }
 
+/// D-02: aborts its collected spawn handles on drop. Callers push every
+/// auxiliary task spawned during `start_recording` before registry insert,
+/// then call [`SpawnAbortGuard::disarm`] on the success path. Any early
+/// return or panic between spawn and registry-insert will abort the tasks
+/// so no orphan outlives `start_recording`.
+struct SpawnAbortGuard {
+    handles: Vec<AbortHandle>,
+    armed: bool,
+}
+
+impl SpawnAbortGuard {
+    fn new() -> Self {
+        Self {
+            handles: Vec::new(),
+            armed: true,
+        }
+    }
+
+    fn push(&mut self, handle: AbortHandle) {
+        self.handles.push(handle);
+    }
+
+    fn disarm(mut self) {
+        self.armed = false;
+        self.handles.clear();
+    }
+}
+
+impl Drop for SpawnAbortGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        for h in self.handles.drain(..) {
+            h.abort();
+        }
+    }
+}
+
+/// D-01: best-effort synchronous teardown of recording sessions at app
+/// exit. Mirrors `drain_author_preview_sessions` in `lib.rs` — takes an
+/// `AppHandle` for API parity, even though the recording registry is a
+/// process-static (not on `AppState`). Uses `try_lock` so the exit hook
+/// never deadlocks; on timeout aborts `encode_join` and surrenders the
+/// slot. Output MP4s that flushed `moov` before the deadline remain
+/// playable; the rest are left as-is for the OS to clean up.
+pub fn drain_recording_sessions(_app_handle: &tauri::AppHandle) {
+    const PER_SESSION_TIMEOUT_MS: u64 = 5000;
+
+    let Some(mut sessions) = registry().sessions.try_lock() else {
+        tracing::warn!("drain_recording_sessions: registry locked, skipping");
+        return;
+    };
+    let drained: Vec<(String, RecordingHandle)> = sessions.drain().collect();
+    drop(sessions);
+
+    let count = drained.len();
+    if count == 0 {
+        return;
+    }
+    tracing::info!(count, "drain_recording_sessions: draining sessions on exit");
+
+    // Use a transient runtime handle if present; otherwise run a one-shot
+    // blocking runtime. The Tauri exit hook runs on the main thread with
+    // no ambient tokio runtime by default.
+    let rt_handle = tokio::runtime::Handle::try_current();
+    for (session_id, handle) in drained {
+        let encode_abort = handle.encode_join.abort_handle();
+        let id = session_id.clone();
+        let result = match &rt_handle {
+            Ok(h) => h.block_on(async move {
+                tokio::time::timeout(
+                    Duration::from_millis(PER_SESSION_TIMEOUT_MS),
+                    drain_one(&id, handle),
+                )
+                .await
+            }),
+            Err(_) => {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        tracing::warn!(session_id, error = %e, "drain_recording_sessions: failed to build runtime");
+                        encode_abort.abort();
+                        continue;
+                    }
+                };
+                rt.block_on(async move {
+                    tokio::time::timeout(
+                        Duration::from_millis(PER_SESSION_TIMEOUT_MS),
+                        drain_one(&id, handle),
+                    )
+                    .await
+                })
+            }
+        };
+        match result {
+            Ok(Ok(())) => {
+                tracing::info!(session_id, "drain_recording_sessions: session finalized");
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(session_id, error = %e, "drain_recording_sessions: session stop error");
+            }
+            Err(_) => {
+                tracing::warn!(
+                    session_id,
+                    timeout_ms = PER_SESSION_TIMEOUT_MS,
+                    "drain_recording_sessions: timed out, aborting encode"
+                );
+                encode_abort.abort();
+            }
+        }
+    }
+    tracing::info!(count, "drain_recording_sessions: complete");
+}
+
+async fn drain_one(_session_id: &str, handle: RecordingHandle) -> Result<(), String> {
+    if let Some(audio) = handle.audio_stream.lock().await.take() {
+        drop(audio);
+    }
+    {
+        let mut p = handle.capture.lock().await;
+        p.stop().await.map_err(|e| e.to_string())?;
+    }
+    handle
+        .encode_join
+        .await
+        .map_err(|e| format!("encode join: {e}"))?
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -569,12 +704,17 @@ pub async fn start_recording(
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let preferred: Box<dyn capture::CaptureBackend> = Box::new(capture::XcapBackend::new());
 
+    // D-02: collect every auxiliary spawn so any early return between
+    // here and the registry insert aborts them rather than leaking.
+    let mut spawn_guard = SpawnAbortGuard::new();
+
     let on_event_for_capture = on_event.clone();
-    tokio::spawn(async move {
+    let capture_fwd_join = tokio::spawn(async move {
         while let Some(evt) = evt_rx.recv().await {
             let _ = on_event_for_capture.send(evt.into());
         }
     });
+    spawn_guard.push(capture_fwd_join.abort_handle());
 
     let queue = ByteBoundedQueue::new(cap_cfg.queue_cap_bytes);
     let mut capture = CapturePipeline::new(preferred, queue);
@@ -649,13 +789,14 @@ pub async fn start_recording(
     if let Some(f) = first_frame {
         let _ = enc_tx.send(f).await;
     }
-    tokio::spawn(async move {
+    let frame_fwd_join = tokio::spawn(async move {
         while let Some(f) = frame_rx.recv().await {
             if enc_tx.send(f).await.is_err() {
                 break;
             }
         }
     });
+    spawn_guard.push(frame_fwd_join.abort_handle());
     let frame_rx = enc_rx;
 
     // Create mic input before spawning FFmpeg.
@@ -786,7 +927,7 @@ pub async fn start_recording(
                 );
                 // Poll for a mic disconnect and emit a warning event.
                 let flag = stream.degraded_flag();
-                tokio::spawn(async move {
+                let audio_degraded_join = tokio::spawn(async move {
                     let mut ticker = tokio::time::interval(std::time::Duration::from_millis(500));
                     loop {
                         ticker.tick().await;
@@ -803,6 +944,7 @@ pub async fn start_recording(
                         }
                     }
                 });
+                spawn_guard.push(audio_degraded_join.abort_handle());
                 Some(stream)
             }
             Ok(Err(e)) => {
@@ -829,11 +971,12 @@ pub async fn start_recording(
 
     // Progress fan-out to the renderer.
     let on_event_clone = on_event.clone();
-    tokio::spawn(async move {
+    let progress_fwd_join = tokio::spawn(async move {
         while let Some(p) = prog_rx.recv().await {
             let _ = on_event_clone.send(RecordingEvent::EncodeProgress { progress: p.into() });
         }
     });
+    spawn_guard.push(progress_fwd_join.abort_handle());
 
     registry().sessions.lock().insert(
         session_id.clone(),
@@ -845,6 +988,10 @@ pub async fn start_recording(
             audio_fifo,
         },
     );
+
+    // Success path: disarm guard so pushed tasks keep running for the
+    // lifetime of the session (stop_recording_inner tears them down).
+    spawn_guard.disarm();
 
     Ok(RecordingSessionId(session_id))
 }

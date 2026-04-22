@@ -177,6 +177,7 @@ pub fn run() {
                 tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
             ) {
                 drain_author_preview_sessions(app_handle);
+                crate::commands::encode::drain_recording_sessions(app_handle);
             }
         });
 }
