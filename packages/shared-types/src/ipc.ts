@@ -545,6 +545,18 @@ async probeHwEncoders() : Promise<Result<EncoderProbeDto, AppError>> {
 }
 },
 /**
+ * Re-probe HW encoders bypassing any cached result (D-17).
+ * Stub in Wave 0 — Wave 4 wires `encoder::probe::force_reprobe()`.
+ */
+async refreshHwEncoders() : Promise<Result<EncoderProbeDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("refresh_hw_encoders") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Start an end-to-end recording.
  */
 async startRecording(args: StartRecordingArgs, onEvent: TAURI_CHANNEL<RecordingEvent>) : Promise<Result<RecordingSessionId, AppError>> {
@@ -1419,7 +1431,17 @@ export type RecordingEvent = { type: "capture-status"; json: string } | { type: 
  * count for this session; `delta` is the count since the last
  * event (always >= 1 when an event fires).
  */
-{ type: "frames-dropped"; total: bigint; delta: bigint } | { type: "completed"; result: EncodeResultDto } | { type: "failed"; message: string }
+{ type: "frames-dropped"; total: bigint; delta: bigint } | { type: "completed"; result: EncodeResultDto } | { type: "failed"; message: string } | 
+/**
+ * Mic/audio negotiation failed or the device vanished mid-session.
+ * Recording continues video-only (D-13).
+ */
+{ type: "audio-unavailable"; reason: string } | 
+/**
+ * Periodic liveness signal from the host so the renderer can detect
+ * state-sync drift (>5s missed => offer Force Stop) (D-15).
+ */
+{ type: "heartbeat"; seq: bigint }
 /**
  * File-system metadata for a single `.mp4` under `<project>/exports/`.
  * Dimensions/duration are left `None` in this first pass — the frontend
@@ -1482,7 +1504,15 @@ audio_device_id?: string | null;
 /**
  * Optional per-recording cursor toggle.
  */
-include_cursor?: boolean | null; output_resolution?: OutputResolutionDto | null; fit_mode?: FitModeDto | null; pad_color?: PadColorDto | null; quality_preset?: QualityPresetDto | null; scale_algo?: ScaleAlgoDto | null }
+include_cursor?: boolean | null; output_resolution?: OutputResolutionDto | null; fit_mode?: FitModeDto | null; pad_color?: PadColorDto | null; quality_preset?: QualityPresetDto | null; scale_algo?: ScaleAlgoDto | null; 
+/**
+ * First-frame wait budget (D-09). Default 3000ms if None. Wave 2/3 consumes.
+ */
+first_frame_timeout_ms?: bigint | null; 
+/**
+ * Force keyframe every N seconds (D-11). None => encoder default. Wave 2/3 consumes.
+ */
+keyframe_interval_sec?: number | null }
 /**
  * Step timing DTO for the `tts_apply_sync` command.
  * 

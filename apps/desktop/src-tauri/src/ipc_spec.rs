@@ -93,6 +93,7 @@ pub fn builder() -> Builder<Wry> {
             region_overlay::open_region_overlay,
             region_overlay::close_region_overlay,
             encode::probe_hw_encoders,
+            encode::refresh_hw_encoders,
             encode::start_recording,
             encode::pause_recording,
             encode::resume_recording,

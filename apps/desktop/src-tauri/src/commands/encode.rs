@@ -307,6 +307,16 @@ pub enum RecordingEvent {
     Failed {
         message: String,
     },
+    /// Mic/audio negotiation failed or the device vanished mid-session.
+    /// Recording continues video-only (D-13).
+    AudioUnavailable {
+        reason: String,
+    },
+    /// Periodic liveness signal from the host so the renderer can detect
+    /// state-sync drift (>5s missed => offer Force Stop) (D-15).
+    Heartbeat {
+        seq: u64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -371,6 +381,12 @@ pub struct StartRecordingArgs {
     pub quality_preset: Option<QualityPresetDto>,
     #[serde(default)]
     pub scale_algo: Option<ScaleAlgoDto>,
+    /// First-frame wait budget (D-09). Default 3000ms if None. Wave 2/3 consumes.
+    #[serde(default)]
+    pub first_frame_timeout_ms: Option<u64>,
+    /// Force keyframe every N seconds (D-11). None => encoder default. Wave 2/3 consumes.
+    #[serde(default)]
+    pub keyframe_interval_sec: Option<u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +425,20 @@ fn registry() -> &'static RecordingRegistry {
 #[tauri::command]
 #[specta::specta]
 pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
+    let cmd = TauriSidecar::new(app);
+    let probe = probe_encoders(&cmd)
+        .await
+        .map_err(|e| AppError::Encoder(e.to_string()))?;
+    Ok(probe.into())
+}
+
+/// Re-probe HW encoders bypassing any cached result (D-17).
+/// Stub in Wave 0 — Wave 4 wires `encoder::probe::force_reprobe()`.
+#[tauri::command]
+#[specta::specta]
+pub async fn refresh_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
+    // Wave 0 stub: today the probe isn't cached, so this is equivalent to
+    // `probe_hw_encoders`. Wave 4 will route through `force_reprobe()`.
     let cmd = TauriSidecar::new(app);
     let probe = probe_encoders(&cmd)
         .await

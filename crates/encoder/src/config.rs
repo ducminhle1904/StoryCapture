@@ -63,6 +63,9 @@ pub struct EncodeConfig {
     /// path is available. Recorder sessions use this so pause/resume shortens
     /// the timeline instead of preserving native timestamp gaps.
     pub force_ffmpeg_path: bool,
+    /// Optional keyframe interval in seconds. None => default behavior (no `-g`).
+    /// Wired to `-g <fps_advisory * n>` by Wave 2/3 (D-11). Phase 17-04 consumes.
+    pub keyframe_interval_sec: Option<u32>,
 }
 
 impl EncodeConfig {
@@ -90,6 +93,7 @@ impl EncodeConfig {
             bitrate_kbps: 0,
             audio_input: None,
             force_ffmpeg_path: false,
+            keyframe_interval_sec: None,
         }
     }
 
