@@ -243,6 +243,18 @@ impl EncodeConfig {
             codec.into(),
             "-pix_fmt".into(),
             "yuv420p".into(),
+        ]);
+        // HEVC in MP4: FFmpeg defaults to `hev1` fourcc (parameter sets in
+        // SPS/PPS NALUs), which QuickTime / Safari / Finder preview refuse
+        // to open. Force `hvc1` (inline parameter sets) so macOS players
+        // accept the file.
+        if matches!(
+            self.encoder,
+            HardwareEncoder::VideoToolboxHevc
+        ) {
+            args.extend(["-tag:v".into(), "hvc1".into()]);
+        }
+        args.extend([
             // Explicit BT.709 tagging so every player (QuickTime, Safari,
             // Chrome, VLC) interprets the same color range — otherwise the
             // MP4 can look washed-out or over-saturated depending on the
