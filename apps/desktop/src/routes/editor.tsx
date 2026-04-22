@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 
 import { PageContentTransition } from "@/components/page-content-transition";
@@ -274,21 +274,21 @@ export default function EditorRoute() {
         </div>
       ) : (
       <PageContentTransition className="min-h-0 flex-1">
-        <PanelGroup direction="vertical" className="min-h-0 flex-1">
+        <Group orientation="vertical" className="min-h-0 flex-1">
         {/* Top: scene list + script + preview + voiceover */}
-        <Panel defaultSize={75} minSize={45}>
-          <PanelGroup direction="horizontal">
+        <Panel id="editor-top" defaultSize="75%" minSize="45%">
+          <Group orientation="horizontal">
             {/* Scene list — narrow left panel, always visible (D-08). */}
-            <Panel defaultSize={12} minSize={8} maxSize={18}>
+            <Panel id="editor-scene-list" defaultSize="12%" minSize="8%" maxSize="18%">
               <SceneListPanel
                 activeSceneIndex={activeSceneIndex}
                 onSelectScene={handleSelectScene}
               />
             </Panel>
-            <PanelResizeHandle className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
+            <Separator className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
 
             {/* Script editor — primary workspace */}
-            <Panel defaultSize={54} minSize={32} maxSize={68}>
+            <Panel id="editor-script" defaultSize="54%" minSize="32%" maxSize="68%">
               <div className="flex h-full flex-col bg-[var(--sc-surface)]">
                 {/* File tabs strip — single tab reflects real single-buffer state. */}
                 <div
@@ -394,10 +394,10 @@ export default function EditorRoute() {
               </div>
             </Panel>
 
-            <PanelResizeHandle className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
+            <Separator className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
 
             {/* Right side: preview rail */}
-            <Panel defaultSize={34} minSize={24} maxSize={44}>
+            <Panel id="editor-preview" defaultSize="34%" minSize="24%" maxSize="44%">
               <div className="flex h-full flex-col bg-[var(--sc-surface)]">
                 {projectId ? (
                   <div className="flex items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-3 py-1.5">
@@ -425,16 +425,16 @@ export default function EditorRoute() {
                 </div>
               </div>
             </Panel>
-          </PanelGroup>
+          </Group>
         </Panel>
 
         {/* Bottom: Timeline */}
-        <PanelResizeHandle className="group relative h-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
+        <Separator className="group relative h-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
 
-        <Panel defaultSize={22} minSize={12} maxSize={40}>
+        <Panel id="editor-timeline" defaultSize="22%" minSize="12%" maxSize="40%">
           <TimelinePanel onJumpTo={handleNavigateToOffset} />
         </Panel>
-        </PanelGroup>
+        </Group>
       </PageContentTransition>
       )}
 
