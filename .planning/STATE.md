@@ -32,7 +32,7 @@ Plan: 15-04 complete (Wave 4 — Editor additions: Send-to-Post-Production toolb
 Full audit of Phases 8-11 planning validity vs. current codebase:
 
 - **Phase 8** (GPU downscale + cursor overlay): Planned, not started. `crates/gpu_scale/` scaffolding (08-01) never executed. ROADMAP entry + Progress row added this date.
-- **Phase 9** (Live Preview CDP pane): Planned, not started. Backfilled `09-CONTEXT.md` this date (was missing). `09-01` sidecar plumbing not executed; all 4 waves pending. Phase 9-04 carries PHASE-9.8/9.9 extensions (`attach_author_driver`, `pauseStream`/`resumeStream`) required as prereqs by Phase 10.
+- **Phase 9** (Live Preview CDP pane): Wave 1 complete (2026-04-22). Sidecar `startPreviewStream`/`stopPreviewStream` JSON-RPC verbs + `preview/frame` notifications shipped (`c80c7a9`); Rust bridge `SidecarMsg::Notification` + `PlaywrightSidecarDriver::subscribe_preview()` + `PreviewFrame` struct shipped (`1814088`). Waves 2–4 pending: React canvas renderer + Options toggle (09-02), perf/backpressure hardening (09-03), editor-surface preview + PHASE-9.8/9.9 author-session extensions (09-04, prereqs for Phase 10).
 - **Phase 10** (Author-time simulator): Planned, **hard-blocked** on Phase 9-04 extensions per `10-CONTEXT.md` D-06. `run_story` executor signature + `ExecutorEvent::RunPaused/StepFrameCaptured` + `StepFrame` struct not yet in codebase. Phase 3's `DryRunPanel.tsx` still present — naming-collision is by design per 10-CONTEXT D-00.
 - **Phase 11** (Element picker relocation): Planned, **hard-blocked** on Phase 10-02 (for 11-02/03/04). `AuthorDriverState` / `AuthorDriverRegistry` not yet in codebase. Phase 11-01 (registry foundation) can run in parallel with Phase 10-01 since they own disjoint registry types.
 
@@ -137,9 +137,9 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-21 — Executed Phase 15 Plan 04 (Wave 4 — Editor additions): Send-to-Post-Production toolbar button + unconditional SceneListPanel with parse-error fallback chip.
-- Last action: Plan 15-04 complete — 2 atomic commits (ce7e8cb toolbar button, 7f5856c scene list fallback). Typecheck + build green; 201/209 vitest pass (baseline preserved). SUMMARY at `.planning/phases/15-editor-post-production-feature-boundary-cleanup/15-04-SUMMARY.md`.
-- Next action: Wave 4 human QA pause, then `/gsd-execute-phase 15` Wave 5 (regression matrix + 15-SUMMARY + docs/ARCHITECTURE sync).
+- Last activity: 2026-04-22 — Executed Phase 9 Wave 1 (Sidecar CDP verbs + Rust event bridge).
+- Last action: Plan 09-01 complete — 2 atomic commits (c80c7a9 sidecar screencast verbs + preview/frame notifications, 1814088 Rust SidecarMsg::Notification + watch-channel preview frames). Sidecar vitest 6/6 + server regression 25/25; Rust `preview_notification` integration 5/5; `cargo test -p automation --lib` 61/61; `cargo check` clean. SUMMARY at `.planning/phases/09-live-preview-pane-render-chromium-automation-inside-the-reco/09-01-SUMMARY.md`.
+- Next action: `/gsd-execute-phase 9 --wave 2` (React canvas renderer + Options toggle) OR parallel tracks Phase 14 Wave 5 / Phase 15 Wave 5 Task 3 (both have a11y checkpoints waiting).
 - Files touched this session: `apps/desktop/src/routes/editor.tsx`, `apps/desktop/src/features/editor/scene-list-panel.tsx`.
 
 ---
