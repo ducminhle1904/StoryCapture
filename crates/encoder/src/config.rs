@@ -247,6 +247,13 @@ impl EncodeConfig {
             self.output_height,
         ));
 
+        // D-11: keyframe interval (forces GOP). None => default FFmpeg
+        // behavior — argv must be byte-identical to pre-D-11.
+        if let Some(sec) = self.keyframe_interval_sec {
+            let gop = (self.fps_advisory).saturating_mul(sec).max(1);
+            args.extend(["-g".into(), gop.to_string()]);
+        }
+
         args.extend(["-c:a".into(), "aac".into()]);
 
         if self.audio_input.is_some() {
@@ -463,6 +470,28 @@ mod tests {
             &args[s_idx + 1],
             "1920x1130",
             "-s must carry capture dims, not output dims"
+        );
+    }
+
+    /// D-11: keyframe_interval_sec = Some(2) @ 30fps -> `-g 60`.
+    #[test]
+    fn keyframe_interval_emits_g_flag() {
+        let mut c = cfg();
+        c.keyframe_interval_sec = Some(2);
+        let args = c.to_ffmpeg_args();
+        let g_idx = args.iter().position(|a| a == "-g").expect("-g must be present");
+        assert_eq!(args[g_idx + 1], "60", "expected -g 60 for 30fps * 2s");
+    }
+
+    /// D-11: None keeps argv byte-identical to pre-D-11 (no -g flag).
+    #[test]
+    fn keyframe_interval_none_omits_g_flag() {
+        let c = cfg();
+        assert!(c.keyframe_interval_sec.is_none());
+        let args = c.to_ffmpeg_args();
+        assert!(
+            !args.iter().any(|a| a == "-g"),
+            "default config must not emit -g: {args:?}"
         );
     }
 

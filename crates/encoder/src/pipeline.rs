@@ -22,6 +22,40 @@ use crate::sidecar::{FfmpegSidecar, SidecarCommand};
 /// Shutdown budget for FFmpeg after stdin closes.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// D-08: derive the staging path `<target>.partial` for atomic rename on
+/// success. Stays in the same directory as `target` so the rename is
+/// guaranteed atomic (same filesystem). Preserves the original extension
+/// suffix for clarity: `out.mp4` -> `out.mp4.partial`.
+pub fn partial_path_of(target: &std::path::Path) -> PathBuf {
+    let mut s = target.as_os_str().to_os_string();
+    s.push(".partial");
+    PathBuf::from(s)
+}
+
+/// RAII guard that removes a staging file if the encode did not complete.
+/// `disarm()` is called on the success path right before the atomic rename.
+struct PartialFileGuard {
+    path: Option<PathBuf>,
+}
+
+impl PartialFileGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path: Some(path) }
+    }
+
+    fn disarm(&mut self) {
+        self.path.take();
+    }
+}
+
+impl Drop for PartialFileGuard {
+    fn drop(&mut self) {
+        if let Some(p) = self.path.take() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
 /// Result of a completed encode.
 #[derive(Debug, Clone)]
 pub struct EncodeResult {
@@ -134,7 +168,15 @@ impl EncodePipeline {
             }
         }
 
-        let args = cfg.to_ffmpeg_args();
+        // D-08: stage FFmpeg output to `<target>.partial`; rename atomically
+        // on success; clean up on any failure via PartialFileGuard.
+        let target_path = cfg.output_path.clone();
+        let partial_path = partial_path_of(&target_path);
+        let _ = std::fs::remove_file(&partial_path); // stale leftovers
+        let mut cfg_for_ffmpeg = cfg.clone();
+        cfg_for_ffmpeg.output_path = partial_path.clone();
+
+        let args = cfg_for_ffmpeg.to_ffmpeg_args();
         tracing::info!(target: "storycapture::encoder", "ffmpeg args: {}", args.join(" "));
         let child = sidecar_cmd.spawn(args).await?;
         let mut sidecar = FfmpegSidecar::new(child);
@@ -149,7 +191,6 @@ impl EncodePipeline {
         let stderr = handles.stderr;
         let mut child = handles.child;
 
-        let output_path = cfg.output_path.clone();
         let start = Instant::now();
 
         // Parse FFmpeg progress on stderr.
@@ -158,7 +199,11 @@ impl EncodePipeline {
 
         let frames_dropped_backpressure: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
         let frames_dropped_bp = frames_dropped_backpressure.clone();
+        let partial_path_for_task = partial_path.clone();
+        let target_for_task = target_path.clone();
         let join = tokio::spawn(async move {
+            // D-08: ensure `.partial` is cleaned on any failure/panic path.
+            let mut partial_guard = PartialFileGuard::new(partial_path_for_task.clone());
             // RAII guard ensures ffmpeg stdin is closed on ANY exit path
             // (normal completion, early Err return, or panic unwind) so
             // ffmpeg receives EOF immediately instead of waiting up to
@@ -306,15 +351,28 @@ impl EncodePipeline {
             );
 
             let duration_ms = start.elapsed().as_millis() as u64;
-            let bytes = std::fs::metadata(&output_path)
+
+            // D-08: read size from `.partial` before renaming.
+            let bytes = std::fs::metadata(&partial_path_for_task)
                 .map(|m| m.len())
                 .unwrap_or(0);
+
+            // Atomic rename from `.partial` to final target. Same directory,
+            // same filesystem — guaranteed atomic on POSIX and NTFS.
+            std::fs::rename(&partial_path_for_task, &target_for_task).map_err(|e| {
+                EncoderError::Io(format!(
+                    "rename {} -> {}: {e}",
+                    partial_path_for_task.display(),
+                    target_for_task.display()
+                ))
+            })?;
+            partial_guard.disarm();
 
             // Keep `sidecar` alive until FFmpeg is done.
             drop(sidecar);
 
             Ok(EncodeResult {
-                output_path,
+                output_path: target_for_task,
                 duration_ms,
                 bytes,
                 frames_written,
@@ -436,6 +494,36 @@ fn tokio_placeholder() -> mpsc::Receiver<Frame> {
 mod tests {
     use super::*;
     use capture::{ClockSource, Frame, FrameData, PixelFormat, Pts};
+
+    #[test]
+    fn partial_path_appends_dot_partial() {
+        let p = partial_path_of(std::path::Path::new("/tmp/out.mp4"));
+        assert_eq!(p.as_os_str(), "/tmp/out.mp4.partial");
+    }
+
+    #[test]
+    fn partial_guard_removes_file_on_drop() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("x.partial");
+        std::fs::write(&p, b"hello").unwrap();
+        {
+            let _g = PartialFileGuard::new(p.clone());
+            // Drop at scope exit removes the file.
+        }
+        assert!(!p.exists(), "partial file must be removed on drop");
+    }
+
+    #[test]
+    fn partial_guard_disarm_preserves_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("y.partial");
+        std::fs::write(&p, b"hello").unwrap();
+        {
+            let mut g = PartialFileGuard::new(p.clone());
+            g.disarm();
+        }
+        assert!(p.exists(), "disarmed guard must not delete file");
+    }
 
     #[tokio::test]
     async fn backpressure_callback_fires_on_timeout() {

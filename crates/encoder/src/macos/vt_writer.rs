@@ -140,10 +140,16 @@ fn run_worker(
 ) -> Result<EncodeResult> {
     // Keep transient Objective-C objects scoped.
     objc2::rc::autoreleasepool(|_| -> Result<EncodeResult> {
-        let output_path = cfg.output_path.clone();
+        let target_path = cfg.output_path.clone();
+        // D-08: stage writer output at `<target>.partial`; atomic rename
+        // on success; remove on any failure path via PartialVtGuard.
+        let partial_path = crate::pipeline::partial_path_of(&target_path);
+        let _ = std::fs::remove_file(&partial_path);
+        let _guard = PartialVtGuard::new(partial_path.clone());
+        let output_path = partial_path.clone();
         let start = Instant::now();
 
-        // Build AVAssetWriter.
+        // Build AVAssetWriter (writes to `.partial`).
         let _ = std::fs::remove_file(&output_path);
         // `fileURLWithPath:` wants a POSIX path, not a file URL.
         let path_str = NSString::from_str(&output_path.display().to_string());
@@ -382,6 +388,18 @@ fn run_worker(
             .map(|m| m.len())
             .unwrap_or(0);
 
+        // D-08: atomic rename `.partial` -> target. Same dir = atomic on
+        // HFS+/APFS. Disarm the guard so Drop does not delete the renamed
+        // file.
+        std::fs::rename(&partial_path, &target_path).map_err(|e| {
+            EncoderError::Io(format!(
+                "rename {} -> {}: {e}",
+                partial_path.display(),
+                target_path.display()
+            ))
+        })?;
+        _guard.disarm();
+
         // Final progress snapshot.
         let _ = progress_tx.blocking_send(EncodeProgress {
             frame: frames_written,
@@ -395,13 +413,38 @@ fn run_worker(
         });
 
         Ok(EncodeResult {
-            output_path,
+            output_path: target_path,
             duration_ms,
             bytes,
             frames_written,
             frames_dropped,
         })
     })
+}
+
+/// D-08: Drop guard that removes a `.partial` file if the worker aborted
+/// without disarming. `disarm()` is called on the success path right
+/// before the atomic rename.
+struct PartialVtGuard {
+    path: Option<PathBuf>,
+}
+
+impl PartialVtGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path: Some(path) }
+    }
+
+    fn disarm(mut self) {
+        self.path.take();
+    }
+}
+
+impl Drop for PartialVtGuard {
+    fn drop(&mut self) {
+        if let Some(p) = self.path.take() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
 }
 
 #[cfg(test)]
