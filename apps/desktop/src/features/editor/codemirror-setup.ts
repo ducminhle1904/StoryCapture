@@ -13,12 +13,18 @@ import type { Extension } from "@codemirror/state";
 import { storyDsl } from "@/features/editor/dsl-language";
 import { storyDiagnosticsLinter } from "@/features/editor/diagnostics-bridge";
 import { storyAutocomplete } from "@/features/editor/dsl-autocomplete";
+import {
+  simulatorDecorationField,
+  simulatorDecorationTheme,
+} from "@/features/editor/simulator-decoration";
 
 export function storyEditorExtensions(): Extension[] {
   return [
     storyDsl(),
     storyDiagnosticsLinter,
     storyAutocomplete,
+    simulatorDecorationField,
+    simulatorDecorationTheme,
     indentUnit.of("  "),
     EditorView.theme({
       "&": {
