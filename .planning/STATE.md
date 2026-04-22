@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-22T15:45:00.000Z"
+last_updated: "2026-04-22T08:45:00.000Z"
 progress:
   total_phases: 16
   completed_phases: 7
   total_plans: 111
-  completed_plans: 92
-  percent: 83
+  completed_plans: 93
+  percent: 84
 ---
 
 # State: StoryCapture
@@ -25,7 +25,7 @@ progress:
 ## Current Position
 
 Phase: 16 — Upgrade all dependencies to latest — EXECUTING
-Plan: 16-03 complete (Wave C Rust 0.x breaking bumps: 12 atomic commits landed — C5 objc2 0.6.4 unify, C6 rusqlite 0.39 + rusqlite_migration 2.5.0 (Wave-1 deferred unblocked), C7 reqwest 0.13 (feature rustls-tls→rustls), C8 sha2 0.11, C9 scraper 0.26, C10 nix 0.31, C11a tower 0.5, C11b schemars 1.2.1, C11c rand 0.10, C11d toml 1.1.2, C11e ts-rs 12.0.1 (effects+story-parser lockstep), C12 serde_yaml → serde_yaml_ng 0.10.0. Per-commit gates all green — cargo check + cargo test 89/89 + turbo typecheck + turbo build). 2 plans remain (16-04 JS majors, 16-05 gated framework majors).
+Plan: 16-04 complete (Wave D JS major bumps: 12 atomic commits landed — D13 tailwind-merge 3, D14a sonner 2, D14b cmdk no-op (already on 1.1.1 from Wave A), D14c react-resizable-panels 4 with v4 API migration (Group/Separator/orientation/percentage-string sizes/onLayoutChanged map), D14d react-hotkeys-hook 5, D14e lucide-react 1.8, D15 zod 4 (tRPC 11.16 native compat), D16 jose 6, D17 pino 10 + pino-pretty 13, D18 resend 6, D19 vite 8 + @vitejs/plugin-react 6, D20 typescript 6.0.3 repo-wide (removed deprecated baseUrl + added src/types/css.d.ts), D21 Biome 2 + migrate. Per-commit gates all green — turbo typecheck + turbo build + vitest 201/209 baseline. pnpm audit 0 vulnerabilities. No new @ts-ignore/as any. 1 plan remains (16-05 gated framework majors).
 
 ## Phase 8-11 Planning Audit (2026-04-21)
 
@@ -136,10 +136,10 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-22 — Executed Phase 16 Plan 03 (Wave C Rust 0.x breaking bumps).
-- Last action: Plan 16-03 complete — 12 atomic commits (C5 c29118e objc2 0.6.4, C6 90dc373 rusqlite 0.39+rusqlite_migration 2.5.0, C7 f9cae90 reqwest 0.13 rustls-tls→rustls, C8 bb703a9 sha2 0.11, C9 31f6335 scraper 0.26, C10 7b0bf1a nix 0.31, C11a bcb3c42 tower 0.5, C11b 3237bca schemars 1.2.1, C11c 01af6d2 rand 0.10, C11d 870b1b0 toml 1.1.2, C11e f7fbebd ts-rs 12.0.1 effects+story-parser lockstep, C12 d095a54 serde_yaml→serde_yaml_ng 0.10.0). Per-commit gates all green — cargo check + cargo test 89/89 + turbo typecheck + turbo build. 4 Rule-1 source-level API migrations (objc2 ClassType→AnyThread, reqwest rustls-tls→rustls feature rename, schemars definitions→$defs + snapshot field-order refresh, rand gen_range→random_range on new RngExt trait). Zero workarounds. SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-03-SUMMARY.md`.
-- Next action: `/gsd-execute-phase 16` Wave D (16-04 JS majors: tailwind-merge 3, sonner 2, react-resizable-panels 4, react-hotkeys-hook 5, lucide-react 1.x, zod 4, jose 6, pino 10 + pino-pretty 13, resend 6, Vite 8, TypeScript 6, Biome 2).
-- Files touched this session: workspace Cargo.toml + 9 crate/app Cargo.toml manifests + 1 .rs source (lib.rs) + 4 test files + 1 insta snapshot + Cargo.lock (across 12 atomic commits).
+- Last activity: 2026-04-22 — Executed Phase 16 Plan 04 (Wave D JS major bumps).
+- Last action: Plan 16-04 complete — 12 atomic commits (D13 7f8e3ef tailwind-merge 3, D14a 05368fe sonner 2, D14b no-op (cmdk already 1.1.1 from Wave A), D14c 065e40f react-resizable-panels 4 + v4 API migration Group/Separator/orientation/percentage-string/onLayoutChanged, D14d 8ea6cd8 react-hotkeys-hook 5, D14e 9d864ef lucide-react 1.8, D15 311d8e3 zod 4, D16 78c12f0 jose 6, D17 ecbe951 pino 10 + pino-pretty 13, D18 a393b33 resend 6, D19 d702129 vite 8 + @vitejs/plugin-react 6, D20 73d2c67 typescript 6.0.3 repo-wide + dropped deprecated baseUrl + added src/types/css.d.ts, D21 4981679 Biome 2.4.12 + migrated biome.json). Per-commit gates all green — turbo typecheck + turbo build + vitest 201/209 baseline. pnpm audit 0 vulnerabilities. 3 Rule-1 migrations (react-resizable-panels v4 API overhaul, TS 6 baseUrl deprecation, TS 6 CSS side-effect declare). NO workarounds, NO @ts-ignore, NO as any. SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-04-SUMMARY.md`.
+- Next action: `/gsd-execute-phase 16` Wave E (16-05 gated framework majors: next-auth, Next 16, Prisma 7, windows 0.62, tauri-specta RC, docs sync).
+- Files touched this session: 5 package.json manifests + biome.json + apps/desktop/tsconfig.json + apps/web/src/types/css.d.ts (new) + apps/desktop/src/features/editor/split-pane.tsx + apps/desktop/src/routes/editor.tsx + pnpm-lock.yaml (across 12 atomic commits).
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
