@@ -129,3 +129,5 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"
 tracing-subscriber = { workspace = true }
 # Plan 07-05: tempdir fixtures for author_snapshot store tests.
 tempfile = "3"
+# Phase 10-02: mtime control for simulator run retention tests.
+filetime = "0.2"

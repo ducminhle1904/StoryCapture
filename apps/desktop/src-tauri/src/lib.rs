@@ -16,6 +16,8 @@
 pub mod commands;
 pub mod error;
 pub mod ipc_spec;
+
+pub use commands::simulator::prune_runs_retain_5;
 pub mod logging;
 pub mod panic_hook;
 pub mod state;
@@ -135,6 +137,9 @@ pub fn run() {
             // Install AppState BEFORE panic hook so any panic path can
             // safely look up the data dir.
             app.manage(state::AppState::new(data_dir, log_dir));
+
+            // Phase 10-02 — author-time simulator session registry.
+            app.manage(commands::simulator::SimulatorRegistry::default());
 
             // LSP bridge: in-process tower-lsp via IPC.
             // `LspBridge::new()` returns (bridge, drain_future) — the drain

@@ -19,8 +19,8 @@ use tauri_specta::{collect_commands, Builder};
 use crate::{
     commands::{
         app_settings, audio, author_snapshot, automation, capture, dryrun, encode, export, keys,
-        lsp, nl, parse, picker, preset, projects, region_overlay, render, sound_library, system,
-        timeline, tts, updater, upload, web_account, web_sync,
+        lsp, nl, parse, picker, preset, projects, region_overlay, render, simulator,
+        sound_library, system, timeline, tts, updater, upload, web_account, web_sync,
     },
     error::AppError,
 };
@@ -127,6 +127,11 @@ pub fn builder() -> Builder<Wry> {
             // Phase 03 plan 16 — Dry-Run orchestrator.
             dryrun::dryrun_start,
             dryrun::dryrun_cancel,
+            // Phase 10-02 — author-time simulator (distinct from Phase 3 dryrun).
+            simulator::simulator_start,
+            simulator::simulator_step_to,
+            simulator::simulator_cancel,
+            simulator::simulator_promote_fallback,
             // Phase 03 plan 14 — LSP IPC bridge.
             lsp::lsp_request,
             // Phase 03 plan 07 — NL-to-DSL commands.
@@ -246,6 +251,11 @@ pub fn builder() -> Builder<Wry> {
         // Phase 03 plan 16 (Dry-Run)
         .typ::<dryrun::DryRunEventDto>()
         .typ::<dryrun::DryRunStepDto>()
+        // Phase 10-02 (Simulator)
+        .typ::<simulator::SimulatorEvent>()
+        .typ::<simulator::SimulatorStepFrame>()
+        .typ::<simulator::SimulatorBbox>()
+        .typ::<simulator::SimulatorMatchKind>()
         // Phase 03 plan 14 (LSP IPC bridge)
         .typ::<lsp::LspNotificationDto>()
         // Phase 03 plan 07 (NL-to-DSL commands)

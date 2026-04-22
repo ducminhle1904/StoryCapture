@@ -25,6 +25,7 @@ pub mod projects;
 // Plan 06-02 — region-selection overlay window + IPC commands.
 pub mod region_overlay;
 pub mod render;
+pub mod simulator;
 pub mod sound_library;
 pub mod system;
 pub mod timeline;
