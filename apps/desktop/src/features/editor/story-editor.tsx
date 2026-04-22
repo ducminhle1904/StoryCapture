@@ -1,11 +1,20 @@
+import { AnimatePresence, motion } from "motion/react";
+import { Play } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
+import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import { storyEditorExtensions } from "./codemirror-setup";
 import { editorController } from "./controller";
 import { SelectorValidatorOverlay } from "./SelectorValidatorOverlay";
+import {
+  buildOrdinalLineMap,
+  setActiveFrame,
+} from "./simulator-decoration";
+import { simulatorCancel } from "@/ipc/simulator";
 import { useEditorStore } from "@/state/editor";
+import { useSimulatorStore } from "@/state/simulatorStore";
 import { parseStory } from "@/ipc/parse";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 
@@ -17,23 +26,29 @@ export interface EditorJumpTarget {
 interface StoryEditorProps {
   onAutosave?: (source: string) => void;
   jumpTarget?: EditorJumpTarget | null;
-  /**
-   * absolute project directory used to locate the
-   * `.story.snapshots/` cache. When `null` the author-time validator
-   * stays idle (no IPC calls).
-   */
   projectDir?: string | null;
+  projectFolder?: string | null;
+  storyPath?: string | null;
+  streamId?: string | null;
 }
 
-/**
- * Controlled CodeMirror editor wired to the DSL language pack + diagnostics
- * linter (UI-02). Autosave callback debounced 5s after last change; also
- * fires on blur.
- */
-export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorProps) {
+export function StoryEditor({
+  onAutosave,
+  jumpTarget,
+  projectDir,
+  projectFolder,
+  storyPath,
+  streamId,
+}: StoryEditorProps) {
   const source = useEditorStore((s) => s.source);
   const setSource = useEditorStore((s) => s.setSource);
   const setLastParse = useEditorStore((s) => s.setLastParse);
+
+  const runState = useSimulatorStore((s) => s.runState);
+  const currentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
+  const totalSteps = useSimulatorStore((s) => s.totalSteps);
+  const sessionId = useSimulatorStore((s) => s.sessionId);
+  const simulatorActive = runState === "running";
 
   const cmRef = useRef<ReactCodeMirrorRef>(null);
   const autosave = useDebouncedCallback(
@@ -41,9 +56,25 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
     5000,
   );
 
-  const extensions = useMemo(() => storyEditorExtensions(), []);
+  // Keep latest prop/store values in refs so simulator keymap (which captures
+  // these once at extension build time) always reads fresh data.
+  const projectFolderRef = useRef(projectFolder);
+  const storyPathRef = useRef(storyPath);
+  const streamIdRef = useRef(streamId);
+  projectFolderRef.current = projectFolder;
+  storyPathRef.current = storyPath;
+  streamIdRef.current = streamId;
 
-  // Parse on every change so the timeline panel can re-render from AST.
+  const extensions = useMemo(
+    () =>
+      storyEditorExtensions({
+        getProjectFolder: () => projectFolderRef.current ?? null,
+        getStoryPath: () => storyPathRef.current ?? null,
+        getStreamId: () => streamIdRef.current ?? null,
+      }),
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
     const handle = window.setTimeout(() => {
@@ -52,7 +83,7 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
           if (!cancelled) setLastParse(r);
         })
         .catch(() => {
-          /* ignored — linter displays the error */
+          /* linter reports */
         });
     }, 300);
     return () => {
@@ -61,13 +92,31 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
     };
   }, [source, setLastParse]);
 
+  // Sync CodeMirror line decoration with currentFrameOrdinal.
+  useEffect(() => {
+    const view = cmRef.current?.view;
+    if (!view) return;
+    const ast = useEditorStore.getState().lastParse?.ast ?? null;
+    if (!ast) {
+      view.dispatch({ effects: setActiveFrame.of(null) });
+      return;
+    }
+    const { ordinalToLine } = buildOrdinalLineMap(
+      ast as unknown as { scenes: Array<{ commands: Array<{ span: { line: number } }> }> },
+    );
+    view.dispatch({
+      effects: setActiveFrame.of({ ordinal: currentOrd, ordinalToLine }),
+    });
+  }, [currentOrd]);
+
   const handleChange = (value: string) => {
+    if (simulatorActive) return;
     setSource(value);
     if (onAutosave) autosave.run(value);
   };
 
   const handleBlur = () => {
-    if (onAutosave) onAutosave(source);
+    if (!simulatorActive && onAutosave) onAutosave(source);
   };
 
   useEffect(() => {
@@ -82,9 +131,6 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
     view.focus();
   }, [jumpTarget]);
 
-  // register the active CodeMirror view with the
-  // editorController singleton so the picker UI can insert at the
-  // cursor. Cleared on unmount.
   useEffect(() => {
     editorController.setView(cmRef.current?.view ?? null);
     return () => {
@@ -92,32 +138,66 @@ export function StoryEditor({ onAutosave, jumpTarget, projectDir }: StoryEditorP
     };
   }, [cmRef.current?.view]);
 
+  // Dynamic readOnly compartment via EditorState.readOnly facet:
+  // feed through extensions array, re-assigning on run state change.
+  const readOnlyExtensions = useMemo(
+    () => [...extensions, EditorState.readOnly.of(simulatorActive)],
+    [extensions, simulatorActive],
+  );
+
   return (
-    <div
-      className="h-full w-full overflow-hidden bg-transparent [&_.cm-editor]:h-full [&_.cm-editor]:bg-transparent [&_.cm-gutters]:border-r-0 [&_.cm-gutters]:bg-transparent [&_.cm-scroller]:font-mono [&_.cm-activeLine]:bg-[color-mix(in_oklch,var(--sc-accent-400)_8%,transparent)] [&_.cm-activeLineGutter]:bg-[color-mix(in_oklch,var(--sc-accent-400)_8%,transparent)] [&_.cm-cursor]:border-l-[var(--sc-accent-400)] [&_.cm-content]:py-5 [&_.cm-line]:px-2 [&_.cm-selectionBackground]:bg-[color-mix(in_oklch,var(--sc-accent-400)_22%,transparent)]"
-      onBlur={handleBlur}
-    >
-      <CodeMirror
-        ref={cmRef}
-        value={source}
-        height="100%"
-        extensions={extensions}
-        onChange={handleChange}
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLine: true,
-          highlightActiveLineGutter: true,
-          bracketMatching: true,
-          closeBrackets: true,
-          autocompletion: false, // provided by our own extension
-          foldGutter: true,
-        }}
-        aria-label="Story DSL editor"
-      />
-      {/* author-time selector validator. Renders nothing
-          visible; writes validation state into useSelectorValidation
-          for the gutter markers + Preview panel bbox overlay. */}
-      <SelectorValidatorOverlay projectDir={projectDir ?? null} />
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
+      <AnimatePresence>
+        {runState === "running" && (
+          <motion.div
+            key="simulator-banner"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            role="status"
+            aria-live="polite"
+            className="sticky top-0 z-10 flex h-8 items-center justify-between bg-[var(--color-surface-300)] px-3 text-[13px] font-medium text-[var(--color-fg-primary)]"
+          >
+            <span className="flex items-center gap-2">
+              <Play size={14} aria-hidden="true" />
+              {`Simulator running — edits paused · Step ${currentOrd ?? "—"} / ${totalSteps}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => sessionId && void simulatorCancel(sessionId)}
+              aria-label="Cancel simulator run"
+              className="rounded-[var(--radius-xs)] px-2 py-0.5 text-xs hover:bg-[var(--color-danger)]/12"
+            >
+              Cancel
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div
+        className="h-full w-full flex-1 overflow-hidden bg-transparent [&_.cm-editor]:h-full [&_.cm-editor]:bg-transparent [&_.cm-gutters]:border-r-0 [&_.cm-gutters]:bg-transparent [&_.cm-scroller]:font-mono [&_.cm-activeLine]:bg-[color-mix(in_oklch,var(--sc-accent-400)_8%,transparent)] [&_.cm-activeLineGutter]:bg-[color-mix(in_oklch,var(--sc-accent-400)_8%,transparent)] [&_.cm-cursor]:border-l-[var(--sc-accent-400)] [&_.cm-content]:py-5 [&_.cm-line]:px-2 [&_.cm-selectionBackground]:bg-[color-mix(in_oklch,var(--sc-accent-400)_22%,transparent)]"
+        onBlur={handleBlur}
+      >
+        <CodeMirror
+          ref={cmRef}
+          value={source}
+          height="100%"
+          extensions={readOnlyExtensions}
+          onChange={handleChange}
+          basicSetup={{
+            lineNumbers: true,
+            highlightActiveLine: true,
+            highlightActiveLineGutter: true,
+            bracketMatching: true,
+            closeBrackets: true,
+            autocompletion: false,
+            foldGutter: true,
+          }}
+          aria-label="Story DSL editor"
+        />
+        <SelectorValidatorOverlay projectDir={projectDir ?? null} />
+      </div>
     </div>
   );
 }

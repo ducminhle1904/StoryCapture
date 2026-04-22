@@ -24,6 +24,7 @@ import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
 import { LivePreview } from "@/features/recorder/live-preview";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
+import { SimulatorTimeline } from "@/features/editor/SimulatorTimeline";
 import {
   StoryEditor,
   type EditorJumpTarget,
@@ -486,8 +487,19 @@ export default function EditorRoute() {
                   <StoryEditor
                     onAutosave={autosave}
                     jumpTarget={editorJumpTarget}
+                    projectFolder={folder?.folder_path ?? null}
+                    storyPath={folder?.story_path ?? null}
+                    streamId={authorStreamId}
                   />
                 </div>
+
+                <SimulatorTimeline
+                  projectFolder={folder?.folder_path ?? ""}
+                  storyPath={folder?.story_path ?? ""}
+                  storySource={source}
+                  streamId={authorStreamId}
+                  previewEnabled={previewEnabled}
+                />
 
                 <ConsolePane />
               </div>

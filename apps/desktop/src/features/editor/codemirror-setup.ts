@@ -17,14 +17,19 @@ import {
   simulatorDecorationField,
   simulatorDecorationTheme,
 } from "@/features/editor/simulator-decoration";
+import {
+  createSimulatorKeymap,
+  type SimulatorKeymapContext,
+} from "@/features/editor/simulator-keymap";
 
-export function storyEditorExtensions(): Extension[] {
+export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Extension[] {
   return [
     storyDsl(),
     storyDiagnosticsLinter,
     storyAutocomplete,
     simulatorDecorationField,
     simulatorDecorationTheme,
+    ...(simulatorCtx ? [createSimulatorKeymap(simulatorCtx)] : []),
     indentUnit.of("  "),
     EditorView.theme({
       "&": {
