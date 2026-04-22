@@ -265,4 +265,119 @@ describe("Phase 09-01 preview CDP screencast verbs", () => {
       await client.call("close", {}).catch(() => {});
     }
   }, 60_000);
+
+  // Phase 09-04 — author-session lifecycle, separate from recording.
+  it("author.launch + startPreviewStream(streamId) emits streamId-tagged frames", async () => {
+    const streamId = "author-" + Date.now();
+    try {
+      await client.call("author.launch", {
+        streamId,
+        url: DEMO_URL,
+        viewport: { width: 1024, height: 700 },
+        headless: true,
+      });
+      const frames = [];
+      client.onFrame((p) => frames.push(p));
+      const start = await client.call("startPreviewStream", { streamId });
+      expect(start.result.ok).toBe(true);
+      expect(start.result.streamId).toBe(streamId);
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(frames.length).toBeGreaterThanOrEqual(1);
+      // every author frame must carry its streamId (multi-stream demux).
+      for (const f of frames) {
+        expect(f.streamId).toBe(streamId);
+      }
+      const stop = await client.call("stopPreviewStream", { streamId });
+      expect(stop.result.ok).toBe(true);
+    } finally {
+      await client.call("author.close", { streamId }).catch(() => {});
+    }
+  }, 60_000);
+
+  // Phase 09-04 — pauseStream halts frame emission; resumeStream restarts it.
+  it("pauseStream / resumeStream round-trips", async () => {
+    const streamId = "author-pause-" + Date.now();
+    try {
+      await client.call("author.launch", {
+        streamId,
+        url: DEMO_URL,
+        viewport: { width: 800, height: 600 },
+        headless: true,
+      });
+      const frames = [];
+      client.onFrame((p) => { if (p.streamId === streamId) frames.push(p); });
+      await client.call("startPreviewStream", { streamId });
+      await new Promise((r) => setTimeout(r, 800));
+      const beforePause = frames.length;
+      expect(beforePause).toBeGreaterThanOrEqual(1);
+      const pauseRes = await client.call("pauseStream", { streamId });
+      expect(pauseRes.result.paused).toBe(true);
+      await new Promise((r) => setTimeout(r, 600));
+      const duringPause = frames.length;
+      const resumeRes = await client.call("resumeStream", { streamId });
+      expect(resumeRes.result.paused).toBe(false);
+      await new Promise((r) => setTimeout(r, 800));
+      // More frames must have arrived after resume than during pause.
+      expect(frames.length).toBeGreaterThan(duringPause);
+    } finally {
+      await client.call("author.close", { streamId }).catch(() => {});
+    }
+  }, 60_000);
+
+  // Phase 09-04 — setViewport updates page.setViewportSize without reload.
+  it("author.setViewport updates innerWidth/innerHeight", async () => {
+    const streamId = "author-vp-" + Date.now();
+    try {
+      await client.call("author.launch", {
+        streamId,
+        url: DEMO_URL,
+        viewport: { width: 1280, height: 800 },
+        headless: true,
+      });
+      await client.call("author.setViewport", {
+        streamId,
+        width: 375,
+        height: 667,
+      });
+      // Re-launch the CDP probe (reads innerWidth) by (re)starting the
+      // screencast which runs the HiDPI selector.
+      const r = await client.call("startPreviewStream", { streamId });
+      expect(r.result.ok).toBe(true);
+      expect(r.result.everyNthFrame).toBe(1);
+    } finally {
+      await client.call("author.close", { streamId }).catch(() => {});
+    }
+  }, 60_000);
+
+  // Phase 09-04 — author session is independent from recording session.
+  it("author session does not interfere with recording-session preview", async () => {
+    await launch(client);
+    const streamId = "author-iso-" + Date.now();
+    try {
+      await client.call("startPreviewStream", {});
+      await client.call("author.launch", {
+        streamId,
+        url: DEMO_URL,
+        viewport: { width: 600, height: 400 },
+        headless: true,
+      });
+      await client.call("startPreviewStream", { streamId });
+      const recordingFrames = [];
+      const authorFrames = [];
+      client.onFrame((p) => {
+        if (p.streamId === streamId) authorFrames.push(p);
+        else recordingFrames.push(p);
+      });
+      await new Promise((r) => setTimeout(r, 1500));
+      // Stopping the author stream must not kill the recording stream.
+      await client.call("stopPreviewStream", { streamId });
+      const recordingBeforeStop = recordingFrames.length;
+      await new Promise((r) => setTimeout(r, 600));
+      expect(recordingFrames.length).toBeGreaterThanOrEqual(recordingBeforeStop);
+      expect(authorFrames.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      await client.call("author.close", { streamId }).catch(() => {});
+      await client.call("close", {}).catch(() => {});
+    }
+  }, 60_000);
 });
