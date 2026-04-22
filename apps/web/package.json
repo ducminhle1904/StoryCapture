@@ -32,7 +32,7 @@
     "@maxmind/geoip2-node": "^6.3.4",
     "pino": "^10.3.1",
     "tailwindcss": "^4.2.4",
-    "resend": "^4.0.0",
+    "resend": "^6.12.2",
     "client-only": "^0.0.1",
     "server-only": "^0.0.1",
     "@storycapture/ui": "workspace:*"
