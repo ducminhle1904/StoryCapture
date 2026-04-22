@@ -65,4 +65,4 @@ tokio    = { version = "1.52", features = ["test-util", "macros", "rt-multi-thre
 insta    = { version = "1.47.2", features = ["json"] }
 tempfile = "3.27.0"
 wiremock = "0.6.5"
-serde_yaml = "0.9"
+serde_yaml_ng = "0.10.0"
