@@ -46,7 +46,7 @@ parking_lot = "0.12.5"
 # Platform-gated native deps. Per-crate Cargo.toml files opt-in via
 # `[target.'cfg(target_os = "macos")'.dependencies]` and friends; features are
 # selected per-crate so this workspace block stays minimal.
-objc2 = { version = "0.5" }
+objc2 = { version = "0.6.4" }
 windows = { version = "0.58" }
 
 [profile.release]

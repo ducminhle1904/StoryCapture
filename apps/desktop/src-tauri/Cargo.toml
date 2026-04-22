@@ -108,14 +108,14 @@ hex = "0.4.3"
 # the raw binary without an .app bundle) shows the StoryCapture icon
 # instead of the generic executable glyph.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.5"
-objc2-app-kit = { version = "0.2", features = [
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", features = [
     "NSApplication",
     "NSImage",
     "NSResponder",
     "NSRunningApplication",
 ] }
-objc2-foundation = { version = "0.2", features = [
+objc2-foundation = { version = "0.3.2", features = [
     "NSData",
     "NSThread",
     "NSString",

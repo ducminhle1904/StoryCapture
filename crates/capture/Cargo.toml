@@ -60,8 +60,8 @@ sysinfo = { version = "0.32", optional = true }
 # See SUMMARY for the full deviation note.
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit = "=1.5.4"
-objc2 = "0.5"
-objc2-foundation = "0.2"
+objc2 = "0.6.4"
+objc2-foundation = "0.3.2"
 core-foundation = "0.10.1"
 core-graphics = "0.24"
 

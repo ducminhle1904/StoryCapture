@@ -182,7 +182,7 @@ pub fn run() {
 /// not need this path, but calling it unconditionally is harmless.
 #[cfg(target_os = "macos")]
 fn set_macos_dock_icon() {
-    use objc2::ClassType;
+    use objc2::AnyThread;
     use objc2_app_kit::{NSApplication, NSImage};
     use objc2_foundation::{MainThreadMarker, NSData};
 
