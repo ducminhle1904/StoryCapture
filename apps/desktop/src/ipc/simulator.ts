@@ -1,15 +1,14 @@
-/**
- * Simulator IPC wrappers — Phase 10 author-time "Preview to here" + dry-run walkthrough.
- *
- * Namespace is intentionally distinct from apps/desktop/src/ipc/dryrun.ts
- * (Phase 3, shipped) per 10-CONTEXT D-00 / D-09. No shared discriminated union
- * with ExecutorEvent or DryRunEvent.
- */
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 import type { StepFrame } from "./automation";
 
-export type SimulatorMatchKind = "primary" | "fuzzy" | "none";
+export const SimulatorMatchKind = {
+  Primary: "primary",
+  Fuzzy: "fuzzy",
+  None: "none",
+} as const;
+export type SimulatorMatchKind =
+  (typeof SimulatorMatchKind)[keyof typeof SimulatorMatchKind];
 
 export interface SimulatorBbox {
   x: number;

@@ -3,12 +3,13 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
+  SimulatorMatchKind,
   simulatorCancel,
   simulatorPromoteFallback,
   simulatorStart,
   type SimulatorStepFrame,
 } from "@/ipc/simulator";
-import { useSimulatorStore } from "@/state/simulatorStore";
+import { useSimulatorStore } from "@/state/simulator-store";
 
 interface SimulatorTimelineProps {
   projectFolder: string;
@@ -37,10 +38,7 @@ export function SimulatorTimeline({
 
   const isRunning = runState === "running";
   const isFailed = runState === "failed";
-  const active = useMemo(
-    () => (currentOrd != null ? frames.find((f) => f.ordinal === currentOrd) ?? null : null),
-    [frames, currentOrd],
-  );
+  const active = currentOrd != null ? frames[currentOrd - 1] ?? null : null;
   const totalDuration = useMemo(
     () => frames.reduce((acc, f) => acc + f.duration_ms, 0),
     [frames],
@@ -267,10 +265,11 @@ function FrameCard({ frame, isActive, isFailed, onClick, onPromote }: FrameCardP
     ? "var(--color-danger)"
     : isActive
       ? "var(--color-accent-primary)"
-      : frame.match_kind === "fuzzy"
+      : frame.match_kind === SimulatorMatchKind.Fuzzy
         ? "var(--color-warning)"
         : "var(--color-border-subtle)";
-  const borderStyle = frame.match_kind === "fuzzy" && !isActive && !isFailed ? "dashed" : "solid";
+  const borderStyle =
+    frame.match_kind === SimulatorMatchKind.Fuzzy && !isActive && !isFailed ? "dashed" : "solid";
   const borderWidth = isActive || isFailed ? 2 : 1;
 
   return (
@@ -297,7 +296,7 @@ function FrameCard({ frame, isActive, isFailed, onClick, onPromote }: FrameCardP
           <AlertTriangle size={10} aria-hidden="true" />
         </span>
       )}
-      {frame.match_kind === "fuzzy" && !promoted && (
+      {frame.match_kind === SimulatorMatchKind.Fuzzy && !promoted && (
         <span
           role="button"
           aria-label={`Promote matched selector for step ${frame.ordinal} to fallback`}
@@ -324,13 +323,17 @@ function FrameCard({ frame, isActive, isFailed, onClick, onPromote }: FrameCardP
   );
 }
 
+const MATCH_TONES: Record<
+  SimulatorMatchKind,
+  { bg: string; fg: string; label: string }
+> = {
+  primary: { bg: "var(--color-success)", fg: "#fff", label: "matched" },
+  fuzzy: { bg: "var(--color-warning)", fg: "#1a1a1a", label: "fuzzy" },
+  none: { bg: "var(--color-timeline-read)", fg: "#1a1a1a", label: "none" },
+};
+
 function MatchChip({ kind }: { kind: SimulatorStepFrame["match_kind"] }) {
-  const tone =
-    kind === "primary"
-      ? { bg: "var(--color-success)", fg: "#fff", label: "matched" }
-      : kind === "fuzzy"
-        ? { bg: "var(--color-warning)", fg: "#1a1a1a", label: "fuzzy" }
-        : { bg: "var(--color-timeline-read)", fg: "#1a1a1a", label: "none" };
+  const tone = MATCH_TONES[kind];
   return (
     <span
       className="rounded-[var(--radius-xs)] px-1 py-px font-medium"

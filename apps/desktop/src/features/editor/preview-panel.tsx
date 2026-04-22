@@ -13,7 +13,7 @@ import { useState } from "react";
 
 import { useEditorStore, type PreviewViewport } from "@/state/editor";
 import { useSelectorValidation } from "@/features/editor/SelectorValidatorOverlay";
-import { useSimulatorStore } from "@/state/simulatorStore";
+import { useSimulatorStore } from "@/state/simulator-store";
 
 const VIEWPORT_SIZES: Record<
   PreviewViewport,
@@ -43,9 +43,7 @@ export function PreviewPanel({
   const currentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
   const frames = useSimulatorStore((s) => s.frames);
   const activeFrame =
-    runState !== "idle" && currentOrd != null
-      ? frames.find((f) => f.ordinal === currentOrd) ?? null
-      : null;
+    runState !== "idle" && currentOrd != null ? frames[currentOrd - 1] ?? null : null;
 
   // aggregate author-time validator chip counts to display
   // a compact "2G / 1Y / 0R" summary in the preview footer. Reads from

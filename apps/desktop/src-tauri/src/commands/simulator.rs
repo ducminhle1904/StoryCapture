@@ -1,19 +1,9 @@
-//! Phase 10 author-time simulator — Tauri command surface.
+//! Author-time simulator — Tauri command surface over `automation::continue_run`.
 //!
-//! Internal name is "simulator" (D-00 in 10-CONTEXT.md) to avoid collision
-//! with Phase 3's shipped `intelligence::dryrun` / `DryRunPanel.tsx` /
-//! `commands/dryrun.rs` surfaces, which stay untouched.
-//!
-//! Pure Tauri-command wiring layer over the public automation crate APIs
-//! shipped by 10-01 Task 4: `continue_run`, `RunControl::cancel`,
-//! `try_promote_fallback`. Does NOT modify `crates/automation/`.
-//!
-//! Architectural note (D-01): the simulator reuses the 9-04 author preview's
-//! already-launched Playwright context. Every run therefore goes through
-//! `continue_run` (which leaves drivers alone) rather than `run_story`
-//! (which would call `launch()` and spawn a second Chromium). The
-//! `start_after_ordinal=0` first call is semantically identical to "run
-//! from the beginning" without re-launching.
+//! Every simulator run reuses the already-launched author-preview Playwright
+//! context. All invocations go through `continue_run` (which never calls
+//! `launch()`) so no second Chromium is spawned — the `start_after_ordinal=0`
+//! first call behaves as "run from the beginning" without relaunching.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -62,7 +52,7 @@ pub struct ResumableSession {
 
 #[derive(Default)]
 pub struct SimulatorRegistry {
-    pub sessions: Mutex<HashMap<SimulatorSessionId, ResumableSession>>,
+    pub sessions: Arc<Mutex<HashMap<SimulatorSessionId, ResumableSession>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -178,9 +168,8 @@ fn count_total_steps(story: &story_parser::Story) -> u32 {
         .sum::<u32>()
 }
 
-/// Spawn the executor + event forwarder. Used by both `simulator_start`
-/// (first-run, start_after=0) and `simulator_step_to` (resume). The shared
-/// driver is never relaunched — D-01 guarantee.
+/// Spawn the executor + event forwarder. Used by both first-run and resume
+/// paths. The shared driver is never relaunched — all runs use `continue_run`.
 async fn spawn_run(
     session_id: String,
     story: story_parser::Story,
@@ -195,6 +184,7 @@ async fn spawn_run(
     frames: Arc<Mutex<HashMap<u32, StepFrame>>>,
     last_ordinal: Arc<std::sync::atomic::AtomicU32>,
     emit_started: Option<(String, u32)>,
+    sessions: Arc<Mutex<HashMap<SimulatorSessionId, ResumableSession>>>,
 ) -> JoinHandle<()> {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<ExecutorEvent>(256);
     let primary: Box<dyn automation::BrowserDriver> =
@@ -263,6 +253,8 @@ async fn spawn_run(
                         succeeded: status.succeeded,
                         failed: status.failed,
                     });
+                    sessions.lock().await.remove(&session_id);
+                    break;
                 }
                 _ => {}
             }
@@ -296,8 +288,7 @@ pub async fn simulator_start(
         }
     }
 
-    // D-01: fetch the already-launched author-session driver. Absence =>
-    // preview disabled; never silently spawn a third Chromium.
+    // Author-preview must be running; we never silently spawn a second Chromium.
     let driver_arc = {
         let sessions = state.author_preview_sessions.lock().await;
         sessions
@@ -350,6 +341,7 @@ pub async fn simulator_start(
         frames.clone(),
         last_ordinal.clone(),
         Some((run_id.clone(), total_steps)),
+        registry.sessions.clone(),
     )
     .await;
 
@@ -426,6 +418,7 @@ pub async fn simulator_step_to(
         session.frames.clone(),
         session.last_ordinal.clone(),
         None,
+        registry.sessions.clone(),
     )
     .await;
     session.task = Some(forwarder);

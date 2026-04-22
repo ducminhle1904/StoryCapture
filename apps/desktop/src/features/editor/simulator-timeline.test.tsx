@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
-import { useSimulatorStore } from "@/state/simulatorStore";
+import { useSimulatorStore } from "@/state/simulator-store";
 import type { SimulatorStepFrame } from "@/ipc/simulator";
-import { SimulatorTimeline } from "./SimulatorTimeline";
+import { SimulatorTimeline } from "./simulator-timeline";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue("sim-session-1"),

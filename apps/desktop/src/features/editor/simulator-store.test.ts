@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
-import { useSimulatorStore } from "@/state/simulatorStore";
+import { useSimulatorStore } from "@/state/simulator-store";
 import type { SimulatorEvent, SimulatorStepFrame } from "@/ipc/simulator";
 
 function mkFrame(

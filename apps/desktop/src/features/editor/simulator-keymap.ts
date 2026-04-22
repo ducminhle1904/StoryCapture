@@ -7,7 +7,7 @@ import {
   simulatorStepTo,
 } from "@/ipc/simulator";
 import { useEditorStore } from "@/state/editor";
-import { useSimulatorStore } from "@/state/simulatorStore";
+import { useSimulatorStore } from "@/state/simulator-store";
 
 import { buildOrdinalLineMap } from "./simulator-decoration";
 

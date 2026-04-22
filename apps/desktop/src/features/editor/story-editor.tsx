@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Play } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import { storyEditorExtensions } from "./codemirror-setup";
@@ -14,7 +14,7 @@ import {
 } from "./simulator-decoration";
 import { simulatorCancel } from "@/ipc/simulator";
 import { useEditorStore } from "@/state/editor";
-import { useSimulatorStore } from "@/state/simulatorStore";
+import { useSimulatorStore } from "@/state/simulator-store";
 import { parseStory } from "@/ipc/parse";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 
@@ -138,12 +138,19 @@ export function StoryEditor({
     };
   }, [cmRef.current?.view]);
 
-  // Dynamic readOnly compartment via EditorState.readOnly facet:
-  // feed through extensions array, re-assigning on run state change.
-  const readOnlyExtensions = useMemo(
-    () => [...extensions, EditorState.readOnly.of(simulatorActive)],
-    [extensions, simulatorActive],
+  const readOnlyCompartment = useMemo(() => new Compartment(), []);
+  const allExtensions = useMemo(
+    () => [...extensions, readOnlyCompartment.of(EditorState.readOnly.of(false))],
+    [extensions, readOnlyCompartment],
   );
+
+  useEffect(() => {
+    const view = cmRef.current?.view;
+    if (!view) return;
+    view.dispatch({
+      effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(simulatorActive)),
+    });
+  }, [simulatorActive, readOnlyCompartment]);
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden">
@@ -183,7 +190,7 @@ export function StoryEditor({
           ref={cmRef}
           value={source}
           height="100%"
-          extensions={readOnlyExtensions}
+          extensions={allExtensions}
           onChange={handleChange}
           basicSetup={{
             lineNumbers: true,

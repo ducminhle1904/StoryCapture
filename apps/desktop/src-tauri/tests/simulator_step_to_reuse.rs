@@ -1,13 +1,7 @@
-//! Phase 10-02 Task 3 — no-relaunch invariant for the simulator command path.
-//!
-//! The simulator's command layer (`commands/simulator.rs`) always routes
-//! through `automation::continue_run` — even for the first run — so that
-//! the already-launched 9-04 author-preview driver is never re-launched
-//! (D-01). This test exercises the same crate surface two simulator_step_to
-//! calls would invoke and asserts `launch()` is called ZERO times across
-//! the sequence (equivalent to "exactly once total over the whole session"
-//! — the single launch happened inside `start_author_preview`, not in the
-//! simulator path).
+//! No-relaunch invariant: the simulator command layer always routes through
+//! `automation::continue_run`, so the author-preview driver is never
+//! re-launched. Asserts `launch()` fires zero times across repeated
+//! `simulator_step_to` calls.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};

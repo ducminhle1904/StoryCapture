@@ -46,7 +46,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   dismissedCoexistenceHint: readDismissedHint(),
 
   setCurrentFrameOrdinal: (n) => {
+    const current = get().currentFrameOrdinal;
     if (n === null) {
+      if (current === null) return;
       set({ currentFrameOrdinal: null });
       return;
     }
@@ -54,6 +56,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     const maxCaptured = frames.length > 0 ? frames[frames.length - 1].ordinal : 0;
     const upperBound = Math.max(1, Math.min(totalSteps || maxCaptured, maxCaptured));
     const clamped = Math.min(Math.max(1, n), upperBound);
+    if (clamped === current) return;
     set({ currentFrameOrdinal: clamped });
   },
 
@@ -111,6 +114,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     }),
 
   dismissCoexistenceHint: () => {
+    if (get().dismissedCoexistenceHint) return;
     try {
       localStorage.setItem(HINT_KEY, "1");
     } catch {

@@ -1,5 +1,3 @@
-//! Phase 10-02 Task 1 — `prune_runs_retain_5` retention-trim tests.
-
 use std::fs;
 use std::time::{Duration, SystemTime};
 

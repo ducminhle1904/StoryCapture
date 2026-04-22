@@ -25,8 +25,8 @@ import { PreviewSurface } from "@/components/preview-surface";
 import { LivePreview } from "@/features/recorder/live-preview";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
 import { SimulatorFrameView } from "@/features/editor/preview-panel";
-import { SimulatorTimeline } from "@/features/editor/SimulatorTimeline";
-import { useSimulatorStore } from "@/state/simulatorStore";
+import { SimulatorTimeline } from "@/features/editor/simulator-timeline";
+import { useSimulatorStore } from "@/state/simulator-store";
 import {
   StoryEditor,
   type EditorJumpTarget,
