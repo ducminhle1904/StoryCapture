@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-22T14:55:00.000Z"
+last_updated: "2026-04-22T15:45:00.000Z"
 progress:
   total_phases: 16
   completed_phases: 7
   total_plans: 111
-  completed_plans: 91
-  percent: 81
+  completed_plans: 92
+  percent: 83
 ---
 
 # State: StoryCapture
@@ -25,7 +25,7 @@ progress:
 ## Current Position
 
 Phase: 16 — Upgrade all dependencies to latest — EXECUTING
-Plan: 16-02 complete (Wave B Tauri group lockstep + Playwright sidecar Vitest unification: B3 Rust tauri* 2.10.x + JS @tauri-apps/* 2.x latest landed as 90c6846; B4 sidecar vitest 2→4.1.5 landed as 33e37a7; gates green — cargo check + cargo test 89/89 + turbo typecheck + turbo build + apps/desktop vitest 201/209 baseline + sidecar vitest 60/60). 3 plans remain (16-03 Rust 0.x breaking, 16-04 JS majors, 16-05 gated framework majors).
+Plan: 16-03 complete (Wave C Rust 0.x breaking bumps: 12 atomic commits landed — C5 objc2 0.6.4 unify, C6 rusqlite 0.39 + rusqlite_migration 2.5.0 (Wave-1 deferred unblocked), C7 reqwest 0.13 (feature rustls-tls→rustls), C8 sha2 0.11, C9 scraper 0.26, C10 nix 0.31, C11a tower 0.5, C11b schemars 1.2.1, C11c rand 0.10, C11d toml 1.1.2, C11e ts-rs 12.0.1 (effects+story-parser lockstep), C12 serde_yaml → serde_yaml_ng 0.10.0. Per-commit gates all green — cargo check + cargo test 89/89 + turbo typecheck + turbo build). 2 plans remain (16-04 JS majors, 16-05 gated framework majors).
 
 ## Phase 8-11 Planning Audit (2026-04-21)
 
@@ -136,10 +136,10 @@ currently blocking post-v1 work. All six verification items above are operator-g
 
 ## Session Continuity
 
-- Last activity: 2026-04-22 — Executed Phase 16 Plan 02 (Wave B Tauri group lockstep + Playwright sidecar Vitest unification).
-- Last action: Plan 16-02 complete — 2 atomic commits (90c6846 B3 Tauri Rust tauri* 2.10.x + JS @tauri-apps/* 2.x latest across 6 manifests, 33e37a7 B4 sidecar vitest 2→4.1.5). cargo check + cargo test 89/89 + turbo typecheck + turbo build all green; apps/desktop vitest 201/209 (baseline preserved); playwright-sidecar vitest 60/60 on v4. Zero deviations — all bumps hit PRD exact targets. Cargo.lock had no diff (resolver already at targets — verified); pnpm-lock.yaml regenerated in both commits. SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-02-SUMMARY.md`.
-- Next action: `/gsd-execute-phase 16` Wave C (16-03 Rust 0.x breaking: rusqlite across 4 crates, objc2 0.5→0.6 unify, reqwest/sha2/scraper/nix/tower/schemars/rand/toml/ts-rs, serde_yaml replacement).
-- Files touched this session: 2 Cargo.toml manifests + 4 package.json manifests + pnpm-lock.yaml (across both commits).
+- Last activity: 2026-04-22 — Executed Phase 16 Plan 03 (Wave C Rust 0.x breaking bumps).
+- Last action: Plan 16-03 complete — 12 atomic commits (C5 c29118e objc2 0.6.4, C6 90dc373 rusqlite 0.39+rusqlite_migration 2.5.0, C7 f9cae90 reqwest 0.13 rustls-tls→rustls, C8 bb703a9 sha2 0.11, C9 31f6335 scraper 0.26, C10 7b0bf1a nix 0.31, C11a bcb3c42 tower 0.5, C11b 3237bca schemars 1.2.1, C11c 01af6d2 rand 0.10, C11d 870b1b0 toml 1.1.2, C11e f7fbebd ts-rs 12.0.1 effects+story-parser lockstep, C12 d095a54 serde_yaml→serde_yaml_ng 0.10.0). Per-commit gates all green — cargo check + cargo test 89/89 + turbo typecheck + turbo build. 4 Rule-1 source-level API migrations (objc2 ClassType→AnyThread, reqwest rustls-tls→rustls feature rename, schemars definitions→$defs + snapshot field-order refresh, rand gen_range→random_range on new RngExt trait). Zero workarounds. SUMMARY at `.planning/phases/16-upgrade-all-dependencies-to-latest-bump-every-js-ts-package-/16-03-SUMMARY.md`.
+- Next action: `/gsd-execute-phase 16` Wave D (16-04 JS majors: tailwind-merge 3, sonner 2, react-resizable-panels 4, react-hotkeys-hook 5, lucide-react 1.x, zod 4, jose 6, pino 10 + pino-pretty 13, resend 6, Vite 8, TypeScript 6, Biome 2).
+- Files touched this session: workspace Cargo.toml + 9 crate/app Cargo.toml manifests + 1 .rs source (lib.rs) + 4 test files + 1 insta snapshot + Cargo.lock (across 12 atomic commits).
 
 ---
 *State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
