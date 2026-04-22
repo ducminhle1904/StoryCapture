@@ -43,7 +43,7 @@ regex = "1.12.3"
 
 # Util
 uuid     = { version = "1.23.1", features = ["v4", "v7"] }
-sha2     = "0.10"
+sha2     = "0.11"
 hex      = "0.4.3"
 symphonia = { version = "0.5.5", default-features = false, features = ["mp3"] }
 rand     = "0.8"

@@ -101,7 +101,7 @@ url = "2.5.8"
 
 # Plan 07-05: author-time snapshot store hashing + base64 PNG decoding.
 base64 = "0.22.1"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4.3"
 
 # macOS-only: set the Dock icon at runtime so `tauri dev` (which runs
