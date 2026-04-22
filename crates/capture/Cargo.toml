@@ -42,7 +42,7 @@ tempfile = "3.27.0"
 uuid = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["fs"] }
+nix = { version = "0.31", features = ["fs"] }
 
 # Optional — pulled in only by the `real-capture` feature for the
 # 30-min memory soak (CAP-05). Default builds don't depend on sysinfo.
