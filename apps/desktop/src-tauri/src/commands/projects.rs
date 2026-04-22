@@ -16,7 +16,7 @@ use specta::Type;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use storage::StorageError;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 /// DTO mirror of `storage::Project`. Serializes `Uuid` as a string and
 /// `PathBuf` as a string so the renderer sees plain JSON. `last_opened_at`
@@ -221,6 +221,7 @@ fn scan_exports_dir(dir: &Path) -> Vec<RecordingInfoDto> {
 #[tauri::command]
 #[specta::specta]
 pub fn list_project_recordings(
+    app: AppHandle,
     state: State<'_, AppState>,
     args: ProjectIdArg,
 ) -> Result<Vec<RecordingInfoDto>, AppError> {
@@ -239,6 +240,10 @@ pub fn list_project_recordings(
     if !exports_dir.exists() {
         return Ok(Vec::new());
     }
+    // Grant the renderer's asset:// protocol access to this project's exports
+    // so <video src={convertFileSrc(path)} /> can resolve. Idempotent on Tauri's
+    // Scope; safe to call on every listing.
+    app.asset_protocol_scope().allow_directory(&exports_dir, false).ok();
     Ok(scan_exports_dir(&exports_dir))
 }
 
