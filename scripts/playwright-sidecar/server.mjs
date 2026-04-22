@@ -111,6 +111,13 @@ let state = {
   // ~80 MB of headless Chromium indefinitely. Re-launches on the next
   // captureSnapshot call at ~500 ms cold-start cost.
   authorIdleHandle: null,
+  // Preview (Phase 09-01): CDP screencast → preview/frame notifications.
+  // Preview failure must not cascade into recording (intentional isolation,
+  // not a workaround per CLAUDE.md).
+  cdp: null,
+  latestFrame: null,
+  flushScheduled: false,
+  previewEveryNth: 1,
 };
 
 const AUTHOR_IDLE_MS = 5 * 60 * 1000;
@@ -306,6 +313,15 @@ const handlers = {
   },
 
   close: async () => {
+    // Preview teardown first — must never throw and must never block close.
+    if (state.cdp) {
+      try {
+        await state.cdp.send("Page.stopScreencast", {});
+      } catch (e) {
+        process.stderr.write(`[playwright-sidecar] warn: stopScreencast on close: ${e.message}\n`);
+      }
+      try { await state.cdp.detach(); } catch {}
+    }
     if (state.browser) {
       try { await state.browser.close(); } catch {}
     }
@@ -328,6 +344,10 @@ const handlers = {
       authorBrowser: null,
       authorContext: null,
       authorIdleHandle: null,
+      cdp: null,
+      latestFrame: null,
+      flushScheduled: false,
+      previewEveryNth: 1,
     };
     return { ok: true };
   },
@@ -646,6 +666,64 @@ const handlers = {
     return { ok: true };
   },
 
+  // Phase 09-01 — CDP screencast preview. Latest-wins single-slot +
+  // setImmediate flusher; emits id-less preview/frame notifications and
+  // acks each flushed frame via Page.screencastFrameAck. Isolation from
+  // recording is intentional (CLAUDE.md: this is not a workaround).
+  startPreviewStream: async () => {
+    if (!state.page) {
+      throw Object.assign(new Error("page not launched"), { code: -32000 });
+    }
+    if (state.cdp) {
+      return { ok: true, alreadyRunning: true };
+    }
+    state.cdp = await state.page.context().newCDPSession(state.page);
+    state.cdp.on("Page.screencastFrame", (frame) => {
+      state.latestFrame = {
+        data: frame.data,
+        width: frame.metadata?.deviceWidth ?? 0,
+        height: frame.metadata?.deviceHeight ?? 0,
+        timestamp: frame.metadata?.timestamp ?? Date.now() / 1000,
+        sessionId: frame.sessionId,
+      };
+      if (!state.flushScheduled) {
+        state.flushScheduled = true;
+        setImmediate(flushPreviewFrame);
+      }
+    });
+    await state.cdp.send("Page.startScreencast", {
+      format: "jpeg",
+      quality: 80,
+      maxWidth: 1280,
+      maxHeight: 720,
+      everyNthFrame: state.previewEveryNth,
+    });
+    return { ok: true };
+  },
+
+  stopPreviewStream: async () => {
+    if (!state.cdp) return { ok: true };
+    const cdp = state.cdp;
+    try { await cdp.send("Page.stopScreencast", {}); } catch {}
+    try { await cdp.detach(); } catch {}
+    state.cdp = null;
+    state.latestFrame = null;
+    state.flushScheduled = false;
+    return { ok: true };
+  },
+
+  // Test-only debug introspection for backpressure test (gated by env).
+  __debugPreviewState: async () => {
+    if (process.env.SIDECAR_TEST !== "1") {
+      throw Object.assign(new Error("debug verb disabled"), { code: -32601 });
+    }
+    return {
+      hasLatest: !!state.latestFrame,
+      flushScheduled: state.flushScheduled,
+      cdpAttached: !!state.cdp,
+    };
+  },
+
   // element picker.
   //
   // CONTRACT: pickElement.start response.emitted is the DSL line to insert at cursor. Drift breaks 07-03b UI flow.
@@ -962,6 +1040,10 @@ rl.on('line', async (line) => {
 });
 
 rl.on('close', async () => {
+  if (state.cdp) {
+    try { await state.cdp.send('Page.stopScreencast', {}); } catch {}
+    try { await state.cdp.detach(); } catch {}
+  }
   if (state.browser) {
     try {
       await state.browser.close();
@@ -993,4 +1075,25 @@ function writeNotification(method, params) {
   process.stdout.write(
     JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n',
   );
+}
+
+// Phase 09-01 — latest-wins preview flusher. Emits one preview/frame
+// notification per setImmediate tick and acks the latest sessionId so
+// Chromium keeps streaming. Never logs `data` (info-disclosure T-09-01-03).
+function flushPreviewFrame() {
+  state.flushScheduled = false;
+  const f = state.latestFrame;
+  if (!f) return;
+  state.latestFrame = null;
+  writeNotification('preview/frame', {
+    data: f.data,
+    width: f.width,
+    height: f.height,
+    timestamp: f.timestamp,
+  });
+  if (state.cdp) {
+    state.cdp
+      .send('Page.screencastFrameAck', { sessionId: f.sessionId })
+      .catch(() => {});
+  }
 }
