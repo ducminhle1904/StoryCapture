@@ -6,10 +6,14 @@
  * itself gets rounded corners (it represents a device screen).
  */
 
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { motion } from "motion/react";
 import { Globe, Monitor, Tablet, Smartphone } from "lucide-react";
+import { useState } from "react";
 
 import { useEditorStore, type PreviewViewport } from "@/state/editor";
 import { useSelectorValidation } from "@/features/editor/SelectorValidatorOverlay";
+import { useSimulatorStore } from "@/state/simulatorStore";
 
 const VIEWPORT_SIZES: Record<
   PreviewViewport,
@@ -34,6 +38,14 @@ export function PreviewPanel({
   const viewport = useEditorStore((s) => s.previewViewport);
   const setViewport = useEditorStore((s) => s.setViewport);
   const size = VIEWPORT_SIZES[viewport];
+
+  const runState = useSimulatorStore((s) => s.runState);
+  const currentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
+  const frames = useSimulatorStore((s) => s.frames);
+  const activeFrame =
+    runState !== "idle" && currentOrd != null
+      ? frames.find((f) => f.ordinal === currentOrd) ?? null
+      : null;
 
   // aggregate author-time validator chip counts to display
   // a compact "2G / 1Y / 0R" summary in the preview footer. Reads from
@@ -102,7 +114,9 @@ export function PreviewPanel({
             ) : null}
           </div>
 
-          {thumbnailPath ? (
+          {activeFrame ? (
+            <SimulatorFrameView frame={activeFrame} />
+          ) : thumbnailPath ? (
             <>
               <img
                 src={thumbnailPath}
@@ -187,6 +201,77 @@ function summarizeValidation(entries: Map<number, {
     }
   }
   return { green, yellow, red, grey, total: green + yellow + red + grey };
+}
+
+export function SimulatorFrameView({
+  frame,
+}: {
+  frame: {
+    ordinal: number;
+    screenshot_path: string | null;
+    cursor_xy: [number, number];
+    matched_bbox: { x: number; y: number; w: number; h: number } | null;
+  };
+}) {
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const src = frame.screenshot_path ? convertFileSrc(frame.screenshot_path) : null;
+
+  return (
+    <div className="relative h-full w-full">
+      {src ? (
+        <motion.img
+          key={frame.ordinal}
+          src={src}
+          alt={`Simulator frame ${frame.ordinal}`}
+          className="h-full w-full object-contain"
+          initial={{ opacity: 0.7 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.1 }}
+          onLoad={(e) =>
+            setNatural({
+              w: e.currentTarget.naturalWidth,
+              h: e.currentTarget.naturalHeight,
+            })
+          }
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center text-white/40 text-[10px]">
+          No screenshot captured
+        </div>
+      )}
+      {frame.matched_bbox && natural && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: `${(frame.matched_bbox.x / natural.w) * 100}%`,
+            top: `${(frame.matched_bbox.y / natural.h) * 100}%`,
+            width: `${(frame.matched_bbox.w / natural.w) * 100}%`,
+            height: `${(frame.matched_bbox.h / natural.h) * 100}%`,
+            border: "2px solid var(--color-accent-primary)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+      {natural && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: `${(frame.cursor_xy[0] / natural.w) * 100}%`,
+            top: `${(frame.cursor_xy[1] / natural.h) * 100}%`,
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            background: "var(--color-warning)",
+            outline: "1px solid black",
+            transform: "translate(-50%, -50%)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 function ViewportButton({

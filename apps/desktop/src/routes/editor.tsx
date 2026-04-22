@@ -24,7 +24,9 @@ import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
 import { LivePreview } from "@/features/recorder/live-preview";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
+import { SimulatorFrameView } from "@/features/editor/preview-panel";
 import { SimulatorTimeline } from "@/features/editor/SimulatorTimeline";
+import { useSimulatorStore } from "@/state/simulatorStore";
 import {
   StoryEditor,
   type EditorJumpTarget,
@@ -169,6 +171,13 @@ export default function EditorRoute() {
   const { streamId: authorStreamId } = useEditorLivePreview(
     story?.meta?.app ?? null,
   );
+  const simulatorRunState = useSimulatorStore((s) => s.runState);
+  const simulatorCurrentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
+  const simulatorFrames = useSimulatorStore((s) => s.frames);
+  const simulatorActiveFrame =
+    simulatorRunState !== "idle" && simulatorCurrentOrd != null
+      ? simulatorFrames.find((f) => f.ordinal === simulatorCurrentOrd) ?? null
+      : null;
 
   useEffect(() => {
     if (!projectId) return;
@@ -569,7 +578,11 @@ export default function EditorRoute() {
                 </div>
 
                 <div className="relative min-h-0 flex-1 overflow-hidden">
-                  {previewEnabled && authorStreamId ? (
+                  {simulatorActiveFrame ? (
+                    <div className="flex h-full w-full items-center justify-center p-3">
+                      <SimulatorFrameView frame={simulatorActiveFrame} />
+                    </div>
+                  ) : previewEnabled && authorStreamId ? (
                     <div className="flex h-full w-full items-center justify-center p-3">
                       <LivePreview streamId={authorStreamId} />
                     </div>
