@@ -375,13 +375,17 @@ Plans:
 
 ### Phase 16: Upgrade all dependencies to latest — bump every JS/TS package and Rust crate across monorepo per .planning/notes/deps-upgrade-plan.md
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Every JS/TS package and Rust crate across the monorepo upgraded to its latest allowed version per .planning/notes/deps-upgrade-plan.md, with each of the 5 execution phases (A safe → B Tauri/Vitest → C Rust 0.x breaking → D JS majors → E gated framework majors) landing as atomic commits that pass cargo check + cargo nextest + turbo run typecheck + turbo run build, and CLAUDE.md + docs/ARCHITECTURE.md synced to final pins.
+**Requirements**: TBD (dep-upgrade phase — no REQ-IDs; success defined by PRD per-commit gate)
 **Depends on:** Phase 15
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 16 to break down)
+- [ ] 16-01-PLAN.md — Phase A: Safe patch/minor-only Rust workspace + per-workspace npm bumps (A1 + A2)
+- [ ] 16-02-PLAN.md — Phase B: Tauri group lockstep (Rust tauri* + JS @tauri-apps/*) + Playwright sidecar Vitest 2→4 (B3 + B4)
+- [ ] 16-03-PLAN.md — Phase C: Coordinated 0.x breaking bumps (objc2, rusqlite, reqwest, sha2, scraper, nix, tower/schemars/rand/toml/ts-rs, serde_yaml replacement) (C5–C12)
+- [ ] 16-04-PLAN.md — Phase D: JS major bumps (tailwind-merge, sonner/cmdk/react-*, zod, jose, pino, resend, vite, typescript, biome) (D13–D21)
+- [ ] 16-05-PLAN.md — Phase E: Gated framework majors (next-auth, Next 15→16, Prisma 6→7, windows 0.58→0.62, tauri-specta RC, docs sync) (E22–E28)
 
 ---
 *Roadmap created: 2026-04-14*
