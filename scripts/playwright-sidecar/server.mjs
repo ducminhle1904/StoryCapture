@@ -247,6 +247,62 @@ function armAuthorIdleClose() {
   }
 }
 
+// Attach a Page.startScreencast session to `target` (either the top-level
+// `state` or an entry in `state.authorSessions`). Mutates target.cdp /
+// latestFrame / previewDropCount / flushScheduled / previewEveryNth.
+async function attachScreencast(target, page, { streamId, scheduleFlush, isPaused } = {}) {
+  target.cdp = await page.context().newCDPSession(page);
+  target.cdp.on('Page.screencastFrame', (frame) => {
+    if (isPaused && isPaused()) return;
+    if (target.latestFrame !== null) target.previewDropCount++;
+    target.latestFrame = {
+      data: frame.data,
+      width: frame.metadata?.deviceWidth ?? 0,
+      height: frame.metadata?.deviceHeight ?? 0,
+      timestamp: frame.metadata?.timestamp ?? Date.now() / 1000,
+      sessionId: frame.sessionId,
+    };
+    if (!target.flushScheduled) {
+      target.flushScheduled = true;
+      setImmediate(scheduleFlush);
+    }
+  });
+  const probe = await page
+    .evaluate(() => ({
+      dpr: window.devicePixelRatio,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }))
+    .catch(() => ({ dpr: 1, width: 1280, height: 720 }));
+  target.previewEveryNth = probe.dpr >= 2 || probe.width > 1600 ? 2 : 1;
+  if (process.env.DEBUG && /storycapture-sidecar/.test(process.env.DEBUG)) {
+    process.stderr.write(
+      `[debug] previewEveryNth=${target.previewEveryNth} dpr=${probe.dpr} vp=${probe.width}x${probe.height}${streamId ? ` streamId=${streamId}` : ''}\n`,
+    );
+  }
+  await target.cdp.send('Page.startScreencast', {
+    format: 'jpeg',
+    quality: 80,
+    maxWidth: 1280,
+    maxHeight: 720,
+    everyNthFrame: target.previewEveryNth,
+  });
+  return target.previewEveryNth;
+}
+
+async function detachScreencast(target) {
+  if (!target.cdp) return 0;
+  const cdp = target.cdp;
+  try { await cdp.send('Page.stopScreencast', {}); } catch {}
+  try { await cdp.detach(); } catch {}
+  const dropped = target.previewDropCount;
+  target.cdp = null;
+  target.latestFrame = null;
+  target.flushScheduled = false;
+  target.previewDropCount = 0;
+  return dropped;
+}
+
 const handlers = {
   capabilities: async () => ({
     file_upload: true,
@@ -777,117 +833,40 @@ const handlers = {
     return { ok: true, width, height };
   },
 
-  // startPreviewStream variant keyed by streamId. When streamId is
-  // provided, drives the author session's CDP screencast; otherwise
-  // delegates to the recording-session path (backwards-compat).
   startPreviewStream: async ({ streamId } = {}) => {
     if (typeof streamId === 'string' && streamId.length > 0) {
       const s = getAuthorSession(streamId);
       if (s.cdp) return { ok: true, alreadyRunning: true };
-      s.cdp = await s.page.context().newCDPSession(s.page);
-      s.cdp.on('Page.screencastFrame', (frame) => {
-        if (s.paused) return;
-        if (s.latestFrame !== null) s.previewDropCount++;
-        s.latestFrame = {
-          data: frame.data,
-          width: frame.metadata?.deviceWidth ?? 0,
-          height: frame.metadata?.deviceHeight ?? 0,
-          timestamp: frame.metadata?.timestamp ?? Date.now() / 1000,
-          sessionId: frame.sessionId,
-        };
-        if (!s.flushScheduled) {
-          s.flushScheduled = true;
-          setImmediate(() => flushAuthorPreviewFrame(streamId));
-        }
+      const everyNthFrame = await attachScreencast(s, s.page, {
+        streamId,
+        scheduleFlush: () => flushAuthorPreviewFrame(streamId),
+        isPaused: () => s.paused,
       });
-      const probe = await s.page
-        .evaluate(() => ({
-          dpr: window.devicePixelRatio,
-          width: window.innerWidth,
-          height: window.innerHeight,
-        }))
-        .catch(() => ({ dpr: 1, width: 1280, height: 720 }));
-      s.previewEveryNth = probe.dpr >= 2 || probe.width > 1600 ? 2 : 1;
-      await s.cdp.send('Page.startScreencast', {
-        format: 'jpeg',
-        quality: 80,
-        maxWidth: 1280,
-        maxHeight: 720,
-        everyNthFrame: s.previewEveryNth,
-      });
-      return { ok: true, everyNthFrame: s.previewEveryNth, streamId };
+      return { ok: true, everyNthFrame, streamId };
     }
-    // Recording-session path (legacy, unchanged).
     if (!state.page) {
       throw Object.assign(new Error('page not launched'), { code: -32000 });
     }
     if (state.cdp) return { ok: true, alreadyRunning: true };
-    state.cdp = await state.page.context().newCDPSession(state.page);
-    state.cdp.on('Page.screencastFrame', (frame) => {
-      if (state.latestFrame !== null) state.previewDropCount++;
-      state.latestFrame = {
-        data: frame.data,
-        width: frame.metadata?.deviceWidth ?? 0,
-        height: frame.metadata?.deviceHeight ?? 0,
-        timestamp: frame.metadata?.timestamp ?? Date.now() / 1000,
-        sessionId: frame.sessionId,
-      };
-      if (!state.flushScheduled) {
-        state.flushScheduled = true;
-        setImmediate(flushPreviewFrame);
-      }
+    const everyNthFrame = await attachScreencast(state, state.page, {
+      scheduleFlush: flushPreviewFrame,
     });
-    const probe = await state.page
-      .evaluate(() => ({
-        dpr: window.devicePixelRatio,
-        width: window.innerWidth,
-        height: window.innerHeight,
-      }))
-      .catch(() => ({ dpr: 1, width: 1280, height: 720 }));
-    state.previewEveryNth = probe.dpr >= 2 || probe.width > 1600 ? 2 : 1;
-    if (process.env.DEBUG && /storycapture-sidecar/.test(process.env.DEBUG)) {
-      process.stderr.write(
-        `[debug] previewEveryNth=${state.previewEveryNth} dpr=${probe.dpr} vp=${probe.width}x${probe.height}\n`,
-      );
-    }
-    await state.cdp.send('Page.startScreencast', {
-      format: 'jpeg',
-      quality: 80,
-      maxWidth: 1280,
-      maxHeight: 720,
-      everyNthFrame: state.previewEveryNth,
-    });
-    return { ok: true, everyNthFrame: state.previewEveryNth };
+    return { ok: true, everyNthFrame };
   },
 
   stopPreviewStream: async ({ streamId } = {}) => {
     if (typeof streamId === 'string' && streamId.length > 0) {
       const s = state.authorSessions.get(streamId);
-      if (!s || !s.cdp) return { ok: true };
-      const cdp = s.cdp;
-      try { await cdp.send('Page.stopScreencast', {}); } catch {}
-      try { await cdp.detach(); } catch {}
-      const dropped = s.previewDropCount;
-      s.cdp = null;
-      s.latestFrame = null;
-      s.flushScheduled = false;
-      s.previewDropCount = 0;
+      if (!s) return { ok: true };
+      const dropped = await detachScreencast(s);
       return { ok: true, dropped };
     }
-    if (!state.cdp) return { ok: true };
-    const cdp = state.cdp;
-    try { await cdp.send('Page.stopScreencast', {}); } catch {}
-    try { await cdp.detach(); } catch {}
-    const dropped = state.previewDropCount;
+    const dropped = await detachScreencast(state);
     if (dropped > 0) {
       process.stderr.write(
         JSON.stringify({ evt: 'preview_drop_summary', dropped }) + '\n',
       );
     }
-    state.cdp = null;
-    state.latestFrame = null;
-    state.flushScheduled = false;
-    state.previewDropCount = 0;
     return { ok: true, dropped };
   },
 
