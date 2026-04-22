@@ -173,7 +173,7 @@ fn run_worker(
         // encodes at capture dims. Bitrate 0 (Phase 12 preset-driven default)
         // maps to pixel-based target so AVAssetWriter has a sane target.
         let effective_kbps = if cfg.bitrate_kbps == 0 {
-            crate::quality::pixel_based_kbps(cfg.capture_width, cfg.capture_height)
+            crate::quality::pixel_based_kbps(cfg.capture_width, cfg.capture_height, cfg.fps_advisory)
         } else {
             cfg.bitrate_kbps
         };

@@ -124,9 +124,13 @@ impl EncodeConfig {
         self
     }
 
-    /// Sets `bitrate_kbps` to the pixel-based target for the current output dims.
+    /// Sets `bitrate_kbps` to the pixel-based target for the current output dims and fps.
     pub fn with_auto_bitrate(mut self) -> Self {
-        self.bitrate_kbps = quality::pixel_based_kbps(self.output_width, self.output_height);
+        self.bitrate_kbps = quality::pixel_based_kbps(
+            self.output_width,
+            self.output_height,
+            self.fps_advisory,
+        );
         self
     }
 
@@ -257,6 +261,7 @@ impl EncodeConfig {
             self.encoder,
             self.output_width,
             self.output_height,
+            self.fps_advisory,
         ));
 
         // D-11: keyframe interval (forces GOP). None => default FFmpeg
