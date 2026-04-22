@@ -20,6 +20,10 @@ use tokio::sync::mpsc;
 pub struct XcapBackend {
     running: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
+    /// D-03: explicit shutdown signal checked each tick. `running` is the
+    /// legacy signal; `cancel_flag` is the bounded-stop trigger and is
+    /// latched on timeout so a subsequent start() sees a clean flag.
+    cancel_flag: Arc<AtomicBool>,
     started_at: Arc<Mutex<Option<Instant>>>,
     stats: Arc<Mutex<CaptureStats>>,
     // `xcap::Monitor` is NOT `Send` on Windows (it holds an HMONITOR
@@ -34,6 +38,7 @@ impl XcapBackend {
         Self {
             running: Arc::new(AtomicBool::new(false)),
             paused: Arc::new(AtomicBool::new(false)),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
             started_at: Arc::new(Mutex::new(None)),
             stats: Arc::new(Mutex::new(CaptureStats::default())),
             handle: None,
@@ -61,6 +66,7 @@ impl CaptureBackend for XcapBackend {
         if self.running.swap(true, Ordering::AcqRel) {
             return Err(CaptureError::Backend("xcap backend already running".into()));
         }
+        self.cancel_flag.store(false, Ordering::Release);
         // xcap is display-only: no window-capture API exists in 0.9.x.
         // Reject Window / WindowByPid variants with a typed error so the
         // fallback orchestrator can decide whether to degrade to primary
@@ -102,6 +108,7 @@ impl CaptureBackend for XcapBackend {
 
         let running = self.running.clone();
         let paused = self.paused.clone();
+        let cancel_flag = self.cancel_flag.clone();
         let stats = self.stats.clone();
         let start_epoch = Instant::now();
 
@@ -112,6 +119,11 @@ impl CaptureBackend for XcapBackend {
             let interval = Duration::from_millis(interval_ms);
             let mut next_tick = Instant::now();
             loop {
+                // D-03: cancel_flag is the bounded-stop signal; check it
+                // first so a timed-out stop() unblocks the loop promptly.
+                if cancel_flag.load(Ordering::Acquire) {
+                    break;
+                }
                 if !running.load(Ordering::Acquire) {
                     break;
                 }
@@ -177,18 +189,50 @@ impl CaptureBackend for XcapBackend {
     }
 
     async fn stop(&mut self) -> Result<CaptureStats, CaptureError> {
+        const STOP_TIMEOUT_MS: u64 = 2000;
         self.running.store(false, Ordering::Release);
+        self.cancel_flag.store(true, Ordering::Release);
+        let mut timed_out = false;
         if let Some(h) = self.handle.take() {
-            // Join on a blocking task so we don't stall the async runtime
-            // while the xcap capture thread drains its final tick.
-            let _ = tokio::task::spawn_blocking(move || h.join()).await;
+            // D-03: bound the join. xcap's `capture_image()` can block
+            // inside a display-server round-trip; without this the async
+            // runtime would stall indefinitely on teardown.
+            match tokio::time::timeout(
+                Duration::from_millis(STOP_TIMEOUT_MS),
+                tokio::task::spawn_blocking(move || h.join()),
+            )
+            .await
+            {
+                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Err(e))) => {
+                    tracing::warn!(?e, "xcap capture thread panicked during stop");
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "xcap stop spawn_blocking join error");
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        timeout_ms = STOP_TIMEOUT_MS,
+                        "xcap stop timed out; abandoning capture thread"
+                    );
+                    timed_out = true;
+                }
+            }
         }
-        let mut stats = self.stats.lock();
-        if let Some(t) = self.started_at.lock().take() {
-            stats.duration_ms = t.elapsed().as_millis() as u64;
-        }
+        let stats_snapshot = {
+            let mut stats = self.stats.lock();
+            if let Some(t) = self.started_at.lock().take() {
+                stats.duration_ms = t.elapsed().as_millis() as u64;
+            }
+            *stats
+        };
         self.paused.store(false, Ordering::Release);
-        Ok(*stats)
+        if timed_out {
+            return Err(CaptureError::StopTimedOut {
+                timeout_ms: STOP_TIMEOUT_MS,
+            });
+        }
+        Ok(stats_snapshot)
     }
 
     async fn pause(&mut self) -> Result<(), CaptureError> {
@@ -230,6 +274,17 @@ fn pick_monitor(display_id: DisplayId) -> Result<xcap::Monitor, CaptureError> {
     Err(CaptureError::DisplayNotFound(display_id))
 }
 
+#[cfg(test)]
+impl XcapBackend {
+    /// Test-only: install a pre-built capture-thread handle so `stop()`
+    /// can be exercised in isolation (no real display needed).
+    fn inject_handle(&mut self, handle: std::thread::JoinHandle<()>) {
+        self.running.store(true, Ordering::Release);
+        *self.started_at.lock() = Some(Instant::now());
+        self.handle = Some(handle);
+    }
+}
+
 pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
     let monitors = xcap::Monitor::all()
         .map_err(|e| CaptureError::Native(format!("xcap monitor enumeration: {e}")))?;
@@ -259,4 +314,56 @@ pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
         });
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// D-03: a capture thread that ignores cancellation must not wedge
+    /// `stop()` indefinitely. The bounded timeout should fire and return
+    /// `StopTimedOut` within ~2.1s.
+    #[tokio::test]
+    async fn stop_times_out_when_capture_thread_hangs() {
+        let mut backend = XcapBackend::new();
+        let thread = std::thread::spawn(|| {
+            // Simulate a blocking capture_image() call that outlives the
+            // stop deadline. Tests must not stall CI; 3s is enough to
+            // exceed the 2s bound with margin.
+            std::thread::sleep(Duration::from_secs(3));
+        });
+        backend.inject_handle(thread);
+
+        let start = Instant::now();
+        let err = backend
+            .stop()
+            .await
+            .expect_err("stop should return StopTimedOut when thread ignores cancel");
+        let elapsed = start.elapsed();
+
+        assert!(
+            matches!(err, CaptureError::StopTimedOut { timeout_ms: 2000 }),
+            "expected StopTimedOut, got {err:?}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(1900) && elapsed <= Duration::from_millis(2500),
+            "stop returned in {elapsed:?}, expected ~2s bound"
+        );
+    }
+
+    /// Normal path: a capture thread that observes `cancel_flag` (here
+    /// via an early exit on an AtomicBool we control through the same
+    /// handle ownership) joins cleanly and `stop()` returns Ok.
+    #[tokio::test]
+    async fn stop_returns_ok_when_thread_exits_promptly() {
+        let mut backend = XcapBackend::new();
+        let thread = std::thread::spawn(|| {
+            // Exits immediately — simulates a well-behaved loop that
+            // observed the cancel flag on its next tick.
+        });
+        backend.inject_handle(thread);
+
+        let stats = backend.stop().await.expect("stop should succeed");
+        assert_eq!(stats.frames_delivered, 0);
+    }
 }

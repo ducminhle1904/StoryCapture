@@ -37,4 +37,9 @@ pub enum CaptureError {
     /// may have closed between enumeration and capture-start.
     #[error("window not found (id={0})")]
     WindowNotFound(u64),
+
+    /// Backend `stop()` exceeded its bounded deadline. Caller should log
+    /// and proceed with teardown rather than await indefinitely (D-03).
+    #[error("capture stop timed out after {timeout_ms}ms")]
+    StopTimedOut { timeout_ms: u64 },
 }
