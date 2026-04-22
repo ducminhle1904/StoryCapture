@@ -209,4 +209,60 @@ describe("Phase 09-01 preview CDP screencast verbs", () => {
       await client.call("close", {}).catch(() => {});
     }
   }, 60_000);
+
+  // Phase 09-03 — drop counter increments when flusher is paused and
+  // frames accumulate via the synthetic test hook. First overwrite counts
+  // as the first drop (single-slot invariant).
+  it("drop counter: 10 synthetic frames while flush paused → dropCount ≥ 9", async () => {
+    await launch(client);
+    try {
+      await client.call("startPreviewStream", {});
+      await client.call("__debugPausePreviewFlush", { paused: true });
+      for (let i = 0; i < 10; i++) {
+        await client.call("__debugInjectFrame", {});
+      }
+      const dbg = await client.call("__debugPreviewState", {});
+      expect(dbg.result.previewDropCount).toBeGreaterThanOrEqual(9);
+      await client.call("__debugPausePreviewFlush", { paused: false });
+    } finally {
+      await client.call("close", {}).catch(() => {});
+    }
+  }, 60_000);
+
+  // Phase 09-03 — HiDPI / wide-viewport launches select everyNthFrame=2.
+  it("HiDPI selection: wide viewport → everyNthFrame=2", async () => {
+    await client.call("launch", {
+      viewport: { width: 1800, height: 900 },
+      theme: "auto",
+      baseUrl: null,
+      headless: true,
+      downloadDir: "/tmp",
+    });
+    await client.call("goto", { url: DEMO_URL });
+    try {
+      const r = await client.call("startPreviewStream", {});
+      expect(r.result.everyNthFrame).toBe(2);
+      const dbg = await client.call("__debugPreviewState", {});
+      expect(dbg.result.previewEveryNth).toBe(2);
+    } finally {
+      await client.call("close", {}).catch(() => {});
+    }
+  }, 60_000);
+
+  it("HiDPI selection: small viewport → everyNthFrame=1", async () => {
+    await client.call("launch", {
+      viewport: { width: 1024, height: 700 },
+      theme: "auto",
+      baseUrl: null,
+      headless: true,
+      downloadDir: "/tmp",
+    });
+    await client.call("goto", { url: DEMO_URL });
+    try {
+      const r = await client.call("startPreviewStream", {});
+      expect(r.result.everyNthFrame).toBe(1);
+    } finally {
+      await client.call("close", {}).catch(() => {});
+    }
+  }, 60_000);
 });

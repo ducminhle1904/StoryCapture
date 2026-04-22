@@ -470,13 +470,37 @@ pub async fn start_preview_stream(
 
     let mut rx = { shared.lock().await.subscribe_preview() };
     let app_for_emit = app.clone();
+    // Phase 09-03 — drop-counter + periodic window log. watch::changed()
+    // already coalesces multiple sends into one wake, so drop_count here
+    // tracks emit failures, not sidecar-level backpressure (that lives on
+    // sidecar state.previewDropCount). Env-tunable window length for tests.
+    let log_interval = std::time::Duration::from_secs(
+        std::env::var("PREVIEW_PUMP_LOG_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30),
+    );
     let handle = tokio::spawn(async move {
+        let mut drop_count: u64 = 0;
+        let mut last_log = tokio::time::Instant::now();
         while rx.changed().await.is_ok() {
             let snapshot = rx.borrow_and_update().clone();
             if let Some(frame) = snapshot {
                 if let Err(err) = app_for_emit.emit("preview://frame", &frame) {
                     tracing::warn!(target: "storycapture::preview", error = %err, "preview emit failed");
+                    drop_count += 1;
                 }
+            }
+            if last_log.elapsed() >= log_interval {
+                if drop_count > 0 {
+                    tracing::warn!(
+                        target: "storycapture::preview",
+                        dropped = drop_count,
+                        "preview frames dropped in window"
+                    );
+                }
+                drop_count = 0;
+                last_log = tokio::time::Instant::now();
             }
         }
         tracing::debug!(target: "storycapture::preview", "preview pump exited (sender dropped)");

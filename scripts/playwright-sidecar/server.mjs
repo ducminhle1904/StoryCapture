@@ -118,6 +118,10 @@ let state = {
   latestFrame: null,
   flushScheduled: false,
   previewEveryNth: 1,
+  // Phase 09-03 — bounded in-flight counter. Incremented each time a
+  // screencastFrame arrives while state.latestFrame is still pending
+  // flush (single-slot overwrite == dropped frame).
+  previewDropCount: 0,
 };
 
 const AUTHOR_IDLE_MS = 5 * 60 * 1000;
@@ -348,6 +352,7 @@ const handlers = {
       latestFrame: null,
       flushScheduled: false,
       previewEveryNth: 1,
+      previewDropCount: 0,
     };
     return { ok: true };
   },
@@ -679,6 +684,8 @@ const handlers = {
     }
     state.cdp = await state.page.context().newCDPSession(state.page);
     state.cdp.on("Page.screencastFrame", (frame) => {
+      // Phase 09-03 — single-slot overwrite counts as a drop.
+      if (state.latestFrame !== null) state.previewDropCount++;
       state.latestFrame = {
         data: frame.data,
         width: frame.metadata?.deviceWidth ?? 0,
@@ -691,6 +698,24 @@ const handlers = {
         setImmediate(flushPreviewFrame);
       }
     });
+    // Phase 09-03 — HiDPI-aware everyNthFrame selection. On retina /
+    // large viewports JPEG encode + IPC cost doubles; halve rate to stay
+    // inside the 15% CPU budget (D-19). Measure innerWidth directly since
+    // state.context was created with viewport:null (page.viewportSize() is
+    // null in that mode).
+    const probe = await state.page
+      .evaluate(() => ({
+        dpr: window.devicePixelRatio,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }))
+      .catch(() => ({ dpr: 1, width: 1280, height: 720 }));
+    state.previewEveryNth = (probe.dpr >= 2 || probe.width > 1600) ? 2 : 1;
+    if (process.env.DEBUG && /storycapture-sidecar/.test(process.env.DEBUG)) {
+      process.stderr.write(
+        `[debug] previewEveryNth=${state.previewEveryNth} dpr=${probe.dpr} vp=${probe.width}x${probe.height}\n`,
+      );
+    }
     await state.cdp.send("Page.startScreencast", {
       format: "jpeg",
       quality: 80,
@@ -698,7 +723,7 @@ const handlers = {
       maxHeight: 720,
       everyNthFrame: state.previewEveryNth,
     });
-    return { ok: true };
+    return { ok: true, everyNthFrame: state.previewEveryNth };
   },
 
   stopPreviewStream: async () => {
@@ -706,10 +731,18 @@ const handlers = {
     const cdp = state.cdp;
     try { await cdp.send("Page.stopScreencast", {}); } catch {}
     try { await cdp.detach(); } catch {}
+    // Phase 09-03 — emit drop summary on stop. stderr-only (stdout is RPC).
+    const dropped = state.previewDropCount;
+    if (dropped > 0) {
+      process.stderr.write(
+        JSON.stringify({ evt: "preview_drop_summary", dropped }) + "\n",
+      );
+    }
     state.cdp = null;
     state.latestFrame = null;
     state.flushScheduled = false;
-    return { ok: true };
+    state.previewDropCount = 0;
+    return { ok: true, dropped };
   },
 
   // Test-only debug introspection for backpressure test (gated by env).
@@ -721,7 +754,40 @@ const handlers = {
       hasLatest: !!state.latestFrame,
       flushScheduled: state.flushScheduled,
       cdpAttached: !!state.cdp,
+      previewDropCount: state.previewDropCount,
+      previewEveryNth: state.previewEveryNth,
     };
+  },
+
+  // Test-only: force pause the setImmediate flusher so synthetic
+  // screencastFrame events can accumulate drops deterministically.
+  __debugPausePreviewFlush: async ({ paused } = {}) => {
+    if (process.env.SIDECAR_TEST !== "1") {
+      throw Object.assign(new Error("debug verb disabled"), { code: -32601 });
+    }
+    state.__flushPaused = !!paused;
+    return { ok: true, paused: state.__flushPaused };
+  },
+
+  // Test-only: synthesize a screencastFrame path through the handler
+  // without a real Chromium. Exercises the drop-counter invariant.
+  __debugInjectFrame: async () => {
+    if (process.env.SIDECAR_TEST !== "1") {
+      throw Object.assign(new Error("debug verb disabled"), { code: -32601 });
+    }
+    if (state.latestFrame !== null) state.previewDropCount++;
+    state.latestFrame = {
+      data: "AAAA",
+      width: 1,
+      height: 1,
+      timestamp: Date.now() / 1000,
+      sessionId: 0,
+    };
+    if (!state.flushScheduled && !state.__flushPaused) {
+      state.flushScheduled = true;
+      setImmediate(flushPreviewFrame);
+    }
+    return { ok: true };
   },
 
   // element picker.
@@ -1082,6 +1148,8 @@ function writeNotification(method, params) {
 // Chromium keeps streaming. Never logs `data` (info-disclosure T-09-01-03).
 function flushPreviewFrame() {
   state.flushScheduled = false;
+  // Phase 09-03 test hook — paused flusher lets synthetic frames pile up.
+  if (state.__flushPaused) return;
   const f = state.latestFrame;
   if (!f) return;
   state.latestFrame = null;
