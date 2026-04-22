@@ -7,6 +7,7 @@
 //! the Tauri side, which D-07/D-11 forbids; the host adds a thin specta
 //! wrapper if needed.
 
+use crate::driver::BoundingBox;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use story_parser::Command;
@@ -79,6 +80,32 @@ pub struct StorySummary {
     pub duration_ms: u64,
 }
 
+/// Resolve outcome for a single step. Drives the simulator UI's
+/// "Promote to fallback" button gate (D-07).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchKind {
+    /// Primary selector strategy matched.
+    Primary,
+    /// A fallback strategy matched (self-healing candidate).
+    Fuzzy,
+    /// Command had no target (Navigate / Wait / WaitMs / Screenshot).
+    None,
+}
+
+/// Per-step capture produced when the simulator runs with
+/// `capture_frames=true`. Paired with `ExecutorEvent::StepFrameCaptured`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StepFrame {
+    pub ordinal: u32,
+    pub screenshot_path: Option<PathBuf>,
+    pub cursor_xy: (i32, i32),
+    pub matched_selector: Option<String>,
+    pub matched_bbox: Option<BoundingBox>,
+    pub match_kind: MatchKind,
+    pub duration_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ExecutorEvent {
@@ -112,5 +139,12 @@ pub enum ExecutorEvent {
     },
     StoryEnded {
         status: StorySummary,
+    },
+    RunPaused {
+        ordinal: u32,
+    },
+    StepFrameCaptured {
+        ordinal: u32,
+        frame: StepFrame,
     },
 }

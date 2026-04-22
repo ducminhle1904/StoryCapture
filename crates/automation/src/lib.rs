@@ -32,7 +32,9 @@ pub use driver::{
     LaunchOptions, ResolvedSelector,
 };
 pub use error::{AutomationError, Result};
-pub use events::{AttemptLog, AttemptOutcome, ExecutorEvent, SelectorStrategy, StorySummary};
+pub use events::{
+    AttemptLog, AttemptOutcome, ExecutorEvent, MatchKind, SelectorStrategy, StepFrame, StorySummary,
+};
 pub use executor::{Executor, PersistenceHandle};
 pub use noop_driver::NoopDriver;
 pub use playwright_driver::{
