@@ -894,10 +894,16 @@ pub async fn start_recording(
     };
 
     // Phase 12 defaults per D-12-10; optional DTO fields override them (Phase 13 UI).
-    let output_res: OutputResolution = args
-        .output_resolution
-        .map(Into::into)
-        .unwrap_or(OutputResolution::P1080);
+    // Phase 18: when the caller did NOT pin an output resolution and the
+    // capture is ≥ 2× a 1080p canvas (Retina / HiDPI), prefer MatchSource so
+    // we don't throw away real pixel detail on the way to a 1920×1080 MP4.
+    let retina_default_match_source =
+        (actual_width as u64) * (actual_height as u64) >= (1920u64 * 2) * (1080u64 * 2);
+    let output_res: OutputResolution = match args.output_resolution {
+        Some(dto) => dto.into(),
+        None if retina_default_match_source => OutputResolution::MatchSource,
+        None => OutputResolution::P1080,
+    };
     let fit: FitMode = args.fit_mode.map(Into::into).unwrap_or(FitMode::Letterbox);
     let pad: PadColor = args.pad_color.map(Into::into).unwrap_or(PadColor::Black);
     let algo: ScaleAlgo = args.scale_algo.map(Into::into).unwrap_or(ScaleAlgo::Lanczos);
