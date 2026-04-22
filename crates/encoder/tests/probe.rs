@@ -34,7 +34,11 @@ async fn probe_picks_videotoolbox_on_mac() {
     };
     let cmd = LocalFfmpegCommand::new(path);
     let probe = probe_encoders(&cmd).await.expect("probe");
-    if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
+    // Phase 18: HEVC is now preferred on macOS when present; H.264 wins only
+    // if HEVC is absent.
+    if probe.available.contains(&HardwareEncoder::VideoToolboxHevc) {
+        assert_eq!(probe.preferred, HardwareEncoder::VideoToolboxHevc);
+    } else if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
         assert_eq!(probe.preferred, HardwareEncoder::VideoToolboxH264);
     }
 }

@@ -184,6 +184,12 @@ fn parse_encoders_output(out: &str) -> Vec<HardwareEncoder> {
 fn pick_preferred(available: &[HardwareEncoder]) -> HardwareEncoder {
     #[cfg(target_os = "macos")]
     let order = &[
+        // Phase 18: HEVC first — Apple Silicon's VT HEVC encoder gives ~40%
+        // better compression at the same perceptual quality than H.264, which
+        // matters on Retina-sized (3560×2220) captures where VT's internal
+        // quality heuristic undershoots `-b:v` anyway. Fall back to H.264
+        // if HEVC isn't available for any reason.
+        HardwareEncoder::VideoToolboxHevc,
         HardwareEncoder::VideoToolboxH264,
         HardwareEncoder::Openh264Software,
     ][..];
@@ -244,7 +250,18 @@ Encoders:
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn preferred_picks_videotoolbox_on_mac() {
+    fn preferred_picks_hevc_over_h264_on_mac() {
+        let avail = vec![
+            HardwareEncoder::VideoToolboxHevc,
+            HardwareEncoder::VideoToolboxH264,
+            HardwareEncoder::Openh264Software,
+        ];
+        assert_eq!(pick_preferred(&avail), HardwareEncoder::VideoToolboxHevc);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn preferred_falls_back_to_h264_when_hevc_absent() {
         let avail = vec![
             HardwareEncoder::VideoToolboxH264,
             HardwareEncoder::Openh264Software,
