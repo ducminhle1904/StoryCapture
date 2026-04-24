@@ -217,6 +217,7 @@ async fn primary_miss_promotes_first_passing_fallback() {
         screenshot_dir,
         Default::default(),
         None,
+        /* self_heal */ true,
     );
 
     // Drain events with a hard timeout so a hang fails the test rather

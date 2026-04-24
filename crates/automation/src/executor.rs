@@ -53,6 +53,7 @@ impl Executor {
             screenshot_dir,
             launch_opts,
             control,
+            /* self_heal */ true,
         )
     }
 
@@ -63,6 +64,14 @@ impl Executor {
     /// `<story_path>.targets.json`, iterate fallbacks, and atomically
     /// rewrite the sidecar on promotion. Passing `None` disables the
     /// self-healing hook (legacy callers / headless usage).
+    ///
+    /// Phase 11-02 (D-06): `self_heal` is now an explicit parameter. The
+    /// recording path MUST pass `self_heal: false` — a primary-miss is
+    /// raised as [`AutomationError::PrimaryMissNoHeal`] with no fallback
+    /// probe and no mutation of `.story.targets.json`. `self_heal: true`
+    /// preserves the legacy promote-on-miss behavior used by simulator
+    /// runs that explicitly opt in to self-healing.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_with_story_path(
         story: Story,
         story_path: Option<PathBuf>,
@@ -72,6 +81,7 @@ impl Executor {
         screenshot_dir: PathBuf,
         launch_opts: LaunchOptions,
         control: Option<Arc<RunControl>>,
+        self_heal: bool,
     ) -> mpsc::Receiver<ExecutorEvent> {
         let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
         tokio::spawn(async move {
@@ -87,7 +97,7 @@ impl Executor {
                 None,
                 false,
                 None,
-                true,
+                self_heal,
                 0,
                 false,
                 tx,
@@ -448,10 +458,25 @@ async fn run_command(
             {
                 Ok(()) => current,
                 Err(primary_err) => {
-                    // Probe fallbacks regardless of self_heal so the
-                    // simulator can surface match_kind=Fuzzy even in
-                    // read-only runs; only persist the promotion when
-                    // self_heal=true.
+                    // Phase 11-02 (D-06): when self_heal=false the record
+                    // path MUST NOT consult the targets sidecar. Raise the
+                    // typed PrimaryMissNoHeal variant immediately so the
+                    // HUD can surface the UI-SPEC-locked copy + the
+                    // "Open in Simulator" action. `.story.targets.json`
+                    // is left byte-identical.
+                    if !self_heal {
+                        return Err((
+                            AutomationError::PrimaryMissNoHeal {
+                                step_ordinal: ordinal,
+                                step_id: cmd_step_id,
+                                verb: format_verb_excerpt(cmd),
+                            },
+                            attempts,
+                        ));
+                    }
+                    // self_heal=true: legacy behavior — probe fallbacks
+                    // from the sidecar and promote the first that passes
+                    // wait_actionable, rewriting the sidecar atomically.
                     match try_promote_fallback(
                         driver,
                         cmd_step_id,
@@ -680,6 +705,43 @@ pub async fn try_promote_fallback(
 async fn checkpoint(control: Option<&RunControl>) {
     if let Some(control) = control {
         control.checkpoint().await;
+    }
+}
+
+/// Render a short `verb + target` excerpt for error messages —
+/// e.g. `click "Save"`, `type "Email"`, `navigate https://…`.
+///
+/// Used by [`AutomationError::PrimaryMissNoHeal`] so the HUD can surface
+/// the UI-SPEC-locked copy (`Step {N}: "{verb}" could not match any
+/// element.`) without the UI layer re-parsing the command.
+fn format_verb_excerpt(cmd: &Command) -> String {
+    fn target_text(t: &story_parser::SelectorOrText) -> String {
+        match t {
+            story_parser::SelectorOrText::Text(s)
+            | story_parser::SelectorOrText::Selector(s)
+            | story_parser::SelectorOrText::TestId(s)
+            | story_parser::SelectorOrText::Aria(s)
+            | story_parser::SelectorOrText::Label(s)
+            | story_parser::SelectorOrText::TextExact(s) => format!("\"{s}\""),
+            story_parser::SelectorOrText::Role { name, .. } => format!("\"{name}\""),
+        }
+    }
+    let verb = cmd.verb();
+    match cmd {
+        Command::Click { target, .. }
+        | Command::Type { target, .. }
+        | Command::Hover { target, .. }
+        | Command::Select { target, .. }
+        | Command::Upload { target, .. } => format!("{verb} {}", target_text(target)),
+        Command::WaitFor { target, .. } | Command::Assert { target, .. } => {
+            format!("{verb} {}", target_text(target))
+        }
+        Command::Drag { from, .. } => format!("{verb} {}", target_text(from)),
+        Command::Navigate { url, .. } => format!("{verb} {url}"),
+        Command::Scroll { direction, .. } => format!("{verb} {direction:?}"),
+        Command::Screenshot { name, .. } => format!("{verb} \"{name}\""),
+        Command::Wait { duration_ms, .. } => format!("{verb} {duration_ms}ms"),
+        Command::Pause { .. } => verb.to_string(),
     }
 }
 
