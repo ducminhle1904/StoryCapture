@@ -109,6 +109,13 @@ export function SimulatorTimeline({
               onClick={handleRun}
               disabled={!canRun}
               aria-label="Run simulator"
+              title={
+                !previewEnabled
+                  ? "Turn on Live Preview to run simulator"
+                  : streamId == null
+                    ? "Live Preview is starting — wait for the badge to read 'live'"
+                    : undefined
+              }
               className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-300)] px-2 py-1 text-xs font-medium text-[var(--color-fg-primary)] hover:bg-[var(--color-accent-primary)]/12 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Play size={12} aria-hidden="true" />
