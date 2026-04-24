@@ -151,13 +151,36 @@ export interface PickerStampStepIdArgs {
   fallbacks: TargetRecordDto[];
 }
 
+/**
+ * Result shape for `pickerStampStepId`. Mirrors
+ * `picker::PickerStampResultDto` (Phase 11-01 D-04 contract change).
+ *
+ * - `stepId`: the stamped UUIDv7 (existing-or-new) as a hyphenated string.
+ * - `wasFreshlyStamped`: true iff this call minted a fresh @id and rewrote
+ *   the .story source; false iff the line already carried `# @id=<uuid>`
+ *   and the call was a targets.json-only re-seed (D-04).
+ */
+export interface PickerStampResult {
+  stepId: string;
+  wasFreshlyStamped: boolean;
+}
+
+interface PickerStampResultDto {
+  step_id: string;
+  was_freshly_stamped: boolean;
+}
+
 export async function pickerStampStepId(
   args: PickerStampStepIdArgs,
-): Promise<string> {
-  return await invoke<string>("picker_stamp_step_id", {
+): Promise<PickerStampResult> {
+  const dto = await invoke<PickerStampResultDto>("picker_stamp_step_id", {
     storyPath: args.storyPath,
     lineOffset: args.lineOffset,
     primary: args.primary,
     fallbacks: args.fallbacks,
   });
+  return {
+    stepId: dto.step_id,
+    wasFreshlyStamped: dto.was_freshly_stamped,
+  };
 }

@@ -20,12 +20,14 @@ fn primary() -> TargetRecordDto {
 fn restamp_on_already_stamped_line_does_not_rewrite_source() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("demo.story");
-    // Line 3 carries the @id trailer — the stamp function must short-circuit
+    // Line 4 carries the @id trailer — the stamp function must short-circuit
     // through its Some(existing_id) arm without rewriting the file.
     let src = concat!(
-        "story \"t\"\n",
-        "scene \"s\"\n",
-        "  click button \"Save\" # @id=01890000-0000-7000-8000-000000000001\n",
+        "story \"t\" {\n",
+        "  scene \"s\" {\n",
+        "    click button \"Save\"  # @id=01890000-0000-7000-8000-000000000001\n",
+        "  }\n",
+        "}\n",
     );
     fs::write(&path, src).unwrap();
     let before = fs::read(&path).unwrap();
@@ -78,9 +80,11 @@ fn stamp_on_unstamped_line_writes_source() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("demo.story");
     let src = concat!(
-        "story \"t\"\n",
-        "scene \"s\"\n",
-        "  click button \"Save\"\n",
+        "story \"t\" {\n",
+        "  scene \"s\" {\n",
+        "    click button \"Save\"\n",
+        "  }\n",
+        "}\n",
     );
     fs::write(&path, src).unwrap();
     let before = fs::read(&path).unwrap();
