@@ -13,6 +13,7 @@
 // the cross-platform binding already targets all three platform stores
 // (macOS Keychain, Windows Credential Manager, Linux Secret Service).
 
+pub mod author_driver;
 pub mod commands;
 pub mod error;
 pub mod ipc_spec;
@@ -140,6 +141,12 @@ pub fn run() {
 
             // Phase 10-02 — author-time simulator session registry.
             app.manage(commands::simulator::SimulatorRegistry::default());
+
+            // Phase 11-01 — shared author-driver FSM (D-16). Arc-managed so
+            // PickerResumeGuard (11-03) can clone a handle for deferred restore.
+            app.manage(std::sync::Arc::new(
+                author_driver::AuthorDriverRegistry::default(),
+            ));
 
             // LSP bridge: in-process tower-lsp via IPC.
             // `LspBridge::new()` returns (bridge, drain_future) — the drain
