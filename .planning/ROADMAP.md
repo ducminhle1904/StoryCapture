@@ -146,7 +146,7 @@ Plans:
 | 8. Recording engine polish — GPU downscale + live cursor overlay | 0/5 | **Planned, not started** | — |
 | 9. Live Preview pane (CDP-driven) | 0/4 | **Planned, not started** — prereq for Phase 10 | — |
 | 10. Author-time simulator | 0/3 | **Blocked on Phase 9-04 extensions (PHASE-9.8/9.9)** | — |
-| 11. Author-time element picker relocation | 0/4 | **Blocked on Phase 10-01/02** (11-01 can run in parallel with 10-01) | — |
+| 11. Author-time element picker relocation | 4/5 | **Gap closure pending** — 11-01..11-04 shipped & merged (12/14 must-haves verified); 11-05 planned to close simulator.rs ↔ AuthorDriverRegistry gap (PHASE-11.1 / PHASE-11.8) | — |
 | 12. Fix video output resolution | 4/4 | Shipped | 2026-04-19 |
 | 13. Video output customization knobs | shipped | Shipped | 2026-04-19 |
 | 14. Port Claude Design into apps/desktop | 4/4 (waves 1, 3-5; Wave 2 dropped) | **In progress** — Waves 1/3/4 shipped, polish ongoing, Wave 5 a11y checkpoint pending | — |
@@ -309,13 +309,14 @@ Plans (to be produced by /gsd-plan-phase 10):
 **Goal:** The element picker lives in the Preview panel (not the recording toolbar), routes clicks through the Phase 9-04 author-session with a shared AuthorDriverState FSM that coordinates with the Phase 10 simulator, and the recording path becomes a strictly read-only consumer of .story + .story.targets.json — self-healing is deferred to Simulator + Promote-to-fallback only.
 **Requirements**: PHASE-11.1, PHASE-11.2, PHASE-11.3, PHASE-11.4, PHASE-11.5, PHASE-11.6, PHASE-11.7, PHASE-11.8, PHASE-11.9, PHASE-11.10, PHASE-11.11, PHASE-11.12, PHASE-11.13, PHASE-11.14
 **Depends on:** Phase 9-04 (author-session + pauseStream/resumeStream), Phase 10 (simulator registry + self_heal param + editor read-only lock)
-**Plans:** 4 plans
+**Plans:** 5 plans (11-05 is a gap-closure for PHASE-11.1 / PHASE-11.8 — simulator.rs AuthorDriverRegistry wiring)
 
 Plans:
 - [x] 11-01-PLAN.md — AuthorDriverRegistry 5-state FSM + PickerResumeGuard (RAII) + Pitfall 5 regression guard for picker_stamp_step_id (D-04 / D-13..D-16)
 - [x] 11-02-PLAN.md — Record path self_heal=false + AutomationError::PrimaryMissNoHeal + HUD Open-in-Simulator action (D-06 / D-07)
 - [x] 11-03-PLAN.md — Sidecar pickElement.start streamId routing + author.navigateTo warm-up + picker_start_author Tauri command with navigate-replay + pause/resume brackets (D-08 / D-10 / D-12)
 - [x] 11-04-PLAN.md — PreviewPickerButton + authorDriverStore + Cmd-Shift-P keymap + delete recorder-side picker + 11-SMOKE.md (D-01 / D-02 / D-05 / D-09)
+- [ ] 11-05-PLAN.md — **Gap closure (PHASE-11.1 / PHASE-11.8):** wire AuthorDriverRegistry into commands/simulator.rs (simulator_start + spawn_run forwarder + simulator_cancel) + add begin_simulator/pause_simulator/end_simulator FSM helpers so host-side D-13/D-14/D-15 gates are no longer inert
 
 ### Phase 12: Fix video output resolution lock — letterbox filter chain
 
