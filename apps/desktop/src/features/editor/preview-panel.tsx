@@ -14,6 +14,11 @@ import { useState } from "react";
 import { useEditorStore, type PreviewViewport } from "@/state/editor";
 import { useSelectorValidation } from "@/features/editor/SelectorValidatorOverlay";
 import { useSimulatorStore } from "@/state/simulator-store";
+import {
+  PickingBanner,
+  PreviewPickerButton,
+} from "@/features/editor/PreviewPickerButton";
+import { useAuthorDriverStore } from "@/features/editor/authorDriverStore";
 
 const VIEWPORT_SIZES: Record<
   PreviewViewport,
@@ -51,13 +56,24 @@ export function PreviewPanel({
   const validationEntries = useSelectorValidation((s) => s.entries);
   const chipCounts = summarizeValidation(validationEntries);
 
+  // Phase 11-04: surface the Picking banner inside the Preview panel
+  // content area (between header and stage). Reads variant from the
+  // author-driver projection per UI-SPEC §2.
+  const isPicking = useAuthorDriverStore((s) => s.variant === "picking");
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[var(--color-surface-100)]">
       {/* Header — flat, no card chrome */}
       <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-1.5">
-        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
-          Preview
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+            Preview
+          </span>
+          {/* Phase 11-04 (UI-SPEC §Visual Layout §1): PreviewPickerButton
+              sits LEFT of the viewport/quality controls. Icon-first ghost
+              button; tooltip copy + keymap are owned by the component. */}
+          <PreviewPickerButton />
+        </div>
         <div className="flex items-center gap-3">
           <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
             {size.w} x {size.h}
@@ -88,6 +104,10 @@ export function PreviewPanel({
           </div>
         </div>
       </header>
+
+      {/* Picking banner — sticky at the top of the content area during an
+          active pick (UI-SPEC §Picking banner position). */}
+      {isPicking ? <PickingBanner variant="active" /> : null}
 
       {/* Preview stage — the viewport frame gets rounded corners (device screen) */}
       <div className="flex min-h-0 flex-1 items-center justify-center bg-[var(--color-surface-200)] p-4">

@@ -45,8 +45,9 @@ import { useRecorderStore, type RecorderStatus, type StepProgress } from "@/stat
 
 import { TccPrompt } from "./tcc-prompt";
 import { CursorTrail } from "./cursor-trail";
-// element picker entry point.
-import { PickElementButton } from "./pick-element-button";
+// Phase 11-04 (D-05): the recorder-side element picker has been
+// removed. Element picking lives exclusively in the Preview panel via
+// `apps/desktop/src/features/editor/PreviewPickerButton.tsx`.
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
@@ -928,8 +929,9 @@ export function RecordingView({
               )}
               {status === "recording" && (
                 <>
-                  {/* pick element while a Playwright session is live. */}
-                  <PickElementButton />
+                  {/* Phase 11-04 (D-05): recorder-side element picker
+                      removed. Picking is exclusively author-side via
+                      PreviewPickerButton in the Preview panel. */}
                   <button
                     onClick={handlePause}
                     aria-label="Pause recording"

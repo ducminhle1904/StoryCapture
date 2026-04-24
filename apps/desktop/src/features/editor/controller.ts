@@ -22,6 +22,15 @@ let currentView: EditorView | null = null;
 // `picker_stamp_step_id` to locate the sibling `.story.targets.json`.
 // Null when the editor is showing unsaved / in-memory content.
 let currentStoryPath: string | null = null;
+// snapshot of the last-saved `.story` source; compared against the live
+// CodeMirror doc text to answer `isDirty()` for the Phase 11-04 D-10
+// "unsaved changes" warning.
+let lastSavedSource: string | null = null;
+// 1-indexed step-ordinal lookup (populated by StoryEditor via
+// `setStepOrdinalLookup` after each parse). Returns null when the parser
+// has not yet produced an ordinal map (e.g. very first render).
+type StepOrdinalLookup = (line: number) => number | null;
+let stepOrdinalLookup: StepOrdinalLookup | null = null;
 
 export const editorController = {
   /** Register the active view. Called by StoryEditor on mount. */
@@ -40,9 +49,59 @@ export const editorController = {
   getStoryPath(): string | null {
     return currentStoryPath;
   },
-  /** True iff a view is registered. */
+  /**
+   * Record the source string that was most-recently persisted to disk.
+   * Called by the editor shell after a successful autosave / manual save.
+   * Phase 11-04 `PreviewPickerButton` diffs this against the live doc
+   * text to surface the D-10 unsaved-changes warning.
+   */
+  markSaved(source: string): void {
+    lastSavedSource = source;
+  },
+  /**
+   * True iff the live CodeMirror doc differs from the last-saved
+   * snapshot (or no save has yet been recorded). Returns false when no
+   * view is mounted (nothing to compare).
+   */
+  isDirty(): boolean {
+    const v = currentView;
+    if (!v) return false;
+    if (lastSavedSource === null) return false;
+    return v.state.doc.toString() !== lastSavedSource;
+  },
+  /**
+   * True iff a view is registered. */
   isReady(): boolean {
     return currentView !== null;
+  },
+  /**
+   * Return the 1-indexed line number of the primary cursor, or null
+   * when no view is mounted. Phase 11-04 `PreviewPickerButton` feeds
+   * this to `picker_start_author_impl` so navigate-replay knows which
+   * Navigate verbs to replay.
+   */
+  getCursorLine(): number | null {
+    const v = currentView;
+    if (!v) return null;
+    const head = v.state.selection.main.head;
+    return v.state.doc.lineAt(head).number;
+  },
+  /**
+   * Register / clear the step-ordinal lookup driven by the most recent
+   * parse. Called by StoryEditor whenever the AST updates.
+   */
+  setStepOrdinalLookup(lookup: StepOrdinalLookup | null): void {
+    stepOrdinalLookup = lookup;
+  },
+  /**
+   * 1-indexed step ordinal (among the flattened command list, across
+   * scenes) for a given 1-indexed line number; null when the line is
+   * not a command row or the parser has not yet populated the map.
+   * Phase 11-04 uses this for the UI-SPEC re-pick toast
+   * `Updated fallback for step {N}`.
+   */
+  getStepOrdinalForLine(line: number): number | null {
+    return stepOrdinalLookup?.(line) ?? null;
   },
   /**
    * Insert `text` at the current cursor (snap to line-end if mid-line).
