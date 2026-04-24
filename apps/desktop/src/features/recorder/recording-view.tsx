@@ -56,6 +56,7 @@ import { VideoOutputSection, useIsRecordingBlocked } from "./video-output/video-
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
 import { useOutputPrefsStore } from "@/state/output-prefs";
 import { getAppSettings } from "@/ipc/settings";
+import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 
 interface RecordingViewProps {
   projectId: string | null;
@@ -135,6 +136,7 @@ export function RecordingView({
     reset,
     loadCaptureTargets,
     setCaptureTarget,
+    setPrimaryMiss,
   } = useRecorderStore();
 
   // D-13: audio-negotiation failure persists a session-scoped flag so a
@@ -564,10 +566,41 @@ export function RecordingView({
         advanceStep(evt.ordinal - 1, "succeeded");
         pushCursor({ x: evt.cursor_x, y: evt.cursor_y, t: Date.now() });
         break;
-      case "step_failed":
+      case "step_failed": {
         advanceStep(evt.ordinal - 1, "failed");
-        toast.error(`Step ${evt.ordinal} failed: ${evt.error_message}`);
+        // Phase 11-02 (D-06): detect the PrimaryMissNoHeal error by
+        // substring-matching the locked UI-SPEC copy. On a match, pipe
+        // the verb excerpt + ordinal into the recorder store so the HUD
+        // renders the destructive block + "Open in Simulator" action,
+        // and fire the Sonner destructive toast carrying the same copy
+        // with the action slot.
+        const miss = parsePrimaryMiss(evt.error_message);
+        if (miss) {
+          setPrimaryMiss({ ordinal: evt.ordinal, verbExcerpt: miss.verbExcerpt });
+          const body = RECORD_PATH_MISS_BODY.replace("{N}", String(evt.ordinal));
+          const targetOrdinal = evt.ordinal;
+          const clampedProjectId = projectId;
+          toast.error(`Step ${targetOrdinal}: ${miss.verbExcerpt} could not match any element.`, {
+            description: body,
+            duration: 12_000,
+            action: clampedProjectId
+              ? {
+                  label: "Open in Simulator",
+                  // Phase 11: user decides when to start the simulator —
+                  // this action only routes into the Editor at the
+                  // failed step. The editor's existing simulator
+                  // primitives take over from there.
+                  onClick: () => {
+                    window.location.hash = `#/editor/${clampedProjectId}?step=${targetOrdinal}`;
+                  },
+                }
+              : undefined,
+          });
+        } else {
+          toast.error(`Step ${evt.ordinal} failed: ${evt.error_message}`);
+        }
         break;
+      }
       case "story_ended":
         if (evt.status.failed > 0) {
           toast.warning(`Story finished with ${evt.status.failed} failure(s)`);

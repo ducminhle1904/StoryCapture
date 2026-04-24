@@ -34,6 +34,20 @@ export interface StepProgress {
   verb: string;
 }
 
+/**
+ * Phase 11-02 (D-06): record-path primary-miss error surface. Populated
+ * when the executor raises `AutomationError::PrimaryMissNoHeal` — the
+ * HUD renders a destructive block with the UI-SPEC-locked copy plus an
+ * "Open in Simulator" action routing into the Editor at the failed
+ * step. Cleared on `reset()` (idle/new recording).
+ */
+export interface PrimaryMissInfo {
+  /** 1-indexed step ordinal from the executor event. */
+  ordinal: number;
+  /** Verb excerpt rendered into the heading, e.g. `click "Save"`. */
+  verbExcerpt: string;
+}
+
 /** Fixed-capacity ring of cursor points. `buffer` slots are reused in
  *  place; `head` is the next write index modulo MAX; `size` is the count
  *  of valid entries (capped at MAX once the ring wraps). */
@@ -92,6 +106,13 @@ export interface RecorderData {
    *  preview pane. Default ON (D-11); hydrated from app_settings on
    *  first access. */
   livePreviewEnabled: boolean;
+
+  /** Phase 11-02 (D-06) — record-path primary-miss payload. Set from the
+   *  StepFailed handler when the error_message matches the locked
+   *  PrimaryMissNoHeal copy; consumed by the HUD to render the
+   *  destructive block + "Open in Simulator" action. `null` when no
+   *  such error is active. */
+  primaryMiss: PrimaryMissInfo | null;
 }
 
 export interface RecorderActions {
@@ -122,6 +143,10 @@ export interface RecorderActions {
   /** Phase 09-02 — hydrate `livePreviewEnabled` from app_settings. Safe
    *  to call more than once; silently no-ops on IPC error. */
   hydrateLivePreviewEnabled: () => Promise<void>;
+
+  /** Phase 11-02 (D-06) — set or clear the record-path PrimaryMissNoHeal
+   *  payload the HUD renders. Pass `null` to dismiss the block. */
+  setPrimaryMiss: (info: PrimaryMissInfo | null) => void;
 }
 
 export type RecorderState = RecorderData & RecorderActions;
@@ -147,6 +172,8 @@ const INITIAL: RecorderData = {
   // Default ON per D-11; hydrated from app_settings by
   // `hydrateLivePreviewEnabled` on recorder-view mount.
   livePreviewEnabled: true,
+  // Phase 11-02: no primary-miss on a fresh recording.
+  primaryMiss: null,
 };
 
 export const useRecorderStore = create<RecorderState>((set) => ({
@@ -195,6 +222,7 @@ export const useRecorderStore = create<RecorderState>((set) => ({
       /* non-fatal: stick with the INITIAL default */
     }
   },
+  setPrimaryMiss: (primaryMiss) => set({ primaryMiss }),
 
   loadCaptureTargets: async () => {
     const [targets, persisted] = await Promise.all([
