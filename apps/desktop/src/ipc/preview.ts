@@ -58,3 +58,22 @@ export async function setAuthorPreviewUrl(streamId: string, url: string): Promis
 export async function attachAuthorDriver(streamId: string): Promise<void> {
   await invoke("attach_author_driver", { streamId });
 }
+
+export type AuthorMouseButton = "left" | "right" | "middle";
+
+export type AuthorInputEvent =
+  | { type: "mousemove"; x: number; y: number }
+  | { type: "click"; x: number; y: number; button: AuthorMouseButton }
+  | { type: "wheel"; x: number; y: number; deltaX: number; deltaY: number };
+
+/**
+ * Forward a pointer/wheel event from the LivePreview canvas into the
+ * headless author browser. Coordinates must be in PAGE viewport space —
+ * the LivePreview component handles the canvas px → page px transform.
+ */
+export async function authorDispatchInput(
+  streamId: string,
+  event: AuthorInputEvent,
+): Promise<void> {
+  await invoke("author_dispatch_input", { streamId, event });
+}

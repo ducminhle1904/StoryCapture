@@ -59,6 +59,7 @@ pub fn builder() -> Builder<Wry> {
             automation::set_author_preview_viewport,
             automation::set_author_preview_url,
             automation::attach_author_driver,
+            automation::author_dispatch_input,
             // element picker.
             picker::picker_start,
             picker::picker_cancel,
@@ -174,6 +175,8 @@ pub fn builder() -> Builder<Wry> {
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<automation::ResolvedPlaywrightTarget>()
         .typ::<automation::AuthorViewportArgs>()
+        .typ::<automation::AuthorInputEvent>()
+        .typ::<automation::AuthorMouseButton>()
         .typ::<picker::PickElementResponseDto>()
         .typ::<picker::PickerStampResultDto>()
         // author-time validator DTOs.

@@ -716,6 +716,62 @@ pub async fn set_author_preview_url(
     Ok(())
 }
 
+/// Renderer-side pointer events from the LivePreview canvas, forwarded
+/// into the headless author browser via Playwright's `page.mouse` API.
+/// Coordinates are in page viewport space (the renderer transforms canvas
+/// px → page px before calling).
+#[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AuthorInputEvent {
+    Mousemove {
+        x: f64,
+        y: f64,
+    },
+    Click {
+        x: f64,
+        y: f64,
+        #[serde(default)]
+        button: AuthorMouseButton,
+    },
+    Wheel {
+        x: f64,
+        y: f64,
+        #[serde(rename = "deltaX")]
+        delta_x: f64,
+        #[serde(rename = "deltaY")]
+        delta_y: f64,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthorMouseButton {
+    #[default]
+    Left,
+    Right,
+    Middle,
+}
+
+/// Forward a pointer/wheel event from the LivePreview canvas into the
+/// headless author browser. No-op if the session has been torn down.
+#[tauri::command]
+#[specta::specta]
+pub async fn author_dispatch_input(
+    state: State<'_, AppState>,
+    stream_id: String,
+    event: AuthorInputEvent,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    let payload = serde_json::to_value(&event).map_err(|e| AppError::Automation(e.to_string()))?;
+    driver
+        .lock()
+        .await
+        .call_author_dispatch_input(&stream_id, &payload)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
 /// Readiness probe: confirms streamId is registered + sidecar is alive.
 #[tauri::command]
 #[specta::specta]

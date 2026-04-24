@@ -260,6 +260,22 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
+    /// Forward a pointer/wheel event from the renderer's LivePreview canvas
+    /// into the headless author browser. Coordinates are in page viewport
+    /// space (the renderer transforms canvas px → page px before calling).
+    pub async fn call_author_dispatch_input(
+        &self,
+        stream_id: &str,
+        event: &serde_json::Value,
+    ) -> Result<()> {
+        self.call(
+            "author.dispatchInput",
+            json!({ "streamId": stream_id, "event": event }),
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Navigate an author session's page to a new URL without relaunching.
     pub async fn call_author_goto(&self, stream_id: &str, url: &str) -> Result<()> {
         self.call("author.goto", json!({ "streamId": stream_id, "url": url }))

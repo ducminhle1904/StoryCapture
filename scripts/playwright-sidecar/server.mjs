@@ -911,6 +911,60 @@ const handlers = {
     return { ok: true, url: s.page.url() };
   },
 
+  // Phase 11-extension — forward renderer-side canvas pointer events to the
+  // headless author browser via Playwright's page.mouse API (CDP under the
+  // hood). Enables interactive picking without a headful Chromium window:
+  // the LivePreview canvas is the input surface, the author browser is the
+  // DOM target. Coordinates are in page viewport space (canvas → page
+  // conversion happens in the renderer).
+  'author.dispatchInput': async ({ streamId, event } = {}) => {
+    if (typeof streamId !== 'string' || !streamId) {
+      throw Object.assign(new Error('streamId required'), { code: -32602 });
+    }
+    if (!event || typeof event !== 'object') {
+      throw Object.assign(new Error('event required'), { code: -32602 });
+    }
+    const s = state.authorSessions.get(streamId);
+    if (!s || !s.page) {
+      throw Object.assign(
+        new Error(`unknown streamId: ${streamId}`),
+        { code: -32000 },
+      );
+    }
+    const x = Number(event.x);
+    const y = Number(event.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw Object.assign(new Error('x,y must be finite numbers'), { code: -32602 });
+    }
+    switch (event.type) {
+      case 'mousemove': {
+        await s.page.mouse.move(x, y);
+        return { ok: true };
+      }
+      case 'click': {
+        const button = event.button === 'right' || event.button === 'middle'
+          ? event.button
+          : 'left';
+        await s.page.mouse.click(x, y, { button });
+        return { ok: true };
+      }
+      case 'wheel': {
+        const dx = Number(event.deltaX) || 0;
+        const dy = Number(event.deltaY) || 0;
+        // page.mouse.wheel dispatches a wheel event at the current mouse
+        // position, so move first to align with the caller's (x, y).
+        await s.page.mouse.move(x, y);
+        await s.page.mouse.wheel(dx, dy);
+        return { ok: true };
+      }
+      default:
+        throw Object.assign(
+          new Error(`unsupported event type: ${event.type}`),
+          { code: -32602 },
+        );
+    }
+  },
+
   startPreviewStream: async ({ streamId } = {}) => {
     if (typeof streamId === 'string' && streamId.length > 0) {
       const s = getAuthorSession(streamId);

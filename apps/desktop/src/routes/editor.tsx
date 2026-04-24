@@ -47,7 +47,7 @@ import {
   type ProjectFolderInfo,
   useProjectRecordings,
 } from "@/ipc/projects";
-import { useEditorStore } from "@/state/editor";
+import { useEditorStore, VIEWPORT_SIZES } from "@/state/editor";
 
 const EMPTY_DIAGNOSTICS: never[] = [];
 
@@ -646,7 +646,11 @@ export default function EditorRoute() {
                     </div>
                   ) : previewEnabled && authorStreamId ? (
                     <div className="flex h-full w-full items-center justify-center p-3">
-                      <LivePreview streamId={authorStreamId} />
+                      <LivePreview
+                        streamId={authorStreamId}
+                        pageWidth={VIEWPORT_SIZES[previewViewport].w}
+                        pageHeight={VIEWPORT_SIZES[previewViewport].h}
+                      />
                     </div>
                   ) : projectId ? (
                     <PreviewSurface mode="recording" projectId={projectId} />
