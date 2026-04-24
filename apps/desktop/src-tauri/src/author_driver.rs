@@ -130,6 +130,45 @@ impl AuthorDriverState {
             }
         }
     }
+
+    /// D-15 happy-path transition into `SimulatorRunning{session}`. The
+    /// caller MUST have validated with `can_start_simulator()` first
+    /// under the same lock scope. Returns the prior state so the caller
+    /// can stash it for later `end_simulator()` restore. Mirrors
+    /// `begin_pick`'s snapshot-and-swap shape but without the `resume_to`
+    /// box (simulator does not nest beneath Picking, so prior-state
+    /// capture lives at the caller in `commands/simulator.rs`).
+    pub fn begin_simulator(&mut self, session: SimulatorSessionId) -> AuthorDriverState {
+        std::mem::replace(self, AuthorDriverState::SimulatorRunning { session })
+    }
+
+    /// Transition `SimulatorRunning{s}` -> `SimulatorPaused{s}`. No-op if
+    /// state is NOT `SimulatorRunning` — guards against racey
+    /// `ExecutorEvent::RunPaused` events arriving after `simulator_cancel`
+    /// has already restored the prior state.
+    pub fn pause_simulator(&mut self) {
+        let current = std::mem::replace(self, AuthorDriverState::Idle);
+        *self = match current {
+            AuthorDriverState::SimulatorRunning { session } => {
+                AuthorDriverState::SimulatorPaused { session }
+            }
+            other => other,
+        };
+    }
+
+    /// Exit simulator — restore `prior` (captured by `begin_simulator`).
+    /// No-op if current state is NOT `Simulator*` (guards double-cancel
+    /// where `end_simulator` fires twice — forwarder sees `StoryEnded`
+    /// AND `simulator_cancel` races the forwarder).
+    pub fn end_simulator(&mut self, prior: AuthorDriverState) {
+        match self {
+            AuthorDriverState::SimulatorRunning { .. }
+            | AuthorDriverState::SimulatorPaused { .. } => {
+                *self = prior;
+            }
+            _ => {} // already restored — no-op
+        }
+    }
 }
 
 /// RAII resume-on-drop guard for picker flows. The caller constructs this
