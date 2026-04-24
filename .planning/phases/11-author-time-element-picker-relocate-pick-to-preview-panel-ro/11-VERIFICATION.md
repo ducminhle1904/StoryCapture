@@ -1,7 +1,7 @@
 ---
 phase: 11-author-time-element-picker-relocate-pick-to-preview-panel-ro
 verified: 2026-04-24T09:48:00Z
-status: human_needed
+status: gaps_found
 score: 12/14 must-haves verified (with 1 partial on PHASE-11.1/11.8)
 overrides_applied: 0
 gaps:
@@ -56,7 +56,7 @@ human_verification:
 **Phase Goal:** The element picker lives in the Preview panel (not the recording toolbar), routes clicks through the Phase 9-04 author-session with a shared AuthorDriverState FSM that coordinates with the Phase 10 simulator, and the recording path becomes a strictly read-only consumer of .story + .story.targets.json — self-healing is deferred to Simulator + Promote-to-fallback only.
 
 **Verified:** 2026-04-24T09:48:00Z
-**Status:** human_needed
+**Status:** gaps_found (12/14 must-haves verified — PHASE-11.1 + PHASE-11.8 partial; awaiting gap-closure plan to wire `commands/simulator.rs` into `AuthorDriverRegistry`. Operator smoke runbook persisted to `11-HUMAN-UAT.md` for post-fix sign-off.)
 **Re-verification:** No — initial verification
 
 ## Goal Achievement
