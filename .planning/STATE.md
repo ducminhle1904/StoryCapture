@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-22T08:45:00.000Z"
+last_updated: "2026-04-24T00:26:52.931Z"
 progress:
   total_phases: 17
-  completed_phases: 10
-  total_plans: 118
-  completed_plans: 100
-  percent: 85
+  completed_phases: 11
+  total_plans: 117
+  completed_plans: 107
+  percent: 91
 ---
 
 # State: StoryCapture
@@ -20,14 +20,15 @@ progress:
 
 - **Name:** StoryCapture
 - **Core Value:** Turn a written story into a polished, shareable demo video automatically — no recording, editing, or video-production skill required.
-- **Current Focus:** Phase --phase — 14
+- **Current Focus:** Phase 11 — author-time-element-picker-relocate-pick-to-preview-panel-ro
 
 ## Current Position
 
-Phase: 16 — Upgrade all dependencies to latest — COMPLETE (5/5 plans landed, 2026-04-22)
-Plan: 16-05 complete (Wave E gated framework majors + docs sync: 2 atomic commits landed — E24 ac8e8f8 next 15 → 16.2.4 in apps/web; E28 3d1625b CLAUDE.md + docs/ARCHITECTURE.md synced to final Phase 16 pins. E22 skipped (no newer next-auth beta). E25 deferred (adapter peerDeps). E26 deferred (no Windows CI). E27 blocked-no-op (specta rc.24 requires nightly Rust). Gate: turbo typecheck + turbo build + cargo check --workspace + cargo test --workspace all green.
+Phase: 11 (author-time-element-picker-relocate-pick-to-preview-panel-ro) — EXECUTING
+Plan: 1 of 4
 
 Also complete (merged from origin 2026-04-22):
+
 - Phase 17 — Record engine lifecycle hardening — COMPLETE (all 6 plans, 22 commits, 19/19 decisions verified).
 - Phase 10 Wave 1 — Author-time simulator (executor parameterization + RunControl + pause/step events).
 - Phase 9 all 4 waves code-complete.
@@ -50,7 +51,7 @@ No Phase 15 rearrangement invalidates file-path references in Phase 8-11 plans. 
 - **Milestone:** v1
 - **Phase:** 13 — Video output customization knobs (recording + export UI)
 - **Plan:** All 5 plans complete; verified 8/8 (ENC-12..ENC-19 PASS)
-- **Status:** Ready to execute
+- **Status:** Executing Phase 11
 - **Progress:** [████████░░] 84%
 
 ## Performance Metrics

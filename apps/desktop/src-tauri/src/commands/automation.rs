@@ -267,16 +267,24 @@ pub async fn launch_automation(
     let control = Arc::new(RunControl::new());
     set_active_run_control(Some(control.clone()));
 
-    // Run the executor and forward events.
-    tracing::info!(target: "storycapture::automation", "Executor::run starting");
-    let mut events = Executor::run(
+    // Phase 11-02 (D-06/D-07): the recording path is read-only against
+    // `.story.targets.json` — self_heal=false. A primary-miss raises
+    // `AutomationError::PrimaryMissNoHeal` which the HUD surfaces with
+    // the UI-SPEC-locked copy + "Open in Simulator" action. The record
+    // path never consults the targets sidecar, so `story_path` stays
+    // `None` (no harm if present — the self_heal=false gate short-
+    // circuits before the sidecar is read).
+    tracing::info!(target: "storycapture::automation", "Executor::run_with_story_path starting (self_heal=false)");
+    let mut events = Executor::run_with_story_path(
         story,
+        /* story_path */ None,
         primary,
         fallback,
         persistence,
         screenshot_dir,
         launch_opts,
         Some(control.clone()),
+        /* self_heal */ false,
     );
     while let Some(evt) = events.recv().await {
         // Mirror events into tracing for diagnostics.

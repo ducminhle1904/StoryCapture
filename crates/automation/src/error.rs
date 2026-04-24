@@ -47,6 +47,23 @@ pub enum AutomationError {
 
     #[error("protocol error: {0}")]
     Protocol(String),
+
+    /// Phase 11-02 (D-06): primary-miss raised on the record path where
+    /// self-healing is disabled. Carries the step ordinal, optional
+    /// stamped step_id, and a pre-rendered verb excerpt (e.g.
+    /// `click "Save"`) so the HUD can surface UI-SPEC-locked copy
+    /// without re-formatting the command.
+    ///
+    /// Display string is the UI-SPEC §Record-path primary-miss
+    /// verbatim copy; do not paraphrase.
+    #[error(
+        "Step {step_ordinal}: \"{verb}\" could not match any element. Self-healing is disabled during recording. Open this story in Simulator, use \"Promote to fallback\" on step {step_ordinal}, then try again."
+    )]
+    PrimaryMissNoHeal {
+        step_ordinal: u32,
+        step_id: Option<uuid::Uuid>,
+        verb: String,
+    },
 }
 
 impl From<std::io::Error> for AutomationError {
