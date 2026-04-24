@@ -65,6 +65,8 @@ pub fn builder() -> Builder<Wry> {
             picker::picker_is_active,
             // stamp UUIDv7 on first pick + seed targets sidecar.
             picker::picker_stamp_step_id,
+            // Phase 11-03 — Preview-panel Pick against author-session.
+            picker::picker_start_author,
             // author-time selector validator + DOM snapshot store.
             author_snapshot::author_snapshot_capture,
             author_snapshot::author_snapshot_get,

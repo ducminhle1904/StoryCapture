@@ -772,6 +772,39 @@ impl PlaywrightSidecarDriver {
         let v = self.call("pickElement.isActive", json!({})).await?;
         Ok(v.get("active").and_then(|a| a.as_bool()).unwrap_or(false))
     }
+
+    /// Phase 11-03 — start a pickElement session against an author-session
+    /// page keyed by `stream_id`. The sidecar routes to
+    /// `state.authorSessions.get(stream_id).page`; unknown streamId surfaces
+    /// as an `AutomationError::Browser(..)` with the `-32000` payload.
+    pub async fn pick_element_start_author(
+        &self,
+        stream_id: &str,
+        timeout_ms: u64,
+    ) -> Result<PickElementResponse> {
+        let v = self
+            .call(
+                "pickElement.start",
+                json!({ "streamId": stream_id, "timeoutMs": timeout_ms }),
+            )
+            .await?;
+        serde_json::from_value(v)
+            .map_err(|e| AutomationError::Protocol(format!("pickElement.start decode: {e}")))
+    }
+
+    /// Phase 11-03 — navigate a specific author-session page to a URL AND
+    /// wait for `networkidle` (bounded 10s by the sidecar). Used by
+    /// `replay_navigate_verbs` to warm the author browser on picker start.
+    /// Non-http(s) URLs and unknown streamIds surface as `Protocol` / `Browser`
+    /// errors respectively (-32602 / -32000 on the wire).
+    pub async fn author_navigate_to(&self, stream_id: &str, url: &str) -> Result<()> {
+        self.call(
+            "author.navigateTo",
+            json!({ "streamId": stream_id, "url": url }),
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

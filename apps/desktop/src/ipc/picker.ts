@@ -184,3 +184,36 @@ export async function pickerStampStepId(
     wasFreshlyStamped: dto.was_freshly_stamped,
   };
 }
+
+/**
+ * Phase 11-03 — start a Preview-panel Pick against an author-session.
+ *
+ * Mirrors the shape of {@link pickElement} but routes through the
+ * Phase 9-04 author-session keyed by `streamId`. The host:
+ *   (1) replays `navigate` verbs from the story source up to cursor line
+ *       to warm the author browser,
+ *   (2) pauses the author screencast via PHASE-9.9 primitives,
+ *   (3) activates the picker overlay on the author page,
+ *   (4) resumes the screencast on resolve/cancel (D-12 invariant).
+ *
+ * `storySrc` is the .story file contents as seen by the renderer. Callers
+ * MUST warn the user about unsaved changes before invocation per D-10
+ * (see PreviewPickerButton toast in 11-04 Task 1); this wrapper sends the
+ * bytes as-is.
+ */
+export async function pickElementAuthor(opts: {
+  streamId: string;
+  storySrc: string;
+  cursorLine: number;
+  timeoutMs?: number;
+}): Promise<PickResult> {
+  const dto = await invoke<PickerStartDto>("picker_start_author", {
+    streamId: opts.streamId,
+    storySrc: opts.storySrc,
+    cursorLine: opts.cursorLine,
+    timeoutMs: opts.timeoutMs ?? 60000,
+  });
+  // Same JSON-envelope contract as pickElement — the untagged enum IS the
+  // typed union, no DTO-to-domain mapping required.
+  return JSON.parse(dto.json) as PickResult;
+}
