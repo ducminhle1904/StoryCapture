@@ -30,6 +30,25 @@ const PAUSE_POLL_SLICE_MS: u64 = 50;
 
 pub type PersistenceHandle = Arc<Mutex<ProjectDb>>;
 
+/// Behavior when the primary selector misses `wait_actionable`.
+///
+/// Phase 10 and Phase 11-02 gave `self_heal: bool` two incompatible meanings
+/// ("don't persist" vs. "don't probe"). `HealPolicy` restores the distinction
+/// without changing the public `self_heal: bool` surface.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum HealPolicy {
+    /// Record path (D-06): short-circuit with
+    /// [`AutomationError::PrimaryMissNoHeal`]; do NOT consult the targets
+    /// sidecar. `.story.targets.json` is left byte-identical.
+    RaiseOnMiss,
+    /// Simulator read-only mode: probe fallbacks so the author sees
+    /// `match_kind=Fuzzy`, but do NOT rewrite `.story.targets.json`.
+    ProbeNoPersist,
+    /// Simulator default / legacy: probe fallbacks and atomically promote the
+    /// winner in `.story.targets.json`.
+    ProbeAndPersist,
+}
+
 pub struct Executor;
 
 impl Executor {
@@ -55,6 +74,22 @@ impl Executor {
             control,
             /* self_heal */ true,
         )
+    }
+
+    fn run_with_story_path_policy(self_heal: bool) -> HealPolicy {
+        if self_heal {
+            HealPolicy::ProbeAndPersist
+        } else {
+            HealPolicy::RaiseOnMiss
+        }
+    }
+
+    fn run_simulator_policy(self_heal: bool) -> HealPolicy {
+        if self_heal {
+            HealPolicy::ProbeAndPersist
+        } else {
+            HealPolicy::ProbeNoPersist
+        }
     }
 
     /// Variant of [`Executor::run`] that threads a `.story` source path for
@@ -84,6 +119,7 @@ impl Executor {
         self_heal: bool,
     ) -> mpsc::Receiver<ExecutorEvent> {
         let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
+        let heal_policy = Self::run_with_story_path_policy(self_heal);
         tokio::spawn(async move {
             let _ = run_story(
                 story,
@@ -97,7 +133,7 @@ impl Executor {
                 None,
                 false,
                 None,
-                self_heal,
+                heal_policy,
                 0,
                 false,
                 tx,
@@ -127,6 +163,7 @@ impl Executor {
         self_heal: bool,
     ) -> mpsc::Receiver<ExecutorEvent> {
         let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
+        let heal_policy = Self::run_simulator_policy(self_heal);
         tokio::spawn(async move {
             let _ = run_story(
                 story,
@@ -140,7 +177,7 @@ impl Executor {
                 stop_after_ordinal,
                 capture_frames,
                 frame_dir,
-                self_heal,
+                heal_policy,
                 0,
                 false,
                 tx,
@@ -176,7 +213,7 @@ async fn run_story(
     stop_after_ordinal: Option<u32>,
     capture_frames: bool,
     frame_dir: Option<PathBuf>,
-    self_heal: bool,
+    heal_policy: HealPolicy,
     start_after_ordinal: u32,
     already_launched: bool,
     tx: mpsc::Sender<ExecutorEvent>,
@@ -274,7 +311,7 @@ async fn run_story(
                 step_id,
                 control.as_deref(),
                 story_path.as_deref(),
-                self_heal,
+                heal_policy,
             )
             .await;
 
@@ -402,7 +439,7 @@ async fn run_command(
     step_id: Option<uuid::Uuid>,
     control: Option<&RunControl>,
     story_path: Option<&std::path::Path>,
-    self_heal: bool,
+    heal_policy: HealPolicy,
 ) -> std::result::Result<Option<(ResolvedSelector, MatchKind)>, (AutomationError, Vec<AttemptLog>)>
 {
     let mut attempts: Vec<AttemptLog> = Vec::new();
@@ -458,41 +495,49 @@ async fn run_command(
             {
                 Ok(()) => current,
                 Err(primary_err) => {
-                    // Phase 11-02 (D-06): when self_heal=false the record
-                    // path MUST NOT consult the targets sidecar. Raise the
-                    // typed PrimaryMissNoHeal variant immediately so the
-                    // HUD can surface the UI-SPEC-locked copy + the
-                    // "Open in Simulator" action. `.story.targets.json`
-                    // is left byte-identical.
-                    if !self_heal {
-                        return Err((
-                            AutomationError::PrimaryMissNoHeal {
-                                step_ordinal: ordinal,
-                                step_id: cmd_step_id,
-                                verb: format_verb_excerpt(cmd),
-                            },
-                            attempts,
-                        ));
-                    }
-                    // self_heal=true: legacy behavior — probe fallbacks
-                    // from the sidecar and promote the first that passes
-                    // wait_actionable, rewriting the sidecar atomically.
-                    match try_promote_fallback(
-                        driver,
-                        cmd_step_id,
-                        story_path,
-                        $action,
-                        self_heal,
-                    )
-                    .await
-                    {
-                        Ok(Some(promoted)) => {
-                            last_resolved = Some((promoted.clone(), MatchKind::Fuzzy));
-                            current = promoted;
-                            current
+                    // Phase 11-02 (D-06) + Phase 10 read-only simulator
+                    // semantics are split via `HealPolicy`:
+                    //
+                    // - `RaiseOnMiss` (record path): short-circuit with
+                    //   `PrimaryMissNoHeal`; never consult the sidecar.
+                    // - `ProbeNoPersist` (simulator read-only): probe
+                    //   fallbacks so the author sees `match_kind=Fuzzy`,
+                    //   but leave `.story.targets.json` byte-identical.
+                    // - `ProbeAndPersist` (simulator/legacy): probe and
+                    //   atomically rewrite the sidecar on promotion.
+                    match heal_policy {
+                        HealPolicy::RaiseOnMiss => {
+                            return Err((
+                                AutomationError::PrimaryMissNoHeal {
+                                    step_ordinal: ordinal,
+                                    step_id: cmd_step_id,
+                                    verb: format_verb_excerpt(cmd),
+                                },
+                                attempts,
+                            ));
                         }
-                        Ok(None) => return Err((primary_err, attempts)),
-                        Err(e) => return Err((e, attempts)),
+                        HealPolicy::ProbeNoPersist | HealPolicy::ProbeAndPersist => {
+                            let persist =
+                                matches!(heal_policy, HealPolicy::ProbeAndPersist);
+                            match try_promote_fallback(
+                                driver,
+                                cmd_step_id,
+                                story_path,
+                                $action,
+                                persist,
+                            )
+                            .await
+                            {
+                                Ok(Some(promoted)) => {
+                                    last_resolved =
+                                        Some((promoted.clone(), MatchKind::Fuzzy));
+                                    current = promoted;
+                                    current
+                                }
+                                Ok(None) => return Err((primary_err, attempts)),
+                                Err(e) => return Err((e, attempts)),
+                            }
+                        }
                     }
                 }
             }
@@ -583,6 +628,9 @@ pub async fn continue_run(
     self_heal: bool,
     tx: mpsc::Sender<ExecutorEvent>,
 ) -> Result<()> {
+    // `continue_run` resumes a simulator session — map `self_heal` with the
+    // same policy as `run_simulator` (read-only Fuzzy probing when false).
+    let heal_policy = Executor::run_simulator_policy(self_heal);
     run_story(
         story,
         story_path,
@@ -595,7 +643,7 @@ pub async fn continue_run(
         stop_after_ordinal,
         capture_frames,
         frame_dir,
-        self_heal,
+        heal_policy,
         start_after_ordinal,
         true,
         tx,
