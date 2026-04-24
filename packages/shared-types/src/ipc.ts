@@ -287,9 +287,27 @@ async pickerIsActive() : Promise<Result<boolean, AppError>> {
  * so the TS caller passes a real discriminated union, not a stringified
  * envelope.
  */
-async pickerStampStepId(storyPath: string, lineOffset: number, primary: TargetRecordDto, fallbacks: TargetRecordDto[]) : Promise<Result<string, AppError>> {
+async pickerStampStepId(storyPath: string, lineOffset: number, primary: TargetRecordDto, fallbacks: TargetRecordDto[]) : Promise<Result<PickerStampResultDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("picker_stamp_step_id", { storyPath, lineOffset, primary, fallbacks }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Tauri command entry point for Preview-panel Pick. See
+ * `picker_start_author_impl` for the orchestration. Accepts `story_src`
+ * directly from the renderer (D-10 / 11-04 Task 1 handles dirty-buffer
+ * toast before invoking this command).
+ * 
+ * `stream_id` MUST match an entry in `AppState.author_preview_sessions`
+ * (started via `start_author_preview`); unknown streamId surfaces as
+ * `AppError::InvalidArgument`.
+ */
+async pickerStartAuthor(streamId: string, storySrc: string, cursorLine: number, timeoutMs: bigint | null) : Promise<Result<PickElementResponseDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("picker_start_author", { streamId, storySrc, cursorLine, timeoutMs }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1443,6 +1461,21 @@ export type PickElementResponseDto = {
  * JSON-stringified `automation::PickElementResponse`.
  */
 json: string }
+/**
+ * Return shape of `picker_stamp_step_id`. Splits the stamped UUID from
+ * the stamping outcome so the renderer can dispatch UI-SPEC-locked
+ * first-pick vs re-pick toasts without re-parsing the .story source.
+ */
+export type PickerStampResultDto = { 
+/**
+ * UUIDv7 as a hyphenated string (matches existing on-the-wire shape).
+ */
+step_id: string; 
+/**
+ * true iff the None-arm fired — fresh UUID minted AND source rewritten.
+ * false iff the line already carried `# @id=<uuid>`.
+ */
+was_freshly_stamped: boolean }
 export type PixelFormatDto = "bgra" | "nv-12"
 export type PresetScopeDto = "project" | "global"
 /**

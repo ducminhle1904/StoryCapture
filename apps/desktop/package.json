@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:dev": "pnpm --filter playwright-sidecar build && tauri dev",
+    "tauri:build": "pnpm --filter playwright-sidecar build && tauri build",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

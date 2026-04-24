@@ -14,8 +14,8 @@
 // inject), `@yao-pkg/pkg` is the documented fallback — see README.md.
 
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, copyFileSync, mkdirSync, rmSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { existsSync, copyFileSync, mkdirSync, rmSync, readFileSync, writeFileSync, cpSync, statSync, readdirSync } from 'node:fs';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { platform } from 'node:os';
 
@@ -26,12 +26,52 @@ function arg(name) {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+function flag(name) {
+  return process.argv.includes(name);
+}
+
 const target = arg('--target') || defaultTarget();
 const isWindows = target.includes('windows');
 const ext = isWindows ? '.exe' : '';
 const outDir = resolve(__dirname, '..', '..', 'apps', 'desktop', 'src-tauri', 'binaries');
 const outName = `playwright-sidecar-${target}${ext}`;
 const outPath = resolve(outDir, outName);
+
+// Staleness check — skip the ~1-3 min build when the binary is newer
+// than every input. Run with --force to override (e.g. when Node or
+// playwright-core version bumped without touching sources).
+if (!flag('--force') && existsSync(outPath)) {
+  const outMtime = statSync(outPath).mtimeMs;
+  const inputs = [
+    resolve(__dirname, 'server.mjs'),
+    resolve(__dirname, 'build-sea.mjs'),
+    resolve(__dirname, 'package.json'),
+    resolve(__dirname, 'pnpm-lock.yaml'),
+    ...walkTs(resolve(__dirname, 'picker')),
+  ].filter(existsSync);
+  const newestInputMtime = inputs.reduce(
+    (m, p) => Math.max(m, statSync(p).mtimeMs),
+    0,
+  );
+  if (outMtime >= newestInputMtime) {
+    console.log(`[playwright-sidecar] SEA up to date — skip rebuild (use --force to override)`);
+    console.log(`[playwright-sidecar] Output: ${outPath}`);
+    process.exit(0);
+  }
+  console.log(`[playwright-sidecar] Source newer than binary — rebuilding`);
+}
+
+function walkTs(dir) {
+  if (!existsSync(dir)) return [];
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    const st = statSync(p);
+    if (st.isDirectory()) out.push(...walkTs(p));
+    else if (/\.(ts|mjs|js)$/.test(name)) out.push(p);
+  }
+  return out;
+}
 
 console.log(`[playwright-sidecar] Building SEA for target=${target}`);
 console.log(`[playwright-sidecar] Output: ${outPath}`);
