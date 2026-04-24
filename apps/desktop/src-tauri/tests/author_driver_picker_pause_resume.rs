@@ -1,7 +1,9 @@
-// Phase 11-03 D-12 coverage — pause/resume invariant on every exit path
-// of `picker_start_author_impl`. The mock `AuthorPreviewControl` records
-// pause/resume counters + allows simulating user-cancel, unsupported-url,
-// timeout, driver error, and panic exit paths.
+// Phase 11-03 D-12 coverage (revised) — after input forwarding shipped
+// (commits 8cc0efb+), the CDP screencast MUST stay active during picking
+// so the Preview-panel canvas can show live frame updates + picker overlay
+// highlights. These tests now assert pause/resume are NOT called on any
+// exit path; the FSM restore invariant is preserved (state returns to
+// LivePreview on every exit).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -120,45 +122,46 @@ async fn run_once(
     (registry, res)
 }
 
-// PR-1: happy path — pause/resume each fire exactly once; final state is
-// LivePreview; picker returns Ok.
+// PR-1: happy path — pause/resume NOT called (screencast stays active for
+// canvas input forwarding); final state is LivePreview; picker returns Ok.
 #[tokio::test]
-async fn pr1_happy_path_pause_resume_once_each() {
+async fn pr1_happy_path_no_pause_resume() {
     let mock = Arc::new(MockControl::new(Ok(picked_response())));
     let (registry, res) = run_once(mock.clone()).await;
     res.expect("happy path ok");
-    assert_eq!(mock.paused.load(Ordering::SeqCst), 1);
-    assert_eq!(mock.resumed.load(Ordering::SeqCst), 1);
+    assert_eq!(mock.paused.load(Ordering::SeqCst), 0, "pause must NOT fire — CDP screencast stays active during picking");
+    assert_eq!(mock.resumed.load(Ordering::SeqCst), 0, "resume must NOT fire — nothing was paused");
     let g = registry.state.lock().await;
     assert!(matches!(&*g, AuthorDriverState::LivePreview { .. }));
 }
 
-// PR-2: user-cancel exit path — resume still fires, state restores.
+// PR-2: user-cancel exit path — pause/resume still not called, state restores.
 #[tokio::test]
-async fn pr2_user_cancel_resumes() {
+async fn pr2_user_cancel_no_pause_resume() {
     let mock = Arc::new(MockControl::new(Ok(cancelled("user-cancel"))));
     let (registry, res) = run_once(mock.clone()).await;
     res.expect("cancel is still Ok at the Rust layer — payload carries cancelled flag");
-    assert_eq!(mock.resumed.load(Ordering::SeqCst), 1, "resume must fire on user-cancel");
+    assert_eq!(mock.paused.load(Ordering::SeqCst), 0);
+    assert_eq!(mock.resumed.load(Ordering::SeqCst), 0);
     let g = registry.state.lock().await;
     assert!(matches!(&*g, AuthorDriverState::LivePreview { .. }));
 }
 
-// PR-3: unsupported-url exit path — resume still fires.
+// PR-3: unsupported-url exit path — no pause/resume.
 #[tokio::test]
-async fn pr3_unsupported_url_resumes() {
+async fn pr3_unsupported_url_no_pause_resume() {
     let mock = Arc::new(MockControl::new(Ok(cancelled("unsupported-url"))));
     let (registry, res) = run_once(mock.clone()).await;
     res.expect("unsupported-url surfaces as cancelled payload, not Err");
-    assert_eq!(mock.resumed.load(Ordering::SeqCst), 1);
+    assert_eq!(mock.paused.load(Ordering::SeqCst), 0);
+    assert_eq!(mock.resumed.load(Ordering::SeqCst), 0);
     let g = registry.state.lock().await;
     assert!(matches!(&*g, AuthorDriverState::LivePreview { .. }));
 }
 
-// PR-4: driver error (pick itself returns Err) — resume still fires via
-// the explicit "always resume" branch in picker_start_author_impl.
+// PR-4: driver error (pick itself returns Err) — error propagates, no pause/resume.
 #[tokio::test]
-async fn pr4_driver_error_resumes() {
+async fn pr4_driver_error_no_pause_resume() {
     let mock = Arc::new(MockControl::new(Err(AppError::Automation(
         "sidecar exploded".into(),
     ))));
@@ -167,12 +170,9 @@ async fn pr4_driver_error_resumes() {
         matches!(res, Err(AppError::Automation(ref m)) if m.contains("sidecar exploded")),
         "driver error must propagate; got {res:?}"
     );
-    assert_eq!(
-        mock.resumed.load(Ordering::SeqCst),
-        1,
-        "resume must fire even when the pick errors"
-    );
-    // end_pick ran — state should be LivePreview (success-style restore).
+    assert_eq!(mock.paused.load(Ordering::SeqCst), 0);
+    assert_eq!(mock.resumed.load(Ordering::SeqCst), 0);
+    // Guard Drop restores the prior LivePreview state on error exit.
     let g = registry.state.lock().await;
     assert!(matches!(&*g, AuthorDriverState::LivePreview { .. }));
 }
@@ -231,16 +231,15 @@ async fn pr5_panic_in_pick_fsm_reverts_via_guard_drop() {
     );
 }
 
-// PR-6: pause fires BEFORE pick (the Task 2 orchestration explicitly
-// documents pause as step 4, pick as step 5). This regression guards
-// against accidental reordering that would leave the picker overlay
-// fighting the screencast CDP for CPU.
+// PR-6: pause_author_preview is NEVER called during picker orchestration.
+// The CDP screencast must stay active so the Preview-panel canvas can
+// render live frames + picker overlay highlights as the user moves the
+// pointer. Regression guard: if someone re-inserts a pause call, this
+// test fails.
 #[tokio::test]
-async fn pr6_pause_precedes_pick() {
-    // Capture ordering by using a dedicated counter that pick_outcome
-    // inspects. Build a shim control that records ordering inline.
+async fn pr6_pause_is_never_called() {
     struct OrderCtrl {
-        paused_before_pick: std::sync::atomic::AtomicBool,
+        pause_called_during_pick: std::sync::atomic::AtomicBool,
         pause_count: AtomicUsize,
     }
     #[async_trait]
@@ -260,15 +259,14 @@ async fn pr6_pause_precedes_pick() {
             _s: &str,
             _t: u64,
         ) -> Result<PickElementResponse, AppError> {
-            // If pause hasn't fired yet, we've regressed.
             if self.pause_count.load(Ordering::SeqCst) >= 1 {
-                self.paused_before_pick.store(true, Ordering::SeqCst);
+                self.pause_called_during_pick.store(true, Ordering::SeqCst);
             }
             Ok(picked_response())
         }
     }
     let ctrl = Arc::new(OrderCtrl {
-        paused_before_pick: std::sync::atomic::AtomicBool::new(false),
+        pause_called_during_pick: std::sync::atomic::AtomicBool::new(false),
         pause_count: AtomicUsize::new(0),
     });
     let registry = AuthorDriverRegistry::new();
@@ -288,8 +286,13 @@ async fn pr6_pause_precedes_pick() {
     )
     .await
     .expect("happy path");
+    assert_eq!(
+        ctrl.pause_count.load(Ordering::SeqCst),
+        0,
+        "pause_author_preview must NOT be called — canvas needs live frames during picking"
+    );
     assert!(
-        ctrl.paused_before_pick.load(Ordering::SeqCst),
-        "pause_author_preview MUST fire before pick_element_start_author"
+        !ctrl.pause_called_during_pick.load(Ordering::SeqCst),
+        "pause must not fire before pick"
     );
 }

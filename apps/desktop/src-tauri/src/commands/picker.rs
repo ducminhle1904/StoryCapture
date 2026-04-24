@@ -474,26 +474,18 @@ pub async fn picker_start_author_impl(
     // are logged and skipped inside replay_navigate_verbs.
     replay_navigate_verbs(control.as_ref(), &stream_id, &story_src, cursor_line).await?;
 
-    // Step 4 — pause screencast (PHASE-9.9 / D-12 entry).
-    control.pause_author_preview(&stream_id).await?;
+    // Steps 4/6 (PHASE-9.9 pause/resume) are intentionally skipped — the
+    // Preview-panel canvas IS the user's input surface (via
+    // author_dispatch_input), so the CDP screencast MUST stay active during
+    // picking. Otherwise the canvas freezes and the user can't see the
+    // picker overlay highlights or which element they're hovering.
 
-    // Step 5 — run the picker. Capture the result without ?-propagating so
-    // we can guarantee resume() fires on error too (D-12 exit invariant).
+    // Step 5 — run the picker. Canvas pointer events forward through
+    // author_dispatch_input; the overlay (document-level click listener)
+    // emits the DSL payload back via __sc_picker_emit.
     let pick_result = control
         .pick_element_start_author(&stream_id, timeout_ms)
         .await;
-
-    // Step 6 — resume screencast, regardless of pick outcome. Resume errors
-    // are surfaced as warnings (the sidecar pause/resume primitives are
-    // idempotent; any inconsistency recovers on the next Live Preview tick).
-    if let Err(e) = control.resume_author_preview(&stream_id).await {
-        tracing::warn!(
-            target: "storycapture::picker",
-            error = %e,
-            stream_id = %stream_id,
-            "resume_author_preview failed on exit",
-        );
-    }
 
     // Step 7 — FSM transition back under the lock. end_pick() restores
     // LivePreview{stream_id} (or SimulatorPaused if resume_to was Some).
