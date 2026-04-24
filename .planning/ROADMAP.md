@@ -315,7 +315,7 @@ Plans:
 - [x] 11-01-PLAN.md — AuthorDriverRegistry 5-state FSM + PickerResumeGuard (RAII) + Pitfall 5 regression guard for picker_stamp_step_id (D-04 / D-13..D-16)
 - [x] 11-02-PLAN.md — Record path self_heal=false + AutomationError::PrimaryMissNoHeal + HUD Open-in-Simulator action (D-06 / D-07)
 - [x] 11-03-PLAN.md — Sidecar pickElement.start streamId routing + author.navigateTo warm-up + picker_start_author Tauri command with navigate-replay + pause/resume brackets (D-08 / D-10 / D-12)
-- [ ] 11-04-PLAN.md — PreviewPickerButton + authorDriverStore + Cmd-Shift-P keymap + delete recorder-side picker + 11-SMOKE.md (D-01 / D-02 / D-05 / D-09)
+- [x] 11-04-PLAN.md — PreviewPickerButton + authorDriverStore + Cmd-Shift-P keymap + delete recorder-side picker + 11-SMOKE.md (D-01 / D-02 / D-05 / D-09)
 
 ### Phase 12: Fix video output resolution lock — letterbox filter chain
 
