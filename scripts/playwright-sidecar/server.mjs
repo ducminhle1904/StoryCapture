@@ -791,6 +791,21 @@ const handlers = {
         theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'no-preference',
       acceptDownloads: true,
     });
+    // Phase 11-03 — inject the picker overlay IIFE into every author-session
+    // page so Preview-panel Pick (picker_start_author → pickElement.start
+    // with streamId) has `window.__sc_picker` available exactly like the
+    // recorder-path context does (see state.context branch above).
+    // Keep failure non-fatal: other author verbs (goto/navigate/screencast)
+    // must still work even if the overlay bundle is missing at runtime.
+    if (OVERLAY_IIFE && OVERLAY_IIFE.length > 0) {
+      try {
+        await context.addInitScript({ content: OVERLAY_IIFE });
+      } catch (e) {
+        process.stderr.write(
+          `[playwright-sidecar] warn: author.launch addInitScript(overlay) failed: ${e.message}\n`,
+        );
+      }
+    }
     const page = await context.newPage();
     if (typeof url === 'string' && url.length > 0) {
       try {
@@ -848,6 +863,46 @@ const handlers = {
     }
     await s.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
     return { ok: true, url };
+  },
+
+  // Phase 11-03 — author.navigateTo: warm an author-session page for the
+  // element picker. Unlike author.goto (which uses domcontentloaded),
+  // this RPC additionally waits for `networkidle` with a bounded 10s
+  // timeout (Pitfall 4 sequencing) so the picker overlay has a quiescent
+  // DOM to attach against. Timeout is swallowed — a slow site still
+  // proceeds to the pick rather than hanging forever.
+  //
+  // Rejects unknown streamId with -32000 (same contract as author.goto
+  // via getAuthorSession); rejects non-http(s) URLs with -32602.
+  'author.navigateTo': async ({ streamId, url } = {}) => {
+    if (typeof streamId !== 'string' || !streamId) {
+      throw Object.assign(new Error('streamId required'), { code: -32000 });
+    }
+    if (typeof url !== 'string' || !url) {
+      throw Object.assign(new Error('url required'), { code: -32000 });
+    }
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        throw new Error('non-http(s) url');
+      }
+    } catch {
+      throw Object.assign(new Error('invalid url'), { code: -32602 });
+    }
+    const s = state.authorSessions.get(streamId);
+    if (!s || !s.page) {
+      throw Object.assign(
+        new Error(`unknown streamId: ${streamId}`),
+        { code: -32000 },
+      );
+    }
+    await s.page.goto(url, { waitUntil: 'load' });
+    // Pitfall 4 sequencing — proceed even if networkidle doesn't fire;
+    // the picker needs a bounded warm-up, not an infinite wait.
+    await s.page
+      .waitForLoadState('networkidle', { timeout: 10_000 })
+      .catch(() => {});
+    return { ok: true, url: s.page.url() };
   },
 
   startPreviewStream: async ({ streamId } = {}) => {
@@ -987,13 +1042,33 @@ const handlers = {
   //   navigation:   { cancelled: true, reason: "navigation" }
   //   timeout:      { cancelled: true, reason: "timeout" }
   //   bad URL:      { cancelled: true, reason: "unsupported-url" }
-  'pickElement.start': async ({ timeoutMs = 60000 } = {}) => {
-    if (!state.page) {
-      const err = new Error('browser not launched');
-      err.code = -32000;
-      throw err;
+  'pickElement.start': async ({ timeoutMs = 60000, streamId } = {}) => {
+    // Phase 11-03 (D-16, Pitfall 3): when streamId is supplied, route the
+    // picker to the author-session page registered in `state.authorSessions`
+    // (Phase 9-04 map). Unknown streamId throws (-32000) — NEVER falls
+    // through to `state.page`, which would mix the recording-browser surface
+    // with the author-session surface. When streamId is omitted, preserve
+    // the legacy recorder-path behavior untouched.
+    let page;
+    if (typeof streamId === 'string' && streamId.length > 0) {
+      const s = state.authorSessions.get(streamId);
+      if (!s || !s.page) {
+        const err = new Error(
+          `no author page for streamId=${streamId} — call start_author_preview first`,
+        );
+        err.code = -32000;
+        throw err;
+      }
+      page = s.page;
+    } else {
+      if (!state.page) {
+        const err = new Error('browser not launched');
+        err.code = -32000;
+        throw err;
+      }
+      page = state.page;
     }
-    const url = state.page.url() || '';
+    const url = page.url() || '';
     if (/^(chrome|about|view-source):/i.test(url)) {
       return { cancelled: true, reason: 'unsupported-url' };
     }
@@ -1002,8 +1077,6 @@ const handlers = {
       err.code = -32000;
       throw err;
     }
-
-    const page = state.page;
     return await new Promise((resolveOuter, rejectOuter) => {
       let timer = null;
       let framenavListener = null;
@@ -1117,13 +1190,28 @@ const handlers = {
   // exist so vitest can synthesize click + Escape events deterministically
   // (real mouse coordination in headless CI is flaky). Guarded by the
   // `__test_` prefix convention already used by __test_set_remote_browser.
-  __test_simulate_pick: async ({ selector }) => {
-    if (!state.page) {
-      const err = new Error('browser not launched');
-      err.code = -32000;
-      throw err;
+  __test_simulate_pick: async ({ selector, streamId } = {}) => {
+    // Phase 11-03 — resolve the page by streamId when supplied so tests
+    // can target an author-session page; omitted streamId preserves the
+    // pre-11-03 recorder-path behavior (state.page).
+    let page;
+    if (typeof streamId === 'string' && streamId.length > 0) {
+      const s = state.authorSessions.get(streamId);
+      if (!s || !s.page) {
+        const err = new Error(`no author page for streamId=${streamId}`);
+        err.code = -32000;
+        throw err;
+      }
+      page = s.page;
+    } else {
+      if (!state.page) {
+        const err = new Error('browser not launched');
+        err.code = -32000;
+        throw err;
+      }
+      page = state.page;
     }
-    await state.page.evaluate((sel) => {
+    await page.evaluate((sel) => {
       const el = document.querySelector(sel);
       if (!el) throw new Error('no element for selector ' + sel);
       el.dispatchEvent(

@@ -7,9 +7,13 @@
 // alive, so the "no driver" branch is reachable only via races at
 // session-end.
 
+use crate::author_driver::{AuthorDriverRegistry, PickerResumeGuard, StreamId};
 use crate::error::AppError;
 use crate::state::AppState;
+use async_trait::async_trait;
+use automation::PickElementResponse;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::task::JoinHandle;
 
@@ -300,6 +304,258 @@ pub fn stamp_step_id_impl(
         step_id: stamped_id.to_string(),
         was_freshly_stamped,
     })
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 11-03 — author-session picker (D-12/D-14/D-16)
+//
+// `picker_start_author` orchestrates Preview-panel Pick end-to-end against
+// the author-session registered under `stream_id`:
+//   (1) acquire AuthorDriverRegistry, transition to Picking{stream_id,resume_to}
+//   (2) arm PickerResumeGuard (RAII restore on panic/early-return/drop)
+//   (3) replay Navigate verbs from .story up to cursor_line (best-effort)
+//   (4) pause_author_preview(stream_id)  (PHASE-9.9)
+//   (5) pick_element_start_author(stream_id)
+//   (6) resume_author_preview(stream_id)
+//   (7) end_pick() → LivePreview{stream_id} (or restore SimulatorPaused)
+//   (8) disarm guard
+//
+// D-12 invariant: pause/resume are paired on every exit path (success,
+// user-cancel, unsupported-url, timeout, driver error, panic). The guard's
+// Drop handler covers panic/early-return; the happy path calls resume
+// explicitly so the registry transition is synchronous.
+//
+// D-10: navigate-replay reads from disk (caller passes `story_src`). The
+// CM6 editor buffer is NOT plumbed host-side; dirty-buffer handling lives
+// in the renderer (11-04 Task 1 toast). Caller MUST have read the .story
+// file from disk before invoking this command.
+// ──────────────────────────────────────────────────────────────────────
+
+/// Indirection trait for side-effects under `picker_start_author`. Production
+/// wires `SidecarAuthorPreviewControl` which delegates to the real Playwright
+/// sidecar; tests substitute a counter-tracking stub to exercise the D-12
+/// pause/resume invariant on every exit path without a live Chromium.
+#[async_trait]
+pub trait AuthorPreviewControl: Send + Sync {
+    async fn author_navigate_to(&self, stream_id: &str, url: &str) -> Result<(), AppError>;
+    async fn pause_author_preview(&self, stream_id: &str) -> Result<(), AppError>;
+    async fn resume_author_preview(&self, stream_id: &str) -> Result<(), AppError>;
+    async fn pick_element_start_author(
+        &self,
+        stream_id: &str,
+        timeout_ms: u64,
+    ) -> Result<PickElementResponse, AppError>;
+}
+
+/// Production adapter — holds an Arc'd per-session driver and invokes the
+/// PlaywrightSidecarDriver methods directly. One instance per picker run.
+pub struct SidecarAuthorPreviewControl {
+    pub driver: Arc<tokio::sync::Mutex<automation::PlaywrightSidecarDriver>>,
+}
+
+#[async_trait]
+impl AuthorPreviewControl for SidecarAuthorPreviewControl {
+    async fn author_navigate_to(&self, stream_id: &str, url: &str) -> Result<(), AppError> {
+        let d = self.driver.lock().await;
+        d.author_navigate_to(stream_id, url)
+            .await
+            .map_err(|e| AppError::Automation(e.to_string()))
+    }
+    async fn pause_author_preview(&self, stream_id: &str) -> Result<(), AppError> {
+        let d = self.driver.lock().await;
+        d.call_pause_stream(stream_id)
+            .await
+            .map_err(|e| AppError::Automation(e.to_string()))
+    }
+    async fn resume_author_preview(&self, stream_id: &str) -> Result<(), AppError> {
+        let d = self.driver.lock().await;
+        d.call_resume_stream(stream_id)
+            .await
+            .map_err(|e| AppError::Automation(e.to_string()))
+    }
+    async fn pick_element_start_author(
+        &self,
+        stream_id: &str,
+        timeout_ms: u64,
+    ) -> Result<PickElementResponse, AppError> {
+        let d = self.driver.lock().await;
+        d.pick_element_start_author(stream_id, timeout_ms)
+            .await
+            .map_err(|e| AppError::Automation(e.to_string()))
+    }
+}
+
+/// D-10 — walk `story.scenes[*].commands[*]` in document order, collect
+/// every `Navigate` URL whose line is `<= cursor_line`. If no navigates
+/// appear above the cursor, fall back to `story.meta.app` (single-URL list).
+/// Result is the navigate-replay sequence for author-browser warm-up.
+///
+/// This helper is pure (no I/O) so it can be unit-tested against fixture
+/// .story sources without any sidecar or Tauri plumbing.
+pub fn compute_navigate_urls(story_src: &str, cursor_line: u32) -> Result<Vec<String>, AppError> {
+    let parsed = story_parser::parse(story_src);
+    let story = parsed
+        .ast
+        .ok_or_else(|| AppError::Automation("story parse failed".into()))?;
+    let mut nav_urls: Vec<String> = Vec::new();
+    'walk: for scene in &story.scenes {
+        for cmd in &scene.commands {
+            if cmd.meta().line > cursor_line {
+                break 'walk;
+            }
+            if let story_parser::Command::Navigate { url, .. } = cmd {
+                nav_urls.push(url.clone());
+            }
+        }
+    }
+    if nav_urls.is_empty() {
+        if let Some(app_url) = story.meta.app.clone() {
+            nav_urls.push(app_url);
+        }
+    }
+    Ok(nav_urls)
+}
+
+/// D-10 — execute the navigate-replay sequence against `control`. Each
+/// `author_navigate_to` call is best-effort: a failure (DNS, 404, timeout)
+/// emits a warn log and the walk continues. The picker must not fail
+/// because a single upstream nav stalled (per 11-RESEARCH Pattern 2).
+pub async fn replay_navigate_verbs(
+    control: &dyn AuthorPreviewControl,
+    stream_id: &str,
+    story_src: &str,
+    cursor_line: u32,
+) -> Result<(), AppError> {
+    let urls = compute_navigate_urls(story_src, cursor_line)?;
+    for url in urls {
+        if let Err(e) = control.author_navigate_to(stream_id, &url).await {
+            tracing::warn!(
+                target: "storycapture::picker",
+                error = %e,
+                url = %url,
+                stream_id,
+                "navigate replay failed — continuing",
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Core `picker_start_author` orchestration, factored so tests can drive it
+/// with a mock `AuthorPreviewControl`. Public within the crate but not a
+/// Tauri command — the thin `#[tauri::command]` wrapper below is the only
+/// external entry point.
+pub async fn picker_start_author_impl(
+    registry: Arc<AuthorDriverRegistry>,
+    control: Arc<dyn AuthorPreviewControl>,
+    stream_id: StreamId,
+    story_src: String,
+    cursor_line: u32,
+    timeout_ms: u64,
+) -> Result<PickElementResponseDto, AppError> {
+    // Step 1 — FSM transition: validate, then swap into Picking{resume_to}.
+    // Lock is released before any awaited I/O (Pitfall 2).
+    let prior_for_guard = {
+        let mut g = registry.state.lock().await;
+        g.can_start_pick()
+            .map_err(|e| AppError::Automation(e.to_string()))?;
+        let prior_snapshot = g.clone();
+        g.begin_pick(stream_id.clone());
+        prior_snapshot
+    };
+
+    // Step 2 — arm the RAII guard. On panic / early return / error from
+    // here on, Drop restores `prior_for_guard` into the registry
+    // asynchronously (Pitfall 2 uses Handle::try_current to stay
+    // shutdown-safe). Disarmed on the happy path after explicit restore.
+    let guard = PickerResumeGuard::new(registry.clone(), stream_id.clone(), prior_for_guard);
+
+    // Step 3 — navigate-replay (D-10). Best-effort; individual failures
+    // are logged and skipped inside replay_navigate_verbs.
+    replay_navigate_verbs(control.as_ref(), &stream_id, &story_src, cursor_line).await?;
+
+    // Step 4 — pause screencast (PHASE-9.9 / D-12 entry).
+    control.pause_author_preview(&stream_id).await?;
+
+    // Step 5 — run the picker. Capture the result without ?-propagating so
+    // we can guarantee resume() fires on error too (D-12 exit invariant).
+    let pick_result = control
+        .pick_element_start_author(&stream_id, timeout_ms)
+        .await;
+
+    // Step 6 — resume screencast, regardless of pick outcome. Resume errors
+    // are surfaced as warnings (the sidecar pause/resume primitives are
+    // idempotent; any inconsistency recovers on the next Live Preview tick).
+    if let Err(e) = control.resume_author_preview(&stream_id).await {
+        tracing::warn!(
+            target: "storycapture::picker",
+            error = %e,
+            stream_id = %stream_id,
+            "resume_author_preview failed on exit",
+        );
+    }
+
+    // Step 7 — FSM transition back under the lock. end_pick() restores
+    // LivePreview{stream_id} (or SimulatorPaused if resume_to was Some).
+    {
+        let mut g = registry.state.lock().await;
+        g.end_pick();
+    }
+
+    // Step 8 — disarm guard: happy path restoration is done; Drop becomes
+    // a no-op. Must happen AFTER end_pick() so a panic between steps 6
+    // and 7 still fires the guard's restore.
+    guard.disarm();
+
+    let pick = pick_result?;
+    Ok(pick.into())
+}
+
+/// Tauri command entry point for Preview-panel Pick. See
+/// `picker_start_author_impl` for the orchestration. Accepts `story_src`
+/// directly from the renderer (D-10 / 11-04 Task 1 handles dirty-buffer
+/// toast before invoking this command).
+///
+/// `stream_id` MUST match an entry in `AppState.author_preview_sessions`
+/// (started via `start_author_preview`); unknown streamId surfaces as
+/// `AppError::InvalidArgument`.
+#[tauri::command]
+#[specta::specta]
+pub async fn picker_start_author(
+    state: State<'_, AppState>,
+    registry: State<'_, Arc<AuthorDriverRegistry>>,
+    stream_id: String,
+    story_src: String,
+    cursor_line: u32,
+    timeout_ms: Option<u64>,
+) -> Result<PickElementResponseDto, AppError> {
+    let timeout = timeout_ms.unwrap_or(60_000);
+
+    // Resolve the per-session driver from author_preview_sessions.
+    // Phase 11-03 uses the author-session's own sidecar — never
+    // AppState.playwright_driver (which is the recorder-path driver).
+    let driver_arc = {
+        let sessions = state.author_preview_sessions.lock().await;
+        sessions
+            .get(&stream_id)
+            .map(|s| s.driver.clone())
+            .ok_or_else(|| {
+                AppError::InvalidArgument(format!("unknown author stream: {stream_id}"))
+            })?
+    };
+
+    let control: Arc<dyn AuthorPreviewControl> =
+        Arc::new(SidecarAuthorPreviewControl { driver: driver_arc });
+
+    picker_start_author_impl(
+        registry.inner().clone(),
+        control,
+        stream_id,
+        story_src,
+        cursor_line,
+        timeout,
+    )
+    .await
 }
 
 /// forward id-absent JSON-RPC notifications from the
