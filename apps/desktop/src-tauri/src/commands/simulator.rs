@@ -580,7 +580,7 @@ pub async fn simulator_cancel(
     // state is not Simulator*, so double-calls are safe.
     {
         let mut g = author_registry.state.lock().await;
-        g.end_simulator(session.prior_author_driver_state.clone());
+        g.end_simulator(std::mem::take(&mut session.prior_author_driver_state));
     }
     let _ = session.channel.send(SimulatorEvent::Cancelled);
     Ok(())

@@ -164,7 +164,6 @@ export function PreviewPickerButton() {
   const [bannerError, setBannerError] = useState<string | null>(null);
 
   const isSimulatorRunning = variant === "simulator-running";
-  const isSimulatorPaused = variant === "simulator-paused";
   // Button is disabled during simulator-running and during UI-local
   // `starting…` (D-09 warm-up — no double-click racing).
   const disabled = isSimulatorRunning || isStarting;
@@ -425,13 +424,7 @@ export function PreviewPickerButton() {
                   : "hidden group-hover:inline-block group-focus-within:inline-block",
               ].join(" ")}
             >
-              {picking
-                ? "Esc"
-                : isSimulatorPaused
-                  ? "⌘⇧P"
-                  : variant === "idle"
-                    ? "⌘⇧P"
-                    : "⌘⇧P"}
+              {picking ? "Esc" : "⌘⇧P"}
             </span>
           </>
         )}

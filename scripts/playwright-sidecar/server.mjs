@@ -896,6 +896,12 @@ const handlers = {
         { code: -32000 },
       );
     }
+    // Skip the goto + networkidle wait when the page is already at the target
+    // URL — picker re-warms during rapid pick-cancel cycles would otherwise
+    // pay a 10s networkidle timeout for no navigation work.
+    if (s.page.url() === url) {
+      return { ok: true, url, alreadyAtUrl: true };
+    }
     await s.page.goto(url, { waitUntil: 'load' });
     // Pitfall 4 sequencing — proceed even if networkidle doesn't fire;
     // the picker needs a bounded warm-up, not an infinite wait.
