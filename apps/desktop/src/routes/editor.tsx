@@ -32,6 +32,14 @@ import {
   type EditorJumpTarget,
 } from "@/features/editor/story-editor";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
+import {
+  PickingBanner,
+  PreviewPickerButton,
+} from "@/features/editor/PreviewPickerButton";
+import {
+  deriveVariant,
+  useAuthorDriverStore,
+} from "@/features/editor/authorDriverStore";
 import { TimelinePanel } from "@/features/editor/timeline-panel";
 import { parseStory, type Story } from "@/ipc/parse";
 import {
@@ -182,6 +190,28 @@ export default function EditorRoute() {
   );
   const simulatorRunState = useSimulatorStore((s) => s.runState);
   const simulatorCurrentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
+  // Phase 11-04: project upstream state into the authorDriverStore so the
+  // PreviewPickerButton can derive its five visual variants without direct
+  // coupling to either upstream store. Skipped while the local projection
+  // is `picking` — the button overrides the derivation for its own pick
+  // lifetime (see PreviewPickerButton onClick).
+  const setAuthorDriverSnapshot = useAuthorDriverStore((s) => s.setSnapshot);
+  const authorDriverVariant = useAuthorDriverStore((s) => s.variant);
+  useEffect(() => {
+    if (authorDriverVariant === "picking") return;
+    setAuthorDriverSnapshot({
+      variant: deriveVariant(authorStreamId, simulatorRunState),
+      streamId: authorStreamId,
+      simulatorOrdinal:
+        simulatorRunState === "paused" ? simulatorCurrentOrd : null,
+    });
+  }, [
+    authorStreamId,
+    simulatorRunState,
+    simulatorCurrentOrd,
+    authorDriverVariant,
+    setAuthorDriverSnapshot,
+  ]);
   const simulatorFrames = useSimulatorStore((s) => s.frames);
   const simulatorActiveFrame =
     simulatorRunState !== "idle" && simulatorCurrentOrd != null
@@ -561,6 +591,11 @@ export default function EditorRoute() {
                         ? "ready"
                         : "paused"}
                   </ScBadge>
+                  {/* Phase 11-04: Preview-panel pick button sits LEFT of
+                      the viewport/quality controls (UI-SPEC §Visual
+                      Layout §1). Icon-first ghost; keymap + tooltip
+                      copy owned by the component. */}
+                  <PreviewPickerButton />
                   <span style={{ flex: 1 }} />
                   {/* Phase 09-04 D-17 — default-OFF toggle preserves cold-start. */}
                   <label
@@ -596,6 +631,13 @@ export default function EditorRoute() {
                     title="Maximize — coming soon"
                   />
                 </div>
+
+                {/* Phase 11-04: Picking banner lives inside the Preview
+                    panel (UI-SPEC §2), between the toolbar and the
+                    stage. Visibility driven by the authorDriverStore. */}
+                {authorDriverVariant === "picking" ? (
+                  <PickingBanner variant="active" />
+                ) : null}
 
                 <div className="relative min-h-0 flex-1 overflow-hidden">
                   {simulatorActiveFrame ? (
