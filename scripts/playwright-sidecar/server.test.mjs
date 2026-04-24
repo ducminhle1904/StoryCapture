@@ -584,3 +584,111 @@ describe("Phase 7 Tier 1 — locate() strict explicit strategies", () => {
     expect(r.result.ok).toBe(true);
   }, 90_000);
 });
+
+// Phase 11-03 — streamId routing on pickElement.start.
+//
+// Verifies that when an `streamId` is supplied, the picker attaches to the
+// author-session page registered in `state.authorSessions` (Phase 9-04),
+// NOT to `state.page` (the recording-browser surface). Covers three cases:
+//   (a) known streamId → picker binds to that session's page
+//   (b) unknown streamId → -32000 error, state.page never touched
+//   (c) omitted streamId → legacy recorder-path (routes to state.page)
+describe("Phase 11-03 — pickElement.start streamId routing", () => {
+  const pickerFixtureUrl = `file://${resolve(__dirname, "tests/fixtures/picker.html")}`;
+
+  let client;
+  beforeEach(() => {
+    client = spawnSidecar();
+  });
+  afterEach(async () => {
+    if (client) await client.dispose();
+  });
+
+  it("routes to the author-session page when streamId is supplied", async () => {
+    // Warm an author session. author.launch seeds state.authorSessions
+    // (the Phase 9-04 map that replaced the plan's proposed
+    // previewPagesByStreamId) keyed by streamId; the picker looks up
+    // s.page exactly once.
+    await client.call("author.launch", {
+      streamId: "s1",
+      url: pickerFixtureUrl,
+      viewport: { width: 1024, height: 768 },
+      headless: true,
+    });
+    try {
+      // No `launch` (recorder path) ever called — state.page is null.
+      // A successful pick here proves routing went through authorSessions.
+      const startPromise = client.call("pickElement.start", {
+        streamId: "s1",
+        timeoutMs: 10_000,
+      });
+      await new Promise((r) => setTimeout(r, 50));
+      await client.call("__test_simulate_pick", {
+        selector: '[data-testid="save-btn"]',
+        streamId: "s1",
+      });
+      const resp = await startPromise;
+      expect(resp.result.emitted).toBe('click testid "save-btn"');
+      expect(resp.result.locator.kind).toBe("testid");
+    } finally {
+      await client.call("author.close", { streamId: "s1" }).catch(() => {});
+    }
+  }, 90_000);
+
+  it("throws -32000 when streamId is unknown (does NOT fall through to state.page)", async () => {
+    // Launch the recorder-path browser so state.page IS present; a bug
+    // that fell through would succeed against it. We want a throw.
+    await client.call("launch", {
+      viewport: { width: 800, height: 600 },
+      theme: "auto",
+      baseUrl: null,
+      headless: true,
+      downloadDir: "/tmp",
+    });
+    try {
+      await expect(
+        client.call("pickElement.start", {
+          streamId: "missing",
+          timeoutMs: 10_000,
+        }),
+      ).rejects.toMatchObject({
+        error: expect.objectContaining({
+          code: -32000,
+          message: expect.stringMatching(/no author page for streamId=missing/),
+        }),
+      });
+      // Picker must not be active — state.page was never bound.
+      const active = await client.call("pickElement.isActive", {});
+      expect(active.result.active).toBe(false);
+    } finally {
+      await client.call("close", {}).catch(() => {});
+    }
+  }, 90_000);
+
+  it("preserves legacy recorder-path behavior when streamId is omitted", async () => {
+    // No streamId → routes to state.page (pre-Phase-11 behavior). A
+    // successful pick against the recorder-path fixture confirms the
+    // omitted-streamId branch is untouched.
+    await client.call("launch", {
+      viewport: { width: 1024, height: 768 },
+      theme: "auto",
+      baseUrl: null,
+      headless: true,
+      downloadDir: "/tmp",
+    });
+    await client.call("goto", { url: pickerFixtureUrl });
+    try {
+      const startPromise = client.call("pickElement.start", {
+        timeoutMs: 10_000,
+      });
+      await new Promise((r) => setTimeout(r, 50));
+      await client.call("__test_simulate_pick", {
+        selector: '[data-testid="save-btn"]',
+      });
+      const resp = await startPromise;
+      expect(resp.result.emitted).toBe('click testid "save-btn"');
+    } finally {
+      await client.call("close", {}).catch(() => {});
+    }
+  }, 90_000);
+});
