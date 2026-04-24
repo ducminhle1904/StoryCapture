@@ -93,11 +93,17 @@ pub struct AppState {
 ///
 /// Holds an owned Playwright sidecar driver + the pump task draining the
 /// watch channel into `preview://frame` Tauri events. `attach_author_driver`
-/// (PHASE-9.8) hands out an `Arc<TokioMutex<PlaywrightSidecarDriver>>` so
-/// Phase 10's simulator can run DSL verbs against the same session without
-/// spawning a third Chromium.
+/// (PHASE-9.8) hands out an `Arc<PlaywrightSidecarDriver>` so Phase 10's
+/// simulator can run DSL verbs against the same session without spawning a
+/// third Chromium.
+///
+/// The driver is held as `Arc<_>` (no outer Mutex): all driver methods take
+/// `&self` and use fine-grained interior mutexes (`pending`, `stdin`). An
+/// outer Mutex would serialize concurrent calls — catastrophic when a
+/// long-lived `pick_element_start_author` (up to 60 s) is in flight alongside
+/// `author_dispatch_input` at 60 Hz from the LivePreview canvas.
 pub struct AuthorPreviewSession {
-    pub driver: Arc<TokioMutex<automation::PlaywrightSidecarDriver>>,
+    pub driver: Arc<automation::PlaywrightSidecarDriver>,
     pub pump: Option<tokio::task::JoinHandle<()>>,
 }
 

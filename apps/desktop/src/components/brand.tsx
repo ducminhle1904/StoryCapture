@@ -1,4 +1,4 @@
-import brandMarkSrc from "@/assets/branding/ribbon-s-mark.png";
+import brandMarkSrc from "@/assets/branding/ribbon-s-mark-product.png";
 import { cn } from "@/lib/utils";
 
 interface BrandMarkProps {
@@ -7,15 +7,25 @@ interface BrandMarkProps {
 }
 
 export function BrandMark({ className, size = 40 }: BrandMarkProps) {
+  const innerSize = Math.max(size - 8, 16);
+
   return (
-    <img
-      src={brandMarkSrc}
-      alt=""
+    <span
       aria-hidden="true"
-      width={size}
-      height={size}
-      className={cn("shrink-0 select-none", className)}
-    />
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-[10px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-[3px] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.35)]",
+        className,
+      )}
+      style={{ height: size, width: size }}
+    >
+      <img
+        src={brandMarkSrc}
+        alt=""
+        width={innerSize}
+        height={innerSize}
+        className="select-none rounded-[6px]"
+      />
+    </span>
   );
 }
 
@@ -24,10 +34,7 @@ interface BrandWordmarkProps {
   muted?: boolean;
 }
 
-export function BrandWordmark({
-  className,
-  muted = false,
-}: BrandWordmarkProps) {
+export function BrandWordmark({ className, muted = false }: BrandWordmarkProps) {
   return (
     <span
       className={cn(

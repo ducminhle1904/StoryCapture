@@ -1,0 +1,206 @@
+/**
+ * Module-level singleton that owns the author-preview Chromium lifecycle.
+ *
+ * Moved out of React hooks so that the Chromium instance survives the
+ * editor component's unmount → remount cycle. This covers two cases:
+ *
+ *   - Navigating away from /editor and back within the grace window
+ *     (e.g. to /recorder to check a capture, then back to iterate).
+ *   - Remounting inside the same route when `projectId` changes —
+ *     the same Chromium navigates via `setAuthorPreviewUrl` instead
+ *     of paying a full cold-start.
+ *
+ * Subscribers (the editor hook) observe `streamId` updates and drive
+ * rendering. The singleton also handles pause/resume to suspend the
+ * CDP screencast when no one is looking (window blurred, simulator
+ * owns the page), without tearing Chromium down.
+ */
+
+import {
+  pauseAuthorPreview,
+  resumeAuthorPreview,
+  setAuthorPreviewUrl,
+  setAuthorPreviewViewport,
+  startAuthorPreview,
+  stopAuthorPreview,
+} from "@/ipc/preview";
+import {
+  VIEWPORT_SIZES,
+  type PreviewViewport,
+} from "@/state/editor";
+
+const STOP_GRACE_MS = 60_000;
+
+type Listener = (streamId: string | null) => void;
+
+interface State {
+  streamId: string | null;
+  appUrl: string | null;
+  viewport: PreviewViewport;
+  starting: boolean;
+  paused: boolean;
+  stopTimer: number | null;
+  listeners: Set<Listener>;
+  refcount: number;
+}
+
+const state: State = {
+  streamId: null,
+  appUrl: null,
+  viewport: "desktop",
+  starting: false,
+  paused: false,
+  stopTimer: null,
+  listeners: new Set(),
+  refcount: 0,
+};
+
+function notify() {
+  for (const l of state.listeners) l(state.streamId);
+}
+
+function cancelPendingStop() {
+  if (state.stopTimer != null) {
+    window.clearTimeout(state.stopTimer);
+    state.stopTimer = null;
+  }
+}
+
+async function launch(appUrl: string, viewport: PreviewViewport) {
+  if (state.starting || state.streamId != null) return;
+  state.starting = true;
+  try {
+    const { w, h } = VIEWPORT_SIZES[viewport];
+    const id = await startAuthorPreview({
+      initialUrl: appUrl,
+      viewportWidth: w,
+      viewportHeight: h,
+    });
+    state.streamId = id;
+    state.appUrl = appUrl;
+    state.viewport = viewport;
+    state.paused = false;
+    notify();
+  } catch (err) {
+    console.warn("start_author_preview failed:", err);
+  } finally {
+    state.starting = false;
+  }
+}
+
+async function teardown() {
+  const id = state.streamId;
+  if (id == null) return;
+  state.streamId = null;
+  state.appUrl = null;
+  state.paused = false;
+  notify();
+  try {
+    await stopAuthorPreview(id);
+  } catch (err) {
+    console.warn("stop_author_preview failed:", err);
+  }
+}
+
+/**
+ * Request a live preview for the given app URL and viewport.
+ *
+ * Each caller must pair `acquire` with exactly one `release`. The
+ * Chromium boots on the first acquire, and stays alive after the
+ * last release for a grace window (`STOP_GRACE_MS`) so route
+ * churn doesn't trigger repeated cold-starts.
+ *
+ * Returns an unsubscribe function for stream-id updates.
+ */
+export function acquirePreview(
+  appUrl: string,
+  viewport: PreviewViewport,
+  listener: Listener,
+): () => void {
+  cancelPendingStop();
+  state.refcount += 1;
+  state.listeners.add(listener);
+
+  if (state.streamId != null) {
+    listener(state.streamId);
+    if (state.appUrl !== appUrl) {
+      state.appUrl = appUrl;
+      setAuthorPreviewUrl(state.streamId, appUrl).catch((err) => {
+        console.warn("set_author_preview_url failed:", err);
+      });
+    }
+    if (state.viewport !== viewport) {
+      state.viewport = viewport;
+      const { w, h } = VIEWPORT_SIZES[viewport];
+      setAuthorPreviewViewport(state.streamId, w, h).catch((err) => {
+        console.warn("set_author_preview_viewport failed:", err);
+      });
+    }
+  } else {
+    listener(null);
+    void launch(appUrl, viewport);
+  }
+
+  return () => {
+    state.listeners.delete(listener);
+    state.refcount -= 1;
+    if (state.refcount <= 0) {
+      state.refcount = 0;
+      scheduleStop();
+    }
+  };
+}
+
+function scheduleStop() {
+  cancelPendingStop();
+  if (state.streamId == null) return;
+  state.stopTimer = window.setTimeout(() => {
+    state.stopTimer = null;
+    if (state.refcount === 0) void teardown();
+  }, STOP_GRACE_MS);
+}
+
+/**
+ * Push the current app URL to the live preview (used when the user
+ * edits `meta.app` after mount). Cheap — does a same-tab navigation
+ * instead of restarting Chromium.
+ */
+export function updateAppUrl(appUrl: string) {
+  if (state.streamId == null) return;
+  if (state.appUrl === appUrl) return;
+  state.appUrl = appUrl;
+  setAuthorPreviewUrl(state.streamId, appUrl).catch((err) => {
+    console.warn("set_author_preview_url failed:", err);
+  });
+}
+
+export function updateViewport(viewport: PreviewViewport) {
+  if (state.streamId == null) return;
+  if (state.viewport === viewport) return;
+  state.viewport = viewport;
+  const { w, h } = VIEWPORT_SIZES[viewport];
+  setAuthorPreviewViewport(state.streamId, w, h).catch((err) => {
+    console.warn("set_author_preview_viewport failed:", err);
+  });
+}
+
+/**
+ * Pause/resume the CDP screencast. Idempotent. Keeps Chromium + the
+ * CDP session alive; only the jpeg frame push stops. Use when no one
+ * is looking at the stream (window blurred, simulator owns the page).
+ */
+export function pausePreview() {
+  if (state.streamId == null || state.paused) return;
+  state.paused = true;
+  pauseAuthorPreview(state.streamId).catch((err) => {
+    console.warn("pause_author_preview failed:", err);
+  });
+}
+
+export function resumePreview() {
+  if (state.streamId == null || !state.paused) return;
+  state.paused = false;
+  resumeAuthorPreview(state.streamId).catch((err) => {
+    console.warn("resume_author_preview failed:", err);
+  });
+}

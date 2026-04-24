@@ -74,11 +74,10 @@ export function SceneListPanel({
 
       {/* Scene list */}
       {scenes.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-3">
-          <p className="text-center text-[11px] leading-relaxed text-[var(--color-fg-muted)]">
-            No scenes yet. Add <code className="font-mono text-[var(--color-fg-secondary)]">scene &quot;...&quot;</code> blocks
-            to your script.
-          </p>
+        <div className="flex h-full items-center justify-center p-3">
+          <span className="font-mono text-[11px] italic text-[var(--sc-text-4)]">
+            No scenes parsed
+          </span>
         </div>
       ) : (
         <nav className="flex-1 overflow-y-auto py-1" aria-label="Scene navigation">
@@ -92,24 +91,13 @@ export function SceneListPanel({
                   onSelectScene?.(scene.index);
                   onJumpTo?.(scene.span.start);
                 }}
-                className={`group relative flex w-full items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left transition-colors ${
+                className={`group relative flex w-full items-center gap-1.5 overflow-hidden py-1.5 text-left transition-colors ${
                   isActive
-                    ? "text-[var(--color-fg-primary)]"
-                    : "text-[var(--color-fg-secondary)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
+                    ? "border-l-2 border-[var(--sc-accent-400)] pl-[6px] pr-2 text-[var(--color-fg-primary)]"
+                    : "px-2 text-[var(--color-fg-secondary)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
                 }`}
                 title={scene.name || `Scene ${scene.index + 1}`}
               >
-                {isActive ? (
-                  <motion.span
-                    layoutId="scene-list-active-pill"
-                    className="absolute inset-x-1 inset-y-0 rounded-[var(--radius-md)] bg-[var(--color-accent-primary)]/8"
-                    transition={
-                      reduceMotion
-                        ? { duration: 0.12 }
-                        : { type: "spring", stiffness: 360, damping: 32 }
-                    }
-                  />
-                ) : null}
                 <ChevronRight
                   size={11}
                   className={`relative z-10 shrink-0 transition-transform ${

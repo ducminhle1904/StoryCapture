@@ -132,6 +132,7 @@ let state = {
   //     previewDropCount, paused
   //   }>
   authorSessions: new Map(),
+  activeAuthorStream: null,
 };
 
 const AUTHOR_IDLE_MS = 5 * 60 * 1000;
@@ -149,6 +150,21 @@ function getAuthorSession(streamId) {
     });
   }
   return s;
+}
+
+// When a simulator or author-scoped runner sets `state.activeAuthorStream`,
+// bare automation verbs (goto/click/type/etc.) target that session's page.
+// Falls back to the recording page (`state.page`) otherwise. Throws a
+// descriptive error when neither is available so step failures carry a
+// clear cause instead of a null-dereference TypeError.
+function pickPage() {
+  if (state.activeAuthorStream) {
+    const s = state.authorSessions.get(state.activeAuthorStream);
+    if (s && s.page) return s.page;
+    throw new Error(`active author stream ${state.activeAuthorStream} has no page`);
+  }
+  if (state.page) return state.page;
+  throw new Error('no page available — neither recording nor author session is active');
 }
 
 async function teardownAuthorSession(session) {
@@ -457,13 +473,14 @@ const handlers = {
       previewEveryNth: 1,
       previewDropCount: 0,
       authorSessions: new Map(),
+      activeAuthorStream: null,
     };
     return { ok: true };
   },
 
   goto: async ({ url }) => {
     const target = absolute(url);
-    await state.page.goto(target, { waitUntil: 'load' });
+    await pickPage().goto(target, { waitUntil: 'load' });
     return { ok: true };
   },
 
@@ -489,7 +506,7 @@ const handlers = {
         : direction === 'right'
         ? [px, 0]
         : [-px, 0];
-    await state.page.evaluate(([dx, dy]) => window.scrollBy(dx, dy), [x, y]);
+    await pickPage().evaluate(([dx, dy]) => window.scrollBy(dx, dy), [x, y]);
     return { ok: true };
   },
 
@@ -500,17 +517,17 @@ const handlers = {
   },
 
   drag: async ({ from, to }) => {
-    await state.page.dragAndDrop(from, to);
+    await pickPage().dragAndDrop(from, to);
     return { ok: true };
   },
 
   select: async ({ selector, value }) => {
-    await state.page.selectOption(selector, value);
+    await pickPage().selectOption(selector, value);
     return { ok: true };
   },
 
   upload: async ({ selector, path }) => {
-    await state.page.setInputFiles(selector, path);
+    await pickPage().setInputFiles(selector, path);
     return { ok: true };
   },
 
@@ -520,8 +537,9 @@ const handlers = {
   },
 
   waitFor: async ({ target, timeoutMs }) => {
+    const page = pickPage();
     if (target.kind === 'text' && target.value && target.value.startsWith('download:')) {
-      const download = await state.page.waitForEvent('download', { timeout: timeoutMs });
+      const download = await page.waitForEvent('download', { timeout: timeoutMs });
       const dest =
         state.downloadDir != null
           ? `${state.downloadDir}/${download.suggestedFilename()}`
@@ -531,7 +549,7 @@ const handlers = {
     }
     const loc = targetToLocator(target);
     if (typeof loc === 'string') {
-      await state.page.waitForSelector(loc, { timeout: timeoutMs });
+      await page.waitForSelector(loc, { timeout: timeoutMs });
     } else {
       // Locator — wait for it to attach.
       await loc.waitFor({ state: 'attached', timeout: timeoutMs });
@@ -542,14 +560,14 @@ const handlers = {
   assert: async ({ target }) => {
     const loc = targetToLocator(target);
     const count =
-      typeof loc === 'string' ? await state.page.locator(loc).count() : await loc.count();
+      typeof loc === 'string' ? await pickPage().locator(loc).count() : await loc.count();
     if (count === 0) throw new Error(`assert failed: no elements match ${JSON.stringify(target)}`);
     return { ok: true };
   },
 
   screenshot: async ({ name, outDir }) => {
     const path = `${outDir}/${name}.png`;
-    await state.page.screenshot({ path });
+    await pickPage().screenshot({ path });
     return { ok: true, path };
   },
 
@@ -936,6 +954,9 @@ const handlers = {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw Object.assign(new Error('x,y must be finite numbers'), { code: -32602 });
     }
+    // state.pickerPending is the authoritative "overlay is armed" flag;
+    // it's set/cleared by pickElement.start / cleanup.
+    const pickerArmed = !!state.pickerPending;
     switch (event.type) {
       case 'mousemove': {
         await s.page.mouse.move(x, y);
@@ -945,7 +966,19 @@ const handlers = {
         const button = event.button === 'right' || event.button === 'middle'
           ? event.button
           : 'left';
-        await s.page.mouse.click(x, y, { button });
+        // Click is rare + high-signal: always log so picker captures are
+        // diagnosable without an extra RUST_LOG flag.
+        process.stderr.write(
+          `[sc-sidecar] dispatchInput click streamId=${streamId} x=${x} y=${y} button=${button} pickerArmed=${pickerArmed}\n`,
+        );
+        try {
+          await s.page.mouse.click(x, y, { button });
+        } catch (e) {
+          process.stderr.write(
+            `[sc-sidecar] dispatchInput click FAILED: ${e && e.message ? e.message : e}\n`,
+          );
+          throw e;
+        }
         return { ok: true };
       }
       case 'wheel': {
@@ -963,6 +996,21 @@ const handlers = {
           { code: -32602 },
         );
     }
+  },
+
+  setActiveAuthorStream: async ({ streamId } = {}) => {
+    if (streamId == null) {
+      state.activeAuthorStream = null;
+      return { ok: true, streamId: null };
+    }
+    if (typeof streamId !== 'string' || streamId.length === 0) {
+      throw Object.assign(new Error('streamId must be a non-empty string or null'), { code: -32602 });
+    }
+    if (!state.authorSessions.has(streamId)) {
+      throw Object.assign(new Error(`unknown streamId: ${streamId}`), { code: -32000 });
+    }
+    state.activeAuthorStream = streamId;
+    return { ok: true, streamId };
   },
 
   startPreviewStream: async ({ streamId } = {}) => {
@@ -1175,20 +1223,29 @@ const handlers = {
       state.pickerPending = { settle, cleanup };
       page.on('framenavigated', framenavListener);
 
+      // BUG FIX (second-pick hang): Playwright's exposeBinding is one-shot
+      // per page+name pair. Previously the binding callback closed over the
+      // FIRST pick's `settled`/`settle` locals; every subsequent pick
+      // (cached via pickerBoundPages) dispatched into that dead closure,
+      // leaving the new pick's promise hanging until timeout. The binding
+      // now dispatches through state.pickerPending (set at start, cleared
+      // at cleanup) so each pick's settle function is always the current
+      // one.
       const exposePromise = state.pickerBoundPages.has(page)
         ? Promise.resolve()
         : page
-            .exposeBinding('__sc_picker_emit', async ({ page: _p }, payload) => {
-              if (settled) return;
+            .exposeBinding('__sc_picker_emit', async ({ page: boundPage }, payload) => {
+              const pending = state.pickerPending;
+              if (!pending) return; // no active pick — ignore stragglers
               if (payload && payload.__cancel) {
-                await settle({ cancelled: true, reason: 'user-cancel' });
+                await pending.settle({ cancelled: true, reason: 'user-cancel' });
                 return;
               }
               try {
-                const result = await emitDsl(page, payload);
-                await settle(result);
+                const result = await emitDsl(boundPage, payload);
+                await pending.settle(result);
               } catch (e) {
-                await settle({
+                await pending.settle({
                   cancelled: true,
                   reason: `generator-error: ${e.message || e}`,
                 });
@@ -1208,14 +1265,15 @@ const handlers = {
       // with a lightweight payload; the binding forwards it as an id-absent
       // JSON-RPC notification (`pickElement.hoverPreview`) to stdout. The
       // Rust reader loop fan-outs via the notifications broadcast channel.
+      //
+      // Dispatches via state.pickerPending (same rationale as above) so
+      // cached bindings from earlier picks don't silently drop hover
+      // payloads on subsequent picks.
       const hoverExposePromise = state.pickerHoverBoundPages.has(page)
         ? Promise.resolve()
         : page
             .exposeBinding('__sc_picker_hover', async ({ page: _p }, payload) => {
-              // Do not spam after settle — the overlay itself stops
-              // listening, but a race between stop() and a last in-flight
-              // rAF callback is possible.
-              if (settled) return;
+              if (!state.pickerPending) return;
               writeNotification('pickElement.hoverPreview', payload || {});
             })
             .then(() => {
@@ -1226,8 +1284,23 @@ const handlers = {
             });
 
       Promise.all([exposePromise, hoverExposePromise])
-        .then(() => page.evaluate(() => window.__sc_picker?.start()))
+        .then(() =>
+          page.evaluate(() => {
+            const p = window.__sc_picker;
+            if (!p) return { started: false, reason: 'no-__sc_picker' };
+            p.start();
+            return { started: true, active: p.isActive() };
+          }),
+        )
+        .then((r) => {
+          process.stderr.write(
+            `[sc-sidecar] pickElement.start overlay streamId=${streamId || '(recorder)'} url=${page.url()} result=${JSON.stringify(r)}\n`,
+          );
+        })
         .catch(async (e) => {
+          process.stderr.write(
+            `[sc-sidecar] pickElement.start overlay FAILED: ${e && e.message ? e.message : e}\n`,
+          );
           await settle({
             cancelled: true,
             reason: `start-error: ${e.message || e}`,
@@ -1330,6 +1403,7 @@ function absolute(url) {
 }
 
 async function locate(selector, strategy) {
+  const page = pickPage();
   // strict explicit strategies (D-06 encoding).
   // Routed on `strategy` FIRST so prefix collisions (e.g. "text=" shared
   // with legacy VisibleText) don't mis-dispatch.
@@ -1340,46 +1414,46 @@ async function locate(selector, strategy) {
     if (idx < 0) throw new Error(`invalid role selector encoding: ${selector}`);
     const role = body.slice(0, idx);
     const name = body.slice(idx + 1);
-    return state.page.getByRole(role, { name, exact: true });
+    return page.getByRole(role, { name, exact: true });
   }
   if (strategy === 'label') {
     // value shape: "label=<name>"
     const name = selector.slice('label='.length);
-    return state.page.getByLabel(name, { exact: true });
+    return page.getByLabel(name, { exact: true });
   }
   if (strategy === 'text_exact') {
     // value shape: "text=<name>" — SAME wire prefix as legacy VisibleText, but
     // the strategy dispatch distinguishes them: 'text_exact' → exact, no fallback.
     const name = selector.slice('text='.length);
-    return state.page.getByText(name, { exact: true });
+    return page.getByText(name, { exact: true });
   }
 
   // The Rust SmartSelector emits strategy-prefixed values; map them to
   // playwright-locator literals. Anything else is treated as raw CSS.
   if (strategy === 'css' || strategy === 'testid' || strategy === 'aria') {
-    return state.page.locator(selector);
+    return page.locator(selector);
   }
   if (selector.startsWith('aria-name=')) {
     // accessible-name covers form labels AND interactive text (links,
     // buttons, headings, etc.). getByLabel only handles form labels, so
     // chain it with role-by-name and visible-text for the common cases.
     const name = selector.slice('aria-name='.length);
-    return state.page
+    return page
       .getByRole('link', { name, exact: true })
-      .or(state.page.getByRole('button', { name, exact: true }))
-      .or(state.page.getByLabel(name))
-      .or(state.page.getByText(name, { exact: true }));
+      .or(page.getByRole('button', { name, exact: true }))
+      .or(page.getByLabel(name))
+      .or(page.getByText(name, { exact: true }));
   }
   if (selector.startsWith('text=')) {
-    return state.page.getByText(selector.slice('text='.length), { exact: true });
+    return page.getByText(selector.slice('text='.length), { exact: true });
   }
   if (selector.startsWith('label=')) {
-    return state.page.getByLabel(selector.slice('label='.length));
+    return page.getByLabel(selector.slice('label='.length));
   }
   if (selector.startsWith('text~=')) {
-    return state.page.getByText(selector.slice('text~='.length));
+    return page.getByText(selector.slice('text~='.length));
   }
-  return state.page.locator(selector);
+  return page.locator(selector);
 }
 
 // INVARIANT: targetToLocator() returns `string | Locator`.
@@ -1398,13 +1472,13 @@ function targetToLocator(target) {
   if (target.kind === 'role') {
     // value is an object: { role: <kebab>, name: <string> }
     const { role, name } = target.value;
-    return state.page.getByRole(role, { name, exact: true });
+    return pickPage().getByRole(role, { name, exact: true });
   }
   if (target.kind === 'label') {
-    return state.page.getByLabel(target.value, { exact: true });
+    return pickPage().getByLabel(target.value, { exact: true });
   }
   if (target.kind === 'text_exact') {
-    return state.page.getByText(target.value, { exact: true });
+    return pickPage().getByText(target.value, { exact: true });
   }
   return `text=${target.value}`;
 }

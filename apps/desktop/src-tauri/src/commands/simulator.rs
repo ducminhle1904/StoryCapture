@@ -20,7 +20,7 @@ use uuid::Uuid;
 use automation::{ExecutorEvent, MatchKind, RunControl, StepFrame};
 
 use crate::author_driver::{AuthorDriverRegistry, AuthorDriverState};
-use crate::commands::automation_shared::SharedPlaywrightDriver;
+use crate::commands::automation_shared::SharedAuthorDriver;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -29,9 +29,9 @@ pub type SimulatorSessionId = String;
 /// Resumable run state held between `simulator_step_to` calls.
 ///
 /// We never hand boxed drivers back out of the executor task — instead we
-/// keep the author-session's `Arc<Mutex<PlaywrightSidecarDriver>>` here
-/// and wrap it in a fresh `SharedPlaywrightDriver` for every `continue_run`
-/// invocation. Cheap (two Arc clones); launch() is never called.
+/// keep the author-session's `Arc<PlaywrightSidecarDriver>` here and wrap
+/// it in a fresh `SharedPlaywrightDriver` for every `continue_run`
+/// invocation. Cheap (one Arc clone); launch() is never called.
 pub struct ResumableSession {
     pub stream_id: String,
     pub project_folder: PathBuf,
@@ -50,7 +50,7 @@ pub struct ResumableSession {
     pub frames: Arc<Mutex<HashMap<u32, StepFrame>>>,
     pub channel: Channel<SimulatorEvent>,
     /// Shared author-session driver (Arc-cloned from AuthorPreviewSession).
-    pub driver: Arc<Mutex<automation::PlaywrightSidecarDriver>>,
+    pub driver: Arc<automation::PlaywrightSidecarDriver>,
     /// Phase 11-05: snapshot of the AuthorDriverState captured at
     /// `begin_simulator` time. Used by `simulator_cancel` to restore the
     /// registry via `end_simulator(prior)`. The forwarder's
@@ -197,7 +197,7 @@ async fn spawn_run(
     story_path: PathBuf,
     frame_dir: PathBuf,
     screenshot_dir: PathBuf,
-    driver: Arc<Mutex<automation::PlaywrightSidecarDriver>>,
+    driver: Arc<automation::PlaywrightSidecarDriver>,
     control: Arc<RunControl>,
     start_after_ordinal: u32,
     stop_after_ordinal: Option<u32>,
@@ -211,12 +211,18 @@ async fn spawn_run(
 ) -> JoinHandle<()> {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<ExecutorEvent>(256);
     let primary: Box<dyn automation::BrowserDriver> =
-        Box::new(SharedPlaywrightDriver::new(driver.clone()));
+        Box::new(SharedAuthorDriver::new(driver.clone()));
     let fallback: Box<dyn automation::BrowserDriver> = Box::new(automation::NoopDriver::new());
 
     let story_path_for_exec = Some(story_path);
     tokio::spawn(async move {
-        let _ = automation::continue_run(
+        tracing::info!(
+            target: "storycapture::simulator",
+            start_after_ordinal,
+            ?stop_after_ordinal,
+            "executor task starting"
+        );
+        match automation::continue_run(
             story,
             story_path_for_exec,
             primary,
@@ -231,7 +237,18 @@ async fn spawn_run(
             false,
             tx,
         )
-        .await;
+        .await
+        {
+            Ok(_) => tracing::info!(
+                target: "storycapture::simulator",
+                "executor task completed Ok"
+            ),
+            Err(e) => tracing::error!(
+                target: "storycapture::simulator",
+                error = ?e,
+                "executor task returned Err"
+            ),
+        }
     });
 
     tokio::spawn(async move {
@@ -243,6 +260,15 @@ async fn spawn_run(
             });
         }
         while let Some(ev) = rx.recv().await {
+            let variant_tag = match &ev {
+                ExecutorEvent::StepFrameCaptured { ordinal, .. } => format!("StepFrameCaptured ord={}", ordinal),
+                ExecutorEvent::StepSucceeded { ordinal, .. } => format!("StepSucceeded ord={}", ordinal),
+                ExecutorEvent::RunPaused { ordinal } => format!("RunPaused ord={}", ordinal),
+                ExecutorEvent::StepFailed { ordinal, error_message, .. } => format!("StepFailed ord={} err={}", ordinal, error_message),
+                ExecutorEvent::StoryEnded { status } => format!("StoryEnded succeeded={} failed={}", status.succeeded, status.failed),
+                _ => "other".to_string(),
+            };
+            tracing::info!(target: "storycapture::simulator", event = %variant_tag, "forwarder rx event");
             match ev {
                 ExecutorEvent::StepFrameCaptured { ordinal, frame } => {
                     {
@@ -296,12 +322,23 @@ async fn spawn_run(
                         let mut g = author_registry.state.lock().await;
                         g.end_simulator(prior.clone());
                     }
+                    let driver_for_cleanup = {
+                        let g = sessions.lock().await;
+                        g.get(&session_id).map(|s| s.driver.clone())
+                    };
+                    if let Some(d) = driver_for_cleanup {
+                        let _ = d.set_active_author_stream(None).await;
+                    }
                     sessions.lock().await.remove(&session_id);
                     break;
                 }
                 _ => {}
             }
         }
+        tracing::info!(
+            target: "storycapture::simulator",
+            "forwarder rx closed — loop exiting"
+        );
     })
 }
 
@@ -318,6 +355,12 @@ pub async fn simulator_start(
     stop_after_ordinal: Option<u32>,
     channel: Channel<SimulatorEvent>,
 ) -> Result<String, AppError> {
+    tracing::info!(
+        target: "storycapture::simulator",
+        stream_id = %stream_id,
+        project_folder = %project_folder,
+        "simulator_start request received"
+    );
     // Phase 11-05 (D-15): host-layer gate against active Pick. MUST run
     // BEFORE any side effect (driver probe, prune, Chromium pause).
     // Allocate the session_id here so we can pass it to begin_simulator
@@ -331,6 +374,11 @@ pub async fn simulator_start(
             .map_err(|e| AppError::Automation(e.to_string()))?;
         g.begin_simulator(session_id.clone())
     };
+    tracing::info!(
+        target: "storycapture::simulator",
+        session_id = %session_id,
+        "begin_simulator FSM transition OK"
+    );
 
     // Any Err after begin_simulator must restore the FSM before returning
     // (T-11-05-04 mitigation). The inner fn keeps the fallible body in
@@ -406,6 +454,12 @@ async fn simulator_start_inner(
                 )
             })?
     };
+    tracing::info!(target: "storycapture::simulator", "author driver resolved");
+    driver_arc
+        .set_active_author_stream(Some(&stream_id))
+        .await
+        .map_err(|e| AppError::Automation(format!("set_active_author_stream: {e}")))?;
+    tracing::info!(target: "storycapture::simulator", "active author stream set");
 
     // Readiness probe + pause the author screencast for exclusive CDP use,
     // in parallel with the blocking filesystem retention trim.
@@ -414,13 +468,17 @@ async fn simulator_start_inner(
     let prune_task = tokio::task::spawn_blocking(move || prune_runs_retain_5(&prune_path));
 
     {
-        let d = driver_arc.lock().await;
-        d.pick_element_is_active()
+        driver_arc
+            .pick_element_is_active()
             .await
             .map_err(|e| AppError::Automation(format!("attach_author_driver probe: {e}")))?;
-        d.call_pause_stream(&stream_id)
+        tracing::info!(target: "storycapture::simulator", "readiness probe OK");
+        tracing::info!(target: "storycapture::simulator", "pausing CDP screencast");
+        driver_arc
+            .call_pause_stream(&stream_id)
             .await
             .map_err(|e| AppError::Automation(e.to_string()))?;
+        tracing::info!(target: "storycapture::simulator", "CDP screencast paused");
     }
 
     prune_task
@@ -438,6 +496,12 @@ async fn simulator_start_inner(
     let frames = Arc::new(Mutex::new(HashMap::<u32, StepFrame>::new()));
     let last_ordinal = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
+    tracing::info!(
+        target: "storycapture::simulator",
+        run_id = %run_id,
+        total_steps,
+        "spawning executor + forwarder"
+    );
     let forwarder = spawn_run(
         session_id.clone(),
         (*story).clone(),
@@ -569,10 +633,10 @@ pub async fn simulator_cancel(
     {
         let sessions = state.author_preview_sessions.lock().await;
         if let Some(s) = sessions.get(&session.stream_id) {
-            let driver = s.driver.lock().await;
-            let _ = driver.call_resume_stream(&session.stream_id).await;
+            let _ = s.driver.call_resume_stream(&session.stream_id).await;
         }
     }
+    let _ = session.driver.set_active_author_stream(None).await;
     // Phase 11-05 (registry restore): restore AuthorDriverState from the
     // snapshot captured by simulator_start's begin_simulator. The
     // forwarder's StoryEnded arm may also fire end_simulator on the
@@ -642,7 +706,7 @@ pub async fn simulator_promote_fallback(
         }
     };
 
-    let driver = SharedPlaywrightDriver::new(session.driver.clone());
+    let driver = SharedAuthorDriver::new(session.driver.clone());
     automation::try_promote_fallback(&driver, step_id, Some(&session.story_path), action, true)
         .await
         .map_err(|e| AppError::Automation(format!("promote fallback: {e}")))?;

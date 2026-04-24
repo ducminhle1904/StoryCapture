@@ -163,24 +163,26 @@ export function PreviewPanel({
           {chipCounts.total > 0 ? (
             <>
               <span className="text-[var(--color-border-default)]">/</span>
-              <span aria-label="Selector validator summary" data-testid="validator-summary">
-                <span className="text-[var(--color-success,#4ade80)]">
-                  {chipCounts.green}G
-                </span>
-                {" "}
-                <span className="text-[var(--color-warning,#fbbf24)]">
-                  {chipCounts.yellow}Y
-                </span>
-                {" "}
-                <span className="text-[var(--color-danger,#f87171)]">
-                  {chipCounts.red}R
-                </span>
-                {chipCounts.grey > 0 ? (
-                  <>
-                    {" "}
-                    <span>{chipCounts.grey}·</span>
-                  </>
-                ) : null}
+              <span
+                aria-label="Selector validator summary"
+                data-testid="validator-summary"
+                className="flex items-center gap-2"
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: "var(--color-success)" }}
+                />
+                <span>{chipCounts.green}</span>
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: "var(--color-warning)" }}
+                />
+                <span>{chipCounts.yellow}</span>
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: "var(--color-danger)" }}
+                />
+                <span>{chipCounts.red}</span>
               </span>
             </>
           ) : null}
@@ -258,7 +260,9 @@ export function SimulatorFrameView({
         </div>
       )}
       {frame.matched_bbox && natural && (
-        <div
+        <motion.div
+          layoutId="sim-bbox"
+          transition={{ type: "spring", stiffness: 180, damping: 24 }}
           aria-hidden="true"
           style={{
             position: "absolute",
@@ -272,21 +276,38 @@ export function SimulatorFrameView({
         />
       )}
       {natural && (
-        <div
+        <motion.div
+          layoutId="sim-cursor"
+          transition={{ type: "spring", stiffness: 180, damping: 24 }}
           aria-hidden="true"
           style={{
             position: "absolute",
             left: `${(frame.cursor_xy[0] / natural.w) * 100}%`,
             top: `${(frame.cursor_xy[1] / natural.h) * 100}%`,
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            background: "var(--color-warning)",
-            outline: "1px solid black",
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            border:
+              "2px solid color-mix(in oklch, var(--color-warning) 70%, transparent)",
+            background: "transparent",
             transform: "translate(-50%, -50%)",
             pointerEvents: "none",
           }}
-        />
+        >
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              width: 4,
+              height: 4,
+              borderRadius: 2,
+              background: "var(--color-warning)",
+              transform: "translate(-50%, -50%)",
+            }}
+          />
+        </motion.div>
       )}
     </div>
   );

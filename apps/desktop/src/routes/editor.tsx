@@ -6,19 +6,16 @@ import {
   ChevronRight,
   File,
   FolderOpen,
-  Maximize2,
-  Play,
-  Plus,
+  Monitor,
   Scissors,
-  SkipBack,
-  SkipForward,
-  Trash2,
+  Smartphone,
+  Tablet,
   Video,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { ScBadge, ScButton, ScSegmented, ScSwitch } from "@storycapture/ui";
+import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
@@ -40,8 +37,7 @@ import {
   deriveVariant,
   useAuthorDriverStore,
 } from "@/features/editor/authorDriverStore";
-import { TimelinePanel } from "@/features/editor/timeline-panel";
-import { parseStory, type Story } from "@/ipc/parse";
+import { parseStory } from "@/ipc/parse";
 import {
   fetchProjectFolder,
   type ProjectFolderInfo,
@@ -50,14 +46,6 @@ import {
 import { useEditorStore, VIEWPORT_SIZES } from "@/state/editor";
 
 const EMPTY_DIAGNOSTICS: never[] = [];
-
-function findSceneIndexForOffset(story: Story | null, offset: number): number {
-  if (!story || story.scenes.length === 0) return 0;
-  const idx = story.scenes.findIndex(
-    (scene) => offset >= scene.span.start && offset <= scene.span.end,
-  );
-  return idx >= 0 ? idx : 0;
-}
 
 function formatRelative(ts: number): string {
   const deltaSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
@@ -70,95 +58,6 @@ function formatRelative(ts: number): string {
   return `${d}d ago`;
 }
 
-type ConsoleRow = { t: string; k: "info" | "success" | "warn"; m: string };
-
-const CONSOLE_PLACEHOLDER_ROWS: ConsoleRow[] = [
-  { t: "00.00", k: "info", m: 'scene "landing" started' },
-  { t: "00.12", k: "info", m: "navigate → acme.test/shop (312 ms)" },
-  { t: "00.44", k: "info", m: "wait page.ready → ok (144 ms)" },
-  { t: "00.58", k: "success", m: "narrate queued · 7.2s · elevenlabs.rachel" },
-  { t: "01.80", k: "info", m: "zoom .hero-cta → 1.8× in 1.2s" },
-  { t: "03.02", k: "warn", m: "cursor path=arc · fallback to linear on headless" },
-  { t: "03.20", k: "info", m: "click .hero-cta → target matched (1)" },
-  { t: "03.55", k: "info", m: "transition fade 0.3s" },
-];
-
-function ConsolePane() {
-  return (
-    <div
-      style={{
-        height: 140,
-        borderTop: "1px solid var(--sc-border)",
-        background: "var(--sc-surface)",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "6px 12px",
-          borderBottom: "1px solid var(--sc-border)",
-        }}
-      >
-        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--sc-text-2)" }}>
-          Console
-        </div>
-        <ScBadge tone="muted" dot>
-          {CONSOLE_PLACEHOLDER_ROWS.length} events
-        </ScBadge>
-        <ScBadge tone="record">1 warning</ScBadge>
-        <span style={{ flex: 1 }} />
-        <ScButton
-          size="sm"
-          variant="ghost"
-          icon={<Trash2 size={11} aria-hidden="true" />}
-          disabled
-          title="Clear console — coming soon"
-        >
-          Clear
-        </ScButton>
-      </div>
-      <div
-        className="sc-scroll"
-        style={{
-          flex: 1,
-          padding: "4px 12px",
-          fontFamily: "var(--sc-font-mono)",
-          fontSize: 11.5,
-          lineHeight: "18px",
-        }}
-      >
-        {CONSOLE_PLACEHOLDER_ROWS.map((r, i) => (
-          <div
-            key={i}
-            style={{ display: "grid", gridTemplateColumns: "48px 12px 1fr", gap: 8 }}
-          >
-            <span style={{ color: "var(--sc-text-4)" }}>{r.t}</span>
-            <span
-              style={{
-                color:
-                  r.k === "warn"
-                    ? "var(--sc-warn)"
-                    : r.k === "success"
-                      ? "var(--sc-success)"
-                      : "var(--sc-text-4)",
-              }}
-            >
-              {r.k === "warn" ? "!" : r.k === "success" ? "✓" : "·"}
-            </span>
-            <span style={{ color: "var(--sc-text-2)" }}>{r.m}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
 /* Editor route */
 
 export default function EditorRoute() {
@@ -170,6 +69,7 @@ export default function EditorRoute() {
   const [activeSceneIndex, setActiveSceneIndex] = useState(0);
   const [editorJumpTarget, setEditorJumpTarget] =
     useState<EditorJumpTarget | null>(null);
+  const [cursor, setCursor] = useState<{ line: number; col: number } | null>(null);
   // Only render once store state matches the URL project to avoid a stale scene flash.
   const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
   const setSource = useEditorStore((s) => s.setSource);
@@ -179,13 +79,10 @@ export default function EditorRoute() {
   const story = useEditorStore((s) => s.lastParse?.ast ?? null);
   const diagnostics =
     useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
-  const lineCount = useMemo(() => source.split("\n").length, [source]);
 
-  const previewEnabled = useEditorStore((s) => s.previewEnabled);
-  const setPreviewEnabled = useEditorStore((s) => s.setPreviewEnabled);
   const previewViewport = useEditorStore((s) => s.previewViewport);
   const setPreviewViewport = useEditorStore((s) => s.setViewport);
-  const { streamId: authorStreamId } = useEditorLivePreview(
+  const { streamId: authorStreamId, appUrlValid } = useEditorLivePreview(
     story?.meta?.app ?? null,
   );
   const simulatorRunState = useSimulatorStore((s) => s.runState);
@@ -299,14 +196,6 @@ export default function EditorRoute() {
     [queueEditorJump, story],
   );
 
-  const handleNavigateToOffset = useCallback(
-    (offset: number) => {
-      setActiveSceneIndex(findSceneIndexForOffset(story, offset));
-      queueEditorJump(offset);
-    },
-    [queueEditorJump, story],
-  );
-
   if (loadError) {
     return (
       <main id="main-content" className="mx-auto max-w-2xl p-8" role="alert">
@@ -336,6 +225,14 @@ export default function EditorRoute() {
       id="main-content"
       className="relative flex h-full flex-col bg-[var(--sc-bg)]"
     >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 z-50 opacity-[0.03] mix-blend-overlay"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>\")",
+        }}
+      />
       {/* ─── Toolbar ─── */}
       <div className="sc-toolbar">
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
@@ -382,34 +279,6 @@ export default function EditorRoute() {
           )}
           {projectId && (
             <>
-              <div style={{ width: 1, height: 18, background: "var(--sc-border)", margin: "0 4px" }} />
-              <ScButton
-                size="sm"
-                variant="ghost"
-                icon={<SkipBack size={11} aria-hidden="true" />}
-                disabled
-                aria-label="Previous scene (coming soon)"
-                title="Previous scene — coming soon"
-              />
-              <ScButton
-                size="sm"
-                variant="primary"
-                icon={<Play size={11} aria-hidden="true" />}
-                disabled
-                aria-label="Run dry-run (coming soon)"
-                title="Dry-run playback — coming soon"
-              >
-                Run
-              </ScButton>
-              <ScButton
-                size="sm"
-                variant="ghost"
-                icon={<SkipForward size={11} aria-hidden="true" />}
-                disabled
-                aria-label="Next scene (coming soon)"
-                title="Next scene — coming soon"
-              />
-              <div style={{ width: 1, height: 18, background: "var(--sc-border)", margin: "0 4px" }} />
               <Link
                 to={`/recorder/${projectId}`}
                 className="sc-btn primary sm"
@@ -455,10 +324,7 @@ export default function EditorRoute() {
         </div>
       ) : (
       <PageContentTransition className="min-h-0 flex-1">
-        <Group orientation="vertical" className="min-h-0 flex-1">
-        {/* Top: scene list + script + preview + voiceover */}
-        <Panel id="editor-top" defaultSize="75%" minSize="45%">
-          <Group orientation="horizontal">
+        <Group orientation="horizontal" className="min-h-0 flex-1">
             {/* Scene list — narrow left panel, always visible (D-08). */}
             <Panel id="editor-scene-list" defaultSize="12%" minSize="8%" maxSize="18%">
               <SceneListPanel
@@ -512,15 +378,6 @@ export default function EditorRoute() {
                       }}
                     />
                   </div>
-                  <ScButton
-                    size="sm"
-                    variant="ghost"
-                    disabled
-                    icon={<Plus size={11} aria-hidden="true" />}
-                    title="Multi-file buffers coming soon"
-                    aria-label="New tab (coming soon)"
-                    style={{ marginLeft: 4 }}
-                  />
                   <span style={{ flex: 1 }} />
                   <span
                     style={{
@@ -530,18 +387,10 @@ export default function EditorRoute() {
                       fontFamily: "var(--sc-font-mono)",
                     }}
                   >
-                    Ln —, Col — · SC-DSL · UTF-8
+                    {cursor ? `Ln ${cursor.line}, Col ${cursor.col}` : "Ln —, Col —"} · SC-DSL · UTF-8
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
-                    Script
-                  </span>
-                  <span className="font-mono text-[10px] tabular-nums text-[var(--sc-text-4)]">
-                    {lineCount} lines
-                  </span>
-                </div>
                 <div className="min-h-0 flex-1">
                   <StoryEditor
                     onAutosave={autosave}
@@ -549,6 +398,7 @@ export default function EditorRoute() {
                     projectFolder={folder?.folder_path ?? null}
                     storyPath={folder?.story_path ?? null}
                     streamId={authorStreamId}
+                    onCursorChange={setCursor}
                   />
                 </div>
 
@@ -557,10 +407,8 @@ export default function EditorRoute() {
                   storyPath={folder?.story_path ?? ""}
                   storySource={source}
                   streamId={authorStreamId}
-                  previewEnabled={previewEnabled}
+                  appUrlValid={appUrlValid}
                 />
-
-                <ConsolePane />
               </div>
             </Panel>
 
@@ -583,13 +431,11 @@ export default function EditorRoute() {
                 >
                   <span style={{ fontSize: 12, fontWeight: 600 }}>Live Preview</span>
                   <ScBadge tone="muted" dot>
-                    {previewEnabled
-                      ? authorStreamId
+                    {!appUrlValid
+                      ? "no app"
+                      : authorStreamId
                         ? "live"
-                        : "starting"
-                      : latest
-                        ? "ready"
-                        : "paused"}
+                        : "starting"}
                   </ScBadge>
                   {/* Phase 11-04: Preview-panel pick button sits LEFT of
                       the viewport/quality controls (UI-SPEC §Visual
@@ -597,18 +443,6 @@ export default function EditorRoute() {
                       copy owned by the component. */}
                   <PreviewPickerButton />
                   <span style={{ flex: 1 }} />
-                  {/* Phase 09-04 D-17 — default-OFF toggle preserves cold-start. */}
-                  <label
-                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}
-                    title="Launches a hidden Chromium to mirror your story as you edit."
-                  >
-                    <ScSwitch
-                      checked={previewEnabled}
-                      onCheckedChange={setPreviewEnabled}
-                      aria-label="Toggle Live Preview"
-                    />
-                    <span>{previewEnabled ? "On" : "Off"}</span>
-                  </label>
                   <ScSegmented
                     size="sm"
                     value={previewViewport}
@@ -617,18 +451,28 @@ export default function EditorRoute() {
                     }
                     aria-label="Viewport size"
                     options={[
-                      { value: "mobile", label: "Mobile" },
-                      { value: "tablet", label: "Tablet" },
-                      { value: "desktop", label: "Desktop" },
+                      {
+                        value: "mobile",
+                        label: (
+                          <Smartphone
+                            size={12}
+                            aria-label="Mobile"
+                          />
+                        ),
+                      },
+                      {
+                        value: "tablet",
+                        label: (
+                          <Tablet size={12} aria-label="Tablet" />
+                        ),
+                      },
+                      {
+                        value: "desktop",
+                        label: (
+                          <Monitor size={12} aria-label="Desktop" />
+                        ),
+                      },
                     ]}
-                  />
-                  <ScButton
-                    size="sm"
-                    variant="ghost"
-                    icon={<Maximize2 size={12} aria-hidden="true" />}
-                    disabled
-                    aria-label="Maximize preview (coming soon)"
-                    title="Maximize — coming soon"
                   />
                 </div>
 
@@ -644,7 +488,7 @@ export default function EditorRoute() {
                     <div className="flex h-full w-full items-center justify-center p-3">
                       <SimulatorFrameView frame={simulatorActiveFrame} />
                     </div>
-                  ) : previewEnabled && authorStreamId ? (
+                  ) : authorStreamId ? (
                     <div className="flex h-full w-full items-center justify-center p-3">
                       <LivePreview
                         streamId={authorStreamId}
@@ -652,9 +496,27 @@ export default function EditorRoute() {
                         pageHeight={VIEWPORT_SIZES[previewViewport].h}
                       />
                     </div>
-                  ) : projectId ? (
+                  ) : appUrlValid ? (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
+                      <span className="font-mono text-sm text-[var(--sc-text-2)]">
+                        Starting preview…
+                      </span>
+                      <span className="max-w-full truncate text-[10px] text-[var(--sc-text-4)]">
+                        {story?.meta?.app ?? ""}
+                      </span>
+                    </div>
+                  ) : latest && projectId ? (
                     <PreviewSurface mode="recording" projectId={projectId} />
-                  ) : null}
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
+                      <span className="font-mono text-sm text-[var(--sc-text-2)]">
+                        No app URL
+                      </span>
+                      <span className="max-w-[36ch] text-[11px] text-[var(--sc-text-4)]">
+                        Set <code>meta.app</code> in your story to auto-launch live preview.
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div
@@ -679,24 +541,10 @@ export default function EditorRoute() {
                       ? `${latest.width} × ${latest.height}`
                       : "1440 × 900"}
                   </span>
-                  <span>·</span>
-                  <span>Chromium 125</span>
-                  <span>·</span>
-                  <span>SCK capture</span>
                   <span style={{ flex: 1 }} />
-                  <span>60 fps</span>
                 </div>
               </div>
             </Panel>
-          </Group>
-        </Panel>
-
-        {/* Bottom: Timeline */}
-        <Separator className="group relative h-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
-
-        <Panel id="editor-timeline" defaultSize="22%" minSize="12%" maxSize="40%">
-          <TimelinePanel onJumpTo={handleNavigateToOffset} />
-        </Panel>
         </Group>
       </PageContentTransition>
       )}

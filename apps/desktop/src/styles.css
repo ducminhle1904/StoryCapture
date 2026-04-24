@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
-/* Fonts — Inter + JetBrains Mono only (D-11). Variable fonts, offline. */
-@import "@fontsource-variable/inter";
-@import "@fontsource-variable/jetbrains-mono";
+/* Fonts — Geist Sans + Geist Mono. Variable fonts, offline. */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
 /* Canonical Claude Design tokens + primitive CSS (D-01, D-04). */
 @import "@storycapture/ui/claude-design/tokens.css";

@@ -492,7 +492,7 @@ pub(crate) async fn stop_preview_stream_inner(state: &AppState) {
 async fn author_driver(
     state: &AppState,
     stream_id: &str,
-) -> Result<Arc<Mutex<PlaywrightSidecarDriver>>, AppError> {
+) -> Result<Arc<PlaywrightSidecarDriver>, AppError> {
     let sessions = state.author_preview_sessions.lock().await;
     sessions
         .get(stream_id)
@@ -573,19 +573,24 @@ pub async fn start_author_preview(
     viewport_height: Option<u32>,
 ) -> Result<String, AppError> {
     let stream_id = format!("author-{}", uuid::Uuid::new_v4());
-    let driver_arc = Arc::new(Mutex::new(spawn_playwright_sidecar(&app).await?));
+    // No outer Mutex: all driver methods take `&self` with internal fine-
+    // grained locking, so concurrent callers (picker + LivePreview canvas
+    // input forwarder) don't serialize.
+    let driver_arc: Arc<PlaywrightSidecarDriver> =
+        Arc::new(spawn_playwright_sidecar(&app).await?);
 
     // Spawn + load URL + start screencast under this streamId.
     {
-        let d = driver_arc.lock().await;
         let vp = match (viewport_width, viewport_height) {
             (Some(w), Some(h)) if w > 0 && h > 0 => Some((w, h)),
             _ => Some((1280u32, 800u32)),
         };
-        d.call_author_launch(&stream_id, initial_url.as_deref(), vp)
+        driver_arc
+            .call_author_launch(&stream_id, initial_url.as_deref(), vp)
             .await
             .map_err(|e| AppError::Automation(format!("author.launch: {e}")))?;
-        d.call_preview_start_stream(&stream_id)
+        driver_arc
+            .call_preview_start_stream(&stream_id)
             .await
             .map_err(|e| AppError::Automation(format!("startPreviewStream: {e}")))?;
     }
@@ -594,7 +599,7 @@ pub async fn start_author_preview(
     // frame delivered here already belongs to this stream. Emit on a
     // per-stream Tauri event so the webview can listen without payload-side
     // demuxing — one channel per session, one listener per component.
-    let mut rx = { driver_arc.lock().await.subscribe_preview() };
+    let mut rx = driver_arc.subscribe_preview();
     let app_for_emit = app.clone();
     let event_name = format!("preview://frame/{stream_id}");
     let stream_id_for_log = stream_id.clone();
@@ -640,9 +645,8 @@ pub async fn stop_author_preview(
         if let Some(pump) = session.pump.take() {
             pump.abort();
         }
-        let driver = session.driver.lock().await;
-        let _ = driver.call_preview_stop_stream(&stream_id).await;
-        let _ = driver.call_author_close(&stream_id).await;
+        let _ = session.driver.call_preview_stop_stream(&stream_id).await;
+        let _ = session.driver.call_author_close(&stream_id).await;
     }
     Ok(())
 }
@@ -655,8 +659,6 @@ pub async fn pause_author_preview(
 ) -> Result<(), AppError> {
     let driver = author_driver(&state, &stream_id).await?;
     driver
-        .lock()
-        .await
         .call_pause_stream(&stream_id)
         .await
         .map_err(|e| AppError::Automation(e.to_string()))?;
@@ -671,8 +673,6 @@ pub async fn resume_author_preview(
 ) -> Result<(), AppError> {
     let driver = author_driver(&state, &stream_id).await?;
     driver
-        .lock()
-        .await
         .call_resume_stream(&stream_id)
         .await
         .map_err(|e| AppError::Automation(e.to_string()))?;
@@ -688,8 +688,6 @@ pub async fn set_author_preview_viewport(
 ) -> Result<(), AppError> {
     let driver = author_driver(&state, &stream_id).await?;
     driver
-        .lock()
-        .await
         .call_author_set_viewport(&stream_id, args.width, args.height)
         .await
         .map_err(|e| AppError::Automation(e.to_string()))?;
@@ -708,8 +706,6 @@ pub async fn set_author_preview_url(
 ) -> Result<(), AppError> {
     let driver = author_driver(&state, &stream_id).await?;
     driver
-        .lock()
-        .await
         .call_author_goto(&stream_id, &url)
         .await
         .map_err(|e| AppError::Automation(e.to_string()))?;
@@ -761,15 +757,52 @@ pub async fn author_dispatch_input(
     stream_id: String,
     event: AuthorInputEvent,
 ) -> Result<(), AppError> {
+    // INFO on click/wheel (rare, diagnostic-worthy), DEBUG on mousemove
+    // (fires at 60 Hz — would flood the log at INFO).
+    match &event {
+        AuthorInputEvent::Click { x, y, button } => {
+            tracing::info!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                x = *x, y = *y, button = ?button,
+                "author_dispatch_input click"
+            );
+        }
+        AuthorInputEvent::Wheel { x, y, delta_x, delta_y } => {
+            tracing::info!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                x = *x, y = *y, dx = *delta_x, dy = *delta_y,
+                "author_dispatch_input wheel"
+            );
+        }
+        AuthorInputEvent::Mousemove { x, y } => {
+            // DEBUG-only: mousemove fires at 60 Hz and would flood INFO.
+            // Enable via RUST_LOG=storycapture::automation=debug when
+            // diagnosing a frontend→Rust forwarding gap.
+            tracing::debug!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                x = *x, y = *y,
+                "author_dispatch_input mousemove"
+            );
+        }
+    }
     let driver = author_driver(&state, &stream_id).await?;
     let payload = serde_json::to_value(&event).map_err(|e| AppError::Automation(e.to_string()))?;
-    driver
-        .lock()
-        .await
+    let result = driver
         .call_author_dispatch_input(&stream_id, &payload)
         .await
-        .map_err(|e| AppError::Automation(e.to_string()))?;
-    Ok(())
+        .map_err(|e| AppError::Automation(e.to_string()));
+    if let Err(e) = &result {
+        tracing::warn!(
+            target: "storycapture::automation",
+            stream_id = %stream_id,
+            error = %e,
+            "author_dispatch_input sidecar call failed"
+        );
+    }
+    result
 }
 
 /// Readiness probe: confirms streamId is registered + sidecar is alive.
@@ -781,8 +814,6 @@ pub async fn attach_author_driver(
 ) -> Result<(), AppError> {
     let driver = author_driver(&state, &stream_id).await?;
     driver
-        .lock()
-        .await
         .pick_element_is_active()
         .await
         .map_err(|e| AppError::Automation(format!("attach_author_driver probe: {e}")))?;

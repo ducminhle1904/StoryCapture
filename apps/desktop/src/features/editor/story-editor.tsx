@@ -18,6 +18,10 @@ import { useSimulatorStore } from "@/state/simulator-store";
 import { parseStory } from "@/ipc/parse";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 
+function trimTrailingWhitespace(s: string): string {
+  return s.replace(/[ \t]+$/gm, "");
+}
+
 export interface EditorJumpTarget {
   offset: number;
   nonce: number;
@@ -30,6 +34,7 @@ interface StoryEditorProps {
   projectFolder?: string | null;
   storyPath?: string | null;
   streamId?: string | null;
+  onCursorChange?: (pos: { line: number; col: number } | null) => void;
 }
 
 export function StoryEditor({
@@ -39,6 +44,7 @@ export function StoryEditor({
   projectFolder,
   storyPath,
   streamId,
+  onCursorChange,
 }: StoryEditorProps) {
   const source = useEditorStore((s) => s.source);
   const setSource = useEditorStore((s) => s.setSource);
@@ -52,7 +58,7 @@ export function StoryEditor({
 
   const cmRef = useRef<ReactCodeMirrorRef>(null);
   const autosave = useDebouncedCallback(
-    (value: string) => onAutosave?.(value),
+    (value: string) => onAutosave?.(trimTrailingWhitespace(value)),
     5000,
   );
 
@@ -116,7 +122,7 @@ export function StoryEditor({
   };
 
   const handleBlur = () => {
-    if (!simulatorActive && onAutosave) onAutosave(source);
+    if (!simulatorActive && onAutosave) onAutosave(trimTrailingWhitespace(source));
   };
 
   useEffect(() => {
@@ -183,15 +189,24 @@ export function StoryEditor({
       </AnimatePresence>
 
       <div
-        className="h-full w-full flex-1 overflow-hidden bg-transparent [&_.cm-editor]:h-full [&_.cm-editor]:bg-transparent [&_.cm-gutters]:border-r-0 [&_.cm-gutters]:bg-transparent [&_.cm-scroller]:font-mono [&_.cm-activeLine]:bg-[color-mix(in_oklch,var(--sc-accent-400)_8%,transparent)] [&_.cm-activeLineGutter]:bg-[color-mix(in_oklch,var(--sc-accent-400)_8%,transparent)] [&_.cm-cursor]:border-l-[var(--sc-accent-400)] [&_.cm-content]:py-5 [&_.cm-line]:px-2 [&_.cm-selectionBackground]:bg-[color-mix(in_oklch,var(--sc-accent-400)_22%,transparent)]"
+        className="h-full w-full flex-1 overflow-hidden"
         onBlur={handleBlur}
       >
         <CodeMirror
           ref={cmRef}
           value={source}
           height="100%"
+          className="h-full"
+          indentWithTab
           extensions={allExtensions}
           onChange={handleChange}
+          onUpdate={(v) => {
+            if (!onCursorChange) return;
+            if (!v.selectionSet && !v.docChanged) return;
+            const head = v.state.selection.main.head;
+            const line = v.state.doc.lineAt(head);
+            onCursorChange({ line: line.number, col: head - line.from + 1 });
+          }}
           basicSetup={{
             lineNumbers: true,
             highlightActiveLine: true,
@@ -200,6 +215,7 @@ export function StoryEditor({
             closeBrackets: true,
             autocompletion: false,
             foldGutter: true,
+            searchKeymap: true,
           }}
           aria-label="Story DSL editor"
         />

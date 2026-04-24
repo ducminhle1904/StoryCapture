@@ -54,6 +54,7 @@ export const useSimulatorStore = create<SimulatorState>()(
       },
 
       handleEvent: (e) => {
+        console.log("[sim:event]", e.type, e);
         switch (e.type) {
           case "started":
             set({

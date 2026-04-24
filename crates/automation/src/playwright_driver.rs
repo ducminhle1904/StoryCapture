@@ -283,6 +283,21 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
+    /// Phase 11 bridge — tell the sidecar which author session should receive
+    /// subsequent bare verbs (goto/click/etc.). Pass `None` to clear.
+    ///
+    /// The simulator sets this at start and clears it on cancel / natural end
+    /// so the shared author driver's verbs land on the author session's page
+    /// instead of the recording page (which is `None` in preview-only mode).
+    pub async fn set_active_author_stream(&self, stream_id: Option<&str>) -> Result<()> {
+        let payload = match stream_id {
+            Some(s) => serde_json::json!({ "streamId": s }),
+            None => serde_json::json!({ "streamId": null }),
+        };
+        self.call("setActiveAuthorStream", payload).await?;
+        Ok(())
+    }
+
     /// Phase 09-04 — start the CDP screencast for a named author session.
     pub async fn call_preview_start_stream(&self, stream_id: &str) -> Result<()> {
         self.call("startPreviewStream", json!({ "streamId": stream_id }))

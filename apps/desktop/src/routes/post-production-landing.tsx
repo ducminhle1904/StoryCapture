@@ -1,21 +1,39 @@
-import { useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { useHotkeys } from "react-hotkeys-hook";
-import { AlertTriangle, Film, Search } from "lucide-react";
-
 import { ScButton, ScCard, ScInput } from "@storycapture/ui";
-import { useProjects } from "@/ipc/projects";
-import { PageContentTransition } from "@/components/page-content-transition";
+import { AlertTriangle, Search } from "lucide-react";
+import { useMemo, useRef } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
+import { useNavigate } from "react-router-dom";
+import storyToVideoEmptySrc from "@/assets/illustrations/story-to-video-empty.png";
 import { EmptyState } from "@/components/empty-state/empty-state";
-import { useDashboardStore } from "@/state/projects";
+import { PageContentTransition } from "@/components/page-content-transition";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { filterAndSort, mostRecentTimestamp } from "@/features/dashboard/project-utils";
+import { useProjects } from "@/ipc/projects";
 import { relativeTime } from "@/lib/utils";
+import { useDashboardStore } from "@/state/projects";
+
+function StoryToVideoIllustration() {
+  return (
+    <img
+      src={storyToVideoEmptySrc}
+      alt=""
+      aria-hidden="true"
+      style={{
+        width: 172,
+        height: 172,
+        objectFit: "cover",
+        borderRadius: "var(--sc-r-lg)",
+        border: "1px solid var(--sc-border)",
+        boxShadow: "0 18px 50px rgba(0,0,0,0.34)",
+      }}
+    />
+  );
+}
 
 function EmptyPostProduction({ onGoToProjects }: { onGoToProjects: () => void }) {
   return (
     <EmptyState
-      icon={Film}
+      illustration={<StoryToVideoIllustration />}
       title="No recordings yet"
       body="Record a story to start post-production."
       actions={
@@ -71,9 +89,7 @@ export default function PostProductionLandingRoute() {
       <div className="sc-toolbar">
         <div>
           <div className="sc-toolbar-title">Post-Production</div>
-          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 1 }}>
-            {metaLine}
-          </div>
+          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 1 }}>{metaLine}</div>
         </div>
         <span className="sc-spacer" />
         <ScInput
@@ -126,11 +142,7 @@ export default function PostProductionLandingRoute() {
               <div className="sc-h">Pick a project</div>
               <div style={{ height: 1, flex: 1, background: "var(--sc-border)" }} />
             </div>
-            <ProjectGrid
-              projects={visible}
-              onOpen={openProject}
-              onNewStory={goToProjects}
-            />
+            <ProjectGrid projects={visible} onOpen={openProject} onNewStory={goToProjects} />
           </>
         )}
       </PageContentTransition>

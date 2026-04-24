@@ -349,27 +349,33 @@ pub trait AuthorPreviewControl: Send + Sync {
 
 /// Production adapter — holds an Arc'd per-session driver and invokes the
 /// PlaywrightSidecarDriver methods directly. One instance per picker run.
+///
+/// NOTE: `driver` is `Arc<PlaywrightSidecarDriver>` (no outer Mutex). The
+/// driver's methods use `&self` with internal fine-grained locking, so
+/// `pick_element_start_author` (long-lived, up to 60 s) can run concurrently
+/// with `author_dispatch_input` (60 Hz pointer forwarding from the canvas).
+/// An outer Mutex would serialize them and freeze the picker overlay.
 pub struct SidecarAuthorPreviewControl {
-    pub driver: Arc<tokio::sync::Mutex<automation::PlaywrightSidecarDriver>>,
+    pub driver: Arc<automation::PlaywrightSidecarDriver>,
 }
 
 #[async_trait]
 impl AuthorPreviewControl for SidecarAuthorPreviewControl {
     async fn author_navigate_to(&self, stream_id: &str, url: &str) -> Result<(), AppError> {
-        let d = self.driver.lock().await;
-        d.author_navigate_to(stream_id, url)
+        self.driver
+            .author_navigate_to(stream_id, url)
             .await
             .map_err(|e| AppError::Automation(e.to_string()))
     }
     async fn pause_author_preview(&self, stream_id: &str) -> Result<(), AppError> {
-        let d = self.driver.lock().await;
-        d.call_pause_stream(stream_id)
+        self.driver
+            .call_pause_stream(stream_id)
             .await
             .map_err(|e| AppError::Automation(e.to_string()))
     }
     async fn resume_author_preview(&self, stream_id: &str) -> Result<(), AppError> {
-        let d = self.driver.lock().await;
-        d.call_resume_stream(stream_id)
+        self.driver
+            .call_resume_stream(stream_id)
             .await
             .map_err(|e| AppError::Automation(e.to_string()))
     }
@@ -378,8 +384,8 @@ impl AuthorPreviewControl for SidecarAuthorPreviewControl {
         stream_id: &str,
         timeout_ms: u64,
     ) -> Result<PickElementResponse, AppError> {
-        let d = self.driver.lock().await;
-        d.pick_element_start_author(stream_id, timeout_ms)
+        self.driver
+            .pick_element_start_author(stream_id, timeout_ms)
             .await
             .map_err(|e| AppError::Automation(e.to_string()))
     }

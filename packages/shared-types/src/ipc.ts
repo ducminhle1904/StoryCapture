@@ -209,6 +209,18 @@ async attachAuthorDriver(streamId: string) : Promise<Result<null, AppError>> {
 }
 },
 /**
+ * Forward a pointer/wheel event from the LivePreview canvas into the
+ * headless author browser. No-op if the session has been torn down.
+ */
+async authorDispatchInput(streamId: string, event: AuthorInputEvent) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("author_dispatch_input", { streamId, event }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Start an element-picker session against the in-flight Playwright
  * sidecar. Returns the ranked DSL line (`emitted`) on a successful
  * pick, or a `Cancelled` variant on Esc / navigation / unsupported
@@ -1263,6 +1275,14 @@ export type AudioCodecDto = "aac" | "opus"
  */
 export type AudioInputInfoDto = { id: string; name: string; is_default: boolean; channels: number; sample_rate_hz: number }
 export type AudioOptionsDto = { codec?: AudioCodecDto | null; bitrate_kbps?: number | null; channels?: number | null; sample_rate_hz?: number | null }
+/**
+ * Renderer-side pointer events from the LivePreview canvas, forwarded
+ * into the headless author browser via Playwright's `page.mouse` API.
+ * Coordinates are in page viewport space (the renderer transforms canvas
+ * px → page px before calling).
+ */
+export type AuthorInputEvent = { type: "mousemove"; x: number; y: number } | { type: "click"; x: number; y: number; button?: AuthorMouseButton } | { type: "wheel"; x: number; y: number; deltaX: number; deltaY: number }
+export type AuthorMouseButton = "left" | "right" | "middle"
 /**
  * Manifest entry persisted alongside the HTML + PNG snapshot files.
  */

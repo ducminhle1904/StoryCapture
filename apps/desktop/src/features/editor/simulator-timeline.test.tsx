@@ -49,7 +49,7 @@ describe("SimulatorTimeline", () => {
         storyPath="/p/story.story"
         storySource={"scene x:\n  click \"ok\"\n"}
         streamId="stream-1"
-        previewEnabled={true}
+        appUrlValid={true}
       />,
     );
     expect(screen.getByRole("button", { name: /run simulator/i })).toBeInTheDocument();
@@ -69,7 +69,7 @@ describe("SimulatorTimeline", () => {
         storyPath="/p/story.story"
         storySource=""
         streamId="stream-1"
-        previewEnabled={true}
+        appUrlValid={true}
       />,
     );
     expect(screen.getByRole("button", { name: /cancel simulator run/i })).toBeInTheDocument();
@@ -94,7 +94,7 @@ describe("SimulatorTimeline", () => {
         storyPath="/p/story.story"
         storySource=""
         streamId="stream-1"
-        previewEnabled={true}
+        appUrlValid={true}
       />,
     );
     const cards = screen.getAllByRole("button", { name: /simulator frame/i });
@@ -117,7 +117,7 @@ describe("SimulatorTimeline", () => {
         storyPath="/p/story.story"
         storySource=""
         streamId="stream-1"
-        previewEnabled={true}
+        appUrlValid={true}
       />,
     );
     const scrubber = screen.getByLabelText("Simulator frame scrubber") as HTMLInputElement;
@@ -144,26 +144,24 @@ describe("SimulatorTimeline", () => {
         storyPath="/p/story.story"
         storySource=""
         streamId="stream-1"
-        previewEnabled={true}
+        appUrlValid={true}
       />,
     );
     const promoteButtons = screen.queryAllByRole("button", { name: /promote/i });
     expect(promoteButtons).toHaveLength(1);
   });
 
-  it("shows preview-off inline error and disables Run when previewEnabled=false", () => {
+  it("shows no-app-url banner and disables Run when appUrlValid=false", () => {
     render(
       <SimulatorTimeline
         projectFolder="/p"
         storyPath="/p/story.story"
         storySource=""
         streamId={null}
-        previewEnabled={false}
+        appUrlValid={false}
       />,
     );
-    expect(
-      screen.getByText(/preview is off\. turn on preview/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/set/i)).toBeInTheDocument();
     const runBtn = screen.getByRole("button", { name: /run simulator/i });
     expect(runBtn).toBeDisabled();
   });
@@ -186,7 +184,7 @@ describe("SimulatorTimeline", () => {
         storyPath="/p/story.story"
         storySource=""
         streamId="stream-1"
-        previewEnabled={true}
+        appUrlValid={true}
       />,
     );
     expect(screen.getByText(/selector not found/i)).toBeInTheDocument();

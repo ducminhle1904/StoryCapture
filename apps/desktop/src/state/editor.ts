@@ -20,12 +20,10 @@ interface EditorState {
   // Most recent parse with zero error diagnostics. Survives transient parse errors so
   // scene-list-panel can keep showing the last-valid tree instead of blanking.
   lastValidStoryAst: Story | null;
-  previewEnabled: boolean;
   setSource: (s: string) => void;
   setSplitRatio: (r: number) => void;
   setViewport: (v: PreviewViewport) => void;
   setLastParse: (r: ParseResult) => void;
-  setPreviewEnabled: (v: boolean) => void;
   diagnostics: () => Diagnostic[];
   resetProjectState: () => void;
 }
@@ -42,7 +40,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   previewViewport: "desktop",
   lastParse: null,
   lastValidStoryAst: null,
-  previewEnabled: false,
   setSource: (s) => set({ source: s }),
   setSplitRatio: (r) => set({ splitRatio: Math.max(20, Math.min(80, r)) }),
   setViewport: (v) => {
@@ -51,10 +48,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   setLastParse: (r) =>
     set((s) => ({ lastParse: r, lastValidStoryAst: pickValidAst(r, s.lastValidStoryAst) })),
-  setPreviewEnabled: (v) => {
-    if (get().previewEnabled === v) return;
-    set({ previewEnabled: v });
-  },
   diagnostics: () => get().lastParse?.diagnostics ?? [],
   // Clear per-project fields so navigating A→B doesn't flash A's content.
   resetProjectState: () =>
@@ -62,6 +55,5 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       source: "",
       lastParse: null,
       lastValidStoryAst: null,
-      previewEnabled: false,
     }),
 }));

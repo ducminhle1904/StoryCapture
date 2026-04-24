@@ -64,21 +64,37 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
         backgroundColor: "var(--sc-surface)",
         color: "var(--sc-text)",
       },
+      ".cm-editor": {
+        backgroundColor: "transparent",
+      },
       ".cm-content": {
         fontFamily: "var(--sc-font-mono)",
         fontSize: "13px",
         caretColor: "var(--sc-accent-400)",
+        lineHeight: "1.5",
+        padding: "20px 0",
       },
       ".cm-gutters": {
-        backgroundColor: "var(--sc-surface)",
+        backgroundColor: "transparent",
         color: "var(--sc-text-4)",
-        borderRight: "1px solid var(--sc-border)",
+        border: "none",
       },
       ".cm-activeLine": {
-        backgroundColor: "var(--sc-surface-2)",
+        backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 8%, transparent)",
       },
       ".cm-activeLineGutter": {
-        backgroundColor: "var(--sc-surface-3)",
+        backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 16%, transparent)",
+        color: "var(--sc-text)",
+      },
+      ".cm-cursor, .cm-dropCursor": {
+        borderLeftColor: "var(--sc-accent-400)",
+        borderLeftWidth: "1.5px",
+      },
+      ".cm-selectionBackground, .cm-content ::selection": {
+        backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 22%, transparent) !important",
+      },
+      ".cm-scroller": {
+        fontFamily: "var(--sc-font-mono)",
       },
       ".cm-diagnostic-error": {
         borderLeftColor: "var(--sc-record)",
@@ -88,6 +104,9 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
       },
       "&.cm-focused": {
         outline: "none",
+      },
+      "&.cm-focused .cm-gutters": {
+        color: "var(--sc-text-3)",
       },
     }),
   ];
