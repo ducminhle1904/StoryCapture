@@ -146,7 +146,7 @@ Plans:
 | 8. Recording engine polish — GPU downscale + live cursor overlay | 0/5 | **Planned, not started** | — |
 | 9. Live Preview pane (CDP-driven) | 0/4 | **Planned, not started** — prereq for Phase 10 | — |
 | 10. Author-time simulator | 0/3 | **Blocked on Phase 9-04 extensions (PHASE-9.8/9.9)** | — |
-| 11. Author-time element picker relocation | 4/5 | **Gap closure pending** — 11-01..11-04 shipped & merged (12/14 must-haves verified); 11-05 planned to close simulator.rs ↔ AuthorDriverRegistry gap (PHASE-11.1 / PHASE-11.8) | — |
+| 11. Author-time element picker relocation | 5/5 | **Code-complete** — all 5 plans shipped & merged; 11-05 closed simulator.rs ↔ AuthorDriverRegistry gap (PHASE-11.1 / PHASE-11.8). 11-HUMAN-UAT.md (8 operator smoke items §4a/4b/4c) pending TCC-granted host. | — |
 | 12. Fix video output resolution | 4/4 | Shipped | 2026-04-19 |
 | 13. Video output customization knobs | shipped | Shipped | 2026-04-19 |
 | 14. Port Claude Design into apps/desktop | 4/4 (waves 1, 3-5; Wave 2 dropped) | **In progress** — Waves 1/3/4 shipped, polish ongoing, Wave 5 a11y checkpoint pending | — |
@@ -316,7 +316,7 @@ Plans:
 - [x] 11-02-PLAN.md — Record path self_heal=false + AutomationError::PrimaryMissNoHeal + HUD Open-in-Simulator action (D-06 / D-07)
 - [x] 11-03-PLAN.md — Sidecar pickElement.start streamId routing + author.navigateTo warm-up + picker_start_author Tauri command with navigate-replay + pause/resume brackets (D-08 / D-10 / D-12)
 - [x] 11-04-PLAN.md — PreviewPickerButton + authorDriverStore + Cmd-Shift-P keymap + delete recorder-side picker + 11-SMOKE.md (D-01 / D-02 / D-05 / D-09)
-- [ ] 11-05-PLAN.md — **Gap closure (PHASE-11.1 / PHASE-11.8):** wire AuthorDriverRegistry into commands/simulator.rs (simulator_start + spawn_run forwarder + simulator_cancel) + add begin_simulator/pause_simulator/end_simulator FSM helpers so host-side D-13/D-14/D-15 gates are no longer inert
+- [x] 11-05-PLAN.md — **Gap closure (PHASE-11.1 / PHASE-11.8):** wire AuthorDriverRegistry into commands/simulator.rs (simulator_start + spawn_run forwarder + simulator_cancel) + add begin_simulator/pause_simulator/end_simulator FSM helpers so host-side D-13/D-14/D-15 gates are no longer inert
 
 ### Phase 12: Fix video output resolution lock — letterbox filter chain
 
