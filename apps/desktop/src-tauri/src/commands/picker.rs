@@ -46,6 +46,18 @@ pub enum TargetRecordDto {
     },
 }
 
+/// Return shape of `picker_stamp_step_id`. Splits the stamped UUID from
+/// the stamping outcome so the renderer can dispatch UI-SPEC-locked
+/// first-pick vs re-pick toasts without re-parsing the .story source.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct PickerStampResultDto {
+    /// UUIDv7 as a hyphenated string (matches existing on-the-wire shape).
+    pub step_id: String,
+    /// true iff the None-arm fired — fresh UUID minted AND source rewritten.
+    /// false iff the line already carried `# @id=<uuid>`.
+    pub was_freshly_stamped: bool,
+}
+
 impl From<TargetRecordDto> for automation::targets_store::TargetRecord {
     fn from(d: TargetRecordDto) -> Self {
         let (kind, value) = match d {
@@ -196,7 +208,19 @@ pub async fn picker_stamp_step_id(
     line_offset: u32,
     primary: TargetRecordDto,
     fallbacks: Vec<TargetRecordDto>,
-) -> Result<String, AppError> {
+) -> Result<PickerStampResultDto, AppError> {
+    stamp_step_id_impl(story_path, line_offset, primary, fallbacks)
+}
+
+/// Core stamping logic, factored out of the `#[tauri::command]` wrapper so
+/// integration tests can drive it directly. Not public outside the crate
+/// — the Tauri boundary is still the single external entry point.
+pub fn stamp_step_id_impl(
+    story_path: String,
+    line_offset: u32,
+    primary: TargetRecordDto,
+    fallbacks: Vec<TargetRecordDto>,
+) -> Result<PickerStampResultDto, AppError> {
     // Path-traversal guard. The Tauri FS scope is the
     // primary boundary; this is defense-in-depth.
     if story_path.split(['/', '\\']).any(|seg| seg == "..") {
@@ -234,8 +258,11 @@ pub async fn picker_stamp_step_id(
         )));
     }
 
-    let stamped_id = match existing_id {
-        Some(id) => id,
+    // D-04 + Pitfall 5: source bytes are rewritten ONLY on the None arm
+    // (fresh mint). Re-stamp on an already-stamped line short-circuits
+    // with `was_freshly_stamped=false`; targets.json is still (re)seeded.
+    let (stamped_id, was_freshly_stamped) = match existing_id {
+        Some(id) => (id, false),
         None => {
             let new_id = uuid::Uuid::now_v7();
             'stamp: for scene in &mut story.scenes {
@@ -249,7 +276,7 @@ pub async fn picker_stamp_step_id(
             let formatted = story_parser::format_story(&story);
             std::fs::write(&path, formatted)
                 .map_err(|e| AppError::Automation(format!("write {}: {e}", path.display())))?;
-            new_id
+            (new_id, true)
         }
     };
 
@@ -269,7 +296,10 @@ pub async fn picker_stamp_step_id(
     automation::targets_store::atomic_write(&targets_path, &store)
         .map_err(|e| AppError::Automation(format!("targets_store write: {e}")))?;
 
-    Ok(stamped_id.to_string())
+    Ok(PickerStampResultDto {
+        step_id: stamped_id.to_string(),
+        was_freshly_stamped,
+    })
 }
 
 /// forward id-absent JSON-RPC notifications from the

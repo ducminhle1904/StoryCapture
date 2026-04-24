@@ -173,6 +173,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<automation::ResolvedPlaywrightTarget>()
         .typ::<automation::AuthorViewportArgs>()
         .typ::<picker::PickElementResponseDto>()
+        .typ::<picker::PickerStampResultDto>()
         // author-time validator DTOs.
         .typ::<author_snapshot::AuthorSnapshotEntry>()
         .typ::<author_snapshot::AuthorValidationDto>()
