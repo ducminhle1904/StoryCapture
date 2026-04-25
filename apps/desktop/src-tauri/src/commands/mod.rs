@@ -14,6 +14,7 @@ pub mod capture;
 pub mod dryrun;
 pub mod encode;
 pub mod export;
+pub mod frontend_log;
 pub mod keys;
 pub mod lsp;
 pub mod nl;

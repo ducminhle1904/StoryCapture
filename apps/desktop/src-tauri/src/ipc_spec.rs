@@ -18,9 +18,9 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        app_settings, audio, author_snapshot, automation, capture, dryrun, encode, export, keys,
-        lsp, nl, parse, picker, preset, projects, region_overlay, render, simulator,
-        sound_library, system, timeline, tts, updater, upload, web_account, web_sync,
+        app_settings, audio, author_snapshot, automation, capture, dryrun, encode, export,
+        frontend_log, keys, lsp, nl, parse, picker, preset, projects, region_overlay, render,
+        simulator, sound_library, system, timeline, tts, updater, upload, web_account, web_sync,
     },
     error::AppError,
 };
@@ -45,6 +45,7 @@ pub fn builder() -> Builder<Wry> {
             system::load_secret,
             system::delete_secret,
             system::trigger_panic,
+            frontend_log::log_from_frontend,
             automation::launch_automation,
             automation::resolve_playwright_target,
             automation::is_stage_manager_enabled,
@@ -76,6 +77,9 @@ pub fn builder() -> Builder<Wry> {
             app_settings::get_app_settings,
             app_settings::set_browser_executable,
             app_settings::set_live_preview_enabled,
+            app_settings::get_log_config,
+            app_settings::set_log_config,
+            app_settings::open_log_dir,
             // Phase 6 plan 01 — mic audio enumeration.
             audio::list_audio_inputs,
             capture::list_displays,
@@ -171,8 +175,12 @@ pub fn builder() -> Builder<Wry> {
         ])
         .typ::<AppError>()
         .typ::<app_settings::AppSettingsDto>()
+        .typ::<app_settings::LogConfigDto>()
+        .typ::<app_settings::LogConfigUpdate>()
         .typ::<system::AppInfo>()
         .typ::<crate::panic_hook::PanicPayload>()
+        .typ::<frontend_log::FrontendLogLevel>()
+        .typ::<frontend_log::FrontendLogPayload>()
         .typ::<automation::ResolvedPlaywrightTarget>()
         .typ::<automation::AuthorViewportArgs>()
         .typ::<automation::AuthorInputEvent>()

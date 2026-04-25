@@ -6,6 +6,9 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+
+import { frontendLog } from "@/lib/log";
+
 import { useVoiceoverStore, type VoicePreset } from "./voiceoverStore";
 
 export interface VoiceInfo {
@@ -70,7 +73,15 @@ export function useTts(projectId: string) {
     const audio = new Audio(result.file_path);
     audio.onerror = () => {
       // Browser audio decoder sandboxed; play failure caught
-      console.error("Audio playback failed for preview");
+      frontendLog.error("useTts.preview", "audio playback failed", {
+        fields: {
+          file_path: result.file_path,
+          provider: preset.provider,
+          voice_id: preset.id,
+          media_error_code: audio.error?.code ?? null,
+          media_error_message: audio.error?.message ?? null,
+        },
+      });
     };
     await audio.play();
   };

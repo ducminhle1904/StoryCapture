@@ -71,6 +71,7 @@ fn open_app_db(state: &AppState) -> Result<storage::AppDb, AppError> {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "list_projects"), err(Debug))]
 pub fn list_projects(state: State<'_, AppState>) -> Result<Vec<ProjectDto>, AppError> {
     let db = open_app_db(&state)?;
     let rows = db.list_projects().map_err(map_storage_err)?;
@@ -88,6 +89,7 @@ pub struct CreateProjectArgs {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "create_project"), err(Debug))]
 pub fn create_project(
     state: State<'_, AppState>,
     args: CreateProjectArgs,
@@ -125,6 +127,7 @@ pub struct ProjectIdArg {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "open_project"), err(Debug))]
 pub fn open_project(
     state: State<'_, AppState>,
     args: ProjectIdArg,
@@ -220,6 +223,7 @@ fn scan_exports_dir(dir: &Path) -> Vec<RecordingInfoDto> {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "list_project_recordings"), err(Debug))]
 pub fn list_project_recordings(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -249,6 +253,7 @@ pub fn list_project_recordings(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "remove_project"), err(Debug))]
 pub fn remove_project(state: State<'_, AppState>, args: ProjectIdArg) -> Result<(), AppError> {
     let id = uuid::Uuid::parse_str(&args.id)
         .map_err(|e| AppError::InvalidArgument(format!("invalid project id: {e}")))?;

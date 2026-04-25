@@ -10,6 +10,8 @@
  * helper; this module owns only the context selection.
  */
 
+import { frontendLog } from "@/lib/log";
+
 export type PreviewBackend = "webgpu" | "webgl2";
 
 export type PreviewCtx =
@@ -39,22 +41,28 @@ export async function initPreviewContext(
         if (context) {
           const format = navigator.gpu.getPreferredCanvasFormat();
           context.configure({ device, format, alphaMode: "premultiplied" });
-          // eslint-disable-next-line no-console
-          console.info("[preview] using WebGPU");
+          frontendLog.info("preview/gpu", "using WebGPU backend", {
+            fields: {
+              format,
+              adapter_features: Array.from(adapter.features),
+            },
+          });
           return { kind: "webgpu", device, context, format, adapter };
         }
       }
     } catch (err) {
       // WebGPU present but adapter/device request failed — fall through to WebGL2.
-      // eslint-disable-next-line no-console
-      console.warn("[preview] WebGPU init failed, falling back", err);
+      frontendLog.warn(
+        "preview/gpu",
+        "WebGPU init failed; falling back to WebGL2",
+        { error: err },
+      );
     }
   }
 
   const gl = canvas.getContext("webgl2") as WebGL2RenderingContext | null;
   if (gl) {
-    // eslint-disable-next-line no-console
-    console.info("[preview] using WebGL2 fallback");
+    frontendLog.info("preview/gpu", "using WebGL2 fallback backend");
     return { kind: "webgl2", gl };
   }
 

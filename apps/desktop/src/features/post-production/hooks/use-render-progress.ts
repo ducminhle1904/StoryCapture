@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 import type { RenderProgress } from "@/ipc/render";
+import { frontendLog } from "@/lib/log";
 import { useEditorStore } from "../state/store";
 
 export function useRenderProgress(): Record<string, RenderProgress> {
@@ -20,8 +21,11 @@ export function useRenderProgress(): Record<string, RenderProgress> {
     };
     // Fire-and-forget subscription.
     void invoke<void>("stream_render_progress", { channel }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn("[post-production] stream_render_progress failed", err);
+      frontendLog.warn(
+        "post-production/useRenderProgress",
+        "stream_render_progress IPC subscription failed",
+        { error: err },
+      );
     });
 
     return () => {

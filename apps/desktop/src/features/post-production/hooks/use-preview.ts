@@ -11,6 +11,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
+import { frontendLog } from "@/lib/log";
+
 import { PreviewEngine } from "../preview/preview-engine";
 import type { PreviewRenderPlan } from "../preview/types";
 
@@ -59,10 +61,16 @@ export function usePreview({
         setReady(true);
       })
       .catch((err) => {
-        // Capture lost / no backend — surface to console; the UI falls
-        // back to a static preview poster.
-        // eslint-disable-next-line no-console
-        console.warn("[post-production] PreviewEngine init failed", err);
+        // Capture lost / no backend — UI falls back to a static preview
+        // poster; surface so we can debug "preview never showed up" reports.
+        frontendLog.warn(
+          "post-production/usePreview",
+          "PreviewEngine init failed (falling back to static poster)",
+          {
+            error: err,
+            fields: { outputWidth, outputHeight },
+          },
+        );
       });
 
     // Observe canvas size changes and forward to the backend. Without this

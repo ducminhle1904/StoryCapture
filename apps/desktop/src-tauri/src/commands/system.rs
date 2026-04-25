@@ -27,16 +27,23 @@ pub struct AppInfo {
     pub arch: String,
     pub data_dir: String,
     pub log_dir: String,
+    /// Per-process session id (matches the `session=<uuid>` prefix on every
+    /// log line). Surfaced to the renderer so bug-report bundles can
+    /// reference the exact slice of the log file the user is running in.
+    pub session_id: String,
+    pub pid: u32,
 }
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "ping"))]
 pub fn ping() -> String {
     "pong from storycapture".to_string()
 }
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "app_info"), err(Debug))]
 pub fn app_info(app: AppHandle<Wry>) -> Result<AppInfo, AppError> {
     let state = app.state::<crate::state::AppState>();
     Ok(AppInfo {
@@ -45,6 +52,8 @@ pub fn app_info(app: AppHandle<Wry>) -> Result<AppInfo, AppError> {
         arch: std::env::consts::ARCH.to_string(),
         data_dir: state.data_dir.display().to_string(),
         log_dir: state.log_dir.display().to_string(),
+        session_id: crate::logging::current_session_id().to_string(),
+        pid: std::process::id(),
     })
 }
 
@@ -54,6 +63,7 @@ pub fn app_info(app: AppHandle<Wry>) -> Result<AppInfo, AppError> {
 // straight to the OS keychain without persisting it elsewhere.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "store_secret"), err(Debug))]
 pub fn store_secret(service: String, account: String, value: String) -> Result<(), AppError> {
     tracing::info!(
         target: "storycapture::secrets",
@@ -68,6 +78,7 @@ pub fn store_secret(service: String, account: String, value: String) -> Result<(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "load_secret"), err(Debug))]
 pub fn load_secret(service: String, account: String) -> Result<String, AppError> {
     tracing::info!(
         target: "storycapture::secrets",
@@ -81,6 +92,7 @@ pub fn load_secret(service: String, account: String) -> Result<String, AppError>
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "delete_secret"), err(Debug))]
 pub fn delete_secret(service: String, account: String) -> Result<(), AppError> {
     tracing::info!(
         target: "storycapture::secrets",
@@ -107,6 +119,7 @@ pub fn delete_secret(service: String, account: String) -> Result<(), AppError> {
 /// bindings don't drift between profiles.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "trigger_panic"), err(Debug))]
 pub fn trigger_panic() -> Result<(), AppError> {
     #[cfg(debug_assertions)]
     {

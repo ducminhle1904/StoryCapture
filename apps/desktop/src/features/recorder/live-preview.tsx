@@ -9,6 +9,7 @@ import {
   type AuthorMouseButton,
   type PreviewFramePayload,
 } from "@/ipc/preview";
+import { frontendLog } from "@/lib/log";
 
 interface LivePreviewProps {
   width?: number;
@@ -173,7 +174,7 @@ export function LivePreview({
           if (cancelled) return;
           return startWithRetry(retriesLeft - 1);
         }
-        console.warn("startPreviewStream failed after retry:", err);
+        frontendLog.warn("LivePreview", "startPreviewStream failed after retry", { error: err });
         if (!cancelled) setStatus("unavailable");
         return;
       }
@@ -194,7 +195,9 @@ export function LivePreview({
 
     saturationTimerRef.current = setInterval(() => {
       if (dropCountRef.current > 0) {
-        console.warn("[preview] frames dropped", dropCountRef.current);
+        frontendLog.warn("LivePreview", "frames dropped", {
+          fields: { dropped: dropCountRef.current },
+        });
         dropCountRef.current = 0;
       }
     }, SATURATION_LOG_INTERVAL_MS);

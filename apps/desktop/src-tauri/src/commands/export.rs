@@ -199,6 +199,7 @@ fn parse_quality(s: &str) -> Result<Quality, AppError> {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "export_run"), err(Debug))]
 pub async fn export_run(
     state: State<'_, AppState>,
     args: ExportRunArgs,
@@ -260,6 +261,7 @@ pub async fn export_run(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "export_get_presets"))]
 pub fn export_get_presets() -> ExportPresetsCatalogue {
     ExportPresetsCatalogue {
         formats: OutputFormat::all()
@@ -287,6 +289,7 @@ pub fn export_get_presets() -> ExportPresetsCatalogue {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "export_validate_config"), err(Debug))]
 pub fn export_validate_config(cfg: ExportOutputDto) -> Result<(), AppError> {
     let fmt = parse_format(&cfg.format)?;
     let res = parse_resolution(&cfg.resolution)?;

@@ -4,10 +4,13 @@ import { createRoot } from "react-dom/client";
 
 import "./styles.css";
 import App from "./App";
+import { ErrorBoundary } from "./components/error-boundary";
 import { queryClient } from "./ipc/query-client";
+import { frontendLog, installGlobalErrorHandlers } from "./lib/log";
 import { initOutputPrefs } from "./lib/output-prefs-persist";
 import { applyPersistedTheme } from "./lib/theme";
 
+installGlobalErrorHandlers();
 applyPersistedTheme();
 
 const container = document.getElementById("root");
@@ -17,12 +20,20 @@ if (!container) {
 const root = createRoot(container);
 
 async function bootstrap() {
-  await initOutputPrefs();
+  try {
+    await initOutputPrefs();
+  } catch (err) {
+    frontendLog.error("bootstrap", "initOutputPrefs failed; rendering anyway", {
+      error: err,
+    });
+  }
   root.render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
+      <ErrorBoundary source="root">
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </ErrorBoundary>
     </StrictMode>,
   );
 }

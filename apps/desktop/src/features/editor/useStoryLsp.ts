@@ -18,6 +18,7 @@ import {
   storyLanguageExtension,
   pushLspDiagnostics,
 } from "@/lib/lsp/storyLanguage";
+import { frontendLog } from "@/lib/log";
 
 interface UseStoryLspOptions {
   /** Document URI for this editor instance. */
@@ -116,7 +117,11 @@ export function useStoryLsp({
         });
       } catch (e) {
         // LSP initialization failure is non-fatal -- editor works without LSP.
-        console.warn("[useStoryLsp] LSP init failed:", e);
+        frontendLog.warn(
+          "useStoryLsp",
+          "LSP init failed (editor falling back to no-LSP mode)",
+          { error: e, fields: { doc_uri: docUri } },
+        );
       }
     };
 

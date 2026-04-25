@@ -95,6 +95,23 @@ Commit messages encode the plan ID (`feat(07-05): …` → phase 7, plan 5).
 | `rust-check.yml` | Standalone clippy + cargo-deny. |
 | `playwright-sidecar-build.yml` | Build Node SEA sidecar per-triple. |
 
+## Local sidecar binaries
+
+Tauri's `externalBin` requires `apps/desktop/src-tauri/binaries/{ffmpeg,playwright-sidecar}-<triple>` to exist before `cargo build` succeeds — Release CI downloads real artifacts from `ffmpeg-build.yml` / `playwright-sidecar-build.yml`, but local dev needs them on disk.
+
+Two flows produce them:
+
+1. **Real Playwright SEA** (~50 MB+): `pnpm tauri:dev` runs `pnpm --filter playwright-sidecar build` first; that delegates to `scripts/playwright-sidecar/build-sea.mjs` which packages Node 20 + `playwright-core` + `server.mjs`.
+2. **Placeholder stubs** (≤ 1 KB shell scripts that exit 127): `bash scripts/dev/install-sidecar-placeholders.sh` drops them just to satisfy the `externalBin` path check so a fresh checkout can run `cargo check -p storycapture --lib`.
+
+### Gotcha: placeholder ↔ SEA staleness conflict
+
+If you ever install placeholders to unblock a `cargo check`, then run `pnpm tauri:dev`, the SEA build's staleness check used to skip rebuild because the placeholder's mtime was newer than every source file. The dev binary then ran the stub at runtime — `start_author_preview` (and any other sidecar IPC) hung on a JSON-RPC handshake the stub never sent, surfacing as a frozen "Starting preview…" pane.
+
+`build-sea.mjs` now treats outputs ≤ 10 KB as "looks like a stub" and forces a real rebuild regardless of mtime. If you ever bypass that guard (custom build flags, manual binary placement), `rm apps/desktop/src-tauri/binaries/playwright-sidecar-<triple>` before running `pnpm tauri:dev`.
+
+Symptom → diagnosis: search the log file for `sidecar_stderr=storycapture: playwright-sidecar placeholder` — that's the unmistakable signature of a stub being spawned at runtime.
+
 ## Agent / contributor hard rules
 
 Mirrored from `AGENTS.md` / `CLAUDE.md` "Working Rules" — keep them top of mind:

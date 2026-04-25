@@ -429,6 +429,7 @@ impl From<PParseResult> for ParseResultDto {
 /// check `source.len() <= story_parser::MAX_STORY_FILE_BYTES` first.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "parse_story"), err(Debug))]
 pub fn parse_story(source: String) -> Result<ParseResultDto, AppError> {
     if (source.len() as u64) > story_parser::MAX_STORY_FILE_BYTES {
         return Err(AppError::InvalidArgument(format!(

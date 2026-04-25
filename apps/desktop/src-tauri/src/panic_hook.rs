@@ -49,9 +49,14 @@ pub fn install(app_handle: AppHandle<Wry>) {
         let backtrace = Backtrace::force_capture();
 
         // 1. Local log (full backtrace; never sent across IPC).
+        // session_id is implicit in the formatter prefix; we re-emit it
+        // in the structured field so a panic line is grep-friendly even
+        // if the formatter is ever stripped.
         tracing::error!(
             target: "storycapture::panic",
+            session_id = %crate::logging::current_session_id(),
             thread = %thread,
+            location = ?info.location(),
             "PANIC: {payload}\n{backtrace}"
         );
 

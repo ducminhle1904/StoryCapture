@@ -19,3 +19,13 @@
 #
 # All `ffmpeg-*` and `playwright-sidecar-*` files in this directory are
 # gitignored (see root .gitignore).
+#
+# RUNTIME GOTCHA — Live Preview / author preview hanging on
+# "Starting preview…":
+#   If you see that, the file `playwright-sidecar-<triple>` here is
+#   probably the placeholder stub (≤ 10 KB) instead of the real Node SEA
+#   (50+ MB). Tauri spawns whatever is at this path; the stub exits 127
+#   immediately, so JSON-RPC handshake never completes.
+#   build-sea.mjs auto-detects a stub by size and rebuilds the real one,
+#   but if you bypass that guard, just `rm` the placeholder and re-run
+#   `pnpm tauri:dev` — the SEA build will recreate it.

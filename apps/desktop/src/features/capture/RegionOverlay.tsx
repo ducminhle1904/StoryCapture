@@ -7,6 +7,8 @@ import { useSearchParams } from "react-router-dom";
 import { emitTo } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+import { frontendLog } from "@/lib/log";
+
 interface Rect {
   x: number;
   y: number;
@@ -42,15 +44,20 @@ export function RegionOverlay() {
         await emitTo("main", "region://selected", payload);
       } catch (e) {
         // Non-fatal: surface the reason if the main window is gone.
-        // eslint-disable-next-line no-console
-        console.warn("[RegionOverlay] emit region://selected failed:", e);
+        frontendLog.warn(
+          "RegionOverlay",
+          "emit region://selected failed (main window likely gone)",
+          { error: e },
+        );
       } finally {
         try {
           await getCurrentWebviewWindow().close();
         } catch (e) {
-          // The overlay may already be closing.
-          // eslint-disable-next-line no-console
-          console.warn("[RegionOverlay] close overlay window failed:", e);
+          frontendLog.warn(
+            "RegionOverlay",
+            "close overlay window failed (already closing?)",
+            { error: e },
+          );
         }
       }
     },

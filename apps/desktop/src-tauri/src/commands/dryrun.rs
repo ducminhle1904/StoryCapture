@@ -138,6 +138,7 @@ impl BrowserDriver for StubBrowserDriver {
 /// Events are streamed to the renderer via `on_event`.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "dryrun_start"), err(Debug))]
 pub async fn dryrun_start(
     steps: Vec<DryRunStepDto>,
     on_event: Channel<DryRunEventDto>,
@@ -196,6 +197,7 @@ pub async fn dryrun_start(
 /// Cancel a running dry-run by task_id.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "dryrun_cancel"), err(Debug))]
 pub async fn dryrun_cancel(task_id: String) -> Result<(), AppError> {
     if registry().abort(&task_id) {
         Ok(())

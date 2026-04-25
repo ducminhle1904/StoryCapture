@@ -19,6 +19,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { Film } from "lucide-react";
 
 import previewBackdrop from "@/assets/gradients/forest-emerald.png";
+import { frontendLog } from "@/lib/log";
 import { useEditorStore } from "../state/store";
 import type { PreviewRenderPlan } from "./types";
 import { PreviewEngine } from "./preview-engine";
@@ -84,8 +85,11 @@ export function PreviewPlayer({
         setReady(true);
       })
       .catch((err) => {
-        // eslint-disable-next-line no-console
-        console.warn("[post-production] PreviewEngine init failed", err);
+        frontendLog.warn(
+          "post-production/PreviewPlayer",
+          "PreviewEngine init failed (preview disabled)",
+          { error: err },
+        );
       });
     return () => {
       disposed = true;

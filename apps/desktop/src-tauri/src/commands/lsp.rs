@@ -48,6 +48,7 @@ impl LspBridgeState {
 /// Send a JSON-RPC request or notification to the in-process LSP server.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "lsp_request"), err(Debug))]
 pub async fn lsp_request(
     bridge_state: State<'_, LspBridgeState>,
     jsonrpc_request_json: String,

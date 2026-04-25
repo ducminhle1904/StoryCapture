@@ -73,3 +73,12 @@ Read only what the task needs.
   and add read-on-demand pointers instead of duplicating long explanations.
 - When code changes invalidate agent guidance, update this file only at the
   headline level and put the full refresh in the relevant doc.
+- **Sidecar placeholder gotcha**: if you run
+  `bash scripts/dev/install-sidecar-placeholders.sh` to unblock
+  `cargo check`, the stubs left in `apps/desktop/src-tauri/binaries/` will
+  hang Live Preview / author preview at runtime ("Starting preview…")
+  unless the SEA build replaces them. `build-sea.mjs` now auto-detects
+  ≤ 10 KB outputs as stubs and forces rebuild — if you ever bypass that,
+  `rm` the `playwright-sidecar-<triple>` placeholder before running
+  `pnpm tauri:dev`. Full context: `docs/CONVENTIONS.md` → "Local sidecar
+  binaries".

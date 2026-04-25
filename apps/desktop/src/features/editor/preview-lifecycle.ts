@@ -24,6 +24,7 @@ import {
   startAuthorPreview,
   stopAuthorPreview,
 } from "@/ipc/preview";
+import { frontendLog } from "@/lib/log";
 import {
   VIEWPORT_SIZES,
   type PreviewViewport,
@@ -82,7 +83,10 @@ async function launch(appUrl: string, viewport: PreviewViewport) {
     state.paused = false;
     notify();
   } catch (err) {
-    console.warn("start_author_preview failed:", err);
+    frontendLog.warn("previewLifecycle", "start_author_preview failed", {
+      error: err,
+      fields: { app_url: appUrl, viewport },
+    });
   } finally {
     state.starting = false;
   }
@@ -98,7 +102,10 @@ async function teardown() {
   try {
     await stopAuthorPreview(id);
   } catch (err) {
-    console.warn("stop_author_preview failed:", err);
+    frontendLog.warn("previewLifecycle", "stop_author_preview failed", {
+      error: err,
+      fields: { stream_id: id },
+    });
   }
 }
 
@@ -126,14 +133,20 @@ export function acquirePreview(
     if (state.appUrl !== appUrl) {
       state.appUrl = appUrl;
       setAuthorPreviewUrl(state.streamId, appUrl).catch((err) => {
-        console.warn("set_author_preview_url failed:", err);
+        frontendLog.warn("previewLifecycle", "set_author_preview_url failed", {
+          error: err,
+          fields: { stream_id: state.streamId, app_url: appUrl },
+        });
       });
     }
     if (state.viewport !== viewport) {
       state.viewport = viewport;
       const { w, h } = VIEWPORT_SIZES[viewport];
       setAuthorPreviewViewport(state.streamId, w, h).catch((err) => {
-        console.warn("set_author_preview_viewport failed:", err);
+        frontendLog.warn("previewLifecycle", "set_author_preview_viewport failed", {
+          error: err,
+          fields: { stream_id: state.streamId, w, h, viewport },
+        });
       });
     }
   } else {
@@ -170,7 +183,10 @@ export function updateAppUrl(appUrl: string) {
   if (state.appUrl === appUrl) return;
   state.appUrl = appUrl;
   setAuthorPreviewUrl(state.streamId, appUrl).catch((err) => {
-    console.warn("set_author_preview_url failed:", err);
+    frontendLog.warn("previewLifecycle", "set_author_preview_url failed", {
+      error: err,
+      fields: { stream_id: state.streamId, app_url: appUrl },
+    });
   });
 }
 
@@ -180,7 +196,10 @@ export function updateViewport(viewport: PreviewViewport) {
   state.viewport = viewport;
   const { w, h } = VIEWPORT_SIZES[viewport];
   setAuthorPreviewViewport(state.streamId, w, h).catch((err) => {
-    console.warn("set_author_preview_viewport failed:", err);
+    frontendLog.warn("previewLifecycle", "set_author_preview_viewport failed", {
+      error: err,
+      fields: { stream_id: state.streamId, w, h, viewport },
+    });
   });
 }
 
@@ -193,7 +212,10 @@ export function pausePreview() {
   if (state.streamId == null || state.paused) return;
   state.paused = true;
   pauseAuthorPreview(state.streamId).catch((err) => {
-    console.warn("pause_author_preview failed:", err);
+    frontendLog.warn("previewLifecycle", "pause_author_preview failed", {
+      error: err,
+      fields: { stream_id: state.streamId },
+    });
   });
 }
 
@@ -201,6 +223,9 @@ export function resumePreview() {
   if (state.streamId == null || !state.paused) return;
   state.paused = false;
   resumeAuthorPreview(state.streamId).catch((err) => {
-    console.warn("resume_author_preview failed:", err);
+    frontendLog.warn("previewLifecycle", "resume_author_preview failed", {
+      error: err,
+      fields: { stream_id: state.streamId },
+    });
   });
 }

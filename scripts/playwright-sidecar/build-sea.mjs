@@ -40,25 +40,40 @@ const outPath = resolve(outDir, outName);
 // Staleness check — skip the ~1-3 min build when the binary is newer
 // than every input. Run with --force to override (e.g. when Node or
 // playwright-core version bumped without touching sources).
+//
+// Placeholder guard: if the existing binary is suspiciously small, treat
+// it as the dev stub from `scripts/dev/install-sidecar-placeholders.sh`
+// (a tiny shell script that exits 127) rather than a real Node SEA. Without
+// this, the placeholder's freshly-touched mtime would always win the
+// staleness check and `tauri:dev` would silently spawn a stub at runtime —
+// causing `start_author_preview` to hang on a JSON-RPC handshake that the
+// stub never sends. (Real SEA binaries are >50 MB.)
+const STUB_MAX_SIZE = 10 * 1024; // 10 KB; matches install-sidecar-placeholders.sh convention.
 if (!flag('--force') && existsSync(outPath)) {
-  const outMtime = statSync(outPath).mtimeMs;
-  const inputs = [
-    resolve(__dirname, 'server.mjs'),
-    resolve(__dirname, 'build-sea.mjs'),
-    resolve(__dirname, 'package.json'),
-    resolve(__dirname, 'pnpm-lock.yaml'),
-    ...walkTs(resolve(__dirname, 'picker')),
-  ].filter(existsSync);
-  const newestInputMtime = inputs.reduce(
-    (m, p) => Math.max(m, statSync(p).mtimeMs),
-    0,
-  );
-  if (outMtime >= newestInputMtime) {
-    console.log(`[playwright-sidecar] SEA up to date — skip rebuild (use --force to override)`);
-    console.log(`[playwright-sidecar] Output: ${outPath}`);
-    process.exit(0);
+  const outStat = statSync(outPath);
+  if (outStat.size <= STUB_MAX_SIZE) {
+    console.log(
+      `[playwright-sidecar] Existing binary is ${outStat.size} bytes — looks like a dev placeholder; rebuilding the real SEA.`,
+    );
+  } else {
+    const inputs = [
+      resolve(__dirname, 'server.mjs'),
+      resolve(__dirname, 'build-sea.mjs'),
+      resolve(__dirname, 'package.json'),
+      resolve(__dirname, 'pnpm-lock.yaml'),
+      ...walkTs(resolve(__dirname, 'picker')),
+    ].filter(existsSync);
+    const newestInputMtime = inputs.reduce(
+      (m, p) => Math.max(m, statSync(p).mtimeMs),
+      0,
+    );
+    if (outStat.mtimeMs >= newestInputMtime) {
+      console.log(`[playwright-sidecar] SEA up to date — skip rebuild (use --force to override)`);
+      console.log(`[playwright-sidecar] Output: ${outPath}`);
+      process.exit(0);
+    }
+    console.log(`[playwright-sidecar] Source newer than binary — rebuilding`);
   }
-  console.log(`[playwright-sidecar] Source newer than binary — rebuilding`);
 }
 
 function walkTs(dir) {

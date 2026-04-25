@@ -60,6 +60,7 @@ impl From<SoundLibraryEntry> for SoundLibraryEntryDto {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "sound_library_list"), err(Debug))]
 pub async fn sound_library_list(
     state: State<'_, AppState>,
     category: SoundCategoryDto,

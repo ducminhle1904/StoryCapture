@@ -38,6 +38,7 @@ impl From<TimelineState> for TimelineStateDto {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "timeline_load"), err(Debug))]
 pub async fn timeline_load(
     state: State<'_, AppState>,
     story_id: String,
@@ -52,6 +53,7 @@ pub async fn timeline_load(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "timeline_save"), err(Debug))]
 pub async fn timeline_save(
     state: State<'_, AppState>,
     story_id: String,

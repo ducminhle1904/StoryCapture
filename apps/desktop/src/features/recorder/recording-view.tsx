@@ -41,6 +41,7 @@ import {
   type ExecutorEvent,
 } from "@/ipc/automation";
 import { parseStory } from "@/ipc/parse";
+import { frontendLog } from "@/lib/log";
 import { useRecorderStore, type RecorderStatus, type StepProgress } from "@/state/recorder";
 
 import { TccPrompt } from "./tcc-prompt";
@@ -253,8 +254,10 @@ export function RecordingView({
       sessionRef.current = null;
       if (sid) {
         void stopRecording(sid).catch((e) => {
-          // eslint-disable-next-line no-console
-          console.warn("stopRecording on unmount failed", e);
+          frontendLog.warn("RecordingView", "stopRecording on unmount failed", {
+            error: e,
+            fields: { session_id: sid },
+          });
         });
       }
       reset();
@@ -651,8 +654,10 @@ export function RecordingView({
       }
     } catch (e) {
       if (!isNotFoundIpcError(e)) {
-        // eslint-disable-next-line no-console
-        console.warn("forceStop: stopRecording error", formatIpcError(e));
+        frontendLog.warn("RecordingView", "forceStop: stopRecording error", {
+          error: e,
+          fields: { ipc_error: formatIpcError(e) },
+        });
       }
     }
     startedAtRef.current = null;

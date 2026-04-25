@@ -1,3 +1,5 @@
+import { frontendLog } from "@/lib/log";
+
 /**
  * WCAG 2.1 AA contrast helpers (UI-10).
  *
@@ -62,10 +64,15 @@ export function auditTokenPairs(
     const ratio = checkContrast(p.fg, p.bg);
     const min = p.minRatio ?? AA_BODY_TEXT;
     if (ratio < min) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[wcag] ${p.label}: ${ratio.toFixed(2)}:1 below threshold ${min}:1 (fg=${p.fg} bg=${p.bg})`,
-      );
+      frontendLog.warn("wcag", "contrast pair below WCAG threshold", {
+        fields: {
+          label: p.label,
+          ratio: Number(ratio.toFixed(2)),
+          min_ratio: min,
+          fg: p.fg,
+          bg: p.bg,
+        },
+      });
     }
   }
 }

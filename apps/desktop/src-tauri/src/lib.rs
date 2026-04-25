@@ -103,10 +103,14 @@ pub fn run() {
             focus_main_window(app);
         }))
         .plugin(
+            // Renderer-facing `log:` IPC. The canonical file on disk is
+            // owned by `tracing` (see `logging::init`); these defaults
+            // can't read user settings because the plugin builder runs
+            // before `setup()` has an AppHandle.
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)
-                .max_file_size(50 * 1024 * 1024 /* 50 MiB */)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .max_file_size(10 * 1024 * 1024 /* 10 MiB */)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(10))
                 .build(),
         )
         .plugin(tauri_plugin_fs::init())
@@ -131,7 +135,10 @@ pub fn run() {
 
             // tracing -> file (D-30). tauri-plugin-log handles its own
             // file in the same dir; the two are complementary surfaces.
-            if let Err(e) = logging::init(&log_dir) {
+            // The user-configurable rotation policy + log-dir override
+            // (see Settings → Logs) is honoured by `tracing` here.
+            let app_settings = commands::app_settings::load(app.handle());
+            if let Err(e) = logging::init(&log_dir, &app_settings.log) {
                 eprintln!("[storycapture] tracing init failed: {e}");
             }
 

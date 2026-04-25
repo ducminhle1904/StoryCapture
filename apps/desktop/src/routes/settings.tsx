@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import {
   Download,
+  FileText,
   Info,
   Key,
   Keyboard,
@@ -17,6 +18,7 @@ import { CaptureCategory } from "@/features/settings/categories/capture-category
 import { RenderCategory } from "@/features/settings/categories/render-category";
 import { KeyboardCategory } from "@/features/settings/categories/keyboard-category";
 import { PrivacyCategory } from "@/features/settings/categories/privacy-category";
+import { LogsCategory } from "@/features/settings/categories/logs-category";
 import { AboutCategory } from "@/features/settings/categories/about-category";
 
 type SectionId =
@@ -26,6 +28,7 @@ type SectionId =
   | "render"
   | "kbd"
   | "privacy"
+  | "logs"
   | "about";
 
 interface Section {
@@ -41,6 +44,7 @@ const SECTIONS: Section[] = [
   { id: "render", label: "Render defaults", icon: <Download size={12} /> },
   { id: "kbd", label: "Keyboard", icon: <Keyboard size={12} /> },
   { id: "privacy", label: "Privacy & telemetry", icon: <Lock size={12} /> },
+  { id: "logs", label: "Logs", icon: <FileText size={12} /> },
   { id: "about", label: "About", icon: <Info size={12} /> },
 ];
 
@@ -119,6 +123,7 @@ export default function SettingsRoute() {
           {section === "render" && <RenderCategory />}
           {section === "kbd" && <KeyboardCategory />}
           {section === "privacy" && <PrivacyCategory />}
+          {section === "logs" && <LogsCategory />}
           {section === "about" && <AboutCategory />}
         </PageContentTransition>
       </div>

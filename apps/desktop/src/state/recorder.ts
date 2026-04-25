@@ -10,6 +10,7 @@ import {
   type CaptureTargets,
 } from "@/ipc/capture";
 import type { AudioPickerValue } from "@/ipc/audio";
+import { frontendLog } from "@/lib/log";
 import { getAppSettings, setLivePreviewEnabled as ipcSetLivePreviewEnabled } from "@/ipc/settings";
 
 export type RecorderStatus =
@@ -247,8 +248,14 @@ export const useRecorderStore = create<RecorderState>((set) => ({
     }
     await ipcSetCaptureTarget(target).catch((err) => {
       // Non-fatal: persistence failure shouldn't block the UI choice.
-      // eslint-disable-next-line no-console
-      console.warn("set_capture_target persistence failed:", err);
+      frontendLog.warn(
+        "recorderStore",
+        "set_capture_target persistence failed (UI choice still applied)",
+        {
+          error: err,
+          fields: { target_key: captureTargetKey(target) },
+        },
+      );
     });
     set({ captureTarget: target });
   },

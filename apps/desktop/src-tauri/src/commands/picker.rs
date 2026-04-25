@@ -111,6 +111,7 @@ impl From<automation::PickElementResponse> for PickElementResponseDto {
 /// `pickElement.start` response (07-03a `server.mjs:414`).
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_start"), err(Debug))]
 pub async fn picker_start(
     state: State<'_, AppState>,
     timeout_ms: u64,
@@ -134,6 +135,7 @@ pub async fn picker_start(
 /// `{ cancelled: true, reason: "user-cancel" }`.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_cancel"), err(Debug))]
 pub async fn picker_cancel(state: State<'_, AppState>) -> Result<(), AppError> {
     let driver = {
         let slot = state.playwright_driver.lock().await;
@@ -153,6 +155,7 @@ pub async fn picker_cancel(state: State<'_, AppState>) -> Result<(), AppError> {
 /// the UI can poll cheaply.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_is_active"), err(Debug))]
 pub async fn picker_is_active(state: State<'_, AppState>) -> Result<bool, AppError> {
     let driver = {
         let slot = state.playwright_driver.lock().await;
@@ -207,6 +210,7 @@ pub async fn picker_is_active(state: State<'_, AppState>) -> Result<bool, AppErr
 /// envelope.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_stamp_step_id"), err(Debug))]
 pub async fn picker_stamp_step_id(
     story_path: String,
     line_offset: u32,
@@ -519,6 +523,7 @@ pub async fn picker_start_author_impl(
 /// `AppError::InvalidArgument`.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_start_author"), err(Debug))]
 pub async fn picker_start_author(
     state: State<'_, AppState>,
     registry: State<'_, Arc<AuthorDriverRegistry>>,

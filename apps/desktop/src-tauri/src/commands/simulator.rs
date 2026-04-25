@@ -344,6 +344,7 @@ async fn spawn_run(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "simulator_start"), err(Debug))]
 pub async fn simulator_start(
     state: State<'_, AppState>,
     registry: State<'_, SimulatorRegistry>,
@@ -548,6 +549,7 @@ async fn simulator_start_inner(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "simulator_step_to"), err(Debug))]
 pub async fn simulator_step_to(
     registry: State<'_, SimulatorRegistry>,
     author_registry: State<'_, Arc<AuthorDriverRegistry>>,
@@ -611,6 +613,7 @@ pub async fn simulator_step_to(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "simulator_cancel"), err(Debug))]
 pub async fn simulator_cancel(
     state: State<'_, AppState>,
     registry: State<'_, SimulatorRegistry>,
@@ -652,6 +655,7 @@ pub async fn simulator_cancel(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "simulator_promote_fallback"), err(Debug))]
 pub async fn simulator_promote_fallback(
     registry: State<'_, SimulatorRegistry>,
     session_id: String,

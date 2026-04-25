@@ -25,6 +25,7 @@ import { toast } from "sonner";
 
 import type { Command, SelectorOrText } from "@/ipc/parse";
 import { simulatorCancel, simulatorPromoteFallback, simulatorStart } from "@/ipc/simulator";
+import { frontendLog } from "@/lib/log";
 import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
@@ -165,9 +166,14 @@ export function SimulatorTimeline({
         },
         (e) => useSimulatorStore.getState().handleEvent(e),
       );
-      console.log("[sim] simulatorStart resolved", sid);
+      frontendLog.info("simulatorTimeline", "simulatorStart resolved", {
+        fields: { session_id: sid, project_folder: projectFolder, story_path: storyPath },
+      });
     } catch (err) {
-      console.error("[sim] simulatorStart threw", err);
+      frontendLog.error("simulatorTimeline", "simulatorStart threw", {
+        error: err,
+        fields: { project_folder: projectFolder, story_path: storyPath, stream_id: streamId },
+      });
       const msg =
         err instanceof Error
           ? err.message

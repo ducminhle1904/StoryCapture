@@ -178,6 +178,7 @@ async fn post_trpc_mutation(
 /// Push project metadata to the web companion. Queues locally if offline.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "sync_project_metadata"), err(Debug))]
 pub async fn sync_project_metadata(
     state: State<'_, AppState>,
     desktop_id: String,
@@ -241,6 +242,7 @@ pub async fn sync_project_metadata(
 /// does NOT queue on failure (recording status is ephemeral).
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "update_recording_status"), err(Debug))]
 pub async fn update_recording_status(
     state: State<'_, AppState>,
     desktop_id: String,
@@ -287,6 +289,7 @@ pub async fn update_recording_status(
 /// reopen the connection to delete successfully sent items.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "flush_sync_queue"), err(Debug))]
 pub async fn flush_sync_queue(state: State<'_, AppState>) -> Result<FlushResult, WebSyncError> {
     tracing::info!(target: "storycapture::web_sync", "flush_sync_queue");
 
@@ -369,6 +372,7 @@ pub async fn flush_sync_queue(state: State<'_, AppState>) -> Result<FlushResult,
 /// Get the current sync status: connected, pending queue count, last sync time.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "get_sync_status"), err(Debug))]
 pub async fn get_sync_status(state: State<'_, AppState>) -> Result<SyncStatusDto, WebSyncError> {
     let connected = get_api_token().await.is_ok();
 

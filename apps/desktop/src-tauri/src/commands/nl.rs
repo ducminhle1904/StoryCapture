@@ -210,6 +210,7 @@ fn read_api_key(provider: ProviderId) -> Result<String, NlCommandError> {
 /// Returns the `task_id` immediately (non-blocking).
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "nl_chat_send"), err(Debug))]
 pub async fn nl_chat_send(
     app: AppHandle,
     project_id: String,
@@ -344,6 +345,7 @@ pub async fn nl_chat_send(
 /// Cancel an in-flight NL turn.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "nl_cancel"), err(Debug))]
 pub async fn nl_cancel(app: AppHandle, task_id: String) -> Result<(), NlCommandError> {
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
     if registry.abort(&task_id) {
@@ -356,6 +358,7 @@ pub async fn nl_cancel(app: AppHandle, task_id: String) -> Result<(), NlCommandE
 /// Apply steps from a completed NL turn.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "nl_diff_apply"), err(Debug))]
 pub async fn nl_diff_apply(
     app: AppHandle,
     project_id: String,
@@ -390,6 +393,7 @@ pub async fn nl_diff_apply(
 /// Reject a turn's output and drop the cached doc.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "nl_diff_reject"), err(Debug))]
 pub async fn nl_diff_reject(
     app: AppHandle,
     project_id: String,
@@ -405,6 +409,7 @@ pub async fn nl_diff_reject(
 /// Regenerate a single step and stream events.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "nl_regen_step"), err(Debug))]
 pub async fn nl_regen_step(
     app: AppHandle,
     project_id: String,
@@ -521,6 +526,7 @@ pub async fn nl_regen_step(
 /// Load conversation history for a project.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "nl_load_history"), err(Debug))]
 pub async fn nl_load_history(
     app: AppHandle,
     project_id: String,
@@ -555,6 +561,7 @@ pub async fn nl_load_history(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "nl_get_session_id"), err(Debug))]
 pub async fn nl_get_session_id(app: AppHandle) -> Result<String, NlCommandError> {
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
     Ok(registry.session_id().to_string())
@@ -562,6 +569,7 @@ pub async fn nl_get_session_id(app: AppHandle) -> Result<String, NlCommandError>
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "session_get_rollup"), err(Debug))]
 pub async fn session_get_rollup(
     app: AppHandle,
     project_id: String,

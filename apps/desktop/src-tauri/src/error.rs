@@ -93,51 +93,73 @@ impl Serialize for AppError {
     }
 }
 
+/// Walk `Error::source()` and join the chain as `top | caused by: x | caused by: y`.
+/// Stack traces are not included here — `#[tracing::instrument(err)]` at the
+/// command boundary captures those.
+fn fmt_chain(e: &dyn std::error::Error) -> String {
+    let mut out = e.to_string();
+    let mut src = e.source();
+    while let Some(s) = src {
+        use std::fmt::Write as _;
+        let _ = write!(out, " | caused by: {s}");
+        src = s.source();
+    }
+    out
+}
+
 impl From<std::io::Error> for AppError {
     fn from(e: std::io::Error) -> Self {
-        AppError::Io(e.to_string())
+        // Preserve `io::ErrorKind` so "PermissionDenied" vs "NotFound"
+        // is visible without re-running with strace.
+        AppError::Io(format!("{:?}: {}", e.kind(), e))
     }
 }
 
 impl From<serde_json::Error> for AppError {
     fn from(e: serde_json::Error) -> Self {
-        AppError::Serialization(e.to_string())
+        AppError::Serialization(format!(
+            "{} (line {}, column {})",
+            e,
+            e.line(),
+            e.column()
+        ))
     }
 }
 
 impl From<anyhow::Error> for AppError {
     fn from(e: anyhow::Error) -> Self {
-        AppError::Internal(e.to_string())
+        // anyhow already prints its full chain via `{:#}`.
+        AppError::Internal(format!("{e:#}"))
     }
 }
 
 impl From<keyring::Error> for AppError {
     fn from(e: keyring::Error) -> Self {
-        AppError::Keyring(e.to_string())
+        AppError::Keyring(fmt_chain(&e))
     }
 }
 
 impl From<tauri::Error> for AppError {
     fn from(e: tauri::Error) -> Self {
-        AppError::Internal(e.to_string())
+        AppError::Internal(fmt_chain(&e))
     }
 }
 
 impl From<storage::StorageError> for AppError {
     fn from(e: storage::StorageError) -> Self {
-        AppError::Storage(e.to_string())
+        AppError::Storage(fmt_chain(&e))
     }
 }
 
 impl From<encoder::EncoderError> for AppError {
     fn from(e: encoder::EncoderError) -> Self {
-        AppError::Encoder(e.to_string())
+        AppError::Encoder(fmt_chain(&e))
     }
 }
 
 impl From<effects::EffectsError> for AppError {
     fn from(e: effects::EffectsError) -> Self {
-        AppError::Internal(e.to_string())
+        AppError::Internal(fmt_chain(&e))
     }
 }
 

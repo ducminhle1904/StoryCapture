@@ -14,6 +14,17 @@
 #
 # Idempotent: won't overwrite a real binary (files >10 KB are assumed
 # real; stubs are tiny shell scripts).
+#
+# IMPORTANT — placeholder ↔ SEA build interaction:
+#   The Playwright SEA build (`scripts/playwright-sidecar/build-sea.mjs`)
+#   has a staleness check that previously skipped rebuild whenever the
+#   output mtime was newer than every input. A freshly-installed
+#   placeholder satisfies that condition, which made `pnpm tauri:dev`
+#   silently spawn the stub at runtime — Live Preview / author preview
+#   then hung on a JSON-RPC handshake the stub never sent.
+#   build-sea.mjs now treats binaries ≤ 10 KB as "looks like a stub" and
+#   forces a real rebuild. If you ever bypass that guard, delete the
+#   playwright-sidecar-<triple> placeholder before running `pnpm tauri:dev`.
 
 set -euo pipefail
 

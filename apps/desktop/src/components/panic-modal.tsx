@@ -11,6 +11,7 @@ import { Dialog } from "@base-ui-components/react/dialog";
 import { Copy, RotateCw, X } from "lucide-react";
 
 import { onPanic, type PanicPayload } from "@/ipc";
+import { frontendLog } from "@/lib/log";
 import { Button } from "@/components/ui/button";
 import {
   dialogBackdropMotionClassName,
@@ -81,7 +82,9 @@ export function PanicModal() {
       await relaunch();
     } catch (err) {
       // Fallback: close the modal so the user can attempt a manual restart.
-      console.error("Relaunch failed", err);
+      frontendLog.error("PanicModal", "relaunch() failed; user must restart manually", {
+        error: err,
+      });
       setPayload(null);
     }
   };

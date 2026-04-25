@@ -7,6 +7,9 @@
 
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+
+import { frontendLog } from "@/lib/log";
+
 import { useVoiceoverStore } from "./voiceoverStore";
 
 export interface TtsScriptEditorProps {
@@ -75,7 +78,15 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
       });
       setEditedAfterGen(stepId, false);
     } catch (err) {
-      console.error("TTS generation failed:", err);
+      frontendLog.error("TtsScriptEditor", "tts_generate IPC failed", {
+        error: err,
+        fields: {
+          project_id: projectId,
+          step_id: stepId,
+          provider: selectedPreset.provider,
+          voice_id: selectedPreset.id,
+        },
+      });
     } finally {
       setGenerating(stepId, false);
     }
@@ -108,7 +119,15 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
       });
       setEditedAfterGen(stepId, false);
     } catch (err) {
-      console.error("TTS regeneration failed:", err);
+      frontendLog.error("TtsScriptEditor", "tts_regenerate_clip IPC failed", {
+        error: err,
+        fields: {
+          project_id: projectId,
+          step_id: stepId,
+          provider: selectedPreset.provider,
+          voice_id: selectedPreset.id,
+        },
+      });
     } finally {
       setGenerating(stepId, false);
     }

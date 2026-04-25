@@ -588,6 +588,7 @@ async fn drain_one(_session_id: &str, handle: RecordingHandle) -> Result<(), Str
 /// Runtime HW-encoder feature detection.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "probe_hw_encoders"), err(Debug))]
 pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
     let cmd = TauriSidecar::new(app);
     let probe = probe_encoders(&cmd)
@@ -599,6 +600,7 @@ pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppErr
 /// Re-probe HW encoders bypassing any cached result.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "refresh_hw_encoders"), err(Debug))]
 pub async fn refresh_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
     let cmd = TauriSidecar::new(app);
     let probe = encoder::probe::force_reprobe(&cmd)
@@ -610,6 +612,7 @@ pub async fn refresh_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppE
 /// Start an end-to-end recording.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "start_recording"), err(Debug))]
 pub async fn start_recording(
     app: AppHandle,
     _state: State<'_, AppState>,
@@ -1124,6 +1127,7 @@ pub async fn start_recording(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "stop_recording"), err(Debug))]
 pub async fn stop_recording(
     session: RecordingSessionId,
     on_event: Channel<RecordingEvent>,
@@ -1149,12 +1153,14 @@ pub async fn stop_recording(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "pause_recording"), err(Debug))]
 pub async fn pause_recording(session: RecordingSessionId) -> Result<(), AppError> {
     pause_recording_inner(&session.0).await
 }
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "resume_recording"), err(Debug))]
 pub async fn resume_recording(session: RecordingSessionId) -> Result<(), AppError> {
     resume_recording_inner(&session.0).await
 }

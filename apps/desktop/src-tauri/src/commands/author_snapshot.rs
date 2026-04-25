@@ -119,6 +119,7 @@ fn snapshot_dir(project_dir: &str) -> Result<PathBuf, AppError> {
 /// implements against a SEPARATE browser context.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_capture"), err(Debug))]
 pub async fn author_snapshot_capture(
     state: State<'_, AppState>,
     project_dir: String,
@@ -177,6 +178,7 @@ pub async fn author_snapshot_capture(
 /// Missing → `Ok(None)`. Corrupt JSON → `Err(AppError::Automation)`.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_get"), err(Debug))]
 pub async fn author_snapshot_get(
     project_dir: String,
     url: String,
@@ -203,6 +205,7 @@ pub async fn author_snapshot_get(
 /// whole list — one corrupt file shouldn't black out the UI.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_list"), err(Debug))]
 pub async fn author_snapshot_list(
     project_dir: String,
 ) -> Result<Vec<AuthorSnapshotEntry>, AppError> {
@@ -254,6 +257,7 @@ pub async fn author_snapshot_list(
 /// with structured `{ role, name }` fields rather than a packed string).
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_validate"), err(Debug))]
 pub async fn author_snapshot_validate(
     project_dir: String,
     url: String,

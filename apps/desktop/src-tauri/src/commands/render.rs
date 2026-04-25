@@ -158,6 +158,7 @@ impl std::fmt::Debug for RenderQueueState {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "render_enqueue"), err(Debug))]
 pub async fn render_enqueue(
     state: State<'_, AppState>,
     job: NewRenderJobDto,
@@ -178,6 +179,7 @@ pub async fn render_enqueue(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "render_cancel"), err(Debug))]
 pub async fn render_cancel(state: State<'_, AppState>, job_id: String) -> Result<(), AppError> {
     let uuid =
         Uuid::parse_str(&job_id).map_err(|e| AppError::InvalidArgument(format!("job_id: {e}")))?;
@@ -194,6 +196,7 @@ pub async fn render_cancel(state: State<'_, AppState>, job_id: String) -> Result
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "render_list_active"), err(Debug))]
 pub async fn render_list_active(
     state: State<'_, AppState>,
     story_id: String,
@@ -212,6 +215,7 @@ pub async fn render_list_active(
 /// re-armed by the host.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "stream_render_progress"), err(Debug))]
 pub async fn stream_render_progress(
     state: State<'_, AppState>,
     channel: Channel<RenderProgressDto>,

@@ -125,6 +125,7 @@ fn dirs_like_home() -> Option<PathBuf> {
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "preset_list"), err(Debug))]
 pub async fn preset_list(
     state: State<'_, AppState>,
     scope: PresetScopeDto,
@@ -139,6 +140,7 @@ pub async fn preset_list(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "preset_import"), err(Debug))]
 pub async fn preset_import(
     state: State<'_, AppState>,
     path: String,
@@ -170,6 +172,7 @@ pub async fn preset_import(
 
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "preset_export"), err(Debug))]
 pub async fn preset_export(
     state: State<'_, AppState>,
     id: String,

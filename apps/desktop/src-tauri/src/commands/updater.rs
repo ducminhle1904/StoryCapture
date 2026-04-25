@@ -35,6 +35,7 @@ pub struct UpdateInfo {
 /// Returns `None` when the running version is already up to date.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "check_update"), err(Debug))]
 pub async fn check_update(app: AppHandle<Wry>) -> Result<Option<UpdateInfo>, AppError> {
     tracing::info!(target: "storycapture::updater", "check_update invoked");
     let current_version = app.package_info().version.to_string();
@@ -59,6 +60,7 @@ pub async fn check_update(app: AppHandle<Wry>) -> Result<Option<UpdateInfo>, App
 /// pinned in `tauri.conf.json` before applying — see T-10-01 mitigation.
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "install_update"), err(Debug))]
 pub async fn install_update(app: AppHandle<Wry>) -> Result<(), AppError> {
     tracing::info!(target: "storycapture::updater", "install_update invoked");
     let updater = app

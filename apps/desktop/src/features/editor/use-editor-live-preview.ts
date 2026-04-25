@@ -8,6 +8,7 @@ import {
   updateAppUrl,
   updateViewport,
 } from "@/features/editor/preview-lifecycle";
+import { frontendLog } from "@/lib/log";
 import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
@@ -69,7 +70,11 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
         if (cancelled) fn();
         else unlisten = fn;
       } catch (err) {
-        console.warn("onFocusChanged failed:", err);
+        frontendLog.warn(
+          "useEditorLivePreview",
+          "webview onFocusChanged listener registration failed",
+          { error: err },
+        );
       }
     })();
     return () => {

@@ -43,6 +43,7 @@ impl From<AudioInputInfo> for AudioInputInfoDto {
 /// React query caches the result for the session).
 #[tauri::command]
 #[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "list_audio_inputs"), err(Debug))]
 pub async fn list_audio_inputs() -> Result<Vec<AudioInputInfoDto>, AppError> {
     // Run on a blocking thread — cpal's enumeration dispatches through
     // CoreAudio / WASAPI FFI which can block on slow drivers.

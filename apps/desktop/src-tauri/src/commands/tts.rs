@@ -235,19 +235,54 @@ async fn tts_generate_inner(
                     last_used_at: now,
                     ..entry.clone()
                 };
-                let _ = storage::phase3::upsert_tts_cache(&conn, &updated_entry);
+                if let Err(e) = storage::phase3::upsert_tts_cache(&conn, &updated_entry) {
+                    tracing::warn!(
+                        target: "storycapture::tts",
+                        hash = %hash,
+                        error = %e,
+                        "failed to refresh tts cache last_used_at"
+                    );
+                }
 
                 // Use stored duration if available; only probe file as fallback
                 // for cache entries created before the duration_ms column existed.
                 let audio_duration_ms = entry.duration_ms.map(|d| d as u64).unwrap_or_else(|| {
-                    let bytes = std::fs::read(&file_path).unwrap_or_default();
-                    let dur = probe_audio_duration_ms(&bytes).unwrap_or(0);
-                    // Backfill duration_ms for next time
+                    let bytes = match std::fs::read(&file_path) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            tracing::error!(
+                                target: "storycapture::tts",
+                                path = %file_path.display(),
+                                error = %e,
+                                "tts cache probe failed: cannot read audio file; reporting duration=0"
+                            );
+                            return 0;
+                        }
+                    };
+                    let dur = match probe_audio_duration_ms(&bytes) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            tracing::error!(
+                                target: "storycapture::tts",
+                                path = %file_path.display(),
+                                error = %e,
+                                "tts cache probe failed: cannot decode audio duration; reporting duration=0"
+                            );
+                            return 0;
+                        }
+                    };
                     let backfill = storage::phase3::TtsCacheEntry {
                         duration_ms: Some(dur as i64),
                         ..entry.clone()
                     };
-                    let _ = storage::phase3::upsert_tts_cache(&conn, &backfill);
+                    if let Err(e) = storage::phase3::upsert_tts_cache(&conn, &backfill) {
+                        tracing::warn!(
+                            target: "storycapture::tts",
+                            hash = %hash,
+                            error = %e,
+                            "failed to backfill tts cache duration_ms"
+                        );
+                    }
                     dur
                 });
 
@@ -268,7 +303,15 @@ async fn tts_generate_inner(
                     error_code: None,
                     timestamp: now,
                 };
-                let _ = storage::phase3::insert_tts_metric(&conn, &metric);
+                if let Err(e) = storage::phase3::insert_tts_metric(&conn, &metric) {
+                    tracing::warn!(
+                        target: "storycapture::tts",
+                        clip_id = %metric.clip_id,
+                        step_id = ?metric.step_id,
+                        error = %e,
+                        "failed to record tts cache-hit metric"
+                    );
+                }
 
                 return Ok(TtsGenerateResult {
                     file_path: file_path.to_string_lossy().to_string(),
@@ -574,11 +617,28 @@ pub async fn tts_apply_sync(
             db: d.db,
         })
         .collect();
-    let _ = app.emit("sound_mixer/duck_events", &duck_dtos);
+    if let Err(e) = app.emit("sound_mixer/duck_events", &duck_dtos) {
+        tracing::warn!(
+            target: "storycapture::tts",
+            count = duck_dtos.len(),
+            error = %e,
+            "failed to emit sound_mixer/duck_events; renderer will miss duck schedule"
+        );
+    }
 
     // Persist drift_ms in tts_clip_metrics for each adjusted step.
     for adj in &plan.adjusted_steps {
-        let _ = storage::phase3::update_tts_metric_drift(&conn, &adj.step_id, adj.drift_ms);
+        if let Err(e) =
+            storage::phase3::update_tts_metric_drift(&conn, &adj.step_id, adj.drift_ms)
+        {
+            tracing::warn!(
+                target: "storycapture::tts",
+                step_id = %adj.step_id,
+                drift_ms = adj.drift_ms,
+                error = %e,
+                "failed to persist tts drift_ms"
+            );
+        }
     }
 
     // Convert to DTO.

@@ -62,6 +62,14 @@ async triggerPanic() : Promise<Result<null, AppError>> {
     else return { status: "error", error: e  as any };
 }
 },
+async logFromFrontend(payload: FrontendLogPayload) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("log_from_frontend", { payload }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Launch a story and stream events to the renderer.
  */
@@ -403,6 +411,30 @@ async setBrowserExecutable(path: string | null) : Promise<Result<AppSettingsDto,
 async setLivePreviewEnabled(enabled: boolean) : Promise<Result<AppSettingsDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_live_preview_enabled", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getLogConfig() : Promise<Result<LogConfigDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_log_config") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setLogConfig(config: LogConfigUpdate) : Promise<Result<LogConfigDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_log_config", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async openLogDir() : Promise<Result<string, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_log_dir") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1265,7 +1297,13 @@ export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"
  * start on a pipe that FFmpeg will never read.
  */
 { kind: "FifoHandshakeTimeout" }
-export type AppInfo = { version: string; platform: string; arch: string; data_dir: string; log_dir: string }
+export type AppInfo = { version: string; platform: string; arch: string; data_dir: string; log_dir: string; 
+/**
+ * Per-process session id (matches the `session=<uuid>` prefix on every
+ * log line). Surfaced to the renderer so bug-report bundles can
+ * reference the exact slice of the log file the user is running in.
+ */
+session_id: string; pid: number }
 export type AppSettingsDto = { browser_executable: string | null; live_preview_enabled: boolean }
 export type AudioCodecDto = "aac" | "opus"
 /**
@@ -1410,6 +1448,18 @@ export type FrameMetaDto = { sequence: bigint;
  * PTS in nanoseconds.
  */
 pts_ns: bigint; clock_source: ClockSourceDto; bytes: bigint; width_px: number; height_px: number }
+export type FrontendLogLevel = "trace" | "debug" | "info" | "warn" | "error"
+export type FrontendLogPayload = { level: FrontendLogLevel; 
+/**
+ * Originating component / module — e.g. `"RegionOverlay"`. Free-form.
+ */
+source: string; message: string; 
+/**
+ * Dynamic key/value pairs rendered into the event tail as `key="value"`.
+ * `tracing`'s static field machinery can't accept runtime field names,
+ * hence the string-tuple shape.
+ */
+fields?: ([string, string])[]; stack?: string | null; url?: string | null }
 export type HardwareEncoderDto = "video-toolbox-h264" | "video-toolbox-hevc" | "nvenc-h264" | "qsv-h264" | "amf-h264" | "openh-264-software"
 /**
  * Structured failure modes. Each variant is derivable from a keychain or
@@ -1424,6 +1474,22 @@ export type KeyError = { kind: "KeychainUnavailable" } | { kind: "KeyNotFound" }
  * The leak-proof test greps this field for the canary substring.
  */
 export type KeyTestReport = { ok: boolean; latency_ms: bigint; detail: string }
+export type LogConfigDto = { 
+/**
+ * Effective directory log files are written to. Always populated —
+ * when `log_dir_override` is null, this is the platform default the
+ * frontend can show as a hint.
+ */
+effective_log_dir: string; 
+/**
+ * Raw user override (null = use platform default).
+ */
+log_dir_override: string | null; 
+/**
+ * Platform default log directory; informational, never written.
+ */
+default_log_dir: string; max_file_size_bytes: bigint; max_files: number; min_file_size_bytes: bigint; max_allowed_file_size_bytes: bigint; min_files: number; max_allowed_files: number }
+export type LogConfigUpdate = { log_dir: string | null; max_file_size_bytes: bigint; max_files: number }
 /**
  * DTO for LSP notifications sent back to the frontend via Channel.
  */
