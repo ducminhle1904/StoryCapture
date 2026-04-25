@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/aggregate-analytics",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }

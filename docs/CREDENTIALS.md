@@ -116,7 +116,7 @@ Notes:
 
 - Analytics GeoIP uses `@maxmind/geoip2-node` plus the local database at
   `apps/web/public/geolite2/GeoLite2-Country.mmdb`.
-- Vercel cron runs `/api/cron/aggregate-analytics` every minute via
+- Vercel cron runs `/api/cron/aggregate-analytics` daily at 00:00 UTC via
   `apps/web/vercel.json`.
 
 ## Missing-secret behavior
