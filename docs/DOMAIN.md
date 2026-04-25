@@ -173,20 +173,35 @@ Prisma models (12) + tRPC surface summary — details in `docs/ARCHITECTURE.md`.
 
 Source of truth: `.planning/STATE.md`.
 
-As of 2026-04-22:
+As of 2026-04-25:
 
 - Phases 1-5 are code-complete, with remaining operator-gated verification on
   capture soak, release signing, audio curation, accounts walkthrough, and web
   integration walkthrough.
 - Phase 6 shipped mic audio, region capture, and chrome-hiding foundations.
-- Phase 7 semantic verbs, picker, step IDs, and self-healing targets are in
-  code.
-- Phase 9 live preview is code-complete.
-- Phase 10 author-time simulator is code-complete.
-- Phase 11 author-time picker relocation is partially landed in source and no
-  longer belongs in the “planned from scratch” bucket.
-- Phase 16 dependency refresh and Phase 17 recording lifecycle hardening are
-  complete.
+- Phase 7 semantic verbs, picker, step IDs, and self-healing targets shipped.
+- Phase 8 (GPU downscale + cursor overlay) still planned, not started.
+- Phase 9 live preview code-complete.
+- Phase 10 author-time simulator code-complete; UX hardening continued
+  (failure visibility, editor file safety, one-click re-pick from failed
+  simulator step — commits `9e59438`, `1ae57bd`).
+- Phase 11 author-time picker relocation is **code-complete** (flipped
+  2026-04-23, commit `7930f2a`). Picker drives author-session via
+  `picker_start_author`; reads `.story` + `.story.targets.json` only;
+  cancel is FSM-routed (commit `e13e8b5`); CDP screencast remains active
+  during picking for canvas input UX (commit `a2276ef`); canvas pointer
+  events forwarded to the headless author browser (`8cc0efb`).
+- Phase 12 (output resolution + letterbox) and Phase 13 (output
+  customization knobs) shipped.
+- Phase 14 Claude Design port: Waves 1, 3, 4 shipped; Wave 5 token
+  consolidation pending.
+- Phase 15 editor / post-production boundary cleanup: Waves 1–4 shipped;
+  15-05 cleanup + regression matrix pending operator QA.
+- Phase 16 dependency refresh complete (deferred: Prisma 7,
+  windows-rs 0.62 unification, tauri-specta rc.24 — see ARCHITECTURE.md
+  pinned versions table).
+- Phase 17 recording lifecycle hardening complete (19 fixes across
+  cleanup / start-safety / encoder robustness / UX feedback / polish).
 
 Do not duplicate the full phase ledger here. Read `.planning/STATE.md` for the
 live milestone position and operator blockers.

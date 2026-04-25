@@ -68,7 +68,9 @@ Other important boundaries that matter in practice:
 
 - **Entry:** `main.rs` shim → `lib.rs::run()` builds `tauri_specta::Builder`, wires plugins, installs panic hook, creates `AppState`, exports TS bindings in debug to `packages/shared-types/src/ipc.ts`.
 - **Single source of truth for IPC:** `src/ipc_spec.rs` (collect_commands! + .typ::<T>()). All types listed there auto-become TS.
-- **Commands:** module-per-feature under `src/commands/` (high-20s surface): `system`, `automation`, `capture`, `encode`, `parse`, `projects`, `render`, `export`, `preset`, `timeline`, `sound_library`, `keys`, `dryrun`, `simulator`, `lsp`, `nl`, `tts`, `upload`, `web_account`, `web_sync`, `picker`, `author_snapshot`, `audio`, `region_overlay`, `app_settings`, `updater`.
+- **Commands:** module-per-feature under `src/commands/` (~26 modules, 70+ commands): `system`, `automation`, `capture`, `encode`, `parse`, `projects`, `render`, `export`, `preset`, `timeline`, `sound_library`, `keys`, `dryrun`, `simulator`, `lsp`, `nl`, `tts`, `upload`, `web_account`, `web_sync`, `picker`, `author_snapshot`, `audio`, `region_overlay`, `app_settings`, `updater`.
+- **Author driver registry (Phase 11):** `author_driver.rs` is the exclusive-lock state machine for author-time browser sessions (Idle / LivePreview / Picking / SimulatorRunning / SimulatorPaused). `picker_start_author`, `simulator_*`, and `attach_author_driver` all route through it; cancel is FSM-routed (commit `e13e8b5`).
+- **Logging (overhauled 2026-04-23, commit `a8e78b6`):** `logging.rs` wires `tracing` + `tauri-plugin-log` to a `SizeRollingWriter` (live + numbered archives, configurable `max_files` from Settings → Logs). Per-run UUID prefix on every event via `SessionPrefixFormat`. ~95 commands wear `#[tracing::instrument(err(Debug))]`. Frontend errors flow through `log_from_frontend` IPC and an `ErrorBoundary` + global `onerror`/`unhandledrejection` hooks. All logs **local-only** — no network telemetry.
 - **State:** `AppState` holds `data_dir`, `log_dir`, actor registry, `render_queue`, `http_client`, `playwright_driver`.
 - **Error boundary:** `AppError` enum (Specta-serializable) wraps domain errors per crate.
 - **Plugins loaded (v2.x line):** log, fs, dialog, updater, window-state, shell, process, single-instance, os. Keyring via `keyring` crate directly (not plugin).
@@ -83,12 +85,12 @@ Other important boundaries that matter in practice:
 
 ## Frontend desktop (`apps/desktop`)
 
-- **Routing:** React Router v7 data router in `src/routes/index.tsx`. Layouts: `AppLayout` (dashboard/settings/post-production landing), `FullscreenLayout` (editor/recorder/post-production editor), plus a transparent overlay route. Routes: `/`, `/settings`, `/editor/:projectId`, `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`, `/region-overlay`.
+- **Routing:** React Router v7 data router in `src/routes/index.tsx`. Layouts: `AppLayout` (dashboard/onboarding/settings/post-production landing), `FullscreenLayout` (editor/recorder/post-production editor), plus a transparent overlay route. Routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`, `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`, `/region-overlay`.
 - **State (Zustand 5):**
   - `features/post-production/state/store.ts` — 6-slice compound store with `persist()`: `timeline-slice`, `panels-slice`, `selection-slice`, `export-slice`, `queue-slice`, `undo-slice` (HistoryBuffer cap 50 + Coalescer 500ms, not persisted).
   - `state/projects.ts` — dashboard UI state.
   - `state/editor.ts`, `state/recorder.ts` — editor and recorder UI/session state.
-  - `state/simulator-store.ts` — author-time simulator state and persisted hints.
+  - `state/simulator-store.ts` — author-time simulator state, filmstrip scrubber, persisted hints, and "re-pick from failed step" UX (commit `1ae57bd`).
   - `state/output-prefs.ts` — shared recording/export output knobs.
   - `stores/upload-store.ts` — upload Channel progress.
   - `stores/web-account-store.ts`, `stores/web-sync-store.ts` — desktop ↔ web auth/sync state.

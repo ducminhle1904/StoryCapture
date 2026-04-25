@@ -12,7 +12,7 @@ Concrete patterns actually used in the codebase. Read on demand; don't invent ne
 - **Tauri commands:** One file per feature under `apps/desktop/src-tauri/src/commands/`. Each is a thin bridge: deserialize → call domain crate → convert to DTO → return `Result<T, AppError>`. No domain logic in command files. Register every command and every exported type in `ipc_spec.rs` via `collect_commands!` and `.typ::<T>()`.
 - **DTOs:** Crate-native types stay pure; the host defines `XxxDto` mirrors (Specta-friendly, lossy if needed) in `commands/` modules to keep the TS surface stable when Rust internals churn.
 - **Types for TS:** Add `#[cfg_attr(feature = "ts-export", derive(ts_rs::TS))]` for shared AST types (story, effects). For IPC payloads use `specta::Type`.
-- **Tracing:** `tracing` + `tracing-subscriber` wired through `tauri-plugin-log` + a `tracing-appender` file sink. `#[instrument]` spans are sparse today — add them in hot async paths, not everywhere.
+- **Tracing (overhauled 2026-04-23):** `tracing` + `tracing-subscriber` wired through `tauri-plugin-log` + a custom `SizeRollingWriter` file sink (live `storycapture.log` + numbered archives, `max_files` configurable from Settings → Logs). Every event prefixed with `session=<uuid>` via `SessionPrefixFormat` so a single log file can be sliced by run. ~95 Tauri commands wear `#[tracing::instrument(err(Debug))]`; renderer errors flow through the `log_from_frontend` IPC into the same file. All logs are **local-only** — never ship telemetry over the network. Use `open_log_dir` to pop the folder for an operator.
 - **No panics in hot paths.** Use `Result`. `panic_hook.rs` catches unexpected panics → log file + `panic_event` IPC.
 
 ## TypeScript / React
@@ -108,7 +108,11 @@ Two flows produce them:
 
 If you ever install placeholders to unblock a `cargo check`, then run `pnpm tauri:dev`, the SEA build's staleness check used to skip rebuild because the placeholder's mtime was newer than every source file. The dev binary then ran the stub at runtime — `start_author_preview` (and any other sidecar IPC) hung on a JSON-RPC handshake the stub never sent, surfacing as a frozen "Starting preview…" pane.
 
-`build-sea.mjs` now treats outputs ≤ 10 KB as "looks like a stub" and forces a real rebuild regardless of mtime. If you ever bypass that guard (custom build flags, manual binary placement), `rm apps/desktop/src-tauri/binaries/playwright-sidecar-<triple>` before running `pnpm tauri:dev`.
+Two layers of defense (commits `a8e78b6`, `69eb3a3`):
+1. `pnpm tauri:dev` and `pnpm tauri:build` now auto-rebuild the Playwright SEA before launching/packaging.
+2. `build-sea.mjs` treats outputs ≤ 10 KB as "looks like a stub" and forces a real rebuild regardless of mtime.
+
+If you ever bypass both guards (custom build flags, manual binary placement), `rm apps/desktop/src-tauri/binaries/playwright-sidecar-<triple>` before running `pnpm tauri:dev`.
 
 Symptom → diagnosis: search the log file for `sidecar_stderr=storycapture: playwright-sidecar placeholder` — that's the unmistakable signature of a stub being spawned at runtime.
 

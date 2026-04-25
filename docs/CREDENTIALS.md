@@ -109,8 +109,10 @@ Required by the deployed Next.js app:
 | `R2_ACCESS_KEY_ID` | R2 access key |
 | `R2_SECRET_ACCESS_KEY` | R2 secret |
 | `R2_BUCKET` | Bucket name, defaults to `storycapture-media` |
-| `RESEND_API_KEY` | Invite emails |
+| `RESEND_API_KEY` | Invite emails (graceful skip when unset — operator shares invite link manually) |
 | `CRON_SECRET` | Guards `/api/cron/aggregate-analytics` |
+| `MAXMIND_LICENSE_KEY` | Optional. GeoLite2 download key used by `apps/web/scripts/download-geolite2.sh`; analytics still work without it but country breakdown is empty |
+| `NEXT_PUBLIC_*` (build-time) | Public env routed into the client bundle — see `apps/web/.env.example` |
 
 Notes:
 
@@ -129,4 +131,4 @@ Notes:
 | `.github/workflows/ffmpeg-build.yml` | Unaffected |
 | `.github/workflows/release.yml` | Requires release secrets to complete successfully |
 
-Last updated: 2026-04-22
+Last updated: 2026-04-25
