@@ -1,3 +1,4 @@
+import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertTriangle,
@@ -13,37 +14,23 @@ import {
   Video,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { Link, useParams } from "react-router-dom";
 
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
-import { LivePreview } from "@/features/recorder/live-preview";
-import { SceneListPanel } from "@/features/editor/scene-list-panel";
+import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDriverStore";
+import { PickingBanner, PreviewPickerButton } from "@/features/editor/PreviewPickerButton";
 import { SimulatorFrameView } from "@/features/editor/preview-panel";
+import { SceneListPanel } from "@/features/editor/scene-list-panel";
 import { SimulatorTimeline } from "@/features/editor/simulator-timeline";
-import { useSimulatorStore } from "@/state/simulator-store";
-import {
-  StoryEditor,
-  type EditorJumpTarget,
-} from "@/features/editor/story-editor";
+import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-editor";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
-import {
-  PickingBanner,
-  PreviewPickerButton,
-} from "@/features/editor/PreviewPickerButton";
-import {
-  deriveVariant,
-  useAuthorDriverStore,
-} from "@/features/editor/authorDriverStore";
+import { LivePreview } from "@/features/recorder/live-preview";
 import { parseStory } from "@/ipc/parse";
-import {
-  fetchProjectFolder,
-  type ProjectFolderInfo,
-  useProjectRecordings,
-} from "@/ipc/projects";
+import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
 import { useEditorStore, VIEWPORT_SIZES } from "@/state/editor";
+import { useSimulatorStore } from "@/state/simulator-store";
 
 const EMPTY_DIAGNOSTICS: never[] = [];
 
@@ -67,8 +54,7 @@ export default function EditorRoute() {
   const [folder, setFolder] = useState<ProjectFolderInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeSceneIndex, setActiveSceneIndex] = useState(0);
-  const [editorJumpTarget, setEditorJumpTarget] =
-    useState<EditorJumpTarget | null>(null);
+  const [editorJumpTarget, setEditorJumpTarget] = useState<EditorJumpTarget | null>(null);
   const [cursor, setCursor] = useState<{ line: number; col: number } | null>(null);
   // Only render once store state matches the URL project to avoid a stale scene flash.
   const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
@@ -77,14 +63,11 @@ export default function EditorRoute() {
   const resetProjectState = useEditorStore((s) => s.resetProjectState);
   const source = useEditorStore((s) => s.source);
   const story = useEditorStore((s) => s.lastParse?.ast ?? null);
-  const diagnostics =
-    useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
+  const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
 
   const previewViewport = useEditorStore((s) => s.previewViewport);
   const setPreviewViewport = useEditorStore((s) => s.setViewport);
-  const { streamId: authorStreamId, appUrlValid } = useEditorLivePreview(
-    story?.meta?.app ?? null,
-  );
+  const { streamId: authorStreamId, appUrlValid } = useEditorLivePreview(story?.meta?.app ?? null);
   const simulatorRunState = useSimulatorStore((s) => s.runState);
   const simulatorCurrentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
   // Phase 11-04: project upstream state into the authorDriverStore so the
@@ -99,8 +82,7 @@ export default function EditorRoute() {
     setAuthorDriverSnapshot({
       variant: deriveVariant(authorStreamId, simulatorRunState),
       streamId: authorStreamId,
-      simulatorOrdinal:
-        simulatorRunState === "paused" ? simulatorCurrentOrd : null,
+      simulatorOrdinal: simulatorRunState === "paused" ? simulatorCurrentOrd : null,
     });
   }, [
     authorStreamId,
@@ -112,7 +94,7 @@ export default function EditorRoute() {
   const simulatorFrames = useSimulatorStore((s) => s.frames);
   const simulatorActiveFrame =
     simulatorRunState !== "idle" && simulatorCurrentOrd != null
-      ? simulatorFrames.find((f) => f.ordinal === simulatorCurrentOrd) ?? null
+      ? (simulatorFrames.find((f) => f.ordinal === simulatorCurrentOrd) ?? null)
       : null;
 
   useEffect(() => {
@@ -161,9 +143,7 @@ export default function EditorRoute() {
       return;
     }
 
-    setActiveSceneIndex((current) =>
-      Math.max(0, Math.min(current, story.scenes.length - 1)),
-    );
+    setActiveSceneIndex((current) => Math.max(0, Math.min(current, story.scenes.length - 1)));
   }, [story]);
 
   const autosave = useCallback(
@@ -217,14 +197,9 @@ export default function EditorRoute() {
   }
 
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
-  const warningCount = diagnostics.filter(
-    (d) => d.severity === "warning",
-  ).length;
+  const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
   return (
-    <main
-      id="main-content"
-      className="relative flex h-full flex-col bg-[var(--sc-bg)]"
-    >
+    <main id="main-content" className="relative flex h-full flex-col bg-[var(--sc-bg)]">
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0 z-50 opacity-[0.03] mix-blend-overlay"
@@ -256,9 +231,7 @@ export default function EditorRoute() {
             Projects
           </Link>
           <ChevronRight size={10} style={{ color: "var(--sc-text-4)" }} aria-hidden="true" />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>
-            {folder?.name ?? "Loading..."}
-          </span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{folder?.name ?? "Loading..."}</span>
           {errorCount > 0 && (
             <ScBadge tone="record">
               {errorCount} {errorCount === 1 ? "error" : "errors"}
@@ -279,10 +252,7 @@ export default function EditorRoute() {
           )}
           {projectId && (
             <>
-              <Link
-                to={`/recorder/${projectId}`}
-                className="sc-btn primary sm"
-              >
+              <Link to={`/recorder/${projectId}`} className="sc-btn primary sm">
                 <Video size={12} aria-hidden="true" />
                 Record
               </Link>
@@ -318,13 +288,11 @@ export default function EditorRoute() {
           role="status"
           aria-live="polite"
         >
-          <span className="text-xs text-[var(--sc-text-4)]">
-            Opening project…
-          </span>
+          <span className="text-xs text-[var(--sc-text-4)]">Opening project…</span>
         </div>
       ) : (
-      <PageContentTransition className="min-h-0 flex-1">
-        <Group orientation="horizontal" className="min-h-0 flex-1">
+        <PageContentTransition className="min-h-0 flex-1">
+          <Group orientation="horizontal" className="min-h-0 flex-1">
             {/* Scene list — narrow left panel, always visible (D-08). */}
             <Panel id="editor-scene-list" defaultSize="12%" minSize="8%" maxSize="18%">
               <SceneListPanel
@@ -332,7 +300,7 @@ export default function EditorRoute() {
                 onSelectScene={handleSelectScene}
               />
             </Panel>
-            <Separator className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
+            <Separator className="group relative w-px bg-[var(--sc-border-2)] shadow-[1px_0_0_var(--sc-border)] transition-colors hover:bg-[var(--sc-border-strong)] active:bg-[var(--sc-accent-500)]/50" />
 
             {/* Script editor — primary workspace */}
             <Panel id="editor-script" defaultSize="54%" minSize="32%" maxSize="68%">
@@ -345,7 +313,7 @@ export default function EditorRoute() {
                     height: 30,
                     paddingLeft: 8,
                     background: "var(--sc-chrome-2)",
-                    borderBottom: "1px solid var(--sc-border)",
+                    borderBottom: "1px solid var(--sc-border-2)",
                   }}
                 >
                   <div
@@ -356,7 +324,7 @@ export default function EditorRoute() {
                       alignItems: "center",
                       gap: 6,
                       background: "var(--sc-surface)",
-                      borderRight: "1px solid var(--sc-border)",
+                      borderRight: "1px solid var(--sc-border-2)",
                       fontSize: 12,
                       color: "var(--sc-text)",
                       borderTop: "1.5px solid var(--sc-accent-400)",
@@ -366,7 +334,7 @@ export default function EditorRoute() {
                     <File size={11} aria-hidden="true" />
                     {folder?.name ? `${folder.name}.story` : "story"}
                     <span
-                      aria-label="Modified (placeholder)"
+                      aria-hidden="true"
                       title="Modified indicator (placeholder)"
                       style={{
                         width: 6,
@@ -387,7 +355,8 @@ export default function EditorRoute() {
                       fontFamily: "var(--sc-font-mono)",
                     }}
                   >
-                    {cursor ? `Ln ${cursor.line}, Col ${cursor.col}` : "Ln —, Col —"} · SC-DSL · UTF-8
+                    {cursor ? `Ln ${cursor.line}, Col ${cursor.col}` : "Ln —, Col —"} · SC-DSL ·
+                    UTF-8
                   </span>
                 </div>
 
@@ -412,7 +381,7 @@ export default function EditorRoute() {
               </div>
             </Panel>
 
-            <Separator className="group relative w-px bg-[var(--sc-border)] transition-colors hover:bg-[var(--sc-accent-500)]/30 active:bg-[var(--sc-accent-500)]/50" />
+            <Separator className="group relative w-px bg-[var(--sc-border-2)] shadow-[1px_0_0_var(--sc-border)] transition-colors hover:bg-[var(--sc-border-strong)] active:bg-[var(--sc-accent-500)]/50" />
 
             {/* Right side: preview rail */}
             <Panel id="editor-preview" defaultSize="34%" minSize="24%" maxSize="44%">
@@ -424,18 +393,14 @@ export default function EditorRoute() {
                     gap: 8,
                     height: 32,
                     padding: "0 12px",
-                    borderBottom: "1px solid var(--sc-border)",
+                    borderBottom: "1px solid var(--sc-border-2)",
                     background: "var(--sc-chrome-2)",
                     flexShrink: 0,
                   }}
                 >
                   <span style={{ fontSize: 12, fontWeight: 600 }}>Live Preview</span>
                   <ScBadge tone="muted" dot>
-                    {!appUrlValid
-                      ? "no app"
-                      : authorStreamId
-                        ? "live"
-                        : "starting"}
+                    {!appUrlValid ? "no app" : authorStreamId ? "live" : "starting"}
                   </ScBadge>
                   {/* Phase 11-04: Preview-panel pick button sits LEFT of
                       the viewport/quality controls (UI-SPEC §Visual
@@ -446,31 +411,20 @@ export default function EditorRoute() {
                   <ScSegmented
                     size="sm"
                     value={previewViewport}
-                    onValueChange={(v) =>
-                      setPreviewViewport(v as typeof previewViewport)
-                    }
+                    onValueChange={(v) => setPreviewViewport(v as typeof previewViewport)}
                     aria-label="Viewport size"
                     options={[
                       {
                         value: "mobile",
-                        label: (
-                          <Smartphone
-                            size={12}
-                            aria-label="Mobile"
-                          />
-                        ),
+                        label: <Smartphone size={12} aria-label="Mobile" />,
                       },
                       {
                         value: "tablet",
-                        label: (
-                          <Tablet size={12} aria-label="Tablet" />
-                        ),
+                        label: <Tablet size={12} aria-label="Tablet" />,
                       },
                       {
                         value: "desktop",
-                        label: (
-                          <Monitor size={12} aria-label="Desktop" />
-                        ),
+                        label: <Monitor size={12} aria-label="Desktop" />,
                       },
                     ]}
                   />
@@ -479,9 +433,7 @@ export default function EditorRoute() {
                 {/* Phase 11-04: Picking banner lives inside the Preview
                     panel (UI-SPEC §2), between the toolbar and the
                     stage. Visibility driven by the authorDriverStore. */}
-                {authorDriverVariant === "picking" ? (
-                  <PickingBanner variant="active" />
-                ) : null}
+                {authorDriverVariant === "picking" ? <PickingBanner variant="active" /> : null}
 
                 <div className="relative min-h-0 flex-1 overflow-hidden">
                   {simulatorActiveFrame ? (
@@ -509,9 +461,7 @@ export default function EditorRoute() {
                     <PreviewSurface mode="recording" projectId={projectId} />
                   ) : (
                     <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
-                      <span className="font-mono text-sm text-[var(--sc-text-2)]">
-                        No app URL
-                      </span>
+                      <span className="font-mono text-sm text-[var(--sc-text-2)]">No app URL</span>
                       <span className="max-w-[36ch] text-[11px] text-[var(--sc-text-4)]">
                         Set <code>meta.app</code> in your story to auto-launch live preview.
                       </span>
@@ -525,7 +475,7 @@ export default function EditorRoute() {
                     alignItems: "center",
                     gap: 10,
                     padding: "6px 12px",
-                    borderTop: "1px solid var(--sc-border)",
+                    borderTop: "1px solid var(--sc-border-2)",
                     background: "var(--sc-surface-2)",
                     fontSize: 11,
                     color: "var(--sc-text-3)",
@@ -545,10 +495,9 @@ export default function EditorRoute() {
                 </div>
               </div>
             </Panel>
-        </Group>
-      </PageContentTransition>
+          </Group>
+        </PageContentTransition>
       )}
-
     </main>
   );
 }

@@ -9,6 +9,7 @@ import {
   Hourglass,
   Keyboard,
   ListChecks,
+  type LucideIcon,
   MousePointerClick,
   Move,
   MoveVertical,
@@ -17,18 +18,13 @@ import {
   Upload,
   X,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, type KeyboardEvent } from "react";
+import { type KeyboardEvent, useMemo } from "react";
 import { toast } from "sonner";
 
 import type { Command, SelectorOrText } from "@/ipc/parse";
-import {
-  simulatorCancel,
-  simulatorPromoteFallback,
-  simulatorStart,
-} from "@/ipc/simulator";
+import { simulatorCancel, simulatorPromoteFallback, simulatorStart } from "@/ipc/simulator";
 import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
@@ -134,11 +130,8 @@ export function SimulatorTimeline({
 
   const isRunning = runState === "running";
   const isFailed = runState === "failed";
-  const active = currentOrd != null ? frames[currentOrd - 1] ?? null : null;
-  const totalDuration = useMemo(
-    () => frames.reduce((acc, f) => acc + f.duration_ms, 0),
-    [frames],
-  );
+  const active = currentOrd != null ? (frames[currentOrd - 1] ?? null) : null;
+  const totalDuration = useMemo(() => frames.reduce((acc, f) => acc + f.duration_ms, 0), [frames]);
 
   const commandByOrdinal = useMemo(() => {
     const map = new Map<number, Command>();
@@ -157,7 +150,7 @@ export function SimulatorTimeline({
 
   const handleRun = async () => {
     console.log("[sim] Run clicked", { canRun, appUrlValid, streamId, projectFolder, storyPath });
-    if (!canRun) {
+    if (!canRun || streamId == null) {
       console.log("[sim] Run aborted — canRun=false");
       return;
     }
@@ -167,7 +160,7 @@ export function SimulatorTimeline({
           projectFolder,
           storySource,
           storyPath,
-          streamId: streamId!,
+          streamId,
           stopAfterOrdinal: undefined,
         },
         (e) => useSimulatorStore.getState().handleEvent(e),
@@ -212,17 +205,18 @@ export function SimulatorTimeline({
     }
   };
 
-  const activeCmd = currentOrd != null ? commandByOrdinal.get(currentOrd) ?? null : null;
+  const activeCmd = currentOrd != null ? (commandByOrdinal.get(currentOrd) ?? null) : null;
 
   return (
     <section
-      role="region"
       aria-labelledby="simulator-panel-title"
-      className="flex flex-col overflow-hidden border-t border-[var(--sc-border)] bg-[var(--sc-surface)]"
+      className="flex flex-col overflow-hidden border-t border-[var(--sc-border-2)] bg-[var(--sc-surface)]"
       style={{ minHeight: 128, maxHeight: "30vh" }}
     >
-      <header className="flex items-center justify-between border-b border-[var(--sc-border)] px-3 py-1.5">
-        <h3 id="simulator-panel-title" className="sr-only">Simulator</h3>
+      <header className="flex items-center justify-between border-b border-[var(--sc-border-2)] px-3 py-1.5">
+        <h3 id="simulator-panel-title" className="sr-only">
+          Simulator
+        </h3>
         <span className="font-mono text-[10px] tabular-nums text-[var(--sc-text-3)]">
           {frames.length > 0
             ? `Step ${currentOrd ?? "—"} / ${totalSteps} · ${totalDuration} ms`
@@ -268,7 +262,7 @@ export function SimulatorTimeline({
       </header>
 
       {!appUrlValid && (
-        <div className="border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-3 py-2 text-[11px] text-[var(--sc-text-3)]">
+        <div className="border-b border-[var(--sc-border-2)] bg-[var(--sc-surface-2)] px-3 py-2 text-[11px] text-[var(--sc-text-3)]">
           Set <code>meta.app</code> to run
         </div>
       )}
@@ -330,13 +324,11 @@ export function SimulatorTimeline({
           </div>
 
           {active != null && (
-            <div className="flex items-center gap-3 border-t border-[var(--sc-border)] px-3 py-1.5 font-mono text-[11px]">
+            <div className="flex items-center gap-3 border-t border-[var(--sc-border-2)] px-3 py-1.5 font-mono text-[11px]">
               <span className="rounded-[var(--radius-xs)] bg-[var(--sc-surface-3)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--sc-text-2)]">
                 {totalSteps >= 10 ? String(active.ordinal).padStart(2, "0") : active.ordinal}
               </span>
-              {activeCmd && (
-                <span className="text-[var(--sc-text)]">{activeCmd.verb}</span>
-              )}
+              {activeCmd && <span className="text-[var(--sc-text)]">{activeCmd.verb}</span>}
               <span className="min-w-0 flex-1 truncate text-[var(--sc-text-3)]">
                 {activeCmd ? summarizeTarget(activeCmd) : ""}
               </span>

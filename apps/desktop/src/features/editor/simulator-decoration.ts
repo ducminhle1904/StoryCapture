@@ -33,8 +33,8 @@ export const simulatorDecorationField = StateField.define<DecorationSet>({
 
 export const simulatorDecorationTheme = EditorView.theme({
   ".cm-simulator-active-step": {
-    backgroundColor: "rgba(255, 107, 45, 0.10)",
-    borderLeft: "2px solid var(--color-accent-primary)",
+    backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 12%, transparent)",
+    borderLeft: "2px solid var(--sc-accent-400)",
   },
 });
 
@@ -64,7 +64,10 @@ export function caretLineToOrdinal(
 // the reverse mapping used by the CodeMirror decoration + keymap.
 export function buildOrdinalLineMap(ast: {
   scenes: Array<{ commands: Array<{ span: { line: number } }> }>;
-}): { ordinalToLine: (ord: number) => number | null; lineToOrdinal: (line: number) => number | null } {
+}): {
+  ordinalToLine: (ord: number) => number | null;
+  lineToOrdinal: (line: number) => number | null;
+} {
   const lines: number[] = [];
   for (const scene of ast.scenes) {
     for (const cmd of scene.commands) lines.push(cmd.span.line);

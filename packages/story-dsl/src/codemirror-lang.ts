@@ -5,8 +5,12 @@
  * Diagnostics still come from `parse_story` via the diagnostics bridge.
  */
 
-import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
-import { LanguageSupport } from "@codemirror/language";
+import {
+  HighlightStyle,
+  LanguageSupport,
+  StreamLanguage,
+  syntaxHighlighting,
+} from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import { tags as t } from "@lezer/highlight";
 
@@ -56,7 +60,7 @@ export const storyDslStreamLanguage = StreamLanguage.define({
     // Line comment.
     if (stream.match(/#.*/)) return "comment";
     // Single-line block-comment match; parser handles full multi-line parsing.
-    if (stream.match(/\/\*[^]*?\*\//)) return "comment";
+    if (stream.match(/\/\*[\s\S]*?\*\//)) return "comment";
     // Strings.
     if (stream.match(/"(?:[^"\\]|\\.)*"/)) return "string";
     if (stream.match(/'(?:[^'\\]|\\.)*'/)) return "string";
@@ -93,21 +97,18 @@ export const storyDslStreamLanguage = StreamLanguage.define({
 
 /** Highlight style backed by design tokens. */
 export const storyDslHighlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: "var(--color-accent-primary)", fontWeight: "600" },
-  { tag: t.atom, color: "var(--color-accent-secondary)", fontWeight: "600" },
-  { tag: t.propertyName, color: "var(--color-fg-primary)" },
-  { tag: t.typeName, color: "var(--color-waveform)" },
-  { tag: t.variableName, color: "var(--color-fg-primary)" },
-  { tag: t.string, color: "var(--color-success)" },
-  { tag: t.number, color: "var(--color-warning)" },
-  { tag: t.comment, color: "var(--color-fg-muted)", fontStyle: "italic" },
-  { tag: t.punctuation, color: "var(--color-fg-secondary)" },
+  { tag: t.keyword, color: "var(--sc-accent-500)", fontWeight: "600" },
+  { tag: t.atom, color: "var(--sc-accent-600)", fontWeight: "600" },
+  { tag: t.propertyName, color: "var(--sc-text)" },
+  { tag: t.typeName, color: "var(--sc-info)" },
+  { tag: t.variableName, color: "var(--sc-text)" },
+  { tag: t.string, color: "var(--sc-success)" },
+  { tag: t.number, color: "var(--sc-warn)" },
+  { tag: t.comment, color: "var(--sc-text-3)", fontStyle: "italic" },
+  { tag: t.punctuation, color: "var(--sc-text-2)" },
 ]);
 
 /** Language + highlight bundle. */
 export function storyDsl(): Extension {
-  return [
-    new LanguageSupport(storyDslStreamLanguage),
-    syntaxHighlighting(storyDslHighlightStyle),
-  ];
+  return [new LanguageSupport(storyDslStreamLanguage), syntaxHighlighting(storyDslHighlightStyle)];
 }

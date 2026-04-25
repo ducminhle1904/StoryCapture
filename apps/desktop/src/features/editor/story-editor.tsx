@@ -1,22 +1,18 @@
-import { AnimatePresence, motion } from "motion/react";
-import { Play } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
-import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-
+import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
+import { Play } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { parseStory } from "@/ipc/parse";
+import { simulatorCancel } from "@/ipc/simulator";
+import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
+import { useEditorStore } from "@/state/editor";
+import { useSimulatorStore } from "@/state/simulator-store";
 import { storyEditorExtensions } from "./codemirror-setup";
 import { editorController } from "./controller";
 import { SelectorValidatorOverlay } from "./SelectorValidatorOverlay";
-import {
-  buildOrdinalLineMap,
-  setActiveFrame,
-} from "./simulator-decoration";
-import { simulatorCancel } from "@/ipc/simulator";
-import { useEditorStore } from "@/state/editor";
-import { useSimulatorStore } from "@/state/simulator-store";
-import { parseStory } from "@/ipc/parse";
-import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
+import { buildOrdinalLineMap, setActiveFrame } from "./simulator-decoration";
 
 function trimTrailingWhitespace(s: string): string {
   return s.replace(/[ \t]+$/gm, "");
@@ -57,26 +53,42 @@ export function StoryEditor({
   const simulatorActive = runState === "running";
 
   const cmRef = useRef<ReactCodeMirrorRef>(null);
-  const autosave = useDebouncedCallback(
-    (value: string) => onAutosave?.(trimTrailingWhitespace(value)),
-    5000,
-  );
-
-  // Keep latest prop/store values in refs so simulator keymap (which captures
-  // these once at extension build time) always reads fresh data.
+  const sourceRef = useRef(source);
+  const simulatorActiveRef = useRef(simulatorActive);
+  const saveSourceRef = useRef<(value: string) => void>(() => {});
   const projectFolderRef = useRef(projectFolder);
   const storyPathRef = useRef(storyPath);
   const streamIdRef = useRef(streamId);
+  sourceRef.current = source;
+  simulatorActiveRef.current = simulatorActive;
+  saveSourceRef.current = (value) => onAutosave?.(trimTrailingWhitespace(value));
   projectFolderRef.current = projectFolder;
   storyPathRef.current = storyPath;
   streamIdRef.current = streamId;
+  const autosave = useDebouncedCallback((value: string) => saveSourceRef.current(value), 5000);
+  const autosaveRef = useRef(autosave);
+  autosaveRef.current = autosave;
 
+  // These CodeMirror extensions are created once, so callbacks read fresh
+  // prop/store values through refs.
   const extensions = useMemo(
     () =>
       storyEditorExtensions({
         getProjectFolder: () => projectFolderRef.current ?? null,
         getStoryPath: () => storyPathRef.current ?? null,
         getStreamId: () => streamIdRef.current ?? null,
+      }),
+    [],
+  );
+  const blurAutosaveExtension = useMemo(
+    () =>
+      EditorView.domEventHandlers({
+        blur: () => {
+          if (!simulatorActiveRef.current) {
+            autosaveRef.current.cancel();
+            saveSourceRef.current(sourceRef.current);
+          }
+        },
       }),
     [],
   );
@@ -121,10 +133,6 @@ export function StoryEditor({
     if (onAutosave) autosave.run(value);
   };
 
-  const handleBlur = () => {
-    if (!simulatorActive && onAutosave) onAutosave(trimTrailingWhitespace(source));
-  };
-
   useEffect(() => {
     const view = cmRef.current?.view;
     if (!view || !jumpTarget) return;
@@ -138,16 +146,20 @@ export function StoryEditor({
   }, [jumpTarget]);
 
   useEffect(() => {
-    editorController.setView(cmRef.current?.view ?? null);
-    return () => {
-      editorController.clearView();
-    };
-  }, [cmRef.current?.view]);
+    return () => editorController.clearView();
+  }, []);
+  const handleCreateEditor = useCallback((view: EditorView) => {
+    editorController.setView(view);
+  }, []);
 
   const readOnlyCompartment = useMemo(() => new Compartment(), []);
   const allExtensions = useMemo(
-    () => [...extensions, readOnlyCompartment.of(EditorState.readOnly.of(false))],
-    [extensions, readOnlyCompartment],
+    () => [
+      ...extensions,
+      blurAutosaveExtension,
+      readOnlyCompartment.of(EditorState.readOnly.of(false)),
+    ],
+    [extensions, blurAutosaveExtension, readOnlyCompartment],
   );
 
   useEffect(() => {
@@ -188,17 +200,16 @@ export function StoryEditor({
         )}
       </AnimatePresence>
 
-      <div
-        className="h-full w-full flex-1 overflow-hidden"
-        onBlur={handleBlur}
-      >
+      <div className="h-full w-full flex-1 overflow-hidden">
         <CodeMirror
           ref={cmRef}
           value={source}
           height="100%"
+          theme="none"
           className="h-full"
           indentWithTab
           extensions={allExtensions}
+          onCreateEditor={handleCreateEditor}
           onChange={handleChange}
           onUpdate={(v) => {
             if (!onCursorChange) return;

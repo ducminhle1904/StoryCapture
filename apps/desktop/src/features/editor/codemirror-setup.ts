@@ -7,13 +7,13 @@
  */
 
 import { indentUnit } from "@codemirror/language";
-import { EditorView, keymap } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { Prec } from "@codemirror/state";
-
-import { storyDsl } from "@/features/editor/dsl-language";
+import { EditorView, keymap } from "@codemirror/view";
 import { storyDiagnosticsLinter } from "@/features/editor/diagnostics-bridge";
 import { storyAutocomplete } from "@/features/editor/dsl-autocomplete";
+import { storyDsl } from "@/features/editor/dsl-language";
+import { triggerPickFromEditor } from "@/features/editor/PreviewPickerButton";
 import {
   simulatorDecorationField,
   simulatorDecorationTheme,
@@ -22,7 +22,6 @@ import {
   createSimulatorKeymap,
   type SimulatorKeymapContext,
 } from "@/features/editor/simulator-keymap";
-import { triggerPickFromEditor } from "@/features/editor/PreviewPickerButton";
 
 /**
  * Phase 11-04 keymap — Cmd-Shift-P on macOS / Ctrl-Shift-P elsewhere.
@@ -64,9 +63,6 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
         backgroundColor: "var(--sc-surface)",
         color: "var(--sc-text)",
       },
-      ".cm-editor": {
-        backgroundColor: "transparent",
-      },
       ".cm-content": {
         fontFamily: "var(--sc-font-mono)",
         fontSize: "13px",
@@ -77,7 +73,10 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
       ".cm-gutters": {
         backgroundColor: "transparent",
         color: "var(--sc-text-4)",
-        border: "none",
+        borderRight: "1px solid var(--sc-border-2)",
+      },
+      ".cm-lineNumbers .cm-gutterElement": {
+        minWidth: "36px",
       },
       ".cm-activeLine": {
         backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 8%, transparent)",
@@ -94,7 +93,34 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
         backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 22%, transparent) !important",
       },
       ".cm-scroller": {
+        backgroundColor: "var(--sc-surface)",
         fontFamily: "var(--sc-font-mono)",
+      },
+      ".cm-panels": {
+        backgroundColor: "var(--sc-surface-2)",
+        borderColor: "var(--sc-border)",
+        color: "var(--sc-text)",
+      },
+      ".cm-searchMatch": {
+        backgroundColor: "color-mix(in oklch, var(--sc-warn) 24%, transparent)",
+        outline: "1px solid color-mix(in oklch, var(--sc-warn) 40%, transparent)",
+      },
+      ".cm-searchMatch.cm-searchMatch-selected": {
+        backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 28%, transparent)",
+      },
+      ".cm-matchingBracket, .cm-nonmatchingBracket": {
+        backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 16%, transparent)",
+        outline: "1px solid color-mix(in oklch, var(--sc-accent-400) 35%, transparent)",
+      },
+      ".cm-tooltip": {
+        backgroundColor: "var(--sc-surface-2)",
+        borderColor: "var(--sc-border-2)",
+        color: "var(--sc-text)",
+        boxShadow: "var(--sc-sh-pop)",
+      },
+      ".cm-tooltip-autocomplete ul li[aria-selected]": {
+        backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 18%, transparent)",
+        color: "var(--sc-text)",
       },
       ".cm-diagnostic-error": {
         borderLeftColor: "var(--sc-record)",
