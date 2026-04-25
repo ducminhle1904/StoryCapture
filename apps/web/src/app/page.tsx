@@ -22,39 +22,169 @@ const navGroups = [
 const steps = [
   {
     number: "01",
-    title: "Author",
-    body: "Write the flow in plain language or the .story DSL. Keep selectors, assertions, and capture intent in one reviewable source file.",
+    title: "Script the demo",
+    body: "Write the flow in natural language or the .story DSL. Selectors, assertions, camera intent, and capture timing stay in one reviewable source file.",
   },
   {
     number: "02",
-    title: "Capture",
-    body: "StoryCapture drives a real browser and records native pixels through the desktop engine, with picker and simulator feedback before recording.",
+    title: "Automate browser capture",
+    body: "StoryCapture drives a real browser, validates the path with preview tools, and records native pixels through the desktop capture engine.",
   },
   {
     number: "03",
-    title: "Finish",
-    body: "Cursor motion, auto-zoom, voiceover, sound, and export presets move into the post-production timeline.",
+    title: "Polish and publish",
+    body: "Cursor motion, auto-zoom, voiceover, sound, exports, embeds, and analytics move into a repeatable post-production workflow.",
   },
 ];
 
 const featureRows = [
   [
-    "Author-time preview",
-    "Live browser preview, simulator frames, and element picking before a record starts.",
+    "Script-first demo automation",
+    "Turn product walkthrough scripts into repeatable browser runs, so launch demos and onboarding videos do not depend on manual clicking.",
   ],
   [
-    "Native capture",
-    "ScreenCaptureKit and Windows Graphics Capture paths keep final output crisp.",
+    "Native desktop capture",
+    "ScreenCaptureKit on macOS and Windows Graphics Capture on Windows keep final product demo videos crisp for landing pages, docs, and sales enablement.",
   ],
   [
-    "Post-production graph",
-    "A typed effects graph emits both preview plans and FFmpeg render instructions.",
+    "Cinematic post-production",
+    "Auto-zoom, cursor emphasis, captions, voiceover timing, export presets, and FFmpeg render instructions are generated from a typed effects graph.",
   ],
   [
-    "Share companion",
-    "Upload finished demos to workspace pages with embeds, analytics, and desktop sync.",
+    "Web sharing and analytics",
+    "Upload finished demos to workspace pages with secure embeds, watch analytics, scene drop-offs, and desktop sync.",
   ],
 ];
+
+const proofStats = [
+  {
+    value: "91%",
+    label: "of businesses use video as a marketing tool",
+    source: "Wyzowl 2026 Video Marketing Statistics",
+  },
+  {
+    value: "39%",
+    label: "of video marketers created product demos",
+    source: "Wyzowl 2026 Video Marketing Statistics",
+  },
+  {
+    value: "80%",
+    label: "of consumers bought or downloaded an app after an app demo video",
+    source: "Wyzowl 2026 Video Marketing Statistics",
+  },
+];
+
+const comparisonRows = [
+  [
+    "Interactive demo tools",
+    "Click-through product tours",
+    "Website embeds and guided sales demos",
+  ],
+  ["Screen recorders", "Manual recording and editing", "One-off videos and quick tutorials"],
+  [
+    "StoryCapture",
+    "Scripted browser automation plus native capture",
+    "Repeatable SaaS product demo videos for launches, onboarding, and release notes",
+  ],
+];
+
+const faqItems = [
+  {
+    question: "What is StoryCapture?",
+    answer:
+      "StoryCapture is a script-first product demo video maker for SaaS teams. It turns a written product walkthrough into browser automation, native desktop capture, post-production, export, and web sharing.",
+  },
+  {
+    question: "How is StoryCapture different from interactive demo software?",
+    answer:
+      "Interactive demo software usually creates click-through tours for website visitors. StoryCapture focuses on producing polished linear videos from repeatable scripted browser flows, which is useful for launches, onboarding, support, and release communication.",
+  },
+  {
+    question: "Who should use a script-first product demo workflow?",
+    answer:
+      "Product marketers, developer advocates, founders, customer education teams, and release teams should use it when they need the same demo to be recreated consistently as the product changes.",
+  },
+  {
+    question: "Does StoryCapture replace a screen recorder?",
+    answer:
+      "StoryCapture overlaps with screen recording, but it adds browser automation, author-time preview, native capture, cinematic editing, export presets, and share analytics so teams can move from rough recording to publishable demo video.",
+  },
+];
+
+const siteUrl = "https://story-capture-web.vercel.app";
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "StoryCapture",
+    url: siteUrl,
+    logo: `${siteUrl}/assets/ribbon-s-mark-product.png`,
+    description:
+      "StoryCapture builds desktop and web software for creating repeatable product demo videos from scripted browser flows.",
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "StoryCapture",
+    applicationCategory: "MultimediaApplication",
+    operatingSystem: "macOS, Windows, Web",
+    url: siteUrl,
+    image: `${siteUrl}/assets/storycapture-hero-product.png`,
+    description:
+      "A script-first product demo video maker for SaaS teams that automates browser flows, captures native pixels, applies post-production, exports video, and shares demos online.",
+    featureList: [
+      "Scripted browser automation for product walkthroughs",
+      "Native macOS and Windows screen capture",
+      "Author-time preview and element picking",
+      "Auto-zoom, cursor emphasis, voiceover, and export presets",
+      "Secure web sharing, embeds, analytics, and workspace sync",
+    ],
+    offers: {
+      "@type": "Offer",
+      availability: "https://schema.org/PreOrder",
+      price: "0",
+      priceCurrency: "USD",
+    },
+    author: {
+      "@type": "Organization",
+      name: "StoryCapture",
+      url: siteUrl,
+    },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqItems.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer,
+      },
+    })),
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: "Product Demo Video Maker for SaaS Teams - StoryCapture",
+    description:
+      "StoryCapture turns scripted browser flows into polished product demo videos for SaaS launches, onboarding, support, and release communication.",
+    url: siteUrl,
+    datePublished: "2026-04-25",
+    dateModified: "2026-04-25",
+    inLanguage: "en-US",
+    isPartOf: {
+      "@type": "WebSite",
+      name: "StoryCapture",
+      url: siteUrl,
+    },
+    speakable: {
+      "@type": "SpeakableSpecification",
+      cssSelector: ["h1", ".geo-summary", ".geo-faq"],
+    },
+  },
+];
+const structuredData = JSON.stringify(jsonLd);
 
 export default async function HomePage() {
   const session = await auth();
@@ -65,6 +195,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen bg-[var(--sc-bg)] font-[var(--font-geist)] text-[var(--sc-text)]">
+      <script type="application/ld+json">{structuredData}</script>
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,oklch(0.22_0.05_60)_0%,transparent_60%),radial-gradient(ellipse_50%_40%_at_110%_110%,oklch(0.18_0.06_40)_0%,transparent_60%),linear-gradient(180deg,#0b0a09_0%,#050504_100%)]" />
 
       <header
@@ -85,6 +216,8 @@ export default async function HomePage() {
           <div className="hidden items-center gap-1 md:flex">
             <NavLink href="#workflow">Workflow</NavLink>
             <NavLink href="#capabilities">Capabilities</NavLink>
+            <NavLink href="#research">Market</NavLink>
+            <NavLink href="#faq">FAQ</NavLink>
             <NavLink href="#access">Access</NavLink>
           </div>
 
@@ -105,23 +238,24 @@ export default async function HomePage() {
               style={{ "--sc-delay": "120ms" } as CSSProperties}
             >
               <span className="sc-status-dot h-1.5 w-1.5 rounded-full bg-[var(--sc-success)]" />
-              Private beta for product teams
+              Private beta for SaaS product teams
             </div>
 
             <h1
               className="sc-reveal mt-6 text-[clamp(42px,5.8vw,70px)] font-semibold leading-[0.98] tracking-[-0.055em] text-[var(--sc-text)]"
               style={{ "--sc-delay": "190ms" } as CSSProperties}
             >
-              Write the story.
-              <span className="block text-[var(--sc-accent-300)]">Ship the demo.</span>
+              Product demo video maker.
+              <span className="block text-[var(--sc-accent-300)]">Scripted from the start.</span>
             </h1>
 
             <p
-              className="sc-reveal mt-6 max-w-[470px] text-[15px] leading-7 text-[var(--sc-text-3)]"
+              className="geo-summary sc-reveal mt-6 max-w-[500px] text-[15px] leading-7 text-[var(--sc-text-3)]"
               style={{ "--sc-delay": "280ms" } as CSSProperties}
             >
-              StoryCapture turns a script into a finished product video: browser automation, native
-              capture, post-production, export, and sharing in one desktop-shaped workflow.
+              StoryCapture turns scripted browser flows into polished SaaS product demo videos:
+              automation, native screen capture, cinematic post-production, export, and web sharing
+              in one repeatable workflow.
             </p>
 
             <div
@@ -132,7 +266,7 @@ export default async function HomePage() {
                 href="#access"
                 className="inline-flex h-9 items-center rounded-[var(--sc-r-md)] bg-[var(--sc-accent-400)] px-4 text-[13px] font-semibold text-[var(--sc-text-inverse)] shadow-[var(--sc-sh-2)] transition hover:bg-[var(--sc-accent-300)] active:translate-y-px"
               >
-                Request Access
+                Request Beta Access
               </a>
               <Link
                 href="/sign-in"
@@ -149,8 +283,8 @@ export default async function HomePage() {
         <section id="workflow" className="mx-auto max-w-[1180px] px-5 py-20">
           <SectionHeader
             eyebrow="Workflow"
-            title="The same loop as the desktop app"
-            body="The landing now borrows the app shell directly: compact chrome, warm amber accent, command surfaces, and dense production panels."
+            title="From product script to publishable video"
+            body="StoryCapture is built for teams that need repeatable demo automation, not another one-off recording. Author the story, validate the browser path, capture native pixels, then export a finished walkthrough."
           />
 
           <div className="grid gap-2 md:grid-cols-3">
@@ -173,8 +307,8 @@ export default async function HomePage() {
         <section id="capabilities" className="mx-auto max-w-[1180px] px-5 py-16">
           <SectionHeader
             eyebrow="Capabilities"
-            title="A production tool, not a marketing toy"
-            body="The UI should feel like the desktop application because the web companion is part of that same workflow."
+            title="Demo automation software for real browser flows"
+            body="Interactive demo tools are useful for click-through tours. StoryCapture focuses on linear product demo videos that can be recreated every release from the same script."
           />
 
           <div className="overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] shadow-[var(--sc-sh-2)]">
@@ -196,6 +330,83 @@ export default async function HomePage() {
           </div>
         </section>
 
+        <section id="research" className="mx-auto max-w-[1180px] px-5 py-16">
+          <SectionHeader
+            eyebrow="Market proof"
+            title="Product demo videos are now a buying asset"
+            body="The search intent is clear: teams want product demo software that lowers editing time, keeps demos current, and produces assets good enough for landing pages, onboarding, sales, docs, and launch announcements."
+          />
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {proofStats.map((stat, index) => (
+              <article
+                key={stat.value}
+                className="sc-reveal rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-[var(--sc-sh-1)]"
+                style={{ "--sc-delay": `${index * 80}ms` } as CSSProperties}
+              >
+                <div className="font-[var(--font-geist-mono)] text-[32px] font-semibold tracking-[-0.04em] text-[var(--sc-accent-300)]">
+                  {stat.value}
+                </div>
+                <p className="mt-3 text-[13px] leading-6 text-[var(--sc-text-2)]">{stat.label}</p>
+                <p className="mt-3 text-[11px] text-[var(--sc-text-4)]">{stat.source}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] shadow-[var(--sc-sh-2)]">
+            <div className="grid border-b border-[var(--sc-border)] px-5 py-3 font-[var(--font-geist-mono)] text-[10.5px] uppercase tracking-[0.08em] text-[var(--sc-text-4)] md:grid-cols-[220px_1fr_1fr]">
+              <span>Category</span>
+              <span className="hidden md:block">Primary workflow</span>
+              <span className="hidden md:block">Best fit</span>
+            </div>
+            {comparisonRows.map(([category, workflow, fit]) => (
+              <div
+                key={category}
+                className="grid gap-2 border-b border-[var(--sc-border)] px-5 py-4 last:border-b-0 md:grid-cols-[220px_1fr_1fr]"
+              >
+                <h3 className="text-[13px] font-semibold">{category}</h3>
+                <p className="text-[13px] leading-6 text-[var(--sc-text-3)]">{workflow}</p>
+                <p className="text-[13px] leading-6 text-[var(--sc-text-3)]">{fit}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-4 max-w-[760px] text-[12px] leading-6 text-[var(--sc-text-4)]">
+            Source:{" "}
+            <a
+              href="https://wyzowl.com/video-marketing-statistics/"
+              className="text-[var(--sc-accent-300)] hover:text-[var(--sc-accent-200)]"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Wyzowl Video Marketing Statistics 2026
+            </a>
+            . StoryCapture uses this market signal to focus the product on fast, repeatable,
+            high-quality app demo video production.
+          </p>
+        </section>
+
+        <section id="faq" className="geo-faq mx-auto max-w-[1180px] px-5 py-16">
+          <SectionHeader
+            eyebrow="FAQ"
+            title="Product demo video maker questions"
+            body="Direct answers for teams comparing demo automation software, interactive demo tools, and screen recording workflows."
+          />
+
+          <div className="grid gap-2 md:grid-cols-2">
+            {faqItems.map((item, index) => (
+              <article
+                key={item.question}
+                className="sc-reveal rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-[var(--sc-sh-1)]"
+                style={{ "--sc-delay": `${index * 70}ms` } as CSSProperties}
+              >
+                <h3 className="text-[15px] font-semibold tracking-[-0.02em]">{item.question}</h3>
+                <p className="mt-3 text-[13px] leading-6 text-[var(--sc-text-3)]">{item.answer}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section id="access" className="mx-auto max-w-[1180px] px-5 pb-24 pt-16">
           <div className="sc-reveal grid gap-4 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-[var(--sc-sh-2)] md:grid-cols-[1fr_auto] md:items-center">
             <div>
@@ -203,11 +414,12 @@ export default async function HomePage() {
                 Early Access
               </p>
               <h2 className="mt-2 text-2xl font-semibold tracking-[-0.035em]">
-                Bring repeatable demos into your release workflow.
+                Bring repeatable product demo videos into your release workflow.
               </h2>
               <p className="mt-2 max-w-[620px] text-[13px] leading-6 text-[var(--sc-text-3)]">
-                We are onboarding teams that already write launch flows, QA specs, or developer
-                walkthroughs and want those scripts to produce finished videos.
+                We are onboarding teams that already write launch flows, QA specs, onboarding
+                scripts, or developer walkthroughs and want those scripts to produce finished
+                videos.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row md:flex-col">
@@ -215,7 +427,7 @@ export default async function HomePage() {
                 href="/sign-in"
                 className="inline-flex h-9 justify-center rounded-[var(--sc-r-md)] bg-[var(--sc-accent-400)] px-4 text-[13px] font-semibold leading-9 text-[var(--sc-text-inverse)] transition hover:bg-[var(--sc-accent-300)] active:translate-y-px"
               >
-                Open App
+                Open Web App
               </Link>
               <a
                 href="mailto:hello@storycapture.dev"
@@ -230,13 +442,16 @@ export default async function HomePage() {
 
       <footer className="relative border-t border-[var(--sc-border)] bg-[var(--sc-chrome)]">
         <div className="mx-auto flex max-w-[1180px] flex-col justify-between gap-4 px-5 py-6 text-[12px] text-[var(--sc-text-4)] sm:flex-row">
-          <span>StoryCapture desktop and web companion.</span>
+          <span>StoryCapture product demo video maker and web companion.</span>
           <div className="flex gap-5">
             <a href="#workflow" className="hover:text-[var(--sc-text-2)]">
               Workflow
             </a>
             <a href="#capabilities" className="hover:text-[var(--sc-text-2)]">
               Capabilities
+            </a>
+            <a href="#faq" className="hover:text-[var(--sc-text-2)]">
+              FAQ
             </a>
             <Link href="/sign-in" className="hover:text-[var(--sc-text-2)]">
               App

@@ -16,10 +16,43 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+const siteUrl = "https://story-capture-web.vercel.app";
+const siteDescription =
+  "StoryCapture is a script-first product demo video maker for SaaS teams. Automate browser flows, capture native pixels, polish edits, and share demos.";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://storycapture.app"),
-  title: "StoryCapture",
-  description: "Turn structured user stories into polished demo videos automatically.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Product Demo Video Maker for SaaS Teams - StoryCapture",
+    template: "%s - StoryCapture",
+  },
+  description: siteDescription,
+  keywords: [
+    "product demo video maker",
+    "product demo video generator",
+    "demo automation software",
+    "SaaS product demo video",
+    "screen recording to demo video",
+    "software walkthrough video",
+    "browser automation video",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  authors: [{ name: "StoryCapture" }],
+  creator: "StoryCapture",
+  publisher: "StoryCapture",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
   icons: {
     icon: [
       {
@@ -37,9 +70,12 @@ export const metadata: Metadata = {
     ],
   },
   openGraph: {
-    title: "StoryCapture",
-    description: "Turn structured user stories into polished demo videos automatically.",
+    title: "Product Demo Video Maker for SaaS Teams - StoryCapture",
+    description: siteDescription,
+    url: "/",
+    siteName: "StoryCapture",
     type: "website",
+    locale: "en_US",
     images: [
       {
         url: "/assets/storycapture-hero-product.png",
@@ -51,8 +87,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "StoryCapture",
-    description: "Turn structured user stories into polished demo videos automatically.",
+    title: "Product Demo Video Maker for SaaS Teams - StoryCapture",
+    description: siteDescription,
     images: ["/assets/storycapture-hero-product.png"],
   },
 };
