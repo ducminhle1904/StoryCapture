@@ -21,6 +21,7 @@ use tokio::sync::Mutex as TokioMutex;
 struct MockControl {
     navigated: TokioMutex<Vec<(String, String)>>,
     fail_nav_urls: TokioMutex<Vec<String>>,
+    current_url: TokioMutex<String>,
 }
 
 #[async_trait]
@@ -53,6 +54,9 @@ impl AuthorPreviewControl for MockControl {
         _timeout_ms: u64,
     ) -> Result<PickElementResponse, AppError> {
         unreachable!("not used in replay_navigate_verbs tests")
+    }
+    async fn author_current_url(&self, _stream_id: &str) -> Result<String, AppError> {
+        Ok(self.current_url.lock().await.clone())
     }
 }
 
@@ -160,6 +164,92 @@ story \"RN4\" {
     );
     assert_eq!(calls[0].1, "https://will-fail.test");
     assert_eq!(calls[1].1, "https://ok.test");
+}
+
+// RN-6: when the author page already sits on (or has browsed past) one of
+// the script's nav URLs, replay must short-circuit so the user isn't
+// teleported back to the start page when they click Picker mid-session.
+#[tokio::test]
+async fn rn6_skips_replay_when_current_url_supersedes_nav() {
+    let story = "\
+story \"RN6\" {
+  meta { app: \"https://app.test\" }
+  scene \"s\" {
+    navigate \"https://app.test\"
+    click \"Ok\"
+  }
+}
+";
+    let mock = Arc::new(MockControl::default());
+    *mock.current_url.lock().await = "https://app.test/dashboard?tab=stats".into();
+
+    replay_navigate_verbs(mock.as_ref(), "s1", story, 999)
+        .await
+        .expect("ok");
+
+    let calls = mock.navigated.lock().await;
+    assert!(
+        calls.is_empty(),
+        "expected no navigate calls when current URL supersedes script nav; got {calls:?}",
+    );
+}
+
+// RN-7: cold start (about:blank) — replay must run.
+#[tokio::test]
+async fn rn7_replays_on_cold_start_about_blank() {
+    let story = "\
+story \"RN7\" {
+  meta { app: \"https://app.test\" }
+  scene \"s\" {
+    navigate \"https://app.test\"
+  }
+}
+";
+    let mock = Arc::new(MockControl::default());
+    *mock.current_url.lock().await = "about:blank".into();
+
+    replay_navigate_verbs(mock.as_ref(), "s1", story, 999)
+        .await
+        .expect("ok");
+
+    let calls = mock.navigated.lock().await;
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].1, "https://app.test");
+}
+
+// RN-8: cross-site flows are common (login.example.com -> app.example.com,
+// or www.wikipedia.org -> en.wikipedia.org). Same-site (shared registrable
+// suffix) must skip replay; truly unrelated origins must replay.
+#[tokio::test]
+async fn rn8_same_site_subdomain_skips_unrelated_replays() {
+    let story = "\
+story \"RN8\" {
+  meta { app: \"https://www.wikipedia.org\" }
+  scene \"s\" {
+    navigate \"https://www.wikipedia.org\"
+  }
+}
+";
+    let mock = Arc::new(MockControl::default());
+    // Subdomain hop within the same site — must skip replay.
+    *mock.current_url.lock().await =
+        "https://en.wikipedia.org/wiki/Tauri_(software)".into();
+
+    replay_navigate_verbs(mock.as_ref(), "s1", story, 999)
+        .await
+        .expect("ok");
+    assert!(
+        mock.navigated.lock().await.is_empty(),
+        "subdomain en.wikipedia.org must be treated same-site as www.wikipedia.org",
+    );
+
+    // Unrelated host — must replay.
+    let mock2 = Arc::new(MockControl::default());
+    *mock2.current_url.lock().await = "https://example.com/anything".into();
+    replay_navigate_verbs(mock2.as_ref(), "s1", story, 999)
+        .await
+        .expect("ok");
+    assert_eq!(mock2.navigated.lock().await.len(), 1);
 }
 
 // RN-5: replay_navigate_verbs against MockControl invokes author_navigate_to

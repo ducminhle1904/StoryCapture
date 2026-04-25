@@ -823,6 +823,20 @@ impl PlaywrightSidecarDriver {
             .map_err(|e| AutomationError::Protocol(format!("pickElement.start decode: {e}")))
     }
 
+    /// Read the current URL of an author-session page. Used by
+    /// `replay_navigate_verbs` to skip warm-up when the user has already
+    /// browsed past the script's destination URL — re-navigating would
+    /// yank them back to the start page.
+    pub async fn author_current_url(&self, stream_id: &str) -> Result<String> {
+        let v = self
+            .call("author.currentUrl", json!({ "streamId": stream_id }))
+            .await?;
+        Ok(v.get("url")
+            .and_then(|u| u.as_str())
+            .unwrap_or("")
+            .to_string())
+    }
+
     /// Phase 11-03 — navigate a specific author-session page to a URL AND
     /// wait for `networkidle` (bounded 10s by the sidecar). Used by
     /// `replay_navigate_verbs` to warm the author browser on picker start.

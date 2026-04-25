@@ -7,7 +7,7 @@
 // alive, so the "no driver" branch is reachable only via races at
 // session-end.
 
-use crate::author_driver::{AuthorDriverRegistry, PickerResumeGuard, StreamId};
+use crate::author_driver::{AuthorDriverRegistry, AuthorDriverState, PickerResumeGuard, StreamId};
 use crate::error::AppError;
 use crate::state::AppState;
 use async_trait::async_trait;
@@ -133,10 +133,44 @@ pub async fn picker_start(
 /// Cancel an in-flight pickElement session. Idempotent — no-op when no
 /// session is active. The sidecar will resolve any pending start with
 /// `{ cancelled: true, reason: "user-cancel" }`.
+///
+/// Routes by FSM state: when the registry reports `Picking { stream_id }`,
+/// the in-flight pick belongs to that author session and we must cancel on
+/// `author_preview_sessions[stream_id].driver` — the recorder-path
+/// `playwright_driver` is a different sidecar process and would silently
+/// drop the cancel. The recorder driver is only consulted as a fallback for
+/// the legacy recorder-path `picker_start` flow (FSM not in Picking state).
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_cancel"), err(Debug))]
-pub async fn picker_cancel(state: State<'_, AppState>) -> Result<(), AppError> {
+pub async fn picker_cancel(
+    state: State<'_, AppState>,
+    registry: State<'_, Arc<AuthorDriverRegistry>>,
+) -> Result<(), AppError> {
+    let picking_stream_id = {
+        let s = registry.state.lock().await;
+        match &*s {
+            AuthorDriverState::Picking { stream_id, .. } => Some(stream_id.clone()),
+            _ => None,
+        }
+    };
+
+    if let Some(stream_id) = picking_stream_id {
+        let driver_arc = {
+            let sessions = state.author_preview_sessions.lock().await;
+            sessions.get(&stream_id).map(|s| s.driver.clone())
+        };
+        if let Some(driver) = driver_arc {
+            driver
+                .pick_element_cancel()
+                .await
+                .map_err(|e| AppError::Automation(e.to_string()))?;
+            return Ok(());
+        }
+        // FSM said Picking but the session entry vanished (teardown race).
+        // Fall through to the recorder-path attempt as a last-resort.
+    }
+
     let driver = {
         let slot = state.playwright_driver.lock().await;
         slot.as_ref().cloned()
@@ -349,6 +383,14 @@ pub trait AuthorPreviewControl: Send + Sync {
         stream_id: &str,
         timeout_ms: u64,
     ) -> Result<PickElementResponse, AppError>;
+    /// Read the live URL the author page is currently sitting on. Used by
+    /// `replay_navigate_verbs` to skip warm-up when the user has already
+    /// browsed past the script's destination. Default impl returns an empty
+    /// string so existing tests / impls keep their pre-existing replay
+    /// semantics (empty URL never matches a script nav URL).
+    async fn author_current_url(&self, _stream_id: &str) -> Result<String, AppError> {
+        Ok(String::new())
+    }
 }
 
 /// Production adapter — holds an Arc'd per-session driver and invokes the
@@ -368,6 +410,12 @@ impl AuthorPreviewControl for SidecarAuthorPreviewControl {
     async fn author_navigate_to(&self, stream_id: &str, url: &str) -> Result<(), AppError> {
         self.driver
             .author_navigate_to(stream_id, url)
+            .await
+            .map_err(|e| AppError::Automation(e.to_string()))
+    }
+    async fn author_current_url(&self, stream_id: &str) -> Result<String, AppError> {
+        self.driver
+            .author_current_url(stream_id)
             .await
             .map_err(|e| AppError::Automation(e.to_string()))
     }
@@ -426,10 +474,53 @@ pub fn compute_navigate_urls(story_src: &str, cursor_line: u32) -> Result<Vec<St
     Ok(nav_urls)
 }
 
+/// True when the author page is "same-site" with one of the script's nav
+/// URLs and the user has navigated somewhere meaningful — replay would
+/// yank them back to the start page, so skip it.
+///
+/// Same-site is judged by host suffix after stripping a leading `www.`,
+/// not by `Url::origin()`. Strict origin breaks the common subdomain-hop
+/// pattern: a story with `meta.app = https://www.wikipedia.org` whose
+/// flow lands the user on `https://en.wikipedia.org/wiki/...` would
+/// otherwise be detected as "different site" and replayed.
+///
+/// `about:blank`, file://, chrome:// and parse failures all return false
+/// so cold-start sessions still warm up via replay.
+fn current_url_supersedes_replay(current: &str, nav_urls: &[String]) -> bool {
+    let Ok(cur) = url::Url::parse(current) else {
+        return false;
+    };
+    if !matches!(cur.scheme(), "http" | "https") {
+        return false;
+    }
+    let Some(cur_host) = cur.host_str() else {
+        return false;
+    };
+    nav_urls.iter().any(|nav| {
+        url::Url::parse(nav)
+            .ok()
+            .and_then(|n| n.host_str().map(str::to_owned))
+            .is_some_and(|nav_host| same_site(cur_host, &nav_host))
+    })
+}
+
+/// Two hosts are "same site" if their registrable-domain-ish suffixes
+/// match — `www.` is stripped, then either equality or one is a
+/// subdomain of the other. Avoids pulling in a public-suffix-list dep
+/// for what's a UX heuristic, not a security boundary.
+fn same_site(a: &str, b: &str) -> bool {
+    let a = a.strip_prefix("www.").unwrap_or(a);
+    let b = b.strip_prefix("www.").unwrap_or(b);
+    a == b || a.ends_with(&format!(".{b}")) || b.ends_with(&format!(".{a}"))
+}
+
 /// D-10 — execute the navigate-replay sequence against `control`. Each
 /// `author_navigate_to` call is best-effort: a failure (DNS, 404, timeout)
 /// emits a warn log and the walk continues. The picker must not fail
 /// because a single upstream nav stalled (per 11-RESEARCH Pattern 2).
+///
+/// Replay short-circuits when the author page is already at (or past) one
+/// of the script's nav URLs — see `current_url_supersedes_replay`.
 pub async fn replay_navigate_verbs(
     control: &dyn AuthorPreviewControl,
     stream_id: &str,
@@ -437,6 +528,22 @@ pub async fn replay_navigate_verbs(
     cursor_line: u32,
 ) -> Result<(), AppError> {
     let urls = compute_navigate_urls(story_src, cursor_line)?;
+    if urls.is_empty() {
+        return Ok(());
+    }
+
+    if let Ok(current) = control.author_current_url(stream_id).await {
+        if current_url_supersedes_replay(&current, &urls) {
+            tracing::info!(
+                target: "storycapture::picker",
+                stream_id,
+                current = %current,
+                "skip navigate-replay — author page already at/past script destination",
+            );
+            return Ok(());
+        }
+    }
+
     for url in urls {
         if let Err(e) = control.author_navigate_to(stream_id, &url).await {
             tracing::warn!(

@@ -883,6 +883,24 @@ const handlers = {
     return { ok: true, url };
   },
 
+  // Read the current URL of an author-session page. Used by the host to
+  // decide whether navigate-replay is needed before a Pick — if the user
+  // has already browsed past the script's destination, replay would yank
+  // them back to the start URL.
+  'author.currentUrl': async ({ streamId } = {}) => {
+    if (typeof streamId !== 'string' || !streamId) {
+      throw Object.assign(new Error('streamId required'), { code: -32000 });
+    }
+    const s = state.authorSessions.get(streamId);
+    if (!s || !s.page) {
+      throw Object.assign(
+        new Error(`unknown streamId: ${streamId}`),
+        { code: -32000 },
+      );
+    }
+    return { url: s.page.url() || '' };
+  },
+
   // Phase 11-03 — author.navigateTo: warm an author-session page for the
   // element picker. Unlike author.goto (which uses domcontentloaded),
   // this RPC additionally waits for `networkidle` with a bounded 10s

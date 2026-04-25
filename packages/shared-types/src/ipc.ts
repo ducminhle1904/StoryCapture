@@ -247,6 +247,13 @@ async pickerStart(timeoutMs: bigint) : Promise<Result<PickElementResponseDto, Ap
  * Cancel an in-flight pickElement session. Idempotent — no-op when no
  * session is active. The sidecar will resolve any pending start with
  * `{ cancelled: true, reason: "user-cancel" }`.
+ * 
+ * Routes by FSM state: when the registry reports `Picking { stream_id }`,
+ * the in-flight pick belongs to that author session and we must cancel on
+ * `author_preview_sessions[stream_id].driver` — the recorder-path
+ * `playwright_driver` is a different sidecar process and would silently
+ * drop the cancel. The recorder driver is only consulted as a fallback for
+ * the legacy recorder-path `picker_start` flow (FSM not in Picking state).
  */
 async pickerCancel() : Promise<Result<null, AppError>> {
     try {
