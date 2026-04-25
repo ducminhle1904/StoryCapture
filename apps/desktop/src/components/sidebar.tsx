@@ -1,14 +1,15 @@
-import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Home,
+  Circle,
   Code,
-  Scissors,
+  Compass,
   Download,
   Film,
-  Settings as SettingsIcon,
+  Home,
+  Scissors,
   Search,
-  Circle,
+  Settings as SettingsIcon,
 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { BrandMark } from "@/components/brand";
 import { useDashboardStore } from "@/state/projects";
@@ -32,6 +33,13 @@ const NAV: NavGroup[] = [
     group: "Workspace",
     items: [
       { id: "dashboard", label: "Projects", icon: Home, path: "/" },
+      {
+        id: "onboarding",
+        label: "Onboarding",
+        icon: Compass,
+        path: "/onboarding",
+        matchPattern: /^\/onboarding/,
+      },
       {
         id: "editor",
         label: "Story Editor",
@@ -119,25 +127,23 @@ export function Sidebar() {
               const active = isActive(it, location.pathname);
               const Icon = it.icon;
               return (
-                <div
+                <button
                   key={it.id}
-                  role="button"
-                  tabIndex={it.disabled ? -1 : 0}
-                  aria-disabled={it.disabled || undefined}
+                  type="button"
+                  disabled={it.disabled}
                   aria-current={active ? "page" : undefined}
                   onClick={() => {
-                    if (it.disabled) return;
                     if (it.path) navigate(it.path);
                   }}
-                  onKeyDown={(e) => {
-                    if (it.disabled) return;
-                    if ((e.key === "Enter" || e.key === " ") && it.path) {
-                      e.preventDefault();
-                      navigate(it.path);
-                    }
-                  }}
                   className={`sc-nav-item ${active ? "active" : ""}`}
-                  style={it.disabled ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                  style={{
+                    width: "calc(100% - 16px)",
+                    border: 0,
+                    background: "transparent",
+                    font: "inherit",
+                    textAlign: "left",
+                    ...(it.disabled ? { opacity: 0.45, cursor: "not-allowed" } : undefined),
+                  }}
                 >
                   <span
                     className="grid w-[14px] place-items-center"
@@ -146,7 +152,7 @@ export function Sidebar() {
                     <Icon size={14} />
                   </span>
                   <span>{it.label}</span>
-                </div>
+                </button>
               );
             })}
           </div>
