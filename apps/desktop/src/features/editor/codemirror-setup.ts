@@ -17,6 +17,8 @@ import { triggerPickFromEditor } from "@/features/editor/PreviewPickerButton";
 import {
   simulatorDecorationField,
   simulatorDecorationTheme,
+  simulatorFailedStepField,
+  simulatorFailedStepHover,
 } from "@/features/editor/simulator-decoration";
 import {
   createSimulatorKeymap,
@@ -53,6 +55,8 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
     storyDiagnosticsLinter,
     storyAutocomplete,
     simulatorDecorationField,
+    simulatorFailedStepField,
+    simulatorFailedStepHover,
     simulatorDecorationTheme,
     ...(simulatorCtx ? [createSimulatorKeymap(simulatorCtx)] : []),
     pickKeymap,

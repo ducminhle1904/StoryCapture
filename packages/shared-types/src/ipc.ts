@@ -1648,7 +1648,7 @@ export type SessionId = string
 export type SessionRollupDto = { turn_count: bigint; total_cost_usd: number; total_tokens: bigint; avg_first_token_ms: number | null }
 export type SeverityDto = "error" | "warning" | "info"
 export type SimulatorBbox = { x: number; y: number; w: number; h: number }
-export type SimulatorEvent = { type: "started"; session_id: string; run_id: string; total_steps: number } | { type: "frame_captured"; ordinal: number; frame: SimulatorStepFrame } | { type: "paused"; ordinal: number } | { type: "failed"; ordinal: number; error_message: string } | { type: "completed"; succeeded: number; failed: number } | { type: "cancelled" }
+export type SimulatorEvent = { type: "started"; session_id: string; run_id: string; total_steps: number } | { type: "step_started"; ordinal: number } | { type: "frame_captured"; ordinal: number; frame: SimulatorStepFrame } | { type: "paused"; ordinal: number } | { type: "failed"; ordinal: number; error_message: string } | { type: "completed"; succeeded: number; failed: number } | { type: "cancelled" }
 export type SimulatorMatchKind = "primary" | "fuzzy" | "none"
 /**
  * specta-friendly mirror of `automation::StepFrame` for renderer IPC.

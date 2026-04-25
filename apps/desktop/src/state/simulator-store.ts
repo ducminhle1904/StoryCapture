@@ -3,6 +3,15 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import type { SimulatorEvent, SimulatorStepFrame } from "@/ipc/simulator";
 
+// Playwright's locator error messages embed ANSI SGR escape sequences
+// (e.g. `\x1b[2m...\x1b[22m` for dim text). They render as broken boxes
+// in our UI; strip them before displaying.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape stripping
+const ANSI_SGR_RE = /\x1b\[[0-9;]*m/g;
+function stripAnsi(s: string): string {
+  return s.replace(ANSI_SGR_RE, "");
+}
+
 export type RunState =
   | "idle"
   | "running"
@@ -19,6 +28,12 @@ interface SimulatorState {
   runId: string | null;
   totalSteps: number;
   error: string | null;
+  /** Ordinal of the step currently in flight (started but not yet succeeded/failed). */
+  inFlightOrdinal: number | null;
+  /** Wall-clock ms when `inFlightOrdinal` started — drives the "taking too long" hint. */
+  inFlightStartedAt: number | null;
+  /** Ordinal of the most recent failure, kept after run ends so the editor can decorate it. */
+  failedOrdinal: number | null;
   dismissedCoexistenceHint: boolean;
   setCurrentFrameOrdinal: (n: number | null) => void;
   handleEvent: (e: SimulatorEvent) => void;
@@ -36,6 +51,9 @@ export const useSimulatorStore = create<SimulatorState>()(
       runId: null,
       totalSteps: 0,
       error: null,
+      inFlightOrdinal: null,
+      inFlightStartedAt: null,
+      failedOrdinal: null,
       dismissedCoexistenceHint: false,
 
       setCurrentFrameOrdinal: (n) => {
@@ -65,29 +83,59 @@ export const useSimulatorStore = create<SimulatorState>()(
               frames: [],
               currentFrameOrdinal: null,
               error: null,
+              inFlightOrdinal: null,
+              inFlightStartedAt: null,
+              failedOrdinal: null,
+            });
+            break;
+          case "step_started":
+            set({
+              inFlightOrdinal: e.ordinal,
+              inFlightStartedAt: Date.now(),
             });
             break;
           case "frame_captured":
             set((s) => ({
               frames: [...s.frames, e.frame],
               currentFrameOrdinal: e.frame.ordinal,
+              inFlightOrdinal:
+                s.inFlightOrdinal === e.frame.ordinal ? null : s.inFlightOrdinal,
+              inFlightStartedAt:
+                s.inFlightOrdinal === e.frame.ordinal ? null : s.inFlightStartedAt,
             }));
             break;
           case "paused":
-            set({ runState: "paused", currentFrameOrdinal: e.ordinal });
+            set({
+              runState: "paused",
+              currentFrameOrdinal: e.ordinal,
+              inFlightOrdinal: null,
+              inFlightStartedAt: null,
+            });
             break;
           case "completed":
-            set({ runState: "complete" });
+            set({
+              runState: "complete",
+              inFlightOrdinal: null,
+              inFlightStartedAt: null,
+            });
             break;
           case "failed":
             set({
               runState: "failed",
-              error: e.error_message,
+              error: stripAnsi(e.error_message),
               currentFrameOrdinal: e.ordinal,
+              failedOrdinal: e.ordinal,
+              inFlightOrdinal: null,
+              inFlightStartedAt: null,
             });
             break;
           case "cancelled":
-            set({ runState: "cancelled", sessionId: null });
+            set({
+              runState: "cancelled",
+              sessionId: null,
+              inFlightOrdinal: null,
+              inFlightStartedAt: null,
+            });
             break;
           default: {
             const _exhaustive: never = e;
@@ -105,6 +153,9 @@ export const useSimulatorStore = create<SimulatorState>()(
           runId: null,
           totalSteps: 0,
           error: null,
+          inFlightOrdinal: null,
+          inFlightStartedAt: null,
+          failedOrdinal: null,
         }),
 
       dismissCoexistenceHint: () => {

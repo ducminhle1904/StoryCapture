@@ -9,6 +9,7 @@ import {
   Hourglass,
   Keyboard,
   ListChecks,
+  Loader2,
   type LucideIcon,
   MousePointerClick,
   Move,
@@ -20,7 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, useMemo } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { Command, SelectorOrText } from "@/ipc/parse";
@@ -126,6 +127,8 @@ export function SimulatorTimeline({
   const sessionId = useSimulatorStore((s) => s.sessionId);
   const error = useSimulatorStore((s) => s.error);
   const currentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
+  const inFlightOrdinal = useSimulatorStore((s) => s.inFlightOrdinal);
+  const inFlightStartedAt = useSimulatorStore((s) => s.inFlightStartedAt);
   const setCurrent = useSimulatorStore((s) => s.setCurrentFrameOrdinal);
   const ast = useEditorStore((s) => s.lastParse?.ast ?? null);
 
@@ -133,6 +136,32 @@ export function SimulatorTimeline({
   const isFailed = runState === "failed";
   const active = currentOrd != null ? (frames[currentOrd - 1] ?? null) : null;
   const totalDuration = useMemo(() => frames.reduce((acc, f) => acc + f.duration_ms, 0), [frames]);
+
+  // Tick once a second while a step is in flight so the elapsed-ms banner
+  // updates without re-rendering the whole simulator on every frame.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (inFlightStartedAt == null) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [inFlightStartedAt]);
+  const inFlightElapsedMs =
+    inFlightStartedAt != null ? Math.max(0, now - inFlightStartedAt) : 0;
+
+  // Surface failures via toast so the user notices even if their attention is
+  // on the editor or the live preview. Fire once per transition into "failed";
+  // the ref guards against re-firing on currentOrd/error churn within the same
+  // failed run.
+  const lastFailedRunStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (runState === "failed" && lastFailedRunStateRef.current !== "failed") {
+      toast.error(`Step ${currentOrd ?? "?"} failed`, {
+        description: error ?? "selector not found",
+        duration: 8000,
+      });
+    }
+    lastFailedRunStateRef.current = runState;
+  }, [runState, currentOrd, error]);
 
   const commandByOrdinal = useMemo(() => {
     const map = new Map<number, Command>();
@@ -213,6 +242,25 @@ export function SimulatorTimeline({
 
   const activeCmd = currentOrd != null ? (commandByOrdinal.get(currentOrd) ?? null) : null;
 
+  const headerLabel = (() => {
+    if (isRunning && inFlightOrdinal != null) {
+      return `Running step ${inFlightOrdinal} / ${totalSteps}`;
+    }
+    if (frames.length > 0) {
+      return `Step ${currentOrd ?? "—"} / ${totalSteps} · ${totalDuration} ms`;
+    }
+    if (isRunning) return "Preparing…";
+    return "Idle";
+  })();
+
+  const inFlightCmd =
+    isRunning && inFlightOrdinal != null
+      ? (commandByOrdinal.get(inFlightOrdinal) ?? null)
+      : null;
+  const inFlightSummary = inFlightCmd
+    ? ` · ${inFlightCmd.verb} ${summarizeTarget(inFlightCmd)}`
+    : "";
+
   return (
     <section
       aria-labelledby="simulator-panel-title"
@@ -224,11 +272,7 @@ export function SimulatorTimeline({
           Simulator
         </h3>
         <span className="font-mono text-[10px] tabular-nums text-[var(--sc-text-3)]">
-          {frames.length > 0
-            ? `Step ${currentOrd ?? "—"} / ${totalSteps} · ${totalDuration} ms`
-            : isRunning
-              ? "Preparing…"
-              : "Idle"}
+          {headerLabel}
         </span>
         <div className="flex items-center gap-3">
           {isRunning ? (
@@ -386,27 +430,64 @@ export function SimulatorTimeline({
             </div>
           )}
 
-          {isFailed && (
-            <div className="flex items-center gap-2 border-t border-[var(--sc-record)]/30 bg-[var(--sc-record)]/8 px-3 py-1.5 text-[11px] text-[var(--sc-record)]">
-              <AlertTriangle size={11} aria-hidden="true" />
+          {isRunning && inFlightOrdinal != null && (
+            <div
+              className="flex items-center gap-2 border-t border-[var(--sc-border-2)] bg-[var(--sc-surface-2)] px-3 py-1.5 text-[11px] text-[var(--sc-text-2)]"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 size={11} aria-hidden="true" className="animate-spin" />
               <span className="truncate font-mono">
-                Step {currentOrd ?? "?"}: {error ?? "selector not found"}
+                Running step {inFlightOrdinal}
+                {inFlightSummary}
+                {inFlightElapsedMs >= 3000
+                  ? ` · ${Math.round(inFlightElapsedMs / 1000)}s`
+                  : ""}
               </span>
-              {active?.matched_selector && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard?.writeText(active.matched_selector ?? "");
-                    toast.success("Selector copied");
-                  }}
-                  className="ml-auto inline-flex items-center gap-1 rounded-[var(--radius-xs)] px-1 py-0.5 hover:bg-[var(--sc-record)]/18 active:translate-y-[1px]"
-                  aria-label="Copy matched selector"
-                >
-                  <Copy size={10} aria-hidden="true" />
-                </button>
+              {inFlightElapsedMs >= 8000 && (
+                <span className="ml-auto text-[10px] text-[var(--sc-warn)]">
+                  Taking longer than expected — selector may not match
+                </span>
               )}
             </div>
           )}
+
+          {isFailed && (() => {
+            const failedCmd = currentOrd != null ? commandByOrdinal.get(currentOrd) : null;
+            const failedSummary = failedCmd
+              ? `${failedCmd.verb} ${summarizeTarget(failedCmd)}`
+              : null;
+            return (
+              <div
+                className="flex items-start gap-2 border-t-2 border-[var(--sc-record)] bg-[var(--sc-record)]/20 px-3 py-2 text-[12px] font-medium text-[var(--sc-record)]"
+                role="alert"
+              >
+                <AlertTriangle size={14} aria-hidden="true" className="shrink-0 mt-[1px]" />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="font-semibold">
+                    Step {currentOrd ?? "?"} failed
+                    {failedSummary ? ` · ${failedSummary}` : ""}
+                  </span>
+                  <span className="truncate font-mono text-[11px] opacity-90">
+                    {error ?? "selector not found"}
+                  </span>
+                </div>
+                {active?.matched_selector && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(active.matched_selector ?? "");
+                      toast.success("Selector copied");
+                    }}
+                    className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-xs)] px-1 py-0.5 hover:bg-[var(--sc-record)]/30 active:translate-y-[1px]"
+                    aria-label="Copy matched selector"
+                  >
+                    <Copy size={11} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </>
       )}
     </section>

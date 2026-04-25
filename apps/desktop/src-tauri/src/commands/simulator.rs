@@ -73,6 +73,9 @@ pub enum SimulatorEvent {
         run_id: String,
         total_steps: u32,
     },
+    StepStarted {
+        ordinal: u32,
+    },
     FrameCaptured {
         ordinal: u32,
         frame: SimulatorStepFrame,
@@ -261,6 +264,7 @@ async fn spawn_run(
         }
         while let Some(ev) = rx.recv().await {
             let variant_tag = match &ev {
+                ExecutorEvent::StepStarted { ordinal, .. } => format!("StepStarted ord={}", ordinal),
                 ExecutorEvent::StepFrameCaptured { ordinal, .. } => format!("StepFrameCaptured ord={}", ordinal),
                 ExecutorEvent::StepSucceeded { ordinal, .. } => format!("StepSucceeded ord={}", ordinal),
                 ExecutorEvent::RunPaused { ordinal } => format!("RunPaused ord={}", ordinal),
@@ -270,6 +274,9 @@ async fn spawn_run(
             };
             tracing::info!(target: "storycapture::simulator", event = %variant_tag, "forwarder rx event");
             match ev {
+                ExecutorEvent::StepStarted { ordinal, .. } => {
+                    let _ = channel.send(SimulatorEvent::StepStarted { ordinal });
+                }
                 ExecutorEvent::StepFrameCaptured { ordinal, frame } => {
                     {
                         let mut g = frames.lock().await;

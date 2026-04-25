@@ -29,6 +29,7 @@ export interface SimulatorStepFrame {
 
 export type SimulatorEvent =
   | { type: "started"; session_id: string; run_id: string; total_steps: number }
+  | { type: "step_started"; ordinal: number }
   | { type: "frame_captured"; ordinal: number; frame: SimulatorStepFrame }
   | { type: "paused"; ordinal: number }
   | { type: "failed"; ordinal: number; error_message: string }

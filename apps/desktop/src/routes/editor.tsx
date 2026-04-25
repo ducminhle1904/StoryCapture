@@ -13,9 +13,10 @@ import {
   Tablet,
   Video,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Link, useParams } from "react-router-dom";
+import { toast } from "sonner";
 
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
@@ -33,6 +34,17 @@ import { useEditorStore, VIEWPORT_SIZES } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
 const EMPTY_DIAGNOSTICS: never[] = [];
+
+function showDiskConflictToast(
+  description: string,
+  onReload: () => void,
+): void {
+  toast.warning("Story changed on disk", {
+    description,
+    action: { label: "Reload", onClick: onReload },
+    cancel: { label: "Keep mine", onClick: () => {} },
+  });
+}
 
 function formatRelative(ts: number): string {
   const deltaSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
@@ -58,6 +70,10 @@ export default function EditorRoute() {
   const [cursor, setCursor] = useState<{ line: number; col: number } | null>(null);
   // Only render once store state matches the URL project to avoid a stale scene flash.
   const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
+  // Snapshot of disk content from last load/save. Drives both the no-op-save
+  // skip (so external edits aren't clobbered by a clean buffer) and the
+  // focus-time divergence check.
+  const lastDiskSourceRef = useRef<string | null>(null);
   const setSource = useEditorStore((s) => s.setSource);
   const setLastParse = useEditorStore((s) => s.setLastParse);
   const resetProjectState = useEditorStore((s) => s.resetProjectState);
@@ -105,6 +121,7 @@ export default function EditorRoute() {
     setLoadError(null);
     setActiveSceneIndex(0);
     setLoadedProjectId(null);
+    lastDiskSourceRef.current = null;
 
     let cancelled = false;
     (async () => {
@@ -124,6 +141,7 @@ export default function EditorRoute() {
         // Commit folder, source, parse result, and ready flag together.
         setFolder(info);
         setSource(text);
+        lastDiskSourceRef.current = text;
         if (parsed) setLastParse(parsed);
         setLoadedProjectId(projectId);
       } catch (e) {
@@ -149,14 +167,83 @@ export default function EditorRoute() {
   const autosave = useCallback(
     async (nextSource: string) => {
       if (!folder) return;
+      const lastDisk = lastDiskSourceRef.current;
+      // No local edits since last load/save: autosaving here would just rewrite
+      // the same bytes — and worse, would clobber any external edit landed
+      // since we loaded. Skip.
+      if (lastDisk !== null && nextSource === lastDisk) return;
       try {
+        let currentDisk: string | null = null;
+        try {
+          currentDisk = await readTextFile(folder.story_path);
+        } catch {
+          // File might be missing / unreadable; fall through and let writeText
+          // either create it or surface the real error.
+        }
+        if (
+          currentDisk !== null &&
+          lastDisk !== null &&
+          currentDisk !== lastDisk
+        ) {
+          // Disk diverged from our snapshot — refuse to overwrite an external edit.
+          const fromDisk = currentDisk;
+          showDiskConflictToast(
+            "Another process modified this file. Reload from disk?",
+            () => {
+              setSource(fromDisk);
+              lastDiskSourceRef.current = fromDisk;
+            },
+          );
+          return;
+        }
         await writeTextFile(folder.story_path, nextSource);
+        lastDiskSourceRef.current = nextSource;
       } catch {
         /* UI handles autosave failure separately. */
       }
     },
-    [folder],
+    [folder, setSource],
   );
+
+  // Reload when the window regains focus and disk drifted from our snapshot.
+  // Clean buffer → silent reload; dirty buffer → prompt before discarding edits.
+  useEffect(() => {
+    if (!folder) return;
+    let inFlight = false;
+    const onFocus = async () => {
+      if (inFlight) return;
+      const lastDisk = lastDiskSourceRef.current;
+      if (lastDisk === null) return;
+      inFlight = true;
+      try {
+        let currentDisk: string;
+        try {
+          currentDisk = await readTextFile(folder.story_path);
+        } catch {
+          return;
+        }
+        if (currentDisk === lastDisk) return;
+        const bufferIsClean = useEditorStore.getState().source === lastDisk;
+        if (bufferIsClean) {
+          setSource(currentDisk);
+          lastDiskSourceRef.current = currentDisk;
+          return;
+        }
+        const fromDisk = currentDisk;
+        showDiskConflictToast(
+          "Reload from disk and discard your unsaved edits?",
+          () => {
+            setSource(fromDisk);
+            lastDiskSourceRef.current = fromDisk;
+          },
+        );
+      } finally {
+        inFlight = false;
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [folder, setSource]);
 
   const queueEditorJump = useCallback((offset: number) => {
     setEditorJumpTarget((current) => ({

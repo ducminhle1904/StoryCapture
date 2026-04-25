@@ -12,10 +12,14 @@ import { useSimulatorStore } from "@/state/simulator-store";
 import { storyEditorExtensions } from "./codemirror-setup";
 import { editorController } from "./controller";
 import { SelectorValidatorOverlay } from "./SelectorValidatorOverlay";
-import { buildOrdinalLineMap, setActiveFrame } from "./simulator-decoration";
+import { buildOrdinalLineMap, setActiveFrame, setFailedStep } from "./simulator-decoration";
 
-function trimTrailingWhitespace(s: string): string {
-  return s.replace(/[ \t]+$/gm, "");
+function normalizeForSave(s: string): string {
+  // Strip trailing horizontal whitespace per line, then guarantee exactly one
+  // final newline. POSIX text files end with `\n`; without it, terminals (zsh)
+  // render a `%` marker after `cat` which alarms users.
+  const trimmed = s.replace(/[ \t]+$/gm, "").replace(/\n+$/g, "");
+  return trimmed.length === 0 ? "" : `${trimmed}\n`;
 }
 
 export interface EditorJumpTarget {
@@ -50,6 +54,8 @@ export function StoryEditor({
   const currentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
   const totalSteps = useSimulatorStore((s) => s.totalSteps);
   const sessionId = useSimulatorStore((s) => s.sessionId);
+  const failedOrdinal = useSimulatorStore((s) => s.failedOrdinal);
+  const failedError = useSimulatorStore((s) => s.error);
   const simulatorActive = runState === "running";
 
   const cmRef = useRef<ReactCodeMirrorRef>(null);
@@ -61,7 +67,7 @@ export function StoryEditor({
   const streamIdRef = useRef(streamId);
   sourceRef.current = source;
   simulatorActiveRef.current = simulatorActive;
-  saveSourceRef.current = (value) => onAutosave?.(trimTrailingWhitespace(value));
+  saveSourceRef.current = (value) => onAutosave?.(normalizeForSave(value));
   projectFolderRef.current = projectFolder;
   storyPathRef.current = storyPath;
   streamIdRef.current = streamId;
@@ -110,22 +116,41 @@ export function StoryEditor({
     };
   }, [source, setLastParse]);
 
-  // Sync CodeMirror line decoration with currentFrameOrdinal.
+  const ast = useEditorStore((s) => s.lastParse?.ast ?? null);
+  const ordinalToLine = useMemo(() => {
+    if (!ast) return null;
+    return buildOrdinalLineMap(
+      ast as unknown as { scenes: Array<{ commands: Array<{ span: { line: number } }> }> },
+    ).ordinalToLine;
+  }, [ast]);
+
   useEffect(() => {
     const view = cmRef.current?.view;
     if (!view) return;
-    const ast = useEditorStore.getState().lastParse?.ast ?? null;
-    if (!ast) {
+    if (!ordinalToLine) {
       view.dispatch({ effects: setActiveFrame.of(null) });
       return;
     }
-    const { ordinalToLine } = buildOrdinalLineMap(
-      ast as unknown as { scenes: Array<{ commands: Array<{ span: { line: number } }> }> },
-    );
     view.dispatch({
       effects: setActiveFrame.of({ ordinal: currentOrd, ordinalToLine }),
     });
-  }, [currentOrd]);
+  }, [currentOrd, ordinalToLine]);
+
+  useEffect(() => {
+    const view = cmRef.current?.view;
+    if (!view) return;
+    if (failedOrdinal == null || !ordinalToLine) {
+      view.dispatch({ effects: setFailedStep.of(null) });
+      return;
+    }
+    view.dispatch({
+      effects: setFailedStep.of({
+        ordinal: failedOrdinal,
+        errorMessage: failedError,
+        ordinalToLine,
+      }),
+    });
+  }, [failedOrdinal, failedError, ordinalToLine]);
 
   const handleChange = (value: string) => {
     if (simulatorActive) return;
