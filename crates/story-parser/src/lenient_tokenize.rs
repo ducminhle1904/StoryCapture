@@ -422,11 +422,6 @@ fn first_string(pair: Pair<Rule>) -> String {
         .unwrap_or_default()
 }
 
-fn first_string_str(pair: Pair<Rule>) -> &str {
-    let raw = pair.as_str();
-    raw
-}
-
 fn unquote(s: &str) -> String {
     let trimmed = s.trim();
     let inner = trimmed
