@@ -329,11 +329,18 @@ async fn spawn_run(
                         let mut g = author_registry.state.lock().await;
                         g.end_simulator(prior.clone());
                     }
-                    let driver_for_cleanup = {
+                    // Resume the CDP screencast that simulator_start paused
+                    // for exclusive CDP use. Without this, Live Preview
+                    // stays black after a natural run end (success or
+                    // failure) until the user toggles Preview off/on.
+                    // simulator_cancel does this on its own teardown path.
+                    let cleanup = {
                         let g = sessions.lock().await;
-                        g.get(&session_id).map(|s| s.driver.clone())
+                        g.get(&session_id)
+                            .map(|s| (s.driver.clone(), s.stream_id.clone()))
                     };
-                    if let Some(d) = driver_for_cleanup {
+                    if let Some((d, sid)) = cleanup {
+                        let _ = d.call_resume_stream(&sid).await;
                         let _ = d.set_active_author_stream(None).await;
                     }
                     sessions.lock().await.remove(&session_id);

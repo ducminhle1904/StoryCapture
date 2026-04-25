@@ -103,6 +103,46 @@ export const editorController = {
   getStepOrdinalForLine(line: number): number | null {
     return stepOrdinalLookup?.(line) ?? null;
   },
+  /** Text of the line under the primary cursor (no trailing newline). */
+  getCursorLineText(): string | null {
+    const v = currentView;
+    if (!v) return null;
+    const head = v.state.selection.main.head;
+    return v.state.doc.lineAt(head).text;
+  },
+  /**
+   * Move the primary cursor to the start of `lineNumber` (1-indexed) and
+   * focus the editor. No-op when out of range.
+   */
+  jumpToLine(lineNumber: number): boolean {
+    const v = currentView;
+    if (!v) return false;
+    if (lineNumber < 1 || lineNumber > v.state.doc.lines) return false;
+    const line = v.state.doc.line(lineNumber);
+    v.dispatch({ selection: { anchor: line.from } });
+    v.focus();
+    return true;
+  },
+  /**
+   * Replace the line under the primary cursor with `text`. Single dispatch
+   * → single undo entry. Returns the line number of the replacement.
+   */
+  replaceCursorLine(
+    text: string,
+  ):
+    | { ok: true; lineNumber: number }
+    | { ok: false; reason: "no-view" } {
+    const v = currentView;
+    if (!v) return { ok: false, reason: "no-view" };
+    const line = v.state.doc.lineAt(v.state.selection.main.head);
+    v.dispatch({
+      changes: { from: line.from, to: line.to, insert: text },
+      selection: { anchor: line.from + text.length },
+      userEvent: "input.pick",
+    });
+    v.focus();
+    return { ok: true, lineNumber: line.number };
+  },
   /**
    * Insert `text` at the current cursor (snap to line-end if mid-line).
    * Single dispatch — single undo entry.

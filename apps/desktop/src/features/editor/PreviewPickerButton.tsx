@@ -39,6 +39,10 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 
 import { editorController } from "@/features/editor/controller";
 import {
+  parseLine,
+  rewriteEmitted,
+} from "@/features/editor/picker-emit-rewrite";
+import {
   useAuthorDriverStore,
   type AuthorDriverVariant,
 } from "@/features/editor/authorDriverStore";
@@ -278,7 +282,19 @@ export function PreviewPickerButton() {
         timeoutMs: 60_000,
       });
       if (isPicked(r)) {
-        const res = editorController.insertAtCursor(r.emitted + "\n");
+        // Verb-from-context + replace-on-existing-line.
+        // The sidecar always emits `click <strategy> "<value>"`. When the
+        // cursor sits on a line that already has a known target verb
+        // (hover/wait-for/assert/click), keep that verb and any trailing
+        // modifier (e.g. `timeout 5s`), and replace the whole line in
+        // place — non-programmer users expect "re-pick" to fix the failed
+        // line, not append a new one beneath it.
+        const lineText = editorController.getCursorLineText() ?? "";
+        const parsed = parseLine(lineText);
+        const finalLine = rewriteEmitted(r.emitted, parsed);
+        const res = parsed.hasTargetShape
+          ? editorController.replaceCursorLine(finalLine)
+          : editorController.insertAtCursor(`${finalLine}\n`);
         if (res.ok) {
           const storyPath = editorController.getStoryPath();
           if (storyPath) {
@@ -292,14 +308,10 @@ export function PreviewPickerButton() {
                 ),
               });
               if (stamp.wasFreshlyStamped) {
-                // First-pick copy (UI-SPEC §Toasts row 1):
-                //   Added `{verb} {target}` · line {L}
                 toast.success(
-                  `Added \`${r.emitted}\` · line ${res.lineNumber}`,
+                  `Added \`${finalLine.trim()}\` · line ${res.lineNumber}`,
                 );
               } else {
-                // Re-pick copy (UI-SPEC §Toasts row 2):
-                //   Updated fallback for step {N}
                 const stepOrdinal =
                   editorController.getStepOrdinalForLine(res.lineNumber) ??
                   res.lineNumber;
@@ -310,8 +322,9 @@ export function PreviewPickerButton() {
               toast.error(msg);
             }
           } else {
-            // No backing file yet — only the first-pick branch is valid.
-            toast.success(`Added \`${r.emitted}\` · line ${res.lineNumber}`);
+            toast.success(
+              `Added \`${finalLine.trim()}\` · line ${res.lineNumber}`,
+            );
           }
         } else {
           toast.error("Editor not ready — focus the editor first");
