@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import {
@@ -23,6 +29,8 @@ interface LivePreviewProps {
   // preview). Default: null.
   pageWidth?: number | null;
   pageHeight?: number | null;
+  className?: string;
+  style?: CSSProperties;
 }
 
 export type PreviewStatus =
@@ -50,6 +58,8 @@ export function LivePreview({
   streamId = null,
   pageWidth = null,
   pageHeight = null,
+  className,
+  style,
 }: LivePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pendingBitmap = useRef<ImageBitmap | null>(null);
@@ -289,11 +299,17 @@ export function LivePreview({
       data-input-enabled={inputEnabled}
       width={width}
       height={height}
-      className="aspect-video w-full max-w-5xl rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-black"
+      className={
+        className ??
+        "aspect-video w-full max-w-5xl rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--sc-n-950)]"
+      }
       onPointerMove={inputEnabled ? onPointerMove : undefined}
       onClick={inputEnabled ? onClick : undefined}
       onWheel={inputEnabled ? onWheel : undefined}
-      style={inputEnabled ? { cursor: "default", touchAction: "none" } : undefined}
+      style={{
+        ...style,
+        ...(inputEnabled ? { cursor: "default", touchAction: "none" } : {}),
+      }}
     />
   );
 }

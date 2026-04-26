@@ -264,8 +264,8 @@ async authorDispatchInput(streamId: string, event: AuthorInputEvent) : Promise<R
  * Start an element-picker session against the in-flight Playwright
  * sidecar. Returns the ranked DSL line (`emitted`) on a successful
  * pick, or a `Cancelled` variant on Esc / navigation / unsupported
- * URL / timeout. Wire contract — `emitted: String` — matches sidecar
- * `pickElement.start` response (07-03a `server.mjs:414`).
+ * URL / timeout. Wire contract — `emitted: String` — matches the
+ * sidecar `pickElement.start` response.
  */
 async pickerStart(timeoutMs: bigint) : Promise<Result<PickElementResponseDto, AppError>> {
     try {
@@ -331,10 +331,9 @@ async pickerIsActive() : Promise<Result<boolean, AppError>> {
  * 
  * ## Security
  * 
- * Rejects `story_path` that contains `..` (path-traversal guard,
- * 02). The Tauri FS scope (Plan 01-03) is still the primary
- * boundary; this check is a defense-in-depth against a misconfigured
- * scope or future refactor.
+ * Rejects `story_path` that contains `..` (path-traversal guard). The
+ * Tauri FS scope is still the primary boundary; this check is
+ * defense-in-depth against a misconfigured scope or future refactor.
  * 
  * ## Error mapping
  * 
@@ -357,8 +356,8 @@ async pickerStampStepId(storyPath: string, lineOffset: number, primary: TargetRe
 /**
  * Tauri command entry point for Preview-panel Pick. See
  * `picker_start_author_impl` for the orchestration. Accepts `story_src`
- * directly from the renderer (D-10 / 11-04 Task 1 handles dirty-buffer
- * toast before invoking this command).
+ * directly from the renderer (the renderer handles dirty-buffer toast
+ * before invoking this command).
  * 
  * `stream_id` MUST match an entry in `AppState.author_preview_sessions`
  * (started via `start_author_preview`); unknown streamId surfaces as
@@ -883,7 +882,7 @@ async installUpdate() : Promise<Result<null, AppError>> {
 /**
  * Store a provider key in the OS keychain.
  * 
- * `#[tracing::instrument(skip(key))]` is the primary G1 defence — without it
+ * `#[tracing::instrument(skip(key))]` is the primary defence — without it
  * tracing auto-derives `Debug` on every argument and the key would land in
  * any `INFO`-level span capture. The `intelligence::tracing::redaction_layer`
  * installed at app boot is the defence-in-depth layer.
@@ -1144,12 +1143,11 @@ async ttsGcCache(projectId: string) : Promise<Result<bigint, TtsCommandError>> {
 },
 /**
  * Compute a TTS voiceover-to-timeline sync plan and emit duck events
- * to the sound mixer (Phase 2 D-22 slot).
+ * to the sound mixer.
  * 
- * This command accepts step timings directly (Phase 2 effects AST
- * integration is deferred — when Phase 2 is fully merged, this will
- * load step timings from the project's effects AST instead of
- * requiring them as a parameter).
+ * This command accepts step timings directly (effects AST integration
+ * is deferred — once it lands, this will load step timings from the
+ * project's effects AST instead of requiring them as a parameter).
  * 
  * Flow:
  * 1. Load ClipMeta by scanning tts_cache_index + probing audio durations.
@@ -1168,7 +1166,7 @@ async ttsApplySync(projectId: string, stepTimings: StepTimingDto[]) : Promise<Re
 /**
  * Upload a video + thumbnail to the web companion via presigned R2 URLs.
  * 
- * D-01: Manual trigger only. No auto-retry. Progress events via Channel.
+ * Manual trigger only. No auto-retry. Progress events via Channel.
  */
 async uploadVideo(videoPath: string, projectName: string, workspaceId: string | null, storySource: string | null, sceneBoundaries: string | null, onProgress: TAURI_CHANNEL<UploadProgressEvent>) : Promise<Result<UploadResult, UploadError>> {
     try {
@@ -1623,7 +1621,7 @@ export type ProjectFolderInfoDto = { id: string; name: string; folder_path: stri
 export type ProjectIdArg = { id: string }
 /**
  * Four supported AI providers. A closed Rust enum — serde rejects unknown
- * variants (T-03-03-05 mitigation) before any keychain access happens.
+ * variants before any keychain access happens.
  */
 export type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts"
 export type QualityPresetDto = "low" | "med" | "high" | "lossless"
@@ -1641,12 +1639,12 @@ export type RecordingEvent = { type: "capture-status"; json: string } | { type: 
 { type: "frames-dropped"; total: bigint; delta: bigint } | { type: "completed"; result: EncodeResultDto } | { type: "failed"; message: string } | 
 /**
  * Mic/audio negotiation failed or the device vanished mid-session.
- * Recording continues video-only (D-13).
+ * Recording continues video-only.
  */
 { type: "audio-unavailable"; reason: string } | 
 /**
  * Periodic liveness signal from the host so the renderer can detect
- * state-sync drift (>5s missed => offer Force Stop) (D-15).
+ * state-sync drift (>5s missed => offer Force Stop).
  */
 { type: "heartbeat"; seq: bigint }
 /**
@@ -1677,8 +1675,8 @@ width_px: number;
  */
 height_px: number }
 /**
- * Structured payload for the Tier 1 `Role` variant — both the ARIA
- * role keyword and the accessible name as typed fields. Mirrors
+ * Structured payload for the `Role` variant — both the ARIA role keyword
+ * and the accessible name as typed fields. Mirrors
  * `story_parser::SelectorOrText::Role { role, name }` exactly so the
  * TS-side discriminated union round-trips cleanly without ad-hoc
  * `<role>:<name>` string packing.
@@ -1730,9 +1728,8 @@ keyframe_interval_sec?: number | null }
 /**
  * Step timing DTO for the `tts_apply_sync` command.
  * 
- * Phase 2 hand-off note: when Phase 2 effects AST is fully merged,
- * this parameter can be replaced by loading step timings from the
- * project's effects AST directly.
+ * When the effects AST integration lands, this parameter can be replaced
+ * by loading step timings from the project's effects AST directly.
  */
 export type StepTimingDto = { step_id: string; original_duration_ms: bigint }
 export type StoryDto = { name: string | null; meta: MetaDto; scenes: SceneDto[]; span: SpanDto }
@@ -1752,10 +1749,12 @@ export type TAURI_CHANNEL<TSend> = null
  * object for `role`) so specta can derive a real TS discriminated union
  * — the picker IPC no longer needs a JSON-string envelope.
  * 
- * On-the-wire shape per arm: `{ kind: "<kind>", value: <typed> }` —
- * matches the existing `.story.targets.json` schema byte-for-byte.
+ * On-the-wire shape per arm: `{ kind: "<kind>", value: <typed>, nth?: number }`
+ * — matches the `.story.targets.json` schema byte-for-byte. The optional
+ * `nth` field is 1-indexed and skipped on the wire when absent so legacy
+ * stamps round-trip unchanged.
  */
-export type TargetRecordDto = { kind: "testid"; value: string; nth?: number } | { kind: "role"; value: RoleSelectorDto; nth?: number } | { kind: "label"; value: string; nth?: number } | { kind: "text_exact"; value: string; nth?: number } | { kind: "selector"; value: string; nth?: number } | { kind: "aria"; value: string; nth?: number } | { kind: "text"; value: string; nth?: number }
+export type TargetRecordDto = { kind: "testid"; value: string; nth?: number | null } | { kind: "role"; value: RoleSelectorDto; nth?: number | null } | { kind: "label"; value: string; nth?: number | null } | { kind: "text_exact"; value: string; nth?: number | null } | { kind: "selector"; value: string; nth?: number | null } | { kind: "aria"; value: string; nth?: number | null } | { kind: "text"; value: string; nth?: number | null }
 export type ThemeDto = "light" | "dark" | "auto"
 export type TimelineStateDto = { story_id: string; layout_json: string; last_modified: bigint }
 export type TtsCommandError = { kind: "InvalidProject" } | { kind: "NoApiKey" } | { kind: "Provider"; message: string } | { kind: "Io"; message: string } | { kind: "Storage"; message: string } | { kind: "AudioProbe"; message: string }

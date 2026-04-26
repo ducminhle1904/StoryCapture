@@ -5,9 +5,11 @@ import {
   acquirePreview,
   INITIAL_NAV,
   pausePreview,
+  type PreviewLifecycleStatus,
   type PreviewNavState,
   resumePreview,
   subscribeNav,
+  subscribeStatus,
   updateAppUrl,
   updateViewport,
 } from "@/features/editor/preview-lifecycle";
@@ -96,5 +98,14 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
   const [nav, setNav] = useState<PreviewNavState>(INITIAL_NAV);
   useEffect(() => subscribeNav(setNav), []);
 
-  return { streamId, appUrlValid: sanitized != null, nav };
+  const [lifecycleStatus, setLifecycleStatus] =
+    useState<PreviewLifecycleStatus>("idle");
+  useEffect(() => subscribeStatus(setLifecycleStatus), []);
+
+  return {
+    streamId,
+    appUrlValid: sanitized != null,
+    nav,
+    status: sanitized == null ? "idle" : lifecycleStatus,
+  };
 }
