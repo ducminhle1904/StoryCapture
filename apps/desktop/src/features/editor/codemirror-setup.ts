@@ -6,6 +6,7 @@
  * `packages/ui/src/tokens.css`).
  */
 
+import { toggleLineComment } from "@codemirror/commands";
 import { indentUnit } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import { Prec } from "@codemirror/state";
@@ -49,6 +50,10 @@ const pickKeymap = Prec.high(
   ]),
 );
 
+const commentKeymap = keymap.of([
+  { key: "Mod-/", run: toggleLineComment, preventDefault: true },
+]);
+
 export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Extension[] {
   return [
     storyDsl(),
@@ -60,6 +65,7 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
     simulatorDecorationTheme,
     ...(simulatorCtx ? [createSimulatorKeymap(simulatorCtx)] : []),
     pickKeymap,
+    commentKeymap,
     indentUnit.of("  "),
     EditorView.theme({
       "&": {

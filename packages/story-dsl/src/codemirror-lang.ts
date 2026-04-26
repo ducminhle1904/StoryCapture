@@ -110,5 +110,10 @@ export const storyDslHighlightStyle = HighlightStyle.define([
 
 /** Language + highlight bundle. */
 export function storyDsl(): Extension {
-  return [new LanguageSupport(storyDslStreamLanguage), syntaxHighlighting(storyDslHighlightStyle)];
+  return [
+    new LanguageSupport(storyDslStreamLanguage, [
+      storyDslStreamLanguage.data.of({ commentTokens: { line: "#" } }),
+    ]),
+    syntaxHighlighting(storyDslHighlightStyle),
+  ];
 }
