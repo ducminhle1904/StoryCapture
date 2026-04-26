@@ -6,7 +6,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { create } from "zustand";
 
 import type { Diagnostic } from "@/ipc/parse";
-import { useEditorStore } from "@/state/editor";
+import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";
 
 interface ProblemsPanelStore {
   open: boolean;
@@ -36,10 +36,8 @@ const SEVERITY_DOT_COLOR: Record<Diagnostic["severity"], string> = {
   info: "var(--sc-text-3)",
 };
 
-const EMPTY: never[] = [];
-
 export function ProblemsPanel({ onJumpToOffset }: ProblemsPanelProps) {
-  const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY;
+  const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
   const open = useProblemsPanelStore((s) => s.open);
   const toggleOpen = useProblemsPanelStore((s) => s.toggle);
   const reduceMotion = useReducedMotion();
@@ -53,17 +51,20 @@ export function ProblemsPanel({ onJumpToOffset }: ProblemsPanelProps) {
     { enableOnFormTags: true, enableOnContentEditable: true },
   );
 
-  const sorted = useMemo(
-    () =>
-      [...diagnostics].sort(
-        (a, b) =>
-          SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
-          a.span.start - b.span.start,
-      ),
-    [diagnostics],
-  );
-  const errorCount = diagnostics.filter((d) => d.severity === "error").length;
-  const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
+  const { sorted, errorCount, warningCount } = useMemo(() => {
+    const next = [...diagnostics].sort(
+      (a, b) =>
+        SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
+        a.span.start - b.span.start,
+    );
+    let errors = 0;
+    let warnings = 0;
+    for (const d of diagnostics) {
+      if (d.severity === "error") errors++;
+      else if (d.severity === "warning") warnings++;
+    }
+    return { sorted: next, errorCount: errors, warningCount: warnings };
+  }, [diagnostics]);
   const total = diagnostics.length;
 
   return (

@@ -1,35 +1,12 @@
-/**
- * Scene list panel — VSCode-style outline showing scenes and their steps.
- * Active scene + active step highlight follow the editor cursor.
- */
-
 import { ScBadge } from "@storycapture/ui";
-import {
-  ArrowRight,
-  Camera,
-  CheckCheck,
-  ChevronRight,
-  Clock,
-  Hourglass,
-  Keyboard,
-  Layers,
-  ListChecks,
-  type LucideIcon,
-  MousePointerClick,
-  Move,
-  MoveVertical,
-  Pause,
-  Pointer,
-  Upload,
-  Zap,
-} from "lucide-react";
+import { ChevronRight, Layers } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useMemo } from "react";
 
 import type { Command, Scene, SelectorOrText } from "@/ipc/parse";
-import { useEditorStore } from "@/state/editor";
+import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";
 
-const EMPTY_DIAGNOSTICS: never[] = [];
+import { verbIcon } from "./verb-icons";
 
 const DEFAULT_STEP_MS = 1500;
 
@@ -40,41 +17,15 @@ function estimateSceneDuration(scene: Scene): number {
   }, 0);
 }
 
-function verbIcon(verb: Command["verb"]): LucideIcon {
-  switch (verb) {
-    case "navigate":
-      return ArrowRight;
-    case "wait-for":
-      return Hourglass;
-    case "wait":
-      return Clock;
-    case "click":
-      return MousePointerClick;
-    case "type":
-      return Keyboard;
-    case "hover":
-      return Pointer;
-    case "scroll":
-      return MoveVertical;
-    case "select":
-      return ListChecks;
-    case "assert":
-      return CheckCheck;
-    case "screenshot":
-      return Camera;
-    case "drag":
-      return Move;
-    case "upload":
-      return Upload;
-    case "pause":
-      return Pause;
-    default:
-      return Zap;
-  }
-}
+const TARGET_KIND_PREFIX: Record<SelectorOrText["kind"], string> = {
+  text: "",
+  selector: "selector ",
+  test_id: "testid ",
+  aria: "aria ",
+};
 
 function targetLabel(t: SelectorOrText): string {
-  return t.value;
+  return `${TARGET_KIND_PREFIX[t.kind]}${t.value}`;
 }
 
 function stepLabel(cmd: Command): string {

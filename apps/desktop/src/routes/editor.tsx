@@ -33,10 +33,8 @@ import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview"
 import { LivePreview } from "@/features/recorder/live-preview";
 import { parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
-import { useEditorStore, VIEWPORT_SIZES } from "@/state/editor";
+import { EMPTY_DIAGNOSTICS, useEditorStore, VIEWPORT_SIZES } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
-
-const EMPTY_DIAGNOSTICS: never[] = [];
 
 function showDiskConflictToast(
   description: string,

@@ -17,25 +17,41 @@ export interface SimulatorKeymapContext {
   getStreamId: () => string | null;
 }
 
-function startOrStepTo(
-  ord: number,
-  ctx: SimulatorKeymapContext,
+/**
+ * Start the simulator (or step the existing paused session) up to and
+ * including `ord`. Pass `ord = undefined` to run to completion.
+ *
+ * Returns `false` only when prerequisites (streamId, projectFolder,
+ * storyPath) are missing — callers should treat that as "no-op, surface
+ * a hint to the user". Returns `true` for both "kicked off" and "already
+ * running" so keymap callers can `return true` to swallow the keystroke.
+ */
+export function runOrStepTo(
+  ord: number | undefined,
+  args: { streamId: string | null; projectFolder: string | null; storyPath: string | null },
 ): boolean {
   const { runState, sessionId } = useSimulatorStore.getState();
   if (runState === "running") return true;
-  const streamId = ctx.getStreamId();
-  const projectFolder = ctx.getProjectFolder();
-  const storyPath = ctx.getStoryPath();
-  const storySource = useEditorStore.getState().source;
-  if (runState === "paused" && sessionId) {
+  const { streamId, projectFolder, storyPath } = args;
+  if (runState === "paused" && sessionId && ord != null) {
     void simulatorStepTo(sessionId, ord);
     return true;
   }
-  if (!streamId || !projectFolder || !storyPath) return true;
+  if (!streamId || !projectFolder || !storyPath) return false;
+  const storySource = useEditorStore.getState().source;
   void simulatorStart(
     { projectFolder, storySource, storyPath, streamId, stopAfterOrdinal: ord },
     (e) => useSimulatorStore.getState().handleEvent(e),
   );
+  return true;
+}
+
+function startOrStepTo(ord: number, ctx: SimulatorKeymapContext): boolean {
+  runOrStepTo(ord, {
+    streamId: ctx.getStreamId(),
+    projectFolder: ctx.getProjectFolder(),
+    storyPath: ctx.getStoryPath(),
+  });
   return true;
 }
 
@@ -60,23 +76,11 @@ export function createSimulatorKeymap(ctx: SimulatorKeymapContext) {
       key: "Mod-Shift-.",
       preventDefault: true,
       run: () => {
-        const { runState } = useSimulatorStore.getState();
-        if (runState === "running") return true;
-        const streamId = ctx.getStreamId();
-        const projectFolder = ctx.getProjectFolder();
-        const storyPath = ctx.getStoryPath();
-        const storySource = useEditorStore.getState().source;
-        if (!streamId || !projectFolder || !storyPath) return true;
-        void simulatorStart(
-          {
-            projectFolder,
-            storySource,
-            storyPath,
-            streamId,
-            stopAfterOrdinal: undefined,
-          },
-          (e) => useSimulatorStore.getState().handleEvent(e),
-        );
+        runOrStepTo(undefined, {
+          streamId: ctx.getStreamId(),
+          projectFolder: ctx.getProjectFolder(),
+          storyPath: ctx.getStoryPath(),
+        });
         return true;
       },
     },

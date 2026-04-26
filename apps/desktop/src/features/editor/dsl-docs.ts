@@ -1,9 +1,3 @@
-/**
- * DSL keyword documentation surfaced on hover. Single source of truth for
- * tooltip copy. Covers verbs (KNOWN_VERBS), meta keys (KNOWN_META_KEYS),
- * target prefixes (KNOWN_TARGET_PREFIXES), and top-level blocks.
- */
-
 export interface KeywordDoc {
   description: string;
   example: string;

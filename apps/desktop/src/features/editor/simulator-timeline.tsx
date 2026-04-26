@@ -1,25 +1,11 @@
 import {
   AlertTriangle,
-  ArrowRight,
   ArrowUpRight,
-  Camera,
-  CheckCheck,
-  Clock,
   Copy,
   Crosshair,
-  Hourglass,
-  Keyboard,
-  ListChecks,
   Loader2,
-  type LucideIcon,
-  MousePointerClick,
-  Move,
-  MoveVertical,
   Play,
-  Pointer,
-  Upload,
   X,
-  Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -33,6 +19,7 @@ import { useSimulatorStore } from "@/state/simulator-store";
 import { editorController } from "@/features/editor/controller";
 import { TARGET_VERBS } from "@/features/editor/picker-emit-rewrite";
 import { triggerPickFromEditor } from "@/features/editor/PreviewPickerButton";
+import { verbIcon } from "@/features/editor/verb-icons";
 
 interface SimulatorTimelineProps {
   projectFolder: string;
@@ -40,37 +27,6 @@ interface SimulatorTimelineProps {
   storySource: string;
   streamId: string | null;
   appUrlValid: boolean;
-}
-
-function verbIcon(verb: string): LucideIcon {
-  switch (verb) {
-    case "navigate":
-      return ArrowRight;
-    case "wait-for":
-      return Hourglass;
-    case "wait":
-      return Clock;
-    case "click":
-      return MousePointerClick;
-    case "type":
-      return Keyboard;
-    case "hover":
-      return Pointer;
-    case "scroll":
-      return MoveVertical;
-    case "select":
-      return ListChecks;
-    case "assert":
-      return CheckCheck;
-    case "screenshot":
-      return Camera;
-    case "drag":
-      return Move;
-    case "upload":
-      return Upload;
-    default:
-      return Zap;
-  }
 }
 
 function stringifySelectorOrText(s: SelectorOrText): string {

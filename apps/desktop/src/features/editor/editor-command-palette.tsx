@@ -22,12 +22,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { toast } from "sonner";
 
 import type { Story } from "@/ipc/parse";
-import {
-  simulatorCancel,
-  simulatorStart,
-  simulatorStepTo,
-} from "@/ipc/simulator";
-import { useEditorStore } from "@/state/editor";
+import { simulatorCancel } from "@/ipc/simulator";
 import { useSimulatorStore } from "@/state/simulator-store";
 
 import { editorController } from "./controller";
@@ -35,6 +30,7 @@ import { normalizeForSave } from "./normalize-source";
 import { triggerPickFromEditor } from "./PreviewPickerButton";
 import { useProblemsPanelStore } from "./problems-panel";
 import { buildOrdinalLineMap } from "./simulator-decoration";
+import { runOrStepTo } from "./simulator-keymap";
 
 type Mode = "root" | "scene" | "step" | "line";
 
@@ -82,37 +78,40 @@ function flattenSteps(story: Story): Array<{
   return out;
 }
 
-export function EditorCommandPalette({
+export function EditorCommandPalette(props: EditorCommandPaletteProps) {
+  const [open, setOpen] = useState(false);
+  useHotkeys(
+    "mod+shift+k",
+    (e) => {
+      e.preventDefault();
+      setOpen((v) => !v);
+    },
+    { enableOnFormTags: true, enableOnContentEditable: true },
+  );
+  if (!open) return null;
+  return <PaletteBody {...props} onClose={() => setOpen(false)} />;
+}
+
+interface PaletteBodyProps extends EditorCommandPaletteProps {
+  onClose: () => void;
+}
+
+function PaletteBody({
   story,
   projectFolder,
   storyPath,
   streamId,
   onJumpToOffset,
-}: EditorCommandPaletteProps) {
-  const [open, setOpen] = useState(false);
+  onClose,
+}: PaletteBodyProps) {
   const [mode, setMode] = useState<Mode>("root");
   const [lineInput, setLineInput] = useState("");
 
   const close = useCallback(() => {
-    setOpen(false);
     setMode("root");
     setLineInput("");
-  }, []);
-
-  useHotkeys(
-    "mod+shift+k",
-    (e) => {
-      e.preventDefault();
-      setOpen((v) => {
-        if (v) {
-          setMode("root");
-          setLineInput("");
-        }
-        return !v;
-      });
-    },
-    { enableOnFormTags: true, enableOnContentEditable: true },
-  );
+    onClose();
+  }, [onClose]);
 
   const runState = useSimulatorStore((s) => s.runState);
   const sessionId = useSimulatorStore((s) => s.sessionId);
@@ -121,21 +120,10 @@ export function EditorCommandPalette({
 
   const startSim = useCallback(
     (stopAfterOrdinal?: number) => {
-      if (!streamId || !projectFolder || !storyPath) {
-        toast.warning("Live Preview not ready — open the preview first");
-        return;
-      }
-      const storySource = useEditorStore.getState().source;
-      if (runState === "paused" && sessionId && stopAfterOrdinal != null) {
-        void simulatorStepTo(sessionId, stopAfterOrdinal);
-        return;
-      }
-      void simulatorStart(
-        { projectFolder, storySource, storyPath, streamId, stopAfterOrdinal },
-        (ev) => useSimulatorStore.getState().handleEvent(ev),
-      );
+      const ok = runOrStepTo(stopAfterOrdinal, { streamId, projectFolder, storyPath });
+      if (!ok) toast.warning("Live Preview not ready — open the preview first");
     },
-    [streamId, projectFolder, storyPath, runState, sessionId],
+    [streamId, projectFolder, storyPath],
   );
 
   const runToCursor = useCallback(() => {
@@ -352,8 +340,6 @@ export function EditorCommandPalette({
       close();
     }
   };
-
-  if (!open) return null;
 
   return (
     <AnimatePresence>

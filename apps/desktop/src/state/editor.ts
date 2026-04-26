@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import type { Diagnostic, ParseResult, Story } from "@/ipc/parse";
 
+/** Stable empty array for `lastParse?.diagnostics ?? EMPTY_DIAGNOSTICS` so
+ * downstream selectors don't see a fresh `[]` identity each call. */
+export const EMPTY_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
+
 export type PreviewViewport = "desktop" | "tablet" | "mobile";
 
 export const VIEWPORT_SIZES: Record<
