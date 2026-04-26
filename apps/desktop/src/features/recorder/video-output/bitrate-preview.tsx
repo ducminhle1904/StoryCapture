@@ -13,7 +13,7 @@ export function BitratePreview({ captureDims }: Props) {
   return (
     <div
       className="min-h-[40px] rounded-[var(--radius-sm)] border-l-2 border-[var(--color-accent-primary)] bg-[var(--color-surface-200)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-secondary)]"
-      aria-label="Ước tính bitrate"
+      aria-label="Estimated bitrate"
     >
       {formatBitratePreview(mbps, mbPerMin)}
     </div>

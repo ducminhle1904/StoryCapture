@@ -2,8 +2,8 @@
  * Cost warning modal (Plan 03-20, Task 2 / AI-SPEC G7).
  *
  * AlertDialog displayed when estimated input > 50K tokens.
- * Heading: "Prompt nay dung nhieu token"
- * Checkbox: "Dung hoi lai cho session nay" -- persisted via Zustand session-scoped flag.
+ * Heading: "This prompt uses many tokens"
+ * Checkbox: "Don't ask again for this session" -- persisted via Zustand session-scoped flag.
  * Returns promise resolving to {proceed: boolean, suppressForSession: boolean}.
  *
  * Used by Plan-07 nl_chat_send path: before invocation, estimate input tokens
@@ -70,10 +70,10 @@ export function CostWarningModal({
             className={`w-full max-w-md rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-2xl ${dialogCenteredPopupMotionClassName}`}
           >
             <Dialog.Title className="text-lg font-semibold text-[var(--color-fg-primary)]">
-            {"Prompt n\u00e0y d\u00f9ng nhi\u1ec1u token"}
+            {"This prompt uses a lot of tokens"}
           </Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
-            {`\u01af\u1edbc t\u00ednh prompt n\u00e0y s\u1eed d\u1ee5ng kho\u1ea3ng ${estimatedTokens.toLocaleString()} token. Chi ph\u00ed c\u00f3 th\u1ec3 cao h\u01a1n b\u00ecnh th\u01b0\u1eddng.`}
+            {`This prompt is estimated to use about ${estimatedTokens.toLocaleString()} tokens. Cost may be higher than usual.`}
           </Dialog.Description>
 
           <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-primary)]/60 px-3 py-2 text-sm">
@@ -83,15 +83,15 @@ export function CostWarningModal({
               onChange={(e) => setDontAskAgain(e.target.checked)}
               className="rounded border-[var(--color-border-subtle)]"
             />
-            <span>{"Đừng hỏi lại cho session này"}</span>
+            <span>{"Don't ask again for this session"}</span>
           </label>
 
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="ghost" onClick={handleCancel}>
-              {"Hu\u1ef7"}
+              {"Cancel"}
             </Button>
             <Button onClick={handleProceed}>
-              {"Ti\u1ebfp t\u1ee5c"}
+              {"Continue"}
             </Button>
           </div>
           </Dialog.Popup>

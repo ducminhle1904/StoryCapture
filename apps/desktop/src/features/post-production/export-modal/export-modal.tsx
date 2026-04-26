@@ -371,7 +371,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
                 <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
                   <Accordion>
                     <AccordionItem value="advanced">
-                      <AccordionTrigger>Tùy chọn nâng cao</AccordionTrigger>
+                      <AccordionTrigger>Advanced options</AccordionTrigger>
                       <AccordionContent>
                         <AdvancedOutputOptions />
                       </AccordionContent>

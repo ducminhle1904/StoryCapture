@@ -33,7 +33,7 @@ describe("deriveQualityControls", () => {
     const r = deriveQualityControls("auto", "h264");
     expect(r.qualityControl.kind).toBe("auto-hide");
     if (r.qualityControl.kind === "auto-hide") {
-      expect(r.qualityControl.note).toMatch(/Encoder sẽ được chọn lúc export/);
+      expect(r.qualityControl.note).toMatch(/Encoder will be selected at export time/);
     }
     expect(r.rateControlOptions).toHaveLength(0);
     expect(r.presetOptions).toHaveLength(0);

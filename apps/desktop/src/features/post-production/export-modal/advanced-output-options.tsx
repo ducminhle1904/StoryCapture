@@ -163,7 +163,7 @@ export function AdvancedOutputOptions() {
               <SelectItem value="mp4">MP4</SelectItem>
               <SelectItem value="mov">MOV</SelectItem>
               <SelectItem value="webm" disabled>
-                WebM (chưa hỗ trợ)
+                WebM (not yet supported)
               </SelectItem>
             </SelectContent>
           </Select>
@@ -335,7 +335,7 @@ export function AdvancedOutputOptions() {
             <SelectContent>
               <SelectItem value="aac">AAC</SelectItem>
               <SelectItem value="opus" disabled>
-                Opus (WebM only — chưa hỗ trợ)
+                Opus (WebM only — not yet supported)
               </SelectItem>
             </SelectContent>
           </Select>
