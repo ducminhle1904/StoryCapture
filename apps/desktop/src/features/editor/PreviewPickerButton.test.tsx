@@ -1,5 +1,6 @@
 /**
- * PreviewPickerButton vitest — Phase 11-04 disambiguation proof.
+ * PreviewPickerButton vitest — Phase 11-04 disambiguation proof + the
+ * Phase-1 two-step picker action menu (pick → menu → choose → insert).
  *
  * Core invariants (UI-SPEC §Copywriting LOCKED):
  *   D-13: disabled when AuthorDriverState=simulator-running
@@ -9,9 +10,10 @@
  *   D-09: Esc during picking invokes pickElementCancel
  *   D-15: simulator-running click is a no-op (does not invoke picker_start_author)
  *
- * We bridge the mockIPC layer ({ json } envelope) to the Phase 11-03
- * `picker_start_author` contract; `picker_stamp_step_id` returns the DTO
- * shape `{ step_id, was_freshly_stamped }` per 11-01.
+ * Phase 1 invariants (action menu):
+ *   - After Picked, menu appears; insert + stamp are deferred.
+ *   - Each action (click / hover / wait-for / assert) writes the right DSL line.
+ *   - Cancelling the menu (Escape) does not insert or stamp.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,9 +52,39 @@ function seedAuthorDriver(snapshot: {
   });
 }
 
+/** Mock IPC for a successful pick of a button "Save". */
+function mockPickButtonSave(stamp: { wasFreshlyStamped: boolean }) {
+  mockIPC((cmd) => {
+    if (cmd === "picker_start_author") {
+      return {
+        json: JSON.stringify({
+          emitted: 'click button "Save"',
+          locator: { kind: "role", value: { role: "button", name: "Save" } },
+          candidates: [],
+        }),
+      };
+    }
+    if (cmd === "picker_stamp_step_id") {
+      return {
+        step_id: "01900000-0000-7000-8000-000000000000",
+        was_freshly_stamped: stamp.wasFreshlyStamped,
+      };
+    }
+    return undefined;
+  });
+}
+
+/** Wait for any pending microtasks/timers in the click → menu chain. */
+async function flushAsync() {
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+}
+
 describe("PreviewPickerButton", () => {
   let insertSpy: ReturnType<typeof vi.spyOn>;
+  let replaceSpy: ReturnType<typeof vi.spyOn>;
   let getCursorSpy: ReturnType<typeof vi.spyOn>;
+  let getCursorLineTextSpy: ReturnType<typeof vi.spyOn>;
   let getStoryPathSpy: ReturnType<typeof vi.spyOn>;
   let getStepOrdinalSpy: ReturnType<typeof vi.spyOn>;
   let isDirtySpy: ReturnType<typeof vi.spyOn>;
@@ -61,9 +93,15 @@ describe("PreviewPickerButton", () => {
     insertSpy = vi
       .spyOn(editorController, "insertAtCursor")
       .mockReturnValue({ ok: true, lineNumber: 12 });
+    replaceSpy = vi
+      .spyOn(editorController, "replaceCursorLine")
+      .mockReturnValue({ ok: true, lineNumber: 12 });
     getCursorSpy = vi
       .spyOn(editorController, "getCursorLine")
       .mockReturnValue(12);
+    getCursorLineTextSpy = vi
+      .spyOn(editorController, "getCursorLineText")
+      .mockReturnValue("");
     getStoryPathSpy = vi
       .spyOn(editorController, "getStoryPath")
       .mockReturnValue("/tmp/demo.story");
@@ -85,7 +123,9 @@ describe("PreviewPickerButton", () => {
   afterEach(() => {
     clearMocks();
     insertSpy.mockRestore();
+    replaceSpy.mockRestore();
     getCursorSpy.mockRestore();
+    getCursorLineTextSpy.mockRestore();
     getStoryPathSpy.mockRestore();
     getStepOrdinalSpy.mockRestore();
     isDirtySpy.mockRestore();
@@ -153,10 +193,12 @@ describe("PreviewPickerButton", () => {
   });
 
   // ─────────────────────────────────────────────────────────────────
-  // D-04 — first-pick toast copy (wasFreshlyStamped=true)
+  // Phase-1 menu: appears after pick, no immediate insert/stamp
   // ─────────────────────────────────────────────────────────────────
-  it("D-04 first-pick: wasFreshlyStamped=true → toast.success with 'Added ... · line L'", async () => {
+  it("after Picked, action menu appears and nothing is inserted/stamped yet", async () => {
+    const invokeLog: string[] = [];
     mockIPC((cmd) => {
+      invokeLog.push(cmd);
       if (cmd === "picker_start_author") {
         return {
           json: JSON.stringify({
@@ -166,19 +208,33 @@ describe("PreviewPickerButton", () => {
           }),
         };
       }
-      if (cmd === "picker_stamp_step_id") {
-        return { step_id: "01900000-0000-7000-8000-aaaaaaaaaaaa", was_freshly_stamped: true };
-      }
       return undefined;
     });
 
     const user = userEvent.setup();
     render(<PreviewPickerButton />);
     await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
 
-    // Wait for the async chain (stamp + toast) to settle.
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByRole("dialog", { name: /picker action menu/i })).toBeTruthy();
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(invokeLog).not.toContain("picker_stamp_step_id");
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // D-04 — first-pick toast copy via the menu (Click action)
+  // ─────────────────────────────────────────────────────────────────
+  it("D-04 first-pick: choosing Click → toast.success with 'Added ... · line L'", async () => {
+    mockPickButtonSave({ wasFreshlyStamped: true });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    await user.click(screen.getByRole("menuitem", { name: /click element/i }));
+    await flushAsync();
 
     expect(toast.success).toHaveBeenCalled();
     const msg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
@@ -189,9 +245,9 @@ describe("PreviewPickerButton", () => {
   });
 
   // ─────────────────────────────────────────────────────────────────
-  // D-04 — re-pick toast copy (wasFreshlyStamped=false)
+  // D-04 — re-pick toast copy via the menu (testid locator)
   // ─────────────────────────────────────────────────────────────────
-  it("D-04 re-pick: wasFreshlyStamped=false → toast.success with 'Updated fallback for step N'", async () => {
+  it("D-04 re-pick: wasFreshlyStamped=false → toast.success 'Updated fallback for step N'", async () => {
     mockIPC((cmd) => {
       if (cmd === "picker_start_author") {
         return {
@@ -211,22 +267,141 @@ describe("PreviewPickerButton", () => {
     const user = userEvent.setup();
     render(<PreviewPickerButton />);
     await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
 
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
+    await user.click(screen.getByRole("menuitem", { name: /click element/i }));
+    await flushAsync();
 
     expect(toast.success).toHaveBeenCalled();
     const msg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    // UI-SPEC-locked re-pick copy: "Updated fallback for step {N}"
-    // stepOrdinal was stubbed to 3 in beforeEach.
+    // UI-SPEC-locked re-pick copy: "Updated fallback for step {N}" (stub=3).
     expect(msg).toBe("Updated fallback for step 3");
-    expect(msg).not.toContain("Added");
   });
 
   // ─────────────────────────────────────────────────────────────────
-  // user-cancel path — silent, no insertAtCursor
+  // Hover action: inserts `hover ...`
   // ─────────────────────────────────────────────────────────────────
-  it("user-cancel: no toast, no insertAtCursor call", async () => {
+  it("choosing Hover inserts `hover button \"Save\"`", async () => {
+    mockPickButtonSave({ wasFreshlyStamped: true });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+    await user.click(screen.getByRole("menuitem", { name: /hover element/i }));
+    await flushAsync();
+
+    expect(insertSpy).toHaveBeenCalledWith('hover button "Save"\n');
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Wait-for action: appends default 5s timeout
+  // ─────────────────────────────────────────────────────────────────
+  it("choosing Wait for inserts `wait-for ... timeout 5s`", async () => {
+    mockPickButtonSave({ wasFreshlyStamped: true });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+    await user.click(screen.getByRole("menuitem", { name: /wait for element/i }));
+    await flushAsync();
+
+    expect(insertSpy).toHaveBeenCalledWith('wait-for button "Save" timeout 5s\n');
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Wait-for re-pick preserves existing timeout
+  // ─────────────────────────────────────────────────────────────────
+  it("choosing Wait for on existing `wait-for ... timeout 10s` preserves the 10s", async () => {
+    getCursorLineTextSpy.mockReturnValue('    wait-for text "Old" timeout 10s');
+    mockPickButtonSave({ wasFreshlyStamped: false });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+    await user.click(screen.getByRole("menuitem", { name: /wait for element/i }));
+    await flushAsync();
+
+    expect(replaceSpy).toHaveBeenCalledWith(
+      '    wait-for button "Save" timeout 10s',
+    );
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Assert action
+  // ─────────────────────────────────────────────────────────────────
+  it("choosing Assert inserts `assert button \"Save\"`", async () => {
+    mockPickButtonSave({ wasFreshlyStamped: true });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+    await user.click(screen.getByRole("menuitem", { name: /assert element/i }));
+    await flushAsync();
+
+    expect(insertSpy).toHaveBeenCalledWith('assert button "Save"\n');
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Escape on the menu cancels — no insert, no stamp, silent.
+  // ─────────────────────────────────────────────────────────────────
+  it("Escape on action menu does not insert and does not stamp", async () => {
+    const invokeLog: string[] = [];
+    mockIPC((cmd) => {
+      invokeLog.push(cmd);
+      if (cmd === "picker_start_author") {
+        return {
+          json: JSON.stringify({
+            emitted: 'click button "Save"',
+            locator: { kind: "role", value: { role: "button", name: "Save" } },
+            candidates: [],
+          }),
+        };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    expect(screen.getByRole("dialog", { name: /picker action menu/i })).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await flushAsync();
+
+    expect(screen.queryByRole("dialog", { name: /picker action menu/i })).toBeNull();
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(invokeLog).not.toContain("picker_stamp_step_id");
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Existing-line verb sets the menu's default action.
+  // ─────────────────────────────────────────────────────────────────
+  it("default-focused menu item matches the existing line's verb", async () => {
+    getCursorLineTextSpy.mockReturnValue('    hover field "Old"');
+    mockPickButtonSave({ wasFreshlyStamped: false });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    expect(
+      screen.getByRole("menuitem", { name: /hover element/i }),
+    ).toHaveFocus();
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // user-cancel path — silent, no menu, no insertAtCursor
+  // ─────────────────────────────────────────────────────────────────
+  it("user-cancel from sidecar: no menu, no insert, no toast", async () => {
     mockIPC((cmd) => {
       if (cmd === "picker_start_author") {
         return {
@@ -239,10 +414,9 @@ describe("PreviewPickerButton", () => {
     const user = userEvent.setup();
     render(<PreviewPickerButton />);
     await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
 
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
-
+    expect(screen.queryByRole("dialog", { name: /picker action menu/i })).toBeNull();
     expect(insertSpy).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.info).not.toHaveBeenCalled();

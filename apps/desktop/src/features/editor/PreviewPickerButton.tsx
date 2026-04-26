@@ -12,8 +12,10 @@
  *     → if doc dirty, fire a non-blocking warning toast (D-10)
  *     → setPicking(true), dispatch pickElementAuthor({ streamId, storySrc,
  *                                                      cursorLine })
- *     → on Picked: editorController.insertAtCursor(emitted + "\n")
- *                → pickerStampStepId → toast (first-pick vs re-pick)
+ *     → on Picked: stash result in `pendingPick` and show
+ *       `PickerActionMenu`. The user chooses click / hover / wait-for /
+ *       assert; only then do we build the DSL line, insert/replace,
+ *       and stamp targets.json.
  *     → on Cancelled: reason-specific toast (silent on user-cancel)
  *     → finally setPicking(false)
  *
@@ -30,7 +32,7 @@
  * `document.addEventListener` (research anti-pattern).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Crosshair, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
@@ -38,10 +40,14 @@ import { toast } from "sonner";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 import { editorController } from "@/features/editor/controller";
+import { PickerActionMenu } from "@/features/editor/PickerActionMenu";
 import {
-  parseLine,
-  rewriteEmitted,
-} from "@/features/editor/picker-emit-rewrite";
+  buildPickerActionLine,
+  inferDefaultAction,
+  parsePickerLine,
+  pickedTargetLabel,
+} from "@/features/editor/picker-action-dsl";
+import type { TargetVerb } from "@/features/editor/picker-emit-rewrite";
 import {
   useAuthorDriverStore,
   type AuthorDriverVariant,
@@ -54,6 +60,7 @@ import {
   pickElementCancel,
   pickerStampStepId,
   type PickHoverPayload,
+  type PickPicked,
   type TargetRecordDto,
 } from "@/ipc/picker";
 
@@ -99,6 +106,12 @@ const COPY = {
   TOAST_NO_STREAM:
     "Enable Live Preview first — Pick needs an author session",
 } as const;
+
+interface PendingPick {
+  result: PickPicked;
+  cursorLine: number;
+  lineText: string;
+}
 
 /**
  * Module-level trigger registration. `codemirror-setup.ts` calls the
@@ -166,6 +179,7 @@ export function PreviewPickerButton() {
   const [picking, setPicking] = useState(false);
   const [preview, setPreview] = useState<PickHoverPayload | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
+  const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
 
   const isSimulatorRunning = variant === "simulator-running";
   // Button is disabled during simulator-running and during UI-local
@@ -282,53 +296,13 @@ export function PreviewPickerButton() {
         timeoutMs: 60_000,
       });
       if (isPicked(r)) {
-        // Verb-from-context + replace-on-existing-line.
-        // The sidecar always emits `click <strategy> "<value>"`. When the
-        // cursor sits on a line that already has a known target verb
-        // (hover/wait-for/assert/click), keep that verb and any trailing
-        // modifier (e.g. `timeout 5s`), and replace the whole line in
-        // place — non-programmer users expect "re-pick" to fix the failed
-        // line, not append a new one beneath it.
-        const lineText = editorController.getCursorLineText() ?? "";
-        const parsed = parseLine(lineText);
-        const finalLine = rewriteEmitted(r.emitted, parsed);
-        const res = parsed.hasTargetShape
-          ? editorController.replaceCursorLine(finalLine)
-          : editorController.insertAtCursor(`${finalLine}\n`);
-        if (res.ok) {
-          const storyPath = editorController.getStoryPath();
-          if (storyPath) {
-            try {
-              const stamp = await pickerStampStepId({
-                storyPath,
-                lineOffset: res.lineNumber,
-                primary: r.locator as TargetRecordDto,
-                fallbacks: r.candidates.map(
-                  (c) => ({ kind: c.kind, value: c.value }) as TargetRecordDto,
-                ),
-              });
-              if (stamp.wasFreshlyStamped) {
-                toast.success(
-                  `Added \`${finalLine.trim()}\` · line ${res.lineNumber}`,
-                );
-              } else {
-                const stepOrdinal =
-                  editorController.getStepOrdinalForLine(res.lineNumber) ??
-                  res.lineNumber;
-                toast.success(`Updated fallback for step ${stepOrdinal}`);
-              }
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              toast.error(msg);
-            }
-          } else {
-            toast.success(
-              `Added \`${finalLine.trim()}\` · line ${res.lineNumber}`,
-            );
-          }
-        } else {
-          toast.error("Editor not ready — focus the editor first");
-        }
+        // Freeze cursor line text now so re-pick still targets the original
+        // row even if the editor moves under us before the user chooses.
+        setPendingPick({
+          result: r,
+          cursorLine,
+          lineText: editorController.getCursorLineText() ?? "",
+        });
       } else {
         switch (r.reason) {
           case "user-cancel":
@@ -369,6 +343,71 @@ export function PreviewPickerButton() {
   };
 
   onClickRef.current = onClick;
+
+  const onMenuChoose = async (action: TargetVerb) => {
+    if (!pendingPick) return;
+    const { result: r, lineText } = pendingPick;
+    setPendingPick(null);
+
+    const parsed = parsePickerLine(lineText);
+    let finalLine: string;
+    try {
+      finalLine = buildPickerActionLine(action, r.locator, parsed);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg);
+      return;
+    }
+
+    const res = parsed.hasTargetShape
+      ? editorController.replaceCursorLine(finalLine)
+      : editorController.insertAtCursor(`${finalLine}\n`);
+    if (!res.ok) {
+      toast.error("Editor not ready — focus the editor first");
+      return;
+    }
+
+    const storyPath = editorController.getStoryPath();
+    if (!storyPath) {
+      toast.success(`Added \`${finalLine.trim()}\` · line ${res.lineNumber}`);
+      return;
+    }
+
+    try {
+      const stamp = await pickerStampStepId({
+        storyPath,
+        lineOffset: res.lineNumber,
+        primary: r.locator as TargetRecordDto,
+        fallbacks: r.candidates.map(
+          (c) => ({ kind: c.kind, value: c.value }) as TargetRecordDto,
+        ),
+      });
+      if (stamp.wasFreshlyStamped) {
+        toast.success(`Added \`${finalLine.trim()}\` · line ${res.lineNumber}`);
+      } else {
+        const stepOrdinal =
+          editorController.getStepOrdinalForLine(res.lineNumber) ??
+          res.lineNumber;
+        toast.success(`Updated fallback for step ${stepOrdinal}`);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg);
+    }
+  };
+
+  const onMenuCancel = () => {
+    setPendingPick(null);
+  };
+
+  const menuTargetLabel = useMemo(
+    () => (pendingPick ? pickedTargetLabel(pendingPick.result) : ""),
+    [pendingPick],
+  );
+  const menuDefaultAction = useMemo<TargetVerb>(
+    () => (pendingPick ? inferDefaultAction(pendingPick.lineText) : "click"),
+    [pendingPick],
+  );
 
   const tooltip = formatTooltip(variant, isStarting, simulatorOrdinal);
   const ariaLabel = picking
@@ -470,6 +509,15 @@ export function PreviewPickerButton() {
       {/* Banner error (surfaces inline if the picker warm-up fails). */}
       {bannerError ? (
         <PickingBanner variant="error" message={bannerError} />
+      ) : null}
+
+      {pendingPick ? (
+        <PickerActionMenu
+          targetLabel={menuTargetLabel}
+          defaultAction={menuDefaultAction}
+          onChoose={onMenuChoose}
+          onCancel={onMenuCancel}
+        />
       ) : null}
     </>
   );

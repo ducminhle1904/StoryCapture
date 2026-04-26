@@ -12,7 +12,7 @@
 export const TARGET_VERBS = ["click", "hover", "assert", "wait-for"] as const;
 export type TargetVerb = (typeof TARGET_VERBS)[number];
 
-interface ParsedLine {
+export interface ParsedLine {
   indent: string;
   verb: TargetVerb | null;
   /** Trailing modifier text after the target (e.g. `timeout 5s`), no leading space. */
