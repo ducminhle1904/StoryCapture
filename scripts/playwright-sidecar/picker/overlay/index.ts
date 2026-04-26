@@ -28,9 +28,6 @@ export interface PickCandidatePayload {
   css: string;
   tagName: string;
   shadowDepth: number;
-  // Element-shape metadata so the desktop picker action menu can promote
-  // input-flavored actions (fill/type/select/upload) without re-deriving
-  // DOM shape on the host.
   inputType?: string;
   isContentEditable?: boolean;
   isTextInput?: boolean;
@@ -73,7 +70,8 @@ export function buildElementMeta(el: Element): {
     el.getAttribute("contenteditable") === "true" ||
     undefined;
 
-  const isFileInput = tag === "INPUT" && inputType === "file" ? true : undefined;
+  const isFileInput =
+    tag === "INPUT" && inputType === "file" ? true : undefined;
   const isSelect = tag === "SELECT" ? true : undefined;
   const isTextInput =
     tag === "TEXTAREA" ||
@@ -104,11 +102,6 @@ export function buildElementMeta(el: Element): {
   };
 }
 
-// live-hover preview payload.
-// Lightweight on purpose: the chip only needs "what the user is pointing at
-// right now" — the full ranked DSL emission still happens on click via
-// __sc_picker_emit. The bindings writer in server.mjs (writeNotification)
-// forwards this as an id-absent JSON-RPC `pickElement.hoverPreview`.
 export interface PickHoverPayload {
   testId?: string;
   role?: string;
@@ -126,9 +119,135 @@ declare global {
     __sc_picker_emit?: (
       payload: PickCandidatePayload | { __cancel: true },
     ) => void;
-    // fired on every rAF-throttled mouseover while picking.
     __sc_picker_hover?: (payload: PickHoverPayload) => Promise<void>;
+    __sc_pick_target?: Element | null;
   }
+}
+
+// ─── Module-scope helpers (exported for unit tests) ─────────────────────
+// Lifted out of the IIFE so vitest can drive them directly. The
+// installPicker() closure below references them by name.
+
+/**
+ * Tags whose click target is intrinsically the tag itself — picking inside
+ * one (e.g. icon `<svg>` inside `<button>`) should resolve to the tag.
+ */
+export const INTERACTIVE_TAGS: ReadonlySet<string> = new Set([
+  "BUTTON",
+  "A",
+  "INPUT",
+  "TEXTAREA",
+  "SELECT",
+  "OPTION",
+  "SUMMARY",
+  "LABEL",
+]);
+
+/**
+ * ARIA roles that turn a generic element into a clickable widget.
+ */
+export const INTERACTIVE_ROLES: ReadonlySet<string> = new Set([
+  "button",
+  "link",
+  "checkbox",
+  "radio",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "tab",
+  "switch",
+  "option",
+  "treeitem",
+]);
+
+/** Cap on upward ancestor walk so a click never bubbles past 5 parents. */
+export const INTERACTIVE_WALK_LIMIT = 5;
+
+/** Maximum visible-text length baked into a DSL literal. */
+export const VISIBLE_TEXT_CAP = 80;
+
+/** True iff `el` is a button/link/input/[role=...]/[onclick]/[tabindex]/etc. */
+export function isInteractive(el: Element): boolean {
+  if (INTERACTIVE_TAGS.has(el.tagName.toUpperCase())) return true;
+  const role = el.getAttribute("role");
+  if (role && INTERACTIVE_ROLES.has(role)) return true;
+  if (el.hasAttribute("onclick")) return true;
+  if (el.hasAttribute("contenteditable")) return true;
+  const tabindex = el.getAttribute("tabindex");
+  if (tabindex !== null && tabindex !== "") return true;
+  return false;
+}
+
+/**
+ * Resolve a click event to the element the user *intended* to target.
+ * Walks up at most `INTERACTIVE_WALK_LIMIT` ancestors looking for an
+ * interactive element; returns the literal click point if none are found.
+ *
+ * Pure on `ev` — exported for tests; the IIFE wires it into `onClick`.
+ */
+export function findInteractiveTarget(ev: Event): Element | null {
+  const path = (ev as any).composedPath ? (ev as any).composedPath() : [];
+  let initial: Element | null = null;
+  for (const node of path) {
+    if (node instanceof Element) {
+      initial = node;
+      break;
+    }
+  }
+  if (!initial && ev.target instanceof Element) initial = ev.target;
+  if (!initial) return null;
+
+  let cur: Element | null = initial;
+  let steps = 0;
+  while (cur && steps <= INTERACTIVE_WALK_LIMIT) {
+    if (isInteractive(cur)) return cur;
+    cur = cur.parentElement;
+    steps++;
+  }
+  return initial;
+}
+
+/**
+ * Build the candidate payload for an element. Pure DOM read; exported for
+ * unit tests so they can assert visibleText leaf-direct extraction and the
+ * 80-char cap without spinning up a click pipeline.
+ */
+export function buildPayload(el: Element): PickCandidatePayload {
+  const testId = el.getAttribute("data-testid") || undefined;
+  const role = inferRole(el);
+  const name = accessibleName(el).trim() || undefined;
+
+  let associatedLabel: string | undefined;
+  const tag = el.tagName.toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+    associatedLabel = name;
+  }
+
+  let visibleText: string | undefined;
+  if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+    let direct = "";
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType === 3 /* Text */) direct += child.textContent || "";
+    }
+    let t = direct.replace(/\s+/g, " ").trim();
+    if (!t) {
+      t = (el.textContent || "").replace(/\s+/g, " ").trim();
+    }
+    if (t.length > VISIBLE_TEXT_CAP) t = t.slice(0, VISIBLE_TEXT_CAP).trim();
+    if (t) visibleText = t;
+  }
+
+  return {
+    testId,
+    role,
+    accessibleName: name,
+    associatedLabel,
+    visibleText,
+    css: buildCss(el),
+    tagName: tag,
+    shadowDepth: shadowDepth(el),
+    ...buildElementMeta(el),
+  };
 }
 
 (function installPicker() {
@@ -179,33 +298,15 @@ declare global {
     rafHandle = window.requestAnimationFrame(paintHighlight);
   }
 
-  function findInteractiveTarget(ev: Event): Element | null {
-    // Use composedPath() so we pierce shadow DOM and find the user's
-    // visible target rather than the shadow host.
-    const path = (ev as any).composedPath ? (ev as any).composedPath() : [];
-    for (const node of path) {
-      if (node instanceof Element) return node;
-    }
-    return ev.target instanceof Element ? ev.target : null;
-  }
-
   function onMouseOver(ev: MouseEvent) {
     if (!active) return;
     const target = findInteractiveTarget(ev);
     if (!target || target === lastTarget) return;
     lastTarget = target;
     scheduleRepaint();
-    // fire a hover-preview alongside the highlight repaint.
-    // Re-uses the SAME rAF throttle (scheduleHoverEmit) so at most one
-    // notification is emitted per animation frame (~60 Hz ceiling).
     scheduleHoverEmit();
   }
 
-  // rAF-throttled hover emission.
-  //
-  // Independent throttle from the paint scheduler because the hover
-  // channel writes to stdout and we want to coalesce bursts (mouseover
-  // fires on every nested child) rather than serialize every event.
   let hoverRafHandle: number | null = null;
   function scheduleHoverEmit() {
     if (hoverRafHandle != null) return;
@@ -227,55 +328,19 @@ declare global {
       };
       const hover = window.__sc_picker_hover;
       if (typeof hover === "function") {
-        // Awaiting isn't useful — the binding resolves on the Node side
-        // after stdout write. Swallow rejection so a torn-down page
-        // during stop() doesn't surface an unhandled promise.
         hover(payload).catch(() => {});
       }
     });
   }
 
-  function buildPayload(el: Element): PickCandidatePayload {
-    const testId = el.getAttribute("data-testid") || undefined;
-    const role = inferRole(el);
-    const name = accessibleName(el).trim() || undefined;
-
-    let associatedLabel: string | undefined;
-    const tag = el.tagName.toUpperCase();
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-      // Reuse axe-lite logic by computing accessibleName which already
-      // resolves label-for / wrapping label for form fields.
-      associatedLabel = name;
-    }
-
-    let visibleText: string | undefined;
-    if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
-      const t = (el.textContent || "").replace(/\s+/g, " ").trim();
-      if (t) visibleText = t;
-    }
-
-    return {
-      testId,
-      role,
-      accessibleName: name,
-      associatedLabel,
-      visibleText,
-      css: buildCss(el),
-      tagName: tag,
-      shadowDepth: shadowDepth(el),
-      ...buildElementMeta(el),
-    };
-  }
-
   function onClick(ev: MouseEvent) {
     if (!active) return;
-    // Block native nav/submit unconditionally so the user's pick doesn't
-    // leave the page mid-flow.
     ev.preventDefault();
     ev.stopImmediatePropagation();
     const target = findInteractiveTarget(ev);
     if (!target) return;
     try {
+      window.__sc_pick_target = target;
       const payload = buildPayload(target);
       if (typeof window.__sc_picker_emit === "function") {
         window.__sc_picker_emit(payload);

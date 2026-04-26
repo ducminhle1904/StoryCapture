@@ -1,9 +1,7 @@
 /**
- * Preview panel — Phase 1 shows a static preview stage and viewport switcher.
- * True live-preview browser mirror is deferred to Phase 2.
- *
- * Chrome: flat docked panel with squared corners. Only the viewport frame
- * itself gets rounded corners (it represents a device screen).
+ * Preview panel — static preview stage with viewport switcher.
+ * Flat docked panel with squared corners; only the viewport frame gets
+ * rounded corners (it represents a device screen).
  */
 
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -50,28 +48,20 @@ export function PreviewPanel({
   const activeFrame =
     runState !== "idle" && currentOrd != null ? frames[currentOrd - 1] ?? null : null;
 
-  // aggregate author-time validator chip counts to display
-  // a compact "2G / 1Y / 0R" summary in the preview footer. Reads from
-  // the store that the SelectorValidatorOverlay populates.
+  // Aggregate validator chip counts for the footer's "2G / 1Y / 0R"
+  // summary, sourced from the SelectorValidatorOverlay's store.
   const validationEntries = useSelectorValidation((s) => s.entries);
   const chipCounts = summarizeValidation(validationEntries);
 
-  // Phase 11-04: surface the Picking banner inside the Preview panel
-  // content area (between header and stage). Reads variant from the
-  // author-driver projection per UI-SPEC §2.
   const isPicking = useAuthorDriverStore((s) => s.variant === "picking");
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[var(--color-surface-100)]">
-      {/* Header — flat, no card chrome */}
       <header className="flex items-center justify-between border-b border-[var(--color-border-subtle)] px-3 py-1.5">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
             Preview
           </span>
-          {/* Phase 11-04 (UI-SPEC §Visual Layout §1): PreviewPickerButton
-              sits LEFT of the viewport/quality controls. Icon-first ghost
-              button; tooltip copy + keymap are owned by the component. */}
           <PreviewPickerButton />
         </div>
         <div className="flex items-center gap-3">
@@ -105,11 +95,10 @@ export function PreviewPanel({
         </div>
       </header>
 
-      {/* Picking banner — sticky at the top of the content area during an
-          active pick (UI-SPEC §Picking banner position). */}
+      {/* Picking banner — sticky at the top of the content area during
+          an active pick. */}
       {isPicking ? <PickingBanner variant="active" /> : null}
 
-      {/* Preview stage — the viewport frame gets rounded corners (device screen) */}
       <div className="flex min-h-0 flex-1 items-center justify-center bg-[var(--color-surface-200)] p-4">
         <div
           className="relative w-full overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-fg-primary)] shadow-[0_12px_30px_rgba(0,0,0,0.10)]"
@@ -120,7 +109,6 @@ export function PreviewPanel({
           }}
           aria-label={`Preview viewport: ${size.label} (${size.w}x${size.h})`}
         >
-          {/* Viewport info overlays */}
           <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5 text-[9px] uppercase tracking-[0.14em]">
             <span className="rounded-[var(--radius-xs)] border border-white/10 bg-black/50 px-1.5 py-0.5 text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               {size.label}
@@ -193,8 +181,8 @@ export function PreviewPanel({
 }
 
 /**
- * aggregate the chip-state counts for the preview footer.
- * `total = 0` when the validator hasn't run; the caller hides the chunk.
+ * Aggregate the chip-state counts for the preview footer.
+ * `total === 0` means the validator hasn't run; the caller hides the chunk.
  */
 function summarizeValidation(entries: Map<number, {
   status: { status: string } | null;

@@ -1755,7 +1755,7 @@ export type TAURI_CHANNEL<TSend> = null
  * On-the-wire shape per arm: `{ kind: "<kind>", value: <typed> }` —
  * matches the existing `.story.targets.json` schema byte-for-byte.
  */
-export type TargetRecordDto = { kind: "testid"; value: string } | { kind: "role"; value: RoleSelectorDto } | { kind: "label"; value: string } | { kind: "text_exact"; value: string } | { kind: "selector"; value: string } | { kind: "aria"; value: string } | { kind: "text"; value: string }
+export type TargetRecordDto = { kind: "testid"; value: string; nth?: number } | { kind: "role"; value: RoleSelectorDto; nth?: number } | { kind: "label"; value: string; nth?: number } | { kind: "text_exact"; value: string; nth?: number } | { kind: "selector"; value: string; nth?: number } | { kind: "aria"; value: string; nth?: number } | { kind: "text"; value: string; nth?: number }
 export type ThemeDto = "light" | "dark" | "auto"
 export type TimelineStateDto = { story_id: string; layout_json: string; last_modified: bigint }
 export type TtsCommandError = { kind: "InvalidProject" } | { kind: "NoApiKey" } | { kind: "Provider"; message: string } | { kind: "Io"; message: string } | { kind: "Storage"; message: string } | { kind: "AudioProbe"; message: string }

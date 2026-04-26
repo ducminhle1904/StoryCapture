@@ -68,10 +68,10 @@ impl BrowserDriver for StubDriver {
     async fn wait_ms(&self, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> {
+    async fn wait_for(&self, _t: &SelectorOrText, _nth: Option<u32>, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> {
+    async fn assert_present(&self, _t: &SelectorOrText, _nth: Option<u32>) -> AutoResult<()> {
         Ok(())
     }
     async fn screenshot(&self, name: &str, out_dir: &Path) -> AutoResult<PathBuf> {
@@ -160,10 +160,10 @@ impl BrowserDriver for FuzzyDriver {
     async fn wait_ms(&self, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> {
+    async fn wait_for(&self, _t: &SelectorOrText, _nth: Option<u32>, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> {
+    async fn assert_present(&self, _t: &SelectorOrText, _nth: Option<u32>) -> AutoResult<()> {
         Ok(())
     }
     async fn screenshot(&self, name: &str, out_dir: &Path) -> AutoResult<PathBuf> {
@@ -498,10 +498,10 @@ impl BrowserDriver for CountingDriver {
     async fn wait_ms(&self, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> {
+    async fn wait_for(&self, _t: &SelectorOrText, _nth: Option<u32>, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> {
+    async fn assert_present(&self, _t: &SelectorOrText, _nth: Option<u32>) -> AutoResult<()> {
         Ok(())
     }
     async fn screenshot(&self, name: &str, out_dir: &Path) -> AutoResult<PathBuf> {
@@ -677,10 +677,10 @@ impl BrowserDriver for SlowDriver {
         tokio::time::sleep(Duration::from_millis(ms)).await;
         Ok(())
     }
-    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> {
+    async fn wait_for(&self, _t: &SelectorOrText, _nth: Option<u32>, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> {
+    async fn assert_present(&self, _t: &SelectorOrText, _nth: Option<u32>) -> AutoResult<()> {
         Ok(())
     }
     async fn screenshot(&self, name: &str, out_dir: &Path) -> AutoResult<PathBuf> {

@@ -13,6 +13,7 @@ use storycapture::commands::picker::{stamp_step_id_impl, TargetRecordDto};
 fn primary() -> TargetRecordDto {
     TargetRecordDto::Testid {
         value: "save-btn".into(),
+        nth: None,
     }
 }
 

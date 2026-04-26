@@ -32,12 +32,12 @@ pub type PersistenceHandle = Arc<Mutex<ProjectDb>>;
 
 /// Behavior when the primary selector misses `wait_actionable`.
 ///
-/// Phase 10 and Phase 11-02 gave `self_heal: bool` two incompatible meanings
-/// ("don't persist" vs. "don't probe"). `HealPolicy` restores the distinction
+/// `self_heal: bool` previously had two incompatible meanings ("don't
+/// persist" vs. "don't probe"); `HealPolicy` restores the distinction
 /// without changing the public `self_heal: bool` surface.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum HealPolicy {
-    /// Record path (D-06): short-circuit with
+    /// Record path: short-circuit with
     /// [`AutomationError::PrimaryMissNoHeal`]; do NOT consult the targets
     /// sidecar. `.story.targets.json` is left byte-identical.
     RaiseOnMiss,
@@ -100,12 +100,12 @@ impl Executor {
     /// rewrite the sidecar on promotion. Passing `None` disables the
     /// self-healing hook (legacy callers / headless usage).
     ///
-    /// Phase 11-02 (D-06): `self_heal` is now an explicit parameter. The
-    /// recording path MUST pass `self_heal: false` — a primary-miss is
-    /// raised as [`AutomationError::PrimaryMissNoHeal`] with no fallback
-    /// probe and no mutation of `.story.targets.json`. `self_heal: true`
-    /// preserves the legacy promote-on-miss behavior used by simulator
-    /// runs that explicitly opt in to self-healing.
+    /// `self_heal` is an explicit parameter. The recording path MUST pass
+    /// `self_heal: false` — a primary-miss is raised as
+    /// [`AutomationError::PrimaryMissNoHeal`] with no fallback probe and no
+    /// mutation of `.story.targets.json`. `self_heal: true` preserves the
+    /// legacy promote-on-miss behavior used by simulator runs that
+    /// explicitly opt in to self-healing.
     #[allow(clippy::too_many_arguments)]
     pub fn run_with_story_path(
         story: Story,
@@ -396,8 +396,7 @@ async fn run_story(
                         let msg = err.to_string();
                         let _ = g.complete_step(sid, StepStatus::Failed, Some(&msg));
                     }
-                    // Phase 1 policy: stop on first failure. The UI surfaces
-                    // a retry / skip choice in Phase 3.
+                    // Stop on first failure.
                     break 'scenes;
                 }
             }
@@ -452,11 +451,12 @@ async fn run_command(
     let cmd_step_id = cmd.step_id();
 
     macro_rules! resolve {
-        ($target:expr, $action:expr) => {{
+        ($target:expr, $target_nth:expr, $action:expr) => {{
             match crate::selector::resolve_via_smart(
                 driver,
                 $action,
                 $target,
+                $target_nth,
                 DEFAULT_ACTION_TIMEOUT_MS,
             )
             .await
@@ -495,8 +495,8 @@ async fn run_command(
             {
                 Ok(()) => current,
                 Err(primary_err) => {
-                    // Phase 11-02 (D-06) + Phase 10 read-only simulator
-                    // semantics are split via `HealPolicy`:
+                    // Record-path and read-only simulator semantics are
+                    // split via `HealPolicy`:
                     //
                     // - `RaiseOnMiss` (record path): short-circuit with
                     //   `PrimaryMissNoHeal`; never consult the sidecar.
@@ -546,27 +546,42 @@ async fn run_command(
 
     let result = match cmd {
         Command::Navigate { url, .. } => driver.goto(url).await,
-        Command::Click { target, .. } => {
-            let sel = resolve!(target, ActionKind::Click);
+        Command::Click {
+            target, target_nth, ..
+        } => {
+            let sel = resolve!(target, *target_nth, ActionKind::Click);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Click);
             driver.click(&sel).await
         }
-        Command::Type { target, text, .. } => {
-            let sel = resolve!(target, ActionKind::Type);
+        Command::Type {
+            target,
+            target_nth,
+            text,
+            ..
+        } => {
+            let sel = resolve!(target, *target_nth, ActionKind::Type);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Type);
             driver.type_text(&sel, text).await
         }
         Command::Scroll {
             direction, amount, ..
         } => driver.scroll(*direction, *amount).await,
-        Command::Hover { target, .. } => {
-            let sel = resolve!(target, ActionKind::Hover);
+        Command::Hover {
+            target, target_nth, ..
+        } => {
+            let sel = resolve!(target, *target_nth, ActionKind::Hover);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Hover);
             driver.hover(&sel).await
         }
-        Command::Drag { from, to, .. } => {
-            let sf = resolve!(from, ActionKind::Drag);
-            let st = resolve!(to, ActionKind::Drag);
+        Command::Drag {
+            from,
+            from_nth,
+            to,
+            to_nth,
+            ..
+        } => {
+            let sf = resolve!(from, *from_nth, ActionKind::Drag);
+            let st = resolve!(to, *to_nth, ActionKind::Drag);
             // Self-healing for drag targets: only the FROM is healed; the
             // TO side is a drop target whose identity is paired with the
             // source, so mutating it in isolation is unsafe.
@@ -578,24 +593,43 @@ async fn run_command(
             }
             driver.drag(&sf, &st).await
         }
-        Command::Select { target, value, .. } => {
-            let sel = resolve!(target, ActionKind::Select);
+        Command::Select {
+            target,
+            target_nth,
+            value,
+            ..
+        } => {
+            let sel = resolve!(target, *target_nth, ActionKind::Select);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Select);
             driver.select_option(&sel, value).await
         }
-        Command::Upload { target, path, .. } => {
-            let sel = resolve!(target, ActionKind::Upload);
+        Command::Upload {
+            target,
+            target_nth,
+            path,
+            ..
+        } => {
+            let sel = resolve!(target, *target_nth, ActionKind::Upload);
             driver.upload_file(&sel, std::path::Path::new(path)).await
         }
         Command::Wait { duration_ms, .. } => wait_with_pause(*duration_ms, control, driver).await,
         Command::WaitFor {
-            target, timeout_ms, ..
+            target,
+            target_nth,
+            timeout_ms,
+            ..
         } => {
             driver
-                .wait_for(target, timeout_ms.unwrap_or(DEFAULT_WAITFOR_TIMEOUT_MS))
+                .wait_for(
+                    target,
+                    *target_nth,
+                    timeout_ms.unwrap_or(DEFAULT_WAITFOR_TIMEOUT_MS),
+                )
                 .await
         }
-        Command::Assert { target, .. } => driver.assert_present(target).await,
+        Command::Assert {
+            target, target_nth, ..
+        } => driver.assert_present(target, *target_nth).await,
         Command::Screenshot { name, .. } => {
             driver.screenshot(name, screenshot_dir).await.map(|_| ())
         }
@@ -715,10 +749,13 @@ pub async fn try_promote_fallback(
                 continue;
             }
         };
+        // Self-healing fallback: propagate the fallback record's nth.
+        // Pre-Fix-#4 stamps land here as `None`, preserving legacy behavior.
         let resolved = match crate::selector::resolve_via_smart(
             driver,
             action,
             &target,
+            fallback.nth,
             DEFAULT_ACTION_TIMEOUT_MS,
         )
         .await
@@ -760,8 +797,8 @@ async fn checkpoint(control: Option<&RunControl>) {
 /// e.g. `click "Save"`, `type "Email"`, `navigate https://…`.
 ///
 /// Used by [`AutomationError::PrimaryMissNoHeal`] so the HUD can surface
-/// the UI-SPEC-locked copy (`Step {N}: "{verb}" could not match any
-/// element.`) without the UI layer re-parsing the command.
+/// the locked copy (`Step {N}: "{verb}" could not match any element.`)
+/// without the UI layer re-parsing the command.
 fn format_verb_excerpt(cmd: &Command) -> String {
     fn target_text(t: &story_parser::SelectorOrText) -> String {
         match t {

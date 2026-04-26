@@ -1,35 +1,17 @@
 /**
- * PreviewPickerButton — author-time element picker mounted inside the
- * Preview panel (Phase 11 relocation; supersedes the recorder-side
- * `PickElementButton`).
+ * PreviewPickerButton — author-time element picker in the Preview panel.
  *
- * Wire flow (D-09 lazy-start + D-10 navigate-replay + D-12 always-resume):
- *   click
- *     → if picking, call pickElementCancel and return (re-click = cancel)
- *     → if simulator-running, no-op (button also disabled)
- *     → if !streamId, warn and bail (caller must enable Live Preview first)
- *     → read cursorLine from editorController
- *     → if doc dirty, fire a non-blocking warning toast (D-10)
- *     → setPicking(true), dispatch pickElementAuthor({ streamId, storySrc,
- *                                                      cursorLine })
- *     → on Picked: stash result in `pendingPick` and show
- *       `PickerActionMenu`. The user chooses click / hover / wait-for /
- *       assert; only then do we build the DSL line, insert/replace,
- *       and stamp targets.json.
- *     → on Cancelled: reason-specific toast (silent on user-cancel)
- *     → finally setPicking(false)
- *
- * Five visual states driven by `useAuthorDriverStore`:
- *   Idle / LivePreview   — default visual, click = lazy-start + pick
- *   Picking              — accent border + filled crosshair + Esc pill
- *   SimulatorRunning     — disabled, no-op
- *   SimulatorPaused      — enabled; pick still permitted (D-14)
- * Plus UI-local `isStarting` overlay during D-09 lazy-start warm-up.
+ * Click flow: cancel-if-picking, no-op when simulator is running, warn when
+ * no streamId, then dispatch `pickElementAuthor`. On Picked, stash in
+ * `pendingPick` and show `PickerActionMenu` so the user picks the verb;
+ * only then do we build the DSL line, insert/replace, and stamp
+ * `.story.targets.json`. On Cancelled, surface a reason-specific toast
+ * (silent on user-cancel).
  *
  * Keymap integration: `registerPickTrigger` exposes the onClick as a
- * module-level handler for `codemirror-setup.ts` to call from the
- * `Mod-Shift-p` keybinding. Prefers explicit registration over a global
- * `document.addEventListener` (research anti-pattern).
+ * module-level handler so `codemirror-setup.ts` can dispatch it from
+ * `Mod-Shift-p`. Explicit registration is preferred over a global
+ * `document.addEventListener`.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -69,15 +51,11 @@ import {
 } from "@/ipc/picker";
 
 /**
- * UI-SPEC §Copywriting — LOCKED copy constants.
- *
- * All six tooltip strings, seven toast strings, and three banner strings
- * appear verbatim in this file as required by the plan's §Done grep
- * assertions. A single source-of-truth block prevents drift and makes
- * the plan's `grep ... | wc -l` checks deterministic.
+ * Locked copy constants — single source of truth for tooltips, toasts,
+ * banners, and aria-labels so the strings stay grep-checkable.
  */
 const COPY = {
-  // Tooltips (UI-SPEC §Copywriting Contract — Per-state tooltips table)
+  // Tooltips
   TOOLTIP_IDLE: "Pick element · starts Preview",
   TOOLTIP_LIVE: "Pick element · ⌘⇧P",
   TOOLTIP_PICKING: "Picking — press Esc",
@@ -86,18 +64,17 @@ const COPY = {
   TOOLTIP_SIMULATOR_PAUSED_WITH_N:
     "Paused at step {N} — Pick will resume Preview after",
   TOOLTIP_SIMULATOR_PAUSED_NO_N: "Paused — Pick will resume Preview after",
-  // aria-label (UI-SPEC §Copywriting — Pick button aria-label)
+  // aria-label
   ARIA_LABEL: "Pick element from preview (Cmd-Shift-P)",
   ARIA_LABEL_PICKING: "Picking — press Esc to cancel",
   ARIA_LABEL_STARTING: "Starting author session…",
-  // Banner (UI-SPEC §Copywriting — Picking banner)
+  // Banner
   BANNER_ACTIVE: "PICKING — press Esc to cancel",
   BANNER_PAUSED_WITH_N:
     "PICKING — press Esc (Preview will stay paused at step {N})",
   BANNER_ERROR_PREFIX: "Couldn't start picker — ",
-  BANNER_ERROR_SUFFIX:
-    ". Try again or toggle Preview off and on.",
-  // Toasts (UI-SPEC §Copywriting — Toasts table, 7 strings)
+  BANNER_ERROR_SUFFIX: ". Try again or toggle Preview off and on.",
+  // Toasts
   TOAST_PICK_NAVIGATION: "Picking cancelled — page navigated",
   TOAST_PICK_UNSUPPORTED:
     "Picking unavailable on this page (`chrome://`, `about:`, or `view-source:`)",
@@ -107,8 +84,7 @@ const COPY = {
   TOAST_DIRTY_WARNING:
     "Unsaved changes — Pick will use the last saved version. Save first?",
   TOAST_NO_CURSOR: "No cursor position",
-  TOAST_NO_STREAM:
-    "Enable Live Preview first — Pick needs an author session",
+  TOAST_NO_STREAM: "Enable Live Preview first — Pick needs an author session",
 } as const;
 
 interface PendingPick {
@@ -118,9 +94,8 @@ interface PendingPick {
 }
 
 /**
- * Module-level trigger registration. `codemirror-setup.ts` calls the
- * registered handler from its `Mod-Shift-p` keybinding so the keymap
- * and the button share a single implementation.
+ * Module-level trigger registration so the keymap and the button share
+ * a single implementation.
  */
 type PickTrigger = () => void;
 let pickTrigger: PickTrigger | null = null;
@@ -165,10 +140,6 @@ function formatTooltip(
   }
 }
 
-/**
- * PreviewPickerButton — mounted inside the Preview panel toolbar per
- * UI-SPEC §Visual Layout §1.
- */
 export function PreviewPickerButton() {
   const variant = useAuthorDriverStore((s) => s.variant);
   const streamId = useAuthorDriverStore((s) => s.streamId);
@@ -176,18 +147,13 @@ export function PreviewPickerButton() {
   const setSnapshot = useAuthorDriverStore((s) => s.setSnapshot);
 
   const [isStarting, setIsStarting] = useState(false);
-  // Local `picking` flag mirrors the `Picking` FSM state for the lifetime
-  // of a single pick. We set it manually because the host FSM transitions
-  // are not (yet) broadcast back to the renderer; this keeps the UI
-  // consistent with what the button is actually doing.
   const [picking, setPicking] = useState(false);
   const [preview, setPreview] = useState<PickHoverPayload | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
+  const [dragSecondPickInFlight, setDragSecondPickInFlight] = useState(false);
 
   const isSimulatorRunning = variant === "simulator-running";
-  // Button is disabled during simulator-running and during UI-local
-  // `starting…` (D-09 warm-up — no double-click racing).
   const disabled = isSimulatorRunning || isStarting;
 
   // Desktop-side Esc safety net while picking.
@@ -204,8 +170,6 @@ export function PreviewPickerButton() {
     return () => document.removeEventListener("keydown", onKey);
   }, [picking]);
 
-  // Subscribe to hover-preview events while picking (ported verbatim from
-  // pick-element-button.tsx; same ~60Hz throttling, same unmount dance).
   useEffect(() => {
     if (!picking) {
       setPreview(null);
@@ -249,8 +213,6 @@ export function PreviewPickerButton() {
     };
   }, [picking]);
 
-  // Register this component's click handler as the module-level keymap
-  // trigger. `codemirror-setup.ts` dispatches `Mod-Shift-p` through it.
   const onClickRef = useRef<PickTrigger>(() => {});
   useEffect(() => {
     registerPickTrigger(() => onClickRef.current());
@@ -276,18 +238,17 @@ export function PreviewPickerButton() {
       return;
     }
 
-    // D-10: Navigate-replay reads the source bytes we pass. The CodeMirror
-    // buffer is the renderer's authoritative view; warn the user when
-    // the buffer diverges from the last-saved state so they can decide
-    // whether to save first. Non-blocking: proceed either way.
     if (editorController.isDirty()) {
-      toast.warning(COPY.TOAST_DIRTY_WARNING);
+      toast.warning(COPY.TOAST_DIRTY_WARNING, {
+        id: "picker-dirty-warning",
+        duration: Infinity,
+        description:
+          "Cmd-S to save, then re-pick — or proceed and the picker uses the on-disk version.",
+      });
     }
 
     const storySrc = useEditorStore.getState().source;
 
-    // Flip to `picking` (local) + overlay in the shared projection so the
-    // banner shows the correct variant.
     setPicking(true);
     setBannerError(null);
     setSnapshot({ variant: "picking" });
@@ -300,8 +261,6 @@ export function PreviewPickerButton() {
         timeoutMs: 60_000,
       });
       if (isPicked(r)) {
-        // Freeze cursor line text now so re-pick still targets the original
-        // row even if the editor moves under us before the user chooses.
         setPendingPick({
           result: r,
           cursorLine,
@@ -310,7 +269,7 @@ export function PreviewPickerButton() {
       } else {
         switch (r.reason) {
           case "user-cancel":
-            // Silent per UI-SPEC §Toasts row 3.
+            // Silent — no toast on user-cancel.
             break;
           case "navigation":
             toast.info(COPY.TOAST_PICK_NAVIGATION);
@@ -327,21 +286,14 @@ export function PreviewPickerButton() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      // Banner error variant (UI-SPEC §Copywriting — banner internal-error)
-      // Surface via banner AND a toast so the user can't miss it.
       setBannerError(msg);
       toast.error(
         `${COPY.BANNER_ERROR_PREFIX}${msg}${COPY.BANNER_ERROR_SUFFIX}`,
       );
-      // Dev visibility: warm-up replay partial failures surface here too.
-      // The UI-SPEC warm-up-partial toast is reserved for driver-reported
-      // partial failures and is left as a constant for future wiring.
       void COPY.TOAST_PICK_WARM_UP_PARTIAL;
     } finally {
       setPicking(false);
       setIsStarting(false);
-      // Clear the renderer's projection override so it re-derives from
-      // upstream stores.
       setSnapshot({ variant: streamId ? "live-preview" : "idle" });
     }
   };
@@ -357,11 +309,10 @@ export function PreviewPickerButton() {
       return { path: selected };
     }
     if (action === "drag") {
-      // Pass the original cursor line so the host doesn't replay extra
-      // navigate verbs between source and target.
       if (!streamId || !pendingPick) return null;
       const storySrc = useEditorStore.getState().source;
       setPicking(true);
+      setDragSecondPickInFlight(true);
       setSnapshot({ variant: "picking" });
       try {
         const r = await pickElementAuthor({
@@ -378,6 +329,7 @@ export function PreviewPickerButton() {
         return null;
       } finally {
         setPicking(false);
+        setDragSecondPickInFlight(false);
         setSnapshot({ variant: streamId ? "live-preview" : "idle" });
       }
     }
@@ -426,9 +378,6 @@ export function PreviewPickerButton() {
     const storyPath = editorController.getStoryPath();
     const successToast = `Added \`${finalLine.trim()}\` · line ${res.lineNumber}`;
 
-    // `.story.targets.json` models one primary + fallbacks per step; drag
-    // has two targets and isn't representable yet, so skip stamping until
-    // the schema is extended.
     if (action === "drag") {
       toast.success(
         `${successToast} · selector healing for drag targets is not available yet`,
@@ -447,7 +396,8 @@ export function PreviewPickerButton() {
         lineOffset: res.lineNumber,
         primary: r.locator as TargetRecordDto,
         fallbacks: r.candidates.map(
-          (c) => ({ kind: c.kind, value: c.value }) as TargetRecordDto,
+          (c) =>
+            ({ kind: c.kind, value: c.value, nth: c.nth }) as TargetRecordDto,
         ),
       });
       if (stamp.wasFreshlyStamped) {
@@ -504,16 +454,14 @@ export function PreviewPickerButton() {
         aria-keyshortcuts="Meta+Shift+KeyP Control+Shift+KeyP"
         data-state={picking ? "picking" : isStarting ? "starting" : variant}
         className={[
-          "inline-flex items-center gap-1 h-7 px-2.5 rounded-[var(--radius-sm)]",
+          "inline-flex items-center gap-1 h-7 px-2.5 rounded-sm",
           "border",
-          picking
-            ? "border-[var(--color-accent-primary)]"
-            : "border-transparent",
-          "bg-[var(--color-surface-200)] text-[var(--color-fg-primary)] transition-colors",
+          picking ? "border-(--color-accent-primary)" : "border-transparent",
+          "bg-(--color-surface-200) text-(--color-fg-primary) transition-colors",
           disabled
-            ? "opacity-60 cursor-not-allowed hover:bg-[var(--color-surface-200)]"
-            : "hover:bg-[var(--color-surface-300)]",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]",
+            ? "opacity-60 cursor-not-allowed hover:bg-(--color-surface-200)"
+            : "hover:bg-(--color-surface-300)",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
         ].join(" ")}
       >
         {isStarting ? (
@@ -521,9 +469,9 @@ export function PreviewPickerButton() {
             <Loader2
               size={14}
               aria-hidden="true"
-              className="animate-spin text-[var(--color-fg-muted)]"
+              className="animate-spin text-(--color-fg-muted)"
             />
-            <span className="text-[12px] text-[var(--color-fg-muted)]">
+            <span className="text-[12px] text-(--color-fg-muted)">
               starting…
             </span>
           </>
@@ -532,19 +480,17 @@ export function PreviewPickerButton() {
             <Crosshair
               size={14}
               aria-hidden="true"
-              // Filled variant during active pick per UI-SPEC §Visual Layout.
+              // Filled during active pick.
               fill={picking ? "currentColor" : "none"}
-              className={picking ? "text-[var(--color-accent-primary)]" : ""}
+              className={picking ? "text-(--color-accent-primary)" : ""}
             />
-            {/* Kbd-hint pill: ⌘⇧P by default; Esc while picking.
-                Decorative (aria-hidden) — true shortcut is announced via
-                aria-keyshortcuts. Shows on hover/focus via CSS sibling
-                state; always visible during active pick. */}
+            {/* Kbd-hint pill: decorative (aria-hidden); true shortcut is
+                announced via aria-keyshortcuts. Always visible during pick. */}
             <span
               aria-hidden="true"
               className={[
-                "ml-0.5 px-1 py-[1px] rounded-[4px] text-[10px] font-semibold font-mono",
-                "bg-[var(--color-surface-300)] text-[var(--color-fg-muted)]",
+                "ml-0.5 px-1 py-px rounded-[4px] text-[10px] font-semibold font-mono",
+                "bg-(--color-surface-300) text-(--color-fg-muted)",
                 picking
                   ? "inline-block"
                   : "hidden group-hover:inline-block group-focus-within:inline-block",
@@ -557,11 +503,7 @@ export function PreviewPickerButton() {
       </button>
 
       {/* Invisible a11y node carrying the live tooltip for aria-describedby. */}
-      <span
-        id="preview-picker-tooltip"
-        role="tooltip"
-        className="sr-only"
-      >
+      <span id="preview-picker-tooltip" role="tooltip" className="sr-only">
         {tooltip}
       </span>
 
@@ -572,7 +514,7 @@ export function PreviewPickerButton() {
             <div
               role="note"
               aria-live="polite"
-              className="pointer-events-none fixed left-1/2 top-14 z-50 -translate-x-1/2 rounded border border-[var(--color-border-subtle)] bg-white/95 px-3 py-1 text-xs font-medium text-[var(--color-fg-primary)] shadow-md"
+              className="pointer-events-none fixed left-1/2 top-14 z-50 -translate-x-1/2 rounded border border-(--color-border-subtle) bg-white/95 px-3 py-1 text-xs font-medium text-(--color-fg-primary) shadow-md"
             >
               {describeHoverPreview(preview)}
             </div>,
@@ -585,7 +527,7 @@ export function PreviewPickerButton() {
         <PickingBanner variant="error" message={bannerError} />
       ) : null}
 
-      {pendingPick ? (
+      {pendingPick && !dragSecondPickInFlight ? (
         <PickerActionMenu
           key={`pick-${pendingPick.cursorLine}-${pendingPick.lineText}`}
           targetLabel={menuTargetLabel}
@@ -601,12 +543,10 @@ export function PreviewPickerButton() {
 }
 
 /**
- * PickingBanner — 32px sticky banner rendered inside the Preview panel
- * content area (below the toolbar, above the stage). UI-SPEC §2.
- *
- * Consumers mount this separately from the button so layout stays in
- * the host panel's hands; the button still exports it so there's a
- * single source of truth for copy + motion.
+ * PickingBanner — sticky banner rendered inside the Preview panel
+ * content area (below the toolbar, above the stage). Consumers mount it
+ * separately from the button so layout stays in the host panel's hands;
+ * the button still exports it as the single source of truth for copy.
  */
 export function PickingBanner({
   variant = "active",
@@ -622,10 +562,7 @@ export function PickingBanner({
       ? `${COPY.BANNER_ERROR_PREFIX}${message ?? ""}${COPY.BANNER_ERROR_SUFFIX}`
       : variant === "paused"
         ? simulatorOrdinal != null
-          ? COPY.BANNER_PAUSED_WITH_N.replace(
-              "{N}",
-              String(simulatorOrdinal),
-            )
+          ? COPY.BANNER_PAUSED_WITH_N.replace("{N}", String(simulatorOrdinal))
           : COPY.BANNER_ACTIVE
         : COPY.BANNER_ACTIVE;
 
@@ -644,21 +581,17 @@ export function PickingBanner({
       className={[
         "sticky top-0 z-10 flex h-8 items-center gap-2 px-3 text-[13px] font-medium",
         isError
-          ? "bg-[color-mix(in_oklch,var(--color-danger)_12%,var(--color-surface-300))] border-b border-[color-mix(in_oklch,var(--color-danger)_40%,transparent)] text-[var(--color-fg-primary)]"
-          : "bg-[var(--color-surface-300)] text-[var(--color-fg-primary)]",
+          ? "bg-[color-mix(in_oklch,var(--color-danger)_12%,var(--color-surface-300))] border-b border-[color-mix(in_oklch,var(--color-danger)_40%,transparent)] text-(--color-fg-primary)"
+          : "bg-(--color-surface-300) text-(--color-fg-primary)",
       ].join(" ")}
     >
       {isError ? (
-        <AlertTriangle
-          size={14}
-          aria-hidden="true"
-          className="text-[var(--color-danger)]"
-        />
+        <AlertTriangle size={14} aria-hidden="true" className="text-danger" />
       ) : (
         <Crosshair
           size={14}
           aria-hidden="true"
-          className="text-[var(--color-accent-primary)]"
+          className="text-(--color-accent-primary)"
         />
       )}
       <span>{label}</span>
@@ -668,7 +601,7 @@ export function PickingBanner({
 
 /**
  * Chip caption from a hover payload. Priority mirrors the sidecar's
- * ranked DSL generator. Ported verbatim from `pick-element-button.tsx`.
+ * ranked DSL generator.
  */
 function describeHoverPreview(p: PickHoverPayload): string {
   if (p.testId) return `testid "${p.testId}"`;

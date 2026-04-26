@@ -8,16 +8,16 @@
  */
 export type AriaRole = "button" | "link" | "heading" | "image" | "checkbox" | "radio" | "tab" | "menuitem" | "menu" | "option" | "combobox" | "listbox" | "dialog" | "alert" | "tooltip" | "switch" | "slider" | "row" | "cell" | "navigation" | "main";
 
-export type Command = { "verb": "navigate", url: string, span: Span, step_id?: string, } | { "verb": "click", target: SelectorOrText, span: Span, step_id?: string, } | { "verb": "type", target: SelectorOrText, text: string, span: Span, step_id?: string, } | { "verb": "scroll", direction: ScrollDir, amount: number | null, span: Span, step_id?: string, } | { "verb": "hover", target: SelectorOrText, span: Span, step_id?: string, } | { "verb": "drag", from: SelectorOrText, to: SelectorOrText, span: Span, step_id?: string, } | { "verb": "select", target: SelectorOrText, value: string, span: Span, step_id?: string, } | { "verb": "upload", target: SelectorOrText, path: string, span: Span, step_id?: string, } | { "verb": "wait", duration_ms: bigint, span: Span, step_id?: string, } | { "verb": "wait-for", target: SelectorOrText, timeout_ms: bigint | null, span: Span, step_id?: string, } | { "verb": "assert", target: SelectorOrText, span: Span, step_id?: string, } | { "verb": "screenshot", name: string, span: Span, step_id?: string, } | { "verb": "pause", span: Span, step_id?: string, };
+export type Command = { "verb": "navigate", url: string, span: Span, step_id?: string, } | { "verb": "click", target: SelectorOrText, target_nth?: number, span: Span, step_id?: string, } | { "verb": "type", target: SelectorOrText, target_nth?: number, text: string, span: Span, step_id?: string, } | { "verb": "scroll", direction: ScrollDir, amount: number | null, span: Span, step_id?: string, } | { "verb": "hover", target: SelectorOrText, target_nth?: number, span: Span, step_id?: string, } | { "verb": "drag", from: SelectorOrText, from_nth?: number, to: SelectorOrText, to_nth?: number, span: Span, step_id?: string, } | { "verb": "select", target: SelectorOrText, target_nth?: number, value: string, span: Span, step_id?: string, } | { "verb": "upload", target: SelectorOrText, target_nth?: number, path: string, span: Span, step_id?: string, } | { "verb": "wait", duration_ms: bigint, span: Span, step_id?: string, } | { "verb": "wait-for", target: SelectorOrText, target_nth?: number, timeout_ms: bigint | null, span: Span, step_id?: string, } | { "verb": "assert", target: SelectorOrText, target_nth?: number, span: Span, step_id?: string, } | { "verb": "screenshot", name: string, span: Span, step_id?: string, } | { "verb": "pause", span: Span, step_id?: string, };
 
 export type Diagnostic = { severity: Severity, message: string, span: Span, suggestion: string | null, };
 
 /**
  * Per-command line metadata — originally just source line/column.
  *
- * Phase 7 Tier 2 (plan 07-04b) adds `step_id: Option<Uuid>` carrying the
- * parsed trailing `# @id=<uuidv7>` comment. Grammar extension is ADDITIVE;
- * legacy lines parse with `step_id == None`.
+ * `step_id: Option<Uuid>` carries the parsed trailing `# @id=<uuidv7>`
+ * comment. Grammar extension is ADDITIVE; legacy lines parse with
+ * `step_id == None`.
  */
 export type LineMeta = { line: number, column: number, step_id?: string, };
 

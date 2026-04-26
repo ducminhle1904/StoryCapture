@@ -93,6 +93,11 @@ export function escapeDslString(value: string): string {
 
 /** Convert a sidecar locator into the DSL fragment that follows the verb. */
 export function formatPickedTarget(locator: PickLocator): string {
+  const base = formatTargetBase(locator);
+  return appendNth(base, locator.nth);
+}
+
+function formatTargetBase(locator: PickLocator): string {
   switch (locator.kind) {
     case "testid":
       return `testid "${escapeDslString(stringValue(locator))}"`;
@@ -127,6 +132,22 @@ export function formatPickedTarget(locator: PickLocator): string {
         `picker-action-dsl: unsupported locator kind "${locator.kind}"`,
       );
   }
+}
+
+/**
+ * Attach the optional `nth N` postfix to a target fragment. Postfix sits
+ * on the TARGET — i.e. between the target and any verb-level modifier such
+ * as `timeout 5s` or `with "x"` — so the builder calls this BEFORE composing
+ * the final `<verb> <target>[ <modifier>]` line.
+ */
+function appendNth(target: string, nth: number | undefined): string {
+  if (nth === undefined || nth === null) return target;
+  if (!Number.isInteger(nth) || nth < 1) {
+    throw new Error(
+      `picker-action-dsl: nth must be a positive integer (got ${nth})`,
+    );
+  }
+  return `${target} nth ${nth}`;
 }
 
 /**

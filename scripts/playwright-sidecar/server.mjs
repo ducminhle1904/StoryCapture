@@ -484,14 +484,14 @@ const handlers = {
     return { ok: true };
   },
 
-  click: async ({ selector, strategy }) => {
-    const locator = await locate(selector, strategy);
+  click: async ({ selector, strategy, nth }) => {
+    const locator = await locate(selector, strategy, nth);
     await locator.click();
     return { ok: true };
   },
 
-  type: async ({ selector, strategy, text }) => {
-    const locator = await locate(selector, strategy);
+  type: async ({ selector, strategy, text, nth }) => {
+    const locator = await locate(selector, strategy, nth);
     await locator.fill(text);
     return { ok: true };
   },
@@ -510,24 +510,46 @@ const handlers = {
     return { ok: true };
   },
 
-  hover: async ({ selector, strategy }) => {
-    const locator = await locate(selector, strategy);
+  hover: async ({ selector, strategy, nth }) => {
+    const locator = await locate(selector, strategy, nth);
     await locator.hover();
     return { ok: true };
   },
 
-  drag: async ({ from, to }) => {
+  drag: async ({ from, to, fromNth, toNth }) => {
+    // Playwright's `dragAndDrop` takes raw selector strings only — no
+    // `.nth()` chain. When EITHER side has nth, fall back to manual
+    // mouse.move+down/up driven by bounding boxes of the resolved Locators.
+    if (fromNth != null || toNth != null) {
+      const page = pickPage();
+      const fromLoc = applyNth(page.locator(from), fromNth, pickPage);
+      const toLoc = applyNth(page.locator(to), toNth, pickPage);
+      const fb = await fromLoc.boundingBox();
+      const tb = await toLoc.boundingBox();
+      if (!fb || !tb) {
+        throw new Error('drag failed: cannot resolve bounding box for nth-locator');
+      }
+      await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, {
+        steps: 8,
+      });
+      await page.mouse.up();
+      return { ok: true };
+    }
     await pickPage().dragAndDrop(from, to);
     return { ok: true };
   },
 
-  select: async ({ selector, value }) => {
-    await pickPage().selectOption(selector, value);
+  select: async ({ selector, value, nth }) => {
+    const loc = applyNth(pickPage().locator(selector), nth, pickPage);
+    await loc.selectOption(value);
     return { ok: true };
   },
 
-  upload: async ({ selector, path }) => {
-    await pickPage().setInputFiles(selector, path);
+  upload: async ({ selector, path, nth }) => {
+    const loc = applyNth(pickPage().locator(selector), nth, pickPage);
+    await loc.setInputFiles(path);
     return { ok: true };
   },
 
@@ -1506,11 +1528,28 @@ function absolute(url) {
   return url;
 }
 
-async function locate(selector, strategy) {
+// Apply optional 1-indexed `nth` modifier to a Locator or string selector.
+// Strings get wrapped in `page.locator(...)` so we can chain `.nth(n - 1)`
+// (DSL is 1-indexed; Playwright's `.nth()` is 0-indexed).
+//
+// `nth == null/undefined/0` is a no-op — preserves "any unique match"
+// semantics for legacy targets that omit the modifier.
+function applyNth(locOrStr, nth, pageFn) {
+  if (nth == null) return locOrStr;
+  const n = Number(nth);
+  if (!Number.isFinite(n) || n < 1) return locOrStr;
+  const loc =
+    typeof locOrStr === 'string' ? pageFn().locator(locOrStr) : locOrStr;
+  return loc.nth(n - 1);
+}
+
+async function locate(selector, strategy, nth) {
   const page = pickPage();
-  // strict explicit strategies (D-06 encoding).
-  // Routed on `strategy` FIRST so prefix collisions (e.g. "text=" shared
-  // with legacy VisibleText) don't mis-dispatch.
+  const withNth = (loc) => applyNth(loc, nth, pickPage);
+
+  // strict explicit strategies. Routed on `strategy` FIRST so prefix
+  // collisions (e.g. "text=" shared with legacy VisibleText) don't
+  // mis-dispatch.
   if (strategy === 'role') {
     // value shape: "role=<role-kebab>:<name>" — split on FIRST ':' so names may contain ':'
     const body = selector.slice('role='.length);
@@ -1518,46 +1557,44 @@ async function locate(selector, strategy) {
     if (idx < 0) throw new Error(`invalid role selector encoding: ${selector}`);
     const role = body.slice(0, idx);
     const name = body.slice(idx + 1);
-    return page.getByRole(role, { name, exact: true });
+    return withNth(page.getByRole(role, { name, exact: true }));
   }
   if (strategy === 'label') {
-    // value shape: "label=<name>"
-    const name = selector.slice('label='.length);
-    return page.getByLabel(name, { exact: true });
+    return withNth(page.getByLabel(selector.slice('label='.length), { exact: true }));
   }
   if (strategy === 'text_exact') {
-    // value shape: "text=<name>" — SAME wire prefix as legacy VisibleText, but
-    // the strategy dispatch distinguishes them: 'text_exact' → exact, no fallback.
-    const name = selector.slice('text='.length);
-    return page.getByText(name, { exact: true });
+    // SAME wire prefix as legacy VisibleText, but `text_exact` strategy →
+    // exact match, no fallback.
+    return withNth(page.getByText(selector.slice('text='.length), { exact: true }));
   }
-
   // The Rust SmartSelector emits strategy-prefixed values; map them to
   // playwright-locator literals. Anything else is treated as raw CSS.
   if (strategy === 'css' || strategy === 'testid' || strategy === 'aria') {
-    return page.locator(selector);
+    return withNth(page.locator(selector));
   }
   if (selector.startsWith('aria-name=')) {
     // accessible-name covers form labels AND interactive text (links,
     // buttons, headings, etc.). getByLabel only handles form labels, so
     // chain it with role-by-name and visible-text for the common cases.
     const name = selector.slice('aria-name='.length);
-    return page
-      .getByRole('link', { name, exact: true })
-      .or(page.getByRole('button', { name, exact: true }))
-      .or(page.getByLabel(name))
-      .or(page.getByText(name, { exact: true }));
+    return withNth(
+      page
+        .getByRole('link', { name, exact: true })
+        .or(page.getByRole('button', { name, exact: true }))
+        .or(page.getByLabel(name))
+        .or(page.getByText(name, { exact: true })),
+    );
   }
   if (selector.startsWith('text=')) {
-    return page.getByText(selector.slice('text='.length), { exact: true });
+    return withNth(page.getByText(selector.slice('text='.length), { exact: true }));
   }
   if (selector.startsWith('label=')) {
-    return page.getByLabel(selector.slice('label='.length));
+    return withNth(page.getByLabel(selector.slice('label='.length)));
   }
   if (selector.startsWith('text~=')) {
-    return page.getByText(selector.slice('text~='.length));
+    return withNth(page.getByText(selector.slice('text~='.length)));
   }
-  return page.locator(selector);
+  return withNth(page.locator(selector));
 }
 
 // INVARIANT: targetToLocator() returns `string | Locator`.
@@ -1565,26 +1602,33 @@ async function locate(selector, strategy) {
 //   - waitFor:  string → page.waitForSelector(s); Locator → loc.waitFor({state:'attached'})
 //   - assert:   string → page.locator(s).count(); Locator → loc.count()
 // New callers: follow the same `typeof loc === 'string'` pattern.
-// Phase 7 Tier 1 adds three `kind` values that return Locators:
+// Three `kind` values return Locators:
 //   "role" (value = { role, name }), "label" (value = string), "text_exact" (value = string).
+//
+// When `target.nth` is set, the result is ALWAYS a Locator (string targets
+// get coerced via `page.locator(s).nth(n - 1)` so callers don't need a
+// separate nth-handling path).
 function targetToLocator(target) {
   if (!target) return '*';
-  if (target.kind === 'selector') return target.value;
-  if (target.kind === 'testid') return `[data-testid="${target.value}"]`;
-  if (target.kind === 'aria') return `[aria-label="${target.value}"]`;
-  // these branches return a LOCATOR (not string).
-  if (target.kind === 'role') {
+  let result;
+  if (target.kind === 'selector') {
+    result = target.value;
+  } else if (target.kind === 'testid') {
+    result = `[data-testid="${target.value}"]`;
+  } else if (target.kind === 'aria') {
+    result = `[aria-label="${target.value}"]`;
+  } else if (target.kind === 'role') {
     // value is an object: { role: <kebab>, name: <string> }
     const { role, name } = target.value;
-    return pickPage().getByRole(role, { name, exact: true });
+    result = pickPage().getByRole(role, { name, exact: true });
+  } else if (target.kind === 'label') {
+    result = pickPage().getByLabel(target.value, { exact: true });
+  } else if (target.kind === 'text_exact') {
+    result = pickPage().getByText(target.value, { exact: true });
+  } else {
+    result = `text=${target.value}`;
   }
-  if (target.kind === 'label') {
-    return pickPage().getByLabel(target.value, { exact: true });
-  }
-  if (target.kind === 'text_exact') {
-    return pickPage().getByText(target.value, { exact: true });
-  }
-  return `text=${target.value}`;
+  return applyNth(result, target.nth, pickPage);
 }
 
 const rl = createInterface({ input: process.stdin, terminal: false });

@@ -61,10 +61,19 @@ impl BrowserDriver for NoopDriver {
     async fn wait_ms(&self, _ms: u64) -> Result<()> {
         Self::unavailable()
     }
-    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> Result<()> {
+    async fn wait_for(
+        &self,
+        _t: &SelectorOrText,
+        _nth: Option<u32>,
+        _ms: u64,
+    ) -> Result<()> {
         Self::unavailable()
     }
-    async fn assert_present(&self, _t: &SelectorOrText) -> Result<()> {
+    async fn assert_present(
+        &self,
+        _t: &SelectorOrText,
+        _nth: Option<u32>,
+    ) -> Result<()> {
         Self::unavailable()
     }
     async fn screenshot(&self, _n: &str, _d: &Path) -> Result<PathBuf> {

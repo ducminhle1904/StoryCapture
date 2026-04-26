@@ -46,12 +46,20 @@ export const KNOWN_SCROLL_DIRS = ["up", "down", "left", "right"] as const;
 /** Theme values. */
 export const KNOWN_THEMES = ["light", "dark", "auto"] as const;
 
+/**
+ * Postfix / connective modifiers that appear AFTER a verb's primary
+ * argument: `nth N`, `timeout 5s`, `with "x"`, `... to <target>` (drag).
+ * Grouped here so highlight + completion treat them consistently.
+ */
+export const KNOWN_MODIFIERS = ["nth", "timeout", "with", "to"] as const;
+
 const VERB_SET = new Set<string>(KNOWN_VERBS);
 const META_SET = new Set<string>(KNOWN_META_KEYS);
 const TARGET_SET = new Set<string>(KNOWN_TARGET_PREFIXES);
 const BLOCK_SET = new Set<string>(KNOWN_BLOCKS);
 const DIR_SET = new Set<string>(KNOWN_SCROLL_DIRS);
 const THEME_SET = new Set<string>(KNOWN_THEMES);
+const MODIFIER_SET = new Set<string>(KNOWN_MODIFIERS);
 
 export const storyDslStreamLanguage = StreamLanguage.define({
   name: "storycapture-dsl",
@@ -76,6 +84,10 @@ export const storyDslStreamLanguage = StreamLanguage.define({
       if (VERB_SET.has(w)) return "atom";
       if (META_SET.has(w)) return "propertyName";
       if (TARGET_SET.has(w)) return "typeName";
+      // Postfix / connective modifiers (`nth`, `timeout`, `with`, `to`)
+      // share the variableName tag. Grouped so all related keywords are
+      // styled consistently — adding `nth` here matches `timeout`/`with`.
+      if (MODIFIER_SET.has(w)) return "variableName";
       if (DIR_SET.has(w) || THEME_SET.has(w)) return "variableName";
       return "variableName";
     }

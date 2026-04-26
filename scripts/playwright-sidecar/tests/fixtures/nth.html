@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>nth modifier fixture</title></head>
+<body>
+  <!-- Phase 11+ Fix #4 fixture: multiple matches per locator strategy
+       so the sidecar's `nth N` modifier can pick a specific one. -->
+
+  <!-- 3 testid="row" elements; .nth(2) (1-indexed) → "row-bravo" -->
+  <ul>
+    <li data-testid="row" id="row-alpha">Alpha</li>
+    <li data-testid="row" id="row-bravo">Bravo</li>
+    <li data-testid="row" id="row-charlie">Charlie</li>
+  </ul>
+
+  <!-- 3 buttons accessible-named "Save"; .nth(2) → "second" -->
+  <div>
+    <button id="save-first" type="button">Save</button>
+    <button id="save-second" type="button">Save</button>
+    <button id="save-third" type="button">Save</button>
+  </div>
+
+  <!-- 2 inputs with the same accessible label "Email"; .nth(1) → first -->
+  <form>
+    <label>Email <input id="email-personal" type="email"></label>
+    <label>Email <input id="email-work" type="email"></label>
+  </form>
+
+  <!-- 2 paragraphs with exactly "Click me"; .nth(2) → second -->
+  <p data-testid="ct-1">Click me</p>
+  <p data-testid="ct-2">Click me</p>
+
+  <!-- 2 selects with the same label "Country" -->
+  <form>
+    <label>Country <select id="ctry-billing">
+      <option value="us">USA</option>
+      <option value="vn">Vietnam</option>
+    </select></label>
+    <label>Country <select id="ctry-shipping">
+      <option value="us">USA</option>
+      <option value="de">Germany</option>
+    </select></label>
+  </form>
+
+  <!-- An element NOT duplicated, used as the negative case -->
+  <button id="lone" type="button" data-testid="lone-btn">Lone</button>
+</body>
+</html>

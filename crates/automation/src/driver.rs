@@ -184,6 +184,11 @@ pub struct ResolvedSelector {
     pub value: String,
     /// Original DSL target.
     pub origin: SelectorOrText,
+    /// Optional 1-indexed `nth` modifier. Drivers that support
+    /// disambiguation by position chain `.nth(n - 1)` on top of the
+    /// resolved locator. `None` preserves "any unique match" semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nth: Option<u32>,
 }
 
 // ---------- The trait ----------
@@ -220,8 +225,21 @@ pub trait BrowserDriver: Send + Sync + 'static {
     async fn select_option(&self, sel: &ResolvedSelector, value: &str) -> Result<()>;
     async fn upload_file(&self, sel: &ResolvedSelector, path: &Path) -> Result<()>;
     async fn wait_ms(&self, ms: u64) -> Result<()>;
-    async fn wait_for(&self, target: &SelectorOrText, timeout_ms: u64) -> Result<()>;
-    async fn assert_present(&self, target: &SelectorOrText) -> Result<()>;
+    /// `target_nth` is the optional 1-indexed `nth` modifier. Drivers
+    /// chain `.nth(n - 1)` on top of the resolved locator when `Some`.
+    /// `None` preserves "any unique match" semantics.
+    async fn wait_for(
+        &self,
+        target: &SelectorOrText,
+        target_nth: Option<u32>,
+        timeout_ms: u64,
+    ) -> Result<()>;
+    /// See [`Self::wait_for`] for the `target_nth` contract.
+    async fn assert_present(
+        &self,
+        target: &SelectorOrText,
+        target_nth: Option<u32>,
+    ) -> Result<()>;
     async fn screenshot(&self, name: &str, out_dir: &Path) -> Result<PathBuf>;
 
     // ---- introspection used by the SmartSelector + auto-wait modules ----
@@ -233,21 +251,26 @@ pub trait BrowserDriver: Send + Sync + 'static {
     /// Drivers MAY override to short-circuit (e.g. Playwright's locator
     /// engine already does intent-aware ranking).
     ///
+    /// `target_nth` is the optional 1-indexed `nth` modifier from the DSL.
+    /// The default impl stamps it onto the returned `ResolvedSelector` so
+    /// drivers chain `.nth(n - 1)` at execution.
+    ///
     /// The default impl uses `crate::selector::resolve_via_smart` (a free
     /// fn) so the trait stays object-safe.
     async fn resolve_selector(
         &self,
         target: &SelectorOrText,
+        target_nth: Option<u32>,
         action: ActionKind,
         timeout_ms: u64,
     ) -> Result<(ResolvedSelector, Vec<crate::events::AttemptLog>)>
     where
         Self: Sized,
     {
-        crate::selector::resolve_via_smart(self, action, target, timeout_ms).await
+        crate::selector::resolve_via_smart(self, action, target, target_nth, timeout_ms).await
     }
 
-    /// Capability flags (D-14). Used by the executor to dispatch verbs.
+    /// Capability flags. Used by the executor to dispatch verbs.
     fn capabilities(&self) -> CapabilitySet;
 
     /// Human-readable driver name for logs + `StepStarted.driver_used`.

@@ -1,12 +1,12 @@
-//! Plan 07-04c — self-healing integration smoke.
+//! Self-healing integration smoke.
 //!
 //! SCOPE: proves the end-to-end wiring from
 //! `parse -> Executor::run_with_story_path -> wait_actionable miss ->
 //! targets_store fallback promotion -> atomic sidecar rewrite`, against a
 //! programmable mock driver that emulates a real page where the primary
-//! `#save-v1` no longer exists but `#save-v2` does. This is the
-//! PHASE-7.5 acceptance gate in CI form; the operator smoke runbook
-//! (`07-04c-SMOKE.md`) exercises the same path against real Chromium.
+//! `#save-v1` no longer exists but `#save-v2` does. This is the acceptance
+//! gate in CI form; the operator smoke runbook exercises the same path
+//! against real Chromium.
 //!
 //! The `#[ignore]` live test documents the CLI for a developer who wants
 //! to run the same scenario against a real sidecar.
@@ -107,10 +107,10 @@ impl BrowserDriver for HealingMockDriver {
     async fn wait_ms(&self, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn wait_for(&self, _t: &SelectorOrText, _ms: u64) -> AutoResult<()> {
+    async fn wait_for(&self, _t: &SelectorOrText, _nth: Option<u32>, _ms: u64) -> AutoResult<()> {
         Ok(())
     }
-    async fn assert_present(&self, _t: &SelectorOrText) -> AutoResult<()> {
+    async fn assert_present(&self, _t: &SelectorOrText, _nth: Option<u32>) -> AutoResult<()> {
         Ok(())
     }
     async fn screenshot(&self, _n: &str, _d: &Path) -> AutoResult<PathBuf> {
@@ -157,7 +157,7 @@ impl BrowserDriver for HealingMockDriver {
 }
 
 // -----------------------------------------------------------------------
-// The PHASE-7.5 acceptance gate.
+// The acceptance gate.
 // -----------------------------------------------------------------------
 
 #[tokio::test]
@@ -227,8 +227,8 @@ async fn primary_miss_promotes_first_passing_fallback() {
         .await
         .expect("executor must complete within 30s");
 
-    // PHASE-7.5 assertion #1: the click actually fired, against the
-    // promoted fallback selector (NOT the primary that no longer exists).
+    // Assertion #1: the click actually fired, against the promoted
+    // fallback selector (NOT the primary that no longer exists).
     assert_eq!(
         clicks.load(Ordering::SeqCst),
         1,
@@ -241,16 +241,15 @@ async fn primary_miss_promotes_first_passing_fallback() {
         "self-healing must dispatch the click against the promoted fallback",
     );
 
-    // PHASE-7.5 assertion #2: `.story` source is UNCHANGED.
+    // Assertion #2: `.story` source is UNCHANGED.
     let src_after = std::fs::read_to_string(&story_path).unwrap();
     assert_eq!(
         src_after, src_before,
         "self-healing must NEVER modify the .story source",
     );
 
-    // PHASE-7.5 assertion #3: `.story.targets.json` REWRITTEN with
-    // `#save-v2` as new primary and the old `#save-v1` demoted to
-    // `fallbacks[0]`.
+    // Assertion #3: `.story.targets.json` REWRITTEN with `#save-v2` as
+    // new primary and the old `#save-v1` demoted to `fallbacks[0]`.
     let reread = targets_store::load(&targets_path).unwrap();
     let step = reread
         .steps

@@ -1,19 +1,19 @@
-// Plan 05-02: SharedPlaywrightDriver — a BrowserDriver adapter that delegates
-// every verb to an `Arc<Mutex<PlaywrightSidecarDriver>>`. The wrapper lets
-// a background probe task call `browser_process()` on the same driver
-// instance the executor is driving, without forcing the executor to change
-// its `Box<dyn BrowserDriver>` signature.
+// SharedPlaywrightDriver — a BrowserDriver adapter that delegates every verb
+// to an `Arc<Mutex<PlaywrightSidecarDriver>>`. The wrapper lets a background
+// probe task call `browser_process()` on the same driver instance the
+// executor is driving, without forcing the executor to change its
+// `Box<dyn BrowserDriver>` signature.
 //
 // The mutex cost is minimal in practice: the executor serializes verbs
 // sequentially, and the probe task polls at 200ms granularity. Contention
 // is negligible.
 //
-// SharedAuthorDriver (Phase 11-03+) — parallel adapter for the author-
-// session path. Wraps `Arc<PlaywrightSidecarDriver>` directly (no outer
-// Mutex) so `pick_element_start_author` (up to 60 s) does not serialize
-// concurrent `author_dispatch_input` calls forwarding LivePreview canvas
-// pointer events. Launch/close return an error because author sessions
-// launch once at `start_author_preview` and never via this adapter.
+// SharedAuthorDriver — parallel adapter for the author-session path. Wraps
+// `Arc<PlaywrightSidecarDriver>` directly (no outer Mutex) so
+// `pick_element_start_author` (up to 60 s) does not serialize concurrent
+// `author_dispatch_input` calls forwarding LivePreview canvas pointer
+// events. Launch/close return an error because author sessions launch once
+// at `start_author_preview` and never via this adapter.
 
 use async_trait::async_trait;
 use automation::{
@@ -81,13 +81,22 @@ impl BrowserDriver for SharedPlaywrightDriver {
         let d = self.inner.lock().await;
         d.wait_ms(ms).await
     }
-    async fn wait_for(&self, target: &SelectorOrText, timeout_ms: u64) -> automation::Result<()> {
+    async fn wait_for(
+        &self,
+        target: &SelectorOrText,
+        target_nth: Option<u32>,
+        timeout_ms: u64,
+    ) -> automation::Result<()> {
         let d = self.inner.lock().await;
-        d.wait_for(target, timeout_ms).await
+        d.wait_for(target, target_nth, timeout_ms).await
     }
-    async fn assert_present(&self, target: &SelectorOrText) -> automation::Result<()> {
+    async fn assert_present(
+        &self,
+        target: &SelectorOrText,
+        target_nth: Option<u32>,
+    ) -> automation::Result<()> {
         let d = self.inner.lock().await;
-        d.assert_present(target).await
+        d.assert_present(target, target_nth).await
     }
     async fn screenshot(&self, name: &str, out_dir: &Path) -> automation::Result<PathBuf> {
         let d = self.inner.lock().await;
@@ -109,7 +118,7 @@ impl BrowserDriver for SharedPlaywrightDriver {
     }
 }
 
-/// Phase 11-03+ — BrowserDriver adapter for the author-session path.
+/// BrowserDriver adapter for the author-session path.
 ///
 /// Unlike `SharedPlaywrightDriver` (recording path), this wraps
 /// `Arc<PlaywrightSidecarDriver>` directly. The driver's `&self` methods
@@ -190,12 +199,17 @@ impl BrowserDriver for SharedAuthorDriver {
     async fn wait_for(
         &self,
         target: &SelectorOrText,
+        target_nth: Option<u32>,
         timeout_ms: u64,
     ) -> automation::Result<()> {
-        self.inner.wait_for(target, timeout_ms).await
+        self.inner.wait_for(target, target_nth, timeout_ms).await
     }
-    async fn assert_present(&self, target: &SelectorOrText) -> automation::Result<()> {
-        self.inner.assert_present(target).await
+    async fn assert_present(
+        &self,
+        target: &SelectorOrText,
+        target_nth: Option<u32>,
+    ) -> automation::Result<()> {
+        self.inner.assert_present(target, target_nth).await
     }
     async fn screenshot(&self, name: &str, out_dir: &Path) -> automation::Result<PathBuf> {
         self.inner.screenshot(name, out_dir).await

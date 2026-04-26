@@ -1,5 +1,5 @@
 /**
- * Plan 06-03 — Task 0 unit tests for the browser title-hint map.
+ * Unit tests for the browser title-hint map.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -73,9 +73,9 @@ describe("titleHintFor — graceful failure", () => {
   });
 
   it("returns undefined for unknown preset (non-Chromium like firefox)", () => {
-    // D-11 + D-15: non-Chromium browsers have no `--app` equivalent and
-    // no title-hint mapping; the auto-follow path falls back to
-    // pid-only match via the Phase 5 find_window_by_pid.
+    // Non-Chromium browsers have no `--app` equivalent and no title-hint
+    // mapping; the auto-follow path falls back to pid-only match via
+    // find_window_by_pid.
     expect(titleHintFor("firefox")).toBeUndefined();
     expect(titleHintFor("safari")).toBeUndefined();
   });
@@ -129,7 +129,7 @@ describe("titleHintFor — exec path heuristics", () => {
   });
 });
 
-describe("redactTitleHint — T-06-15 log redaction", () => {
+describe("redactTitleHint — log redaction", () => {
   it("returns <none> for undefined/null/empty", () => {
     expect(redactTitleHint(undefined)).toBe("<none>");
     expect(redactTitleHint(null)).toBe("<none>");

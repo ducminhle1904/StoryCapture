@@ -207,6 +207,107 @@ describe("buildPickerActionLine — input actions", () => {
   });
 });
 
+describe("buildPickerActionLine — nth postfix", () => {
+  it("builds click+testid with nth=2", () => {
+    expect(
+      buildPickerActionLine("click", { kind: "testid", value: "row", nth: 2 }),
+    ).toBe('click testid "row" nth 2');
+  });
+
+  it("builds click+role with nth=1", () => {
+    expect(
+      buildPickerActionLine("click", {
+        kind: "role",
+        value: { role: "button", name: "Save" },
+        nth: 1,
+      }),
+    ).toBe('click button "Save" nth 1');
+  });
+
+  it("builds hover+label with nth=3", () => {
+    expect(
+      buildPickerActionLine("hover", { kind: "label", value: "Email", nth: 3 }),
+    ).toBe('hover field "Email" nth 3');
+  });
+
+  it("builds wait-for+text_exact with nth=2 (nth before timeout)", () => {
+    expect(
+      buildPickerActionLine("wait-for", {
+        kind: "text_exact",
+        value: "Submit",
+        nth: 2,
+      }),
+    ).toBe('wait-for text "Submit" nth 2 timeout 5s');
+  });
+
+  it("builds assert+testid with nth=1", () => {
+    expect(
+      buildPickerActionLine("assert", { kind: "testid", value: "row", nth: 1 }),
+    ).toBe('assert testid "row" nth 1');
+  });
+
+  it("builds fill+testid with nth=1 + text option", () => {
+    expect(
+      buildPickerActionLine(
+        "fill",
+        { kind: "testid", value: "email", nth: 1 },
+        undefined,
+        { text: "alice@x" },
+      ),
+    ).toBe('fill testid "email" nth 1 with "alice@x"');
+  });
+
+  it("legacy locator without nth produces no postfix", () => {
+    expect(buildPickerActionLine("click", { kind: "testid", value: "row" })).toBe(
+      'click testid "row"',
+    );
+  });
+
+  it("rejects nth < 1", () => {
+    expect(() =>
+      buildPickerActionLine("click", { kind: "testid", value: "row", nth: 0 }),
+    ).toThrow(/positive integer/);
+  });
+});
+
+describe("parsePickerLine — nth postfix", () => {
+  it("extracts nth from a click+testid line", () => {
+    const parsed = parseLine('click testid "row" nth 2');
+    expect(parsed).toMatchObject({
+      verb: "click",
+      hasTargetShape: true,
+      nth: 2,
+      trailing: "",
+    });
+  });
+
+  it("legacy line without nth → nth is undefined", () => {
+    const parsed = parseLine('click testid "row"');
+    expect(parsed.hasTargetShape).toBe(true);
+    expect(parsed.nth).toBeUndefined();
+  });
+
+  it("extracts nth + preserves timeout from wait-for line", () => {
+    const parsed = parseLine('wait-for field "Email" nth 3 timeout 5s');
+    expect(parsed).toMatchObject({
+      verb: "wait-for",
+      hasTargetShape: true,
+      nth: 3,
+      trailing: "timeout 5s",
+    });
+  });
+
+  it("round-trip: build({nth:2}) → parse → returns nth=2", () => {
+    const built = buildPickerActionLine("click", {
+      kind: "testid",
+      value: "row",
+      nth: 2,
+    });
+    const parsed = parseLine(built);
+    expect(parsed.nth).toBe(2);
+  });
+});
+
 describe("getPickerActionItems", () => {
   const baseActions = ["click", "hover", "assert", "wait-for", "drag"];
 

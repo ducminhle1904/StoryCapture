@@ -1,4 +1,4 @@
-//! AUTO-06 / D-14 routing proof (browser-free).
+//! Routing proof (browser-free).
 //!
 //! Two mock `BrowserDriver` doubles — `MockChromiumoxide` (capability
 //! profile matches `CapabilitySet::LIMITED`) and `MockPlaywright`
@@ -83,11 +83,11 @@ impl BrowserDriver for Mock {
         self.touch();
         Ok(())
     }
-    async fn wait_for(&self, _: &SelectorOrText, _: u64) -> automation::Result<()> {
+    async fn wait_for(&self, _: &SelectorOrText, _nth: Option<u32>, _: u64) -> automation::Result<()> {
         self.touch();
         Ok(())
     }
-    async fn assert_present(&self, _: &SelectorOrText) -> automation::Result<()> {
+    async fn assert_present(&self, _: &SelectorOrText, _nth: Option<u32>) -> automation::Result<()> {
         self.touch();
         Ok(())
     }
@@ -122,6 +122,8 @@ impl BrowserDriver for Mock {
 fn upload_cmd() -> Command {
     Command::Upload {
         target: SelectorOrText::Selector("#f".into()),
+
+        target_nth: None,
         path: "/tmp/x".into(),
         span: Span::empty(),
         step_id: None,
@@ -131,6 +133,8 @@ fn upload_cmd() -> Command {
 fn plain_click_cmd() -> Command {
     Command::Click {
         target: SelectorOrText::Selector("#save".into()),
+
+        target_nth: None,
         span: Span::empty(),
         step_id: None,
     }
@@ -139,6 +143,8 @@ fn plain_click_cmd() -> Command {
 fn shadow_dom_click_cmd() -> Command {
     Command::Click {
         target: SelectorOrText::Selector("div::shadow button".into()),
+
+        target_nth: None,
         span: Span::empty(),
         step_id: None,
     }
@@ -147,6 +153,8 @@ fn shadow_dom_click_cmd() -> Command {
 fn wait_for_download_cmd() -> Command {
     Command::WaitFor {
         target: SelectorOrText::Text("download:report.pdf".into()),
+
+        target_nth: None,
         timeout_ms: Some(2_000),
         span: Span::empty(),
         step_id: None,
@@ -156,6 +164,8 @@ fn wait_for_download_cmd() -> Command {
 fn oauth_click_cmd() -> Command {
     Command::Click {
         target: SelectorOrText::Text("oauth:Sign in with Microsoft".into()),
+
+        target_nth: None,
         span: Span::empty(),
         step_id: None,
     }
@@ -177,7 +187,8 @@ async fn upload_routes_to_playwright() {
                 strategy: automation::SelectorStrategy::Css,
                 value: "#f".into(),
                 origin: SelectorOrText::Selector("#f".into()),
-            },
+                            nth: None,
+},
             Path::new("/tmp/x"),
         )
         .await
@@ -200,7 +211,8 @@ async fn plain_click_routes_to_limited_primary() {
             strategy: automation::SelectorStrategy::Css,
             value: "#save".into(),
             origin: SelectorOrText::Selector("#save".into()),
-        })
+                    nth: None,
+})
         .await
         .unwrap();
 

@@ -101,7 +101,12 @@ cmd_pause      = { "pause" }
 // Order matters: explicit-kind forms (selector/testid/aria/role/field/text)
 // MUST precede the bare-string `target_text` fallback so that a leading
 // keyword wins over interpreting the keyword itself as text.
-target = { target_selector | target_testid | target_aria | target_role | target_field | target_text_kw | target_text }
+//
+// Optional `nth N` postfix selects a specific match by 1-indexed position
+// when the locator is non-unique. The semantic layer only honors nth for
+// tiers Playwright can disambiguate (testid, role+name, label, text_exact);
+// other tiers parse but ignore it at runtime.
+target = { (target_selector | target_testid | target_aria | target_role | target_field | target_text_kw | target_text) ~ nth_modifier? }
 target_text     = { string }
 target_selector = { "selector" ~ string }
 target_testid   = { "testid"   ~ string }
@@ -109,6 +114,7 @@ target_aria     = { "aria"     ~ string }
 target_role     = { role_kw ~ string }
 target_field    = { "field" ~ string }
 target_text_kw  = { "text" ~ string }
+nth_modifier    = { "nth" ~ number_lit }
 
 // Phase 7 Tier 1 supported ARIA roles (D-05 / RESEARCH Q5).
 // `image` and `img` are both accepted spellings; both normalize to

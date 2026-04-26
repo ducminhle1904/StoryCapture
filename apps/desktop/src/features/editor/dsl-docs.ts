@@ -96,4 +96,8 @@ export const VERB_DOCS: Record<string, KeywordDoc> = {
     description: "Target prefix — match accessible name / role.",
     example: 'click aria "Submit"',
   },
+  nth: {
+    description: "Pick the Nth match (1-indexed) when the locator is non-unique.",
+    example: 'click testid "row" nth 2',
+  },
 };

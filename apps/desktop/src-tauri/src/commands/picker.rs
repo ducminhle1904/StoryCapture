@@ -14,39 +14,64 @@ use async_trait::async_trait;
 use automation::PickElementResponse;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
 use tokio::task::JoinHandle;
+
+/// Per-URL ceiling for navigate-replay warm-up. The outer `timeout_ms`
+/// (default 60s) backstops the entire picker run; this bound prevents
+/// a single hung navigation (DNS stall, slow CDN, redirect loop) from
+/// burning that whole budget before the user can even start clicking.
+/// Replay is best-effort, so a per-URL timeout is logged-and-skipped,
+/// not propagated.
+const NAVIGATE_REPLAY_PER_URL_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Typed mirror of `automation::targets_store::TargetRecord`. Each kind
 /// fully specifies its `value` shape (string for most, `{ role, name }`
 /// object for `role`) so specta can derive a real TS discriminated union
 /// — the picker IPC no longer needs a JSON-string envelope.
 ///
-/// On-the-wire shape per arm: `{ kind: "<kind>", value: <typed> }` —
-/// matches the existing `.story.targets.json` schema byte-for-byte.
+/// On-the-wire shape per arm: `{ kind: "<kind>", value: <typed>, nth?: number }`
+/// — matches the `.story.targets.json` schema byte-for-byte. The optional
+/// `nth` field is 1-indexed and skipped on the wire when absent so legacy
+/// stamps round-trip unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TargetRecordDto {
     Testid {
         value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nth: Option<u32>,
     },
     Role {
         value: super::parse::RoleSelectorDto,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nth: Option<u32>,
     },
     Label {
         value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nth: Option<u32>,
     },
     TextExact {
         value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nth: Option<u32>,
     },
     Selector {
         value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nth: Option<u32>,
     },
     Aria {
         value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nth: Option<u32>,
     },
     Text {
         value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nth: Option<u32>,
     },
 }
 
@@ -64,30 +89,42 @@ pub struct PickerStampResultDto {
 
 impl From<TargetRecordDto> for automation::targets_store::TargetRecord {
     fn from(d: TargetRecordDto) -> Self {
-        let (kind, value) = match d {
-            TargetRecordDto::Testid { value } => ("testid", serde_json::Value::String(value)),
-            TargetRecordDto::Role { value } => (
+        let (kind, value, nth) = match d {
+            TargetRecordDto::Testid { value, nth } => {
+                ("testid", serde_json::Value::String(value), nth)
+            }
+            TargetRecordDto::Role { value, nth } => (
                 "role",
                 serde_json::json!({ "role": value.role, "name": value.name }),
+                nth,
             ),
-            TargetRecordDto::Label { value } => ("label", serde_json::Value::String(value)),
-            TargetRecordDto::TextExact { value } => {
-                ("text_exact", serde_json::Value::String(value))
+            TargetRecordDto::Label { value, nth } => {
+                ("label", serde_json::Value::String(value), nth)
             }
-            TargetRecordDto::Selector { value } => ("selector", serde_json::Value::String(value)),
-            TargetRecordDto::Aria { value } => ("aria", serde_json::Value::String(value)),
-            TargetRecordDto::Text { value } => ("text", serde_json::Value::String(value)),
+            TargetRecordDto::TextExact { value, nth } => {
+                ("text_exact", serde_json::Value::String(value), nth)
+            }
+            TargetRecordDto::Selector { value, nth } => {
+                ("selector", serde_json::Value::String(value), nth)
+            }
+            TargetRecordDto::Aria { value, nth } => {
+                ("aria", serde_json::Value::String(value), nth)
+            }
+            TargetRecordDto::Text { value, nth } => {
+                ("text", serde_json::Value::String(value), nth)
+            }
         };
         automation::targets_store::TargetRecord {
             kind: kind.to_string(),
             value,
+            nth,
         }
     }
 }
 
 /// Tauri / specta DTO wrapping `automation::PickElementResponse` as a
-/// JSON string. The `automation` crate is pure-Rust (D-07: no Tauri /
-/// specta deps), so we serialize at the boundary and let the TS wrapper
+/// JSON string. The `automation` crate is pure-Rust (no Tauri / specta
+/// deps), so we serialize at the boundary and let the TS wrapper
 /// (`apps/desktop/src/ipc/picker.ts`) parse the typed union. Mirrors
 /// the `AutomationEvent { json }` pattern.
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -107,8 +144,8 @@ impl From<automation::PickElementResponse> for PickElementResponseDto {
 /// Start an element-picker session against the in-flight Playwright
 /// sidecar. Returns the ranked DSL line (`emitted`) on a successful
 /// pick, or a `Cancelled` variant on Esc / navigation / unsupported
-/// URL / timeout. Wire contract — `emitted: String` — matches sidecar
-/// `pickElement.start` response (07-03a `server.mjs:414`).
+/// URL / timeout. Wire contract — `emitted: String` — matches the
+/// sidecar `pickElement.start` response.
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_start"), err(Debug))]
@@ -160,26 +197,47 @@ pub async fn picker_cancel(
             let sessions = state.author_preview_sessions.lock().await;
             sessions.get(&stream_id).map(|s| s.driver.clone())
         };
-        if let Some(driver) = driver_arc {
-            driver
-                .pick_element_cancel()
-                .await
-                .map_err(|e| AppError::Automation(e.to_string()))?;
-            return Ok(());
+        match driver_arc {
+            Some(driver) => {
+                tracing::debug!(
+                    target: "storycapture::picker",
+                    stream_id = %stream_id,
+                    "picker_cancel routed to author session",
+                );
+                driver
+                    .pick_element_cancel()
+                    .await
+                    .map_err(|e| AppError::Automation(e.to_string()))?;
+            }
+            None => {
+                tracing::warn!(
+                    target: "storycapture::picker",
+                    stream_id = %stream_id,
+                    "picker_cancel: FSM Picking but author session entry missing — \
+                     teardown race, returning idempotent no-op",
+                );
+            }
         }
-        // FSM said Picking but the session entry vanished (teardown race).
-        // Fall through to the recorder-path attempt as a last-resort.
+        return Ok(());
     }
 
     let driver = {
         let slot = state.playwright_driver.lock().await;
         slot.as_ref().cloned()
     };
-    if let Some(driver) = driver {
-        let d = driver.lock().await;
-        d.pick_element_cancel()
-            .await
-            .map_err(|e| AppError::Automation(e.to_string()))?;
+    match driver {
+        Some(driver) => {
+            let d = driver.lock().await;
+            d.pick_element_cancel()
+                .await
+                .map_err(|e| AppError::Automation(e.to_string()))?;
+        }
+        None => {
+            tracing::debug!(
+                target: "storycapture::picker",
+                "picker_cancel: no FSM pick and no recorder driver — no-op",
+            );
+        }
     }
     Ok(())
 }
@@ -228,10 +286,9 @@ pub async fn picker_is_active(state: State<'_, AppState>) -> Result<bool, AppErr
 ///
 /// ## Security
 ///
-/// Rejects `story_path` that contains `..` (path-traversal guard,
-/// 02). The Tauri FS scope (Plan 01-03) is still the primary
-/// boundary; this check is a defense-in-depth against a misconfigured
-/// scope or future refactor.
+/// Rejects `story_path` that contains `..` (path-traversal guard). The
+/// Tauri FS scope is still the primary boundary; this check is
+/// defense-in-depth against a misconfigured scope or future refactor.
 ///
 /// ## Error mapping
 ///
@@ -300,9 +357,9 @@ pub fn stamp_step_id_impl(
         )));
     }
 
-    // D-04 + Pitfall 5: source bytes are rewritten ONLY on the None arm
-    // (fresh mint). Re-stamp on an already-stamped line short-circuits
-    // with `was_freshly_stamped=false`; targets.json is still (re)seeded.
+    // Source bytes are rewritten ONLY on the None arm (fresh mint).
+    // Re-stamp on an already-stamped line short-circuits with
+    // `was_freshly_stamped=false`; targets.json is still (re)seeded.
     let (stamped_id, was_freshly_stamped) = match existing_id {
         Some(id) => (id, false),
         None => {
@@ -344,30 +401,6 @@ pub fn stamp_step_id_impl(
     })
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Phase 11-03 — author-session picker (D-12/D-14/D-16)
-//
-// `picker_start_author` orchestrates Preview-panel Pick end-to-end against
-// the author-session registered under `stream_id`:
-//   (1) acquire AuthorDriverRegistry, transition to Picking{stream_id,resume_to}
-//   (2) arm PickerResumeGuard (RAII restore on panic/early-return/drop)
-//   (3) replay Navigate verbs from .story up to cursor_line (best-effort)
-//   (4) pause_author_preview(stream_id)  (PHASE-9.9)
-//   (5) pick_element_start_author(stream_id)
-//   (6) resume_author_preview(stream_id)
-//   (7) end_pick() → LivePreview{stream_id} (or restore SimulatorPaused)
-//   (8) disarm guard
-//
-// D-12 invariant: pause/resume are paired on every exit path (success,
-// user-cancel, unsupported-url, timeout, driver error, panic). The guard's
-// Drop handler covers panic/early-return; the happy path calls resume
-// explicitly so the registry transition is synchronous.
-//
-// D-10: navigate-replay reads from disk (caller passes `story_src`). The
-// CM6 editor buffer is NOT plumbed host-side; dirty-buffer handling lives
-// in the renderer (11-04 Task 1 toast). Caller MUST have read the .story
-// file from disk before invoking this command.
-// ──────────────────────────────────────────────────────────────────────
 
 /// Indirection trait for side-effects under `picker_start_author`. Production
 /// wires `SidecarAuthorPreviewControl` which delegates to the real Playwright
@@ -383,11 +416,6 @@ pub trait AuthorPreviewControl: Send + Sync {
         stream_id: &str,
         timeout_ms: u64,
     ) -> Result<PickElementResponse, AppError>;
-    /// Read the live URL the author page is currently sitting on. Used by
-    /// `replay_navigate_verbs` to skip warm-up when the user has already
-    /// browsed past the script's destination. Default impl returns an empty
-    /// string so existing tests / impls keep their pre-existing replay
-    /// semantics (empty URL never matches a script nav URL).
     async fn author_current_url(&self, _stream_id: &str) -> Result<String, AppError> {
         Ok(String::new())
     }
@@ -443,9 +471,9 @@ impl AuthorPreviewControl for SidecarAuthorPreviewControl {
     }
 }
 
-/// D-10 — walk `story.scenes[*].commands[*]` in document order, collect
-/// every `Navigate` URL whose line is `<= cursor_line`. If no navigates
-/// appear above the cursor, fall back to `story.meta.app` (single-URL list).
+/// Walk `story.scenes[*].commands[*]` in document order, collect every
+/// `Navigate` URL whose line is `<= cursor_line`. If no navigates appear
+/// above the cursor, fall back to `story.meta.app` (single-URL list).
 /// Result is the navigate-replay sequence for author-browser warm-up.
 ///
 /// This helper is pure (no I/O) so it can be unit-tested against fixture
@@ -514,10 +542,10 @@ fn same_site(a: &str, b: &str) -> bool {
     a == b || a.ends_with(&format!(".{b}")) || b.ends_with(&format!(".{a}"))
 }
 
-/// D-10 — execute the navigate-replay sequence against `control`. Each
+/// Execute the navigate-replay sequence against `control`. Each
 /// `author_navigate_to` call is best-effort: a failure (DNS, 404, timeout)
 /// emits a warn log and the walk continues. The picker must not fail
-/// because a single upstream nav stalled (per 11-RESEARCH Pattern 2).
+/// because a single upstream nav stalled.
 ///
 /// Replay short-circuits when the author page is already at (or past) one
 /// of the script's nav URLs — see `current_url_supersedes_replay`.
@@ -545,14 +573,31 @@ pub async fn replay_navigate_verbs(
     }
 
     for url in urls {
-        if let Err(e) = control.author_navigate_to(stream_id, &url).await {
-            tracing::warn!(
-                target: "storycapture::picker",
-                error = %e,
-                url = %url,
-                stream_id,
-                "navigate replay failed — continuing",
-            );
+        match tokio::time::timeout(
+            NAVIGATE_REPLAY_PER_URL_TIMEOUT,
+            control.author_navigate_to(stream_id, &url),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    target: "storycapture::picker",
+                    error = %e,
+                    url = %url,
+                    stream_id,
+                    "navigate replay failed — continuing",
+                );
+            }
+            Err(_elapsed) => {
+                tracing::warn!(
+                    target: "storycapture::picker",
+                    url = %url,
+                    stream_id,
+                    timeout_secs = NAVIGATE_REPLAY_PER_URL_TIMEOUT.as_secs(),
+                    "navigate replay timed out — continuing",
+                );
+            }
         }
     }
     Ok(())
@@ -571,7 +616,7 @@ pub async fn picker_start_author_impl(
     timeout_ms: u64,
 ) -> Result<PickElementResponseDto, AppError> {
     // Step 1 — FSM transition: validate, then swap into Picking{resume_to}.
-    // Lock is released before any awaited I/O (Pitfall 2).
+    // Lock is released before any awaited I/O.
     let prior_for_guard = {
         let mut g = registry.state.lock().await;
         g.can_start_pick()
@@ -583,19 +628,19 @@ pub async fn picker_start_author_impl(
 
     // Step 2 — arm the RAII guard. On panic / early return / error from
     // here on, Drop restores `prior_for_guard` into the registry
-    // asynchronously (Pitfall 2 uses Handle::try_current to stay
-    // shutdown-safe). Disarmed on the happy path after explicit restore.
+    // asynchronously (uses Handle::try_current to stay shutdown-safe).
+    // Disarmed on the happy path after explicit restore.
     let guard = PickerResumeGuard::new(registry.clone(), stream_id.clone(), prior_for_guard);
 
-    // Step 3 — navigate-replay (D-10). Best-effort; individual failures
-    // are logged and skipped inside replay_navigate_verbs.
+    // Step 3 — navigate-replay. Best-effort; individual failures are
+    // logged and skipped inside replay_navigate_verbs.
     replay_navigate_verbs(control.as_ref(), &stream_id, &story_src, cursor_line).await?;
 
-    // Steps 4/6 (PHASE-9.9 pause/resume) are intentionally skipped — the
-    // Preview-panel canvas IS the user's input surface (via
-    // author_dispatch_input), so the CDP screencast MUST stay active during
-    // picking. Otherwise the canvas freezes and the user can't see the
-    // picker overlay highlights or which element they're hovering.
+    // Steps 4/6 pause/resume intentionally skipped — the Preview-panel canvas
+    // IS the user's input surface (via author_dispatch_input), so the CDP
+    // screencast MUST stay active during picking. Otherwise the canvas
+    // freezes and the user can't see the picker overlay highlights or which
+    // element they're hovering.
 
     // Step 5 — run the picker. Canvas pointer events forward through
     // author_dispatch_input; the overlay (document-level click listener)
@@ -622,8 +667,8 @@ pub async fn picker_start_author_impl(
 
 /// Tauri command entry point for Preview-panel Pick. See
 /// `picker_start_author_impl` for the orchestration. Accepts `story_src`
-/// directly from the renderer (D-10 / 11-04 Task 1 handles dirty-buffer
-/// toast before invoking this command).
+/// directly from the renderer (the renderer handles dirty-buffer toast
+/// before invoking this command).
 ///
 /// `stream_id` MUST match an entry in `AppState.author_preview_sessions`
 /// (started via `start_author_preview`); unknown streamId surfaces as
@@ -642,8 +687,8 @@ pub async fn picker_start_author(
     let timeout = timeout_ms.unwrap_or(60_000);
 
     // Resolve the per-session driver from author_preview_sessions.
-    // Phase 11-03 uses the author-session's own sidecar — never
-    // AppState.playwright_driver (which is the recorder-path driver).
+    // Use the author-session's own sidecar — never AppState.playwright_driver
+    // (which is the recorder-path driver).
     let driver_arc = {
         let sessions = state.author_preview_sessions.lock().await;
         sessions
@@ -678,9 +723,9 @@ pub async fn picker_start_author(
 /// debug and otherwise ignored — future hover/preview notifications can
 /// add arms without changing the receiver contract.
 ///
-/// 01 mitigation: lagged subscribers get `RecvError::Lagged(n)`
-/// and are logged at warn, not panicked. The channel capacity (128) is
-/// well above a rAF-throttled (~60 Hz) emitter against a React consumer.
+/// Lagged subscribers get `RecvError::Lagged(n)` and are logged at warn,
+/// not panicked. The channel capacity (128) is well above a rAF-throttled
+/// (~60 Hz) emitter against a React consumer.
 pub fn spawn_notification_forwarder(
     app: AppHandle,
     rx: tokio::sync::broadcast::Receiver<automation::Notification>,
