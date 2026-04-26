@@ -31,6 +31,13 @@ vi.mock("sonner", () => ({
   }),
 }));
 
+// Mock the Tauri dialog plugin so upload-action tests can run in jsdom.
+// Each test re-stubs `open` to return its own path (or `null` for cancel).
+const dialogOpenMock = vi.fn<() => Promise<string | null>>();
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: (...args: unknown[]) => dialogOpenMock(...(args as [])),
+}));
+
 import { toast } from "sonner";
 
 import { editorController } from "@/features/editor/controller";
@@ -109,6 +116,7 @@ describe("PreviewPickerButton", () => {
       .spyOn(editorController, "getStepOrdinalForLine")
       .mockReturnValue(3);
     isDirtySpy = vi.spyOn(editorController, "isDirty").mockReturnValue(false);
+    dialogOpenMock.mockReset();
     useEditorStore.setState({ source: 'story "demo"\nscene "x"\n' });
     // Default to LivePreview with an active streamId so the button is armed.
     seedAuthorDriver({ variant: "live-preview", streamId: "author-stream-1" });
@@ -456,6 +464,193 @@ describe("PreviewPickerButton", () => {
     resolvePick({
       json: JSON.stringify({ cancelled: true, reason: "user-cancel" }),
     });
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Text input metadata promotes Fill / Type
+  // ─────────────────────────────────────────────────────────────────
+  it("text-input metadata promotes Fill text… as the first action", async () => {
+    mockIPC((cmd) => {
+      if (cmd === "picker_start_author") {
+        return {
+          json: JSON.stringify({
+            emitted: 'click field "Email"',
+            locator: { kind: "label", value: "Email" },
+            candidates: [],
+            element: { isTextInput: true, tagName: "INPUT", inputType: "email" },
+          }),
+        };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    const items = screen.getAllByRole("menuitem");
+    expect(items[0].textContent).toMatch(/fill text/i);
+    expect(items[1].textContent).toMatch(/type text/i);
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Choosing Fill, entering text, submit → inserts fill line
+  // ─────────────────────────────────────────────────────────────────
+  it("choosing Fill text…, entering text, submitting inserts a fill line", async () => {
+    mockIPC((cmd) => {
+      if (cmd === "picker_start_author") {
+        return {
+          json: JSON.stringify({
+            emitted: 'click field "Email"',
+            locator: { kind: "label", value: "Email" },
+            candidates: [],
+            element: { isTextInput: true, tagName: "INPUT", inputType: "email" },
+          }),
+        };
+      }
+      if (cmd === "picker_stamp_step_id") {
+        return {
+          step_id: "01900000-0000-7000-8000-000000000000",
+          was_freshly_stamped: true,
+        };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    await user.click(screen.getByRole("menuitem", { name: /fill text/i }));
+    await flushAsync();
+
+    const input = screen.getByRole("textbox");
+    await user.type(input, "alice@example.com");
+    await user.click(screen.getByRole("button", { name: /^insert$/i }));
+    await flushAsync();
+
+    expect(insertSpy).toHaveBeenCalledWith(
+      'fill field "Email" with "alice@example.com"\n',
+    );
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Upload action triggers Tauri dialog and inserts upload line
+  // ─────────────────────────────────────────────────────────────────
+  it("choosing Upload file… opens the file dialog and inserts an upload line", async () => {
+    dialogOpenMock.mockResolvedValueOnce("/tmp/photo.png");
+    mockIPC((cmd) => {
+      if (cmd === "picker_start_author") {
+        return {
+          json: JSON.stringify({
+            emitted: 'click selector "input[type=file]"',
+            locator: { kind: "selector", value: "input[type=file]" },
+            candidates: [],
+            element: { isFileInput: true, tagName: "INPUT", inputType: "file" },
+          }),
+        };
+      }
+      if (cmd === "picker_stamp_step_id") {
+        return {
+          step_id: "01900000-0000-7000-8000-000000000000",
+          was_freshly_stamped: true,
+        };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    await user.click(screen.getByRole("menuitem", { name: /upload file/i }));
+    await flushAsync();
+
+    expect(dialogOpenMock).toHaveBeenCalled();
+    expect(insertSpy).toHaveBeenCalledWith(
+      'upload selector "input[type=file]" "/tmp/photo.png"\n',
+    );
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Upload dialog cancelled → no insert
+  // ─────────────────────────────────────────────────────────────────
+  it("cancelling the upload file dialog does not insert", async () => {
+    dialogOpenMock.mockResolvedValueOnce(null);
+    mockIPC((cmd) => {
+      if (cmd === "picker_start_author") {
+        return {
+          json: JSON.stringify({
+            emitted: 'click selector "input[type=file]"',
+            locator: { kind: "selector", value: "input[type=file]" },
+            candidates: [],
+            element: { isFileInput: true },
+          }),
+        };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    await user.click(screen.getByRole("menuitem", { name: /upload file/i }));
+    await flushAsync();
+
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Drag opens a second pick session, inserts drag line, skips stamp
+  // (`.story.targets.json` doesn't model two targets per step yet).
+  // ─────────────────────────────────────────────────────────────────
+  it("choosing Drag from here… runs a second pick and inserts a drag line without stamping", async () => {
+    let pickCount = 0;
+    const invokeLog: string[] = [];
+    mockIPC((cmd) => {
+      invokeLog.push(cmd);
+      if (cmd === "picker_start_author") {
+        pickCount += 1;
+        if (pickCount === 1) {
+          return {
+            json: JSON.stringify({
+              emitted: 'click testid "src"',
+              locator: { kind: "testid", value: "src" },
+              candidates: [],
+            }),
+          };
+        }
+        return {
+          json: JSON.stringify({
+            emitted: 'click testid "dst"',
+            locator: { kind: "testid", value: "dst" },
+            candidates: [],
+          }),
+        };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    await user.click(screen.getByRole("menuitem", { name: /drag from here/i }));
+    await flushAsync();
+
+    expect(pickCount).toBe(2);
+    expect(insertSpy).toHaveBeenCalledWith('drag testid "src" to testid "dst"\n');
+    expect(invokeLog).not.toContain("picker_stamp_step_id");
+    const successMsg = (toast.success as ReturnType<typeof vi.fn>).mock
+      .calls[0][0];
+    expect(successMsg).toMatch(/selector healing for drag targets/i);
   });
 
   // ─────────────────────────────────────────────────────────────────

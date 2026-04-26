@@ -72,3 +72,53 @@ describe('emitDsl rank selection', () => {
     expect(result.locator.kind).toBe('selector');
   });
 });
+
+describe('emitDsl element metadata forwarding', () => {
+  it('attaches `element` metadata when overlay payload includes it', async () => {
+    const page = fakePage({ testid: 1 });
+    const result = await emitDsl(page, {
+      testId: 'email',
+      role: 'textbox',
+      accessibleName: 'Email',
+      css: '#email',
+      tagName: 'INPUT',
+      shadowDepth: 0,
+      inputType: 'email',
+      isTextInput: true,
+    });
+    expect(result.element).toEqual({
+      tagName: 'INPUT',
+      role: 'textbox',
+      accessibleName: 'Email',
+      inputType: 'email',
+      isTextInput: true,
+    });
+  });
+
+  it('omits `element` when overlay payload has no metadata fields', async () => {
+    const page = fakePage({ testid: 1 });
+    const result = await emitDsl(page, {
+      testId: 'save',
+      css: '#save',
+      // tagName intentionally omitted to assert the helper treats it as absent.
+      shadowDepth: 0,
+    });
+    // Phase 1 contract: legacy callers without metadata still get { emitted,
+    // locator, candidates } only.
+    expect(result.element).toBeUndefined();
+  });
+
+  it('forwards optionLabels for select elements', async () => {
+    const page = fakePage({ testid: 1 });
+    const result = await emitDsl(page, {
+      testId: 'country',
+      css: '#country',
+      tagName: 'SELECT',
+      shadowDepth: 0,
+      isSelect: true,
+      optionLabels: ['USA', 'VN', 'DE'],
+    });
+    expect(result.element?.isSelect).toBe(true);
+    expect(result.element?.optionLabels).toEqual(['USA', 'VN', 'DE']);
+  });
+});

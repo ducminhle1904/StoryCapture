@@ -762,6 +762,33 @@ pub struct PickCandidate {
     pub unique: bool,
 }
 
+/// Element-shape metadata forwarded by the sidecar overlay so the desktop
+/// picker action menu can promote input-flavored actions
+/// (fill/type/select/upload). Kept loose because the host re-serializes
+/// the response untouched and only the desktop UI reads the contents.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickElementMeta {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accessible_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_content_editable: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_text_input: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_select: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_file_input: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_labels: Option<Vec<String>>,
+}
+
 /// Sidecar `pickElement.start` response. Untagged so serde discriminates
 /// on field shape: `Picked` requires `emitted`; `Cancelled` requires
 /// `cancelled: true` + `reason`.
@@ -773,6 +800,12 @@ pub enum PickElementResponse {
         emitted: String,
         locator: PickLocator,
         candidates: Vec<PickCandidate>,
+        // Optional element-shape metadata. Skip serialization when absent
+        // so legacy fixtures still round-trip unchanged. The host re-
+        // serializes the response, so the field has to be modelled here
+        // for it to survive the boundary.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        element: Option<PickElementMeta>,
     },
     Cancelled {
         cancelled: bool, // always true; kept for serde-untagged disambiguation
@@ -940,6 +973,7 @@ mod pick_element_serde_tests {
                 emitted,
                 locator,
                 candidates,
+                ..
             } => {
                 assert_eq!(emitted, "click testid \"save\"");
                 assert_eq!(locator.kind, PickKind::Testid);

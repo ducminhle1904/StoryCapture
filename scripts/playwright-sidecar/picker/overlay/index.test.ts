@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { accessibleName, inferRole } from "./axe-accessible-name-lite";
+import { buildElementMeta } from "./index";
 
 function setHtml(html: string) {
   document.body.innerHTML = html;
@@ -143,5 +144,78 @@ describe("inferRole — 8 rows", () => {
   it("explicit [role] wins over implicit (button with role=link)", () => {
     setHtml(`<button id="t" role="link"></button>`);
     expect(inferRole(document.getElementById("t")!)).toBe("link");
+  });
+});
+
+describe("buildElementMeta — element-shape detection", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("text input → isTextInput=true with inputType", () => {
+    setHtml(`<input id="t" type="text">`);
+    const meta = buildElementMeta(document.getElementById("t")!);
+    expect(meta.isTextInput).toBe(true);
+    expect(meta.inputType).toBe("text");
+    expect(meta.isSelect).toBeUndefined();
+    expect(meta.isFileInput).toBeUndefined();
+  });
+
+  it("email input → isTextInput=true with inputType=email", () => {
+    setHtml(`<input id="t" type="email">`);
+    const meta = buildElementMeta(document.getElementById("t")!);
+    expect(meta.isTextInput).toBe(true);
+    expect(meta.inputType).toBe("email");
+  });
+
+  it("textarea → isTextInput=true (no inputType)", () => {
+    setHtml(`<textarea id="t"></textarea>`);
+    const meta = buildElementMeta(document.getElementById("t")!);
+    expect(meta.isTextInput).toBe(true);
+    expect(meta.inputType).toBeUndefined();
+  });
+
+  it("select → isSelect=true with optionLabels", () => {
+    setHtml(`
+      <select id="t">
+        <option value="us">United States</option>
+        <option value="vn">Vietnam</option>
+      </select>
+    `);
+    const meta = buildElementMeta(document.getElementById("t")!);
+    expect(meta.isSelect).toBe(true);
+    expect(meta.optionLabels).toEqual(["United States", "Vietnam"]);
+    expect(meta.isTextInput).toBeUndefined();
+  });
+
+  it("file input → isFileInput=true", () => {
+    setHtml(`<input id="t" type="file">`);
+    const meta = buildElementMeta(document.getElementById("t")!);
+    expect(meta.isFileInput).toBe(true);
+    expect(meta.inputType).toBe("file");
+    expect(meta.isTextInput).toBeUndefined();
+  });
+
+  it("contenteditable → isTextInput + isContentEditable", () => {
+    setHtml(`<div id="t" contenteditable="true"></div>`);
+    const meta = buildElementMeta(document.getElementById("t")!);
+    expect(meta.isContentEditable).toBe(true);
+    expect(meta.isTextInput).toBe(true);
+  });
+
+  it("plain button → no input flags", () => {
+    setHtml(`<button id="t">Save</button>`);
+    const meta = buildElementMeta(document.getElementById("t")!);
+    expect(meta.isTextInput).toBeUndefined();
+    expect(meta.isSelect).toBeUndefined();
+    expect(meta.isFileInput).toBeUndefined();
+    expect(meta.optionLabels).toBeUndefined();
+  });
+
+  it("submit input → not flagged as text input", () => {
+    setHtml(`<input id="t" type="submit" value="Go">`);
+    const meta = buildElementMeta(document.getElementById("t")!);
+    expect(meta.isTextInput).toBeUndefined();
+    expect(meta.inputType).toBe("submit");
   });
 });

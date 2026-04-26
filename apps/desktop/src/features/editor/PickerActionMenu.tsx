@@ -2,62 +2,96 @@
 // chooses what to do with the picked element; only then does the desktop UI
 // insert/replace the `.story` line and stamp the targets sidecar.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CheckCircle,
   Clock,
+  Hand,
   MousePointer,
   MousePointerClick,
+  Move,
+  Pencil,
+  Type,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 
-import type { TargetVerb } from "./picker-emit-rewrite";
+import type { PickElementMeta } from "@/ipc/picker";
+import type {
+  PickerAction,
+  PickerActionItem,
+  PickerActionOptions,
+} from "./picker-action-dsl";
 
 interface PickerActionMenuProps {
   targetLabel: string;
-  defaultAction: TargetVerb;
-  onChoose: (action: TargetVerb) => void;
+  defaultAction: PickerAction;
+  items: PickerActionItem[];
+  /** Drives select-action dropdown options. */
+  meta?: PickElementMeta;
+  onChoose: (action: PickerAction, options?: PickerActionOptions) => void;
   onCancel: () => void;
 }
 
-interface ActionDef {
-  action: TargetVerb;
-  label: string;
-  icon: LucideIcon;
-}
+const ACTION_ICONS: Record<PickerAction, LucideIcon> = {
+  click: MousePointerClick,
+  hover: MousePointer,
+  "wait-for": Clock,
+  assert: CheckCircle,
+  fill: Pencil,
+  type: Type,
+  select: Hand,
+  upload: Upload,
+  drag: Move,
+};
 
-const ACTIONS: readonly ActionDef[] = [
-  { action: "click", label: "Click element", icon: MousePointerClick },
-  { action: "hover", label: "Hover element", icon: MousePointer },
-  { action: "wait-for", label: "Wait for element", icon: Clock },
-  { action: "assert", label: "Assert element", icon: CheckCircle },
-] as const;
+type FormAction = "fill" | "type" | "select";
+type ViewState = { kind: "list" } | { kind: "form"; action: FormAction };
+
+const FORM_ACTIONS: ReadonlySet<PickerAction> = new Set<PickerAction>([
+  "fill",
+  "type",
+  "select",
+]);
 
 export function PickerActionMenu({
   targetLabel,
   defaultAction,
+  items,
+  meta,
   onChoose,
   onCancel,
 }: PickerActionMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [view, setView] = useState<ViewState>({ kind: "list" });
+  const [draft, setDraft] = useState("");
 
   useEffect(() => {
+    if (view.kind !== "list") return;
     const root = containerRef.current;
-    if (!root) return;
     root
-      .querySelector<HTMLButtonElement>(`button[data-action="${defaultAction}"]`)
+      ?.querySelector<HTMLButtonElement>(
+        `button[data-action="${defaultAction}"]`,
+      )
       ?.focus();
-  }, [defaultAction]);
+  }, [view, defaultAction]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onCancel();
+        if (view.kind === "form") {
+          setView({ kind: "list" });
+        } else {
+          onCancel();
+        }
         return;
       }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (
+        view.kind === "list" &&
+        (e.key === "ArrowDown" || e.key === "ArrowUp")
+      ) {
         const root = containerRef.current;
         if (!root) return;
         const buttons = Array.from(
@@ -74,9 +108,34 @@ export function PickerActionMenu({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, [view, onCancel]);
+
+  const handleListChoose = (action: PickerAction) => {
+    if (FORM_ACTIONS.has(action)) {
+      setDraft("");
+      setView({ kind: "form", action: action as FormAction });
+      return;
+    }
+    onChoose(action);
+  };
+
+  const submitForm = () => {
+    if (view.kind !== "form") return;
+    const value = draft.trim();
+    if (!value) return;
+    if (view.action === "select") {
+      onChoose("select", { value });
+    } else {
+      onChoose(view.action, { text: value });
+    }
+  };
 
   if (typeof document === "undefined") return null;
+
+  const formAction = view.kind === "form" ? view.action : null;
+  const formLabel = formAction ? FORM_LABELS[formAction] : "";
+  const optionLabels =
+    formAction === "select" ? meta?.optionLabels ?? [] : [];
 
   return createPortal(
     <div
@@ -100,31 +159,141 @@ export function PickerActionMenu({
       >
         {targetLabel}
       </div>
-      <ul className="flex flex-col py-1" role="menu">
-        {ACTIONS.map(({ action, label, icon: Icon }) => (
-          <li key={action} role="none">
-            <button
-              type="button"
-              role="menuitem"
-              data-action={action}
-              onClick={() => onChoose(action)}
-              className={[
-                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px]",
-                "hover:bg-[var(--color-surface-200)]",
-                "focus-visible:bg-[var(--color-surface-200)] focus-visible:outline-none",
-              ].join(" ")}
-            >
-              <Icon
-                size={14}
-                aria-hidden="true"
-                className="text-[var(--color-fg-muted)]"
-              />
-              <span>{label}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {view.kind === "list" ? (
+        <ul className="flex flex-col py-1" role="menu">
+          {items.map(({ action, label }) => {
+            const Icon = ACTION_ICONS[action];
+            return (
+              <li key={action} role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-action={action}
+                  onClick={() => handleListChoose(action)}
+                  className={[
+                    "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px]",
+                    "hover:bg-[var(--color-surface-200)]",
+                    "focus-visible:bg-[var(--color-surface-200)] focus-visible:outline-none",
+                  ].join(" ")}
+                >
+                  <Icon
+                    size={14}
+                    aria-hidden="true"
+                    className="text-[var(--color-fg-muted)]"
+                  />
+                  <span>{label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <FormBody
+          label={formLabel}
+          draft={draft}
+          onChange={setDraft}
+          onSubmit={submitForm}
+          onBack={() => setView({ kind: "list" })}
+          optionLabels={optionLabels}
+        />
+      )}
     </div>,
     document.body,
+  );
+}
+
+const FORM_LABELS: Record<FormAction, string> = {
+  fill: "Text to fill",
+  type: "Text to type",
+  select: "Option value",
+};
+
+function FormBody({
+  label,
+  draft,
+  onChange,
+  onSubmit,
+  onBack,
+  optionLabels,
+}: {
+  label: string;
+  draft: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onBack: () => void;
+  optionLabels: string[];
+}) {
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+  const canSubmit = draft.trim().length > 0;
+  const useDropdown = optionLabels.length > 0;
+  const fieldClass = [
+    "h-7 rounded-[var(--radius-sm)] border border-[var(--color-border-default)]",
+    "bg-[var(--color-surface-100)] px-2 text-[13px]",
+    "focus-visible:outline-none focus-visible:border-[var(--color-focus-ring)]",
+  ].join(" ");
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+      className="flex flex-col gap-2 px-3 py-2"
+    >
+      <label className="text-[11px] font-mono uppercase tracking-wide text-[var(--color-fg-muted)]">
+        {label}
+      </label>
+      {useDropdown ? (
+        <select
+          ref={(el) => {
+            inputRef.current = el;
+          }}
+          value={draft}
+          onChange={(e) => onChange(e.target.value)}
+          className={fieldClass}
+        >
+          <option value="">— choose —</option>
+          {optionLabels.map((label) => (
+            <option key={label} value={label}>
+              {label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          ref={(el) => {
+            inputRef.current = el;
+          }}
+          type="text"
+          value={draft}
+          onChange={(e) => onChange(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          className={fieldClass}
+        />
+      )}
+      <div className="flex justify-between gap-2 pt-1">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-[12px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
+        >
+          Back
+        </button>
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className={[
+            "h-7 rounded-[var(--radius-sm)] px-3 text-[12px] font-medium",
+            "bg-[var(--color-accent-primary)] text-white",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+          ].join(" ")}
+        >
+          Insert
+        </button>
+      </div>
+    </form>
   );
 }

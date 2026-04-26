@@ -26,11 +26,31 @@ export type PickCandidate = {
   unique: boolean;
 };
 
+/**
+ * Element-shape metadata forwarded by the sidecar overlay. Optional —
+ * legacy responses (Phase 1 sidecar without overlay metadata, or any
+ * locator path that didn't capture an element) omit it. Used by the
+ * desktop picker action menu to promote input-flavored actions
+ * (fill/type/select/upload) without re-deriving DOM shape on the host.
+ */
+export type PickElementMeta = {
+  tagName?: string;
+  role?: string;
+  accessibleName?: string;
+  inputType?: string;
+  isContentEditable?: boolean;
+  isTextInput?: boolean;
+  isSelect?: boolean;
+  isFileInput?: boolean;
+  optionLabels?: string[];
+};
+
 export type PickPicked = {
   /** Single DSL line ready to insert at cursor (NO trailing newline). */
   emitted: string;
   locator: PickLocator;
   candidates: PickCandidate[];
+  element?: PickElementMeta;
 };
 
 export type PickCancelled = {

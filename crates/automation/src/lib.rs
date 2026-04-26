@@ -38,7 +38,7 @@ pub use events::{
 pub use executor::{continue_run, try_promote_fallback, Executor, PersistenceHandle};
 pub use noop_driver::NoopDriver;
 pub use playwright_driver::{
-    BrowserProcessInfo, Notification, PickCandidate, PickElementResponse, PickLocator,
+    BrowserProcessInfo, Notification, PickCandidate, PickElementMeta, PickElementResponse, PickLocator,
     PlaywrightSidecarDriver, PreviewFrame, SnapshotResponse,
 };
 pub use selector::{SmartSelector, ValidationResult};

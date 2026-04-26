@@ -24,8 +24,36 @@ async function isUnique(locator) {
   }
 }
 
+// Element-shape metadata forwarded verbatim from the overlay so the
+// desktop picker action menu can promote input-flavored actions
+// (fill/type/select/upload) without re-deriving DOM shape on the host.
+function pickElementMeta(payload) {
+  const keys = [
+    'tagName',
+    'role',
+    'accessibleName',
+    'inputType',
+    'isContentEditable',
+    'isTextInput',
+    'isSelect',
+    'isFileInput',
+    'optionLabels',
+  ];
+  const meta = {};
+  let hasAny = false;
+  for (const k of keys) {
+    if (payload[k] !== undefined) {
+      meta[k] = payload[k];
+      hasAny = true;
+    }
+  }
+  return hasAny ? meta : undefined;
+}
+
 export async function emitDsl(page, payload) {
   const candidates = [];
+  const element = pickElementMeta(payload);
+  const wrap = (result) => (element ? { ...result, element } : result);
 
   // 1. testid — strongest signal, single attempt.
   if (payload.testId) {
@@ -34,11 +62,11 @@ export async function emitDsl(page, payload) {
     const unique = await isUnique(locator);
     candidates.push({ kind: 'testid', value, score: 1.0, unique });
     if (unique) {
-      return {
+      return wrap({
         emitted: `click testid "${escapeDslString(value)}"`,
         locator: { kind: 'testid', value },
         candidates,
-      };
+      });
     }
   }
 
@@ -55,11 +83,11 @@ export async function emitDsl(page, payload) {
       unique,
     });
     if (unique) {
-      return {
+      return wrap({
         emitted: `click ${role} "${escapeDslString(name)}"`,
         locator: { kind: 'role', value: { role, name } },
         candidates,
-      };
+      });
     }
   }
 
@@ -70,11 +98,11 @@ export async function emitDsl(page, payload) {
     const unique = await isUnique(locator);
     candidates.push({ kind: 'label', value, score: 0.8, unique });
     if (unique) {
-      return {
+      return wrap({
         emitted: `click field "${escapeDslString(value)}"`,
         locator: { kind: 'label', value },
         candidates,
-      };
+      });
     }
   }
 
@@ -85,11 +113,11 @@ export async function emitDsl(page, payload) {
     const unique = await isUnique(locator);
     candidates.push({ kind: 'text_exact', value, score: 0.5, unique });
     if (unique) {
-      return {
+      return wrap({
         emitted: `click text "${escapeDslString(value)}"`,
         locator: { kind: 'text_exact', value },
         candidates,
-      };
+      });
     }
   }
 
@@ -98,9 +126,9 @@ export async function emitDsl(page, payload) {
   //    the element).
   const css = payload.css || '*';
   candidates.push({ kind: 'selector', value: css, score: 0.1, unique: true });
-  return {
+  return wrap({
     emitted: `click selector "${escapeDslString(css)}"`,
     locator: { kind: 'selector', value: css },
     candidates,
-  };
+  });
 }

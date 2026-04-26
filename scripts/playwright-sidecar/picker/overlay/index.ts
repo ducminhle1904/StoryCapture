@@ -28,6 +28,80 @@ export interface PickCandidatePayload {
   css: string;
   tagName: string;
   shadowDepth: number;
+  // Element-shape metadata so the desktop picker action menu can promote
+  // input-flavored actions (fill/type/select/upload) without re-deriving
+  // DOM shape on the host.
+  inputType?: string;
+  isContentEditable?: boolean;
+  isTextInput?: boolean;
+  isSelect?: boolean;
+  isFileInput?: boolean;
+  optionLabels?: string[];
+}
+
+const TEXT_INPUT_TYPES = new Set([
+  "text",
+  "email",
+  "password",
+  "search",
+  "url",
+  "tel",
+  "number",
+]);
+
+const OPTION_LABEL_LIMIT = 50;
+
+/**
+ * Element-shape metadata extracted at pick time. Pure DOM read so it can be
+ * unit-tested in jsdom; exported for tests.
+ */
+export function buildElementMeta(el: Element): {
+  inputType?: string;
+  isContentEditable?: boolean;
+  isTextInput?: boolean;
+  isSelect?: boolean;
+  isFileInput?: boolean;
+  optionLabels?: string[];
+} {
+  const tag = el.tagName.toUpperCase();
+  const inputType =
+    tag === "INPUT"
+      ? ((el as HTMLInputElement).type || "text").toLowerCase()
+      : undefined;
+  const isContentEditable =
+    (el as HTMLElement).isContentEditable === true ||
+    el.getAttribute("contenteditable") === "true" ||
+    undefined;
+
+  const isFileInput = tag === "INPUT" && inputType === "file" ? true : undefined;
+  const isSelect = tag === "SELECT" ? true : undefined;
+  const isTextInput =
+    tag === "TEXTAREA" ||
+    (tag === "INPUT" && !!inputType && TEXT_INPUT_TYPES.has(inputType)) ||
+    isContentEditable === true
+      ? true
+      : undefined;
+
+  let optionLabels: string[] | undefined;
+  if (isSelect) {
+    const opts = Array.from((el as HTMLSelectElement).options).slice(
+      0,
+      OPTION_LABEL_LIMIT,
+    );
+    const labels = opts
+      .map((o) => (o.label || o.textContent || o.value || "").trim())
+      .filter((s) => s.length > 0);
+    if (labels.length > 0) optionLabels = labels;
+  }
+
+  return {
+    inputType,
+    isContentEditable,
+    isTextInput,
+    isSelect,
+    isFileInput,
+    optionLabels,
+  };
 }
 
 // live-hover preview payload.
@@ -189,6 +263,7 @@ declare global {
       css: buildCss(el),
       tagName: tag,
       shadowDepth: shadowDepth(el),
+      ...buildElementMeta(el),
     };
   }
 

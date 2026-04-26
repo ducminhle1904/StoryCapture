@@ -39,15 +39,19 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+
 import { editorController } from "@/features/editor/controller";
 import { PickerActionMenu } from "@/features/editor/PickerActionMenu";
 import {
   buildPickerActionLine,
+  getPickerActionItems,
   inferDefaultAction,
   parsePickerLine,
   pickedTargetLabel,
+  type PickerAction,
+  type PickerActionOptions,
 } from "@/features/editor/picker-action-dsl";
-import type { TargetVerb } from "@/features/editor/picker-emit-rewrite";
 import {
   useAuthorDriverStore,
   type AuthorDriverVariant,
@@ -344,15 +348,67 @@ export function PreviewPickerButton() {
 
   onClickRef.current = onClick;
 
-  const onMenuChoose = async (action: TargetVerb) => {
+  const collectExtraOptions = async (
+    action: PickerAction,
+  ): Promise<PickerActionOptions | null> => {
+    if (action === "upload") {
+      const selected = await openDialog({ multiple: false, directory: false });
+      if (!selected || typeof selected !== "string") return null;
+      return { path: selected };
+    }
+    if (action === "drag") {
+      // Pass the original cursor line so the host doesn't replay extra
+      // navigate verbs between source and target.
+      if (!streamId || !pendingPick) return null;
+      const storySrc = useEditorStore.getState().source;
+      setPicking(true);
+      setSnapshot({ variant: "picking" });
+      try {
+        const r = await pickElementAuthor({
+          streamId,
+          storySrc,
+          cursorLine: pendingPick.cursorLine,
+          timeoutMs: 60_000,
+        });
+        if (isPicked(r)) return { toLocator: r.locator };
+        return null;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error(msg);
+        return null;
+      } finally {
+        setPicking(false);
+        setSnapshot({ variant: streamId ? "live-preview" : "idle" });
+      }
+    }
+    return {};
+  };
+
+  const onMenuChoose = async (
+    action: PickerAction,
+    options?: PickerActionOptions,
+  ) => {
     if (!pendingPick) return;
-    const { result: r, lineText } = pendingPick;
+    const captured = pendingPick;
+    const { result: r, lineText } = captured;
+
+    // Keep `pendingPick` set during drag's second pick so its cursor line
+    // is still readable from `collectExtraOptions`.
+    let merged: PickerActionOptions | undefined = options;
+    if (action === "upload" || action === "drag") {
+      const extra = await collectExtraOptions(action);
+      if (!extra) {
+        setPendingPick(null);
+        return;
+      }
+      merged = { ...(options ?? {}), ...extra };
+    }
     setPendingPick(null);
 
     const parsed = parsePickerLine(lineText);
     let finalLine: string;
     try {
-      finalLine = buildPickerActionLine(action, r.locator, parsed);
+      finalLine = buildPickerActionLine(action, r.locator, parsed, merged);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(msg);
@@ -368,8 +424,20 @@ export function PreviewPickerButton() {
     }
 
     const storyPath = editorController.getStoryPath();
+    const successToast = `Added \`${finalLine.trim()}\` · line ${res.lineNumber}`;
+
+    // `.story.targets.json` models one primary + fallbacks per step; drag
+    // has two targets and isn't representable yet, so skip stamping until
+    // the schema is extended.
+    if (action === "drag") {
+      toast.success(
+        `${successToast} · selector healing for drag targets is not available yet`,
+      );
+      return;
+    }
+
     if (!storyPath) {
-      toast.success(`Added \`${finalLine.trim()}\` · line ${res.lineNumber}`);
+      toast.success(successToast);
       return;
     }
 
@@ -383,7 +451,7 @@ export function PreviewPickerButton() {
         ),
       });
       if (stamp.wasFreshlyStamped) {
-        toast.success(`Added \`${finalLine.trim()}\` · line ${res.lineNumber}`);
+        toast.success(successToast);
       } else {
         const stepOrdinal =
           editorController.getStepOrdinalForLine(res.lineNumber) ??
@@ -400,13 +468,19 @@ export function PreviewPickerButton() {
     setPendingPick(null);
   };
 
+  const pickResult = pendingPick?.result;
+  const lineText = pendingPick?.lineText;
   const menuTargetLabel = useMemo(
-    () => (pendingPick ? pickedTargetLabel(pendingPick.result) : ""),
-    [pendingPick],
+    () => (pickResult ? pickedTargetLabel(pickResult) : ""),
+    [pickResult],
   );
-  const menuDefaultAction = useMemo<TargetVerb>(
-    () => (pendingPick ? inferDefaultAction(pendingPick.lineText) : "click"),
-    [pendingPick],
+  const menuDefaultAction = useMemo<PickerAction>(
+    () => (lineText !== undefined ? inferDefaultAction(lineText) : "click"),
+    [lineText],
+  );
+  const menuItems = useMemo(
+    () => getPickerActionItems(pickResult?.element),
+    [pickResult?.element],
   );
 
   const tooltip = formatTooltip(variant, isStarting, simulatorOrdinal);
@@ -513,8 +587,11 @@ export function PreviewPickerButton() {
 
       {pendingPick ? (
         <PickerActionMenu
+          key={`pick-${pendingPick.cursorLine}-${pendingPick.lineText}`}
           targetLabel={menuTargetLabel}
           defaultAction={menuDefaultAction}
+          items={menuItems}
+          meta={pendingPick.result.element}
           onChoose={onMenuChoose}
           onCancel={onMenuCancel}
         />
