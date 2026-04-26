@@ -41,6 +41,10 @@ export const editorController = {
   clearView() {
     currentView = null;
   },
+  /** Read the registered view (null when no editor is mounted). */
+  getView(): EditorView | null {
+    return currentView;
+  },
   /** register the absolute path of the open `.story` file. */
   setStoryPath(path: string | null) {
     currentStoryPath = path;

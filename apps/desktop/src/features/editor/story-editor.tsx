@@ -11,16 +11,9 @@ import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 import { storyEditorExtensions } from "./codemirror-setup";
 import { editorController } from "./controller";
+import { normalizeForSave } from "./normalize-source";
 import { SelectorValidatorOverlay } from "./SelectorValidatorOverlay";
 import { buildOrdinalLineMap, setActiveFrame, setFailedStep } from "./simulator-decoration";
-
-function normalizeForSave(s: string): string {
-  // Strip trailing horizontal whitespace per line, then guarantee exactly one
-  // final newline. POSIX text files end with `\n`; without it, terminals (zsh)
-  // render a `%` marker after `cat` which alarms users.
-  const trimmed = s.replace(/[ \t]+$/gm, "").replace(/\n+$/g, "");
-  return trimmed.length === 0 ? "" : `${trimmed}\n`;
-}
 
 export interface EditorJumpTarget {
   offset: number;

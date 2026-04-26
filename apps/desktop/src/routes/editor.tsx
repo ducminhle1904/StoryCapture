@@ -22,6 +22,7 @@ import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
 import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDriverStore";
 import { EditorBreadcrumb } from "@/features/editor/editor-breadcrumb";
+import { EditorCommandPalette } from "@/features/editor/editor-command-palette";
 import { PickingBanner, PreviewPickerButton } from "@/features/editor/PreviewPickerButton";
 import { ProblemsPanel } from "@/features/editor/problems-panel";
 import { SimulatorFrameView } from "@/features/editor/preview-panel";
@@ -387,7 +388,15 @@ export default function EditorRoute() {
           <span className="text-xs text-[var(--sc-text-4)]">Opening project…</span>
         </div>
       ) : (
-        <PageContentTransition className="min-h-0 flex-1">
+        <>
+          <EditorCommandPalette
+            story={story}
+            projectFolder={folder?.folder_path ?? null}
+            storyPath={folder?.story_path ?? null}
+            streamId={authorStreamId}
+            onJumpToOffset={queueEditorJump}
+          />
+          <PageContentTransition className="min-h-0 flex-1">
           <Group orientation="horizontal" className="min-h-0 flex-1">
             {/* Scene list — narrow left panel, always visible (D-08). */}
             <Panel id="editor-scene-list" defaultSize="12%" minSize="8%" maxSize="18%">
@@ -594,7 +603,8 @@ export default function EditorRoute() {
               </div>
             </Panel>
           </Group>
-        </PageContentTransition>
+          </PageContentTransition>
+        </>
       )}
     </main>
   );

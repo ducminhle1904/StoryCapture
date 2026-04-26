@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { Diagnostic } from "@/ipc/parse";
 import { useEditorStore } from "@/state/editor";
 
-import { ProblemsPanel } from "./problems-panel";
+import { ProblemsPanel, useProblemsPanelStore } from "./problems-panel";
 
 function span(line: number, start: number) {
   return { line, col: 1, start, end: start + 5 };
@@ -32,9 +32,11 @@ function seedDiagnostics(diagnostics: Diagnostic[]) {
 describe("ProblemsPanel", () => {
   beforeEach(() => {
     useEditorStore.setState({ lastParse: null });
+    useProblemsPanelStore.setState({ open: false });
   });
   afterEach(() => {
     useEditorStore.setState({ lastParse: null });
+    useProblemsPanelStore.setState({ open: false });
   });
 
   it("shows 'No problems' badge and collapsed body by default", () => {

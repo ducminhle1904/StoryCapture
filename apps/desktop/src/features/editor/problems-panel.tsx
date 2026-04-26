@@ -1,11 +1,24 @@
 import { ScBadge, ScKbd } from "@storycapture/ui";
 import { AlertTriangle, Check, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { create } from "zustand";
 
 import type { Diagnostic } from "@/ipc/parse";
 import { useEditorStore } from "@/state/editor";
+
+interface ProblemsPanelStore {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  toggle: () => void;
+}
+
+export const useProblemsPanelStore = create<ProblemsPanelStore>((set) => ({
+  open: false,
+  setOpen: (open) => set({ open }),
+  toggle: () => set((s) => ({ open: !s.open })),
+}));
 
 interface ProblemsPanelProps {
   onJumpToOffset: (offset: number) => void;
@@ -27,14 +40,15 @@ const EMPTY: never[] = [];
 
 export function ProblemsPanel({ onJumpToOffset }: ProblemsPanelProps) {
   const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY;
-  const [open, setOpen] = useState(false);
+  const open = useProblemsPanelStore((s) => s.open);
+  const toggleOpen = useProblemsPanelStore((s) => s.toggle);
   const reduceMotion = useReducedMotion();
 
   useHotkeys(
     "mod+shift+m",
     (e) => {
       e.preventDefault();
-      setOpen((v) => !v);
+      toggleOpen();
     },
     { enableOnFormTags: true, enableOnContentEditable: true },
   );
@@ -66,7 +80,7 @@ export function ProblemsPanel({ onJumpToOffset }: ProblemsPanelProps) {
     >
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         aria-expanded={open}
         aria-controls="problems-panel-body"
         style={{
