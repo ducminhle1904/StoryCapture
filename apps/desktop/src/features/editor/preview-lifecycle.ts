@@ -36,6 +36,7 @@ import {
 const STOP_GRACE_MS = 60_000;
 
 type Listener = (streamId: string | null) => void;
+export type PreviewLifecycleStatus = "idle" | "starting" | "live" | "error";
 
 export interface PreviewNavState {
   url: string | null;
@@ -58,15 +59,18 @@ function navEqual(a: PreviewNavState, b: PreviewNavState): boolean {
 }
 
 type NavListener = (s: PreviewNavState) => void;
+type StatusListener = (status: PreviewLifecycleStatus) => void;
 
 interface State {
   streamId: string | null;
   appUrl: string | null;
   viewport: PreviewViewport;
+  status: PreviewLifecycleStatus;
   starting: boolean;
   paused: boolean;
   stopTimer: number | null;
   listeners: Set<Listener>;
+  statusListeners: Set<StatusListener>;
   refcount: number;
   nav: PreviewNavState;
   navListeners: Set<NavListener>;
@@ -77,10 +81,12 @@ const state: State = {
   streamId: null,
   appUrl: null,
   viewport: "desktop",
+  status: "idle",
   starting: false,
   paused: false,
   stopTimer: null,
   listeners: new Set(),
+  statusListeners: new Set(),
   refcount: 0,
   nav: { ...INITIAL_NAV },
   navListeners: new Set(),
@@ -89,6 +95,12 @@ const state: State = {
 
 function notify() {
   for (const l of state.listeners) l(state.streamId);
+}
+
+function setStatus(status: PreviewLifecycleStatus) {
+  if (state.status === status) return;
+  state.status = status;
+  for (const l of state.statusListeners) l(state.status);
 }
 
 function setNav(next: PreviewNavState) {
@@ -107,6 +119,7 @@ function cancelPendingStop() {
 async function launch(appUrl: string, viewport: PreviewViewport) {
   if (state.starting || state.streamId != null) return;
   state.starting = true;
+  setStatus("starting");
   try {
     const { w, h } = VIEWPORT_SIZES[viewport];
     const id = await startAuthorPreview({
@@ -118,6 +131,7 @@ async function launch(appUrl: string, viewport: PreviewViewport) {
     state.appUrl = appUrl;
     state.viewport = viewport;
     state.paused = false;
+    setStatus("live");
     // Seed the nav URL so the URL bar can render the initial value before
     // the first framenavigated event arrives from the sidecar.
     setNav({ ...INITIAL_NAV, url: appUrl });
@@ -141,6 +155,7 @@ async function launch(appUrl: string, viewport: PreviewViewport) {
     }
     notify();
   } catch (err) {
+    setStatus("error");
     frontendLog.warn("previewLifecycle", "start_author_preview failed", {
       error: err,
       fields: { app_url: appUrl, viewport },
@@ -156,6 +171,7 @@ async function teardown() {
   state.streamId = null;
   state.appUrl = null;
   state.paused = false;
+  setStatus("idle");
   if (state.navUnlisten) {
     try { state.navUnlisten(); } catch { /* unlisten is best-effort */ }
     state.navUnlisten = null;
@@ -303,5 +319,13 @@ export function subscribeNav(listener: NavListener): () => void {
   listener(state.nav);
   return () => {
     state.navListeners.delete(listener);
+  };
+}
+
+export function subscribeStatus(listener: StatusListener): () => void {
+  state.statusListeners.add(listener);
+  listener(state.status);
+  return () => {
+    state.statusListeners.delete(listener);
   };
 }

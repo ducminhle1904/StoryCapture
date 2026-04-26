@@ -1,4 +1,4 @@
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { ScBadge, ScButton } from "@storycapture/ui";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertTriangle,
@@ -7,10 +7,7 @@ import {
   ChevronRight,
   File,
   FolderOpen,
-  Monitor,
   Scissors,
-  Smartphone,
-  Tablet,
   Video,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,22 +16,18 @@ import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { PageContentTransition } from "@/components/page-content-transition";
-import { PreviewSurface } from "@/components/preview-surface";
 import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDriverStore";
 import { EditorBreadcrumb } from "@/features/editor/editor-breadcrumb";
 import { EditorCommandPalette } from "@/features/editor/editor-command-palette";
-import { PickingBanner, PreviewPickerButton } from "@/features/editor/PreviewPickerButton";
-import { PreviewLocationBar } from "@/features/editor/PreviewLocationBar";
+import { EditorLivePreviewPanel } from "@/features/editor/editor-live-preview-panel";
 import { ProblemsPanel } from "@/features/editor/problems-panel";
-import { SimulatorFrameView } from "@/features/editor/preview-panel";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
 import { SimulatorTimeline } from "@/features/editor/simulator-timeline";
 import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-editor";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
-import { LivePreview } from "@/features/recorder/live-preview";
 import { parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
-import { EMPTY_DIAGNOSTICS, useEditorStore, VIEWPORT_SIZES } from "@/state/editor";
+import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
 function showDiskConflictToast(
@@ -46,17 +39,6 @@ function showDiskConflictToast(
     action: { label: "Reload", onClick: onReload },
     cancel: { label: "Keep mine", onClick: () => {} },
   });
-}
-
-function formatRelative(ts: number): string {
-  const deltaSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (deltaSec < 60) return `${deltaSec}s ago`;
-  const m = Math.round(deltaSec / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.round(h / 24);
-  return `${d}d ago`;
 }
 
 /* Editor route */
@@ -85,15 +67,15 @@ export default function EditorRoute() {
 
   const previewViewport = useEditorStore((s) => s.previewViewport);
   const setPreviewViewport = useEditorStore((s) => s.setViewport);
-  const { streamId: authorStreamId, appUrlValid, nav: previewNav } =
+  const { streamId: authorStreamId, appUrlValid, nav: previewNav, status: previewStatus } =
     useEditorLivePreview(story?.meta?.app ?? null);
   const simulatorRunState = useSimulatorStore((s) => s.runState);
   const simulatorCurrentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
-  // Phase 11-04: project upstream state into the authorDriverStore so the
-  // PreviewPickerButton can derive its five visual variants without direct
-  // coupling to either upstream store. Skipped while the local projection
-  // is `picking` — the button overrides the derivation for its own pick
-  // lifetime (see PreviewPickerButton onClick).
+  // Project upstream state into the authorDriverStore so the
+  // PreviewPickerButton can derive its visual variants without direct
+  // coupling to either upstream store. Skipped while the local
+  // projection is `picking` — the button overrides the derivation for
+  // its own pick lifetime (see PreviewPickerButton onClick).
   const setAuthorDriverSnapshot = useAuthorDriverStore((s) => s.setSnapshot);
   const authorDriverVariant = useAuthorDriverStore((s) => s.variant);
   useEffect(() => {
@@ -398,7 +380,7 @@ export default function EditorRoute() {
           />
           <PageContentTransition className="min-h-0 flex-1">
           <Group orientation="horizontal" className="min-h-0 flex-1">
-            {/* Scene list — narrow left panel, always visible (D-08). */}
+            {/* Scene list — narrow left panel, always visible. */}
             <Panel id="editor-scene-list" defaultSize="12%" minSize="8%" maxSize="18%">
               <SceneListPanel
                 activeSceneIndex={activeSceneIndex}
@@ -494,127 +476,19 @@ export default function EditorRoute() {
 
             {/* Right side: preview rail */}
             <Panel id="editor-preview" defaultSize="34%" minSize="24%" maxSize="44%">
-              <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    height: 32,
-                    padding: "0 12px",
-                    borderBottom: "1px solid var(--sc-border-2)",
-                    background: "var(--sc-chrome-2)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>Live Preview</span>
-                  <ScBadge tone="muted" dot>
-                    {!appUrlValid ? "no app" : authorStreamId ? "live" : "starting"}
-                  </ScBadge>
-                  {/* Phase 11-04: Preview-panel pick button sits LEFT of
-                      the viewport/quality controls (UI-SPEC §Visual
-                      Layout §1). Icon-first ghost; keymap + tooltip
-                      copy owned by the component. */}
-                  <PreviewPickerButton />
-                  <span style={{ flex: 1 }} />
-                  <ScSegmented
-                    size="sm"
-                    value={previewViewport}
-                    onValueChange={(v) => setPreviewViewport(v as typeof previewViewport)}
-                    aria-label="Viewport size"
-                    options={[
-                      {
-                        value: "mobile",
-                        label: <Smartphone size={12} aria-label="Mobile" />,
-                      },
-                      {
-                        value: "tablet",
-                        label: <Tablet size={12} aria-label="Tablet" />,
-                      },
-                      {
-                        value: "desktop",
-                        label: <Monitor size={12} aria-label="Desktop" />,
-                      },
-                    ]}
-                  />
-                </div>
-
-                <PreviewLocationBar
-                  streamId={authorStreamId}
-                  url={previewNav.url}
-                  canGoBack={previewNav.canGoBack}
-                  canGoForward={previewNav.canGoForward}
-                  disabled={
-                    !appUrlValid ||
-                    simulatorRunState === "running" ||
-                    authorDriverVariant === "picking"
-                  }
-                />
-
-                {/* Phase 11-04: Picking banner lives inside the Preview
-                    panel (UI-SPEC §2), between the toolbar and the
-                    stage. Visibility driven by the authorDriverStore. */}
-                {authorDriverVariant === "picking" ? <PickingBanner variant="active" /> : null}
-
-                <div className="relative min-h-0 flex-1 overflow-hidden">
-                  {simulatorActiveFrame ? (
-                    <div className="flex h-full w-full items-center justify-center p-3">
-                      <SimulatorFrameView frame={simulatorActiveFrame} />
-                    </div>
-                  ) : authorStreamId ? (
-                    <div className="flex h-full w-full items-center justify-center p-3">
-                      <LivePreview
-                        streamId={authorStreamId}
-                        pageWidth={VIEWPORT_SIZES[previewViewport].w}
-                        pageHeight={VIEWPORT_SIZES[previewViewport].h}
-                      />
-                    </div>
-                  ) : appUrlValid ? (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
-                      <span className="font-mono text-sm text-[var(--sc-text-2)]">
-                        Starting preview…
-                      </span>
-                      <span className="max-w-full truncate text-[10px] text-[var(--sc-text-4)]">
-                        {story?.meta?.app ?? ""}
-                      </span>
-                    </div>
-                  ) : latest && projectId ? (
-                    <PreviewSurface mode="recording" projectId={projectId} />
-                  ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-6 text-center">
-                      <span className="font-mono text-sm text-[var(--sc-text-2)]">No app URL</span>
-                      <span className="max-w-[36ch] text-[11px] text-[var(--sc-text-4)]">
-                        Set <code>meta.app</code> in your story to auto-launch live preview.
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "6px 12px",
-                    borderTop: "1px solid var(--sc-border-2)",
-                    background: "var(--sc-surface-2)",
-                    fontSize: 11,
-                    color: "var(--sc-text-3)",
-                    fontFamily: "var(--sc-font-mono)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <ScBadge tone="muted" dot>
-                    {latest ? `Latest: ${formatRelative(latest.captured_at)}` : "Idle"}
-                  </ScBadge>
-                  <span>
-                    {latest?.width && latest.height
-                      ? `${latest.width} × ${latest.height}`
-                      : "1440 × 900"}
-                  </span>
-                  <span style={{ flex: 1 }} />
-                </div>
-              </div>
+              <EditorLivePreviewPanel
+                appUrl={story?.meta?.app ?? null}
+                appUrlValid={appUrlValid}
+                authorDriverVariant={authorDriverVariant}
+                latestRecording={latest}
+                previewNav={previewNav}
+                previewStatus={previewStatus}
+                previewViewport={previewViewport}
+                simulatorActiveFrame={simulatorActiveFrame}
+                simulatorRunState={simulatorRunState}
+                streamId={authorStreamId}
+                onViewportChange={setPreviewViewport}
+              />
             </Panel>
           </Group>
           </PageContentTransition>
