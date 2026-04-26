@@ -1,10 +1,10 @@
-//! Session actor (D-06 / ARCHITECTURE.md Pattern 4).
+//! Session actor.
 //!
 //! Wraps the executor in a long-lived tokio task; outside callers send
 //! `SessionCmd::*` and observe events through the bridged event stream.
 //!
-//! Phase 1 surface is intentionally minimal. Pause/Stop/Status remain
-//! mostly stubbed — they wire into Phase 1's recording HUD (UI-04).
+//! Surface is intentionally minimal. Pause/Stop/Status are mostly stubbed —
+//! they wire into the recording HUD.
 //!
 //! Recording lifecycle: an optional [`RecorderHandle`] can be attached at
 //! spawn time. When the actor receives `SessionCmd::Stop` it calls
@@ -98,8 +98,8 @@ impl SessionActor {
             match cmd {
                 SessionCmd::Start { reply, .. } => {
                     // Caller still invokes `Executor::run` directly; the
-                    // actor shape is here so Phase 1's recorder UI can stop
-                    // the session without rewriting the surface.
+                    // actor shape exists so the recorder UI can stop the
+                    // session without rewriting the surface.
                     let _ = reply.send(Ok(SessionId(Uuid::now_v7())));
                 }
                 SessionCmd::Pause { reply } => {

@@ -1,8 +1,8 @@
-//! Windows real-capture **end-to-end** integration tests (Plan 06-04 Task 0).
+//! Windows real-capture **end-to-end** integration tests.
 //!
-//! These extend the Phase 5 `wgc_real_capture.rs` smoke tests with a full
-//! happy-path flow: launch Playwright-driven Chromium, capture its window (or
-//! the primary display) for **3 seconds**, encode the frames to an MP4 via
+//! These extend the `wgc_real_capture.rs` smoke tests with a full happy-path
+//! flow: launch Playwright-driven Chromium, capture its window (or the
+//! primary display) for **3 seconds**, encode the frames to an MP4 via
 //! bundled FFmpeg, and assert that `ffprobe` reports a duration within ±10%
 //! of 3s (i.e. 2.7 – 3.3 s).
 //!
@@ -14,7 +14,7 @@
 //! * Gated by `#[cfg(all(target_os = "windows", feature = "real-capture-windows"))]`
 //!   so the file compiles cleanly on macOS / Linux dev machines — the
 //!   entire test body is absent off-Windows, only the anchor below remains.
-//! * Operator-triggered on a real Windows box (per D-23 fallback script
+//! * Operator-triggered on a real Windows box (per the fallback script
 //!   `scripts/test-windows-capture.md`) or on a self-hosted graphical
 //!   Windows runner via the workflow `.github/workflows/capture-windows-e2e.yml`.
 //!
@@ -56,7 +56,7 @@ fn temp_mp4_path(label: &str) -> PathBuf {
 ///
 /// For `NativeWindows` (zero-copy D3D11 texture) frames a GPU readback
 /// would be required to inspect bytes — that plumbing belongs in the
-/// encoder crate (Phase 1 plan 01-08), not this test. When the WgcBackend
+/// encoder crate, not this test. When the WgcBackend
 /// emits native textures we fall back to a synthetic testsrc encode so
 /// the ffprobe assertion still exercises the CI artifact-upload path.
 fn owned_bgra(frame: &Frame) -> Option<&[u8]> {
@@ -304,7 +304,7 @@ async fn windows_e2e_display_happy_path() {
 // Window happy path (Playwright-launched Chromium)
 // ---------------------------------------------------------------------------
 
-/// 3-second Chromium-window capture via the Phase 5 Playwright sidecar.
+/// 3-second Chromium-window capture via the Playwright sidecar.
 ///
 /// Mirrors the macOS `tools/e2e-playwright-capture` binary but targets
 /// `WgcBackend` on Windows. Uses the same `STORYCAPTURE_TEST_CHROMIUM_PID`
@@ -316,7 +316,7 @@ async fn windows_e2e_window_happy_path() {
     // Resolve a Chromium pid. Preferred: STORYCAPTURE_TEST_CHROMIUM_PID
     // env var set by the operator / workflow step after launching the
     // Playwright sidecar. If unset, skip with an informative message
-    // (matches Phase 5 pattern).
+    // (matches the smoke test pattern).
     let pid: i32 = match std::env::var("STORYCAPTURE_TEST_CHROMIUM_PID") {
         Ok(v) => v.parse().expect("pid parse"),
         Err(_) => {
@@ -377,7 +377,7 @@ async fn windows_e2e_window_happy_path() {
 
 // ---------------------------------------------------------------------------
 // Anchors — keep compile-time exercised when feature is on but tests are
-// filtered out. Mirrors the Phase 5 pattern in `wgc_real_capture.rs`.
+// filtered out. Mirrors the pattern in `wgc_real_capture.rs`.
 // ---------------------------------------------------------------------------
 
 #[allow(dead_code)]

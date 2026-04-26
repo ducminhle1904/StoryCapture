@@ -1,4 +1,4 @@
-//! Drop shadow emitter (POST-04). Produces an offset, blurred, tinted copy of
+//! Drop shadow emitter. Produces an offset, blurred, tinted copy of
 //! the input's alpha channel that is composited under the foreground video
 //! by the caller (`background::compositor`).
 

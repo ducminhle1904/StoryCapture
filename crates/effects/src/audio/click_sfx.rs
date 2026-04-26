@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::mixer::{ExtraInput, InputKind};
 
-/// User-selectable click-SFX preset (D-22).
+/// User-selectable click-SFX preset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClickSfxLevel {
     /// No click SFX rendered at all.
@@ -24,7 +24,7 @@ pub enum ClickSfxLevel {
     Pronounced,
 }
 
-/// Linear gain for a preset. Values chosen by D-22:
+/// Linear gain for a preset:
 /// `Off = 0.0`, `Subtle = 0.3`, `Pronounced = 0.7`.
 pub fn click_gain(level: ClickSfxLevel) -> f32 {
     match level {
@@ -43,7 +43,7 @@ pub struct ClickEvent {
     pub sfx_file: String,
 }
 
-/// Transition whoosh event — spliced at scene boundaries (Plan 10).
+/// Transition whoosh event — spliced at scene boundaries.
 /// Uses the same adelay+amix pipeline as clicks but with a different
 /// default gain source (hard-coded 0.6 for now; tunable via future preset).
 #[derive(Debug, Clone, PartialEq)]

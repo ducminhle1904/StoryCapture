@@ -1,7 +1,7 @@
 //! Migrations for the global `app.sqlite`. Each `M::up(...)` is one schema bump.
 //!
-//! v1 (Phase 1 Plan 05): 001_init.sql — projects, app_settings.
-//! v2 (Phase 2 Plan 03): effect_presets (global-scope presets mirror).
+//! v1: 001_init.sql — projects, app_settings.
+//! v2: effect_presets (global-scope presets mirror).
 
 use rusqlite_migration::{Migrations, M};
 

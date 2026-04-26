@@ -1,5 +1,5 @@
 /**
- * Phase 13-04 RTL suite for <VideoOutputSection /> + <OutputSummaryBadge />.
+ * RTL suite for <VideoOutputSection /> + <OutputSummaryBadge />.
  * Resets the shared output-prefs store before each test.
  */
 

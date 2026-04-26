@@ -1,17 +1,17 @@
-//! Runtime hardware-encoder feature detection (D-24 / ENC-02).
+//! Runtime hardware-encoder feature detection.
 //!
 //! Spawns `ffmpeg -hide_banner -encoders` once at startup and parses the
 //! output for the H.264 encoders we care about. Result is cached on
 //! `AppState` for the session (no re-probe per recording).
 //!
-//! Preference order (D-24):
+//! Preference order:
 //!   - macOS: `VideoToolboxH264`
 //!   - Windows: `NvencH264` > `QsvH264` > `AmfH264`
 //!   - Fallback (any OS): `Openh264Software` (LGPL Cisco reference encoder)
 //!
 //! If no encoder is detected — including the libopenh264 fallback — the
 //! probe returns `EncoderError::NoEncoderAvailable` with a diagnostic
-//! pointing at the LGPL build recipe (Plan 01-02).
+//! pointing at the LGPL build recipe.
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -21,15 +21,15 @@ use tokio::io::AsyncReadExt;
 use crate::error::{EncoderError, Result};
 use crate::sidecar::SidecarCommand;
 
-/// D-17: process-wide cache of the last successful probe result. A
+/// Process-wide cache of the last successful probe result. A
 /// `parking_lot::RwLock<Option<EncoderProbe>>` lets `force_reprobe`
 /// overwrite atomically — a one-shot static cell cannot be reset.
 static PROBE_CACHE: LazyLock<RwLock<Option<EncoderProbe>>> =
     LazyLock::new(|| RwLock::new(None));
 
-/// Encoders the runtime probe can select. Kept deliberately small — Phase 1
-/// scope is H.264 only (D-25). HEVC variants listed for completeness but
-/// never preferred in Phase 1; Phase 2 will extend.
+/// Encoders the runtime probe can select. Kept deliberately small — scope
+/// is H.264 only. HEVC variants are listed for completeness; preferred only
+/// when explicitly enabled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum HardwareEncoder {
     VideoToolboxH264,
@@ -180,12 +180,12 @@ fn parse_encoders_output(out: &str) -> Vec<HardwareEncoder> {
     found
 }
 
-/// Pick preferred encoder per target platform (D-24).
+/// Pick preferred encoder per target platform.
 fn pick_preferred(available: &[HardwareEncoder]) -> HardwareEncoder {
     #[cfg(target_os = "macos")]
     let order = &[
-        // Phase 18: HEVC first — Apple Silicon's VT HEVC encoder gives ~40%
-        // better compression at the same perceptual quality than H.264, which
+        // HEVC first — Apple Silicon's VT HEVC encoder gives ~40% better
+        // compression at the same perceptual quality than H.264, which
         // matters on Retina-sized (3560×2220) captures where VT's internal
         // quality heuristic undershoots `-b:v` anyway. Fall back to H.264
         // if HEVC isn't available for any reason.
@@ -269,7 +269,7 @@ Encoders:
         assert_eq!(pick_preferred(&avail), HardwareEncoder::VideoToolboxH264);
     }
 
-    // ─── D-17 cache / force_reprobe tests ─────────────────────────────
+    // ─── cache / force_reprobe tests ──────────────────────────────────
 
     use crate::sidecar::{SidecarChild, SidecarCommand};
     use async_trait::async_trait;
@@ -322,8 +322,8 @@ Encoders:
         out
     }
 
-    /// D-17: force_reprobe must bypass the cache and overwrite it so the
-    /// next `probe_cached` observes the fresh value.
+    /// force_reprobe must bypass the cache and overwrite it so the next
+    /// `probe_cached` observes the fresh value.
     #[tokio::test]
     async fn test_probe_force_reprobe() {
         // Seed with a sentinel value so probe_cached short-circuits.

@@ -1,8 +1,7 @@
 /**
  * Streaming token indicator.
  *
- * Motion pulse 900ms loop per UI-SPEC. prefers-reduced-motion -> static filled dot.
- * Uses accent color gradient per UI-SPEC accent reserved list item 5.
+ * 900ms pulse loop; prefers-reduced-motion -> static filled dot.
  */
 
 import { motion } from "motion/react";

@@ -1,7 +1,5 @@
 /**
- * Post-Production editor store tests (Plan 02-12a).
- *
- * Coverage targets defined by the plan's `<must_haves>`:
+ * Post-Production editor store tests. Coverage:
  *   - setPlayhead
  *   - moveClip with snap enabled snaps to nearest neighbour edge within 10 px
  *   - moveClip with Alt-held (snap disabled for this call) does NOT snap

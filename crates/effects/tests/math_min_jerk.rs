@@ -1,7 +1,7 @@
 //! Integration tests for `effects::math::min_jerk`.
 //!
 //! Covers endpoint correctness, path resampling length, and U-turn reversal
-//! detection — verifying the public surface Plan 06 (cursor engine) imports.
+//! detection — verifying the public surface the cursor engine imports.
 
 use effects::ast::types::Vec2;
 use effects::math::min_jerk::{

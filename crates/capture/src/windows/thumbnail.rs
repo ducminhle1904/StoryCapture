@@ -1,4 +1,4 @@
-//! Plan 06-03 Task 2 — Windows single-frame WGC thumbnail capture.
+//! Windows single-frame WGC thumbnail capture.
 //!
 //! Implements the same contract as `macos::screenshot::capture_thumbnail`:
 //! one short-lived WGC session that captures exactly ONE frame, stops

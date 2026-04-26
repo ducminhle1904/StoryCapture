@@ -1,7 +1,6 @@
 /**
- * Slider primitive — shadcn-style chrome on top of Base UI's Slider (D-32).
+ * Slider primitive — shadcn-style chrome on top of Base UI's Slider.
  *
- * Phase 13 first use: bitrate / keyframe-interval tuning with numeric readout.
  * Supports single-thumb value; multi-thumb can be extended from Base UI parts.
  */
 

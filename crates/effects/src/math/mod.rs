@@ -1,4 +1,4 @@
-//! Pure math primitives used by Plan 05 (auto-zoom planner) and Plan 06 (cursor engine).
+//! Pure math primitives used by the auto-zoom planner and cursor engine.
 //!
 //! Every function in this module is:
 //! - **pure** — no I/O, no globals, no randomness except from seeded generators

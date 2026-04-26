@@ -1,4 +1,4 @@
-// D-04 — double-start guard behavioral test.
+// Double-start guard behavioral test.
 //
 // Verifies the pattern used inside `recording-view.tsx::handleRecord`:
 //   1. read current `status` synchronously from the Zustand store

@@ -1,7 +1,5 @@
 /**
- * EditorShell (Plan 02-12b, D-14).
- *
- * 4-pane editor layout:
+ * EditorShell. 4-pane editor layout:
  *   - Top bar (title + queue widget + export button)
  *   - Preview pane  (top-left, ~60% width)
  *   - Inspector     (top-right, ~25% width)
@@ -10,9 +8,8 @@
  *   - Export modal  (dialog; mounted in DOM always, closed by default)
  *
  * Panes are sized from the persisted Zustand panels slice; splitters are
- * deferred until the resize UX matures (P13 or a dedicated follow-up).
- * The grid rows/cols are computed from the store so user preferences
- * survive reloads.
+ * deferred until the resize UX matures. The grid rows/cols are computed
+ * from the store so user preferences survive reloads.
  */
 
 import { useEffect } from "react";

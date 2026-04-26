@@ -1,17 +1,15 @@
 /**
- * ExportModal (Plan 02-12b, Task 2).
- *
- * Drawer-style dialog for configuring an export run. Reads form state
- * from the Zustand export slice, calls Plan 02-11's `export_run` via the
- * P12a IPC wrapper, and pushes the returned job ids into the queue.
+ * ExportModal — drawer-style dialog for configuring an export run.
+ * Reads form state from the Zustand export slice, calls `export_run`
+ * via the IPC wrapper, and pushes returned job ids into the queue.
  *
  * Folder picker uses the Tauri dialog plugin directly by command name
  * (`plugin:dialog|open`) so the IPC shape is visible for grep / audit.
  *
  * Validation runs through `exportValidateConfig` per selected output —
- * failures surface as a single inline warning list; the Export button is
- * disabled until all selected outputs validate OR validation has not yet
- * been invoked (initial state).
+ * failures surface as a single inline warning list; the Export button
+ * is disabled until all selected outputs validate OR validation has not
+ * yet been invoked (initial state).
  */
 
 import { Dialog } from "@base-ui-components/react/dialog";
@@ -98,7 +96,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);
 
   const outputs: ExportOutput[] = useMemo(() => {
-    // Phase 13 — encoder_options sourced from useOutputPrefsStore.
+    // encoder_options sourced from useOutputPrefsStore.
     const encoderOptions = buildEncoderOptions(exportKnobs);
     return form.formats.map((f) => ({
       format: f,
@@ -120,9 +118,9 @@ export function ExportModal({ storyId }: ExportModalProps) {
     }
   }, [setOutFolder]);
 
-  // Plan 02-13b wires the computed effects graph into this modal; until it
-  // lands there is no way to assemble a non-empty `graph_json`, so we block
-  // submission entirely rather than silently enqueueing empty-graph jobs.
+  // The computed effects graph is not yet wired into this modal; until
+  // it lands there is no way to assemble a non-empty `graph_json`, so
+  // block submission rather than silently enqueueing empty-graph jobs.
   const graphAvailable = false;
 
   const canSubmit =
@@ -155,10 +153,10 @@ export function ExportModal({ storyId }: ExportModalProps) {
         toast.error("Export validation failed — fix warnings and retry");
         return;
       }
-      // Graph computation is not yet wired (Plan 02-13b); `canSubmit`
-      // gates the button behind `graphAvailable = false`, so this path
-      // should be unreachable. Guard defensively so we never submit an
-      // empty graph to the backend.
+      // Graph computation is not yet wired; `canSubmit` gates the
+      // button behind `graphAvailable = false`, so this path should be
+      // unreachable. Guard defensively so we never submit an empty
+      // graph to the backend.
       if (!graphAvailable) {
         toast.error("Graph computation pending (Plan 02-13b)");
         return;

@@ -1,11 +1,9 @@
 /**
- * Panels slice (Plan 02-12a, D-14).
- *
- * Owns the resizable-pane sizes (timeline height, preview width, inspector
- * width) and modal/drawer visibility. Persisted to `localStorage` so the
- * user's layout preferences survive reloads. The `persist` middleware
- * lives on the store composition (see `store.ts`) to keep this slice
- * pure / testable.
+ * Panels slice. Owns resizable-pane sizes (timeline height, preview
+ * width, inspector width) and modal/drawer visibility. Persisted to
+ * `localStorage` so layout preferences survive reloads. The `persist`
+ * middleware lives on the store composition (see `store.ts`) to keep
+ * this slice pure / testable.
  */
 
 import type { StateCreator } from "zustand";

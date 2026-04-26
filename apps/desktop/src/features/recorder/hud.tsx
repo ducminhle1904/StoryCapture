@@ -14,15 +14,11 @@ function formatTime(ms: number): string {
 }
 
 /**
- * Recording HUD (UI-04): pulsing red dot + timer + project name. Mounted as
- * a fixed overlay while the recorder is actively capturing.
- *
- * Phase 11-02 (D-06): when the recorder store carries a `primaryMiss`
- * payload (set from a `StepFailed` event whose error_message matches the
- * UI-SPEC-locked `PrimaryMissNoHeal` copy), a destructive block is
- * rendered ABOVE the status pill with an "Open in Simulator" action that
- * routes the user into the Editor on the failed step. The block is
- * focusable + keyboard-operable per WCAG 2.1 AA.
+ * Recording HUD: pulsing red dot + timer + project name. Mounted as a
+ * fixed overlay while the recorder is actively capturing. When the store
+ * carries a `primaryMiss` payload, a destructive block renders ABOVE the
+ * status pill with an "Open in Simulator" action; focusable + keyboard-
+ * operable per WCAG 2.1 AA.
  */
 export function RecordingHud({
   projectName,
@@ -42,10 +38,9 @@ export function RecordingHud({
   // whole HUD (incl. the block) while `primaryMiss` is populated.
   if (!active && !primaryMiss) return null;
 
-  // Clamp ordinal to a positive integer. D-06 threat T-11-02-03 —
-  // "Open in Simulator" must not dispatch on an out-of-range value.
-  // The executor always emits 1-indexed ordinals; anything else is
-  // rejected and the link is omitted.
+  // Clamp ordinal to a positive integer — "Open in Simulator" must not
+  // dispatch on an out-of-range value. The executor always emits
+  // 1-indexed ordinals; anything else is rejected and the link is omitted.
   const clampedOrdinal =
     primaryMiss && Number.isInteger(primaryMiss.ordinal) && primaryMiss.ordinal >= 1
       ? primaryMiss.ordinal

@@ -1,6 +1,6 @@
 //! Audio AST nodes. All audio lives in the final canonical stage (AudioMix).
 //!
-//! Values use the defaults from D-22 / Research §6 for sidechain ducking:
+//! Values use canonical defaults for sidechain ducking:
 //!   threshold=0.08, ratio=8, attack=80ms, release=400ms.
 
 use std::path::PathBuf;
@@ -29,7 +29,7 @@ pub struct SidechainParams {
 }
 
 impl Default for SidechainParams {
-    /// D-22 / Research §6 defaults.
+    /// Canonical defaults.
     fn default() -> Self {
         Self {
             threshold: 0.08,

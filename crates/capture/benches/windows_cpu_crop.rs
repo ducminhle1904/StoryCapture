@@ -1,4 +1,4 @@
-//! Plan 06-02 — Criterion bench for the Windows post-capture CPU crop.
+//! Criterion bench for the Windows post-capture CPU crop.
 //!
 //! Gate: mean time <5ms per 1080p BGRA frame on reference hardware
 //! (i7/Ryzen class CPU, single-threaded). If this regresses, move the

@@ -1,4 +1,4 @@
-//! Integration tests for the cursor trajectory sampler (POST-03).
+//! Integration tests for the cursor trajectory sampler.
 //!
 //! Covers: endpoint exactness, jitter bounds, determinism given seed,
 //! reversal pauses, velocity-cap segment extension, post-click dwell.

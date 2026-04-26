@@ -1,12 +1,11 @@
-// Phase-1 hand-off: trait-shape stub for dry-run testing.
+// Trait-shape stub for dry-run testing.
 //
-// When `crates/automation` is available, add `phase1-wired` feature to
-// Cargo.toml and the compile-time `#[cfg]` in `mod.rs` switches over to
+// When `crates/automation` is available, switch over to
 // `pub use automation::{BrowserDriver, DriverError, ExecStep, StepResult, SelectorAttempt};`.
 //
-// This stub mirrors the subset of the Phase-1 API that the DryRunOrchestrator
-// actually uses. Field names and semantics match `crates/automation/src/driver.rs`
-// and `crates/automation/src/events.rs`.
+// This stub mirrors the subset of the API that the DryRunOrchestrator
+// actually uses. Field names and semantics match
+// `crates/automation/src/driver.rs` and `crates/automation/src/events.rs`.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -84,7 +83,7 @@ impl std::error::Error for DriverError {}
 
 /// Trait that the DryRunOrchestrator depends on.
 ///
-/// TODO(phase-1): When `crates/automation` merges, replace this with
+/// TODO: When `crates/automation` merges, replace this with
 /// `pub use automation::BrowserDriver;` via the `phase1-wired` feature flag.
 #[async_trait]
 pub trait BrowserDriver: Send + Sync {

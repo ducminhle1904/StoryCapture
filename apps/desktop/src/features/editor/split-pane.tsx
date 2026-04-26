@@ -1,7 +1,7 @@
 /**
- * Resizable split pane using `react-resizable-panels` v4 (UI-02). Ratio is
- * controlled by the editor Zustand store so user can persist it across
- * sessions (a later plan wires `tauri-plugin-store`).
+ * Resizable split pane using `react-resizable-panels` v4. Ratio is
+ * controlled by the editor Zustand store so users can persist it across
+ * sessions (`tauri-plugin-store` wiring is pending).
  */
 
 import { Group, Panel, Separator } from "react-resizable-panels";

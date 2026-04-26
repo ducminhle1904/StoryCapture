@@ -1,9 +1,7 @@
 /**
- * SoundDrawer (Plan 02-12b).
- *
- * Left-side slide-out browser of SFX + BGM entries. TanStack Query
- * fetches the list via `soundLibraryList`; the drawer renders two
- * category tabs and a scrollable list of `SoundRow`s.
+ * SoundDrawer — left-side slide-out browser of SFX + BGM entries. Lists
+ * are fetched via `soundLibraryList` (TanStack Query); the drawer
+ * renders two category tabs and a scrollable list of `SoundRow`s.
  */
 
 import { useState } from "react";

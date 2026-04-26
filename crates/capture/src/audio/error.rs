@@ -1,4 +1,4 @@
-//! Audio capture error taxonomy (Phase 6 plan 01).
+//! Audio capture error taxonomy.
 //!
 //! Thin, self-contained error enum — the host (`apps/desktop/src-tauri`)
 //! maps these into `AppError` at the IPC boundary. Parallels

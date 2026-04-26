@@ -16,20 +16,17 @@
 //! enforces this invariant by feeding a canary string through the commands
 //! under the redaction subscriber and asserting the canary never surfaces.
 //!
-//! **Keychain binding.** Per Phase 1 plan 01-03 FOUND-07, the project uses
-//! the `keyring` crate directly (the community `tauri-plugin-keyring` isn't
-//! consistently published on crates.io). The cross-platform binding covers
-//! macOS Keychain + Windows Credential Manager + Linux Secret Service, which
-//! is exactly the `tauri-plugin-keyring` substrate anyway. **Deviation from
-//! plan** (Rule 3): plan names `tauri-plugin-keyring::KeyringExt` but the
-//! project has standardised on `keyring::Entry` since Phase 1 — using the
-//! plugin would introduce a second, parallel keychain code path.
+//! **Keychain binding.** The project uses the `keyring` crate directly (the
+//! community `tauri-plugin-keyring` isn't consistently published on
+//! crates.io). The cross-platform binding covers macOS Keychain + Windows
+//! Credential Manager + Linux Secret Service, which is exactly the
+//! `tauri-plugin-keyring` substrate anyway. Using the plugin would introduce
+//! a second, parallel keychain code path.
 //!
-//! **Test URL injection.** `key_test` honours the `STORYCAPTURE_TEST_PROVIDER_BASE_URL`
-//! env var as a single override for all provider probe base URLs. This is
-//! the minimum-production-churn injection strategy called out in the plan's
-//! Task 2 <action>: no managed state, no feature flag, just a check at the
-//! call site gated by the env var's absence in production.
+//! **Test URL injection.** `key_test` honours the
+//! `STORYCAPTURE_TEST_PROVIDER_BASE_URL` env var as a single override for
+//! all provider probe base URLs — no managed state, no feature flag, just
+//! a check at the call site gated by the env var's absence in production.
 
 use std::time::{Duration, Instant};
 
@@ -39,7 +36,7 @@ use specta::Type;
 // ---- public types --------------------------------------------------------
 
 /// Four supported AI providers. A closed Rust enum — serde rejects unknown
-/// variants (T-03-03-05 mitigation) before any keychain access happens.
+/// variants before any keychain access happens.
 #[derive(Serialize, Deserialize, Type, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderId {
@@ -116,7 +113,7 @@ const TEST_BASE_URL_ENV: &str = "STORYCAPTURE_TEST_PROVIDER_BASE_URL";
 
 /// Store a provider key in the OS keychain.
 ///
-/// `#[tracing::instrument(skip(key))]` is the primary G1 defence — without it
+/// `#[tracing::instrument(skip(key))]` is the primary defence — without it
 /// tracing auto-derives `Debug` on every argument and the key would land in
 /// any `INFO`-level span capture. The `intelligence::tracing::redaction_layer`
 /// installed at app boot is the defence-in-depth layer.

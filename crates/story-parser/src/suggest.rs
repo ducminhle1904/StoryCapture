@@ -1,4 +1,4 @@
-//! Levenshtein-based "did you mean" lookup (DSL-05).
+//! Levenshtein-based "did you mean" lookup.
 
 use strsim::levenshtein;
 
@@ -20,9 +20,9 @@ pub const KNOWN_VERBS: &[&str] = &[
 
 pub const KNOWN_META_KEYS: &[&str] = &["app", "viewport", "theme", "speed"];
 
-/// Phase 7 Tier 1 role keywords — MUST stay in lockstep with
+/// Role keywords — MUST stay in lockstep with
 /// `ast::AriaRole::from_keyword`. Both `image` and `img` are listed
-/// because both are valid DSL spellings (D-05 / RESEARCH Q5).
+/// because both are valid DSL spellings.
 pub const KNOWN_ROLES: &[&str] = &[
     "button",
     "link",

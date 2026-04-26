@@ -1,8 +1,8 @@
-//! Batch export builder (EXPORT-04).
+//! Batch export builder.
 //!
 //! `build_batch` stamps a single `batch_id` on every `OutputSpec` in the
-//! batch so the render queue (Plan 02-10) can smart-batch-reuse the FFV1
-//! intermediate across all outputs.
+//! batch so the render queue can smart-batch-reuse the FFV1 intermediate
+//! across all outputs.
 
 use std::path::PathBuf;
 

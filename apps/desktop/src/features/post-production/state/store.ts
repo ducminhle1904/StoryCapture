@@ -1,19 +1,14 @@
 /**
- * Post-Production editor store (Plan 02-12a, D-32; Plan 02-13 added
- * UndoSlice).
+ * Post-Production editor store. Composition of 6 slices: timeline, panels,
+ * selection, export, queue, undo (owns the HistoryBuffer + Coalescer).
  *
- * Composition of 6 slices:
- *   - timeline / panels / selection / export / queue (P12a)
- *   - undo (P13) — owns the HistoryBuffer + Coalescer
+ * The panels slice is persisted to `localStorage` so pane sizes and
+ * drawer flags survive reloads; timeline / selection / export / queue /
+ * undo are transient. The undo ring is NOT persisted — reloading the
+ * project resets history.
  *
- * The panels slice is persisted to `localStorage` via
- * `zustand/middleware/persist` so pane sizes and drawer flags survive
- * reloads. Timeline / selection / export / queue / undo are transient.
- * The undo ring is NOT persisted (D-16) — reloading the project resets
- * history.
- *
- * Call sites that need to push undoable actions use
- * `useEditorStore.getState().pushAction(action)` directly.
+ * Call sites push undoable actions via
+ * `useEditorStore.getState().pushAction(action)`.
  */
 
 import { create } from "zustand";

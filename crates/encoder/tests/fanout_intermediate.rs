@@ -1,5 +1,5 @@
-//! Integration tests for the smart-batch fan-out pipeline (Plan 02-10
-//! Task 3). These tests exercise the argv shape of the FFV1 intermediate
+//! Integration tests for the smart-batch fan-out pipeline.
+//! These tests exercise the argv shape of the FFV1 intermediate
 //! and per-format encoder calls via a scripted `SidecarCommand` mock —
 //! they never spawn a real FFmpeg.
 

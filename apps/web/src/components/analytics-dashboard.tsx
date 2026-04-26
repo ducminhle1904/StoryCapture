@@ -5,10 +5,9 @@ import { DropoffHeatmap } from "./dropoff-heatmap";
 import { GeoBreakdown } from "./geo-breakdown";
 
 /**
- * Analytics dashboard for a video (Plan 04-08, D-06).
+ * Analytics dashboard for a video.
  * Shows: play count (total + unique), watch duration (avg + median),
- * scene drop-off heatmap, geographic breakdown.
- * Default time range: 30 days per D-06.
+ * scene drop-off heatmap, geographic breakdown. Default range: 30 days.
  */
 
 interface DashboardData {

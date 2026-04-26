@@ -1,13 +1,9 @@
 /**
- * QueueWidget (Plan 02-12b, Task 2).
- *
- * Top-bar dropdown that shows active render jobs with live progress.
- * Polls `render_list_active(storyId)` via TanStack Query every 3 s and
- * merges in live `RenderProgress` ticks from the shared channel
- * subscription (`useRenderProgress`).
- *
- * T-02-37: `render_list_active` is server-side filtered by `story_id`;
- * the widget just renders whatever the backend returns.
+ * QueueWidget — top-bar dropdown showing active render jobs with live
+ * progress. Polls `render_list_active(storyId)` every 3 s and merges in
+ * live `RenderProgress` ticks from the shared channel subscription
+ * (`useRenderProgress`). `render_list_active` is server-side filtered
+ * by `story_id`; the widget renders whatever the backend returns.
  */
 
 import { useState } from "react";

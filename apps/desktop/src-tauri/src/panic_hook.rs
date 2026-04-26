@@ -1,4 +1,4 @@
-// Panic hook (D-31, T-03-04, T-03-06).
+// Panic hook.
 //
 // Catches every panic in every thread, writes the panic message + a forced
 // backtrace to the tracing log at ERROR level, then emits a Tauri event
@@ -8,8 +8,8 @@
 //
 // Sanitization: the panic payload sent to the renderer contains ONLY the
 // panic message string and the panicking thread name. Backtrace + locals
-// stay in the local log file. This addresses T-03-02 (no PII / no keychain
-// values leaked through the panic surface).
+// stay in the local log file (no PII / no keychain values leaked through
+// the panic surface).
 
 use std::{
     backtrace::Backtrace,

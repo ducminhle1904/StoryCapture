@@ -1,6 +1,6 @@
 // Action menu shown after the sidecar resolves an element pick. The user
-// chooses what to do with the picked element; only then does the desktop UI
-// insert/replace the `.story` line and stamp the targets sidecar.
+// chooses what to do; only then does the desktop UI insert/replace the
+// `.story` line and stamp the targets sidecar.
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

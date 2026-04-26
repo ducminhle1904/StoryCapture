@@ -7,7 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 /**
  * Invite form for workspace members page.
  * Email input + role selector + copy invite link.
- * Per D-04: editors can invite as editor/viewer; owners can invite with any role.
+ * Editors can invite as editor/viewer; owners can invite with any role.
  */
 export function InviteForm({
   workspaceId,

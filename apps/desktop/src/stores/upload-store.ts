@@ -1,13 +1,8 @@
 /**
  * Zustand store for upload state management.
  *
- * Tracks upload progress, status, and provides actions
- * for starting, cancelling, and resetting uploads.
- *
- * Listens to Tauri Channel<T> progress events from the
- * upload_video command (same pattern as render progress).
- *
- * D-01: No auto-retry. User manually triggers upload.
+ * Listens to Tauri Channel<T> progress events from the upload_video command.
+ * No auto-retry — user manually triggers upload.
  */
 
 import { create } from "zustand";

@@ -1,4 +1,4 @@
-//! Render queue actor (Plan 02-10).
+//! Render queue actor.
 
 pub mod actor;
 pub mod job;

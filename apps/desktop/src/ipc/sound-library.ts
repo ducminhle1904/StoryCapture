@@ -1,8 +1,8 @@
 /**
- * Sound library IPC wrappers (Plan 02-12a).
+ * Sound library IPC wrappers.
  *
- * Typed wrappers around `sound_library_list`. The Post-Production editor's
- * Sound drawer (Plan 02-12b) uses this to populate SFX / BGM lists.
+ * Typed wrappers around `sound_library_list`. Used by the
+ * Post-Production editor's Sound drawer to populate SFX / BGM lists.
  */
 
 import { invoke } from "@tauri-apps/api/core";

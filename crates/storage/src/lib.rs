@@ -3,7 +3,7 @@
 //! per-project `project.sqlite` (sessions, steps, exports, presets, timeline
 //! state, effect presets/settings, render queue, sound library index).
 //!
-//! Pure crate: no Tauri imports. Reusable from the future Phase 5 headless CLI.
+//! Pure crate: no Tauri imports. Reusable from a headless CLI.
 
 mod app_db;
 mod error;
@@ -29,13 +29,13 @@ pub use project_folder::{
 };
 /// Re-export `rusqlite::Connection` so downstream crates that wire the
 /// two-tier DB (e.g. the Tauri host bridging the render queue) don't have
-/// to take a direct dep on rusqlite. Plan 02-10 consumer.
+/// to take a direct dep on rusqlite.
 pub use rusqlite::Connection;
 
 use std::path::Path;
 
 /// Convenience: open the global app db at `<app_data_dir>/app.sqlite`. The
-/// Tauri host is expected to call this in `setup()` (Plan 03 wires it).
+/// Tauri host is expected to call this in `setup()`.
 pub fn bootstrap(app_data_dir: &Path) -> Result<AppDb, StorageError> {
     AppDb::open(&app_data_dir.join("app.sqlite"))
 }

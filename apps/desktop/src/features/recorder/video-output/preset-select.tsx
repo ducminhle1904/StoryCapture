@@ -1,8 +1,7 @@
 /**
- * Phase 13 D-13-03 preset selector.
- * Applies the 3 bundled presets via applyPreset; the "Custom" label is
- * display-only — never user-applied (handled by setRecordingKnob flipping
- * the activePreset automatically).
+ * Preset selector. Applies the 3 bundled presets via applyPreset; the
+ * "Custom" label is display-only — never user-applied (setRecordingKnob
+ * flips the activePreset automatically).
  */
 
 import {

@@ -1,6 +1,5 @@
-//! PSNR regression harness (POST-08). Task 3 wires the real ffmpeg spawn;
-//! this module owns the stderr parser (which IS unit-testable without any
-//! sidecar) and the public [`compute_psnr`] entrypoint used by the
+//! PSNR regression harness. Owns the stderr parser (unit-testable without
+//! any sidecar) and the public [`compute_psnr`] entrypoint used by the
 //! integration test.
 
 use std::path::Path;

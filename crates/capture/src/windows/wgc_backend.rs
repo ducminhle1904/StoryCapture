@@ -303,8 +303,8 @@ impl WgcBackend {
             }
             CaptureTarget::Window { window_id } => {
                 let hwnd = window_id.0 as isize as *mut std::ffi::c_void;
-                // D-05: reject a stale HWND before handing it to WGC,
-                // which would otherwise hit undefined behaviour inside
+                // Reject a stale HWND before handing it to WGC, which
+                // would otherwise hit undefined behaviour inside
                 // GraphicsCaptureItem::FromWindow.
                 let is_valid = unsafe {
                     windows::Win32::UI::WindowsAndMessaging::IsWindow(
@@ -343,8 +343,8 @@ impl WgcBackend {
                 let hwnd_opt =
                     crate::windows::window::find_window_by_pid(pid, title_hint.as_deref()).await?;
                 let hwnd = hwnd_opt.ok_or(CaptureError::WindowNotFound(pid as u64))?;
-                // D-05: resolved HWND may have closed between enumeration
-                // and start; validate before WGC touches it.
+                // Resolved HWND may have closed between enumeration and
+                // start; validate before WGC touches it.
                 let raw = hwnd as *mut std::ffi::c_void;
                 let is_valid = unsafe {
                     windows::Win32::UI::WindowsAndMessaging::IsWindow(
@@ -508,8 +508,8 @@ mod nv12_reject_tests {
     use crate::frame::PixelFormat;
     use crate::target::CaptureTarget;
 
-    /// D-16: Nv12 must be rejected at `start()` entry before any OS
-    /// resource is acquired.
+    /// Nv12 must be rejected at `start()` entry before any OS resource
+    /// is acquired.
     #[tokio::test]
     async fn start_with_nv12_returns_unsupported_pixel_format() {
         let Ok(mut backend) = WgcBackend::new() else {

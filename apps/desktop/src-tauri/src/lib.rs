@@ -1,17 +1,14 @@
-// StoryCapture desktop host (Phase 1 plan 01-03).
+// StoryCapture desktop host.
 //
-// `run()` is the single entry point; `main.rs` is a 5-line shim. The host
-// registers 9 Tauri plugins (log, fs, dialog, updater, window-state, shell,
-// process, single-instance, os), wires the typed IPC surface from
-// `ipc_spec`, installs the panic hook (D-31, T-03-04) and the
-// `tracing` ↔ `tauri-plugin-log` bridge (D-30), and exposes `AppState`
-// with a paths-+-actor-registry shape (D-06).
+// `run()` is the single entry point; `main.rs` is a thin shim. The host
+// registers Tauri plugins, wires the typed IPC surface from `ipc_spec`,
+// installs the panic hook and the `tracing` ↔ `tauri-plugin-log` bridge,
+// and exposes `AppState`.
 //
-// OS keychain access (D-29) is exposed via the `system::store_secret`,
-// `system::load_secret`, `system::delete_secret` commands using the
-// `keyring` crate directly — no separate Tauri plugin is needed because
-// the cross-platform binding already targets all three platform stores
-// (macOS Keychain, Windows Credential Manager, Linux Secret Service).
+// OS keychain access uses the `keyring` crate directly — no separate
+// Tauri plugin is needed because the cross-platform binding already
+// targets all three platform stores (macOS Keychain, Windows Credential
+// Manager, Linux Secret Service).
 
 pub mod author_driver;
 pub mod commands;
@@ -133,9 +130,9 @@ pub fn run() {
                 .app_data_dir()
                 .map_err(|e| format!("resolving app_data_dir: {e}"))?;
 
-            // tracing -> file (D-30). tauri-plugin-log handles its own
-            // file in the same dir; the two are complementary surfaces.
-            // The user-configurable rotation policy + log-dir override
+            // tracing -> file. tauri-plugin-log handles its own file in
+            // the same dir; the two are complementary surfaces. The
+            // user-configurable rotation policy + log-dir override
             // (see Settings → Logs) is honoured by `tracing` here.
             let app_settings = commands::app_settings::load(app.handle());
             if let Err(e) = logging::init(&log_dir, &app_settings.log) {
@@ -146,11 +143,11 @@ pub fn run() {
             // safely look up the data dir.
             app.manage(state::AppState::new(data_dir, log_dir));
 
-            // Phase 10-02 — author-time simulator session registry.
+            // Author-time simulator session registry.
             app.manage(commands::simulator::SimulatorRegistry::default());
 
-            // Phase 11-01 — shared author-driver FSM (D-16). Arc-managed so
-            // PickerResumeGuard (11-03) can clone a handle for deferred restore.
+            // Shared author-driver FSM. Arc-managed so PickerResumeGuard
+            // can clone a handle for deferred restore.
             app.manage(std::sync::Arc::new(
                 author_driver::AuthorDriverRegistry::default(),
             ));
@@ -163,7 +160,7 @@ pub fn run() {
             tauri::async_runtime::spawn(lsp_drain);
             app.manage(commands::lsp::LspBridgeState::new(lsp_bridge));
 
-            // NL task registry (Plan 03-07): abort handles for in-flight NL turns.
+            // NL task registry: abort handles for in-flight NL turns.
             // Wrapped in Arc so spawned tasks can clone and hold a reference
             // beyond the Tauri command lifetime.
             app.manage(std::sync::Arc::new(

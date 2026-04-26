@@ -1,8 +1,8 @@
 //! LLM provider trait + associated request/event/error types.
 //!
-//! This module defines the contract surface that downstream Phase-3 waves
-//! (Anthropic / OpenAI structured-output providers, orchestrator) implement
-//! against. See AI-SPEC §3 "Key Abstractions" and §4 "Model Configuration".
+//! This module defines the contract surface that downstream waves
+//! (Anthropic / OpenAI structured-output providers, orchestrator)
+//! implement against.
 
 use thiserror::Error;
 

@@ -1,12 +1,12 @@
 //! ElevenLabs TTS provider — streaming MP3 synthesis + voice catalog.
 //!
-//! Implements the `TtsProvider` trait per AI-SPEC §4 (TTS):
+//! Implements the `TtsProvider` trait:
 //!
 //! - `synthesize` posts to `/v1/text-to-speech/{voice_id}/stream` with
 //!   `model_id: "eleven_multilingual_v2"` plus default voice_settings
 //!   (`stability: 0.5`, `similarity_boost: 0.75`, `style: 0`,
 //!   `use_speaker_boost: true`). Response is chunked MP3 bytes; we drain
-//!   into a single `Bytes` buffer for the cache layer (Plan 11).
+//!   into a single `Bytes` buffer for the cache layer.
 //! - `list_voices` hits `GET /v1/voices` and maps `voices[]` to
 //!   `Vec<VoiceInfo>` (locale from `labels.accent` when present, premium
 //!   when `category == "professional"`).
@@ -14,8 +14,7 @@
 //!   `404` → `VoiceNotFound`, `429` → `RateLimited { retry_after_s }`,
 //!   other non-2xx → `Provider(status + truncated body)`.
 //! - API key travels via `xi-api-key` header wrapped in `Redacted<String>`;
-//!   Plan 03-01's redaction layer scrubs the `xi-*` pattern as
-//!   defence-in-depth.
+//!   The redaction layer scrubs the `xi-*` pattern as defence-in-depth.
 
 use std::time::Duration;
 

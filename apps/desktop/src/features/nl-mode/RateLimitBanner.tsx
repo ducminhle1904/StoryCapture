@@ -1,10 +1,5 @@
 /**
  * Rate-limit banner with retry countdown.
- *
- * UI-SPEC copy: "{provider} dang gioi han toc do. Thu lai sau {N}s
- * hoac chuyen sang fallback provider."
- * CTA: "Doi va thu lai" + secondary "Dung {fallback}".
- * Warning color per UI-SPEC Color table.
  */
 
 import { useState, useEffect } from "react";

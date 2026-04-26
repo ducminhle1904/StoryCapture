@@ -1,10 +1,8 @@
 /**
- * PresetPicker — grid of bundled + user effect presets (Plan 02-12b).
- *
- * Reads from Plan 02-12a's `presetList({ scope })` via TanStack Query.
- * Selecting a card writes `selectedPresetId` to the store; application
- * of the preset graph to the current project lives in P13 (history +
- * undo-able dispatch) — here we just flag the selection.
+ * PresetPicker — grid of bundled + user effect presets. Reads via
+ * `presetList({ scope })` (TanStack Query). Selecting a card writes
+ * `selectedPresetId` to the store; applying the preset graph to the
+ * current project happens via the undo-able dispatch path.
  */
 
 import { memo } from "react";

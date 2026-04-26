@@ -1,10 +1,10 @@
-// auto-updater IPC (DIST-03).
+// Auto-updater IPC.
 //
 // Thin wrapper around `tauri-plugin-updater`'s `UpdaterExt` that exposes:
 //   - check_update   → returns Option<UpdateInfo>
 //   - install_update → downloads + applies + relaunches
 //
-// **Opt-in by default (DIST-05).** The renderer reads/writes the
+// Opt-in by default. The renderer reads/writes the
 // "check-for-updates-on-launch" preference through `@tauri-apps/plugin-store`;
 // this module NEVER triggers an auto-check on its own. The Tauri config
 // has `dialog: false`, so no built-in dialog is shown either — the UI
@@ -57,7 +57,7 @@ pub async fn check_update(app: AppHandle<Wry>) -> Result<Option<UpdateInfo>, App
 /// Download + apply the pending update, then relaunch the app.
 ///
 /// Tauri's updater verifies the manifest signature against the `pubkey`
-/// pinned in `tauri.conf.json` before applying — see T-10-01 mitigation.
+/// pinned in `tauri.conf.json` before applying.
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "install_update"), err(Debug))]

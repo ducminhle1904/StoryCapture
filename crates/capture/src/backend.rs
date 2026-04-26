@@ -20,14 +20,14 @@ pub enum BackendKind {
 
 #[derive(Debug, Clone)]
 pub struct CaptureConfig {
-    /// What to capture (display / window / window-by-pid). Plan 05-01.
+    /// What to capture (display / window / window-by-pid).
     pub target: CaptureTarget,
     pub include_cursor: bool,
     /// Advisory FPS hint. SCK + WGC are variable-frame-rate; xcap
     /// fallback honors this exactly via a tokio interval.
     pub fps_target: u32,
     pub pixel_format: PixelFormat,
-    /// Cap for the byte-bounded queue (D-19). Default 256 MiB.
+    /// Cap for the byte-bounded queue. Default 256 MiB.
     pub queue_cap_bytes: usize,
 }
 

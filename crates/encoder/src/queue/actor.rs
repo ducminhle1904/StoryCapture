@@ -1,4 +1,4 @@
-//! Render queue actor (D-04).
+//! Render queue actor.
 //!
 //! A single tokio task owns the actor. It:
 //!   1. On boot, calls `storage::render_job_repo::on_startup_mark_orphans`
@@ -107,7 +107,7 @@ struct RunningJob {
 }
 
 impl RenderQueueActor {
-    /// Flip orphaned `running` rows to `interrupted`. D-04 resume-on-relaunch.
+    /// Flip orphaned `running` rows to `interrupted` (resume-on-relaunch).
     pub async fn init_resume(&self) -> Result<u32> {
         let conn = self.db.lock().await;
         render_job_repo::on_startup_mark_orphans(&conn)

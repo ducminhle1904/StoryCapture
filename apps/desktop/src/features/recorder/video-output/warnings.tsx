@@ -1,8 +1,6 @@
 /**
- * Phase 13 D-13-12 warnings surface.
- * Hard errors render in a red stripe (ResolutionControl already also
- * shows its inline error; this is the roll-up). Soft warnings for
- * Lossless+4K+HW and Output>Capture render in a polite live region.
+ * Warnings surface. Hard errors render in a red stripe; soft warnings
+ * for Lossless+4K+HW and Output>Capture render in a polite live region.
  */
 
 import { TriangleAlert } from "lucide-react";

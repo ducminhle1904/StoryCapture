@@ -1,7 +1,7 @@
-//! TTS voiceover-to-timeline sync engine tests (Plan 03-12).
+//! TTS voiceover-to-timeline sync engine tests.
 //!
 //! Tests the pure function `compute_sync_plan` which aligns TTS clip
-//! durations to DSL step boundaries per D-13.
+//! durations to DSL step boundaries.
 
 use intelligence::tts::sync::{compute_sync_plan, ClipMeta, StepTiming};
 use std::path::PathBuf;

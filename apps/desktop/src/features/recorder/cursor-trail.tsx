@@ -3,12 +3,10 @@ import { useMemo } from "react";
 import { getCursorPositions, useRecorderStore } from "@/state/recorder";
 
 /**
- * Live cursor trail visualization (UI-04).
- *
- * Reads `cursorPositions` from the recorder store. Each point has a
- * timestamp; segments older than 2s fade to zero opacity. Rendered as a
- * fixed-position SVG overlay that sits above the HUD but doesn't intercept
- * pointer events.
+ * Live cursor trail visualization. Reads `cursorPositions` from the
+ * recorder store; each point has a timestamp and segments older than 2s
+ * fade to zero opacity. Fixed-position SVG overlay above the HUD that
+ * doesn't intercept pointer events.
  */
 export function CursorTrail() {
   const ring = useRecorderStore((s) => s.cursorPositions);

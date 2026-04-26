@@ -25,7 +25,7 @@ pub struct StoryStep {
     pub narration: Option<String>,
 }
 
-/// DSL verbs matching the Phase 1 grammar plus the `scene` marker.
+/// DSL verbs matching the parser grammar plus the `scene` marker.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DslVerb {
@@ -170,7 +170,7 @@ fn render_step(step: &StoryStep) -> String {
         }
         DslVerb::Pause => "pause".to_string(),
         DslVerb::PressKey => {
-            // Not in Phase 1 grammar yet, so render as a comment.
+            // Not in the parser grammar yet, so render as a comment.
             let key = step
                 .args
                 .get("key")

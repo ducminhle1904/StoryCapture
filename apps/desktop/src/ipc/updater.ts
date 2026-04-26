@@ -1,9 +1,9 @@
 /**
- * Typed wrappers around the auto-updater Tauri commands (Plan 01-10).
+ * Typed wrappers around the auto-updater Tauri commands.
  *
- * Opt-in semantics (DIST-05): these functions are only called from the
- * Settings UI (or programmatically after the user toggles
- * "check-for-updates-on-launch" on). Nothing here runs on boot.
+ * Opt-in: these functions are only called from the Settings UI (or
+ * programmatically after the user toggles "check-for-updates-on-launch"
+ * on). Nothing here runs on boot.
  */
 
 import { invoke } from "@tauri-apps/api/core";

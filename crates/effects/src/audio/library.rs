@@ -2,7 +2,7 @@
 //!
 //! Reads `assets/sound-library/manifest.json` — the index of every bundled
 //! SFX + BGM file. Shape is mirrored by `storage::repos::sound_library_repo`
-//! (Plan 03 `sync_from_manifest`). The on-disk format is intentionally simple
+//! (`sync_from_manifest`). The on-disk format is intentionally simple
 //! JSON so a human curator can diff it after replacing sounds.
 
 use std::fs;

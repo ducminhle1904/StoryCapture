@@ -32,7 +32,7 @@ use ts_rs::TS;
 )]
 pub struct Graph {
     /// See [`types::SCHEMA_VERSION`]. Presets with a different version are
-    /// migrated by the loader (Plan 03).
+    /// migrated by the loader.
     pub schema_version: u32,
     pub output_width: u32,
     pub output_height: u32,

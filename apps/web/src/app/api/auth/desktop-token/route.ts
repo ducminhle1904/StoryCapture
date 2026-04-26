@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate session exists in database and hasn't expired (T-04-08)
+    // Validate session exists in database and hasn't expired
     const session = await prisma.session.findUnique({
       where: { sessionToken },
       include: { user: true },

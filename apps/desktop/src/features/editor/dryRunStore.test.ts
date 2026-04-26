@@ -1,20 +1,8 @@
-/**
- * dryRunStore + useDryRun tests.
- *
- * 5 behaviors:
- * 1. Queued event sets statusByStep[step_id] = "queued"
- * 2. Pass event updates status + timing + fallbackChain
- * 3. Fail event sets status + persists fallback chain
- * 4. Summary event populates summary
- * 5. cancel() calls dryrun_cancel(taskId)
- */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useDryRunStore, type DryRunEvent } from "./dryRunStore";
 import { useDryRun } from "./useDryRun";
 
-// Mock Tauri invoke + Channel
 const { mockInvoke, MockChannel } = vi.hoisted(() => {
   const mockInvoke = vi.fn().mockResolvedValue("dry-run-task-1");
   class MockChannel {
@@ -112,7 +100,6 @@ describe("useDryRun", () => {
   });
 
   it("cancel() calls dryrun_cancel with taskId", async () => {
-    // Set a taskId in the store
     act(() => {
       useDryRunStore.getState().setTaskId("dry-run-task-1");
     });

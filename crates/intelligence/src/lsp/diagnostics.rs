@@ -5,9 +5,9 @@
 //! etc.) with "did you mean" suggestions from `strsim`. We split the
 //! output by severity for callers that want the two layers separately.
 //!
-//! D-17: diagnostic scope is grammar + semantic (undefined verb /
-//! missing-required-arg). Per the Phase-1 parser, this is already the
-//! set of diagnostics produced by `story_parser::parse`.
+//! Diagnostic scope is grammar + semantic (undefined verb /
+//! missing-required-arg). This is the set of diagnostics produced by
+//! `story_parser::parse`.
 
 use ropey::Rope;
 use story_parser::ast::{Command, SelectorOrText};
@@ -91,7 +91,7 @@ pub fn grammar_diagnostics(source: &str, rope: &Rope) -> Vec<Diagnostic> {
 /// Semantic-level subset (WARNING / INFO severity — unknown verb,
 /// missing arg, "did you mean …") plus selector-lint warnings for
 /// commands that take a selector argument (click, type, hover, assert,
-/// etc.). D-17 + AI-SPEC E11.
+/// etc.).
 pub fn semantic_diagnostics(source: &str, rope: &Rope) -> Vec<Diagnostic> {
     let result = parse_story(source);
     let mut diags: Vec<Diagnostic> = result
@@ -194,7 +194,7 @@ fn to_lsp_diag(d: ParserDiag, rope: &Rope) -> Diagnostic {
         }
     }
 
-    // D-17: unknown-verb / semantic diagnostics are surfaced to the LSP as
+    // Unknown-verb / semantic diagnostics are surfaced to the LSP as
     // WARNING even when the underlying parser emits them as Error — they
     // represent recoverable semantic issues, not grammar failures.
     let severity = if is_unknown_verb {
@@ -224,8 +224,8 @@ fn to_lsp_diag(d: ParserDiag, rope: &Rope) -> Diagnostic {
 
 /// A diagnostic is classified as "unknown verb" when the parser's message
 /// flags an unknown command/verb token. These are semantic (recoverable),
-/// not grammar, per D-17, and are surfaced as WARNING regardless of
-/// whether a Levenshtein suggestion was found.
+/// not grammar, and are surfaced as WARNING regardless of whether a
+/// Levenshtein suggestion was found.
 fn is_unknown_verb_diag(d: &ParserDiag) -> bool {
     let lower = d.message.to_ascii_lowercase();
     lower.contains("unknown command")

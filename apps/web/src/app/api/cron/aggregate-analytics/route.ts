@@ -7,7 +7,7 @@ import { MAX_RETENTION_DAYS } from "@/lib/constants";
  *
  * Vercel cron-triggered endpoint that:
  * 1. Aggregates raw ViewEvent data into DailyVideoStats for today
- * 2. Cleans up raw ViewEvent records older than 90 days (D-06)
+ * 2. Cleans up raw ViewEvent records older than 90 days
  *
  * Security: Verifies CRON_SECRET bearer token (Vercel sets this automatically).
  */
@@ -138,7 +138,7 @@ export async function GET(req: NextRequest) {
     aggregated++;
   }
 
-  // Clean up raw events older than 90 days (D-06)
+  // Clean up raw events older than 90 days
   const retentionCutoff = new Date();
   retentionCutoff.setDate(retentionCutoff.getDate() - MAX_RETENTION_DAYS);
 

@@ -1,4 +1,4 @@
-//! Plan 06-02 Task 3 — region-selection overlay window.
+//! Region-selection overlay window.
 //!
 //! Creates a transparent, fullscreen, always-on-top overlay on the
 //! requested display. The overlay React route (mounted at
@@ -15,9 +15,9 @@
 //! - The overlay closes itself via `window.close()` after emit; the main
 //!   window reads the event and stores the rect in recorder state.
 //!
-//! Security (T-06-13): the overlay label `region-overlay` is a
-//! trusted-process Tauri window — OS window-manager prevents another
-//! app from claiming the same label. Standard local-trust boundary.
+//! Security: the overlay label `region-overlay` is a trusted-process Tauri
+//! window — OS window-manager prevents another app from claiming the same
+//! label. Standard local-trust boundary.
 
 use crate::error::AppError;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};

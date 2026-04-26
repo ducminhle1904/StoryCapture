@@ -4,8 +4,8 @@
 //! Input: `StoryDoc` + optional brand-tone hint.
 //! Output: `Vec<NarrationDraft>` with per-step text, word count, and cost estimate.
 //!
-//! The user reviews/edits narration text before committing to TTS synthesis
-//! (Plan 11), avoiding wasted TTS tokens on poor scripts.
+//! The user reviews/edits narration text before committing to TTS
+//! synthesis, avoiding wasted TTS tokens on poor scripts.
 
 use std::collections::HashSet;
 use std::sync::Arc;

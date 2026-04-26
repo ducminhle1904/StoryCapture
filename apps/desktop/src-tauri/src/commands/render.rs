@@ -1,4 +1,4 @@
-// Plan 02-10: render queue Tauri commands.
+// Render queue Tauri commands.
 //
 // The render queue actor (encoder::queue::actor::RenderQueueActor) lives
 // in its own tokio task. These commands are thin pass-throughs:
@@ -133,8 +133,7 @@ impl From<RenderProgress> for RenderProgressDto {
 
 /// Bundle of handles the render commands need. Created by the host during
 /// `setup()` once the project DB is known and parked inside `AppState`
-/// via the actor registry / Tauri `manage` API (Plan 11 wires the full
-/// project-open flow; this bundle stays available for tests).
+/// via the actor registry / Tauri `manage` API.
 #[derive(Clone)]
 pub struct RenderQueueState {
     pub handle: RenderQueueHandle,

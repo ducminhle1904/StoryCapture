@@ -1,11 +1,8 @@
 /**
  * Upload progress widget for the desktop status bar area.
  *
- * Shows:
- * - Progress bar + percentage during upload
- * - "Uploaded! View at storycapture.app/watch/{slug}" on completion
- * - "Upload failed. Retry?" on error (D-01: no auto-retry)
- * - Cancel button during upload
+ * Shows progress bar during upload, success link on completion, error
+ * message + retry on failure (no auto-retry), and a cancel button.
  */
 
 import { useUploadStore } from "@/stores/upload-store";

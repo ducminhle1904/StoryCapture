@@ -1,4 +1,4 @@
-//! Click ripple factory (POST-03 / D-10).
+//! Click ripple factory.
 //!
 //! Given a waypoint list, produce one [`RippleEvent`] per Click with the
 //! canonical 60 ms anticipation, 300 ms radial expand, and decaying alpha.
@@ -7,7 +7,7 @@ use crate::ast::types::Rgba;
 use crate::ast::video::RippleEvent;
 use crate::math::min_jerk::{Waypoint, WaypointKind};
 
-/// Defaults for click ripple rendering (D-10).
+/// Defaults for click ripple rendering.
 #[derive(Debug, Clone, Copy)]
 pub struct RippleOptions {
     /// Milliseconds before impact to start the "anticipate" pulse.
@@ -22,7 +22,7 @@ pub struct RippleOptions {
 
 impl Default for RippleOptions {
     fn default() -> Self {
-        // D-10: anticipate 60ms before impact, expand 300ms, white @ 0.9 alpha.
+        // Anticipate 60ms before impact, expand 300ms, white @ 0.9 alpha.
         Self {
             anticipate_ms: 60,
             duration_ms: 300,

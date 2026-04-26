@@ -1,15 +1,15 @@
-// Plan 02-12a: preset Tauri commands.
+// Preset Tauri commands.
 //
 // Thin wrappers over `storage::repos::preset_repo` + `storage::preset_io`.
 // The project DB connection is borrowed from the installed render queue
-// state (Plan 02-10's `AppState::render_queue`), since the post-production
-// editor only operates on an open project. Global-scope requests are
-// accepted but routed to the same connection for now — a separate global
-// app-db handle will be added when Plan 02-13 (settings/about) needs it.
+// state (`AppState::render_queue`), since the post-production editor only
+// operates on an open project. Global-scope requests are accepted but
+// routed to the same connection for now — a separate global app-db handle
+// will be added when settings/about needs it.
 //
-// T-02-36 (preset_import path escape): `import_preset_cmd` re-canonicalises
-// the requested `.scpreset` path and rejects traversal attempts that resolve
-// outside the user's home directory or the project folder.
+// `import_preset_cmd` re-canonicalises the requested `.scpreset` path and
+// rejects traversal attempts that resolve outside the user's home
+// directory or the project folder.
 
 use std::path::{Path, PathBuf};
 
@@ -75,7 +75,7 @@ impl From<EffectPreset> for EffectPresetDto {
 }
 
 // ---------------------------------------------------------------------------
-// Path guard (T-02-36)
+// Path guard
 // ---------------------------------------------------------------------------
 
 /// Reject paths that — after canonicalisation — escape both the user's home

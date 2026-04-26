@@ -1,7 +1,7 @@
 /**
- * AdvancedOutputOptions RTL suite (Phase 13 Plan 05 Task 2).
- * Covers 3-subgroup layout, auto-hide semantics, probe-driven HW list,
- * conditional quality control rendering, persistence-warning, and copy.
+ * AdvancedOutputOptions RTL suite. Covers 3-subgroup layout, auto-hide
+ * semantics, probe-driven HW list, conditional quality control
+ * rendering, persistence-warning, and copy.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

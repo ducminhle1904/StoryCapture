@@ -14,11 +14,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 /**
  * R2 S3-compatible client + presigned URL helpers.
  *
- * CRITICAL (Pitfall 3): All presigned URLs use the S3 API domain
+ * CRITICAL: All presigned URLs use the S3 API domain
  * (`<ACCOUNT_ID>.r2.cloudflarestorage.com`), NOT a custom domain.
  * Custom domains do not support presigned URL verification.
  *
- * DIST-06: All uploads use ServerSideEncryption: AES256 (SSE-S3).
+ * All uploads use ServerSideEncryption: AES256 (SSE-S3).
  */
 
 export const R2_BUCKET = process.env.R2_BUCKET ?? "storycapture-media";
@@ -34,8 +34,7 @@ export const r2Client = new S3Client({
 
 /**
  * Create a presigned PUT URL for uploading a single part of a multipart upload.
- * Expires in 1 hour. Part-specific (partNumber encoded in signature).
- * T-04-13: time-limited + part-specific.
+ * Expires in 1 hour, part-specific (partNumber encoded in signature).
  */
 export async function createPresignedPartUrl(
   bucket: string,
@@ -86,7 +85,7 @@ export async function createPresignedGetUrl(
 
 /**
  * Create a presigned PUT URL for a single object upload (thumbnails, small files).
- * Expires in 1 hour. Includes SSE-S3 encryption (DIST-06).
+ * Expires in 1 hour. Includes SSE-S3 encryption.
  */
 export async function createPresignedPutUrl(
   bucket: string,

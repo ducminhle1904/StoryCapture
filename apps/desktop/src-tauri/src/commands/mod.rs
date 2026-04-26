@@ -1,13 +1,8 @@
-// Command registry for the StoryCapture host (Phase 1 plan 01-03).
-//
-// Plans 04 (DSL parse/run), 05 (DSL parser glue), 06 (BrowserDriver),
-// 07 (capture), 08 (encoder), 09 (storage) each add their own submodule
-// here and extend `ipc_spec::builder()` accordingly.
+// Command registry for the StoryCapture host.
 
 pub mod app_settings;
 pub mod audio;
 pub mod automation;
-// author-time selector validator + DOM snapshot store.
 pub mod author_snapshot;
 pub mod automation_shared;
 pub mod capture;
@@ -19,11 +14,9 @@ pub mod keys;
 pub mod lsp;
 pub mod nl;
 pub mod parse;
-// element-picker IPC commands.
 pub mod picker;
 pub mod preset;
 pub mod projects;
-// Plan 06-02 — region-selection overlay window + IPC commands.
 pub mod region_overlay;
 pub mod render;
 pub mod simulator;

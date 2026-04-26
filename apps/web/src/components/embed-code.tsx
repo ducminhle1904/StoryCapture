@@ -15,7 +15,7 @@ const SIZE_PRESETS = [
 ] as const;
 
 /**
- * Embed code section showing a copyable iframe snippet (D-03).
+ * Embed code section showing a copyable iframe snippet.
  * Includes size preset selector and oEmbed discovery URL reference.
  */
 export function EmbedCode({ videoId, baseUrl }: EmbedCodeProps) {

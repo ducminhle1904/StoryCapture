@@ -1,4 +1,4 @@
-//! D-06 keyframe expansion: pan → scale → hold, **never combined**.
+//! Keyframe expansion: pan → scale → hold, **never combined**.
 //!
 //! Turning one [`super::cluster::ZoomCluster`] into keyframes produces four
 //! points:
@@ -21,7 +21,7 @@ use crate::ast::video::ZoomKeyframe;
 use super::cluster::ZoomCluster;
 use super::presets::ZoomPreset;
 
-/// Expand a list of clusters into an ordered, D-06-compliant keyframe sequence.
+/// Expand a list of clusters into an ordered keyframe sequence.
 ///
 /// The first keyframe is always `(t=0, viewport_center, scale=1.0)` so the
 /// zoompan expression has a valid starting sample even before the first

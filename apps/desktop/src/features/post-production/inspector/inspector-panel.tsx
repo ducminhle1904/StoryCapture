@@ -1,12 +1,8 @@
 /**
- * InspectorPanel (Plan 02-12b).
- *
- * Tabbed side panel: Presets | Effects | Sound. Built with a thin
- * button-group + conditional render rather than a heavy Tabs primitive;
- * keyboard navigation works out of the box with native buttons + Tab.
- *
- * Plan 02-12a provides `selectedTab` + `setSelectedTab`; the render
- * switch below is a simple map.
+ * InspectorPanel — tabbed side panel: Presets | Effects | Sound. Built
+ * with a thin button-group + conditional render rather than a heavy Tabs
+ * primitive; keyboard navigation works out of the box with native
+ * buttons + Tab.
  */
 
 import { useMemo } from "react";

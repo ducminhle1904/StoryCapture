@@ -1,6 +1,6 @@
-//! Scene transitions (POST-05). `XfadeTimeline` centralises offset math
-//! (Pitfall #6) and `xfade.rs` / `opencl_probe.rs` cover emission + runtime
-//! feature-detection.
+//! Scene transitions. `XfadeTimeline` centralises offset math, and
+//! `xfade.rs` / `opencl_probe.rs` cover emission + runtime feature
+//! detection.
 
 pub mod opencl_probe;
 pub mod timeline;

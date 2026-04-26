@@ -1,4 +1,4 @@
-//! Real-capture integration tests (Plan 05-01 Wave 0, Task 2 makes them green).
+//! Real-capture integration tests.
 //!
 //! These compile under `--features real-capture` and are `#[ignore]`-marked so
 //! `cargo test --no-run` verifies they build in CI without actually hitting

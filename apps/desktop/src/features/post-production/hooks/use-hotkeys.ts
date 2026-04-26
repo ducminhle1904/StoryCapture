@@ -1,5 +1,5 @@
 /**
- * Editor keyboard shortcuts (Plan 02-12b).
+ * Editor keyboard shortcuts.
  *
  * Space             play/pause
  * ArrowLeft/Right   seek ±33 ms (1 frame @30fps)
@@ -7,10 +7,9 @@
  * . / ,             frame-step forward/back (33 ms)
  * Delete/Backspace  remove selected clip
  * Alt (hold)        disable magnetic snap while held
- * mod+z / mod+y     undo/redo (wired through undo-bridge; P13 replaces body)
+ * mod+z / mod+y     undo/redo
  *
- * Implementation uses `react-hotkeys-hook`. Each hook is a single
- * `useHotkeys` call; the hook module exports a single top-level
+ * Uses `react-hotkeys-hook`. The module exports a single top-level
  * `useEditorHotkeys` function so callers mount them all with one import.
  */
 
@@ -40,16 +39,11 @@ export function useEditorHotkeys(): void {
     [setPlayhead],
   );
 
-  // Space: play/pause placeholder. P12b does not own playback state yet
-  // (preview player drives it); we toggle a store-level flag that the
-  // preview hook listens for. Until that lands, this is a no-op to
-  // satisfy the hotkey registration contract.
-  // grep anchor: useHotkeys('space', playPause)  — plan 02-12b acceptance.
+  // Space: play/pause. We don't own playback state (the preview player
+  // does), so dispatch a custom event the preview hook listens for.
   useHotkeys(
     "space",
     () => {
-      // Swap sign of a conceptual playing flag via a store setter when P12b
-      // wires it. For now we emit a custom event the preview hook listens for.
       window.dispatchEvent(new Event("storycapture:toggle-playback"));
     },
     { preventDefault: true },
@@ -105,8 +99,7 @@ export function useEditorHotkeys(): void {
     };
   }, [snapEnabled, setSnapEnabled]);
 
-  // Undo / redo — P13 wires the real ring buffer. We forward to the
-  // store's undo/redo actions directly. `useUndoRedo` also registers
+  // Undo / redo — forwards to the store. `useUndoRedo` also registers
   // these keys independently; duplicate registration is harmless because
   // react-hotkeys-hook dedupes by binding key + callback identity, and
   // both paths call the same store action.

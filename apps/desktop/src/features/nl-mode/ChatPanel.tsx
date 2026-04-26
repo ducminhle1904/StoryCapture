@@ -1,11 +1,7 @@
 /**
  * NL Mode chat panel.
  *
- * Resizable right panel (min 320, max 560, default 420px) per UI-SPEC Layout Contract.
- * Collapsible to 40px rail with icon stack.
- * Header: "NL Mode" (Heading/Emphasis).
- * Composer: Textarea + "Gui" (accent) button. Cmd+Enter shortcut.
- * States: empty, loading, streaming, success, rate-limited, auth-failed, network-error.
+ * Resizable right panel (min 320, max 560, default 420px); collapsible to 40px rail.
  */
 
 import * as React from "react";

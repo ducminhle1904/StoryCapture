@@ -7,9 +7,9 @@ import { router, publicProcedure, protectedProcedure } from "../init";
  *
  * - listByCategory: Public. Browse templates grouped by category.
  * - getById: Public. View template details with storySource preview.
- * - fork: Protected. Deep-copy storySource as downloadable .story file.
- *   T-04-24: forkCount incremented atomically via Prisma.
- *   T-04-25: storySource is intentionally public (curated system templates).
+ * - fork: Protected. Deep-copy storySource as downloadable .story file;
+ *   forkCount incremented atomically via Prisma. storySource is intentionally
+ *   public (curated system templates).
  */
 
 const templateCategoryEnum = z.enum([
@@ -106,8 +106,8 @@ export const templateRouter = router({
 
   /**
    * Fork a template — deep copy storySource as downloadable .story content.
-   * Per D-05: fork = deep copy, no upstream sync, no attribution required.
-   * T-04-24: forkCount incremented atomically.
+   * Fork is a deep copy with no upstream sync and no attribution requirement;
+   * forkCount is incremented atomically.
    */
   fork: protectedProcedure
     .input(
@@ -132,7 +132,7 @@ export const templateRouter = router({
         });
       }
 
-      // T-04-24: Atomic increment of forkCount
+      // Atomic increment of forkCount
       await ctx.prisma.template.update({
         where: { id: template.id },
         data: { forkCount: { increment: 1 } },

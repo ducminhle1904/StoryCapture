@@ -1,11 +1,9 @@
 /**
- * CodeMirror 6 LSP client extension for Story DSL (Plan 03-14, Task 2).
+ * CodeMirror 6 LSP client extension for Story DSL.
  *
- * Decision: custom ~200-line adapter covering hover, diagnostics, and
- * completion only. The `codemirror-languageserver` package was evaluated
- * but its stdio-based transport assumption does not fit the Tauri IPC
- * bridge (D-16). A custom adapter gives full control over the transport
- * layer and avoids an unnecessary dependency.
+ * Custom adapter covering hover, diagnostics, and completion. The
+ * `codemirror-languageserver` package's stdio transport doesn't fit the
+ * Tauri IPC bridge, so this adapter owns the transport layer directly.
  *
  * Wires:
  * - Diagnostics: `@codemirror/lint` linter fed by `publishDiagnostics`

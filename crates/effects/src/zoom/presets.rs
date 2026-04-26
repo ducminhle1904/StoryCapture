@@ -1,4 +1,4 @@
-//! Auto-zoom presets — exact parameter values from Research §4 table + D-05.
+//! Auto-zoom presets — canonical parameter values.
 //!
 //! The three presets are const; consumers pass `&DYNAMIC` etc. to
 //! [`super::plan_zoom`]. [`ZoomPresetKind`] is serde+ts-rs-exported so presets

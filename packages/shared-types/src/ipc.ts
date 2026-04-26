@@ -141,10 +141,9 @@ async stopPreviewStream() : Promise<Result<null, AppError>> {
 }
 },
 /**
- * Phase 09-04 — spawn an ephemeral author-time Playwright session and
- * start its CDP screencast. Returns the generated streamId; frontend
- * binds `<LivePreview streamId=... />` to the matching `preview://frame`
- * events.
+ * Spawn an ephemeral author-time Playwright session and start its CDP
+ * screencast. Returns the generated streamId; frontend binds
+ * `<LivePreview streamId=... />` to the matching `preview://frame` events.
  * 
  * `initial_url` is usually `story.meta.app`; `None` launches on
  * about:blank and caller-side state stays happy for missing meta.app.
@@ -421,8 +420,8 @@ async authorSnapshotList(projectDir: string) : Promise<Result<AuthorSnapshotEntr
  * projects the Rust-side `ValidationResult` onto the wire DTO.
  * 
  * `target` is a typed mirror of `story_parser::SelectorOrText` —
- * see `commands::parse::SelectorOrTextDto` (carries Tier 1 `Role`
- * with structured `{ role, name }` fields rather than a packed string).
+ * see `commands::parse::SelectorOrTextDto` (carries `Role` with
+ * structured `{ role, name }` fields rather than a packed string).
  */
 async authorSnapshotValidate(projectDir: string, url: string, target: SelectorOrTextDto) : Promise<Result<AuthorValidationDto, AppError>> {
     try {
@@ -871,7 +870,7 @@ async checkUpdate() : Promise<Result<UpdateInfo | null, AppError>> {
  * Download + apply the pending update, then relaunch the app.
  * 
  * Tauri's updater verifies the manifest signature against the `pubkey`
- * pinned in `tauri.conf.json` before applying — see T-10-01 mitigation.
+ * pinned in `tauri.conf.json` before applying.
  */
 async installUpdate() : Promise<Result<null, AppError>> {
     try {
@@ -1325,14 +1324,14 @@ async getSyncStatus() : Promise<Result<SyncStatusDto, WebSyncError>> {
 export type AdjustedStepDto = { step_id: string; new_duration_ms: bigint; freeze_frame_extension_ms: bigint; silence_padding_ms: bigint; clip_start_ms: bigint; drift_ms: bigint }
 export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"; message: string } | { kind: "Keyring"; message: string } | { kind: "Automation"; message: string } | { kind: "Capture"; message: string } | { kind: "Encoder"; message: string } | { kind: "Storage"; message: string } | { kind: "NotFound"; message: string } | { kind: "InvalidArgument"; message: string } | { kind: "Internal"; message: string } | { kind: "UnavailableOnBackend"; message: string } | 
 /**
- * D-04: another `start_recording` is already in-flight. The global
+ * Another `start_recording` is already in-flight. The global
  * `compare_exchange` guard at the command entry returns this when a
  * concurrent caller beats the current one. Frontend treats this as a
  * benign no-op (retry is the user clicking Start again).
  */
 { kind: "AlreadyStarting" } | 
 /**
- * D-10: FFmpeg did not open the audio FIFO within the 2s handshake
+ * FFmpeg did not open the audio FIFO within the 2s handshake
  * window. Surfaces the failure instead of dangling the AudioCaptureStream
  * start on a pipe that FFmpeg will never read.
  */
@@ -1582,8 +1581,8 @@ export type ParseResultDto = { ast: StoryDto | null; diagnostics: DiagnosticDto[
 export type PermissionState = "granted" | "denied" | "undetermined"
 /**
  * Tauri / specta DTO wrapping `automation::PickElementResponse` as a
- * JSON string. The `automation` crate is pure-Rust (D-07: no Tauri /
- * specta deps), so we serialize at the boundary and let the TS wrapper
+ * JSON string. The `automation` crate is pure-Rust (no Tauri / specta
+ * deps), so we serialize at the boundary and let the TS wrapper
  * (`apps/desktop/src/ipc/picker.ts`) parse the typed union. Mirrors
  * the `AutomationEvent { json }` pattern.
  */

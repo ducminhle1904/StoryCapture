@@ -1,9 +1,8 @@
-//! BGM auto-ducking under voiceover via `sidechaincompress` (D-22).
+//! BGM auto-ducking under voiceover via `sidechaincompress`.
 //!
-//! The default parameters exactly match D-22 / Research §6 Code Example 7:
-//! `threshold=0.08 ratio=8 attack=80ms release=400ms` with a target duck of
-//! `-12 dB`. These values produce a producer-grade duck (no abrupt level
-//! jumps, ~80 ms to pull down, ~400 ms to restore).
+//! Default parameters: `threshold=0.08 ratio=8 attack=80ms release=400ms`
+//! with a target duck of `-12 dB`. These values produce a producer-grade
+//! duck (no abrupt level jumps, ~80 ms to pull down, ~400 ms to restore).
 
 use serde::{Deserialize, Serialize};
 
@@ -23,8 +22,8 @@ pub struct DuckParams {
     pub duck_db: f32,
 }
 
-/// Canonical default — matches D-22 exactly. Do not change without updating
-/// the snapshot fixture and the plan's acceptance grep.
+/// Canonical default. Do not change without updating the snapshot fixture
+/// and any acceptance greps.
 pub const DEFAULT_DUCK: DuckParams = DuckParams {
     threshold: 0.08,
     ratio: 8.0,

@@ -3,12 +3,11 @@
  *
  * Thin typed facade for the `picker_*` Tauri commands defined in
  * `apps/desktop/src-tauri/src/commands/picker.rs`. Routes to the
- * Playwright sidecar's `pickElement.{start,cancel,isActive}` JSON-RPC
- * (07-03a wire contract).
+ * Playwright sidecar's `pickElement.{start,cancel,isActive}` JSON-RPC.
  *
- * Wire contract — `result.emitted` (a single DSL line, no trailing
- * newline) — matches `scripts/playwright-sidecar/server.mjs:414`. The
- * caller (PickElementButton) appends `"\n"` and inserts at cursor.
+ * Wire contract — `result.emitted` is a single DSL line with NO trailing
+ * newline. The caller (PickElementButton) appends `"\n"` and inserts at
+ * cursor.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -28,9 +27,9 @@ export type PickCandidate = {
 
 /**
  * Element-shape metadata forwarded by the sidecar overlay. Optional —
- * legacy responses (Phase 1 sidecar without overlay metadata, or any
- * locator path that didn't capture an element) omit it. Used by the
- * desktop picker action menu to promote input-flavored actions
+ * legacy responses (sidecars without overlay metadata, or any locator
+ * path that didn't capture an element) omit it. Used by the desktop
+ * picker action menu to promote input-flavored actions
  * (fill/type/select/upload) without re-deriving DOM shape on the host.
  */
 export type PickElementMeta = {
@@ -67,8 +66,8 @@ export function isPicked(r: PickResult): r is PickPicked {
 
 /**
  * Internal envelope: the host wraps `automation::PickElementResponse`
- * as JSON-string (D-07 keeps the automation crate free of Tauri /
- * specta deps). We parse here and project onto the typed union.
+ * as a JSON-string (keeps the automation crate free of Tauri / specta
+ * deps). We parse here and project onto the typed union.
  */
 interface PickerStartDto {
   json: string;
@@ -130,21 +129,19 @@ export async function listenPickerHoverPreview(
 }
 
 /**
- * stamp a UUIDv7 step id onto the picked `.story` line
- * AND seed the sibling `.story.targets.json` with the pick's primary
- * + fallback locators. Fire-and-forget from the UI: failures are
- * toasted but do NOT block the insertion flow (the editor already
- * has the text at the cursor by the time this is invoked).
+ * Stamp a UUIDv7 step id onto the picked `.story` line AND seed the
+ * sibling `.story.targets.json` with the pick's primary + fallback
+ * locators. Fire-and-forget from the UI: failures are toasted but do
+ * NOT block the insertion flow (the editor already has the text at the
+ * cursor by the time this is invoked).
  *
- * The Rust side (`picker_stamp_step_id`) accepts `primary` /
- * `fallbacks` as typed `TargetRecordDto` discriminated unions. Each
- * record's `value` shape is `string` for most kinds and
+ * `primary` / `fallbacks` are typed `TargetRecordDto` discriminated
+ * unions. Each record's `value` is `string` for most kinds and
  * `{ role, name }` for the `role` kind — matching the
  * `.story.targets.json` schema byte-for-byte.
  *
- * Returns the stamped UUIDv7 (as a string) on success. Idempotent —
- * re-picking an already-stamped line returns the existing id without
- * regenerating it.
+ * Returns the stamped UUIDv7 on success. Idempotent — re-picking an
+ * already-stamped line returns the existing id without regenerating it.
  */
 export type TargetRecordDto =
   | { kind: "testid"; value: string }
@@ -173,12 +170,12 @@ export interface PickerStampStepIdArgs {
 
 /**
  * Result shape for `pickerStampStepId`. Mirrors
- * `picker::PickerStampResultDto` (Phase 11-01 D-04 contract change).
+ * `picker::PickerStampResultDto`.
  *
  * - `stepId`: the stamped UUIDv7 (existing-or-new) as a hyphenated string.
  * - `wasFreshlyStamped`: true iff this call minted a fresh @id and rewrote
  *   the .story source; false iff the line already carried `# @id=<uuid>`
- *   and the call was a targets.json-only re-seed (D-04).
+ *   and the call was a targets.json-only re-seed.
  */
 export interface PickerStampResult {
   stepId: string;
@@ -206,20 +203,19 @@ export async function pickerStampStepId(
 }
 
 /**
- * Phase 11-03 — start a Preview-panel Pick against an author-session.
+ * Start a Preview-panel Pick against an author-session.
  *
  * Mirrors the shape of {@link pickElement} but routes through the
- * Phase 9-04 author-session keyed by `streamId`. The host:
+ * author-session keyed by `streamId`. The host:
  *   (1) replays `navigate` verbs from the story source up to cursor line
  *       to warm the author browser,
- *   (2) pauses the author screencast via PHASE-9.9 primitives,
+ *   (2) pauses the author screencast,
  *   (3) activates the picker overlay on the author page,
- *   (4) resumes the screencast on resolve/cancel (D-12 invariant).
+ *   (4) resumes the screencast on resolve/cancel.
  *
  * `storySrc` is the .story file contents as seen by the renderer. Callers
- * MUST warn the user about unsaved changes before invocation per D-10
- * (see PreviewPickerButton toast in 11-04 Task 1); this wrapper sends the
- * bytes as-is.
+ * MUST warn the user about unsaved changes before invocation; this
+ * wrapper sends the bytes as-is.
  */
 export async function pickElementAuthor(opts: {
   streamId: string;

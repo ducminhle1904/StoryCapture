@@ -1,4 +1,4 @@
-//! Phase 3 Plan 02 — v3 migration + phase3 helper integration tests.
+//! v3 migration + phase3 helper integration tests.
 //!
 //! Covers:
 //! - Fresh project db: all 4 v3 AI tables + session_rollup view exist.

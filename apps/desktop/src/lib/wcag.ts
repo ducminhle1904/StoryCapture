@@ -1,7 +1,7 @@
 import { frontendLog } from "@/lib/log";
 
 /**
- * WCAG 2.1 AA contrast helpers (UI-10).
+ * WCAG 2.1 AA contrast helpers.
  *
  * Cursor-inspired warm palette contrast notes (light mode):
  *   fg-primary (#26251e) on bg-primary (#f2f1ed): ~12.8:1
@@ -9,11 +9,6 @@ import { frontendLog } from "@/lib/log";
  *   fg-muted (40% warm brown) on bg-primary: ~3.5:1 (AA non-text only)
  *   accent-primary (#f54e00) on bg-primary: ~4.6:1
  *   danger/hover (#cf2d56) on bg-primary: ~5.1:1
- *
- * Used by:
- *   - `lib/theme.ts` dev-time audit that walks the registered token pairs
- *     and logs a warning if any body-text pair falls below 4.5:1.
- *   - Ad-hoc component tests (future).
  *
  * Reference: https://www.w3.org/TR/WCAG21/#contrast-minimum
  */

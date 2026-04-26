@@ -1,9 +1,8 @@
-//! Fan-out: FFV1 intermediate → N parallel encoders (Plan 02-10 Task 3).
+//! Fan-out: FFV1 intermediate → N parallel encoders.
 //!
-//! The "smart batch reuse" (D-30): given one intermediate (Task 3
-//! upstream) and a [`FanoutPlan`] listing the desired outputs, spawn
-//! one FFmpeg sidecar per output in parallel and return the produced
-//! file paths once they all complete.
+//! Smart batch reuse: given one intermediate and a [`FanoutPlan`] listing
+//! the desired outputs, spawn one FFmpeg sidecar per output in parallel
+//! and return the produced file paths once they all complete.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -99,7 +98,7 @@ pub fn resolution_height(r: Resolution) -> u32 {
 }
 
 /// Approximate bitrate selection. Tuned for "good-enough" defaults; the
-/// renderer tier picker (Plan 12) will override these per-preset.
+/// renderer tier picker may override these per-preset.
 pub fn bitrate_for(r: Resolution, q: Quality, codec: &str) -> String {
     let base: u32 = match (r, codec) {
         (Resolution::R720p, "h264") => 4_000,

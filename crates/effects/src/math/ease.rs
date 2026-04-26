@@ -1,4 +1,4 @@
-//! Easing functions used by the auto-zoom planner (Plan 05) for keyframe
+//! Easing functions used by the auto-zoom planner for keyframe
 //! interpolation (pan/scale phases) and by cursor micro-motions.
 //!
 //! All easing variants now live on the canonical [`crate::ast::types::EasingKind`]

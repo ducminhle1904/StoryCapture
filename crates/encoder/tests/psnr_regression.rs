@@ -1,4 +1,4 @@
-//! POST-08 PSNR regression test (Plan 02-11 Task 3 / D-29).
+//! PSNR regression test.
 //!
 //! Phase A (one-time seeding, run manually on a known-good build):
 //!
@@ -7,21 +7,19 @@
 //!     --output crates/encoder/tests/fixtures/1min_reference_1080p30.mp4 \
 //!     --ffmpeg $(which ffmpeg)
 //! git add crates/encoder/tests/fixtures/1min_reference_1080p30.mp4
-//! git commit -m "[fixture](02-11): seed POST-08 PSNR reference 1080p30"
+//! git commit -m "[fixture]: seed PSNR reference 1080p30"
 //! ```
 //!
 //! Phase B (every CI run): `cargo test -p encoder --test psnr_regression`
 //! re-renders the same Graph and asserts `average >= 38.0` dB via the
-//! FFmpeg `psnr` filter. When the filter graph intentionally changes
-//! (pins updated in Plans 01/05–09 snapshots), regenerate the reference
-//! with Phase A and recommit with the `[fixture]` prefix — the prefix is
-//! the audit trail (T-02-35).
+//! FFmpeg `psnr` filter. When the filter graph intentionally changes,
+//! regenerate the reference with Phase A and recommit with the
+//! `[fixture]` prefix — the prefix is the audit trail.
 //!
 //! Skip semantics: the test prints a `skip:` line and returns early when
 //! (a) the reference fixture is absent — instructing the caller to run
 //! Phase A — or (b) FFmpeg is absent from `$FFMPEG_BIN` and `which`. This
-//! is the same gate pattern used by `tests/probe.rs` and `tests/pipeline.rs`
-//! from Plan 01-08.
+//! is the same gate pattern used by `tests/probe.rs` and `tests/pipeline.rs`.
 
 use std::path::{Path, PathBuf};
 
@@ -124,7 +122,7 @@ async fn post_08_psnr_regression() {
     let r = compute_psnr(&ffmpeg, &reference, &candidate)
         .await
         .expect("compute_psnr");
-    // POST-08 gate.
+    // PSNR regression gate.
     assert!(
         r.average >= 38.0,
         "PSNR average {} < 38 dB (POST-08 regression)",

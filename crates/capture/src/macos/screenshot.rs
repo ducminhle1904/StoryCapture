@@ -1,10 +1,10 @@
-//! Plan 06-03 Task 1 — macOS SCScreenshotManager wrapper.
+//! macOS SCScreenshotManager wrapper.
 //!
 //! Single-shot thumbnail capture via `SCScreenshotManager::capture_image`
 //! (screencapturekit 1.5.4). Powers the recorder's 2s-refresh preview
-//! thumbnail (D-16 + D-17). NOT a streaming replacement — each call
-//! performs one synchronous capture + PNG encode, wrapped in
-//! `spawn_blocking` so the Tokio runtime keeps turning.
+//! thumbnail. NOT a streaming replacement — each call performs one
+//! synchronous capture + PNG encode, wrapped in `spawn_blocking` so the
+//! Tokio runtime keeps turning.
 //!
 //! TCC: SCScreenshotManager is gated by Screen Recording permission;
 //! when denied, the call returns `SCError::ScreenshotError("...")`,
@@ -39,8 +39,8 @@ pub async fn capture_thumbnail(
 ) -> Result<Vec<u8>, CaptureError> {
     let target_owned = target.clone();
 
-    // Phase 1: resolve filter + source dimensions on a blocking thread
-    // (SCShareableContent::get is synchronous 50-200ms — Pitfall 7).
+    // Resolve filter + source dimensions on a blocking thread —
+    // SCShareableContent::get is synchronous 50-200ms.
     let (filter, src_w, src_h, _source_rect, _needs_scales_to_fit) = tokio::task::spawn_blocking(move || {
         crate::macos::sck_backend::SckBackend::build_filter(&target_owned)
     })
@@ -69,9 +69,9 @@ pub async fn capture_thumbnail(
         "capture_thumbnail: invoking SCScreenshotManager"
     );
 
-    // Phase 2: run SCScreenshotManager + PNG encode on a blocking thread.
-    // The crate's capture_image spins a Dispatch queue internally and
-    // waits — that's the definition of a blocking call.
+    // Run SCScreenshotManager + PNG encode on a blocking thread. The
+    // crate's capture_image spins a Dispatch queue internally and waits
+    // — that's the definition of a blocking call.
     tokio::task::spawn_blocking(move || {
         let config = SCStreamConfiguration::new()
             .with_width(out_w)

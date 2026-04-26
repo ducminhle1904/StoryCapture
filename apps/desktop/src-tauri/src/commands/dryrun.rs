@@ -1,8 +1,7 @@
 // Dry-Run IPC.
 //
 // `dryrun_start` spawns a DryRunOrchestrator task against a mock
-// BrowserDriver (real driver wired when Phase 1 `phase1-wired` feature
-// is enabled). Events stream to the renderer via `Channel<DryRunEventDto>`.
+// BrowserDriver. Events stream to the renderer via `Channel<DryRunEventDto>`.
 //
 // `dryrun_cancel` aborts a running dry-run task by its task_id.
 
@@ -93,12 +92,11 @@ fn registry() -> &'static DryRunTaskRegistry {
 }
 
 // ---------------------------------------------------------------------------
-// Mock driver for when Phase 1 is not wired
+// Mock driver
 // ---------------------------------------------------------------------------
 
-// TODO(phase-1): When the `phase1-wired` feature is enabled, construct
-// a real BrowserDriver here instead of the mock. The orchestrator API
-// is trait-generic so no behavioural change is needed — just swap the
+// TODO: swap StubBrowserDriver for the real BrowserDriver. The orchestrator
+// API is trait-generic so no behavioural change is needed — just swap the
 // concrete type.
 use intelligence::dryrun::{BrowserDriver, DriverError, SelectorAttempt, StepResult};
 
@@ -153,7 +151,7 @@ pub async fn dryrun_start(
     let task_id = Uuid::new_v4().to_string();
     let task_id_clone = task_id.clone();
 
-    // TODO(phase-1): Replace StubBrowserDriver with real driver.
+    // TODO: Replace StubBrowserDriver with real driver.
     let driver = StubBrowserDriver;
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<DryRunEvent>(64);

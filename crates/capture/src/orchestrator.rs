@@ -1,7 +1,7 @@
 //! Fallback orchestrator — tries the preferred native backend first,
 //! falls back to xcap primary-display capture for eligible window
-//! targets on start failure (D-07), and surfaces a degraded event on the
-//! 2nd consecutive failure in a session (D-08).
+//! targets on start failure, and surfaces a degraded event on the 2nd
+//! consecutive failure in a session.
 //!
 //! This is a helper — NOT a new `CaptureBackend` implementation. Callers
 //! (the Tauri `start_capture` command) build the requested backend and

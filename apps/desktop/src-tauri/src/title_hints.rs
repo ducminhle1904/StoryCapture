@@ -1,5 +1,5 @@
-//! Plan 06-03 — preset-driven Chromium window-title hints for the
-//! Playwright auto-follow path. Host-side analog of
+//! Preset-driven Chromium window-title hints for the Playwright
+//! auto-follow path. Host-side analog of
 //! `apps/desktop/src/features/recorder/title-hints.ts`.
 //!
 //! `find_window_by_pid` in `crates/capture/src/{macos,windows}/window.rs`
@@ -9,14 +9,14 @@
 //! substring Chromium uses for its own top-level frames on that
 //! channel.
 //!
-//! D-15 invariant: when we return `None`, the capture start path MUST
-//! fall back to "any window owned by the Playwright pid". No hard gate.
+//! Invariant: when we return `None`, the capture start path MUST fall
+//! back to "any window owned by the Playwright pid". No hard gate.
 //!
-//! T-06-15 mitigation: `redact_title_hint` truncates long hints before
-//! they hit tracing fields; callers MUST route through it.
+//! `redact_title_hint` truncates long hints before they hit tracing
+//! fields; callers MUST route through it.
 //!
-//! Backlog #9: the preset data (ids, titles, basename fragments) is no
-//! longer hand-maintained here. `build.rs` reads
+//! Preset data (ids, titles, basename fragments) is no longer
+//! hand-maintained here. `build.rs` reads
 //! `packages/shared-types/browser-presets.json` and emits a
 //! `BROWSER_PRESETS: &[PresetEntry]` slice into `$OUT_DIR/browser_presets.rs`
 //! which is `include!`d below. Edit the JSON to add/rename presets.
@@ -56,7 +56,7 @@ pub fn title_hint_for(preset: Option<&str>) -> Option<String> {
     None
 }
 
-/// T-06-15 log redaction: truncate to 40 chars + ellipsis marker.
+/// Log redaction: truncate to 40 chars + ellipsis marker.
 pub fn redact_title_hint(h: Option<&str>) -> String {
     match h {
         None => "<none>".to_string(),
@@ -153,9 +153,9 @@ mod tests {
         );
     }
 
-    /// Backlog #9 regression: msedge-canary was previously present in the
-    /// frontend CHROMIUM_PRESETS set but missing from both title-hint tables,
-    /// so Edge Canary auto-follow silently fell back to pid-only matching.
+    /// Regression: msedge-canary was previously present in the frontend
+    /// CHROMIUM_PRESETS set but missing from both title-hint tables, so
+    /// Edge Canary auto-follow silently fell back to pid-only matching.
     #[test]
     fn exec_path_edge_canary_beats_generic_edge() {
         assert_eq!(
@@ -200,10 +200,9 @@ mod tests {
         assert_eq!(redact_title_hint(None), "<none>");
     }
 
-    /// Backlog #9 — codegen sanity: the generated table must contain the
-    /// 11 canonical presets including `msedge-canary` (the variant whose
-    /// absence originally motivated backlog #9). Catches accidental JSON
-    /// edits that drop an entry.
+    /// Codegen sanity: the generated table must contain the 11 canonical
+    /// presets including `msedge-canary`. Catches accidental JSON edits
+    /// that drop an entry.
     #[test]
     fn codegen_table_contains_canonical_presets() {
         assert_eq!(BROWSER_PRESETS.len(), 11);

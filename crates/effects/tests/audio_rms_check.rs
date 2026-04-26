@@ -1,4 +1,4 @@
-//! Non-silent RMS gate for the bundled sound library (Plan 02-08 Task 2).
+//! Non-silent RMS gate for the bundled sound library.
 //!
 //! Shells out to `ffmpeg` with `astats=metadata=1:reset=1 -f null -` for each
 //! SFX/BGM file and asserts the per-file `Overall.RMS_level` is above -60 dB.

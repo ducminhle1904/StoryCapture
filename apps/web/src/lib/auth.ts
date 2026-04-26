@@ -7,9 +7,10 @@ import { prisma } from "@/lib/prisma";
 /**
  * NextAuth v5 configuration.
  *
- * - Providers: GitHub + Google OAuth (env vars auto-inferred: AUTH_GITHUB_ID/SECRET, AUTH_GOOGLE_ID/SECRET)
+ * - Providers: GitHub + Google OAuth (env vars auto-inferred:
+ *   AUTH_GITHUB_ID/SECRET, AUTH_GOOGLE_ID/SECRET)
  * - Adapter: Prisma (User, Account, Session, VerificationToken models)
- * - Session strategy: database (revocable sessions per D-07)
+ * - Session strategy: database (revocable sessions)
  * - Auto-creates a personal workspace on first sign-in
  *
  * @see https://authjs.dev/getting-started/migrating-to-v5
@@ -32,7 +33,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   events: {
     createUser: async ({ user }) => {
-      // Auto-create a personal workspace for every new user (D-04)
+      // Auto-create a personal workspace for every new user
       await prisma.workspace.create({
         data: {
           name: "Personal",

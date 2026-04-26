@@ -2,7 +2,7 @@
 //
 // Iterates through DSL steps, invoking `BrowserDriver::execute` for each,
 // and emitting `DryRunEvent` variants through an mpsc channel. Stops on
-// first failure (per D-19 "log selector fallback chain on first mismatch").
+// first failure (logs selector fallback chain on first mismatch).
 
 use serde::Serialize;
 use tokio::sync::mpsc;

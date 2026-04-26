@@ -1,5 +1,5 @@
 //! Integration tests for `GraphBuilder` — canonical order + duplicate-id
-//! validation (D-19, POST-08).
+//! validation.
 
 use std::path::PathBuf;
 

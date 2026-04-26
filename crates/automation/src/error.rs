@@ -1,4 +1,4 @@
-//! `AutomationError` — typed error taxonomy for the automation crate (D-31).
+//! `AutomationError` — typed error taxonomy for the automation crate.
 //!
 //! Per `<thiserror>` discipline: this crate exports its own typed errors;
 //! the Tauri command boundary converts to `AppError`. No `anyhow` here.
@@ -48,14 +48,13 @@ pub enum AutomationError {
     #[error("protocol error: {0}")]
     Protocol(String),
 
-    /// Phase 11-02 (D-06): primary-miss raised on the record path where
-    /// self-healing is disabled. Carries the step ordinal, optional
-    /// stamped step_id, and a pre-rendered verb excerpt (e.g.
-    /// `click "Save"`) so the HUD can surface UI-SPEC-locked copy
-    /// without re-formatting the command.
+    /// Primary-miss raised on the record path where self-healing is
+    /// disabled. Carries the step ordinal, optional stamped step_id, and a
+    /// pre-rendered verb excerpt (e.g. `click "Save"`) so the HUD can
+    /// surface the locked copy without re-formatting the command.
     ///
-    /// Display string is the UI-SPEC §Record-path primary-miss
-    /// verbatim copy; do not paraphrase.
+    /// Display string is the record-path primary-miss verbatim copy; do not
+    /// paraphrase.
     #[error(
         "Step {step_ordinal}: \"{verb}\" could not match any element. Self-healing is disabled during recording. Open this story in Simulator, use \"Promote to fallback\" on step {step_ordinal}, then try again."
     )]

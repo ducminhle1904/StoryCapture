@@ -1,8 +1,6 @@
 /**
- * AI Disclosure Modal (Plan 03-20, Task 2 / AI-SPEC G8).
- *
- * EU AI Act Article 50 export-time disclosure.
- * Shown when project contains >= 1 TTS clip on export.
+ * AI Disclosure Modal — EU AI Act Article 50 export-time disclosure.
+ * Shown when the project contains >= 1 TTS clip on export.
  *
  * Title: "This export contains AI-generated voiceover"
  * Body: EU AI Act Art. 50 reference.
@@ -10,8 +8,7 @@
  * "Learn more" link -> docs/compliance/ai-act.md
  * Buttons: "Export anyway" / "Cancel"
  *
- * Phase 2 export flow invokes this component when project.tts_clips.count > 0.
- * TODO: Integration with Phase 2 export via event bus when Phase 2 export is shipped.
+ * TODO: Integration with the export flow via event bus when shipped.
  */
 
 import { useState, useCallback } from "react";

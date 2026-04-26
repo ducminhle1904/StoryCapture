@@ -1,12 +1,12 @@
 /**
- * Automation IPC wrappers (Plan 01-06). Thin typed facade for the commands
- * defined in `apps/desktop/src-tauri/src/commands/automation.rs`.
+ * Automation IPC wrappers. Thin typed facade for the commands defined in
+ * `apps/desktop/src-tauri/src/commands/automation.rs`.
  */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 /**
- * Mirror of `automation::BoundingBox` (Phase 10-01 — carried on StepFrame).
+ * Mirror of `automation::BoundingBox`. Carried on StepFrame.
  */
 export interface BoundingBox {
   x: number;
@@ -16,7 +16,7 @@ export interface BoundingBox {
 }
 
 /**
- * Resolve outcome for a simulator frame (D-07). Gates the UI's
+ * Resolve outcome for a simulator frame. Gates the UI's
  * "Promote to fallback" button: visible only for `"fuzzy"`.
  */
 export type MatchKind = "primary" | "fuzzy" | "none";
@@ -54,9 +54,9 @@ export interface LaunchAutomationArgs {
   storySource: string;
   projectFolder: string;
   /**
-   * Plan 06-02 — when true, the host validates meta.app via `url::Url`
-   * and appends `--app=<meta.app>` to Playwright's launch args (D-09/
-   * D-10). Non-sticky: the recorder resets the backing toggle each run.
+   * When true, the host validates meta.app via `url::Url` and appends
+   * `--app=<meta.app>` to Playwright's launch args. Non-sticky: the
+   * recorder resets the backing toggle each run.
    */
   chromeHiding?: boolean;
   /**
@@ -71,7 +71,7 @@ export interface LaunchAutomationArgs {
 /**
  * Shape returned to the caller when they need a handle to the live
  * automation Channel — e.g., to null `onmessage` during React unmount
- * cleanup (D-14) so no stale event dispatch runs against an unmounted
+ * cleanup so no stale event dispatch runs against an unmounted
  * component tree.
  */
 export interface AutomationChannelHandle {

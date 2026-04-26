@@ -1,8 +1,7 @@
 /**
- * FormatCheckboxes (Plan 02-12b, Task 2).
- *
- * Native checkbox group for the MP4 / WebM / GIF multi-select. Keeps the
- * component tree testable without pulling in a dialog/checkbox primitive.
+ * FormatCheckboxes — native checkbox group for the MP4 / WebM / GIF
+ * multi-select. Keeps the component tree testable without pulling in a
+ * dialog/checkbox primitive.
  */
 
 import { memo } from "react";

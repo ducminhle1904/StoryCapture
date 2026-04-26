@@ -239,8 +239,8 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
             } => {
                 // xfade requires two inputs; we lift the previous chain as
                 // `prev` and assume a `[next]` label is declared upstream in a
-                // multi-scene graph (Plan 10 wires this). Here we emit the
-                // canonical token so snapshots pin the form.
+                // multi-scene graph. Here we emit the canonical token so
+                // snapshots pin the form.
                 let tok = XfadeKind::ffmpeg_token(*kind);
                 let dur = (*duration_ms as f64) / 1000.0;
                 let off = (*offset_ms as f64) / 1000.0;
@@ -418,7 +418,7 @@ fn sidechain_args(p: &SidechainParams) -> String {
 }
 
 /// Collect the extra `-i` inputs needed by every Background node in the
-/// graph, in traversal order. Plan 11 (renderer integration) consumes this to
+/// graph, in traversal order. The renderer integration consumes this to
 /// build the FFmpeg CLI. The source-stream index of the Nth extra input is
 /// `source_count_when_background_seen + N` — matching the allocation done by
 /// [`emit_filter_complex`].

@@ -1,8 +1,8 @@
-//! Video AST nodes. Every variant corresponds to one canonical stage (D-19).
+//! Video AST nodes. Every variant corresponds to one canonical stage.
 //!
-//! No algorithm-specific logic lives here — downstream Phase 2 plans (05–09)
-//! fill in zoompan math, cursor trajectories, ripple timing, etc. This module
-//! only fixes the AST shape so those plans can emit without reshaping.
+//! No algorithm-specific logic lives here — downstream code fills in
+//! zoompan math, cursor trajectories, ripple timing, etc. This module only
+//! fixes the AST shape so those plans can emit without reshaping.
 
 use std::path::PathBuf;
 
@@ -13,8 +13,8 @@ use super::types::{EasingKind, NodeId, Rgba, Vec2};
 #[cfg(feature = "ts-export")]
 use ts_rs::TS;
 
-/// Keyframe for the ZoomPan stage. Plan 05 resolves interpolation; the AST
-/// stores endpoints.
+/// Keyframe for the ZoomPan stage. The runtime resolves interpolation;
+/// the AST stores endpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -31,7 +31,7 @@ pub struct ZoomKeyframe {
     pub easing: EasingKind,
 }
 
-/// What the ZoomPan stage is tracking. Plan 05 uses this to pick cursor vs
+/// What the ZoomPan stage is tracking. Used to pick cursor vs
 /// fixed-region tracking logic.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
@@ -113,7 +113,7 @@ pub struct TrajectoryRef {
     pub frame_count: u32,
 }
 
-/// A ripple pulse emitted on click. Defaults (Research §3 / D-10):
+/// A ripple pulse emitted on click. Defaults:
 /// `t_anticipate = t_impact - 60`, `duration = 300`, `max_radius_px = 60.0`,
 /// `color = white @ 0.9 alpha`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -268,8 +268,8 @@ impl XfadeKind {
     }
 }
 
-/// Video AST node. One variant per canonical stage (D-19). Ordering is
-/// enforced at build-time by [`crate::builder::order::validate_order`].
+/// Video AST node. One variant per canonical stage. Ordering is enforced
+/// at build-time by [`crate::builder::order::validate_order`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -297,7 +297,7 @@ pub enum VideoNode {
         radius_px: f32,
         shadow: Option<Shadow>,
         /// Inner padding around the foreground video after compositing onto the
-        /// background layer (Plan 07 / POST-04). Range: 0..=128 px.
+        /// background layer. Range: 0..=128 px.
         #[serde(default)]
         padding_px: u32,
     },

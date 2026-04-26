@@ -1,4 +1,4 @@
-// D-13 — AudioUnavailable event dispatch behavioral test.
+// AudioUnavailable event dispatch behavioral test.
 //
 // Verifies the pattern used in `recording-view.tsx`:
 //   - An incoming RecordingEvent { type: "audio-unavailable", reason }

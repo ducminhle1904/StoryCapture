@@ -1,11 +1,11 @@
 //! G2 verb whitelist post-validation.
 //!
-//! The authoritative set of verbs comes from the Phase 1 `story_parser` grammar.
-//! This module mirrors that set as a constant and provides a check function
-//! that identifies steps with unknown verbs.
+//! The authoritative set of verbs comes from the `story_parser` grammar.
+//! This module mirrors that set as a constant and provides a check
+//! function that identifies steps with unknown verbs.
 
-/// Authoritative verb whitelist matching Phase 1 DSL-02/03 grammar + "scene" block marker.
-// TODO: Phase-1 hand-off -- replace with story_parser::VERB_CATALOG when available
+/// Authoritative verb whitelist matching the DSL grammar + "scene" block marker.
+// TODO: Replace with story_parser::VERB_CATALOG when available.
 pub const VERBS: &[&str] = &[
     "navigate",
     "click",

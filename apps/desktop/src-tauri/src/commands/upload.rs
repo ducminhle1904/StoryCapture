@@ -6,7 +6,7 @@
 //! | `cancel_upload`      | `Result<(), UploadError>`              | Cancel in-progress upload      |
 //! | `get_upload_status`  | `Result<UploadStatusDto, UploadError>` | Current upload state           |
 //!
-//! **Upload flow (D-01):**
+//! **Upload flow:**
 //! 1. Generate thumbnail from first frame via FFmpeg sidecar
 //! 2. Call web `/api/upload/initiate` with file metadata
 //! 3. Read file in 10 MiB chunks, for each: get presigned URL, PUT to R2
@@ -17,8 +17,8 @@
 //! On retry, skips parts whose ETag matches.
 //!
 //! **Threat mitigations:**
-//! - T-04-12: Desktop JWT verified on every API call
-//! - T-04-14: R2 credentials never on desktop; presigned URLs only
+//! - Desktop JWT verified on every API call
+//! - R2 credentials never on desktop; presigned URLs only
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -36,7 +36,7 @@ use crate::state::AppState;
 
 // ---- Constants ----------------------------------------------------------------
 
-/// 10 MiB chunk size (respects 5 MiB minimum per Pitfall 2).
+/// 10 MiB chunk size (respects 5 MiB minimum).
 const CHUNK_SIZE: usize = 10 * 1024 * 1024;
 
 /// Minimum file size for multipart upload. Below this, use single PUT.
@@ -206,7 +206,7 @@ struct CompleteResponse {
 
 /// Upload a video + thumbnail to the web companion via presigned R2 URLs.
 ///
-/// D-01: Manual trigger only. No auto-retry. Progress events via Channel.
+/// Manual trigger only. No auto-retry. Progress events via Channel.
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(skip(app, on_progress))]

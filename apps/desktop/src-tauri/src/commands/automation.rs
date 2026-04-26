@@ -158,8 +158,8 @@ pub async fn launch_automation(
         *slot = Some(shared_pw.clone());
         tracing::info!(target: "storycapture::automation", "published shared Playwright driver to AppState (picker enabled)");
     }
-    // Phase 09-02 — publish to preview_driver so `start_preview_stream`
-    // can attach the CDP screencast to the same sidecar instance.
+    // Publish to preview_driver so `start_preview_stream` can attach the
+    // CDP screencast to the same sidecar instance.
     {
         let mut slot = state.preview_driver.lock().await;
         *slot = Some(shared_pw.clone());
@@ -281,13 +281,11 @@ pub async fn launch_automation(
     let control = Arc::new(RunControl::new());
     set_active_run_control(Some(control.clone()));
 
-    // Phase 11-02 (D-06/D-07): the recording path is read-only against
-    // `.story.targets.json` — self_heal=false. A primary-miss raises
-    // `AutomationError::PrimaryMissNoHeal` which the HUD surfaces with
-    // the UI-SPEC-locked copy + "Open in Simulator" action. The record
-    // path never consults the targets sidecar, so `story_path` stays
-    // `None` (no harm if present — the self_heal=false gate short-
-    // circuits before the sidecar is read).
+    // The recording path is read-only against `.story.targets.json` —
+    // self_heal=false. A primary-miss raises `PrimaryMissNoHeal` which the
+    // HUD surfaces with "Open in Simulator". The record path never consults
+    // the targets sidecar, so `story_path` stays `None` (no harm if present
+    // — the self_heal=false gate short-circuits before the sidecar is read).
     tracing::info!(target: "storycapture::automation", "Executor::run_with_story_path starting (self_heal=false)");
     let mut events = Executor::run_with_story_path(
         story,
@@ -323,9 +321,9 @@ pub async fn launch_automation(
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
     playwright_first_paint_stash().set(false);
-    // Phase 09-02 — preview teardown precedes automation teardown so the
-    // pump task's watch-channel exits cleanly. Preview failure here does
-    // not propagate (intentional isolation, CLAUDE.md).
+    // Preview teardown precedes automation teardown so the pump task's
+    // watch-channel exits cleanly. Preview failure here does not propagate
+    // (intentional isolation).
     stop_preview_stream_inner(&state).await;
     {
         let mut slot = state.preview_driver.lock().await;
@@ -340,7 +338,7 @@ pub async fn launch_automation(
 
     // Auto-stop the attached recording so the encoder sidecar doesn't wait
     // on the UI to call stop_recording. Uses the same RecorderHandle shape
-    // the SessionActor will consume (kept symmetric for Phase 7).
+    // the SessionActor will consume.
     if let Some(sid) = recording_session_id {
         use automation::RecorderHandle as _;
         let handle = crate::commands::encode::TauriRecorderHandle::new(sid.clone());
@@ -395,7 +393,7 @@ pub(crate) fn resume_active_automation() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 09-02 — live preview pump (Rust → `preview://frame` event)
+// Live preview pump (Rust → `preview://frame` event)
 // ──────────────────────────────────────────────────────────────────────
 
 /// Start the CDP screencast and pump decoded frames into a Tauri event.
@@ -432,10 +430,10 @@ pub async fn start_preview_stream(
 
     let mut rx = { shared.lock().await.subscribe_preview() };
     let app_for_emit = app.clone();
-    // Phase 09-03 — drop-counter + periodic window log. watch::changed()
-    // already coalesces multiple sends into one wake, so drop_count here
-    // tracks emit failures, not sidecar-level backpressure (that lives on
-    // sidecar state.previewDropCount). Env-tunable window length for tests.
+    // Drop-counter + periodic window log. watch::changed() already coalesces
+    // multiple sends into one wake, so drop_count here tracks emit failures,
+    // not sidecar-level backpressure (that lives on sidecar
+    // state.previewDropCount). Env-tunable window length for tests.
     let log_interval = std::time::Duration::from_secs(
         std::env::var("PREVIEW_PUMP_LOG_SECS")
             .ok()
@@ -503,12 +501,12 @@ pub(crate) async fn stop_preview_stream_inner(state: &AppState) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 09-04 — author-time preview sessions (PHASE-9.8 / PHASE-9.9)
+// Author-time preview sessions
 //
 // Separate Playwright sidecar per editor-surface preview streamId. Never
-// reuses the recording driver (D-13). `attach_author_driver(streamId)`
-// hands back the driver handle so Phase 10's simulator can run DSL verbs
-// against the same session without a third Chromium instance.
+// reuses the recording driver. `attach_author_driver(streamId)` hands back
+// the driver handle so the simulator can run DSL verbs against the same
+// session without a third Chromium instance.
 // ──────────────────────────────────────────────────────────────────────
 
 async fn author_driver(
@@ -578,10 +576,9 @@ pub struct AuthorViewportArgs {
     pub height: u32,
 }
 
-/// Phase 09-04 — spawn an ephemeral author-time Playwright session and
-/// start its CDP screencast. Returns the generated streamId; frontend
-/// binds `<LivePreview streamId=... />` to the matching `preview://frame`
-/// events.
+/// Spawn an ephemeral author-time Playwright session and start its CDP
+/// screencast. Returns the generated streamId; frontend binds
+/// `<LivePreview streamId=... />` to the matching `preview://frame` events.
 ///
 /// `initial_url` is usually `story.meta.app`; `None` launches on
 /// about:blank and caller-side state stays happy for missing meta.app.
@@ -756,7 +753,7 @@ pub async fn resume_author_preview(
 
 #[tauri::command]
 #[specta::specta]
-// Trace level (D-30): caller can pump on every viewport tween frame; an
+// Trace level: caller can pump on every viewport tween frame; an
 // info-level entry per call would dominate the log.
 #[tracing::instrument(level = "trace", skip_all, fields(cmd = "set_author_preview_viewport"), err(Debug))]
 pub async fn set_author_preview_viewport(
@@ -890,7 +887,7 @@ pub enum AuthorMouseButton {
 /// headless author browser. No-op if the session has been torn down.
 #[tauri::command]
 #[specta::specta]
-// Trace level (D-30): up to 60 Hz under hover; would otherwise drown the log.
+// Trace level: up to 60 Hz under hover; would otherwise drown the log.
 #[tracing::instrument(level = "trace", skip_all, fields(cmd = "author_dispatch_input"), err(Debug))]
 pub async fn author_dispatch_input(
     state: State<'_, AppState>,
@@ -962,7 +959,7 @@ pub async fn attach_author_driver(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Plan 05-02: resolve_playwright_target + pid stash
+// resolve_playwright_target + pid stash
 // ──────────────────────────────────────────────────────────────────────
 
 /// Per-process stash of the latest Playwright launch info.
@@ -1061,10 +1058,10 @@ pub async fn resolve_playwright_target(
         let Some(hwnd) = hwnd else {
             return Ok(None);
         };
-        // TODO(phase-9-follow-up): read GetWindowRect(hwnd) here; for now
-        // the frontend falls back to display dims on Windows, which is OK
-        // because WGC does NOT exhibit the same black-padding behavior
-        // (it sizes the output surface to the GraphicsCaptureItem).
+        // TODO: read GetWindowRect(hwnd) here; for now the frontend falls
+        // back to display dims on Windows, which is OK because WGC does NOT
+        // exhibit the same black-padding behavior (it sizes the output
+        // surface to the GraphicsCaptureItem).
         Ok(Some(ResolvedPlaywrightTarget {
             window_id: hwnd as u64,
             pid,

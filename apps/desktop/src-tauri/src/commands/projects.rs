@@ -1,10 +1,10 @@
-// projects.rs — dashboard + project IPC commands (Phase 1 plan 01-09).
+// projects.rs — dashboard + project IPC commands.
 //
 // Thin wrappers around `storage::AppDb` + `storage::project_folder`. The
 // `AppDb` connection is lazily opened inside each command — SQLite
-// connections are cheap on desktop and this keeps `AppState` minimal (D-06:
-// no `Arc<Mutex<BigState>>`). Each command opens → performs op → drops; the
-// file is created on first access under `<app_data_dir>/app.sqlite`.
+// connections are cheap on desktop and this keeps `AppState` minimal
+// (no `Arc<Mutex<BigState>>`). Each command opens → performs op → drops;
+// the file is created on first access under `<app_data_dir>/app.sqlite`.
 //
 // Error mapping: every `storage::StorageError` is folded into
 // `AppError::Storage`. NotFound cases use `AppError::NotFound`.

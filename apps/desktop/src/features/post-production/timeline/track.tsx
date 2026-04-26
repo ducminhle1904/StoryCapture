@@ -1,10 +1,8 @@
 /**
- * Timeline track row (Plan 02-12b).
- *
- * Renders one of the 5 fixed tracks (D-12) with its clips laid out in
- * absolute position according to `pxPerMs`. The track container is
- * labelled for screen readers; clicking empty space on the track clears
- * the current selection.
+ * Timeline track row. Renders one of the 5 fixed tracks with its clips
+ * laid out in absolute position according to `pxPerMs`. The track
+ * container is labelled for screen readers; clicking empty space on the
+ * track clears the current selection.
  *
  * Drag-to-move clip logic is pointer-based (not @dnd-kit here) because
  * the snap computation lives in the store's `moveClip` and we want a
@@ -18,11 +16,9 @@ import { useEditorStore } from "../state/store";
 import type { Clip as ClipModel, TrackId } from "../state/timeline-slice";
 import { Clip } from "./clip";
 
-// Plan 02-13 grep anchor: pushAction({ kind: 'move-clip'
-//
 // The drag gesture is handled here via pointer events; the per-move
 // push is delegated to the store's pushAction so the coalescer can
-// collapse an entire drag into a single undo step (D-15).
+// collapse an entire drag into a single undo step.
 
 export interface TrackProps {
   id: TrackId;
@@ -76,10 +72,10 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 48 }: TrackProps) 
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         // Emit one undoable action describing the entire drag. The
-        // coalescer collapses any repeat fires from the same clip id
-        // into a single history entry (D-15). We read the POST-drag
-        // startMs from the store so snap-adjusted values land in the
-        // undo record, not the pointer delta.
+        // coalescer collapses repeat fires from the same clip id into a
+        // single history entry. We read the POST-drag startMs from the
+        // store so snap-adjusted values land in the undo record, not
+        // the pointer delta.
         const finalClip = useEditorStore
           .getState()
           .tracks[id].find((c) => c.id === clipId);

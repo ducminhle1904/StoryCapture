@@ -1,4 +1,4 @@
-//! Verb → required-capability mapping (D-14).
+//! Verb → required-capability mapping.
 //!
 //! The executor calls [`required_for`] for every command and picks the
 //! first driver whose [`CapabilitySet`] satisfies it (primary preferred,
@@ -48,8 +48,8 @@ fn is_download_target(target: &SelectorOrText) -> bool {
 }
 
 /// OAuth-popup heuristic: `wait-for "oauth:..."` or `click "oauth:..."`.
-/// Real popup detection is mid-flight (Phase 3); for now this lets the user
-/// opt the verb into Playwright via a sentinel prefix.
+/// Real popup detection is mid-flight; for now this lets the user opt the
+/// verb into Playwright via a sentinel prefix.
 fn is_oauth_target(target: &SelectorOrText) -> bool {
     let s = match target {
         SelectorOrText::Text(s)
@@ -68,9 +68,9 @@ fn is_oauth_target(target: &SelectorOrText) -> bool {
 
 /// Map a [`Command`] to the [`Capability`] it requires from the driver.
 ///
-/// The defaults are deliberately conservative: anything chromiumoxide is
-/// known to handle weakly (PITFALLS #3) is mapped to a non-`None` capability
-/// so the executor routes to Playwright.
+/// The defaults are deliberately conservative: anything chromiumoxide
+/// handles weakly is mapped to a non-`None` capability so the executor
+/// routes to Playwright.
 pub fn required_for(cmd: &Command) -> Capability {
     match cmd {
         // File upload — chromiumoxide's `Page::set_input_files` API is

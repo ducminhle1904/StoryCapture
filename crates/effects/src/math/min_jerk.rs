@@ -17,8 +17,8 @@
 //! - [`peak_velocity`] — closed-form peak velocity at `τ=0.5` (1.875 × Δ / T)
 //!
 //! ## Caller responsibilities / DoS note (T-02-04)
-//! `sample_path` is O(fps × duration_sec). The caller (Plan 05/06) is responsible
-//! for clamping extreme `fps` or waypoint durations; practical upper bound is
+//! `sample_path` is O(fps × duration_sec). The caller is responsible for
+//! clamping extreme `fps` or waypoint durations; practical upper bound is
 //! ~600s × 120fps = 72 000 samples.
 
 use crate::ast::types::Vec2;

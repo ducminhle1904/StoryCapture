@@ -1,13 +1,9 @@
 /**
- * Cost warning modal (Plan 03-20, Task 2 / AI-SPEC G7).
+ * Cost warning modal.
  *
  * AlertDialog displayed when estimated input > 50K tokens.
- * Heading: "This prompt uses many tokens"
- * Checkbox: "Don't ask again for this session" -- persisted via Zustand session-scoped flag.
- * Returns promise resolving to {proceed: boolean, suppressForSession: boolean}.
- *
- * Used by Plan-07 nl_chat_send path: before invocation, estimate input tokens
- * (simple char-count / 4 heuristic), if > 50K call this modal.
+ * Returns a promise resolving to {proceed, suppressForSession}.
+ * The suppressForSession flag is held in a Zustand session-scoped store.
  */
 
 import { useState, useCallback, useEffect } from "react";

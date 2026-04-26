@@ -1,4 +1,4 @@
-//! Integration tests for the render queue actor (Plan 02-10 / Task 2).
+//! Integration tests for the render queue actor.
 //!
 //! These tests use the `NoopJobExecutor` + an in-memory project.sqlite
 //! (seeded via `storage::migrations::project`) so they don't depend on

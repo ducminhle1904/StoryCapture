@@ -203,7 +203,7 @@ async fn request_body_carries_bearer_and_response_format() {
 /// Provider swap: the SAME caller code works for both `AnthropicProvider`
 /// and `OpenAiProvider` behind `Arc<dyn LlmProvider>`, producing equivalent
 /// `ToolUseComplete` events from their respective wire formats. Proves the
-/// trait-level swap required by REQUIREMENT AI-01 ("Anthropic/OpenAI").
+/// trait-level swap between Anthropic and OpenAI providers.
 #[tokio::test]
 async fn provider_swap_yields_equivalent_tool_use_complete_events() {
     // --- OpenAI leg --------------------------------------------------------

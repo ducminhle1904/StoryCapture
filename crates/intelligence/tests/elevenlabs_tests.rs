@@ -4,7 +4,7 @@
 //! 1. `synthesize` POSTs the expected URL + body shape and returns the
 //!    streamed MP3 bytes unchanged.
 //! 2. `list_voices` parses the fixture into `Vec<VoiceInfo>` with ≥3 entries.
-//! 3. `CURATED_PRESETS.len() >= 6` (D-11).
+//! 3. `CURATED_PRESETS.len() >= 6`.
 //! 4. HTTP status mapping: 429 → RateLimited, 401 → AuthFailed, 402 →
 //!    QuotaExceeded, 404 → VoiceNotFound.
 //! 5. `xi-api-key` header actually lands on the wire (defence-in-depth vs.

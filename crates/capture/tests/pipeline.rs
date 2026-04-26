@@ -1,6 +1,6 @@
 //! Pipeline integration tests using a mock backend that emits synthetic
-//! frames. Verifies PTS preservation (D-21 / CAP-07) and backpressure
-//! drop accounting (D-19 / CAP-05) without touching any platform API.
+//! frames. Verifies PTS preservation and backpressure drop accounting
+//! without touching any platform API.
 
 use async_trait::async_trait;
 use capture::{

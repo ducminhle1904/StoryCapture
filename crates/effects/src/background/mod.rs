@@ -1,6 +1,6 @@
-//! Background compositor (POST-04): gradient presets, user-image upload
-//! validation, rounded window frame, drop shadow, and padding. Emits into
-//! both the FFmpeg filter_complex chain and the PreviewRenderPlan (D-01).
+//! Background compositor: gradient presets, user-image upload validation,
+//! rounded window frame, drop shadow, and padding. Emits into both the
+//! FFmpeg filter_complex chain and the PreviewRenderPlan.
 
 pub mod compositor;
 pub mod gradients;
@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::EffectsError;
 
-/// Upload constraints (POST-04 must-have):
+/// Upload constraints:
 ///   - Max dimensions: 8192x8192
 ///   - Max file size: 10 MiB
 ///   - Allowed extensions: png, jpg, jpeg

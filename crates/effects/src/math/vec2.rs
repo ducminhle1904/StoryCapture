@@ -1,7 +1,8 @@
 //! Extension trait adding vector arithmetic to [`crate::ast::types::Vec2`].
 //!
-//! We deliberately do NOT redefine `Vec2` here — Plan 01 already owns the type
-//! and its serde/ts-rs wiring. `Vec2Ops` adds the math operations needed by
+//! We deliberately do NOT redefine `Vec2` here — the AST already owns the
+//! type and its serde/ts-rs wiring. `Vec2Ops` adds the math operations
+//! needed by
 //! [`super::min_jerk`] and the cursor/zoom pipelines without duplicating the
 //! data layout or the TS export.
 

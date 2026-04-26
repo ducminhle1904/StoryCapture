@@ -1,11 +1,8 @@
 /**
- * CodeMirror 6 completion source for the DSL (UI-02).
+ * CodeMirror 6 completion source for the DSL.
  *
- * Phase 1 scope (D-37, D-38):
- *   - Static completions: 13 verbs + meta keys + target prefixes + top-level blocks.
- *   - Dynamic selector completions (live DOM via `fetch_dom_selectors`) are
- *     deferred — Plan 06 doesn't expose that command yet. We surface a
- *     zero-result stub so the infrastructure is wired when P06 adds it.
+ * Static completions only: verbs + meta keys + target prefixes + top-level
+ * blocks. Dynamic live-DOM selector completions are deferred.
  */
 
 import {

@@ -1,4 +1,4 @@
-//! Capture error taxonomy (D-31). Pure crate — `thiserror` only, no `anyhow`,
+//! Capture error taxonomy. Pure crate — `thiserror` only, no `anyhow`,
 //! no Tauri types. The host (`apps/desktop/src-tauri`) maps these into
 //! `AppError` at the IPC boundary.
 
@@ -39,14 +39,14 @@ pub enum CaptureError {
     WindowNotFound(u64),
 
     /// Backend `stop()` exceeded its bounded deadline. Caller should log
-    /// and proceed with teardown rather than await indefinitely (D-03).
+    /// and proceed with teardown rather than await indefinitely.
     #[error("capture stop timed out after {timeout_ms}ms")]
     StopTimedOut { timeout_ms: u64 },
 
     /// Target HWND no longer refers to a live window. Emitted by the WGC
     /// backend before calling `Window::from_raw_hwnd` so a stale pid→HWND
     /// resolution fails fast and the orchestrator can fall back to xcap
-    /// instead of tripping undefined behaviour inside WGC (D-05).
+    /// instead of tripping undefined behaviour inside WGC.
     #[error("window no longer exists (hwnd={hwnd})")]
     WindowGone { hwnd: u64 },
 

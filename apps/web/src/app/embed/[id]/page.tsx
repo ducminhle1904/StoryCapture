@@ -8,10 +8,8 @@ interface EmbedPageProps {
 }
 
 /**
- * Minimal embeddable viewer for iframe embedding (D-03).
- * No header, no footer, no chapter nav -- just the video player.
+ * Minimal embeddable viewer for iframe embedding.
  * Fetches by video ID (not slug) for stable embed URLs.
- *
  * X-Frame-Options is NOT set, allowing embedding in any origin.
  */
 export default async function EmbedPage({ params }: EmbedPageProps) {

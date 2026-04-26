@@ -2,7 +2,7 @@
 //!
 //! Keeps the filter-graph shape trivial (`volume=` per input); the `loop`
 //! behaviour is set on the input side of FFmpeg (`-stream_loop -1`) via
-//! [`ExtraInput::stream_loop`]. Plan 11 (render pipeline) is responsible for
+//! [`ExtraInput::stream_loop`]. The render pipeline is responsible for
 //! emitting that CLI flag.
 
 use std::path::{Path, PathBuf};
@@ -20,7 +20,7 @@ pub struct BgmParams {
     /// pulls this down by `DEFAULT_DUCK.duck_db` when voiceover is present.
     pub pre_duck_volume: f32,
     /// When true the renderer pads the input with `-stream_loop -1` so the
-    /// BGM repeats for the full video duration (Plan 11 clamps with `-t`).
+    /// BGM repeats for the full video duration (the renderer clamps with `-t`).
     pub loop_enabled: bool,
 }
 

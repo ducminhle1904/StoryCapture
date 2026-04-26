@@ -1,25 +1,20 @@
 /**
  * Author-time selector validator overlay.
  *
- * Reads the parsed story AST from `useEditorStore().lastParse` and, for
- * every step that carries a `target + url-context`, calls
- * `author_snapshot_validate` against the cached DOM snapshot. Results
- * are written into a Zustand store keyed by step line number so the
- * CodeMirror gutter markers and the Preview panel bbox overlay can
- * read from the same source.
+ * For every step in the parsed story that carries a `target + url-context`,
+ * calls `author_snapshot_validate` against the cached DOM snapshot and
+ * writes the result into a Zustand store keyed by line number so the
+ * CodeMirror gutter and the Preview panel bbox overlay read from the
+ * same source.
  *
- * Debounce: 250 ms per step-key change. Validation NEVER blocks typing
- * because the IPC call is fire-and-forget and results only update the
- * store when they land.
+ * Debounced 250ms per step-key change. Validation never blocks typing —
+ * IPC is fire-and-forget; results only update the store when they land.
  *
- * The overlay is PURELY READ-ONLY against `.story.targets.json` — it
- * never mutates until the user clicks "Promote to fallback" (a future
- * affordance that lands in the SelectorFallbackPopover surface).
+ * The overlay is purely read-only against `.story.targets.json`; it
+ * mutates nothing until the user clicks "Promote to fallback".
  *
- * This component renders nothing visible on its own; it's a
- * side-effect sentinel mounted once in the editor tree. Visual chip
- * rendering lives in the gutter marker extension and in the Preview
- * panel bbox overlay that read from `useSelectorValidation`.
+ * Renders nothing visible — side-effect sentinel mounted once in the
+ * editor tree.
  */
 
 import { useEffect, useMemo, useRef } from "react";
@@ -106,8 +101,8 @@ export function collectValidatableSteps(story: Story): Array<{
           }
           break;
         // drag has `from`/`to`; validate only the `from` so we don't
-        // conflate two chips on one line. Plan's Phase-7 synergy note
-        // says drag-to is deliberately NOT self-healed either.
+        // conflate two chips on one line. drag-to is deliberately not
+        // self-healed either.
         case "drag":
           if (activeUrl) {
             out.push({

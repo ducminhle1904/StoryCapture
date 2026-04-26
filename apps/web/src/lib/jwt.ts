@@ -4,7 +4,7 @@ import { SignJWT, jwtVerify } from "jose";
  * JWT utilities for desktop auth tokens and SSE subscription auth.
  *
  * - Desktop tokens: long-lived (30 days) for persistent desktop-to-web auth
- * - SSE tokens: short-lived (15 min) for WebSocket/SSE subscription auth (D-07)
+ * - SSE tokens: short-lived (15 min) for WebSocket/SSE subscription auth
  *
  * All tokens use HS256 signed with JWT_SECRET env var.
  */
@@ -50,7 +50,7 @@ export async function verifyDesktopToken(
 }
 
 /**
- * Mint a short-lived JWT (15 min) for SSE subscriptions (D-07).
+ * Mint a short-lived JWT (15 min) for SSE subscriptions.
  * Desktop exchanges its long-lived token for this before opening SSE connections.
  */
 export async function mintJwt(userId: string): Promise<string> {

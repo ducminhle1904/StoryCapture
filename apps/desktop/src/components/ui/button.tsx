@@ -1,14 +1,8 @@
 /**
  * NOTE (deviation): Hand-written using `class-variance-authority` rather than
- * scaffolded via `npx shadcn@latest add button`. The shadcn CLI's `base-ui`
- * registry is currently new-york / vega style for Radix; the Base UI variant
- * proves the registry is selected in `components.json` but we ship a minimal
- * `<button>` primitive here to avoid a network call and registry-compat
- * detection at install time. This still satisfies D-32 (Base UI not Radix)
- * because the file does NOT import any Radix UI package.
- *
- * Plan 09 will replace this with the official shadcn Base UI Button when the
- * `base-vega` v4 entry is verified.
+ * scaffolded via `npx shadcn@latest add button`. We ship a minimal `<button>`
+ * primitive here to avoid a network call and registry-compat detection at
+ * install time. Does NOT import any Radix UI package (Base UI only).
  */
 
 import { type VariantProps, cva } from "class-variance-authority";

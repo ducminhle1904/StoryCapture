@@ -1,15 +1,3 @@
-/**
- * DryRunPanel + DryRunStepRow + SelectorFallbackPopover tests.
- *
- * 6 behaviors:
- * 1. Empty state copy "Chua co lan chay thu nao" when summary === null && panelOpen
- * 2. Step rows animate status background via motion/react 160ms
- * 3. Clicking "Chay thu" button calls onStart(steps)
- * 4. Clicking step row fires onStepClick with stepId
- * 5. SelectorFallbackPopover renders "Cap nhat selector" CTA + winning strategy
- * 6. Keyboard nav: arrows move focus, Enter fires onStepClick, Esc initiates cancel
- */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,7 +6,6 @@ import { SelectorFallbackPopover } from "./SelectorFallbackPopover";
 import type { StoryStep } from "./useDryRun";
 import { useDryRunStore } from "./dryRunStore";
 
-// Mock Tauri
 const { mockInvoke, MockChannel } = vi.hoisted(() => {
   const mockInvoke = vi.fn().mockResolvedValue("task-1");
   class MockChannel {
@@ -63,7 +50,6 @@ describe("DryRunPanel", () => {
     );
 
     expect(screen.getByTestId("dryrun-panel")).toBeTruthy();
-    // Vietnamese: "Chua co lan chay thu nao"
     expect(
       screen.getByText(/Ch\u01b0a c\u00f3 l\u1ea7n ch\u1ea1y th\u1eed n\u00e0o/),
     ).toBeTruthy();
@@ -95,7 +81,6 @@ describe("DryRunPanel", () => {
     );
 
     const startBtn = screen.getByTestId("dryrun-start-btn");
-    // Verify Vietnamese copy
     expect(startBtn.textContent).toMatch(/Ch\u1ea1y th\u1eed/);
     await userEvent.click(startBtn);
 
@@ -178,17 +163,14 @@ describe("SelectorFallbackPopover", () => {
       />,
     );
 
-    // Vietnamese: "Selector qua chung"
     expect(
       screen.getByText(/Selector qu\u00e1 chung/),
     ).toBeTruthy();
 
-    // Winning strategy info: "strategy 2 thang trong 120ms"
     expect(
       screen.getByText(/strategy 2 th\u1eafng trong 120ms/),
     ).toBeTruthy();
 
-    // CTA: "Cap nhat selector"
     const ctaBtn = screen.getByText(/C\u1eadp nh\u1eadt selector/);
     expect(ctaBtn).toBeTruthy();
   });

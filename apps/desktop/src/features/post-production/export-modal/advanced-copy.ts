@@ -1,6 +1,5 @@
 /**
- * Copy constants for the Export Modal Advanced accordion
- * (Phase 13 Plan 05, ENC-13 + ENC-16). Centralised per CD-13-03.
+ * Copy constants for the Export Modal Advanced accordion.
  */
 
 export const LABEL_ACCORDION_TRIGGER = "Advanced options";

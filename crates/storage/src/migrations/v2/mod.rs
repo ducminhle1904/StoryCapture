@@ -1,10 +1,11 @@
-//! Phase 2 v2 migration set. Registered by both `project` and `app` migration
-//! bundles, though `app.sqlite` only installs the subset relevant to globally
-//! scoped data (effect_presets); `project.sqlite` installs all five.
+//! v2 migration set. Registered by both `project` and `app` migration
+//! bundles, though `app.sqlite` only installs the subset relevant to
+//! globally scoped data (effect_presets); `project.sqlite` installs all
+//! five.
 //!
 //! Pure `rusqlite_migration` — each `M::up` bumps `user_version` by 1. The
-//! project tier advances from v1 (5 tables from Phase 1 Plan 05) to v6 (v1 + 5
-//! new tables defined here).
+//! project tier advances from v1 (5 baseline tables) to v6 (v1 + 5 new
+//! tables defined here).
 
 use rusqlite_migration::M;
 

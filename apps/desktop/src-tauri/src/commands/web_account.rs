@@ -11,9 +11,9 @@
 //! | `get_web_api_token`    | `Result<Option<String>, _>`       | Read API token for upload/sync commands  |
 //!
 //! **Threat mitigations:**
-//! - T-04-09 (Spoofing): Random port + 30s timeout + single-use localhost server
-//! - T-04-10 (Info Disclosure): Token stored in OS keychain, never in SQLite or plaintext
-//! - T-04-11 (DoS): 30-second timeout with clean shutdown
+//! - Spoofing: Random port + 30s timeout + single-use localhost server
+//! - Info disclosure: Token stored in OS keychain, never in SQLite or plaintext
+//! - DoS: 30-second timeout with clean shutdown
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -224,7 +224,7 @@ pub async fn complete_web_oauth(
         .await
         .map_err(|e| WebAccountError::TokenExchangeFailed(e.to_string()))?;
 
-    // Store the API token in keychain (T-04-10: never in SQLite or plaintext).
+    // Store the API token in keychain (never in SQLite or plaintext).
     let token_entry = keyring::Entry::new(SERVICE, ACCOUNT_TOKEN).map_err(WebAccountError::from)?;
     token_entry
         .set_password(&token_resp.token)

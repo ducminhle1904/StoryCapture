@@ -1,7 +1,7 @@
-//! Phase 3 v3 migration set. Contributes four `M::up` steps to
-//! `project.sqlite` (no app-tier additions): nl_conversations,
-//! tts_cache_index, llm_turn_metrics, and tts_clip_metrics + session_rollup
-//! view (bundled with the last table).
+//! v3 migration set. Contributes four `M::up` steps to `project.sqlite`
+//! (no app-tier additions): nl_conversations, tts_cache_index,
+//! llm_turn_metrics, and tts_clip_metrics + session_rollup view (bundled
+//! with the last table).
 
 use rusqlite_migration::M;
 

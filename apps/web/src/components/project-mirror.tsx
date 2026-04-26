@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
  *
  * Subscribes to sync.onProjectUpdates SSE for live changes.
  * Falls back to polling sync.listProjects every 5s after 3 SSE failures.
- * Story source is displayed read-only per D-07.
+ * Story source is displayed read-only.
  */
 
 interface ProjectMirrorProps {

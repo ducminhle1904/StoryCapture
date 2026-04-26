@@ -1,7 +1,7 @@
 /**
- * Undo/redo slice + hotkey binding tests (Plan 02-13, Task 2).
+ * Undo/redo slice + hotkey binding tests.
  *
- * Coverage per the plan's `<behavior>` block:
+ * Coverage:
  *   1. undo_drag_reverts_clip_position
  *   2. redo_reapplies
  *   3. undo_new_action_clears_redo

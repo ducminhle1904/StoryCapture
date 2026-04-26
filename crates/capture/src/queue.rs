@@ -42,7 +42,7 @@ pub struct ByteBoundedQueue {
 }
 
 impl ByteBoundedQueue {
-    /// Default cap per D-19: 256 MiB.
+    /// Default cap: 256 MiB.
     pub const DEFAULT_CAP_BYTES: usize = 256 * 1024 * 1024;
 
     pub fn new(cap_bytes: usize) -> Arc<Self> {

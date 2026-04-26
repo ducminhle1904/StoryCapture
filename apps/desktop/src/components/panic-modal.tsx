@@ -1,9 +1,6 @@
 /**
- * Panic modal: subscribes to the host's `app:panic` event (emitted by the
- * panic hook in Plan 03a) and renders a recoverable error dialog.
- *
- * Uses Base UI's Dialog primitive (NOT Radix) per D-32. Falls back to a
- * native <dialog> shape if the import is unavailable at scaffold time.
+ * Panic modal: subscribes to the host's `app:panic` event and renders a
+ * recoverable error dialog. Uses Base UI's Dialog primitive (NOT Radix).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -19,8 +16,8 @@ import {
   dialogViewportClassName,
 } from "@/components/ui/dialog-motion";
 
-// T-03b-04 mitigation: cap displayed panic message at 4 KB to keep modal
-// responsive even if the host emits an oversized payload.
+// Cap displayed panic message at 4 KB to keep modal responsive even if
+// the host emits an oversized payload.
 const MAX_MESSAGE_BYTES = 4096;
 
 function truncate(s: string, max: number): string {
@@ -43,8 +40,8 @@ export function PanicModal() {
         message: truncate(p.message ?? "Unknown error", MAX_MESSAGE_BYTES),
         thread: p.thread ?? "unknown",
       });
-      // Log path is populated lazily by the host (Plan 03a). For now we use
-      // a sensible default; downstream plans can wire `app_info.data_dir`.
+      // Log path is populated lazily by the host. For now we use a
+      // sensible default; future work can wire `app_info.data_dir`.
       setLogPath("(see app log directory)");
     }).then((u) => {
       if (cancelled) {

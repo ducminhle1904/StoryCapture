@@ -1,4 +1,4 @@
-//! FFmpeg sidecar pool (Plan 02-10).
+//! FFmpeg sidecar pool.
 
 pub mod sidecar_pool;
 

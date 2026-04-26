@@ -1,17 +1,3 @@
-/**
- * editorController vitest.
- *
- * Constructs a real CodeMirror EditorView (with `history()` extension)
- * inside happy-dom and asserts the singleton's contract:
- *   1. isReady() reflects setView/clearView
- *   2. insertAtCursor returns { ok: false, reason: "no-view" } without throwing
- *      when no view is registered
- *   3. snap-to-line-end semantics on a mid-line cursor
- *   4. SINGLE undo entry — undo() restores the doc to its pre-insert state
- *      (proves the userEvent: "input.pick" + single dispatch is atomic)
- *   5. two consecutive inserts produce two undo entries (last-in undone first)
- */
-
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -60,9 +46,6 @@ describe("editorController", () => {
     view.dispatch({ selection: { anchor: 0 } });
 
     const r = editorController.insertAtCursor("X");
-    // lineNumber is now returned so `pickerStampStepId`
-    // can stamp the UUIDv7 on the correct row; line 1 is where the
-    // snap-to-end-of-line insertion lands.
     expect(r).toEqual({ ok: true, lineNumber: 1 });
     // Snapped to end of line 1 (offset 3), then "X" inserted.
     expect(view.state.doc.toString()).toBe("abcX\ndef");

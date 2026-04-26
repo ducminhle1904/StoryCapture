@@ -1,4 +1,4 @@
-//! Audio mixer (POST-06).
+//! Audio mixer.
 //!
 //! Builds an FFmpeg `filter_complex` fragment for the final audio mix:
 //! captured audio + BGM (optionally ducked under a voiceover slot) + per-step
@@ -10,7 +10,7 @@
 //!
 //! The modules in this directory are:
 //!
-//! - [`ducking`] — `sidechaincompress` graph segment + [`ducking::DEFAULT_DUCK`] (D-22).
+//! - [`ducking`] — `sidechaincompress` graph segment + [`ducking::DEFAULT_DUCK`].
 //! - [`click_sfx`] — per-step click splicing via `adelay` + `amix`.
 //! - [`bgm`]       — BGM level helper.
 //! - [`library`]   — bundled sound-pack manifest loader.

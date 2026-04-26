@@ -1,7 +1,6 @@
 /**
- * RadioGroup primitive — shadcn-style chrome on top of Base UI's RadioGroup (D-32).
+ * RadioGroup primitive — shadcn-style chrome on top of Base UI's RadioGroup.
  *
- * Phase 13 first use: QualityPreset selection (draft / standard / high / lossless).
  * Each item is a Base UI Radio.Root with an Indicator dot.
  */
 

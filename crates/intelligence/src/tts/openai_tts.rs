@@ -2,7 +2,7 @@
 //! slow. Single POST to `/v1/audio/speech`; response is a non-streamed MP3
 //! payload (OpenAI does not chunk the audio endpoint the way ElevenLabs does).
 //!
-//! Per AI-SPEC §4 (TTS) and plan 03-09:
+//! Wire shape:
 //! - Body: `{ model, input, voice, response_format: "mp3", speed: 1.0 }`.
 //! - Headers: `Authorization: Bearer <key>`, `Content-Type: application/json`.
 //! - Six built-in voices: `alloy, echo, fable, onyx, nova, shimmer` — all

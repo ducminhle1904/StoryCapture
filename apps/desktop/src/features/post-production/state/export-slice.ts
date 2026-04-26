@@ -1,10 +1,8 @@
 /**
- * Export slice (Plan 02-12a).
- *
- * Holds the transient form state for the Export modal. Formats is an
- * array (multi-select checkbox group); resolution / fps / quality are
- * single-select. `outFolder` is chosen via the native file dialog and
- * stashed here so the user doesn't re-pick it between opens.
+ * Export slice. Holds transient form state for the Export modal. Formats
+ * is an array (multi-select checkbox group); resolution / fps / quality
+ * are single-select. `outFolder` is chosen via the native file dialog
+ * and stashed here so the user doesn't re-pick it between opens.
  */
 
 import type { StateCreator } from "zustand";

@@ -1,8 +1,7 @@
 /**
- * Input primitive — shadcn-style chrome on top of Base UI's Input (D-32).
+ * Input primitive — shadcn-style chrome on top of Base UI's Input.
  *
- * Phase 13 first use: Custom W/H numeric entry via NumberField wrapper.
- * Keep surface minimal; aria-invalid styling is wired through tokens.
+ * aria-invalid styling is wired through tokens.
  */
 
 import { Input as BaseInput } from "@base-ui-components/react/input";

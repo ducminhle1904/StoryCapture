@@ -1,4 +1,4 @@
-//! Render-queue FFmpeg `-progress` parser (Plan 02-10).
+//! Render-queue FFmpeg `-progress` parser.
 //!
 //! FFmpeg's `-progress <url>` flag emits one `key=value` per line,
 //! terminated by `progress=continue` (rolling) or `progress=end` (final
@@ -12,8 +12,8 @@
 //! The render-queue actor (`queue::actor`) instantiates one parser per
 //! spawned job and forwards emitted [`RenderProgress`] values over an
 //! `mpsc::Sender<RenderProgress>` → the Tauri host's `stream_render_progress`
-//! Channel. The pre-existing Phase 1 [`super::ProgressParser`] is NOT
-//! replaced — the capture/encode recording pipeline still uses that shape.
+//! Channel. The pre-existing [`super::ProgressParser`] is NOT replaced —
+//! the capture/encode recording pipeline still uses that shape.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

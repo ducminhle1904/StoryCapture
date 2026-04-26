@@ -267,7 +267,7 @@ export function TargetPicker({
         </button>
       </div>
 
-      {/* Plan 06-02 — only shown when a Display target is selected.
+      {/* Only shown when a Display target is selected.
           Window/PlaywrightAuto targets have no region concept. */}
       {showCropRegion && (
         <button

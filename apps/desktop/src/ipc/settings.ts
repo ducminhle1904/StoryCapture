@@ -11,7 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface AppSettings {
   browser_executable: string | null;
-  /** Phase 09-02 — persisted live-preview toggle. */
+  /** Persisted live-preview toggle. */
   live_preview_enabled: boolean;
 }
 

@@ -1,4 +1,4 @@
-//! Insta golden snapshots for Plan 05 zoompan emission + Preview matrix expansion.
+//! Insta golden snapshots for zoompan emission + Preview matrix expansion.
 //!
 //! Pins the zoompan filter syntax for three reference preset configs so any
 //! accidental drift in expression generation is caught in CI.

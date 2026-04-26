@@ -1,4 +1,4 @@
-// AppError — common IPC error taxonomy (D-31).
+// AppError — common IPC error taxonomy.
 //
 // Every Tauri command returns `Result<T, AppError>`; serializes to the
 // renderer as a tagged JSON object: `{ "kind": "Io", "message": "..." }`.
@@ -46,14 +46,14 @@ pub enum AppError {
     #[error("unavailable on backend: {0}")]
     UnavailableOnBackend(String),
 
-    /// D-04: another `start_recording` is already in-flight. The global
+    /// Another `start_recording` is already in-flight. The global
     /// `compare_exchange` guard at the command entry returns this when a
     /// concurrent caller beats the current one. Frontend treats this as a
     /// benign no-op (retry is the user clicking Start again).
     #[error("a recording is already starting")]
     AlreadyStarting,
 
-    /// D-10: FFmpeg did not open the audio FIFO within the 2s handshake
+    /// FFmpeg did not open the audio FIFO within the 2s handshake
     /// window. Surfaces the failure instead of dangling the AudioCaptureStream
     /// start on a pipe that FFmpeg will never read.
     #[error("ffmpeg did not open the audio fifo within 2s")]

@@ -1,8 +1,8 @@
-//! Text overlay engine (POST-07).
+//! Text overlay engine.
 //!
 //! This module ships three annotation primitives plus a set of helpers
 //! that all map back to the canonical `VideoNode::TextOverlay` node in
-//! the AST (Plan 01):
+//! the AST:
 //!
 //! 1. **Text boxes** — plain text via FFmpeg `drawtext`, with proper
 //!    `:`/`\`/`'`/`%` escaping and font-path resolution that sidesteps
@@ -20,7 +20,7 @@
 //! Three animation presets (fade / slide-up / scale-in) are exposed via
 //! [`animation`] and composed into the drawtext emission. Auto-annotate
 //! from DSL metadata lives in [`auto_annotate`] and is **off by default**
-//! per Phase 2 D-27 (the user opts in explicitly).
+//! (the user opts in explicitly).
 
 pub mod animation;
 pub mod auto_annotate;

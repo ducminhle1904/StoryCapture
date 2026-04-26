@@ -1,6 +1,6 @@
 //! Integration tests for `effects::math::spring`, `effects::math::lowpass`,
-//! and `effects::math::perlin`. These are the numerical primitives Plan 05
-//! (auto-zoom planner) depends on.
+//! and `effects::math::perlin`. These are the numerical primitives the
+//! auto-zoom planner depends on.
 
 use effects::math::lowpass::low_pass_1d;
 use effects::math::perlin::PerlinNoise2D;

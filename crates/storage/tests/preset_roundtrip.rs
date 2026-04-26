@@ -1,6 +1,6 @@
 //! Integration tests for `.scpreset` file I/O and the 5 bundled defaults.
 //!
-//! Covers acceptance criteria for Phase 2 Plan 03 Task 3:
+//! Covers:
 //!   - All 5 bundled files parse, report version=2, bundled=true.
 //!   - export -> import round-trip preserves fields.
 //!   - invalid kind → error.

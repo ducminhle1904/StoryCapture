@@ -36,11 +36,10 @@ export interface StepProgress {
 }
 
 /**
- * Phase 11-02 (D-06): record-path primary-miss error surface. Populated
- * when the executor raises `AutomationError::PrimaryMissNoHeal` — the
- * HUD renders a destructive block with the UI-SPEC-locked copy plus an
- * "Open in Simulator" action routing into the Editor at the failed
- * step. Cleared on `reset()` (idle/new recording).
+ * Record-path primary-miss error surface. Populated when the executor
+ * raises `AutomationError::PrimaryMissNoHeal`; the HUD renders a
+ * destructive block plus an "Open in Simulator" action routing into the
+ * Editor at the failed step. Cleared on `reset()`.
  */
 export interface PrimaryMissInfo {
   /** 1-indexed step ordinal from the executor event. */
@@ -103,16 +102,14 @@ export interface RecorderData {
    *  LaunchConfig.args before automation starts. */
   chromeHiding: boolean;
 
-  /** Phase 09-02 — persisted Options toggle for the in-recorder live
-   *  preview pane. Default ON (D-11); hydrated from app_settings on
-   *  first access. */
+  /** Persisted Options toggle for the in-recorder live preview pane.
+   *  Default ON; hydrated from app_settings on first access. */
   livePreviewEnabled: boolean;
 
-  /** Phase 11-02 (D-06) — record-path primary-miss payload. Set from the
-   *  StepFailed handler when the error_message matches the locked
-   *  PrimaryMissNoHeal copy; consumed by the HUD to render the
-   *  destructive block + "Open in Simulator" action. `null` when no
-   *  such error is active. */
+  /** Record-path primary-miss payload. Set from the StepFailed handler
+   *  when the error_message matches the locked PrimaryMissNoHeal copy;
+   *  consumed by the HUD to render the destructive block + "Open in
+   *  Simulator" action. `null` when no such error is active. */
   primaryMiss: PrimaryMissInfo | null;
 }
 
@@ -138,15 +135,15 @@ export interface RecorderActions {
   setIncludeCursor: (v: boolean) => void;
   setChromeHiding: (v: boolean) => void;
 
-  /** Phase 09-02 — flip the live-preview toggle; persists through
+  /** Flip the live-preview toggle; persists through
    *  `set_live_preview_enabled` so the choice survives app restarts. */
   setLivePreviewEnabled: (v: boolean) => void;
-  /** Phase 09-02 — hydrate `livePreviewEnabled` from app_settings. Safe
-   *  to call more than once; silently no-ops on IPC error. */
+  /** Hydrate `livePreviewEnabled` from app_settings. Safe to call more
+   *  than once; silently no-ops on IPC error. */
   hydrateLivePreviewEnabled: () => Promise<void>;
 
-  /** Phase 11-02 (D-06) — set or clear the record-path PrimaryMissNoHeal
-   *  payload the HUD renders. Pass `null` to dismiss the block. */
+  /** Set or clear the record-path PrimaryMissNoHeal payload the HUD
+   *  renders. Pass `null` to dismiss the block. */
   setPrimaryMiss: (info: PrimaryMissInfo | null) => void;
 }
 
@@ -170,10 +167,10 @@ const INITIAL: RecorderData = {
   audioDeviceId: null,
   includeCursor: true,
   chromeHiding: false,
-  // Default ON per D-11; hydrated from app_settings by
+  // Default ON; hydrated from app_settings by
   // `hydrateLivePreviewEnabled` on recorder-view mount.
   livePreviewEnabled: true,
-  // Phase 11-02: no primary-miss on a fresh recording.
+  // No primary-miss on a fresh recording.
   primaryMiss: null,
 };
 
@@ -239,9 +236,9 @@ export const useRecorderStore = create<RecorderState>((set) => ({
     set({ availableTargets: targets, captureTarget: fallback });
   },
   setCaptureTarget: async (target) => {
-    // Backlog #12 — short-circuit when the caller re-asserts the same
-    // target. Avoids a spurious IPC round-trip + zustand set on the
-    // TargetPicker render-time no-ops.
+    // Short-circuit when the caller re-asserts the same target. Avoids
+    // a spurious IPC round-trip + zustand set on TargetPicker
+    // render-time no-ops.
     const current = useRecorderStore.getState().captureTarget;
     if (current && captureTargetKey(current) === captureTargetKey(target)) {
       return;

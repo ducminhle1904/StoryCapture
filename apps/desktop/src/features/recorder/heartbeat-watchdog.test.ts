@@ -1,4 +1,4 @@
-// D-15 — heartbeat watchdog behavioral test.
+// Heartbeat watchdog behavioral test.
 //
 // Mirrors the dispatch + interval logic in `recording-view.tsx`:
 //   - A "heartbeat" RecordingEvent resets `lastHeartbeat` and clears desync.

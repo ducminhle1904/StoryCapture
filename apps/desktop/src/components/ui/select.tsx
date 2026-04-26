@@ -1,12 +1,9 @@
 /**
  * Select primitive — shadcn-style chrome on top of Base UI's Select.
  *
- * Follows the project's D-32 constraint: Base UI, not Radix. The exported
- * subcomponents mirror shadcn's naming (Trigger / Value / Content / Item)
- * so call sites read familiar.
- *
- * Enter/exit animations ride Base UI's `data-[starting-style]` +
- * `data-[ending-style]` attributes — same pattern as `dialog-motion.ts`.
+ * Exported subcomponents mirror shadcn's naming (Trigger / Value / Content /
+ * Item). Enter/exit animations ride Base UI's `data-[starting-style]` +
+ * `data-[ending-style]` attributes (same pattern as `dialog-motion.ts`).
  */
 
 import { Select as BaseSelect } from "@base-ui-components/react/select";
@@ -92,7 +89,7 @@ export const SelectItem = React.forwardRef<
 ));
 SelectItem.displayName = "SelectItem";
 
-// Grouping primitives — optional helpers used by TargetPicker (Plan 05-01).
+// Grouping primitives — optional helpers used by TargetPicker.
 // Base UI's Select supports semantic grouping via Group / GroupLabel.
 export const SelectGroup = BaseSelect.Group;
 

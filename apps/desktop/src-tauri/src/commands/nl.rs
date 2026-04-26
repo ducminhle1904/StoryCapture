@@ -21,7 +21,7 @@ use intelligence::nl::diff::StepDiff;
 use intelligence::nl::orchestrator::{run_nl_turn, ChatTurn, NlTurnEvent};
 use intelligence::nl::schemas::StoryDoc;
 
-// ---- Pricing constants (Sonnet 4.6, AI-SPEC section 4b.5) ----
+// ---- Pricing constants (Sonnet 4.6) ----
 
 const PRICE_INPUT_UNCACHED: f64 = 3.00;
 const PRICE_CACHE_READ: f64 = 0.30;

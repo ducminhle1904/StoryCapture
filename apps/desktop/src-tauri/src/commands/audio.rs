@@ -1,11 +1,10 @@
-// Audio IPC (Phase 6 plan 01).
+// Audio IPC.
 //
 // Thin Tauri-side wrapper around `capture::audio::list_inputs()`.
 // Intentionally MINIMAL: this command must NOT eagerly resolve
 // `default_input_device()` at any stage outside `list_inputs`, because
 // macOS CoreAudio touches the mic hardware on that call — which triggers
-// the Microphone TCC prompt before the user has opted in (cpal#901 /
-// RESEARCH Pitfall 3).
+// the Microphone TCC prompt before the user has opted in (cpal#901).
 //
 // Device enumeration is triggered by the React AudioDevicePicker
 // component when the picker opens, not at app launch.

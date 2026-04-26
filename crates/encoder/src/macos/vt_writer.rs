@@ -11,7 +11,7 @@ use std::sync::mpsc as std_mpsc;
 use std::thread;
 use std::time::Instant;
 
-/// Lifetime counter of PTS-clamp events across all VtWriter sessions (D-12).
+/// Lifetime counter of PTS-clamp events across all VtWriter sessions.
 /// Non-zero after a run signals clock-jump or source PTS regression — the
 /// renderer/telemetry surface can read this to flag sessions for review.
 static PTS_CLAMP_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -170,8 +170,8 @@ fn run_worker(
 
         // Build video output settings.
         // VT writer is a native fast-path that bypasses the filter graph; it
-        // encodes at capture dims. Bitrate 0 (Phase 12 preset-driven default)
-        // maps to pixel-based target so AVAssetWriter has a sane target.
+        // encodes at capture dims. Bitrate 0 (preset-driven default) maps
+        // to pixel-based target so AVAssetWriter has a sane target.
         let effective_kbps = if cfg.bitrate_kbps == 0 {
             crate::quality::pixel_based_kbps(cfg.capture_width, cfg.capture_height, cfg.fps_advisory)
         } else {
@@ -181,7 +181,7 @@ fn run_worker(
         let width_num = NSNumber::new_u32(cfg.capture_width);
         let height_num = NSNumber::new_u32(cfg.capture_height);
         let bitrate_num = NSNumber::new_i64(bitrate_bps);
-        // Keyframe every 2s (Phase 18) — balances seekability against bitrate.
+        // Keyframe every 2s — balances seekability against bitrate.
         let keyframe_interval_num =
             NSNumber::new_u32(cfg.fps_advisory.saturating_mul(2).max(1));
         let fps_num = NSNumber::new_u32(cfg.fps_advisory.max(1));
@@ -199,8 +199,8 @@ fn run_worker(
             .ok_or_else(|| EncoderError::Io("AVVideoAverageBitRateKey symbol missing".into()))?;
         let codec_h264 = unsafe { AVVideoCodecTypeH264 }
             .ok_or_else(|| EncoderError::Io("AVVideoCodecTypeH264 symbol missing".into()))?;
-        // Phase 18 quality upgrade: explicit High profile, CABAC entropy,
-        // keyframe cadence, frame-rate hint, and BT.709 color tagging.
+        // Quality settings: explicit High profile, CABAC entropy, keyframe
+        // cadence, frame-rate hint, and BT.709 color tagging.
         let profile_key = unsafe { AVVideoProfileLevelKey }
             .ok_or_else(|| EncoderError::Io("AVVideoProfileLevelKey symbol missing".into()))?;
         let profile_high = unsafe { AVVideoProfileLevelH264HighAutoLevel }.ok_or_else(|| {
@@ -342,7 +342,7 @@ fn run_worker(
                         session_started = true;
                     }
 
-                    // Normalize PTS relative to first frame (D-12: warn on clamp).
+                    // Normalize PTS relative to first frame (warn on clamp).
                     let rel_ns: i64 = if pts_ns < first_pts_ns {
                         let n = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
                         tracing::warn!(
@@ -463,7 +463,7 @@ fn run_worker(
             .map(|m| m.len())
             .unwrap_or(0);
 
-        // D-08: atomic rename `.partial` -> target. Same dir = atomic on
+        // Atomic rename `.partial` -> target. Same dir = atomic on
         // HFS+/APFS. Disarm the guard so Drop does not delete the renamed
         // file.
         std::fs::rename(&partial_path, &target_path).map_err(|e| {

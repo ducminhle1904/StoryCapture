@@ -1,8 +1,6 @@
 /**
- * JobRow (Plan 02-12b, Task 2).
- *
- * Single render job row in the queue widget popover. Shows format +
- * resolution + live progress + a cancel button.
+ * JobRow — single render job row in the queue widget popover. Shows
+ * format + resolution + live progress + a cancel button.
  */
 
 import { memo } from "react";

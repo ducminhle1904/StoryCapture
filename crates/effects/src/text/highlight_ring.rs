@@ -4,7 +4,7 @@
 //! rounded) rectangle matching a DOM/UI element's bounding box. The
 //! pulse-alpha overlay expression `0.5+0.5*sin(2*PI*(t-TSTART)/period)`
 //! breathes between 0.0 and 1.0 once per `period_s` seconds, giving the
-//! "look here" affordance the POST-07 spec calls for.
+//! "look here" affordance.
 
 use std::path::Path;
 

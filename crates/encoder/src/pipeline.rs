@@ -108,7 +108,7 @@ impl EncodePipeline {
         Self::start_with_backpressure(cfg, sidecar_cmd, frames, progress_tx, None).await
     }
 
-    /// Spawn the pipeline with an optional backpressure callback (D-07).
+    /// Spawn the pipeline with an optional backpressure callback.
     /// `on_backpressure(total, delta)` fires on every stdin-write timeout.
     pub async fn start_with_backpressure(
         cfg: EncodeConfig,
@@ -136,8 +136,8 @@ impl EncodePipeline {
             }
         }
 
-        // D-08: stage FFmpeg output to `<target>.partial`; rename atomically
-        // on success; clean up on any failure via PartialFileGuard.
+        // Stage FFmpeg output to `<target>.partial`; rename atomically on
+        // success; clean up on any failure via PartialFileGuard.
         let target_path = cfg.output_path.clone();
         let partial_path = partial_path_of(&target_path);
         let _ = std::fs::remove_file(&partial_path); // stale leftovers
@@ -250,8 +250,8 @@ impl EncodePipeline {
                         return Err(EncoderError::Io(format!("stdin write: {e}")));
                     }
                     Err(_elapsed) => {
-                        // D-07: FFmpeg stdin backpressure. Drop the frame,
-                        // bump the counter, surface it as telemetry.
+                        // FFmpeg stdin backpressure. Drop the frame, bump
+                        // the counter, surface it as telemetry.
                         let total = frames_dropped_bp.fetch_add(1, Ordering::AcqRel) + 1;
                         frames_dropped += 1;
                         if let Some(cb) = on_backpressure.as_ref() {
@@ -320,7 +320,7 @@ impl EncodePipeline {
 
             let duration_ms = start.elapsed().as_millis() as u64;
 
-            // D-08: read size from `.partial` before renaming.
+            // Read size from `.partial` before renaming.
             let bytes = std::fs::metadata(&partial_path_for_task)
                 .map(|m| m.len())
                 .unwrap_or(0);

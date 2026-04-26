@@ -1,4 +1,4 @@
-// ipc_spec.rs — single source of truth for the typed IPC surface (D-05).
+// ipc_spec.rs — single source of truth for the typed IPC surface.
 //
 // Builds the `tauri_specta::Builder` listing every exported command + every
 // custom payload type. `lib.rs::run()` consumes `builder()` and:
@@ -49,10 +49,10 @@ pub fn builder() -> Builder<Wry> {
             automation::launch_automation,
             automation::resolve_playwright_target,
             automation::is_stage_manager_enabled,
-            // Phase 09-02 — live preview pump (Rust → `preview://frame`).
+            // Live preview pump (Rust → `preview://frame`).
             automation::start_preview_stream,
             automation::stop_preview_stream,
-            // Phase 09-04 — author-time preview (PHASE-9.8 / PHASE-9.9).
+            // Author-time preview.
             automation::start_author_preview,
             automation::stop_author_preview,
             automation::pause_author_preview,
@@ -70,7 +70,7 @@ pub fn builder() -> Builder<Wry> {
             picker::picker_is_active,
             // stamp UUIDv7 on first pick + seed targets sidecar.
             picker::picker_stamp_step_id,
-            // Phase 11-03 — Preview-panel Pick against author-session.
+            // Preview-panel Pick against author-session.
             picker::picker_start_author,
             // author-time selector validator + DOM snapshot store.
             author_snapshot::author_snapshot_capture,
@@ -83,7 +83,7 @@ pub fn builder() -> Builder<Wry> {
             app_settings::get_log_config,
             app_settings::set_log_config,
             app_settings::open_log_dir,
-            // Phase 6 plan 01 — mic audio enumeration.
+            // Mic audio enumeration.
             audio::list_audio_inputs,
             capture::list_displays,
             capture::list_windows,
@@ -97,9 +97,9 @@ pub fn builder() -> Builder<Wry> {
             capture::stop_capture,
             capture::get_capture_target,
             capture::set_capture_target,
-            // Plan 06-03 — one-shot thumbnail for recorder preview.
+            // One-shot thumbnail for recorder preview.
             capture::capture_target_thumbnail,
-            // Plan 06-02 — region selection overlay.
+            // Region selection overlay.
             region_overlay::open_region_overlay,
             region_overlay::close_region_overlay,
             encode::probe_hw_encoders,
@@ -129,22 +129,22 @@ pub fn builder() -> Builder<Wry> {
             sound_library::sound_library_list,
             updater::check_update,
             updater::install_update,
-            // Phase 03 plan 03 — AI provider key management.
+            // AI provider key management.
             keys::key_set,
             keys::key_get_presence,
             keys::key_delete,
             keys::key_test,
-            // Phase 03 plan 16 — Dry-Run orchestrator.
+            // Dry-Run orchestrator.
             dryrun::dryrun_start,
             dryrun::dryrun_cancel,
-            // Phase 10-02 — author-time simulator (distinct from Phase 3 dryrun).
+            // Author-time simulator (distinct from dryrun).
             simulator::simulator_start,
             simulator::simulator_step_to,
             simulator::simulator_cancel,
             simulator::simulator_promote_fallback,
-            // Phase 03 plan 14 — LSP IPC bridge.
+            // LSP IPC bridge.
             lsp::lsp_request,
-            // Phase 03 plan 07 — NL-to-DSL commands.
+            // NL-to-DSL commands.
             nl::nl_chat_send,
             nl::nl_cancel,
             nl::nl_diff_apply,
@@ -153,24 +153,24 @@ pub fn builder() -> Builder<Wry> {
             nl::nl_load_history,
             nl::nl_get_session_id,
             nl::session_get_rollup,
-            // Phase 03 plan 11 — TTS synthesis + cache + GC.
+            // TTS synthesis + cache + GC.
             tts::tts_generate,
             tts::tts_voice_list,
             tts::tts_regenerate_clip,
             tts::tts_gc_cache,
-            // Phase 03 plan 12 — TTS voiceover sync engine.
+            // TTS voiceover sync engine.
             tts::tts_apply_sync,
-            // Phase 04 plan 04 — Upload pipeline.
+            // Upload pipeline.
             upload::upload_video,
             upload::cancel_upload,
             upload::get_upload_status,
-            // Phase 04 plan 03 — Web account OAuth + keychain.
+            // Web account OAuth + keychain.
             web_account::start_web_oauth,
             web_account::complete_web_oauth,
             web_account::get_web_account,
             web_account::disconnect_web_account,
             web_account::get_web_api_token,
-            // Phase 04 plan 09 — Desktop-web sync with offline queue.
+            // Desktop-web sync with offline queue.
             web_sync::sync_project_metadata,
             web_sync::update_recording_status,
             web_sync::flush_sync_queue,
@@ -219,7 +219,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<encode::QualityPresetDto>()
         .typ::<encode::ScaleAlgoDto>()
         .typ::<audio::AudioInputInfoDto>()
-        // Plan 01-09 (parse + projects)
+        // parse + projects
         .typ::<parse::ParseResultDto>()
         .typ::<parse::StoryDto>()
         .typ::<parse::SceneDto>()
@@ -237,16 +237,16 @@ pub fn builder() -> Builder<Wry> {
         .typ::<projects::CreateProjectArgs>()
         .typ::<projects::ProjectIdArg>()
         .typ::<projects::RecordingInfoDto>()
-        // Plan 02-10 (render queue)
+        // render queue
         .typ::<render::NewRenderJobDto>()
         .typ::<render::RenderJobDto>()
         .typ::<render::RenderProgressDto>()
-        // Plan 02-11 (export)
+        // export
         .typ::<export::ExportOutputDto>()
         .typ::<export::ExportRunArgs>()
         .typ::<export::ExportResultDto>()
         .typ::<export::ExportPresetsCatalogue>()
-        // Plan 13-01 (export knobs)
+        // export knobs
         .typ::<export::EncoderOptionsDto>()
         .typ::<export::AudioOptionsDto>()
         .typ::<export::ContainerDto>()
@@ -254,29 +254,29 @@ pub fn builder() -> Builder<Wry> {
         .typ::<export::RateControlDto>()
         .typ::<export::X264PresetDto>()
         .typ::<export::AudioCodecDto>()
-        // Plan 02-12a (preset / timeline / sound-library)
+        // preset / timeline / sound-library
         .typ::<preset::PresetScopeDto>()
         .typ::<preset::EffectPresetDto>()
         .typ::<timeline::TimelineStateDto>()
         .typ::<sound_library::SoundCategoryDto>()
         .typ::<sound_library::SoundLibraryEntryDto>()
-        // Plan 01-10 (auto-updater)
+        // auto-updater
         .typ::<updater::UpdateInfo>()
-        // Phase 03 plan 03 (AI key management)
+        // AI key management
         .typ::<keys::ProviderId>()
         .typ::<keys::KeyTestReport>()
         .typ::<keys::KeyError>()
-        // Phase 03 plan 16 (Dry-Run)
+        // Dry-Run
         .typ::<dryrun::DryRunEventDto>()
         .typ::<dryrun::DryRunStepDto>()
-        // Phase 10-02 (Simulator)
+        // Simulator
         .typ::<simulator::SimulatorEvent>()
         .typ::<simulator::SimulatorStepFrame>()
         .typ::<simulator::SimulatorBbox>()
         .typ::<simulator::SimulatorMatchKind>()
-        // Phase 03 plan 14 (LSP IPC bridge)
+        // LSP IPC bridge
         .typ::<lsp::LspNotificationDto>()
-        // Phase 03 plan 07 (NL-to-DSL commands)
+        // NL-to-DSL commands
         .typ::<nl::NlChatEvent>()
         .typ::<nl::NlStoryDocDto>()
         .typ::<nl::NlStoryStepDto>()
@@ -284,24 +284,24 @@ pub fn builder() -> Builder<Wry> {
         .typ::<nl::NlTurnDto>()
         .typ::<nl::SessionRollupDto>()
         .typ::<nl::NlCommandError>()
-        // Phase 03 plan 11 (TTS synthesis + cache)
+        // TTS synthesis + cache
         .typ::<tts::TtsGenerateResult>()
         .typ::<tts::TtsCommandError>()
         .typ::<tts::VoiceInfoDto>()
-        // Phase 03 plan 12 (TTS voiceover sync)
+        // TTS voiceover sync
         .typ::<tts::SyncPlanDto>()
         .typ::<tts::AdjustedStepDto>()
         .typ::<tts::DuckEventDto>()
         .typ::<tts::StepTimingDto>()
-        // Phase 04 plan 04 (Upload pipeline)
+        // Upload pipeline
         .typ::<upload::UploadProgressEvent>()
         .typ::<upload::UploadResult>()
         .typ::<upload::UploadStatusDto>()
         .typ::<upload::UploadError>()
-        // Phase 04 plan 03 (Web account OAuth)
+        // Web account OAuth
         .typ::<web_account::WebAccountInfo>()
         .typ::<web_account::WebAccountError>()
-        // Phase 04 plan 09 (Desktop-web sync)
+        // Desktop-web sync
         .typ::<web_sync::SyncResult>()
         .typ::<web_sync::FlushResult>()
         .typ::<web_sync::SyncStatusDto>()

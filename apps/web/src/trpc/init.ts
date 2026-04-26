@@ -29,7 +29,7 @@ export const router = t.router;
 export const publicProcedure = t.procedure;
 
 /**
- * Protected procedure — checks auth session and throws UNAUTHORIZED if absent (T-04-05).
+ * Protected procedure — checks auth session and throws UNAUTHORIZED if absent.
  */
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user) {

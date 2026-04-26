@@ -1,7 +1,7 @@
-//! Graceful-shutdown smoke test (D-01): simulate mid-stream stop,
-//! assert the resulting MP4 has a finalized `moov` atom so it plays
-//! back cleanly. Gated behind `real-ffmpeg` — skips when the bundled
-//! FFmpeg binary is absent.
+//! Graceful-shutdown smoke test: simulate mid-stream stop, assert the
+//! resulting MP4 has a finalized `moov` atom so it plays back cleanly.
+//! Gated behind `real-ffmpeg` — skips when the bundled FFmpeg binary is
+//! absent.
 
 #![cfg(feature = "real-ffmpeg")]
 
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use tokio::sync::mpsc;
 
-/// D-01 smoke: half-second of synthetic frames then graceful shutdown
+/// Smoke: half-second of synthetic frames then graceful shutdown
 /// (drop frame_tx). Output MP4 must have a `moov` atom.
 #[tokio::test]
 async fn test_graceful_shutdown_finalizes_moov() {

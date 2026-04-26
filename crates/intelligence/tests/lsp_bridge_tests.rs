@@ -1,10 +1,10 @@
-//! Integration tests for the LSP IPC bridge (plan 03-14, task 1).
+//! Integration tests for the LSP IPC bridge.
 //!
 //! Tests exercise `LspBridge` end-to-end: JSON-RPC envelopes go in,
 //! responses come out, and server-initiated notifications (like
 //! `publishDiagnostics`) are forwarded via the broadcast channel.
 //!
-//! NO stdio is involved — this validates the D-16 / pitfall #3 constraint.
+//! NO stdio is involved — this validates the architectural constraint.
 
 use std::sync::Arc;
 use std::time::Duration;

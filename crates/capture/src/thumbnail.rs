@@ -1,5 +1,5 @@
-//! Plan 06-03 — platform-agnostic thumbnail capture for the recorder's
-//! live-preview feature.
+//! Platform-agnostic thumbnail capture for the recorder's live-preview
+//! feature.
 //!
 //! Dispatches to `macos::screenshot::capture_thumbnail`
 //! (SCScreenshotManager) on macOS and `windows::thumbnail::capture_thumbnail`
@@ -8,7 +8,7 @@
 //! a 1×1 transparent PNG so the UI surface can still render a placeholder
 //! without bubbling errors up.
 //!
-//! Invariants (D-16/D-17/D-18):
+//! Invariants:
 //!   - Static single frame per call — no continuous stream
 //!   - Never upscales (`scale ≤ 1.0` inside platform impl)
 //!   - 320×200 default bounds; callers may request larger up to 2× for HiDPI

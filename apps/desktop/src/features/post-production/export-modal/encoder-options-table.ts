@@ -1,8 +1,8 @@
 /**
- * deriveQualityControls — pure decision table implementing UI-SPEC lines 206-216.
- * Phase 13 Plan 05: maps (encoder, codec) → which rate-control options, which
- * quality control (CRF slider / CQ slider / bitrate number / auto-hide), and
- * which encoder preset list the Advanced accordion should render.
+ * deriveQualityControls — pure decision table mapping (encoder, codec) →
+ * rate-control options, quality control (CRF slider / CQ slider /
+ * bitrate number / auto-hide), and the encoder preset list the
+ * Advanced accordion should render.
  */
 
 import type { ExportCodec, ExportKnobs, ExportRateControl } from "@/state/output-prefs";

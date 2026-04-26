@@ -1,12 +1,6 @@
 /**
- * Dry-Run summary panel.
- *
- * Bottom resizable drawer below editor.
- * - Header: title + "Chay thu" primary button (accent) OR "Huy" warning while running.
- * - Body: ScrollArea with DryRunStepRow list.
- * - Footer: summary stats.
- * - Keyboard: Cmd+Shift+D starts; Esc (hold 400ms) cancels.
- * - Accessibility: role="region", aria-labelledby title.
+ * Dry-Run summary panel — bottom resizable drawer below the editor.
+ * Cmd+Shift+D starts; Esc (hold 400ms) cancels.
  */
 
 import * as React from "react";
@@ -51,7 +45,6 @@ export function DryRunPanel({
     (s) => s === "running" || s === "queued",
   );
 
-  // Keyboard shortcut: Cmd+Shift+D
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.metaKey && e.shiftKey && e.key === "d") {
@@ -133,7 +126,6 @@ export function DryRunPanel({
       )}
       onKeyDown={handlePanelKeyDown}
     >
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border,#242733)]">
         <h3
           id="dryrun-panel-title"
@@ -174,7 +166,6 @@ export function DryRunPanel({
         </div>
       </div>
 
-      {/* Body */}
       <div className="flex-1 overflow-y-auto px-2 py-1" role="grid">
         {!hasResults ? (
           <div className="flex flex-col items-center justify-center h-full py-8 text-center">
@@ -202,7 +193,6 @@ export function DryRunPanel({
         )}
       </div>
 
-      {/* Summary footer */}
       {summary && (
         <div
           data-testid="dryrun-summary"

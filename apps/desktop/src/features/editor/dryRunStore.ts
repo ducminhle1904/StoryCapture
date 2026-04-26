@@ -1,9 +1,4 @@
-/**
- * Zustand store for Dry-Run UI state.
- *
- * Tracks per-step status, timing, fallback chains, and summary.
- * Session-ephemeral -- no persistence needed.
- */
+/** Zustand store for Dry-Run UI state. Session-ephemeral. */
 
 import { create } from "zustand";
 
@@ -39,7 +34,6 @@ export interface DryRunStore {
   fallbackChainByStep: Record<string, SelectorAttempt[]>;
   summary: DryRunSummary | null;
   panelOpen: boolean;
-  // actions
   setTaskId: (id: string) => void;
   handleEvent: (ev: DryRunEvent) => void;
   togglePanel: () => void;

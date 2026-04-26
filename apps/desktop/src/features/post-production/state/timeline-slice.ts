@@ -1,12 +1,10 @@
 /**
- * Timeline slice (Plan 02-12a, D-12 + D-13).
+ * Timeline slice. Owns the 5 fixed tracks (video / cursor / zoom / sound /
+ * annotations), the playhead in ms, magnetic-snap config, and total
+ * duration. The 5 tracks are baked into the shape — users cannot add
+ * or remove them.
  *
- * Owns the 5 fixed tracks (video / cursor / zoom / sound / annotations),
- * the playhead in ms, magnetic-snap configuration, and the total
- * duration. Users cannot add or remove tracks — the 5 tracks are baked
- * into the shape (D-12).
- *
- * Magnetic snap is ON by default (D-13). Snap targets are:
+ * Magnetic snap is ON by default. Snap targets are:
  *   1. the current playhead,
  *   2. scene boundaries (provided by the caller as an optional param),
  *   3. neighbour clip edges on the same track.
@@ -14,21 +12,21 @@
  * The snap threshold is expressed in **pixels**; callers pass a
  * `pxPerMs` scaling factor so the slice stays display-independent.
  *
- * Holding Alt while dragging is surfaced at the UI layer as
- * `moveClip(..., { altHeld: true })`, which bypasses the snap logic for
- * that single call without flipping the persistent `snapEnabled` flag.
+ * Holding Alt while dragging surfaces at the UI layer as
+ * `moveClip(..., { altHeld: true })`, bypassing the snap logic for that
+ * single call without flipping the persistent `snapEnabled` flag.
  */
 
 import type { StateCreator } from "zustand";
 
 /**
- * The 5 fixed track ids. Matches D-12 exactly — adding or renaming
- * these is a schema-level change and requires a plan.
+ * The 5 fixed track ids. Adding or renaming these is a schema-level
+ * change and requires a plan.
  */
 export const TRACK_IDS = ["video", "cursor", "zoom", "sound", "annotations"] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
-/** Snap threshold in pixels (D-13). 10 px is the default tolerance. */
+/** Snap threshold in pixels. 10 px is the default tolerance. */
 export const SNAP_THRESHOLD_PX = 10;
 
 export interface Clip {

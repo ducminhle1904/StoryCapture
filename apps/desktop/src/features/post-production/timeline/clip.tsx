@@ -1,10 +1,7 @@
 /**
- * Timeline clip (Plan 02-12b).
- *
- * Draggable + selectable block on a track. Drag uses @dnd-kit/core via
- * the parent Track's DndContext. This component renders the static
- * visual; the drag handler in `track.tsx` converts pointer deltas into
- * `moveClip()` calls on the store.
+ * Timeline clip — draggable + selectable block on a track. Renders the
+ * static visual; the drag handler in `track.tsx` converts pointer deltas
+ * into `moveClip()` calls on the store.
  *
  * WCAG: each clip is a `<button>` with ARIA label describing track +
  * start + duration; focus-visible ring comes from the design tokens.

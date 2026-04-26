@@ -1,8 +1,8 @@
 /**
  * ColorField — native <input type="color"> + synced lowercase hex text input.
  *
- * Phase 13 D-13-09: pad-color picker. Two-way sync via shared onChange.
- * Hex must match /^#[0-9a-f]{6}$/ — invalid hex sets aria-invalid on the text input.
+ * Two-way sync via shared onChange. Hex must match /^#[0-9a-f]{6}$/ —
+ * invalid hex sets aria-invalid on the text input.
  */
 
 import { cn } from "@/lib/utils";

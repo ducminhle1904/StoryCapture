@@ -1,9 +1,9 @@
 //! Render trajectory + ripples to a PNG sequence on disk consumed by FFmpeg's
 //! `overlay` filter (via `image2` input with `-framerate <fps> -i frame_%05d.png`).
 //!
-//! DoS note (T-02-16): 30 min × 60 fps = 108,000 frames. Caller must clean up
-//! the output directory after encode (Plan 10 wires cleanup into job
-//! completion) and should cap trajectory length before invoking this function.
+//! DoS note: 30 min × 60 fps = 108,000 frames. Caller must clean up the
+//! output directory after encode and should cap trajectory length before
+//! invoking this function.
 
 use std::path::{Path, PathBuf};
 

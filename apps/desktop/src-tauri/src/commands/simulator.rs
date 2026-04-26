@@ -51,12 +51,11 @@ pub struct ResumableSession {
     pub channel: Channel<SimulatorEvent>,
     /// Shared author-session driver (Arc-cloned from AuthorPreviewSession).
     pub driver: Arc<automation::PlaywrightSidecarDriver>,
-    /// Phase 11-05: snapshot of the AuthorDriverState captured at
-    /// `begin_simulator` time. Used by `simulator_cancel` to restore the
-    /// registry via `end_simulator(prior)`. The forwarder's
-    /// `StoryEnded` arm captures the same snapshot via closure, so a
-    /// cancel/StoryEnded race is safe (end_simulator is a no-op when
-    /// state is not Simulator*).
+    /// Snapshot of the AuthorDriverState captured at `begin_simulator` time.
+    /// Used by `simulator_cancel` to restore the registry via
+    /// `end_simulator(prior)`. The forwarder's `StoryEnded` arm captures the
+    /// same snapshot via closure, so a cancel/StoryEnded race is safe
+    /// (end_simulator is a no-op when state is not Simulator*).
     pub prior_author_driver_state: AuthorDriverState,
 }
 
@@ -184,13 +183,13 @@ fn count_total_steps(story: &story_parser::Story) -> u32 {
 /// Spawn the executor + event forwarder. Used by both first-run and resume
 /// paths. The shared driver is never relaunched — all runs use `continue_run`.
 ///
-/// Phase 11-05: `author_registry` lets the forwarder write
-/// `SimulatorPaused` on `ExecutorEvent::RunPaused` and restore the prior
-/// state on `ExecutorEvent::StoryEnded`. `prior_state_for_restore` is
-/// `Some` on the initial `simulator_start` spawn (forwarder owns the
-/// StoryEnded restore) and `None` on `simulator_step_to` re-spawns
-/// (the original simulator_start's forwarder already handled its restore
-/// before being aborted; on re-run StoryEnded, `simulator_cancel` /
+/// `author_registry` lets the forwarder write `SimulatorPaused` on
+/// `ExecutorEvent::RunPaused` and restore the prior state on
+/// `ExecutorEvent::StoryEnded`. `prior_state_for_restore` is `Some` on the
+/// initial `simulator_start` spawn (forwarder owns the StoryEnded restore)
+/// and `None` on `simulator_step_to` re-spawns (the original
+/// simulator_start's forwarder already handled its restore before being
+/// aborted; on re-run StoryEnded, `simulator_cancel` /
 /// ResumableSession.prior_author_driver_state is the authoritative
 /// restore path).
 #[allow(clippy::too_many_arguments)]
@@ -292,11 +291,10 @@ async fn spawn_run(
                 }
                 ExecutorEvent::RunPaused { ordinal } => {
                     last_ordinal.store(ordinal, std::sync::atomic::Ordering::SeqCst);
-                    // Phase 11-05 (D-14 registry writeback): flip
-                    // SimulatorRunning -> SimulatorPaused under the
-                    // registry lock. pause_simulator is a no-op if the
-                    // state isn't SimulatorRunning, so a late RunPaused
-                    // arriving after simulator_cancel is harmless.
+                    // Flip SimulatorRunning -> SimulatorPaused under the
+                    // registry lock. pause_simulator is a no-op if the state
+                    // isn't SimulatorRunning, so a late RunPaused arriving
+                    // after simulator_cancel is harmless.
                     {
                         let mut g = author_registry.state.lock().await;
                         g.pause_simulator();
@@ -318,13 +316,12 @@ async fn spawn_run(
                         succeeded: status.succeeded,
                         failed: status.failed,
                     });
-                    // Phase 11-05 (registry restore): StoryEnded is the
-                    // natural exit. If simulator_cancel already ran
-                    // end_simulator, the second call is a no-op
-                    // (end_simulator guards against non-Simulator*
-                    // state). Only the initial simulator_start spawn
-                    // carries a restore snapshot; step_to re-spawns pass
-                    // None and let simulator_cancel own the restore.
+                    // StoryEnded is the natural exit. If simulator_cancel
+                    // already ran end_simulator, the second call is a no-op
+                    // (end_simulator guards against non-Simulator* state).
+                    // Only the initial simulator_start spawn carries a
+                    // restore snapshot; step_to re-spawns pass None and let
+                    // simulator_cancel own the restore.
                     if let Some(prior) = prior_state_for_restore.as_ref() {
                         let mut g = author_registry.state.lock().await;
                         g.end_simulator(prior.clone());
@@ -376,11 +373,10 @@ pub async fn simulator_start(
         project_folder = %project_folder,
         "simulator_start request received"
     );
-    // Phase 11-05 (D-15): host-layer gate against active Pick. MUST run
-    // BEFORE any side effect (driver probe, prune, Chromium pause).
-    // Allocate the session_id here so we can pass it to begin_simulator
-    // and snapshot the prior AuthorDriverState under the same lock scope
-    // (mirror of picker.rs:458-465 snapshot-and-swap).
+    // Host-layer gate against active Pick. MUST run BEFORE any side effect
+    // (driver probe, prune, Chromium pause). Allocate the session_id here
+    // so we can pass it to begin_simulator and snapshot the prior
+    // AuthorDriverState under the same lock scope.
     let session_id = Uuid::new_v4().to_string();
     let author_registry_arc = author_registry.inner().clone();
     let prior_state_for_restore = {
@@ -395,9 +391,9 @@ pub async fn simulator_start(
         "begin_simulator FSM transition OK"
     );
 
-    // Any Err after begin_simulator must restore the FSM before returning
-    // (T-11-05-04 mitigation). The inner fn keeps the fallible body in
-    // one ?-friendly block; the outer match restores on Err.
+    // Any Err after begin_simulator must restore the FSM before returning.
+    // The inner fn keeps the fallible body in one ?-friendly block; the
+    // outer match restores on Err.
     match simulator_start_inner(
         state,
         registry,
@@ -595,13 +591,13 @@ pub async fn simulator_step_to(
         task.abort();
     }
 
-    // Phase 11-05: step_to does NOT mutate AuthorDriverState (a
-    // SimulatorRunning -> SimulatorRunning transition inside an already
-    // active session is a no-op). We still pass the registry through so
-    // the re-spawned forwarder can writeback SimulatorPaused on the
-    // next RunPaused, but we pass `None` as the restore snapshot —
-    // simulator_cancel / ResumableSession.prior_author_driver_state is
-    // the authoritative restore path for step_to re-runs.
+    // step_to does NOT mutate AuthorDriverState (a SimulatorRunning ->
+    // SimulatorRunning transition inside an already active session is a
+    // no-op). We still pass the registry through so the re-spawned
+    // forwarder can writeback SimulatorPaused on the next RunPaused, but
+    // we pass `None` as the restore snapshot — simulator_cancel /
+    // ResumableSession.prior_author_driver_state is the authoritative
+    // restore path for step_to re-runs.
     let forwarder = spawn_run(
         session_id.clone(),
         (*session.story).clone(),
@@ -654,11 +650,11 @@ pub async fn simulator_cancel(
         }
     }
     let _ = session.driver.set_active_author_stream(None).await;
-    // Phase 11-05 (registry restore): restore AuthorDriverState from the
-    // snapshot captured by simulator_start's begin_simulator. The
-    // forwarder's StoryEnded arm may also fire end_simulator on the
-    // same cancel-induced executor exit — end_simulator is a no-op when
-    // state is not Simulator*, so double-calls are safe.
+    // Restore AuthorDriverState from the snapshot captured by
+    // simulator_start's begin_simulator. The forwarder's StoryEnded arm
+    // may also fire end_simulator on the same cancel-induced executor
+    // exit — end_simulator is a no-op when state is not Simulator*, so
+    // double-calls are safe.
     {
         let mut g = author_registry.state.lock().await;
         g.end_simulator(std::mem::take(&mut session.prior_author_driver_state));

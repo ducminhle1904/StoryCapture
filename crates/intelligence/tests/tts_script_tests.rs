@@ -1,4 +1,4 @@
-//! Tests for the TTS auto-script generator (D-12).
+//! Tests for the TTS auto-script generator.
 //!
 //! Validates `generate_narration_script` with a mock LlmProvider that returns
 //! pre-recorded tool-use payloads.

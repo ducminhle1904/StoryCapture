@@ -95,11 +95,12 @@ pub struct WindowId(pub u64);
 /// - `WindowByPid { pid, title_hint }` — resolved at start time to the
 ///   largest on-screen window whose owning application's pid matches.
 ///   Title hint narrows when a PID owns multiple windows. Used by the
-///   Playwright auto-follow path in Plan 05-02.
+///   Playwright auto-follow path.
 ///
 /// The sentinel `WindowByPid { pid: -1, title_hint: Some("storycapture-playwright") }`
 /// represents "Playwright auto (resolve when a story launches)" in UI-facing
-/// persistence; Plan 05-02 replaces the sentinel with the real Playwright PID.
+/// persistence; the sentinel is replaced with the real Playwright PID at
+/// run time.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CaptureTarget {
@@ -113,7 +114,7 @@ pub enum CaptureTarget {
         pid: i32,
         title_hint: Option<String>,
     },
-    /// Plan 06-02 — logical-point sub-rect of a specific display.
+    /// Logical-point sub-rect of a specific display.
     /// macOS: SCK `with_source_rect` (kernel-side crop, no overcapture).
     /// Windows: post-capture CPU crop in `on_frame_arrived`.
     DisplayRegion {
@@ -182,7 +183,7 @@ mod tests {
         assert_eq!(t, back);
     }
 
-    // ─── Plan 06-02 — DisplayRegion + RegionRect ───────────────────────
+    // ─── DisplayRegion + RegionRect ────────────────────────────────────
 
     #[test]
     fn region_rect_round_trips_json_preserving_f64_precision() {

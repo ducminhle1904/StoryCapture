@@ -1,4 +1,4 @@
-//! Window enumeration integration tests (Plan 05-01 Wave 0).
+//! Window enumeration integration tests.
 //!
 //! Gated behind the `real-capture` feature since they call `SCShareableContent::get`
 //! which requires a real macOS host with Screen Recording granted.

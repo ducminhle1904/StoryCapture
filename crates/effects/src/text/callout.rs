@@ -9,8 +9,8 @@
 //! bounds from character count and font size (`advance ≈ 0.55 * size_pt
 //! pixels, height ≈ 1.2 * size_pt`). FFmpeg's `drawtext` is still the
 //! source of truth for the actual pixels the viewer sees — the PNG
-//! just establishes a correctly-sized box. Plan 12 (preview UI) can
-//! refine with a real glyph rasteriser when budgeting allows.
+//! just establishes a correctly-sized box. The preview UI can refine with
+//! a real glyph rasteriser when budgeting allows.
 
 use std::path::Path;
 

@@ -1,10 +1,10 @@
 /**
- * Timeline persistence IPC wrappers (Plan 02-12a).
+ * Timeline persistence IPC wrappers.
  *
  * Typed wrappers around `timeline_load` / `timeline_save`. The
  * Post-Production editor serialises its Zustand layout slice to
  * `layout_json` when the user saves; the host-side guard rejects
- * payloads > 1 MiB (T-02-38).
+ * payloads > 1 MiB.
  */
 
 import { invoke } from "@tauri-apps/api/core";

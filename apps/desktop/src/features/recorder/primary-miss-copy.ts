@@ -1,13 +1,9 @@
 /**
- * Phase 11-02 (D-06) — single source of truth for the record-path
- * PrimaryMissNoHeal error copy. The Rust variant's thiserror Display
- * string in `crates/automation/src/error.rs` MUST stay in lock-step
- * with the constants below. UI-SPEC §Record-path primary-miss
- * (lines 171-172 of 11-UI-SPEC.md) is the authoritative copy —
- * no paraphrasing.
- *
- * `RECORD_PATH_MISS_BODY` is duplicated into the HUD block and the
- * Sonner toast so they never drift.
+ * Single source of truth for the record-path PrimaryMissNoHeal error copy.
+ * The Rust variant's thiserror Display string in
+ * `crates/automation/src/error.rs` MUST stay in lock-step with the
+ * constants below. `RECORD_PATH_MISS_BODY` is duplicated into the HUD
+ * block and the Sonner toast so they never drift.
  */
 
 /**
@@ -19,8 +15,8 @@
 export const RECORD_PATH_MISS_MARKER = "Self-healing is disabled during recording";
 
 /**
- * UI-SPEC-locked body sentence. Rendered in the HUD block and mirrored
- * in the Sonner destructive toast — a single constant prevents drift.
+ * Body sentence rendered in the HUD block and mirrored in the Sonner
+ * destructive toast — a single constant prevents drift.
  */
 export const RECORD_PATH_MISS_BODY =
   "Self-healing is disabled during recording. Open this story in Simulator, use \"Promote to fallback\" on step {N}, then try again.";

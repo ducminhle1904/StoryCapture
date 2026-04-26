@@ -5,14 +5,8 @@ import { RecordingStatus } from "@/components/recording-status";
 import { ProjectMirror } from "@/components/project-mirror";
 
 /**
- * Desktop sync dashboard page.
- *
- * Shows:
- * - RecordingStatus banner at top (live recording indicator)
- * - ProjectMirror list below (synced projects with read-only story source)
- * - Connection status indicator
- *
- * Per D-07: metadata-only (no video files shown here).
+ * Desktop sync dashboard — recording-status banner, synced project mirror,
+ * and connection status indicator. Metadata-only (no video files shown here).
  */
 
 // TODO: workspace selection — for now uses query param or first workspace
