@@ -3,13 +3,16 @@ import { AlertTriangle, File, FolderOpen, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import storyToVideoEmptySrc from "@/assets/illustrations/story-to-video-empty.png";
 import { EmptyState } from "@/components/empty-state/empty-state";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { NewProjectDialog } from "@/features/dashboard/new-project-dialog";
 import { ProjectGrid } from "@/features/dashboard/project-grid";
 import { filterAndSort, mostRecentTimestamp } from "@/features/dashboard/project-utils";
-import { useProjects } from "@/ipc/projects";
+import type { Project } from "@/ipc/projects";
+import { useProjects, useRemoveProject } from "@/ipc/projects";
+import { hasCompletedOnboarding, markOnboardingComplete } from "@/lib/onboarding";
 import { relativeTime } from "@/lib/utils";
 import { useDashboardStore } from "@/state/projects";
 
@@ -80,6 +83,7 @@ function EmptyDashboard({ onNewStory }: { onNewStory: () => void }) {
 export default function DashboardRoute() {
   const navigate = useNavigate();
   const { data: projects, isLoading, error } = useProjects();
+  const removeProject = useRemoveProject();
   const { searchQuery, sortMode, setSearchQuery } = useDashboardStore();
   const newProjectRequested = useDashboardStore((s) => s.newProjectRequested);
   const consumeNewProjectRequest = useDashboardStore((s) => s.consumeNewProjectRequest);
@@ -93,6 +97,15 @@ export default function DashboardRoute() {
 
   const openProject = (id: string) => navigate(`/editor/${id}`);
   const openNewStory = () => setDialogOpen(true);
+  const removeProjectFromDashboard = async (project: Project) => {
+    try {
+      await removeProject.mutateAsync(project.id);
+      toast.success(`Removed ${project.name} from dashboard`);
+    } catch (err) {
+      toast.error(`Could not remove project: ${String(err)}`);
+      throw err;
+    }
+  };
 
   useEffect(() => {
     if (newProjectRequested) {
@@ -100,6 +113,17 @@ export default function DashboardRoute() {
       consumeNewProjectRequest();
     }
   }, [newProjectRequested, consumeNewProjectRequest]);
+
+  useEffect(() => {
+    if (isLoading || error) return;
+    if ((projects?.length ?? 0) > 0) {
+      markOnboardingComplete();
+      return;
+    }
+    if (!hasCompletedOnboarding()) {
+      navigate("/onboarding", { replace: true });
+    }
+  }, [error, isLoading, navigate, projects]);
 
   useHotkeys(
     "mod+f",
@@ -205,7 +229,13 @@ export default function DashboardRoute() {
               <div className="sc-h">Active</div>
               <div style={{ height: 1, flex: 1, background: "var(--sc-border)" }} />
             </div>
-            <ProjectGrid projects={visible} onOpen={openProject} onNewStory={openNewStory} />
+            <ProjectGrid
+              projects={visible}
+              onOpen={openProject}
+              onNewStory={openNewStory}
+              onRemove={removeProjectFromDashboard}
+              removingProjectId={removeProject.isPending ? (removeProject.variables ?? null) : null}
+            />
           </>
         )}
       </PageContentTransition>

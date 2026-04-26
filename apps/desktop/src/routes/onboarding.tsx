@@ -1,546 +1,505 @@
 import { ScBadge, ScButton } from "@storycapture/ui";
-import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
   ArrowRight,
-  Check,
-  Circle,
-  Clock,
+  ChevronLeft,
   Film,
-  Gauge,
-  MousePointer2,
+  FolderPlus,
   Play,
   ShieldCheck,
   Sparkles,
   Target,
-  Timer,
-  Video,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-const flowSteps = [
+import goalLaunchArtwork from "@/assets/onboarding/goal-launch.jpg";
+import goalOnboardingArtwork from "@/assets/onboarding/goal-onboarding.jpg";
+import goalReleaseArtwork from "@/assets/onboarding/goal-release.jpg";
+import goalSupportArtwork from "@/assets/onboarding/goal-support.jpg";
+import outcomeArtwork from "@/assets/onboarding/outcome-demo.jpg";
+import permissionsArtwork from "@/assets/onboarding/permissions.jpg";
+import previewArtwork from "@/assets/onboarding/preview-run.jpg";
+import targetSampleArtwork from "@/assets/onboarding/target-sample.jpg";
+import targetUrlArtwork from "@/assets/onboarding/target-url.jpg";
+import { markOnboardingComplete } from "@/lib/onboarding";
+import { useDashboardStore } from "@/state/projects";
+
+type StepId = "outcome" | "goal" | "target" | "permissions" | "preview";
+
+interface Step {
+  id: StepId;
+  label: string;
+  title: string;
+  eyebrow: string;
+}
+
+const steps: Step[] = [
   {
-    id: "welcome",
-    label: "Outcome pitch",
-    title: "Create a product demo video from a script",
-    body: "Set the expectation around the finished asset, not the list of editor features.",
-    state: "done",
+    id: "outcome",
+    label: "Outcome",
+    title: "Create your first product demo",
+    eyebrow: "Start with the finished result",
   },
   {
     id: "goal",
-    label: "Personalize",
-    title: "Choose the job",
-    body: "Launch demo, onboarding video, support walkthrough, release note, or bug repro.",
-    state: "done",
+    label: "Goal",
+    title: "What are you making?",
+    eyebrow: "We will tailor the starter story",
   },
   {
     id: "target",
     label: "Target",
-    title: "Enter product URL or use sample",
-    body: "Let first-time users reach value without a real project or account setup.",
-    state: "active",
+    title: "Pick the product flow",
+    eyebrow: "Use a URL or the built-in sample",
   },
   {
     id: "permissions",
-    label: "Readiness",
-    title: "Explain capture permissions before OS prompts",
-    body: "Screen recording and accessibility prompts need context before the native dialog.",
-    state: "next",
+    label: "Ready",
+    title: "Prepare recording access",
+    eyebrow: "No surprise system prompts",
   },
   {
     id: "preview",
-    label: "Aha",
-    title: "Run preview and see the browser move",
-    body: "The first trust moment is watching a scripted browser flow work.",
-    state: "next",
-  },
-  {
-    id: "record",
-    label: "Clip",
-    title: "Record a 10-second sample",
-    body: "Keep scope small but real: native pixels, cursor, and a visible timeline.",
-    state: "next",
-  },
-  {
-    id: "export",
-    label: "Finish",
-    title: "Show polished timeline and export",
-    body: "End with the user holding a finished local video; sign-in only gates sharing.",
-    state: "next",
+    label: "Preview",
+    title: "Watch the browser move",
+    eyebrow: "The first aha moment",
   },
 ];
 
-const jobs = ["Launch demo", "Onboarding video", "Support walkthrough", "Release note"];
-
-const checklistItems = [
-  ["Add target URL", "done"],
-  ["Generate starter .story", "done"],
-  ["Run preview", "active"],
-  ["Pick or repair one selector", "next"],
-  ["Record first clip", "next"],
-  ["Open post-production", "next"],
-  ["Export local video", "next"],
-  ["Share to web", "optional"],
-];
-
-const permissionItems = [
-  ["Screen Recording", "Required for crisp native capture"],
-  ["Accessibility", "Required for guided browser control"],
-  ["Browser sidecar", "Used for preview and element picking"],
-];
-
-const metricRows = [
+const goals = [
   {
-    event: "onboarding_started",
-    question: "How many new users enter the flow?",
-    properties: "source, version, has_projects",
+    id: "launch",
+    title: "Launch demo",
+    body: "Show the product path that sells a release.",
+    artwork: goalLaunchArtwork,
   },
   {
-    event: "goal_selected",
-    question: "Which jobs should templates and presets optimize for?",
-    properties: "goal, skipped, elapsed_ms",
+    id: "onboarding",
+    title: "Customer onboarding",
+    body: "Teach a new user the first useful action.",
+    artwork: goalOnboardingArtwork,
   },
   {
-    event: "time_to_first_preview",
-    question: "How fast do users reach the first browser automation aha moment?",
-    properties: "project_type, sample_used, duration_ms",
+    id: "support",
+    title: "Support walkthrough",
+    body: "Record the steps that solve a support ticket.",
+    artwork: goalSupportArtwork,
   },
   {
-    event: "permission_prompt_result",
-    question: "Which native permissions block activation?",
-    properties: "permission, accepted, retries, platform",
-  },
-  {
-    event: "first_recording_completed",
-    question: "Can users produce a real clip during onboarding?",
-    properties: "duration_sec, failed_steps, browser_target",
-  },
-  {
-    event: "first_export_completed",
-    question: "Does onboarding produce a finished local video?",
-    properties: "resolution, format, elapsed_ms",
-  },
-  {
-    event: "share_prompt_result",
-    question: "When does web sign-in feel worth it?",
-    properties: "signed_in, uploaded, workspace_id",
+    id: "release",
+    title: "Release note",
+    body: "Turn a feature change into a short clip.",
+    artwork: goalReleaseArtwork,
   },
 ];
 
-const stateRows = [
-  ["Loading", "Skeleton project shell while permissions and sample assets initialize."],
-  [
-    "Empty",
-    "Use sample project, import .story, or paste a product URL. Never show a blank dashboard.",
-  ],
-  ["Error", "Inline recovery for denied permissions, unreachable URLs, and selector failures."],
+const permissionRows = [
+  ["Screen Recording", "Captures crisp native pixels for the final video."],
+  ["Accessibility", "Lets StoryCapture guide browser clicks and inputs."],
+  ["Browser sidecar", "Runs preview in a controlled browser first."],
 ];
 
-const qualityThresholds: Array<{ label: string; value: string; icon: LucideIcon }> = [
-  { label: "Time to preview", value: "< 90s", icon: Timer },
-  { label: "Permission retry", value: "< 1.4x", icon: ShieldCheck },
-  { label: "First recording", value: "> 47.2%", icon: Video },
-  { label: "Export completion", value: "> 31.6%", icon: Clock },
-];
+const rulerTicks = ["t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8"];
 
-function StatusDot({ state }: { state: string }) {
-  const tone =
-    state === "done"
-      ? "bg-[var(--sc-success)]"
-      : state === "active"
-        ? "bg-[var(--sc-accent-400)]"
-        : state === "optional"
-          ? "bg-[var(--sc-text-4)]"
-          : "bg-[var(--sc-surface-4)]";
+export const ONBOARDING_METRICS = [
+  "onboarding_started",
+  "goal_selected",
+  "target_submitted",
+  "permission_primer_seen",
+  "first_preview_started",
+  "first_preview_completed",
+  "onboarding_completed",
+] as const;
 
+function StepDots({ activeIndex }: { activeIndex: number }) {
   return (
-    <span
-      className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full ${tone} text-[10px] text-[var(--sc-text-inverse)]`}
-    >
-      {state === "done" ? (
-        <Check size={12} aria-hidden="true" />
-      ) : (
-        <Circle size={6} aria-hidden="true" />
-      )}
-    </span>
+    <ol className="flex items-center gap-1.5" aria-label="Onboarding progress">
+      {steps.map((step, index) => {
+        const active = index === activeIndex;
+        const complete = index < activeIndex;
+        return (
+          <li key={step.id} className="flex items-center gap-1.5">
+            <span
+              className={`block h-1.5 rounded-full transition-[width,background-color] duration-300 ${
+                active
+                  ? "w-12 bg-[var(--sc-text)]"
+                  : complete
+                    ? "w-5 bg-[var(--sc-accent-500)]"
+                    : "w-5 bg-[var(--sc-border-2)]"
+              }`}
+            />
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function ArtworkPanel({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="relative grid h-full min-h-0 place-items-center overflow-hidden bg-[#ebe7df] px-8">
+      <div className="absolute inset-y-0 left-0 w-px bg-[rgba(25,24,22,0.10)]" />
+      <div className="absolute right-8 top-8 hidden h-[calc(100%-64px)] w-10 border-l border-[rgba(25,24,22,0.12)] lg:block">
+        <div className="mt-2 grid gap-4 pl-3">
+          {rulerTicks.map((tick) => (
+            <span key={tick} className="h-px w-5 bg-[rgba(25,24,22,0.18)]" />
+          ))}
+        </div>
+      </div>
+      <AnimatePresence mode="wait">
+        <motion.img
+          key={src}
+          src={src}
+          alt={alt}
+          initial={{ opacity: 0, scale: 0.965, y: 16 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.985, y: -10 }}
+          transition={{ type: "spring", stiffness: 120, damping: 24 }}
+          className="relative h-auto max-h-[min(74vh,680px)] w-full max-w-[740px] rounded-[34px] object-contain shadow-[0_34px_120px_rgba(42,34,22,0.20)]"
+        />
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function MicroSequence() {
+  return (
+    <div className="grid grid-cols-3 overflow-hidden rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)]">
+      {["Write", "Preview", "Record"].map((item, index) => (
+        <div key={item} className="border-r border-[var(--sc-border)] px-3 py-3 last:border-r-0">
+          <div className="font-mono text-[10px] text-[var(--sc-text-4)]">0{index + 1}</div>
+          <div className="mt-2 text-[12px] font-semibold">{item}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 
 export default function OnboardingRoute() {
+  const navigate = useNavigate();
+  const requestNewProject = useDashboardStore((s) => s.requestNewProject);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [goalId, setGoalId] = useState(goals[0].id);
+  const [targetUrl, setTargetUrl] = useState("");
+  const [useSample, setUseSample] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const activeStep = steps[activeIndex];
+  const selectedGoal = goals.find((item) => item.id === goalId) ?? goals[0];
+  const artwork = useMemo(() => {
+    if (activeStep.id === "outcome") {
+      return {
+        src: outcomeArtwork,
+        alt: "A finished product demo represented as a browser capture and edited video timeline.",
+      };
+    }
+    if (activeStep.id === "goal") {
+      return {
+        src: selectedGoal.artwork,
+        alt: `${selectedGoal.title} onboarding artwork.`,
+      };
+    }
+    if (activeStep.id === "target") {
+      return useSample
+        ? {
+            src: targetSampleArtwork,
+            alt: "A sample project pack ready to use without entering a URL.",
+          }
+        : {
+            src: targetUrlArtwork,
+            alt: "A product URL being transformed into a starter story.",
+          };
+    }
+    if (activeStep.id === "permissions") {
+      return {
+        src: permissionsArtwork,
+        alt: "A privacy shield representing screen recording and accessibility readiness.",
+      };
+    }
+    return {
+      src: previewArtwork,
+      alt: "A browser preview run with a cursor path and recording progress.",
+    };
+  }, [activeStep.id, selectedGoal, useSample]);
+  const progress = useMemo(
+    () => Math.round(((activeIndex + 1) / steps.length) * 100),
+    [activeIndex],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("storycapture:onboarding:v1:started", "true");
+  }, []);
+
+  const finish = (openProjectDialog: boolean) => {
+    markOnboardingComplete();
+    navigate("/", { replace: true });
+    if (openProjectDialog) requestNewProject();
+  };
+
+  const goNext = () => {
+    setError(null);
+    if (activeStep.id === "target" && !useSample && !targetUrl.trim()) {
+      setError("Paste a URL or use the sample demo.");
+      return;
+    }
+    if (activeIndex === steps.length - 1) {
+      finish(true);
+      return;
+    }
+    setActiveIndex((index) => Math.min(index + 1, steps.length - 1));
+  };
+
+  const goBack = () => {
+    setError(null);
+    setActiveIndex((index) => Math.max(index - 1, 0));
+  };
+
   return (
-    <main id="main-content" className="sc-scroll h-full overflow-auto bg-[var(--sc-bg)]">
-      <div className="mx-auto max-w-[1400px] px-5 py-5 lg:px-7 lg:py-7">
-        <header className="mb-5 flex flex-col gap-4 border-b border-[var(--sc-border)] pb-5 lg:flex-row lg:items-end">
-          <div className="max-w-[760px]">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <ScBadge tone="accent">Onboarding design</ScBadge>
-              <ScBadge tone="muted">Desktop activation</ScBadge>
-              <ScBadge tone="info">Metrics plan</ScBadge>
-            </div>
-            <h1 className="text-[clamp(34px,4.8vw,62px)] font-semibold leading-none text-[var(--sc-text)]">
-              Bring users to their first demo, not their first tooltip.
-            </h1>
-            <p className="mt-4 max-w-[720px] text-[14px] leading-7 text-[var(--sc-text-3)]">
-              StoryCapture onboarding should behave like a miniature production run: choose a job,
-              create a tiny script, watch the browser move, record a short clip, then see the
-              polished timeline. Account sign-in waits until sharing creates value.
-            </p>
+    <main
+      id="main-content"
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f4f1eb] text-[var(--sc-text)]"
+    >
+      <header className="grid h-[68px] shrink-0 grid-cols-[220px_1fr_160px] items-center border-b border-[rgba(25,24,22,0.10)] px-7">
+        <div className="flex items-center gap-3">
+          <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--sc-text)] text-[var(--sc-text-inverse)]">
+            <Film size={17} aria-hidden="true" />
           </div>
-          <div className="flex gap-2 lg:ml-auto">
-            <ScButton icon={<Play size={13} aria-hidden="true" />}>Preview flow</ScButton>
-            <ScButton variant="primary" icon={<ArrowRight size={13} aria-hidden="true" />}>
-              Ship as first-run
-            </ScButton>
+          <div>
+            <div className="text-[13px] font-semibold">StoryCapture</div>
+            <div className="font-mono text-[10.5px] text-[var(--sc-text-4)]">First run</div>
           </div>
-        </header>
+        </div>
+        <div className="flex justify-center">
+          <StepDots activeIndex={activeIndex} />
+        </div>
+        <button
+          type="button"
+          className="justify-self-end rounded-full px-3 py-2 text-[12px] text-[var(--sc-text-3)] transition hover:bg-[rgba(25,24,22,0.06)] active:translate-y-px"
+          onClick={() => finish(false)}
+        >
+          Skip setup
+        </button>
+      </header>
 
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(520px,1.28fr)]">
-          <div className="space-y-4">
-            <div className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-[var(--sc-sh-1)]">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-mono text-[11px] uppercase text-[var(--sc-accent-300)]">
-                    Activation path
-                  </p>
-                  <h2 className="mt-1 text-[20px] font-semibold">
-                    A seven-step flow with one aha moment
-                  </h2>
-                </div>
-                <div className="rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--sc-text-3)]">
-                  03 / 07
-                </div>
+      <section className="grid min-h-0 flex-1 lg:grid-cols-[minmax(420px,0.9fr)_minmax(480px,1.1fr)]">
+        <div className="relative flex min-h-0 flex-col justify-center overflow-hidden px-8 py-7 lg:px-14">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -left-8 top-8 font-mono text-[128px] font-semibold leading-none text-[rgba(25,24,22,0.055)]"
+          >
+            {String(activeIndex + 1).padStart(2, "0")}
+          </div>
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeStep.id}
+              initial={{ opacity: 0, x: -18 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 12 }}
+              transition={{ type: "spring", stiffness: 140, damping: 24 }}
+              className="relative"
+            >
+              <div className="font-mono text-[11px] uppercase text-[var(--sc-accent-700)]">
+                {activeStep.label} / {String(activeIndex + 1).padStart(2, "0")}
               </div>
+              <div className="mt-3 max-w-[520px] text-[13px] leading-6 text-[var(--sc-text-3)]">
+                {activeStep.eyebrow}
+              </div>
+              <h1
+                className="mt-4 max-w-[560px] text-[42px] font-semibold leading-[0.98] sm:text-[58px]"
+                style={{ fontFeatureSettings: '"ss01" 1, "cv01" 1' }}
+              >
+                {activeStep.title}
+              </h1>
+            </motion.div>
+          </AnimatePresence>
 
-              <div className="space-y-3">
-                {flowSteps.map((step) => (
-                  <article
-                    key={step.id}
-                    className={`grid grid-cols-[20px_1fr] gap-3 rounded-[var(--sc-r-lg)] border p-3 transition ${
-                      step.state === "active"
-                        ? "border-[oklch(0.78_0.14_var(--sc-accent-h)/0.45)] bg-[oklch(0.78_0.14_var(--sc-accent-h)/0.10)]"
-                        : "border-[var(--sc-border)] bg-[var(--sc-surface-2)]"
+          {activeStep.id === "outcome" && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
+              className="mt-6 max-w-[470px]"
+            >
+              <p className="text-[14px] leading-7 text-[var(--sc-text-3)]">
+                StoryCapture turns a written story into a real browser recording. First we show the
+                loop, then we ask you to create a project.
+              </p>
+              <div className="mt-5">
+                <MicroSequence />
+              </div>
+            </motion.div>
+          )}
+
+          {activeStep.id === "goal" && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
+              className="mt-7 grid max-w-[620px] gap-2 sm:grid-cols-2"
+            >
+              {goals.map((item) => {
+                const selected = goalId === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setGoalId(item.id)}
+                    className={`group relative overflow-hidden rounded-[18px] border p-4 text-left transition duration-300 active:translate-y-px ${
+                      selected
+                        ? "border-[var(--sc-text)] bg-[var(--sc-text)] text-[var(--sc-text-inverse)]"
+                        : "border-[rgba(25,24,22,0.10)] bg-[rgba(255,255,255,0.56)] hover:bg-[rgba(255,255,255,0.82)]"
                     }`}
                   >
-                    <StatusDot state={step.state} />
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[10.5px] uppercase text-[var(--sc-text-4)]">
-                          {step.label}
-                        </span>
-                        {step.state === "active" && <ScBadge tone="accent">Current screen</ScBadge>}
-                      </div>
-                      <h3 className="mt-1 text-[13px] font-semibold">{step.title}</h3>
-                      <p className="mt-1 text-[12px] leading-5 text-[var(--sc-text-3)]">
-                        {step.body}
-                      </p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-[var(--sc-sh-1)]">
-              <div className="flex items-start gap-3">
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] text-[var(--sc-accent-300)]">
-                  <ShieldCheck size={17} aria-hidden="true" />
-                </div>
-                <div>
-                  <h2 className="text-[16px] font-semibold">Permission readiness</h2>
-                  <p className="mt-1 text-[12px] leading-5 text-[var(--sc-text-3)]">
-                    Native prompts should never appear cold. Explain the job, show what still works
-                    if denied, then open the OS dialog.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 divide-y divide-[var(--sc-border)] rounded-[var(--sc-r-lg)] border border-[var(--sc-border)]">
-                {permissionItems.map(([title, body]) => (
-                  <div key={title} className="grid gap-1 px-3 py-3 sm:grid-cols-[150px_1fr]">
-                    <div className="text-[12px] font-semibold">{title}</div>
-                    <div className="text-[12px] leading-5 text-[var(--sc-text-3)]">{body}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="overflow-hidden rounded-[18px] border border-[var(--sc-border-2)] bg-[var(--sc-bg)] shadow-[0_30px_90px_rgba(0,0,0,0.44)]">
-              <div className="grid h-11 grid-cols-[90px_1fr_120px] items-center border-b border-[var(--sc-border)] bg-[var(--sc-chrome)] px-4">
-                <div className="flex gap-2">
-                  <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-                  <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-                  <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-                </div>
-                <div className="text-center text-[12px] font-semibold text-[var(--sc-text-3)]">
-                  First-run setup
-                </div>
-                <div className="text-right font-mono text-[10.5px] text-[var(--sc-text-4)]">
-                  sample.story
-                </div>
-              </div>
-
-              <div className="grid min-h-[560px] gap-0 lg:grid-cols-[1fr_290px]">
-                <div className="p-5 sm:p-7">
-                  <div className="mb-6 max-w-[560px]">
-                    <p className="font-mono text-[11px] uppercase text-[var(--sc-accent-300)]">
-                      Step 3
-                    </p>
-                    <h2 className="mt-2 text-[30px] font-semibold leading-[1.02]">
-                      What product flow should we turn into a demo video?
-                    </h2>
-                    <p className="mt-3 text-[13px] leading-6 text-[var(--sc-text-3)]">
-                      Use a sample project now, or paste a URL. The next screen generates a starter
-                      script and runs preview before asking for recording permissions.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {jobs.map((job, index) => (
-                      <button
-                        key={job}
-                        type="button"
-                        className={`group rounded-[var(--sc-r-lg)] border p-4 text-left transition active:translate-y-px ${
-                          index === 0
-                            ? "border-[oklch(0.78_0.14_var(--sc-accent-h)/0.5)] bg-[oklch(0.78_0.14_var(--sc-accent-h)/0.10)]"
-                            : "border-[var(--sc-border)] bg-[var(--sc-surface)] hover:bg-[var(--sc-hover)]"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Target
-                            size={14}
-                            className="text-[var(--sc-accent-300)]"
-                            aria-hidden="true"
-                          />
-                          <span className="text-[13px] font-semibold">{job}</span>
-                        </div>
-                        <p className="mt-2 text-[12px] leading-5 text-[var(--sc-text-3)]">
-                          {index === 0
-                            ? "Launch-ready script, capture, edit, and export defaults."
-                            : "A focused starter flow with matching copy and output presets."}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-5 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
-                    <label className="text-[12px] font-semibold" htmlFor="demo-target">
-                      Product URL
-                    </label>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
-                      <input
-                        id="demo-target"
-                        className="h-9 rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-3 text-[13px] text-[var(--sc-text)] outline-none placeholder:text-[var(--sc-text-4)] focus:border-[var(--sc-focus)]"
-                        placeholder="https://app.yourproduct.com/signup"
+                    <div
+                      className={`absolute right-3 top-3 h-2 w-2 rounded-full ${
+                        selected ? "bg-[var(--sc-accent-400)]" : "bg-[rgba(25,24,22,0.16)]"
+                      }`}
+                    />
+                    <div className="flex items-center gap-2 pr-5 text-[13px] font-semibold">
+                      <Target
+                        size={14}
+                        className={
+                          selected ? "text-[var(--sc-accent-300)]" : "text-[var(--sc-text-3)]"
+                        }
+                        aria-hidden="true"
                       />
-                      <ScButton variant="primary" icon={<Sparkles size={13} aria-hidden="true" />}>
-                        Generate starter story
-                      </ScButton>
+                      {item.title}
                     </div>
-                    <p className="mt-2 text-[11.5px] leading-5 text-[var(--sc-text-4)]">
-                      No URL yet? Continue with the built-in onboarding sample and replace it later.
-                    </p>
-                  </div>
-
-                  <div className="mt-5 grid gap-3 md:grid-cols-[1.15fr_0.85fr]">
-                    <div className="rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-[13px] font-semibold">Aha moment preview</div>
-                          <div className="mt-1 text-[11.5px] text-[var(--sc-text-4)]">
-                            Browser movement before education
-                          </div>
-                        </div>
-                        <ScBadge tone="success">Ready</ScBadge>
-                      </div>
-                      <div className="mt-4 overflow-hidden rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-text)] p-3 text-[var(--sc-text-inverse)]">
-                        <div className="mb-3 flex h-6 items-center gap-1.5 rounded bg-[var(--sc-n-100)] px-2">
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--sc-record)]" />
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--sc-warn)]" />
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--sc-success)]" />
-                        </div>
-                        <div className="space-y-2">
-                          <div className="h-3 w-3/5 rounded bg-[var(--sc-n-200)]" />
-                          <div className="h-20 rounded bg-[var(--sc-n-100)]" />
-                          <div className="grid grid-cols-3 gap-2">
-                            <div className="h-8 rounded bg-[var(--sc-n-200)]" />
-                            <div className="h-8 rounded bg-[var(--sc-accent-300)]" />
-                            <div className="h-8 rounded bg-[var(--sc-n-200)]" />
-                          </div>
-                        </div>
-                      </div>
+                    <div
+                      className={`mt-2 text-[12px] leading-5 ${
+                        selected ? "text-[rgba(255,255,255,0.70)]" : "text-[var(--sc-text-3)]"
+                      }`}
+                    >
+                      {item.body}
                     </div>
+                  </button>
+                );
+              })}
+            </motion.div>
+          )}
 
-                    <div className="rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
-                      <div className="flex items-center gap-2">
-                        <MousePointer2
-                          size={14}
-                          className="text-[var(--sc-accent-300)]"
-                          aria-hidden="true"
-                        />
-                        <h3 className="text-[13px] font-semibold">What answers unlock</h3>
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        {[
-                          "Starter .story",
-                          "Launch demo preset",
-                          "Export target: landing page",
-                        ].map((item) => (
-                          <div
-                            key={item}
-                            className="flex items-center gap-2 text-[12px] text-[var(--sc-text-3)]"
-                          >
-                            <Check
-                              size={13}
-                              className="text-[var(--sc-success)]"
-                              aria-hidden="true"
-                            />
-                            {item}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <aside className="border-t border-[var(--sc-border)] bg-[var(--sc-chrome)] p-4 lg:border-l lg:border-t-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[13px] font-semibold">Activation checklist</h3>
-                    <span className="font-mono text-[11px] text-[var(--sc-text-4)]">2 / 8</span>
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    {checklistItems.map(([item, state]) => (
-                      <div
-                        key={item}
-                        className={`flex items-start gap-2 rounded-[var(--sc-r-md)] border px-3 py-2 ${
-                          state === "active"
-                            ? "border-[oklch(0.78_0.14_var(--sc-accent-h)/0.45)] bg-[oklch(0.78_0.14_var(--sc-accent-h)/0.10)]"
-                            : "border-[var(--sc-border)] bg-[var(--sc-surface)]"
-                        }`}
-                      >
-                        <StatusDot state={state} />
-                        <span className="text-[12px] leading-5 text-[var(--sc-text-2)]">
-                          {item}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </aside>
+          {activeStep.id === "target" && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
+              className="mt-7 max-w-[540px]"
+            >
+              <label className="grid gap-2 text-[13px] font-semibold" htmlFor="onboarding-url">
+                Product URL
+                <input
+                  id="onboarding-url"
+                  type="url"
+                  value={targetUrl}
+                  onChange={(event) => {
+                    setTargetUrl(event.target.value);
+                    setUseSample(false);
+                  }}
+                  placeholder="https://app.yourproduct.com/signup"
+                  className="h-12 rounded-[16px] border border-[rgba(25,24,22,0.12)] bg-[rgba(255,255,255,0.66)] px-4 text-[13px] font-normal text-[var(--sc-text)] outline-none transition placeholder:text-[var(--sc-text-4)] focus:border-[var(--sc-text)] focus:bg-[var(--sc-surface)]"
+                />
+              </label>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <ScButton
+                  icon={<Sparkles size={13} aria-hidden="true" />}
+                  onClick={() => {
+                    setUseSample(true);
+                    setTargetUrl("");
+                    setError(null);
+                  }}
+                >
+                  Use sample
+                </ScButton>
+                {useSample && <ScBadge tone="success">Sample selected</ScBadge>}
               </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.88fr)_minmax(560px,1.12fr)]">
-          <div className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-[var(--sc-sh-1)]">
-            <div className="flex items-start gap-3">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] text-[var(--sc-accent-300)]">
-                <Film size={17} aria-hidden="true" />
-              </div>
-              <div>
-                <h2 className="text-[16px] font-semibold">Post-aha handoff</h2>
-                <p className="mt-1 text-[12px] leading-5 text-[var(--sc-text-3)]">
-                  Once the user sees the browser move, keep momentum with a short recording and a
-                  visible timeline. This is where onboarding should stop explaining and start
-                  producing.
+              {error && (
+                <p role="alert" className="mt-3 text-[12px] text-[var(--sc-record)]">
+                  {error}
                 </p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              {["Preview passed", "10-second clip recorded", "Post-production timeline opened"].map(
-                (item, index) => (
-                  <div key={item} className="grid grid-cols-[90px_1fr] items-center gap-3">
-                    <span className="font-mono text-[11px] text-[var(--sc-text-4)]">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <div className="h-8 rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-1">
-                      <div
-                        className="h-full rounded-[var(--sc-r-sm)] bg-[var(--sc-accent-500)]/60"
-                        style={{ width: `${82 - index * 16}%` }}
-                      />
-                    </div>
-                  </div>
-                ),
               )}
-            </div>
-          </div>
+            </motion.div>
+          )}
 
-          <div className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] shadow-[var(--sc-sh-1)]">
-            <div className="grid gap-2 border-b border-[var(--sc-border)] px-5 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div>
-                <p className="font-mono text-[11px] uppercase text-[var(--sc-accent-300)]">
-                  Metrics to track
-                </p>
-                <h2 className="mt-1 text-[18px] font-semibold">
-                  Measure activation, not screen completion
-                </h2>
-              </div>
-              <ScBadge tone="info">7 core events</ScBadge>
-            </div>
-            <div className="divide-y divide-[var(--sc-border)]">
-              {metricRows.map((row) => (
-                <div
-                  key={row.event}
-                  className="grid gap-3 px-5 py-4 lg:grid-cols-[210px_1fr_220px]"
-                >
-                  <div className="flex items-center gap-2 font-mono text-[11.5px] text-[var(--sc-accent-300)]">
-                    <Activity size={13} aria-hidden="true" />
-                    {row.event}
+          {activeStep.id === "permissions" && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
+              className="mt-7 max-w-[560px] divide-y divide-[rgba(25,24,22,0.10)] overflow-hidden rounded-[20px] border border-[rgba(25,24,22,0.10)] bg-[rgba(255,255,255,0.58)]"
+            >
+              {permissionRows.map(([title, body]) => (
+                <div key={title} className="grid gap-1 px-4 py-3.5">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold">
+                    <ShieldCheck
+                      size={14}
+                      className="text-[var(--sc-accent-300)]"
+                      aria-hidden="true"
+                    />
+                    {title}
                   </div>
-                  <div className="text-[12px] leading-5 text-[var(--sc-text-2)]">
-                    {row.question}
-                  </div>
-                  <div className="font-mono text-[11px] leading-5 text-[var(--sc-text-4)]">
-                    {row.properties}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.35fr]">
-          <div className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 shadow-[var(--sc-sh-1)]">
-            <div className="flex items-center gap-2">
-              <Gauge size={16} className="text-[var(--sc-accent-300)]" aria-hidden="true" />
-              <h2 className="text-[16px] font-semibold">Quality thresholds</h2>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {qualityThresholds.map(({ label, value, icon: Icon }) => (
-                <div
-                  key={label}
-                  className="rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-4"
-                >
-                  <div className="flex items-center gap-2 text-[var(--sc-text-3)]">
-                    <Icon size={14} aria-hidden="true" />
-                    <span className="text-[12px]">{label}</span>
-                  </div>
-                  <div className="mt-3 font-mono text-[24px] font-semibold text-[var(--sc-text)]">
-                    {value}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] shadow-[var(--sc-sh-1)]">
-            <div className="border-b border-[var(--sc-border)] px-5 py-4">
-              <h2 className="text-[16px] font-semibold">Required UI states before shipping</h2>
-              <p className="mt-1 text-[12px] leading-5 text-[var(--sc-text-3)]">
-                The flow must handle waiting, no project context, and permission or preview failure
-                without breaking the user's sense of progress.
-              </p>
-            </div>
-            <div className="divide-y divide-[var(--sc-border)]">
-              {stateRows.map(([state, body]) => (
-                <div key={state} className="grid gap-2 px-5 py-4 sm:grid-cols-[130px_1fr]">
-                  <div className="text-[13px] font-semibold">{state}</div>
                   <div className="text-[12px] leading-5 text-[var(--sc-text-3)]">{body}</div>
                 </div>
               ))}
-            </div>
+            </motion.div>
+          )}
+
+          {activeStep.id === "preview" && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
+              className="mt-7 max-w-[500px]"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--sc-text)] text-[var(--sc-text-inverse)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+                <Play size={18} fill="currentColor" aria-hidden="true" />
+              </div>
+              <p className="mt-4 text-[14px] leading-7 text-[var(--sc-text-3)]">
+                The preview proves the core loop before folder selection. Next, create the local
+                project and record the first clip.
+              </p>
+            </motion.div>
+          )}
+        </div>
+
+        <ArtworkPanel src={artwork.src} alt={artwork.alt} />
+      </section>
+
+      <footer className="grid h-[76px] shrink-0 grid-cols-[160px_1fr_220px] items-center border-t border-[rgba(25,24,22,0.10)] px-7">
+        <ScButton
+          icon={<ChevronLeft size={13} aria-hidden="true" />}
+          disabled={activeIndex === 0}
+          onClick={goBack}
+        >
+          Back
+        </ScButton>
+        <div className="grid justify-self-center gap-1 text-center">
+          <div className="font-mono text-[10.5px] text-[var(--sc-text-4)]">
+            {progress}% complete
           </div>
-        </section>
-      </div>
+          <div className="h-1 w-[180px] overflow-hidden rounded-full bg-[rgba(25,24,22,0.10)]">
+            <div
+              className="h-full rounded-full bg-[var(--sc-text)] transition-[width] duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+        <ScButton
+          variant="primary"
+          icon={
+            activeStep.id === "preview" ? (
+              <FolderPlus size={13} aria-hidden="true" />
+            ) : (
+              <ArrowRight size={13} aria-hidden="true" />
+            )
+          }
+          onClick={goNext}
+        >
+          {activeStep.id === "preview" ? "Create project" : "Continue"}
+        </ScButton>
+      </footer>
     </main>
   );
 }

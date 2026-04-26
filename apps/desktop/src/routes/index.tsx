@@ -16,7 +16,6 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { path: "/", element: <DashboardRoute /> },
-      { path: "/onboarding", element: <OnboardingRoute /> },
       { path: "/post-production", element: <PostProductionLandingRoute /> },
       { path: "/settings", element: <SettingsRoute /> },
     ],
@@ -24,6 +23,7 @@ export const router = createBrowserRouter([
   {
     element: <FullscreenLayout />,
     children: [
+      { path: "/onboarding", element: <OnboardingRoute /> },
       { path: "/editor/:projectId", element: <EditorRoute /> },
       { path: "/recorder/:projectId", element: <RecorderRoute /> },
       { path: "/post-production/:storyId", element: <PostProductionRoute /> },

@@ -1,7 +1,6 @@
 import {
   Circle,
   Code,
-  Compass,
   Download,
   Film,
   Home,
@@ -33,13 +32,6 @@ const NAV: NavGroup[] = [
     group: "Workspace",
     items: [
       { id: "dashboard", label: "Projects", icon: Home, path: "/" },
-      {
-        id: "onboarding",
-        label: "Onboarding",
-        icon: Compass,
-        path: "/onboarding",
-        matchPattern: /^\/onboarding/,
-      },
       {
         id: "editor",
         label: "Story Editor",
