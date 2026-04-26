@@ -14,6 +14,7 @@ import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { storyDiagnosticsLinter } from "@/features/editor/diagnostics-bridge";
 import { storyAutocomplete } from "@/features/editor/dsl-autocomplete";
+import { dslHoverTooltip } from "@/features/editor/dsl-hover";
 import { storyDsl } from "@/features/editor/dsl-language";
 import { triggerPickFromEditor } from "@/features/editor/PreviewPickerButton";
 import {
@@ -60,6 +61,7 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
     storyDsl(),
     storyDiagnosticsLinter,
     storyAutocomplete,
+    dslHoverTooltip,
     simulatorDecorationField,
     simulatorFailedStepField,
     simulatorFailedStepHover,
@@ -149,6 +151,33 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
         borderColor: "var(--sc-border-2)",
         color: "var(--sc-text)",
         boxShadow: "var(--sc-sh-pop)",
+      },
+      ".cm-tooltip-keyword": {
+        padding: "8px 10px",
+        maxWidth: "320px",
+        fontFamily: "var(--sc-font-mono)",
+      },
+      ".cm-tooltip-keyword .kw": {
+        fontWeight: 600,
+        fontSize: "12px",
+        color: "var(--sc-accent-500)",
+      },
+      ".cm-tooltip-keyword .desc": {
+        marginTop: "2px",
+        fontSize: "11.5px",
+        color: "var(--sc-text-2)",
+        fontFamily: "var(--sc-font-sans, inherit)",
+      },
+      ".cm-tooltip-keyword .ex": {
+        marginTop: "6px",
+        padding: "4px 6px",
+        background: "var(--sc-surface)",
+        border: "1px solid var(--sc-border-2)",
+        borderRadius: "4px",
+        fontSize: "11px",
+        color: "var(--sc-text)",
+        whiteSpace: "pre-wrap",
+        margin: "6px 0 0",
       },
       ".cm-tooltip-autocomplete ul li[aria-selected]": {
         backgroundColor: "color-mix(in oklch, var(--sc-accent-400) 18%, transparent)",
