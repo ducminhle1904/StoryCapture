@@ -8,7 +8,7 @@
 //! - `meta { ... }` entries (app, viewport, theme, speed)
 //! - All command variants and every [`SelectorOrText`] target form,
 //!   including Tier 1 role/field/text-exact forms
-//! - Trailing `# @id=<uuidv7>` step-id comments (plan 07-04b)
+//! - Trailing `# @id=<uuidv7>` step-id comments
 //! - Indentation: scenes at 2 spaces, commands at 4 spaces, meta entries
 //!   at 4 spaces
 //!
@@ -17,8 +17,7 @@
 //! - Free-form user comments (anything starting with `#` that is NOT a
 //!   `# @id=<uuidv7>` step-id comment) are NOT preserved. This formatter
 //!   is invoked only when writing step ids back to `.story` source after
-//!   a first pick (plan 07-04c territory); user-authored files are not
-//!   auto-formatted.
+//!   a first pick; user-authored files are not auto-formatted.
 //! - Blank lines between scenes / commands are NOT preserved — output
 //!   has canonical whitespace.
 //!
@@ -87,10 +86,19 @@ fn format_meta(out: &mut String, meta: &Meta) {
 fn format_command(out: &mut String, cmd: &Command) {
     let line = match cmd {
         Command::Navigate { url, .. } => format!("navigate {}", dsl_quote(url)),
-        Command::Click { target, .. } => format!("click {}", format_target(target)),
-        Command::Type { target, text, .. } => {
-            format!("type {} {}", format_target(target), dsl_quote(text))
-        }
+        Command::Click {
+            target, target_nth, ..
+        } => format!("click {}", format_target_with_nth(target, *target_nth)),
+        Command::Type {
+            target,
+            target_nth,
+            text,
+            ..
+        } => format!(
+            "type {} {}",
+            format_target_with_nth(target, *target_nth),
+            dsl_quote(text)
+        ),
         Command::Scroll {
             direction, amount, ..
         } => {
@@ -105,24 +113,57 @@ fn format_command(out: &mut String, cmd: &Command) {
                 None => format!("scroll {}", dir),
             }
         }
-        Command::Hover { target, .. } => format!("hover {}", format_target(target)),
-        Command::Drag { from, to, .. } => {
-            format!("drag {} to {}", format_target(from), format_target(to))
-        }
-        Command::Select { target, value, .. } => {
-            format!("select {} {}", format_target(target), dsl_quote(value))
-        }
-        Command::Upload { target, path, .. } => {
-            format!("upload {} {}", format_target(target), dsl_quote(path))
-        }
+        Command::Hover {
+            target, target_nth, ..
+        } => format!("hover {}", format_target_with_nth(target, *target_nth)),
+        Command::Drag {
+            from,
+            from_nth,
+            to,
+            to_nth,
+            ..
+        } => format!(
+            "drag {} to {}",
+            format_target_with_nth(from, *from_nth),
+            format_target_with_nth(to, *to_nth)
+        ),
+        Command::Select {
+            target,
+            target_nth,
+            value,
+            ..
+        } => format!(
+            "select {} {}",
+            format_target_with_nth(target, *target_nth),
+            dsl_quote(value)
+        ),
+        Command::Upload {
+            target,
+            target_nth,
+            path,
+            ..
+        } => format!(
+            "upload {} {}",
+            format_target_with_nth(target, *target_nth),
+            dsl_quote(path)
+        ),
         Command::Wait { duration_ms, .. } => format!("wait {}ms", duration_ms),
         Command::WaitFor {
-            target, timeout_ms, ..
+            target,
+            target_nth,
+            timeout_ms,
+            ..
         } => match timeout_ms {
-            Some(t) => format!("wait-for {} timeout {}ms", format_target(target), t),
-            None => format!("wait-for {}", format_target(target)),
+            Some(t) => format!(
+                "wait-for {} timeout {}ms",
+                format_target_with_nth(target, *target_nth),
+                t
+            ),
+            None => format!("wait-for {}", format_target_with_nth(target, *target_nth)),
         },
-        Command::Assert { target, .. } => format!("assert {}", format_target(target)),
+        Command::Assert {
+            target, target_nth, ..
+        } => format!("assert {}", format_target_with_nth(target, *target_nth)),
         Command::Screenshot { name, .. } => format!("screenshot {}", dsl_quote(name)),
         Command::Pause { .. } => "pause".to_string(),
     };
@@ -147,19 +188,17 @@ fn format_target(t: &SelectorOrText) -> String {
     }
 }
 
+fn format_target_with_nth(t: &SelectorOrText, nth: Option<u32>) -> String {
+    match nth {
+        Some(n) => format!("{} nth {}", format_target(t), n),
+        None => format_target(t),
+    }
+}
+
 fn role_keyword(role: AriaRole) -> &'static str {
-    // Mirrors `grammar.pest::role_kw`. Note `AriaRole::Image` round-trips as
-    // the canonical `image` spelling (the `img` alias is accepted on input
-    // but both map to the same variant, so we emit the canonical form).
     role.as_kebab()
 }
 
-/// Quote and escape a string for DSL output.
-///
-/// Mirrors the DSL's quoted-string escape rules: backslash-escapes `"` and
-/// `\`. Does NOT attempt to re-emit `\n` / `\t` escapes — the lenient
-/// tokenizer converts those to literal characters on parse, so a literal
-/// tab/newline is the correct byte-for-byte round-trip representation.
 fn dsl_quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');

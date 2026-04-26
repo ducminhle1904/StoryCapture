@@ -19,10 +19,19 @@ export interface ParsedLine {
   trailing: string;
   /** True iff the line has shape `<verb> <strategy> "<value>"[ <modifier>]`. */
   hasTargetShape: boolean;
+  /**
+   * 1-indexed `nth N` postfix on the target portion (e.g. `click testid
+   * "row" nth 2` → `2`). Stripped from `trailing` when present so existing
+   * consumers (`extractTimeout`, etc.) don't accidentally match against it.
+   * `undefined` for legacy lines without the postfix.
+   */
+  nth?: number;
 }
 
 const LINE_RE =
   /^(?<indent>\s*)(?<verb>[a-z][a-z-]*)\s+(?<strategy>[a-zA-Z][\w-]*)\s+"(?:\\"|[^"])*"(?<trailing>.*)$/;
+
+const NTH_RE = /^nth\s+(\d+)\b\s*/;
 
 export function parseLine(text: string): ParsedLine {
   const m = LINE_RE.exec(text);
@@ -33,11 +42,22 @@ export function parseLine(text: string): ParsedLine {
   const known = (TARGET_VERBS as readonly string[]).includes(verb)
     ? (verb as TargetVerb)
     : null;
+  // `nth N` always sits BEFORE any other tail modifier — peel it off the
+  // trailing slice so callers see a clean modifier ("timeout 5s", `with "x"`,
+  // etc.) and surface the integer separately.
+  let trailing = m.groups.trailing.trimStart();
+  let nth: number | undefined;
+  const nthMatch = NTH_RE.exec(trailing);
+  if (nthMatch) {
+    nth = Number(nthMatch[1]);
+    trailing = trailing.slice(nthMatch[0].length).trimStart();
+  }
   return {
     indent: m.groups.indent ?? "",
     verb: known,
-    trailing: m.groups.trailing.trimStart(),
+    trailing,
     hasTargetShape: true,
+    nth,
   };
 }
 

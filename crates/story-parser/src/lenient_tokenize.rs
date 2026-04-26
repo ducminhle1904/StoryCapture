@@ -64,6 +64,15 @@ pub enum MetaRawValue {
     },
 }
 
+/// Raw nth modifier as written in source. Preserved (including out-of-range
+/// values like 0 or > 100) so layer 2 can lint and decide whether to keep
+/// or collapse it. The `span` covers the `nth N` token pair.
+#[derive(Debug, Clone, Copy)]
+pub struct RawNth {
+    pub value: u32,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone)]
 pub enum ParsedCommand {
     Navigate {
@@ -71,9 +80,11 @@ pub enum ParsedCommand {
     },
     Click {
         target: RawTarget,
+        target_nth: Option<RawNth>,
     },
     Type {
         target: RawTarget,
+        target_nth: Option<RawNth>,
         text: String,
     },
     Scroll {
@@ -82,17 +93,22 @@ pub enum ParsedCommand {
     },
     Hover {
         target: RawTarget,
+        target_nth: Option<RawNth>,
     },
     Drag {
         from: RawTarget,
+        from_nth: Option<RawNth>,
         to: RawTarget,
+        to_nth: Option<RawNth>,
     },
     Select {
         target: RawTarget,
+        target_nth: Option<RawNth>,
         value: String,
     },
     Upload {
         target: RawTarget,
+        target_nth: Option<RawNth>,
         path: String,
     },
     Wait {
@@ -100,10 +116,12 @@ pub enum ParsedCommand {
     },
     WaitFor {
         target: RawTarget,
+        target_nth: Option<RawNth>,
         timeout_ms: Option<u64>,
     },
     Assert {
         target: RawTarget,
+        target_nth: Option<RawNth>,
     },
     Screenshot {
         name: String,
@@ -305,22 +323,32 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
             let url = first_string(cmd);
             ParsedCommand::Navigate { url }
         }
-        Rule::cmd_click => ParsedCommand::Click {
-            target: parse_target(cmd),
-        },
+        Rule::cmd_click => {
+            let (target, target_nth) = parse_target(cmd);
+            ParsedCommand::Click { target, target_nth }
+        }
         Rule::cmd_fill => {
-            // `fill <target> with "<text>"` desugars to Type at layer 1 (D-03).
-            // No new ParsedCommand variant — the executor sees an ordinary Type.
+            // `fill <target> with "<text>"` desugars to Type at layer 1.
+            // No new ParsedCommand variant — the executor sees an
+            // ordinary Type.
             let mut inner = cmd.into_inner();
-            let target = parse_target_pair(inner.next()?);
+            let (target, target_nth) = parse_target_pair(inner.next()?);
             let text = unquote(inner.next()?.as_str());
-            ParsedCommand::Type { target, text }
+            ParsedCommand::Type {
+                target,
+                target_nth,
+                text,
+            }
         }
         Rule::cmd_type => {
             let mut inner = cmd.into_inner();
-            let target = parse_target_pair(inner.next()?);
+            let (target, target_nth) = parse_target_pair(inner.next()?);
             let text = unquote(inner.next()?.as_str());
-            ParsedCommand::Type { target, text }
+            ParsedCommand::Type {
+                target,
+                target_nth,
+                text,
+            }
         }
         Rule::cmd_scroll => {
             let mut inner = cmd.into_inner();
@@ -328,26 +356,40 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
             let amount = inner.next().and_then(|n| n.as_str().parse().ok());
             ParsedCommand::Scroll { direction, amount }
         }
-        Rule::cmd_hover => ParsedCommand::Hover {
-            target: parse_target(cmd),
-        },
+        Rule::cmd_hover => {
+            let (target, target_nth) = parse_target(cmd);
+            ParsedCommand::Hover { target, target_nth }
+        }
         Rule::cmd_drag => {
             let mut inner = cmd.into_inner();
-            let from = parse_target_pair(inner.next()?);
-            let to = parse_target_pair(inner.next()?);
-            ParsedCommand::Drag { from, to }
+            let (from, from_nth) = parse_target_pair(inner.next()?);
+            let (to, to_nth) = parse_target_pair(inner.next()?);
+            ParsedCommand::Drag {
+                from,
+                from_nth,
+                to,
+                to_nth,
+            }
         }
         Rule::cmd_select => {
             let mut inner = cmd.into_inner();
-            let target = parse_target_pair(inner.next()?);
+            let (target, target_nth) = parse_target_pair(inner.next()?);
             let value = unquote(inner.next()?.as_str());
-            ParsedCommand::Select { target, value }
+            ParsedCommand::Select {
+                target,
+                target_nth,
+                value,
+            }
         }
         Rule::cmd_upload => {
             let mut inner = cmd.into_inner();
-            let target = parse_target_pair(inner.next()?);
+            let (target, target_nth) = parse_target_pair(inner.next()?);
             let path = unquote(inner.next()?.as_str());
-            ParsedCommand::Upload { target, path }
+            ParsedCommand::Upload {
+                target,
+                target_nth,
+                path,
+            }
         }
         Rule::cmd_wait => {
             let dur = cmd.into_inner().find(|p| p.as_rule() == Rule::duration)?;
@@ -357,15 +399,20 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
         }
         Rule::cmd_wait_for => {
             let mut inner = cmd.into_inner().peekable();
-            let target = parse_target_pair(inner.next()?);
+            let (target, target_nth) = parse_target_pair(inner.next()?);
             let timeout_ms = inner
                 .find(|p| p.as_rule() == Rule::duration)
                 .map(|d| parse_duration(d.as_str()));
-            ParsedCommand::WaitFor { target, timeout_ms }
+            ParsedCommand::WaitFor {
+                target,
+                target_nth,
+                timeout_ms,
+            }
         }
-        Rule::cmd_assert => ParsedCommand::Assert {
-            target: parse_target(cmd),
-        },
+        Rule::cmd_assert => {
+            let (target, target_nth) = parse_target(cmd);
+            ParsedCommand::Assert { target, target_nth }
+        }
         Rule::cmd_screenshot => {
             let name = first_string(cmd);
             ParsedCommand::Screenshot { name }
@@ -375,26 +422,29 @@ fn parse_command(pair: Pair<Rule>) -> Option<ParsedCommand> {
     })
 }
 
-fn parse_target(cmd_pair: Pair<Rule>) -> RawTarget {
+fn parse_target(cmd_pair: Pair<Rule>) -> (RawTarget, Option<RawNth>) {
     let target = cmd_pair.into_inner().find(|p| p.as_rule() == Rule::target);
     match target {
         Some(t) => parse_target_pair(t),
-        None => RawTarget::Text(String::new()),
+        None => (RawTarget::Text(String::new()), None),
     }
 }
 
-fn parse_target_pair(pair: Pair<Rule>) -> RawTarget {
-    let inner = pair.into_inner().next();
-    match inner {
-        Some(p) => match p.as_rule() {
-            // `first_string` strips the target prefix and returns the inner string.
-            Rule::target_text => RawTarget::Text(first_string(p)),
-            Rule::target_selector => RawTarget::Selector(first_string(p)),
-            Rule::target_testid => RawTarget::TestId(first_string(p)),
-            Rule::target_aria => RawTarget::Aria(first_string(p)),
+fn parse_target_pair(pair: Pair<Rule>) -> (RawTarget, Option<RawNth>) {
+    // `target` is now `(target_inner ~ nth_modifier?)` so we walk both.
+    // The raw nth value (including 0 / very large) flows through to layer 2
+    // which lints and decides whether to keep it. Span covers the entire
+    // `nth N` token so diagnostics can highlight it precisely.
+    let mut raw: RawTarget = RawTarget::Text(String::new());
+    let mut nth: Option<RawNth> = None;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::target_text => raw = RawTarget::Text(first_string(child)),
+            Rule::target_selector => raw = RawTarget::Selector(first_string(child)),
+            Rule::target_testid => raw = RawTarget::TestId(first_string(child)),
+            Rule::target_aria => raw = RawTarget::Aria(first_string(child)),
             Rule::target_role => {
-                // `role_kw "name"` — both sit as direct children of the target_role pair.
-                let inner: Vec<_> = p.into_inner().collect();
+                let inner: Vec<_> = child.into_inner().collect();
                 let role = inner
                     .iter()
                     .find(|c| c.as_rule() == Rule::role_kw)
@@ -405,14 +455,26 @@ fn parse_target_pair(pair: Pair<Rule>) -> RawTarget {
                     .find(|c| c.as_rule() == Rule::string)
                     .map(|s| unquote(s.as_str()))
                     .unwrap_or_default();
-                RawTarget::Role { role, name }
+                raw = RawTarget::Role { role, name };
             }
-            Rule::target_field => RawTarget::Label(first_string(p)),
-            Rule::target_text_kw => RawTarget::TextExact(first_string(p)),
-            _ => RawTarget::Text(String::new()),
-        },
-        None => RawTarget::Text(String::new()),
+            Rule::target_field => raw = RawTarget::Label(first_string(child)),
+            Rule::target_text_kw => raw = RawTarget::TextExact(first_string(child)),
+            Rule::nth_modifier => {
+                // `nth N` — capture span + the inner number_lit value.
+                let span = Span::from_pair(&child);
+                if let Some(n) = child
+                    .into_inner()
+                    .find(|p| p.as_rule() == Rule::number_lit)
+                    .and_then(|p| p.as_str().parse::<u32>().ok())
+                {
+                    // Preserve raw (including 0); semantic.rs validates.
+                    nth = Some(RawNth { value: n, span });
+                }
+            }
+            _ => {}
+        }
     }
+    (raw, nth)
 }
 
 fn first_string(pair: Pair<Rule>) -> String {

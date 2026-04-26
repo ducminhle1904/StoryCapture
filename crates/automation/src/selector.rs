@@ -1,4 +1,4 @@
-//! Intent-aware smart selector resolution (AUTO-03, D-13).
+//! Intent-aware smart selector resolution.
 //!
 //! Three strict-explicit strategies + one ranked human-text strategy:
 //!
@@ -73,13 +73,18 @@ impl ValidationResult {
 
 /// Object-safe free helper. The [`BrowserDriver`] trait's default
 /// `resolve_selector` impl calls this so the trait stays dyn-safe.
+///
+/// `target_nth` is the optional 1-indexed `nth` modifier from the DSL.
+/// It is stamped onto the returned `ResolvedSelector` so drivers can
+/// chain `.nth(n - 1)` when executing the action.
 pub async fn resolve_via_smart(
     driver: &dyn BrowserDriver,
     action: ActionKind,
     target: &SelectorOrText,
+    target_nth: Option<u32>,
     timeout_ms: u64,
 ) -> Result<(ResolvedSelector, Vec<AttemptLog>)> {
-    SmartSelector::resolve_with_attempts(driver, action, target, timeout_ms).await
+    SmartSelector::resolve_with_attempts(driver, action, target, target_nth, timeout_ms).await
 }
 
 /// A scored candidate as the intermediate ranking step produces them. The
@@ -99,6 +104,7 @@ impl SmartSelector {
         driver: &dyn BrowserDriver,
         action: ActionKind,
         target: &SelectorOrText,
+        target_nth: Option<u32>,
         _timeout_ms: u64,
     ) -> Result<(ResolvedSelector, Vec<AttemptLog>)> {
         // Strict-explicit strategies short-circuit.
@@ -115,6 +121,7 @@ impl SmartSelector {
                     strategy,
                     value,
                     origin: target.clone(),
+                    nth: target_nth,
                 },
                 vec![attempt],
             ));
@@ -133,12 +140,11 @@ impl SmartSelector {
             let value = synth_value_for(strategy, text);
             let score = score_for(strategy, action);
 
-            // Phase 1 design: the SmartSelector emits the candidate +
-            // strategy + score; the *driver* runs the actual DOM probe
-            // when it executes the action. The attempt log here records
-            // intent rather than DOM result, which is enough for the
-            // ambiguity guard. The driver later feeds back true Found /
-            // NotFound through the executor.
+            // SmartSelector emits the candidate + strategy + score; the
+            // *driver* runs the actual DOM probe when it executes the
+            // action. The attempt log here records intent rather than DOM
+            // result, which is enough for the ambiguity guard. The driver
+            // later feeds back true Found / NotFound through the executor.
             attempts.push(AttemptLog {
                 strategy,
                 value: value.clone(),
@@ -193,6 +199,7 @@ impl SmartSelector {
                 strategy: winner.strategy,
                 value: winner.value,
                 origin: target.clone(),
+                nth: target_nth,
             },
             attempts,
         ))
@@ -355,11 +362,11 @@ fn validate_text_exact(doc: &scraper::Html, name: &str) -> ValidationResult {
 
 /// Role + accessible-name validation against the detached DOM. Covers
 /// the common WAI-ARIA name computation paths (aria-label, visible text,
-/// explicit aria-labelledby) for the role shapes shipped in Phase 7.
+/// explicit aria-labelledby) for the supported role shapes.
 fn validate_role(doc: &scraper::Html, role: &str, name: &str) -> ValidationResult {
-    // Map Phase 7 ARIA roles to their HTML implicit tags. Includes the
-    // role attribute match as a parallel query. Roles without a clean
-    // implicit HTML tag (e.g. `dialog`) rely on [role="..."] only.
+    // Map ARIA roles to their HTML implicit tags. Includes the role
+    // attribute match as a parallel query. Roles without a clean implicit
+    // HTML tag (e.g. `dialog`) rely on [role="..."] only.
     let implicit_tag: Option<&str> = match role {
         "button" => Some("button"),
         "link" => Some("a"),
@@ -414,7 +421,7 @@ fn validate_role(doc: &scraper::Html, role: &str, name: &str) -> ValidationResul
 /// Subset of WAI-ARIA accessible-name computation: aria-label →
 /// aria-labelledby (first referenced element's trimmed text) → alt
 /// attribute (for img) → text content (trimmed). Matches the
-/// accessible-name-lite subset used by the sidecar overlay in 07-03a.
+/// accessible-name-lite subset used by the sidecar overlay.
 fn compute_accessible_name(doc: &scraper::Html, el: &scraper::ElementRef<'_>) -> String {
     if let Some(label) = el.value().attr("aria-label") {
         return label.to_string();
@@ -447,7 +454,7 @@ fn explicit_strategy(target: &SelectorOrText) -> Option<(SelectorStrategy, Strin
             Some((SelectorStrategy::TestId, format!("[data-testid=\"{s}\"]")))
         }
         SelectorOrText::Aria(s) => Some((SelectorStrategy::Aria, s.clone())),
-        // Phase 7 Tier 1 (D-06 encoding — sidecar splits on FIRST ':' after "role=").
+        // Sidecar splits on FIRST ':' after "role=".
         SelectorOrText::Role { role, name } => Some((
             SelectorStrategy::Role,
             format!("role={}:{name}", role.as_kebab()),
@@ -491,7 +498,7 @@ fn score_for(strategy: SelectorStrategy, action: ActionKind) -> f32 {
         (SelectorStrategy::FuzzyText, _) => 0.4,
         // Strict strategies never reach scoring.
         (SelectorStrategy::Css | SelectorStrategy::TestId | SelectorStrategy::Aria, _) => 1.0,
-        // Phase 7 Tier 1 strict strategies also never reach scoring.
+        // Strict explicit strategies also never reach scoring.
         (SelectorStrategy::Role | SelectorStrategy::Label | SelectorStrategy::TextExact, _) => 1.0,
     }
 }
@@ -508,9 +515,9 @@ fn synth_value_for(strategy: SelectorStrategy, text: &str) -> String {
         SelectorStrategy::Css | SelectorStrategy::TestId | SelectorStrategy::Aria => {
             text.to_string()
         }
-        // Phase 7 Tier 1 strict explicit strategies never reach ranked scoring —
-        // defense in depth: if a future refactor accidentally routes here, debug
-        // builds panic loudly so we notice before shipping.
+        // Strict explicit strategies never reach ranked scoring —
+        // defense in depth: if a future refactor accidentally routes here,
+        // debug builds panic loudly so we notice before shipping.
         SelectorStrategy::Role | SelectorStrategy::Label | SelectorStrategy::TextExact => {
             debug_assert!(
                 false,
@@ -584,10 +591,15 @@ mod tests {
             role: AriaRole::Button,
             name: "Save".into(),
         };
-        let (resolved, attempts) =
-            SmartSelector::resolve_with_attempts(driver.as_ref(), ActionKind::Click, &target, 1000)
-                .await
-                .expect("strict resolve cannot fail");
+        let (resolved, attempts) = SmartSelector::resolve_with_attempts(
+            driver.as_ref(),
+            ActionKind::Click,
+            &target,
+            None,
+            1000,
+        )
+        .await
+        .expect("strict resolve cannot fail");
         assert_eq!(attempts.len(), 1, "strict strategy must be single-attempt");
         assert_eq!(resolved.strategy, SelectorStrategy::Role);
         assert_eq!(resolved.value, "role=button:Save");

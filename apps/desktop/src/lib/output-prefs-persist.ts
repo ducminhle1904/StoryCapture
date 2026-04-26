@@ -129,7 +129,7 @@ export async function loadProjectOverride(projectFolder: string): Promise<Partia
   try {
     return JSON.parse(text) as PartialPersist;
   } catch {
-    toast("Không đọc được tùy chọn riêng của dự án. Đang dùng mặc định chung.");
+    toast("Failed to read project-specific preferences. Falling back to defaults.");
     return null;
   }
 }
@@ -144,7 +144,7 @@ export async function saveProjectOverride(
     await mkdir(dir, { recursive: true });
     await writeTextFile(path, JSON.stringify(prefs, null, 2));
   } catch (err) {
-    toast.error("Không lưu được tùy chọn vào dự án.");
+    toast.error("Failed to save preferences to project.");
     throw err;
   }
 }

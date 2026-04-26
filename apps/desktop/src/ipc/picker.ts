@@ -16,6 +16,12 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 export type PickLocator = {
   kind: "testid" | "role" | "label" | "text_exact" | "selector" | string;
   value: string | { role: string; name: string };
+  /**
+   * 1-indexed position when the picker's primary tier had count > 1 and the
+   * user's clicked element was inside that ranked match list. Omitted on
+   * unique tiers or legacy responses (Phases prior to D).
+   */
+  nth?: number;
 };
 
 export type PickCandidate = {
@@ -23,6 +29,8 @@ export type PickCandidate = {
   value: unknown;
   score: number;
   unique: boolean;
+  /** Same semantics as `PickLocator.nth` — see above. */
+  nth?: number;
 };
 
 /**
@@ -144,13 +152,13 @@ export async function listenPickerHoverPreview(
  * already-stamped line returns the existing id without regenerating it.
  */
 export type TargetRecordDto =
-  | { kind: "testid"; value: string }
-  | { kind: "role"; value: { role: string; name: string } }
-  | { kind: "label"; value: string }
-  | { kind: "text_exact"; value: string }
-  | { kind: "selector"; value: string }
-  | { kind: "aria"; value: string }
-  | { kind: "text"; value: string };
+  | { kind: "testid"; value: string; nth?: number }
+  | { kind: "role"; value: { role: string; name: string }; nth?: number }
+  | { kind: "label"; value: string; nth?: number }
+  | { kind: "text_exact"; value: string; nth?: number }
+  | { kind: "selector"; value: string; nth?: number }
+  | { kind: "aria"; value: string; nth?: number }
+  | { kind: "text"; value: string; nth?: number };
 
 export interface PickerStampStepIdArgs {
   /** Absolute path of the open `.story` file on disk. */

@@ -1,13 +1,12 @@
 //! Self-healing targets sidecar file — `.story.targets.json`.
 //!
-//! Plan 07-04c (PHASE-7.5). A sibling JSON file to each `.story` source that
-//! carries per-step primary + fallback locator candidates keyed by UUIDv7
-//! `step_id` (see `story_parser::LineMeta.step_id`, plan 07-04b). The
-//! executor consults this file when a primary locator's `wait_actionable`
-//! call times out — it iterates the step's fallbacks in order and promotes
-//! the first one that passes `wait_actionable`, rewriting the targets JSON
-//! atomically (via temp-file + `fs::rename`) while leaving the `.story`
-//! source **untouched**.
+//! A sibling JSON file to each `.story` source that carries per-step
+//! primary + fallback locator candidates keyed by UUIDv7 `step_id` (see
+//! `story_parser::LineMeta.step_id`). The executor consults this file when
+//! a primary locator's `wait_actionable` call times out — it iterates the
+//! step's fallbacks in order and promotes the first one that passes
+//! `wait_actionable`, rewriting the targets JSON atomically (via temp-file
+//! + `fs::rename`) while leaving the `.story` source **untouched**.
 //!
 //! ## Contract
 //!
@@ -95,6 +94,13 @@ pub struct TargetRecord {
     /// For `selector`/`testid`/`label`/`text_exact`/`text`/`aria`: a JSON string.
     /// For `role`: an object `{ "role": "<role>", "name": "<name>" }`.
     pub value: serde_json::Value,
+    /// Optional 1-indexed `nth` modifier. `None` means "any unique match"
+    /// — preserves legacy behavior for on-disk targets that omit this
+    /// field. `serde(default)` lets old JSON load without migration;
+    /// `skip_serializing_if` keeps new JSON byte-identical to old when no
+    /// nth is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nth: Option<u32>,
 }
 
 /// Load the sidecar targets file. Returns [`TargetsFile::empty`] when
@@ -249,10 +255,12 @@ mod targets_store_tests {
                 primary: TargetRecord {
                     kind: "testid".into(),
                     value: serde_json::json!("save"),
+                    nth: None,
                 },
                 fallbacks: vec![TargetRecord {
                     kind: "selector".into(),
                     value: serde_json::json!("#save"),
+                    nth: None,
                 }],
             },
         );
@@ -293,6 +301,7 @@ mod targets_store_tests {
                 TargetRecord {
                     kind: "selector".into(),
                     value: serde_json::json!("#id"),
+                    nth: None,
                 },
                 story_parser::SelectorOrText::Selector("#id".into()),
             ),
@@ -300,6 +309,7 @@ mod targets_store_tests {
                 TargetRecord {
                     kind: "testid".into(),
                     value: serde_json::json!("email"),
+                    nth: None,
                 },
                 story_parser::SelectorOrText::TestId("email".into()),
             ),
@@ -307,6 +317,7 @@ mod targets_store_tests {
                 TargetRecord {
                     kind: "label".into(),
                     value: serde_json::json!("Email"),
+                    nth: None,
                 },
                 story_parser::SelectorOrText::Label("Email".into()),
             ),
@@ -314,6 +325,7 @@ mod targets_store_tests {
                 TargetRecord {
                     kind: "text_exact".into(),
                     value: serde_json::json!("Save"),
+                    nth: None,
                 },
                 story_parser::SelectorOrText::TextExact("Save".into()),
             ),
@@ -321,6 +333,7 @@ mod targets_store_tests {
                 TargetRecord {
                     kind: "role".into(),
                     value: serde_json::json!({"role": "button", "name": "Save"}),
+                    nth: None,
                 },
                 story_parser::SelectorOrText::Role {
                     role: story_parser::AriaRole::from_keyword("button").unwrap(),
@@ -338,10 +351,146 @@ mod targets_store_tests {
         let r = TargetRecord {
             kind: "moon-phase".into(),
             value: serde_json::json!(null),
+            nth: None,
         };
         assert!(matches!(
             target_record_to_selector(&r),
             Err(AutomationError::Protocol(_))
         ));
+    }
+
+    // ─── nth field schema migration ───────────────────────────────────
+
+    #[test]
+    fn legacy_json_without_nth_loads_as_none() {
+        // Legacy sidecar JSON has no `nth` field. Must load with
+        // `nth: None` via serde(default).
+        let d = tempdir().unwrap();
+        let p = d.path().join("legacy.json");
+        fs::write(
+            &p,
+            r##"{
+  "version": 1,
+  "steps": {
+    "018f4c1e-7b3a-7000-8000-000000000001": {
+      "primary": { "kind": "testid", "value": "save" },
+      "fallbacks": [
+        { "kind": "selector", "value": "#save" }
+      ]
+    }
+  }
+}"##,
+        )
+        .unwrap();
+        let file = load(&p).unwrap();
+        let step = file.steps.values().next().unwrap();
+        assert_eq!(step.primary.nth, None);
+        assert_eq!(step.fallbacks[0].nth, None);
+    }
+
+    #[test]
+    fn new_json_with_nth_loads_and_round_trips() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("nth.json");
+        let id = Uuid::parse_str("018f4c1e-7b3a-7000-8000-000000000002").unwrap();
+        let mut file = TargetsFile::empty();
+        file.steps.insert(
+            id,
+            StepTargets {
+                primary: TargetRecord {
+                    kind: "testid".into(),
+                    value: serde_json::json!("row"),
+                    nth: Some(2),
+                },
+                fallbacks: vec![TargetRecord {
+                    kind: "selector".into(),
+                    value: serde_json::json!(".row"),
+                    nth: Some(2),
+                }],
+            },
+        );
+        atomic_write(&p, &file).unwrap();
+        let back = load(&p).unwrap();
+        let step = back.steps.get(&id).unwrap();
+        assert_eq!(step.primary.nth, Some(2));
+        assert_eq!(step.fallbacks[0].nth, Some(2));
+        assert_eq!(back, file);
+    }
+
+    #[test]
+    fn nth_none_skips_serialization() {
+        // `nth: None` must NOT appear in the on-the-wire JSON so legacy
+        // tooling reading old files sees byte-identical output.
+        let id = Uuid::parse_str("018f4c1e-7b3a-7000-8000-000000000003").unwrap();
+        let mut file = TargetsFile::empty();
+        file.steps.insert(
+            id,
+            StepTargets {
+                primary: TargetRecord {
+                    kind: "testid".into(),
+                    value: serde_json::json!("save"),
+                    nth: None,
+                },
+                fallbacks: vec![],
+            },
+        );
+        let raw = serde_json::to_string(&file).unwrap();
+        assert!(
+            !raw.contains("\"nth\""),
+            "nth: None must be skipped on the wire, got: {raw}"
+        );
+    }
+
+    #[test]
+    fn nth_some_serializes_as_number() {
+        let id = Uuid::parse_str("018f4c1e-7b3a-7000-8000-000000000004").unwrap();
+        let mut file = TargetsFile::empty();
+        file.steps.insert(
+            id,
+            StepTargets {
+                primary: TargetRecord {
+                    kind: "testid".into(),
+                    value: serde_json::json!("row"),
+                    nth: Some(3),
+                },
+                fallbacks: vec![],
+            },
+        );
+        let raw = serde_json::to_string(&file).unwrap();
+        assert!(
+            raw.contains("\"nth\":3"),
+            "nth: Some(3) must serialize as a number, got: {raw}"
+        );
+    }
+
+    #[test]
+    fn mixed_legacy_and_nth_steps_coexist() {
+        // Realistic upgrade scenario: existing user has legacy steps without
+        // nth alongside a freshly stamped step that uses nth.
+        let d = tempdir().unwrap();
+        let p = d.path().join("mixed.json");
+        fs::write(
+            &p,
+            r#"{
+  "version": 1,
+  "steps": {
+    "018f4c1e-7b3a-7000-8000-000000000005": {
+      "primary": { "kind": "testid", "value": "old" }
+    },
+    "018f4c1e-7b3a-7000-8000-000000000006": {
+      "primary": { "kind": "testid", "value": "row", "nth": 2 }
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        let file = load(&p).unwrap();
+        let by_kind: std::collections::HashMap<_, _> = file
+            .steps
+            .values()
+            .map(|s| (s.primary.value.as_str().unwrap_or("").to_string(), s.primary.nth))
+            .collect();
+        assert_eq!(by_kind.get("old").copied(), Some(None));
+        assert_eq!(by_kind.get("row").copied(), Some(Some(2)));
     }
 }

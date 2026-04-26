@@ -1,7 +1,7 @@
 /**
  * AdvancedOutputOptions RTL suite. Covers 3-subgroup layout, auto-hide
  * semantics, probe-driven HW list, conditional quality control
- * rendering, persistence-warning, and VN copy.
+ * rendering, persistence-warning, and copy.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -48,9 +48,9 @@ describe("AdvancedOutputOptions", () => {
       </Wrapped>,
     );
     await flushQueries();
-    expect(screen.getByText(/Định dạng & Codec/)).toBeInTheDocument();
-    expect(screen.getByText(/Bộ mã hóa & Chất lượng/)).toBeInTheDocument();
-    expect(screen.getByText(/Keyframe \/ Kích thước \/ Âm thanh/)).toBeInTheDocument();
+    expect(screen.getByText(/Format & Codec/)).toBeInTheDocument();
+    expect(screen.getByText(/Encoder & Quality/)).toBeInTheDocument();
+    expect(screen.getByText(/Keyframe \/ Resolution \/ Audio/)).toBeInTheDocument();
   });
 
   it("hwEncoder=auto hides quality slider and shows explanatory note", async () => {
@@ -60,8 +60,8 @@ describe("AdvancedOutputOptions", () => {
       </Wrapped>,
     );
     await flushQueries();
-    expect(screen.getByText(/Encoder sẽ được chọn lúc export/)).toBeInTheDocument();
-    expect(screen.queryByText(/Chất lượng \(thấp hơn/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Encoder will be selected at export time/)).toBeInTheDocument();
+    expect(screen.queryByText(/Quality \(lower/)).not.toBeInTheDocument();
   });
 
   it("hwEncoder=software shows CRF slider + preset select", async () => {
@@ -72,8 +72,8 @@ describe("AdvancedOutputOptions", () => {
       </Wrapped>,
     );
     await flushQueries();
-    expect(screen.getByText(/Chất lượng \(thấp hơn/)).toBeInTheDocument();
-    expect(screen.getByText(/Tốc độ mã hóa/)).toBeInTheDocument();
+    expect(screen.getByText(/Quality \(lower/)).toBeInTheDocument();
+    expect(screen.getByText(/Encoding speed/)).toBeInTheDocument();
   });
 
   it("unavailable persisted HW encoder shows soft warning", async () => {
@@ -86,10 +86,10 @@ describe("AdvancedOutputOptions", () => {
     );
     await flushQueries();
     expect(screen.getByRole("status")).toHaveTextContent(/h264-nvenc/);
-    expect(screen.getByRole("status")).toHaveTextContent(/không có sẵn/);
+    expect(screen.getByRole("status")).toHaveTextContent(/is not available/);
   });
 
-  it("shows all Vietnamese field labels when encoder has full controls", async () => {
+  it("shows all field labels when encoder has full controls", async () => {
     resetStore({ hwEncoder: "software" });
     render(
       <Wrapped>
@@ -97,13 +97,13 @@ describe("AdvancedOutputOptions", () => {
       </Wrapped>,
     );
     await flushQueries();
-    expect(screen.getByText("Định dạng tệp")).toBeInTheDocument();
+    expect(screen.getByText("File format")).toBeInTheDocument();
     expect(screen.getByText("Codec")).toBeInTheDocument();
-    expect(screen.getByText("Bộ mã hóa phần cứng")).toBeInTheDocument();
-    expect(screen.getByText(/Khoảng keyframe/)).toBeInTheDocument();
-    expect(screen.getByText("Codec âm thanh")).toBeInTheDocument();
-    expect(screen.getByText(/Bitrate âm thanh/)).toBeInTheDocument();
-    expect(screen.getByText("Kênh")).toBeInTheDocument();
+    expect(screen.getByText("Hardware encoder")).toBeInTheDocument();
+    expect(screen.getByText(/Keyframe interval/)).toBeInTheDocument();
+    expect(screen.getByText("Audio codec")).toBeInTheDocument();
+    expect(screen.getByText(/Audio bitrate/)).toBeInTheDocument();
+    expect(screen.getByText("Channels")).toBeInTheDocument();
   });
 
   it("uses probe result to derive available encoders (no NVENC when absent)", async () => {

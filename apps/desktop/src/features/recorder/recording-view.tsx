@@ -46,8 +46,8 @@ import { useRecorderStore, type RecorderStatus, type StepProgress } from "@/stat
 
 import { TccPrompt } from "./tcc-prompt";
 import { CursorTrail } from "./cursor-trail";
-// Phase 11-04 (D-05): the recorder-side element picker has been
-// removed. Element picking lives exclusively in the Preview panel via
+// The recorder-side element picker has been removed. Element picking
+// lives exclusively in the Preview panel via
 // `apps/desktop/src/features/editor/PreviewPickerButton.tsx`.
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
@@ -141,12 +141,12 @@ export function RecordingView({
     setPrimaryMiss,
   } = useRecorderStore();
 
-  // D-13: audio-negotiation failure persists a session-scoped flag so a
+  // Audio-negotiation failure persists a session-scoped flag so a
   // "video-only" badge stays visible next to the Live pill until the user
   // starts a new recording.
   const [audioUnavailable, setAudioUnavailable] = useState(false);
 
-  // D-15: host heartbeat watchdog. `lastHeartbeatRef` is last-tick epoch-ms
+  // Host heartbeat watchdog. `lastHeartbeatRef` is last-tick epoch-ms
   // (null before first heartbeat). `desynced` surfaces the "out of sync" UI.
   const lastHeartbeatRef = useRef<number | null>(null);
   const [desynced, setDesynced] = useState(false);
@@ -239,8 +239,8 @@ export function RecordingView({
         setError(formatIpcError(e));
       }
     })();
-    // D-14: unmount teardown. Cleanup MUST be synchronous; the
-    // detached stopRecording promise handles any backend teardown.
+    // Unmount teardown. Cleanup MUST be synchronous; the detached
+    // stopRecording promise handles any backend teardown.
     return () => {
       // (a) null the automation Channel handler so no stale event
       //     dispatch runs against an unmounted tree.
@@ -352,7 +352,7 @@ export function RecordingView({
     return () => window.clearInterval(handle);
   }, [status, setElapsed]);
 
-  // D-15: heartbeat watchdog. Runs only while recording; flips `desynced`
+  // Heartbeat watchdog. Runs only while recording; flips `desynced`
   // when >5s since the last heartbeat tick. A fresh `heartbeat` event
   // clears it (handled in the dispatch switch above).
   useEffect(() => {
@@ -392,12 +392,12 @@ export function RecordingView({
         toast.error(`Recording failed: ${event.message}`);
         break;
       case "audio-unavailable":
-        // D-13: mic negotiation failed; recording continues video-only.
+        // Mic negotiation failed; recording continues video-only.
         toast.error(`Audio unavailable: ${event.reason}`);
         setAudioUnavailable(true);
         break;
       case "heartbeat":
-        // D-15: host liveness signal; watchdog clears any desync banner.
+        // Host liveness signal; watchdog clears any desync banner.
         lastHeartbeatRef.current = Date.now();
         if (desynced) setDesynced(false);
         break;
@@ -407,8 +407,8 @@ export function RecordingView({
   };
 
   const handleRecord = async () => {
-    // D-04: double-start guard. Synchronous status flip before any await
-    // so a 10 ms double-click cannot enter this function twice.
+    // Double-start guard. Synchronous status flip before any await so a
+    // 10 ms double-click cannot enter this function twice.
     if (status !== "idle") return;
     setStatus("starting");
     // Fresh per-session UX state for the audio/heartbeat badges.
@@ -495,7 +495,7 @@ export function RecordingView({
           toast.warning("Playwright didn't launch in time — recording full display instead");
         }
       }
-      // Phase 13 — output knobs from useOutputPrefsStore (one-shot read).
+      // Output knobs from useOutputPrefsStore (one-shot read).
       const prefs = useOutputPrefsStore.getState().recordingKnobs;
       const exportPrefs = useOutputPrefsStore.getState().exportKnobs;
       const id = await startRecording(
@@ -517,7 +517,7 @@ export function RecordingView({
       );
       sessionRef.current = id;
       setSession(typeof (id as unknown) === "string" ? (id as unknown as string) : id.id);
-      // D-04: transition starting -> recording only after the host has
+      // Transition starting -> recording only after the host has
       // confirmed the session. If we error out above, the catch arm
       // resets to "idle" so the Start button re-enables.
       setStatus("recording");
@@ -549,8 +549,8 @@ export function RecordingView({
       }
     } catch (e) {
       setError(formatIpcError(e));
-      // D-04: error path resets to idle so the Start button re-enables;
-      // the toast + error banner still surface the failure to the user.
+      // Error path resets to idle so the Start button re-enables; the
+      // toast + error banner still surface the failure to the user.
       setStatus("idle");
       toast.error(`Recording failed to start: ${formatIpcError(e)}`);
     }
@@ -558,9 +558,9 @@ export function RecordingView({
 
   // Map automation events onto the step rail.
   const dispatchAutomation = (evt: ExecutorEvent) => {
-    // D-10: recording path never emits run_paused or step_frame_captured
+    // Recording path never emits run_paused or step_frame_captured
     // (capture_frames=false, stop_after_ordinal=None). Defaulted cases stay
-    // no-op; Phase 10 simulator consumes those variants via simulatorStore,
+    // no-op; the simulator consumes those variants via simulatorStore,
     // not this switch.
     switch (evt.type) {
       case "step_started":
@@ -572,12 +572,11 @@ export function RecordingView({
         break;
       case "step_failed": {
         advanceStep(evt.ordinal - 1, "failed");
-        // Phase 11-02 (D-06): detect the PrimaryMissNoHeal error by
-        // substring-matching the locked UI-SPEC copy. On a match, pipe
-        // the verb excerpt + ordinal into the recorder store so the HUD
-        // renders the destructive block + "Open in Simulator" action,
-        // and fire the Sonner destructive toast carrying the same copy
-        // with the action slot.
+        // Detect the PrimaryMissNoHeal error by substring-matching the
+        // locked copy. On a match, pipe the verb excerpt + ordinal into
+        // the recorder store so the HUD renders the destructive block +
+        // "Open in Simulator" action, and fire the Sonner destructive
+        // toast carrying the same copy with the action slot.
         const miss = parsePrimaryMiss(evt.error_message);
         if (miss) {
           setPrimaryMiss({ ordinal: evt.ordinal, verbExcerpt: miss.verbExcerpt });
@@ -590,10 +589,9 @@ export function RecordingView({
             action: clampedProjectId
               ? {
                   label: "Open in Simulator",
-                  // Phase 11: user decides when to start the simulator —
-                  // this action only routes into the Editor at the
-                  // failed step. The editor's existing simulator
-                  // primitives take over from there.
+                  // User decides when to start the simulator — this
+                  // action only routes into the Editor at the failed
+                  // step.
                   onClick: () => {
                     window.location.hash = `#/editor/${clampedProjectId}?step=${targetOrdinal}`;
                   },
@@ -640,7 +638,7 @@ export function RecordingView({
     }
   };
 
-  // D-15: "Force stop" escape hatch surfaced when the heartbeat watchdog
+  // "Force stop" escape hatch surfaced when the heartbeat watchdog
   // declares a desync. Always resets local state to idle regardless of
   // IPC outcome — NotFound is treated as success (session already gone).
   const forceStop = async () => {
@@ -761,7 +759,7 @@ export function RecordingView({
           {(status === "recording" || status === "paused") && (
             <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
           )}
-          {/* D-13: persistent badge while a mic failure is active. */}
+          {/* Persistent badge while a mic failure is active. */}
           {audioUnavailable && (
             <span
               role="status"
@@ -847,8 +845,8 @@ export function RecordingView({
         </div>
       ) : null}
 
-      {/* D-15: heartbeat-watchdog banner. Renders only while recording and
-          the host has gone >5s without a heartbeat. */}
+      {/* Heartbeat-watchdog banner. Renders only while recording and the
+          host has gone >5s without a heartbeat. */}
       {desynced && (status === "recording" || status === "paused") ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2 text-xs">
           <div className="flex min-w-0 items-center gap-2 text-[var(--color-danger)]">
@@ -934,9 +932,9 @@ export function RecordingView({
               )}
               {status === "recording" && (
                 <>
-                  {/* Phase 11-04 (D-05): recorder-side element picker
-                      removed. Picking is exclusively author-side via
-                      PreviewPickerButton in the Preview panel. */}
+                  {/* Recorder-side element picker removed; picking is
+                      exclusively author-side via PreviewPickerButton in
+                      the Preview panel. */}
                   <button
                     onClick={handlePause}
                     aria-label="Pause recording"
@@ -1068,7 +1066,7 @@ export function RecordingView({
                 disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
               <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
-              {/* Phase 09-02 — live preview toggle (persisted, default ON). */}
+              {/* Live preview toggle (persisted, default ON). */}
               <Toggle
                 label="Live preview"
                 checked={livePreviewEnabled}

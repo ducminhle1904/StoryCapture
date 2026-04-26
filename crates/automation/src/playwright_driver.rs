@@ -1,14 +1,13 @@
-//! `PlaywrightSidecarDriver` — Node SEA bundled sidecar over JSON-RPC (D-15).
+//! `PlaywrightSidecarDriver` — Node SEA bundled sidecar over JSON-RPC.
 //!
 //! Spawns the `playwright-sidecar` binary (built by
 //! `scripts/playwright-sidecar/build-sea.mjs`), writes newline-delimited
 //! JSON-RPC 2.0 requests on stdin, reads responses from stdout. The sidecar
 //! wraps `playwright-core`'s Chromium driver; capability set is all-true.
 //!
-//! Phase 1 ships the Rust transport + the Node server + the SEA build
-//! recipe. The full coverage of every BrowserDriver verb against a real
-//! Chromium binary is gated behind the `real-playwright-tests` feature flag
-//! (and behind the build of the SEA artifact, which CI does on PR).
+//! Full coverage of every BrowserDriver verb against a real Chromium binary
+//! is gated behind the `real-playwright-tests` feature flag (and behind the
+//! build of the SEA artifact, which CI does on PR).
 
 use crate::driver::{BrowserDriver, CapabilitySet, ElementState, LaunchConfig, ResolvedSelector};
 use crate::error::{AutomationError, Result};
@@ -34,10 +33,10 @@ struct JsonRpcRequest<'a> {
 
 // JSON-RPC notifications.
 //
-// `id` is now Option<u64>: id-absent messages carry `method`+`params` and
-// are dispatched to a tokio broadcast channel instead of the pending-
-// request map. `result`/`error` are unchanged so response parsing remains
-// backward-compatible with every 07-03a/b call site.
+// `id` is Option<u64>: id-absent messages carry `method`+`params` and are
+// dispatched to a tokio broadcast channel instead of the pending-request
+// map. `result`/`error` are unchanged so response parsing stays backward-
+// compatible with existing call sites.
 #[derive(Debug, Deserialize)]
 struct JsonRpcResponse {
     #[allow(dead_code)]
@@ -63,13 +62,13 @@ pub struct Notification {
     pub params: Value,
 }
 
-/// Phase 09-01 — decoded `preview/frame` notification payload.
+/// Decoded `preview/frame` notification payload.
 /// `data` is a base64-encoded JPEG; width/height in device pixels;
 /// timestamp is Chromium's screencast metadata timestamp (seconds).
 ///
-/// Phase 09-04 — `stream_id` identifies which session the frame belongs
-/// to. `None` is the recording session (legacy); `Some(_)` is an author-
-/// time session spawned per editor preview.
+/// `stream_id` identifies which session the frame belongs to. `None` is the
+/// recording session (legacy); `Some(_)` is an author-time session spawned
+/// per editor preview.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewFrame {
     #[serde(default, rename = "streamId", skip_serializing_if = "Option::is_none")]
@@ -93,12 +92,10 @@ pub struct NavSnapshot {
     pub can_go_forward: bool,
 }
 
-// Phase 09-01 — Untagged serde enum over the two sidecar stdout shapes.
-// `Response` matches the existing id-carrying line; `Notification` matches
-// id-less method+params lines. Exists primarily as a named type for the
-// reader-loop dispatch — the existing `JsonRpcResponse` already handles
-// both shapes via Option fields; this alias keeps the acceptance-criteria
-// grep anchor stable.
+// Untagged serde enum over the two sidecar stdout shapes.
+// `Response` matches the id-carrying line; `Notification` matches id-less
+// method+params lines. `JsonRpcResponse` handles both shapes via Option
+// fields; this alias is the named type for reader-loop dispatch.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 #[allow(dead_code)]
@@ -131,9 +128,9 @@ pub struct PlaywrightSidecarDriver {
     /// `pickElement.hoverPreview`). Capacity 128 — lagged subscribers
     /// receive `RecvError::Lagged(n)` and are logged, not panicked.
     notifications: broadcast::Sender<Notification>,
-    /// Phase 09-01 — latest-wins watch channel for decoded preview frames.
-    /// `watch::send` overwrites on every update so slow consumers naturally
-    /// drop intermediate frames (CONTEXT D-03 backpressure).
+    /// Latest-wins watch channel for decoded preview frames. `watch::send`
+    /// overwrites on every update so slow consumers naturally drop
+    /// intermediate frames (backpressure).
     preview_frames_tx: watch::Sender<Option<PreviewFrame>>,
     /// Latest-wins watch channel for decoded `preview/nav` notifications.
     /// Subscribers filter by `stream_id` since the sidecar broadcasts every
@@ -167,9 +164,9 @@ impl PlaywrightSidecarDriver {
         let (notifications, _keep_open) = broadcast::channel::<Notification>(128);
         let notifications_for_reader = notifications.clone();
 
-        // Phase 09-01 — watch channel for decoded preview/frame notifications.
-        // Latest-wins by construction; keep the sender in the driver so
-        // subscribers can be added after driver construction.
+        // Watch channel for decoded preview/frame notifications. Latest-wins
+        // by construction; keep the sender in the driver so subscribers can
+        // be added after driver construction.
         let (preview_frames_tx, _preview_seed_rx) = watch::channel::<Option<PreviewFrame>>(None);
         let preview_tx_for_reader = preview_frames_tx.clone();
 
@@ -206,10 +203,9 @@ impl PlaywrightSidecarDriver {
         })
     }
 
-    /// Phase 09-01 — subscribe to the latest-wins preview-frame channel.
-    /// Returns `watch::Receiver<Option<PreviewFrame>>`; initial value is
-    /// `None`. Each subscriber sees the MOST RECENT frame on `changed()`
-    /// — intermediate frames are dropped by design.
+    /// Subscribe to the latest-wins preview-frame channel. Initial value is
+    /// `None`. Each subscriber sees the MOST RECENT frame on `changed()` —
+    /// intermediate frames are dropped by design.
     pub fn subscribe_preview(&self) -> watch::Receiver<Option<PreviewFrame>> {
         self.preview_frames_tx.subscribe()
     }
@@ -221,15 +217,15 @@ impl PlaywrightSidecarDriver {
         self.nav_tx.subscribe()
     }
 
-    /// Phase 09-01 — start the CDP screencast in the sidecar.
+    /// Start the CDP screencast in the sidecar.
     pub async fn call_preview_start(&self) -> Result<()> {
         self.call("startPreviewStream", json!({})).await?;
         Ok(())
     }
 
-    /// Phase 09-01 — stop the CDP screencast. Preview lifecycle errors
-    /// must not cascade into recording lifecycle (CLAUDE.md: intentional
-    /// isolation, not a workaround). Caller always sees Ok.
+    /// Stop the CDP screencast. Preview lifecycle errors must not cascade
+    /// into recording lifecycle (intentional isolation, not a workaround).
+    /// Caller always sees Ok.
     pub async fn call_preview_stop(&self) -> Result<()> {
         if let Err(err) = self.call("stopPreviewStream", json!({})).await {
             tracing::warn!(
@@ -241,9 +237,9 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
-    /// Phase 09-04 — spawn an ephemeral author-time Chromium session keyed
-    /// by `stream_id`. Separate from the recording session; initial URL is
-    /// optional. Required by editor-surface Live Preview + Phase 10 simulator.
+    /// Spawn an ephemeral author-time Chromium session keyed by `stream_id`.
+    /// Separate from the recording session; initial URL is optional. Required
+    /// by editor-surface Live Preview + simulator.
     pub async fn call_author_launch(
         &self,
         stream_id: &str,
@@ -261,7 +257,7 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
-    /// Phase 09-04 — tear down an author-time session. Idempotent.
+    /// Tear down an author-time session. Idempotent.
     pub async fn call_author_close(&self, stream_id: &str) -> Result<()> {
         if let Err(err) = self.call("author.close", json!({ "streamId": stream_id })).await {
             tracing::warn!(
@@ -274,7 +270,7 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
-    /// Phase 09-04 — drive `page.setViewportSize` on an author session.
+    /// Drive `page.setViewportSize` on an author session.
     pub async fn call_author_set_viewport(
         &self,
         stream_id: &str,
@@ -336,8 +332,8 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
-    /// Phase 11 bridge — tell the sidecar which author session should receive
-    /// subsequent bare verbs (goto/click/etc.). Pass `None` to clear.
+    /// Tell the sidecar which author session should receive subsequent bare
+    /// verbs (goto/click/etc.). Pass `None` to clear.
     ///
     /// The simulator sets this at start and clears it on cancel / natural end
     /// so the shared author driver's verbs land on the author session's page
@@ -351,14 +347,14 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
-    /// Phase 09-04 — start the CDP screencast for a named author session.
+    /// Start the CDP screencast for a named author session.
     pub async fn call_preview_start_stream(&self, stream_id: &str) -> Result<()> {
         self.call("startPreviewStream", json!({ "streamId": stream_id }))
             .await?;
         Ok(())
     }
 
-    /// Phase 09-04 — stop the CDP screencast for a named author session.
+    /// Stop the CDP screencast for a named author session.
     pub async fn call_preview_stop_stream(&self, stream_id: &str) -> Result<()> {
         if let Err(err) = self
             .call("stopPreviewStream", json!({ "streamId": stream_id }))
@@ -374,16 +370,15 @@ impl PlaywrightSidecarDriver {
         Ok(())
     }
 
-    /// PHASE-9.9 — pause screencast on a live session without tearing it down.
-    /// Phase 10 simulator + Phase 11 picker use this as an exclusive-lock
-    /// primitive. Idempotent.
+    /// Pause screencast on a live session without tearing it down. Simulator
+    /// and picker use this as an exclusive-lock primitive. Idempotent.
     pub async fn call_pause_stream(&self, stream_id: &str) -> Result<()> {
         self.call("pauseStream", json!({ "streamId": stream_id }))
             .await?;
         Ok(())
     }
 
-    /// PHASE-9.9 — resume a paused screencast. Idempotent.
+    /// Resume a paused screencast. Idempotent.
     pub async fn call_resume_stream(&self, stream_id: &str) -> Result<()> {
         self.call("resumeStream", json!({ "streamId": stream_id }))
             .await?;
@@ -451,7 +446,7 @@ impl BrowserDriver for PlaywrightSidecarDriver {
             "headless": config.headless,
             "downloadDir": config.download_dir.to_string_lossy(),
             "executable": config.executable.as_ref().map(|p| p.to_string_lossy().to_string()),
-            // Plan 06-02 — extra Chromium args (chrome-hiding --app=<url>).
+            // Extra Chromium args (chrome-hiding --app=<url>).
             "args": config.args,
         });
         self.call("launch", params).await?;
@@ -471,7 +466,11 @@ impl BrowserDriver for PlaywrightSidecarDriver {
     async fn click(&self, sel: &ResolvedSelector) -> Result<()> {
         self.call(
             "click",
-            json!({ "selector": sel.value, "strategy": sel.strategy.as_str() }),
+            json!({
+                "selector": sel.value,
+                "strategy": sel.strategy.as_str(),
+                "nth": sel.nth,
+            }),
         )
         .await?;
         Ok(())
@@ -480,7 +479,12 @@ impl BrowserDriver for PlaywrightSidecarDriver {
     async fn type_text(&self, sel: &ResolvedSelector, text: &str) -> Result<()> {
         self.call(
             "type",
-            json!({ "selector": sel.value, "strategy": sel.strategy.as_str(), "text": text }),
+            json!({
+                "selector": sel.value,
+                "strategy": sel.strategy.as_str(),
+                "text": text,
+                "nth": sel.nth,
+            }),
         )
         .await?;
         Ok(())
@@ -501,28 +505,47 @@ impl BrowserDriver for PlaywrightSidecarDriver {
     async fn hover(&self, sel: &ResolvedSelector) -> Result<()> {
         self.call(
             "hover",
-            json!({ "selector": sel.value, "strategy": sel.strategy.as_str() }),
+            json!({
+                "selector": sel.value,
+                "strategy": sel.strategy.as_str(),
+                "nth": sel.nth,
+            }),
         )
         .await?;
         Ok(())
     }
 
     async fn drag(&self, from: &ResolvedSelector, to: &ResolvedSelector) -> Result<()> {
-        self.call("drag", json!({ "from": from.value, "to": to.value }))
-            .await?;
+        self.call(
+            "drag",
+            json!({
+                "from": from.value,
+                "fromNth": from.nth,
+                "to": to.value,
+                "toNth": to.nth,
+            }),
+        )
+        .await?;
         Ok(())
     }
 
     async fn select_option(&self, sel: &ResolvedSelector, value: &str) -> Result<()> {
-        self.call("select", json!({ "selector": sel.value, "value": value }))
-            .await?;
+        self.call(
+            "select",
+            json!({ "selector": sel.value, "value": value, "nth": sel.nth }),
+        )
+        .await?;
         Ok(())
     }
 
     async fn upload_file(&self, sel: &ResolvedSelector, path: &Path) -> Result<()> {
         self.call(
             "upload",
-            json!({ "selector": sel.value, "path": path.to_string_lossy() }),
+            json!({
+                "selector": sel.value,
+                "path": path.to_string_lossy(),
+                "nth": sel.nth,
+            }),
         )
         .await?;
         Ok(())
@@ -533,18 +556,33 @@ impl BrowserDriver for PlaywrightSidecarDriver {
         Ok(())
     }
 
-    async fn wait_for(&self, target: &SelectorOrText, timeout_ms: u64) -> Result<()> {
+    async fn wait_for(
+        &self,
+        target: &SelectorOrText,
+        target_nth: Option<u32>,
+        timeout_ms: u64,
+    ) -> Result<()> {
         self.call(
             "waitFor",
-            json!({ "target": target_to_json(target), "timeoutMs": timeout_ms }),
+            json!({
+                "target": target_to_json(target, target_nth),
+                "timeoutMs": timeout_ms,
+            }),
         )
         .await?;
         Ok(())
     }
 
-    async fn assert_present(&self, target: &SelectorOrText) -> Result<()> {
-        self.call("assert", json!({ "target": target_to_json(target) }))
-            .await?;
+    async fn assert_present(
+        &self,
+        target: &SelectorOrText,
+        target_nth: Option<u32>,
+    ) -> Result<()> {
+        self.call(
+            "assert",
+            json!({ "target": target_to_json(target, target_nth) }),
+        )
+        .await?;
         Ok(())
     }
 
@@ -596,8 +634,8 @@ impl BrowserDriver for PlaywrightSidecarDriver {
     }
 }
 
-/// Plan 05-02 — process info for the launched browser, returned by the
-/// sidecar's `browserProcess` JSON-RPC verb.
+/// Process info for the launched browser, returned by the sidecar's
+/// `browserProcess` JSON-RPC verb.
 ///
 /// - `pid: Some(_)` — locally-launched Chromium; host may resolve pid→SCWindow.
 /// - `pid: None`, `reason: Some("remote-browser")` — `chromium.connect()` path,
@@ -619,8 +657,8 @@ impl PlaywrightSidecarDriver {
     /// treat that as "Playwright auto unavailable" rather than a fatal
     /// error.
     ///
-    /// T-05-02-03: the sidecar logs `executable_path` at DEBUG only; this
-    /// method does not emit it at any level to avoid host-side leak.
+    /// The sidecar logs `executable_path` at DEBUG only; this method does
+    /// not emit it at any level to avoid host-side leak.
     pub async fn browser_process(&self) -> Result<BrowserProcessInfo> {
         let v = self.call("browserProcess", serde_json::json!({})).await?;
         let info: BrowserProcessInfo = serde_json::from_value(v)
@@ -676,9 +714,9 @@ pub struct SnapshotResponse {
     pub captured_at: String,
 }
 
-// Phase 09-01 — parse+dispatch for a single stdout line. Extracted from
-// the reader task so integration tests can drive it without spawning a
-// Node sidecar child process. Doc-hidden: not part of the public API.
+// Parse+dispatch for a single stdout line. Extracted from the reader task
+// so integration tests can drive it without spawning a Node sidecar child
+// process. Doc-hidden: not part of the public API.
 #[doc(hidden)]
 pub async fn handle_sidecar_line(
     line: &str,
@@ -755,21 +793,29 @@ pub async fn handle_sidecar_line(
     }
 }
 
-fn target_to_json(t: &SelectorOrText) -> Value {
-    match t {
+fn target_to_json(t: &SelectorOrText, nth: Option<u32>) -> Value {
+    let mut v = match t {
         SelectorOrText::Text(s) => json!({ "kind": "text", "value": s }),
         SelectorOrText::Selector(s) => json!({ "kind": "selector", "value": s }),
         SelectorOrText::TestId(s) => json!({ "kind": "testid", "value": s }),
         SelectorOrText::Aria(s) => json!({ "kind": "aria", "value": s }),
-        // sidecar `locate()` consumes these in
-        // `targetToLocator()` per CONTEXT.md §Tier 1 prerequisite.
+        // sidecar `locate()` consumes these in `targetToLocator()`.
         SelectorOrText::Role { role, name } => json!({
             "kind": "role",
             "value": { "role": role.as_kebab(), "name": name }
         }),
         SelectorOrText::Label(s) => json!({ "kind": "label", "value": s }),
         SelectorOrText::TextExact(s) => json!({ "kind": "text_exact", "value": s }),
+    };
+    // Attach nth as a sibling field on the same JSON object so the sidecar's
+    // `targetToLocator()` can read it without separate plumbing. Skip when
+    // None to keep wire format byte-identical to pre-Fix-#4 messages.
+    if let Some(n) = nth {
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert("nth".to_string(), json!(n));
+        }
     }
+    v
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -777,8 +823,7 @@ fn target_to_json(t: &SelectorOrText) -> Value {
 //
 // CONTRACT: the `Picked` variant's field MUST be named `emitted: String`
 // — this matches the sidecar wire field at `scripts/playwright-sidecar/
-// server.mjs:414`. Renaming (e.g. `dsl_line`) breaks the picker UI flow
-// in 07-03b. Grep-guarded by the plan's acceptance criteria.
+// server.mjs`. Renaming (e.g. `dsl_line`) breaks the picker UI flow.
 // ──────────────────────────────────────────────────────────────────────
 
 /// Discriminator for ranked DSL candidates emitted by the sidecar's picker
@@ -863,7 +908,7 @@ pub struct PickElementMeta {
 #[serde(untagged)]
 pub enum PickElementResponse {
     Picked {
-        // CONTRACT (07-03a wire): field is `emitted: String`. Do not rename.
+        // CONTRACT: field is `emitted: String`. Do not rename.
         emitted: String,
         locator: PickLocator,
         candidates: Vec<PickCandidate>,
@@ -904,8 +949,8 @@ impl PlaywrightSidecarDriver {
         Ok(v.get("active").and_then(|a| a.as_bool()).unwrap_or(false))
     }
 
-    /// Phase 11-03 — start a pickElement session against an author-session
-    /// page keyed by `stream_id`. The sidecar routes to
+    /// Start a pickElement session against an author-session page keyed by
+    /// `stream_id`. The sidecar routes to
     /// `state.authorSessions.get(stream_id).page`; unknown streamId surfaces
     /// as an `AutomationError::Browser(..)` with the `-32000` payload.
     pub async fn pick_element_start_author(
@@ -937,8 +982,8 @@ impl PlaywrightSidecarDriver {
             .to_string())
     }
 
-    /// Phase 11-03 — navigate a specific author-session page to a URL AND
-    /// wait for `networkidle` (bounded 10s by the sidecar). Used by
+    /// Navigate a specific author-session page to a URL AND wait for
+    /// `networkidle` (bounded 10s by the sidecar). Used by
     /// `replay_navigate_verbs` to warm the author browser on picker start.
     /// Non-http(s) URLs and unknown streamIds surface as `Protocol` / `Browser`
     /// errors respectively (-32602 / -32000 on the wire).
@@ -956,10 +1001,10 @@ impl PlaywrightSidecarDriver {
 mod notification_tests {
     // JSON-RPC notification plumbing.
     //
-    // RED-first: these tests assert the broadcast semantics for id-absent
-    // JSON-RPC messages (see CONTEXT.md §Tier 2 robustness). They exercise
-    // the primitives (broadcast::channel + JsonRpcResponse serde) rather
-    // than the reader loop so they run without spawning a Node sidecar.
+    // These tests assert the broadcast semantics for id-absent JSON-RPC
+    // messages. They exercise the primitives (broadcast::channel +
+    // JsonRpcResponse serde) rather than the reader loop so they run
+    // without spawning a Node sidecar.
     use super::{JsonRpcResponse, Notification};
     use tokio::sync::broadcast;
 
@@ -1116,10 +1161,13 @@ mod tier1_target_to_json_tests {
 
     #[test]
     fn role_encodes_as_object_value_with_kebab_role_and_name() {
-        let v = target_to_json(&SelectorOrText::Role {
-            role: AriaRole::Button,
-            name: "Save".into(),
-        });
+        let v = target_to_json(
+            &SelectorOrText::Role {
+                role: AriaRole::Button,
+                name: "Save".into(),
+            },
+            None,
+        );
         assert_eq!(v["kind"], "role");
         assert_eq!(v["value"]["role"], "button");
         assert_eq!(v["value"]["name"], "Save");
@@ -1127,23 +1175,26 @@ mod tier1_target_to_json_tests {
 
     #[test]
     fn role_preserves_colon_in_name() {
-        let v = target_to_json(&SelectorOrText::Role {
-            role: AriaRole::Link,
-            name: "Go: now".into(),
-        });
+        let v = target_to_json(
+            &SelectorOrText::Role {
+                role: AriaRole::Link,
+                name: "Go: now".into(),
+            },
+            None,
+        );
         assert_eq!(v["value"]["name"], "Go: now");
     }
 
     #[test]
     fn label_encodes_as_string_value() {
-        let v = target_to_json(&SelectorOrText::Label("Email".into()));
+        let v = target_to_json(&SelectorOrText::Label("Email".into()), None);
         assert_eq!(v["kind"], "label");
         assert_eq!(v["value"], "Email");
     }
 
     #[test]
     fn text_exact_encodes_with_snake_case_kind() {
-        let v = target_to_json(&SelectorOrText::TextExact("Learn more".into()));
+        let v = target_to_json(&SelectorOrText::TextExact("Learn more".into()), None);
         assert_eq!(v["kind"], "text_exact");
         assert_eq!(v["value"], "Learn more");
     }
@@ -1151,20 +1202,51 @@ mod tier1_target_to_json_tests {
     #[test]
     fn legacy_variants_unchanged() {
         assert_eq!(
-            target_to_json(&SelectorOrText::Text("x".into()))["kind"],
+            target_to_json(&SelectorOrText::Text("x".into()), None)["kind"],
             "text"
         );
         assert_eq!(
-            target_to_json(&SelectorOrText::Selector("#x".into()))["kind"],
+            target_to_json(&SelectorOrText::Selector("#x".into()), None)["kind"],
             "selector"
         );
         assert_eq!(
-            target_to_json(&SelectorOrText::TestId("x".into()))["kind"],
+            target_to_json(&SelectorOrText::TestId("x".into()), None)["kind"],
             "testid"
         );
         assert_eq!(
-            target_to_json(&SelectorOrText::Aria("x".into()))["kind"],
+            target_to_json(&SelectorOrText::Aria("x".into()), None)["kind"],
             "aria"
         );
+    }
+
+    // ─── nth field on the wire ────────────────────────────────────────
+
+    #[test]
+    fn nth_some_attaches_to_target_envelope() {
+        let v = target_to_json(&SelectorOrText::TestId("row".into()), Some(2));
+        assert_eq!(v["kind"], "testid");
+        assert_eq!(v["value"], "row");
+        assert_eq!(v["nth"], 2);
+    }
+
+    #[test]
+    fn nth_none_omits_field() {
+        let v = target_to_json(&SelectorOrText::TestId("row".into()), None);
+        assert!(v.get("nth").is_none(), "nth=None must be omitted");
+    }
+
+    #[test]
+    fn nth_attaches_to_role_envelope() {
+        let v = target_to_json(
+            &SelectorOrText::Role {
+                role: AriaRole::Button,
+                name: "Save".into(),
+            },
+            Some(3),
+        );
+        assert_eq!(v["kind"], "role");
+        assert_eq!(v["nth"], 3);
+        // nth is a SIBLING of value, not nested inside it.
+        assert!(v["value"].get("nth").is_none());
     }
 }

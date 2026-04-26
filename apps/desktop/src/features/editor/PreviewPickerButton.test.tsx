@@ -580,6 +580,59 @@ describe("PreviewPickerButton", () => {
     expect(successMsg).toMatch(/selector healing for drag targets/i);
   });
 
+  it("generator returns locator with nth=2 → click inserts nth-postfixed line and stamps with nth", async () => {
+    const invokeLog: Array<{ cmd: string; args: unknown }> = [];
+    mockIPC((cmd, args) => {
+      invokeLog.push({ cmd, args });
+      if (cmd === "picker_start_author") {
+        return {
+          json: JSON.stringify({
+            emitted: 'click testid "row" nth 2',
+            locator: { kind: "testid", value: "row", nth: 2 },
+            candidates: [
+              {
+                kind: "testid",
+                value: "row",
+                score: 0.95,
+                unique: false,
+                nth: 2,
+              },
+            ],
+          }),
+        };
+      }
+      if (cmd === "picker_stamp_step_id") {
+        return {
+          step_id: "01900000-0000-7000-8000-000000000000",
+          was_freshly_stamped: true,
+        };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    await user.click(screen.getByRole("menuitem", { name: /click element/i }));
+    await flushAsync();
+
+    expect(insertSpy).toHaveBeenCalledWith('click testid "row" nth 2\n');
+
+    const stampInvoke = invokeLog.find((e) => e.cmd === "picker_stamp_step_id");
+    expect(stampInvoke).toBeDefined();
+    expect(stampInvoke!.args).toMatchObject({
+      primary: { kind: "testid", value: "row", nth: 2 },
+    });
+    const fallbacks = (stampInvoke!.args as { fallbacks: unknown[] }).fallbacks;
+    expect(fallbacks[0]).toMatchObject({
+      kind: "testid",
+      value: "row",
+      nth: 2,
+    });
+  });
+
   it("renders UI-SPEC tooltip copy per variant", () => {
     seedAuthorDriver({ variant: "idle", streamId: null });
     const { rerender } = render(<PreviewPickerButton />);

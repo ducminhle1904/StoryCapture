@@ -1,4 +1,4 @@
-//! Author-time driver state registry (Phase 11, D-16).
+//! Author-time driver state registry.
 //!
 //! Shared `AuthorDriverState` exclusive-lock that both `commands/picker.rs`
 //! and `commands/simulator.rs` lock against. The enum is the single
@@ -77,7 +77,7 @@ pub enum AuthorDriverError {
 }
 
 impl AuthorDriverState {
-    /// D-13 + D-15 complement: gate picker-start against the current state.
+    /// Gate picker-start against the current state.
     pub fn can_start_pick(&self) -> Result<(), AuthorDriverError> {
         match self {
             AuthorDriverState::SimulatorRunning { .. } => Err(AuthorDriverError::SimulatorBusy),
@@ -86,7 +86,7 @@ impl AuthorDriverState {
         }
     }
 
-    /// D-15: gate simulator-start against the current state.
+    /// Gate simulator-start against the current state.
     pub fn can_start_simulator(&self) -> Result<(), AuthorDriverError> {
         match self {
             AuthorDriverState::Picking { .. } => Err(AuthorDriverError::AlreadyPicking),
@@ -95,8 +95,8 @@ impl AuthorDriverState {
     }
 
     /// Transition into Picking, boxing the prior state into `resume_to`
-    /// only when we came from SimulatorPaused (D-14). All other prior
-    /// states resolve back to LivePreview{stream_id} via `end_pick`.
+    /// only when we came from SimulatorPaused. All other prior states
+    /// resolve back to LivePreview{stream_id} via `end_pick`.
     pub fn begin_pick(&mut self, stream_id: StreamId) {
         let prior = std::mem::replace(self, AuthorDriverState::Idle);
         let resume_to = match &prior {
@@ -131,13 +131,13 @@ impl AuthorDriverState {
         }
     }
 
-    /// D-15 happy-path transition into `SimulatorRunning{session}`. The
-    /// caller MUST have validated with `can_start_simulator()` first
-    /// under the same lock scope. Returns the prior state so the caller
-    /// can stash it for later `end_simulator()` restore. Mirrors
-    /// `begin_pick`'s snapshot-and-swap shape but without the `resume_to`
-    /// box (simulator does not nest beneath Picking, so prior-state
-    /// capture lives at the caller in `commands/simulator.rs`).
+    /// Happy-path transition into `SimulatorRunning{session}`. The caller
+    /// MUST have validated with `can_start_simulator()` first under the
+    /// same lock scope. Returns the prior state so the caller can stash
+    /// it for later `end_simulator()` restore. Mirrors `begin_pick`'s
+    /// snapshot-and-swap shape but without the `resume_to` box
+    /// (simulator does not nest beneath Picking, so prior-state capture
+    /// lives at the caller in `commands/simulator.rs`).
     pub fn begin_simulator(&mut self, session: SimulatorSessionId) -> AuthorDriverState {
         std::mem::replace(self, AuthorDriverState::SimulatorRunning { session })
     }
@@ -171,26 +171,23 @@ impl AuthorDriverState {
     }
 }
 
-/// RAII resume-on-drop guard for picker flows. The caller constructs this
+/// RAII restore-on-drop guard for picker flows. The caller constructs this
 /// with the prior state after transitioning into Picking; on success the
 /// caller invokes `disarm()` and runs its own restoration. On error /
-/// panic / early-return the Drop impl restores the prior state and
-/// best-effort resumes the author-preview stream.
+/// panic / early-return the Drop impl restores the prior FSM state.
 pub struct PickerResumeGuard {
     registry: Arc<AuthorDriverRegistry>,
-    stream_id: StreamId,
     restore: std::sync::Mutex<Option<AuthorDriverState>>,
 }
 
 impl PickerResumeGuard {
     pub fn new(
         registry: Arc<AuthorDriverRegistry>,
-        stream_id: StreamId,
+        _stream_id: StreamId,
         restore: AuthorDriverState,
     ) -> Self {
         Self {
             registry,
-            stream_id,
             restore: std::sync::Mutex::new(Some(restore)),
         }
     }
@@ -207,19 +204,15 @@ impl Drop for PickerResumeGuard {
         let Some(state) = self.restore.lock().unwrap().take() else {
             return;
         };
-        // Pitfall 2: shutdown-safe. If no tokio runtime is current (shutdown
-        // tearing down the reactor), skip spawn — the OS reaps the process.
+        // Shutdown-safe: if no tokio runtime is current (shutdown tearing
+        // down the reactor), skip spawn — the OS reaps the process.
         let Ok(handle) = tokio::runtime::Handle::try_current() else {
             return;
         };
         let registry = self.registry.clone();
-        let _stream_id = self.stream_id.clone();
         handle.spawn(async move {
             let mut g = registry.state.lock().await;
             *g = state;
-            // TODO(11-03): call `crate::commands::automation::resume_author_preview(_stream_id)`
-            // once the picker_start_author command in 11-03 wires the registry; until then
-            // the guard only restores FSM state. Keep fire-and-forget semantics on that call.
         });
     }
 }

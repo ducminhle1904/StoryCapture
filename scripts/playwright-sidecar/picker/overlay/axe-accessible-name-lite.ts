@@ -86,11 +86,7 @@ function getInnerText(el: Element): string {
   return out;
 }
 
-function resolveLabelledBy(
-  doc: Document,
-  ids: string,
-  depth: number,
-): string {
+function resolveLabelledBy(doc: Document, ids: string, depth: number): string {
   if (depth >= MAX_LABELLEDBY_DEPTH) return "";
   const parts: string[] = [];
   for (const id of ids.split(/\s+/).filter(Boolean)) {
@@ -145,19 +141,27 @@ function cssEscape(s: string): string {
   return s.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
 }
 
+function normalizeAccname(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
 export function accessibleName(el: Element, depth = 0): string {
   if (!el) return "";
 
   // 1. aria-labelledby
   const labelledBy = el.getAttribute("aria-labelledby");
   if (labelledBy) {
-    const out = resolveLabelledBy(el.ownerDocument as Document, labelledBy, depth);
-    if (out) return out;
+    const out = resolveLabelledBy(
+      el.ownerDocument as Document,
+      labelledBy,
+      depth,
+    );
+    if (out) return normalizeAccname(out);
   }
 
   // 2. aria-label
   const ariaLabel = el.getAttribute("aria-label");
-  if (ariaLabel) return ariaLabel.trim();
+  if (ariaLabel) return normalizeAccname(ariaLabel);
 
   const tag = el.tagName.toUpperCase();
 
@@ -166,32 +170,32 @@ export function accessibleName(el: Element, depth = 0): string {
     const type = (el.getAttribute("type") || "text").toLowerCase();
     if (type === "submit" || type === "button" || type === "reset") {
       const value = el.getAttribute("value");
-      if (value) return value.trim();
+      if (value) return normalizeAccname(value);
     }
     // 3b. associated label
     const label = findAssociatedLabel(el);
-    if (label) return label;
+    if (label) return normalizeAccname(label);
     // 3c. placeholder fallback
     const placeholder = el.getAttribute("placeholder");
-    if (placeholder) return placeholder.trim();
+    if (placeholder) return normalizeAccname(placeholder);
     return "";
   }
 
   if (tag === "TEXTAREA" || tag === "SELECT") {
     const label = findAssociatedLabel(el);
-    if (label) return label;
+    if (label) return normalizeAccname(label);
     return "";
   }
 
   // 4. <img alt>
   if (tag === "IMG") {
     const alt = el.getAttribute("alt");
-    if (alt !== null) return alt.trim();
+    if (alt !== null) return normalizeAccname(alt);
     return "";
   }
 
   // 5. Inner text (button, link, heading, generic).
-  const inner = getInnerText(el).replace(/\s+/g, " ").trim();
+  const inner = normalizeAccname(getInnerText(el));
   if (inner) return inner;
 
   // 6. Shadow slot projection: if this element has slotted assignment,

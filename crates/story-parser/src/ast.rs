@@ -170,15 +170,15 @@ impl AriaRole {
         }
     }
 
-    // 21 enum variants; 22 keyword spellings (image/img alias — both map to Image
-    // per D-05 / RESEARCH Q5). The count asymmetry is intentional, not a bug.
+    // 21 enum variants; 22 keyword spellings (image/img alias — both map
+    // to Image). The count asymmetry is intentional, not a bug.
     // `KNOWN_ROLES` in suggest.rs mirrors the 22 spellings for did-you-mean.
     pub fn from_keyword(kw: &str) -> Option<Self> {
         Some(match kw {
             "button" => Self::Button,
             "link" => Self::Link,
             "heading" => Self::Heading,
-            // `image` and `img` both map to Image per D-05 / RESEARCH Q5
+            // `image` and `img` both map to Image
             "image" | "img" => Self::Image,
             "checkbox" => Self::Checkbox,
             "radio" => Self::Radio,
@@ -248,9 +248,9 @@ pub enum ScrollDir {
 
 /// Per-command line metadata — originally just source line/column.
 ///
-/// Phase 7 Tier 2 (plan 07-04b) adds `step_id: Option<Uuid>` carrying the
-/// parsed trailing `# @id=<uuidv7>` comment. Grammar extension is ADDITIVE;
-/// legacy lines parse with `step_id == None`.
+/// `step_id: Option<Uuid>` carries the parsed trailing `# @id=<uuidv7>`
+/// comment. Grammar extension is ADDITIVE; legacy lines parse with
+/// `step_id == None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -282,6 +282,9 @@ pub enum Command {
     },
     Click {
         target: SelectorOrText,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        target_nth: Option<u32>,
         span: Span,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
@@ -289,6 +292,9 @@ pub enum Command {
     },
     Type {
         target: SelectorOrText,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        target_nth: Option<u32>,
         text: String,
         span: Span,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -305,6 +311,9 @@ pub enum Command {
     },
     Hover {
         target: SelectorOrText,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        target_nth: Option<u32>,
         span: Span,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
@@ -312,7 +321,13 @@ pub enum Command {
     },
     Drag {
         from: SelectorOrText,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        from_nth: Option<u32>,
         to: SelectorOrText,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        to_nth: Option<u32>,
         span: Span,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]
@@ -320,6 +335,9 @@ pub enum Command {
     },
     Select {
         target: SelectorOrText,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        target_nth: Option<u32>,
         value: String,
         span: Span,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -328,6 +346,9 @@ pub enum Command {
     },
     Upload {
         target: SelectorOrText,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        target_nth: Option<u32>,
         path: String,
         span: Span,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -343,6 +364,9 @@ pub enum Command {
     },
     WaitFor {
         target: WaitForTarget,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        target_nth: Option<u32>,
         timeout_ms: Option<u64>,
         span: Span,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -351,6 +375,9 @@ pub enum Command {
     },
     Assert {
         target: AssertTarget,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts-export", ts(optional, type = "number"))]
+        target_nth: Option<u32>,
         span: Span,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "ts-export", ts(optional, type = "string"))]

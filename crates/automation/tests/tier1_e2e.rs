@@ -1,13 +1,13 @@
-//! Phase 7 Tier 1 — compile-only integration smoke.
+//! Tier 1 — compile-only integration smoke.
 //!
-//! SCOPE: This is a COMPILE-ONLY smoke test. The PHASE-7.3 end-to-end
-//! acceptance gate is owned by scripts/playwright-sidecar/server.test.mjs
-//! (vitest), which drives real Chromium against the HTML fixture. The
-//! purpose of this file is to prove the public API surface of
-//! story_parser + automation::selector + automation::playwright_driver
-//! integrates cleanly with the three new SelectorOrText variants — i.e.
-//! the crate types line up and the parser → selector → driver pipeline
-//! COMPILES against a mixed new/legacy `.story` fixture.
+//! SCOPE: This is a COMPILE-ONLY smoke test. The end-to-end acceptance gate
+//! is owned by scripts/playwright-sidecar/server.test.mjs (vitest), which
+//! drives real Chromium against the HTML fixture. The purpose of this file
+//! is to prove the public API surface of story_parser + automation::selector
+//! + automation::playwright_driver integrates cleanly with the three new
+//! SelectorOrText variants — i.e. the crate types line up and the parser →
+//! selector → driver pipeline COMPILES against a mixed new/legacy `.story`
+//! fixture.
 //!
 //! `cargo test -p automation --test tier1_e2e --no-run` is the acceptance
 //! gate. The `#[ignore]` live run (`--ignored`) is a developer-local
@@ -25,9 +25,9 @@ use story_parser::{Command, SelectorOrText, Severity};
 /// and reject any drift in the `SelectorOrText` / `SelectorStrategy` shapes.
 ///
 /// The test body intentionally does NOT spawn the Playwright sidecar or
-/// Chromium — that is the job of the vitest suite (PHASE-7.3 gate). A
-/// companion `#[ignore]` test below demonstrates the live-run entry point
-/// for developers who want to round-trip against a real browser locally.
+/// Chromium — that is the job of the vitest suite. A companion `#[ignore]`
+/// test below demonstrates the live-run entry point for developers who
+/// want to round-trip against a real browser locally.
 #[tokio::test]
 async fn tier1_new_and_legacy_forms_compile_against_smart_selector() {
     let story_src = std::fs::read_to_string("tests/fixtures/tier1.story")
@@ -57,10 +57,15 @@ async fn tier1_new_and_legacy_forms_compile_against_smart_selector() {
                 Command::Hover { target, .. } => (target, ActionKind::Hover),
                 _ => continue,
             };
-            let (resolved, attempts) =
-                SmartSelector::resolve_with_attempts(driver.as_ref(), action, target, 5_000)
-                    .await
-                    .unwrap_or_else(|e| panic!("resolve failed for {target:?}: {e:?}"));
+            let (resolved, attempts) = SmartSelector::resolve_with_attempts(
+                driver.as_ref(),
+                action,
+                target,
+                None,
+                5_000,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("resolve failed for {target:?}: {e:?}"));
 
             match target {
                 SelectorOrText::Role { .. } => {
@@ -101,9 +106,9 @@ async fn tier1_new_and_legacy_forms_compile_against_smart_selector() {
 
 /// Developer-local convenience: spawn the Playwright sidecar against
 /// `tests/fixtures/tier1.html` and drive every command through a real
-/// browser. Marked `#[ignore]` so it stays out of CI — the PHASE-7.3
-/// acceptance gate is the vitest suite (scripts/playwright-sidecar/
-/// server.test.mjs), which covers the same surface in Node.
+/// browser. Marked `#[ignore]` so it stays out of CI — the live gate is
+/// the vitest suite (scripts/playwright-sidecar/server.test.mjs), which
+/// covers the same surface in Node.
 #[tokio::test]
 #[ignore = "compile-only smoke; live run requires Chromium — vitest owns PHASE-7.3"]
 async fn tier1_live_run_against_real_chromium() {

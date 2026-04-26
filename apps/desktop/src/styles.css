@@ -4,13 +4,12 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
-/* Canonical Claude Design tokens + primitive CSS (D-01, D-04). */
+/* Canonical Claude Design tokens + primitive CSS. */
 @import "@storycapture/ui/claude-design/tokens.css";
 @import "@storycapture/ui/claude-design/app.css";
 
 /* TRANSITIONAL alias layer — maps legacy --color-* onto --sc-* for
-   existing routes/features not yet ported to sc-* directly. Deleted
-   in Phase 14 Wave 5 cleanup. */
+   existing routes/features not yet ported to sc-* directly. */
 @import "@storycapture/ui/tokens.css";
 
 :root {
@@ -35,7 +34,7 @@ body {
   min-height: 100vh;
 }
 
-/* Legacy font utilities — collapsed onto Inter + JetBrains Mono (D-11). */
+/* Legacy font utilities — collapsed onto Inter + JetBrains Mono. */
 .font-serif {
   font-family: var(--sc-font-ui);
 }
@@ -102,7 +101,7 @@ select {
   line-height: 1.35;
 }
 
-/* Skip-link for keyboard users (WCAG 2.1 AA — UI-10). */
+/* Skip-link for keyboard users (WCAG 2.1 AA). */
 .skip-link {
   position: absolute;
   left: -9999px;

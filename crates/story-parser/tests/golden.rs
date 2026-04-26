@@ -148,7 +148,7 @@ fn click_target_text_extracted() {
     }
 }
 
-// -------- Phase 7 Tier 1 golden fixtures --------
+// -------- Tier 1 golden fixtures --------
 
 #[test]
 fn tier1_new_forms_fixture_parses_clean_with_expected_variants() {
@@ -174,9 +174,13 @@ fn tier1_new_forms_fixture_parses_clean_with_expected_variants() {
                 c,
                 Command::Click {
                     target: SelectorOrText::Role { .. },
+
+                    target_nth: None,
                     ..
                 } | Command::Hover {
                     target: SelectorOrText::Role { .. },
+
+                    target_nth: None,
                     ..
                 }
             )
@@ -189,6 +193,8 @@ fn tier1_new_forms_fixture_parses_clean_with_expected_variants() {
                 c,
                 Command::Type {
                     target: SelectorOrText::Label(_),
+
+                    target_nth: None,
                     ..
                 }
             )
@@ -201,6 +207,8 @@ fn tier1_new_forms_fixture_parses_clean_with_expected_variants() {
                 c,
                 Command::Click {
                     target: SelectorOrText::TextExact(_),
+
+                    target_nth: None,
                     ..
                 }
             )
@@ -225,6 +233,8 @@ fn tier1_new_forms_fixture_parses_clean_with_expected_variants() {
             c,
             Command::Click {
                 target: SelectorOrText::Role { role: AriaRole::Image, name },
+
+                target_nth: None,
                 ..
             } if name == "Hero"
         )

@@ -1,4 +1,4 @@
-//! Layer 2 of the two-layer parse (D-08): take the lenient token stream,
+//! Layer 2 of the two-layer parse: take the lenient token stream,
 //! validate semantic constraints, emit structured diagnostics, and
 //! produce the typed `Story` AST.
 
@@ -6,9 +6,44 @@ use crate::ast::{
     AriaRole, Command, Meta, Scene, ScrollDir, SelectorOrText, Span, Story, Theme, Viewport,
 };
 use crate::diagnostic::Diagnostic;
-use crate::lenient_tokenize::{LenientToken, MetaEntry, MetaRawValue, ParsedCommand, RawTarget};
+use crate::lenient_tokenize::{
+    LenientToken, MetaEntry, MetaRawValue, ParsedCommand, RawNth, RawTarget,
+};
 use crate::suggest::{did_you_mean, KNOWN_META_KEYS, KNOWN_ROLES, KNOWN_VERBS};
 use uuid::Uuid;
+
+/// Suspiciously large nth threshold. Locating the 100th match is virtually
+/// always a typo (`nth 99` vs `nth 9`). Warning is informational; the value
+/// still flows through to the AST so the user can override intentionally.
+const NTH_LARGE_THRESHOLD: u32 = 100;
+
+/// Validate a raw `nth N` modifier from layer 1.
+/// - `nth 0` is invalid (DSL is 1-indexed) — emits a warning AND returns None
+///   so the executor never calls Playwright's `.nth(-1)`. This preserves the
+///   pre-Phase-F behavior of `nth 0` collapsing to None.
+/// - `nth N` with N > 100 emits an informational warning but the value flows
+///   through unchanged.
+/// - Otherwise returns `Some(N)` with no diagnostic.
+fn validate_nth(raw: Option<RawNth>, diagnostics: &mut Vec<Diagnostic>) -> Option<u32> {
+    let r = raw?;
+    if r.value == 0 {
+        diagnostics.push(Diagnostic::warning(
+            "nth is 1-indexed; `nth 0` is invalid and was ignored (use `nth 1` for the first match)",
+            r.span,
+        ));
+        return None;
+    }
+    if r.value > NTH_LARGE_THRESHOLD {
+        diagnostics.push(Diagnostic::warning(
+            format!(
+                "nth {} is unusually large — likely a typo (Playwright locators rarely have that many matches)",
+                r.value
+            ),
+            r.span,
+        ));
+    }
+    Some(r.value)
+}
 
 pub fn validate(tokens: Vec<LenientToken>, _source: &str) -> (Story, Vec<Diagnostic>) {
     let mut story = Story::default();
@@ -235,13 +270,19 @@ fn build_command(
             }
             Command::Navigate { url, span, step_id }
         }
-        ParsedCommand::Click { target } => Command::Click {
+        ParsedCommand::Click { target, target_nth } => Command::Click {
             target: to_target(target, span, &mut diagnostics),
+            target_nth: validate_nth(target_nth, &mut diagnostics),
             span,
             step_id,
         },
-        ParsedCommand::Type { target, text } => Command::Type {
+        ParsedCommand::Type {
+            target,
+            target_nth,
+            text,
+        } => Command::Type {
             target: to_target(target, span, &mut diagnostics),
+            target_nth: validate_nth(target_nth, &mut diagnostics),
             text,
             span,
             step_id,
@@ -252,25 +293,43 @@ fn build_command(
             span,
             step_id,
         },
-        ParsedCommand::Hover { target } => Command::Hover {
+        ParsedCommand::Hover { target, target_nth } => Command::Hover {
             target: to_target(target, span, &mut diagnostics),
+            target_nth: validate_nth(target_nth, &mut diagnostics),
             span,
             step_id,
         },
-        ParsedCommand::Drag { from, to } => Command::Drag {
+        ParsedCommand::Drag {
+            from,
+            from_nth,
+            to,
+            to_nth,
+        } => Command::Drag {
             from: to_target(from, span, &mut diagnostics),
+            from_nth: validate_nth(from_nth, &mut diagnostics),
             to: to_target(to, span, &mut diagnostics),
+            to_nth: validate_nth(to_nth, &mut diagnostics),
             span,
             step_id,
         },
-        ParsedCommand::Select { target, value } => Command::Select {
+        ParsedCommand::Select {
+            target,
+            target_nth,
+            value,
+        } => Command::Select {
             target: to_target(target, span, &mut diagnostics),
+            target_nth: validate_nth(target_nth, &mut diagnostics),
             value,
             span,
             step_id,
         },
-        ParsedCommand::Upload { target, path } => Command::Upload {
+        ParsedCommand::Upload {
+            target,
+            target_nth,
+            path,
+        } => Command::Upload {
             target: to_target(target, span, &mut diagnostics),
+            target_nth: validate_nth(target_nth, &mut diagnostics),
             path,
             span,
             step_id,
@@ -280,14 +339,20 @@ fn build_command(
             span,
             step_id,
         },
-        ParsedCommand::WaitFor { target, timeout_ms } => Command::WaitFor {
+        ParsedCommand::WaitFor {
+            target,
+            target_nth,
+            timeout_ms,
+        } => Command::WaitFor {
             target: to_target(target, span, &mut diagnostics),
+            target_nth: validate_nth(target_nth, &mut diagnostics),
             timeout_ms,
             span,
             step_id,
         },
-        ParsedCommand::Assert { target } => Command::Assert {
+        ParsedCommand::Assert { target, target_nth } => Command::Assert {
             target: to_target(target, span, &mut diagnostics),
+            target_nth: validate_nth(target_nth, &mut diagnostics),
             span,
             step_id,
         },
@@ -320,10 +385,10 @@ fn to_target(t: RawTarget, span: Span, diagnostics: &mut Vec<Diagnostic>) -> Sel
         RawTarget::Label(s) => SelectorOrText::Label(s),
         RawTarget::TextExact(s) => SelectorOrText::TextExact(s),
         RawTarget::Role { role, name } => {
-            // DRIFT GUARD — see Phase 7 CONTEXT D-07.
-            // Because `role_kw` in grammar.pest is a closed atomic rule, reaching
-            // this `None` branch means grammar.pest and `AriaRole::from_keyword`
-            // have drifted apart. `KNOWN_ROLES` mirrors the grammar keyword list.
+            // DRIFT GUARD: because `role_kw` in grammar.pest is a closed
+            // atomic rule, reaching this `None` branch means grammar.pest
+            // and `AriaRole::from_keyword` have drifted apart.
+            // `KNOWN_ROLES` mirrors the grammar keyword list.
             match AriaRole::from_keyword(&role) {
                 Some(aria_role) => SelectorOrText::Role {
                     role: aria_role,

@@ -54,10 +54,10 @@ impl BrowserDriver for StubDriver {
     async fn wait_ms(&self, _: u64) -> automation::Result<()> {
         Ok(())
     }
-    async fn wait_for(&self, _: &SelectorOrText, _: u64) -> automation::Result<()> {
+    async fn wait_for(&self, _: &SelectorOrText, _nth: Option<u32>, _: u64) -> automation::Result<()> {
         Ok(())
     }
-    async fn assert_present(&self, _: &SelectorOrText) -> automation::Result<()> {
+    async fn assert_present(&self, _: &SelectorOrText, _nth: Option<u32>) -> automation::Result<()> {
         Ok(())
     }
     async fn screenshot(&self, _: &str, _: &Path) -> automation::Result<PathBuf> {
@@ -93,6 +93,8 @@ impl BrowserDriver for StubDriver {
 fn capability_routing_upload() {
     let cmd = story_parser::Command::Upload {
         target: SelectorOrText::Selector("#f".into()),
+
+        target_nth: None,
         path: "/tmp/x".into(),
         span: Span::empty(),
         step_id: None,
@@ -104,6 +106,8 @@ fn capability_routing_upload() {
 fn capability_routing_plain_click_is_none() {
     let cmd = story_parser::Command::Click {
         target: SelectorOrText::Text("Save".into()),
+
+        target_nth: None,
         span: Span::empty(),
         step_id: None,
     };
@@ -114,6 +118,8 @@ fn capability_routing_plain_click_is_none() {
 fn capability_routing_shadow_dom_click() {
     let cmd = story_parser::Command::Click {
         target: SelectorOrText::Selector("div#host::shadow button".into()),
+
+        target_nth: None,
         span: Span::empty(),
         step_id: None,
     };
@@ -127,6 +133,8 @@ fn capability_routing_shadow_dom_click() {
 fn capability_routing_wait_for_download() {
     let cmd = story_parser::Command::WaitFor {
         target: SelectorOrText::Text("download:report.pdf".into()),
+
+        target_nth: None,
         timeout_ms: Some(5_000),
         span: Span::empty(),
         step_id: None,
@@ -138,6 +146,8 @@ fn capability_routing_wait_for_download() {
 fn capability_routing_oauth_popup_click() {
     let cmd = story_parser::Command::Click {
         target: SelectorOrText::Text("oauth:Sign in with Google".into()),
+
+        target_nth: None,
         span: Span::empty(),
         step_id: None,
     };
@@ -151,7 +161,7 @@ async fn explicit_css_selector_resolves_strict() {
     let driver = StubDriver;
     let target = SelectorOrText::Selector("#save".into());
     let (sel, attempts) =
-        SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, 1_000)
+        SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, None, 1_000)
             .await
             .unwrap();
     assert_eq!(sel.strategy, SelectorStrategy::Css);
@@ -164,7 +174,7 @@ async fn explicit_css_selector_resolves_strict() {
 async fn explicit_testid_does_not_fall_back() {
     let driver = StubDriver;
     let target = SelectorOrText::TestId("missing".into());
-    let (sel, _) = SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, 1_000)
+    let (sel, _) = SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, None, 1_000)
         .await
         .unwrap();
     // Strict — never collapses into a CSS / text strategy.
@@ -176,7 +186,7 @@ async fn explicit_testid_does_not_fall_back() {
 async fn explicit_aria_resolves_strict() {
     let driver = StubDriver;
     let target = SelectorOrText::Aria("Sign in".into());
-    let (sel, _) = SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, 1_000)
+    let (sel, _) = SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, None, 1_000)
         .await
         .unwrap();
     assert_eq!(sel.strategy, SelectorStrategy::Aria);
@@ -188,7 +198,7 @@ async fn text_target_for_type_prefers_label_assoc_over_visible_text() {
     let driver = StubDriver;
     let target = SelectorOrText::Text("Email".into());
     let (sel, attempts) =
-        SmartSelector::resolve_with_attempts(&driver, ActionKind::Type, &target, 1_000)
+        SmartSelector::resolve_with_attempts(&driver, ActionKind::Type, &target, None, 1_000)
             .await
             .unwrap();
     // For Type action: the top-scored strategy is AccessibleName (1.0) by
@@ -213,7 +223,7 @@ async fn text_target_logs_every_attempt() {
     let driver = StubDriver;
     let target = SelectorOrText::Text("Save".into());
     let (_sel, attempts) =
-        SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, 1_000)
+        SmartSelector::resolve_with_attempts(&driver, ActionKind::Click, &target, None, 1_000)
             .await
             .unwrap();
     // 4 strategies tried for Click (accessible-name, visible-text,
