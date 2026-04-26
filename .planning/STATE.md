@@ -140,6 +140,7 @@ currently blocking post-v1 work. All six verification items above are operator-g
 | 260418-gkg | Recording engine quick fixes: drop Chromium sentinel, panic guard on frame-pump, export drop counts | 2026-04-18 | 1fe6fe8 | [260418-gkg-recording-engine-quick-fixes-drop-chromi](./quick/260418-gkg-recording-engine-quick-fixes-drop-chromi/) |
 | 260418-ios | Fix focus-steal during recording: re-focus main window after Playwright launch + start_recording | 2026-04-18 | 9fad310 | [260418-ios-fix-focus-steal-during-recording-so-play](./quick/260418-ios-fix-focus-steal-during-recording-so-play/) |
 | 260421-t83 | Recording playback in Editor Preview pane — `list_project_recordings` IPC + scrubbable `<video>` + live status strip | 2026-04-21 | f902ec7 | [260421-t83-recording-playback-in-editor-preview-pan](./quick/260421-t83-recording-playback-in-editor-preview-pan/) |
+| 260426-icon | Restore app icon optical padding to fix oversized macOS Dock active icon | 2026-04-26 | 0608fdf | n/a |
 | Phase 14 P01 | 25m | 3 tasks | 23 files |
 | Phase 14 P03 | 20m | 3 tasks | 4 files |
 | Phase 14 P04 | 35m | 3 tasks | 7 files |
