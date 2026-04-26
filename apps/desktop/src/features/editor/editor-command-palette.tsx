@@ -1,4 +1,5 @@
 import { toggleLineComment } from "@codemirror/commands";
+import { openSearchPanel } from "@codemirror/search";
 import { ScKbd } from "@storycapture/ui";
 import { Command } from "cmdk";
 import {
@@ -224,6 +225,20 @@ export function EditorCommandPalette({
         when: () => editorController.getView() != null && !simRunning,
         run: () => {
           formatDoc();
+          close();
+        },
+      },
+      {
+        id: "edit-find",
+        label: "Find / Replace…",
+        group: "Edit",
+        icon: <Search size={13} />,
+        kbd: "⌘F",
+        when: () => editorController.getView() != null,
+        run: () => {
+          const view = editorController.getView();
+          if (!view) return;
+          openSearchPanel(view);
           close();
         },
       },

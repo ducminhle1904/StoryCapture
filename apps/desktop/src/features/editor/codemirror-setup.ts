@@ -8,6 +8,7 @@
 
 import { toggleLineComment } from "@codemirror/commands";
 import { indentUnit } from "@codemirror/language";
+import { search } from "@codemirror/search";
 import type { Extension } from "@codemirror/state";
 import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -64,6 +65,7 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
     simulatorFailedStepHover,
     simulatorDecorationTheme,
     ...(simulatorCtx ? [createSimulatorKeymap(simulatorCtx)] : []),
+    search({ top: true }),
     pickKeymap,
     commentKeymap,
     indentUnit.of("  "),
@@ -110,6 +112,26 @@ export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Ex
         backgroundColor: "var(--sc-surface-2)",
         borderColor: "var(--sc-border)",
         color: "var(--sc-text)",
+      },
+      ".cm-search.cm-panel": {
+        padding: "6px 8px",
+        borderBottom: "1px solid var(--sc-border-2)",
+      },
+      ".cm-search.cm-panel input, .cm-search.cm-panel button": {
+        backgroundColor: "var(--sc-surface)",
+        color: "var(--sc-text)",
+        border: "1px solid var(--sc-border-2)",
+        borderRadius: "var(--sc-r-md)",
+        padding: "2px 6px",
+        fontFamily: "var(--sc-font-mono)",
+        fontSize: "12px",
+      },
+      ".cm-search.cm-panel button:hover": {
+        backgroundColor: "var(--sc-hover)",
+      },
+      ".cm-search.cm-panel label": {
+        color: "var(--sc-text-3)",
+        fontSize: "11px",
       },
       ".cm-searchMatch": {
         backgroundColor: "color-mix(in oklch, var(--sc-warn) 24%, transparent)",
