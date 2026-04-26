@@ -10,8 +10,8 @@
 //! | `tts_gc_cache`       | Garbage-collect cache entries older than 7 days  |
 //!
 //! Security:
-//! - T-03-11-01: step_id sanitized via `cache::sanitize_step_id` before path construction.
-//! - T-03-11-04: API key read from keychain per call, never logged via `#[instrument(skip)]`.
+//! - step_id sanitized via `cache::sanitize_step_id` before path construction.
+//! - API key read from keychain per call, never logged via `#[instrument(skip)]`.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -209,7 +209,7 @@ async fn tts_generate_inner(
     model: String,
     force: bool,
 ) -> Result<TtsGenerateResult, TtsCommandError> {
-    // T-03-07-01 pattern: validate project_id as UUID
+    // Validate project_id as UUID.
     let _pid = Uuid::parse_str(&project_id).map_err(|_| TtsCommandError::InvalidProject)?;
 
     let app_state = app.state::<AppState>();
@@ -544,12 +544,11 @@ pub struct SyncPlanDto {
 }
 
 /// Compute a TTS voiceover-to-timeline sync plan and emit duck events
-/// to the sound mixer (Phase 2 D-22 slot).
+/// to the sound mixer.
 ///
-/// This command accepts step timings directly (Phase 2 effects AST
-/// integration is deferred — when Phase 2 is fully merged, this will
-/// load step timings from the project's effects AST instead of
-/// requiring them as a parameter).
+/// This command accepts step timings directly (effects AST integration
+/// is deferred — once it lands, this will load step timings from the
+/// project's effects AST instead of requiring them as a parameter).
 ///
 /// Flow:
 /// 1. Load ClipMeta by scanning tts_cache_index + probing audio durations.
@@ -607,7 +606,7 @@ pub async fn tts_apply_sync(
     // Compute sync plan.
     let plan = intelligence::tts::sync::compute_sync_plan(&steps, &clip_metas);
 
-    // Emit duck_events to the sound mixer actor (Phase 2 D-22 slot).
+    // Emit duck_events to the sound mixer actor.
     let duck_dtos: Vec<DuckEventDto> = plan
         .duck_events
         .iter()
@@ -671,9 +670,8 @@ pub async fn tts_apply_sync(
 
 /// Step timing DTO for the `tts_apply_sync` command.
 ///
-/// Phase 2 hand-off note: when Phase 2 effects AST is fully merged,
-/// this parameter can be replaced by loading step timings from the
-/// project's effects AST directly.
+/// When the effects AST integration lands, this parameter can be replaced
+/// by loading step timings from the project's effects AST directly.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct StepTimingDto {
     pub step_id: String,

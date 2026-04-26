@@ -1,7 +1,6 @@
 /**
- * `useUndoRedo` (Plan 02-13).
- *
- * Reactive bindings for the undo slice + keyboard shortcuts.
+ * `useUndoRedo` — reactive bindings for the undo slice + keyboard
+ * shortcuts.
  *
  *   Cmd/Ctrl+Z       → undo
  *   Cmd/Ctrl+Shift+Z → redo (macOS convention)
@@ -10,10 +9,6 @@
  * The `mod+` alias in react-hotkeys-hook resolves to Cmd on macOS and
  * Ctrl on Windows/Linux, so `mod+z` covers both platforms' undo keys
  * with a single registration.
- *
- * Components can read `canUndo` / `canRedo` to disable their toolbar
- * buttons. Pointer-driven undo (menu button click) calls `undo()` /
- * `redo()` directly; the hook exposes them alongside the booleans.
  */
 
 import { useHotkeys } from "react-hotkeys-hook";

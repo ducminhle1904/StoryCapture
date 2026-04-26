@@ -1,4 +1,4 @@
-//! Plan 05-02 Task 0 / Task 2 — integration tests for `find_window_by_pid`.
+//! Integration tests for `find_window_by_pid`.
 //!
 //! Feature-gated `real-capture` because SCShareableContent requires a
 //! Screen Recording TCC grant + a live display. Tests are `#[ignore]`-marked

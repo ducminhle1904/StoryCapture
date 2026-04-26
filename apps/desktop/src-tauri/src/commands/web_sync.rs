@@ -8,8 +8,8 @@
 //! | `get_sync_status`        | `Result<SyncStatusDto, WebSyncError>`  | Current sync state                       |
 //!
 //! **Threat mitigations:**
-//! - T-04-30: JWT auth on all web API calls
-//! - T-04-31: Desktop is source of truth; last-write-wins
+//! - JWT auth on all web API calls
+//! - Desktop is source of truth; last-write-wins
 
 use serde::{Deserialize, Serialize};
 use specta::Type;

@@ -1,7 +1,7 @@
 /**
- * Phase 13 D-13-09 pad-color knob.
- * ToggleGroup over {black, white, custom}; Custom reveals a ColorField.
- * hex↔rgb helpers are colocated pure functions — kept out of bitrate.ts.
+ * Pad-color knob. ToggleGroup over {black, white, custom}; Custom reveals
+ * a ColorField. hex↔rgb helpers are colocated pure functions — kept out
+ * of bitrate.ts.
  */
 
 import type { PadColorDto } from "@storycapture/shared-types";

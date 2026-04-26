@@ -1,19 +1,18 @@
 /**
- * Browser-preset helpers — Plan 06-02.
- *
- * Single source of truth for "is this preset Chromium-family?" — the
- * flag that gates chrome-hiding (`--app=`) availability per D-11.
+ * Browser-preset helpers. Single source of truth for "is this preset
+ * Chromium-family?" — the flag that gates chrome-hiding (`--app=`)
+ * availability.
  *
  * Preset label strings intentionally stay loose (case-insensitive match)
  * so a future Settings UI can accept user-typed values without breaking
  * the gating logic.
  *
- * Backlog #9: the preset id set and basename fragments are sourced from
+ * The preset id set and basename fragments are sourced from
  * `@storycapture/shared-types` (canonical
  * `packages/shared-types/browser-presets.json`). Rust and TS share the
- * same JSON. This module stays as a thin adapter so `isChromiumFamily`
- * and `CHROMIUM_PRESETS` callers (e.g. ChromeHidingToggle.tsx) do not
- * need to change their imports.
+ * same JSON. This module is a thin adapter so `isChromiumFamily` and
+ * `CHROMIUM_PRESETS` callers (e.g. ChromeHidingToggle.tsx) do not need
+ * to change their imports.
  */
 import {
   BROWSER_PRESETS,

@@ -1,5 +1,5 @@
 /**
- * Tests for TauriLspTransport (Plan 03-14, Task 2).
+ * Tests for TauriLspTransport.
  *
  * Mocks `@tauri-apps/api/core` to simulate the Tauri IPC layer.
  */

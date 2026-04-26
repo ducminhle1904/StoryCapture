@@ -1,18 +1,18 @@
-//! Per-encoder quality preset → FFmpeg argv resolver (Phase 12 / D-12-04).
+//! Per-encoder quality preset → FFmpeg argv resolver.
 //!
 //! `resolve(preset, encoder, output_w, output_h)` returns the rate-control +
 //! speed-preset flags specific to each encoder. Caller concatenates these
 //! with `-c:v`, `-pix_fmt`, `-vf`, and audio flags.
 //!
-//! Bitrate math uses integer `u64` saturating arithmetic; float factors in
-//! the D-12-04 table (0.75, 1.25, 1.5, 1.75, 2.0) are expressed as
-//! `numer/denom` pairs via `kbps_scaled`.
+//! Bitrate math uses integer `u64` saturating arithmetic; float factors
+//! (0.75, 1.25, 1.5, 1.75, 2.0) are expressed as `numer/denom` pairs via
+//! `kbps_scaled`.
 
 use crate::filters::QualityPreset;
 use crate::probe::HardwareEncoder;
 
-/// Per-encoder bitrate ceiling (D-12-08). Moved from the old global 40 Mbps
-/// cap — still enforced here inside the resolver.
+/// Per-encoder bitrate ceiling. The 40 Mbps cap is enforced here inside
+/// the resolver.
 const MAX_KBPS: u32 = 40_000;
 
 /// Pixel-based target bitrate in kbps, clamped to `MAX_KBPS`.
@@ -57,11 +57,11 @@ pub fn resolve(
             QualityPreset::Lossless => vec_of!["-crf", "15", "-preset", "slow", "-tune", "stillimage"],
         },
         HardwareEncoder::VideoToolboxH264 | HardwareEncoder::VideoToolboxHevc => {
-            // Phase 18 fix: `-q:v` on h264_videotoolbox is a quality *ceiling*;
-            // for easily-compressible screen content it massively undershoots
-            // the maxrate (observed 999 kb/s with `-q:v 82 -maxrate 12348k`).
-            // Switch to true VBR target mode via `-b:v` so average bitrate
-            // actually lands near the pixel-based target.
+            // `-q:v` on h264_videotoolbox is a quality *ceiling*; for
+            // easily-compressible screen content it massively undershoots
+            // the maxrate (observed 999 kb/s with `-q:v 82 -maxrate
+            // 12348k`). Use true VBR target mode via `-b:v` so average
+            // bitrate actually lands near the pixel-based target.
             let b = pixel_based_kbps(output_w, output_h, fps);
             match preset {
                 QualityPreset::Low => vec![
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn videotoolbox_med_1080p_30fps_emits_b_v_vbr() {
         let got = resolve(QualityPreset::Med, HardwareEncoder::VideoToolboxH264, 1920, 1080, 30);
-        // Phase 18: VBR target mode — -b:v, not -q:v.
+        // VBR target mode — -b:v, not -q:v.
         assert_eq!(
             got,
             vec!["-b:v", "10368k", "-maxrate", "12960k", "-bufsize", "20736k"]

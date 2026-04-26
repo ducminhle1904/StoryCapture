@@ -23,7 +23,7 @@ function fromResoKey(k: ResoKey): OutputResolutionDto {
   return { kind: k };
 }
 
-// Wired where it maps to Phase 13 output-prefs; placeholder for fields outside that store.
+// Wired where it maps to output-prefs; placeholder for fields outside that store.
 export function RenderCategory() {
   const recordingKnobs = useOutputPrefsStore((s) => s.recordingKnobs);
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);

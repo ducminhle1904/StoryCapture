@@ -1,4 +1,4 @@
-//! Background compositor integration tests (POST-04 / Plan 07 Task 2).
+//! Background compositor integration tests.
 //!
 //! Builds a Graph with a Background node covering:
 //!   - gradient preset kind

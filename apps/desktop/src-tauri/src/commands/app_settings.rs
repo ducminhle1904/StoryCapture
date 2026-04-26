@@ -1,4 +1,4 @@
-//! Lightweight JSON-backed app settings (Phase 1 browser-picker).
+//! Lightweight JSON-backed app settings.
 //!
 //! Stored at `{app_config_dir}/app_settings.json`. Intentionally not using
 //! `tauri-plugin-store` — this is a single small struct and avoiding the
@@ -82,17 +82,15 @@ pub struct AppSettings {
     /// Absolute path to a Chromium-family browser executable. When unset,
     /// chromiumoxide auto-detects Google Chrome on the default install path.
     pub browser_executable: Option<String>,
-    /// Last-chosen capture target for stickiness (Plan 05-01, D-01).
-    /// First-run default: None → UI translates to "Playwright auto" greyed
-    /// out until a story launches.
+    /// Last-chosen capture target for stickiness. First-run default: None
+    /// → UI translates to "Playwright auto" greyed out until a story launches.
     ///
     /// Note: not exposed via specta::Type — the full `CaptureTarget` type
     /// lives in the `capture` crate and flows over IPC separately via
     /// get_capture_target / set_capture_target in commands/capture.rs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capture_target: Option<capture::CaptureTarget>,
-    /// Phase 09-02 — persisted Options toggle for the in-recorder live
-    /// preview pane. Default `true` (D-11).
+    /// Persisted Options toggle for the in-recorder live preview pane.
     pub live_preview_enabled: bool,
     /// User-configurable file logging policy.
     pub log: LogConfig,
@@ -110,8 +108,8 @@ impl Default for AppSettings {
 }
 
 // Specta-visible DTO exposed to the frontend — mirrors the persisted
-// fields that the frontend cares about (the capture_target is exposed
-// through dedicated get/set commands).
+// fields that the frontend cares about (capture_target uses dedicated get/set
+// commands).
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct AppSettingsDto {

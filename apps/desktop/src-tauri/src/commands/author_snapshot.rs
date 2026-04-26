@@ -253,8 +253,8 @@ pub async fn author_snapshot_list(
 /// projects the Rust-side `ValidationResult` onto the wire DTO.
 ///
 /// `target` is a typed mirror of `story_parser::SelectorOrText` —
-/// see `commands::parse::SelectorOrTextDto` (carries Tier 1 `Role`
-/// with structured `{ role, name }` fields rather than a packed string).
+/// see `commands::parse::SelectorOrTextDto` (carries `Role` with
+/// structured `{ role, name }` fields rather than a packed string).
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_validate"), err(Debug))]

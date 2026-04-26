@@ -1,5 +1,5 @@
 /**
- * Capture IPC wrappers (Plan 01-07 + Plan 05-01 commands). See
+ * Capture IPC wrappers. See
  * `apps/desktop/src-tauri/src/commands/capture.rs`.
  */
 
@@ -45,7 +45,7 @@ export function relaunchApp(): Promise<void> {
   return invoke<void>("relaunch_app");
 }
 
-// ─── Plan 05-01: window-targeted capture ──────────────────────────────
+// ─── Window-targeted capture ──────────────────────────────────────────
 
 export interface WindowInfo {
   window_id: bigint | number;
@@ -60,7 +60,7 @@ export interface WindowInfo {
   is_on_screen: boolean;
 }
 
-/** Plan 06-02 — logical-point rect over a specific display. */
+/** Logical-point rect over a specific display. */
 export interface RegionRect {
   x: number;
   y: number;
@@ -108,8 +108,8 @@ export interface StartCaptureTargetArgs {
   queue_cap_bytes?: number;
 }
 
-/** Plan 05-01: target-aware start_capture. `Channel` carries capture
- *  events (Started / BackendFailed / WindowCaptureFellBack / etc.) and
+/** Target-aware start_capture. `Channel` carries capture events
+ *  (Started / BackendFailed / WindowCaptureFellBack / etc.) and
  *  per-frame metadata. */
 export async function startCaptureTarget(
   args: StartCaptureTargetArgs,
@@ -142,15 +142,15 @@ export function captureTargetKey(t: CaptureTarget): string {
 }
 
 /** The Playwright-auto sentinel. The Rust `start_capture_target` command
- *  rewrites the pid from the host-side Playwright stash at call time
- *  (T-05-02-01 — renderer never supplies a pid directly). */
+ *  rewrites the pid from the host-side Playwright stash at call time —
+ *  the renderer never supplies a pid directly. */
 export const PLAYWRIGHT_AUTO_TARGET: CaptureTarget = {
   kind: "window_by_pid",
   pid: -1,
   title_hint: "storycapture-playwright",
 };
 
-// ─── Plan 05-02: Playwright auto-target resolution ────────────────────
+// ─── Playwright auto-target resolution ────────────────────────────────
 
 export interface ResolvedPlaywrightTarget {
   window_id: bigint | number;
@@ -174,7 +174,7 @@ export function isStageManagerEnabled(): Promise<boolean> {
   return invoke<boolean>("is_stage_manager_enabled");
 }
 
-// ─── Plan 06-03 — one-shot recorder-preview thumbnail ─────────────────
+// ─── One-shot recorder-preview thumbnail ──────────────────────────────
 
 /**
  * Ask the host for a single thumbnail of the capture target. Returns
@@ -196,7 +196,7 @@ export function captureTargetThumbnail(
   });
 }
 
-// ─── Plan 06-02 — Region selection overlay ────────────────────────────
+// ─── Region selection overlay ─────────────────────────────────────────
 
 /** Open the transparent, fullscreen, always-on-top region-selection
  *  overlay on the requested display. The overlay emits a `region://selected`

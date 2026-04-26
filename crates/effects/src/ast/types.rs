@@ -10,9 +10,9 @@ use uuid::Uuid;
 #[cfg(feature = "ts-export")]
 use ts_rs::TS;
 
-/// Schema version for the Graph AST (matches Phase 1 D-28 project.sqlite v2).
-/// Bumped on breaking AST changes; older presets are migrated by the
-/// `.scpreset` loader (Plan 03).
+/// Schema version for the Graph AST (matches project.sqlite v2). Bumped
+/// on breaking AST changes; older presets are migrated by the `.scpreset`
+/// loader.
 pub const SCHEMA_VERSION: u32 = 2;
 
 /// A stable, globally-unique identifier for an AST node.
@@ -131,8 +131,8 @@ impl Duration {
     }
 }
 
-/// Easing functions for keyframe interpolation. Details live in Plan 05;
-/// we only need the variants reachable from the AST here.
+/// Easing functions for keyframe interpolation. We only need the variants
+/// reachable from the AST here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -149,10 +149,10 @@ pub enum EasingKind {
     EaseOut,
     EaseInOut,
     /// Cinematic cubic ease-in-out used by the zoom planner's pan/scale
-    /// samplers (Plan 05). Previously lived in `math::ease::EasingKind`;
-    /// consolidated here so presets, runtime samplers, and the TypeScript
-    /// export all reference a single enum.
+    /// samplers. Previously lived in `math::ease::EasingKind`; consolidated
+    /// here so presets, runtime samplers, and the TypeScript export all
+    /// reference a single enum.
     EaseInOutCubic,
-    /// Quadratic ease-out used for cursor-final-position nudges (Plan 06).
+    /// Quadratic ease-out used for cursor-final-position nudges.
     EaseOutQuad,
 }

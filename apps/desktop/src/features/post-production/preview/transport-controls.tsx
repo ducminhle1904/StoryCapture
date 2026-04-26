@@ -1,9 +1,8 @@
 /**
- * Transport controls (Plan 02-12b).
- *
- * Minimal play/pause + jump buttons. The real play-tick loop lives in
- * `preview-player.tsx`; these buttons dispatch the same custom event
- * the space hotkey uses so there is one source of truth for toggling.
+ * Transport controls — minimal play/pause + jump buttons. The real
+ * play-tick loop lives in `preview-player.tsx`; these buttons dispatch
+ * the same custom event the space hotkey uses so there is one source
+ * of truth for toggling.
  */
 
 import { memo } from "react";

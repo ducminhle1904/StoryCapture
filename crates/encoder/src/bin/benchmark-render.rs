@@ -186,8 +186,8 @@ fn run_full(
 ) -> Result<(), String> {
     // Full render path requires a real FFmpeg sidecar; the CI benchmark
     // script (`scripts/benchmark/render-1min.sh`) drives ffmpeg directly
-    // with the filter_complex emitted from the Graph today. Once
-    // Plan 02-11 / Plan 11 wires the FanoutJobExecutor we can replace
-    // this body with `render_intermediate + fanout_encode`.
+    // with the filter_complex emitted from the Graph today. Once the
+    // FanoutJobExecutor is wired we can replace this body with
+    // `render_intermediate + fanout_encode`.
     Err("non-dry-run path pending FanoutJobExecutor wiring (Plan 11)".into())
 }

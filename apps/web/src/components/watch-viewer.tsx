@@ -17,8 +17,8 @@ interface WatchViewerProps {
  * Client component that combines VideoPlayer + ChapterNav with shared playback state.
  * Used by the /watch/[slug] server component page.
  *
- * Wires analytics events to /api/analytics/ingest (Plan 04-08).
- * Session tracking via /api/analytics/session cookie (D-06 GDPR-safe).
+ * Wires analytics events to /api/analytics/ingest. Session tracking via the
+ * /api/analytics/session cookie (GDPR-safe).
  */
 export function WatchViewer({
   videoUrl,
@@ -40,7 +40,7 @@ export function WatchViewer({
         sessionIdRef.current = data.sessionId;
       })
       .catch(() => {
-        // Silent fail — analytics are best-effort (T-04-28)
+        // Silent fail — analytics are best-effort.
       });
   }, []);
 
@@ -69,7 +69,7 @@ export function WatchViewer({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }).catch(() => {
-          // Silent fail — analytics are best-effort (T-04-28)
+          // Silent fail — analytics are best-effort.
         });
       }
     },

@@ -1,4 +1,4 @@
-//! Cursor trajectory sampler — the humanised motion engine for POST-03.
+//! Cursor trajectory sampler — the humanised motion engine.
 //!
 //! Equivalent to [`crate::math::min_jerk::sample_path`] but with added
 //! per-frame timestamping, post-click dwell insertion, velocity-cap
@@ -6,7 +6,7 @@
 //! per-frame instead of reusing `sample_path` wholesale because we need
 //! fine-grained control over `t_ms` emission between segments.
 //!
-//! Pipeline (Research §3 + D-08/D-10/D-11):
+//! Pipeline:
 //! 1. Pre-process: insert a post-click dwell waypoint after each Click so
 //!    min-jerk naturally holds at the click point for `post_click_dwell_ms`.
 //! 2. Velocity cap: if any segment's peak velocity exceeds
@@ -36,8 +36,8 @@ pub struct CursorSample {
     pub pos: Vec2,
 }
 
-/// Options controlling the trajectory sampler. Defaults match D-08/D-10/D-11
-/// and Research §3 — `peak_velocity_cap_px_per_s: 2500` at 1080p,
+/// Options controlling the trajectory sampler. Defaults:
+/// `peak_velocity_cap_px_per_s: 2500` at 1080p,
 /// `post_click_dwell_ms: 200`, `reversal_threshold_deg: 135`.
 #[derive(Debug, Clone, Copy)]
 pub struct TrajectoryOptions {

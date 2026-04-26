@@ -1,10 +1,8 @@
 /**
- * Theme toggle + persistence (UI-08).
+ * Theme toggle + persistence.
  *
- * Dark is the default. The chosen mode is persisted in localStorage for
- * simplicity in Phase 1 (a later plan will migrate to `tauri-plugin-store`
- * so the choice survives app-data-dir relocation). The persisted key is
- * read once at module load and applied via `data-theme` on `<html>`.
+ * Dark is the default. The chosen mode is persisted in localStorage and
+ * applied via `data-theme` on `<html>`.
  */
 
 export type Theme = "dark" | "light";

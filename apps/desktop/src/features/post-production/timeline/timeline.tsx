@@ -1,14 +1,12 @@
 /**
- * Timeline (Plan 02-12b, D-12 + D-13).
+ * Timeline. 5 fixed tracks (video / cursor / zoom / sound / annotations)
+ * rendered in a stack, with a time ruler on top and a draggable playhead
+ * on top of everything. Track labels sit in a fixed-width left gutter so
+ * the clip area aligns across all 5 rows.
  *
- * 5 fixed tracks (video / cursor / zoom / sound / annotations) rendered
- * in a stack, with a time ruler on top and a draggable playhead on top
- * of everything. Track labels sit in a fixed-width left gutter so the
- * clip area aligns across all 5 rows.
- *
- * The 5 track ids are literally hard-coded as `TRACK_IDS` (D-12); adding
- * or removing tracks is intentionally a schema change — the store's
- * `tracks` shape is a fixed record, not an array.
+ * The 5 track ids are hard-coded as `TRACK_IDS`; adding or removing
+ * tracks is intentionally a schema change — the store's `tracks` shape
+ * is a fixed record, not an array.
  */
 
 import { useMemo, useRef } from "react";
@@ -21,12 +19,8 @@ import { Track, TRACK_LABEL } from "./track";
 
 export { TRACK_IDS };
 
-// Plan 02-13 grep anchor: pushAction({ kind: 'move-clip'
-//
-// The actual dispatch lives in `./track.tsx`'s pointerup handler (single
-// push per drag, coalesced further by the undo slice per D-15). This
-// comment is the contract-level anchor the plan's acceptance grep
-// targets.
+// The drag-dispatch lives in `./track.tsx`'s pointerup handler — a single
+// push per drag, coalesced further by the undo slice.
 
 export interface TimelineProps {
   /** Story id — reserved for persistence (timelineSave) wiring. */
@@ -91,7 +85,6 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
     window.addEventListener("pointerup", onUp);
   };
 
-  // grep anchor: role="region" aria-label="Timeline"  — plan 02-12b acceptance.
   return (
     <div
       role="region"

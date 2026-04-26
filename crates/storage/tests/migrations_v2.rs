@@ -1,4 +1,4 @@
-//! Phase 2 Plan 03 — v2 migration integration tests.
+//! v2 migration integration tests.
 //!
 //! Covers:
 //! - Fresh project db: all 5 v2 tables exist at user_version=LATEST_VERSION.

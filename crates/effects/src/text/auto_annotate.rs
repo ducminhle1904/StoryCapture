@@ -1,7 +1,6 @@
 //! Auto-annotate: derive a short annotation string from a DSL step's
-//! verb + target (+ optional comment). Phase 2 D-27 mandates
-//! **off-by-default** — the UI surfaces a toggle; the authored text
-//! always wins if supplied.
+//! verb + target (+ optional comment). **Off-by-default** — the UI
+//! surfaces a toggle; the authored text always wins if supplied.
 //!
 //! We do not depend on `crates/story-parser` directly; instead, the
 //! caller adapts the parser's `Step` to the [`StepAstRef`] trait. This
@@ -19,7 +18,7 @@ pub trait StepAstRef {
 }
 
 /// Options controlling [`auto_annotate_step`]. `enabled: false` is the
-/// default (D-27).
+/// default.
 #[derive(Debug, Clone, Copy)]
 pub struct AutoAnnotateOptions {
     pub enabled: bool,
@@ -28,7 +27,7 @@ pub struct AutoAnnotateOptions {
 
 impl Default for AutoAnnotateOptions {
     fn default() -> Self {
-        // D-27: auto-annotate is OFF unless the user explicitly opts in.
+        // Auto-annotate is OFF unless the user explicitly opts in.
         Self {
             enabled: false,
             prefer_comment_over_synthesis: true,

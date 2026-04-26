@@ -1,11 +1,10 @@
 /**
- * Audio IPC wrappers (Phase 6 plan 01). See
- * `apps/desktop/src-tauri/src/commands/audio.rs`.
+ * Audio IPC wrappers. See `apps/desktop/src-tauri/src/commands/audio.rs`.
  *
  * Laziness contract: `listAudioInputs` is called ONLY when the
  * AudioDevicePicker first opens. Don't prefetch on app launch —
  * cpal's default-device resolution touches the mic hardware on macOS
- * and triggers the TCC prompt (cpal#901).
+ * and triggers the TCC prompt.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -29,5 +28,5 @@ export const AUDIO_DEFAULT_SENTINEL = "default";
 
 /** Picker option used when the user wants no audio. UI value is null;
  *  mapped to `undefined` in the start_recording payload (absent field
- *  → silent track, Phase 1 behavior). */
+ *  → silent track). */
 export type AudioPickerValue = string | null;

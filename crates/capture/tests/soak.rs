@@ -1,11 +1,11 @@
-//! 30-minute memory-stability soak (CAP-05, PITFALLS §8).
+//! 30-minute memory-stability soak.
 //!
 //! Gated behind both `--features real-capture` and `#[ignore]` so a normal
 //! `cargo test` never starts a 30-min capture — only the dedicated CI
 //! workflow (`.github/workflows/capture-soak.yml`) flips both switches.
 //!
 //! Asserts:
-//!   - peak RSS stays under 800 MB (CAP-05 budget)
+//!   - peak RSS stays under 800 MB
 //!   - linear growth over the run is under 100 MB (catches IOSurface /
 //!     ID3D11Texture2D refcount leaks)
 //!

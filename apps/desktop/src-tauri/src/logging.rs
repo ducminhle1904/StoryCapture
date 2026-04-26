@@ -1,4 +1,4 @@
-// Logging bridge — `tracing` ↔ `tauri-plugin-log` (D-30).
+// Logging bridge — `tracing` ↔ `tauri-plugin-log`.
 //
 // `tracing` owns the canonical log file on disk via `SizeRollingWriter`,
 // configured from the Settings UI (`max_file_size_bytes`, `max_files`).
@@ -10,7 +10,7 @@
 // holding multiple restarts can be sliced by run; `current_session_id()`
 // surfaces the value to the renderer for bug reports.
 //
-// Telemetry-off (D-30): logs are LOCAL ONLY. Nothing here touches the network.
+// Logs are LOCAL ONLY. Nothing here touches the network.
 
 use std::{
     fmt,

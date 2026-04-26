@@ -1,17 +1,9 @@
 /**
- * EffectParams — form for the selected VideoNode's parameters (Plan 02-12b).
- *
- * For P12b we surface a read-only summary of the selected clip's metadata;
- * P05/P06/P09/P11 populate real effect schemas on the clip + this panel
- * will render per-effect controls driven by the VideoNode type.
- *
- * P13 adds a single editable field (clip label) that dispatches a
- * structured `set-effect-param` action through the undo slice. The
- * keystrokes coalesce on a 500 ms idle window (D-15) so a typed-out
- * word is a single undo step.
- *
- * Grep anchor: pushAction({ kind: 'set-effect-param'  — Plan 02-13
- * acceptance.
+ * EffectParams — form for the selected VideoNode's parameters. Surfaces
+ * a read-only summary of the selected clip's metadata plus a single
+ * editable field (clip label) that dispatches a structured
+ * `set-effect-param` action through the undo slice. Keystrokes coalesce
+ * on a 500 ms idle window so a typed-out word is a single undo step.
  */
 
 import { memo, useCallback } from "react";
@@ -35,7 +27,6 @@ function EffectParamsBase() {
 
   const onLabelChange = useCallback(
     (trackId: string, clipId: string, prev: string, next: string) => {
-      // pushAction({ kind: 'set-effect-param' — P13 anchor.
       pushAction({
         kind: "set-effect-param",
         nodePath: `tracks.${trackId}[${clipId}].metadata`,

@@ -1,7 +1,6 @@
 /**
- * ToggleGroup primitive — shadcn-style chrome on top of Base UI's ToggleGroup (D-32).
+ * ToggleGroup primitive — shadcn-style chrome on top of Base UI's ToggleGroup.
  *
- * Phase 13 first use: FitMode selector (letterbox / crop / stretch).
  * Single-select via `toggleMultiple={false}`; items use Base UI Toggle.
  */
 

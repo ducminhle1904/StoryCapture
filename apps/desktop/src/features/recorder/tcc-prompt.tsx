@@ -1,5 +1,5 @@
 /**
- * TCC / Screen Recording permission UX (UI-04, D-20).
+ * TCC / Screen Recording permission UX.
  *
  * Three-step guided modal on macOS:
  *  1. "Open System Settings" → `open_screen_capture_prefs()`

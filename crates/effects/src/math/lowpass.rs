@@ -2,7 +2,7 @@
 //!
 //! Instead of a classical IIR or moving-average filter, we drive a
 //! critically-damped [`Spring`] toward each successive target value. This has
-//! two advantages for our use case (Plan 05 zoom keyframes):
+//! two advantages for our use case (zoom keyframes):
 //!
 //! 1. **No overshoot** — critical damping guarantees the smoothed signal does
 //!    not overshoot keyframe values, which matters when those values are

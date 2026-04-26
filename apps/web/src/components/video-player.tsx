@@ -23,9 +23,7 @@ interface VideoPlayerProps {
 
 /**
  * HTML5 video player with poster/thumbnail support, chapter seeking,
- * and analytics event callback (wired in Plan 04-08).
- *
- * Responsive 16:9 aspect ratio with dark background.
+ * and analytics event callback. Responsive 16:9 aspect ratio with dark background.
  */
 export function VideoPlayer({
   src,

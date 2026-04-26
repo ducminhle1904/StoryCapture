@@ -1,8 +1,8 @@
 /**
- * Effect preset IPC wrappers (Plan 02-12a).
+ * Effect preset IPC wrappers.
  *
  * Typed wrappers around `preset_list` / `preset_import` / `preset_export`.
- * Plan 02-12b's preset picker consumes `usePresetList` via TanStack Query.
+ * The preset picker consumes `usePresetList` via TanStack Query.
  */
 
 import { invoke } from "@tauri-apps/api/core";

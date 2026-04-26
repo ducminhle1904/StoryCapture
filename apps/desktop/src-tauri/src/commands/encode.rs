@@ -310,12 +310,12 @@ pub enum RecordingEvent {
         message: String,
     },
     /// Mic/audio negotiation failed or the device vanished mid-session.
-    /// Recording continues video-only (D-13).
+    /// Recording continues video-only.
     AudioUnavailable {
         reason: String,
     },
     /// Periodic liveness signal from the host so the renderer can detect
-    /// state-sync drift (>5s missed => offer Force Stop) (D-15).
+    /// state-sync drift (>5s missed => offer Force Stop).
     Heartbeat {
         seq: u64,
     },
@@ -412,7 +412,7 @@ struct RecordingHandle {
     /// Named-pipe handle.
     #[allow(dead_code)]
     audio_fifo: Option<FifoHandle>,
-    /// D-15: handle for the 2s heartbeat ticker. Aborted by
+    /// Handle for the 2s heartbeat ticker. Aborted by
     /// `stop_recording_inner`, `drain_one`, or the SpawnAbortGuard on
     /// an early-return from `start_recording`.
     heartbeat_abort: Option<AbortHandle>,
@@ -429,7 +429,7 @@ fn registry() -> &'static RecordingRegistry {
     REG.get_or_init(RecordingRegistry::default)
 }
 
-/// D-04: process-wide "a start_recording is currently in flight" flag.
+/// Process-wide "a start_recording is currently in flight" flag.
 /// Set via `compare_exchange(false, true)` at the entry of `start_recording`;
 /// always cleared on return (Drop of `StartingGuard`) regardless of success,
 /// error, or panic.
@@ -443,7 +443,7 @@ impl Drop for StartingGuard {
     }
 }
 
-/// D-02: aborts its collected spawn handles on drop. Callers push every
+/// Aborts its collected spawn handles on drop. Callers push every
 /// auxiliary task spawned during `start_recording` before registry insert,
 /// then call [`SpawnAbortGuard::disarm`] on the success path. Any early
 /// return or panic between spawn and registry-insert will abort the tasks
@@ -482,8 +482,8 @@ impl Drop for SpawnAbortGuard {
     }
 }
 
-/// D-01: best-effort synchronous teardown of recording sessions at app
-/// exit. Mirrors `drain_author_preview_sessions` in `lib.rs` — takes an
+/// Best-effort synchronous teardown of recording sessions at app exit.
+/// Mirrors `drain_author_preview_sessions` in `lib.rs` — takes an
 /// `AppHandle` for API parity, even though the recording registry is a
 /// process-static (not on `AppState`). Uses `try_lock` so the exit hook
 /// never deadlocks; on timeout aborts `encode_join` and surrenders the
@@ -562,7 +562,7 @@ pub fn drain_recording_sessions(_app_handle: &tauri::AppHandle) {
 }
 
 async fn drain_one(_session_id: &str, handle: RecordingHandle) -> Result<(), String> {
-    // D-15: kill the heartbeat ticker so it doesn't race past teardown.
+    // Kill the heartbeat ticker so it doesn't race past teardown.
     if let Some(hb) = handle.heartbeat_abort.as_ref() {
         hb.abort();
     }
@@ -619,8 +619,8 @@ pub async fn start_recording(
     args: StartRecordingArgs,
     on_event: Channel<RecordingEvent>,
 ) -> Result<RecordingSessionId, AppError> {
-    // D-04: reject concurrent starts. The Drop guard clears the flag on
-    // every return path (success, error, panic).
+    // Reject concurrent starts. The Drop guard clears the flag on every
+    // return path (success, error, panic).
     if GLOBAL_STARTING
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
@@ -743,8 +743,8 @@ pub async fn start_recording(
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let preferred: Box<dyn capture::CaptureBackend> = Box::new(capture::XcapBackend::new());
 
-    // D-02: collect every auxiliary spawn so any early return between
-    // here and the registry insert aborts them rather than leaking.
+    // Collect every auxiliary spawn so any early return between here and
+    // the registry insert aborts them rather than leaking.
     let mut spawn_guard = SpawnAbortGuard::new();
 
     let on_event_for_capture = on_event.clone();
@@ -802,7 +802,7 @@ pub async fn start_recording(
     // the window, not the display — using args.width/height would cause
     // FFmpeg's rawvideo input to reject every frame as "invalid buffer
     // size". Worst case: `first_frame_timeout_ms` (default 3000ms) then we
-    // fall back to args dims (D-09).
+    // fall back to args dims.
     let first_frame_timeout =
         std::time::Duration::from_millis(args.first_frame_timeout_ms.unwrap_or(3000));
     let (actual_width, actual_height, first_frame) =
@@ -865,7 +865,7 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio negotiation failed; continuing video-only"
                 );
-                // D-13: surface to renderer so UI can show a toast + badge.
+                // Surface to renderer so UI can show a toast + badge.
                 emit_audio_unavailable(&on_event, &e);
                 None
             }
@@ -896,10 +896,10 @@ pub async fn start_recording(
         None
     };
 
-    // Phase 12 defaults per D-12-10; optional DTO fields override them (Phase 13 UI).
-    // Phase 18: when the caller did NOT pin an output resolution and the
-    // capture is ≥ 2× a 1080p canvas (Retina / HiDPI), prefer MatchSource so
-    // we don't throw away real pixel detail on the way to a 1920×1080 MP4.
+    // Defaults; optional DTO fields override them.
+    // When the caller did NOT pin an output resolution and the capture is
+    // ≥ 2× a 1080p canvas (Retina / HiDPI), prefer MatchSource so we don't
+    // throw away real pixel detail on the way to a 1920×1080 MP4.
     let retina_default_match_source =
         (actual_width as u64) * (actual_height as u64) >= (1920u64 * 2) * (1080u64 * 2);
     let output_res: OutputResolution = match args.output_resolution {
@@ -929,9 +929,9 @@ pub async fn start_recording(
     .with_scale_algo(algo)
     .with_quality_preset(qp)
     .force_ffmpeg_path();
-    // D-11: forward the optional keyframe knob from the IPC DTO into the
-    // encoder config so FFmpeg emits `-g <fps * interval>`. None keeps the
-    // default (no `-g`) so existing argv is byte-identical.
+    // Forward the optional keyframe knob from the IPC DTO into the encoder
+    // config so FFmpeg emits `-g <fps * interval>`. None keeps the default
+    // (no `-g`) so existing argv is byte-identical.
     enc_cfg.keyframe_interval_sec = args.keyframe_interval_sec;
     if let (Some(f), Some(negotiated)) = (&audio_fifo, negotiated_audio.as_ref()) {
         let info = negotiated.info();
@@ -944,7 +944,7 @@ pub async fn start_recording(
     }
     let (prog_tx, mut prog_rx) = mpsc::channel::<EncodeProgress>(32);
     let sidecar = TauriSidecar::new(app.clone());
-    // D-07: encoder stdin-write timeouts surface to renderer as FramesDropped.
+    // Encoder stdin-write timeouts surface to renderer as FramesDropped.
     let on_event_for_bp = on_event.clone();
     let bp_cb: encoder::BackpressureCallback = Box::new(move |total, delta| {
         if let Err(e) =
@@ -987,9 +987,9 @@ pub async fn start_recording(
         (&audio_fifo, negotiated_audio)
     {
         let fifo_path = f.path().to_path_buf();
-        // D-10: FIFO handshake. Poll metadata every 20ms; treat 3
-        // consecutive Ok results (60ms of stable existence) as "FFmpeg
-        // has opened the FIFO". Deadline at 2s.
+        // FIFO handshake. Poll metadata every 20ms; treat 3 consecutive
+        // Ok results (60ms of stable existence) as "FFmpeg has opened the
+        // FIFO". Deadline at 2s.
         let fifo_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
         let mut ok_ticks: u8 = 0;
         loop {
@@ -1056,7 +1056,6 @@ pub async fn start_recording(
                     error = %e,
                     "mic audio start failed; continuing video-only"
                 );
-                // D-13.
                 emit_audio_unavailable(&on_event, &e);
                 None
             }
@@ -1083,9 +1082,9 @@ pub async fn start_recording(
     });
     spawn_guard.push(progress_fwd_join.abort_handle());
 
-    // D-15: 2s heartbeat ticker. Pushed into the abort guard so an
-    // early-failure before registry-insert cleans it up, AND stored on
-    // the handle so stop/drain abort it on session teardown.
+    // 2s heartbeat ticker. Pushed into the abort guard so an early-failure
+    // before registry-insert cleans it up, AND stored on the handle so
+    // stop/drain abort it on session teardown.
     let on_event_for_hb = on_event.clone();
     let heartbeat_join = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(2));
@@ -1188,9 +1187,8 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
 
     crate::commands::automation::resume_active_automation();
 
-    // D-15: stop the 2s heartbeat ticker before we begin teardown so the
-    // renderer doesn't observe a tick after it's already surfaced
-    // Completed/Failed.
+    // Stop the 2s heartbeat ticker before we begin teardown so the renderer
+    // doesn't observe a tick after it's already surfaced Completed/Failed.
     if let Some(hb) = handle.heartbeat_abort.as_ref() {
         hb.abort();
     }
@@ -1222,9 +1220,9 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
             tracing::error!(target: "storycapture::recording", "encoder returned error: {}", e);
             AppError::Encoder(e.to_string())
         })?;
-    // Phase 18: surface observed bitrate so we can diagnose encoder under-shoot
-    // (VT quality-mode used to produce ~1 Mbps files against a 10 Mbps target).
-    // bytes*8 = bits; bits / ms = kbps.
+    // Surface observed bitrate so we can diagnose encoder under-shoot
+    // (VT quality-mode used to produce ~1 Mbps files against a 10 Mbps
+    // target). bytes*8 = bits; bits / ms = kbps.
     let observed_kbps = if result.duration_ms > 0 {
         result.bytes.saturating_mul(8) / result.duration_ms
     } else {
@@ -1388,15 +1386,15 @@ mod double_start_guard_tests {
     }
 }
 
-/// D-09 + D-10 covering the two pieces of start_recording that are
-/// testable without plumbing the whole Tauri runtime: the configurable
-/// first-frame timeout derivation and the FIFO metadata-poll handshake.
+/// Covers the two pieces of start_recording that are testable without
+/// plumbing the whole Tauri runtime: the configurable first-frame timeout
+/// derivation and the FIFO metadata-poll handshake.
 #[cfg(test)]
 mod first_frame_and_fifo_tests {
     use crate::error::AppError;
     use std::time::Duration;
 
-    /// D-09: Some(500) yields ~500ms; None yields default 3000ms.
+    /// Some(500) yields ~500ms; None yields default 3000ms.
     #[test]
     fn first_frame_timeout_respects_arg_or_defaults_to_3000() {
         let explicit: Option<u64> = Some(500);
@@ -1411,7 +1409,7 @@ mod first_frame_and_fifo_tests {
         );
     }
 
-    /// D-09: Some(100) -> elapsed wait fires in ~100ms, NOT the 3000ms default.
+    /// Some(100) -> elapsed wait fires in ~100ms, NOT the 3000ms default.
     #[tokio::test(flavor = "current_thread")]
     async fn first_frame_timeout_fires_at_configured_budget() {
         let budget = Duration::from_millis(Some(100u64).unwrap_or(3000));
@@ -1427,9 +1425,9 @@ mod first_frame_and_fifo_tests {
         );
     }
 
-    /// D-10: model the FIFO handshake loop. Feed a sequence of metadata
-    /// results (simulating FFmpeg not-yet-open → open) and assert the
-    /// loop breaks after 3 consecutive Ok, and NOT before.
+    /// Model the FIFO handshake loop. Feed a sequence of metadata results
+    /// (simulating FFmpeg not-yet-open → open) and assert the loop breaks
+    /// after 3 consecutive Ok, and NOT before.
     #[test]
     fn fifo_handshake_requires_3_consecutive_ok() {
         // Simulate metadata() results as a scripted sequence.
@@ -1451,8 +1449,8 @@ mod first_frame_and_fifo_tests {
         assert_eq!(broke_at, Some(6));
     }
 
-    /// D-15: the heartbeat loop emits monotonically-increasing seq values
-    /// on each tick and breaks cleanly when the sink reports closed. This
+    /// The heartbeat loop emits monotonically-increasing seq values on
+    /// each tick and breaks cleanly when the sink reports closed. This
     /// mirrors the loop body spawned inside `start_recording`.
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn heartbeat_loop_emits_monotonic_seq_and_breaks_on_closed_sink() {
@@ -1517,8 +1515,8 @@ mod first_frame_and_fifo_tests {
         assert_eq!(got[0], 0, "seq must start at 0: {got:?}");
     }
 
-    /// D-15: aborting the spawn handle stops further emissions
-    /// immediately, matching what `stop_recording_inner` / `drain_one` do.
+    /// Aborting the spawn handle stops further emissions immediately,
+    /// matching what `stop_recording_inner` / `drain_one` do.
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn heartbeat_abort_handle_stops_emissions() {
         use std::sync::{Arc, Mutex};
@@ -1550,9 +1548,9 @@ mod first_frame_and_fifo_tests {
         assert!(got.len() <= 2, "abort must stop future ticks (got {got:?})");
     }
 
-    /// D-10: deadline exceeded returns FifoHandshakeTimeout. Uses a
-    /// compressed deadline (200ms) so the test runs fast — the real
-    /// budget in start_recording is 2s.
+    /// Deadline exceeded returns FifoHandshakeTimeout. Uses a compressed
+    /// deadline (200ms) so the test runs fast — the real budget in
+    /// start_recording is 2s.
     #[tokio::test(flavor = "current_thread")]
     async fn fifo_handshake_deadline_returns_timeout_error() {
         let fifo_path = std::path::PathBuf::from(

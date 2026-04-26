@@ -1,6 +1,6 @@
-//! Tests for the POST-06 audio mixer (Plan 02-08 Task 1).
+//! Tests for the audio mixer.
 //!
-//! Covers D-22 duck params, click-level gains, presence/absence of
+//! Covers duck params, click-level gains, presence/absence of
 //! `sidechaincompress`, per-event `adelay`, `alimiter` safety stage,
 //! `normalize=0` and the full-mix snapshot.
 

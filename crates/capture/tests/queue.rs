@@ -1,4 +1,4 @@
-//! Integration tests for the byte-bounded queue (D-19, CAP-05).
+//! Integration tests for the byte-bounded queue.
 
 use capture::{ByteBoundedQueue, Frame, FrameData, PixelFormat, Pts};
 use std::sync::Arc;

@@ -1,4 +1,4 @@
-//! Windows.Graphics.Capture `Frame` → our `crate::Frame` (Plan 05-03).
+//! Windows.Graphics.Capture `Frame` → our `crate::Frame`.
 //!
 //! The `windows-capture` 2.0.0 Frame lends its D3D11 staging-texture buffer
 //! behind `.buffer()`, which copies the GPU texture into CPU-visible memory
@@ -21,7 +21,7 @@ use std::time::Instant;
 use windows_capture::frame::Frame as WgcFrame;
 use windows_capture::settings::ColorFormat;
 
-/// Physical-pixel rect for WGC post-capture CPU crop. Plan 06-02.
+/// Physical-pixel rect for WGC post-capture CPU crop.
 ///
 /// All four fields are in physical pixels (DPI-scaled). The crop happens
 /// in `on_frame_arrived` against the BGRA buffer returned by
@@ -174,11 +174,11 @@ mod crop_tests {
 ///
 /// `start_epoch` is the wall-clock instant the capture session started;
 /// we use `elapsed()` as the PTS because `windows-capture`'s
-/// `frame.timestamp()` returns a `TimeSpan` in the QPC domain — Phase 1's
+/// `frame.timestamp()` returns a `TimeSpan` in the QPC domain — the
 /// clock-source plumbing would need an extra conversion to map QPC ticks
-/// to i128 ns. For Plan 05-03 we use `ClockSource::Synthetic` (host-derived)
-/// which is what the xcap fallback already reports; a follow-up can swap
-/// to true-QPC once the encoder agrees.
+/// to i128 ns. We use `ClockSource::Synthetic` (host-derived), which is
+/// what the xcap fallback already reports; a follow-up can swap to
+/// true-QPC once the encoder agrees.
 pub fn to_frame(
     frame: &mut WgcFrame,
     start_epoch: Instant,

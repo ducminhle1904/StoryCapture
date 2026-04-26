@@ -1,9 +1,9 @@
 /**
- * Export IPC wrappers (Plan 02-11 + 02-12a).
+ * Export IPC wrappers.
  *
  * Typed wrappers around `export_run` / `export_get_presets` /
- * `export_validate_config`. The Post-Production editor's Export modal
- * (Plan 02-12b) consumes these.
+ * `export_validate_config`. Consumed by the Post-Production editor's
+ * Export modal.
  */
 
 import type { EncoderOptionsDto } from "@storycapture/shared-types";
@@ -18,7 +18,7 @@ export interface ExportOutput {
   resolution: ExportResolution | string;
   fps: number;
   quality: ExportQuality | string;
-  /** Phase 13 — export-only encoder knobs. Undefined → Phase 12 defaults. */
+  /** Export-only encoder knobs. Undefined → defaults. */
   encoder_options?: EncoderOptionsDto | null;
 }
 

@@ -1,8 +1,6 @@
 /**
- * Time ruler (Plan 02-12b).
- *
- * Renders tick marks + labels every second across the timeline width.
- * Stateless visual helper; consumers pass `durationMs` + `pxPerMs`.
+ * Time ruler — renders tick marks + labels every second across the
+ * timeline width. Stateless; consumers pass `durationMs` + `pxPerMs`.
  */
 
 import { memo } from "react";

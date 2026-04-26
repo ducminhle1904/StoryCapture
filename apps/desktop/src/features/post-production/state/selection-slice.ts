@@ -1,8 +1,6 @@
 /**
- * Selection slice (Plan 02-12a).
- *
- * Tracks which clip / preset is currently selected and which inspector
- * tab is active. Kept small + non-persisted: reloading the editor
+ * Selection slice. Tracks which clip / preset is currently selected and
+ * which inspector tab is active. Non-persisted: reloading the editor
  * always starts with nothing selected and the 'presets' tab active.
  */
 

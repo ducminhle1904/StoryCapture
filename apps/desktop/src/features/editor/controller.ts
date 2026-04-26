@@ -2,14 +2,13 @@
  * editorController — module-level singleton bridge between the picker
  * UI and the active CodeMirror EditorView.
  *
- * NOT a React context, NOT in Zustand. React refs in Zustand are an
- * anti-pattern (don't trigger re-renders, leak imperative state into
- * the store surface). A module singleton is the right seam for a
- * one-of-a-kind imperative target.
+ * Not a React context and not in Zustand: React refs in Zustand are an
+ * anti-pattern. A module singleton is the right seam for a one-of-a-kind
+ * imperative target.
  *
- * Insertion semantics (CONTEXT.md §Tier 2 MVP §Insertion semantics):
+ * Insertion semantics:
  *   - Single `view.dispatch({ changes, selection, userEvent: "input.pick" })`
- *     — atomic on the undo stack.
+ *     so the change is atomic on the undo stack.
  *   - Snap mid-line cursors to line-end before insertion.
  *   - Caller appends `"\n"` to the emitted DSL (we don't double-newline).
  *   - Cursor lands at `from + text.length` (just past inserted text).
@@ -23,8 +22,8 @@ let currentView: EditorView | null = null;
 // Null when the editor is showing unsaved / in-memory content.
 let currentStoryPath: string | null = null;
 // snapshot of the last-saved `.story` source; compared against the live
-// CodeMirror doc text to answer `isDirty()` for the Phase 11-04 D-10
-// "unsaved changes" warning.
+// CodeMirror doc text to answer `isDirty()` for the unsaved-changes
+// warning.
 let lastSavedSource: string | null = null;
 // 1-indexed step-ordinal lookup (populated by StoryEditor via
 // `setStepOrdinalLookup` after each parse). Returns null when the parser
@@ -55,9 +54,8 @@ export const editorController = {
   },
   /**
    * Record the source string that was most-recently persisted to disk.
-   * Called by the editor shell after a successful autosave / manual save.
-   * Phase 11-04 `PreviewPickerButton` diffs this against the live doc
-   * text to surface the D-10 unsaved-changes warning.
+   * Called after a successful autosave / manual save. The picker button
+   * diffs this against the live doc to surface the unsaved-changes warning.
    */
   markSaved(source: string): void {
     lastSavedSource = source;
@@ -80,9 +78,8 @@ export const editorController = {
   },
   /**
    * Return the 1-indexed line number of the primary cursor, or null
-   * when no view is mounted. Phase 11-04 `PreviewPickerButton` feeds
-   * this to `picker_start_author_impl` so navigate-replay knows which
-   * Navigate verbs to replay.
+   * when no view is mounted. The picker uses this so navigate-replay
+   * knows which Navigate verbs to replay.
    */
   getCursorLine(): number | null {
     const v = currentView;
@@ -101,8 +98,7 @@ export const editorController = {
    * 1-indexed step ordinal (among the flattened command list, across
    * scenes) for a given 1-indexed line number; null when the line is
    * not a command row or the parser has not yet populated the map.
-   * Phase 11-04 uses this for the UI-SPEC re-pick toast
-   * `Updated fallback for step {N}`.
+   * Used for the re-pick toast `Updated fallback for step {N}`.
    */
   getStepOrdinalForLine(line: number): number | null {
     return stepOrdinalLookup?.(line) ?? null;
@@ -149,13 +145,9 @@ export const editorController = {
   },
   /**
    * Insert `text` at the current cursor (snap to line-end if mid-line).
-   * Single dispatch — single undo entry.
-   *
-   * on success returns `{ ok: true, lineNumber }` where
-   * `lineNumber` is 1-indexed and identifies the line the inserted DSL
-   * now lives on (i.e. the line of the first character of the inserted
-   * text, NOT the snap-origin). Callers use this to invoke
-   * `picker_stamp_step_id` so the UUIDv7 is stamped on the correct row.
+   * Single dispatch — single undo entry. On success returns `{ ok: true,
+   * lineNumber }` (1-indexed) naming the line where the inserted DSL
+   * now lives, NOT the snap-origin — callers stamp targets against this.
    */
   insertAtCursor(
     text: string,
@@ -176,13 +168,8 @@ export const editorController = {
       userEvent: "input.pick",
     });
     v.focus();
-    // After insertion, the inserted DSL's first character sits at `from`
-    // on the NEW document. `lineAt(from)` now points at the inserted row.
-    // If `from` was at the end of a pre-existing line (common case — we
-    // snap to line-end), the insert begins on a fresh line when the
-    // previous document had no trailing newline; otherwise it replaces
-    // the next line's leading boundary. Either way, lineAt(from) names
-    // the row where the new text begins.
+    // `lineAt(from)` on the new document names the row where the
+    // inserted text begins, regardless of snap origin.
     const insertedLine = v.state.doc.lineAt(from).number;
     return { ok: true, lineNumber: insertedLine };
   },

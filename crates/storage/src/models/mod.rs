@@ -1,5 +1,6 @@
-//! Public data model types. Phase 1 types (Project, Session, Step, Export,
-//! Preset, ...) live inline here; Phase 2 types live in their own submodules.
+//! Public data model types. Baseline types (Project, Session, Step,
+//! Export, Preset, ...) live inline here; later additions live in their
+//! own submodules.
 //!
 //! All structs derive `Debug, Clone, Serialize, Deserialize`. UUID v7 is used
 //! for all IDs (time-ordered, monotonic per process — preferred over v4 for
@@ -46,7 +47,7 @@ pub struct AppSetting {
     pub updated_at: i64,
 }
 
-// ---------- project.sqlite (Phase 1) ----------
+// ---------- project.sqlite ----------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

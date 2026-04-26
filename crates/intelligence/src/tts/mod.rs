@@ -1,6 +1,4 @@
 //! TTS provider trait + associated request/error types.
-//!
-//! See AI-SPEC §3 (Key Abstractions) and D-10 in 03-CONTEXT.
 
 use thiserror::Error;
 

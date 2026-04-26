@@ -55,7 +55,7 @@ pub struct EncodeConfig {
     /// path preserves native capture PTS; raw BGRA over stdin does not.
     pub fps_advisory: u32,
     pub encoder: HardwareEncoder,
-    /// Manual target bitrate override in kbps. 0 = preset-driven. Reserved for Phase 13.
+    /// Manual target bitrate override in kbps. 0 = preset-driven.
     pub bitrate_kbps: u32,
     /// Optional mic input.
     pub audio_input: Option<AudioInput>,
@@ -276,8 +276,8 @@ impl EncodeConfig {
             self.fps_advisory,
         ));
 
-        // D-11: keyframe interval (forces GOP). None => default FFmpeg
-        // behavior — argv must be byte-identical to pre-D-11.
+        // Keyframe interval (forces GOP). None => default FFmpeg behavior
+        // — argv must be byte-identical to the no-flag case.
         if let Some(sec) = self.keyframe_interval_sec {
             let gop = (self.fps_advisory).saturating_mul(sec).max(1);
             args.extend(["-g".into(), gop.to_string()]);
@@ -425,8 +425,8 @@ mod tests {
         );
     }
 
-    /// Bitrate is target, not floor (Phase 12 / D-12-08). Phase 18: formula
-    /// bumped to 5 bits/pixel — 4K now hits the 40 Mbps cap.
+    /// Bitrate is target, not floor. Formula bumped to 5 bits/pixel — 4K
+    /// now hits the 40 Mbps cap.
     #[test]
     fn test_4k_uses_target_bitrate() {
         let cfg = EncodeConfig::new(
@@ -503,7 +503,7 @@ mod tests {
         );
     }
 
-    /// D-11: keyframe_interval_sec = Some(2) @ 30fps -> `-g 60`.
+    /// keyframe_interval_sec = Some(2) @ 30fps -> `-g 60`.
     #[test]
     fn keyframe_interval_emits_g_flag() {
         let mut c = cfg();
@@ -513,7 +513,7 @@ mod tests {
         assert_eq!(args[g_idx + 1], "60", "expected -g 60 for 30fps * 2s");
     }
 
-    /// D-11: None keeps argv byte-identical to pre-D-11 (no -g flag).
+    /// None keeps argv byte-identical to the no-flag case.
     #[test]
     fn keyframe_interval_none_omits_g_flag() {
         let c = cfg();

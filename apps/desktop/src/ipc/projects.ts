@@ -1,10 +1,9 @@
 /**
- * Dashboard / project IPC hooks (Plan 01-09, UI-01).
+ * Dashboard / project IPC hooks.
  *
  * Typed wrappers around the `list_projects` / `create_project` /
  * `open_project` / `remove_project` Tauri commands (Rust:
- * `apps/desktop/src-tauri/src/commands/projects.rs`). Consumed by
- * `routes/dashboard.tsx` and the editor loader.
+ * `apps/desktop/src-tauri/src/commands/projects.rs`).
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

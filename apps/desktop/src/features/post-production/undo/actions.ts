@@ -1,31 +1,28 @@
 /**
- * Undoable action taxonomy + apply/invert helpers (Plan 02-13).
- *
- * Covers D-17: every post-production surface that can be undone is
- * represented here. The DSL editor's own history (CodeMirror) is
- * intentionally NOT covered by this module — it has its own per-buffer
- * history.
+ * Undoable action taxonomy + apply/invert helpers. Every post-production
+ * surface that can be undone is represented here. The DSL editor's own
+ * history (CodeMirror) is intentionally NOT covered — it has its own
+ * per-buffer history.
  *
  * Design:
  *   - Actions are self-contained value types. `applyAction` mutates the
  *     store via its exposed slice setters; `invertAction` produces the
  *     reverse action WITHOUT touching the store (pure function).
  *   - Move/trim store `fromMs`/`toMs` + `fromRange`/`toRange` so they can
- *     be coalesced by keeping `fromX` of the first event and `toX` of the
- *     latest.
+ *     be coalesced by keeping `fromX` of the first event and `toX` of
+ *     the latest.
  *   - `delete-clip` stores the full `Clip` snapshot so undo can restore
- *     the clip exactly — including metadata the plan explicitly flagged
- *     as important for cursor/zoom/annotations coverage.
+ *     the clip exactly — including metadata for cursor/zoom/annotation
+ *     coverage.
  *   - `apply-preset` / `revert-preset` round-trip a `GraphSnapshot`
- *     opaque payload. P13 does not own the graph shape — it just stores
- *     whatever the inspector hands it.
- *   - `edit-text-overlay` and `change-background` cover D-17's remaining
- *     surfaces. Full `prev`/`next` snapshots make undo O(1).
+ *     opaque payload (we just store whatever the inspector hands us).
+ *   - `edit-text-overlay` and `change-background` carry full `prev`/
+ *     `next` snapshots so undo is O(1).
  *
  * Direct store manipulation uses `useEditorStore.setState` rather than
- * each slice's individual setter because the setters (e.g. `moveClip`)
- * re-apply snap logic. Undo/redo must be pixel-perfect replays of the
- * original value, so we bypass setters entirely.
+ * each slice's setter because the setters (e.g. `moveClip`) re-apply
+ * snap logic. Undo/redo must be pixel-perfect replays of the original
+ * value, so we bypass setters entirely.
  */
 
 import type { Clip, TrackId } from "../state/timeline-slice";
@@ -107,13 +104,9 @@ export type UndoableAction =
 
 // ---------------------------------------------------------------------------
 // External state surface for preset / overlay / background support.
-//
-// P12b shipped the 5 slices (timeline / panels / selection / export /
-// queue). P13's actions also need to read/write graphSnapshot,
-// textOverlays, and background — which are not yet store fields. To keep
-// this plan scoped, we stash them on a private record inside the store's
-// `_undoExtras` bag. Future plans (P05/P06/P09/P11) will migrate these
-// into dedicated slices; the action schema stays stable.
+// graphSnapshot, textOverlays, and background are stashed on a private
+// `_undoExtras` bag inside the store until dedicated slices land; the
+// action schema stays stable.
 // ---------------------------------------------------------------------------
 
 export interface UndoExtras {
@@ -277,11 +270,10 @@ export function applyAction(action: UndoableAction): void {
       return;
     }
     case "apply-preset": {
-      // For redo we re-apply the forward transition. P13 does not own
-      // preset→graph resolution; we store the resolved nextGraphSnapshot
-      // alongside the id in the inverted action. For the initial apply
-      // we just mark the preset id as active; the graph snapshot follows
-      // via the next action on the ring (the inspector creates a paired
+      // For redo we re-apply the forward transition. We don't own the
+      // preset→graph resolution; for the initial apply we just mark
+      // the preset id as active. The graph snapshot follows via the
+      // next action on the ring (the inspector pairs a
       // `set-effect-param` or direct graph mutation).
       useEditorStore.setState((s) => ({
         selectedPresetId: action.nextPresetId,

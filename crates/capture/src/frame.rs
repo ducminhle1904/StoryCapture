@@ -142,7 +142,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Conservative byte-cost used by the byte-bounded queue (D-19).
+    /// Conservative byte-cost used by the byte-bounded queue.
     /// For `Owned` frames this is the actual buffer size. For native
     /// surfaces we estimate from `height * stride` since the OS may share
     /// pages with the GPU and the in-process Rust accounting doesn't see

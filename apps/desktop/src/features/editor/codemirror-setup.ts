@@ -1,9 +1,7 @@
 /**
- * Assemble CodeMirror 6 extensions for the Story DSL editor (UI-02).
- *
- * Consumed by `story-editor.tsx` via `@uiw/react-codemirror`'s `extensions`
- * prop. Font/colors pulled from the global CSS tokens (see
- * `packages/ui/src/tokens.css`).
+ * Assemble CodeMirror 6 extensions for the Story DSL editor.
+ * Consumed by `story-editor.tsx`. Font/colors come from the global
+ * CSS tokens (see `packages/ui/src/tokens.css`).
  */
 
 import { toggleLineComment } from "@codemirror/commands";
@@ -29,15 +27,14 @@ import {
 } from "@/features/editor/simulator-keymap";
 
 /**
- * Phase 11-04 keymap — Cmd-Shift-P on macOS / Ctrl-Shift-P elsewhere.
- * `Mod-Shift-p` is the CodeMirror 6 cross-platform alias. We dispatch
- * through the module-level `triggerPickFromEditor` which the mounted
- * `PreviewPickerButton` registers via `registerPickTrigger` in its
- * mount effect — a single implementation for keymap + click.
+ * Pick-element keymap — Cmd-Shift-P on macOS / Ctrl-Shift-P elsewhere.
+ * Dispatches through the module-level `triggerPickFromEditor` which the
+ * mounted `PreviewPickerButton` registers, sharing one implementation
+ * with the click handler.
  *
- * NOT a global `document.addEventListener('keydown')` (research
- * anti-pattern): the CodeMirror keymap ensures the shortcut only fires
- * when the editor has focus, and composes cleanly with Prec priorities.
+ * Not a global `document.addEventListener('keydown')`: the CodeMirror
+ * keymap ensures the shortcut only fires when the editor has focus and
+ * composes cleanly with Prec priorities.
  */
 const pickKeymap = Prec.high(
   keymap.of([

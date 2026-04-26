@@ -1,8 +1,7 @@
-//! Bundled cursor skins (D-09).
+//! Bundled cursor skins.
 //!
 //! Five variants ship as PNG assets under `assets/cursor-skins/`. Users can
-//! choose `size_scale` and `color_tint` but cannot upload custom skins in
-//! Phase 2 (D-09).
+//! choose `size_scale` and `color_tint` but cannot upload custom skins.
 
 use std::path::{Path, PathBuf};
 

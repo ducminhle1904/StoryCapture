@@ -39,7 +39,7 @@ async function getVideo(slug: string) {
 
 /**
  * Generate metadata for the watch page.
- * D-02: Private videos get noindex/nofollow. Public videos get full SEO tags.
+ * Private videos get noindex/nofollow; public videos get full SEO tags.
  */
 export async function generateMetadata({
   params,
@@ -73,7 +73,7 @@ export async function generateMetadata({
     };
   }
 
-  // Private (D-02): noindex, still accessible via direct link (unlisted)
+  // Private: noindex, still accessible via direct link (unlisted)
   return {
     ...base,
     robots: { index: false, follow: false },
@@ -83,9 +83,8 @@ export async function generateMetadata({
 /**
  * Public viewer page at /watch/<slug>.
  * Server Component that fetches video data directly via Prisma,
- * then renders the client-side WatchViewer.
- *
- * D-02: Private videos are unlisted (accessible via link, noindex meta set above).
+ * then renders the client-side WatchViewer. Private videos are unlisted
+ * (accessible via link, noindex meta set above).
  */
 export default async function WatchPage({ params }: WatchPageProps) {
   const { slug } = await params;

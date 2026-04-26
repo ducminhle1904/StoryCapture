@@ -1,7 +1,6 @@
 /**
- * Plugin-store wrapper — Phase 13's first production use of
- * `@tauri-apps/plugin-store`. Owns the store filename + key constants;
- * consumers use `getStore()`.
+ * Plugin-store wrapper around `@tauri-apps/plugin-store`. Owns the store
+ * filename + key constants; consumers use `getStore()`.
  */
 import { Store } from "@tauri-apps/plugin-store";
 

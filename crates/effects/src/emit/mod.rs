@@ -1,6 +1,6 @@
 //! Dual emitters: FFmpeg `filter_complex` (final export) and PreviewRenderPlan
 //! (WebGPU preview). Both consume the same `Graph` AST — single source of
-//! truth (D-01).
+//! truth.
 
 pub mod ffmpeg;
 pub mod preview;

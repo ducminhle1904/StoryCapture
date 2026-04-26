@@ -1,4 +1,4 @@
-//! In-process tests for `StoryLanguageServer` (plan 03-13, task 1).
+//! In-process tests for `StoryLanguageServer`.
 //!
 //! Uses the `InProcessServer` test facade which shares all logic with
 //! the real `tower-lsp::LanguageServer` impl but skips the JSON-RPC

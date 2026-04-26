@@ -1,7 +1,7 @@
-//! Tauri IPC <-> tower-lsp LspService bridge (D-16, AI-SPEC pitfall #3).
+//! Tauri IPC <-> tower-lsp LspService bridge.
 //!
 //! This module bridges `tower_lsp::LspService` to Tauri's command/channel
-//! IPC surface. **No stdio** is involved (D-16 architectural constraint).
+//! IPC surface. **No stdio** is involved (architectural constraint).
 //!
 //! Architecture:
 //! - On app start, `LspBridge::new()` builds an `LspService` from

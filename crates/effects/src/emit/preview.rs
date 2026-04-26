@@ -1,9 +1,9 @@
 //! AST → [`PreviewRenderPlan`] (JSON consumable by the WebGPU preview player).
 //!
-//! Like the FFmpeg emitter, this is the **shape** contract — Plan 05 refines
-//! keyframe interpolation and Plan 06 fills cursor atlas generation. The
-//! Plan-02-01 scope is to lock the JSON layout so the frontend inspector
-//! can start building views against stable types.
+//! Like the FFmpeg emitter, this is the **shape** contract — downstream
+//! work refines keyframe interpolation and cursor atlas generation. The
+//! initial scope is to lock the JSON layout so the frontend inspector can
+//! start building views against stable types.
 
 use serde::{Deserialize, Serialize};
 
@@ -52,8 +52,8 @@ fn sample_keyframes_lerp(keyframes: &[ZoomKeyframe], t_ms: u64) -> (Vec2, f32) {
 #[cfg(feature = "ts-export")]
 use ts_rs::TS;
 
-/// One frame sample of the zoom-pan curve. Plan 05 replaces the placeholder
-/// sampler with true keyframe interpolation; the type is fixed now so the
+/// One frame sample of the zoom-pan curve. The placeholder sampler is
+/// replaced with true keyframe interpolation; the type is fixed so the
 /// frontend never reshapes.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
@@ -112,8 +112,8 @@ pub fn emit_preview_plan(g: &Graph) -> PreviewRenderPlan {
         match node {
             VideoNode::Source { .. } | VideoNode::Transition { .. } => {}
             VideoNode::ZoomPan { keyframes, .. } => {
-                // Plan 05: expand keyframes to per-frame samples at g.output_fps
-                // via linear interpolation. Spring low-pass was already applied
+                // Expand keyframes to per-frame samples at g.output_fps via
+                // linear interpolation. Spring low-pass was already applied
                 // at plan time so the frontend just lerps between samples.
                 if keyframes.is_empty() {
                     // Nothing to emit.

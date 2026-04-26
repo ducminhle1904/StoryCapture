@@ -1,4 +1,4 @@
-//! CMSampleBuffer → Frame conversion (Plan 05-01, Task 1).
+//! CMSampleBuffer → Frame conversion.
 //!
 //! Zero-copy: the CVPixelBuffer reference is retained via our
 //! `CVPixelBufferHandle` RAII wrapper; the Frame carries it inside

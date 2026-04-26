@@ -1,9 +1,6 @@
 /**
- * Phase 13 fit-mode knob.
- * Single-select ToggleGroup over the 3 FitModeDto values. Note: the
- * UI-SPEC mentions Pillarbox, but FitModeDto has no such variant —
- * the DTO surface is letterbox / fill-crop / stretch. See 13-04-SUMMARY
- * deviation log.
+ * Fit-mode knob. Single-select ToggleGroup over the 3 FitModeDto values:
+ * letterbox / fill-crop / stretch.
  */
 
 import type { FitModeDto } from "@storycapture/shared-types";

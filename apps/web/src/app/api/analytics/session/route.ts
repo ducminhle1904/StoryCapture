@@ -6,8 +6,8 @@ import { SESSION_COOKIE_NAME, SESSION_COOKIE_MAX_AGE } from "@/lib/constants";
  * GET /api/analytics/session
  *
  * Returns or creates a GDPR-safe session ID cookie for anonymous viewer tracking.
- * - httpOnly, secure, SameSite=Lax, 30-day expiry (D-06)
- * - Value is a random UUID — no PII, no fingerprinting (T-04-27)
+ * httpOnly, secure, SameSite=Lax, 30-day expiry. Value is a random UUID —
+ * no PII, no fingerprinting.
  */
 export async function GET() {
   const cookieStore = await cookies();

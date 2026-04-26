@@ -1,4 +1,4 @@
-//! Rounded-corner frame mask emitter (POST-04).
+//! Rounded-corner frame mask emitter.
 //!
 //! Generates a single FFmpeg filter segment that takes an RGBA input labelled
 //! `input_label` and produces an output label where pixels inside the four

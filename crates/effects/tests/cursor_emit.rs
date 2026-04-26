@@ -1,5 +1,5 @@
 //! Snapshot + shape tests for the CursorOverlay + RippleOverlay FFmpeg
-//! emitters and the PreviewRenderPlan expansion (POST-03 / Plan 06 Task 3).
+//! emitters and the PreviewRenderPlan expansion.
 
 use std::path::PathBuf;
 
@@ -59,7 +59,7 @@ fn ripple_overlay_is_noop_passthrough() {
         out.contains("null[v_"),
         "expected a null-passthrough segment for RippleOverlay: {out}"
     );
-    // No drawbox primitives anymore (D-01 baked-into-PNG approach).
+    // No drawbox primitives anymore (baked-into-PNG approach).
     assert!(
         !out.contains("drawbox"),
         "ripples should not emit drawbox anymore: {out}"

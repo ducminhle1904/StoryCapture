@@ -1,17 +1,15 @@
 /**
- * PreviewPlayer (Plan 02-12b).
- *
- * Wraps Plan 04's `PreviewEngine` with a React component:
+ * PreviewPlayer — wraps `PreviewEngine` with a React component:
  *   - owns the <canvas> + hidden <video> refs
- *   - instantiates the engine in useEffect (D-33: single GPU ctx per mount)
- *   - drives `renderFrame` from a requestAnimationFrame loop while playing,
- *     or on-demand when the store playhead changes (scrub case)
+ *   - instantiates the engine in useEffect (single GPU ctx per mount)
+ *   - drives `renderFrame` from a requestAnimationFrame loop while
+ *     playing, or on-demand when the store playhead changes (scrub case)
  *   - syncs `<video>.currentTime = playheadMs / 1000` on every scrub
  *
- * The PreviewRenderPlan consumed here is a MINIMUM viable plan for P12b
- * — zoom identity, no ripples, no cursor atlas, no background. P05 / P06 /
- * P09 / P11 will enrich the plan builder; the engine already understands
- * the full shape from Plan 04 so no changes are needed here.
+ * The PreviewRenderPlan consumed here is a minimum viable plan: zoom
+ * identity, no ripples, no cursor atlas, no background. The engine
+ * already understands the full shape, so future enrichments slot in
+ * without changes here.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -62,7 +60,7 @@ export function PreviewPlayer({
   const playheadMs = useEditorStore((s) => s.playheadMs);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
 
-  // Construct/dispose the engine exactly once per mount — D-33.
+  // Construct/dispose the engine exactly once per mount.
   useEffect(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;

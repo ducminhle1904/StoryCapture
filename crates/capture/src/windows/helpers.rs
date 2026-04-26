@@ -1,8 +1,8 @@
 //! Shared helpers for Windows capture paths.
 //!
-//! Phase 6 cleanup backlog #7 — the logical→physical rect scaling for
-//! `CaptureTarget::DisplayRegion` was byte-identical in `wgc_backend.rs`
-//! and `thumbnail.rs`. Extracted here so both paths stay in sync.
+//! The logical→physical rect scaling for `CaptureTarget::DisplayRegion`
+//! was byte-identical in `wgc_backend.rs` and `thumbnail.rs`. Extracted
+//! here so both paths stay in sync.
 
 #![cfg(target_os = "windows")]
 

@@ -1,4 +1,4 @@
-//! Real-capture integration tests (Plan 05-03 Wave 0, Task 1 makes them green).
+//! Real-capture integration tests.
 //!
 //! These compile under `--features real-capture-windows` and are `#[ignore]`-marked
 //! so `cargo test --no-run` verifies they build in CI without actually hitting
@@ -130,7 +130,7 @@ async fn wgc_window_close_recovery() {
 }
 
 /// Spawn a headed Chromium via Playwright and confirm pid→HWND resolves
-/// within 1s. The Playwright sidecar helper is shared with Plan 05-02 —
+/// within 1s. The Playwright sidecar helper is shared with the launcher —
 /// this test exercises the cross-cutting pid-resolution path, not a full
 /// Playwright launch. When the helper is unavailable (not bundled in this
 /// worktree), we skip gracefully via an env var.

@@ -2,20 +2,19 @@
 //!
 //! Two parsers coexist in this module:
 //!
-//! - `ProgressParser` / `EncodeProgress` — the Phase 1 `-progress pipe:2`
-//!   parser for the capture→encode recording pipeline (declared below in
-//!   this file, unchanged).
-//! - `RenderProgressParser` / `RenderProgress` — the Plan 02-10 render-queue
-//!   parser driven fragment-by-fragment from FFmpeg `-progress pipe:1`
-//!   output and keyed by `job_id`. Lives in the [`parser`] submodule.
+//! - `ProgressParser` / `EncodeProgress` — the `-progress pipe:2` parser
+//!   for the capture→encode recording pipeline (declared below).
+//! - `RenderProgressParser` / `RenderProgress` — the render-queue parser
+//!   driven fragment-by-fragment from FFmpeg `-progress pipe:1` output and
+//!   keyed by `job_id`. Lives in the [`parser`] submodule.
 
 pub mod parser;
 
 pub use parser::{parse_line, ProgressFrag, RenderProgress, RenderProgressParser};
 
 //
-// Phase 1 `-progress pipe:2` parser (kept verbatim below)
-// -------------------------------------------------------
+// `-progress pipe:2` parser (declared below)
+// ------------------------------------------
 //
 // FFmpeg emits key=value lines, one per line, terminated by either
 // `progress=continue` (a running update, emitted roughly every second)

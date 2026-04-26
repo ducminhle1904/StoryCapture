@@ -1,4 +1,4 @@
-//! Phase 09-01 — Rust bridge tests for the sidecar reader's
+//! Rust bridge tests for the sidecar reader's
 //! SidecarMsg::Notification branch + preview-frame watch channel.
 //!
 //! Drives the extracted `handle_sidecar_line` helper directly — no Node

@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * Geographic breakdown table for analytics dashboard (D-06).
+ * Geographic breakdown table for analytics dashboard.
  * Shows country-level view counts sorted by count descending.
- * Top 10 countries shown; rest grouped as "Other".
- * No city-level data per D-06.
+ * Top 10 countries shown; rest grouped as "Other". No city-level data.
  */
 
 /** ISO 3166-1 alpha-2 to flag emoji */

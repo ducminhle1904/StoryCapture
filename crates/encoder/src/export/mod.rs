@@ -1,16 +1,11 @@
-//! Export orchestration (Plan 02-11).
+//! Export orchestration.
 //!
-//! EXPORT-01 (render final polished video via the effect pipeline on the raw
-//! recording) / EXPORT-02 (MP4 / WebM / GIF formats) / EXPORT-03 (720p /
-//! 1080p / 4K resolutions + 24/30/60 fps + low/med/high quality) /
-//! EXPORT-04 (batch export multiple formats sharing one batch_id).
-//!
-//! This module layers an end-user-facing format/resolution/quality catalogue
-//! on top of the Plan 02-10 `fanout` primitives. The `orchestrator`
-//! sub-module composes `render_intermediate` + `fanout_encode` into a single
+//! Layers an end-user-facing format/resolution/quality catalogue on top of
+//! the `fanout` primitives. The `orchestrator` sub-module composes
+//! `render_intermediate` + `fanout_encode` into a single
 //! `export_run(ExportRequest, &RenderQueueHandle, &db, ...)` entrypoint.
 //!
-//! The PSNR regression harness (POST-08) lives in [`psnr`].
+//! The PSNR regression harness lives in [`psnr`].
 
 pub mod batch;
 pub mod error;

@@ -1,11 +1,9 @@
 /**
- * Tauri IPC transport for LSP communication (Plan 03-14, Task 2).
+ * Tauri IPC transport for LSP communication.
  *
  * Bridges the CodeMirror LSP client to the Rust `lsp_request` Tauri command.
  * JSON-RPC envelopes are marshalled as strings (specta compatibility).
- *
- * Architecture (D-16): NO stdio -- all LSP communication flows through
- * Tauri IPC exclusively.
+ * No stdio — all LSP communication flows through Tauri IPC exclusively.
  */
 
 import { invoke, Channel } from "@tauri-apps/api/core";

@@ -9,7 +9,7 @@ interface PrivacyToggleProps {
 }
 
 /**
- * Toggle switch for video privacy (D-02).
+ * Toggle switch for video privacy.
  * Private = unlisted (only people with the link can view, noindex).
  * Public = searchable (indexed by search engines, oEmbed available).
  * No password protection or link expiry in v1.

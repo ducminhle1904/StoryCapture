@@ -1,4 +1,4 @@
-//! Phase 3 typed accessors over the v3 AI tables in `project.sqlite`.
+//! Typed accessors over the v3 AI tables in `project.sqlite`.
 //!
 //! Callers (Wave 2 LLM orchestrator, Wave 3 TTS pipeline) pass a raw
 //! `&rusqlite::Connection` borrowed from `ProjectDb`. Keeping this surface
@@ -13,7 +13,7 @@
 //! - T-03-02-01 (info disclosure): callers are responsible for never passing
 //!   raw API keys or request headers into `content` / `token_usage_json`.
 //!   The storage layer cannot enforce this — the `intelligence` crate's
-//!   redaction layer (Plan 03-01) handles it at the tracing seam.
+//!   redaction layer handles it at the tracing seam.
 
 use std::path::{Component, Path, PathBuf};
 

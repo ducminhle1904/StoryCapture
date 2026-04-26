@@ -1,4 +1,4 @@
-//! Audio pipeline smoke tests (Phase 6 plan 01, Task 0/1).
+//! Audio pipeline smoke tests.
 //!
 //! Tests run under the `audio-mock` feature so CI hosts without a real
 //! mic (and without Microphone TCC grant on macOS) can exercise the full

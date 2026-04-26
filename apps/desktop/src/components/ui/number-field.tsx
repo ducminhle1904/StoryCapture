@@ -1,7 +1,5 @@
 /**
  * NumberField — Input wrapper with numeric parsing + min/max/step + aria-invalid wiring.
- *
- * Phase 13 D-13-08: Custom W/H inputs and keyframe interval.
  */
 
 import * as React from "react";

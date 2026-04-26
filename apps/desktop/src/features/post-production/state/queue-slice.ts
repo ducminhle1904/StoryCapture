@@ -1,11 +1,9 @@
 /**
- * Queue slice (Plan 02-12a).
- *
- * Mirrors the host's render queue state for UI consumption: a map of
- * active `RenderJob`s keyed by id + a per-job live progress map fed by
- * the `stream_render_progress` channel. Both are bounded by the host's
- * `render_list_active` response + the actor's pool capacity, so there
- * is no additional DoS surface here.
+ * Queue slice. Mirrors the host's render queue state for UI consumption:
+ * a map of active `RenderJob`s keyed by id + a per-job live progress map
+ * fed by the `stream_render_progress` channel. Both are bounded by the
+ * host's `render_list_active` response + the actor's pool capacity, so
+ * there is no additional DoS surface here.
  */
 
 import type { StateCreator } from "zustand";

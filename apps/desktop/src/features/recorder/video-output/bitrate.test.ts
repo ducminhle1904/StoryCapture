@@ -1,6 +1,5 @@
 /**
- * Phase 13 — bitrate preview helpers (D-13-11) + custom-dims validator (D-13-08).
- * RED gate before implementation.
+ * Bitrate preview helpers + custom-dims validator.
  */
 
 import { describe, expect, it } from "vitest";

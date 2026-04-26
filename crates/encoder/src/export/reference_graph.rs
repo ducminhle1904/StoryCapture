@@ -1,16 +1,13 @@
-//! Shared deterministic 1-min reference graph used by:
-//!
-//!   - `crates/encoder/src/bin/benchmark-render.rs` (EXPORT-06 speed benchmark)
-//!   - `crates/encoder/src/bin/generate-psnr-reference.rs` (POST-08 fixture seeder)
-//!   - `crates/encoder/tests/psnr_regression.rs`          (POST-08 CI gate)
+//! Shared deterministic 1-min reference graph used by the benchmark
+//! binary, PSNR fixture seeder, and PSNR regression test.
 //!
 //! Keeping the builder in one place guarantees the benchmark binary and
 //! the regression test render the SAME graph.
 //!
-//! The graph intentionally uses only effects that are fully wired in the
-//! Phase-2 plan chain (Source only until downstream plans stabilise) so
-//! the fixture is hermetic — no external recording needed beyond the
-//! synthetic MP4 the benchmark script generates on the fly.
+//! The graph intentionally uses only fully-wired effects (Source only
+//! until downstream nodes stabilise) so the fixture is hermetic — no
+//! external recording needed beyond the synthetic MP4 the benchmark
+//! script generates on the fly.
 
 use std::path::{Path, PathBuf};
 

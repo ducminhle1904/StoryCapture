@@ -1,7 +1,5 @@
 /**
- * ExportModal tests (Plan 02-12b, Task 2).
- *
- * Coverage:
+ * ExportModal tests. Coverage:
  *   - Export button disabled when no formats selected
  *   - Selecting MP4 + 1080p + 60fps + medium + picking a folder enables
  *     submit, and clicking Export calls `export_run` with the right shape

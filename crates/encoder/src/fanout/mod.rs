@@ -1,5 +1,5 @@
 //! Smart batch reuse: render composite frames once to an FFV1 intermediate,
-//! then fan-out to N parallel encoders (Plan 02-10 Task 3).
+//! then fan-out to N parallel encoders.
 
 pub mod intermediate;
 pub mod multi_encode;

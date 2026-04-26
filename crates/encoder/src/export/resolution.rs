@@ -22,7 +22,7 @@ pub fn dimensions_for(r: Resolution) -> (u32, u32) {
 }
 
 /// Short human-readable label used in filenames + render_jobs.resolution
-/// column. Must match the values the Phase-1 `render_jobs` schema accepts.
+/// column. Must match the values the `render_jobs` schema accepts.
 pub fn res_label(r: Resolution) -> &'static str {
     match r {
         Resolution::R720p => "720p",

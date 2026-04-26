@@ -1,7 +1,6 @@
 /**
- * Label primitive — shadcn-style chrome atop a native <label> (D-32; no Base UI part needed).
+ * Label primitive — shadcn-style chrome atop a native <label>.
  *
- * Phase 13 first use: section + field labels across Output Preferences panel.
  * Token-only styling; inherits disabled styling from peer/group data attributes.
  */
 

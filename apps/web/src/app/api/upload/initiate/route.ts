@@ -12,7 +12,7 @@ import {
  * POST /api/upload/initiate
  *
  * Thin REST wrapper for desktop Rust client.
- * Validates desktop JWT from Authorization header (T-04-12).
+ * Validates desktop JWT from Authorization header.
  * Creates a multipart upload in R2 + a Video DB record.
  */
 export async function POST(req: NextRequest) {
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   const videoUuid = crypto.randomUUID();
   const key = `${workspaceId}/${videoUuid}/${fileName}`;
 
-  // Create multipart upload with SSE-S3 encryption (DIST-06)
+  // Create multipart upload with SSE-S3 encryption
   const { UploadId } = await r2Client.send(
     new CreateMultipartUploadCommand({
       Bucket: R2_BUCKET,

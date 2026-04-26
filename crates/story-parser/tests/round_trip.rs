@@ -1,4 +1,4 @@
-//! Phase 7 Tier 2 (plan 07-04b): parse-format-parse structural fixpoint.
+//! Parse-format-parse structural fixpoint.
 //!
 //! Guarantees that [`story_parser::format_story`] emits DSL text which
 //! reparses to an AST structurally equal to the input (ignoring byte spans).

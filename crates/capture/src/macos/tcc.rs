@@ -1,7 +1,7 @@
 //! macOS Screen Recording TCC (Transparency, Consent and Control) flow.
 //!
-//! Per D-20 + PITFALLS.md §1: stale TCC entries ("ghost grants") happen
-//! when the dev signing identity changes between builds. The Tauri host
+//! Stale TCC entries ("ghost grants") happen when the dev signing
+//! identity changes between builds. The Tauri host
 //! must:
 //!   1. Call `preflight_screen_capture_access()` on launch.
 //!   2. If denied, surface a guided modal in the UI ("Open System

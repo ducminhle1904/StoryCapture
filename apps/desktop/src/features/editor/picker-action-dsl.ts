@@ -153,11 +153,11 @@ function stringValue(locator: PickLocator): string {
 
 /**
  * Default menu selection — match the existing line's verb if it's any
- * recognised picker action (superset of {@link TargetVerb}). Falls back to
- * `click` so the menu always has a valid default.
+ * recognised picker action. Falls back to `click` so the menu always
+ * has a valid default.
  */
 export function inferDefaultAction(lineText: string): PickerAction {
-  // First try the strict target-shape parse — preserves Phase 1 contract for
+  // Strict target-shape parse first — preserves the contract for
   // click/hover/wait-for/assert with full locator structure.
   const targetVerb = parseLine(lineText).verb;
   if (targetVerb) return targetVerb;

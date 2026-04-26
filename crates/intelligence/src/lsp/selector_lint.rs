@@ -3,10 +3,10 @@
 //! Flags brittle patterns (single `.class`/`#id`, deep `nth-child`,
 //! absolute XPath, dynamically-hashed classes, brittle attribute
 //! selectors) and missing fallback chains. Surfaces as LSP WARNING
-//! diagnostics with source `selector-lint` (D-17, AI-SPEC E11).
+//! diagnostics with source `selector-lint`.
 //!
 //! Uses the `regex` crate which provides linear-time guarantees
-//! (no backtracking), mitigating T-03-15-01 ReDoS risk.
+//! (no backtracking), mitigating ReDoS risk.
 
 use regex::Regex;
 use std::sync::LazyLock;

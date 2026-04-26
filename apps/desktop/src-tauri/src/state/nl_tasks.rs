@@ -1,11 +1,11 @@
-//! Phase 3 Plan 07 -- shared AbortHandle map for in-flight NL turns.
+//! Shared AbortHandle map for in-flight NL turns.
 //!
 //! The registry is managed as Tauri state (`app.manage(Arc::new(NlTaskRegistry::default()))`)
 //! and accessed from `nl_chat_send` / `nl_cancel` commands. Each spawned NL
 //! turn stores its `AbortHandle` here so the webview can cancel long streams.
 //!
-//! T-03-07-03 mitigation: `insert` checks a per-project cap of 4 concurrent
-//! turns and returns `false` if the cap would be exceeded.
+//! `insert` checks a per-project cap of 4 concurrent turns and returns
+//! `false` if the cap would be exceeded.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use intelligence::nl::schemas::StoryDoc;
 
-/// Maximum concurrent NL turns per project (T-03-07-03).
+/// Maximum concurrent NL turns per project.
 const MAX_CONCURRENT_PER_PROJECT: usize = 4;
 
 /// Registry entry pairing a task's abort handle with its project context.
@@ -56,7 +56,7 @@ impl NlTaskRegistry {
     }
 
     /// Insert a new task. Returns `true` if inserted, `false` if the
-    /// per-project concurrency cap (4) would be exceeded.
+    /// per-project concurrency cap would be exceeded.
     pub fn insert(&self, id: String, project_id: String, handle: AbortHandle) -> bool {
         let mut map = self.tasks.lock().unwrap();
         let count = map.values().filter(|e| e.project_id == project_id).count();

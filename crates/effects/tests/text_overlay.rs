@@ -1,4 +1,4 @@
-//! Plan 02-09: text overlay engine.
+//! Text overlay engine tests.
 //!
 //! Covers both Task 1 (font resolution + drawtext escaping + animation
 //! params) and Task 2 (callout + highlight ring + auto-annotate +
@@ -255,7 +255,7 @@ impl StepAstRef for FakeStep {
 
 #[test]
 fn auto_annotate_default_off() {
-    // D-27: default Options has enabled=false.
+    // Default Options has enabled=false.
     let s = FakeStep {
         v: "click",
         t: Some("Save button"),

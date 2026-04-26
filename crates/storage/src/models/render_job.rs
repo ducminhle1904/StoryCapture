@@ -1,4 +1,4 @@
-//! Render queue model. Implements D-04 status machine.
+//! Render queue model. Implements the status machine.
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use uuid::Uuid;
 
-/// D-04 status machine. String representations MUST match the CHECK constraint
+/// Status machine. String representations MUST match the CHECK constraint
 /// in `m004_render_jobs.sql` exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

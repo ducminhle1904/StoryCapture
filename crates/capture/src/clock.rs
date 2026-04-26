@@ -1,4 +1,4 @@
-//! Single clock source per platform (D-21, CAP-07).
+//! Single clock source per platform.
 //!
 //! - macOS: `mach_absolute_time` scaled by `mach_timebase_info`.
 //! - Windows: `QueryPerformanceCounter` scaled by `QueryPerformanceFrequency`.

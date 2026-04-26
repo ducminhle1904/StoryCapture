@@ -1,9 +1,7 @@
 /**
- * Timeline tests (Plan 02-12b, Task 1).
- *
- * Coverage:
- *   - 5 fixed tracks render (D-12)
- *   - Magnetic snap within 10 px (D-13)
+ * Timeline tests. Coverage:
+ *   - 5 fixed tracks render
+ *   - Magnetic snap within 10 px
  *   - Alt-held bypasses snap without flipping the persistent flag
  *   - Clips carry ARIA labels for screen readers
  */
@@ -40,7 +38,7 @@ describe("Timeline", () => {
     const region = screen.getByRole("region", { name: /timeline/i });
     expect(region).toBeInTheDocument();
 
-    // Five track rows labelled correctly (D-12)
+    // Five track rows labelled correctly.
     expect(screen.getByRole("row", { name: /video track/i })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /cursor track/i })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /zoom track/i })).toBeInTheDocument();

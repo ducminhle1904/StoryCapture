@@ -1,6 +1,5 @@
-// Plan 02-11: export commands. Thin pass-through over
-// `encoder::export::orchestrator::export_run` + catalogue helpers. UI (Plan
-// 12) binds to these.
+// Export commands. Thin pass-through over
+// `encoder::export::orchestrator::export_run` + catalogue helpers.
 
 use std::path::PathBuf;
 
@@ -319,7 +318,7 @@ pub fn export_validate_config(cfg: ExportOutputDto) -> Result<(), AppError> {
                 }
             }
         }
-        // encoder_options: validated; runtime consumption deferred (see Phase 13 13-01-PLAN scope note).
+        // encoder_options: validated; runtime consumption deferred.
     }
 
     Ok(())

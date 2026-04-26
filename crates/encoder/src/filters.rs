@@ -1,8 +1,6 @@
-//! FFmpeg filter-graph emitter for Phase 12. Pure module — no Tauri or IPC
-//! dependencies. Emits canonical letterbox / fill-crop / stretch chains with
-//! validated, injection-resistant inputs. See `.planning/phases/12-*/12-RESEARCH.md`
-//! for the filter-by-filter rationale and `.planning/.../12-CONTEXT.md` D-12-01..07
-//! for locked enum shapes.
+//! FFmpeg filter-graph emitter. Pure module — no Tauri or IPC dependencies.
+//! Emits canonical letterbox / fill-crop / stretch chains with validated,
+//! injection-resistant inputs.
 
 use crate::error::{EncoderError, Result};
 

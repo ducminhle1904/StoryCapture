@@ -30,7 +30,7 @@ pub struct XfadeTimeline {
 ///
 /// Returns one `offset_ms` per transition, in the same order as
 /// `tl.transitions`. When `transitions` is empty the result is empty
-/// (default = none per D-25).
+/// (default = none).
 pub fn compute_offsets(tl: &XfadeTimeline) -> Vec<u32> {
     let mut offsets = Vec::with_capacity(tl.transitions.len());
     for (i, (boundary, _kind, dur)) in tl.transitions.iter().enumerate() {

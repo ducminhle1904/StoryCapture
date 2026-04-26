@@ -6,12 +6,12 @@ import type { Context } from "../init";
 /**
  * Workspace CRUD + RBAC middleware + invite procedures.
  *
- * 3-tier RBAC middleware (T-04-21):
+ * 3-tier RBAC middleware:
  *   workspaceMemberProcedure: any member
  *   workspaceEditorProcedure: editor or owner
  *   workspaceOwnerProcedure: owner only
  *
- * Invite flow (T-04-22): Random CUID token, 7-day expiry, single-use.
+ * Invite flow: random CUID token, 7-day expiry, single-use.
  */
 
 // ─── Slug Utilities ───
@@ -305,8 +305,8 @@ export const workspaceRouter = router({
 
   /**
    * Invite a member to workspace (editor+ can invite).
-   * T-04-21: Editor can invite as editor/viewer; owner can invite with any role.
-   * T-04-22: Random CUID token, 7-day expiry, single-use.
+   * Editor can invite as editor/viewer; owner can invite with any role.
+   * Token is a random CUID with 7-day expiry, single-use.
    */
   invite: workspaceEditorProcedure
     .input(
@@ -316,7 +316,7 @@ export const workspaceRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // T-04-21: Editors cannot assign OWNER role
+      // Editors cannot assign OWNER role
       if (ctx.membership.role === "EDITOR" && input.role === "OWNER") {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -348,7 +348,7 @@ export const workspaceRouter = router({
         }
       }
 
-      // Create invite with 7-day expiry (T-04-22)
+      // Create invite with 7-day expiry
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
@@ -395,7 +395,7 @@ export const workspaceRouter = router({
 
   /**
    * Accept an invite (consumes the token). Any authenticated user can accept.
-   * T-04-22: Single-use token consumed on acceptance.
+   * Single-use token consumed on acceptance.
    */
   acceptInvite: protectedProcedure
     .input(z.object({ token: z.string() }))

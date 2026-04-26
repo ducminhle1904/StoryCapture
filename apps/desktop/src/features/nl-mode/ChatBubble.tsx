@@ -1,10 +1,7 @@
 /**
  * Chat bubble component.
  *
- * Card with role-based border tint per UI-SPEC:
- * - user: blue-ish subtle border
- * - assistant: neutral border
- * Body text 14px Regular per Typography contract.
+ * Role-based border tint: user=blue-ish, assistant=neutral.
  */
 
 import { motion } from "motion/react";

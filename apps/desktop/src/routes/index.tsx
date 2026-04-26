@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppLayout, FullscreenLayout } from "@/components/title-bar";
-// Plan 06-02 — transparent region-selection overlay window.
+// Transparent region-selection overlay window.
 import { RegionOverlay } from "@/features/capture/RegionOverlay";
 import DashboardRoute from "./dashboard";
 import EditorRoute from "./editor";

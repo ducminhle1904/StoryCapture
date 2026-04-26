@@ -1,4 +1,4 @@
-//! FFmpeg sidecar lifecycle (D-23).
+//! FFmpeg sidecar lifecycle.
 //!
 //! The `encoder` crate is pure (no `tauri` dep). The Tauri host resolves
 //! the sidecar path via `tauri-plugin-shell`'s externalBin machinery and

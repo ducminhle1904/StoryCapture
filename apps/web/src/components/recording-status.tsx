@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
  *
  * Subscribes to sync.onRecordingStatus SSE for real-time updates.
  * Falls back to polling sync.listProjects every 5s after 3 consecutive
- * SSE reconnect failures (Hobby tier graceful degradation per D-08 Addendum).
+ * SSE reconnect failures (Hobby-tier graceful degradation).
  */
 
 interface RecordingStatusProps {

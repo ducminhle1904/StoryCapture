@@ -7,18 +7,15 @@ import { ANALYTICS_EVENTS, type AnalyticsEventType } from "@/lib/constants";
  * POST /api/analytics/ingest
  *
  * Public endpoint for anonymous viewers to submit batched video analytics events.
- * No auth required — viewers are anonymous (T-04-26: rate limited, validated).
+ * No auth required — viewers are anonymous; rate limited and validated.
  * Accepts an array of 1-50 events per request so viewers can batch client-side
  * (e.g. flush every 5-10 events or on page unload via sendBeacon).
  *
- * Threat mitigations:
- * - T-04-26: Rate limiting (10 req/sec per IP), validates videoId exists, validates event type enum
- * - T-04-27: No PII stored; country-level only via GeoLite2 (D-06)
+ * No PII stored; country-level only via GeoLite2.
  */
 
-// ─── Rate Limiter (T-04-26) ───
-// NOTE: Process-local Map — on serverless (Vercel), each instance has its own map
-// and cold starts reset it. This is acceptable for v1; a Redis/Upstash sliding
+// Rate limiter — process-local Map. On serverless (Vercel) each instance has its
+// own map and cold starts reset it. Acceptable for v1; a Redis/Upstash sliding
 // window is a v2 upgrade path.
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 10; // requests per window per IP
@@ -66,7 +63,7 @@ interface IngestPayload {
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown";
 
-  // T-04-26: Rate limit with response headers
+  // Rate limit with response headers
   const { limited, remaining } = checkRateLimit(ip);
   const rateLimitHeaders = {
     "X-RateLimit-Limit": String(RATE_LIMIT),
@@ -112,7 +109,7 @@ export async function POST(req: NextRequest) {
   const videoIdCache = new Map<string, boolean>();
 
   for (const evt of body.events) {
-    // Validate event type (T-04-26)
+    // Validate event type
     if (!evt.event || !(ANALYTICS_EVENTS as readonly string[]).includes(evt.event)) {
       return NextResponse.json(
         { error: `Invalid event type. Must be one of: ${ANALYTICS_EVENTS.join(", ")}` },
@@ -134,7 +131,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // T-04-26: Validate videoId exists (deduplicated across batch)
+    // Validate videoId exists (deduplicated across batch)
     if (!videoIdCache.has(evt.videoId)) {
       const video = await prisma.video.findUnique({
         where: { id: evt.videoId },
@@ -151,7 +148,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Resolve country from IP (D-06: country-level only, T-04-27: no PII)
+  // Resolve country from IP — country-level only, no PII
   const country = await getCountry(ip);
 
   // Batch insert all events with createMany (single INSERT instead of N)

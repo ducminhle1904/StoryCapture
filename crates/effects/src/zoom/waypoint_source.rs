@@ -1,7 +1,7 @@
 //! [`WaypointSource`] abstraction: decouples the planner from storage.
 //!
-//! The planner (Plan 05) takes a `&[Waypoint]`; production code gets that
-//! slice by calling [`WaypointSource::load`] on whichever backend is wired up.
+//! The planner takes a `&[Waypoint]`; production code gets that slice by
+//! calling [`WaypointSource::load`] on whichever backend is wired up.
 //! Tests use in-memory vectors, production uses [`SqliteWaypointSource`].
 //!
 //! ## Schema contract
@@ -18,12 +18,12 @@
 //! );
 //! ```
 //!
-//! **Note:** Phase 1's production `steps` table uses a different shape
+//! **Note:** the production `steps` table uses a different shape
 //! (`session_id, ordinal, command_json, ...`). Bridging to that shape
-//! requires a JSON-parsing adapter; it is out of scope for Plan 05 and will
-//! be added when a later plan wires end-to-end SQLite → zoom. For now,
-//! callers with the production schema must build an adapter that projects
-//! into the columns above.
+//! requires a JSON-parsing adapter and will be added when a later
+//! integration wires end-to-end SQLite → zoom. For now, callers with the
+//! production schema must build an adapter that projects into the columns
+//! above.
 
 use crate::ast::types::Vec2;
 use crate::error::EffectsError;

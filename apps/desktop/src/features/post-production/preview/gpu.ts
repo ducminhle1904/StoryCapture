@@ -3,11 +3,11 @@
 /**
  * Preview GPU context: WebGPU-primary with WebGL2 fallback.
  *
- * Pitfall #4 mitigation (D-01): feature-detect WebGPU at runtime. When
- * `navigator.gpu` is missing, the adapter is null, or the canvas rejects
- * `getContext('webgpu')`, we transparently fall back to WebGL2. Pitfall #5
- * (VideoFrame leak) is addressed by the companion `video-frame-lifecycle`
- * helper; this module owns only the context selection.
+ * Feature-detects WebGPU at runtime — when `navigator.gpu` is missing,
+ * the adapter is null, or the canvas rejects `getContext('webgpu')`, we
+ * transparently fall back to WebGL2. VideoFrame lifecycle is handled by
+ * the companion `video-frame-lifecycle` helper; this module owns only
+ * the context selection.
  */
 
 import { frontendLog } from "@/lib/log";

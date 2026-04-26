@@ -15,7 +15,7 @@ interface SceneBoundary {
 
 /**
  * Auth-gated analytics dashboard page for a specific video.
- * Verifies user has editor/owner access to the video's workspace (T-04-29).
+ * Verifies user has access to the video's workspace.
  */
 export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
   const session = await auth();
@@ -41,7 +41,7 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
     notFound();
   }
 
-  // T-04-29: Verify user is member of the workspace
+  // Verify user is a member of the workspace
   const membership = await prisma.workspaceMember.findUnique({
     where: {
       userId_workspaceId: {

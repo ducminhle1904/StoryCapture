@@ -1,10 +1,10 @@
 /**
- * Render queue IPC wrappers (Plan 02-10 + 02-12a).
+ * Render queue IPC wrappers.
  *
  * Typed wrappers around the `render_enqueue` / `render_cancel` /
  * `render_list_active` / `stream_render_progress` Tauri commands.
- * TanStack Query keys are defined here so the Post-Production editor
- * (Plan 02-12b) and any other consumer share the same cache namespace.
+ * TanStack Query keys are defined here so all consumers share the same
+ * cache namespace.
  */
 
 import { invoke, Channel } from "@tauri-apps/api/core";

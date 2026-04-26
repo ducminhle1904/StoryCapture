@@ -4,9 +4,9 @@
 //! tutorial/cinematic tones. Each `slug` is a stable identifier used in
 //! project metadata; `voice_id` maps to the ElevenLabs catalog.
 //!
-// TODO(phase-3-eval): Validate voice_id values against live ElevenLabs
-// catalog during eval harness (Plan 21) — some voice IDs may change;
-// confirm active and en-locale.
+// TODO: Validate voice_id values against live ElevenLabs catalog during
+// the eval harness — some voice IDs may change; confirm active and
+// en-locale.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VoicePreset {
@@ -16,8 +16,8 @@ pub struct VoicePreset {
     pub locale: &'static str,
 }
 
-/// Six curated ElevenLabs voices surfaced in the StoryCapture voice picker.
-/// D-11 requires ≥6 (target 6–8).
+/// Six curated ElevenLabs voices surfaced in the StoryCapture voice
+/// picker. Target 6–8.
 pub const CURATED_PRESETS: &[VoicePreset] = &[
     VoicePreset {
         slug: "energetic_male",

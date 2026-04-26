@@ -1,6 +1,6 @@
 //! `.scpreset` JSON file format — import/export + version migration.
 //!
-//! Schema v2 (current, Phase 2 first release):
+//! Schema v2 (current):
 //! ```jsonc
 //! {
 //!   "id": "<uuid>",
@@ -134,8 +134,8 @@ pub fn import_preset(path: &Path) -> Result<EffectPreset, StorageError> {
     })
 }
 
-/// v1 → v2 migration stub. Phase 2 is the first shipped `.scpreset` format,
-/// so v1 does not exist in the wild. The stub always errors; it is kept as a
+/// v1 → v2 migration stub. v2 is the first shipped `.scpreset` format, so
+/// v1 does not exist in the wild. The stub always errors; it is kept as a
 /// seam so future v2 → v3 migrations can slot in symmetrically.
 pub fn migrate_preset_v1_to_v2(_file: ScpresetFile) -> Result<ScpresetFile, StorageError> {
     Err(err_unsupported_v1())

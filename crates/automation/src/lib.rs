@@ -1,17 +1,17 @@
 //! `automation` — `BrowserDriver` trait + Playwright sidecar driver.
 //!
-//! **Pure crate (D-07):** zero Tauri imports; Phase 5's headless CLI
-//! consumes this crate unchanged.
+//! **Pure crate:** zero Tauri imports; the headless CLI consumes this crate
+//! unchanged.
 //!
 //! ## Architecture
 //!
 //! - [`BrowserDriver`] — async trait every driver implements.
 //! - [`PlaywrightSidecarDriver`] — primary driver, Node SEA bundled, JSON-RPC.
 //! - [`NoopDriver`] — fallback stub used when only one real driver exists.
-//! - [`Executor`] — DSL → driver dispatch with capability-routing (D-14)
-//!   + per-verb auto-wait (D-12) + intent-aware selector resolution (D-13).
+//! - [`Executor`] — DSL → driver dispatch with capability-routing,
+//!   per-verb auto-wait, and intent-aware selector resolution.
 //! - [`SmartSelector`] — explicit-strict + ranked-text resolution.
-//! - [`SessionActor`] — D-06 actor wrap for the recorder UI to drive.
+//! - [`SessionActor`] — actor wrap for the recorder UI to drive.
 
 pub mod auto_wait;
 pub mod capability;

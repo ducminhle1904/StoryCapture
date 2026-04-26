@@ -1,12 +1,8 @@
 /**
  * Export-complete toast with "Upload to Web" button.
  *
- * D-01: This is the primary user-facing upload trigger.
- * Appears after a successful video export.
- *
- * - Button calls startUpload() from upload-store
- * - Disabled if no web account is connected (check web-account-store)
- * - Shows tooltip when disabled explaining why
+ * Primary user-facing upload trigger; appears after a successful export.
+ * Disabled if no web account is connected.
  */
 
 import { useUploadStore } from "@/stores/upload-store";

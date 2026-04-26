@@ -1,12 +1,8 @@
 /**
- * Preview engine lifecycle hook (Plan 02-12b).
- *
- * Encapsulates the PreviewEngine creation / init / dispose pattern
- * required by D-33 (single GPU context per component lifetime). Returns
- * the engine instance once init resolves, plus a `render(t_ms)` callback
- * the player loop uses to drive frames.
- *
- * Plan 04 owns the engine internals; this hook is strictly wiring.
+ * Preview engine lifecycle hook. Encapsulates the PreviewEngine
+ * creation / init / dispose pattern (single GPU context per component
+ * lifetime). Returns the engine instance once init resolves, plus a
+ * `render(t_ms)` callback the player loop uses to drive frames.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";

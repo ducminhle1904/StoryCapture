@@ -6,16 +6,9 @@ import { DASHBOARD_DAYS, MAX_RETENTION_DAYS } from "@/lib/constants";
 import { requireWorkspaceMember } from "../lib/guards";
 
 /**
- * Analytics tRPC router (Plan 04-08, D-06).
- *
- * Provides dashboard queries for video analytics:
- * - Play count (total + unique)
- * - Watch duration (average + median)
- * - Scene drop-off data
- * - Geographic breakdown (country-level)
- *
- * Threat mitigations:
- * - T-04-29: Only workspace editors/owners can view analytics (protectedProcedure + role check)
+ * Analytics tRPC router — dashboard queries for video analytics:
+ * play count (total + unique), watch duration (avg + median), scene drop-offs,
+ * and geographic breakdown (country-level). Workspace membership is enforced.
  */
 
 /**

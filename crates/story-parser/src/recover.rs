@@ -1,5 +1,5 @@
-//! Panic-mode recovery (D-09): when pest returns a hard error, we rebuild
-//! a best-effort lenient token stream by scanning the source line by line
+//! Panic-mode recovery: when pest returns a hard error, we rebuild a
+//! best-effort lenient token stream by scanning the source line by line
 //! so that the semantic layer can still report multiple diagnostics from
 //! a single `parse()` call.
 
@@ -18,7 +18,7 @@ use crate::parser::Rule;
 ///
 /// The semantic layer then iterates the unknown tokens producing one
 /// diagnostic per offending line — which is the multi-error UX guaranteed
-/// by DSL-06.
+/// by the multi-error contract.
 pub fn recover_from_pest_error(
     source: &str,
     err: &pest::error::Error<Rule>,

@@ -1,12 +1,9 @@
 /**
- * Coalescer (Plan 02-13, D-15).
- *
- * Figma-like per-action coalescing: sequential actions that share a
- * "coalesce key" (kind + id) and land within COALESCE_IDLE_MS of each
- * other collapse into a single history entry. A drag that fires 60
- * pointermove events is one undo step; 5 keystrokes in a text field
- * within 500 ms idle are one undo step; a 600 ms gap starts a new
- * entry.
+ * Coalescer. Sequential actions that share a "coalesce key" (kind + id)
+ * and land within COALESCE_IDLE_MS of each other collapse into a single
+ * history entry. A drag that fires 60 pointermove events is one undo
+ * step; 5 keystrokes in a text field within 500 ms idle are one undo
+ * step; a 600 ms gap starts a new entry.
  *
  * Discrete actions (delete-clip, apply-preset, add-sound-clip,
  * change-background, revert-preset) NEVER coalesce — each is its own

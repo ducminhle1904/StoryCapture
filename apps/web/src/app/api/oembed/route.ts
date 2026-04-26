@@ -3,12 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { createPresignedGetUrl, R2_BUCKET } from "@/lib/r2";
 
 /**
- * oEmbed endpoint for auto-unfurl in Notion, Slack, Discord (D-03).
+ * oEmbed endpoint for auto-unfurl in Notion, Slack, Discord.
  * GET /api/oembed?url=<watch-url>&format=json&maxwidth=N&maxheight=N
  *
  * Returns oEmbed "rich" type response with iframe HTML pointing to /embed/<id>.
- * T-04-20: Only returns data for public videos (isPublic: true).
- * Private videos return 404 to prevent information disclosure.
+ * Only returns data for public videos; private videos return 404 to prevent
+ * information disclosure.
  *
  * @see https://oembed.com/
  */
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  // T-04-20: Only return oEmbed for public, ready videos
+  // Only return oEmbed for public, ready videos
   if (!video || video.status !== "READY" || !video.isPublic) {
     return NextResponse.json(
       { error: "Video not found." },

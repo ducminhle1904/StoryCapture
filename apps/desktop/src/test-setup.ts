@@ -1,5 +1,5 @@
 /**
- * Global Vitest setup for apps/desktop (Plan 02-12b).
+ * Global Vitest setup for apps/desktop.
  *
  * Registers `@testing-library/jest-dom` matchers and provides a
  * `matchMedia` shim because happy-dom does not implement it — shadcn/Base

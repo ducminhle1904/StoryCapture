@@ -1,18 +1,17 @@
-// system.rs — host-level smoke commands (Phase 1 plan 01-03).
+// system.rs — host-level smoke commands.
 //
 //   * ping             — round-trip sanity check
 //   * app_info         — version / platform / data dir for the renderer
-//   * store_secret     — write to OS keychain (T-03-02: value never logged)
+//   * store_secret     — write to OS keychain (value never logged)
 //   * load_secret      — read from OS keychain
 //   * delete_secret    — clean up after smoke tests
 //   * trigger_panic    — DEBUG ONLY; panics on a worker thread to prove
 //                        the panic hook + UI modal flow works end-to-end
 //
-// Per D-29 we use the `keyring` crate directly (community
-// `tauri-plugin-keyring` is not always on crates.io; the underlying Rust
-// binding is identical and satisfies the requirement). All five commands
-// are `#[tauri::command]` AND `#[specta::specta]` so tauri-specta picks
-// them up for TS codegen.
+// We use the `keyring` crate directly (community `tauri-plugin-keyring` is
+// not always on crates.io; the underlying Rust binding is identical). All
+// five commands are `#[tauri::command]` AND `#[specta::specta]` so
+// tauri-specta picks them up for TS codegen.
 
 use serde::{Deserialize, Serialize};
 use specta::Type;

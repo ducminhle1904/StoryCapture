@@ -1,4 +1,4 @@
-//! Deterministic 2D Perlin noise used for sub-pixel cursor jitter (D-08).
+//! Deterministic 2D Perlin noise used for sub-pixel cursor jitter.
 //!
 //! Output range: `[-1.0, 1.0]`. Callers scale by the desired jitter amplitude
 //! (Research §3 recommends 0.5-1.5 px at ~2 Hz for natural cursor micromotion).

@@ -176,7 +176,7 @@ describe("<LivePreview />", () => {
     );
   });
 
-  // Phase 09-03 — exactly ONE retry on transient failure, 500ms backoff.
+  // Exactly ONE retry on transient failure, 500ms backoff.
   it("ε — transient start failure retries once and reaches streaming", async () => {
     let startCalls = 0;
     invokeMock.mockImplementation(async (cmd: string) => {

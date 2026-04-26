@@ -81,7 +81,7 @@ impl GraphBuilder {
         self.background_with_padding(id, kind, radius_px, shadow, 0)
     }
 
-    /// Full background constructor including `padding_px` (Plan 07 POST-04).
+    /// Full background constructor including `padding_px`.
     pub fn background_with_padding(
         &mut self,
         id: NodeId,
@@ -213,7 +213,7 @@ impl GraphBuilder {
 
     /// Validate + consume. Performs:
     ///   1. duplicate-id detection across all video + audio nodes
-    ///   2. canonical-order validation on the video chain (D-19)
+    ///   2. canonical-order validation on the video chain
     ///
     /// Takes `&mut self` (not `self`) so the builder composes cleanly with
     /// the `&mut Self` returning fluent methods — call sites read as one

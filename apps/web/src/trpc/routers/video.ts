@@ -22,11 +22,9 @@ import {
  * 2. getPartPresignedUrl -> returns presigned PUT URL per chunk
  * 3. completeUpload -> finalizes multipart + transitions to READY
  *
- * Threat mitigations:
- * - T-04-12: Every procedure requires auth (protectedProcedure)
- * - T-04-13: Presigned URLs are part-specific, time-limited (1h)
- * - T-04-14: R2 credentials never leave server
- * - T-04-16: SSE-S3 AES256 encryption on all objects (DIST-06)
+ * Auth: every procedure requires auth (protectedProcedure). Presigned URLs are
+ * part-specific and time-limited (1h); R2 credentials never leave the server.
+ * All objects use SSE-S3 AES256 encryption.
  */
 
 const sceneBoundarySchema = z.object({
@@ -60,7 +58,7 @@ export const videoRouter = router({
       const videoUuid = crypto.randomUUID();
       const key = `${input.workspaceId}/${videoUuid}/${input.fileName}`;
 
-      // Create multipart upload with SSE-S3 encryption (DIST-06)
+      // Create multipart upload with SSE-S3 encryption
       const { UploadId } = await r2Client.send(
         new CreateMultipartUploadCommand({
           Bucket: R2_BUCKET,
@@ -114,7 +112,7 @@ export const videoRouter = router({
 
   /**
    * Get a presigned PUT URL for a single part of a multipart upload.
-   * Pitfall 2: partNumber must be 1-10000.
+   * partNumber must be 1-10000 per S3 multipart spec.
    */
   getPartPresignedUrl: protectedProcedure
     .input(
@@ -303,7 +301,7 @@ export const videoRouter = router({
 
   /**
    * Get a video by slug (public query for viewer pages).
-   * D-02: Private by default; public data only for READY videos.
+   * Private by default; public data only for READY videos.
    */
   getBySlug: publicProcedure
     .input(z.object({ slug: z.string() }))
@@ -352,8 +350,7 @@ export const videoRouter = router({
 
   /**
    * Toggle video privacy between private (unlisted, noindex) and public (indexed).
-   * D-02: Private by default. Owner/editor can toggle.
-   * T-04-19: Verifies workspace membership + editor/owner role.
+   * Private by default. Verifies workspace membership + editor/owner role.
    */
   updatePrivacy: protectedProcedure
     .input(
@@ -372,7 +369,7 @@ export const videoRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
       }
 
-      // T-04-19: Check workspace membership + role
+      // Check workspace membership + role
       await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId, "EDITOR");
 
       const updated = await ctx.prisma.video.update({
@@ -386,9 +383,8 @@ export const videoRouter = router({
 
   /**
    * Update the vanity slug for a video.
-   * D-02: Defaults to slugified project name, owner can edit.
-   * T-04-18: Validates format (lowercase alphanumeric + hyphens, 3-60 chars) and enforces uniqueness.
-   * T-04-19: Verifies workspace membership + editor/owner role.
+   * Validates format (lowercase alphanumeric + hyphens, 3-60 chars), enforces
+   * uniqueness, and requires editor/owner role in the workspace.
    */
   updateSlug: protectedProcedure
     .input(
@@ -414,10 +410,10 @@ export const videoRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
       }
 
-      // T-04-19: Check workspace membership + role
+      // Check workspace membership + role
       await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId, "EDITOR");
 
-      // T-04-18: Check uniqueness (skip if slug unchanged)
+      // Check uniqueness (skip if slug unchanged)
       if (input.newSlug !== video.slug) {
         const existing = await ctx.prisma.video.findUnique({
           where: { slug: input.newSlug },
@@ -497,8 +493,7 @@ export const videoRouter = router({
     }),
 
   /**
-   * Delete a video and its R2 objects.
-   * T-04-19: Only editors/owners can delete.
+   * Delete a video and its R2 objects. Only editors/owners can delete.
    */
   deleteVideo: protectedProcedure
     .input(z.object({ videoId: z.string() }))

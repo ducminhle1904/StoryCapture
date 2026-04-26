@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Scene drop-off heatmap for analytics dashboard (D-06).
+ * Scene drop-off heatmap for analytics dashboard.
  * Horizontal bar chart showing per-scene viewer retention.
  * Color gradient: green (high retention) to red (high drop-off).
  * Bucketed per scene from DSL scene boundaries.

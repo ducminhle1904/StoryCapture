@@ -1,4 +1,4 @@
-//! Phase 12 resolution-lock end-to-end guard. Spawns the real FFmpeg sidecar,
+//! Resolution-lock end-to-end guard. Spawns the real FFmpeg sidecar,
 //! encodes solid-color BGRA frames, and asserts ffprobe-reported output dims
 //! match the requested preset EXACTLY. Also samples pad-region pixels to
 //! catch regressions in `PadColor` wiring.
@@ -229,7 +229,7 @@ fn base_cfg(out: &Path, capture_w: u32, capture_h: u32) -> EncodeConfig {
     )
 }
 
-/// ENC-06 bug repro: 1920x1130 capture, preset P1080 → MUST produce 1920x1080.
+/// Bug repro: 1920x1130 capture, preset P1080 → MUST produce 1920x1080.
 #[tokio::test]
 async fn test_letterbox_1920x1130_to_p1080() {
     let Some(t) = tools_or_skip("test_letterbox_1920x1130_to_p1080") else {
@@ -248,7 +248,7 @@ async fn test_letterbox_1920x1130_to_p1080() {
     assert_eq!(ffprobe_dims(&t.ffprobe, &out), (1920, 1080));
 }
 
-/// D-12-02: source smaller than preset must NOT upscale; pad corner is black.
+/// Source smaller than preset must NOT upscale; pad corner is black.
 #[tokio::test]
 async fn test_no_upscale_800x600_to_p1080() {
     let Some(t) = tools_or_skip("test_no_upscale_800x600_to_p1080") else {
@@ -294,7 +294,7 @@ async fn test_2000x1440_to_p2160_pillarbox() {
     assert_eq!(ffprobe_dims(&t.ffprobe, &out), (3840, 2160));
 }
 
-/// D-12-03: MatchSource rounds odd dims down to even via bitwise floor.
+/// MatchSource rounds odd dims down to even via bitwise floor.
 #[tokio::test]
 async fn test_matchsource_rounding_1923x1081_to_even() {
     let Some(t) = tools_or_skip("test_matchsource_rounding_1923x1081_to_even") else {
@@ -341,7 +341,7 @@ async fn test_perfect_aspect_3840x2160_to_p1080_no_pad() {
     );
 }
 
-/// D-12-06: White pad color applied in the pad region.
+/// White pad color applied in the pad region.
 #[tokio::test]
 async fn test_white_pad_color_sampled_in_region() {
     let Some(t) = tools_or_skip("test_white_pad_color_sampled_in_region") else {
@@ -367,7 +367,7 @@ async fn test_white_pad_color_sampled_in_region() {
     );
 }
 
-/// D-12-06 + D-12-07: Custom pad color hex applied and sampled.
+/// Custom pad color hex applied and sampled.
 #[tokio::test]
 async fn test_custom_pad_color_hex_applied() {
     let Some(t) = tools_or_skip("test_custom_pad_color_hex_applied") else {

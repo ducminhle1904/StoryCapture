@@ -1,12 +1,11 @@
 //! Migrations for per-project `project.sqlite`.
 //!
-//! v1 (Phase 1 Plan 05): 001_init.sql — sessions, steps, step_attempts,
-//!   exports, presets.
-//! v2 (Phase 2 Plan 03): 5 new tables (timeline_state, effect_presets,
-//!   effect_settings, render_jobs, sound_library_index). Each is one M::up.
-//! v3 (Phase 3 Plan 02): 4 AI tables + session_rollup view
-//!   (nl_conversations, tts_cache_index, llm_turn_metrics,
-//!   tts_clip_metrics). View is bundled with the last table migration.
+//! v1: 001_init.sql — sessions, steps, step_attempts, exports, presets.
+//! v2: 5 new tables (timeline_state, effect_presets, effect_settings,
+//!   render_jobs, sound_library_index). Each is one M::up.
+//! v3: 4 AI tables + session_rollup view (nl_conversations,
+//!   tts_cache_index, llm_turn_metrics, tts_clip_metrics). View is bundled
+//!   with the last table migration.
 
 use rusqlite_migration::{Migrations, M};
 

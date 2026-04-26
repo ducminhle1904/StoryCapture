@@ -1,7 +1,7 @@
 /**
- * AdvancedOutputOptions — 8 export-only knobs grouped into 3 visual sub-groups.
- * Phase 13 ENC-13 + ENC-16 + CD-13-01. Conditional fields per encoder via
- * deriveQualityControls(). HW encoder list = probe + Software fallback.
+ * AdvancedOutputOptions — 8 export-only knobs grouped into 3 visual
+ * sub-groups. Conditional fields per encoder via deriveQualityControls().
+ * HW encoder list = probe + Software fallback.
  */
 
 import { useQuery } from "@tanstack/react-query";

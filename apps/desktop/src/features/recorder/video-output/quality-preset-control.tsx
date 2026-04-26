@@ -1,6 +1,6 @@
 /**
- * Phase 13 quality preset knob (low / med / high / lossless).
- * Horizontal RadioGroup mirroring FpsControl.
+ * Quality preset knob (low / med / high / lossless). Horizontal
+ * RadioGroup mirroring FpsControl.
  */
 
 import type { QualityPresetDto } from "@storycapture/shared-types";

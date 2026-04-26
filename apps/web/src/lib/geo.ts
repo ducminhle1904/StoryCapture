@@ -5,12 +5,12 @@ import { existsSync } from "fs";
 import { join } from "path";
 
 /**
- * MaxMind GeoLite2 country-level IP lookup (D-06).
+ * MaxMind GeoLite2 country-level IP lookup.
  *
  * - Singleton reader, opened on first call
  * - Reads from public/geolite2/GeoLite2-Country.mmdb (gitignored, downloaded on deploy)
  * - Returns ISO 3166-1 alpha-2 country code or 'XX' for unknown/error
- * - No PII stored: only country code (T-04-27)
+ * - No PII stored: only country code
  */
 
 const MMDB_PATH = join(process.cwd(), "public", "geolite2", "GeoLite2-Country.mmdb");

@@ -1,4 +1,4 @@
-//! Cursor overlay engine (POST-03).
+//! Cursor overlay engine.
 //!
 //! Deterministic minimum-jerk trajectory sampling between DSL-known click
 //! waypoints, sub-pixel Perlin jitter for humanisation, direction-reversal

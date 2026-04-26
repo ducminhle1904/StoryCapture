@@ -1,4 +1,4 @@
-//! TTS voiceover-to-timeline sync engine (Plan 03-12, D-13).
+//! TTS voiceover-to-timeline sync engine.
 //!
 //! Pure function `compute_sync_plan` aligns TTS clip durations to DSL step
 //! boundaries. TTS is ground truth:
@@ -7,17 +7,17 @@
 //! - **Clip shorter than step**: step duration unchanged; silence padding
 //!   appended to clip.
 //!
-//! For every clip, a `DuckEvent` is emitted for the Phase 2 BGM mixer
-//! to lower BGM by -12 dB during narration.
+//! For every clip, a `DuckEvent` is emitted for the BGM mixer to lower
+//! BGM by -12 dB during narration.
 //!
-//! Drift p95 target: <= 150 ms (AI-SPEC E7).
+//! Drift p95 target: <= 150 ms.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// Original step duration from Phase 1 capture / Phase 2 effects AST.
+/// Original step duration from capture / effects AST.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StepTiming {
     pub step_id: String,
@@ -55,7 +55,7 @@ pub struct AdjustedStep {
     pub drift_ms: i64,
 }
 
-/// BGM auto-duck event for the Phase 2 sound mixer.
+/// BGM auto-duck event for the sound mixer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuckEvent {
     /// Timeline-global start in milliseconds.

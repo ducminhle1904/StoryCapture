@@ -8,15 +8,11 @@
  *   onProjectUpdates (subscription) — SSE stream of project metadata changes
  *   listProjects (query) — list all synced projects for a workspace
  *
- * Auth:
- *   Mutations: protectedProcedure (session or JWT via Authorization header)
- *   Subscriptions: publicProcedure with JWT verified from input token (Pitfall 7:
- *     SSE can't send custom headers via EventSource, so JWT goes in input)
- *
- * Threat mitigations:
- *   T-04-30 (Spoofing): JWT verified on subscription start; 15-min expiry
- *   T-04-31 (Tampering): JWT auth + workspace membership check; last-write-wins
- *   T-04-33 (DoS): 30s keepalive ping; Vercel 60s timeout
+ * Auth: mutations use protectedProcedure (session or JWT via Authorization
+ * header). Subscriptions use publicProcedure with JWT verified from input
+ * token, because EventSource can't send custom headers, so the JWT must travel
+ * in the input. JWT carries 15-min expiry; a 30s keepalive ping keeps the SSE
+ * channel alive within Vercel's 60s timeout.
  */
 
 import { TRPCError } from "@trpc/server";
@@ -97,7 +93,7 @@ async function verifySubscriber(
 export const syncRouter = router({
   /**
    * Push project metadata from desktop. Upserts SyncedProject.
-   * Desktop is source of truth per D-07; last-write-wins.
+   * Desktop is the source of truth; last-write-wins.
    */
   pushMetadata: protectedProcedure
     .input(pushMetadataInput)
@@ -187,8 +183,8 @@ export const syncRouter = router({
 
   /**
    * SSE subscription: live recording status updates.
-   * JWT auth via input token (Pitfall 7). tracked() for reconnection.
-   * 30-second keepalive ping per RESEARCH.md SSE gotcha mitigation.
+   * JWT auth via input token (EventSource can't send custom headers).
+   * tracked() for reconnection; 30-second keepalive ping.
    */
   onRecordingStatus: publicProcedure
     .input(sseSubscriptionInput)
@@ -202,7 +198,7 @@ export const syncRouter = router({
 
       const eventName = `recording:${opts.input.workspaceId}`;
 
-      // Set up keepalive ping every 30 seconds (T-04-33)
+      // Set up keepalive ping every 30 seconds
       const keepaliveInterval = setInterval(() => {
         syncEmitter.emit(eventName, {
           id: nextEventId(),
@@ -235,7 +231,7 @@ export const syncRouter = router({
 
   /**
    * SSE subscription: project metadata updates (name, story source, status).
-   * JWT auth via input token. tracked() for reconnection.
+   * JWT auth via input token; tracked() for reconnection.
    */
   onProjectUpdates: publicProcedure
     .input(sseSubscriptionInput)

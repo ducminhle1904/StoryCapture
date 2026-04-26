@@ -1,4 +1,4 @@
-//! Canonical filter-graph order (D-19, POST-08).
+//! Canonical filter-graph order.
 //!
 //! Every [`VideoNode`] is assigned a [`CanonicalStage`]; the validator
 //! rejects any graph whose nodes are not in non-decreasing stage order.
@@ -16,7 +16,7 @@ use crate::error::EffectsError;
 #[cfg(feature = "ts-export")]
 use ts_rs::TS;
 
-/// Canonical stage assigned to each node variant. Defines the D-19 order:
+/// Canonical stage assigned to each node variant. Defines the order:
 /// Source → ZoomPan → Background → Cursor → Ripple → Text → Transition → AudioMix.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
@@ -57,7 +57,7 @@ pub fn audio_stage() -> CanonicalStage {
     CanonicalStage::AudioMix
 }
 
-/// Enforce D-19 canonical order. Returns the first violation encountered.
+/// Enforce canonical order. Returns the first violation encountered.
 pub fn validate_order(video: &[VideoNode]) -> Result<(), EffectsError> {
     let mut max_seen: Option<CanonicalStage> = None;
     for n in video {

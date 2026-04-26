@@ -1,10 +1,10 @@
-// Plan 02-12a: timeline Tauri commands.
+// Timeline Tauri commands.
 //
 // Wraps `storage::repos::timeline_repo::{load,save}` so the Post-Production
 // editor can persist its Zustand layout snapshot per story.
 //
-// T-02-38 (DoS via huge layout JSON): `timeline_save` rejects payloads
-// larger than `MAX_LAYOUT_BYTES` (1 MiB).
+// `timeline_save` rejects payloads larger than `MAX_LAYOUT_BYTES` (1 MiB)
+// to bound DoS exposure.
 
 use serde::Serialize;
 use storage::repos::timeline_repo;

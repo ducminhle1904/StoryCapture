@@ -1,8 +1,7 @@
 /**
- * Accordion primitive — shadcn-style chrome on top of Base UI's Accordion (D-32).
+ * Accordion primitive — shadcn-style chrome on top of Base UI's Accordion.
  *
- * Phase 13 first use: Output Preferences sections (Resolution / Recording / Export).
- * Token-only styling per 13-PATTERNS.md; animation rides `data-[starting-style]`.
+ * Token-only styling; animation rides `data-[starting-style]`.
  */
 
 import { Accordion as BaseAccordion } from "@base-ui-components/react/accordion";

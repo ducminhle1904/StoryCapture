@@ -1,10 +1,9 @@
 //! xcap fallback backend — polled screenshot capture.
 //!
-//! NOT zero-copy: each tick allocates an owned BGRA buffer. Higher
-//! memory pressure than SCK / WGC; documented (D-18, STACK.md) and used
-//! only when the native backend is unavailable. The clock source is
-//! synthetic (host wall-clock-derived) because xcap doesn't expose a
-//! capture-API PTS.
+//! NOT zero-copy: each tick allocates an owned BGRA buffer. Higher memory
+//! pressure than SCK / WGC; used only when the native backend is
+//! unavailable. The clock source is synthetic (host wall-clock-derived)
+//! because xcap doesn't expose a capture-API PTS.
 
 use crate::backend::{BackendKind, CaptureBackend, CaptureConfig, CaptureStats};
 use crate::display::{DisplayId, DisplayInfo};
@@ -187,9 +186,9 @@ impl CaptureBackend for XcapBackend {
         self.active.store(false, Ordering::Release);
         let mut timed_out = false;
         if let Some(h) = self.handle.take() {
-            // D-03: bound the join. xcap's `capture_image()` can block
-            // inside a display-server round-trip; without this the async
-            // runtime would stall indefinitely on teardown.
+            // Bound the join. xcap's `capture_image()` can block inside a
+            // display-server round-trip; without this the async runtime
+            // would stall indefinitely on teardown.
             match tokio::time::timeout(
                 Duration::from_millis(STOP_TIMEOUT_MS),
                 tokio::task::spawn_blocking(move || h.join()),
@@ -313,8 +312,8 @@ pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
 mod tests {
     use super::*;
 
-    /// D-03: a capture thread that ignores cancellation must not wedge
-    /// `stop()` indefinitely. The bounded timeout should fire and return
+    /// A capture thread that ignores cancellation must not wedge `stop()`
+    /// indefinitely. The bounded timeout should fire and return
     /// `StopTimedOut` within ~2.1s.
     #[tokio::test]
     async fn stop_times_out_when_capture_thread_hangs() {

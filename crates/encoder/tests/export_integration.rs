@@ -1,4 +1,4 @@
-//! Integration tests for the Plan 02-11 export orchestrator.
+//! Integration tests for the export orchestrator.
 //!
 //! These exercise the full `build_batch` + `export_run` chain against an
 //! in-memory `project.sqlite` (same pattern as `queue_actor.rs`) so the

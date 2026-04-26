@@ -1,13 +1,12 @@
-//! FFV1 intermediate tempfile writer (Plan 02-10 Task 3 / D-30).
+//! FFV1 intermediate tempfile writer.
 //!
-//! The "smart batch" pipeline (EXPORT-04) renders composite frames ONCE
-//! to an FFV1-encoded MKV tempfile, then fans out to N parallel MP4/WebM/
-//! GIF encoders each reading that intermediate. This module owns the
-//! first step.
+//! The "smart batch" pipeline renders composite frames ONCE to an FFV1-
+//! encoded MKV tempfile, then fans out to N parallel MP4/WebM/GIF encoders
+//! each reading that intermediate. This module owns the first step.
 //!
 //! FFV1 is a lossless intra-only codec — level 3 with `-coder 1 -context 1
 //! -g 1 -slicecrc 1 -slices 24` gives per-frame recoverable slices and
-//! decent throughput on commodity CPUs. See RESEARCH.md §12.
+//! decent throughput on commodity CPUs.
 
 use std::path::PathBuf;
 
@@ -35,10 +34,9 @@ pub struct IntermediateOutput {
 ///
 /// The caller is expected to supply any `-i` input arguments needed by
 /// the AST (source recording, audio inputs, etc.) via `extra_inputs`.
-/// In Phase 2, Plan 01's `FfmpegEmit` only returns a filter_complex
-/// string; Plans 01/02/03 of Phase 2 will extend it with structured
-/// extra_inputs. Until then callers pass `[[-i, <source.mp4>]]` or
-/// similar by hand.
+/// `FfmpegEmit` currently returns only a filter_complex string; future
+/// work will extend it with structured extra_inputs. Until then callers
+/// pass `[[-i, <source.mp4>]]` or similar by hand.
 pub async fn render_intermediate(
     graph: &Graph,
     extra_inputs: &[Vec<String>],
@@ -50,8 +48,8 @@ pub async fn render_intermediate(
     let args = build_intermediate_args(filter_complex, extra_inputs, &out_path);
     let _child = sidecar_cmd.spawn(args).await?;
     // In real use the caller waits on the child's exit + drains stderr.
-    // Tests stub the sidecar to capture args; production (Plan 11+)
-    // wires the full progress+wait ladder via the pool.
+    // Tests stub the sidecar to capture args; production wires the full
+    // progress+wait ladder via the pool.
     Ok(IntermediateOutput {
         path: out_path,
         duration_ms,
@@ -78,8 +76,8 @@ pub fn build_intermediate_args(
     args.push(filter_complex);
     args.push("-map".into());
     args.push("[out_v]".into());
-    // Audio mapping is optional — if the graph has no audio the Phase 2
-    // UI forces a silent anullsrc input upstream so [out_a] always exists.
+    // Audio mapping is optional — if the graph has no audio the UI forces
+    // a silent anullsrc input upstream so [out_a] always exists.
     args.push("-map".into());
     args.push("[out_a]?".into());
     // FFV1 lossless, level 3, per-frame recoverable slices (24), CRC'd.

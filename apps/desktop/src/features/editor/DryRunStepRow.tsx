@@ -1,10 +1,3 @@
-/**
- * Dry-Run step row.
- *
- * Displays step number + status badge + timing + fallback chain chips.
- * Click handler emits step-click for editor cursor jump.
- */
-
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { DryRunStepStatus, SelectorAttempt } from "./dryRunStore";
@@ -63,12 +56,10 @@ export function DryRunStepRow({
       animate={{ backgroundColor: status === "running" ? "rgba(68,147,248,0.12)" : "transparent" }}
       transition={{ duration: 0.16, ease: "easeInOut" }}
     >
-      {/* Step number */}
       <span className="text-xs font-semibold text-[var(--color-muted-foreground,#8A90A2)] w-6 text-right tabular-nums font-[family-name:var(--font-mono,'JetBrains_Mono')]">
         {stepNumber}
       </span>
 
-      {/* Status badge */}
       <span
         data-testid={`status-badge-${stepId}`}
         className={cn(
@@ -79,19 +70,16 @@ export function DryRunStepRow({
         {config.label}
       </span>
 
-      {/* Step label */}
       <span className="flex-1 text-sm text-[var(--color-foreground,#E6E8EE)] truncate">
         {label}
       </span>
 
-      {/* Timing */}
       {durationMs != null && (
         <span className="text-xs text-[var(--color-muted-foreground,#8A90A2)] tabular-nums font-[family-name:var(--font-mono,'JetBrains_Mono')]">
           {durationMs}ms
         </span>
       )}
 
-      {/* Fallback chain chips */}
       {fallbackChain && fallbackChain.length > 0 && (
         <div className="flex gap-1">
           {fallbackChain.map((attempt, idx) => (

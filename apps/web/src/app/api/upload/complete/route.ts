@@ -13,7 +13,7 @@ import {
  *
  * Finalizes a multipart upload. Transitions video to READY.
  * Also handles abort via `action: "abort"`.
- * Validates desktop JWT (T-04-12).
+ * Validates desktop JWT.
  *
  * Body for complete: { videoId, r2Key, uploadId, parts: [{ PartNumber, ETag }], thumbnailR2Key }
  * Body for abort:    { videoId, r2Key, uploadId, action: "abort" }

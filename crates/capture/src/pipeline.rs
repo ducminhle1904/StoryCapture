@@ -34,7 +34,7 @@ pub struct CapturePipeline {
 
 impl CapturePipeline {
     /// Build a new pipeline. `out` is the consumer-facing channel — the
-    /// encoder (Plan 01-08) hooks up to its receiver.
+    /// encoder hooks up to its receiver.
     pub fn new(backend: Box<dyn CaptureBackend>, queue: Arc<ByteBoundedQueue>) -> Self {
         Self {
             backend: Some(backend),

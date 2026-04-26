@@ -1,6 +1,5 @@
 /**
- * Phase 13 FPS knob.
- * 24 / 30 / 60 options as a horizontal RadioGroup.
+ * FPS knob — 24 / 30 / 60 options as a horizontal RadioGroup.
  */
 
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";

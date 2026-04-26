@@ -1,4 +1,4 @@
-//! Encoder error taxonomy (D-31). `EncoderError` is a `thiserror` enum that
+//! Encoder error taxonomy. `EncoderError` is a `thiserror` enum that
 //! every public API on the crate returns. The Tauri host wraps it into
 //! `AppError::Encoder(String)` at the IPC boundary.
 

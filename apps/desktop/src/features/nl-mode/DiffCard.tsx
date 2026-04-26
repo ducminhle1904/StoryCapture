@@ -1,15 +1,8 @@
 /**
  * Per-step diff card with inline diff + 4 actions.
  *
- * UI-SPEC Component Inventory: "Per-step diff card"
- * - Collapsible card with inline diff + 4-button action row
- * - Actions: Chap nhan (A), Sua (E), Tao lai (R), Bo (Backspace)
- * - Bulk approve: Cmd+Shift+A
- * - Success animation: 260ms easeOut border tint -> 400ms fade
- * - Discard confirm: AlertDialog if >= 3 pending cards on panel close
- *
- * Keyboard: A=approve, E=edit, R=regen, Backspace=reject
- * Diff colors: red #5C1D1F bg + #FF8A8F fg, green #0E3A22 bg + #78DDA4 fg
+ * Keyboard: A=approve, E=edit, R=regen, Backspace=reject. Bulk approve: Cmd+Shift+A.
+ * Discard confirm: AlertDialog if >= 3 pending cards on panel close.
  */
 
 import * as React from "react";

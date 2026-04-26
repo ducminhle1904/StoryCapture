@@ -1,6 +1,6 @@
 //! Gradient preset registry + PNG asset loader.
 //!
-//! The 10 presets listed in POST-04 / D-23 ship as 1920x1080 PNGs committed at
+//! The 10 curated presets ship as 1920x1080 PNGs committed at
 //! `<repo>/assets/gradient-presets/<id>.png`. Regenerate with
 //! `cargo run -p effects --example gen_gradient_presets`.
 //!
@@ -25,7 +25,7 @@ pub struct GradientPreset {
     pub tags: &'static [&'static str],
 }
 
-/// Canonical curated list (D-23). Order is stable; new presets append.
+/// Canonical curated list. Order is stable; new presets append.
 pub const GRADIENT_PRESETS: &[GradientPreset] = &[
     GradientPreset {
         id: "runway-dark",

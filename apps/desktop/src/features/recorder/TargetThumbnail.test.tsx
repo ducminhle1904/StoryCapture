@@ -1,8 +1,6 @@
 /**
- * Plan 06-03 Task 3 — TargetThumbnail unit tests.
- *
- * Stubs the Tauri IPC + URL lifecycle APIs so the component can run
- * under happy-dom without a real recorder process.
+ * TargetThumbnail unit tests. Stubs the Tauri IPC + URL lifecycle APIs so
+ * the component can run under happy-dom without a real recorder process.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

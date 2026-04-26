@@ -1,10 +1,8 @@
 /**
- * Playhead (Plan 02-12b).
- *
- * Vertical line rendered on top of the track stack. Position is derived
- * from the store's `playheadMs` + the display's `pxPerMs`. Dragging the
- * playhead is handled by the parent Timeline via pointer events on the
- * ruler; this component is a pure presentational marker.
+ * Playhead — vertical line on top of the track stack. Position derives
+ * from the store's `playheadMs` + the display's `pxPerMs`. Dragging is
+ * handled by the parent Timeline via pointer events on the ruler; this
+ * component is a pure presentational marker.
  */
 
 import { memo } from "react";

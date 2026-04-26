@@ -1,5 +1,5 @@
-//! Sound library catalog CRUD. The actual audio files + manifest are shipped
-//! in Plan 08; this repo just owns the index side.
+//! Sound library catalog CRUD. The actual audio files + manifest are
+//! shipped separately; this repo just owns the index side.
 
 use crate::error::StorageError;
 use crate::models::{SoundCategory, SoundLibraryEntry};
@@ -62,9 +62,8 @@ pub fn list_all(conn: &Connection) -> Result<Vec<SoundLibraryEntry>, StorageErro
     Ok(rows)
 }
 
-/// Manifest file shape (`assets/sound-library/manifest.json`, produced by
-/// Plan 08). `id` is a stable UUID baked into the manifest so re-syncs are
-/// idempotent.
+/// Manifest file shape (`assets/sound-library/manifest.json`). `id` is a
+/// stable UUID baked into the manifest so re-syncs are idempotent.
 #[derive(Debug, Deserialize)]
 pub struct SoundManifestEntry {
     pub id: Uuid,

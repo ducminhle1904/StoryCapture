@@ -1,4 +1,4 @@
-//! Scene-transition (xfade) integration tests (POST-05 / Plan 07 Task 3).
+//! Scene-transition (xfade) integration tests.
 //!
 //! Exercises:
 //!   - XfadeTimeline::compute_offsets (single, chained three, varying durations, empty)

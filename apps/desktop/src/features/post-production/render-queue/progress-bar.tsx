@@ -1,6 +1,4 @@
 /**
- * ProgressBar (Plan 02-12b, Task 2).
- *
  * ARIA-labeled determinate progress bar. `pct` is 0–100.
  */
 

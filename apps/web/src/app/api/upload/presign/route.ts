@@ -7,13 +7,13 @@ import { R2_BUCKET, createPresignedPartUrl, createPresignedPutUrl } from "@/lib/
  * POST /api/upload/presign
  *
  * Returns a presigned PUT URL for a single part or a thumbnail.
- * Validates desktop JWT (T-04-12).
+ * Validates desktop JWT.
  *
  * Body: { r2Key, uploadId, partNumber } for multipart parts
  *   OR: { r2Key, type: "thumbnail" } for thumbnail single-object upload
  *
- * Pitfall 2: partNumber validated 1-10000.
- * Pitfall 3: presigned URL uses S3 API domain only.
+ * partNumber must be 1-10000 per S3 multipart spec; presigned URLs use the
+ * S3 API domain only.
  */
 export async function POST(req: NextRequest) {
   const auth = await requireDesktopAuth(req);

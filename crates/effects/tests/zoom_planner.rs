@@ -1,4 +1,4 @@
-//! Integration tests for the auto-zoom planner (Plan 02-05, POST-02).
+//! Integration tests for the auto-zoom planner.
 //!
 //! Exercises the full pipeline: cluster → merge → budget → pan/scale/hold →
 //! spring low-pass. Motion-sickness guards (Pitfall #2) are tested here as
@@ -28,7 +28,7 @@ fn empty_waypoints_returns_single_identity_keyframe() {
     assert_eq!(kfs[0].easing, EasingKind::Linear);
 }
 
-/// D-06 enforcement: pan and scale must NEVER be simultaneous. For any two
+/// Enforcement: pan and scale must NEVER be simultaneous. For any two
 /// consecutive keyframes, at most one of (center, scale) may change.
 #[test]
 fn pan_scale_hold_separation() {
@@ -47,8 +47,8 @@ fn pan_scale_hold_separation() {
         let b = &w[1];
         let center_changed =
             (a.center.x - b.center.x).abs() > 0.5 || (a.center.y - b.center.y).abs() > 0.5;
-        // Scale is low-pass smoothed so it creeps every frame. For the D-06
-        // check we look at "significant" scale changes (> 1%).
+        // Scale is low-pass smoothed so it creeps every frame. For the
+        // simultaneity check we look at "significant" scale changes (> 1%).
         let scale_changed = (a.scale - b.scale).abs() > 0.01;
         assert!(
             !(center_changed && scale_changed),

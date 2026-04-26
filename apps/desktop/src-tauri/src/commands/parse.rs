@@ -1,4 +1,4 @@
-// parse.rs — DSL parse IPC command (Phase 1 plan 01-09).
+// parse.rs — DSL parse IPC command.
 //
 // The renderer's `diagnostics-bridge.ts` calls this command on every
 // CodeMirror buffer change (debounced 300ms). It delegates straight to
@@ -83,8 +83,8 @@ impl From<PDiagnostic> for DiagnosticDto {
     }
 }
 
-/// Structured payload for the Tier 1 `Role` variant — both the ARIA
-/// role keyword and the accessible name as typed fields. Mirrors
+/// Structured payload for the `Role` variant — both the ARIA role keyword
+/// and the accessible name as typed fields. Mirrors
 /// `story_parser::SelectorOrText::Role { role, name }` exactly so the
 /// TS-side discriminated union round-trips cleanly without ad-hoc
 /// `<role>:<name>` string packing.
@@ -229,12 +229,11 @@ pub enum CommandDto {
 impl From<PCommand> for CommandDto {
     fn from(c: PCommand) -> Self {
         match c {
-            // NOTE: Plan 07-04b added `step_id: Option<Uuid>` to every
-            // Command variant. The TS CommandDto mirror does not carry
-            // step_id (the renderer reads it via the story_parser AST
-            // directly, not through the parse command DTO). We ignore
-            // it here with `..`; 07-04c routes step ids via the picker
-            // + targets store, not this DTO.
+            // NOTE: every Command variant carries `step_id: Option<Uuid>`.
+            // The TS CommandDto mirror does not carry step_id (the renderer
+            // reads it via the story_parser AST directly, not through the
+            // parse command DTO). We ignore it here with `..`; step ids are
+            // routed via the picker + targets store, not this DTO.
             PCommand::Navigate { url, span, .. } => CommandDto::Navigate {
                 url,
                 span: span.into(),

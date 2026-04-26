@@ -2,8 +2,8 @@
 //!
 //! Models a 1-D value driven toward a target with a mass-spring-damper at
 //! **critical damping** — the fastest convergence with **no overshoot**. Used
-//! by the auto-zoom planner (Plan 05) to low-pass zoom keyframes and by the
-//! cursor engine (Plan 06) to smooth small noise-driven path corrections.
+//! by the auto-zoom planner to low-pass zoom keyframes and by the cursor
+//! engine to smooth small noise-driven path corrections.
 //!
 //! The integration step (semi-implicit Euler) is:
 //!

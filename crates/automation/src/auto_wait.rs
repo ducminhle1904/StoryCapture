@@ -1,4 +1,4 @@
-//! Playwright-style actionability wait (D-12, AUTO-02).
+//! Playwright-style actionability wait.
 //!
 //! Every action goes `resolve → wait_actionable → act`. The CDP defaults
 //! are NOT trusted; we poll explicit element state every 100ms.

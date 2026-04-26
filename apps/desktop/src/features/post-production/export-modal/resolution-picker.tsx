@@ -1,9 +1,8 @@
 /**
- * ResolutionPicker (Plan 02-12b, Task 2).
- *
- * Single-select radio group for 720p / 1080p / 4K. Plan 11's
- * `export_validate_config` is the authoritative source on format+resolution
- * compatibility; this component just captures the user's pick.
+ * ResolutionPicker — single-select radio group for 720p / 1080p / 4K.
+ * `export_validate_config` is the authoritative source on
+ * format+resolution compatibility; this component just captures the
+ * user's pick.
  */
 
 import { memo } from "react";

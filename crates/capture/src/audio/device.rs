@@ -1,4 +1,4 @@
-//! cpal input device enumeration (Phase 6 plan 01).
+//! cpal input device enumeration.
 //!
 //! **Laziness:** enumeration is triggered only when the user opens the
 //! audio-device picker in the recorder. Calling `default_input_device()`

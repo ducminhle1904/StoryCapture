@@ -1,13 +1,12 @@
 /**
- * SoundRow (Plan 02-12b).
+ * SoundRow — single entry in the sound library drawer. Renders a
+ * wavesurfer.js static waveform, the name, and the license. Draggable:
+ * dragging onto the Sound track in the timeline adds a clip via
+ * `addSoundClip`.
  *
- * Single entry in the sound library drawer. Renders a wavesurfer.js
- * static waveform, the name, and the license. Draggable: dragging onto
- * the Sound track in the timeline adds a clip via `addSoundClip`.
- *
- * T-02-38 mitigation: only drags originating from *this* component
- * carry the `sound-entry` dataTransfer type, so timeline drop targets
- * can reject external file drops.
+ * Only drags originating from *this* component carry the `sound-entry`
+ * dataTransfer type, so timeline drop targets can reject external file
+ * drops.
  */
 
 import { memo, useEffect, useRef } from "react";

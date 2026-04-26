@@ -8,7 +8,6 @@ import { TemplateGrid } from "@/components/template-grid";
 /**
  * Template Marketplace page.
  * Browse curated templates by category and fork them as downloadable .story files.
- * Per D-05: no search, no community submissions.
  */
 export default function TemplatesPage() {
   const trpc = useTRPC();

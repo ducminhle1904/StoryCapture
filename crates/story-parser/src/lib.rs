@@ -1,8 +1,7 @@
 //! `story-parser` — pest-based DSL grammar + AST for StoryCapture.
 //!
-//! **Purity guarantee (DSL-07):** This crate has zero Tauri dependencies.
-//! It is callable from a future headless CLI (Phase 5) without
-//! modification.
+//! **Purity guarantee:** This crate has zero Tauri dependencies. It is
+//! callable from a headless CLI without modification.
 //!
 //! See [`parse`] for the public entrypoint.
 

@@ -1,4 +1,4 @@
-//! Bundled sound-library manifest validation tests (Plan 02-08 Task 2).
+//! Bundled sound-library manifest validation tests.
 //!
 //! These are the automated blocking gate: they pass only once a human
 //! operator has curated the 20 real CC0/CC-BY audio files per

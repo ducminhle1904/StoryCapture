@@ -1,4 +1,4 @@
-// Integration tests for the DryRunOrchestrator (Plan 03-16, Task 1).
+// Integration tests for the DryRunOrchestrator.
 //
 // Uses a `MockBrowserDriver` with a pre-planned result queue to exercise
 // the orchestrator's event emission, failure handling, selector fallback

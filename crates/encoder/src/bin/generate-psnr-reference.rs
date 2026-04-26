@@ -1,4 +1,4 @@
-//! `generate-psnr-reference` — POST-08 Phase A seeding binary.
+//! `generate-psnr-reference` — PSNR fixture seeding binary.
 //!
 //! Renders the shared reference graph at 1080p30 H.264 CRF 18 to the path
 //! given by `--output`. Run ONCE on a known-good build and commit the
@@ -9,7 +9,7 @@
 //!
 //! Every subsequent CI run then renders the same graph and compares via
 //! `cargo test -p encoder --test psnr_regression`, which fails if average
-//! PSNR drops below 38 dB (see `.planning/phases/02-cinematic-post-production-export/02-CONTEXT.md` D-29).
+//! PSNR drops below 38 dB.
 
 use std::path::PathBuf;
 use std::process::ExitCode;

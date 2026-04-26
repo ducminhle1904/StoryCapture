@@ -1,5 +1,5 @@
 /**
- * Canonical browser-preset table (backlog #9).
+ * Canonical browser-preset table.
  *
  * Source of truth: `packages/shared-types/browser-presets.json`. This module
  * is the TypeScript surface; the Rust side (apps/desktop/src-tauri) reads
@@ -32,7 +32,7 @@ export const CHROMIUM_PRESET_IDS: ReadonlySet<string> = new Set(
 
 /**
  * Window-title substring for a preset id. Returns null for unknown ids;
- * callers should fall back to pid-only window matching (D-15).
+ * callers should fall back to pid-only window matching.
  */
 export function titleHintForPreset(id: string): string | null {
   const lower = id.toLowerCase();

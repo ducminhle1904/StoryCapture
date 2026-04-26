@@ -1,5 +1,5 @@
-//! Render queue repository. Implements the D-04 priority-poll + resume
-//! semantics used by Plan 10 (background render queue).
+//! Render queue repository. Implements the priority-poll + resume
+//! semantics used by the background render queue.
 
 use crate::error::StorageError;
 use crate::models::{now_millis, NewRenderJob, RenderJob, RenderJobStatus};
@@ -97,7 +97,7 @@ pub fn prune_completed_before(conn: &Connection, limit: usize) -> Result<u32, St
     Ok(n as u32)
 }
 
-/// D-04 priority poll: highest-priority pending jobs first, FIFO within same
+/// Priority poll: highest-priority pending jobs first, FIFO within same
 /// priority. Does NOT mutate status — the caller chooses which to pick up.
 pub fn poll_ready(conn: &Connection, limit: u32) -> Result<Vec<RenderJob>, StorageError> {
     let mut stmt = conn.prepare_cached(&format!(
@@ -182,9 +182,9 @@ pub fn cancel(conn: &Connection, id: Uuid) -> Result<(), StorageError> {
     Ok(())
 }
 
-/// D-04 resume-on-relaunch: any job left in 'running' when the app starts was
-/// orphaned by a crash/quit and must be marked 'interrupted' so the UI can
-/// prompt the user to retry. Returns number of affected rows.
+/// Resume-on-relaunch: any job left in 'running' when the app starts was
+/// orphaned by a crash/quit and must be marked 'interrupted' so the UI
+/// can prompt the user to retry. Returns number of affected rows.
 pub fn on_startup_mark_orphans(conn: &Connection) -> Result<u32, StorageError> {
     let n = conn.execute(
         "UPDATE render_jobs SET status='interrupted' WHERE status='running'",

@@ -1,12 +1,6 @@
 /**
- * Selector fallback HoverCard popover.
- *
- * Shows winning strategy + fallback time + "Cap nhat selector" CTA.
- * Triggered from editor gutter warning icon (LSP selector-fallback warning).
- *
- * UI-SPEC copy:
- *  "Selector qua chung -- can nhac them fallback.
- *   Lan chay gan nhat: strategy {N} thang trong {ms}ms."
+ * Selector fallback popover. Triggered from the editor gutter warning
+ * icon (LSP selector-fallback warning).
  */
 
 import { Button } from "@/components/ui/button";
@@ -42,7 +36,6 @@ export function SelectorFallbackPopover({
         </p>
       )}
 
-      {/* Fallback chain summary */}
       {fallbackChain.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
           {fallbackChain.map((attempt, idx) => (

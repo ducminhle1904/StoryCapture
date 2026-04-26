@@ -1,17 +1,15 @@
 /**
- * Undo slice (Plan 02-13, D-15/D-16/D-17).
- *
- * Zustand slice that owns:
- *   - A single `HistoryBuffer` instance (cap 50, D-16)
- *   - A single `Coalescer` instance (idle 500 ms, D-15)
- *   - `canUndo` / `canRedo` booleans kept in sync after every mutation so
- *     React components can subscribe cheaply
+ * Undo slice. Owns:
+ *   - A single `HistoryBuffer` instance (cap 50)
+ *   - A single `Coalescer` instance (idle 500 ms)
+ *   - `canUndo` / `canRedo` booleans kept in sync after every mutation
+ *     so React components can subscribe cheaply
  *   - `pushAction` / `undo` / `redo` / `clearHistory` actions
  *
- * The buffer and coalescer are stored as plain class instances inside
- * the store. They are intentionally NOT tracked by Zustand's shallow
- * comparison — React components should subscribe to `canUndo` / `canRedo`
- * or to the slice data that actions mutate, never to the buffer itself.
+ * The buffer and coalescer are plain class instances; intentionally NOT
+ * tracked by Zustand's shallow comparison — components should subscribe
+ * to `canUndo` / `canRedo` or to the slice data actions mutate, never
+ * to the buffer itself.
  *
  * Replays (undo/redo) go through `applyAction` / `restoreDeletedClip`
  * which bypass slice setters, so snap logic does not re-mutate replayed
@@ -68,9 +66,6 @@ export const createUndoSlice: StateCreator<UndoSlice, [], [], UndoSlice> = (
   set,
   get,
 ) => ({
-  // Plan 02-13 grep anchors: `new HistoryBuffer(50)` (D-16) and
-  // `new Coalescer(500)` (D-15). Literal values match the plan's
-  // acceptance patterns; constants re-export the same numbers.
   history: new HistoryBuffer(50),
   coalescer: new Coalescer(500),
   canUndo: false,

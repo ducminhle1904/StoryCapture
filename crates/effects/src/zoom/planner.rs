@@ -42,7 +42,7 @@ pub fn plan_zoom(
     // 3. Drop lowest-weight clusters if we exceed max_changes_per_min.
     enforce_change_budget(&mut clusters, preset.max_changes_per_min);
 
-    // 4. Expand clusters into (pan, scale, hold) keyframes per D-06.
+    // 4. Expand clusters into (pan, scale, hold) keyframes.
     let raw = build_keyframes(&clusters, preset, viewport_w, viewport_h);
 
     // 5. Spring low-pass the scale field (pan already has its own easing).

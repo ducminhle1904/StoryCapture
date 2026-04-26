@@ -1,8 +1,8 @@
-//! Export orchestrator (EXPORT-01).
+//! Export orchestrator.
 //!
-//! Composes the Plan 02-01 AST (`effects::Graph`) + the Plan 02-11 format
-//! catalogue + the Plan 02-10 render queue into a single entrypoint:
-//! `export_run(req, queue, db) -> ExportResult`.
+//! Composes the AST (`effects::Graph`) + the format catalogue + the render
+//! queue into a single entrypoint: `export_run(req, queue, db) ->
+//! ExportResult`.
 //!
 //! For each [`OutputSpec`] in the request the orchestrator:
 //!   1. Persists the graph snapshot as a sibling JSON file in the output
@@ -12,7 +12,7 @@
 //!      shared `batch_id`.
 //!   3. Nudges the queue actor via `QueueMsg::Enqueue(job_id)`.
 //!
-//! Plan 11 (host wiring) will install a `FanoutJobExecutor` that, on each
+//! The host wiring will install a `FanoutJobExecutor` that, on each
 //! queue-pop, reads the graph JSON and runs `render_intermediate +
 //! fanout_encode` against the real Tauri sidecar command. The orchestrator
 //! itself stays pure — unit-testable without a real FFmpeg binary.
@@ -36,7 +36,7 @@ use super::resolution::res_label;
 pub struct ExportRequest {
     /// Story/project identifier (used by `render_jobs.story_id`).
     pub story_id: String,
-    /// The fully-populated effect graph — Plan 01 AST.
+    /// The fully-populated effect graph.
     pub graph: effects::Graph,
     /// Per-format OutputSpecs; `build_batch` stamps the shared `batch_id`.
     pub outputs: Vec<OutputSpec>,

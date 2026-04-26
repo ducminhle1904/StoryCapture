@@ -1,8 +1,7 @@
-// Plan 02-12a: sound library Tauri commands.
+// Sound library Tauri commands.
 //
 // Wraps `storage::repos::sound_library_repo::list_by_category` so the
-// Post-Production editor's Sound panel can enumerate SFX / BGM entries
-// loaded from the Plan 08 manifest.
+// Post-Production editor's Sound panel can enumerate SFX / BGM entries.
 
 use serde::{Deserialize, Serialize};
 use storage::repos::sound_library_repo;

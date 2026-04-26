@@ -1,7 +1,7 @@
 //! insta golden: full scene with all canonical stages present. Pins the
 //! canonical filter token order (Source → zoompan → bg overlay → cursor
 //! overlay → ripple drawbox → drawtext → xfade) so optimisations in later
-//! Phase 2 plans cannot silently reorder nodes (POST-08 guard rail).
+//! optimisations cannot silently reorder nodes.
 
 use std::path::PathBuf;
 
@@ -126,7 +126,7 @@ fn full_scene_preview_plan_is_populated() {
     assert_eq!(plan.output_width, 1920);
     assert_eq!(plan.output_height, 1080);
     assert_eq!(plan.fps, 60);
-    // Plan 05: per-frame sampler at output_fps. Two keyframes at t=0 and
+    // Per-frame sampler at output_fps. Two keyframes at t=0 and
     // t=1000 ms at 60fps → ~61 samples. Accept a small ceil/round tolerance.
     assert!(
         plan.zoom_matrices.len() >= 60 && plan.zoom_matrices.len() <= 62,

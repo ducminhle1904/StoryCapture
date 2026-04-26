@@ -1,6 +1,6 @@
 /**
- * `parse_story` IPC wrapper (Plan 01-09 Task 0 host side, Task 2 renderer).
- * The Rust command returns a DTO tree that mirrors `story-parser`'s AST.
+ * `parse_story` IPC wrapper. The Rust command returns a DTO tree that
+ * mirrors `story-parser`'s AST.
  */
 
 import { invoke } from "@tauri-apps/api/core";

@@ -1,7 +1,7 @@
 /**
- * History buffer + coalescer + action apply/invert tests (Plan 02-13, Task 1).
+ * History buffer + coalescer + action apply/invert tests.
  *
- * Coverage per the plan's `<behavior>` block:
+ * Coverage:
  *   1. ring_buffer_cap_50 — 51st push evicts oldest, length stays at cap.
  *   2. push_truncates_redo_branch — new push after undo wipes redo.
  *   3. coalesce_drag_same_clip — sequential move-clip collapses to 1.

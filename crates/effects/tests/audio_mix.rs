@@ -1,6 +1,6 @@
 //! insta golden: audio-only graph (2 AudioSource + Volume + Sidechain +
-//! Amix + Alimiter). Pins the audio chain shape ahead of Plan 09 (sound
-//! design) wiring sound-library lookups onto these nodes.
+//! Amix + Alimiter). Pins the audio chain shape ahead of sound-library
+//! lookup wiring onto these nodes.
 
 use std::path::PathBuf;
 

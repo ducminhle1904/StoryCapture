@@ -1,6 +1,5 @@
 /**
- * Unit tests — deriveQualityControls decision table (Phase 13 Plan 05 Task 1).
- * Covers UI-SPEC lines 206-216 per-encoder quality-control shape.
+ * Unit tests — deriveQualityControls decision table.
  */
 
 import { describe, expect, it } from "vitest";

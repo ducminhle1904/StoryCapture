@@ -28,10 +28,10 @@ use screencapturekit::stream::{
     sc_stream::SCStream,
 };
 
-/// D-06: coarse state machine for pause/resume. `Transitioning` is set
-/// for the duration of the `spawn_blocking` stop/start call so a racing
-/// caller holding the mutex sees the in-progress transition and either
-/// waits for it or exits early when the outer intent matches.
+/// Coarse state machine for pause/resume. `Transitioning` is set for the
+/// duration of the `spawn_blocking` stop/start call so a racing caller
+/// holding the mutex sees the in-progress transition and either waits for
+/// it or exits early when the outer intent matches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PauseState {
     Running,
@@ -49,7 +49,7 @@ pub struct SckBackend {
     /// Fast-path read signal for the SCK output handler (hot callback on
     /// SCK's GCD queue — cannot afford to await a tokio mutex there).
     paused: Arc<AtomicBool>,
-    /// D-06: slow-path serializer for `pause()` / `resume()` callers.
+    /// Slow-path serializer for `pause()` / `resume()` callers.
     pause_state: Arc<tokio::sync::Mutex<PauseState>>,
 }
 
@@ -99,7 +99,7 @@ impl SckBackend {
     /// `source_rect_opt` is in logical points when present.
     /// `needs_scales_to_fit` is true for window captures so SCK composites the
     /// native Retina backing store onto our physical-pixel canvas instead of
-    /// padding the unused area with black (Phase 18).
+    /// padding the unused area with black.
     pub(crate) fn build_filter(
         target: &CaptureTarget,
     ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>, bool), CaptureError> {
@@ -127,13 +127,13 @@ impl SckBackend {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
                     .ok_or(CaptureError::WindowNotFound(window_id.0))?;
                 let frame = window.frame();
-                // Phase 18: request the canvas at physical (Retina) pixels
-                // and let SCK composite the native window backing store via
-                // scales_to_fit(true). Before, we requested logical-point
-                // dims and SCK downsampled the 2× backing store, softening
-                // text on Retina playback. scales_to_fit(true) also prevents
-                // the "browser top-left, rest black" padding bug that a
-                // naive 2× multiplication previously triggered.
+                // Request the canvas at physical (Retina) pixels and let
+                // SCK composite the native window backing store via
+                // scales_to_fit(true). Requesting logical-point dims used
+                // to downsample the 2× backing store, softening text on
+                // Retina playback. scales_to_fit(true) also prevents the
+                // "browser top-left, rest black" padding bug that a naive
+                // 2× multiplication previously triggered.
                 let scale = primary_display_scale() as f64;
                 let width = (frame.width * scale).round().max(1.0) as u32;
                 let height = (frame.height * scale).round().max(1.0) as u32;
@@ -158,9 +158,9 @@ impl SckBackend {
                 )?
                 .ok_or(CaptureError::WindowNotFound(*pid as u64))?;
                 let frame = window.frame();
-                // Phase 18: same physical-pixel treatment as Window — see
-                // the Window branch comment. Without this, Retina window
-                // recordings render soft when played back on 2× displays.
+                // Same physical-pixel treatment as Window — see the Window
+                // branch comment. Without this, Retina window recordings
+                // render soft when played back on 2× displays.
                 let scale = primary_display_scale() as f64;
                 let width = (frame.width * scale).round().max(1.0) as u32;
                 let height = (frame.height * scale).round().max(1.0) as u32;
@@ -262,7 +262,7 @@ impl CaptureBackend for SckBackend {
 
         let sck_pf = match cfg.pixel_format {
             crate::frame::PixelFormat::Bgra => SckPixelFormat::BGRA,
-            // D-16: Nv12 is rejected at start() entry above; unreachable here.
+            // Nv12 is rejected at start() entry above; unreachable here.
             crate::frame::PixelFormat::Nv12 => unreachable!("NV12 rejected at start()"),
         };
 
@@ -282,7 +282,7 @@ impl CaptureBackend for SckBackend {
                 .with_destination_rect(dest)
                 .with_scales_to_fit(false);
         } else if needs_scales_to_fit {
-            // Phase 18: window capture at physical (Retina) pixels requires
+            // Window capture at physical (Retina) pixels requires
             // scales_to_fit so SCK composites the native backing store onto
             // the canvas instead of leaving unused area black.
             config = config.with_scales_to_fit(true);
@@ -377,7 +377,7 @@ impl CaptureBackend for SckBackend {
             s.stream = Some(stream);
         }
         self.paused.store(false, Ordering::Release);
-        // D-06: reset state machine for the new session.
+        // Reset state machine for the new session.
         *self.pause_state.lock().await = PauseState::Running;
         Ok(())
     }
@@ -409,14 +409,14 @@ impl CaptureBackend for SckBackend {
         self.delivered.store(0, Ordering::Release);
         self.dropped.store(0, Ordering::Release);
         self.paused.store(false, Ordering::Release);
-        // D-06: session ended, state machine back to Running baseline.
+        // Session ended, state machine back to Running baseline.
         *self.pause_state.lock().await = PauseState::Running;
         Ok(stats)
     }
 
     async fn pause(&mut self) -> Result<(), CaptureError> {
-        // D-06: slow-path serialization. Concurrent callers wait on the
-        // mutex; whoever sees Paused/Transitioning returns Ok (idempotent).
+        // Slow-path serialization. Concurrent callers wait on the mutex;
+        // whoever sees Paused/Transitioning returns Ok (idempotent).
         let mut guard = self.pause_state.lock().await;
         match *guard {
             PauseState::Paused | PauseState::Transitioning => return Ok(()),
@@ -472,10 +472,10 @@ impl CaptureBackend for SckBackend {
     }
 }
 
-/// Phase 18: pick the primary display's backing scale factor. Used by window
-/// capture to request a physical-pixel canvas on Retina displays. Falls back
-/// to 1.0 (non-Retina) when enumeration fails, so a failure degrades to the
-/// pre-Phase-18 behavior instead of crashing.
+/// Pick the primary display's backing scale factor. Used by window capture
+/// to request a physical-pixel canvas on Retina displays. Falls back to 1.0
+/// (non-Retina) when enumeration fails, so a failure degrades to legacy
+/// behavior instead of crashing.
 fn primary_display_scale() -> f32 {
     enumerate()
         .unwrap_or_default()
@@ -650,9 +650,9 @@ mod nv12_reject_tests {
     use crate::frame::PixelFormat;
     use crate::target::CaptureTarget;
 
-    /// D-16: Nv12 must be rejected at `start()` entry before any OS
-    /// resource is acquired. We don't need SCK permissions or a real
-    /// display for this — the guard runs before `build_filter`.
+    /// Nv12 must be rejected at `start()` entry before any OS resource is
+    /// acquired. We don't need SCK permissions or a real display for this
+    /// — the guard runs before `build_filter`.
     #[tokio::test]
     async fn start_with_nv12_returns_unsupported_pixel_format() {
         let Ok(mut backend) = SckBackend::new() else {

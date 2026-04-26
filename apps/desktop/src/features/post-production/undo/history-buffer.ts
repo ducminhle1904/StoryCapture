@@ -1,13 +1,10 @@
 /**
- * History ring buffer (Plan 02-13, D-16).
+ * History ring buffer. In-memory ring capped at 50 entries. When the
+ * buffer is full and a new entry is pushed, the oldest entry is evicted.
+ * Pushing a new action after one or more undos truncates the forward
+ * (redo) branch — standard redo-stack semantics.
  *
- * In-memory ring capped at 50 entries. When the buffer is full and a new
- * entry is pushed, the oldest entry is evicted. Pushing a new action
- * after one or more undos truncates the forward (redo) branch — standard
- * redo-stack semantics matching Figma, VS Code, Photoshop.
- *
- * The buffer is NOT persisted to SQLite (D-16 explicitly defers a
- * persistent journal). Reloading the project resets history.
+ * Not persisted to SQLite. Reloading the project resets history.
  */
 
 import type { UndoableAction } from "./actions";

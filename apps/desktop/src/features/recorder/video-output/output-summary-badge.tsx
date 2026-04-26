@@ -1,7 +1,7 @@
 /**
- * Phase 13 D-13-02 summary badge.
- * Small chip next to the Record CTA showing current output knobs; click
- * scrolls the VideoOutputSection into view via consumer's onActivate.
+ * Summary badge — small chip next to the Record CTA showing current
+ * output knobs; click scrolls the VideoOutputSection into view via the
+ * consumer's onActivate.
  */
 
 import { ChevronRight } from "lucide-react";
