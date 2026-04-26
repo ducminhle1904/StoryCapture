@@ -9,12 +9,32 @@ export interface EmptyStateProps {
   footer?: ReactNode;
 }
 
-export function EmptyState({ illustration, icon: Icon, title, body, actions, footer }: EmptyStateProps) {
+export function EmptyState({
+  illustration,
+  icon: Icon,
+  title,
+  body,
+  actions,
+  footer,
+}: EmptyStateProps) {
   return (
     <div style={{ display: "grid", placeItems: "center", minHeight: 400, padding: 40 }}>
-      <div style={{ textAlign: "center", maxWidth: 460 }}>
+      <div
+        style={{
+          textAlign: "center",
+          maxWidth: 460,
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
         {illustration ? (
-          <div style={{ margin: "0 auto 24px" }}>{illustration}</div>
+          <div
+            style={{ width: "100%", display: "flex", justifyContent: "center", marginBottom: 24 }}
+          >
+            {illustration}
+          </div>
         ) : Icon ? (
           <div
             style={{

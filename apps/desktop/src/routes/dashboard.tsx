@@ -23,6 +23,7 @@ function StoryToVideoIllustration() {
       alt=""
       aria-hidden="true"
       style={{
+        display: "block",
         width: 172,
         height: 172,
         objectFit: "cover",

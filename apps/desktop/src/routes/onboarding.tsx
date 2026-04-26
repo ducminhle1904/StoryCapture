@@ -138,12 +138,12 @@ function StepDots({ activeIndex }: { activeIndex: number }) {
 
 function ArtworkPanel({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="relative grid h-full min-h-0 place-items-center overflow-hidden bg-[#ebe7df] px-8">
-      <div className="absolute inset-y-0 left-0 w-px bg-[rgba(25,24,22,0.10)]" />
-      <div className="absolute right-8 top-8 hidden h-[calc(100%-64px)] w-10 border-l border-[rgba(25,24,22,0.12)] lg:block">
+    <div className="relative grid h-full min-h-0 place-items-center overflow-hidden bg-[var(--sc-chrome-2)] px-8">
+      <div className="absolute inset-y-0 left-0 w-px bg-[var(--sc-border)]" />
+      <div className="absolute right-8 top-8 hidden h-[calc(100%-64px)] w-10 border-l border-[var(--sc-border-2)] lg:block">
         <div className="mt-2 grid gap-4 pl-3">
           {rulerTicks.map((tick) => (
-            <span key={tick} className="h-px w-5 bg-[rgba(25,24,22,0.18)]" />
+            <span key={tick} className="h-px w-5 bg-[var(--sc-border-strong)]" />
           ))}
         </div>
       </div>
@@ -156,7 +156,7 @@ function ArtworkPanel({ src, alt }: { src: string; alt: string }) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.985, y: -10 }}
           transition={{ type: "spring", stiffness: 120, damping: 24 }}
-          className="relative h-auto max-h-[min(74vh,680px)] w-full max-w-[740px] rounded-[34px] object-contain shadow-[0_34px_120px_rgba(42,34,22,0.20)]"
+          className="relative h-auto max-h-[min(74vh,680px)] w-full max-w-[740px] rounded-[34px] object-contain shadow-[var(--sc-sh-3)]"
         />
       </AnimatePresence>
     </div>
@@ -259,9 +259,9 @@ export default function OnboardingRoute() {
   return (
     <main
       id="main-content"
-      className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f4f1eb] text-[var(--sc-text)]"
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--sc-bg)] text-[var(--sc-text)]"
     >
-      <header className="grid h-[68px] shrink-0 grid-cols-[220px_1fr_160px] items-center border-b border-[rgba(25,24,22,0.10)] px-7">
+      <header className="grid h-[68px] shrink-0 grid-cols-[220px_1fr_160px] items-center border-b border-[var(--sc-border)] bg-[var(--sc-chrome)] px-7">
         <div className="flex items-center gap-3">
           <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--sc-text)] text-[var(--sc-text-inverse)]">
             <Film size={17} aria-hidden="true" />
@@ -276,7 +276,7 @@ export default function OnboardingRoute() {
         </div>
         <button
           type="button"
-          className="justify-self-end rounded-full px-3 py-2 text-[12px] text-[var(--sc-text-3)] transition hover:bg-[rgba(25,24,22,0.06)] active:translate-y-px"
+          className="justify-self-end rounded-full px-3 py-2 text-[12px] text-[var(--sc-text-3)] transition hover:bg-[var(--sc-hover)] active:translate-y-px"
           onClick={() => finish(false)}
         >
           Skip setup
@@ -287,7 +287,7 @@ export default function OnboardingRoute() {
         <div className="relative flex min-h-0 flex-col justify-center overflow-hidden px-8 py-7 lg:px-14">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -left-8 top-8 font-mono text-[128px] font-semibold leading-none text-[rgba(25,24,22,0.055)]"
+            className="pointer-events-none absolute -left-8 top-8 font-mono text-[128px] font-semibold leading-none text-[var(--sc-border)]"
           >
             {String(activeIndex + 1).padStart(2, "0")}
           </div>
@@ -349,13 +349,13 @@ export default function OnboardingRoute() {
                     onClick={() => setGoalId(item.id)}
                     className={`group relative overflow-hidden rounded-[18px] border p-4 text-left transition duration-300 active:translate-y-px ${
                       selected
-                        ? "border-[var(--sc-text)] bg-[var(--sc-text)] text-[var(--sc-text-inverse)]"
-                        : "border-[rgba(25,24,22,0.10)] bg-[rgba(255,255,255,0.56)] hover:bg-[rgba(255,255,255,0.82)]"
+                        ? "border-[var(--sc-accent-500)] bg-[oklch(0.78_0.14_var(--sc-accent-h)/0.14)] text-[var(--sc-text)] shadow-[var(--sc-sh-1)]"
+                        : "border-[var(--sc-border)] bg-[var(--sc-surface-2)] hover:border-[var(--sc-border-2)] hover:bg-[var(--sc-surface-3)]"
                     }`}
                   >
                     <div
                       className={`absolute right-3 top-3 h-2 w-2 rounded-full ${
-                        selected ? "bg-[var(--sc-accent-400)]" : "bg-[rgba(25,24,22,0.16)]"
+                        selected ? "bg-[var(--sc-accent-400)]" : "bg-[var(--sc-text-4)]"
                       }`}
                     />
                     <div className="flex items-center gap-2 pr-5 text-[13px] font-semibold">
@@ -370,7 +370,7 @@ export default function OnboardingRoute() {
                     </div>
                     <div
                       className={`mt-2 text-[12px] leading-5 ${
-                        selected ? "text-[rgba(255,255,255,0.70)]" : "text-[var(--sc-text-3)]"
+                        selected ? "text-[var(--sc-text-2)]" : "text-[var(--sc-text-3)]"
                       }`}
                     >
                       {item.body}
@@ -399,7 +399,7 @@ export default function OnboardingRoute() {
                     setUseSample(false);
                   }}
                   placeholder="https://app.yourproduct.com/signup"
-                  className="h-12 rounded-[16px] border border-[rgba(25,24,22,0.12)] bg-[rgba(255,255,255,0.66)] px-4 text-[13px] font-normal text-[var(--sc-text)] outline-none transition placeholder:text-[var(--sc-text-4)] focus:border-[var(--sc-text)] focus:bg-[var(--sc-surface)]"
+                  className="h-12 rounded-[16px] border border-[var(--sc-border-2)] bg-[var(--sc-surface-2)] px-4 text-[13px] font-normal text-[var(--sc-text)] outline-none transition placeholder:text-[var(--sc-text-4)] focus:border-[var(--sc-focus)] focus:bg-[var(--sc-surface)]"
                 />
               </label>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -428,7 +428,7 @@ export default function OnboardingRoute() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08, type: "spring", stiffness: 120, damping: 22 }}
-              className="mt-7 max-w-[560px] divide-y divide-[rgba(25,24,22,0.10)] overflow-hidden rounded-[20px] border border-[rgba(25,24,22,0.10)] bg-[rgba(255,255,255,0.58)]"
+              className="mt-7 max-w-[560px] divide-y divide-[var(--sc-border)] overflow-hidden rounded-[20px] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] shadow-[var(--sc-sh-1)]"
             >
               {permissionRows.map(([title, body]) => (
                 <div key={title} className="grid gap-1 px-4 py-3.5">
@@ -467,7 +467,7 @@ export default function OnboardingRoute() {
         <ArtworkPanel src={artwork.src} alt={artwork.alt} />
       </section>
 
-      <footer className="grid h-[76px] shrink-0 grid-cols-[160px_1fr_220px] items-center border-t border-[rgba(25,24,22,0.10)] px-7">
+      <footer className="grid h-[76px] shrink-0 grid-cols-[160px_1fr_220px] items-center border-t border-[var(--sc-border)] bg-[var(--sc-chrome)] px-7">
         <ScButton
           icon={<ChevronLeft size={13} aria-hidden="true" />}
           disabled={activeIndex === 0}
@@ -479,7 +479,7 @@ export default function OnboardingRoute() {
           <div className="font-mono text-[10.5px] text-[var(--sc-text-4)]">
             {progress}% complete
           </div>
-          <div className="h-1 w-[180px] overflow-hidden rounded-full bg-[rgba(25,24,22,0.10)]">
+          <div className="h-1 w-[180px] overflow-hidden rounded-full bg-[var(--sc-surface-4)]">
             <div
               className="h-full rounded-full bg-[var(--sc-text)] transition-[width] duration-300"
               style={{ width: `${progress}%` }}
