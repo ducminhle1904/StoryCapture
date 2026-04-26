@@ -24,6 +24,7 @@ import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDri
 import { EditorBreadcrumb } from "@/features/editor/editor-breadcrumb";
 import { EditorCommandPalette } from "@/features/editor/editor-command-palette";
 import { PickingBanner, PreviewPickerButton } from "@/features/editor/PreviewPickerButton";
+import { PreviewLocationBar } from "@/features/editor/PreviewLocationBar";
 import { ProblemsPanel } from "@/features/editor/problems-panel";
 import { SimulatorFrameView } from "@/features/editor/preview-panel";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
@@ -84,7 +85,8 @@ export default function EditorRoute() {
 
   const previewViewport = useEditorStore((s) => s.previewViewport);
   const setPreviewViewport = useEditorStore((s) => s.setViewport);
-  const { streamId: authorStreamId, appUrlValid } = useEditorLivePreview(story?.meta?.app ?? null);
+  const { streamId: authorStreamId, appUrlValid, nav: previewNav } =
+    useEditorLivePreview(story?.meta?.app ?? null);
   const simulatorRunState = useSimulatorStore((s) => s.runState);
   const simulatorCurrentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
   // Phase 11-04: project upstream state into the authorDriverStore so the
@@ -536,6 +538,18 @@ export default function EditorRoute() {
                     ]}
                   />
                 </div>
+
+                <PreviewLocationBar
+                  streamId={authorStreamId}
+                  url={previewNav.url}
+                  canGoBack={previewNav.canGoBack}
+                  canGoForward={previewNav.canGoForward}
+                  disabled={
+                    !appUrlValid ||
+                    simulatorRunState === "running" ||
+                    authorDriverVariant === "picking"
+                  }
+                />
 
                 {/* Phase 11-04: Picking banner lives inside the Preview
                     panel (UI-SPEC §2), between the toolbar and the

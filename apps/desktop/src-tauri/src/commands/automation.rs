@@ -642,12 +642,44 @@ pub async fn start_author_preview(
         }
     });
 
+    // Nav-state pump. Sidecar broadcasts every session's snapshot on the
+    // same channel; filter by stream_id so cross-session listeners stay
+    // isolated. Per-stream Tauri event mirrors the frame channel.
+    let mut nav_rx = driver_arc.subscribe_nav();
+    let app_for_nav = app.clone();
+    let nav_event_name = format!("preview://nav/{stream_id}");
+    let nav_stream_id = stream_id.clone();
+    let nav_pump = tokio::spawn(async move {
+        while nav_rx.changed().await.is_ok() {
+            let snapshot = nav_rx.borrow_and_update().clone();
+            let Some(snap) = snapshot else { continue };
+            if snap.stream_id != nav_stream_id {
+                continue;
+            }
+            let payload = AuthorPreviewNavPayload {
+                stream_id: snap.stream_id,
+                url: snap.url,
+                can_go_back: snap.can_go_back,
+                can_go_forward: snap.can_go_forward,
+            };
+            if let Err(err) = app_for_nav.emit(&nav_event_name, &payload) {
+                tracing::warn!(
+                    target: "storycapture::preview",
+                    error = %err,
+                    stream_id = %nav_stream_id,
+                    "author preview nav emit failed"
+                );
+            }
+        }
+    });
+
     let mut sessions = state.author_preview_sessions.lock().await;
     sessions.insert(
         stream_id.clone(),
         crate::state::AuthorPreviewSession {
             driver: driver_arc,
             pump: Some(pump),
+            nav_pump: Some(nav_pump),
         },
     );
     Ok(stream_id)
@@ -667,6 +699,9 @@ pub async fn stop_author_preview(
     };
     if let Some(mut session) = session_opt {
         if let Some(pump) = session.pump.take() {
+            pump.abort();
+        }
+        if let Some(pump) = session.nav_pump.take() {
             pump.abort();
         }
         if let Err(e) = session.driver.call_preview_stop_stream(&stream_id).await {
@@ -751,6 +786,65 @@ pub async fn set_author_preview_url(
     let driver = author_driver(&state, &stream_id).await?;
     driver
         .call_author_goto(&stream_id, &url)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
+/// Payload of `preview://nav/<streamId>` Tauri events. Mirrors the sidecar's
+/// `preview/nav` JSON-RPC notification one-for-one.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorPreviewNavPayload {
+    pub stream_id: String,
+    pub url: String,
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
+}
+
+/// URL-bar Back. No-op when at history index 0.
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_preview_back"), err(Debug))]
+pub async fn author_preview_back(
+    state: State<'_, AppState>,
+    stream_id: String,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .call_author_back(&stream_id)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
+/// URL-bar Forward. No-op when forward stack is empty.
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_preview_forward"), err(Debug))]
+pub async fn author_preview_forward(
+    state: State<'_, AppState>,
+    stream_id: String,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .call_author_forward(&stream_id)
+        .await
+        .map_err(|e| AppError::Automation(e.to_string()))?;
+    Ok(())
+}
+
+/// URL-bar Reload. Always re-emits a `preview/nav` notification.
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_preview_reload"), err(Debug))]
+pub async fn author_preview_reload(
+    state: State<'_, AppState>,
+    stream_id: String,
+) -> Result<(), AppError> {
+    let driver = author_driver(&state, &stream_id).await?;
+    driver
+        .call_author_reload(&stream_id)
         .await
         .map_err(|e| AppError::Automation(e.to_string()))?;
     Ok(())

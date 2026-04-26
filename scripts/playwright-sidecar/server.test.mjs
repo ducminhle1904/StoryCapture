@@ -692,3 +692,177 @@ describe("Phase 11-03 — pickElement.start streamId routing", () => {
     }
   }, 90_000);
 });
+
+// URL-bar back/forward/reload + nav notification stream for the editor
+// Live Preview header. History is sidecar-side because Playwright doesn't
+// expose canGoBack/canGoForward directly. `author.goto` only accepts
+// http(s) URLs, so we serve a trivial page over a local http server
+// instead of pointing at a file:// fixture.
+describe("author URL-bar navigation", () => {
+  let client;
+  let httpServer;
+  let baseUrl;
+  let fixture;
+  let fixtureWithQuery;
+
+  beforeEach(async () => {
+    const { createServer } = await import("node:http");
+    httpServer = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<!doctype html><title>nav</title><h1>nav</h1>");
+    });
+    await new Promise((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+    const { port } = httpServer.address();
+    baseUrl = `http://127.0.0.1:${port}/`;
+    fixture = baseUrl;
+    fixtureWithQuery = `${baseUrl}?n=1`;
+    client = spawnSidecar();
+  });
+  afterEach(async () => {
+    if (client) await client.dispose();
+    if (httpServer) await new Promise((r) => httpServer.close(() => r()));
+  });
+
+  function navNotifications(c, streamId) {
+    return c
+      .stdoutLines()
+      .filter((l) => l.includes('"preview/nav"'))
+      .map((l) => JSON.parse(l))
+      .filter((m) => !streamId || (m.params && m.params.streamId === streamId));
+  }
+
+  it("goBack returns no-history when at index 0", async () => {
+    await client.call("author.launch", {
+      streamId: "nav-1",
+      url: fixture,
+      headless: true,
+    });
+    try {
+      const resp = await client.call("author.goBack", { streamId: "nav-1" });
+      expect(resp.result).toEqual({ ok: false, reason: "no-history" });
+    } finally {
+      await client.call("author.close", { streamId: "nav-1" }).catch(() => {});
+    }
+  }, 90_000);
+
+  it("goto then goBack restores previous URL and updates history index", async () => {
+    await client.call("author.launch", {
+      streamId: "nav-2",
+      url: fixture,
+      headless: true,
+    });
+    try {
+      await client.call("author.goto", {
+        streamId: "nav-2",
+        url: fixtureWithQuery,
+      });
+      // Wait for framenavigated to fire and a preview/nav notification
+      // to land that points at the new URL.
+      await waitFor(() => {
+        const notes = navNotifications(client, "nav-2");
+        return notes.some((n) => n.params.url === fixtureWithQuery);
+      });
+
+      const back = await client.call("author.goBack", { streamId: "nav-2" });
+      expect(back.result.ok).toBe(true);
+      // Final nav notification should report the original URL with
+      // canGoForward=true and canGoBack=false.
+      await waitFor(() => {
+        const notes = navNotifications(client, "nav-2");
+        const last = notes[notes.length - 1];
+        return (
+          last &&
+          last.params.url === fixture &&
+          last.params.canGoBack === false &&
+          last.params.canGoForward === true
+        );
+      });
+    } finally {
+      await client.call("author.close", { streamId: "nav-2" }).catch(() => {});
+    }
+  }, 90_000);
+
+  it("goto after goBack truncates forward stack", async () => {
+    await client.call("author.launch", {
+      streamId: "nav-3",
+      url: fixture,
+      headless: true,
+    });
+    try {
+      await client.call("author.goto", {
+        streamId: "nav-3",
+        url: fixtureWithQuery,
+      });
+      await waitFor(() => {
+        const notes = navNotifications(client, "nav-3");
+        return notes.some((n) => n.params.url === fixtureWithQuery);
+      });
+      await client.call("author.goBack", { streamId: "nav-3" });
+      await waitFor(() => {
+        const notes = navNotifications(client, "nav-3");
+        const last = notes[notes.length - 1];
+        return last && last.params.canGoForward === true;
+      });
+      // New navigation should drop the forward stack — canGoForward=false.
+      const otherUrl = `${baseUrl}?n=99`;
+      await client.call("author.goto", { streamId: "nav-3", url: otherUrl });
+      await waitFor(() => {
+        const notes = navNotifications(client, "nav-3");
+        const last = notes[notes.length - 1];
+        return (
+          last &&
+          last.params.url === otherUrl &&
+          last.params.canGoForward === false &&
+          last.params.canGoBack === true
+        );
+      });
+    } finally {
+      await client.call("author.close", { streamId: "nav-3" }).catch(() => {});
+    }
+  }, 90_000);
+
+  it("reload preserves history but emits a nav notification", async () => {
+    await client.call("author.launch", {
+      streamId: "nav-4",
+      url: fixture,
+      headless: true,
+    });
+    try {
+      const before = navNotifications(client, "nav-4").length;
+      const reload = await client.call("author.reload", { streamId: "nav-4" });
+      expect(reload.result.ok).toBe(true);
+      await waitFor(() => navNotifications(client, "nav-4").length > before);
+      const last = navNotifications(client, "nav-4").pop();
+      expect(last.params.url).toBe(fixture);
+      expect(last.params.canGoBack).toBe(false);
+      expect(last.params.canGoForward).toBe(false);
+    } finally {
+      await client.call("author.close", { streamId: "nav-4" }).catch(() => {});
+    }
+  }, 90_000);
+
+  it("goBack returns no-history when forward stack is empty (single-page session)", async () => {
+    await client.call("author.launch", {
+      streamId: "nav-5",
+      url: fixture,
+      headless: true,
+    });
+    try {
+      const fwd = await client.call("author.goForward", { streamId: "nav-5" });
+      expect(fwd.result).toEqual({ ok: false, reason: "no-forward" });
+    } finally {
+      await client.call("author.close", { streamId: "nav-5" }).catch(() => {});
+    }
+  }, 90_000);
+});
+
+// Tiny poll helper used by the URL-bar tests above. Resolves when `pred`
+// returns truthy or rejects after `timeoutMs`.
+async function waitFor(pred, { timeoutMs = 5000, intervalMs = 50 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (pred()) return;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error("waitFor: predicate did not become truthy");
+}

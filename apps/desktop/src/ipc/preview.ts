@@ -55,6 +55,25 @@ export async function setAuthorPreviewUrl(streamId: string, url: string): Promis
   await invoke("set_author_preview_url", { streamId, url });
 }
 
+export interface AuthorPreviewNavPayload {
+  streamId: string;
+  url: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+export async function authorPreviewBack(streamId: string): Promise<void> {
+  await invoke("author_preview_back", { streamId });
+}
+
+export async function authorPreviewForward(streamId: string): Promise<void> {
+  await invoke("author_preview_forward", { streamId });
+}
+
+export async function authorPreviewReload(streamId: string): Promise<void> {
+  await invoke("author_preview_reload", { streamId });
+}
+
 export async function attachAuthorDriver(streamId: string): Promise<void> {
   await invoke("attach_author_driver", { streamId });
 }

@@ -83,6 +83,22 @@ Other important boundaries that matter in practice:
 4. Long-running operations use Tauri `Channel<T>` for progress (render, upload, automation events).
 5. AST types (`Story`, `Graph`) go through `ts-rs` under the `ts-export` feature, generated into `packages/shared-types/src/generated/{story,effects}.ts`.
 
+### Author-preview Tauri events
+
+Each `start_author_preview` registers two per-stream Tauri events the
+webview consumes:
+
+- `preview://frame/<streamId>` — JPEG frame stream from the CDP screencast
+  (latest-wins). Payload: `PreviewFrame { data, width, height, timestamp }`.
+- `preview://nav/<streamId>` — current URL + `canGoBack`/`canGoForward`
+  flags pushed every time the sidecar's `framenavigated` listener fires
+  or after one of the URL-bar verbs (`author_preview_back`,
+  `author_preview_forward`, `author_preview_reload`). Payload:
+  `AuthorPreviewNavPayload { streamId, url, canGoBack, canGoForward }`.
+  History tracking lives in the sidecar (Playwright doesn't expose
+  `canGoBack`/`canGoForward` directly); hash-only navigations don't emit
+  `framenavigated` and therefore don't update the URL bar.
+
 ## Frontend desktop (`apps/desktop`)
 
 - **Routing:** React Router v7 data router in `src/routes/index.tsx`. Layouts: `AppLayout` (dashboard/onboarding/settings/post-production landing), `FullscreenLayout` (editor/recorder/post-production editor), plus a transparent overlay route. Routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`, `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`, `/region-overlay`.

@@ -206,6 +206,39 @@ async setAuthorPreviewUrl(streamId: string, url: string) : Promise<Result<null, 
 }
 },
 /**
+ * URL-bar Back. No-op when at history index 0.
+ */
+async authorPreviewBack(streamId: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("author_preview_back", { streamId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * URL-bar Forward. No-op when forward stack is empty.
+ */
+async authorPreviewForward(streamId: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("author_preview_forward", { streamId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * URL-bar Reload. Always re-emits a `preview/nav` notification.
+ */
+async authorPreviewReload(streamId: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("author_preview_reload", { streamId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Readiness probe: confirms streamId is registered + sidecar is alive.
  */
 async attachAuthorDriver(streamId: string) : Promise<Result<null, AppError>> {
@@ -1328,6 +1361,11 @@ export type AudioOptionsDto = { codec?: AudioCodecDto | null; bitrate_kbps?: num
  */
 export type AuthorInputEvent = { type: "mousemove"; x: number; y: number } | { type: "click"; x: number; y: number; button?: AuthorMouseButton } | { type: "wheel"; x: number; y: number; deltaX: number; deltaY: number }
 export type AuthorMouseButton = "left" | "right" | "middle"
+/**
+ * Payload of `preview://nav/<streamId>` Tauri events. Mirrors the sidecar's
+ * `preview/nav` JSON-RPC notification one-for-one.
+ */
+export type AuthorPreviewNavPayload = { streamId: string; url: string; canGoBack: boolean; canGoForward: boolean }
 /**
  * Manifest entry persisted alongside the HTML + PNG snapshot files.
  */

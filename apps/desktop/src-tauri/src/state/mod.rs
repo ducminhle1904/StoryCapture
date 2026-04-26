@@ -105,6 +105,9 @@ pub struct AppState {
 pub struct AuthorPreviewSession {
     pub driver: Arc<automation::PlaywrightSidecarDriver>,
     pub pump: Option<tokio::task::JoinHandle<()>>,
+    /// Pump task forwarding `preview/nav` snapshots filtered to this stream
+    /// onto the per-stream `preview://nav/<streamId>` Tauri event.
+    pub nav_pump: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl AppState {

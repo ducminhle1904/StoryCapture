@@ -16,7 +16,10 @@
  * owns the page), without tearing Chromium down.
  */
 
+import { listen } from "@tauri-apps/api/event";
+
 import {
+  type AuthorPreviewNavPayload,
   pauseAuthorPreview,
   resumeAuthorPreview,
   setAuthorPreviewUrl,
@@ -34,6 +37,28 @@ const STOP_GRACE_MS = 60_000;
 
 type Listener = (streamId: string | null) => void;
 
+export interface PreviewNavState {
+  url: string | null;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+export const INITIAL_NAV: PreviewNavState = {
+  url: null,
+  canGoBack: false,
+  canGoForward: false,
+};
+
+function navEqual(a: PreviewNavState, b: PreviewNavState): boolean {
+  return (
+    a.url === b.url &&
+    a.canGoBack === b.canGoBack &&
+    a.canGoForward === b.canGoForward
+  );
+}
+
+type NavListener = (s: PreviewNavState) => void;
+
 interface State {
   streamId: string | null;
   appUrl: string | null;
@@ -43,6 +68,9 @@ interface State {
   stopTimer: number | null;
   listeners: Set<Listener>;
   refcount: number;
+  nav: PreviewNavState;
+  navListeners: Set<NavListener>;
+  navUnlisten: (() => void) | null;
 }
 
 const state: State = {
@@ -54,10 +82,19 @@ const state: State = {
   stopTimer: null,
   listeners: new Set(),
   refcount: 0,
+  nav: { ...INITIAL_NAV },
+  navListeners: new Set(),
+  navUnlisten: null,
 };
 
 function notify() {
   for (const l of state.listeners) l(state.streamId);
+}
+
+function setNav(next: PreviewNavState) {
+  if (navEqual(state.nav, next)) return;
+  state.nav = next;
+  for (const l of state.navListeners) l(state.nav);
 }
 
 function cancelPendingStop() {
@@ -81,6 +118,27 @@ async function launch(appUrl: string, viewport: PreviewViewport) {
     state.appUrl = appUrl;
     state.viewport = viewport;
     state.paused = false;
+    // Seed the nav URL so the URL bar can render the initial value before
+    // the first framenavigated event arrives from the sidecar.
+    setNav({ ...INITIAL_NAV, url: appUrl });
+    try {
+      const unlisten = await listen<AuthorPreviewNavPayload>(
+        `preview://nav/${id}`,
+        (ev) => {
+          setNav({
+            url: ev.payload.url || null,
+            canGoBack: ev.payload.canGoBack,
+            canGoForward: ev.payload.canGoForward,
+          });
+        },
+      );
+      state.navUnlisten = unlisten;
+    } catch (err) {
+      frontendLog.warn("previewLifecycle", "preview://nav listen failed", {
+        error: err,
+        fields: { stream_id: id },
+      });
+    }
     notify();
   } catch (err) {
     frontendLog.warn("previewLifecycle", "start_author_preview failed", {
@@ -98,6 +156,11 @@ async function teardown() {
   state.streamId = null;
   state.appUrl = null;
   state.paused = false;
+  if (state.navUnlisten) {
+    try { state.navUnlisten(); } catch { /* unlisten is best-effort */ }
+    state.navUnlisten = null;
+  }
+  setNav(INITIAL_NAV);
   notify();
   try {
     await stopAuthorPreview(id);
@@ -228,4 +291,17 @@ export function resumePreview() {
       fields: { stream_id: state.streamId },
     });
   });
+}
+
+/**
+ * Subscribe to nav-state updates (current URL + canGoBack / canGoForward).
+ * The listener is invoked once synchronously with the current state and
+ * again every time the sidecar emits a `preview/nav` notification.
+ */
+export function subscribeNav(listener: NavListener): () => void {
+  state.navListeners.add(listener);
+  listener(state.nav);
+  return () => {
+    state.navListeners.delete(listener);
+  };
 }

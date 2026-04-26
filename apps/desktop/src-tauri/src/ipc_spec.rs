@@ -59,6 +59,9 @@ pub fn builder() -> Builder<Wry> {
             automation::resume_author_preview,
             automation::set_author_preview_viewport,
             automation::set_author_preview_url,
+            automation::author_preview_back,
+            automation::author_preview_forward,
+            automation::author_preview_reload,
             automation::attach_author_driver,
             automation::author_dispatch_input,
             // element picker.
@@ -185,6 +188,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<automation::AuthorViewportArgs>()
         .typ::<automation::AuthorInputEvent>()
         .typ::<automation::AuthorMouseButton>()
+        .typ::<automation::AuthorPreviewNavPayload>()
         .typ::<picker::PickElementResponseDto>()
         .typ::<picker::PickerStampResultDto>()
         // author-time validator DTOs.

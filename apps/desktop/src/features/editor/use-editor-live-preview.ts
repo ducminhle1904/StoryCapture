@@ -3,8 +3,11 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 import {
   acquirePreview,
+  INITIAL_NAV,
   pausePreview,
+  type PreviewNavState,
   resumePreview,
+  subscribeNav,
   updateAppUrl,
   updateViewport,
 } from "@/features/editor/preview-lifecycle";
@@ -90,5 +93,8 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
     else resumePreview();
   }, [streamId, simulatorRunning, windowFocused]);
 
-  return { streamId, appUrlValid: sanitized != null };
+  const [nav, setNav] = useState<PreviewNavState>(INITIAL_NAV);
+  useEffect(() => subscribeNav(setNav), []);
+
+  return { streamId, appUrlValid: sanitized != null, nav };
 }

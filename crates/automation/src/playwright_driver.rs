@@ -80,6 +80,19 @@ pub struct PreviewFrame {
     pub timestamp: f64,
 }
 
+/// Decoded `preview/nav` notification — current URL of an author session
+/// page plus the pre-computed canGoBack / canGoForward flags. The sidecar
+/// owns the history stack (Playwright doesn't expose those flags); this
+/// struct mirrors its emitted payload verbatim.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavSnapshot {
+    pub stream_id: String,
+    pub url: String,
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
+}
+
 // Phase 09-01 — Untagged serde enum over the two sidecar stdout shapes.
 // `Response` matches the existing id-carrying line; `Notification` matches
 // id-less method+params lines. Exists primarily as a named type for the
@@ -122,6 +135,10 @@ pub struct PlaywrightSidecarDriver {
     /// `watch::send` overwrites on every update so slow consumers naturally
     /// drop intermediate frames (CONTEXT D-03 backpressure).
     preview_frames_tx: watch::Sender<Option<PreviewFrame>>,
+    /// Latest-wins watch channel for decoded `preview/nav` notifications.
+    /// Subscribers filter by `stream_id` since the sidecar broadcasts every
+    /// session's nav state on the same channel.
+    nav_tx: watch::Sender<Option<NavSnapshot>>,
 }
 
 impl PlaywrightSidecarDriver {
@@ -156,6 +173,9 @@ impl PlaywrightSidecarDriver {
         let (preview_frames_tx, _preview_seed_rx) = watch::channel::<Option<PreviewFrame>>(None);
         let preview_tx_for_reader = preview_frames_tx.clone();
 
+        let (nav_tx, _nav_seed_rx) = watch::channel::<Option<NavSnapshot>>(None);
+        let nav_tx_for_reader = nav_tx.clone();
+
         // Reader task: parse stdout lines, dispatch to the pending map or
         // the notifications broadcast channel.
         tokio::spawn(async move {
@@ -169,6 +189,7 @@ impl PlaywrightSidecarDriver {
                     &pending_for_reader,
                     &notifications_for_reader,
                     &preview_tx_for_reader,
+                    &nav_tx_for_reader,
                 )
                 .await;
             }
@@ -181,6 +202,7 @@ impl PlaywrightSidecarDriver {
             _child: Arc::new(Mutex::new(Some(child))),
             notifications,
             preview_frames_tx,
+            nav_tx,
         })
     }
 
@@ -190,6 +212,13 @@ impl PlaywrightSidecarDriver {
     /// — intermediate frames are dropped by design.
     pub fn subscribe_preview(&self) -> watch::Receiver<Option<PreviewFrame>> {
         self.preview_frames_tx.subscribe()
+    }
+
+    /// Subscribe to the latest-wins nav-state channel. Sidecar broadcasts
+    /// every author session's nav state on the same wire; subscribers
+    /// filter by `stream_id`.
+    pub fn subscribe_nav(&self) -> watch::Receiver<Option<NavSnapshot>> {
+        self.nav_tx.subscribe()
     }
 
     /// Phase 09-01 — start the CDP screencast in the sidecar.
@@ -279,6 +308,30 @@ impl PlaywrightSidecarDriver {
     /// Navigate an author session's page to a new URL without relaunching.
     pub async fn call_author_goto(&self, stream_id: &str, url: &str) -> Result<()> {
         self.call("author.goto", json!({ "streamId": stream_id, "url": url }))
+            .await?;
+        Ok(())
+    }
+
+    /// URL-bar Back. Returns Ok even when the session is at index 0 — the
+    /// sidecar reports `{ ok: false, reason: "no-history" }` and host treats
+    /// it as a no-op (the UI gates the button via canGoBack).
+    pub async fn call_author_back(&self, stream_id: &str) -> Result<()> {
+        self.call("author.goBack", json!({ "streamId": stream_id }))
+            .await?;
+        Ok(())
+    }
+
+    /// URL-bar Forward. See `call_author_back` for the no-op semantics.
+    pub async fn call_author_forward(&self, stream_id: &str) -> Result<()> {
+        self.call("author.goForward", json!({ "streamId": stream_id }))
+            .await?;
+        Ok(())
+    }
+
+    /// URL-bar Reload. Always re-emits a `preview/nav` notification so the
+    /// frontend can clear any pending state.
+    pub async fn call_author_reload(&self, stream_id: &str) -> Result<()> {
+        self.call("author.reload", json!({ "streamId": stream_id }))
             .await?;
         Ok(())
     }
@@ -632,6 +685,7 @@ pub async fn handle_sidecar_line(
     pending: &Pending,
     notifications: &broadcast::Sender<Notification>,
     preview_tx: &watch::Sender<Option<PreviewFrame>>,
+    nav_tx: &watch::Sender<Option<NavSnapshot>>,
 ) {
     let resp: JsonRpcResponse = match serde_json::from_str(line) {
         Ok(r) => r,
@@ -663,6 +717,19 @@ pub async fn handle_sidecar_line(
                             target: "automation::playwright",
                             error = %err,
                             "malformed preview/frame params"
+                        );
+                    }
+                }
+            } else if method == "preview/nav" {
+                match serde_json::from_value::<NavSnapshot>(params.clone()) {
+                    Ok(snap) => {
+                        let _ = nav_tx.send(Some(snap));
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            target: "automation::playwright",
+                            error = %err,
+                            "malformed preview/nav params"
                         );
                     }
                 }

@@ -834,7 +834,8 @@ const handlers = {
         );
       }
     }
-    state.authorSessions.set(streamId, {
+    const initialUrl = page.url() || 'about:blank';
+    const session = {
       browserServer,
       browser,
       context,
@@ -845,13 +846,52 @@ const handlers = {
       previewEveryNth: 1,
       previewDropCount: 0,
       paused: false,
-    });
+      // Browser-style nav history tracked per session. Playwright doesn't
+      // expose canGoBack/canGoForward, so we maintain index+stack ourselves.
+      history: [initialUrl],
+      historyIndex: 0,
+      lastBroadcastedUrl: initialUrl,
+      onMainFrameNav: null,
+    };
+    const onMainFrameNav = (frame) => {
+      if (frame !== session.page.mainFrame()) return;
+      const newUrl = frame.url();
+      if (newUrl === session.lastBroadcastedUrl) return;
+      const cur = session.history[session.historyIndex];
+      if (newUrl === cur) {
+        // already in sync (handlers below pre-adjust index)
+      } else if (
+        session.historyIndex > 0 &&
+        newUrl === session.history[session.historyIndex - 1]
+      ) {
+        session.historyIndex -= 1;
+      } else if (
+        session.historyIndex < session.history.length - 1 &&
+        newUrl === session.history[session.historyIndex + 1]
+      ) {
+        session.historyIndex += 1;
+      } else {
+        session.history = session.history.slice(0, session.historyIndex + 1);
+        session.history.push(newUrl);
+        session.historyIndex = session.history.length - 1;
+      }
+      session.lastBroadcastedUrl = newUrl;
+      emitNavNotification(streamId, session);
+    };
+    session.onMainFrameNav = onMainFrameNav;
+    page.on('framenavigated', onMainFrameNav);
+    state.authorSessions.set(streamId, session);
+    emitNavNotification(streamId, session);
     return { ok: true, streamId };
   },
 
   'author.close': async ({ streamId } = {}) => {
     const s = state.authorSessions.get(streamId);
     if (!s) return { ok: true, closed: false };
+    if (s.onMainFrameNav && s.page) {
+      try { s.page.off('framenavigated', s.onMainFrameNav); } catch {}
+      s.onMainFrameNav = null;
+    }
     state.authorSessions.delete(streamId);
     await teardownAuthorSession(s);
     return { ok: true, closed: true };
@@ -944,6 +984,52 @@ const handlers = {
     await s.page
       .waitForLoadState('networkidle', { timeout: 10_000 })
       .catch(() => {});
+    return { ok: true, url: s.page.url() };
+  },
+
+  // URL-bar back/forward/reload for the editor Live Preview header.
+  // History tracking is sidecar-side (Playwright doesn't expose canGoBack/
+  // canGoForward); each handler pre-adjusts historyIndex so the
+  // framenavigated listener stays in sync.
+  'author.goBack': async ({ streamId } = {}) => {
+    const s = getAuthorSession(streamId);
+    if (!s.history || s.historyIndex <= 0) {
+      return { ok: false, reason: 'no-history' };
+    }
+    s.historyIndex -= 1;
+    try {
+      await s.page.goBack({ waitUntil: 'domcontentloaded', timeout: 10_000 });
+    } catch (e) {
+      s.historyIndex += 1;
+      throw Object.assign(new Error('goBack failed: ' + (e.message || e)), { code: -32000 });
+    }
+    s.lastBroadcastedUrl = s.history[s.historyIndex];
+    emitNavNotification(streamId, s);
+    return { ok: true, url: s.page.url() };
+  },
+
+  'author.goForward': async ({ streamId } = {}) => {
+    const s = getAuthorSession(streamId);
+    if (!s.history || s.historyIndex >= s.history.length - 1) {
+      return { ok: false, reason: 'no-forward' };
+    }
+    s.historyIndex += 1;
+    try {
+      await s.page.goForward({ waitUntil: 'domcontentloaded', timeout: 10_000 });
+    } catch (e) {
+      s.historyIndex -= 1;
+      throw Object.assign(new Error('goForward failed: ' + (e.message || e)), { code: -32000 });
+    }
+    s.lastBroadcastedUrl = s.history[s.historyIndex];
+    emitNavNotification(streamId, s);
+    return { ok: true, url: s.page.url() };
+  },
+
+  'author.reload': async ({ streamId } = {}) => {
+    const s = getAuthorSession(streamId);
+    await s.page.reload({ waitUntil: 'domcontentloaded', timeout: 15_000 });
+    s.lastBroadcastedUrl = s.history[s.historyIndex];
+    emitNavNotification(streamId, s);
     return { ok: true, url: s.page.url() };
   },
 
@@ -1566,6 +1652,19 @@ function writeNotification(method, params) {
   process.stdout.write(
     JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n',
   );
+}
+
+// Emit current nav state for an author session as a `preview/nav`
+// notification. Called after framenavigated fires and after the
+// goBack/goForward/reload handlers complete.
+function emitNavNotification(streamId, session) {
+  if (!session || !session.history) return;
+  writeNotification('preview/nav', {
+    streamId,
+    url: session.history[session.historyIndex] ?? '',
+    canGoBack: session.historyIndex > 0,
+    canGoForward: session.historyIndex < session.history.length - 1,
+  });
 }
 
 // Phase 09-01 — latest-wins preview flusher. Emits one preview/frame
