@@ -23,6 +23,7 @@ import { PreviewSurface } from "@/components/preview-surface";
 import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDriverStore";
 import { EditorBreadcrumb } from "@/features/editor/editor-breadcrumb";
 import { PickingBanner, PreviewPickerButton } from "@/features/editor/PreviewPickerButton";
+import { ProblemsPanel } from "@/features/editor/problems-panel";
 import { SimulatorFrameView } from "@/features/editor/preview-panel";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
 import { SimulatorTimeline } from "@/features/editor/simulator-timeline";
@@ -465,6 +466,8 @@ export default function EditorRoute() {
                     onCursorChange={setCursor}
                   />
                 </div>
+
+                <ProblemsPanel onJumpToOffset={queueEditorJump} />
 
                 <SimulatorTimeline
                   projectFolder={folder?.folder_path ?? ""}
