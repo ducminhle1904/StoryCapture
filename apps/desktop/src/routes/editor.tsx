@@ -403,6 +403,8 @@ export default function EditorRoute() {
               <SceneListPanel
                 activeSceneIndex={activeSceneIndex}
                 onSelectScene={handleSelectScene}
+                onJumpTo={queueEditorJump}
+                cursorLine={cursor?.line}
               />
             </Panel>
             <Separator className="group relative w-px bg-[var(--sc-border-2)] shadow-[1px_0_0_var(--sc-border)] transition-colors hover:bg-[var(--sc-border-strong)] active:bg-[var(--sc-accent-500)]/50" />
