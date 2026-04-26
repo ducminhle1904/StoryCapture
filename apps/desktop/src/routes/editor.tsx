@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
 import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDriverStore";
+import { EditorBreadcrumb } from "@/features/editor/editor-breadcrumb";
 import { PickingBanner, PreviewPickerButton } from "@/features/editor/PreviewPickerButton";
 import { SimulatorFrameView } from "@/features/editor/preview-panel";
 import { SceneListPanel } from "@/features/editor/scene-list-panel";
@@ -319,6 +320,13 @@ export default function EditorRoute() {
           </Link>
           <ChevronRight size={10} style={{ color: "var(--sc-text-4)" }} aria-hidden="true" />
           <span style={{ fontSize: 13, fontWeight: 600 }}>{folder?.name ?? "Loading..."}</span>
+          {story && cursor && (
+            <EditorBreadcrumb
+              story={story}
+              cursorLine={cursor.line}
+              onJumpToOffset={queueEditorJump}
+            />
+          )}
           {errorCount > 0 && (
             <ScBadge tone="record">
               {errorCount} {errorCount === 1 ? "error" : "errors"}
