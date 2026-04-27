@@ -188,6 +188,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<automation::AuthorViewportArgs>()
         .typ::<automation::AuthorInputEvent>()
         .typ::<automation::AuthorMouseButton>()
+        .typ::<automation::AuthorKeyModifiers>()
         .typ::<automation::AuthorPreviewNavPayload>()
         .typ::<picker::PickElementResponseDto>()
         .typ::<picker::PickerStampResultDto>()

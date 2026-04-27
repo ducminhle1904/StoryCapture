@@ -872,6 +872,36 @@ pub enum AuthorInputEvent {
         #[serde(rename = "deltaY")]
         delta_y: f64,
     },
+    Keydown {
+        key: String,
+        code: String,
+        #[serde(default)]
+        modifiers: AuthorKeyModifiers,
+        #[serde(default)]
+        repeat: bool,
+    },
+    Keyup {
+        key: String,
+        code: String,
+        #[serde(default)]
+        modifiers: AuthorKeyModifiers,
+    },
+    Text {
+        text: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorKeyModifiers {
+    #[serde(default)]
+    pub shift: bool,
+    #[serde(default)]
+    pub ctrl: bool,
+    #[serde(default)]
+    pub alt: bool,
+    #[serde(default)]
+    pub meta: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, specta::Type)]
@@ -922,6 +952,45 @@ pub async fn author_dispatch_input(
                 stream_id = %stream_id,
                 x = *x, y = *y,
                 "author_dispatch_input mousemove"
+            );
+        }
+        AuthorInputEvent::Keydown { key, code, repeat, .. } => {
+            let is_modifier = matches!(key.as_str(), "Shift" | "Control" | "Alt" | "Meta")
+                || code.starts_with("Shift")
+                || code.starts_with("Control")
+                || code.starts_with("Alt")
+                || code.starts_with("Meta");
+            if is_modifier {
+                tracing::info!(
+                    target: "storycapture::automation",
+                    stream_id = %stream_id,
+                    key = %key, code = %code, repeat = *repeat,
+                    "author_dispatch_input keydown (modifier)"
+                );
+            } else {
+                tracing::debug!(
+                    target: "storycapture::automation",
+                    stream_id = %stream_id,
+                    key = %key, code = %code, repeat = *repeat,
+                    "author_dispatch_input keydown"
+                );
+            }
+        }
+        AuthorInputEvent::Keyup { key, code, .. } => {
+            tracing::debug!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                key = %key, code = %code,
+                "author_dispatch_input keyup"
+            );
+        }
+        AuthorInputEvent::Text { text } => {
+            // Privacy: log length only — user may be typing a password.
+            tracing::info!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                len = text.chars().count(),
+                "author_dispatch_input text"
             );
         }
     }
@@ -1148,6 +1217,48 @@ mod tests {
         assert!(info.pid.is_none());
         // Reset so other tests stay isolated.
         playwright_pid_stash().set(None);
+    }
+
+    #[test]
+    fn keydown_serde_roundtrip() {
+        let json = r#"{"type":"keydown","key":"a","code":"KeyA","modifiers":{"shift":false,"ctrl":false,"alt":false,"meta":false},"repeat":false}"#;
+        let ev: AuthorInputEvent = serde_json::from_str(json).unwrap();
+        let v = serde_json::to_value(&ev).unwrap();
+        assert_eq!(v["type"], "keydown");
+        assert_eq!(v["key"], "a");
+        assert_eq!(v["code"], "KeyA");
+        assert_eq!(v["repeat"], false);
+        assert_eq!(v["modifiers"]["shift"], false);
+    }
+
+    #[test]
+    fn keydown_modifiers_default_when_omitted() {
+        let json = r#"{"type":"keydown","key":"Shift","code":"ShiftLeft"}"#;
+        let ev: AuthorInputEvent = serde_json::from_str(json).unwrap();
+        if let AuthorInputEvent::Keydown { modifiers, repeat, .. } = ev {
+            assert!(!modifiers.shift && !modifiers.ctrl && !modifiers.alt && !modifiers.meta);
+            assert!(!repeat);
+        } else {
+            panic!("expected Keydown");
+        }
+    }
+
+    #[test]
+    fn keyup_serde_roundtrip() {
+        let json = r#"{"type":"keyup","key":"a","code":"KeyA","modifiers":{"shift":true,"ctrl":false,"alt":false,"meta":false}}"#;
+        let ev: AuthorInputEvent = serde_json::from_str(json).unwrap();
+        let v = serde_json::to_value(&ev).unwrap();
+        assert_eq!(v["type"], "keyup");
+        assert_eq!(v["modifiers"]["shift"], true);
+    }
+
+    #[test]
+    fn text_serde_roundtrip_with_unicode() {
+        let json = r#"{"type":"text","text":"xin chào"}"#;
+        let ev: AuthorInputEvent = serde_json::from_str(json).unwrap();
+        let v = serde_json::to_value(&ev).unwrap();
+        assert_eq!(v["type"], "text");
+        assert_eq!(v["text"], "xin chào");
     }
 
     #[test]
