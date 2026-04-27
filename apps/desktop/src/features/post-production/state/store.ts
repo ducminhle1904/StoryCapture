@@ -14,7 +14,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-import { createExportSlice, type ExportSlice } from "./export-slice";
+import { createExportSlice, DEFAULT_EXPORT_FORM, type ExportSlice } from "./export-slice";
 import { createPanelsSlice, PANELS_STORAGE_KEY, type PanelsSlice } from "./panels-slice";
 import { createQueueSlice, type QueueSlice } from "./queue-slice";
 import { createSelectionSlice, type SelectionSlice } from "./selection-slice";
@@ -38,6 +38,14 @@ const PERSISTED_PANEL_KEYS = [
   "previewWidthPct",
 ] as const;
 
+/**
+ * Persist the export form so user choices (formats, resolution, fps,
+ * quality, output folder, base name) survive modal close + app reload.
+ * Transient export state — `submitting`, validation `warnings`, queue
+ * progress, and `exportModalOpen` — is intentionally excluded.
+ */
+const PERSISTED_EXPORT_KEYS = ["exportForm"] as const;
+
 export const useEditorStore = create<EditorStore>()(
   persist(
     (...a) => ({
@@ -56,9 +64,30 @@ export const useEditorStore = create<EditorStore>()(
         for (const k of PERSISTED_PANEL_KEYS) {
           out[k] = state[k];
         }
+        for (const k of PERSISTED_EXPORT_KEYS) {
+          out[k] = state[k];
+        }
         return out;
       },
-      version: 1,
+      // Defensive merge: if a persisted v1 payload (no `exportForm`) or a
+      // partial `exportForm` is rehydrated, fill missing fields from
+      // `DEFAULT_EXPORT_FORM` so future schema additions don't strand the
+      // form in an undefined state.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<EditorStore> & {
+          exportForm?: Partial<EditorStore["exportForm"]>;
+        };
+        return {
+          ...current,
+          ...p,
+          exportForm: {
+            ...DEFAULT_EXPORT_FORM,
+            ...current.exportForm,
+            ...(p.exportForm ?? {}),
+          },
+        };
+      },
+      version: 2,
     },
   ),
 );

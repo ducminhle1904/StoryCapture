@@ -31,7 +31,7 @@ export interface ExportSlice {
   resetExportForm: () => void;
 }
 
-const DEFAULT_FORM: ExportFormState = {
+export const DEFAULT_EXPORT_FORM: ExportFormState = {
   formats: ["mp4"],
   resolution: "1080p",
   fps: 60,
@@ -43,7 +43,7 @@ const DEFAULT_FORM: ExportFormState = {
 export const createExportSlice: StateCreator<ExportSlice, [], [], ExportSlice> = (
   set,
 ) => ({
-  exportForm: { ...DEFAULT_FORM },
+  exportForm: { ...DEFAULT_EXPORT_FORM },
   setExportFormats: (formats) =>
     set((s) => ({ exportForm: { ...s.exportForm, formats } })),
   setExportResolution: (resolution) =>
@@ -55,5 +55,5 @@ export const createExportSlice: StateCreator<ExportSlice, [], [], ExportSlice> =
     set((s) => ({ exportForm: { ...s.exportForm, outFolder } })),
   setExportBaseName: (baseName) =>
     set((s) => ({ exportForm: { ...s.exportForm, baseName } })),
-  resetExportForm: () => set({ exportForm: { ...DEFAULT_FORM } }),
+  resetExportForm: () => set({ exportForm: { ...DEFAULT_EXPORT_FORM } }),
 });
