@@ -35,6 +35,8 @@ import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
 import { useEditorStore } from "./state/store";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { PreviewSurface } from "@/components/preview-surface";
+import { useProjectRecordings } from "@/ipc/projects";
+import { Link } from "react-router-dom";
 import { Timeline } from "./timeline/timeline";
 import { InspectorPanel } from "./inspector/inspector-panel";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
@@ -51,6 +53,15 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const previewWidthPct = useEditorStore((s) => s.previewWidthPct);
   const setSoundDrawerOpen = useEditorStore((s) => s.setSoundDrawerOpen);
   const setExportModalOpen = useEditorStore((s) => s.setExportModalOpen);
+
+  // Wire the latest project recording into the preview canvas. Explicit
+  // `videoSrc` prop (used by tests/storybook) wins over the IPC-loaded path.
+  const recordingsQuery = useProjectRecordings(storyId);
+  const latestRecording = recordingsQuery.data?.[0] ?? null;
+  const resolvedVideoSrc = videoSrc ?? latestRecording?.path;
+  const showEmptyOverlay =
+    !videoSrc && recordingsQuery.isSuccess && !latestRecording;
+  const showErrorOverlay = !videoSrc && recordingsQuery.isError;
 
   useEditorHotkeys();
 
@@ -210,8 +221,32 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
               </span>
             </div>
 
-            <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-              <PreviewSurface mode="composited" storyId={storyId} videoSrc={videoSrc} />
+            <div style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>
+              <PreviewSurface
+                mode="composited"
+                storyId={storyId}
+                videoSrc={resolvedVideoSrc}
+              />
+              {(showEmptyOverlay || showErrorOverlay) && (
+                <div
+                  className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+                  role="status"
+                >
+                  <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-2 rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/90 px-5 py-4 text-center backdrop-blur">
+                    <div className="text-[12px] font-medium text-[var(--sc-text-2)]">
+                      {showErrorOverlay
+                        ? "Couldn't load recordings"
+                        : "No recording yet"}
+                    </div>
+                    <Link
+                      to={`/recorder/${storyId}`}
+                      className="sc-btn primary sm"
+                    >
+                      Record one first
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div
