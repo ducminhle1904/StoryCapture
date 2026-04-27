@@ -204,7 +204,7 @@ describe("Coalescer", () => {
   });
 
   it("discrete actions never coalesce: delete-clip gets null key", () => {
-    const clip: Clip = { id: "c", trackId: "video", startMs: 0, durationMs: 1000 };
+    const clip: Clip = { id: "c", trackId: "video", startMs: 0, durationMs: 1000, sourcePath: "/v.mp4" };
     expect(
       coalesceKey({ kind: "delete-clip", trackId: "video", clipId: "c", snapshot: clip }),
     ).toBeNull();
@@ -287,7 +287,7 @@ describe("applyAction + invertAction", () => {
   it("apply_invert_move_clip: applies to.Ms then undoes back to from.Ms", () => {
     useEditorStore.setState({
       tracks: {
-        video: [{ id: "c1", trackId: "video", startMs: 100, durationMs: 500 }],
+        video: [{ id: "c1", trackId: "video", startMs: 100, durationMs: 500, sourcePath: "/v.mp4" }],
         cursor: [],
         zoom: [],
         sound: [],
@@ -317,7 +317,12 @@ describe("applyAction + invertAction", () => {
       trackId: "cursor",
       startMs: 500,
       durationMs: 200,
-      metadata: { label: "Click" },
+      label: "Click",
+      trajectoryDir: "/c",
+      trajectoryFps: 60,
+      trajectoryFrameCount: 0,
+      skin: "mac-default",
+      sizeScale: 1,
     };
     useEditorStore.setState({
       tracks: { video: [], cursor: [clip], zoom: [], sound: [], annotations: [] },
@@ -336,11 +341,11 @@ describe("applyAction + invertAction", () => {
     const restored = useEditorStore.getState().tracks.cursor[0]!;
     expect(restored.id).toBe("c1");
     expect(restored.startMs).toBe(500);
-    expect(restored.metadata?.label).toBe("Click");
+    expect(restored.label).toBe("Click");
   });
 
   it("apply_invert_add_sound_clip: add then invert (delete) removes it", () => {
-    const clip: Clip = { id: "sfx", trackId: "sound", startMs: 0, durationMs: 1000 };
+    const clip = { id: "sfx", trackId: "sound" as const, startMs: 0, durationMs: 1000, path: "/s.mp3", kind: "sfx" as const };
     const add: UndoableAction = { kind: "add-sound-clip", trackId: "sound", clip };
     applyAction(add);
     expect(useEditorStore.getState().tracks.sound).toHaveLength(1);
@@ -354,7 +359,7 @@ describe("applyAction + invertAction", () => {
     useEditorStore.setState({
       tracks: {
         video: [],
-        cursor: [{ id: "c", trackId: "cursor", startMs: 0, durationMs: 100, metadata: { scale: 1 } }],
+        cursor: [{ id: "c", trackId: "cursor", startMs: 0, durationMs: 100, trajectoryDir: "/c", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default", sizeScale: 1 }],
         zoom: [],
         sound: [],
         annotations: [],
@@ -362,19 +367,15 @@ describe("applyAction + invertAction", () => {
     });
     const action: UndoableAction = {
       kind: "set-effect-param",
-      nodePath: "tracks.cursor[0].metadata",
-      field: "scale",
+      nodePath: "tracks.cursor[0]",
+      field: "sizeScale",
       prev: 1,
       next: 2.5,
     };
     applyAction(action);
-    expect(
-      useEditorStore.getState().tracks.cursor[0]!.metadata?.scale,
-    ).toBe(2.5);
+    expect(useEditorStore.getState().tracks.cursor[0]!.sizeScale).toBe(2.5);
     applyAction(invertAction(action));
-    expect(
-      useEditorStore.getState().tracks.cursor[0]!.metadata?.scale,
-    ).toBe(1);
+    expect(useEditorStore.getState().tracks.cursor[0]!.sizeScale).toBe(1);
   });
 
   it("apply_invert_change_background: writes to _undoExtras", () => {

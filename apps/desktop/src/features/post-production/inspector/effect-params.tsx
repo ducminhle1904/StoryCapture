@@ -9,7 +9,23 @@
 import { memo, useCallback } from "react";
 
 import { TRACK_IDS } from "../state/timeline-slice";
+import type { Clip } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
+
+/**
+ * Project a clip into the JSON view shown in the inspector — the
+ * variant-specific parameter fields, with the framing fields (id,
+ * trackId, startMs, durationMs, label) stripped because the form
+ * surfaces them separately.
+ */
+function clipParams(clip: Clip): Record<string, unknown> {
+  const {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    id, trackId, startMs, durationMs, label,
+    ...rest
+  } = clip;
+  return rest;
+}
 
 function EffectParamsBase() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
@@ -29,7 +45,7 @@ function EffectParamsBase() {
     (trackId: string, clipId: string, prev: string, next: string) => {
       pushAction({
         kind: "set-effect-param",
-        nodePath: `tracks.${trackId}[${clipId}].metadata`,
+        nodePath: `tracks.${trackId}[${clipId}]`,
         field: "label",
         prev,
         next,
@@ -92,25 +108,23 @@ function EffectParamsBase() {
         <input
           type="text"
           aria-label="Clip label"
-          defaultValue={String(clip.metadata?.label ?? "")}
+          defaultValue={clip.label ?? ""}
           onChange={(e) => {
-            const prev = String(clip.metadata?.label ?? "");
+            const prev = clip.label ?? "";
             const next = e.target.value;
             if (prev !== next) onLabelChange(trackId, clip.id, prev, next);
           }}
           className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-fg)]"
         />
       </label>
-      {clip.metadata ? (
-        <div>
-          <span className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
-            Metadata
-          </span>
-          <pre className="mt-1 max-h-32 overflow-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[10px] text-[var(--color-fg-muted)]">
-            {JSON.stringify(clip.metadata, null, 2)}
-          </pre>
-        </div>
-      ) : null}
+      <div>
+        <span className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
+          Parameters
+        </span>
+        <pre className="mt-1 max-h-32 overflow-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[10px] text-[var(--color-fg-muted)]">
+          {JSON.stringify(clipParams(clip), null, 2)}
+        </pre>
+      </div>
     </form>
   );
 }

@@ -55,8 +55,8 @@ describe("timeline-slice", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500 },
-          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200 },
+          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
         zoom: [],
@@ -79,8 +79,8 @@ describe("timeline-slice", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500 },
-          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200 },
+          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
         zoom: [],
@@ -102,8 +102,8 @@ describe("timeline-slice", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500 },
-          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200 },
+          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
         zoom: [],
@@ -125,7 +125,7 @@ describe("timeline-slice", () => {
   it("addSoundClip puts the clip on the Sound track only", () => {
     useEditorStore
       .getState()
-      .addSoundClip({ id: "sfx-1", startMs: 100, durationMs: 250 });
+      .addSoundClip({ id: "sfx-1", startMs: 100, durationMs: 250, path: "/s.mp3", kind: "sfx" });
 
     const s = useEditorStore.getState().tracks;
     expect(s.sound).toHaveLength(1);

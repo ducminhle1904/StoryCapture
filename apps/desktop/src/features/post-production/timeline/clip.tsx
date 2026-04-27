@@ -54,7 +54,7 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
         setSelectedClipId(clip.id);
       }}
     >
-      <span className="truncate px-2">{(clip.metadata?.label as string) ?? clip.id}</span>
+      <span className="truncate px-2">{clip.label ?? clip.id}</span>
     </button>
   );
 }

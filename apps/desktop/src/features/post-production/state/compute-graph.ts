@@ -17,9 +17,24 @@
  *
  * Canonical stage ordering (enforced by the effects builder):
  *   Source → ZoomPan → Background → Cursor → Ripple → Text → Transition → AudioMix
+ *
+ * As of Phase 19-01, clip variants are typed at the source — there is no
+ * `metadata` bag to read from. Field access here is direct.
  */
 
-import type { Clip, TimelineSlice, TrackId } from "./timeline-slice";
+import type {
+  AnnotationClip,
+  Clip,
+  CursorClip,
+  CursorSkin,
+  SoundClip,
+  TimelineSlice,
+  TrackId,
+  Vec2,
+  VideoClip,
+  ZoomClip,
+  ZoomTarget,
+} from "./timeline-slice";
 import type { ExportFormState } from "./export-slice";
 import type { ExportResolution } from "../../../ipc/export";
 
@@ -38,14 +53,27 @@ export interface ComputeGraphInput {
 // Local Graph types — mirror Rust shape, but use `number` instead of `bigint`
 // for u64 fields so JSON.stringify works. Drift guard: any change here MUST
 // match a corresponding change in `crates/effects/src/ast/`.
+//
+// Vec2, ZoomTarget, CursorSkin are re-exported from timeline-slice so the
+// editor's store shape and the wire format share a single definition.
 // ---------------------------------------------------------------------------
 
-export interface Vec2 { x: number; y: number }
-export interface Rgba { r: number; g: number; b: number; a: number }
+export type { Vec2, ZoomTarget, CursorSkin };
+
+export interface Rgba {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
 
 export type EasingKind =
-  | "linear" | "ease-in" | "ease-out" | "ease-in-out"
-  | "ease-in-out-cubic" | "ease-out-quad";
+  | "linear"
+  | "ease-in"
+  | "ease-out"
+  | "ease-in-out"
+  | "ease-in-out-cubic"
+  | "ease-out-quad";
 
 export interface ZoomKeyframe {
   t_ms: number;
@@ -53,14 +81,6 @@ export interface ZoomKeyframe {
   scale: number;
   easing: EasingKind;
 }
-
-export type ZoomTarget =
-  | { kind: "cursor" }
-  | { kind: "fixed-region"; top_left: Vec2; size: Vec2 }
-  | { kind: "element"; selector: string };
-
-export type CursorSkin =
-  | "mac-default" | "win-default" | "dark" | "light" | "big-arrow";
 
 export interface TrajectoryRef {
   png_sequence_dir: string;
@@ -159,94 +179,67 @@ function deterministicNodeId(clipId: string, role: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Per-track projections
+// Per-track projections — typed direct access, no metadata bag.
 // ---------------------------------------------------------------------------
 
-function readString(meta: Record<string, unknown> | undefined, key: string): string | null {
-  const v = meta?.[key];
-  return typeof v === "string" && v.length > 0 ? v : null;
-}
-
-function readNumber(
-  meta: Record<string, unknown> | undefined,
-  key: string,
-  fallback: number,
-): number {
-  const v = meta?.[key];
-  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
-}
-
-function readVec2(
-  meta: Record<string, unknown> | undefined,
-  key: string,
-  fallback: Vec2,
-): Vec2 {
-  const v = meta?.[key] as { x?: unknown; y?: unknown } | undefined;
-  if (v && typeof v.x === "number" && typeof v.y === "number") {
-    return { x: v.x, y: v.y };
-  }
-  return fallback;
-}
-
-function videoSource(clip: Clip): VideoNode | null {
-  const path = readString(clip.metadata, "sourcePath");
-  if (!path) return null;
+function videoSource(clip: VideoClip): VideoNode | null {
+  if (!clip.sourcePath) return null;
   return {
     type: "source",
     id: deterministicNodeId(clip.id, "source"),
-    path,
+    path: clip.sourcePath,
     pts_offset_ms: clip.startMs,
   };
 }
 
-function zoomPan(clip: Clip): VideoNode {
-  const meta = clip.metadata;
-  const target = (meta?.target as ZoomTarget | undefined) ?? { kind: "cursor" };
-  const scale = readNumber(meta, "scale", 1.5);
-  const center = readVec2(meta, "center", { x: 0.5, y: 0.5 });
+function zoomPan(clip: ZoomClip): VideoNode {
   const keyframes: ZoomKeyframe[] = [
-    { t_ms: clip.startMs, center, scale: 1.0, easing: "ease-in-out-cubic" },
+    {
+      t_ms: clip.startMs,
+      center: clip.center,
+      scale: 1.0,
+      easing: "ease-in-out-cubic",
+    },
     {
       t_ms: clip.startMs + clip.durationMs,
-      center,
-      scale,
+      center: clip.center,
+      scale: clip.scale,
       easing: "ease-in-out-cubic",
     },
   ];
   return {
     type: "zoom-pan",
     id: deterministicNodeId(clip.id, "zoom"),
-    target,
+    target: clip.target,
     keyframes,
   };
 }
 
-function cursorOverlay(clip: Clip): VideoNode | null {
-  const dir = readString(clip.metadata, "trajectoryDir");
-  if (!dir) return null;
-  const fps = readNumber(clip.metadata, "trajectoryFps", 60);
-  const frameCount = readNumber(clip.metadata, "trajectoryFrameCount", 0);
-  const skin = (clip.metadata?.skin as CursorSkin | undefined) ?? "mac-default";
+function cursorOverlay(clip: CursorClip): VideoNode | null {
+  if (!clip.trajectoryDir) return null;
   return {
     type: "cursor-overlay",
     id: deterministicNodeId(clip.id, "cursor"),
-    skin,
-    size_scale: readNumber(clip.metadata, "sizeScale", 1.0),
+    skin: clip.skin,
+    size_scale: clip.sizeScale,
     color_tint: null,
-    trajectory: { png_sequence_dir: dir, fps, frame_count: frameCount },
+    trajectory: {
+      png_sequence_dir: clip.trajectoryDir,
+      fps: clip.trajectoryFps,
+      frame_count: clip.trajectoryFrameCount,
+    },
   };
 }
 
-function textBox(clip: Clip): TextBox | null {
-  const text = readString(clip.metadata, "text");
-  if (!text) return null;
+function textBox(clip: AnnotationClip): TextBox | null {
+  if (!clip.text) return null;
   return {
     t_start_ms: clip.startMs,
     t_end_ms: clip.startMs + clip.durationMs,
-    text,
-    pos: readVec2(clip.metadata, "pos", { x: 0.5, y: 0.9 }),
+    text: clip.text,
+    pos: clip.pos,
     font: { kind: "system-default" },
-    size_pt: readNumber(clip.metadata, "sizePt", 24),
+    size_pt: clip.sizePt,
     color: { r: 255, g: 255, b: 255, a: 255 },
     box_style: null,
     anim_in: "fade",
@@ -254,13 +247,12 @@ function textBox(clip: Clip): TextBox | null {
   };
 }
 
-function audioSource(clip: Clip): AudioNode | null {
-  const path = readString(clip.metadata, "path");
-  if (!path) return null;
+function audioSource(clip: SoundClip): AudioNode | null {
+  if (!clip.path) return null;
   return {
     type: "audio-source",
     id: deterministicNodeId(clip.id, "audio"),
-    path,
+    path: clip.path,
     pts_offset_ms: clip.startMs,
   };
 }
@@ -269,9 +261,9 @@ function audioSource(clip: Clip): AudioNode | null {
 // Public API
 // ---------------------------------------------------------------------------
 
-function clipsByStart(clips: readonly Clip[]): Clip[] {
-  return [...clips].sort((a, b) =>
-    a.startMs - b.startMs || a.id.localeCompare(b.id),
+function clipsByStart<C extends Clip>(clips: readonly C[]): C[] {
+  return [...clips].sort(
+    (a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id),
   );
 }
 
@@ -280,40 +272,38 @@ function clipsByStart(clips: readonly Clip[]): Clip[] {
  * The output is JSON-serializable (no bigints, no functions) and stable
  * across calls with equal input.
  *
- * Empty tracks ⇒ empty `video`/`audio` arrays. Clips whose metadata is
- * missing required fields (e.g. video without `sourcePath`, sound without
- * `path`) are skipped silently — the Export modal's `graphAvailable` flag
- * gates submission when nothing usable was produced.
+ * Empty tracks ⇒ empty `video`/`audio` arrays. Clips missing required
+ * fields (e.g. video without `sourcePath`, sound without `path`) are
+ * skipped silently — the Export modal's `graphAvailable` flag gates
+ * submission when nothing usable was produced.
  */
 export function computeGraph(state: ComputeGraphInput): Graph {
   const { tracks, exportForm } = state;
-  const px = RESOLUTION_PX[exportForm.resolution as ExportResolution] ?? RESOLUTION_PX["1080p"];
+  const px =
+    RESOLUTION_PX[exportForm.resolution as ExportResolution] ??
+    RESOLUTION_PX["1080p"];
 
   const video: VideoNode[] = [];
 
-  // Source nodes (one per video clip).
   for (const clip of clipsByStart(tracks.video)) {
     const n = videoSource(clip);
     if (n) video.push(n);
   }
-  // ZoomPan nodes.
   for (const clip of clipsByStart(tracks.zoom)) {
     video.push(zoomPan(clip));
   }
-  // Cursor overlays.
   for (const clip of clipsByStart(tracks.cursor)) {
     const n = cursorOverlay(clip);
     if (n) video.push(n);
   }
-  // Text overlays — collapsed into a single TextOverlay node per Rust shape.
   const boxes: TextBox[] = [];
-  for (const clip of clipsByStart(tracks.annotations)) {
+  const sortedAnnotations = clipsByStart(tracks.annotations);
+  for (const clip of sortedAnnotations) {
     const b = textBox(clip);
     if (b) boxes.push(b);
   }
   if (boxes.length > 0) {
-    // Use the first annotation clip id to keep the node id deterministic.
-    const seedId = clipsByStart(tracks.annotations)[0]!.id;
+    const seedId = sortedAnnotations[0]!.id;
     video.push({
       type: "text-overlay",
       id: deterministicNodeId(seedId, "text"),

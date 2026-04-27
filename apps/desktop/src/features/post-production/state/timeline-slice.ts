@@ -15,6 +15,10 @@
  * Holding Alt while dragging surfaces at the UI layer as
  * `moveClip(..., { altHeld: true })`, bypassing the snap logic for that
  * single call without flipping the persistent `snapEnabled` flag.
+ *
+ * `Clip` is a discriminated union keyed on `trackId` so producer +
+ * consumer share a schema. Each variant carries its own typed payload at
+ * the top level — there is no opaque `metadata` bag.
  */
 
 import type { StateCreator } from "zustand";
@@ -29,14 +33,96 @@ export type TrackId = (typeof TRACK_IDS)[number];
 /** Snap threshold in pixels. 10 px is the default tolerance. */
 export const SNAP_THRESHOLD_PX = 10;
 
-export interface Clip {
+// ---------------------------------------------------------------------------
+// Shared shapes used by clip variants. Mirrors of the Rust-side AST shapes
+// in `crates/effects/src/ast/`. Defined here (not in `compute-graph.ts`) so
+// `timeline-slice.ts` is the single source of truth for editor state.
+// ---------------------------------------------------------------------------
+
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
+export type ZoomTarget =
+  | { kind: "cursor" }
+  | { kind: "fixed-region"; top_left: Vec2; size: Vec2 }
+  | { kind: "element"; selector: string };
+
+export type CursorSkin =
+  | "mac-default"
+  | "win-default"
+  | "dark"
+  | "light"
+  | "big-arrow";
+
+export type ZoomPreset = "DYNAMIC" | "CALM" | "SUBTLE";
+
+export type SoundKind = "bgm" | "sfx" | "voiceover";
+
+// ---------------------------------------------------------------------------
+// Clip discriminated union
+// ---------------------------------------------------------------------------
+
+interface ClipBase {
   id: string;
-  trackId: TrackId;
   startMs: number;
   durationMs: number;
-  /** Opaque payload the renderer/compositor interprets (asset id, label, etc). */
-  metadata?: Record<string, unknown>;
+  /** Optional human-readable name. Falls back to `id` in the UI. */
+  label?: string;
 }
+
+export interface VideoClip extends ClipBase {
+  trackId: "video";
+  /** Absolute or `convertFileSrc`-resolvable path to the source recording. */
+  sourcePath: string;
+}
+
+export interface CursorClip extends ClipBase {
+  trackId: "cursor";
+  /** PNG-sequence directory captured at recording time. */
+  trajectoryDir: string;
+  trajectoryFps: number;
+  trajectoryFrameCount: number;
+  skin: CursorSkin;
+  /** Multiplier on the cursor's render size. 1.0 = native. */
+  sizeScale: number;
+  colorTint?: string | null;
+}
+
+export interface ZoomClip extends ClipBase {
+  trackId: "zoom";
+  target: ZoomTarget;
+  scale: number;
+  center: Vec2;
+  preset?: ZoomPreset;
+  easing?: string;
+}
+
+export interface SoundClip extends ClipBase {
+  trackId: "sound";
+  path: string;
+  kind: SoundKind;
+  gain?: number;
+}
+
+export interface AnnotationClip extends ClipBase {
+  trackId: "annotations";
+  text: string;
+  pos: Vec2;
+  sizePt: number;
+  color?: string;
+}
+
+export type Clip =
+  | VideoClip
+  | CursorClip
+  | ZoomClip
+  | SoundClip
+  | AnnotationClip;
+
+/** Clips for a given track id, narrowed to the matching variant. */
+export type ClipFor<K extends TrackId> = Extract<Clip, { trackId: K }>;
 
 export interface MoveClipOpts {
   /** When true, bypass snap for this move even if `snapEnabled === true`. */
@@ -51,7 +137,13 @@ export interface MoveClipOpts {
 }
 
 export interface TimelineSlice {
-  tracks: { video: Clip[]; cursor: Clip[]; zoom: Clip[]; sound: Clip[]; annotations: Clip[] };
+  tracks: {
+    video: VideoClip[];
+    cursor: CursorClip[];
+    zoom: ZoomClip[];
+    sound: SoundClip[];
+    annotations: AnnotationClip[];
+  };
   playheadMs: number;
   snapEnabled: boolean;
   durationMs: number;
@@ -60,7 +152,17 @@ export interface TimelineSlice {
   setDuration: (ms: number) => void;
   toggleSnap: () => void;
   setSnapEnabled: (on: boolean) => void;
-  addSoundClip: (clip: Omit<Clip, "trackId"> & { trackId?: "sound" }) => void;
+
+  // Per-variant typed adders. Producers should prefer these over hand-built
+  // generic Clip objects so the discriminator stays consistent.
+  addVideoClip: (clip: Omit<VideoClip, "trackId"> & { trackId?: "video" }) => void;
+  addCursorClip: (clip: Omit<CursorClip, "trackId"> & { trackId?: "cursor" }) => void;
+  addZoomClip: (clip: Omit<ZoomClip, "trackId"> & { trackId?: "zoom" }) => void;
+  addSoundClip: (clip: Omit<SoundClip, "trackId"> & { trackId?: "sound" }) => void;
+  addAnnotationClip: (
+    clip: Omit<AnnotationClip, "trackId"> & { trackId?: "annotations" },
+  ) => void;
+
   moveClip: (
     trackId: TrackId,
     clipId: string,
@@ -124,6 +226,24 @@ const initialTracks: TimelineSlice["tracks"] = {
   annotations: [],
 };
 
+/**
+ * Patches a clip (matched by id) inside one track. The patch callback
+ * receives the narrowed variant and must return the same variant; we
+ * cast at the boundary because TypeScript's flow-narrowing doesn't
+ * preserve the discriminator across `tracks[trackId]` indexing.
+ */
+function patchClipInTrack<K extends TrackId>(
+  tracks: TimelineSlice["tracks"],
+  trackId: K,
+  clipId: string,
+  patch: (clip: ClipFor<K>) => ClipFor<K>,
+): TimelineSlice["tracks"] {
+  const next = (tracks[trackId] as ClipFor<K>[]).map((c) =>
+    c.id === clipId ? patch(c) : c,
+  );
+  return { ...tracks, [trackId]: next } as TimelineSlice["tracks"];
+}
+
 export const createTimelineSlice: StateCreator<
   TimelineSlice,
   [],
@@ -151,11 +271,46 @@ export const createTimelineSlice: StateCreator<
     set({ snapEnabled: on });
   },
 
+  addVideoClip: (clip) =>
+    set((s) => ({
+      tracks: {
+        ...s.tracks,
+        video: [...s.tracks.video, { ...clip, trackId: "video" }],
+      },
+    })),
+
+  addCursorClip: (clip) =>
+    set((s) => ({
+      tracks: {
+        ...s.tracks,
+        cursor: [...s.tracks.cursor, { ...clip, trackId: "cursor" }],
+      },
+    })),
+
+  addZoomClip: (clip) =>
+    set((s) => ({
+      tracks: {
+        ...s.tracks,
+        zoom: [...s.tracks.zoom, { ...clip, trackId: "zoom" }],
+      },
+    })),
+
   addSoundClip: (clip) =>
     set((s) => ({
       tracks: {
         ...s.tracks,
-        sound: [...s.tracks.sound, { ...clip, trackId: "sound" } as Clip],
+        sound: [...s.tracks.sound, { ...clip, trackId: "sound" }],
+      },
+    })),
+
+  addAnnotationClip: (clip) =>
+    set((s) => ({
+      tracks: {
+        ...s.tracks,
+        annotations: [
+          ...s.tracks.annotations,
+          { ...clip, trackId: "annotations" },
+        ],
       },
     })),
 
@@ -177,39 +332,33 @@ export const createTimelineSlice: StateCreator<
     }
 
     set((s) => ({
-      tracks: {
-        ...s.tracks,
-        [trackId]: s.tracks[trackId].map((c) =>
-          c.id === clipId ? { ...c, startMs: targetMs } : c,
-        ),
-      },
+      tracks: patchClipInTrack(s.tracks, trackId, clipId, (c) => ({
+        ...c,
+        startMs: targetMs,
+      })),
     }));
   },
 
   trimClip: (trackId, clipId, patch) =>
     set((s) => ({
-      tracks: {
-        ...s.tracks,
-        [trackId]: s.tracks[trackId].map((c) =>
-          c.id === clipId
-            ? {
-                ...c,
-                startMs: patch.startMs !== undefined ? Math.max(0, patch.startMs) : c.startMs,
-                durationMs:
-                  patch.durationMs !== undefined
-                    ? Math.max(0, patch.durationMs)
-                    : c.durationMs,
-              }
-            : c,
-        ),
-      },
+      tracks: patchClipInTrack(s.tracks, trackId, clipId, (c) => ({
+        ...c,
+        startMs:
+          patch.startMs !== undefined ? Math.max(0, patch.startMs) : c.startMs,
+        durationMs:
+          patch.durationMs !== undefined
+            ? Math.max(0, patch.durationMs)
+            : c.durationMs,
+      })),
     })),
 
   deleteClip: (trackId, clipId) =>
     set((s) => ({
       tracks: {
         ...s.tracks,
-        [trackId]: s.tracks[trackId].filter((c) => c.id !== clipId),
-      },
+        [trackId]: (s.tracks[trackId] as Clip[]).filter(
+          (c) => c.id !== clipId,
+        ),
+      } as TimelineSlice["tracks"],
     })),
 });

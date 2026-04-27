@@ -29,7 +29,7 @@ import { useUndoRedo } from "../undo/use-undo-redo";
 function resetStore() {
   useEditorStore.setState({
     tracks: {
-      video: [{ id: "v1", trackId: "video", startMs: 100, durationMs: 500 }],
+      video: [{ id: "v1", trackId: "video", startMs: 100, durationMs: 500, sourcePath: "/v.mp4" }],
       cursor: [],
       zoom: [],
       sound: [],
@@ -158,7 +158,7 @@ describe("undo slice", () => {
       tracks: {
         video: [],
         cursor: [
-          { id: "c1", trackId: "cursor", startMs: 0, durationMs: 100, metadata: { label: "" } },
+          { id: "c1", trackId: "cursor", startMs: 0, durationMs: 100, label: "", trajectoryDir: "/c", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default", sizeScale: 1 },
         ],
         zoom: [],
         sound: [],
@@ -172,7 +172,7 @@ describe("undo slice", () => {
       nowSpy.mockReturnValueOnce(i * 100);
       useEditorStore.getState().pushAction({
         kind: "set-effect-param",
-        nodePath: "tracks.cursor[0].metadata",
+        nodePath: "tracks.cursor[0]",
         field: "label",
         prev: i === 0 ? "" : letters[i - 1],
         next: letters[i]!,
@@ -203,11 +203,29 @@ describe("undo slice", () => {
       { trackId: "annotations" },
     ];
 
+    function mkClip(
+      trackId: "video" | "cursor" | "zoom" | "annotations",
+      id: string,
+      startMs: number,
+      durationMs: number,
+    ) {
+      switch (trackId) {
+        case "video":
+          return { id, trackId, startMs, durationMs, sourcePath: "/v.mp4" } as const;
+        case "cursor":
+          return { id, trackId, startMs, durationMs, trajectoryDir: "/c", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default" as const, sizeScale: 1 };
+        case "zoom":
+          return { id, trackId, startMs, durationMs, target: { kind: "cursor" as const }, scale: 1.5, center: { x: 0.5, y: 0.5 } };
+        case "annotations":
+          return { id, trackId, startMs, durationMs, text: "T", pos: { x: 0.5, y: 0.9 }, sizePt: 24 };
+      }
+    }
+
     for (const { trackId } of cases) {
       it(`delete + undo + redo round-trips on ${trackId} track at original index`, () => {
-        const c0 = { id: `${trackId}-0`, trackId, startMs: 0, durationMs: 100 };
-        const c1 = { id: `${trackId}-1`, trackId, startMs: 200, durationMs: 100 };
-        const c2 = { id: `${trackId}-2`, trackId, startMs: 400, durationMs: 100 };
+        const c0 = mkClip(trackId, `${trackId}-0`, 0, 100);
+        const c1 = mkClip(trackId, `${trackId}-1`, 200, 100);
+        const c2 = mkClip(trackId, `${trackId}-2`, 400, 100);
         useEditorStore.setState({
           tracks: {
             video: [],
@@ -257,6 +275,7 @@ describe("undo slice", () => {
           trackId: "video",
           startMs: 0,
           durationMs: 0,
+          sourcePath: "",
         },
       });
     }

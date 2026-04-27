@@ -124,7 +124,7 @@ describe("ExportModal", () => {
             trackId: "video",
             startMs: 0,
             durationMs: 1000,
-            metadata: { sourcePath: "/tmp/in.mp4" },
+            sourcePath: "/tmp/in.mp4",
           },
         ],
         cursor: [],

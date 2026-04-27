@@ -12,8 +12,9 @@
  *     be coalesced by keeping `fromX` of the first event and `toX` of
  *     the latest.
  *   - `delete-clip` stores the full `Clip` snapshot so undo can restore
- *     the clip exactly — including metadata for cursor/zoom/annotation
- *     coverage.
+ *     the clip exactly. Each variant carries its own typed payload at
+ *     the top level (no metadata bag) so cursor/zoom/annotation/sound
+ *     fields round-trip without runtime extraction.
  *   - `apply-preset` / `revert-preset` round-trip a `GraphSnapshot`
  *     opaque payload (we just store whatever the inspector hands us).
  *   - `edit-text-overlay` and `change-background` carry full `prev`/
@@ -25,7 +26,7 @@
  * value, so we bypass setters entirely.
  */
 
-import type { Clip, TrackId } from "../state/timeline-slice";
+import type { Clip, SoundClip, TrackId } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
 
 export type GraphSnapshot = Record<string, unknown>;
@@ -84,11 +85,11 @@ export type UndoableAction =
   | {
       kind: "add-sound-clip";
       trackId: "sound";
-      clip: Clip;
+      clip: SoundClip;
     }
   | {
       kind: "set-effect-param";
-      /** dot-path into the store, e.g. "tracks.cursor[0].metadata.scale" */
+      /** dot-path into the store, e.g. "tracks.cursor[0].sizeScale" */
       nodePath: string;
       field: string;
       prev: unknown;
@@ -154,8 +155,8 @@ function writeExtras(patch: Partial<UndoExtras>): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a dot-path like `tracks.cursor[0].metadata.scale` into an array
- * of keys (numeric indexes for the `[n]` segments). Simple + sufficient
+ * Parse a dot-path like `tracks.cursor[0].sizeScale` into an array of
+ * keys (numeric indexes for the `[n]` segments). Simple + sufficient
  * for inspector field paths; not a full JSON-Pointer implementation.
  */
 export function parseNodePath(path: string): (string | number)[] {
@@ -214,10 +215,10 @@ export function applyAction(action: UndoableAction): void {
       useEditorStore.setState((s) => ({
         tracks: {
           ...s.tracks,
-          [action.trackId]: s.tracks[action.trackId].map((c) =>
+          [action.trackId]: (s.tracks[action.trackId] as Clip[]).map((c) =>
             c.id === action.clipId ? { ...c, startMs: action.toMs } : c,
           ),
-        },
+        } as typeof s.tracks,
       }));
       return;
     }
@@ -225,12 +226,12 @@ export function applyAction(action: UndoableAction): void {
       useEditorStore.setState((s) => ({
         tracks: {
           ...s.tracks,
-          [action.trackId]: s.tracks[action.trackId].map((c) =>
+          [action.trackId]: (s.tracks[action.trackId] as Clip[]).map((c) =>
             c.id === action.clipId
               ? { ...c, startMs: action.toRange[0], durationMs: action.toRange[1] }
               : c,
           ),
-        },
+        } as typeof s.tracks,
       }));
       return;
     }
@@ -238,24 +239,23 @@ export function applyAction(action: UndoableAction): void {
       // Capture the original index before splicing so the inverse
       // `add-clip` restores the clip at its exact prior position.
       if (action.atIndex === undefined) {
-        const idx = useEditorStore
-          .getState()
-          .tracks[action.trackId].findIndex((c) => c.id === action.clipId);
+        const idx = (useEditorStore.getState().tracks[action.trackId] as Clip[])
+          .findIndex((c) => c.id === action.clipId);
         if (idx >= 0) action.atIndex = idx;
       }
       useEditorStore.setState((s) => ({
         tracks: {
           ...s.tracks,
-          [action.trackId]: s.tracks[action.trackId].filter(
+          [action.trackId]: (s.tracks[action.trackId] as Clip[]).filter(
             (c) => c.id !== action.clipId,
           ),
-        },
+        } as typeof s.tracks,
       }));
       return;
     }
     case "add-clip": {
       useEditorStore.setState((s) => {
-        const track = s.tracks[action.trackId];
+        const track = s.tracks[action.trackId] as Clip[];
         const next = track.slice();
         const idx =
           action.atIndex !== undefined
@@ -263,7 +263,7 @@ export function applyAction(action: UndoableAction): void {
             : next.length;
         next.splice(idx, 0, action.clip);
         return {
-          tracks: { ...s.tracks, [action.trackId]: next },
+          tracks: { ...s.tracks, [action.trackId]: next } as typeof s.tracks,
         };
       });
       return;
@@ -390,7 +390,7 @@ export function invertAction(action: UndoableAction): UndoableAction {
     case "add-sound-clip":
       return {
         kind: "delete-clip",
-        trackId: "sound",
+        trackId: "sound" as const,
         clipId: action.clip.id,
         snapshot: action.clip,
       };
@@ -441,7 +441,10 @@ export function restoreDeletedClip(action: Extract<UndoableAction, { kind: "dele
   useEditorStore.setState((s) => ({
     tracks: {
       ...s.tracks,
-      [action.trackId]: [...s.tracks[action.trackId], action.snapshot],
-    },
+      [action.trackId]: [
+        ...(s.tracks[action.trackId] as Clip[]),
+        action.snapshot,
+      ],
+    } as typeof s.tracks,
   }));
 }

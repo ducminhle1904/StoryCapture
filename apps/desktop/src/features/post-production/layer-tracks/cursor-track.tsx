@@ -9,18 +9,12 @@ export interface CursorTrackProps {
 }
 
 /**
- * Cursor track preset badge shows the skin name. We accept either an
- * explicit `metadata.skin` label or fall back to the raw `preset_id`
- * (last path segment) so unknown presets still surface something useful.
+ * Cursor track preset badge shows the skin name. The discriminated
+ * `CursorClip` carries `skin` directly — no metadata bag to read from.
  */
 function cursorPresetLabel(clip: Clip): string | null {
-  const meta = clip.metadata ?? {};
-  const skin = meta.skin ?? meta.skinName;
-  if (typeof skin === "string" && skin.length > 0) return skin;
-  const presetId = meta.preset_id ?? meta.presetId;
-  if (typeof presetId !== "string" || presetId.length === 0) return null;
-  const tail = presetId.split(/[/.:]/).pop() ?? presetId;
-  return tail;
+  if (clip.trackId !== "cursor") return null;
+  return clip.skin && clip.skin.length > 0 ? clip.skin : null;
 }
 
 export function CursorTrack(props: CursorTrackProps) {

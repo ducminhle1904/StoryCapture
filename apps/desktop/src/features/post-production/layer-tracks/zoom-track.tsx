@@ -10,17 +10,11 @@ export interface ZoomTrackProps {
 
 /**
  * Zoom track preset badge surfaces the curve preset (DYNAMIC / CALM /
- * SUBTLE). We prefer the explicit `metadata.preset` label and fall back
- * to the upper-cased tail of `preset_id`.
+ * SUBTLE). Reads `ZoomClip.preset` directly.
  */
 function zoomPresetLabel(clip: Clip): string | null {
-  const meta = clip.metadata ?? {};
-  const preset = meta.preset ?? meta.presetName;
-  if (typeof preset === "string" && preset.length > 0) return preset.toUpperCase();
-  const presetId = meta.preset_id ?? meta.presetId;
-  if (typeof presetId !== "string" || presetId.length === 0) return null;
-  const tail = presetId.split(/[/.:]/).pop() ?? presetId;
-  return tail.toUpperCase();
+  if (clip.trackId !== "zoom") return null;
+  return clip.preset ?? null;
 }
 
 export function ZoomTrack(props: ZoomTrackProps) {

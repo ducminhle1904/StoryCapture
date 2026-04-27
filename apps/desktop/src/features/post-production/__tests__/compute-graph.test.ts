@@ -53,7 +53,7 @@ describe("computeGraph", () => {
             trackId: "video",
             startMs: 0,
             durationMs: 4000,
-            metadata: { sourcePath: "/tmp/in.mp4" },
+            sourcePath: "/tmp/in.mp4",
           },
         ],
         zoom: [
@@ -62,7 +62,9 @@ describe("computeGraph", () => {
             trackId: "zoom",
             startMs: 1000,
             durationMs: 1500,
-            metadata: { scale: 2.0 },
+            target: { kind: "cursor" },
+            scale: 2.0,
+            center: { x: 0.5, y: 0.5 },
           },
         ],
         cursor: [
@@ -71,11 +73,11 @@ describe("computeGraph", () => {
             trackId: "cursor",
             startMs: 0,
             durationMs: 4000,
-            metadata: {
-              trajectoryDir: "/tmp/cursor",
-              trajectoryFps: 60,
-              trajectoryFrameCount: 240,
-            },
+            trajectoryDir: "/tmp/cursor",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 240,
+            skin: "mac-default",
+            sizeScale: 1,
           },
         ],
         annotations: [
@@ -84,7 +86,9 @@ describe("computeGraph", () => {
             trackId: "annotations",
             startMs: 500,
             durationMs: 1000,
-            metadata: { text: "Hello" },
+            text: "Hello",
+            pos: { x: 0.5, y: 0.9 },
+            sizePt: 24,
           },
         ],
         sound: [
@@ -93,7 +97,8 @@ describe("computeGraph", () => {
             trackId: "sound",
             startMs: 0,
             durationMs: 4000,
-            metadata: { path: "/tmp/bgm.mp3", kind: "bgm" },
+            path: "/tmp/bgm.mp3",
+            kind: "bgm",
           },
         ],
       },
@@ -135,19 +140,27 @@ describe("computeGraph", () => {
             trackId: "video",
             startMs: 0,
             durationMs: 1000,
-            metadata: { sourcePath: "/x.mp4" },
+            sourcePath: "/x.mp4",
           },
           {
             id: "v2",
             trackId: "video",
             startMs: 1000,
             durationMs: 1000,
-            metadata: { sourcePath: "/y.mp4" },
+            sourcePath: "/y.mp4",
           },
         ],
         cursor: [],
         zoom: [
-          { id: "z1", trackId: "zoom", startMs: 200, durationMs: 400, metadata: {} },
+          {
+            id: "z1",
+            trackId: "zoom",
+            startMs: 200,
+            durationMs: 400,
+            target: { kind: "cursor" },
+            scale: 1.5,
+            center: { x: 0.5, y: 0.5 },
+          },
         ],
         sound: [],
         annotations: [],
@@ -163,17 +176,21 @@ describe("computeGraph", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "v1", trackId: "video", startMs: 0, durationMs: 1000 }, // no sourcePath
+          // Empty sourcePath ⇒ skipped at runtime.
+          { id: "v1", trackId: "video", startMs: 0, durationMs: 1000, sourcePath: "" },
         ],
         cursor: [
-          { id: "c1", trackId: "cursor", startMs: 0, durationMs: 1000 }, // no trajectoryDir
+          // Empty trajectoryDir ⇒ skipped.
+          { id: "c1", trackId: "cursor", startMs: 0, durationMs: 1000, trajectoryDir: "", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default", sizeScale: 1 },
         ],
         zoom: [],
         sound: [
-          { id: "s1", trackId: "sound", startMs: 0, durationMs: 1000 }, // no path
+          // Empty path ⇒ skipped.
+          { id: "s1", trackId: "sound", startMs: 0, durationMs: 1000, path: "", kind: "sfx" },
         ],
         annotations: [
-          { id: "a1", trackId: "annotations", startMs: 0, durationMs: 1000 }, // no text
+          // Empty text ⇒ skipped.
+          { id: "a1", trackId: "annotations", startMs: 0, durationMs: 1000, text: "", pos: { x: 0.5, y: 0.9 }, sizePt: 24 },
         ],
       },
     });

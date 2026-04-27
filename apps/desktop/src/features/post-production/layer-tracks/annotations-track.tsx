@@ -9,18 +9,16 @@ export interface AnnotationsTrackProps {
 }
 
 /**
- * Annotation track preset badge surfaces the text-style preset (e.g.
- * Title / Caption / Note). We accept either an explicit `metadata.style`
- * label or fall back to the tail of `preset_id`.
+ * Annotation track preset badge surfaces a short label derived from the
+ * clip's optional `label` field, or the leading words of `text` if no
+ * label is set.
  */
 function annotationPresetLabel(clip: Clip): string | null {
-  const meta = clip.metadata ?? {};
-  const style = meta.style ?? meta.textStyle;
-  if (typeof style === "string" && style.length > 0) return style;
-  const presetId = meta.preset_id ?? meta.presetId;
-  if (typeof presetId !== "string" || presetId.length === 0) return null;
-  const tail = presetId.split(/[/.:]/).pop() ?? presetId;
-  return tail;
+  if (clip.trackId !== "annotations") return null;
+  if (clip.label && clip.label.length > 0) return clip.label;
+  if (!clip.text) return null;
+  const head = clip.text.trim().split(/\s+/).slice(0, 3).join(" ");
+  return head.length > 0 ? head : null;
 }
 
 export function AnnotationsTrack(props: AnnotationsTrackProps) {

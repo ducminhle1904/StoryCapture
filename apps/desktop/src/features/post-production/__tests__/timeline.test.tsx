@@ -50,7 +50,7 @@ describe("Timeline", () => {
     useEditorStore.setState({
       tracks: {
         video: [],
-        cursor: [{ id: "c1", trackId: "cursor", startMs: 12500, durationMs: 3200 }],
+        cursor: [{ id: "c1", trackId: "cursor", startMs: 12500, durationMs: 3200, trajectoryDir: "/c", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default", sizeScale: 1 }],
         zoom: [],
         sound: [],
         annotations: [],
@@ -70,8 +70,8 @@ describe("Timeline", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500 },
-          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200 },
+          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
         zoom: [],
@@ -94,8 +94,8 @@ describe("Timeline", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500 },
-          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200 },
+          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
         zoom: [],
