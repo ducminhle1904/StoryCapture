@@ -99,6 +99,24 @@ webview consumes:
   `canGoBack`/`canGoForward` directly); hash-only navigations don't emit
   `framenavigated` and therefore don't update the URL bar.
 
+### Author-preview input forwarding
+
+The LivePreview canvas is the input surface; the headless author browser
+is the DOM target. `author_dispatch_input` carries six event variants
+through `AuthorInputEvent`:
+
+- Pointer: `mousemove`, `click`, `wheel` — coordinates in page viewport
+  space (canvas → page transform happens in the renderer).
+- Keyboard: `keydown`, `keyup`, `text` — `keydown`/`keyup` map to
+  `page.keyboard.down/up` for raw key dispatch (modifiers, navigation,
+  shortcuts), while `text` maps to `page.keyboard.insertText` and
+  carries paste contents and IME-composed text in a single shot. The
+  renderer suppresses the `Cmd/Ctrl + ,/q/w` whitelist so app menu
+  shortcuts still escape the canvas; all other keys are
+  `preventDefault()`-ed while the canvas is focused. The sidecar drops
+  any keyboard variant when the picker overlay is armed
+  (defense-in-depth alongside the renderer's `pickerArmed` prop).
+
 ## Frontend desktop (`apps/desktop`)
 
 - **Routing:** React Router v7 data router in `src/routes/index.tsx`. Layouts: `AppLayout` (dashboard/onboarding/settings/post-production landing), `FullscreenLayout` (editor/recorder/post-production editor), plus a transparent overlay route. Routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`, `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`, `/region-overlay`.
