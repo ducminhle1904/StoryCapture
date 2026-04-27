@@ -167,8 +167,14 @@ impl EncodePipeline {
 
         let frames_dropped_backpressure: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
         let frames_dropped_bp = frames_dropped_backpressure.clone();
+        let frames_dropped_mismatch: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+        let frames_dropped_mismatch_task = frames_dropped_mismatch.clone();
         let partial_path_for_task = partial_path.clone();
         let target_for_task = target_path.clone();
+        let stdin_write_timeout = cfg
+            .stdin_write_timeout_ms
+            .map(Duration::from_millis);
+        let expected_capture_dims = cfg.capture_dims;
         let join = tokio::spawn(async move {
             // Ensure `.partial` is cleaned on any failure/panic path.
             let partial_guard = PartialFileGuard::new(partial_path_for_task.clone());
@@ -188,6 +194,20 @@ impl EncodePipeline {
             while let Some(frame) = frames.recv().await {
                 let width_px = frame.width_px;
                 let height_px = frame.height_px;
+                if let Some((exp_w, exp_h)) = expected_capture_dims {
+                    if exp_w != width_px || exp_h != height_px {
+                        let total = frames_dropped_mismatch_task
+                            .fetch_add(1, Ordering::AcqRel)
+                            + 1;
+                        tracing::warn!(
+                            target: "storycapture::encoder",
+                            expected_w = exp_w, expected_h = exp_h,
+                            got_w = width_px, got_h = height_px,
+                            mismatch_dropped = total,
+                            "capture-vs-output resolution lock: frame dims differ from configured capture_dims"
+                        );
+                    }
+                }
                 let (bytes, stride) = match bgra_bytes_of_frame(&frame) {
                     Ok(v) => v,
                     Err(e) => {
@@ -233,9 +253,12 @@ impl EncodePipeline {
                     }
                     &packed_buf[..]
                 };
-                match tokio::time::timeout(Duration::from_millis(200), stdin.as_mut().write_all(bytes_ref))
-                    .await
-                {
+                let write_fut = stdin.as_mut().write_all(bytes_ref);
+                let write_outcome = match stdin_write_timeout {
+                    Some(t) => tokio::time::timeout(t, write_fut).await,
+                    None => Ok(write_fut.await),
+                };
+                match write_outcome {
                     Ok(Ok(())) => {
                         frames_written += 1;
                         if frames_written == 1 || frames_written % 30 == 0 {
@@ -339,6 +362,14 @@ impl EncodePipeline {
             // Keep `sidecar` alive until FFmpeg is done.
             drop(sidecar);
 
+            let mismatch_dropped = frames_dropped_mismatch_task.load(Ordering::Acquire);
+            if mismatch_dropped > 0 {
+                tracing::warn!(
+                    target: "storycapture::encoder",
+                    mismatch_dropped,
+                    "capture-vs-output resolution lock: total frames with dims mismatching configured capture_dims"
+                );
+            }
             Ok(EncodeResult {
                 output_path: target_for_task,
                 duration_ms,

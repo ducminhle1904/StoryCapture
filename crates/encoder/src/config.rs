@@ -66,6 +66,17 @@ pub struct EncodeConfig {
     /// Optional keyframe interval in seconds. `Some(n)` emits `-g (fps * n)`;
     /// `None` omits the flag and keeps FFmpeg's default GOP.
     pub keyframe_interval_sec: Option<u32>,
+    /// Per-frame stdin write timeout. `None` waits indefinitely; `Some(ms)`
+    /// drops the frame and bumps the backpressure counter on elapse.
+    /// Default `Some(200)` preserves the previously hardcoded behavior.
+    pub stdin_write_timeout_ms: Option<u64>,
+    /// Wait budget for the first FFmpeg frame to land on stdin.
+    /// Default `Some(30_000)` mirrors a generous startup window.
+    pub first_frame_timeout_ms: Option<u64>,
+    /// Expected (W, H) from the capture stage. When `Some`, the pipeline
+    /// emits a structured warning and bumps `mismatch_dropped` if a frame
+    /// arrives at a different size. Pure metadata — drop logic is unchanged.
+    pub capture_dims: Option<(u32, u32)>,
 }
 
 impl EncodeConfig {
@@ -94,6 +105,9 @@ impl EncodeConfig {
             audio_input: None,
             force_ffmpeg_path: false,
             keyframe_interval_sec: None,
+            stdin_write_timeout_ms: Some(200),
+            first_frame_timeout_ms: Some(30_000),
+            capture_dims: None,
         }
     }
 
