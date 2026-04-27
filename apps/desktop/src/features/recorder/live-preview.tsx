@@ -12,6 +12,7 @@ import {
   startPreviewStream,
   stopPreviewStream,
   type AuthorInputEvent,
+  type AuthorKeyModifiers,
   type AuthorMouseButton,
   type PreviewFramePayload,
 } from "@/ipc/preview";
@@ -29,8 +30,39 @@ interface LivePreviewProps {
   // preview). Default: null.
   pageWidth?: number | null;
   pageHeight?: number | null;
+  // When the picker overlay is armed in the headless browser, suppress
+  // keyboard forwarding so the user's element-selection key presses
+  // don't insert text into focused fields. Sidecar enforces the same
+  // gate as a defense-in-depth.
+  pickerArmed?: boolean;
   className?: string;
   style?: CSSProperties;
+}
+
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta"]);
+const MODIFIER_CODE: Record<string, string> = {
+  Shift: "ShiftLeft",
+  Control: "ControlLeft",
+  Alt: "AltLeft",
+  Meta: "MetaLeft",
+};
+// Cmd/Ctrl + these keys must reach the desktop app (preferences/quit/
+// close-window) instead of being eaten by the canvas. Everything else
+// gets forwarded.
+const ESCAPE_META_KEYS = new Set([",", "q", "w"]);
+
+function shouldEscapeToApp(e: React.KeyboardEvent): boolean {
+  if (!(e.metaKey || e.ctrlKey)) return false;
+  return ESCAPE_META_KEYS.has(e.key.toLowerCase());
+}
+
+function extractMods(e: React.KeyboardEvent): AuthorKeyModifiers {
+  return {
+    shift: e.shiftKey,
+    ctrl: e.ctrlKey,
+    alt: e.altKey,
+    meta: e.metaKey,
+  };
 }
 
 export type PreviewStatus =
@@ -58,6 +90,7 @@ export function LivePreview({
   streamId = null,
   pageWidth = null,
   pageHeight = null,
+  pickerArmed = false,
   className,
   style,
 }: LivePreviewProps) {
@@ -68,6 +101,11 @@ export function LivePreview({
   const dropCountRef = useRef(0);
   const saturationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [status, setStatus] = useState<PreviewStatus>("attaching");
+  const [focused, setFocused] = useState(false);
+  // Tracks modifier keys currently pressed inside the canvas so that we
+  // can synthesize keyup events on blur — otherwise Playwright's keyboard
+  // state stays "Shift down" forever after the user blurs mid-press.
+  const heldModifiersRef = useRef<Set<string>>(new Set());
 
   // rAF-throttled mousemove forwarding. On every pointermove we stash the
   // latest page coord; the rAF callback reads the stash, dispatches once,
@@ -101,7 +139,7 @@ export function LivePreview({
     [streamId],
   );
 
-  // Cleanup pending rAF on unmount / stream change.
+  // Cleanup pending rAF + held-modifier state on unmount / stream change.
   useEffect(() => {
     return () => {
       if (moveRafRef.current != null) {
@@ -109,6 +147,7 @@ export function LivePreview({
         moveRafRef.current = null;
       }
       pendingMoveRef.current = null;
+      heldModifiersRef.current.clear();
     };
   }, [streamId]);
 
@@ -267,11 +306,84 @@ export function LivePreview({
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!inputEnabled) return;
+    // Pull focus to the canvas so the user can immediately start typing
+    // after a click — without this, keydown listeners never fire.
+    canvasRef.current?.focus();
     const p = toPageCoord(e.clientX, e.clientY);
     if (!p) return;
     const button: AuthorMouseButton =
       e.button === 1 ? "middle" : e.button === 2 ? "right" : "left";
     dispatchInput({ type: "click", x: p.x, y: p.y, button });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if (!inputEnabled || pickerArmed) return;
+    if (shouldEscapeToApp(e)) return;
+    e.preventDefault();
+    if (MODIFIER_KEYS.has(e.key)) {
+      heldModifiersRef.current.add(e.key);
+    }
+    dispatchInput({
+      type: "keydown",
+      key: e.key,
+      code: e.code,
+      modifiers: extractMods(e),
+      repeat: e.repeat,
+    });
+  };
+
+  const onKeyUp = (e: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if (!inputEnabled || pickerArmed) return;
+    if (shouldEscapeToApp(e)) return;
+    e.preventDefault();
+    if (MODIFIER_KEYS.has(e.key)) {
+      heldModifiersRef.current.delete(e.key);
+    }
+    dispatchInput({
+      type: "keyup",
+      key: e.key,
+      code: e.code,
+      modifiers: extractMods(e),
+    });
+  };
+
+  const onBeforeInput = (e: React.FormEvent<HTMLCanvasElement>) => {
+    if (!inputEnabled || pickerArmed) return;
+    const ie = e.nativeEvent as InputEvent;
+    const t = ie.inputType;
+    // Forward IME-composed text + paste as a single text dispatch so the
+    // page receives properly-shaped characters (Vietnamese diacritics,
+    // pasted clipboard contents) instead of raw key sequences.
+    if (
+      t === "insertFromPaste" ||
+      t === "insertCompositionText" ||
+      t === "insertText"
+    ) {
+      const text = ie.data ?? "";
+      if (text.length === 0) return;
+      e.preventDefault();
+      dispatchInput({ type: "text", text });
+    }
+  };
+
+  const onCanvasFocus = () => setFocused(true);
+
+  const onCanvasBlur = () => {
+    setFocused(false);
+    // Release any modifier still considered held — otherwise Playwright
+    // keeps "Shift down" until the next matching keyup, which may never
+    // arrive once focus has left the canvas.
+    if (inputEnabled) {
+      for (const k of heldModifiersRef.current) {
+        dispatchInput({
+          type: "keyup",
+          key: k,
+          code: MODIFIER_CODE[k] ?? k,
+          modifiers: { shift: false, ctrl: false, alt: false, meta: false },
+        });
+      }
+    }
+    heldModifiersRef.current.clear();
   };
 
   const onWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -297,6 +409,8 @@ export function LivePreview({
       data-status={status}
       data-drop-count="0"
       data-input-enabled={inputEnabled}
+      data-focused={focused}
+      tabIndex={inputEnabled ? 0 : -1}
       width={width}
       height={height}
       className={
@@ -306,6 +420,11 @@ export function LivePreview({
       onPointerMove={inputEnabled ? onPointerMove : undefined}
       onClick={inputEnabled ? onClick : undefined}
       onWheel={inputEnabled ? onWheel : undefined}
+      onKeyDown={inputEnabled ? onKeyDown : undefined}
+      onKeyUp={inputEnabled ? onKeyUp : undefined}
+      onBeforeInput={inputEnabled ? onBeforeInput : undefined}
+      onFocus={inputEnabled ? onCanvasFocus : undefined}
+      onBlur={inputEnabled ? onCanvasBlur : undefined}
       style={{
         ...style,
         ...(inputEnabled ? { cursor: "default", touchAction: "none" } : {}),
