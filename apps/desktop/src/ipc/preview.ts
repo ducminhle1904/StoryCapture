@@ -80,10 +80,31 @@ export async function attachAuthorDriver(streamId: string): Promise<void> {
 
 export type AuthorMouseButton = "left" | "right" | "middle";
 
+export interface AuthorKeyModifiers {
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  meta: boolean;
+}
+
 export type AuthorInputEvent =
   | { type: "mousemove"; x: number; y: number }
   | { type: "click"; x: number; y: number; button: AuthorMouseButton }
-  | { type: "wheel"; x: number; y: number; deltaX: number; deltaY: number };
+  | { type: "wheel"; x: number; y: number; deltaX: number; deltaY: number }
+  | {
+      type: "keydown";
+      key: string;
+      code: string;
+      modifiers: AuthorKeyModifiers;
+      repeat: boolean;
+    }
+  | {
+      type: "keyup";
+      key: string;
+      code: string;
+      modifiers: AuthorKeyModifiers;
+    }
+  | { type: "text"; text: string };
 
 /**
  * Forward a pointer/wheel event from the LivePreview canvas into the
