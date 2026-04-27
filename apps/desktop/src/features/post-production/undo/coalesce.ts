@@ -5,7 +5,7 @@
  * step; 5 keystrokes in a text field within 500 ms idle are one undo
  * step; a 600 ms gap starts a new entry.
  *
- * Discrete actions (delete-clip, apply-preset, add-sound-clip,
+ * Discrete actions (delete-clip, add-clip, apply-preset, add-sound-clip,
  * change-background, revert-preset) NEVER coalesce — each is its own
  * step.
  *
@@ -37,6 +37,7 @@ export function coalesceKey(a: UndoableAction): CoalesceKey | null {
     case "edit-text-overlay":
       return `edit-text-overlay:${a.overlayId}`;
     case "delete-clip":
+    case "add-clip":
     case "add-sound-clip":
     case "apply-preset":
     case "revert-preset":

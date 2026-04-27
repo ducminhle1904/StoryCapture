@@ -36,6 +36,7 @@ export type ActionKind =
   | "move-clip"
   | "trim-clip"
   | "delete-clip"
+  | "add-clip"
   | "add-sound-clip"
   | "set-effect-param"
   | "apply-preset"
@@ -66,6 +67,19 @@ export type UndoableAction =
       clipId: string;
       /** Full snapshot so undo can restore exactly. */
       snapshot: Clip;
+      /**
+       * Index the clip occupied in its track before deletion. Captured
+       * by `applyAction` if not provided, so the inverse `add-clip`
+       * restores the clip at its original position.
+       */
+      atIndex?: number;
+    }
+  | {
+      kind: "add-clip";
+      trackId: TrackId;
+      clip: Clip;
+      /** Insertion index. If omitted, clip is appended. */
+      atIndex?: number;
     }
   | {
       kind: "add-sound-clip";
@@ -221,6 +235,14 @@ export function applyAction(action: UndoableAction): void {
       return;
     }
     case "delete-clip": {
+      // Capture the original index before splicing so the inverse
+      // `add-clip` restores the clip at its exact prior position.
+      if (action.atIndex === undefined) {
+        const idx = useEditorStore
+          .getState()
+          .tracks[action.trackId].findIndex((c) => c.id === action.clipId);
+        if (idx >= 0) action.atIndex = idx;
+      }
       useEditorStore.setState((s) => ({
         tracks: {
           ...s.tracks,
@@ -229,6 +251,21 @@ export function applyAction(action: UndoableAction): void {
           ),
         },
       }));
+      return;
+    }
+    case "add-clip": {
+      useEditorStore.setState((s) => {
+        const track = s.tracks[action.trackId];
+        const next = track.slice();
+        const idx =
+          action.atIndex !== undefined
+            ? Math.max(0, Math.min(action.atIndex, next.length))
+            : next.length;
+        next.splice(idx, 0, action.clip);
+        return {
+          tracks: { ...s.tracks, [action.trackId]: next },
+        };
+      });
       return;
     }
     case "add-sound-clip": {
@@ -333,38 +370,23 @@ export function invertAction(action: UndoableAction): UndoableAction {
         toRange: action.fromRange,
       };
     case "delete-clip":
-      // Reverse of a delete is an add of the stored snapshot. For sound
-      // we reuse `add-sound-clip`; for other tracks we use a dedicated
-      // "add-clip"-shaped action reusing `add-sound-clip` semantics is
-      // not sound-track-specific — instead we synthesize an add by
-      // wrapping the snapshot in the same delete shape with swapped
-      // apply semantics via a helper action kind. Simpler: flip to
-      // add-sound-clip only for sound track; for non-sound, emit a
-      // move-clip to the snapshot's original position after injecting.
-      // To keep things simple + correct, we reuse add-sound-clip for
-      // the `sound` track and synthesize via setState elsewhere.
-      if (action.trackId === "sound") {
-        return {
-          kind: "add-sound-clip",
-          trackId: "sound",
-          clip: action.snapshot,
-        };
-      }
-      // For non-sound tracks, encode the restoration as a trim-clip
-      // against the snapshot's full range AFTER pushing the clip back.
-      // We model "restore deleted clip" as an `add-sound-clip`-like
-      // action that *targets* the snapshot's original track via a
-      // dedicated re-add path. Since the taxonomy does not include a
-      // generic add, reuse the delete-clip shape with swapped apply
-      // semantics handled below.
+      // Reverse of a delete is a generic `add-clip` that restores the
+      // snapshot to its original track at its original index. Works
+      // uniformly across all tracks (video/cursor/zoom/sound/annotations).
       return {
-        kind: "add-sound-clip",
-        trackId: "sound",
+        kind: "add-clip",
+        trackId: action.trackId,
         clip: action.snapshot,
-        // NOTE: the applyAction for add-sound-clip always writes to
-        // the sound track. For non-sound restoration we install via a
-        // side-channel below.
-      } as UndoableAction;
+        atIndex: action.atIndex,
+      };
+    case "add-clip":
+      return {
+        kind: "delete-clip",
+        trackId: action.trackId,
+        clipId: action.clip.id,
+        snapshot: action.clip,
+        atIndex: action.atIndex,
+      };
     case "add-sound-clip":
       return {
         kind: "delete-clip",

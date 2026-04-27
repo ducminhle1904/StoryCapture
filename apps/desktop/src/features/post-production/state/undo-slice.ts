@@ -11,10 +11,10 @@
  * to `canUndo` / `canRedo` or to the slice data actions mutate, never
  * to the buffer itself.
  *
- * Replays (undo/redo) go through `applyAction` / `restoreDeletedClip`
- * which bypass slice setters, so snap logic does not re-mutate replayed
- * values. The coalescer is reset after every undo/redo so a post-undo
- * action cannot accidentally collapse into a pre-undo entry.
+ * Replays (undo/redo) go through `applyAction` which bypasses slice
+ * setters, so snap logic does not re-mutate replayed values. The
+ * coalescer is reset after every undo/redo so a post-undo action
+ * cannot accidentally collapse into a pre-undo entry.
  */
 
 import type { StateCreator } from "zustand";
@@ -22,7 +22,6 @@ import type { StateCreator } from "zustand";
 import {
   applyAction,
   invertAction,
-  restoreDeletedClip,
   type UndoableAction,
 } from "../undo/actions";
 import { Coalescer } from "../undo/coalesce";
@@ -50,15 +49,11 @@ function nowMs(): number {
 }
 
 /**
- * Apply the inverse of a given action, honouring the special case for
- * non-sound `delete-clip` which cannot be expressed purely through
- * `applyAction + invertAction` (the taxonomy has no generic "add-clip").
+ * Apply the inverse of a given action. The taxonomy is fully
+ * round-trippable via `applyAction(invertAction(...))`; no special
+ * cases.
  */
 function applyInverse(action: UndoableAction): void {
-  if (action.kind === "delete-clip") {
-    restoreDeletedClip(action);
-    return;
-  }
   applyAction(invertAction(action));
 }
 

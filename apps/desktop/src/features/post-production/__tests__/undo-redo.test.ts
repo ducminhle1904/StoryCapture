@@ -192,6 +192,60 @@ describe("undo slice", () => {
     nowSpy.mockRestore();
   });
 
+  describe("delete-clip undo/redo across non-sound tracks", () => {
+    // Verifies the generic `add-clip` invert restores the deleted clip
+    // at its original index for every non-sound track. Regression test
+    // for the previous sound-track-only `restoreDeletedClip` path.
+    const cases: Array<{ trackId: "video" | "cursor" | "zoom" | "annotations" }> = [
+      { trackId: "video" },
+      { trackId: "cursor" },
+      { trackId: "zoom" },
+      { trackId: "annotations" },
+    ];
+
+    for (const { trackId } of cases) {
+      it(`delete + undo + redo round-trips on ${trackId} track at original index`, () => {
+        const c0 = { id: `${trackId}-0`, trackId, startMs: 0, durationMs: 100 };
+        const c1 = { id: `${trackId}-1`, trackId, startMs: 200, durationMs: 100 };
+        const c2 = { id: `${trackId}-2`, trackId, startMs: 400, durationMs: 100 };
+        useEditorStore.setState({
+          tracks: {
+            video: [],
+            cursor: [],
+            zoom: [],
+            sound: [],
+            annotations: [],
+            [trackId]: [c0, c1, c2],
+          } as ReturnType<typeof useEditorStore.getState>["tracks"],
+        });
+
+        // Delete the middle clip — index 1.
+        useEditorStore.getState().pushAction({
+          kind: "delete-clip",
+          trackId,
+          clipId: c1.id,
+          snapshot: c1,
+        });
+        let track = useEditorStore.getState().tracks[trackId];
+        expect(track).toHaveLength(2);
+        expect(track.map((c) => c.id)).toEqual([c0.id, c2.id]);
+
+        // Undo restores the clip at its original index.
+        useEditorStore.getState().undo();
+        track = useEditorStore.getState().tracks[trackId];
+        expect(track).toHaveLength(3);
+        expect(track.map((c) => c.id)).toEqual([c0.id, c1.id, c2.id]);
+        expect(track[1]).toEqual(c1);
+
+        // Redo deletes again.
+        useEditorStore.getState().redo();
+        track = useEditorStore.getState().tracks[trackId];
+        expect(track).toHaveLength(2);
+        expect(track.map((c) => c.id)).toEqual([c0.id, c2.id]);
+      });
+    }
+  });
+
   it("ring cap evicts oldest when 51st push lands", () => {
     for (let i = 0; i < 51; i++) {
       useEditorStore.getState().pushAction({
