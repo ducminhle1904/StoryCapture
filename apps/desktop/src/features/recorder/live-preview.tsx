@@ -101,7 +101,6 @@ export function LivePreview({
   const dropCountRef = useRef(0);
   const saturationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [status, setStatus] = useState<PreviewStatus>("attaching");
-  const [focused, setFocused] = useState(false);
   // Tracks modifier keys currently pressed inside the canvas so that we
   // can synthesize keyup events on blur — otherwise Playwright's keyboard
   // state stays "Shift down" forever after the user blurs mid-press.
@@ -372,10 +371,7 @@ export function LivePreview({
     dispatchInput({ type: "text", text });
   };
 
-  const onCanvasFocus = () => setFocused(true);
-
   const onCanvasBlur = () => {
-    setFocused(false);
     // Release any modifier still considered held — otherwise Playwright
     // keeps "Shift down" until the next matching keyup, which may never
     // arrive once focus has left the canvas.
@@ -415,7 +411,6 @@ export function LivePreview({
       data-status={status}
       data-drop-count="0"
       data-input-enabled={inputEnabled}
-      data-focused={focused}
       tabIndex={inputEnabled ? 0 : -1}
       width={width}
       height={height}
@@ -430,7 +425,6 @@ export function LivePreview({
       onKeyUp={inputEnabled ? onKeyUp : undefined}
       onPaste={inputEnabled ? onPaste : undefined}
       onCompositionEnd={inputEnabled ? onCompositionEnd : undefined}
-      onFocus={inputEnabled ? onCanvasFocus : undefined}
       onBlur={inputEnabled ? onCanvasBlur : undefined}
       style={{
         ...style,

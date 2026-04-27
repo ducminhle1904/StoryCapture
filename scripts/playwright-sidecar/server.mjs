@@ -1113,25 +1113,24 @@ const handlers = {
     // state.pickerPending is the authoritative "overlay is armed" flag;
     // it's set/cleared by pickElement.start / cleanup.
     const pickerArmed = !!state.pickerPending;
-    // Keyboard variants don't require x/y. Validate pointer coords only
-    // for pointer/wheel events.
-    const isKeyboard =
-      event.type === 'keydown' || event.type === 'keyup' || event.type === 'text';
-    let x = 0;
-    let y = 0;
-    if (!isKeyboard) {
-      x = Number(event.x);
-      y = Number(event.y);
+    // Pointer/wheel events carry x/y in page-viewport space; keyboard
+    // events don't, so the coord parse lives inside the pointer cases.
+    const parseXY = () => {
+      const x = Number(event.x);
+      const y = Number(event.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         throw Object.assign(new Error('x,y must be finite numbers'), { code: -32602 });
       }
-    }
+      return [x, y];
+    };
     switch (event.type) {
       case 'mousemove': {
+        const [x, y] = parseXY();
         await s.page.mouse.move(x, y);
         return { ok: true };
       }
       case 'click': {
+        const [x, y] = parseXY();
         const button = event.button === 'right' || event.button === 'middle'
           ? event.button
           : 'left';
@@ -1151,6 +1150,7 @@ const handlers = {
         return { ok: true };
       }
       case 'wheel': {
+        const [x, y] = parseXY();
         const dx = Number(event.deltaX) || 0;
         const dy = Number(event.deltaY) || 0;
         // page.mouse.wheel dispatches a wheel event at the current mouse

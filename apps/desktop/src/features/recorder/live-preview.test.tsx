@@ -301,8 +301,6 @@ describe("<LivePreview />", () => {
 
   // ─── keyboard forwarding ────────────────────────────────────────────
 
-  // Helper: filter authorDispatchInput calls out of invokeMock so a test
-  // doesn't have to skip the lifecycle calls.
   const dispatchedKeyboardEvents = (): Array<Record<string, unknown>> =>
     invokeMock.mock.calls
       .filter((c) => c[0] === "author_dispatch_input")
