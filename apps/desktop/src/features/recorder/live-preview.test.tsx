@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
 // Mock IPC invoke before importing the component.
 const invokeMock = vi.fn();
@@ -290,6 +297,166 @@ describe("<LivePreview />", () => {
       await act(async () => { pendingRaf!(0); });
     }
     rafSpy.mockRestore();
+  });
+
+  // ─── keyboard forwarding ────────────────────────────────────────────
+
+  // Helper: filter authorDispatchInput calls out of invokeMock so a test
+  // doesn't have to skip the lifecycle calls.
+  const dispatchedKeyboardEvents = (): Array<Record<string, unknown>> =>
+    invokeMock.mock.calls
+      .filter((c) => c[0] === "author_dispatch_input")
+      .map((c) => (c[1] as { event: Record<string, unknown> }).event);
+
+  it("κ — streamId+pageWidth/Height enables tabIndex=0 + bound listeners", async () => {
+    invokeMock.mockImplementation(async () => null);
+    render(
+      <LivePreview streamId="author-x" pageWidth={800} pageHeight={600} />,
+    );
+    await flush();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    expect(canvas.getAttribute("tabindex")).toBe("0");
+    expect(canvas.getAttribute("data-input-enabled")).toBe("true");
+  });
+
+  it("λ — keydown 'a' forwards a keydown event over IPC", async () => {
+    invokeMock.mockImplementation(async () => null);
+    render(
+      <LivePreview streamId="author-x" pageWidth={800} pageHeight={600} />,
+    );
+    await flush();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    fireEvent.keyDown(canvas, { key: "a", code: "KeyA" });
+    const events = dispatchedKeyboardEvents();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "keydown",
+        key: "a",
+        code: "KeyA",
+        repeat: false,
+      }),
+    );
+  });
+
+  it("μ — keydown Tab calls preventDefault", async () => {
+    invokeMock.mockImplementation(async () => null);
+    render(
+      <LivePreview streamId="author-x" pageWidth={800} pageHeight={600} />,
+    );
+    await flush();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    const evt = new KeyboardEvent("keydown", {
+      key: "Tab",
+      code: "Tab",
+      bubbles: true,
+      cancelable: true,
+    });
+    canvas.dispatchEvent(evt);
+    expect(evt.defaultPrevented).toBe(true);
+  });
+
+  it("ν — Cmd+, escapes to the app: no dispatch, no preventDefault", async () => {
+    invokeMock.mockImplementation(async () => null);
+    render(
+      <LivePreview streamId="author-x" pageWidth={800} pageHeight={600} />,
+    );
+    await flush();
+    invokeMock.mockClear();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    const evt = new KeyboardEvent("keydown", {
+      key: ",",
+      code: "Comma",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    canvas.dispatchEvent(evt);
+    expect(evt.defaultPrevented).toBe(false);
+    expect(
+      invokeMock.mock.calls.some((c) => c[0] === "author_dispatch_input"),
+    ).toBe(false);
+  });
+
+  it("ξ — pickerArmed=true short-circuits keyboard dispatch", async () => {
+    invokeMock.mockImplementation(async () => null);
+    render(
+      <LivePreview
+        streamId="author-x"
+        pageWidth={800}
+        pageHeight={600}
+        pickerArmed
+      />,
+    );
+    await flush();
+    invokeMock.mockClear();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    fireEvent.keyDown(canvas, { key: "a", code: "KeyA" });
+    expect(
+      invokeMock.mock.calls.some((c) => c[0] === "author_dispatch_input"),
+    ).toBe(false);
+  });
+
+  it("ο — paste event forwards clipboard contents as a text event", async () => {
+    invokeMock.mockImplementation(async () => null);
+    render(
+      <LivePreview streamId="author-x" pageWidth={800} pageHeight={600} />,
+    );
+    await flush();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    fireEvent.paste(canvas, {
+      clipboardData: { getData: () => "hello" },
+    });
+    const events = dispatchedKeyboardEvents();
+    expect(events).toContainEqual({ type: "text", text: "hello" });
+  });
+
+  it("ο₂ — compositionend forwards composed (IME) text as a text event", async () => {
+    invokeMock.mockImplementation(async () => null);
+    render(
+      <LivePreview streamId="author-x" pageWidth={800} pageHeight={600} />,
+    );
+    await flush();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    // happy-dom's CompositionEvent doesn't honor `data` from fireEvent;
+    // dispatch a plain Event and pin `data` so the handler sees it.
+    const evt = new Event("compositionend", { bubbles: true });
+    Object.defineProperty(evt, "data", { value: "xin chào" });
+    canvas.dispatchEvent(evt);
+    const events = dispatchedKeyboardEvents();
+    expect(events).toContainEqual({ type: "text", text: "xin chào" });
+  });
+
+  it("π — blur while Shift held synthesizes a Shift keyup", async () => {
+    invokeMock.mockImplementation(async () => null);
+    render(
+      <LivePreview streamId="author-x" pageWidth={800} pageHeight={600} />,
+    );
+    await flush();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    fireEvent.keyDown(canvas, { key: "Shift", code: "ShiftLeft" });
+    invokeMock.mockClear();
+    fireEvent.blur(canvas);
+    const events = dispatchedKeyboardEvents();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "keyup",
+        key: "Shift",
+        code: "ShiftLeft",
+      }),
+    );
+  });
+
+  it("ρ — input disabled (no streamId) → tabIndex=-1, no key listeners", async () => {
+    render(<LivePreview />);
+    await flush();
+    const canvas = screen.getByTestId("live-preview-canvas");
+    expect(canvas.getAttribute("tabindex")).toBe("-1");
+    expect(canvas.getAttribute("data-input-enabled")).toBe("false");
+    invokeMock.mockClear();
+    fireEvent.keyDown(canvas, { key: "a", code: "KeyA" });
+    expect(
+      invokeMock.mock.calls.some((c) => c[0] === "author_dispatch_input"),
+    ).toBe(false);
   });
 
   // Saturation — two frames arriving back-to-back before rAF draws bumps

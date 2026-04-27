@@ -347,23 +347,29 @@ export function LivePreview({
     });
   };
 
-  const onBeforeInput = (e: React.FormEvent<HTMLCanvasElement>) => {
+  // Paste: read the clipboard payload and forward it as a single text
+  // event so the page sees the full string in one shot. `paste` fires on
+  // focused tabIndex-able elements, including a canvas — beforeinput
+  // does not, since canvas is not editable.
+  const onPaste = (e: React.ClipboardEvent<HTMLCanvasElement>) => {
     if (!inputEnabled || pickerArmed) return;
-    const ie = e.nativeEvent as InputEvent;
-    const t = ie.inputType;
-    // Forward IME-composed text + paste as a single text dispatch so the
-    // page receives properly-shaped characters (Vietnamese diacritics,
-    // pasted clipboard contents) instead of raw key sequences.
-    if (
-      t === "insertFromPaste" ||
-      t === "insertCompositionText" ||
-      t === "insertText"
-    ) {
-      const text = ie.data ?? "";
-      if (text.length === 0) return;
-      e.preventDefault();
-      dispatchInput({ type: "text", text });
-    }
+    const text = e.clipboardData?.getData("text/plain") ?? "";
+    if (text.length === 0) return;
+    e.preventDefault();
+    dispatchInput({ type: "text", text });
+  };
+
+  // IME composition: commit the composed text as a single text event so
+  // diacritics (Vietnamese, etc.) reach the page intact. The browser
+  // also fires a synthetic keyup at the end of composition; that's
+  // harmless because the page never saw the matching keydown.
+  const onCompositionEnd = (
+    e: React.CompositionEvent<HTMLCanvasElement>,
+  ) => {
+    if (!inputEnabled || pickerArmed) return;
+    const text = e.data ?? "";
+    if (text.length === 0) return;
+    dispatchInput({ type: "text", text });
   };
 
   const onCanvasFocus = () => setFocused(true);
@@ -422,7 +428,8 @@ export function LivePreview({
       onWheel={inputEnabled ? onWheel : undefined}
       onKeyDown={inputEnabled ? onKeyDown : undefined}
       onKeyUp={inputEnabled ? onKeyUp : undefined}
-      onBeforeInput={inputEnabled ? onBeforeInput : undefined}
+      onPaste={inputEnabled ? onPaste : undefined}
+      onCompositionEnd={inputEnabled ? onCompositionEnd : undefined}
       onFocus={inputEnabled ? onCanvasFocus : undefined}
       onBlur={inputEnabled ? onCanvasBlur : undefined}
       style={{
