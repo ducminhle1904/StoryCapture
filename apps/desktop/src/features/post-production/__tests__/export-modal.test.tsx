@@ -89,11 +89,10 @@ describe("ExportModal", () => {
     expect(btn).toBeDisabled();
   });
 
-  it("keeps Export disabled pending graph wiring (Plan 02-13b) even when form is valid", () => {
-    // Once the effects graph is wired this test should flip to the
-    // previous behaviour (button enabled, invoke called). Until then we
-    // assert that a valid form does NOT enable submit, preventing empty
-    // `graph_json` payloads from reaching the backend.
+  it("keeps Export disabled when timeline has no renderable video clip", () => {
+    // Form is valid but the video track is empty, so computeGraph yields
+    // a graph with no video nodes — submission must stay blocked to
+    // prevent empty-graph jobs reaching the backend.
     useEditorStore.setState({
       exportForm: {
         formats: ["mp4"],
@@ -113,7 +112,44 @@ describe("ExportModal", () => {
 
     const btn = screen.getByRole("button", { name: /start export/i });
     expect(btn).toBeDisabled();
-    expect(btn.getAttribute("title")).toMatch(/Plan 02-13b/i);
+    expect(btn.getAttribute("title")).toMatch(/sourcePath/i);
+  });
+
+  it("enables Export once a video clip with sourcePath is present", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            metadata: { sourcePath: "/tmp/in.mp4" },
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+      exportForm: {
+        formats: ["mp4"],
+        resolution: "1080p",
+        fps: 60,
+        quality: "med",
+        outFolder: "/tmp/out",
+        baseName: "demo",
+      },
+    });
+
+    render(
+      <Wrapped>
+        <ExportModal storyId="s1" />
+      </Wrapped>,
+    );
+
+    const btn = screen.getByRole("button", { name: /start export/i });
+    expect(btn).not.toBeDisabled();
   });
 
   it("surfaces validation failures as warning text and keeps submit disabled", async () => {

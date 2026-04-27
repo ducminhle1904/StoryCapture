@@ -36,6 +36,7 @@ import { useVoiceoverStore } from "@/features/voiceover/voiceoverStore";
 import { type ExportOutput, exportRun, exportValidateConfig } from "@/ipc/export";
 import { type ExportKnobs, useOutputPrefsStore } from "@/state/output-prefs";
 
+import { computeGraph, graphIsRenderable } from "../state/compute-graph";
 import { useEditorStore } from "../state/store";
 import { AdvancedOutputOptions } from "./advanced-output-options";
 import { FormatCheckboxes } from "./format-checkboxes";
@@ -118,10 +119,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
     }
   }, [setOutFolder]);
 
-  // The computed effects graph is not yet wired into this modal; until
-  // it lands there is no way to assemble a non-empty `graph_json`, so
-  // block submission rather than silently enqueueing empty-graph jobs.
-  const graphAvailable = false;
+  // Project the timeline into a Graph. We subscribe only to the slices
+  // computeGraph reads (tracks + form) so React's snapshot equality check
+  // doesn't loop on the fresh object that `computeGraph` returns.
+  // `graphAvailable` gates submission so we never enqueue an empty-graph
+  // job (e.g. project opened with no video clips).
+  const tracks = useEditorStore((s) => s.tracks);
+  const graph = useMemo(
+    () => computeGraph({ tracks, exportForm: form }),
+    [tracks, form],
+  );
+  const graphAvailable = graphIsRenderable(graph);
 
   const canSubmit =
     !submitting &&
@@ -153,17 +161,16 @@ export function ExportModal({ storyId }: ExportModalProps) {
         toast.error("Export validation failed — fix warnings and retry");
         return;
       }
-      // Graph computation is not yet wired; `canSubmit` gates the
-      // button behind `graphAvailable = false`, so this path should be
-      // unreachable. Guard defensively so we never submit an empty
-      // graph to the backend.
+      // Defensive: `canSubmit` already gates on `graphAvailable`, but
+      // re-check here so a race between render and submit can't slip an
+      // empty graph through to the backend.
       if (!graphAvailable) {
-        toast.error("Graph computation pending (Plan 02-13b)");
+        toast.error("Nothing to export — add a video clip to the timeline");
         return;
       }
       const res = await exportRun({
         story_id: storyId,
-        graph_json: "",
+        graph_json: JSON.stringify(graph),
         outputs,
         priority: 0,
         output_folder: form.outFolder,
@@ -177,7 +184,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [form.outFolder, form.baseName, outputs, runValidate, storyId, setOpen]);
+  }, [form.outFolder, form.baseName, outputs, runValidate, storyId, setOpen, graph, graphAvailable]);
 
   const onSubmit = useCallback(async () => {
     if (ttsClipCount > 0) {
@@ -385,11 +392,11 @@ export function ExportModal({ storyId }: ExportModalProps) {
                       </div>
                       <div>
                         <div className="text-sm font-medium text-[var(--sc-text)]">
-                          Export execution is still gated
+                          Nothing to export yet
                         </div>
                         <p className="font-serif mt-1 text-sm leading-6 text-[var(--sc-text-3)]">
-                          The drawer is ready, but graph computation is not wired yet, so this
-                          screen can validate config and collect export choices only.
+                          Add a video clip with a source path to the timeline, then this
+                          drawer will assemble the render graph automatically.
                         </p>
                       </div>
                     </div>
@@ -425,7 +432,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
                   aria-disabled={!canSubmit}
                   onClick={onSubmit}
                   aria-label="Start export"
-                  title={!graphAvailable ? "Graph computation pending (Plan 02-13b)" : undefined}
+                  title={!graphAvailable ? "Add a video clip with a sourcePath to the timeline" : undefined}
                 >
                   {submitting ? "Submitting…" : "Export"}
                 </ScButton>
