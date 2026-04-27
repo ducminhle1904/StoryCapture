@@ -137,6 +137,41 @@ let state = {
 
 const AUTHOR_IDLE_MS = 5 * 60 * 1000;
 
+// Map a renderer-side KeyboardEvent {key, code} pair to the string accepted
+// by Playwright's `page.keyboard.down/up`. Prefer `code` for layout-
+// independent physical keys (modifiers, navigation, function keys); prefer
+// `key` for character-producing keys so Shift-modified characters carry
+// their shifted form (e.g. "A" vs "a"). See plan §4.8.
+export function toPlaywrightKey(event) {
+  if (!event || typeof event !== 'object') return null;
+  const { key, code } = event;
+  if (
+    typeof code === 'string' &&
+    code.length > 0 &&
+    (
+      code.startsWith('Shift') ||
+      code.startsWith('Control') ||
+      code.startsWith('Alt') ||
+      code.startsWith('Meta') ||
+      code === 'Tab' ||
+      code === 'Enter' ||
+      code === 'Escape' ||
+      code === 'Backspace' ||
+      code === 'Delete' ||
+      code.startsWith('Arrow') ||
+      code.startsWith('Page') ||
+      code === 'Home' ||
+      code === 'End' ||
+      /^F\d{1,2}$/.test(code)
+    )
+  ) {
+    return code;
+  }
+  if (typeof key === 'string' && key.length > 0) return key;
+  if (typeof code === 'string' && code.length > 0) return code;
+  return null;
+}
+
 // Phase 09-04 — helpers for per-streamId author sessions. Each session is
 // an independent Chromium launch, tracked in `state.authorSessions`.
 function getAuthorSession(streamId) {
@@ -1075,14 +1110,22 @@ const handlers = {
         { code: -32000 },
       );
     }
-    const x = Number(event.x);
-    const y = Number(event.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      throw Object.assign(new Error('x,y must be finite numbers'), { code: -32602 });
-    }
     // state.pickerPending is the authoritative "overlay is armed" flag;
     // it's set/cleared by pickElement.start / cleanup.
     const pickerArmed = !!state.pickerPending;
+    // Keyboard variants don't require x/y. Validate pointer coords only
+    // for pointer/wheel events.
+    const isKeyboard =
+      event.type === 'keydown' || event.type === 'keyup' || event.type === 'text';
+    let x = 0;
+    let y = 0;
+    if (!isKeyboard) {
+      x = Number(event.x);
+      y = Number(event.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw Object.assign(new Error('x,y must be finite numbers'), { code: -32602 });
+      }
+    }
     switch (event.type) {
       case 'mousemove': {
         await s.page.mouse.move(x, y);
@@ -1114,6 +1157,44 @@ const handlers = {
         // position, so move first to align with the caller's (x, y).
         await s.page.mouse.move(x, y);
         await s.page.mouse.wheel(dx, dy);
+        return { ok: true };
+      }
+      case 'keydown': {
+        if (pickerArmed) return { ok: true, skipped: 'picker-armed' };
+        // Browser auto-repeat would call page.keyboard.down repeatedly,
+        // which Playwright doesn't translate to native autoRepeat. Skipping
+        // is acceptable: most pages handle repeat by checking event.repeat
+        // themselves, and the tradeoff buys us simpler state-tracking.
+        if (event.repeat) return { ok: true, skipped: 'repeat' };
+        const k = toPlaywrightKey(event);
+        if (!k) {
+          throw Object.assign(new Error('keydown requires key or code'), { code: -32602 });
+        }
+        await s.page.keyboard.down(k);
+        return { ok: true };
+      }
+      case 'keyup': {
+        if (pickerArmed) return { ok: true, skipped: 'picker-armed' };
+        const k = toPlaywrightKey(event);
+        if (!k) {
+          throw Object.assign(new Error('keyup requires key or code'), { code: -32602 });
+        }
+        await s.page.keyboard.up(k);
+        return { ok: true };
+      }
+      case 'text': {
+        if (pickerArmed) return { ok: true, skipped: 'picker-armed' };
+        const text = String(event.text ?? '');
+        if (text.length === 0) return { ok: true, skipped: 'empty' };
+        if (text.length > 8192) {
+          throw Object.assign(new Error('text too long (>8192)'), { code: -32602 });
+        }
+        // Privacy: NEVER log the text content — user may be typing
+        // a password/secret into the previewed page.
+        process.stderr.write(
+          `[sc-sidecar] dispatchInput text streamId=${streamId} len=${text.length}\n`,
+        );
+        await s.page.keyboard.insertText(text);
         return { ok: true };
       }
       default:
