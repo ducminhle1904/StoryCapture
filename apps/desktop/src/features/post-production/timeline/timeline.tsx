@@ -11,7 +11,10 @@
 
 import { useMemo, useRef } from "react";
 
-import { TRACK_IDS } from "../state/timeline-slice";
+import { AnnotationsTrack } from "../layer-tracks/annotations-track";
+import { CursorTrack } from "../layer-tracks/cursor-track";
+import { ZoomTrack } from "../layer-tracks/zoom-track";
+import { TRACK_IDS, type Clip, type TrackId } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
 import { Playhead } from "./playhead";
 import { TimeRuler } from "./time-ruler";
@@ -31,6 +34,39 @@ export interface TimelineProps {
 
 const TRACK_HEIGHT = 48;
 const LABEL_GUTTER_PX = 96;
+
+/**
+ * Dispatch a track row to the per-layer adapter when it adds UX (context
+ * menu + preset badge for cursor / zoom / annotations). Sound and Video
+ * intentionally fall through to the generic <Track> until those layers
+ * grow their own affordances.
+ */
+function renderTrackBody(
+  id: TrackId,
+  clips: readonly Clip[],
+  pxPerMs: number,
+  durationMs: number,
+) {
+  const common = { pxPerMs, durationMs, height: TRACK_HEIGHT };
+  switch (id) {
+    case "cursor":
+      return <CursorTrack {...common} />;
+    case "zoom":
+      return <ZoomTrack {...common} />;
+    case "annotations":
+      return <AnnotationsTrack {...common} />;
+    default:
+      return (
+        <Track
+          id={id}
+          clips={clips}
+          pxPerMs={pxPerMs}
+          durationMs={durationMs}
+          height={TRACK_HEIGHT}
+        />
+      );
+  }
+}
 
 export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
   const tracks = useEditorStore((s) => s.tracks);
@@ -55,13 +91,7 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
           >
             {TRACK_LABEL[id]}
           </div>
-          <Track
-            id={id}
-            clips={tracks[id]}
-            pxPerMs={pxPerMs}
-            durationMs={effectiveDurationMs}
-            height={TRACK_HEIGHT}
-          />
+          {renderTrackBody(id, tracks[id], pxPerMs, effectiveDurationMs)}
         </div>
       )),
     [tracks, pxPerMs, effectiveDurationMs],
