@@ -329,6 +329,7 @@ export function EditorLivePreviewPanel({
               height={size.h}
               pageWidth={size.w}
               pageHeight={size.h}
+              pickerArmed={authorDriverVariant === "picking"}
               className="h-full w-full rounded-none border-0 bg-[var(--sc-n-950)]"
             />
           ) : previewStatus === "error" ? (
