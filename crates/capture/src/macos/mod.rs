@@ -1,5 +1,6 @@
 //! macOS-specific capture: ScreenCaptureKit backend + TCC permission UX.
 
+pub mod cursor;
 pub mod frame_from_sample;
 pub mod raii;
 pub mod sck_backend;

@@ -1,6 +1,7 @@
 //! Windows-specific capture: Windows.Graphics.Capture backend +
 //! window enumeration + D3D11 texture RAII.
 
+pub mod cursor;
 pub mod frame_from_wgc;
 pub(crate) mod helpers;
 pub mod pool;

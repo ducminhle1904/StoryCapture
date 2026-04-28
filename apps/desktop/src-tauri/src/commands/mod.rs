@@ -23,6 +23,7 @@ pub mod simulator;
 pub mod sound_library;
 pub mod system;
 pub mod timeline;
+pub mod trajectory;
 pub mod tts;
 pub mod updater;
 pub mod upload;

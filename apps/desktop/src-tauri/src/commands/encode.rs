@@ -8,6 +8,10 @@ use crate::state::AppState;
 use capture::audio::{
     make_fifo, negotiate_input, AudioCaptureStream, FifoHandle, NegotiatedAudioInput,
 };
+use capture::trajectory::{
+    sidecar_path_for as trajectory_sidecar_path, CaptureRect as TrajectoryCaptureRect,
+    TrajectoryRecorder,
+};
 use capture::{ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, Frame, PixelFormat};
 use encoder::{
     probe_encoders, AudioFormat, AudioInput, EncodeConfig, EncodePipeline, EncodeProgress,
@@ -416,6 +420,10 @@ struct RecordingHandle {
     /// `stop_recording_inner`, `drain_one`, or the SpawnAbortGuard on
     /// an early-return from `start_recording`.
     heartbeat_abort: Option<AbortHandle>,
+    /// Cursor trajectory recorder (Phase 19-02). Best-effort sidecar
+    /// emitted next to the MP4. Stopped from `stop_recording_inner`.
+    /// Failures here MUST NOT abort the recording itself.
+    trajectory: Option<TrajectoryRecorder>,
 }
 
 #[derive(Default)]
@@ -561,10 +569,58 @@ pub fn drain_recording_sessions(_app_handle: &tauri::AppHandle) {
     tracing::info!(count, "drain_recording_sessions: complete");
 }
 
+/// Phase 19-02: derive the screen-space capture rect for the
+/// trajectory sidecar. Returns `None` when we can't determine a
+/// reasonable rect (e.g. unsupported target on a non-native build) —
+/// trajectory recording is then silently skipped.
+fn build_trajectory_capture_rect(
+    target: &capture::CaptureTarget,
+    fallback_w: u32,
+    fallback_h: u32,
+) -> Option<TrajectoryCaptureRect> {
+    use capture::{enumerate_displays, CaptureTarget};
+    match target {
+        CaptureTarget::Display { display_id } => {
+            let disp = enumerate_displays()
+                .ok()?
+                .into_iter()
+                .find(|d| d.id == *display_id)?;
+            Some(TrajectoryCaptureRect {
+                x: 0.0,
+                y: 0.0,
+                width: disp.width_px as f32,
+                height: disp.height_px as f32,
+            })
+        }
+        CaptureTarget::DisplayRegion { rect, .. } => Some(TrajectoryCaptureRect {
+            x: rect.x as f32,
+            y: rect.y as f32,
+            width: rect.w as f32,
+            height: rect.h as f32,
+        }),
+        // Window targets: origin is unknown without a per-platform
+        // window-rect lookup. Fall back to a 0,0-anchored rect of the
+        // captured frame size; the renderer can still normalize via
+        // (frame_w, frame_h).
+        CaptureTarget::Window { .. } | CaptureTarget::WindowByPid { .. } => {
+            Some(TrajectoryCaptureRect {
+                x: 0.0,
+                y: 0.0,
+                width: fallback_w as f32,
+                height: fallback_h as f32,
+            })
+        }
+    }
+}
+
 async fn drain_one(_session_id: &str, handle: RecordingHandle) -> Result<(), String> {
     // Kill the heartbeat ticker so it doesn't race past teardown.
     if let Some(hb) = handle.heartbeat_abort.as_ref() {
         hb.abort();
+    }
+    // Flush trajectory sidecar (Phase 19-02). Best-effort.
+    if let Some(traj) = handle.trajectory {
+        traj.stop();
     }
     if let Some(audio) = handle.audio_stream.lock().await.take() {
         drop(audio);
@@ -1105,6 +1161,15 @@ pub async fn start_recording(
     let heartbeat_abort = heartbeat_join.abort_handle();
     spawn_guard.push(heartbeat_abort.clone());
 
+    // Phase 19-02: spin up cursor trajectory recorder. Best-effort —
+    // any failure (rect derivation, thread spawn, sidecar write) is
+    // logged but never aborts the recording.
+    let trajectory = build_trajectory_capture_rect(&cap_cfg.target, actual_width, actual_height)
+        .map(|rect| {
+            let sidecar = trajectory_sidecar_path(&output_path);
+            TrajectoryRecorder::start(rect, output_path.clone(), sidecar)
+        });
+
     registry().sessions.lock().insert(
         session_id.clone(),
         RecordingHandle {
@@ -1114,6 +1179,7 @@ pub async fn start_recording(
             audio_stream: Arc::new(tokio::sync::Mutex::new(audio_stream)),
             audio_fifo,
             heartbeat_abort: Some(heartbeat_abort),
+            trajectory,
         },
     );
 
@@ -1186,6 +1252,13 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
         })?;
 
     crate::commands::automation::resume_active_automation();
+
+    // Phase 19-02: stop the trajectory recorder first so its sidecar
+    // is flushed alongside the MP4. Best-effort — `stop()` swallows
+    // its own errors via `tracing::warn!`.
+    if let Some(traj) = handle.trajectory {
+        traj.stop();
+    }
 
     // Stop the 2s heartbeat ticker before we begin teardown so the renderer
     // doesn't observe a tick after it's already surfaced Completed/Failed.

@@ -20,7 +20,8 @@ use crate::{
     commands::{
         app_settings, audio, author_snapshot, automation, capture, dryrun, encode, export,
         frontend_log, keys, lsp, nl, parse, picker, preset, projects, region_overlay, render,
-        simulator, sound_library, system, timeline, tts, updater, upload, web_account, web_sync,
+        simulator, sound_library, system, timeline, trajectory, tts, updater, upload, web_account,
+        web_sync,
     },
     error::AppError,
 };
@@ -114,6 +115,8 @@ pub fn builder() -> Builder<Wry> {
             projects::open_project,
             projects::remove_project,
             projects::list_project_recordings,
+            // Phase 19-02 cursor trajectory sidecar reader.
+            trajectory::get_recording_trajectory,
             render::render_enqueue,
             render::render_cancel,
             render::render_list_active,
@@ -238,6 +241,11 @@ pub fn builder() -> Builder<Wry> {
         .typ::<projects::CreateProjectArgs>()
         .typ::<projects::ProjectIdArg>()
         .typ::<projects::RecordingInfoDto>()
+        // Phase 19-02 cursor trajectory.
+        .typ::<trajectory::TrajectoryDto>()
+        .typ::<trajectory::TrajectoryFrameDto>()
+        .typ::<trajectory::CaptureRectDto>()
+        .typ::<trajectory::GetRecordingTrajectoryArgs>()
         // render queue
         .typ::<render::NewRenderJobDto>()
         .typ::<render::RenderJobDto>()

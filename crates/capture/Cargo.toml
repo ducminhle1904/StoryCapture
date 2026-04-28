@@ -12,6 +12,10 @@ description = "Platform-native screen capture (ScreenCaptureKit / Windows.Graphi
 async-trait = "0.1.89"
 tokio = { workspace = true }
 serde = { workspace = true }
+# Phase 19-02 — trajectory sidecar JSON (cursor-position track).
+# Dev-deps already include serde_json for tests; promoted here for the
+# runtime sidecar writer in `trajectory.rs`.
+serde_json = "1"
 util = { path = "../util" }
 thiserror = { workspace = true }
 tracing = { workspace = true }
