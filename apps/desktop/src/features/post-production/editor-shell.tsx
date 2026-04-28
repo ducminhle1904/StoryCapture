@@ -12,7 +12,8 @@
  * from the store so user preferences survive reloads.
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   Eye,
   Maximize2,
@@ -35,7 +36,10 @@ import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
 import { useEditorStore } from "./state/store";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { PreviewSurface } from "@/components/preview-surface";
-import { useProjectRecordings } from "@/ipc/projects";
+import { fetchProjectFolder, useProjectRecordings } from "@/ipc/projects";
+import { parseStory, type ParseResult } from "@/ipc/parse";
+import { useRecordingTrajectory } from "@/ipc/trajectory";
+import { buildTimelineFromStory } from "./state/build-timeline-from-story";
 import { Link } from "react-router-dom";
 import { Timeline } from "./timeline/timeline";
 import { InspectorPanel } from "./inspector/inspector-panel";
@@ -62,6 +66,49 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const showEmptyOverlay =
     !videoSrc && recordingsQuery.isSuccess && !latestRecording;
   const showErrorOverlay = !videoSrc && recordingsQuery.isError;
+
+  // Phase 19-03: load + parse the project's `.story` source so producer
+  // can populate the timeline. We mirror the editor route's load pattern
+  // (open_project IPC → fs.readTextFile → parseStory) instead of duplicating
+  // it in a new IPC. Parse failure is non-fatal: we still build a video clip.
+  const [storyParsed, setStoryParsed] = useState<ParseResult | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setStoryParsed(null);
+    (async () => {
+      try {
+        const info = await fetchProjectFolder(storyId);
+        if (cancelled) return;
+        const text = await readTextFile(info.story_path);
+        if (cancelled) return;
+        const parsed = await parseStory(text);
+        if (cancelled) return;
+        setStoryParsed(parsed);
+      } catch {
+        /* Best-effort. Producer falls back to recording-only timeline. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [storyId]);
+
+  const trajectoryQuery = useRecordingTrajectory(latestRecording?.path);
+
+  // One-shot auto-populate: only run when video track is empty so we don't
+  // clobber persisted user edits. Idempotent on identical inputs.
+  const setTracks = useEditorStore((s) => s.setTracks);
+  const tracksVideoLen = useEditorStore((s) => s.tracks.video.length);
+  useEffect(() => {
+    if (!latestRecording) return;
+    if (tracksVideoLen > 0) return;
+    const built = buildTimelineFromStory({
+      story: storyParsed,
+      recording: latestRecording,
+      trajectory: trajectoryQuery.data ?? null,
+    });
+    setTracks(built);
+  }, [latestRecording, storyParsed, trajectoryQuery.data, tracksVideoLen, setTracks]);
 
   useEditorHotkeys();
 

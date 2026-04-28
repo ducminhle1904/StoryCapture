@@ -152,6 +152,8 @@ export interface TimelineSlice {
   setDuration: (ms: number) => void;
   toggleSnap: () => void;
   setSnapEnabled: (on: boolean) => void;
+  /** Bulk track replacement. Untouched tracks are preserved. */
+  setTracks: (patch: Partial<TimelineSlice["tracks"]>) => void;
 
   // Per-variant typed adders. Producers should prefer these over hand-built
   // generic Clip objects so the discriminator stays consistent.
@@ -270,6 +272,8 @@ export const createTimelineSlice: StateCreator<
     if (get().snapEnabled === on) return;
     set({ snapEnabled: on });
   },
+  setTracks: (patch) =>
+    set((s) => ({ tracks: { ...s.tracks, ...patch } })),
 
   addVideoClip: (clip) =>
     set((s) => ({
