@@ -65,8 +65,12 @@ pub struct Notification {
     pub params: Value,
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 /// Decoded `preview/frame` notification payload.
-/// `data` is a base64-encoded JPEG; width/height in device pixels;
+/// `data` is a base64-encoded image; width/height in image pixels;
 /// timestamp is Chromium's screencast metadata timestamp (seconds).
 ///
 /// `stream_id` identifies which session the frame belongs to. `None` is the
@@ -80,6 +84,12 @@ pub struct PreviewFrame {
     pub width: u32,
     pub height: u32,
     pub timestamp: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    #[serde(default, rename = "mimeType", skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub sharp: bool,
 }
 
 /// Decoded `preview/nav` notification — current URL of an author session

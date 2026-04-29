@@ -19,17 +19,17 @@
 // `npx playwright install chromium` synchronously and reports progress
 // via a JSON-RPC `notification` message.
 
-import { createInterface } from "node:readline";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { dirname as pathDirname, resolve as pathResolve } from "node:path";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { emitDsl } from "./picker/generator.mjs";
 import {
+  nextWindowBoundsForViewport,
   VIEWPORT_FIT_MAX_ATTEMPTS,
   VIEWPORT_FIT_SETTLE_MS,
-  nextWindowBoundsForViewport,
 } from "./viewport-fit.mjs";
 
 // the picker overlay IIFE is built by build-sea.mjs (Step -1/5) into
@@ -118,6 +118,8 @@ let state = {
   flushScheduled: false,
   previewEveryNth: 1,
   previewViewport: null,
+  previewSharpTimer: null,
+  previewSharpLastLogAt: 0,
   // Phase 09-03 — bounded in-flight counter. Incremented each time a
   // screencastFrame arrives while state.latestFrame is still pending
   // flush (single-slot overwrite == dropped frame).
@@ -136,9 +138,12 @@ let state = {
 };
 
 const AUTHOR_IDLE_MS = 5 * 60 * 1000;
-const PREVIEW_JPEG_QUALITY = 90;
+const PREVIEW_JPEG_QUALITY = 95;
 const PREVIEW_MAX_WIDTH = 1920;
 const PREVIEW_MAX_HEIGHT = 1440;
+const PREVIEW_SHARP_IDLE_MS = 220;
+const PREVIEW_SHARP_DEVICE_SCALE_FACTOR = 2;
+const PREVIEW_SHARP_LOG_INTERVAL_MS = 5_000;
 
 function clampPositiveInt(value, fallback) {
   const n = Number(value);
@@ -187,6 +192,91 @@ function parseStorageState(storageStateJson) {
     return undefined;
   }
   return JSON.parse(storageStateJson);
+}
+
+function pngSize(buf) {
+  if (buf.length < 24 || buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
+    return null;
+  }
+  return {
+    width: buf.readUInt32BE(16),
+    height: buf.readUInt32BE(20),
+  };
+}
+
+function clearSharpPreviewTimer(target) {
+  if (target.previewSharpTimer) {
+    clearTimeout(target.previewSharpTimer);
+    target.previewSharpTimer = null;
+  }
+}
+
+function scheduleSharpPreviewFrame(target, page, { streamId } = {}) {
+  if (!target.cdp || target.paused || !page) return;
+  clearSharpPreviewTimer(target);
+  const cdpAtSchedule = target.cdp;
+  target.previewSharpTimer = setTimeout(() => {
+    target.previewSharpTimer = null;
+    emitSharpPreviewFrame(target, page, { streamId, cdpAtSchedule }).catch((err) => {
+      if (process.env.DEBUG && /storycapture-sidecar/.test(process.env.DEBUG)) {
+        process.stderr.write(
+          `[debug] preview sharp frame skipped: ${err && err.message ? err.message : err}\n`,
+        );
+      }
+    });
+  }, PREVIEW_SHARP_IDLE_MS);
+  if (typeof target.previewSharpTimer.unref === "function") {
+    target.previewSharpTimer.unref();
+  }
+}
+
+async function emitSharpPreviewFrame(target, page, { streamId, cdpAtSchedule } = {}) {
+  if (!target.cdp || target.cdp !== cdpAtSchedule || target.paused) return;
+  const viewport = page.viewportSize();
+  if (!viewport?.width || !viewport?.height) return;
+  const screenshot = await target.cdp.send("Page.captureScreenshot", {
+    format: "png",
+    fromSurface: true,
+    clip: {
+      x: 0,
+      y: 0,
+      width: viewport.width,
+      height: viewport.height,
+      scale: PREVIEW_SHARP_DEVICE_SCALE_FACTOR,
+    },
+  });
+  const data = screenshot.data;
+  if (!target.cdp || target.cdp !== cdpAtSchedule || target.paused) return;
+  const buf = Buffer.from(data, "base64");
+  const size = pngSize(buf) ?? { width: 0, height: 0 };
+  const expectedWidth = viewport.width * PREVIEW_SHARP_DEVICE_SCALE_FACTOR;
+  const expectedHeight = viewport.height * PREVIEW_SHARP_DEVICE_SCALE_FACTOR;
+  if (size.width < expectedWidth || size.height < expectedHeight) {
+    process.stderr.write(
+      `[sc-sidecar] preview sharp frame skipped streamId=${streamId || "(recording)"} viewport=${viewport.width}x${viewport.height} png=${size.width}x${size.height} expected=${expectedWidth}x${expectedHeight} reason=not_hi_dpi\n`,
+    );
+    return;
+  }
+  const now = Date.now();
+  if (
+    !target.previewSharpLastLogAt ||
+    now - target.previewSharpLastLogAt >= PREVIEW_SHARP_LOG_INTERVAL_MS
+  ) {
+    target.previewSharpLastLogAt = now;
+    process.stderr.write(
+      `[sc-sidecar] preview sharp frame emitted streamId=${streamId || "(recording)"} viewport=${viewport?.width ?? 0}x${viewport?.height ?? 0} png=${size.width}x${size.height} dpr=${PREVIEW_SHARP_DEVICE_SCALE_FACTOR} idleMs=${PREVIEW_SHARP_IDLE_MS}\n`,
+    );
+  }
+  writeNotification("preview/frame", {
+    ...(streamId ? { streamId } : {}),
+    data,
+    width: size.width,
+    height: size.height,
+    timestamp: Date.now() / 1000,
+    format: "png",
+    mimeType: "image/png",
+    sharp: true,
+  });
 }
 
 // Map a renderer-side KeyboardEvent {key, code} pair to the string accepted
@@ -253,6 +343,7 @@ function pickPage() {
 }
 
 async function teardownAuthorSession(session) {
+  clearSharpPreviewTimer(session);
   if (session.cdp) {
     try {
       await session.cdp.send("Page.stopScreencast", {});
@@ -373,6 +464,9 @@ async function attachScreencast(target, page, { streamId, scheduleFlush, isPause
       height: frame.metadata?.deviceHeight ?? 0,
       timestamp: frame.metadata?.timestamp ?? Date.now() / 1000,
       sessionId: frame.sessionId,
+      format: "jpeg",
+      mimeType: "image/jpeg",
+      sharp: false,
     };
     if (!target.flushScheduled) {
       target.flushScheduled = true;
@@ -394,11 +488,13 @@ async function attachScreencast(target, page, { streamId, scheduleFlush, isPause
     );
   }
   await target.cdp.send("Page.startScreencast", buildScreencastOptions(target));
+  scheduleSharpPreviewFrame(target, page, { streamId });
   return target.previewEveryNth;
 }
 
 async function detachScreencast(target) {
   if (!target.cdp) return 0;
+  clearSharpPreviewTimer(target);
   const cdp = target.cdp;
   try {
     await cdp.send("Page.stopScreencast", {});
@@ -412,10 +508,12 @@ async function detachScreencast(target) {
   target.flushScheduled = false;
   target.previewDropCount = 0;
   target.previewViewport = null;
+  target.previewSharpTimer = null;
   return dropped;
 }
 
 async function restartScreencast(target) {
+  clearSharpPreviewTimer(target);
   try {
     await target.cdp.send("Page.stopScreencast", {});
   } catch {}
@@ -585,6 +683,8 @@ const handlers = {
       flushScheduled: false,
       previewEveryNth: 1,
       previewViewport: null,
+      previewSharpTimer: null,
+      previewSharpLastLogAt: 0,
       previewDropCount: 0,
       authorSessions: new Map(),
       activeAuthorStream: null,
@@ -861,13 +961,7 @@ const handlers = {
   //
   // Never mutates `state.page` / `state.context` — the author-time flow
   // must not disturb an in-flight recording session.
-  captureSnapshot: async ({
-    url,
-    viewport,
-    timeoutMs,
-    browserEnvironment,
-    storageState,
-  } = {}) => {
+  captureSnapshot: async ({ url, viewport, timeoutMs, browserEnvironment, storageState } = {}) => {
     if (typeof url !== "string" || url.length === 0) {
       const err = new Error("captureSnapshot: url must be a non-empty string");
       err.code = -32602;
@@ -1008,6 +1102,8 @@ const handlers = {
       flushScheduled: false,
       previewEveryNth: 1,
       previewViewport: null,
+      previewSharpTimer: null,
+      previewSharpLastLogAt: 0,
       previewDropCount: 0,
       paused: false,
       // Browser-style nav history tracked per session. Playwright doesn't
@@ -1101,6 +1197,7 @@ const handlers = {
     s.previewViewport = nextPreviewViewport;
     if (s.cdp && !s.paused) {
       await restartScreencast(s);
+      scheduleSharpPreviewFrame(s, s.page, { streamId });
     }
     return { ok: true, width, height };
   },
@@ -1119,6 +1216,7 @@ const handlers = {
       throw Object.assign(new Error("invalid url"), { code: -32602 });
     }
     await s.page.goto(url, { waitUntil: "domcontentloaded" }).catch(() => {});
+    scheduleSharpPreviewFrame(s, s.page, { streamId });
     return { ok: true, url };
   },
 
@@ -1254,11 +1352,13 @@ const handlers = {
       }
       return [x, y];
     };
+    let result;
     switch (event.type) {
       case "mousemove": {
         const [x, y] = parseXY();
         await s.page.mouse.move(x, y);
-        return { ok: true };
+        result = { ok: true };
+        break;
       }
       case "click": {
         const [x, y] = parseXY();
@@ -1277,7 +1377,8 @@ const handlers = {
           );
           throw e;
         }
-        return { ok: true };
+        result = { ok: true };
+        break;
       }
       case "wheel": {
         const [x, y] = parseXY();
@@ -1287,35 +1388,53 @@ const handlers = {
         // position, so move first to align with the caller's (x, y).
         await s.page.mouse.move(x, y);
         await s.page.mouse.wheel(dx, dy);
-        return { ok: true };
+        result = { ok: true };
+        break;
       }
       case "keydown": {
-        if (pickerArmed) return { ok: true, skipped: "picker-armed" };
+        if (pickerArmed) {
+          result = { ok: true, skipped: "picker-armed" };
+          break;
+        }
         // Browser auto-repeat would call page.keyboard.down repeatedly,
         // which Playwright doesn't translate to native autoRepeat. Skipping
         // is acceptable: most pages handle repeat by checking event.repeat
         // themselves, and the tradeoff buys us simpler state-tracking.
-        if (event.repeat) return { ok: true, skipped: "repeat" };
+        if (event.repeat) {
+          result = { ok: true, skipped: "repeat" };
+          break;
+        }
         const k = toPlaywrightKey(event);
         if (!k) {
           throw Object.assign(new Error("keydown requires key or code"), { code: -32602 });
         }
         await s.page.keyboard.down(k);
-        return { ok: true };
+        result = { ok: true };
+        break;
       }
       case "keyup": {
-        if (pickerArmed) return { ok: true, skipped: "picker-armed" };
+        if (pickerArmed) {
+          result = { ok: true, skipped: "picker-armed" };
+          break;
+        }
         const k = toPlaywrightKey(event);
         if (!k) {
           throw Object.assign(new Error("keyup requires key or code"), { code: -32602 });
         }
         await s.page.keyboard.up(k);
-        return { ok: true };
+        result = { ok: true };
+        break;
       }
       case "text": {
-        if (pickerArmed) return { ok: true, skipped: "picker-armed" };
+        if (pickerArmed) {
+          result = { ok: true, skipped: "picker-armed" };
+          break;
+        }
         const text = String(event.text ?? "");
-        if (text.length === 0) return { ok: true, skipped: "empty" };
+        if (text.length === 0) {
+          result = { ok: true, skipped: "empty" };
+          break;
+        }
         if (text.length > 8192) {
           throw Object.assign(new Error("text too long (>8192)"), { code: -32602 });
         }
@@ -1325,11 +1444,14 @@ const handlers = {
           `[sc-sidecar] dispatchInput text streamId=${streamId} len=${text.length}\n`,
         );
         await s.page.keyboard.insertText(text);
-        return { ok: true };
+        result = { ok: true };
+        break;
       }
       default:
         throw Object.assign(new Error(`unsupported event type: ${event.type}`), { code: -32602 });
     }
+    scheduleSharpPreviewFrame(s, s.page, { streamId });
+    return result;
   },
 
   setActiveAuthorStream: async ({ streamId } = {}) => {
@@ -1392,6 +1514,7 @@ const handlers = {
     const s = getAuthorSession(streamId);
     if (!s.cdp) return { ok: true, paused: false };
     if (s.paused) return { ok: true, paused: true };
+    clearSharpPreviewTimer(s);
     try {
       await s.cdp.send("Page.stopScreencast", {});
     } catch {}
@@ -1407,6 +1530,7 @@ const handlers = {
       await s.cdp.send("Page.startScreencast", buildScreencastOptions(s));
     } catch {}
     s.paused = false;
+    scheduleSharpPreviewFrame(s, s.page, { streamId });
     return { ok: true, paused: false };
   },
 

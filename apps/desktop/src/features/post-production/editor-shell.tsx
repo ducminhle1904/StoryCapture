@@ -12,7 +12,7 @@
  * from the store so user preferences survive reloads.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   ArrowLeft,
@@ -31,24 +31,23 @@ import {
   Volume2,
   ZoomIn,
 } from "lucide-react";
-
-import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
-import { PageContentTransition } from "@/components/page-content-transition";
-import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
-import { useEditorStore } from "./state/store";
-import { useEditorHotkeys } from "./hooks/use-hotkeys";
-import { PreviewSurface } from "@/components/preview-surface";
-import { fetchProjectFolder, useProjectRecordings } from "@/ipc/projects";
-import { parseStory, type ParseResult } from "@/ipc/parse";
-import { useRecordingTrajectory } from "@/ipc/trajectory";
-import { buildTimelineFromStory } from "./state/build-timeline-from-story";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Timeline } from "./timeline/timeline";
-import { InspectorPanel } from "./inspector/inspector-panel";
-import { SoundDrawer } from "./sound-browser/sound-drawer";
+import { PageContentTransition } from "@/components/page-content-transition";
+import { PreviewSurface } from "@/components/preview-surface";
+import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
+import { type ParseResult, parseStory } from "@/ipc/parse";
+import { fetchProjectFolder, useProjectRecordings } from "@/ipc/projects";
+import { useRecordingTrajectory } from "@/ipc/trajectory";
 import { ExportModal } from "./export-modal/export-modal";
+import { useEditorHotkeys } from "./hooks/use-hotkeys";
+import { InspectorPanel } from "./inspector/inspector-panel";
 import { QueueWidget } from "./render-queue/queue-widget";
+import { SoundDrawer } from "./sound-browser/sound-drawer";
+import { buildTimelineFromStory } from "./state/build-timeline-from-story";
+import { useEditorStore } from "./state/store";
 import type { AnnotationClip, ZoomClip } from "./state/timeline-slice";
+import { Timeline } from "./timeline/timeline";
 
 export interface EditorShellProps {
   storyId: string;
@@ -77,8 +76,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const recordingsQuery = useProjectRecordings(storyId);
   const latestRecording = recordingsQuery.data?.[0] ?? null;
   const resolvedVideoSrc = videoSrc ?? latestRecording?.path;
-  const showEmptyOverlay =
-    !videoSrc && recordingsQuery.isSuccess && !latestRecording;
+  const showEmptyOverlay = !videoSrc && recordingsQuery.isSuccess && !latestRecording;
   const showErrorOverlay = !videoSrc && recordingsQuery.isError;
 
   // Phase 19-03: load + parse the project's `.story` source so producer
@@ -86,13 +84,16 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   // (open_project IPC → fs.readTextFile → parseStory) instead of duplicating
   // it in a new IPC. Parse failure is non-fatal: we still build a video clip.
   const [storyParsed, setStoryParsed] = useState<ParseResult | null>(null);
+  const [projectOpenReady, setProjectOpenReady] = useState(Boolean(videoSrc));
   useEffect(() => {
     let cancelled = false;
     setStoryParsed(null);
+    setProjectOpenReady(Boolean(videoSrc));
     (async () => {
       try {
         const info = await fetchProjectFolder(storyId);
         if (cancelled) return;
+        setProjectOpenReady(true);
         const text = await readTextFile(info.story_path);
         if (cancelled) return;
         const parsed = await parseStory(text);
@@ -100,12 +101,15 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         setStoryParsed(parsed);
       } catch {
         /* Best-effort. Producer falls back to recording-only timeline. */
+        if (!cancelled && videoSrc) {
+          setProjectOpenReady(true);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [storyId]);
+  }, [storyId, videoSrc]);
 
   const trajectoryQuery = useRecordingTrajectory(latestRecording?.path);
 
@@ -244,7 +248,11 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         >
           Sounds
         </ScButton>
-        <QueueWidget storyId={storyId} />
+        {projectOpenReady ? (
+          <QueueWidget storyId={storyId} />
+        ) : (
+          <ScBadge tone="muted">0 queue</ScBadge>
+        )}
         <ScButton
           variant="success"
           size="sm"
@@ -257,10 +265,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
       <PageContentTransition className="min-h-0 flex-1">
         {/* Top region: preview | inspector */}
-        <div
-          className="flex min-h-0 gap-5 px-5 py-5"
-          style={{ height: `${topHeightPct}%` }}
-        >
+        <div className="flex min-h-0 gap-5 px-5 py-5" style={{ height: `${topHeightPct}%` }}>
           <section
             className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
             style={{
@@ -352,11 +357,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>
-              <PreviewSurface
-                mode="composited"
-                storyId={storyId}
-                videoSrc={resolvedVideoSrc}
-              />
+              <PreviewSurface mode="composited" storyId={storyId} videoSrc={resolvedVideoSrc} />
               {(showEmptyOverlay || showErrorOverlay) && (
                 <div
                   className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
@@ -364,14 +365,9 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 >
                   <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-2 rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/90 px-5 py-4 text-center backdrop-blur">
                     <div className="text-[12px] font-medium text-[var(--sc-text-2)]">
-                      {showErrorOverlay
-                        ? "Couldn't load recordings"
-                        : "No recording yet"}
+                      {showErrorOverlay ? "Couldn't load recordings" : "No recording yet"}
                     </div>
-                    <Link
-                      to={`/recorder/${storyId}`}
-                      className="sc-btn primary sm"
-                    >
+                    <Link to={`/recorder/${storyId}`} className="sc-btn primary sm">
                       Record one first
                     </Link>
                   </div>
@@ -456,7 +452,13 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
             className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
             style={{ width: `${inspectorWidthPct}%` }}
           >
-            <InspectorPanel />
+            {projectOpenReady ? (
+              <InspectorPanel />
+            ) : (
+              <div role="status" className="p-5 text-sm text-[var(--sc-text-3)]">
+                Loading project…
+              </div>
+            )}
           </section>
         </div>
 

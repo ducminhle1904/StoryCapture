@@ -4,8 +4,8 @@
  *
  * Imports the current video frame, updates uniforms, and issues one fullscreen draw.
  */
-import type { PreviewRenderPlan } from "./types";
 import { loadWgsl } from "../shaders/loader";
+import type { PreviewRenderPlan } from "./types";
 
 export interface WebGPUBackendConfig {
   canvas: HTMLCanvasElement;
@@ -42,6 +42,7 @@ export class WebGPUBackend {
   // Reused scratch views for zero-allocation uniform updates.
   private frameUniformF32: Float32Array | null = null;
   private frameUniformU32: Uint32Array | null = null;
+  private bgUniformF32: Float32Array | null = null;
 
   constructor(
     private readonly device: GPUDevice,
@@ -124,45 +125,124 @@ export class WebGPUBackend {
     const scratch = new ArrayBuffer(FRAME_UNIFORM_BYTES);
     this.frameUniformF32 = new Float32Array(scratch);
     this.frameUniformU32 = new Uint32Array(scratch);
+    this.bgUniformF32 = new Float32Array(BG_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
   }
 
   renderFrame(t_ms: number, plan: PreviewRenderPlan): void {
     if (this.disposed) return;
-    if (!this.pipeline || !this.bindGroupLayout) return;
-    // Minimal render path: video frame in, fullscreen draw out.
-    const videoReady =
-      this.config.videoElement.readyState >= 2 &&
-      !this.config.videoElement.paused;
+    const pipeline = this.pipeline;
+    const bindGroupLayout = this.bindGroupLayout;
+    const frameUbo = this.frameUbo;
+    const bgUbo = this.bgUbo;
+    const rippleSsbo = this.rippleSsbo;
+    const cursorAtlas = this.cursorAtlas;
+    const sampler = this.sampler;
+    if (
+      !pipeline ||
+      !bindGroupLayout ||
+      !frameUbo ||
+      !bgUbo ||
+      !rippleSsbo ||
+      !cursorAtlas ||
+      !sampler
+    ) {
+      return;
+    }
+    const video = this.config.videoElement;
+    const videoReady = video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
     if (!videoReady) return;
 
     const frameData = this.buildFrameUniforms(t_ms, plan);
     this.device.queue.writeBuffer(
-      this.frameUbo!,
+      frameUbo,
       0,
       frameData.buffer,
       frameData.byteOffset,
       frameData.byteLength,
     );
-    // Background and ripple writes are still stubbed.
+    const bgData = this.buildBackgroundUniforms();
+    this.device.queue.writeBuffer(bgUbo, 0, bgData.buffer, bgData.byteOffset, bgData.byteLength);
+
+    const bindGroup = this.device.createBindGroup({
+      label: "compositor.bind-group",
+      layout: bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: frameUbo } },
+        { binding: 1, resource: { buffer: bgUbo } },
+        { binding: 2, resource: { buffer: rippleSsbo } },
+        {
+          binding: 3,
+          resource: this.device.importExternalTexture({ source: video }),
+        },
+        { binding: 4, resource: cursorAtlas.createView() },
+        { binding: 5, resource: sampler },
+      ],
+    });
+
+    const encoder = this.device.createCommandEncoder({
+      label: "compositor.encoder",
+    });
+    const pass = encoder.beginRenderPass({
+      label: "compositor.render-pass",
+      colorAttachments: [
+        {
+          view: this.context.getCurrentTexture().createView(),
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+      ],
+    });
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    pass.draw(6, 1, 0, 0);
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
   }
 
-  private buildFrameUniforms(
-    t_ms: number,
-    plan: PreviewRenderPlan,
-  ): Float32Array {
+  private buildFrameUniforms(t_ms: number, plan: PreviewRenderPlan): Float32Array {
     // Reuse the scratch buffer on the hot path.
-    const buf = this.frameUniformF32!;
-    const u32 = this.frameUniformU32!;
+    const buf = this.frameUniformF32;
+    const u32 = this.frameUniformU32;
+    if (!buf || !u32) {
+      throw new Error("WebGPU frame uniform scratch buffer not initialised");
+    }
     // Identity zoom matrix in padded column-major form.
-    buf[0] = 1; buf[1] = 0; buf[2] = 0; buf[3] = 0;
-    buf[4] = 0; buf[5] = 1; buf[6] = 0; buf[7] = 0;
-    buf[8] = 0; buf[9] = 0; buf[10] = 1; buf[11] = 0;
+    buf[0] = 1;
+    buf[1] = 0;
+    buf[2] = 0;
+    buf[3] = 0;
+    buf[4] = 0;
+    buf[5] = 1;
+    buf[6] = 0;
+    buf[7] = 0;
+    buf[8] = 0;
+    buf[9] = 0;
+    buf[10] = 1;
+    buf[11] = 0;
     buf[12] = plan.output_width;
     buf[13] = plan.output_height;
     buf[14] = t_ms;
     // `has_cursor` shares the same backing buffer via a u32 view.
     u32[15] = plan.cursor_atlas_ref ? 1 : 0;
     u32[16] = Math.min(plan.ripples.length, MAX_RIPPLES);
+    return buf;
+  }
+
+  private buildBackgroundUniforms(): Float32Array {
+    const buf = this.bgUniformF32;
+    if (!buf) {
+      throw new Error("WebGPU background uniform scratch buffer not initialised");
+    }
+    buf.fill(0);
+    buf[0] = 0;
+    buf[1] = 0;
+    buf[2] = 0;
+    buf[3] = 1;
+    buf[4] = 0;
+    buf[5] = 0;
+    buf[6] = 0;
+    buf[7] = 1;
     return buf;
   }
 
@@ -193,6 +273,7 @@ export class WebGPUBackend {
     this.sampler = null;
     this.frameUniformF32 = null;
     this.frameUniformU32 = null;
+    this.bgUniformF32 = null;
     // Keep `context` alive for future resize reconfiguration.
     void this.context;
   }

@@ -1,14 +1,14 @@
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  authorDispatchInput,
-  startPreviewStream,
-  stopPreviewStream,
   type AuthorInputEvent,
   type AuthorKeyModifiers,
   type AuthorMouseButton,
+  authorDispatchInput,
   type PreviewFramePayload,
+  startPreviewStream,
+  stopPreviewStream,
 } from "@/ipc/preview";
 import { frontendLog } from "@/lib/log";
 
@@ -75,23 +75,94 @@ const SATURATION_LOG_INTERVAL_MS = 30_000;
 const DIMENSION_MISMATCH_LOG_INTERVAL_MS = 30_000;
 const RETRY_BACKOFF_MS = 500;
 
+type PendingPreviewBitmap = {
+  bitmap: ImageBitmap;
+  sharp: boolean;
+};
+
+function frameMimeType(frame: PreviewFramePayload): string {
+  if (typeof frame.mimeType === "string" && frame.mimeType.length > 0) return frame.mimeType;
+  return frame.format === "png" ? "image/png" : "image/jpeg";
+}
+
+function isEffectiveSharpFrame(
+  frame: Pick<PreviewFramePayload, "format" | "sharp">,
+  bmp: ImageBitmap,
+  baseWidth: number,
+  baseHeight: number,
+): boolean {
+  return (
+    frame.sharp === true &&
+    frame.format === "png" &&
+    bmp.width >= baseWidth * 1.5 &&
+    bmp.height >= baseHeight * 1.5
+  );
+}
+
+function isSameAspectRatio(aWidth: number, aHeight: number, bWidth: number, bHeight: number) {
+  return Math.abs(aWidth / aHeight - bWidth / bHeight) < 0.01;
+}
+
+function shouldResizeCanvasForFrame(
+  canvas: HTMLCanvasElement,
+  bmp: ImageBitmap,
+  pending: PendingPreviewBitmap,
+): boolean {
+  if (pending.sharp) return canvas.width !== bmp.width || canvas.height !== bmp.height;
+  const wouldDownscaleSharpBacking =
+    canvas.width > bmp.width &&
+    canvas.height > bmp.height &&
+    isSameAspectRatio(canvas.width, canvas.height, bmp.width, bmp.height);
+  return (
+    !wouldDownscaleSharpBacking && (canvas.width !== bmp.width || canvas.height !== bmp.height)
+  );
+}
+
 function updatePreviewDiagnostics(
   canvas: HTMLCanvasElement,
-  frame: Pick<PreviewFramePayload, "width" | "height">,
+  frame: Pick<PreviewFramePayload, "width" | "height" | "format" | "sharp">,
   bmp: ImageBitmap,
+  effectiveSharp: boolean,
   lastDimensionsRef: { current: string },
   lastLogRef: { current: number },
 ) {
-  const dimensionsKey = `${frame.width}x${frame.height}/${bmp.width}x${bmp.height}`;
+  const dimensionsKey = `${frame.width}x${frame.height}/${bmp.width}x${bmp.height}/${frame.format ?? "jpeg"}`;
   if (lastDimensionsRef.current !== dimensionsKey) {
     lastDimensionsRef.current = dimensionsKey;
     canvas.dataset.frameWidth = String(frame.width);
     canvas.dataset.frameHeight = String(frame.height);
     canvas.dataset.bitmapWidth = String(bmp.width);
     canvas.dataset.bitmapHeight = String(bmp.height);
+    canvas.dataset.frameFormat = frame.format ?? "jpeg";
+    canvas.dataset.frameSharp = effectiveSharp ? "true" : "false";
+    if (effectiveSharp) {
+      frontendLog.info("LivePreview", "sharp frame decoded", {
+        fields: {
+          frame_width: frame.width,
+          frame_height: frame.height,
+          bitmap_width: bmp.width,
+          bitmap_height: bmp.height,
+          canvas_width: canvas.width,
+          canvas_height: canvas.height,
+          format: frame.format ?? "png",
+        },
+      });
+    }
   }
 
   if (bmp.width === canvas.width && bmp.height === canvas.height) return;
+  const expectedSharpMismatch =
+    effectiveSharp &&
+    bmp.width >= canvas.width &&
+    bmp.height >= canvas.height &&
+    isSameAspectRatio(bmp.width, bmp.height, canvas.width, canvas.height);
+  const expectedRealtimeOnSharpBacking =
+    !effectiveSharp &&
+    frame.sharp !== true &&
+    canvas.width >= bmp.width * 1.5 &&
+    canvas.height >= bmp.height * 1.5 &&
+    isSameAspectRatio(canvas.width, canvas.height, bmp.width, bmp.height);
+  if (expectedSharpMismatch || expectedRealtimeOnSharpBacking) return;
   const now = Date.now();
   if (now - lastLogRef.current < DIMENSION_MISMATCH_LOG_INTERVAL_MS) return;
   lastLogRef.current = now;
@@ -103,6 +174,9 @@ function updatePreviewDiagnostics(
       bitmap_height: bmp.height,
       canvas_width: canvas.width,
       canvas_height: canvas.height,
+      format: frame.format ?? "jpeg",
+      sharp: frame.sharp === true,
+      effective_sharp: effectiveSharp,
     },
   });
 }
@@ -118,7 +192,7 @@ export function LivePreview({
   style,
 }: LivePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pendingBitmap = useRef<ImageBitmap | null>(null);
+  const pendingBitmap = useRef<PendingPreviewBitmap | null>(null);
   const rafRef = useRef<number | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const dropCountRef = useRef(0);
@@ -164,6 +238,7 @@ export function LivePreview({
   );
 
   // Cleanup pending rAF + held-modifier state on unmount / stream change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stream changes must clear stale input state even though the cleanup only touches refs.
   useEffect(() => {
     return () => {
       if (moveRafRef.current != null) {
@@ -184,26 +259,32 @@ export function LivePreview({
         try {
           const { data } = ev.payload;
           const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
-          const blob = new Blob([bytes], { type: "image/jpeg" });
+          const blob = new Blob([bytes], { type: frameMimeType(ev.payload) });
           const bmp = await createImageBitmap(blob);
           const canvas = canvasRef.current;
+          const effectiveSharp = isEffectiveSharpFrame(ev.payload, bmp, width, height);
           if (canvas) {
             updatePreviewDiagnostics(
               canvas,
               ev.payload,
               bmp,
+              effectiveSharp,
               lastPreviewDimensionsRef,
               lastDimensionMismatchLogRef,
             );
           }
+          if (ev.payload.sharp === true && !effectiveSharp) {
+            bmp.close();
+            return;
+          }
           if (pendingBitmap.current) {
-            pendingBitmap.current.close();
+            pendingBitmap.current.bitmap.close();
             dropCountRef.current += 1;
             if (canvasRef.current) {
               canvasRef.current.dataset.dropCount = String(dropCountRef.current);
             }
           }
-          pendingBitmap.current = bmp;
+          pendingBitmap.current = { bitmap: bmp, sharp: effectiveSharp };
         } catch (e) {
           console.debug("preview frame decode skipped:", e);
         }
@@ -220,10 +301,29 @@ export function LivePreview({
       if (rafRef.current != null) return;
       const draw = () => {
         const canvas = canvasRef.current;
-        const bmp = pendingBitmap.current;
-        if (canvas && bmp) {
+        const pending = pendingBitmap.current;
+        const bmp = pending?.bitmap ?? null;
+        if (canvas && pending && bmp) {
+          if (shouldResizeCanvasForFrame(canvas, bmp, pending)) {
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            canvas.dataset.canvasBackingWidth = String(bmp.width);
+            canvas.dataset.canvasBackingHeight = String(bmp.height);
+            if (pending.sharp) {
+              frontendLog.info("LivePreview", "sharp frame promoted to canvas", {
+                fields: {
+                  canvas_backing_width: bmp.width,
+                  canvas_backing_height: bmp.height,
+                  css_width: canvas.getBoundingClientRect().width,
+                  css_height: canvas.getBoundingClientRect().height,
+                },
+              });
+            }
+          }
           const ctx = canvas.getContext("2d");
           if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
             ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
           }
           bmp.close();
@@ -297,7 +397,7 @@ export function LivePreview({
         unlistenRef.current = null;
       }
       if (pendingBitmap.current) {
-        pendingBitmap.current.close();
+        pendingBitmap.current.bitmap.close();
         pendingBitmap.current = null;
       }
       if (saturationTimerRef.current) {
@@ -308,7 +408,7 @@ export function LivePreview({
         stopPreviewStream().catch(() => {});
       }
     };
-  }, [streamId]);
+  }, [streamId, width, height]);
 
   if (status === "unavailable") {
     return (
@@ -445,6 +545,10 @@ export function LivePreview({
       data-frame-height="0"
       data-bitmap-width="0"
       data-bitmap-height="0"
+      data-canvas-backing-width={width}
+      data-canvas-backing-height={height}
+      data-frame-format="jpeg"
+      data-frame-sharp="false"
       data-input-enabled={inputEnabled}
       tabIndex={inputEnabled ? 0 : -1}
       width={width}

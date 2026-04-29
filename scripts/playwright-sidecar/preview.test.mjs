@@ -5,11 +5,11 @@
 // notification channel. Requires SIDECAR_TEST=1 for the __debugPreviewState
 // verb used by the backpressure assertion.
 
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { spawn } from "node:child_process";
+import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_PATH = resolve(__dirname, "server.mjs");
@@ -51,6 +51,22 @@ function jpegSizeFromBase64(data) {
   throw new Error("jpeg SOF marker not found");
 }
 
+function pngSizeFromBase64(data) {
+  const buf = Buffer.from(data, "base64");
+  if (buf.length < 24 || buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
+    throw new Error("invalid png header");
+  }
+  return {
+    width: buf.readUInt32BE(16),
+    height: buf.readUInt32BE(20),
+  };
+}
+
+function imageSizeFromBase64(data, format) {
+  if (format === "png") return pngSizeFromBase64(data);
+  return jpegSizeFromBase64(data);
+}
+
 function waitForFrame(client, predicate = () => true, timeoutMs = 10_000) {
   return new Promise((resolveFrame, rejectFrame) => {
     const timer = setTimeout(() => {
@@ -85,14 +101,14 @@ async function waitForFrameSize(client, streamId, expectedSize) {
   let matchedSize = null;
   const frame = await waitForFrame(client, (p) => {
     if (p.streamId !== streamId) return false;
-    const size = jpegSizeFromBase64(p.data);
+    const size = imageSizeFromBase64(p.data, p.format);
     if (size.width !== expectedSize.width || size.height !== expectedSize.height) {
       return false;
     }
     matchedSize = size;
     return true;
   });
-  return { frame, size: matchedSize ?? jpegSizeFromBase64(frame.data) };
+  return { frame, size: matchedSize ?? imageSizeFromBase64(frame.data, frame.format) };
 }
 
 async function expectAuthorPreviewSize(client, label, viewport) {
@@ -114,6 +130,7 @@ function spawnSidecar() {
   });
   const pending = new Map();
   const frameListeners = new Set();
+  const stderrLines = [];
   let framesPaused = false;
   let nextId = 1;
   const rl = createInterface({ input: child.stdout });
@@ -141,7 +158,9 @@ function spawnSidecar() {
       waiter(msg);
     }
   });
-  child.stderr.on("data", () => {});
+  child.stderr.on("data", (chunk) => {
+    stderrLines.push(String(chunk));
+  });
   return {
     call(method, params = {}) {
       const id = nextId++;
@@ -167,6 +186,9 @@ function spawnSidecar() {
     },
     resumeFrames() {
       framesPaused = false;
+    },
+    stderrText() {
+      return stderrLines.join("");
     },
     async dispose() {
       try {
@@ -500,12 +522,41 @@ describe("Phase 09-01 preview CDP screencast verbs", () => {
     }
   }, 60_000);
 
+  it("sharpness: author idle emits 2x PNG sharp frame", async () => {
+    const streamId = `sharp-png-${Date.now()}`;
+    try {
+      await launchAuthor(client, streamId, { width: 1280, height: 800 });
+      await client.call("startPreviewStream", { streamId });
+      const frame = await waitForFrame(
+        client,
+        (p) => p.streamId === streamId && p.format === "png" && p.sharp === true,
+      );
+      expect(frame.mimeType).toBe("image/png");
+      expect(pngSizeFromBase64(frame.data)).toEqual({ width: 2560, height: 1600 });
+      expect(client.stderrText()).toContain("preview sharp frame emitted");
+      expect(client.stderrText()).toContain(`streamId=${streamId}`);
+      expect(client.stderrText()).toContain("png=2560x1600");
+
+      await client.call("author.dispatchInput", {
+        streamId,
+        event: { type: "click", x: 10, y: 10, button: "left" },
+      });
+      const afterInputFrame = await waitForFrame(
+        client,
+        (p) => p.streamId === streamId && p.format === "png" && p.sharp === true,
+      );
+      expect(pngSizeFromBase64(afterInputFrame.data)).toEqual({ width: 2560, height: 1600 });
+    } finally {
+      await client.call("author.close", { streamId }).catch(() => {});
+    }
+  }, 60_000);
+
   it("sharpness: recording default remains 1280x720", async () => {
     await launch(client, { width: 1280, height: 720 });
     try {
       await client.call("startPreviewStream", {});
       const frame = await waitForFrame(client, (p) => p.streamId == null);
-      expect(jpegSizeFromBase64(frame.data)).toEqual({ width: 1280, height: 720 });
+      expect(imageSizeFromBase64(frame.data, frame.format)).toEqual({ width: 1280, height: 720 });
     } finally {
       await client.call("close", {}).catch(() => {});
     }

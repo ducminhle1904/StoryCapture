@@ -19,6 +19,8 @@ function makeVideo(): HTMLVideoElement {
   return {
     readyState: 0,
     paused: true,
+    videoWidth: 0,
+    videoHeight: 0,
   } as unknown as HTMLVideoElement;
 }
 
@@ -107,9 +109,7 @@ describe("PreviewEngine", () => {
       outputWidth: 1920,
       outputHeight: 1080,
     });
-    await expect(engine.renderFrame(0, emptyPlan())).rejects.toThrow(
-      /not initialised/i,
-    );
+    await expect(engine.renderFrame(0, emptyPlan())).rejects.toThrow(/not initialised/i);
   });
 
   it("initialises into WebGL2 backend when navigator.gpu missing", async () => {
@@ -157,6 +157,7 @@ describe("PreviewEngine", () => {
       queue: { writeBuffer: vi.fn() },
     } as unknown as GPUDevice;
     const adapter = {
+      features: new Set(),
       requestDevice: vi.fn(async () => device),
     } as unknown as GPUAdapter;
     const ctx = { configure: vi.fn() } as unknown as GPUCanvasContext;
@@ -174,6 +175,74 @@ describe("PreviewEngine", () => {
     });
     await engine.init();
     expect(engine.backend).toBe("webgpu");
+    engine.dispose();
+  });
+
+  it("draws a paused ready frame through WebGPU", async () => {
+    const pass = {
+      setPipeline: vi.fn(),
+      setBindGroup: vi.fn(),
+      draw: vi.fn(),
+      end: vi.fn(),
+    };
+    const encoder = {
+      beginRenderPass: vi.fn(() => pass),
+      finish: vi.fn(() => ({})),
+    };
+    const queue = {
+      writeBuffer: vi.fn(),
+      submit: vi.fn(),
+    };
+    const device = {
+      createShaderModule: vi.fn(() => ({})),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
+      createRenderPipeline: vi.fn(() => ({})),
+      createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
+      createSampler: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+        destroy: vi.fn(),
+      })),
+      createBindGroup: vi.fn(() => ({})),
+      importExternalTexture: vi.fn(() => ({})),
+      createCommandEncoder: vi.fn(() => encoder),
+      queue,
+    } as unknown as GPUDevice;
+    const adapter = {
+      features: new Set(),
+      requestDevice: vi.fn(async () => device),
+    } as unknown as GPUAdapter;
+    const ctx = {
+      configure: vi.fn(),
+      getCurrentTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+      })),
+    } as unknown as GPUCanvasContext;
+    const video = {
+      readyState: 2,
+      paused: true,
+      videoWidth: 1920,
+      videoHeight: 1080,
+    } as unknown as HTMLVideoElement;
+
+    stubNavigator({
+      requestAdapter: vi.fn(async () => adapter),
+      getPreferredCanvasFormat: () => "bgra8unorm",
+    });
+
+    const engine = new PreviewEngine({
+      canvas: makeCanvas((id) => (id === "webgpu" ? ctx : null)),
+      videoElement: video,
+      outputWidth: 1920,
+      outputHeight: 1080,
+    });
+    await engine.init();
+    await engine.renderFrame(0, emptyPlan());
+
+    expect(device.importExternalTexture).toHaveBeenCalledWith({ source: video });
+    expect(pass.draw).toHaveBeenCalledWith(6, 1, 0, 0);
+    expect(queue.submit).toHaveBeenCalledTimes(1);
     engine.dispose();
   });
 });

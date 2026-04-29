@@ -11,12 +11,16 @@
 
 use crate::error::AppError;
 use crate::state::AppState;
+use encoder::{NoopJobExecutor, QueueMsg, RenderQueueConfig};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use storage::StorageError;
 use tauri::{AppHandle, Manager, State};
+
+use super::render::RenderQueueState;
 
 /// DTO mirror of `storage::Project`. Serializes `Uuid` as a string and
 /// `PathBuf` as a string so the renderer sees plain JSON. `last_opened_at`
@@ -128,7 +132,7 @@ pub struct ProjectIdArg {
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "open_project"), err(Debug))]
-pub fn open_project(
+pub async fn open_project(
     state: State<'_, AppState>,
     args: ProjectIdArg,
 ) -> Result<ProjectFolderInfoDto, AppError> {
@@ -146,6 +150,7 @@ pub fn open_project(
     let folder = storage::open_project(&row.folder_path).map_err(map_storage_err)?;
     let story_path = folder.story_path();
     let exports_dir = folder.exports_dir();
+    install_project_render_queue(&state, &row.folder_path, &exports_dir).await?;
     let session_count = folder
         .db()
         .list_sessions()
@@ -163,6 +168,38 @@ pub fn open_project(
         exports_dir: exports_dir.to_string_lossy().into_owned(),
         session_count,
     })
+}
+
+async fn install_project_render_queue(
+    state: &AppState,
+    project_folder: &Path,
+    exports_dir: &Path,
+) -> Result<(), AppError> {
+    if let Some(existing) = state.render_queue() {
+        let _ = existing.handle.send(QueueMsg::Shutdown).await;
+        state.clear_render_queue();
+    }
+
+    let db_path = project_folder.join(storage::PROJECT_DB_FILENAME);
+    let db = encoder::open_project_conn(&db_path).map_err(AppError::from)?;
+    let (progress_tx, progress_rx) = tokio::sync::mpsc::channel(128);
+    let executor = Arc::new(NoopJobExecutor {
+        output_root: exports_dir.to_path_buf(),
+    });
+    let handle = encoder::spawn_render_queue(
+        RenderQueueConfig::default(),
+        db.clone(),
+        executor,
+        progress_tx,
+    )
+    .await;
+
+    state.install_render_queue(RenderQueueState {
+        handle,
+        db,
+        progress_rx: Arc::new(tokio::sync::Mutex::new(Some(progress_rx))),
+    });
+    Ok(())
 }
 
 /// File-system metadata for a single `.mp4` under `<project>/exports/`.
@@ -223,7 +260,12 @@ fn scan_exports_dir(dir: &Path) -> Vec<RecordingInfoDto> {
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "list_project_recordings"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "list_project_recordings"),
+    err(Debug)
+)]
 pub fn list_project_recordings(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -247,7 +289,9 @@ pub fn list_project_recordings(
     // Grant the renderer's asset:// protocol access to this project's exports
     // so <video src={convertFileSrc(path)} /> can resolve. Idempotent on Tauri's
     // Scope; safe to call on every listing.
-    app.asset_protocol_scope().allow_directory(&exports_dir, false).ok();
+    app.asset_protocol_scope()
+        .allow_directory(&exports_dir, false)
+        .ok();
     Ok(scan_exports_dir(&exports_dir))
 }
 
@@ -302,5 +346,29 @@ mod tests {
         assert!(got[0].duration_ms.is_none());
         assert!(got[0].width.is_none());
         assert!(got[0].height.is_none());
+    }
+
+    #[tokio::test]
+    async fn install_queue_opens_project_db() {
+        let projects_dir = tempfile::tempdir().unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let log_dir = tempfile::tempdir().unwrap();
+        let folder = storage::create_project(projects_dir.path(), "Queue Test").unwrap();
+        let exports_dir = folder.exports_dir();
+        let state = AppState::new(state_dir.path().to_path_buf(), log_dir.path().to_path_buf());
+
+        install_project_render_queue(&state, folder.root(), &exports_dir)
+            .await
+            .unwrap();
+
+        let queue = state.render_queue().expect("queue installed");
+        {
+            let conn = queue.db.lock().await;
+            let rows =
+                storage::repos::preset_repo::list_by_scope(&conn, storage::PresetTier::Project)
+                    .unwrap();
+            assert!(rows.is_empty());
+        }
+        let _ = queue.handle.send(QueueMsg::Shutdown).await;
     }
 }

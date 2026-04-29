@@ -12,16 +12,16 @@
  * without changes here.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Film } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import previewBackdrop from "@/assets/gradients/forest-emerald.png";
 import { frontendLog } from "@/lib/log";
 import { useEditorStore } from "../state/store";
-import type { PreviewRenderPlan } from "./types";
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
+import type { PreviewRenderPlan } from "./types";
 
 export interface PreviewPlayerProps {
   storyId: string;
@@ -60,6 +60,12 @@ export function PreviewPlayer({
   const playheadMs = useEditorStore((s) => s.playheadMs);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
 
+  const resolvedSrc = videoSrc
+    ? videoSrc.startsWith("asset:") || videoSrc.startsWith("http")
+      ? videoSrc
+      : convertFileSrc(videoSrc)
+    : undefined;
+
   // Construct/dispose the engine exactly once per mount.
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -95,8 +101,7 @@ export function PreviewPlayer({
       engineRef.current = null;
       setReady(false);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [width, height]);
 
   // Scrub: when playheadMs changes externally, re-render a single frame
   // + sync the <video> element. Skipped while the rAF loop is driving.
@@ -107,6 +112,27 @@ export function PreviewPlayer({
     videoRef.current.currentTime = playheadMs / 1000;
     void eng.renderFrame(playheadMs, buildPlan(width, height));
   }, [playheadMs, playing, width, height]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const eng = engineRef.current;
+    if (!ready || !video || !eng || !resolvedSrc) return;
+
+    const renderLoadedFrame = () => {
+      video.currentTime = playheadMs / 1000;
+      void eng.renderFrame(playheadMs, buildPlan(width, height));
+    };
+
+    if (video.readyState >= 2) {
+      renderLoadedFrame();
+      return;
+    }
+
+    video.addEventListener("loadeddata", renderLoadedFrame, { once: true });
+    return () => {
+      video.removeEventListener("loadeddata", renderLoadedFrame);
+    };
+  }, [resolvedSrc, ready, playheadMs, width, height]);
 
   // rAF loop while playing.
   useEffect(() => {
@@ -139,11 +165,19 @@ export function PreviewPlayer({
     return () => window.removeEventListener("storycapture:toggle-playback", h);
   }, [togglePlay]);
 
-  const resolvedSrc = videoSrc
-    ? videoSrc.startsWith("asset:") || videoSrc.startsWith("http")
-      ? videoSrc
-      : convertFileSrc(videoSrc)
-    : undefined;
+  const handleVideoError = useCallback(() => {
+    const video = videoRef.current;
+    const err = video?.error;
+    frontendLog.warn("post-production/PreviewPlayer", "video element failed", {
+      fields: {
+        src: resolvedSrc,
+        code: err?.code ?? null,
+        message: err?.message ?? null,
+        network_state: video?.networkState ?? null,
+        ready_state: video?.readyState ?? null,
+      },
+    });
+  }, [resolvedSrc]);
 
   return (
     <div
@@ -214,7 +248,7 @@ export function PreviewPlayer({
           playsInline
           preload="auto"
           src={resolvedSrc}
-          crossOrigin="anonymous"
+          onError={handleVideoError}
         />
       </div>
       <div className="flex items-center justify-between border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">

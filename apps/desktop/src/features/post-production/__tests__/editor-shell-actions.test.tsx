@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EditorShell } from "../editor-shell";
 import { useEditorStore } from "../state/store";
-import { Coalescer, COALESCE_IDLE_MS } from "../undo/coalesce";
-import { HistoryBuffer, HISTORY_CAP } from "../undo/history-buffer";
+import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
+import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
   readTextFile: vi.fn(() => Promise.reject(new Error("not loaded in toolbar tests"))),
@@ -77,7 +78,11 @@ beforeEach(() => {
 
 describe("EditorShell toolbar actions", () => {
   it("adds a default zoom clip at the current playhead", () => {
-    render(<EditorShell storyId="story-1" videoSrc="/recording.mp4" />);
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
+      </MemoryRouter>,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Add zoom clip" }));
 
@@ -102,7 +107,11 @@ describe("EditorShell toolbar actions", () => {
   });
 
   it("adds a default text annotation clip at the current playhead", () => {
-    render(<EditorShell storyId="story-1" videoSrc="/recording.mp4" />);
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
+      </MemoryRouter>,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Add text clip" }));
 

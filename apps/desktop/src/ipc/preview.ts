@@ -6,6 +6,9 @@ export interface PreviewFramePayload {
   height: number;
   timestamp: number;
   streamId?: string | null;
+  format?: "jpeg" | "png";
+  mimeType?: string;
+  sharp?: boolean;
 }
 
 export async function startPreviewStream(): Promise<void> {

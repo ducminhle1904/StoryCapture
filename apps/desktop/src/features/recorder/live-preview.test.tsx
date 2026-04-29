@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock IPC invoke before importing the component.
 const invokeMock = vi.fn();
@@ -14,9 +14,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: (event: string, handler: PreviewListener) => listenMock(event, handler),
 }));
 
+const frontendInfoMock = vi.hoisted(() => vi.fn());
 const frontendWarnMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/log", () => ({
   frontendLog: {
+    info: frontendInfoMock,
     warn: frontendWarnMock,
   },
 }));
@@ -42,16 +44,19 @@ let capturedHandler: PreviewListener | null = null;
 const createdBitmaps: FakeImageBitmap[] = [];
 const drawCalls: FakeImageBitmap[] = [];
 const bitmapSizes: Array<{ width: number; height: number }> = [];
+const blobTypes: string[] = [];
 
 beforeEach(() => {
   invokeMock.mockReset();
   listenMock.mockReset();
   unlistenSpy.mockReset();
+  frontendInfoMock.mockReset();
   frontendWarnMock.mockReset();
   capturedHandler = null;
   createdBitmaps.length = 0;
   drawCalls.length = 0;
   bitmapSizes.length = 0;
+  blobTypes.length = 0;
 
   invokeMock.mockImplementation(async (cmd: string) => {
     if (cmd === "start_preview_stream" || cmd === "stop_preview_stream") return null;
@@ -63,7 +68,8 @@ beforeEach(() => {
   });
 
   // createImageBitmap isn't in happy-dom; stub a fake.
-  vi.stubGlobal("createImageBitmap", async (_blob: Blob) => {
+  vi.stubGlobal("createImageBitmap", async (blob: Blob) => {
+    blobTypes.push(blob.type);
     const size = bitmapSizes.shift() ?? { width: 1, height: 1 };
     const bmp = new FakeImageBitmap(size.width, size.height);
     createdBitmaps.push(bmp);
@@ -205,6 +211,132 @@ describe("<LivePreview />", () => {
     );
 
     await raf.tick();
+    raf.restore();
+  });
+
+  it("β₃ — decodes PNG sharp frames and resizes the canvas backing store", async () => {
+    const raf = holdAnimationFrames();
+    bitmapSizes.push({ width: 2560, height: 1600 });
+
+    render(<LivePreview width={1280} height={800} />);
+    await flush();
+    expect(capturedHandler).not.toBeNull();
+
+    await act(async () => {
+      await capturedHandler?.({
+        payload: {
+          data: "AAAA",
+          width: 2560,
+          height: 1600,
+          timestamp: 1,
+          format: "png",
+          mimeType: "image/png",
+          sharp: true,
+        },
+      });
+    });
+
+    const canvas = screen.getByTestId("live-preview-canvas") as HTMLCanvasElement;
+    expect(blobTypes).toContain("image/png");
+    expect(canvas.getAttribute("data-frame-format")).toBe("png");
+    expect(canvas.getAttribute("data-frame-sharp")).toBe("true");
+    expect(frontendInfoMock).toHaveBeenCalledWith(
+      "LivePreview",
+      "sharp frame decoded",
+      expect.objectContaining({
+        fields: expect.objectContaining({
+          frame_width: 2560,
+          frame_height: 1600,
+          bitmap_width: 2560,
+          bitmap_height: 1600,
+          format: "png",
+        }),
+      }),
+    );
+
+    await raf.tick();
+
+    expect(canvas.width).toBe(2560);
+    expect(canvas.height).toBe(1600);
+    expect(canvas.getAttribute("data-canvas-backing-width")).toBe("2560");
+    expect(canvas.getAttribute("data-canvas-backing-height")).toBe("1600");
+    expect(frontendInfoMock).toHaveBeenCalledWith(
+      "LivePreview",
+      "sharp frame promoted to canvas",
+      expect.objectContaining({
+        fields: expect.objectContaining({
+          canvas_backing_width: 2560,
+          canvas_backing_height: 1600,
+        }),
+      }),
+    );
+    expect(frontendWarnMock).not.toHaveBeenCalledWith(
+      "LivePreview",
+      "frame dimension mismatch",
+      expect.anything(),
+    );
+
+    bitmapSizes.push({ width: 1280, height: 800 });
+    await act(async () => {
+      await capturedHandler?.({
+        payload: {
+          data: "AAAA",
+          width: 1280,
+          height: 800,
+          timestamp: 2,
+          format: "png",
+          mimeType: "image/png",
+          sharp: true,
+        },
+      });
+    });
+    await raf.tick();
+
+    expect(canvas.width).toBe(2560);
+    expect(canvas.height).toBe(1600);
+    expect(canvas.getAttribute("data-frame-sharp")).toBe("false");
+    expect(frontendWarnMock).toHaveBeenCalledWith(
+      "LivePreview",
+      "frame dimension mismatch",
+      expect.objectContaining({
+        fields: expect.objectContaining({
+          frame_width: 1280,
+          frame_height: 800,
+          bitmap_width: 1280,
+          bitmap_height: 800,
+          canvas_width: 2560,
+          canvas_height: 1600,
+          effective_sharp: false,
+        }),
+      }),
+    );
+
+    frontendWarnMock.mockClear();
+    bitmapSizes.push({ width: 1280, height: 800 });
+    await act(async () => {
+      await capturedHandler?.({
+        payload: {
+          data: "AAAA",
+          width: 1280,
+          height: 800,
+          timestamp: 3,
+          format: "jpeg",
+          mimeType: "image/jpeg",
+          sharp: false,
+        },
+      });
+    });
+    await raf.tick();
+
+    expect(canvas.width).toBe(2560);
+    expect(canvas.height).toBe(1600);
+    expect(canvas.getAttribute("data-canvas-backing-width")).toBe("2560");
+    expect(canvas.getAttribute("data-canvas-backing-height")).toBe("1600");
+    expect(frontendWarnMock).not.toHaveBeenCalledWith(
+      "LivePreview",
+      "frame dimension mismatch",
+      expect.anything(),
+    );
     raf.restore();
   });
 

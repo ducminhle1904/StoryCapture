@@ -3,8 +3,8 @@
  *
  * Uploads the current video frame each tick and draws it through the compositor shader.
  */
-import type { PreviewRenderPlan } from "./types";
 import { loadGlsl } from "../shaders/loader";
+import type { PreviewRenderPlan } from "./types";
 
 const MAX_RIPPLES = 32;
 
@@ -126,40 +126,26 @@ export class WebGL2Backend {
     const gl = this.gl;
     const videoReady =
       this.config.videoElement.readyState >= 2 &&
-      !this.config.videoElement.paused;
+      this.config.videoElement.videoWidth > 0 &&
+      this.config.videoElement.videoHeight > 0;
     if (!videoReady) return;
 
-    gl.useProgram(this.program);
+    const bindProgram = gl.useProgram.bind(gl);
+    bindProgram(this.program);
     // Reallocate only when the video size changes.
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
     const video = this.config.videoElement;
     const vw = video.videoWidth | 0;
     const vh = video.videoHeight | 0;
-    const sizeChanged =
-      vw !== this.videoTextureWidth || vh !== this.videoTextureHeight;
+    const sizeChanged = vw !== this.videoTextureWidth || vh !== this.videoTextureHeight;
     if (!this.videoTextureAllocated || sizeChanged) {
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        video,
-      );
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
       this.videoTextureAllocated = true;
       this.videoTextureWidth = vw;
       this.videoTextureHeight = vh;
     } else {
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        video,
-      );
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, video);
     }
     const uVideo = this.uniformLocations.u_video_frame;
     if (uVideo) gl.uniform1i(uVideo, 0);
@@ -176,8 +162,7 @@ export class WebGL2Backend {
     const uHasCursor = this.uniformLocations.u_has_cursor;
     if (uHasCursor) gl.uniform1i(uHasCursor, plan.cursor_atlas_ref ? 1 : 0);
     const uRippleCount = this.uniformLocations.u_ripple_count;
-    if (uRippleCount)
-      gl.uniform1i(uRippleCount, Math.min(plan.ripples.length, MAX_RIPPLES));
+    if (uRippleCount) gl.uniform1i(uRippleCount, Math.min(plan.ripples.length, MAX_RIPPLES));
 
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
