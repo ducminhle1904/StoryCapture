@@ -35,7 +35,7 @@ use crate::state::AppState;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 const SNAPSHOT_DIR_NAME: &str = ".story.snapshots";
 
@@ -119,8 +119,14 @@ fn snapshot_dir(project_dir: &str) -> Result<PathBuf, AppError> {
 /// implements against a SEPARATE browser context.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_capture"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "author_snapshot_capture"),
+    err(Debug)
+)]
 pub async fn author_snapshot_capture(
+    app: AppHandle,
     state: State<'_, AppState>,
     project_dir: String,
     url: String,
@@ -137,9 +143,28 @@ pub async fn author_snapshot_capture(
             )
         })?
     };
+    let settings = crate::commands::app_settings::load(&app);
+    let language_choice = crate::commands::app_settings::browser_language_choice(&settings);
+    let latest_profile = if let Some(profile) =
+        crate::commands::automation::refresh_latest_browser_session_profile(&state).await
+    {
+        Some(profile)
+    } else {
+        state.latest_browser_session_profile.lock().await.clone()
+    };
+    let explicit_environment = language_choice.browser_environment();
+    let profile_environment = latest_profile.as_ref().map(|profile| &profile.environment);
+    let browser_environment = match language_choice {
+        automation::BrowserLanguageChoice::System => profile_environment,
+        automation::BrowserLanguageChoice::Locale(_) => Some(&explicit_environment),
+    };
+    let storage_state = latest_profile
+        .as_ref()
+        .and_then(|profile| profile.storage_state_json.as_deref());
+
     let d = driver.lock().await;
     let resp = d
-        .capture_snapshot(&url, None, Some(15_000))
+        .capture_snapshot(&url, None, Some(15_000), browser_environment, storage_state)
         .await
         .map_err(|e| AppError::Automation(format!("captureSnapshot: {e}")))?;
     drop(d);
@@ -178,7 +203,12 @@ pub async fn author_snapshot_capture(
 /// Missing → `Ok(None)`. Corrupt JSON → `Err(AppError::Automation)`.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_get"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "author_snapshot_get"),
+    err(Debug)
+)]
 pub async fn author_snapshot_get(
     project_dir: String,
     url: String,
@@ -205,7 +235,12 @@ pub async fn author_snapshot_get(
 /// whole list — one corrupt file shouldn't black out the UI.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_list"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "author_snapshot_list"),
+    err(Debug)
+)]
 pub async fn author_snapshot_list(
     project_dir: String,
 ) -> Result<Vec<AuthorSnapshotEntry>, AppError> {
@@ -257,7 +292,12 @@ pub async fn author_snapshot_list(
 /// structured `{ role, name }` fields rather than a packed string).
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_snapshot_validate"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "author_snapshot_validate"),
+    err(Debug)
+)]
 pub async fn author_snapshot_validate(
     project_dir: String,
     url: String,
@@ -335,13 +375,10 @@ mod tests {
         std::fs::write(dir.join(format!("{key}.html")), html).unwrap();
 
         let target = super::super::parse::SelectorOrTextDto::TestId("save".into());
-        let r = author_snapshot_validate(
-            d.path().to_string_lossy().to_string(),
-            url.into(),
-            target,
-        )
-        .await
-        .unwrap();
+        let r =
+            author_snapshot_validate(d.path().to_string_lossy().to_string(), url.into(), target)
+                .await
+                .unwrap();
         match r {
             AuthorValidationDto::Unique { strategy } => assert_eq!(strategy, "testid"),
             other => panic!("expected Unique, got {other:?}"),

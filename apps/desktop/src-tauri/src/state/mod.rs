@@ -83,6 +83,10 @@ pub struct AppState {
     /// Teardown on drop closes the Chromium so expired streamIds cannot
     /// leak CDP resources.
     pub author_preview_sessions: TokioMutex<HashMap<String, AuthorPreviewSession>>,
+
+    pub latest_browser_session_profile: TokioMutex<Option<automation::BrowserSessionProfile>>,
+
+    pub active_author_stream_id: TokioMutex<Option<String>>,
 }
 
 /// Per-streamId author-session handle.
@@ -123,6 +127,8 @@ impl AppState {
             preview_driver: TokioMutex::new(None),
             preview_pump: TokioMutex::new(None),
             author_preview_sessions: TokioMutex::new(HashMap::new()),
+            latest_browser_session_profile: TokioMutex::new(None),
+            active_author_stream_id: TokioMutex::new(None),
         }
     }
 

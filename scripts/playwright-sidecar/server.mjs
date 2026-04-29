@@ -104,6 +104,7 @@ let state = {
   // with `state.browser` / `state.context` / `state.page`.
   authorBrowser: null,
   authorContext: null,
+  authorContextKey: null,
   // Idle-close timer for the author browser. Closed after this many ms
   // of no captureSnapshot activity so a long editor session doesn't pin
   // ~80 MB of headless Chromium indefinitely. Re-launches on the next
@@ -163,6 +164,29 @@ function buildScreencastOptions(target) {
     maxHeight: viewport.maxHeight,
     everyNthFrame: target.previewEveryNth,
   };
+}
+
+function contextEnvironmentOptions(browserEnvironment = {}) {
+  const env =
+    browserEnvironment && typeof browserEnvironment === "object" ? browserEnvironment : {};
+  const opts = {};
+  if (typeof env.locale === "string" && env.locale.length > 0) {
+    opts.locale = env.locale;
+  }
+  if (typeof env.timezoneId === "string" && env.timezoneId.length > 0) {
+    opts.timezoneId = env.timezoneId;
+  }
+  if (typeof env.acceptLanguage === "string" && env.acceptLanguage.length > 0) {
+    opts.extraHTTPHeaders = { "Accept-Language": env.acceptLanguage };
+  }
+  return opts;
+}
+
+function parseStorageState(storageStateJson) {
+  if (typeof storageStateJson !== "string" || storageStateJson.length === 0) {
+    return undefined;
+  }
+  return JSON.parse(storageStateJson);
 }
 
 // Map a renderer-side KeyboardEvent {key, code} pair to the string accepted
@@ -258,6 +282,7 @@ async function closeAuthorBrowser() {
   const b = state.authorBrowser;
   state.authorBrowser = null;
   state.authorContext = null;
+  state.authorContextKey = null;
   if (state.authorIdleHandle) {
     clearTimeout(state.authorIdleHandle);
     state.authorIdleHandle = null;
@@ -410,8 +435,18 @@ const handlers = {
   }),
 
   launch: async (params) => {
-    const { viewport, theme, baseUrl, headless, downloadDir, executable, channel, args } =
-      params || {};
+    const {
+      viewport,
+      theme,
+      baseUrl,
+      headless,
+      downloadDir,
+      executable,
+      channel,
+      args,
+      browserEnvironment,
+      storageState,
+    } = params || {};
     state.baseUrl = baseUrl || null;
     state.downloadDir = downloadDir || null;
     // Plan 06-02: args is an optional array of Chromium CLI flags (e.g.
@@ -444,6 +479,8 @@ const handlers = {
       viewport: null,
       colorScheme: theme === "dark" ? "dark" : theme === "light" ? "light" : "no-preference",
       acceptDownloads: true,
+      ...(storageState ? { storageState: parseStorageState(storageState) } : {}),
+      ...contextEnvironmentOptions(browserEnvironment),
     });
     // inject the picker overlay IIFE into every frame of every
     // page in this context. addInitScript fires before page scripts so
@@ -541,6 +578,7 @@ const handlers = {
       pickerHoverBoundPages: new WeakSet(),
       authorBrowser: null,
       authorContext: null,
+      authorContextKey: null,
       authorIdleHandle: null,
       cdp: null,
       latestFrame: null,
@@ -823,7 +861,13 @@ const handlers = {
   //
   // Never mutates `state.page` / `state.context` — the author-time flow
   // must not disturb an in-flight recording session.
-  captureSnapshot: async ({ url, viewport, timeoutMs } = {}) => {
+  captureSnapshot: async ({
+    url,
+    viewport,
+    timeoutMs,
+    browserEnvironment,
+    storageState,
+  } = {}) => {
     if (typeof url !== "string" || url.length === 0) {
       const err = new Error("captureSnapshot: url must be a non-empty string");
       err.code = -32602;
@@ -843,13 +887,27 @@ const handlers = {
     if (!state.authorBrowser) {
       state.authorBrowser = await chromium.launch({ headless: true });
     }
+    const contextViewport =
+      viewport && typeof viewport.width === "number"
+        ? { width: viewport.width, height: viewport.height }
+        : { width: 1280, height: 800 };
+    const contextKey = JSON.stringify({
+      viewport: contextViewport,
+      browserEnvironment: browserEnvironment ?? null,
+      storageState: storageState ?? null,
+    });
+    if (state.authorContext && state.authorContextKey !== contextKey) {
+      await state.authorContext.close().catch(() => {});
+      state.authorContext = null;
+      state.authorContextKey = null;
+    }
     if (!state.authorContext) {
       state.authorContext = await state.authorBrowser.newContext({
-        viewport:
-          viewport && typeof viewport.width === "number"
-            ? { width: viewport.width, height: viewport.height }
-            : { width: 1280, height: 800 },
+        viewport: contextViewport,
+        ...(storageState ? { storageState: parseStorageState(storageState) } : {}),
+        ...contextEnvironmentOptions(browserEnvironment),
       });
+      state.authorContextKey = contextKey;
     }
 
     const page = await state.authorContext.newPage();
@@ -890,6 +948,7 @@ const handlers = {
     executable,
     channel,
     theme,
+    browserEnvironment,
   } = {}) => {
     if (typeof streamId !== "string" || streamId.length === 0) {
       throw Object.assign(new Error("streamId required"), { code: -32602 });
@@ -911,6 +970,7 @@ const handlers = {
           : { width: 1280, height: 800 },
       colorScheme: theme === "dark" ? "dark" : theme === "light" ? "light" : "no-preference",
       acceptDownloads: true,
+      ...contextEnvironmentOptions(browserEnvironment),
     });
     // Phase 11-03 — inject the picker overlay IIFE into every author-session
     // page so Preview-panel Pick (picker_start_author → pickElement.start
@@ -998,6 +1058,28 @@ const handlers = {
     state.authorSessions.delete(streamId);
     await teardownAuthorSession(s);
     return { ok: true, closed: true };
+  },
+
+  "author.sessionProfile": async ({ streamId } = {}) => {
+    const s = getAuthorSession(streamId);
+    const [runtime, storageState] = await Promise.all([
+      s.page.evaluate(() => ({
+        locale: navigator.language || null,
+        timezoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+        url: location.href || null,
+      })),
+      s.context.storageState(),
+    ]);
+    const locale = typeof runtime.locale === "string" ? runtime.locale : null;
+    return {
+      environment: {
+        locale,
+        timezoneId: typeof runtime.timezoneId === "string" ? runtime.timezoneId : null,
+        acceptLanguage: null,
+      },
+      currentUrl: typeof runtime.url === "string" ? runtime.url : null,
+      storageStateJson: JSON.stringify(storageState),
+    };
   },
 
   "author.setViewport": async ({ streamId, width, height } = {}) => {

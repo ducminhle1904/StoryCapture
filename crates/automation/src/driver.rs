@@ -11,6 +11,132 @@ use story_parser::{ScrollDir, SelectorOrText, Theme, Viewport};
 
 // ---------- Launch config ----------
 
+pub const BROWSER_LANGUAGE_SYSTEM: &str = "system";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BrowserLanguageOption {
+    pub value: &'static str,
+    pub label: &'static str,
+}
+
+pub const BROWSER_LANGUAGE_OPTIONS: &[BrowserLanguageOption] = &[
+    BrowserLanguageOption {
+        value: BROWSER_LANGUAGE_SYSTEM,
+        label: "System default",
+    },
+    BrowserLanguageOption {
+        value: "en-US",
+        label: "English (United States)",
+    },
+    BrowserLanguageOption {
+        value: "en-GB",
+        label: "English (United Kingdom)",
+    },
+    BrowserLanguageOption {
+        value: "vi-VN",
+        label: "Vietnamese",
+    },
+    BrowserLanguageOption {
+        value: "ja-JP",
+        label: "Japanese",
+    },
+    BrowserLanguageOption {
+        value: "ko-KR",
+        label: "Korean",
+    },
+    BrowserLanguageOption {
+        value: "zh-CN",
+        label: "Chinese (Simplified)",
+    },
+    BrowserLanguageOption {
+        value: "zh-TW",
+        label: "Chinese (Traditional)",
+    },
+    BrowserLanguageOption {
+        value: "fr-FR",
+        label: "French",
+    },
+    BrowserLanguageOption {
+        value: "de-DE",
+        label: "German",
+    },
+    BrowserLanguageOption {
+        value: "es-ES",
+        label: "Spanish",
+    },
+    BrowserLanguageOption {
+        value: "pt-BR",
+        label: "Portuguese (Brazil)",
+    },
+];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BrowserLanguageChoice {
+    System,
+    Locale(String),
+}
+
+impl Default for BrowserLanguageChoice {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
+impl BrowserLanguageChoice {
+    pub fn from_setting(value: Option<&str>) -> Self {
+        match value.map(str::trim).filter(|v| !v.is_empty()) {
+            Some(BROWSER_LANGUAGE_SYSTEM) | None => Self::System,
+            Some(locale) if is_supported_browser_locale(locale) => Self::Locale(locale.to_string()),
+            Some(locale) => {
+                tracing::warn!(
+                    target: "automation::browser_environment",
+                    locale,
+                    "unsupported browser language setting; falling back to system default"
+                );
+                Self::System
+            }
+        }
+    }
+
+    pub fn browser_environment(&self) -> BrowserEnvironment {
+        match self {
+            Self::System => BrowserEnvironment::default(),
+            Self::Locale(locale) => BrowserEnvironment {
+                locale: Some(locale.clone()),
+                timezone_id: None,
+                accept_language: Some(accept_language_for_locale(locale)),
+            },
+        }
+    }
+}
+
+pub fn is_supported_browser_locale(locale: &str) -> bool {
+    BROWSER_LANGUAGE_OPTIONS
+        .iter()
+        .any(|option| option.value == locale && option.value != BROWSER_LANGUAGE_SYSTEM)
+}
+
+pub fn accept_language_for_locale(locale: &str) -> String {
+    let base = locale.split('-').next().unwrap_or(locale);
+    format!("{locale},{base};q=0.9,en-US;q=0.8,en;q=0.7")
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserEnvironment {
+    pub locale: Option<String>,
+    pub timezone_id: Option<String>,
+    pub accept_language: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct BrowserSessionProfile {
+    pub environment: BrowserEnvironment,
+    pub viewport: Option<Viewport>,
+    pub theme: Option<Theme>,
+    pub current_url: Option<String>,
+    pub storage_state_json: Option<String>,
+}
+
 /// Launch options threaded in from the host.
 #[derive(Debug, Clone, Default)]
 pub struct LaunchOptions {
@@ -18,6 +144,8 @@ pub struct LaunchOptions {
     pub browser_executable: Option<PathBuf>,
     /// Optional `http(s)` app URL used for chrome-hiding.
     pub app_url_for_hiding: Option<String>,
+    pub language_choice: BrowserLanguageChoice,
+    pub browser_session_profile: Option<BrowserSessionProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +167,10 @@ pub struct LaunchConfig {
     /// Extra Chromium command-line args.
     #[serde(default)]
     pub args: Vec<String>,
+    #[serde(default)]
+    pub browser_environment: BrowserEnvironment,
+    #[serde(default)]
+    pub storage_state_json: Option<String>,
 }
 
 impl LaunchConfig {
@@ -66,6 +198,14 @@ impl LaunchConfig {
             "--window-size={},{}",
             viewport.width, viewport.height
         ));
+        let mut browser_environment = opts.language_choice.browser_environment();
+        let mut storage_state_json = None;
+        if let Some(profile) = opts.browser_session_profile.as_ref() {
+            if matches!(opts.language_choice, BrowserLanguageChoice::System) {
+                browser_environment = profile.environment.clone();
+            }
+            storage_state_json = profile.storage_state_json.clone();
+        }
         Self {
             url: meta.app.clone(),
             viewport,
@@ -75,6 +215,8 @@ impl LaunchConfig {
             download_dir: std::env::temp_dir(),
             executable: opts.browser_executable.clone(),
             args,
+            browser_environment,
+            storage_state_json,
         }
     }
 }
@@ -93,6 +235,8 @@ impl Default for LaunchConfig {
             download_dir: std::env::temp_dir(),
             executable: None,
             args: Vec::new(),
+            browser_environment: BrowserEnvironment::default(),
+            storage_state_json: None,
         }
     }
 }
@@ -235,11 +379,7 @@ pub trait BrowserDriver: Send + Sync + 'static {
         timeout_ms: u64,
     ) -> Result<()>;
     /// See [`Self::wait_for`] for the `target_nth` contract.
-    async fn assert_present(
-        &self,
-        target: &SelectorOrText,
-        target_nth: Option<u32>,
-    ) -> Result<()>;
+    async fn assert_present(&self, target: &SelectorOrText, target_nth: Option<u32>) -> Result<()>;
     async fn screenshot(&self, name: &str, out_dir: &Path) -> Result<PathBuf>;
 
     // ---- introspection used by the SmartSelector + auto-wait modules ----
@@ -368,6 +508,99 @@ mod launch_config_tests {
             "javascript: URL leaked into args: {:?}",
             cfg.args
         );
+    }
+
+    #[test]
+    fn language_choice_system_builds_empty_environment() {
+        assert_eq!(
+            BrowserLanguageChoice::System.browser_environment(),
+            BrowserEnvironment::default()
+        );
+    }
+
+    #[test]
+    fn language_choice_locale_builds_locale_and_accept_language() {
+        let env = BrowserLanguageChoice::Locale("vi-VN".into()).browser_environment();
+        assert_eq!(env.locale.as_deref(), Some("vi-VN"));
+        assert_eq!(
+            env.accept_language.as_deref(),
+            Some("vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7")
+        );
+        assert_eq!(env.timezone_id, None);
+    }
+
+    #[test]
+    fn from_meta_system_carries_profile_environment_and_storage_state() {
+        let opts = LaunchOptions {
+            language_choice: BrowserLanguageChoice::System,
+            browser_session_profile: Some(BrowserSessionProfile {
+                environment: BrowserEnvironment {
+                    locale: Some("ja-JP".into()),
+                    timezone_id: Some("Asia/Tokyo".into()),
+                    accept_language: Some("ja-JP,ja;q=0.9".into()),
+                },
+                storage_state_json: Some("{\"cookies\":[],\"origins\":[]}".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("https://demo.com")), &opts);
+        assert_eq!(cfg.browser_environment.locale.as_deref(), Some("ja-JP"));
+        assert_eq!(
+            cfg.browser_environment.timezone_id.as_deref(),
+            Some("Asia/Tokyo")
+        );
+        assert_eq!(
+            cfg.storage_state_json.as_deref(),
+            Some("{\"cookies\":[],\"origins\":[]}")
+        );
+    }
+
+    #[test]
+    fn from_meta_explicit_language_overrides_profile_environment() {
+        let opts = LaunchOptions {
+            language_choice: BrowserLanguageChoice::Locale("vi-VN".into()),
+            browser_session_profile: Some(BrowserSessionProfile {
+                environment: BrowserEnvironment {
+                    locale: Some("ja-JP".into()),
+                    timezone_id: Some("Asia/Tokyo".into()),
+                    accept_language: Some("ja-JP,ja;q=0.9".into()),
+                },
+                storage_state_json: Some("{\"cookies\":[],\"origins\":[]}".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("https://demo.com")), &opts);
+        assert_eq!(cfg.browser_environment.locale.as_deref(), Some("vi-VN"));
+        assert_eq!(
+            cfg.browser_environment.accept_language.as_deref(),
+            Some("vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7")
+        );
+        assert_eq!(cfg.browser_environment.timezone_id, None);
+        assert!(cfg.storage_state_json.is_some());
+    }
+
+    #[test]
+    fn from_meta_keeps_story_viewport_authoritative_when_profile_has_viewport() {
+        let mut meta = meta_with_app(Some("https://demo.com"));
+        meta.viewport = Some(Viewport {
+            width: 1920,
+            height: 1080,
+        });
+        let opts = LaunchOptions {
+            browser_session_profile: Some(BrowserSessionProfile {
+                viewport: Some(Viewport {
+                    width: 375,
+                    height: 812,
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let cfg = LaunchConfig::from_meta(&meta, &opts);
+        assert_eq!(cfg.viewport.width, 1920);
+        assert_eq!(cfg.viewport.height, 1080);
     }
 
     #[test]

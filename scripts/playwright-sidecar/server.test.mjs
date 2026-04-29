@@ -693,6 +693,133 @@ describe("Phase 11-03 — pickElement.start streamId routing", () => {
   }, 90_000);
 });
 
+describe("browser session profile sync", () => {
+  let client;
+  let httpServer;
+  let baseUrl;
+
+  beforeEach(async () => {
+    const { createServer } = await import("node:http");
+    httpServer = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end(`<!doctype html>
+        <button id="login">Sign in</button>
+        <div id="lang"></div>
+        <div id="tz"></div>
+        <div id="stored"></div>
+        <script>
+          document.querySelector("#lang").textContent = navigator.language;
+          document.querySelector("#tz").textContent =
+            Intl.DateTimeFormat().resolvedOptions().timeZone;
+          document.querySelector("#login").addEventListener("click", () => {
+            localStorage.setItem("storycapture-demo-login", "yes");
+            document.cookie = "storycapture_demo_login=yes; path=/";
+            document.querySelector("#stored").textContent = "stored=yes";
+          });
+          document.querySelector("#stored").textContent =
+            localStorage.getItem("storycapture-demo-login") === "yes"
+              ? "stored=yes"
+              : "stored=no";
+        </script>`);
+    });
+    await new Promise((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+    const { port } = httpServer.address();
+    baseUrl = `http://127.0.0.1:${port}/`;
+    client = spawnSidecar();
+  });
+
+  afterEach(async () => {
+    try {
+      await client?.call("close", {});
+    } catch {}
+    if (client) await client.dispose();
+    if (httpServer) await new Promise((r) => httpServer.close(() => r()));
+  });
+
+  it("author.sessionProfile exports runtime environment, current URL, and storage state", async () => {
+    await client.call("author.launch", {
+      streamId: "profile-1",
+      url: baseUrl,
+      viewport: { width: 800, height: 600 },
+    });
+    try {
+      const resp = await client.call("author.sessionProfile", { streamId: "profile-1" });
+      expect(resp.result.environment.locale).toBeTypeOf("string");
+      expect(resp.result.environment.timezoneId).toBeTypeOf("string");
+      expect(resp.result.currentUrl).toBe(baseUrl);
+      expect(resp.result.storageStateJson).toContain('"cookies"');
+      expect(resp.result.storageStateJson).toContain('"origins"');
+    } finally {
+      await client.call("author.close", { streamId: "profile-1" }).catch(() => {});
+    }
+  }, 90_000);
+
+  it("recording launch accepts exported profile storage state", async () => {
+    await client.call("author.launch", {
+      streamId: "profile-2",
+      url: baseUrl,
+      viewport: { width: 800, height: 600 },
+    });
+    await client.call("setActiveAuthorStream", { streamId: "profile-2" });
+    await client.call("click", { selector: "#login", strategy: "css" });
+    const profile = await client.call("author.sessionProfile", { streamId: "profile-2" });
+    await client.call("setActiveAuthorStream", { streamId: null });
+    await client.call("author.close", { streamId: "profile-2" });
+
+    await client.call("launch", {
+      viewport: { width: 800, height: 600 },
+      theme: "auto",
+      baseUrl: null,
+      headless: true,
+      downloadDir: "/tmp",
+      browserEnvironment: profile.result.environment,
+      storageState: profile.result.storageStateJson,
+    });
+    await client.call("goto", { url: baseUrl });
+    const assertStored = await client.call("assert", {
+      target: { kind: "text_exact", value: "stored=yes" },
+    });
+    expect(assertStored.result.ok).toBe(true);
+  }, 90_000);
+
+  it("recording and author launch apply explicit browser environment", async () => {
+    const browserEnvironment = {
+      locale: "vi-VN",
+      timezoneId: "Asia/Tokyo",
+      acceptLanguage: "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+    };
+    await client.call("author.launch", {
+      streamId: "profile-3",
+      url: baseUrl,
+      viewport: { width: 800, height: 600 },
+      browserEnvironment,
+    });
+    try {
+      const profile = await client.call("author.sessionProfile", { streamId: "profile-3" });
+      expect(profile.result.environment.locale).toBe("vi-VN");
+      expect(profile.result.environment.timezoneId).toBe("Asia/Tokyo");
+    } finally {
+      await client.call("author.close", { streamId: "profile-3" }).catch(() => {});
+    }
+
+    await client.call("launch", {
+      viewport: { width: 800, height: 600 },
+      theme: "auto",
+      baseUrl: null,
+      headless: true,
+      downloadDir: "/tmp",
+      browserEnvironment,
+    });
+    await client.call("goto", { url: baseUrl });
+    await expect(
+      client.call("assert", { target: { kind: "text_exact", value: "vi-VN" } }),
+    ).resolves.toMatchObject({ result: { ok: true } });
+    await expect(
+      client.call("assert", { target: { kind: "text_exact", value: "Asia/Tokyo" } }),
+    ).resolves.toMatchObject({ result: { ok: true } });
+  }, 90_000);
+});
+
 // URL-bar back/forward/reload + nav notification stream for the editor
 // Live Preview header. History is sidecar-side because Playwright doesn't
 // expose canGoBack/canGoForward directly. `author.goto` only accepts

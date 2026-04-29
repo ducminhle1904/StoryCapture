@@ -6,7 +6,8 @@
 use crate::error::AppError;
 use crate::state::AppState;
 use automation::{
-    Executor, ExecutorEvent, LaunchOptions, NoopDriver, PlaywrightSidecarDriver, RunControl,
+    BrowserSessionProfile, Executor, ExecutorEvent, LaunchOptions, NoopDriver,
+    PlaywrightSidecarDriver, RunControl,
 };
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
@@ -35,7 +36,12 @@ impl From<ExecutorEvent> for AutomationEvent {
 /// Launch a story and stream events to the renderer.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "launch_automation"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "launch_automation"),
+    err(Debug)
+)]
 pub async fn launch_automation(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -84,6 +90,7 @@ pub async fn launch_automation(
         .as_ref()
         .filter(|s| !s.is_empty())
         .map(std::path::PathBuf::from);
+    let language_choice = crate::commands::app_settings::browser_language_choice(&settings);
 
     // Validate `meta.app` before adding app-hiding args.
     let app_url_for_hiding = if chrome_hiding == Some(true) {
@@ -110,11 +117,6 @@ pub async fn launch_automation(
         }
     } else {
         None
-    };
-
-    let launch_opts = LaunchOptions {
-        browser_executable,
-        app_url_for_hiding,
     };
 
     // Open the project DB.
@@ -277,6 +279,14 @@ pub async fn launch_automation(
         Box::new(crate::commands::automation_shared::SharedPlaywrightDriver::new(shared_pw));
     let fallback: Box<dyn automation::BrowserDriver> = Box::new(NoopDriver::new());
 
+    let browser_session_profile = refresh_latest_browser_session_profile(&state).await;
+    let launch_opts = LaunchOptions {
+        browser_executable,
+        app_url_for_hiding,
+        language_choice,
+        browser_session_profile,
+    };
+
     let persistence = Some(Arc::new(Mutex::new(project_db)) as automation::PersistenceHandle);
     let control = Arc::new(RunControl::new());
     set_active_run_control(Some(control.clone()));
@@ -380,6 +390,59 @@ fn clear_active_run_control(expected: &Arc<RunControl>) {
     }
 }
 
+pub(crate) async fn refresh_latest_browser_session_profile(
+    state: &AppState,
+) -> Option<BrowserSessionProfile> {
+    let stream_id = state.active_author_stream_id.lock().await.clone()?;
+    let driver = {
+        let sessions = state.author_preview_sessions.lock().await;
+        sessions
+            .get(&stream_id)
+            .map(|session| session.driver.clone())
+    }?;
+    match driver.call_author_session_profile(&stream_id).await {
+        Ok(profile) => {
+            *state.latest_browser_session_profile.lock().await = Some(profile.clone());
+            Some(profile)
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                error = %err,
+                "failed to export author browser session profile; recording will continue without refreshed profile"
+            );
+            state.latest_browser_session_profile.lock().await.clone()
+        }
+    }
+}
+
+async fn export_and_store_author_profile(
+    state: &AppState,
+    stream_id: &str,
+    driver: &PlaywrightSidecarDriver,
+    viewport: Option<(u32, u32)>,
+) -> Option<BrowserSessionProfile> {
+    match driver.call_author_session_profile(stream_id).await {
+        Ok(mut profile) => {
+            if let Some((width, height)) = viewport {
+                profile.viewport = Some(story_parser::Viewport { width, height });
+            }
+            *state.latest_browser_session_profile.lock().await = Some(profile.clone());
+            Some(profile)
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                error = %err,
+                "failed to export author browser session profile"
+            );
+            None
+        }
+    }
+}
+
 pub(crate) fn pause_active_automation() {
     if let Some(control) = active_run_control().lock().clone() {
         control.pause();
@@ -404,16 +467,21 @@ pub(crate) fn resume_active_automation() {
 /// pump task so frames are not double-emitted.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "start_preview_stream"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "start_preview_stream"),
+    err(Debug)
+)]
 pub async fn start_preview_stream(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let shared = {
         let guard = state.preview_driver.lock().await;
-        guard.clone().ok_or_else(|| {
-            AppError::UnavailableOnBackend("no active Playwright session".into())
-        })?
+        guard
+            .clone()
+            .ok_or_else(|| AppError::UnavailableOnBackend("no active Playwright session".into()))?
     };
 
     {
@@ -475,7 +543,12 @@ pub async fn start_preview_stream(
 /// isolation — preview lifecycle MUST NOT cascade into recording).
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "stop_preview_stream"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "stop_preview_stream"),
+    err(Debug)
+)]
 pub async fn stop_preview_stream(state: State<'_, AppState>) -> Result<(), AppError> {
     stop_preview_stream_inner(&state).await;
     Ok(())
@@ -584,7 +657,12 @@ pub struct AuthorViewportArgs {
 /// about:blank and caller-side state stays happy for missing meta.app.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "start_author_preview"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "start_author_preview"),
+    err(Debug)
+)]
 pub async fn start_author_preview(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -593,11 +671,13 @@ pub async fn start_author_preview(
     viewport_height: Option<u32>,
 ) -> Result<String, AppError> {
     let stream_id = format!("author-{}", uuid::Uuid::new_v4());
+    let settings = crate::commands::app_settings::load(&app);
+    let browser_environment =
+        crate::commands::app_settings::browser_language_choice(&settings).browser_environment();
     // No outer Mutex: all driver methods take `&self` with internal fine-
     // grained locking, so concurrent callers (picker + LivePreview canvas
     // input forwarder) don't serialize.
-    let driver_arc: Arc<PlaywrightSidecarDriver> =
-        Arc::new(spawn_playwright_sidecar(&app).await?);
+    let driver_arc: Arc<PlaywrightSidecarDriver> = Arc::new(spawn_playwright_sidecar(&app).await?);
 
     // Spawn + load URL + start screencast under this streamId.
     {
@@ -606,13 +686,27 @@ pub async fn start_author_preview(
             _ => Some((1280u32, 800u32)),
         };
         driver_arc
-            .call_author_launch(&stream_id, initial_url.as_deref(), vp)
+            .call_author_launch(&stream_id, initial_url.as_deref(), vp, &browser_environment)
             .await
             .map_err(|e| AppError::Automation(format!("author.launch: {e}")))?;
         driver_arc
             .call_preview_start_stream(&stream_id)
             .await
             .map_err(|e| AppError::Automation(format!("startPreviewStream: {e}")))?;
+        *state.active_author_stream_id.lock().await = Some(stream_id.clone());
+        let app_for_profile = app.clone();
+        let driver_for_profile = driver_arc.clone();
+        let stream_id_for_profile = stream_id.clone();
+        tokio::spawn(async move {
+            let state_for_profile = app_for_profile.state::<AppState>();
+            let _ = export_and_store_author_profile(
+                &state_for_profile,
+                &stream_id_for_profile,
+                &driver_for_profile,
+                vp,
+            )
+            .await;
+        });
     }
 
     // Each author session owns its own sidecar + watch channel, so every
@@ -685,11 +779,23 @@ pub async fn start_author_preview(
 /// Teardown an ephemeral author-time session. Idempotent.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "stop_author_preview"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "stop_author_preview"),
+    err(Debug)
+)]
 pub async fn stop_author_preview(
     state: State<'_, AppState>,
     stream_id: String,
 ) -> Result<(), AppError> {
+    {
+        let mut active = state.active_author_stream_id.lock().await;
+        if active.as_deref() == Some(stream_id.as_str()) {
+            *active = None;
+            *state.latest_browser_session_profile.lock().await = None;
+        }
+    }
     let session_opt = {
         let mut sessions = state.author_preview_sessions.lock().await;
         sessions.remove(&stream_id)
@@ -723,7 +829,12 @@ pub async fn stop_author_preview(
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "pause_author_preview"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "pause_author_preview"),
+    err(Debug)
+)]
 pub async fn pause_author_preview(
     state: State<'_, AppState>,
     stream_id: String,
@@ -738,7 +849,12 @@ pub async fn pause_author_preview(
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "resume_author_preview"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "resume_author_preview"),
+    err(Debug)
+)]
 pub async fn resume_author_preview(
     state: State<'_, AppState>,
     stream_id: String,
@@ -755,7 +871,12 @@ pub async fn resume_author_preview(
 #[specta::specta]
 // Trace level: caller can pump on every viewport tween frame; an
 // info-level entry per call would dominate the log.
-#[tracing::instrument(level = "trace", skip_all, fields(cmd = "set_author_preview_viewport"), err(Debug))]
+#[tracing::instrument(
+    level = "trace",
+    skip_all,
+    fields(cmd = "set_author_preview_viewport"),
+    err(Debug)
+)]
 pub async fn set_author_preview_viewport(
     state: State<'_, AppState>,
     stream_id: String,
@@ -774,7 +895,12 @@ pub async fn set_author_preview_viewport(
 /// otherwise.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "set_author_preview_url"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "set_author_preview_url"),
+    err(Debug)
+)]
 pub async fn set_author_preview_url(
     state: State<'_, AppState>,
     stream_id: String,
@@ -802,7 +928,12 @@ pub struct AuthorPreviewNavPayload {
 /// URL-bar Back. No-op when at history index 0.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_preview_back"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "author_preview_back"),
+    err(Debug)
+)]
 pub async fn author_preview_back(
     state: State<'_, AppState>,
     stream_id: String,
@@ -818,7 +949,12 @@ pub async fn author_preview_back(
 /// URL-bar Forward. No-op when forward stack is empty.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_preview_forward"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "author_preview_forward"),
+    err(Debug)
+)]
 pub async fn author_preview_forward(
     state: State<'_, AppState>,
     stream_id: String,
@@ -834,7 +970,12 @@ pub async fn author_preview_forward(
 /// URL-bar Reload. Always re-emits a `preview/nav` notification.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "author_preview_reload"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "author_preview_reload"),
+    err(Debug)
+)]
 pub async fn author_preview_reload(
     state: State<'_, AppState>,
     stream_id: String,
@@ -918,7 +1059,12 @@ pub enum AuthorMouseButton {
 #[tauri::command]
 #[specta::specta]
 // Trace level: up to 60 Hz under hover; would otherwise drown the log.
-#[tracing::instrument(level = "trace", skip_all, fields(cmd = "author_dispatch_input"), err(Debug))]
+#[tracing::instrument(
+    level = "trace",
+    skip_all,
+    fields(cmd = "author_dispatch_input"),
+    err(Debug)
+)]
 pub async fn author_dispatch_input(
     state: State<'_, AppState>,
     stream_id: String,
@@ -935,7 +1081,12 @@ pub async fn author_dispatch_input(
                 "author_dispatch_input click"
             );
         }
-        AuthorInputEvent::Wheel { x, y, delta_x, delta_y } => {
+        AuthorInputEvent::Wheel {
+            x,
+            y,
+            delta_x,
+            delta_y,
+        } => {
             tracing::info!(
                 target: "storycapture::automation",
                 stream_id = %stream_id,
@@ -954,7 +1105,9 @@ pub async fn author_dispatch_input(
                 "author_dispatch_input mousemove"
             );
         }
-        AuthorInputEvent::Keydown { key, code, repeat, .. } => {
+        AuthorInputEvent::Keydown {
+            key, code, repeat, ..
+        } => {
             let is_modifier = matches!(key.as_str(), "Shift" | "Control" | "Alt" | "Meta")
                 || code.starts_with("Shift")
                 || code.starts_with("Control")
@@ -1014,7 +1167,12 @@ pub async fn author_dispatch_input(
 /// Readiness probe: confirms streamId is registered + sidecar is alive.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "attach_author_driver"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "attach_author_driver"),
+    err(Debug)
+)]
 pub async fn attach_author_driver(
     state: State<'_, AppState>,
     stream_id: String,
@@ -1085,7 +1243,12 @@ pub(crate) fn __test_set_playwright_pid(info: Option<PlaywrightLaunchInfo>) {
 /// Resolve the current Playwright auto-target to a window id.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "resolve_playwright_target"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "resolve_playwright_target"),
+    err(Debug)
+)]
 pub async fn resolve_playwright_target(
     _state: State<'_, AppState>,
 ) -> Result<Option<ResolvedPlaywrightTarget>, AppError> {
@@ -1155,7 +1318,12 @@ pub async fn resolve_playwright_target(
 /// and CleanShot X's UX. Returns `false` on non-macOS platforms.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "is_stage_manager_enabled"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "is_stage_manager_enabled"),
+    err(Debug)
+)]
 pub async fn is_stage_manager_enabled() -> Result<bool, AppError> {
     #[cfg(target_os = "macos")]
     {
@@ -1235,7 +1403,10 @@ mod tests {
     fn keydown_modifiers_default_when_omitted() {
         let json = r#"{"type":"keydown","key":"Shift","code":"ShiftLeft"}"#;
         let ev: AuthorInputEvent = serde_json::from_str(json).unwrap();
-        if let AuthorInputEvent::Keydown { modifiers, repeat, .. } = ev {
+        if let AuthorInputEvent::Keydown {
+            modifiers, repeat, ..
+        } = ev
+        {
             assert!(!modifiers.shift && !modifiers.ctrl && !modifiers.alt && !modifiers.meta);
             assert!(!repeat);
         } else {

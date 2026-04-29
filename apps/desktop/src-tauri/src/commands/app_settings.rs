@@ -16,7 +16,6 @@ pub const MIN_LOG_MAX_FILE_SIZE_BYTES: u64 = 64 * 1024;
 pub const MAX_LOG_MAX_FILE_SIZE_BYTES: u64 = 1024 * 1024 * 1024;
 pub const MIN_LOG_MAX_FILES: usize = 1;
 pub const MAX_LOG_MAX_FILES: usize = 100;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LogConfig {
@@ -92,6 +91,9 @@ pub struct AppSettings {
     pub capture_target: Option<capture::CaptureTarget>,
     /// Persisted Options toggle for the in-recorder live preview pane.
     pub live_preview_enabled: bool,
+    /// Fixed-list browser language preference. None/system preserves default browser behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub browser_language: Option<String>,
     /// User-configurable file logging policy.
     pub log: LogConfig,
 }
@@ -102,6 +104,7 @@ impl Default for AppSettings {
             browser_executable: None,
             capture_target: None,
             live_preview_enabled: true,
+            browser_language: None,
             log: LogConfig::default(),
         }
     }
@@ -115,6 +118,13 @@ impl Default for AppSettings {
 pub struct AppSettingsDto {
     pub browser_executable: Option<String>,
     pub live_preview_enabled: bool,
+    pub browser_language: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct BrowserLanguageOptionDto {
+    pub value: String,
+    pub label: String,
 }
 
 impl Default for AppSettingsDto {
@@ -122,6 +132,7 @@ impl Default for AppSettingsDto {
         Self {
             browser_executable: None,
             live_preview_enabled: true,
+            browser_language: automation::BROWSER_LANGUAGE_SYSTEM.to_string(),
         }
     }
 }
@@ -131,6 +142,10 @@ impl From<&AppSettings> for AppSettingsDto {
         Self {
             browser_executable: s.browser_executable.clone(),
             live_preview_enabled: s.live_preview_enabled,
+            browser_language: s
+                .browser_language
+                .clone()
+                .unwrap_or_else(|| automation::BROWSER_LANGUAGE_SYSTEM.to_string()),
         }
     }
 }
@@ -160,6 +175,25 @@ pub struct LogConfigUpdate {
     pub max_files: u32,
 }
 
+fn normalize_browser_language(value: Option<String>) -> Option<String> {
+    match value.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        None | Some(automation::BROWSER_LANGUAGE_SYSTEM) => None,
+        Some(locale) if automation::is_supported_browser_locale(locale) => Some(locale.to_string()),
+        Some(locale) => {
+            tracing::warn!(
+                target: "storycapture::settings",
+                locale,
+                "unsupported browser_language setting; using system default"
+            );
+            None
+        }
+    }
+}
+
+pub fn browser_language_choice(settings: &AppSettings) -> automation::BrowserLanguageChoice {
+    automation::BrowserLanguageChoice::from_setting(settings.browser_language.as_deref())
+}
+
 fn settings_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app
         .path()
@@ -181,6 +215,7 @@ pub fn load(app: &AppHandle) -> AppSettings {
         return AppSettings::default();
     };
     let mut s: AppSettings = serde_json::from_slice(&bytes).unwrap_or_default();
+    s.browser_language = normalize_browser_language(s.browser_language);
     s.log = s.log.clamped();
     s
 }
@@ -194,6 +229,7 @@ pub fn load_from_config_dir(config_dir: &Path) -> AppSettings {
         return AppSettings::default();
     };
     let mut s: AppSettings = serde_json::from_slice(&bytes).unwrap_or_default();
+    s.browser_language = normalize_browser_language(s.browser_language);
     s.log = s.log.clamped();
     s
 }
@@ -237,7 +273,30 @@ pub async fn get_app_settings(app: AppHandle) -> Result<AppSettingsDto, AppError
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "set_browser_executable"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "get_browser_language_options"),
+    err(Debug)
+)]
+pub async fn get_browser_language_options() -> Result<Vec<BrowserLanguageOptionDto>, AppError> {
+    Ok(automation::BROWSER_LANGUAGE_OPTIONS
+        .iter()
+        .map(|option| BrowserLanguageOptionDto {
+            value: option.value.to_string(),
+            label: option.label.to_string(),
+        })
+        .collect())
+}
+
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "set_browser_executable"),
+    err(Debug)
+)]
 pub async fn set_browser_executable(
     app: AppHandle,
     path: Option<String>,
@@ -250,13 +309,44 @@ pub async fn set_browser_executable(
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "set_live_preview_enabled"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "set_live_preview_enabled"),
+    err(Debug)
+)]
 pub async fn set_live_preview_enabled(
     app: AppHandle,
     enabled: bool,
 ) -> Result<AppSettingsDto, AppError> {
     let mut s = load(&app);
     s.live_preview_enabled = enabled;
+    save(&app, &s)?;
+    Ok((&s).into())
+}
+
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "set_browser_language"),
+    err(Debug)
+)]
+pub async fn set_browser_language(
+    app: AppHandle,
+    language: String,
+) -> Result<AppSettingsDto, AppError> {
+    let trimmed = language.trim();
+    if trimmed != automation::BROWSER_LANGUAGE_SYSTEM
+        && !automation::is_supported_browser_locale(trimmed)
+    {
+        return Err(AppError::InvalidArgument(format!(
+            "unsupported browser language: {trimmed}"
+        )));
+    }
+    let mut s = load(&app);
+    s.browser_language = normalize_browser_language(Some(trimmed.to_string()));
     save(&app, &s)?;
     Ok((&s).into())
 }
@@ -290,11 +380,7 @@ pub async fn set_log_config(
     if let Some(dir) = s.log.log_dir.as_ref() {
         let path = PathBuf::from(dir);
         std::fs::create_dir_all(&path).map_err(|e| {
-            AppError::InvalidArgument(format!(
-                "log_dir {} is not writable: {}",
-                path.display(),
-                e
-            ))
+            AppError::InvalidArgument(format!("log_dir {} is not writable: {}", path.display(), e))
         })?;
     }
 

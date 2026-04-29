@@ -47,7 +47,7 @@ async deleteSecret(service: string, account: string) : Promise<Result<null, AppE
  * Smoke command — panics on a worker thread so we can prove the panic
  * hook in `panic_hook.rs` catches cross-thread panics and emits the
  * `app:panic` event to the renderer.
- *
+ * 
  * In release builds this is a no-op that returns
  * `AppError::InvalidArgument("trigger_panic disabled in release")` —
  * the renderer button is hidden in release UIs. This keeps the IPC
@@ -94,7 +94,7 @@ async resolvePlaywrightTarget() : Promise<Result<ResolvedPlaywrightTarget | null
 },
 /**
  * Read macOS Stage Manager's global-enable flag.
- *
+ * 
  * Stage Manager (macOS 13+) groups windows into per-app "stages" and stops
  * compositing off-stage windows, which silently breaks SCK window-target
  * capture. We surface this as a pre-flight warning in the Recorder UI so
@@ -438,9 +438,25 @@ async getAppSettings() : Promise<Result<AppSettingsDto, AppError>> {
     else return { status: "error", error: e  as any };
 }
 },
+async getBrowserLanguageOptions() : Promise<Result<BrowserLanguageOptionDto[], AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_browser_language_options") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setBrowserExecutable(path: string | null) : Promise<Result<AppSettingsDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_browser_executable", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setBrowserLanguage(language: string) : Promise<Result<AppSettingsDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_browser_language", { language }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -749,7 +765,7 @@ async listProjectRecordings(args: ProjectIdArg) : Promise<Result<RecordingInfoDt
 },
 /**
  * Load the trajectory sidecar that lives alongside an MP4.
- *
+ * 
  * Returns `Ok(None)` when the sidecar does not exist (older
  * recording or trajectory recorder skipped this session).
  */
@@ -1355,7 +1371,7 @@ export type AppInfo = { version: string; platform: string; arch: string; data_di
  * reference the exact slice of the log file the user is running in.
  */
 session_id: string; pid: number }
-export type AppSettingsDto = { browser_executable: string | null; live_preview_enabled: boolean }
+export type AppSettingsDto = { browser_executable: string | null; live_preview_enabled: boolean; browser_language: string }
 export type AudioCodecDto = "aac" | "opus"
 /**
  * Serializable DTO for the audio-device picker. Mirrors
@@ -1420,6 +1436,7 @@ export type AutomationEvent = {
  * JSON-stringified `automation::ExecutorEvent`.
  */
 json: string }
+export type BrowserLanguageOptionDto = { value: string; label: string }
 export type CaptureConfigDto = { display_id: bigint; include_cursor: boolean; fps_target: number; pixel_format: PixelFormatDto; 
 /**
  * Defaults to 256 MiB if `None`.

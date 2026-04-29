@@ -28,8 +28,10 @@ pub mod targets_store;
 
 pub use control::RunControl;
 pub use driver::{
-    ActionKind, BoundingBox, BrowserDriver, Capability, CapabilitySet, ElementState, LaunchConfig,
-    LaunchOptions, ResolvedSelector,
+    accept_language_for_locale, is_supported_browser_locale, ActionKind, BoundingBox,
+    BrowserDriver, BrowserEnvironment, BrowserLanguageChoice, BrowserLanguageOption,
+    BrowserSessionProfile, Capability, CapabilitySet, ElementState, LaunchConfig, LaunchOptions,
+    ResolvedSelector, BROWSER_LANGUAGE_OPTIONS, BROWSER_LANGUAGE_SYSTEM,
 };
 pub use error::{AutomationError, Result};
 pub use events::{

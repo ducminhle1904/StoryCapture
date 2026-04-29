@@ -79,7 +79,9 @@ pub fn builder() -> Builder<Wry> {
             author_snapshot::author_snapshot_list,
             author_snapshot::author_snapshot_validate,
             app_settings::get_app_settings,
+            app_settings::get_browser_language_options,
             app_settings::set_browser_executable,
+            app_settings::set_browser_language,
             app_settings::set_live_preview_enabled,
             app_settings::get_log_config,
             app_settings::set_log_config,
@@ -181,6 +183,7 @@ pub fn builder() -> Builder<Wry> {
         ])
         .typ::<AppError>()
         .typ::<app_settings::AppSettingsDto>()
+        .typ::<app_settings::BrowserLanguageOptionDto>()
         .typ::<app_settings::LogConfigDto>()
         .typ::<app_settings::LogConfigUpdate>()
         .typ::<system::AppInfo>()

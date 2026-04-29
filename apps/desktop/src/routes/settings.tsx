@@ -49,7 +49,7 @@ const SECTIONS: Section[] = [
 ];
 
 export default function SettingsRoute() {
-  const [section, setSection] = useState<SectionId>("keys");
+  const [section, setSection] = useState<SectionId>("general");
 
   return (
     <main

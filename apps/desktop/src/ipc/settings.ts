@@ -13,6 +13,13 @@ export interface AppSettings {
   browser_executable: string | null;
   /** Persisted live-preview toggle. */
   live_preview_enabled: boolean;
+  /** "system" or one of the host-provided browser language option values. */
+  browser_language: string;
+}
+
+export interface BrowserLanguageOption {
+  value: string;
+  label: string;
 }
 
 export interface LogConfig {
@@ -40,6 +47,10 @@ export function getAppSettings(): Promise<AppSettings> {
   return invoke<AppSettings>("get_app_settings");
 }
 
+export function getBrowserLanguageOptions(): Promise<BrowserLanguageOption[]> {
+  return invoke<BrowserLanguageOption[]>("get_browser_language_options");
+}
+
 export function setBrowserExecutable(
   path: string | null,
 ): Promise<AppSettings> {
@@ -48,6 +59,10 @@ export function setBrowserExecutable(
 
 export function setLivePreviewEnabled(enabled: boolean): Promise<AppSettings> {
   return invoke<AppSettings>("set_live_preview_enabled", { enabled });
+}
+
+export function setBrowserLanguage(language: string): Promise<AppSettings> {
+  return invoke<AppSettings>("set_browser_language", { language });
 }
 
 export function getLogConfig(): Promise<LogConfig> {

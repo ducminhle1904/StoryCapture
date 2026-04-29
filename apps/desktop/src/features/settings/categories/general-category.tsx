@@ -2,6 +2,7 @@ import { FolderOpen } from "lucide-react";
 import { ScInput, ScSegmented, ScSwitch } from "@storycapture/ui";
 
 import { BrowserRow } from "../BrowserRow";
+import { BrowserLanguageRow } from "../BrowserLanguageRow";
 import {
   NotWiredCaption,
   SettingsCard,
@@ -71,7 +72,10 @@ export function GeneralCategory() {
         <div style={{ fontSize: 12, color: "var(--sc-text-3)", marginBottom: 12 }}>
           Any Chromium-based browser works (Chrome, Brave, Edge, Arc, Chromium).
         </div>
-        <BrowserRow />
+        <div style={{ display: "grid", gap: 12 }}>
+          <BrowserRow />
+          <BrowserLanguageRow />
+        </div>
       </div>
     </SettingsPanel>
   );

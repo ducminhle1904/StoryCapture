@@ -9,7 +9,10 @@
 //! is gated behind the `real-playwright-tests` feature flag (and behind the
 //! build of the SEA artifact, which CI does on PR).
 
-use crate::driver::{BrowserDriver, CapabilitySet, ElementState, LaunchConfig, ResolvedSelector};
+use crate::driver::{
+    accept_language_for_locale, BrowserDriver, BrowserEnvironment, BrowserSessionProfile,
+    CapabilitySet, ElementState, LaunchConfig, ResolvedSelector,
+};
 use crate::error::{AutomationError, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -90,6 +93,54 @@ pub struct NavSnapshot {
     pub url: String,
     pub can_go_back: bool,
     pub can_go_forward: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SidecarBrowserEnvironment {
+    locale: Option<String>,
+    #[serde(rename = "timezoneId")]
+    timezone_id: Option<String>,
+    #[serde(rename = "acceptLanguage")]
+    accept_language: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SidecarSessionProfile {
+    environment: SidecarBrowserEnvironment,
+    #[serde(rename = "currentUrl")]
+    current_url: Option<String>,
+    #[serde(rename = "storageStateJson")]
+    storage_state_json: Option<String>,
+}
+
+impl From<SidecarSessionProfile> for BrowserSessionProfile {
+    fn from(profile: SidecarSessionProfile) -> Self {
+        Self {
+            environment: BrowserEnvironment {
+                accept_language: profile.environment.accept_language.or_else(|| {
+                    profile
+                        .environment
+                        .locale
+                        .as_deref()
+                        .map(accept_language_for_locale)
+                }),
+                locale: profile.environment.locale,
+                timezone_id: profile.environment.timezone_id,
+            },
+            viewport: None,
+            theme: None,
+            current_url: profile.current_url,
+            storage_state_json: profile.storage_state_json,
+        }
+    }
+}
+
+fn browser_environment_json(env: &BrowserEnvironment) -> Value {
+    json!({
+        "locale": env.locale,
+        "timezoneId": env.timezone_id,
+        "acceptLanguage": env.accept_language,
+    })
 }
 
 // Untagged serde enum over the two sidecar stdout shapes.
@@ -245,6 +296,7 @@ impl PlaywrightSidecarDriver {
         stream_id: &str,
         url: Option<&str>,
         viewport: Option<(u32, u32)>,
+        browser_environment: &BrowserEnvironment,
     ) -> Result<()> {
         let mut params = json!({ "streamId": stream_id, "headless": true });
         if let Some(u) = url {
@@ -253,13 +305,29 @@ impl PlaywrightSidecarDriver {
         if let Some((w, h)) = viewport {
             params["viewport"] = json!({ "width": w, "height": h });
         }
+        params["browserEnvironment"] = browser_environment_json(browser_environment);
         self.call("author.launch", params).await?;
         Ok(())
     }
 
+    pub async fn call_author_session_profile(
+        &self,
+        stream_id: &str,
+    ) -> Result<BrowserSessionProfile> {
+        let v = self
+            .call("author.sessionProfile", json!({ "streamId": stream_id }))
+            .await?;
+        let profile: SidecarSessionProfile = serde_json::from_value(v)
+            .map_err(|e| AutomationError::Protocol(format!("author.sessionProfile decode: {e}")))?;
+        Ok(profile.into())
+    }
+
     /// Tear down an author-time session. Idempotent.
     pub async fn call_author_close(&self, stream_id: &str) -> Result<()> {
-        if let Err(err) = self.call("author.close", json!({ "streamId": stream_id })).await {
+        if let Err(err) = self
+            .call("author.close", json!({ "streamId": stream_id }))
+            .await
+        {
             tracing::warn!(
                 target: "storycapture::preview",
                 error = %err,
@@ -448,6 +516,8 @@ impl BrowserDriver for PlaywrightSidecarDriver {
             "executable": config.executable.as_ref().map(|p| p.to_string_lossy().to_string()),
             // Extra Chromium args (chrome-hiding --app=<url>).
             "args": config.args,
+            "browserEnvironment": browser_environment_json(&config.browser_environment),
+            "storageState": config.storage_state_json,
         });
         self.call("launch", params).await?;
         Ok(())
@@ -573,11 +643,7 @@ impl BrowserDriver for PlaywrightSidecarDriver {
         Ok(())
     }
 
-    async fn assert_present(
-        &self,
-        target: &SelectorOrText,
-        target_nth: Option<u32>,
-    ) -> Result<()> {
+    async fn assert_present(&self, target: &SelectorOrText, target_nth: Option<u32>) -> Result<()> {
         self.call(
             "assert",
             json!({ "target": target_to_json(target, target_nth) }),
@@ -685,6 +751,8 @@ impl PlaywrightSidecarDriver {
         url: &str,
         viewport: Option<(u32, u32)>,
         timeout_ms: Option<u64>,
+        browser_environment: Option<&BrowserEnvironment>,
+        storage_state_json: Option<&str>,
     ) -> Result<SnapshotResponse> {
         let mut params = serde_json::json!({ "url": url });
         if let Some((w, h)) = viewport {
@@ -692,6 +760,12 @@ impl PlaywrightSidecarDriver {
         }
         if let Some(t) = timeout_ms {
             params["timeoutMs"] = serde_json::json!(t);
+        }
+        if let Some(env) = browser_environment {
+            params["browserEnvironment"] = browser_environment_json(env);
+        }
+        if let Some(storage_state) = storage_state_json {
+            params["storageState"] = serde_json::json!(storage_state);
         }
         let v = self.call("captureSnapshot", params).await?;
         let resp: SnapshotResponse = serde_json::from_value(v)

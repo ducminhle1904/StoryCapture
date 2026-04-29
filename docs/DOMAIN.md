@@ -104,6 +104,18 @@ Sidecar file paired with each `.story`, keyed by step_id. Store: `crates/automat
        └─► macOS: vt_writer zero-copy fastpath (AVAssetWriter, CVPixelBuffer direct)
   → MP4 in project folder (ProjectFolder::EXPORTS_DIRNAME)
 
+Browser session sync:
+  Live Preview and Simulator run in the author-preview Playwright session.
+  Record launches a separate recording Playwright context for native capture.
+  Settings exposes a fixed-list browser language preference; `System default`
+  preserves default browser/site behavior, while an explicit language requests
+  Playwright locale plus `Accept-Language`. When Record starts, the host
+  refreshes the latest author-preview `BrowserSessionProfile` and imports its
+  browser environment plus Playwright storage state into the recording context
+  when available. This keeps browser hints and persisted origin state aligned;
+  it does not translate target text or guarantee a site supports the requested
+  language.
+
 Post-production (Phase 2):
   effects::GraphBuilder  → Graph AST (canonical order: video → cursor → zoom → annotations → audio)
     ├─► FfmpegEmit    → filter_complex string → FFmpeg render
