@@ -28,6 +28,85 @@ const DEMO_URL =
     <div class="b"></div></body></html>`,
   );
 
+function jpegSizeFromBase64(data) {
+  const buf = Buffer.from(data, "base64");
+  let i = 2;
+  while (i < buf.length) {
+    if (buf[i] !== 0xff) throw new Error(`invalid jpeg marker at ${i}`);
+    const marker = buf[i + 1];
+    const len = buf.readUInt16BE(i + 2);
+    if (
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf)
+    ) {
+      return {
+        width: buf.readUInt16BE(i + 7),
+        height: buf.readUInt16BE(i + 5),
+      };
+    }
+    i += 2 + len;
+  }
+  throw new Error("jpeg SOF marker not found");
+}
+
+function waitForFrame(client, predicate = () => true, timeoutMs = 10_000) {
+  return new Promise((resolveFrame, rejectFrame) => {
+    const timer = setTimeout(() => {
+      off();
+      rejectFrame(new Error("timeout waiting for preview/frame"));
+    }, timeoutMs);
+    const off = client.onFrame((frame) => {
+      try {
+        if (!predicate(frame)) return;
+        clearTimeout(timer);
+        off();
+        resolveFrame(frame);
+      } catch (err) {
+        clearTimeout(timer);
+        off();
+        rejectFrame(err);
+      }
+    });
+  });
+}
+
+async function launchAuthor(client, streamId, viewport) {
+  await client.call("author.launch", {
+    streamId,
+    url: DEMO_URL,
+    viewport,
+    headless: true,
+  });
+}
+
+async function waitForFrameSize(client, streamId, expectedSize) {
+  let matchedSize = null;
+  const frame = await waitForFrame(client, (p) => {
+    if (p.streamId !== streamId) return false;
+    const size = jpegSizeFromBase64(p.data);
+    if (size.width !== expectedSize.width || size.height !== expectedSize.height) {
+      return false;
+    }
+    matchedSize = size;
+    return true;
+  });
+  return { frame, size: matchedSize ?? jpegSizeFromBase64(frame.data) };
+}
+
+async function expectAuthorPreviewSize(client, label, viewport) {
+  const streamId = `sharp-${label}-${Date.now()}`;
+  try {
+    await launchAuthor(client, streamId, viewport);
+    await client.call("startPreviewStream", { streamId });
+    const { size } = await waitForFrameSize(client, streamId, viewport);
+    expect(size).toEqual(viewport);
+  } finally {
+    await client.call("author.close", { streamId }).catch(() => {});
+  }
+}
+
 function spawnSidecar() {
   const child = spawn("node", [SERVER_PATH], {
     stdio: ["pipe", "pipe", "pipe"],
@@ -76,28 +155,34 @@ function spawnSidecar() {
           if (msg.error) rejectReq(msg);
           else resolveReq(msg);
         });
-        child.stdin.write(
-          JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n",
-        );
+        child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
       });
     },
     onFrame(fn) {
       frameListeners.add(fn);
       return () => frameListeners.delete(fn);
     },
-    pauseFrames() { framesPaused = true; },
-    resumeFrames() { framesPaused = false; },
+    pauseFrames() {
+      framesPaused = true;
+    },
+    resumeFrames() {
+      framesPaused = false;
+    },
     async dispose() {
-      try { child.stdin.end(); } catch {}
+      try {
+        child.stdin.end();
+      } catch {}
       await new Promise((r) => setTimeout(r, 50));
-      try { child.kill(); } catch {}
+      try {
+        child.kill();
+      } catch {}
     },
   };
 }
 
-async function launch(client) {
+async function launch(client, viewport = { width: 800, height: 600 }) {
   await client.call("launch", {
-    viewport: { width: 800, height: 600 },
+    viewport,
     theme: "auto",
     baseUrl: null,
     headless: true,
@@ -108,8 +193,12 @@ async function launch(client) {
 
 describe("Phase 09-01 preview CDP screencast verbs", () => {
   let client;
-  beforeEach(() => { client = spawnSidecar(); });
-  afterEach(async () => { if (client) await client.dispose(); });
+  beforeEach(() => {
+    client = spawnSidecar();
+  });
+  afterEach(async () => {
+    if (client) await client.dispose();
+  });
 
   // lifecycle
   it("lifecycle: startPreviewStream emits preview/frame notifications; stopPreviewStream drains", async () => {
@@ -305,7 +394,9 @@ describe("Phase 09-01 preview CDP screencast verbs", () => {
         headless: true,
       });
       const frames = [];
-      client.onFrame((p) => { if (p.streamId === streamId) frames.push(p); });
+      client.onFrame((p) => {
+        if (p.streamId === streamId) frames.push(p);
+      });
       await client.call("startPreviewStream", { streamId });
       await new Promise((r) => setTimeout(r, 800));
       const beforePause = frames.length;
@@ -377,6 +468,45 @@ describe("Phase 09-01 preview CDP screencast verbs", () => {
       expect(authorFrames.length).toBeGreaterThanOrEqual(1);
     } finally {
       await client.call("author.close", { streamId }).catch(() => {});
+      await client.call("close", {}).catch(() => {});
+    }
+  }, 60_000);
+
+  it("sharpness: author desktop viewport emits full-size JPEG", async () => {
+    await expectAuthorPreviewSize(client, "desktop", { width: 1280, height: 800 });
+  }, 60_000);
+
+  it("sharpness: author tablet viewport emits full-size JPEG", async () => {
+    await expectAuthorPreviewSize(client, "tablet", { width: 768, height: 1024 });
+  }, 60_000);
+
+  it("sharpness: author.setViewport refreshes screencast bounds", async () => {
+    const streamId = `sharp-set-vp-${Date.now()}`;
+    try {
+      await launchAuthor(client, streamId, { width: 1280, height: 800 });
+      await client.call("startPreviewStream", { streamId });
+      const first = await waitForFrameSize(client, streamId, { width: 1280, height: 800 });
+      expect(first.size).toEqual({ width: 1280, height: 800 });
+
+      await client.call("author.setViewport", {
+        streamId,
+        width: 768,
+        height: 1024,
+      });
+      const resized = await waitForFrameSize(client, streamId, { width: 768, height: 1024 });
+      expect(resized.size).toEqual({ width: 768, height: 1024 });
+    } finally {
+      await client.call("author.close", { streamId }).catch(() => {});
+    }
+  }, 60_000);
+
+  it("sharpness: recording default remains 1280x720", async () => {
+    await launch(client, { width: 1280, height: 720 });
+    try {
+      await client.call("startPreviewStream", {});
+      const frame = await waitForFrame(client, (p) => p.streamId == null);
+      expect(jpegSizeFromBase64(frame.data)).toEqual({ width: 1280, height: 720 });
+    } finally {
       await client.call("close", {}).catch(() => {});
     }
   }, 60_000);

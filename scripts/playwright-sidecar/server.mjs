@@ -19,18 +19,18 @@
 // `npx playwright install chromium` synchronously and reports progress
 // via a JSON-RPC `notification` message.
 
-import { createInterface } from 'node:readline';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
-import { dirname as pathDirname, resolve as pathResolve } from 'node:path';
-import { chromium } from 'playwright-core';
-import { emitDsl } from './picker/generator.mjs';
+import { createInterface } from "node:readline";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { dirname as pathDirname, resolve as pathResolve } from "node:path";
+import { chromium } from "playwright-core";
+import { emitDsl } from "./picker/generator.mjs";
 import {
   VIEWPORT_FIT_MAX_ATTEMPTS,
   VIEWPORT_FIT_SETTLE_MS,
   nextWindowBoundsForViewport,
-} from './viewport-fit.mjs';
+} from "./viewport-fit.mjs";
 
 // the picker overlay IIFE is built by build-sea.mjs (Step -1/5) into
 // picker/overlay/overlay.iife.js. We MUST use a synchronous loader because
@@ -43,24 +43,22 @@ import {
 function loadOverlayIife() {
   const candidates = [];
   try {
-    candidates.push(
-      fileURLToPath(new URL('./picker/overlay/overlay.iife.js', import.meta.url)),
-    );
+    candidates.push(fileURLToPath(new URL("./picker/overlay/overlay.iife.js", import.meta.url)));
   } catch {
     /* import.meta.url unavailable in some embed contexts */
   }
   try {
     const exeDir = pathDirname(process.execPath);
-    candidates.push(pathResolve(exeDir, 'playwright-sidecar-modules', 'overlay.iife.js'));
+    candidates.push(pathResolve(exeDir, "playwright-sidecar-modules", "overlay.iife.js"));
     candidates.push(
-      pathResolve(exeDir, '..', 'Resources', 'playwright-sidecar-modules', 'overlay.iife.js'),
+      pathResolve(exeDir, "..", "Resources", "playwright-sidecar-modules", "overlay.iife.js"),
     );
   } catch {
     /* defensive — process.execPath should always exist */
   }
   for (const p of candidates) {
     try {
-      return readFileSync(p, 'utf8');
+      return readFileSync(p, "utf8");
     } catch {
       /* try next */
     }
@@ -68,7 +66,7 @@ function loadOverlayIife() {
   // Last resort: empty IIFE so the sidecar still boots when running tests
   // that don't need the picker. Picker handlers will degrade — the build
   // pipeline is the source of truth.
-  return '';
+  return "";
 }
 const OVERLAY_IIFE = loadOverlayIife();
 
@@ -118,6 +116,7 @@ let state = {
   latestFrame: null,
   flushScheduled: false,
   previewEveryNth: 1,
+  previewViewport: null,
   // Phase 09-03 — bounded in-flight counter. Incremented each time a
   // screencastFrame arrives while state.latestFrame is still pending
   // flush (single-slot overwrite == dropped frame).
@@ -128,7 +127,7 @@ let state = {
   // requirement, not a workaround.
   //   Map<streamId, {
   //     browserServer, browser, context, page,
-  //     cdp, latestFrame, flushScheduled, previewEveryNth,
+  //     cdp, latestFrame, flushScheduled, previewEveryNth, previewViewport,
   //     previewDropCount, paused
   //   }>
   authorSessions: new Map(),
@@ -136,6 +135,35 @@ let state = {
 };
 
 const AUTHOR_IDLE_MS = 5 * 60 * 1000;
+const PREVIEW_JPEG_QUALITY = 90;
+const PREVIEW_MAX_WIDTH = 1920;
+const PREVIEW_MAX_HEIGHT = 1440;
+
+function clampPositiveInt(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(1, Math.floor(n));
+}
+
+function screencastViewportFor(probe) {
+  const width = clampPositiveInt(probe?.width, 1280);
+  const height = clampPositiveInt(probe?.height, 720);
+  return {
+    maxWidth: Math.min(width, PREVIEW_MAX_WIDTH),
+    maxHeight: Math.min(height, PREVIEW_MAX_HEIGHT),
+  };
+}
+
+function buildScreencastOptions(target) {
+  const viewport = target.previewViewport ?? { maxWidth: 1280, maxHeight: 720 };
+  return {
+    format: "jpeg",
+    quality: PREVIEW_JPEG_QUALITY,
+    maxWidth: viewport.maxWidth,
+    maxHeight: viewport.maxHeight,
+    everyNthFrame: target.previewEveryNth,
+  };
+}
 
 // Map a renderer-side KeyboardEvent {key, code} pair to the string accepted
 // by Playwright's `page.keyboard.down/up`. Prefer `code` for layout-
@@ -143,40 +171,38 @@ const AUTHOR_IDLE_MS = 5 * 60 * 1000;
 // `key` for character-producing keys so Shift-modified characters carry
 // their shifted form (e.g. "A" vs "a"). See plan §4.8.
 export function toPlaywrightKey(event) {
-  if (!event || typeof event !== 'object') return null;
+  if (!event || typeof event !== "object") return null;
   const { key, code } = event;
   if (
-    typeof code === 'string' &&
+    typeof code === "string" &&
     code.length > 0 &&
-    (
-      code.startsWith('Shift') ||
-      code.startsWith('Control') ||
-      code.startsWith('Alt') ||
-      code.startsWith('Meta') ||
-      code === 'Tab' ||
-      code === 'Enter' ||
-      code === 'Escape' ||
-      code === 'Backspace' ||
-      code === 'Delete' ||
-      code.startsWith('Arrow') ||
-      code.startsWith('Page') ||
-      code === 'Home' ||
-      code === 'End' ||
-      /^F\d{1,2}$/.test(code)
-    )
+    (code.startsWith("Shift") ||
+      code.startsWith("Control") ||
+      code.startsWith("Alt") ||
+      code.startsWith("Meta") ||
+      code === "Tab" ||
+      code === "Enter" ||
+      code === "Escape" ||
+      code === "Backspace" ||
+      code === "Delete" ||
+      code.startsWith("Arrow") ||
+      code.startsWith("Page") ||
+      code === "Home" ||
+      code === "End" ||
+      /^F\d{1,2}$/.test(code))
   ) {
     return code;
   }
-  if (typeof key === 'string' && key.length > 0) return key;
-  if (typeof code === 'string' && code.length > 0) return code;
+  if (typeof key === "string" && key.length > 0) return key;
+  if (typeof code === "string" && code.length > 0) return code;
   return null;
 }
 
 // Phase 09-04 — helpers for per-streamId author sessions. Each session is
 // an independent Chromium launch, tracked in `state.authorSessions`.
 function getAuthorSession(streamId) {
-  if (typeof streamId !== 'string' || streamId.length === 0) {
-    throw Object.assign(new Error('streamId required'), { code: -32602 });
+  if (typeof streamId !== "string" || streamId.length === 0) {
+    throw Object.assign(new Error("streamId required"), { code: -32602 });
   }
   const s = state.authorSessions.get(streamId);
   if (!s) {
@@ -199,20 +225,28 @@ function pickPage() {
     throw new Error(`active author stream ${state.activeAuthorStream} has no page`);
   }
   if (state.page) return state.page;
-  throw new Error('no page available — neither recording nor author session is active');
+  throw new Error("no page available — neither recording nor author session is active");
 }
 
 async function teardownAuthorSession(session) {
   if (session.cdp) {
-    try { await session.cdp.send('Page.stopScreencast', {}); } catch {}
-    try { await session.cdp.detach(); } catch {}
+    try {
+      await session.cdp.send("Page.stopScreencast", {});
+    } catch {}
+    try {
+      await session.cdp.detach();
+    } catch {}
     session.cdp = null;
   }
   if (session.browser) {
-    try { await session.browser.close(); } catch {}
+    try {
+      await session.browser.close();
+    } catch {}
   }
   if (session.browserServer) {
-    try { await session.browserServer.close(); } catch {}
+    try {
+      await session.browserServer.close();
+    } catch {}
   }
   session.browser = null;
   session.browserServer = null;
@@ -229,7 +263,9 @@ async function closeAuthorBrowser() {
     state.authorIdleHandle = null;
   }
   if (b) {
-    try { await b.close(); } catch {}
+    try {
+      await b.close();
+    } catch {}
   }
 }
 
@@ -240,10 +276,10 @@ async function fitViewportToContent(page, context, viewport) {
 
   const cdp = await context.newCDPSession(page);
   try {
-    const { windowId } = await cdp.send('Browser.getWindowForTarget');
+    const { windowId } = await cdp.send("Browser.getWindowForTarget");
 
     for (let attempt = 1; attempt <= VIEWPORT_FIT_MAX_ATTEMPTS; attempt += 1) {
-      const { bounds } = await cdp.send('Browser.getWindowBounds', { windowId });
+      const { bounds } = await cdp.send("Browser.getWindowBounds", { windowId });
       const inner = await page.evaluate(() => ({
         w: window.innerWidth,
         h: window.innerHeight,
@@ -254,18 +290,18 @@ async function fitViewportToContent(page, context, viewport) {
         return { ok: true, attempts: attempt, bounds, inner, fit };
       }
 
-      await cdp.send('Browser.setWindowBounds', {
+      await cdp.send("Browser.setWindowBounds", {
         windowId,
         bounds: {
           width: fit.nextBounds.width,
           height: fit.nextBounds.height,
-          windowState: 'normal',
+          windowState: "normal",
         },
       });
       await page.waitForTimeout(VIEWPORT_FIT_SETTLE_MS);
     }
 
-    const { bounds } = await cdp.send('Browser.getWindowBounds', { windowId });
+    const { bounds } = await cdp.send("Browser.getWindowBounds", { windowId });
     const inner = await page.evaluate(() => ({
       w: window.innerWidth,
       h: window.innerHeight,
@@ -293,7 +329,7 @@ function armAuthorIdleClose() {
     state.authorIdleHandle = null;
     closeAuthorBrowser().catch(() => {});
   }, AUTHOR_IDLE_MS);
-  if (typeof state.authorIdleHandle.unref === 'function') {
+  if (typeof state.authorIdleHandle.unref === "function") {
     state.authorIdleHandle.unref();
   }
 }
@@ -303,7 +339,7 @@ function armAuthorIdleClose() {
 // latestFrame / previewDropCount / flushScheduled / previewEveryNth.
 async function attachScreencast(target, page, { streamId, scheduleFlush, isPaused } = {}) {
   target.cdp = await page.context().newCDPSession(page);
-  target.cdp.on('Page.screencastFrame', (frame) => {
+  target.cdp.on("Page.screencastFrame", (frame) => {
     if (isPaused && isPaused()) return;
     if (target.latestFrame !== null) target.previewDropCount++;
     target.latestFrame = {
@@ -326,32 +362,41 @@ async function attachScreencast(target, page, { streamId, scheduleFlush, isPause
     }))
     .catch(() => ({ dpr: 1, width: 1280, height: 720 }));
   target.previewEveryNth = probe.dpr >= 2 || probe.width > 1600 ? 2 : 1;
+  target.previewViewport = screencastViewportFor(probe);
   if (process.env.DEBUG && /storycapture-sidecar/.test(process.env.DEBUG)) {
     process.stderr.write(
-      `[debug] previewEveryNth=${target.previewEveryNth} dpr=${probe.dpr} vp=${probe.width}x${probe.height}${streamId ? ` streamId=${streamId}` : ''}\n`,
+      `[debug] previewEveryNth=${target.previewEveryNth} dpr=${probe.dpr} vp=${probe.width}x${probe.height} max=${target.previewViewport.maxWidth}x${target.previewViewport.maxHeight}${streamId ? ` streamId=${streamId}` : ""}\n`,
     );
   }
-  await target.cdp.send('Page.startScreencast', {
-    format: 'jpeg',
-    quality: 80,
-    maxWidth: 1280,
-    maxHeight: 720,
-    everyNthFrame: target.previewEveryNth,
-  });
+  await target.cdp.send("Page.startScreencast", buildScreencastOptions(target));
   return target.previewEveryNth;
 }
 
 async function detachScreencast(target) {
   if (!target.cdp) return 0;
   const cdp = target.cdp;
-  try { await cdp.send('Page.stopScreencast', {}); } catch {}
-  try { await cdp.detach(); } catch {}
+  try {
+    await cdp.send("Page.stopScreencast", {});
+  } catch {}
+  try {
+    await cdp.detach();
+  } catch {}
   const dropped = target.previewDropCount;
   target.cdp = null;
   target.latestFrame = null;
   target.flushScheduled = false;
   target.previewDropCount = 0;
+  target.previewViewport = null;
   return dropped;
+}
+
+async function restartScreencast(target) {
+  try {
+    await target.cdp.send("Page.stopScreencast", {});
+  } catch {}
+  target.latestFrame = null;
+  target.flushScheduled = false;
+  await target.cdp.send("Page.startScreencast", buildScreencastOptions(target));
 }
 
 const handlers = {
@@ -365,16 +410,8 @@ const handlers = {
   }),
 
   launch: async (params) => {
-    const {
-      viewport,
-      theme,
-      baseUrl,
-      headless,
-      downloadDir,
-      executable,
-      channel,
-      args,
-    } = params || {};
+    const { viewport, theme, baseUrl, headless, downloadDir, executable, channel, args } =
+      params || {};
     state.baseUrl = baseUrl || null;
     state.downloadDir = downloadDir || null;
     // Plan 06-02: args is an optional array of Chromium CLI flags (e.g.
@@ -405,8 +442,7 @@ const handlers = {
     // content area matches the story viewport in real pixels.
     state.context = await state.browser.newContext({
       viewport: null,
-      colorScheme:
-        theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'no-preference',
+      colorScheme: theme === "dark" ? "dark" : theme === "light" ? "light" : "no-preference",
       acceptDownloads: true,
     });
     // inject the picker overlay IIFE into every frame of every
@@ -430,9 +466,7 @@ const handlers = {
     // capture path then picks the wrong one. Reuse the existing first
     // page when one exists (the typical --app= path) and only create a
     // fresh page defensively when the context reports none.
-    const hasApp = extraArgs.some(
-      (a) => typeof a === 'string' && a.startsWith('--app='),
-    );
+    const hasApp = extraArgs.some((a) => typeof a === "string" && a.startsWith("--app="));
     const existingPages = state.context.pages();
     if (hasApp && existingPages.length > 0) {
       state.page = existingPages[0];
@@ -474,13 +508,19 @@ const handlers = {
       } catch (e) {
         process.stderr.write(`[playwright-sidecar] warn: stopScreencast on close: ${e.message}\n`);
       }
-      try { await state.cdp.detach(); } catch {}
+      try {
+        await state.cdp.detach();
+      } catch {}
     }
     if (state.browser) {
-      try { await state.browser.close(); } catch {}
+      try {
+        await state.browser.close();
+      } catch {}
     }
     if (state.browserServer) {
-      try { await state.browserServer.close(); } catch {}
+      try {
+        await state.browserServer.close();
+      } catch {}
     }
     // also tear down the author-time snapshot browser.
     await closeAuthorBrowser();
@@ -506,6 +546,7 @@ const handlers = {
       latestFrame: null,
       flushScheduled: false,
       previewEveryNth: 1,
+      previewViewport: null,
       previewDropCount: 0,
       authorSessions: new Map(),
       activeAuthorStream: null,
@@ -515,7 +556,7 @@ const handlers = {
 
   goto: async ({ url }) => {
     const target = absolute(url);
-    await pickPage().goto(target, { waitUntil: 'load' });
+    await pickPage().goto(target, { waitUntil: "load" });
     return { ok: true };
   },
 
@@ -534,13 +575,13 @@ const handlers = {
   scroll: async ({ direction, amount }) => {
     const px = amount || 400;
     const [x, y] =
-      direction === 'down'
+      direction === "down"
         ? [0, px]
-        : direction === 'up'
-        ? [0, -px]
-        : direction === 'right'
-        ? [px, 0]
-        : [-px, 0];
+        : direction === "up"
+          ? [0, -px]
+          : direction === "right"
+            ? [px, 0]
+            : [-px, 0];
     await pickPage().evaluate(([dx, dy]) => window.scrollBy(dx, dy), [x, y]);
     return { ok: true };
   },
@@ -562,7 +603,7 @@ const handlers = {
       const fb = await fromLoc.boundingBox();
       const tb = await toLoc.boundingBox();
       if (!fb || !tb) {
-        throw new Error('drag failed: cannot resolve bounding box for nth-locator');
+        throw new Error("drag failed: cannot resolve bounding box for nth-locator");
       }
       await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2);
       await page.mouse.down();
@@ -595,8 +636,8 @@ const handlers = {
 
   waitFor: async ({ target, timeoutMs }) => {
     const page = pickPage();
-    if (target.kind === 'text' && target.value && target.value.startsWith('download:')) {
-      const download = await page.waitForEvent('download', { timeout: timeoutMs });
+    if (target.kind === "text" && target.value && target.value.startsWith("download:")) {
+      const download = await page.waitForEvent("download", { timeout: timeoutMs });
       const dest =
         state.downloadDir != null
           ? `${state.downloadDir}/${download.suggestedFilename()}`
@@ -605,11 +646,11 @@ const handlers = {
       return { ok: true, downloaded: dest };
     }
     const loc = targetToLocator(target);
-    if (typeof loc === 'string') {
+    if (typeof loc === "string") {
       await page.waitForSelector(loc, { timeout: timeoutMs });
     } else {
       // Locator — wait for it to attach.
-      await loc.waitFor({ state: 'attached', timeout: timeoutMs });
+      await loc.waitFor({ state: "attached", timeout: timeoutMs });
     }
     return { ok: true };
   },
@@ -617,7 +658,7 @@ const handlers = {
   assert: async ({ target }) => {
     const loc = targetToLocator(target);
     const count =
-      typeof loc === 'string' ? await pickPage().locator(loc).count() : await loc.count();
+      typeof loc === "string" ? await pickPage().locator(loc).count() : await loc.count();
     if (count === 0) throw new Error(`assert failed: no elements match ${JSON.stringify(target)}`);
     return { ok: true };
   },
@@ -633,7 +674,10 @@ const handlers = {
     // prefixed values (aria-name=, text=, label=, text~=) are resolved
     // via Playwright's locator engine instead of raw CSS querySelector.
     const locator = await locate(selector, strategy);
-    const handle = await locator.first().elementHandle().catch(() => null);
+    const handle = await locator
+      .first()
+      .elementHandle()
+      .catch(() => null);
     if (!handle) {
       return { visible: false, inViewport: false, animating: false };
     }
@@ -641,13 +685,11 @@ const handlers = {
       const r = el.getBoundingClientRect();
       const s = getComputedStyle(el);
       const visible =
-        s.visibility !== 'hidden' &&
-        s.display !== 'none' &&
-        parseFloat(s.opacity || '1') > 0;
+        s.visibility !== "hidden" && s.display !== "none" && parseFloat(s.opacity || "1") > 0;
       const inViewport =
         r.top >= 0 && r.left >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth;
       const animating = el.getAnimations
-        ? el.getAnimations().some((a) => a.playState === 'running')
+        ? el.getAnimations().some((a) => a.playState === "running")
         : false;
       return {
         visible,
@@ -697,13 +739,11 @@ const handlers = {
       typeof proc.spawnfile === "string"
         ? proc.spawnfile
         : proc.spawnfile
-        ? String(proc.spawnfile)
-        : null;
+          ? String(proc.spawnfile)
+          : null;
     if (process.env.DEBUG && /storycapture-sidecar/.test(process.env.DEBUG)) {
       // Debug-only: never emit at INFO/stdout levels.
-      process.stderr.write(
-        `[debug] browserProcess pid=${pid} exec=${executablePath}\n`,
-      );
+      process.stderr.write(`[debug] browserProcess pid=${pid} exec=${executablePath}\n`);
     }
     return { pid, executablePath };
   },
@@ -739,23 +779,23 @@ const handlers = {
     //   - early enough to capture the tail of the page-load animation
     //   - late enough to guarantee Chromium has moved off the blank
     //     about:blank surface (no leading black frames in video).
-    if (state.page.url() !== 'about:blank') {
+    if (state.page.url() !== "about:blank") {
       return { ok: true, url: state.page.url() };
     }
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        state.page.off('framenavigated', onNav);
+        state.page.off("framenavigated", onNav);
         reject(new Error(`waitForFirstPaint timeout after ${t}ms`));
       }, t);
       const onNav = (frame) => {
         if (frame !== state.page.mainFrame()) return;
         const url = frame.url();
-        if (!url || url === 'about:blank') return;
+        if (!url || url === "about:blank") return;
         clearTimeout(timer);
-        state.page.off('framenavigated', onNav);
+        state.page.off("framenavigated", onNav);
         resolve();
       };
-      state.page.on('framenavigated', onNav);
+      state.page.on("framenavigated", onNav);
     });
     return { ok: true, url: state.page.url() };
   },
@@ -784,8 +824,8 @@ const handlers = {
   // Never mutates `state.page` / `state.context` — the author-time flow
   // must not disturb an in-flight recording session.
   captureSnapshot: async ({ url, viewport, timeoutMs } = {}) => {
-    if (typeof url !== 'string' || url.length === 0) {
-      const err = new Error('captureSnapshot: url must be a non-empty string');
+    if (typeof url !== "string" || url.length === 0) {
+      const err = new Error("captureSnapshot: url must be a non-empty string");
       err.code = -32602;
       throw err;
     }
@@ -806,7 +846,7 @@ const handlers = {
     if (!state.authorContext) {
       state.authorContext = await state.authorBrowser.newContext({
         viewport:
-          viewport && typeof viewport.width === 'number'
+          viewport && typeof viewport.width === "number"
             ? { width: viewport.width, height: viewport.height }
             : { width: 1280, height: 800 },
       });
@@ -814,13 +854,11 @@ const handlers = {
 
     const page = await state.authorContext.newPage();
     try {
-      await page.goto(resolved, { waitUntil: 'load', timeout: t });
-      const innerHTML = await page.evaluate(
-        () => document.documentElement.outerHTML,
-      );
-      const buf = await page.screenshot({ type: 'png', fullPage: false });
-      const screenshotBase64 = buf.toString('base64');
-      const domHash = createHash('sha256').update(innerHTML).digest('hex');
+      await page.goto(resolved, { waitUntil: "load", timeout: t });
+      const innerHTML = await page.evaluate(() => document.documentElement.outerHTML);
+      const buf = await page.screenshot({ type: "png", fullPage: false });
+      const screenshotBase64 = buf.toString("base64");
+      const domHash = createHash("sha256").update(innerHTML).digest("hex");
       return {
         url: resolved,
         domHash,
@@ -844,9 +882,17 @@ const handlers = {
   // Phase 09-04 — author-session lifecycle (separate Chromium per streamId).
   // Keyed by caller-supplied streamId; recording session (state.page) is
   // never shared. Used by editor-surface Live Preview + Phase 10 simulator.
-  'author.launch': async ({ streamId, url, viewport, headless, executable, channel, theme } = {}) => {
-    if (typeof streamId !== 'string' || streamId.length === 0) {
-      throw Object.assign(new Error('streamId required'), { code: -32602 });
+  "author.launch": async ({
+    streamId,
+    url,
+    viewport,
+    headless,
+    executable,
+    channel,
+    theme,
+  } = {}) => {
+    if (typeof streamId !== "string" || streamId.length === 0) {
+      throw Object.assign(new Error("streamId required"), { code: -32602 });
     }
     if (state.authorSessions.has(streamId)) {
       throw Object.assign(new Error(`author session exists: ${streamId}`), {
@@ -859,11 +905,11 @@ const handlers = {
     const browserServer = await chromium.launchServer(launchOpts);
     const browser = await chromium.connect({ wsEndpoint: browserServer.wsEndpoint() });
     const context = await browser.newContext({
-      viewport: viewport && viewport.width && viewport.height
-        ? { width: viewport.width, height: viewport.height }
-        : { width: 1280, height: 800 },
-      colorScheme:
-        theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'no-preference',
+      viewport:
+        viewport && viewport.width && viewport.height
+          ? { width: viewport.width, height: viewport.height }
+          : { width: 1280, height: 800 },
+      colorScheme: theme === "dark" ? "dark" : theme === "light" ? "light" : "no-preference",
       acceptDownloads: true,
     });
     // Phase 11-03 — inject the picker overlay IIFE into every author-session
@@ -882,16 +928,16 @@ const handlers = {
       }
     }
     const page = await context.newPage();
-    if (typeof url === 'string' && url.length > 0) {
+    if (typeof url === "string" && url.length > 0) {
       try {
-        await page.goto(url, { waitUntil: 'load', timeout: 15000 });
+        await page.goto(url, { waitUntil: "load", timeout: 15000 });
       } catch (e) {
         process.stderr.write(
           `[playwright-sidecar] warn: author.launch goto failed: ${e.message}\n`,
         );
       }
     }
-    const initialUrl = page.url() || 'about:blank';
+    const initialUrl = page.url() || "about:blank";
     const session = {
       browserServer,
       browser,
@@ -901,6 +947,7 @@ const handlers = {
       latestFrame: null,
       flushScheduled: false,
       previewEveryNth: 1,
+      previewViewport: null,
       previewDropCount: 0,
       paused: false,
       // Browser-style nav history tracked per session. Playwright doesn't
@@ -917,10 +964,7 @@ const handlers = {
       const cur = session.history[session.historyIndex];
       if (newUrl === cur) {
         // already in sync (handlers below pre-adjust index)
-      } else if (
-        session.historyIndex > 0 &&
-        newUrl === session.history[session.historyIndex - 1]
-      ) {
+      } else if (session.historyIndex > 0 && newUrl === session.history[session.historyIndex - 1]) {
         session.historyIndex -= 1;
       } else if (
         session.historyIndex < session.history.length - 1 &&
@@ -936,17 +980,19 @@ const handlers = {
       emitNavNotification(streamId, session);
     };
     session.onMainFrameNav = onMainFrameNav;
-    page.on('framenavigated', onMainFrameNav);
+    page.on("framenavigated", onMainFrameNav);
     state.authorSessions.set(streamId, session);
     emitNavNotification(streamId, session);
     return { ok: true, streamId };
   },
 
-  'author.close': async ({ streamId } = {}) => {
+  "author.close": async ({ streamId } = {}) => {
     const s = state.authorSessions.get(streamId);
     if (!s) return { ok: true, closed: false };
     if (s.onMainFrameNav && s.page) {
-      try { s.page.off('framenavigated', s.onMainFrameNav); } catch {}
+      try {
+        s.page.off("framenavigated", s.onMainFrameNav);
+      } catch {}
       s.onMainFrameNav = null;
     }
     state.authorSessions.delete(streamId);
@@ -954,29 +1000,43 @@ const handlers = {
     return { ok: true, closed: true };
   },
 
-  'author.setViewport': async ({ streamId, width, height } = {}) => {
+  "author.setViewport": async ({ streamId, width, height } = {}) => {
     const s = getAuthorSession(streamId);
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-      throw Object.assign(new Error('invalid viewport'), { code: -32602 });
+      throw Object.assign(new Error("invalid viewport"), { code: -32602 });
+    }
+    const nextPreviewViewport = screencastViewportFor({ width, height });
+    const currentViewport = s.page.viewportSize();
+    if (
+      currentViewport?.width === width &&
+      currentViewport?.height === height &&
+      s.previewViewport?.maxWidth === nextPreviewViewport.maxWidth &&
+      s.previewViewport?.maxHeight === nextPreviewViewport.maxHeight
+    ) {
+      return { ok: true, width, height };
     }
     await s.page.setViewportSize({ width, height });
+    s.previewViewport = nextPreviewViewport;
+    if (s.cdp && !s.paused) {
+      await restartScreencast(s);
+    }
     return { ok: true, width, height };
   },
 
-  'author.goto': async ({ streamId, url } = {}) => {
+  "author.goto": async ({ streamId, url } = {}) => {
     const s = getAuthorSession(streamId);
-    if (typeof url !== 'string' || !url) {
-      throw Object.assign(new Error('invalid url'), { code: -32602 });
+    if (typeof url !== "string" || !url) {
+      throw Object.assign(new Error("invalid url"), { code: -32602 });
     }
     try {
       const u = new URL(url);
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        throw new Error('non-http(s) url');
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        throw new Error("non-http(s) url");
       }
     } catch {
-      throw Object.assign(new Error('invalid url'), { code: -32602 });
+      throw Object.assign(new Error("invalid url"), { code: -32602 });
     }
-    await s.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await s.page.goto(url, { waitUntil: "domcontentloaded" }).catch(() => {});
     return { ok: true, url };
   },
 
@@ -984,18 +1044,15 @@ const handlers = {
   // decide whether navigate-replay is needed before a Pick — if the user
   // has already browsed past the script's destination, replay would yank
   // them back to the start URL.
-  'author.currentUrl': async ({ streamId } = {}) => {
-    if (typeof streamId !== 'string' || !streamId) {
-      throw Object.assign(new Error('streamId required'), { code: -32000 });
+  "author.currentUrl": async ({ streamId } = {}) => {
+    if (typeof streamId !== "string" || !streamId) {
+      throw Object.assign(new Error("streamId required"), { code: -32000 });
     }
     const s = state.authorSessions.get(streamId);
     if (!s || !s.page) {
-      throw Object.assign(
-        new Error(`unknown streamId: ${streamId}`),
-        { code: -32000 },
-      );
+      throw Object.assign(new Error(`unknown streamId: ${streamId}`), { code: -32000 });
     }
-    return { url: s.page.url() || '' };
+    return { url: s.page.url() || "" };
   },
 
   // Phase 11-03 — author.navigateTo: warm an author-session page for the
@@ -1007,27 +1064,24 @@ const handlers = {
   //
   // Rejects unknown streamId with -32000 (same contract as author.goto
   // via getAuthorSession); rejects non-http(s) URLs with -32602.
-  'author.navigateTo': async ({ streamId, url } = {}) => {
-    if (typeof streamId !== 'string' || !streamId) {
-      throw Object.assign(new Error('streamId required'), { code: -32000 });
+  "author.navigateTo": async ({ streamId, url } = {}) => {
+    if (typeof streamId !== "string" || !streamId) {
+      throw Object.assign(new Error("streamId required"), { code: -32000 });
     }
-    if (typeof url !== 'string' || !url) {
-      throw Object.assign(new Error('url required'), { code: -32000 });
+    if (typeof url !== "string" || !url) {
+      throw Object.assign(new Error("url required"), { code: -32000 });
     }
     try {
       const u = new URL(url);
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        throw new Error('non-http(s) url');
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        throw new Error("non-http(s) url");
       }
     } catch {
-      throw Object.assign(new Error('invalid url'), { code: -32602 });
+      throw Object.assign(new Error("invalid url"), { code: -32602 });
     }
     const s = state.authorSessions.get(streamId);
     if (!s || !s.page) {
-      throw Object.assign(
-        new Error(`unknown streamId: ${streamId}`),
-        { code: -32000 },
-      );
+      throw Object.assign(new Error(`unknown streamId: ${streamId}`), { code: -32000 });
     }
     // Skip the goto + networkidle wait when the page is already at the target
     // URL — picker re-warms during rapid pick-cancel cycles would otherwise
@@ -1035,12 +1089,10 @@ const handlers = {
     if (s.page.url() === url) {
       return { ok: true, url, alreadyAtUrl: true };
     }
-    await s.page.goto(url, { waitUntil: 'load' });
+    await s.page.goto(url, { waitUntil: "load" });
     // Pitfall 4 sequencing — proceed even if networkidle doesn't fire;
     // the picker needs a bounded warm-up, not an infinite wait.
-    await s.page
-      .waitForLoadState('networkidle', { timeout: 10_000 })
-      .catch(() => {});
+    await s.page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     return { ok: true, url: s.page.url() };
   },
 
@@ -1048,43 +1100,43 @@ const handlers = {
   // History tracking is sidecar-side (Playwright doesn't expose canGoBack/
   // canGoForward); each handler pre-adjusts historyIndex so the
   // framenavigated listener stays in sync.
-  'author.goBack': async ({ streamId } = {}) => {
+  "author.goBack": async ({ streamId } = {}) => {
     const s = getAuthorSession(streamId);
     if (!s.history || s.historyIndex <= 0) {
-      return { ok: false, reason: 'no-history' };
+      return { ok: false, reason: "no-history" };
     }
     s.historyIndex -= 1;
     try {
-      await s.page.goBack({ waitUntil: 'domcontentloaded', timeout: 10_000 });
+      await s.page.goBack({ waitUntil: "domcontentloaded", timeout: 10_000 });
     } catch (e) {
       s.historyIndex += 1;
-      throw Object.assign(new Error('goBack failed: ' + (e.message || e)), { code: -32000 });
+      throw Object.assign(new Error("goBack failed: " + (e.message || e)), { code: -32000 });
     }
     s.lastBroadcastedUrl = s.history[s.historyIndex];
     emitNavNotification(streamId, s);
     return { ok: true, url: s.page.url() };
   },
 
-  'author.goForward': async ({ streamId } = {}) => {
+  "author.goForward": async ({ streamId } = {}) => {
     const s = getAuthorSession(streamId);
     if (!s.history || s.historyIndex >= s.history.length - 1) {
-      return { ok: false, reason: 'no-forward' };
+      return { ok: false, reason: "no-forward" };
     }
     s.historyIndex += 1;
     try {
-      await s.page.goForward({ waitUntil: 'domcontentloaded', timeout: 10_000 });
+      await s.page.goForward({ waitUntil: "domcontentloaded", timeout: 10_000 });
     } catch (e) {
       s.historyIndex -= 1;
-      throw Object.assign(new Error('goForward failed: ' + (e.message || e)), { code: -32000 });
+      throw Object.assign(new Error("goForward failed: " + (e.message || e)), { code: -32000 });
     }
     s.lastBroadcastedUrl = s.history[s.historyIndex];
     emitNavNotification(streamId, s);
     return { ok: true, url: s.page.url() };
   },
 
-  'author.reload': async ({ streamId } = {}) => {
+  "author.reload": async ({ streamId } = {}) => {
     const s = getAuthorSession(streamId);
-    await s.page.reload({ waitUntil: 'domcontentloaded', timeout: 15_000 });
+    await s.page.reload({ waitUntil: "domcontentloaded", timeout: 15_000 });
     s.lastBroadcastedUrl = s.history[s.historyIndex];
     emitNavNotification(streamId, s);
     return { ok: true, url: s.page.url() };
@@ -1096,19 +1148,16 @@ const handlers = {
   // the LivePreview canvas is the input surface, the author browser is the
   // DOM target. Coordinates are in page viewport space (canvas → page
   // conversion happens in the renderer).
-  'author.dispatchInput': async ({ streamId, event } = {}) => {
-    if (typeof streamId !== 'string' || !streamId) {
-      throw Object.assign(new Error('streamId required'), { code: -32602 });
+  "author.dispatchInput": async ({ streamId, event } = {}) => {
+    if (typeof streamId !== "string" || !streamId) {
+      throw Object.assign(new Error("streamId required"), { code: -32602 });
     }
-    if (!event || typeof event !== 'object') {
-      throw Object.assign(new Error('event required'), { code: -32602 });
+    if (!event || typeof event !== "object") {
+      throw Object.assign(new Error("event required"), { code: -32602 });
     }
     const s = state.authorSessions.get(streamId);
     if (!s || !s.page) {
-      throw Object.assign(
-        new Error(`unknown streamId: ${streamId}`),
-        { code: -32000 },
-      );
+      throw Object.assign(new Error(`unknown streamId: ${streamId}`), { code: -32000 });
     }
     // state.pickerPending is the authoritative "overlay is armed" flag;
     // it's set/cleared by pickElement.start / cleanup.
@@ -1119,21 +1168,20 @@ const handlers = {
       const x = Number(event.x);
       const y = Number(event.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        throw Object.assign(new Error('x,y must be finite numbers'), { code: -32602 });
+        throw Object.assign(new Error("x,y must be finite numbers"), { code: -32602 });
       }
       return [x, y];
     };
     switch (event.type) {
-      case 'mousemove': {
+      case "mousemove": {
         const [x, y] = parseXY();
         await s.page.mouse.move(x, y);
         return { ok: true };
       }
-      case 'click': {
+      case "click": {
         const [x, y] = parseXY();
-        const button = event.button === 'right' || event.button === 'middle'
-          ? event.button
-          : 'left';
+        const button =
+          event.button === "right" || event.button === "middle" ? event.button : "left";
         // Click is rare + high-signal: always log so picker captures are
         // diagnosable without an extra RUST_LOG flag.
         process.stderr.write(
@@ -1149,7 +1197,7 @@ const handlers = {
         }
         return { ok: true };
       }
-      case 'wheel': {
+      case "wheel": {
         const [x, y] = parseXY();
         const dx = Number(event.deltaX) || 0;
         const dy = Number(event.deltaY) || 0;
@@ -1159,35 +1207,35 @@ const handlers = {
         await s.page.mouse.wheel(dx, dy);
         return { ok: true };
       }
-      case 'keydown': {
-        if (pickerArmed) return { ok: true, skipped: 'picker-armed' };
+      case "keydown": {
+        if (pickerArmed) return { ok: true, skipped: "picker-armed" };
         // Browser auto-repeat would call page.keyboard.down repeatedly,
         // which Playwright doesn't translate to native autoRepeat. Skipping
         // is acceptable: most pages handle repeat by checking event.repeat
         // themselves, and the tradeoff buys us simpler state-tracking.
-        if (event.repeat) return { ok: true, skipped: 'repeat' };
+        if (event.repeat) return { ok: true, skipped: "repeat" };
         const k = toPlaywrightKey(event);
         if (!k) {
-          throw Object.assign(new Error('keydown requires key or code'), { code: -32602 });
+          throw Object.assign(new Error("keydown requires key or code"), { code: -32602 });
         }
         await s.page.keyboard.down(k);
         return { ok: true };
       }
-      case 'keyup': {
-        if (pickerArmed) return { ok: true, skipped: 'picker-armed' };
+      case "keyup": {
+        if (pickerArmed) return { ok: true, skipped: "picker-armed" };
         const k = toPlaywrightKey(event);
         if (!k) {
-          throw Object.assign(new Error('keyup requires key or code'), { code: -32602 });
+          throw Object.assign(new Error("keyup requires key or code"), { code: -32602 });
         }
         await s.page.keyboard.up(k);
         return { ok: true };
       }
-      case 'text': {
-        if (pickerArmed) return { ok: true, skipped: 'picker-armed' };
-        const text = String(event.text ?? '');
-        if (text.length === 0) return { ok: true, skipped: 'empty' };
+      case "text": {
+        if (pickerArmed) return { ok: true, skipped: "picker-armed" };
+        const text = String(event.text ?? "");
+        if (text.length === 0) return { ok: true, skipped: "empty" };
         if (text.length > 8192) {
-          throw Object.assign(new Error('text too long (>8192)'), { code: -32602 });
+          throw Object.assign(new Error("text too long (>8192)"), { code: -32602 });
         }
         // Privacy: NEVER log the text content — user may be typing
         // a password/secret into the previewed page.
@@ -1198,10 +1246,7 @@ const handlers = {
         return { ok: true };
       }
       default:
-        throw Object.assign(
-          new Error(`unsupported event type: ${event.type}`),
-          { code: -32602 },
-        );
+        throw Object.assign(new Error(`unsupported event type: ${event.type}`), { code: -32602 });
     }
   },
 
@@ -1210,8 +1255,10 @@ const handlers = {
       state.activeAuthorStream = null;
       return { ok: true, streamId: null };
     }
-    if (typeof streamId !== 'string' || streamId.length === 0) {
-      throw Object.assign(new Error('streamId must be a non-empty string or null'), { code: -32602 });
+    if (typeof streamId !== "string" || streamId.length === 0) {
+      throw Object.assign(new Error("streamId must be a non-empty string or null"), {
+        code: -32602,
+      });
     }
     if (!state.authorSessions.has(streamId)) {
       throw Object.assign(new Error(`unknown streamId: ${streamId}`), { code: -32000 });
@@ -1221,7 +1268,7 @@ const handlers = {
   },
 
   startPreviewStream: async ({ streamId } = {}) => {
-    if (typeof streamId === 'string' && streamId.length > 0) {
+    if (typeof streamId === "string" && streamId.length > 0) {
       const s = getAuthorSession(streamId);
       if (s.cdp) return { ok: true, alreadyRunning: true };
       const everyNthFrame = await attachScreencast(s, s.page, {
@@ -1232,7 +1279,7 @@ const handlers = {
       return { ok: true, everyNthFrame, streamId };
     }
     if (!state.page) {
-      throw Object.assign(new Error('page not launched'), { code: -32000 });
+      throw Object.assign(new Error("page not launched"), { code: -32000 });
     }
     if (state.cdp) return { ok: true, alreadyRunning: true };
     const everyNthFrame = await attachScreencast(state, state.page, {
@@ -1242,7 +1289,7 @@ const handlers = {
   },
 
   stopPreviewStream: async ({ streamId } = {}) => {
-    if (typeof streamId === 'string' && streamId.length > 0) {
+    if (typeof streamId === "string" && streamId.length > 0) {
       const s = state.authorSessions.get(streamId);
       if (!s) return { ok: true };
       const dropped = await detachScreencast(s);
@@ -1250,9 +1297,7 @@ const handlers = {
     }
     const dropped = await detachScreencast(state);
     if (dropped > 0) {
-      process.stderr.write(
-        JSON.stringify({ evt: 'preview_drop_summary', dropped }) + '\n',
-      );
+      process.stderr.write(JSON.stringify({ evt: "preview_drop_summary", dropped }) + "\n");
     }
     return { ok: true, dropped };
   },
@@ -1265,7 +1310,9 @@ const handlers = {
     const s = getAuthorSession(streamId);
     if (!s.cdp) return { ok: true, paused: false };
     if (s.paused) return { ok: true, paused: true };
-    try { await s.cdp.send('Page.stopScreencast', {}); } catch {}
+    try {
+      await s.cdp.send("Page.stopScreencast", {});
+    } catch {}
     s.paused = true;
     return { ok: true, paused: true };
   },
@@ -1275,13 +1322,7 @@ const handlers = {
     if (!s.cdp) return { ok: true, paused: false };
     if (!s.paused) return { ok: true, paused: false };
     try {
-      await s.cdp.send('Page.startScreencast', {
-        format: 'jpeg',
-        quality: 80,
-        maxWidth: 1280,
-        maxHeight: 720,
-        everyNthFrame: s.previewEveryNth,
-      });
+      await s.cdp.send("Page.startScreencast", buildScreencastOptions(s));
     } catch {}
     s.paused = false;
     return { ok: true, paused: false };
@@ -1357,7 +1398,7 @@ const handlers = {
   //   navigation:   { cancelled: true, reason: "navigation" }
   //   timeout:      { cancelled: true, reason: "timeout" }
   //   bad URL:      { cancelled: true, reason: "unsupported-url" }
-  'pickElement.start': async ({ timeoutMs = 60000, streamId } = {}) => {
+  "pickElement.start": async ({ timeoutMs = 60000, streamId } = {}) => {
     // Phase 11-03 (D-16, Pitfall 3): when streamId is supplied, route the
     // picker to the author-session page registered in `state.authorSessions`
     // (Phase 9-04 map). Unknown streamId throws (-32000) — NEVER falls
@@ -1365,7 +1406,7 @@ const handlers = {
     // with the author-session surface. When streamId is omitted, preserve
     // the legacy recorder-path behavior untouched.
     let page;
-    if (typeof streamId === 'string' && streamId.length > 0) {
+    if (typeof streamId === "string" && streamId.length > 0) {
       const s = state.authorSessions.get(streamId);
       if (!s || !s.page) {
         const err = new Error(
@@ -1377,18 +1418,18 @@ const handlers = {
       page = s.page;
     } else {
       if (!state.page) {
-        const err = new Error('browser not launched');
+        const err = new Error("browser not launched");
         err.code = -32000;
         throw err;
       }
       page = state.page;
     }
-    const url = page.url() || '';
+    const url = page.url() || "";
     if (/^(chrome|about|view-source):/i.test(url)) {
-      return { cancelled: true, reason: 'unsupported-url' };
+      return { cancelled: true, reason: "unsupported-url" };
     }
     if (state.pickerPending) {
-      const err = new Error('picker already active');
+      const err = new Error("picker already active");
       err.code = -32000;
       throw err;
     }
@@ -1403,10 +1444,14 @@ const handlers = {
           timer = null;
         }
         if (framenavListener) {
-          try { page.off('framenavigated', framenavListener); } catch {}
+          try {
+            page.off("framenavigated", framenavListener);
+          } catch {}
           framenavListener = null;
         }
-        try { await page.evaluate(() => window.__sc_picker?.stop()); } catch {}
+        try {
+          await page.evaluate(() => window.__sc_picker?.stop());
+        } catch {}
         state.pickerPending = null;
       };
 
@@ -1420,15 +1465,15 @@ const handlers = {
       framenavListener = (frame) => {
         // Only the main-frame navigation cancels the pick.
         if (frame !== page.mainFrame()) return;
-        settle({ cancelled: true, reason: 'navigation' });
+        settle({ cancelled: true, reason: "navigation" });
       };
       timer = setTimeout(
-        () => settle({ cancelled: true, reason: 'timeout' }),
+        () => settle({ cancelled: true, reason: "timeout" }),
         Math.max(1, Number(timeoutMs) || 60000),
       );
 
       state.pickerPending = { settle, cleanup };
-      page.on('framenavigated', framenavListener);
+      page.on("framenavigated", framenavListener);
 
       // BUG FIX (second-pick hang): Playwright's exposeBinding is one-shot
       // per page+name pair. Previously the binding callback closed over the
@@ -1441,11 +1486,11 @@ const handlers = {
       const exposePromise = state.pickerBoundPages.has(page)
         ? Promise.resolve()
         : page
-            .exposeBinding('__sc_picker_emit', async ({ page: boundPage }, payload) => {
+            .exposeBinding("__sc_picker_emit", async ({ page: boundPage }, payload) => {
               const pending = state.pickerPending;
               if (!pending) return; // no active pick — ignore stragglers
               if (payload && payload.__cancel) {
-                await pending.settle({ cancelled: true, reason: 'user-cancel' });
+                await pending.settle({ cancelled: true, reason: "user-cancel" });
                 return;
               }
               try {
@@ -1479,9 +1524,9 @@ const handlers = {
       const hoverExposePromise = state.pickerHoverBoundPages.has(page)
         ? Promise.resolve()
         : page
-            .exposeBinding('__sc_picker_hover', async ({ page: _p }, payload) => {
+            .exposeBinding("__sc_picker_hover", async ({ page: _p }, payload) => {
               if (!state.pickerPending) return;
-              writeNotification('pickElement.hoverPreview', payload || {});
+              writeNotification("pickElement.hoverPreview", payload || {});
             })
             .then(() => {
               state.pickerHoverBoundPages.add(page);
@@ -1494,14 +1539,14 @@ const handlers = {
         .then(() =>
           page.evaluate(() => {
             const p = window.__sc_picker;
-            if (!p) return { started: false, reason: 'no-__sc_picker' };
+            if (!p) return { started: false, reason: "no-__sc_picker" };
             p.start();
             return { started: true, active: p.isActive() };
           }),
         )
         .then((r) => {
           process.stderr.write(
-            `[sc-sidecar] pickElement.start overlay streamId=${streamId || '(recorder)'} url=${page.url()} result=${JSON.stringify(r)}\n`,
+            `[sc-sidecar] pickElement.start overlay streamId=${streamId || "(recorder)"} url=${page.url()} result=${JSON.stringify(r)}\n`,
           );
         })
         .catch(async (e) => {
@@ -1516,15 +1561,15 @@ const handlers = {
     });
   },
 
-  'pickElement.cancel': async () => {
+  "pickElement.cancel": async () => {
     if (state.pickerPending) {
       const pending = state.pickerPending;
-      await pending.settle({ cancelled: true, reason: 'user-cancel' });
+      await pending.settle({ cancelled: true, reason: "user-cancel" });
     }
     return { ok: true };
   },
 
-  'pickElement.isActive': async () => ({ active: !!state.pickerPending }),
+  "pickElement.isActive": async () => ({ active: !!state.pickerPending }),
 
   // test-only hooks. The Rust driver never calls these; they
   // exist so vitest can synthesize click + Escape events deterministically
@@ -1535,7 +1580,7 @@ const handlers = {
     // can target an author-session page; omitted streamId preserves the
     // pre-11-03 recorder-path behavior (state.page).
     let page;
-    if (typeof streamId === 'string' && streamId.length > 0) {
+    if (typeof streamId === "string" && streamId.length > 0) {
       const s = state.authorSessions.get(streamId);
       if (!s || !s.page) {
         const err = new Error(`no author page for streamId=${streamId}`);
@@ -1545,7 +1590,7 @@ const handlers = {
       page = s.page;
     } else {
       if (!state.page) {
-        const err = new Error('browser not launched');
+        const err = new Error("browser not launched");
         err.code = -32000;
         throw err;
       }
@@ -1553,10 +1598,8 @@ const handlers = {
     }
     await page.evaluate((sel) => {
       const el = document.querySelector(sel);
-      if (!el) throw new Error('no element for selector ' + sel);
-      el.dispatchEvent(
-        new MouseEvent('click', { bubbles: true, cancelable: true }),
-      );
+      if (!el) throw new Error("no element for selector " + sel);
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     }, selector);
     return { ok: true };
   },
@@ -1568,30 +1611,26 @@ const handlers = {
   // `pickElement.hoverPreview` JSON-RPC notification.
   __test_simulate_hover: async ({ selector }) => {
     if (!state.page) {
-      const err = new Error('browser not launched');
+      const err = new Error("browser not launched");
       err.code = -32000;
       throw err;
     }
     await state.page.evaluate((sel) => {
       const el = document.querySelector(sel);
-      if (!el) throw new Error('no element for selector ' + sel);
-      el.dispatchEvent(
-        new MouseEvent('mouseover', { bubbles: true, cancelable: true }),
-      );
+      if (!el) throw new Error("no element for selector " + sel);
+      el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true }));
     }, selector);
     return { ok: true };
   },
 
   __test_simulate_pick_cancel: async () => {
     if (!state.page) {
-      const err = new Error('browser not launched');
+      const err = new Error("browser not launched");
       err.code = -32000;
       throw err;
     }
     await state.page.evaluate(() => {
-      document.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-      );
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
     return { ok: true };
   },
@@ -1619,8 +1658,7 @@ function applyNth(locOrStr, nth, pageFn) {
   if (nth == null) return locOrStr;
   const n = Number(nth);
   if (!Number.isFinite(n) || n < 1) return locOrStr;
-  const loc =
-    typeof locOrStr === 'string' ? pageFn().locator(locOrStr) : locOrStr;
+  const loc = typeof locOrStr === "string" ? pageFn().locator(locOrStr) : locOrStr;
   return loc.nth(n - 1);
 }
 
@@ -1631,49 +1669,49 @@ async function locate(selector, strategy, nth) {
   // strict explicit strategies. Routed on `strategy` FIRST so prefix
   // collisions (e.g. "text=" shared with legacy VisibleText) don't
   // mis-dispatch.
-  if (strategy === 'role') {
+  if (strategy === "role") {
     // value shape: "role=<role-kebab>:<name>" — split on FIRST ':' so names may contain ':'
-    const body = selector.slice('role='.length);
-    const idx = body.indexOf(':');
+    const body = selector.slice("role=".length);
+    const idx = body.indexOf(":");
     if (idx < 0) throw new Error(`invalid role selector encoding: ${selector}`);
     const role = body.slice(0, idx);
     const name = body.slice(idx + 1);
     return withNth(page.getByRole(role, { name, exact: true }));
   }
-  if (strategy === 'label') {
-    return withNth(page.getByLabel(selector.slice('label='.length), { exact: true }));
+  if (strategy === "label") {
+    return withNth(page.getByLabel(selector.slice("label=".length), { exact: true }));
   }
-  if (strategy === 'text_exact') {
+  if (strategy === "text_exact") {
     // SAME wire prefix as legacy VisibleText, but `text_exact` strategy →
     // exact match, no fallback.
-    return withNth(page.getByText(selector.slice('text='.length), { exact: true }));
+    return withNth(page.getByText(selector.slice("text=".length), { exact: true }));
   }
   // The Rust SmartSelector emits strategy-prefixed values; map them to
   // playwright-locator literals. Anything else is treated as raw CSS.
-  if (strategy === 'css' || strategy === 'testid' || strategy === 'aria') {
+  if (strategy === "css" || strategy === "testid" || strategy === "aria") {
     return withNth(page.locator(selector));
   }
-  if (selector.startsWith('aria-name=')) {
+  if (selector.startsWith("aria-name=")) {
     // accessible-name covers form labels AND interactive text (links,
     // buttons, headings, etc.). getByLabel only handles form labels, so
     // chain it with role-by-name and visible-text for the common cases.
-    const name = selector.slice('aria-name='.length);
+    const name = selector.slice("aria-name=".length);
     return withNth(
       page
-        .getByRole('link', { name, exact: true })
-        .or(page.getByRole('button', { name, exact: true }))
+        .getByRole("link", { name, exact: true })
+        .or(page.getByRole("button", { name, exact: true }))
         .or(page.getByLabel(name))
         .or(page.getByText(name, { exact: true })),
     );
   }
-  if (selector.startsWith('text=')) {
-    return withNth(page.getByText(selector.slice('text='.length), { exact: true }));
+  if (selector.startsWith("text=")) {
+    return withNth(page.getByText(selector.slice("text=".length), { exact: true }));
   }
-  if (selector.startsWith('label=')) {
-    return withNth(page.getByLabel(selector.slice('label='.length)));
+  if (selector.startsWith("label=")) {
+    return withNth(page.getByLabel(selector.slice("label=".length)));
   }
-  if (selector.startsWith('text~=')) {
-    return withNth(page.getByText(selector.slice('text~='.length)));
+  if (selector.startsWith("text~=")) {
+    return withNth(page.getByText(selector.slice("text~=".length)));
   }
   return withNth(page.locator(selector));
 }
@@ -1690,21 +1728,21 @@ async function locate(selector, strategy, nth) {
 // get coerced via `page.locator(s).nth(n - 1)` so callers don't need a
 // separate nth-handling path).
 function targetToLocator(target) {
-  if (!target) return '*';
+  if (!target) return "*";
   let result;
-  if (target.kind === 'selector') {
+  if (target.kind === "selector") {
     result = target.value;
-  } else if (target.kind === 'testid') {
+  } else if (target.kind === "testid") {
     result = `[data-testid="${target.value}"]`;
-  } else if (target.kind === 'aria') {
+  } else if (target.kind === "aria") {
     result = `[aria-label="${target.value}"]`;
-  } else if (target.kind === 'role') {
+  } else if (target.kind === "role") {
     // value is an object: { role: <kebab>, name: <string> }
     const { role, name } = target.value;
     result = pickPage().getByRole(role, { name, exact: true });
-  } else if (target.kind === 'label') {
+  } else if (target.kind === "label") {
     result = pickPage().getByLabel(target.value, { exact: true });
-  } else if (target.kind === 'text_exact') {
+  } else if (target.kind === "text_exact") {
     result = pickPage().getByText(target.value, { exact: true });
   } else {
     result = `text=${target.value}`;
@@ -1714,33 +1752,37 @@ function targetToLocator(target) {
 
 const rl = createInterface({ input: process.stdin, terminal: false });
 
-rl.on('line', async (line) => {
+rl.on("line", async (line) => {
   if (!line.trim()) return;
   let req;
   try {
     req = JSON.parse(line);
   } catch (e) {
-    write({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
+    write({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
     return;
   }
   const { id, method, params } = req;
   const handler = handlers[method];
   if (!handler) {
-    write({ jsonrpc: '2.0', id, error: { code: -32601, message: `method not found: ${method}` } });
+    write({ jsonrpc: "2.0", id, error: { code: -32601, message: `method not found: ${method}` } });
     return;
   }
   try {
     const result = await handler(params || {});
-    write({ jsonrpc: '2.0', id, result });
+    write({ jsonrpc: "2.0", id, result });
   } catch (e) {
-    write({ jsonrpc: '2.0', id, error: { code: -32000, message: String((e && e.message) || e) } });
+    write({ jsonrpc: "2.0", id, error: { code: -32000, message: String((e && e.message) || e) } });
   }
 });
 
-rl.on('close', async () => {
+rl.on("close", async () => {
   if (state.cdp) {
-    try { await state.cdp.send('Page.stopScreencast', {}); } catch {}
-    try { await state.cdp.detach(); } catch {}
+    try {
+      await state.cdp.send("Page.stopScreencast", {});
+    } catch {}
+    try {
+      await state.cdp.detach();
+    } catch {}
   }
   if (state.browser) {
     try {
@@ -1766,7 +1808,7 @@ rl.on('close', async () => {
 });
 
 function write(obj) {
-  process.stdout.write(JSON.stringify(obj) + '\n');
+  process.stdout.write(JSON.stringify(obj) + "\n");
 }
 
 // id-absent JSON-RPC notifications for live-hover preview.
@@ -1774,9 +1816,7 @@ function write(obj) {
 // with a clear type signature. The Rust reader (playwright_driver.rs)
 // dispatches any id-absent + method-present line to the broadcast channel.
 function writeNotification(method, params) {
-  process.stdout.write(
-    JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n',
-  );
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n");
 }
 
 // Emit current nav state for an author session as a `preview/nav`
@@ -1784,9 +1824,9 @@ function writeNotification(method, params) {
 // goBack/goForward/reload handlers complete.
 function emitNavNotification(streamId, session) {
   if (!session || !session.history) return;
-  writeNotification('preview/nav', {
+  writeNotification("preview/nav", {
     streamId,
-    url: session.history[session.historyIndex] ?? '',
+    url: session.history[session.historyIndex] ?? "",
     canGoBack: session.historyIndex > 0,
     canGoForward: session.historyIndex < session.history.length - 1,
   });
@@ -1802,16 +1842,14 @@ function flushPreviewFrame() {
   const f = state.latestFrame;
   if (!f) return;
   state.latestFrame = null;
-  writeNotification('preview/frame', {
+  writeNotification("preview/frame", {
     data: f.data,
     width: f.width,
     height: f.height,
     timestamp: f.timestamp,
   });
   if (state.cdp) {
-    state.cdp
-      .send('Page.screencastFrameAck', { sessionId: f.sessionId })
-      .catch(() => {});
+    state.cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
   }
 }
 
@@ -1826,7 +1864,7 @@ function flushAuthorPreviewFrame(streamId) {
   const f = s.latestFrame;
   if (!f) return;
   s.latestFrame = null;
-  writeNotification('preview/frame', {
+  writeNotification("preview/frame", {
     streamId,
     data: f.data,
     width: f.width,
@@ -1834,8 +1872,6 @@ function flushAuthorPreviewFrame(streamId) {
     timestamp: f.timestamp,
   });
   if (s.cdp) {
-    s.cdp
-      .send('Page.screencastFrameAck', { sessionId: f.sessionId })
-      .catch(() => {});
+    s.cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
   }
 }

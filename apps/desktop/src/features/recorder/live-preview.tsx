@@ -1,10 +1,4 @@
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import {
@@ -65,11 +59,7 @@ function extractMods(e: React.KeyboardEvent): AuthorKeyModifiers {
   };
 }
 
-export type PreviewStatus =
-  | "attaching"
-  | "streaming"
-  | "recovering"
-  | "unavailable";
+export type PreviewStatus = "attaching" | "streaming" | "recovering" | "unavailable";
 
 function isUnavailableBackend(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
@@ -82,7 +72,40 @@ function delay(ms: number): Promise<void> {
 }
 
 const SATURATION_LOG_INTERVAL_MS = 30_000;
+const DIMENSION_MISMATCH_LOG_INTERVAL_MS = 30_000;
 const RETRY_BACKOFF_MS = 500;
+
+function updatePreviewDiagnostics(
+  canvas: HTMLCanvasElement,
+  frame: Pick<PreviewFramePayload, "width" | "height">,
+  bmp: ImageBitmap,
+  lastDimensionsRef: { current: string },
+  lastLogRef: { current: number },
+) {
+  const dimensionsKey = `${frame.width}x${frame.height}/${bmp.width}x${bmp.height}`;
+  if (lastDimensionsRef.current !== dimensionsKey) {
+    lastDimensionsRef.current = dimensionsKey;
+    canvas.dataset.frameWidth = String(frame.width);
+    canvas.dataset.frameHeight = String(frame.height);
+    canvas.dataset.bitmapWidth = String(bmp.width);
+    canvas.dataset.bitmapHeight = String(bmp.height);
+  }
+
+  if (bmp.width === canvas.width && bmp.height === canvas.height) return;
+  const now = Date.now();
+  if (now - lastLogRef.current < DIMENSION_MISMATCH_LOG_INTERVAL_MS) return;
+  lastLogRef.current = now;
+  frontendLog.warn("LivePreview", "frame dimension mismatch", {
+    fields: {
+      frame_width: frame.width,
+      frame_height: frame.height,
+      bitmap_width: bmp.width,
+      bitmap_height: bmp.height,
+      canvas_width: canvas.width,
+      canvas_height: canvas.height,
+    },
+  });
+}
 
 export function LivePreview({
   width = 1280,
@@ -99,6 +122,8 @@ export function LivePreview({
   const rafRef = useRef<number | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const dropCountRef = useRef(0);
+  const lastPreviewDimensionsRef = useRef("");
+  const lastDimensionMismatchLogRef = useRef(0);
   const saturationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [status, setStatus] = useState<PreviewStatus>("attaching");
   // Tracks modifier keys currently pressed inside the canvas so that we
@@ -152,8 +177,7 @@ export function LivePreview({
 
   useEffect(() => {
     let cancelled = false;
-    const eventName =
-      streamId != null ? `preview://frame/${streamId}` : "preview://frame";
+    const eventName = streamId != null ? `preview://frame/${streamId}` : "preview://frame";
 
     const attachListener = async (): Promise<boolean> => {
       const unlisten = await listen<PreviewFramePayload>(eventName, async (ev) => {
@@ -162,6 +186,16 @@ export function LivePreview({
           const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
           const blob = new Blob([bytes], { type: "image/jpeg" });
           const bmp = await createImageBitmap(blob);
+          const canvas = canvasRef.current;
+          if (canvas) {
+            updatePreviewDiagnostics(
+              canvas,
+              ev.payload,
+              bmp,
+              lastPreviewDimensionsRef,
+              lastDimensionMismatchLogRef,
+            );
+          }
           if (pendingBitmap.current) {
             pendingBitmap.current.close();
             dropCountRef.current += 1;
@@ -310,8 +344,7 @@ export function LivePreview({
     canvasRef.current?.focus();
     const p = toPageCoord(e.clientX, e.clientY);
     if (!p) return;
-    const button: AuthorMouseButton =
-      e.button === 1 ? "middle" : e.button === 2 ? "right" : "left";
+    const button: AuthorMouseButton = e.button === 1 ? "middle" : e.button === 2 ? "right" : "left";
     dispatchInput({ type: "click", x: p.x, y: p.y, button });
   };
 
@@ -362,9 +395,7 @@ export function LivePreview({
   // diacritics (Vietnamese, etc.) reach the page intact. The browser
   // also fires a synthetic keyup at the end of composition; that's
   // harmless because the page never saw the matching keydown.
-  const onCompositionEnd = (
-    e: React.CompositionEvent<HTMLCanvasElement>,
-  ) => {
+  const onCompositionEnd = (e: React.CompositionEvent<HTMLCanvasElement>) => {
     if (!inputEnabled || pickerArmed) return;
     const text = e.data ?? "";
     if (text.length === 0) return;
@@ -410,6 +441,10 @@ export function LivePreview({
       data-testid="live-preview-canvas"
       data-status={status}
       data-drop-count="0"
+      data-frame-width="0"
+      data-frame-height="0"
+      data-bitmap-width="0"
+      data-bitmap-height="0"
       data-input-enabled={inputEnabled}
       tabIndex={inputEnabled ? 0 : -1}
       width={width}
