@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
+  ArrowLeft,
   Eye,
   Maximize2,
   Mic,
@@ -133,6 +134,18 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       {/* Top bar */}
       <div className="sc-toolbar">
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <Link
+            to="/"
+            aria-label="Back to projects"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              color: "var(--sc-text-2)",
+              marginRight: 2,
+            }}
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+          </Link>
           <Scissors size={14} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
           <div className="sc-toolbar-title">Post-Production</div>
           <ScBadge tone="muted">story {storyId}</ScBadge>
