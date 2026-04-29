@@ -93,8 +93,12 @@ export default function EditorRoute() {
     setAuthorDriverSnapshot,
   ]);
   const simulatorFrames = useSimulatorStore((s) => s.frames);
+  const showSimulatorFrame =
+    simulatorRunState === "running" ||
+    simulatorRunState === "paused" ||
+    (simulatorRunState === "failed" && authorDriverVariant !== "picking");
   const simulatorActiveFrame =
-    simulatorRunState !== "idle" && simulatorCurrentOrd != null
+    showSimulatorFrame && simulatorCurrentOrd != null
       ? (simulatorFrames.find((f) => f.ordinal === simulatorCurrentOrd) ?? null)
       : null;
 
