@@ -89,6 +89,7 @@ impl From<CaptureConfigDto> for CaptureConfig {
                 .queue_cap_bytes
                 .map(|v| v as usize)
                 .unwrap_or(ByteBoundedQueue::DEFAULT_CAP_BYTES),
+            frame_crop: None,
         }
     }
 }
@@ -646,6 +647,7 @@ pub async fn start_capture_target(
             .queue_cap_bytes
             .map(|v| v as usize)
             .unwrap_or(ByteBoundedQueue::DEFAULT_CAP_BYTES),
+        frame_crop: None,
     };
 
     let (tx, mut rx) = mpsc::channel::<Frame>(64);

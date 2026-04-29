@@ -36,7 +36,7 @@ pub use display::{enumerate_displays, DisplayId, DisplayInfo};
 pub use error::CaptureError;
 pub use events::CaptureEvent;
 pub use fallback::XcapBackend;
-pub use frame::{ClockSource, Frame, FrameData, PixelFormat, Pts};
+pub use frame::{ClockSource, Frame, FrameCropRect, FrameData, PixelFormat, Pts};
 pub use orchestrator::{orchestrate_start, FallbackCounter, OrchestratedStart};
 pub use pipeline::{CapturePipeline, DropEventCallback};
 pub use queue::{ByteBoundedQueue, DroppedFrame, QueueStats};

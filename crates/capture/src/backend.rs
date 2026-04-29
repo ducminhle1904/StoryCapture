@@ -4,7 +4,7 @@
 
 use crate::display::{DisplayId, DisplayInfo};
 use crate::error::CaptureError;
-use crate::frame::{Frame, PixelFormat};
+use crate::frame::{Frame, FrameCropRect, PixelFormat};
 use crate::target::CaptureTarget;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -29,6 +29,12 @@ pub struct CaptureConfig {
     pub pixel_format: PixelFormat,
     /// Cap for the byte-bounded queue. Default 256 MiB.
     pub queue_cap_bytes: usize,
+    /// Optional frame-relative crop applied after native capture.
+    ///
+    /// Used for window-subrect captures such as browser-content-only
+    /// recording. DisplayRegion targets should keep using backend-native
+    /// region crop instead.
+    pub frame_crop: Option<FrameCropRect>,
 }
 
 impl CaptureConfig {
@@ -46,6 +52,7 @@ impl CaptureConfig {
             fps_target: 60,
             pixel_format: PixelFormat::Bgra,
             queue_cap_bytes: crate::queue::ByteBoundedQueue::DEFAULT_CAP_BYTES,
+            frame_crop: None,
         }
     }
 

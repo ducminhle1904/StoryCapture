@@ -818,6 +818,50 @@ describe("browser session profile sync", () => {
       client.call("assert", { target: { kind: "text_exact", value: "Asia/Tokyo" } }),
     ).resolves.toMatchObject({ result: { ok: true } });
   }, 90_000);
+
+  it("app-mode recording launch preserves explicit browser environment", async () => {
+    const browserEnvironment = {
+      locale: "vi-VN",
+      timezoneId: "Asia/Tokyo",
+      acceptLanguage: "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+    };
+    await client.call("launch", {
+      viewport: { width: 800, height: 600 },
+      theme: "auto",
+      baseUrl: baseUrl,
+      headless: true,
+      downloadDir: "/tmp",
+      args: [`--app=${baseUrl}`],
+      browserEnvironment,
+    });
+    await client.call("goto", { url: baseUrl });
+    await expect(
+      client.call("assert", { target: { kind: "text_exact", value: "vi-VN" } }),
+    ).resolves.toMatchObject({ result: { ok: true } });
+    await expect(
+      client.call("assert", { target: { kind: "text_exact", value: "Asia/Tokyo" } }),
+    ).resolves.toMatchObject({ result: { ok: true } });
+  }, 90_000);
+
+  it("reports a scalable crop for browser viewport content", async () => {
+    await client.call("launch", {
+      viewport: { width: 800, height: 600 },
+      theme: "auto",
+      baseUrl: baseUrl,
+      headless: true,
+      downloadDir: "/tmp",
+    });
+    await client.call("goto", { url: baseUrl });
+    const resp = await client.call("pageContentCrop", {});
+    expect(resp.result.crop.w).toBeGreaterThan(0);
+    expect(resp.result.crop.h).toBeGreaterThan(0);
+    expect(resp.result.crop.x).toBeGreaterThanOrEqual(0);
+    expect(resp.result.crop.y).toBeGreaterThanOrEqual(0);
+    expect(resp.result.crop.basis_w).toBeGreaterThanOrEqual(resp.result.crop.w);
+    expect(resp.result.crop.basis_h).toBeGreaterThanOrEqual(resp.result.crop.h);
+    expect(resp.result.metrics.innerWidth).toBe(800);
+    expect(resp.result.metrics.innerHeight).toBe(600);
+  }, 90_000);
 });
 
 // URL-bar back/forward/reload + nav notification stream for the editor

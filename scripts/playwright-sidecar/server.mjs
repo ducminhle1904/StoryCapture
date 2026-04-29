@@ -81,6 +81,8 @@ let state = {
   // child process (pid + spawnfile) which `Browser` itself doesn't. We
   // keep the server handle here so `browserProcess` can report it.
   browserServer: null,
+  appModeRequested: false,
+  appModeReused: false,
   // Test-only: force `browserProcess` to return the "remote-browser"
   // response shape even though we launched locally. Flipped by the
   // `__test_set_remote_browser` verb exercised from vitest.
@@ -185,6 +187,42 @@ function contextEnvironmentOptions(browserEnvironment = {}) {
     opts.extraHTTPHeaders = { "Accept-Language": env.acceptLanguage };
   }
   return opts;
+}
+
+function browserEnvironmentLaunchArgs(browserEnvironment = {}) {
+  const env =
+    browserEnvironment && typeof browserEnvironment === "object" ? browserEnvironment : {};
+  const args = [];
+  if (typeof env.locale === "string" && env.locale.length > 0) {
+    args.push(`--lang=${env.locale}`);
+  }
+  if (typeof env.acceptLanguage === "string" && env.acceptLanguage.length > 0) {
+    args.push(`--accept-lang=${env.acceptLanguage}`);
+  }
+  return args;
+}
+
+function redactUrlForLog(raw) {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  const value = raw.startsWith("--app=") ? raw.slice("--app=".length) : raw;
+  if (value === "about:blank") return value;
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "<invalid-url>";
+  }
+}
+
+function redactArgForLog(arg) {
+  if (typeof arg !== "string") return "<non-string>";
+  if (arg.startsWith("--app=")) return `--app=${redactUrlForLog(arg)}`;
+  if (arg.startsWith("--accept-lang=")) return "--accept-lang=<set>";
+  return arg;
+}
+
+function sidecarLog(evt, fields = {}) {
+  process.stderr.write(`[sc-sidecar] ${JSON.stringify({ evt, ...fields })}\n`);
 }
 
 function parseStorageState(storageStateJson) {
@@ -439,6 +477,116 @@ async function fitViewportToContent(page, context, viewport) {
   }
 }
 
+async function waitForAppModeContext(browser, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const context = browser.contexts().find((candidate) => candidate.pages().length > 0);
+    if (context) return context;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return browser.contexts().find((candidate) => candidate.pages().length > 0) ?? null;
+}
+
+async function applyEnvironmentToExistingPage(page, browserEnvironment = {}) {
+  const env =
+    browserEnvironment && typeof browserEnvironment === "object" ? browserEnvironment : {};
+  if (typeof env.acceptLanguage === "string" && env.acceptLanguage.length > 0) {
+    await page.context().setExtraHTTPHeaders({ "Accept-Language": env.acceptLanguage });
+  }
+  if (typeof env.locale === "string" && env.locale.length > 0) {
+    await page.context().addInitScript((locale) => {
+      const languages = [locale, locale.split("-")[0]].filter(Boolean);
+      Object.defineProperty(Navigator.prototype, "language", {
+        configurable: true,
+        get: () => locale,
+      });
+      Object.defineProperty(Navigator.prototype, "languages", {
+        configurable: true,
+        get: () => languages,
+      });
+    }, env.locale);
+  }
+  if (
+    typeof env.locale !== "string" &&
+    typeof env.timezoneId !== "string"
+  ) {
+    return;
+  }
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    if (typeof env.locale === "string" && env.locale.length > 0) {
+      await cdp.send("Emulation.setLocaleOverride", { locale: env.locale });
+    }
+    if (typeof env.timezoneId === "string" && env.timezoneId.length > 0) {
+      await cdp.send("Emulation.setTimezoneOverride", { timezoneId: env.timezoneId });
+    }
+  } finally {
+    try {
+      await cdp.detach();
+    } catch {}
+  }
+}
+
+async function pageDiagnostics(page) {
+  try {
+    return await page.evaluate(() => ({
+      url: location.href,
+      title: document.title,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      outerWidth: window.outerWidth,
+      outerHeight: window.outerHeight,
+      language: navigator.language,
+      languages: Array.from(navigator.languages || []),
+    }));
+  } catch (e) {
+    return { error: e?.message || String(e) };
+  }
+}
+
+async function pageContentCrop(page) {
+  const metrics = await page.evaluate(() => ({
+    url: location.href,
+    title: document.title,
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    outerWidth: window.outerWidth,
+    outerHeight: window.outerHeight,
+    screenX: window.screenX,
+    screenY: window.screenY,
+    devicePixelRatio: window.devicePixelRatio || 1,
+  }));
+  const horizontalChrome = Math.max(0, metrics.outerWidth - metrics.innerWidth);
+  const verticalChrome = Math.max(0, metrics.outerHeight - metrics.innerHeight);
+  // Return logical/CSS coordinates plus the outer-window basis. Native capture
+  // backends may deliver Retina/DPI-scaled frames even when Chromium reports
+  // devicePixelRatio=1, so the host scales this rect against the actual frame.
+  const crop = {
+    x: Math.max(0, Math.round(horizontalChrome / 2)),
+    y: Math.max(0, Math.round(verticalChrome)),
+    w: Math.max(1, Math.round(metrics.innerWidth)),
+    h: Math.max(1, Math.round(metrics.innerHeight)),
+    basis_w: Math.max(1, Math.round(metrics.outerWidth)),
+    basis_h: Math.max(1, Math.round(metrics.outerHeight)),
+  };
+
+  let bounds = null;
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      const { windowId } = await cdp.send("Browser.getWindowForTarget");
+      const response = await cdp.send("Browser.getWindowBounds", { windowId });
+      bounds = response.bounds ?? null;
+    } finally {
+      await cdp.detach().catch(() => {});
+    }
+  } catch (e) {
+    bounds = { error: e?.message || String(e) };
+  }
+
+  return { crop, metrics, bounds };
+}
+
 function armAuthorIdleClose() {
   if (state.authorIdleHandle) clearTimeout(state.authorIdleHandle);
   state.authorIdleHandle = setTimeout(() => {
@@ -551,6 +699,29 @@ const handlers = {
     // ["--app=https://demo.com"] for chrome-hiding per D-09/D-10). Defaults
     // to [] so pre-06-02 call sites (Plan 05-02 tests) keep working.
     const extraArgs = Array.isArray(args) ? [...args] : [];
+    for (const envArg of browserEnvironmentLaunchArgs(browserEnvironment)) {
+      const key = envArg.split("=")[0];
+      if (!extraArgs.some((arg) => typeof arg === "string" && arg.startsWith(`${key}=`))) {
+        extraArgs.push(envArg);
+      }
+    }
+    const appArg = extraArgs.find((a) => typeof a === "string" && a.startsWith("--app="));
+    const hasApp = typeof appArg === "string";
+    if (hasApp) {
+      sidecarLog("app_mode_launch_requested", {
+        appUrl: redactUrlForLog(appArg),
+        headless: headless !== false,
+        executableSet: Boolean(executable),
+        channel: channel || null,
+        args: extraArgs.map(redactArgForLog),
+        browserEnvironment: {
+          locale: browserEnvironment?.locale ?? null,
+          timezoneId: browserEnvironment?.timezoneId ?? null,
+          acceptLanguageSet: typeof browserEnvironment?.acceptLanguage === "string",
+        },
+        storageStateSet: typeof storageState === "string" && storageState.length > 0,
+      });
+    }
     const launchOpts = {
       headless: headless !== false,
       args: extraArgs,
@@ -573,13 +744,29 @@ const handlers = {
     // window sized to viewport + {2,80} points, not whatever we asked
     // for. We resize explicitly below via a measured CDP call so the
     // content area matches the story viewport in real pixels.
-    state.context = await state.browser.newContext({
-      viewport: null,
-      colorScheme: theme === "dark" ? "dark" : theme === "light" ? "light" : "no-preference",
-      acceptDownloads: true,
-      ...(storageState ? { storageState: parseStorageState(storageState) } : {}),
-      ...contextEnvironmentOptions(browserEnvironment),
-    });
+    const appContext = hasApp ? await waitForAppModeContext(state.browser) : null;
+    state.appModeRequested = hasApp;
+    state.appModeReused = Boolean(appContext);
+    if (hasApp) {
+      sidecarLog("app_mode_context_resolution", {
+        appContextFound: Boolean(appContext),
+        contextCount: state.browser.contexts().length,
+        contexts: state.browser.contexts().map((context, index) => ({
+          index,
+          pageCount: context.pages().length,
+          urls: context.pages().map((page) => redactUrlForLog(page.url())),
+        })),
+      });
+    }
+    state.context =
+      appContext ??
+      (await state.browser.newContext({
+        viewport: null,
+        colorScheme: theme === "dark" ? "dark" : theme === "light" ? "light" : "no-preference",
+        acceptDownloads: true,
+        ...(storageState ? { storageState: parseStorageState(storageState) } : {}),
+        ...contextEnvironmentOptions(browserEnvironment),
+      }));
     // inject the picker overlay IIFE into every frame of every
     // page in this context. addInitScript fires before page scripts so
     // window.__sc_picker is available the moment the user clicks Pick.
@@ -601,7 +788,6 @@ const handlers = {
     // capture path then picks the wrong one. Reuse the existing first
     // page when one exists (the typical --app= path) and only create a
     // fresh page defensively when the context reports none.
-    const hasApp = extraArgs.some((a) => typeof a === "string" && a.startsWith("--app="));
     const existingPages = state.context.pages();
     if (hasApp && existingPages.length > 0) {
       state.page = existingPages[0];
@@ -609,6 +795,24 @@ const handlers = {
       state.page = existingPages[0];
     } else {
       state.page = await state.context.newPage();
+    }
+    if (appContext) {
+      await applyEnvironmentToExistingPage(state.page, browserEnvironment);
+    }
+    if (hasApp) {
+      const diag = await pageDiagnostics(state.page);
+      sidecarLog("app_mode_page_selected", {
+        reusedAppContext: Boolean(appContext),
+        pageUrl: redactUrlForLog(diag.url),
+        title: diag.title ?? null,
+        innerWidth: diag.innerWidth ?? null,
+        innerHeight: diag.innerHeight ?? null,
+        outerWidth: diag.outerWidth ?? null,
+        outerHeight: diag.outerHeight ?? null,
+        language: diag.language ?? null,
+        languages: diag.languages ?? null,
+        error: diag.error ?? null,
+      });
     }
     // Authoritative resize via CDP so the native window CONTENT
     // matches `viewport` exactly. Playwright's own viewport math uses
@@ -626,10 +830,25 @@ const handlers = {
               `bounds=${result?.bounds?.width ?? 0}x${result?.bounds?.height ?? 0}\n`,
           );
         }
+        if (hasApp) {
+          sidecarLog("app_mode_viewport_fit", {
+            ok: Boolean(result?.ok),
+            attempts: result?.attempts ?? 0,
+            wantedWidth: viewport.width,
+            wantedHeight: viewport.height,
+            innerWidth: result?.inner?.w ?? null,
+            innerHeight: result?.inner?.h ?? null,
+            boundsWidth: result?.bounds?.width ?? null,
+            boundsHeight: result?.bounds?.height ?? null,
+          });
+        }
       } catch (e) {
         process.stderr.write(
           `[playwright-sidecar] warn: CDP content-size fit failed: ${e.message}\n`,
         );
+        if (hasApp) {
+          sidecarLog("app_mode_viewport_fit_error", { error: e.message || String(e) });
+        }
       }
     }
     return { ok: true };
@@ -670,6 +889,8 @@ const handlers = {
       baseUrl: null,
       downloadDir: null,
       browserServer: null,
+      appModeRequested: false,
+      appModeReused: false,
       fakeRemoteBrowser: false,
       pickerPending: null,
       pickerBoundPages: new WeakSet(),
@@ -694,7 +915,24 @@ const handlers = {
 
   goto: async ({ url }) => {
     const target = absolute(url);
-    await pickPage().goto(target, { waitUntil: "load" });
+    const page = await pickPage();
+    await page.goto(target, { waitUntil: "load" });
+    if (state.context && page.context() === state.context) {
+      const diag = await pageDiagnostics(page);
+      sidecarLog("recording_goto_complete", {
+        appModeRequested: state.appModeRequested,
+        appModeReused: state.appModeReused,
+        targetUrl: redactUrlForLog(target),
+        pageUrl: redactUrlForLog(diag.url),
+        title: diag.title ?? null,
+        innerWidth: diag.innerWidth ?? null,
+        innerHeight: diag.innerHeight ?? null,
+        outerWidth: diag.outerWidth ?? null,
+        outerHeight: diag.outerHeight ?? null,
+        language: diag.language ?? null,
+        error: diag.error ?? null,
+      });
+    }
     return { ok: true };
   },
 
@@ -884,6 +1122,21 @@ const handlers = {
       process.stderr.write(`[debug] browserProcess pid=${pid} exec=${executablePath}\n`);
     }
     return { pid, executablePath };
+  },
+
+  pageContentCrop: async () => {
+    const page = await pickPage();
+    const info = await pageContentCrop(page);
+    sidecarLog("page_content_crop", {
+      crop: info.crop,
+      innerWidth: info.metrics?.innerWidth ?? null,
+      innerHeight: info.metrics?.innerHeight ?? null,
+      outerWidth: info.metrics?.outerWidth ?? null,
+      outerHeight: info.metrics?.outerHeight ?? null,
+      devicePixelRatio: info.metrics?.devicePixelRatio ?? null,
+      bounds: info.bounds ?? null,
+    });
+    return info;
   },
 
   // Quick 260418-fpr — block until the launched page has painted its

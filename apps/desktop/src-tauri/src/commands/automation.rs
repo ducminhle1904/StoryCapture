@@ -1250,7 +1250,7 @@ pub(crate) fn __test_set_playwright_pid(info: Option<PlaywrightLaunchInfo>) {
     err(Debug)
 )]
 pub async fn resolve_playwright_target(
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> Result<Option<ResolvedPlaywrightTarget>, AppError> {
     let info = match playwright_pid_stash().get() {
         Some(i) => i,
@@ -1260,6 +1260,7 @@ pub async fn resolve_playwright_target(
         // Remote-browser or similar: keep the auto target disabled.
         return Ok(None);
     };
+    let content_crop = resolve_playwright_content_crop(&state).await;
 
     #[cfg(target_os = "macos")]
     {
@@ -1280,6 +1281,7 @@ pub async fn resolve_playwright_target(
             pid,
             width_px,
             height_px,
+            content_crop,
         }))
     }
     #[cfg(target_os = "windows")]
@@ -1299,12 +1301,58 @@ pub async fn resolve_playwright_target(
             pid,
             width_px: 0,
             height_px: 0,
+            content_crop,
         }))
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = pid;
         Ok(None)
+    }
+}
+
+async fn resolve_playwright_content_crop(
+    state: &State<'_, AppState>,
+) -> Option<ResolvedFrameCropDto> {
+    let driver = { state.playwright_driver.lock().await.clone() }?;
+    let result = {
+        let driver = driver.lock().await;
+        driver.page_content_crop().await
+    };
+    match result {
+        Ok(info) => {
+            tracing::info!(
+                target: "storycapture::automation",
+                crop_x = info.crop.x,
+                crop_y = info.crop.y,
+                crop_w = info.crop.w,
+                crop_h = info.crop.h,
+                crop_basis_w = info.crop.basis_w,
+                crop_basis_h = info.crop.basis_h,
+                inner_w = info.metrics.inner_width,
+                inner_h = info.metrics.inner_height,
+                outer_w = info.metrics.outer_width,
+                outer_h = info.metrics.outer_height,
+                dpr = info.metrics.device_pixel_ratio,
+                "resolve_playwright_target: browser content crop resolved"
+            );
+            Some(ResolvedFrameCropDto {
+                x: info.crop.x,
+                y: info.crop.y,
+                w: info.crop.w,
+                h: info.crop.h,
+                basis_w: info.crop.basis_w,
+                basis_h: info.crop.basis_h,
+            })
+        }
+        Err(error) => {
+            tracing::warn!(
+                target: "storycapture::automation",
+                %error,
+                "resolve_playwright_target: browser content crop unavailable"
+            );
+            None
+        }
     }
 }
 
@@ -1360,6 +1408,22 @@ pub struct ResolvedPlaywrightTarget {
     pub width_px: u32,
     /// Window pixel height (retina-scaled on macOS). See `width_px`.
     pub height_px: u32,
+    /// Frame-relative crop for the page viewport within the captured browser
+    /// window. `basis_w/h` allow the capture layer to scale logical browser
+    /// measurements to Retina/DPI-scaled native frames.
+    pub content_crop: Option<ResolvedFrameCropDto>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+pub struct ResolvedFrameCropDto {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    #[serde(default)]
+    pub basis_w: Option<u32>,
+    #[serde(default)]
+    pub basis_h: Option<u32>,
 }
 
 #[cfg(test)]

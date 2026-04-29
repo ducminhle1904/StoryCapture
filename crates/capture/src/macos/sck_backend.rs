@@ -249,6 +249,7 @@ impl CaptureBackend for SckBackend {
             width_px,
             height_px,
             fps = cfg.fps_target,
+            frame_crop = ?cfg.frame_crop,
             "SckBackend: building SCStream"
         );
 
@@ -315,6 +316,9 @@ impl CaptureBackend for SckBackend {
         let dropped_for_handler = self.dropped.clone();
         let delivered_for_handler = self.delivered.clone();
         let paused_for_handler = self.paused.clone();
+        let frame_crop = cfg.frame_crop;
+        let crop_logged = Arc::new(AtomicBool::new(false));
+        let crop_logged_for_handler = crop_logged.clone();
         let added = stream.add_output_handler(
             move |sample, kind| {
                 if kind != SCStreamOutputType::Screen {
@@ -324,6 +328,46 @@ impl CaptureBackend for SckBackend {
                     return;
                 }
                 if let Some(frame) = crate::macos::frame_from_sample::to_frame(&sample) {
+                    let frame = if let Some(rect) = frame_crop {
+                        let source_width_px = frame.width_px;
+                        let source_height_px = frame.height_px;
+                        match crate::frame::crop_bgra_frame(frame, rect) {
+                            Ok(Some(cropped)) => {
+                                if !crop_logged_for_handler.swap(true, Ordering::Relaxed) {
+                                    tracing::info!(
+                                        target: "storycapture::capture",
+                                        source_width_px,
+                                        source_height_px,
+                                        crop_x = rect.x,
+                                        crop_y = rect.y,
+                                        crop_w = rect.w,
+                                        crop_h = rect.h,
+                                        crop_basis_w = rect.basis_w,
+                                        crop_basis_h = rect.basis_h,
+                                        output_width_px = cropped.width_px,
+                                        output_height_px = cropped.height_px,
+                                        "SckBackend: applied frame crop"
+                                    );
+                                }
+                                cropped
+                            }
+                            Ok(None) => {
+                                dropped_for_handler.fetch_add(1, Ordering::Relaxed);
+                                return;
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    target: "storycapture::capture",
+                                    %error,
+                                    "SckBackend: frame crop failed; dropping frame"
+                                );
+                                dropped_for_handler.fetch_add(1, Ordering::Relaxed);
+                                return;
+                            }
+                        }
+                    } else {
+                        frame
+                    };
                     match out_for_handler.try_send(frame) {
                         Ok(()) => {
                             // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.

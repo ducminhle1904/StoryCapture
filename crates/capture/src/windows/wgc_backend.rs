@@ -8,7 +8,7 @@ use crate::backend::{BackendKind, CaptureBackend, CaptureConfig, CaptureStats};
 use crate::display::DisplayInfo;
 use crate::error::CaptureError;
 use crate::events::CaptureEvent;
-use crate::frame::Frame;
+use crate::frame::{Frame, FrameCropRect};
 use crate::target::CaptureTarget;
 use crate::windows::frame_from_wgc;
 use crate::windows::pool::{self, FramePool};
@@ -63,7 +63,7 @@ struct WgcHandler {
     delivered: Arc<AtomicU64>,
     paused: Arc<AtomicBool>,
     /// Optional post-capture crop rect.
-    crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
+    crop_rect: Option<FrameCropRect>,
     /// BGRA scratch pool.
     frame_pool: FramePool,
 }
@@ -77,7 +77,7 @@ struct WgcFlags {
     delivered: Arc<AtomicU64>,
     paused: Arc<AtomicBool>,
     /// Optional crop rect.
-    crop_rect: Option<crate::windows::frame_from_wgc::PhysicalRectU32>,
+    crop_rect: Option<FrameCropRect>,
     /// Shared BGRA scratch pool.
     frame_pool: FramePool,
 }
@@ -141,38 +141,16 @@ impl GraphicsCaptureApiHandler for WgcHandler {
         };
         // Apply crop after capture when a rect is set.
         let f = if let Some(rect) = self.crop_rect {
-            use crate::frame::FrameData;
-            let (src_bytes, src_stride) = match &f.data {
-                FrameData::Owned(v, stride) => (v.as_slice(), *stride),
-                FrameData::Pooled(b, stride) => (b.as_slice(), *stride),
-                _ => {
-                    // Defensive fallback if the frame variant changes.
+            match crate::frame::crop_bgra_frame(f, rect) {
+                Ok(Some(cropped)) => cropped,
+                Ok(None) => {
+                    // Drop overflowed crops.
                     // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
                     self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
-            };
-            match frame_from_wgc::cpu_crop_bgra(
-                src_bytes,
-                f.width_px,
-                f.height_px,
-                src_stride,
-                rect,
-            ) {
-                Some(cropped) => {
-                    let cropped_stride = (rect.w as usize) * 4;
-                    Frame {
-                        pts: f.pts,
-                        width_px: rect.w,
-                        height_px: rect.h,
-                        format: f.format,
-                        data: FrameData::Owned(cropped, cropped_stride),
-                        sequence: f.sequence,
-                    }
-                }
-                None => {
-                    // Drop overflowed crops.
-                    // Relaxed: pure counter, no data ordering depends on this. Stream-stop provides happens-before for the final read.
+                Err(error) => {
+                    tracing::warn!(%error, "WgcBackend: frame crop failed; dropping frame");
                     self.dropped.fetch_add(1, Ordering::Relaxed);
                     return Ok(());
                 }
@@ -257,10 +235,18 @@ impl WgcBackend {
 
         // Resolve the crop rect for display-region targets.
         let crop_rect = match &cfg.target {
-            CaptureTarget::DisplayRegion { display_id, rect } => Some(
-                crate::windows::helpers::resolve_region_to_physical(display_id, rect)?,
-            ),
-            _ => None,
+            CaptureTarget::DisplayRegion { display_id, rect } => {
+                let rect = crate::windows::helpers::resolve_region_to_physical(display_id, rect)?;
+                Some(FrameCropRect {
+                    x: rect.x,
+                    y: rect.y,
+                    w: rect.w,
+                    h: rect.h,
+                    basis_w: None,
+                    basis_h: None,
+                })
+            }
+            _ => cfg.frame_crop,
         };
 
         let flags = WgcFlags {
@@ -313,9 +299,7 @@ impl WgcBackend {
                     .as_bool()
                 };
                 if !is_valid {
-                    return Err(CaptureError::WindowGone {
-                        hwnd: window_id.0,
-                    });
+                    return Err(CaptureError::WindowGone { hwnd: window_id.0 });
                 }
                 let window = Window::from_raw_hwnd(hwnd);
                 let settings = Settings::new(
@@ -353,9 +337,7 @@ impl WgcBackend {
                     .as_bool()
                 };
                 if !is_valid {
-                    return Err(CaptureError::WindowGone {
-                        hwnd: hwnd as u64,
-                    });
+                    return Err(CaptureError::WindowGone { hwnd: hwnd as u64 });
                 }
                 let window = Window::from_raw_hwnd(raw);
                 let settings = Settings::new(

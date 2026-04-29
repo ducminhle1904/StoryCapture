@@ -1518,6 +1518,7 @@ export type FitModeDto = "letterbox" | "fill-crop" | "stretch"
  * Result of flushing the offline queue.
  */
 export type FlushResult = { flushed: number; failed: number; remaining: number }
+export type FrameCropRectDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null }
 export type FrameMetaDto = { sequence: bigint; 
 /**
  * PTS in nanoseconds.
@@ -1694,6 +1695,7 @@ export type RecordingSessionId = string
 export type RegionRectDto = { x: number; y: number; w: number; h: number }
 export type RenderJobDto = { id: string; story_id: string; preset_id: string | null; format: string; resolution: string; fps: number; quality: string; status: string; progress_pct: number; started_at: bigint | null; completed_at: bigint | null; error: string | null; priority: number; output_path: string | null; batch_id: string | null; created_at: bigint }
 export type RenderProgressDto = { job_id: string; pct: number; frame: bigint; fps: number; speed: number; eta_ms: bigint }
+export type ResolvedFrameCropDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null }
 /**
  * Returned by `resolve_playwright_target`.
  */
@@ -1707,7 +1709,13 @@ width_px: number;
 /**
  * Window pixel height (retina-scaled on macOS). See `width_px`.
  */
-height_px: number }
+height_px: number; 
+/**
+ * Frame-relative crop for the page viewport within the captured browser
+ * window. `basis_w/h` allow the capture layer to scale logical browser
+ * measurements to Retina/DPI-scaled native frames.
+ */
+content_crop: ResolvedFrameCropDto | null }
 /**
  * Structured payload for the `Role` variant — both the ARIA role keyword
  * and the accessible name as typed fields. Mirrors
@@ -1758,7 +1766,14 @@ first_frame_timeout_ms?: bigint | null;
 /**
  * Force a keyframe every N seconds. `None` keeps FFmpeg's default GOP.
  */
-keyframe_interval_sec?: number | null }
+keyframe_interval_sec?: number | null; 
+/**
+ * Optional frame-relative crop applied to each captured frame before
+ * encoding. `basis_w/h` may describe the full logical window size this
+ * crop was measured against, allowing capture backends to scale it to the
+ * actual native frame size.
+ */
+frame_crop?: FrameCropRectDto | null }
 /**
  * Step timing DTO for the `tts_apply_sync` command.
  * 

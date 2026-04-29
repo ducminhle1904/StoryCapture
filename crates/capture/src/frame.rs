@@ -62,6 +62,25 @@ pub enum ClockSource {
     Synthetic,
 }
 
+/// Crop rectangle applied to an already-captured frame.
+///
+/// This is intentionally frame-relative, not screen-relative. `x/y/w/h` may be
+/// physical pixels already, or logical window coordinates when `basis_w/h`
+/// describe the full logical window size that the rect was measured against.
+/// The latter lets the capture backend scale browser viewport crops against
+/// the actual native frame size (for example macOS Retina SCK frames).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrameCropRect {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    #[serde(default)]
+    pub basis_w: Option<u32>,
+    #[serde(default)]
+    pub basis_h: Option<u32>,
+}
+
 /// Backend-supplied presentation timestamp, in nanoseconds, tagged with
 /// its source clock so downstream code can detect clock-base mismatches
 /// or synthetic timing.
@@ -162,5 +181,215 @@ impl Frame {
                 self.width_px as usize * self.height_px as usize * self.format.bytes_per_pixel()
             }
         }
+    }
+}
+
+/// Stride-aware CPU crop of a BGRA frame.
+///
+/// Returns `Ok(None)` for invalid crop rectangles or unsupported frame
+/// formats. Native macOS frames are copied into BGRA first; this path is only
+/// used for explicit frame-subrect capture modes where correctness is more
+/// important than preserving the zero-copy fast path.
+pub fn crop_bgra_frame(frame: Frame, rect: FrameCropRect) -> Result<Option<Frame>, String> {
+    if rect.w == 0 || rect.h == 0 || frame.format != PixelFormat::Bgra {
+        return Ok(None);
+    }
+    let rect = match resolve_crop_rect(rect, frame.width_px, frame.height_px) {
+        Some(rect) => rect,
+        None => return Ok(None),
+    };
+    let end_x = match rect.x.checked_add(rect.w) {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    let end_y = match rect.y.checked_add(rect.h) {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    if end_x > frame.width_px || end_y > frame.height_px {
+        return Ok(None);
+    }
+
+    let (bytes, stride): (std::borrow::Cow<'_, [u8]>, usize) = match &frame.data {
+        FrameData::Owned(v, stride) => (std::borrow::Cow::Borrowed(v.as_slice()), *stride),
+        #[cfg(target_os = "windows")]
+        FrameData::Pooled(b, stride) => (std::borrow::Cow::Borrowed(&b[..]), *stride),
+        #[cfg(target_os = "macos")]
+        FrameData::NativeMacOS(handle) => {
+            let (bytes, stride) = handle
+                .to_owned_bgra()
+                .map_err(|rc| format!("CVPixelBufferLockBaseAddress failed (CVReturn {rc})"))?;
+            (std::borrow::Cow::Owned(bytes), stride)
+        }
+        #[cfg(target_os = "windows")]
+        FrameData::NativeWindows(_) => return Ok(None),
+    };
+
+    let row_bytes = (rect.w as usize) * 4;
+    let mut out = Vec::with_capacity(row_bytes * rect.h as usize);
+    for row in rect.y..end_y {
+        let row_start = (row as usize) * stride + (rect.x as usize) * 4;
+        let row_end = row_start + row_bytes;
+        if row_end > bytes.len() {
+            return Ok(None);
+        }
+        out.extend_from_slice(&bytes[row_start..row_end]);
+    }
+
+    Ok(Some(Frame {
+        pts: frame.pts,
+        width_px: rect.w,
+        height_px: rect.h,
+        format: frame.format,
+        data: FrameData::Owned(out, row_bytes),
+        sequence: frame.sequence,
+    }))
+}
+
+fn resolve_crop_rect(rect: FrameCropRect, frame_w: u32, frame_h: u32) -> Option<FrameCropRect> {
+    if rect.w == 0 || rect.h == 0 || frame_w == 0 || frame_h == 0 {
+        return None;
+    }
+
+    let (x, y, mut w, mut h) = match (rect.basis_w, rect.basis_h) {
+        (Some(basis_w), Some(basis_h)) if basis_w > 0 && basis_h > 0 => (
+            scale_axis(rect.x, basis_w, frame_w),
+            scale_axis(rect.y, basis_h, frame_h),
+            scale_axis(rect.w, basis_w, frame_w).max(1),
+            scale_axis(rect.h, basis_h, frame_h).max(1),
+        ),
+        _ => (rect.x, rect.y, rect.w, rect.h),
+    };
+
+    if x >= frame_w || y >= frame_h {
+        return None;
+    }
+    if x.saturating_add(w) > frame_w {
+        w = frame_w - x;
+    }
+    if y.saturating_add(h) > frame_h {
+        h = frame_h - y;
+    }
+    if w == 0 || h == 0 {
+        return None;
+    }
+
+    Some(FrameCropRect {
+        x,
+        y,
+        w,
+        h,
+        basis_w: None,
+        basis_h: None,
+    })
+}
+
+fn scale_axis(value: u32, basis: u32, actual: u32) -> u32 {
+    let numerator = (value as u128) * (actual as u128) + (basis as u128 / 2);
+    (numerator / basis as u128).min(u32::MAX as u128) as u32
+}
+
+#[cfg(test)]
+mod crop_tests {
+    use super::*;
+
+    #[test]
+    fn crop_bgra_frame_uses_stride_and_preserves_metadata() {
+        let width = 5u32;
+        let height = 4u32;
+        let stride = 24usize;
+        let mut bytes = vec![0u8; stride * height as usize];
+        for y in 0..height {
+            for x in 0..width {
+                let base = y as usize * stride + x as usize * 4;
+                bytes[base] = x as u8;
+                bytes[base + 1] = y as u8;
+                bytes[base + 2] = 0xaa;
+                bytes[base + 3] = 0xff;
+            }
+        }
+        let frame = Frame {
+            pts: Pts::synthetic(123),
+            width_px: width,
+            height_px: height,
+            format: PixelFormat::Bgra,
+            data: FrameData::Owned(bytes, stride),
+            sequence: 7,
+        };
+
+        let cropped = crop_bgra_frame(
+            frame,
+            FrameCropRect {
+                x: 1,
+                y: 1,
+                w: 3,
+                h: 2,
+                basis_w: None,
+                basis_h: None,
+            },
+        )
+        .expect("crop attempt ok")
+        .expect("crop in bounds");
+
+        assert_eq!(cropped.width_px, 3);
+        assert_eq!(cropped.height_px, 2);
+        assert_eq!(cropped.pts.ns, 123);
+        assert_eq!(cropped.sequence, 7);
+        let FrameData::Owned(out, out_stride) = cropped.data else {
+            panic!("expected owned crop");
+        };
+        assert_eq!(out_stride, 12);
+        assert_eq!(out.len(), 24);
+        assert_eq!(&out[0..4], &[1, 1, 0xaa, 0xff]);
+        assert_eq!(&out[8..12], &[3, 1, 0xaa, 0xff]);
+        assert_eq!(&out[12..16], &[1, 2, 0xaa, 0xff]);
+    }
+
+    #[test]
+    fn crop_bgra_frame_scales_logical_rect_to_physical_frame() {
+        let width = 10u32;
+        let height = 8u32;
+        let stride = width as usize * 4;
+        let mut bytes = vec![0u8; stride * height as usize];
+        for y in 0..height {
+            for x in 0..width {
+                let base = y as usize * stride + x as usize * 4;
+                bytes[base] = x as u8;
+                bytes[base + 1] = y as u8;
+                bytes[base + 2] = 0xaa;
+                bytes[base + 3] = 0xff;
+            }
+        }
+        let frame = Frame {
+            pts: Pts::synthetic(456),
+            width_px: width,
+            height_px: height,
+            format: PixelFormat::Bgra,
+            data: FrameData::Owned(bytes, stride),
+            sequence: 9,
+        };
+
+        let cropped = crop_bgra_frame(
+            frame,
+            FrameCropRect {
+                x: 0,
+                y: 1,
+                w: 5,
+                h: 3,
+                basis_w: Some(5),
+                basis_h: Some(4),
+            },
+        )
+        .expect("crop attempt ok")
+        .expect("scaled crop in bounds");
+
+        assert_eq!(cropped.width_px, 10);
+        assert_eq!(cropped.height_px, 6);
+        let FrameData::Owned(out, out_stride) = cropped.data else {
+            panic!("expected owned crop");
+        };
+        assert_eq!(out_stride, 40);
+        assert_eq!(&out[0..4], &[0, 2, 0xaa, 0xff]);
+        assert_eq!(&out[36..40], &[9, 2, 0xaa, 0xff]);
     }
 }

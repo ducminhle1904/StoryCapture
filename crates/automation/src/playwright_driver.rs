@@ -725,6 +725,34 @@ pub struct BrowserProcessInfo {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PageContentCropInfo {
+    pub crop: PageContentCropRect,
+    pub metrics: PageContentCropMetrics,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct PageContentCropRect {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    #[serde(default)]
+    pub basis_w: Option<u32>,
+    #[serde(default)]
+    pub basis_h: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageContentCropMetrics {
+    pub inner_width: u32,
+    pub inner_height: u32,
+    pub outer_width: u32,
+    pub outer_height: u32,
+    pub device_pixel_ratio: f64,
+}
+
 impl PlaywrightSidecarDriver {
     /// Call the sidecar's `browserProcess` verb. Returns `Ok(info)` when the
     /// sidecar answers (either with a local pid or the remote-browser
@@ -739,6 +767,13 @@ impl PlaywrightSidecarDriver {
         let v = self.call("browserProcess", serde_json::json!({})).await?;
         let info: BrowserProcessInfo = serde_json::from_value(v)
             .map_err(|e| AutomationError::Protocol(format!("browserProcess decode: {e}")))?;
+        Ok(info)
+    }
+
+    pub async fn page_content_crop(&self) -> Result<PageContentCropInfo> {
+        let v = self.call("pageContentCrop", serde_json::json!({})).await?;
+        let info: PageContentCropInfo = serde_json::from_value(v)
+            .map_err(|e| AutomationError::Protocol(format!("pageContentCrop decode: {e}")))?;
         Ok(info)
     }
 

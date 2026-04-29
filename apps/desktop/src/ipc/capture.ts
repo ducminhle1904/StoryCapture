@@ -68,6 +68,15 @@ export interface RegionRect {
   h: number;
 }
 
+export interface ResolvedFrameCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  basis_w?: number | null;
+  basis_h?: number | null;
+}
+
 export type CaptureTarget =
   | { kind: "display"; display_id: bigint | number }
   | { kind: "window"; window_id: bigint | number }
@@ -160,6 +169,8 @@ export interface ResolvedPlaywrightTarget {
   width_px: number;
   /** Window pixel height (retina-scaled on macOS). See `width_px`. */
   height_px: number;
+  /** Browser viewport crop inside the captured window. */
+  content_crop: ResolvedFrameCrop | null;
 }
 
 /** Ask the host to resolve the current Playwright window. Returns `null`

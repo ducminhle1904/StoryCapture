@@ -399,6 +399,37 @@ pub struct StartRecordingArgs {
     /// Force a keyframe every N seconds. `None` keeps FFmpeg's default GOP.
     #[serde(default)]
     pub keyframe_interval_sec: Option<u32>,
+    /// Optional frame-relative crop applied to each captured frame before
+    /// encoding. `basis_w/h` may describe the full logical window size this
+    /// crop was measured against, allowing capture backends to scale it to the
+    /// actual native frame size.
+    #[serde(default)]
+    pub frame_crop: Option<FrameCropRectDto>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+pub struct FrameCropRectDto {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    #[serde(default)]
+    pub basis_w: Option<u32>,
+    #[serde(default)]
+    pub basis_h: Option<u32>,
+}
+
+impl From<FrameCropRectDto> for capture::FrameCropRect {
+    fn from(r: FrameCropRectDto) -> Self {
+        capture::FrameCropRect {
+            x: r.x,
+            y: r.y,
+            w: r.w,
+            h: r.h,
+            basis_w: r.basis_w,
+            basis_h: r.basis_h,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -782,6 +813,7 @@ pub async fn start_recording(
         fps_target: args.fps,
         pixel_format: PixelFormat::Bgra,
         queue_cap_bytes: ByteBoundedQueue::DEFAULT_CAP_BYTES,
+        frame_crop: args.frame_crop.map(Into::into),
     };
     let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<CaptureEvent>();
     #[cfg(target_os = "macos")]

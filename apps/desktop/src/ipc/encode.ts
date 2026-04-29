@@ -49,6 +49,15 @@ export interface StartRecordingArgs {
   quality_preset?: QualityPresetDto | null;
   /** Scale algorithm. undefined → backend default (lanczos). */
   scale_algo?: ScaleAlgoDto | null;
+  /** Optional crop applied before encoding. */
+  frame_crop?: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    basis_w?: number | null;
+    basis_h?: number | null;
+  } | null;
 }
 
 export interface RecordingSessionId {

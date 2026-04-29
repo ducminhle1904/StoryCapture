@@ -53,7 +53,6 @@ import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { LivePreview } from "./live-preview";
-import { TargetThumbnail } from "./TargetThumbnail";
 import { VideoOutputSection, useIsRecordingBlocked } from "./video-output/video-output-section";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
 import { useOutputPrefsStore } from "@/state/output-prefs";
@@ -444,6 +443,14 @@ export function RecordingView({
         kind: "display" as const,
         display_id: selectedDisplay!,
       };
+      let frameCrop: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+        basis_w?: number | null;
+        basis_h?: number | null;
+      } | null = null;
       if (shouldAutoFollow) {
         // Launch Playwright *before* capture so the window exists.
         launchAutomation(
@@ -490,7 +497,17 @@ export function RecordingView({
             width = resolved.width_px;
             height = resolved.height_px;
           }
-          toast.info("Recording just the browser window");
+          if (
+            chromeHiding &&
+            resolved.content_crop &&
+            resolved.content_crop.w > 0 &&
+            resolved.content_crop.h > 0
+          ) {
+            frameCrop = resolved.content_crop;
+            toast.info("Recording just the browser content");
+          } else {
+            toast.info("Recording just the browser window");
+          }
         } else {
           toast.warning("Playwright didn't launch in time — recording full display instead");
         }
@@ -512,6 +529,7 @@ export function RecordingView({
           pad_color: prefs.pad,
           quality_preset: prefs.quality,
           scale_algo: exportPrefs.downscaleAlgo,
+          frame_crop: frameCrop,
         },
         (event) => dispatch(event),
       );
@@ -1014,15 +1032,6 @@ export function RecordingView({
                 {displayLabel}
               </p>
             )}
-            {/* 2s static thumbnail of the selected capture target.
-                Suspended during recording to prevent contention with the
-                main SCK/WGC session. */}
-            <div className="mt-2.5">
-              <TargetThumbnail
-                target={captureTarget ?? null}
-                suspended={status === "recording" || status === "paused" || status === "stopping"}
-              />
-            </div>
           </SettingsGroup>
 
           <SettingsGroup label="Microphone" icon={<SettingsIcon size={13} />}>

@@ -240,6 +240,7 @@ fn make_config(target: CaptureTarget) -> CaptureConfig {
         fps_target: 30,
         pixel_format: PixelFormat::Bgra,
         queue_cap_bytes: 64 * 1024 * 1024,
+        frame_crop: None,
     }
 }
 
