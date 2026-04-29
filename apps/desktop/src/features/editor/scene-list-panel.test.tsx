@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scene, Story } from "@/ipc/parse";
 import { useEditorStore } from "@/state/editor";
@@ -25,7 +25,12 @@ function makeStory(): Story {
       name: "Outro",
       span: span(10, 100),
       commands: [
-        { verb: "type", target: { kind: "selector", value: "#a" }, text: "hi", span: span(11, 110) },
+        {
+          verb: "type",
+          target: { kind: "selector", value: "#a" },
+          text: "hi",
+          span: span(11, 110),
+        },
       ],
     },
   ];
@@ -60,6 +65,38 @@ describe("SceneListPanel outline", () => {
     expect(screen.getByText(/Sign In/)).toBeInTheDocument();
     expect(screen.getByText(/example\.com/)).toBeInTheDocument();
     expect(screen.getByText(/hi/)).toBeInTheDocument();
+  });
+
+  it("formats modern target kinds without leaking object coercion", () => {
+    const story = makeStory();
+    story.scenes[0].commands = [
+      {
+        verb: "wait-for",
+        target: { kind: "role", value: { role: "heading", name: "Login" } },
+        timeout_ms: null,
+        span: span(3, 30),
+      },
+      {
+        verb: "type",
+        target: { kind: "label", value: "Email Address" },
+        text: "debug@example.com",
+        span: span(4, 40),
+      },
+      {
+        verb: "assert",
+        target: { kind: "text_exact", value: "Signed in" },
+        span: span(5, 50),
+      },
+    ];
+    seed(story);
+
+    render(<SceneListPanel />);
+
+    expect(screen.getByText(/heading Login/)).toBeInTheDocument();
+    expect(screen.getByText(/label Email Address/)).toBeInTheDocument();
+    expect(screen.getByText(/text Signed in/)).toBeInTheDocument();
+    expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument();
   });
 
   it("clicking a step calls onJumpTo with command.span.start", async () => {

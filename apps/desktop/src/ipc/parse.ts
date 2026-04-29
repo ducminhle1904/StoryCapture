@@ -25,7 +25,10 @@ export type SelectorOrText =
   | { kind: "text"; value: string }
   | { kind: "selector"; value: string }
   | { kind: "test_id"; value: string }
-  | { kind: "aria"; value: string };
+  | { kind: "aria"; value: string }
+  | { kind: "role"; value: { role: string; name: string } }
+  | { kind: "label"; value: string }
+  | { kind: "text_exact"; value: string };
 
 export type ScrollDir = "up" | "down" | "left" | "right";
 

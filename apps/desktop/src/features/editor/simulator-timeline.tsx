@@ -1,25 +1,16 @@
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  Copy,
-  Crosshair,
-  Loader2,
-  Play,
-  X,
-} from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Copy, Crosshair, Loader2, Play, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-
+import { editorController } from "@/features/editor/controller";
+import { triggerPickFromEditor } from "@/features/editor/PreviewPickerButton";
+import { TARGET_VERBS } from "@/features/editor/picker-emit-rewrite";
+import { verbIcon } from "@/features/editor/verb-icons";
 import type { Command, SelectorOrText } from "@/ipc/parse";
 import { simulatorCancel, simulatorPromoteFallback, simulatorStart } from "@/ipc/simulator";
 import { frontendLog } from "@/lib/log";
 import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
-import { editorController } from "@/features/editor/controller";
-import { TARGET_VERBS } from "@/features/editor/picker-emit-rewrite";
-import { triggerPickFromEditor } from "@/features/editor/PreviewPickerButton";
-import { verbIcon } from "@/features/editor/verb-icons";
 
 interface SimulatorTimelineProps {
   projectFolder: string;
@@ -39,8 +30,12 @@ function stringifySelectorOrText(s: SelectorOrText): string {
       return `test_id: ${s.value}`;
     case "aria":
       return `aria: ${s.value}`;
-    default:
-      return "";
+    case "role":
+      return `${s.value.role}: "${s.value.name}"`;
+    case "label":
+      return `label: "${s.value}"`;
+    case "text_exact":
+      return `text: "${s.value}"`;
   }
 }
 
@@ -105,8 +100,7 @@ export function SimulatorTimeline({
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [inFlightStartedAt]);
-  const inFlightElapsedMs =
-    inFlightStartedAt != null ? Math.max(0, now - inFlightStartedAt) : 0;
+  const inFlightElapsedMs = inFlightStartedAt != null ? Math.max(0, now - inFlightStartedAt) : 0;
 
   // Surface failures via toast so the user notices even if their attention is
   // on the editor or the live preview. Fire once per transition into "failed";
@@ -214,9 +208,7 @@ export function SimulatorTimeline({
   })();
 
   const inFlightCmd =
-    isRunning && inFlightOrdinal != null
-      ? (commandByOrdinal.get(inFlightOrdinal) ?? null)
-      : null;
+    isRunning && inFlightOrdinal != null ? (commandByOrdinal.get(inFlightOrdinal) ?? null) : null;
   const inFlightSummary = inFlightCmd
     ? ` · ${inFlightCmd.verb} ${summarizeTarget(inFlightCmd)}`
     : "";
@@ -400,9 +392,7 @@ export function SimulatorTimeline({
               <span className="truncate font-mono">
                 Running step {inFlightOrdinal}
                 {inFlightSummary}
-                {inFlightElapsedMs >= 3000
-                  ? ` · ${Math.round(inFlightElapsedMs / 1000)}s`
-                  : ""}
+                {inFlightElapsedMs >= 3000 ? ` · ${Math.round(inFlightElapsedMs / 1000)}s` : ""}
               </span>
               {inFlightElapsedMs >= 8000 && (
                 <span className="ml-auto text-[10px] text-[var(--sc-warn)]">
@@ -412,69 +402,70 @@ export function SimulatorTimeline({
             </div>
           )}
 
-          {isFailed && (() => {
-            const failedCmd = currentOrd != null ? commandByOrdinal.get(currentOrd) : null;
-            const failedSummary = failedCmd
-              ? `${failedCmd.verb} ${summarizeTarget(failedCmd)}`
-              : null;
-            // Restrict re-pick to verbs whose lines `rewriteEmitted` knows
-            // how to preserve (verb + optional `timeout` modifier). Adding
-            // type/select/upload here would lose their `with "..."` /
-            // value / path tail when the line is replaced.
-            const canRePick =
-              failedCmd != null &&
-              streamId != null &&
-              (TARGET_VERBS as readonly string[]).includes(failedCmd.verb);
-            return (
-              <div
-                className="flex items-start gap-2 border-t-2 border-[var(--sc-record)] bg-[var(--sc-record)]/20 px-3 py-2 text-[12px] font-medium text-[var(--sc-record)]"
-                role="alert"
-              >
-                <AlertTriangle size={14} aria-hidden="true" className="shrink-0 mt-[1px]" />
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="font-semibold">
-                    Step {currentOrd ?? "?"} failed
-                    {failedSummary ? ` · ${failedSummary}` : ""}
-                  </span>
-                  <span className="truncate font-mono text-[11px] opacity-90">
-                    {error ?? "selector not found"}
-                  </span>
+          {isFailed &&
+            (() => {
+              const failedCmd = currentOrd != null ? commandByOrdinal.get(currentOrd) : null;
+              const failedSummary = failedCmd
+                ? `${failedCmd.verb} ${summarizeTarget(failedCmd)}`
+                : null;
+              // Restrict re-pick to verbs whose lines `rewriteEmitted` knows
+              // how to preserve (verb + optional `timeout` modifier). Adding
+              // type/select/upload here would lose their `with "..."` /
+              // value / path tail when the line is replaced.
+              const canRePick =
+                failedCmd != null &&
+                streamId != null &&
+                (TARGET_VERBS as readonly string[]).includes(failedCmd.verb);
+              return (
+                <div
+                  className="flex items-start gap-2 border-t-2 border-[var(--sc-record)] bg-[var(--sc-record)]/20 px-3 py-2 text-[12px] font-medium text-[var(--sc-record)]"
+                  role="alert"
+                >
+                  <AlertTriangle size={14} aria-hidden="true" className="shrink-0 mt-[1px]" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="font-semibold">
+                      Step {currentOrd ?? "?"} failed
+                      {failedSummary ? ` · ${failedSummary}` : ""}
+                    </span>
+                    <span className="truncate font-mono text-[11px] opacity-90">
+                      {error ?? "selector not found"}
+                    </span>
+                  </div>
+                  {canRePick && failedCmd && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ok = editorController.jumpToLine(failedCmd.span.line);
+                        if (!ok) {
+                          toast.error("Editor not ready");
+                          return;
+                        }
+                        triggerPickFromEditor();
+                      }}
+                      className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-xs)] border border-[var(--sc-record)]/50 bg-[var(--sc-record)]/15 px-2 py-0.5 text-[11px] font-semibold hover:bg-[var(--sc-record)]/30 active:translate-y-[1px]"
+                      aria-label="Re-pick selector for failed step"
+                      title="Jump to line and start picker"
+                    >
+                      <Crosshair size={11} aria-hidden="true" />
+                      Pick selector
+                    </button>
+                  )}
+                  {active?.matched_selector && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(active.matched_selector ?? "");
+                        toast.success("Selector copied");
+                      }}
+                      className="shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-xs)] px-1 py-0.5 hover:bg-[var(--sc-record)]/30 active:translate-y-[1px]"
+                      aria-label="Copy matched selector"
+                    >
+                      <Copy size={11} aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
-                {canRePick && failedCmd && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const ok = editorController.jumpToLine(failedCmd.span.line);
-                      if (!ok) {
-                        toast.error("Editor not ready");
-                        return;
-                      }
-                      triggerPickFromEditor();
-                    }}
-                    className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-xs)] border border-[var(--sc-record)]/50 bg-[var(--sc-record)]/15 px-2 py-0.5 text-[11px] font-semibold hover:bg-[var(--sc-record)]/30 active:translate-y-[1px]"
-                    aria-label="Re-pick selector for failed step"
-                    title="Jump to line and start picker"
-                  >
-                    <Crosshair size={11} aria-hidden="true" />
-                    Pick selector
-                  </button>
-                )}
-                {active?.matched_selector && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(active.matched_selector ?? "");
-                      toast.success("Selector copied");
-                    }}
-                    className="shrink-0 inline-flex items-center gap-1 rounded-[var(--radius-xs)] px-1 py-0.5 hover:bg-[var(--sc-record)]/30 active:translate-y-[1px]"
-                    aria-label="Copy matched selector"
-                  >
-                    <Copy size={11} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-            );
-          })()}
+              );
+            })()}
         </>
       )}
     </section>

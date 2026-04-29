@@ -17,15 +17,23 @@ function estimateSceneDuration(scene: Scene): number {
   }, 0);
 }
 
-const TARGET_KIND_PREFIX: Record<SelectorOrText["kind"], string> = {
-  text: "",
-  selector: "selector ",
-  test_id: "testid ",
-  aria: "aria ",
-};
-
 function targetLabel(t: SelectorOrText): string {
-  return `${TARGET_KIND_PREFIX[t.kind]}${t.value}`;
+  switch (t.kind) {
+    case "text":
+      return t.value;
+    case "selector":
+      return `selector ${t.value}`;
+    case "test_id":
+      return `testid ${t.value}`;
+    case "aria":
+      return `aria ${t.value}`;
+    case "role":
+      return `${t.value.role} ${t.value.name}`;
+    case "label":
+      return `label ${t.value}`;
+    case "text_exact":
+      return `text ${t.value}`;
+  }
 }
 
 function stepLabel(cmd: Command): string {
@@ -70,8 +78,7 @@ export function SceneListPanel({
   cursorLine,
 }: SceneListPanelProps) {
   const currentAst = useEditorStore((s) => s.lastParse?.ast ?? null);
-  const diagnostics =
-    useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
+  const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
   const lastValidAst = useEditorStore((s) => s.lastValidStoryAst);
   const reduceMotion = useReducedMotion();
 
@@ -183,11 +190,10 @@ export function SceneListPanel({
                     {scene.commands.map((cmd, stepIdx) => {
                       const Icon = verbIcon(cmd.verb);
                       const isActiveStep =
-                        activeStep?.sceneIndex === scene.index &&
-                        activeStep.stepIndex === stepIdx;
+                        activeStep?.sceneIndex === scene.index && activeStep.stepIndex === stepIdx;
                       const label = stepLabel(cmd);
                       return (
-                        <li key={`step-${scene.index}-${stepIdx}`}>
+                        <li key={`step-${cmd.span.start}`}>
                           <button
                             type="button"
                             onClick={() => onJumpTo?.(cmd.span.start)}
@@ -200,9 +206,7 @@ export function SceneListPanel({
                           >
                             <Icon size={10} aria-hidden="true" className="shrink-0" />
                             <span className="truncate font-mono text-[10.5px]">
-                              <span className="text-[var(--color-fg-muted)]">
-                                {stepIdx + 1}.
-                              </span>{" "}
+                              <span className="text-[var(--color-fg-muted)]">{stepIdx + 1}.</span>{" "}
                               <span className="text-[var(--sc-text-2)]">{cmd.verb}</span>
                               {label && (
                                 <span className="text-[var(--color-fg-muted)]"> {label}</span>

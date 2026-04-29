@@ -28,7 +28,17 @@ function summariseScript(text: string): string {
 
 function describeTarget(target: SelectorOrText | undefined): string {
   if (!target) return "the highlighted UI";
-  return target.value;
+  switch (target.kind) {
+    case "text":
+    case "selector":
+    case "test_id":
+    case "aria":
+    case "label":
+    case "text_exact":
+      return target.value;
+    case "role":
+      return `${target.value.role} ${target.value.name}`;
+  }
 }
 
 function buildSuggestedScript(cmd: Command, sceneName: string): string {
@@ -144,9 +154,7 @@ export function VoiceoverCompact({
   const clipByStepId = useVoiceoverStore((s) => s.clipByStepId);
   const scriptByStepId = useVoiceoverStore((s) => s.scriptByStepId);
   const generating = useVoiceoverStore((s) => s.generating);
-  const editedAfterGenByStepId = useVoiceoverStore(
-    (s) => s.editedAfterGenByStepId,
-  );
+  const editedAfterGenByStepId = useVoiceoverStore((s) => s.editedAfterGenByStepId);
   const setCatalogOpen = useVoiceoverStore((s) => s.setCatalogOpen);
   const setScript = useVoiceoverStore((s) => s.setScript);
   const setClip = useVoiceoverStore((s) => s.setClip);
@@ -172,9 +180,7 @@ export function VoiceoverCompact({
       return;
     }
     setSelectedStepId((current) =>
-      current && sceneSteps.some((step) => step.id === current)
-        ? current
-        : sceneSteps[0].id,
+      current && sceneSteps.some((step) => step.id === current) ? current : sceneSteps[0].id,
     );
   }, [sceneSteps]);
 
@@ -186,12 +192,9 @@ export function VoiceoverCompact({
     }
   }, [scriptByStepId, steps, setScript]);
 
-  const selectedStep =
-    sceneSteps.find((step) => step.id === selectedStepId) ?? null;
+  const selectedStep = sceneSteps.find((step) => step.id === selectedStepId) ?? null;
   const selectedClip = selectedStep ? clipByStepId[selectedStep.id] : null;
-  const selectedScript = selectedStep
-    ? (scriptByStepId[selectedStep.id] ?? "")
-    : "";
+  const selectedScript = selectedStep ? (scriptByStepId[selectedStep.id] ?? "") : "";
   const selectedStatus = computeStepStatus(
     selectedStep?.id ?? null,
     generating,
@@ -213,8 +216,7 @@ export function VoiceoverCompact({
         scriptText: selectedScript,
         provider: preset.provider,
         voiceId: preset.id,
-        model:
-          preset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
+        model: preset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
       });
       setClip(selectedStep.id, {
         filePath: result.file_path,
@@ -225,14 +227,7 @@ export function VoiceoverCompact({
     } finally {
       setGenerating(selectedStep.id, false);
     }
-  }, [
-    projectId,
-    selectedScript,
-    selectedStep,
-    setClip,
-    setEditedAfterGen,
-    setGenerating,
-  ]);
+  }, [projectId, selectedScript, selectedStep, setClip, setEditedAfterGen, setGenerating]);
 
   if (steps.length === 0) {
     return (
@@ -248,10 +243,7 @@ export function VoiceoverCompact({
   if (sceneSteps.length === 0) {
     return (
       <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-        <VoiceoverHeader
-          onCatalogOpen={() => setCatalogOpen(true)}
-          preset={selectedPreset}
-        />
+        <VoiceoverHeader onCatalogOpen={() => setCatalogOpen(true)} preset={selectedPreset} />
         <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--sc-text-4)]">
           The selected scene has no voiceover steps yet.
         </div>
@@ -261,10 +253,7 @@ export function VoiceoverCompact({
 
   return (
     <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-      <VoiceoverHeader
-        onCatalogOpen={() => setCatalogOpen(true)}
-        preset={selectedPreset}
-      />
+      <VoiceoverHeader onCatalogOpen={() => setCatalogOpen(true)} preset={selectedPreset} />
 
       {story && story.scenes.length > 1 ? (
         <div className="flex gap-1 overflow-x-auto border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2 py-1">
@@ -275,7 +264,7 @@ export function VoiceoverCompact({
             const clipCount = voiceSteps.filter((step) => clipByStepId[step.id]).length;
             return (
               <button
-                key={`voice-scene-${sceneIndex}`}
+                key={`voice-scene-${scene.span.start}`}
                 type="button"
                 onClick={() => onSelectScene(sceneIndex)}
                 className={`inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-xs)] px-2 py-1 text-[10px] transition-colors ${
@@ -296,9 +285,7 @@ export function VoiceoverCompact({
 
       <div className="flex items-center justify-between border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-2.5">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-[var(--sc-text)]">
-            {sceneLabel}
-          </div>
+          <div className="truncate text-sm font-semibold text-[var(--sc-text)]">{sceneLabel}</div>
           <div className="text-[11px] text-[var(--sc-text-4)]">
             {sceneGeneratedCount === sceneSteps.length
               ? "All takes ready"
@@ -321,9 +308,7 @@ export function VoiceoverCompact({
               const hasClip = Boolean(clipByStepId[step.id]);
               const isRegenerating = generating.has(step.id);
               const isDirty = editedAfterGenByStepId[step.id];
-              const linePreview = summariseScript(
-                scriptByStepId[step.id] ?? step.suggestedScript,
-              );
+              const linePreview = summariseScript(scriptByStepId[step.id] ?? step.suggestedScript);
 
               let toneClass = "bg-[var(--sc-text-4)]/35";
               if (isRegenerating) toneClass = "bg-[var(--sc-accent-500)]";
@@ -376,9 +361,7 @@ export function VoiceoverCompact({
                   <div className="mt-1 truncate text-sm font-semibold text-[var(--sc-text)]">
                     Step {selectedStep.commandIndex + 1} · {selectedStep.verb}
                   </div>
-                  <div className="mt-1 text-xs text-[var(--sc-text-2)]">
-                    {selectedStep.label}
-                  </div>
+                  <div className="mt-1 text-xs text-[var(--sc-text-2)]">{selectedStep.label}</div>
                 </div>
                 <button
                   type="button"
