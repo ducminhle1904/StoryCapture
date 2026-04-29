@@ -49,6 +49,24 @@ fn cursor_overlay_emits_overlay_with_eof_action_pass() {
 }
 
 #[test]
+fn cursor_overlay_accepts_png_sequence_directory() {
+    let mut g = build_cursor_graph();
+    if let Some(effects::ast::video::VideoNode::CursorOverlay { trajectory, .. }) = g
+        .video
+        .iter_mut()
+        .find(|n| matches!(n, effects::ast::video::VideoNode::CursorOverlay { .. }))
+    {
+        trajectory.png_sequence_dir = PathBuf::from("/tmp/cursor-seq");
+    }
+
+    let out = FfmpegEmit::emit(&g);
+    assert!(
+        out.contains("/tmp/cursor-seq/frame_%05d.png"),
+        "expected directory cursor ref to expand to frame pattern: {out}"
+    );
+}
+
+#[test]
 fn ripple_overlay_is_noop_passthrough() {
     // With 3 ripples, we still expect a `null` pass-through for the
     // RippleOverlay node (ripples are baked into the cursor PNG sequence).

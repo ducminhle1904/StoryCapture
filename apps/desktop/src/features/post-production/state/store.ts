@@ -20,13 +20,39 @@ import { createQueueSlice, type QueueSlice } from "./queue-slice";
 import { createSelectionSlice, type SelectionSlice } from "./selection-slice";
 import { createTimelineSlice, type TimelineSlice } from "./timeline-slice";
 import { createUndoSlice, type UndoSlice } from "./undo-slice";
+import type { UndoExtras } from "../undo/actions";
+
+export interface Rgba {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+export type EditorBackgroundKind =
+  | { kind: "transparent" }
+  | { kind: "solid"; color: Rgba }
+  | { kind: "gradient"; preset_id: string }
+  | { kind: "image"; path: string };
 
 export type EditorStore = TimelineSlice &
   PanelsSlice &
   SelectionSlice &
   ExportSlice &
   QueueSlice &
-  UndoSlice;
+  UndoSlice & {
+    _undoExtras?: UndoExtras & {
+      background: EditorBackgroundKind;
+    };
+  };
+
+export const DEFAULT_BACKGROUND: EditorBackgroundKind = { kind: "transparent" };
+
+export function readEditorBackground(state: {
+  _undoExtras?: { background?: EditorBackgroundKind };
+}): EditorBackgroundKind {
+  return (state._undoExtras?.background as EditorBackgroundKind | undefined) ?? DEFAULT_BACKGROUND;
+}
 
 /**
  * Keys from `PanelsSlice` that are worth persisting. We deliberately

@@ -10,8 +10,8 @@
 //!   to 0..1 against the recording.
 //! - Sample rate is fixed at 60 Hz. Missed frames are dropped silently
 //!   (we record the next sample we get, no retry).
-//! - Click detection is **deferred** (v1 sets `click: false` on every
-//!   frame). A future phase will hook OS click events.
+//! - Click detection is best-effort. Platform hooks set a pending
+//!   click timestamp; the next successful cursor sample consumes it.
 //! - Failure mode: trajectory recording is best-effort. If the OS
 //!   sampling API errors persistently or the write fails, we log a
 //!   warning. The owning recording lifecycle is **never** aborted by
@@ -19,9 +19,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Capture rectangle in screen coordinates at recording-start time.
 ///
@@ -44,7 +46,7 @@ pub struct TrajectoryFrame {
     pub x: f32,
     /// Screen-space y in px.
     pub y: f32,
-    /// Click state. Always `false` in v1 — see module doc.
+    /// True when a platform click event was consumed for this sample.
     pub click: bool,
 }
 
@@ -71,14 +73,38 @@ fn sample_cursor() -> Option<(f32, f32)> {
     crate::macos::cursor::sample_cursor()
 }
 
+#[cfg(target_os = "macos")]
+type ClickObserver = crate::macos::cursor::ClickTap;
+
+#[cfg(target_os = "macos")]
+fn install_click_observer(latest_click_at: Arc<AtomicU64>) -> Result<ClickObserver, String> {
+    crate::macos::cursor::install_click_tap(latest_click_at).map_err(|e| e.to_string())
+}
+
 #[cfg(target_os = "windows")]
 fn sample_cursor() -> Option<(f32, f32)> {
     crate::windows::cursor::sample_cursor()
 }
 
+#[cfg(target_os = "windows")]
+type ClickObserver = crate::windows::cursor::ClickHook;
+
+#[cfg(target_os = "windows")]
+fn install_click_observer(latest_click_at: Arc<AtomicU64>) -> Result<ClickObserver, String> {
+    crate::windows::cursor::install_click_hook(latest_click_at).map_err(|e| e.to_string())
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn sample_cursor() -> Option<(f32, f32)> {
     None
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct ClickObserver;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn install_click_observer(_latest_click_at: Arc<AtomicU64>) -> Result<ClickObserver, String> {
+    Err("OS click capture is unsupported on this platform".into())
 }
 
 /// Background trajectory recorder. Created on capture start; finalized
@@ -122,6 +148,18 @@ fn run_loop(
     stop_rx: mpsc::Receiver<()>,
 ) {
     let start = Instant::now();
+    let mut last_sample_wall_ms = wall_clock_millis();
+    let latest_click_at = Arc::new(AtomicU64::new(0));
+    let _click_observer = match install_click_observer(Arc::clone(&latest_click_at)) {
+        Ok(observer) => Some(observer),
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                "trajectory: OS click capture unavailable; continuing with click=false"
+            );
+            None
+        }
+    };
     let mut frames: Vec<TrajectoryFrame> = Vec::with_capacity(60 * 60); // ~1 min preallocated
     let mut consecutive_failures: u32 = 0;
     let mut next_tick = start;
@@ -144,12 +182,17 @@ fn run_loop(
             Some((x, y)) => {
                 consecutive_failures = 0;
                 let t_ms = (now - start).as_millis().min(u32::MAX as u128) as u32;
-                frames.push(TrajectoryFrame {
-                    t_ms,
+                let sample_wall_ms = wall_clock_millis();
+                let click = consume_click_for_sample(
+                    &latest_click_at,
+                    last_sample_wall_ms,
+                    sample_wall_ms,
                     x,
                     y,
-                    click: false,
-                });
+                    &capture_rect,
+                );
+                last_sample_wall_ms = sample_wall_ms;
+                frames.push(TrajectoryFrame { t_ms, x, y, click });
             }
             None => {
                 consecutive_failures += 1;
@@ -206,11 +249,59 @@ fn write_sidecar(
     })?;
     let tmp = parent.join(format!(
         ".{}.tmp",
-        output_path.file_name().and_then(|s| s.to_str()).unwrap_or("trajectory")
+        output_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("trajectory")
     ));
     std::fs::write(&tmp, &bytes)?;
     std::fs::rename(&tmp, output_path)?;
     Ok(())
+}
+
+/// Platform hook callbacks call this from hot paths. Keep it allocation-free
+/// and non-panicking.
+pub(crate) fn record_click_now(latest_click_at: &AtomicU64) {
+    latest_click_at.store(wall_clock_millis(), Ordering::Release);
+}
+
+fn consume_click_for_sample(
+    latest_click_at: &AtomicU64,
+    previous_sample_wall_ms: u64,
+    sample_wall_ms: u64,
+    x: f32,
+    y: f32,
+    capture_rect: &CaptureRect,
+) -> bool {
+    let click_at = latest_click_at.load(Ordering::Acquire);
+    if click_at == 0 || click_at <= previous_sample_wall_ms || click_at > sample_wall_ms {
+        return false;
+    }
+
+    if latest_click_at
+        .compare_exchange(click_at, 0, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return false;
+    }
+
+    capture_rect_contains(capture_rect, x, y)
+}
+
+fn capture_rect_contains(rect: &CaptureRect, x: f32, y: f32) -> bool {
+    let left = rect.x.min(rect.x + rect.width);
+    let right = rect.x.max(rect.x + rect.width);
+    let top = rect.y.min(rect.y + rect.height);
+    let bottom = rect.y.max(rect.y + rect.height);
+    x >= left && x < right && y >= top && y < bottom
+}
+
+fn wall_clock_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u64::MAX as u128) as u64
 }
 
 /// Derive the sidecar path from a recording's MP4 path.
@@ -253,5 +344,53 @@ mod tests {
         assert_eq!(back.frames.len(), 1);
         assert_eq!(back.frames[0].t_ms, 16);
         assert_eq!(back.fps, 60);
+    }
+
+    #[test]
+    fn click_is_consumed_for_inside_sample_only() {
+        let latest_click_at = AtomicU64::new(1_050);
+        let rect = CaptureRect {
+            x: 100.0,
+            y: 200.0,
+            width: 640.0,
+            height: 480.0,
+        };
+
+        let clicked = consume_click_for_sample(&latest_click_at, 1_000, 1_100, 150.0, 250.0, &rect);
+
+        assert!(clicked);
+        assert_eq!(latest_click_at.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn click_outside_capture_rect_is_not_recorded() {
+        let latest_click_at = AtomicU64::new(1_050);
+        let rect = CaptureRect {
+            x: 100.0,
+            y: 200.0,
+            width: 640.0,
+            height: 480.0,
+        };
+
+        let clicked = consume_click_for_sample(&latest_click_at, 1_000, 1_100, 99.0, 250.0, &rect);
+
+        assert!(!clicked);
+        assert_eq!(latest_click_at.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn click_after_sample_tick_stays_pending() {
+        let latest_click_at = AtomicU64::new(1_150);
+        let rect = CaptureRect {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+        };
+
+        let clicked = consume_click_for_sample(&latest_click_at, 1_000, 1_100, 50.0, 50.0, &rect);
+
+        assert!(!clicked);
+        assert_eq!(latest_click_at.load(Ordering::Acquire), 1_150);
     }
 }

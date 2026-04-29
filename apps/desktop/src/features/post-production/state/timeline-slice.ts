@@ -49,16 +49,32 @@ export type ZoomTarget =
   | { kind: "fixed-region"; top_left: Vec2; size: Vec2 }
   | { kind: "element"; selector: string };
 
-export type CursorSkin =
-  | "mac-default"
-  | "win-default"
-  | "dark"
-  | "light"
-  | "big-arrow";
+export type CursorSkin = "mac-default" | "win-default" | "dark" | "light" | "big-arrow";
 
 export type ZoomPreset = "DYNAMIC" | "CALM" | "SUBTLE";
 
 export type SoundKind = "bgm" | "sfx" | "voiceover";
+
+export type XfadeKind =
+  | "fade"
+  | "fade-black"
+  | "fade-white"
+  | "dissolve"
+  | "wipe-left"
+  | "wipe-right"
+  | "wipe-up"
+  | "wipe-down"
+  | "slide-left"
+  | "slide-right"
+  | "slide-up"
+  | "slide-down"
+  | "circle-open"
+  | "circle-close";
+
+export interface TransitionSpec {
+  kind: XfadeKind;
+  durationMs: number;
+}
 
 // ---------------------------------------------------------------------------
 // Clip discriminated union
@@ -76,6 +92,8 @@ export interface VideoClip extends ClipBase {
   trackId: "video";
   /** Absolute or `convertFileSrc`-resolvable path to the source recording. */
   sourcePath: string;
+  /** Optional transition from this clip into the next video clip. */
+  outgoingTransition?: TransitionSpec;
 }
 
 export interface CursorClip extends ClipBase {
@@ -114,12 +132,7 @@ export interface AnnotationClip extends ClipBase {
   color?: string;
 }
 
-export type Clip =
-  | VideoClip
-  | CursorClip
-  | ZoomClip
-  | SoundClip
-  | AnnotationClip;
+export type Clip = VideoClip | CursorClip | ZoomClip | SoundClip | AnnotationClip;
 
 /** Clips for a given track id, narrowed to the matching variant. */
 export type ClipFor<K extends TrackId> = Extract<Clip, { trackId: K }>;
@@ -161,16 +174,9 @@ export interface TimelineSlice {
   addCursorClip: (clip: Omit<CursorClip, "trackId"> & { trackId?: "cursor" }) => void;
   addZoomClip: (clip: Omit<ZoomClip, "trackId"> & { trackId?: "zoom" }) => void;
   addSoundClip: (clip: Omit<SoundClip, "trackId"> & { trackId?: "sound" }) => void;
-  addAnnotationClip: (
-    clip: Omit<AnnotationClip, "trackId"> & { trackId?: "annotations" },
-  ) => void;
+  addAnnotationClip: (clip: Omit<AnnotationClip, "trackId"> & { trackId?: "annotations" }) => void;
 
-  moveClip: (
-    trackId: TrackId,
-    clipId: string,
-    newStartMs: number,
-    opts?: MoveClipOpts,
-  ) => void;
+  moveClip: (trackId: TrackId, clipId: string, newStartMs: number, opts?: MoveClipOpts) => void;
   trimClip: (
     trackId: TrackId,
     clipId: string,
@@ -240,18 +246,14 @@ function patchClipInTrack<K extends TrackId>(
   clipId: string,
   patch: (clip: ClipFor<K>) => ClipFor<K>,
 ): TimelineSlice["tracks"] {
-  const next = (tracks[trackId] as ClipFor<K>[]).map((c) =>
-    c.id === clipId ? patch(c) : c,
-  );
+  const next = (tracks[trackId] as ClipFor<K>[]).map((c) => (c.id === clipId ? patch(c) : c));
   return { ...tracks, [trackId]: next } as TimelineSlice["tracks"];
 }
 
-export const createTimelineSlice: StateCreator<
-  TimelineSlice,
-  [],
-  [],
-  TimelineSlice
-> = (set, get) => ({
+export const createTimelineSlice: StateCreator<TimelineSlice, [], [], TimelineSlice> = (
+  set,
+  get,
+) => ({
   tracks: initialTracks,
   playheadMs: 0,
   snapEnabled: true,
@@ -272,8 +274,7 @@ export const createTimelineSlice: StateCreator<
     if (get().snapEnabled === on) return;
     set({ snapEnabled: on });
   },
-  setTracks: (patch) =>
-    set((s) => ({ tracks: { ...s.tracks, ...patch } })),
+  setTracks: (patch) => set((s) => ({ tracks: { ...s.tracks, ...patch } })),
 
   addVideoClip: (clip) =>
     set((s) => ({
@@ -311,10 +312,7 @@ export const createTimelineSlice: StateCreator<
     set((s) => ({
       tracks: {
         ...s.tracks,
-        annotations: [
-          ...s.tracks.annotations,
-          { ...clip, trackId: "annotations" },
-        ],
+        annotations: [...s.tracks.annotations, { ...clip, trackId: "annotations" }],
       },
     })),
 
@@ -347,12 +345,8 @@ export const createTimelineSlice: StateCreator<
     set((s) => ({
       tracks: patchClipInTrack(s.tracks, trackId, clipId, (c) => ({
         ...c,
-        startMs:
-          patch.startMs !== undefined ? Math.max(0, patch.startMs) : c.startMs,
-        durationMs:
-          patch.durationMs !== undefined
-            ? Math.max(0, patch.durationMs)
-            : c.durationMs,
+        startMs: patch.startMs !== undefined ? Math.max(0, patch.startMs) : c.startMs,
+        durationMs: patch.durationMs !== undefined ? Math.max(0, patch.durationMs) : c.durationMs,
       })),
     })),
 
@@ -360,9 +354,7 @@ export const createTimelineSlice: StateCreator<
     set((s) => ({
       tracks: {
         ...s.tracks,
-        [trackId]: (s.tracks[trackId] as Clip[]).filter(
-          (c) => c.id !== clipId,
-        ),
+        [trackId]: (s.tracks[trackId] as Clip[]).filter((c) => c.id !== clipId),
       } as TimelineSlice["tracks"],
     })),
 });

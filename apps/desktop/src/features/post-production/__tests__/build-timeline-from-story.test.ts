@@ -24,6 +24,16 @@ const TRAJECTORY: RecordingTrajectory = {
   frames: [],
 };
 
+function trajectoryWithFrames(
+  frames: RecordingTrajectory["frames"],
+): RecordingTrajectory {
+  return {
+    ...TRAJECTORY,
+    frame_count: frames.length,
+    frames,
+  };
+}
+
 describe("buildTimelineFromStory", () => {
   it("builds 1 video clip and 0 cursor clips when trajectory is missing", () => {
     const out = buildTimelineFromStory({
@@ -33,6 +43,7 @@ describe("buildTimelineFromStory", () => {
     });
     expect(out.video).toHaveLength(1);
     expect(out.cursor).toHaveLength(0);
+    expect(out.zoom).toHaveLength(0);
     const v = out.video[0]!;
     expect(v.trackId).toBe("video");
     expect(v.startMs).toBe(0);
@@ -94,5 +105,101 @@ describe("buildTimelineFromStory", () => {
       trajectory: TRAJECTORY,
     });
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  it("emits 0 zoom clips when trajectory has no clicked frames", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      trajectory: trajectoryWithFrames([
+        { t_ms: 1_000, x: 960, y: 540, click: false },
+        { t_ms: 5_000, x: 1200, y: 700, click: false },
+      ]),
+    });
+
+    expect(out.zoom).toHaveLength(0);
+  });
+
+  it("emits auto-zoom clips for clicked frames with expected timing and center", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      trajectory: trajectoryWithFrames([
+        { t_ms: 1_000, x: 960, y: 540, click: true },
+        { t_ms: 5_000, x: 1_920, y: 1_080, click: true },
+        { t_ms: 10_000, x: 0, y: 0, click: true },
+      ]),
+    });
+
+    expect(out.zoom).toHaveLength(3);
+    expect(out.zoom.map((clip) => clip.startMs)).toEqual([800, 4_800, 9_800]);
+    expect(out.zoom.map((clip) => clip.durationMs)).toEqual([800, 800, 800]);
+    expect(out.zoom.map((clip) => clip.scale)).toEqual([1.3, 1.3, 1.3]);
+    expect(out.zoom.map((clip) => clip.preset)).toEqual(["CALM", "CALM", "CALM"]);
+    expect(out.zoom.map((clip) => clip.target)).toEqual([
+      { kind: "cursor" },
+      { kind: "cursor" },
+      { kind: "cursor" },
+    ]);
+    expect(out.zoom.map((clip) => clip.center)).toEqual([
+      { x: 0.5, y: 0.5 },
+      { x: 1, y: 1 },
+      { x: 0, y: 0 },
+    ]);
+  });
+
+  it("clamps auto-zoom start to 0ms", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      trajectory: trajectoryWithFrames([
+        { t_ms: 100, x: 960, y: 540, click: true },
+      ]),
+    });
+
+    expect(out.zoom[0]!.startMs).toBe(0);
+    expect(out.zoom[0]!.durationMs).toBe(800);
+  });
+
+  it("debounces clicked frames within 800ms of a prior emitted click", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      trajectory: trajectoryWithFrames([
+        { t_ms: 1_000, x: 960, y: 540, click: true },
+        { t_ms: 1_500, x: 1_200, y: 700, click: true },
+      ]),
+    });
+
+    expect(out.zoom).toHaveLength(1);
+    expect(out.zoom[0]).toMatchObject({
+      startMs: 800,
+      center: { x: 0.5, y: 0.5 },
+    });
+  });
+
+  it("generates deterministic auto-zoom ids from stable input", () => {
+    const trajectory = trajectoryWithFrames([
+      { t_ms: 1_000, x: 960, y: 540, click: true },
+      { t_ms: 5_000, x: 1_200, y: 700, click: true },
+    ]);
+    const a = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      trajectory,
+    });
+    const b = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      trajectory,
+    });
+
+    expect(a.zoom.map((clip) => clip.id)).toEqual(b.zoom.map((clip) => clip.id));
+    expect(a.zoom.map((clip) => clip.id)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^zoom-[a-f0-9]{8}-1000$/),
+        expect.stringMatching(/^zoom-[a-f0-9]{8}-5000$/),
+      ]),
+    );
   });
 });

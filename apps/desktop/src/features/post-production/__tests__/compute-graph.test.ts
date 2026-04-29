@@ -2,17 +2,23 @@
  * computeGraph tests. Coverage:
  *   - empty store ⇒ empty video/audio arrays + correct schema metadata
  *   - one clip per relevant track ⇒ nodes emitted in canonical order
- *     (Source → ZoomPan → CursorOverlay → TextOverlay) with shapes that
- *     deserialize cleanly into the Rust `effects::Graph` AST
+ *     (Source → ZoomPan → Background → CursorOverlay → TextOverlay → Transition)
+ *     with shapes that deserialize cleanly into the Rust `effects::Graph` AST
  *   - determinism: two calls with the same state produce byte-equal JSON
  *   - clips missing required metadata are skipped (no source/audio path,
  *     no cursor trajectory dir, no annotation text)
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-
+import type { Graph, VideoNode } from "../state/compute-graph";
 import { computeGraph, graphIsRenderable } from "../state/compute-graph";
 import { useEditorStore } from "../state/store";
+
+function videoNodeAt(graph: Graph, index: number): VideoNode {
+  const node = graph.video[index];
+  if (!node) throw new Error(`expected video node at index ${index}`);
+  return node;
+}
 
 function resetStore() {
   useEditorStore.setState({
@@ -27,6 +33,11 @@ function resetStore() {
     exportModalOpen: false,
     activeJobs: {},
     progressByJobId: {},
+    _undoExtras: {
+      graphSnapshot: {},
+      textOverlays: {},
+      background: { kind: "transparent" },
+    },
   });
 }
 
@@ -44,8 +55,13 @@ describe("computeGraph", () => {
     expect(graphIsRenderable(g)).toBe(false);
   });
 
-  it("emits Source → ZoomPan → CursorOverlay → TextOverlay in canonical order", () => {
+  it("emits Source → ZoomPan → Background → CursorOverlay → TextOverlay → Transition in canonical order", () => {
     useEditorStore.setState({
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "gradient", preset_id: "runway-dark" },
+      },
       tracks: {
         video: [
           {
@@ -54,6 +70,14 @@ describe("computeGraph", () => {
             startMs: 0,
             durationMs: 4000,
             sourcePath: "/tmp/in.mp4",
+            outgoingTransition: { kind: "fade", durationMs: 500 },
+          },
+          {
+            id: "v2",
+            trackId: "video",
+            startMs: 4000,
+            durationMs: 2000,
+            sourcePath: "/tmp/out.mp4",
           },
         ],
         zoom: [
@@ -107,28 +131,107 @@ describe("computeGraph", () => {
     const g = computeGraph(useEditorStore.getState());
     expect(g.video.map((n) => n.type)).toEqual([
       "source",
+      "source",
       "zoom-pan",
+      "background",
       "cursor-overlay",
       "text-overlay",
+      "transition",
     ]);
     expect(g.audio.map((n) => n.type)).toEqual(["audio-source"]);
 
-    const src = g.video[0]!;
+    const src = videoNodeAt(g, 0);
     if (src.type !== "source") throw new Error("expected source");
     expect(src.path).toBe("/tmp/in.mp4");
     expect(src.pts_offset_ms).toBe(0);
 
-    const zoom = g.video[1]!;
+    const zoom = videoNodeAt(g, 2);
     if (zoom.type !== "zoom-pan") throw new Error("expected zoom-pan");
     expect(zoom.target).toEqual({ kind: "cursor" });
     expect(zoom.keyframes).toHaveLength(2);
-    expect(zoom.keyframes[1]!.scale).toBe(2.0);
+    expect(zoom.keyframes[1]?.scale).toBe(2.0);
 
-    const text = g.video[3]!;
+    const background = videoNodeAt(g, 3);
+    if (background.type !== "background") throw new Error("expected background");
+    expect(background.kind).toEqual({ kind: "gradient", preset_id: "runway-dark" });
+    expect(background.radius_px).toBe(24);
+    expect(background.padding_px).toBe(64);
+
+    const text = videoNodeAt(g, 5);
     if (text.type !== "text-overlay") throw new Error("expected text-overlay");
-    expect(text.boxes[0]!.text).toBe("Hello");
+    expect(text.boxes[0]?.text).toBe("Hello");
+
+    const transition = videoNodeAt(g, 6);
+    if (transition.type !== "transition") throw new Error("expected transition");
+    expect(transition.kind).toBe("fade");
+    expect(transition.duration_ms).toBe(500);
+    expect(transition.offset_ms).toBe(3500);
 
     expect(graphIsRenderable(g)).toBe(true);
+  });
+
+  it("emits transition nodes with deterministic boundary order and Rust-compatible offsets", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "v2",
+            trackId: "video",
+            startMs: 5000,
+            durationMs: 8000,
+            sourcePath: "/v2.mp4",
+            outgoingTransition: { kind: "wipe-left", durationMs: 300 },
+          },
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 5000,
+            sourcePath: "/v1.mp4",
+            outgoingTransition: { kind: "fade", durationMs: 500 },
+          },
+          {
+            id: "v3",
+            trackId: "video",
+            startMs: 13_000,
+            durationMs: 12_000,
+            sourcePath: "/v3.mp4",
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    const g = computeGraph(useEditorStore.getState());
+    expect(g.video.map((n) => n.type)).toEqual([
+      "source",
+      "source",
+      "source",
+      "transition",
+      "transition",
+    ]);
+
+    const transitions = g.video.filter((node) => node.type === "transition");
+    expect(transitions).toEqual([
+      expect.objectContaining({
+        kind: "fade",
+        duration_ms: 500,
+        offset_ms: 4500,
+      }),
+      expect.objectContaining({
+        kind: "wipe-left",
+        duration_ms: 300,
+        offset_ms: 12_200,
+      }),
+    ]);
+
+    const second = computeGraph(useEditorStore.getState()).video.filter(
+      (node) => node.type === "transition",
+    );
+    expect(transitions.map((node) => node.id)).toEqual(second.map((node) => node.id));
   });
 
   it("is deterministic — two calls produce byte-equal JSON", () => {
@@ -177,11 +280,35 @@ describe("computeGraph", () => {
       tracks: {
         video: [
           // Empty sourcePath ⇒ skipped at runtime.
-          { id: "v1", trackId: "video", startMs: 0, durationMs: 1000, sourcePath: "" },
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "",
+            outgoingTransition: { kind: "fade", durationMs: 500 },
+          },
+          {
+            id: "v2",
+            trackId: "video",
+            startMs: 1000,
+            durationMs: 1000,
+            sourcePath: "",
+          },
         ],
         cursor: [
           // Empty trajectoryDir ⇒ skipped.
-          { id: "c1", trackId: "cursor", startMs: 0, durationMs: 1000, trajectoryDir: "", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default", sizeScale: 1 },
+          {
+            id: "c1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 1000,
+            trajectoryDir: "",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 0,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
         ],
         zoom: [],
         sound: [
@@ -190,7 +317,15 @@ describe("computeGraph", () => {
         ],
         annotations: [
           // Empty text ⇒ skipped.
-          { id: "a1", trackId: "annotations", startMs: 0, durationMs: 1000, text: "", pos: { x: 0.5, y: 0.9 }, sizePt: 24 },
+          {
+            id: "a1",
+            trackId: "annotations",
+            startMs: 0,
+            durationMs: 1000,
+            text: "",
+            pos: { x: 0.5, y: 0.9 },
+            sizePt: 24,
+          },
         ],
       },
     });

@@ -172,10 +172,11 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
             } => {
                 // Cursor frames come from a PNG sequence input.
                 let cursor_src_label = format!("[{}_cursor]", node_label_core(node.id()));
+                let cursor_pattern = cursor_sequence_pattern(&trajectory.png_sequence_dir);
                 write!(
                     out,
                     "movie='{path}':loop=0,setpts=N/{fps}/TB,scale=iw*{s:.3}:ih*{s:.3}{cursor_src_label};{cur}{cursor_src_label}overlay=eof_action=pass:x=0:y=0{out_label}",
-                    path = path_to_ffmpeg_arg(&trajectory.png_sequence_dir),
+                    path = path_to_ffmpeg_arg(&cursor_pattern),
                     fps = trajectory.fps,
                     s = size_scale,
                     cursor_src_label = cursor_src_label,
@@ -292,6 +293,15 @@ fn drawtext_args(tb: &TextBox) -> String {
 
 fn node_label_core(id: NodeId) -> String {
     id.stable_label("n")
+}
+
+fn cursor_sequence_pattern(path: &std::path::Path) -> std::path::PathBuf {
+    let s = path.to_string_lossy();
+    if s.contains('%') || path.extension().and_then(|ext| ext.to_str()) == Some("png") {
+        path.to_path_buf()
+    } else {
+        path.join("frame_%05d.png")
+    }
 }
 
 // ---------- audio ----------

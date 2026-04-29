@@ -15,7 +15,9 @@ pub mod skins;
 pub mod trajectory;
 
 pub use compositor::compose_frame;
-pub use png_sequence::{render_png_sequence, PngSequenceResult};
+pub use png_sequence::{
+    render_cursor_pngs, render_png_sequence, PngSequenceResult, RenderedCursorPng,
+};
 pub use ripple::{build_ripples, ripple_alpha, ripple_radius, RippleOptions};
-pub use skins::{apply_tint, load_skin, resize, SkinBitmap};
+pub use skins::{apply_tint, load_skin, resize, skin_asset_path, SkinBitmap};
 pub use trajectory::{sample_trajectory, CursorSample, TrajectoryOptions};

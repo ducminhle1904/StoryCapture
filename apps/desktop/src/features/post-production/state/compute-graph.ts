@@ -22,6 +22,9 @@
  * `metadata` bag to read from. Field access here is direct.
  */
 
+import type { ExportResolution } from "../../../ipc/export";
+import type { ExportFormState } from "./export-slice";
+import { type EditorBackgroundKind, readEditorBackground } from "./store";
 import type {
   AnnotationClip,
   Clip,
@@ -32,11 +35,10 @@ import type {
   TrackId,
   Vec2,
   VideoClip,
+  XfadeKind,
   ZoomClip,
   ZoomTarget,
 } from "./timeline-slice";
-import type { ExportFormState } from "./export-slice";
-import type { ExportResolution } from "../../../ipc/export";
 
 /**
  * Minimal slice of the editor store that `computeGraph` reads. Narrowing
@@ -47,6 +49,9 @@ import type { ExportResolution } from "../../../ipc/export";
 export interface ComputeGraphInput {
   tracks: TimelineSlice["tracks"];
   exportForm: ExportFormState;
+  _undoExtras?: {
+    background?: EditorBackgroundKind;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -58,7 +63,7 @@ export interface ComputeGraphInput {
 // editor's store shape and the wire format share a single definition.
 // ---------------------------------------------------------------------------
 
-export type { Vec2, ZoomTarget, CursorSkin };
+export type { CursorSkin, Vec2, XfadeKind, ZoomTarget };
 
 export interface Rgba {
   r: number;
@@ -111,6 +116,14 @@ export type VideoNode =
   | { type: "source"; id: string; path: string; pts_offset_ms: number }
   | { type: "zoom-pan"; id: string; target: ZoomTarget; keyframes: ZoomKeyframe[] }
   | {
+      type: "background";
+      id: string;
+      kind: Exclude<EditorBackgroundKind, { kind: "transparent" }>;
+      radius_px: number;
+      shadow: null;
+      padding_px: number;
+    }
+  | {
       type: "cursor-overlay";
       id: string;
       skin: CursorSkin;
@@ -118,10 +131,16 @@ export type VideoNode =
       color_tint: Rgba | null;
       trajectory: TrajectoryRef;
     }
-  | { type: "text-overlay"; id: string; boxes: TextBox[] };
+  | { type: "text-overlay"; id: string; boxes: TextBox[] }
+  | {
+      type: "transition";
+      id: string;
+      kind: XfadeKind;
+      duration_ms: number;
+      offset_ms: number;
+    };
 
-export type AudioNode =
-  | { type: "audio-source"; id: string; path: string; pts_offset_ms: number };
+export type AudioNode = { type: "audio-source"; id: string; path: string; pts_offset_ms: number };
 
 export interface Graph {
   schema_version: number;
@@ -166,8 +185,8 @@ function deterministicNodeId(clipId: string, role: string): string {
     bytes.push(acc & 0xff);
   }
   // Force RFC 4122 v4 / variant bits so the string is a valid UUID.
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
   const hex = bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
   return [
     hex.slice(0, 8),
@@ -215,6 +234,18 @@ function zoomPan(clip: ZoomClip): VideoNode {
   };
 }
 
+function backgroundNode(background: EditorBackgroundKind): VideoNode | null {
+  if (background.kind === "transparent") return null;
+  return {
+    type: "background",
+    id: deterministicNodeId("scene-background", "background"),
+    kind: background,
+    radius_px: 24,
+    shadow: null,
+    padding_px: 64,
+  };
+}
+
 function cursorOverlay(clip: CursorClip): VideoNode | null {
   if (!clip.trajectoryDir) return null;
   return {
@@ -257,14 +288,74 @@ function audioSource(clip: SoundClip): AudioNode | null {
   };
 }
 
+interface TimelineTransition {
+  boundary: number;
+  leftClipId: string;
+  rightClipId: string;
+  kind: XfadeKind;
+  durationMs: number;
+}
+
+function normalizeTransitionDuration(ms: number): number {
+  if (!Number.isFinite(ms)) return 0;
+  return Math.max(0, Math.floor(ms));
+}
+
+function transitionNodes(
+  videoClips: readonly VideoClip[],
+  sourceVideoClips: readonly VideoClip[],
+): VideoNode[] {
+  const transitions: TimelineTransition[] = [];
+  const sourceIndexByClipId = new Map(sourceVideoClips.map((clip, index) => [clip.id, index]));
+  for (let i = 0; i < videoClips.length - 1; i++) {
+    const clip = videoClips[i];
+    const rightClip = videoClips[i + 1];
+    if (!clip || !rightClip) continue;
+    if (!clip.sourcePath || !rightClip.sourcePath) continue;
+    const spec = clip.outgoingTransition;
+    if (!spec) continue;
+    const durationMs = normalizeTransitionDuration(spec.durationMs);
+    if (durationMs <= 0) continue;
+    const boundary = sourceIndexByClipId.get(clip.id);
+    if (boundary === undefined || sourceVideoClips[boundary + 1]?.id !== rightClip.id) {
+      continue;
+    }
+    transitions.push({
+      boundary,
+      leftClipId: clip.id,
+      rightClipId: rightClip.id,
+      kind: spec.kind,
+      durationMs,
+    });
+  }
+
+  const clipDurationPrefix = [0];
+  for (const clip of sourceVideoClips) {
+    const previous = clipDurationPrefix.at(-1) ?? 0;
+    clipDurationPrefix.push(previous + normalizeTransitionDuration(clip.durationMs));
+  }
+
+  let consumedTransitionMs = 0;
+  return transitions.map((transition) => {
+    const sumClips = clipDurationPrefix[transition.boundary + 1] ?? 0;
+    const offsetMs = Math.max(0, sumClips - consumedTransitionMs - transition.durationMs);
+    consumedTransitionMs += transition.durationMs;
+    return {
+      type: "transition",
+      id: deterministicNodeId(`${transition.leftClipId}->${transition.rightClipId}`, "transition"),
+      kind: transition.kind,
+      duration_ms: transition.durationMs,
+      offset_ms: offsetMs,
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 function clipsByStart<C extends Clip>(clips: readonly C[]): C[] {
-  return [...clips].sort(
-    (a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id),
-  );
+  return [...clips].sort((a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id));
 }
 
 /**
@@ -279,19 +370,22 @@ function clipsByStart<C extends Clip>(clips: readonly C[]): C[] {
  */
 export function computeGraph(state: ComputeGraphInput): Graph {
   const { tracks, exportForm } = state;
-  const px =
-    RESOLUTION_PX[exportForm.resolution as ExportResolution] ??
-    RESOLUTION_PX["1080p"];
+  const px = RESOLUTION_PX[exportForm.resolution as ExportResolution] ?? RESOLUTION_PX["1080p"];
 
   const video: VideoNode[] = [];
 
-  for (const clip of clipsByStart(tracks.video)) {
+  const sortedVideoClips = clipsByStart(tracks.video);
+  const sourceVideoClips = sortedVideoClips.filter((clip) => clip.sourcePath);
+
+  for (const clip of sourceVideoClips) {
     const n = videoSource(clip);
     if (n) video.push(n);
   }
   for (const clip of clipsByStart(tracks.zoom)) {
     video.push(zoomPan(clip));
   }
+  const bg = backgroundNode(readEditorBackground(state));
+  if (bg) video.push(bg);
   for (const clip of clipsByStart(tracks.cursor)) {
     const n = cursorOverlay(clip);
     if (n) video.push(n);
@@ -302,14 +396,16 @@ export function computeGraph(state: ComputeGraphInput): Graph {
     const b = textBox(clip);
     if (b) boxes.push(b);
   }
-  if (boxes.length > 0) {
-    const seedId = sortedAnnotations[0]!.id;
+  const firstAnnotation = sortedAnnotations[0];
+  if (boxes.length > 0 && firstAnnotation) {
+    const seedId = firstAnnotation.id;
     video.push({
       type: "text-overlay",
       id: deterministicNodeId(seedId, "text"),
       boxes,
     });
   }
+  video.push(...transitionNodes(sortedVideoClips, sourceVideoClips));
 
   const audio: AudioNode[] = [];
   for (const clip of clipsByStart(tracks.sound)) {

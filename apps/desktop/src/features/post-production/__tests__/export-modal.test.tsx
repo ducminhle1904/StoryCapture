@@ -152,6 +152,78 @@ describe("ExportModal", () => {
     expect(btn).not.toBeDisabled();
   });
 
+  it("includes editor background in exported graph_json", async () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/in.mp4",
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "gradient", preset_id: "runway-dark" },
+      },
+      exportForm: {
+        formats: ["mp4"],
+        resolution: "1080p",
+        fps: 60,
+        quality: "med",
+        outFolder: "/tmp/out",
+        baseName: "demo",
+      },
+    });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "export_validate_config") return Promise.resolve(null);
+      if (cmd === "export_run") {
+        return Promise.resolve({
+          batch_id: "b1",
+          job_ids: ["j1"],
+          graph_snapshot_path: "/tmp/graph.json",
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    render(
+      <Wrapped>
+        <ExportModal storyId="s1" />
+      </Wrapped>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /start export/i }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "export_run",
+        expect.objectContaining({ args: expect.any(Object) }),
+      );
+    });
+    const exportCall = mockInvoke.mock.calls.find(([cmd]) => cmd === "export_run");
+    const args = exportCall?.[1] as { args: { graph_json: string } };
+    const graph = JSON.parse(args.args.graph_json) as {
+      video: Array<{ type: string; kind?: unknown }>;
+    };
+    expect(graph.video).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "background",
+          kind: { kind: "gradient", preset_id: "runway-dark" },
+        }),
+      ]),
+    );
+  });
+
   it("surfaces validation failures as warning text and keeps submit disabled", async () => {
     useEditorStore.setState({
       exportForm: {

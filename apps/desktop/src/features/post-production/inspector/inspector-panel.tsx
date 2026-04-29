@@ -9,12 +9,14 @@ import { useMemo } from "react";
 
 import { useEditorStore } from "../state/store";
 import type { InspectorTab } from "../state/selection-slice";
+import { BackgroundPanel } from "./background-panel";
 import { EffectParams } from "./effect-params";
 import { PresetPicker } from "./preset-picker";
 
 const TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: "presets", label: "Presets" },
   { id: "effects", label: "Effects" },
+  { id: "background", label: "Background" },
   { id: "sound", label: "Sound" },
 ];
 
@@ -29,6 +31,8 @@ export function InspectorPanel() {
         return <PresetPicker scope="project" />;
       case "effects":
         return <EffectParams />;
+      case "background":
+        return <BackgroundPanel />;
       case "sound":
         return (
           <div className="p-4 text-sm text-[var(--color-fg-muted)]">

@@ -6,11 +6,14 @@
  *   - Clips carry ARIA labels for screen readers
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { Timeline } from "../timeline/timeline";
 import { useEditorStore } from "../state/store";
+import { Timeline } from "../timeline/timeline";
+import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
+import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
 
 function resetStore() {
   useEditorStore.setState({
@@ -25,6 +28,10 @@ function resetStore() {
     exportModalOpen: false,
     activeJobs: {},
     progressByJobId: {},
+    history: new HistoryBuffer(HISTORY_CAP),
+    coalescer: new Coalescer(COALESCE_IDLE_MS),
+    canUndo: false,
+    canRedo: false,
   });
 }
 
@@ -39,18 +46,30 @@ describe("Timeline", () => {
     expect(region).toBeInTheDocument();
 
     // Five track rows labelled correctly.
-    expect(screen.getByRole("row", { name: /video track/i })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /cursor track/i })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /zoom track/i })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /sound track/i })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /annotations track/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /video track/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /cursor track/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /zoom track/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /sound track/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /annotations track/i })).toBeInTheDocument();
   });
 
   it("renders clips with descriptive ARIA labels", () => {
     useEditorStore.setState({
       tracks: {
         video: [],
-        cursor: [{ id: "c1", trackId: "cursor", startMs: 12500, durationMs: 3200, trajectoryDir: "/c", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default", sizeScale: 1 }],
+        cursor: [
+          {
+            id: "c1",
+            trackId: "cursor",
+            startMs: 12500,
+            durationMs: 3200,
+            trajectoryDir: "/c",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 0,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
         zoom: [],
         sound: [],
         annotations: [],
@@ -70,7 +89,13 @@ describe("Timeline", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          {
+            id: "neighbour",
+            trackId: "video",
+            startMs: 500,
+            durationMs: 500,
+            sourcePath: "/v.mp4",
+          },
           { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
@@ -84,9 +109,8 @@ describe("Timeline", () => {
     // Drag target = 995 ms, neighbour end edge = 1000 ms, 5 px away at pxPerMs=1
     useEditorStore.getState().moveClip("video", "dragged", 995, { pxPerMs: 1 });
 
-    const dragged = useEditorStore
-      .getState()
-      .tracks.video.find((c) => c.id === "dragged")!;
+    const dragged = useEditorStore.getState().tracks.video.find((c) => c.id === "dragged");
+    if (!dragged) throw new Error("expected dragged clip");
     expect(dragged.startMs).toBe(1000);
   });
 
@@ -94,7 +118,13 @@ describe("Timeline", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          {
+            id: "neighbour",
+            trackId: "video",
+            startMs: 500,
+            durationMs: 500,
+            sourcePath: "/v.mp4",
+          },
           { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
@@ -106,16 +136,81 @@ describe("Timeline", () => {
       snapEnabled: true,
     });
 
-    useEditorStore
-      .getState()
-      .moveClip("video", "dragged", 995, { pxPerMs: 1, altHeld: true });
+    useEditorStore.getState().moveClip("video", "dragged", 995, { pxPerMs: 1, altHeld: true });
 
-    const dragged = useEditorStore
-      .getState()
-      .tracks.video.find((c) => c.id === "dragged")!;
+    const dragged = useEditorStore.getState().tracks.video.find((c) => c.id === "dragged");
+    if (!dragged) throw new Error("expected dragged clip");
     // Alt bypasses snap — stays at 995.
     expect(dragged.startMs).toBe(995);
     // Persistent flag unchanged.
     expect(useEditorStore.getState().snapEnabled).toBe(true);
+  });
+
+  it("adds an undoable outgoing transition from the left video clip", async () => {
+    const user = userEvent.setup();
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 2000,
+            label: "Intro",
+            sourcePath: "/intro.mp4",
+          },
+          {
+            id: "v2",
+            trackId: "video",
+            startMs: 2000,
+            durationMs: 2000,
+            label: "Outro",
+            sourcePath: "/outro.mp4",
+          },
+        ],
+        cursor: [
+          {
+            id: "c1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 2000,
+            trajectoryDir: "/c",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 120,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+      durationMs: 5000,
+    });
+
+    render(<Timeline storyId="s1" pxPerMs={0.1} />);
+
+    expect(screen.getAllByRole("button", { name: /add transition/i })).toHaveLength(1);
+    const addTransition = screen.getByRole("button", {
+      name: /add transition between intro and outro/i,
+    });
+    await user.click(addTransition);
+    await user.click(screen.getByRole("menuitem", { name: /wipe left/i }));
+
+    expect(useEditorStore.getState().tracks.video[0]?.outgoingTransition).toEqual({
+      kind: "wipe-left",
+      durationMs: 500,
+    });
+    expect(useEditorStore.getState().tracks.cursor[0]?.id).toBe("c1");
+    expect(useEditorStore.getState().canUndo).toBe(true);
+
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().tracks.video[0]?.outgoingTransition).toBeUndefined();
+
+    useEditorStore.getState().redo();
+    expect(useEditorStore.getState().tracks.video[0]?.outgoingTransition).toEqual({
+      kind: "wipe-left",
+      durationMs: 500,
+    });
   });
 });

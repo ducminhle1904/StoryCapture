@@ -38,6 +38,9 @@ pub enum ExportError {
     #[error("render queue send failed: {0}")]
     Queue(String),
 
+    #[error("cursor overlay render failed: {0}")]
+    CursorRender(String),
+
     #[error("psnr output could not be parsed")]
     PsnrParse,
 

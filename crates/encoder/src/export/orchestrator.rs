@@ -20,6 +20,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use effects::ast::video::{CursorSkin, VideoNode};
+use effects::cursor::{render_cursor_pngs, skin_asset_path};
 use rusqlite::Connection;
 use storage::repos::render_job_repo;
 use storage::NewRenderJob;
@@ -132,9 +134,12 @@ pub async fn export_run(
         ));
     }
 
+    let mut graph = req.graph;
+    preprocess_cursor_overlays(&mut graph, &req.output_folder, batch_id)?;
+
     // Persist the graph snapshot once per batch — the queue worker will
     // reload it per job without needing the UI process to stay alive.
-    let graph_json = serde_json::to_string(&req.graph)?;
+    let graph_json = serde_json::to_string(&graph)?;
     let snapshot_path = req
         .output_folder
         .join(format!(".export-graph-{batch_id}.json"));
@@ -180,6 +185,63 @@ fn quality_label(q: super::quality::Quality) -> &'static str {
     }
 }
 
+fn preprocess_cursor_overlays(
+    graph: &mut effects::Graph,
+    output_folder: &Path,
+    batch_id: Uuid,
+) -> Result<(), ExportError> {
+    let tmp_root = output_folder.join(format!(".tmp-render-{batch_id}"));
+    let result = render_cursor_overlay_sidecars(graph, &tmp_root);
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&tmp_root);
+    }
+    result
+}
+
+fn render_cursor_overlay_sidecars(
+    graph: &mut effects::Graph,
+    tmp_root: &Path,
+) -> Result<(), ExportError> {
+    for node in &mut graph.video {
+        let VideoNode::CursorOverlay {
+            id,
+            skin,
+            trajectory,
+            ..
+        } = node
+        else {
+            continue;
+        };
+        if !is_trajectory_json(&trajectory.png_sequence_dir) {
+            continue;
+        }
+
+        let skin_path = skin_path_with_fallback(*skin);
+        let out_dir = tmp_root.join(format!("cursor-{}", id.stable_label("clip")));
+        let rendered = render_cursor_pngs(&trajectory.png_sequence_dir, &skin_path, &out_dir)
+            .map_err(|e| ExportError::CursorRender(e.to_string()))?;
+        trajectory.png_sequence_dir = rendered.png_dir;
+        trajectory.fps = rendered.fps;
+        trajectory.frame_count = rendered.frame_count;
+    }
+    Ok(())
+}
+
+fn is_trajectory_json(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".trajectory.json"))
+}
+
+fn skin_path_with_fallback(skin: CursorSkin) -> PathBuf {
+    let selected = skin_asset_path(skin);
+    if selected.exists() {
+        selected
+    } else {
+        skin_asset_path(CursorSkin::MacDefault)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +249,8 @@ mod tests {
     use crate::export::format::OutputFormat;
     use crate::export::quality::Quality;
     use crate::export::resolution::Resolution;
+    use effects::ast::types::NodeId;
+    use effects::ast::video::{CursorSkin, TrajectoryRef, VideoNode};
     use storage::migrations::project as project_migrations;
 
     fn fresh_db() -> Arc<Mutex<Connection>> {
@@ -197,6 +261,23 @@ mod tests {
 
     fn sample_graph() -> effects::Graph {
         effects::Graph::new(1920, 1080, 60)
+    }
+
+    fn write_test_trajectory(path: &Path) {
+        std::fs::write(
+            path,
+            r#"{
+              "recording_path": "/tmp/sample.mp4",
+              "capture_rect": { "x": 0.0, "y": 0.0, "width": 32.0, "height": 24.0 },
+              "fps": 60,
+              "frame_count": 2,
+              "frames": [
+                { "t_ms": 0, "x": 4.0, "y": 5.0, "click": false },
+                { "t_ms": 16, "x": 6.0, "y": 7.0, "click": false }
+              ]
+            }"#,
+        )
+        .unwrap();
     }
 
     fn sample_request(folder: PathBuf) -> ExportRequest {
@@ -243,6 +324,96 @@ mod tests {
         }
         // Snapshot written.
         assert!(result.graph_snapshot_path.exists());
+    }
+
+    #[tokio::test]
+    async fn export_run_preprocesses_cursor_trajectory_json_before_snapshot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trajectory = tmp.path().join("recording.trajectory.json");
+        write_test_trajectory(&trajectory);
+        let db = fresh_db();
+        let mut req = sample_request(tmp.path().to_path_buf());
+        req.outputs.truncate(1);
+        let batch_id = req.outputs[0].batch_id;
+        req.graph.video.push(VideoNode::CursorOverlay {
+            id: NodeId::from_bytes([0x0C; 16]),
+            skin: CursorSkin::MacDefault,
+            size_scale: 1.0,
+            color_tint: None,
+            trajectory: TrajectoryRef {
+                png_sequence_dir: trajectory.clone(),
+                fps: 60,
+                frame_count: 2,
+            },
+        });
+
+        let result = export_run(req, None, &db).await.unwrap();
+        let raw = std::fs::read_to_string(result.graph_snapshot_path).unwrap();
+        let graph: effects::Graph = serde_json::from_str(&raw).unwrap();
+        let cursor_dir = graph
+            .video
+            .iter()
+            .find_map(|node| match node {
+                VideoNode::CursorOverlay { trajectory, .. } => {
+                    Some(trajectory.png_sequence_dir.clone())
+                }
+                _ => None,
+            })
+            .expect("cursor overlay");
+
+        assert_ne!(cursor_dir, trajectory);
+        assert!(cursor_dir.starts_with(tmp.path().join(format!(".tmp-render-{batch_id}"))));
+        assert!(cursor_dir.join("frame_00000.png").exists());
+        assert!(cursor_dir.join("frame_00001.png").exists());
+
+        let filter = effects::FfmpegEmit::emit(&graph);
+        assert!(
+            filter.contains("frame_%05d.png"),
+            "cursor overlay must point FFmpeg at the rendered PNG sequence: {filter}"
+        );
+        assert!(
+            !filter.contains(".trajectory.json"),
+            "trajectory JSON must not leak into FFmpeg inputs: {filter}"
+        );
+    }
+
+    #[tokio::test]
+    async fn export_run_without_cursor_does_not_create_tmp_render_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = fresh_db();
+        let req = sample_request(tmp.path().to_path_buf());
+        let batch_id = req.outputs[0].batch_id;
+
+        export_run(req, None, &db).await.unwrap();
+
+        assert!(!tmp.path().join(format!(".tmp-render-{batch_id}")).exists());
+    }
+
+    #[tokio::test]
+    async fn export_run_cleans_tmp_render_dir_when_cursor_preprocess_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let trajectory = tmp.path().join("recording.trajectory.json");
+        std::fs::write(&trajectory, b"{not-json").unwrap();
+        let db = fresh_db();
+        let mut req = sample_request(tmp.path().to_path_buf());
+        req.outputs.truncate(1);
+        let batch_id = req.outputs[0].batch_id;
+        req.graph.video.push(VideoNode::CursorOverlay {
+            id: NodeId::from_bytes([0x0C; 16]),
+            skin: CursorSkin::MacDefault,
+            size_scale: 1.0,
+            color_tint: None,
+            trajectory: TrajectoryRef {
+                png_sequence_dir: trajectory,
+                fps: 60,
+                frame_count: 1,
+            },
+        });
+
+        let err = export_run(req, None, &db).await.unwrap_err();
+
+        assert!(matches!(err, ExportError::CursorRender(_)));
+        assert!(!tmp.path().join(format!(".tmp-render-{batch_id}")).exists());
     }
 
     #[tokio::test]

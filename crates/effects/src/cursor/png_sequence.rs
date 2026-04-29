@@ -8,14 +8,19 @@
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
+use serde::Deserialize;
+use tracing::warn;
 
+use crate::ast::types::Vec2;
 use crate::ast::video::RippleEvent;
 use crate::error::EffectsError;
 
 use super::compositor::compose_frame;
 use super::ripple::{ripple_alpha, ripple_radius};
-use super::skins::SkinBitmap;
+use super::skins::{load_skin_from_path, SkinBitmap};
 use super::trajectory::CursorSample;
+
+const MAX_CURSOR_PNG_FRAMES: usize = 108_000;
 
 /// Result metadata from a successful render.
 #[derive(Debug, Clone)]
@@ -25,6 +30,139 @@ pub struct PngSequenceResult {
     pub fps: u32,
     pub width: u32,
     pub height: u32,
+}
+
+/// Result metadata from rendering a `.trajectory.json` sidecar into a cursor
+/// PNG sequence.
+#[derive(Debug, Clone)]
+pub struct RenderedCursorPng {
+    pub png_dir: PathBuf,
+    pub fps: u32,
+    pub frame_count: u32,
+    pub canvas_width: u32,
+    pub canvas_height: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct TrajectoryDto {
+    capture_rect: CaptureRectDto,
+    fps: u32,
+    frame_count: u32,
+    frames: Vec<TrajectoryFrameDto>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+struct CaptureRectDto {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+struct TrajectoryFrameDto {
+    t_ms: u32,
+    x: f32,
+    y: f32,
+    click: bool,
+}
+
+/// Render a Phase 19 `.trajectory.json` sidecar into a PNG sequence directory
+/// that the FFmpeg emitter can consume through the existing cursor-overlay
+/// AST field.
+pub fn render_cursor_pngs(
+    trajectory_json: &Path,
+    skin_png: &Path,
+    output_dir: &Path,
+) -> Result<RenderedCursorPng, EffectsError> {
+    let bytes = std::fs::read(trajectory_json)?;
+    let dto: TrajectoryDto = serde_json::from_slice(&bytes)?;
+    let skin = load_skin_from_path(skin_png)?;
+    render_cursor_pngs_from_dto(&dto, &skin, output_dir)
+}
+
+fn render_cursor_pngs_from_dto(
+    dto: &TrajectoryDto,
+    skin: &SkinBitmap,
+    output_dir: &Path,
+) -> Result<RenderedCursorPng, EffectsError> {
+    std::fs::create_dir_all(output_dir)?;
+    let canvas_width = dto.capture_rect.width.round().max(1.0) as u32;
+    let canvas_height = dto.capture_rect.height.round().max(1.0) as u32;
+    let fps = dto.fps.max(1);
+    if dto.frames.len() > MAX_CURSOR_PNG_FRAMES {
+        return Err(EffectsError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "trajectory has {} frames, max supported is {}",
+                dto.frames.len(),
+                MAX_CURSOR_PNG_FRAMES
+            ),
+        )));
+    }
+
+    if dto.frame_count != dto.frames.len() as u32 {
+        warn!(
+            declared = dto.frame_count,
+            actual = dto.frames.len(),
+            "trajectory sidecar frame_count mismatch"
+        );
+    }
+
+    let trajectory: Vec<CursorSample> = dto
+        .frames
+        .iter()
+        .map(|frame| frame_to_sample(frame, dto.capture_rect, skin, canvas_width, canvas_height))
+        .collect();
+    let rendered = render_png_sequence(
+        &trajectory,
+        &[],
+        skin,
+        output_dir,
+        canvas_width,
+        canvas_height,
+        fps,
+    )?;
+
+    Ok(RenderedCursorPng {
+        png_dir: output_dir.to_path_buf(),
+        fps: rendered.fps,
+        frame_count: rendered.frame_count,
+        canvas_width: rendered.width,
+        canvas_height: rendered.height,
+    })
+}
+
+fn frame_to_sample(
+    frame: &TrajectoryFrameDto,
+    capture_rect: CaptureRectDto,
+    skin: &SkinBitmap,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> CursorSample {
+    let _click = frame.click;
+    let local_x = frame.x - capture_rect.x;
+    let local_y = frame.y - capture_rect.y;
+    if !local_x.is_finite()
+        || !local_y.is_finite()
+        || local_x < 0.0
+        || local_y < 0.0
+        || local_x > canvas_width as f32
+        || local_y > canvas_height as f32
+    {
+        return CursorSample {
+            t_ms: frame.t_ms as u64,
+            pos: Vec2::new(
+                -(skin.pixels.width() as f32) - 1.0,
+                -(skin.pixels.height() as f32) - 1.0,
+            ),
+        };
+    }
+
+    CursorSample {
+        t_ms: frame.t_ms as u64,
+        pos: Vec2::new(local_x, local_y),
+    }
 }
 
 /// Render `trajectory` + `ripples` into `out_dir` as `frame_00000.png`,

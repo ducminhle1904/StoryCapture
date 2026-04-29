@@ -5,10 +5,11 @@ use std::path::Path;
 use effects::ast::types::{Rgba, Vec2};
 use effects::ast::video::CursorSkin;
 use effects::cursor::{
-    apply_tint, build_ripples, load_skin, render_png_sequence, ripple_alpha, ripple_radius,
-    sample_trajectory, CursorSample, RippleOptions, TrajectoryOptions,
+    apply_tint, build_ripples, load_skin, render_cursor_pngs, render_png_sequence, ripple_alpha,
+    ripple_radius, sample_trajectory, CursorSample, RippleOptions, TrajectoryOptions,
 };
 use effects::math::min_jerk::{Waypoint, WaypointKind};
+use image::{ImageBuffer, Rgba as ImageRgba, RgbaImage};
 
 fn wp(t_ms: u64, x: f32, y: f32, kind: WaypointKind) -> Waypoint {
     Waypoint {
@@ -134,6 +135,97 @@ fn render_png_sequence_creates_n_frames() {
         })
         .count();
     assert_eq!(png_count, traj.len());
+}
+
+#[test]
+fn render_cursor_pngs_from_trajectory_json_creates_frames() {
+    let tmp = tempfile::tempdir().unwrap();
+    let trajectory = tmp.path().join("sample.trajectory.json");
+    let skin = tmp.path().join("skin.png");
+    let out = tmp.path().join("cursor-out");
+
+    let skin_img: RgbaImage = ImageBuffer::from_pixel(4, 4, ImageRgba([255, 0, 0, 255]));
+    skin_img.save(&skin).unwrap();
+    std::fs::write(
+        &trajectory,
+        r#"{
+          "recording_path": "/tmp/sample.mp4",
+          "capture_rect": { "x": 10.0, "y": 20.0, "width": 40.0, "height": 30.0 },
+          "fps": 60,
+          "frame_count": 3,
+          "frames": [
+            { "t_ms": 0, "x": 12.0, "y": 23.0, "click": false },
+            { "t_ms": 16, "x": 13.0, "y": 24.0, "click": true },
+            { "t_ms": 32, "x": 14.0, "y": 25.0, "click": false }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    let result = render_cursor_pngs(&trajectory, &skin, &out).unwrap();
+    assert_eq!(result.png_dir, out);
+    assert_eq!(result.fps, 60);
+    assert_eq!(result.frame_count, 3);
+    assert_eq!(result.canvas_width, 40);
+    assert_eq!(result.canvas_height, 30);
+    assert!(tmp.path().join("cursor-out/frame_00000.png").exists());
+    assert!(tmp.path().join("cursor-out/frame_00002.png").exists());
+
+    let first = image::open(tmp.path().join("cursor-out/frame_00000.png"))
+        .unwrap()
+        .to_rgba8();
+    assert_eq!(first.width(), 40);
+    assert_eq!(first.height(), 30);
+    assert_eq!(first.get_pixel(2, 3).0, [255, 0, 0, 255]);
+}
+
+#[test]
+fn render_cursor_pngs_rejects_malformed_json() {
+    let tmp = tempfile::tempdir().unwrap();
+    let trajectory = tmp.path().join("bad.trajectory.json");
+    let skin = tmp.path().join("skin.png");
+    let out = tmp.path().join("cursor-out");
+    ImageBuffer::<ImageRgba<u8>, Vec<u8>>::from_pixel(1, 1, ImageRgba([255, 255, 255, 255]))
+        .save(&skin)
+        .unwrap();
+    std::fs::write(&trajectory, b"{not-json").unwrap();
+
+    let err = render_cursor_pngs(&trajectory, &skin, &out).unwrap_err();
+    assert!(
+        matches!(err, effects::EffectsError::Serde(_)),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn render_cursor_pngs_rejects_missing_skin_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let trajectory = tmp.path().join("sample.trajectory.json");
+    std::fs::write(
+        &trajectory,
+        r#"{
+          "recording_path": "/tmp/sample.mp4",
+          "capture_rect": { "x": 0.0, "y": 0.0, "width": 4.0, "height": 4.0 },
+          "fps": 60,
+          "frame_count": 1,
+          "frames": [{ "t_ms": 0, "x": 1.0, "y": 1.0, "click": false }]
+        }"#,
+    )
+    .unwrap();
+
+    let err = render_cursor_pngs(
+        &trajectory,
+        &tmp.path().join("missing.png"),
+        &tmp.path().join("cursor-out"),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            effects::EffectsError::Io(_) | effects::EffectsError::ImageDecode(_)
+        ),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]

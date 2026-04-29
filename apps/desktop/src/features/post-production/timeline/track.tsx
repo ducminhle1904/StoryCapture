@@ -13,8 +13,9 @@
 import { memo, useCallback, useRef } from "react";
 
 import { useEditorStore } from "../state/store";
-import type { Clip as ClipModel, TrackId } from "../state/timeline-slice";
+import type { Clip as ClipModel, TrackId, VideoClip } from "../state/timeline-slice";
 import { Clip } from "./clip";
+import { VideoTransitionControls } from "./video-transition-controls";
 
 // The drag gesture is handled here via pointer events; the per-move
 // push is delegated to the store's pushAction so the coalescer can
@@ -40,16 +41,14 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 48 }: TrackProps) 
   const moveClip = useEditorStore((s) => s.moveClip);
   const pushAction = useEditorStore((s) => s.pushAction);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLElement>(null);
   const width = Math.max(0, durationMs * pxPerMs);
 
   // Pointer drag: record start pointer + clip state on pointerdown inside
   // a clip; compute a delta on pointermove + apply via moveClip.
   const onPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const target = (e.target as HTMLElement).closest<HTMLElement>(
-        "[data-clip-id]",
-      );
+    (e: React.PointerEvent<HTMLElement>) => {
+      const target = (e.target as HTMLElement).closest<HTMLElement>("[data-clip-id]");
       if (!target || !containerRef.current) return;
       const clipId = target.dataset.clipId;
       if (!clipId) return;
@@ -76,12 +75,16 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 48 }: TrackProps) 
         // single history entry. We read the POST-drag startMs from the
         // store so snap-adjusted values land in the undo record, not
         // the pointer delta.
-        const finalClip = useEditorStore
-          .getState()
-          .tracks[id].find((c) => c.id === clipId);
+        const finalClip = useEditorStore.getState().tracks[id].find((c) => c.id === clipId);
         const toMs = finalClip?.startMs ?? originMs;
         if (toMs !== originMs) {
-          pushAction({ kind: 'move-clip', trackId: id, clipId, fromMs: originMs, toMs });
+          pushAction({
+            kind: "move-clip",
+            trackId: id,
+            clipId,
+            fromMs: originMs,
+            toMs,
+          });
         }
       };
       window.addEventListener("pointermove", onMove);
@@ -91,28 +94,28 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 48 }: TrackProps) 
   );
 
   return (
-    <div
+    <section
       ref={containerRef}
-      role="row"
       aria-label={`${TRACK_LABEL[id]} track`}
+      tabIndex={-1}
       className="relative border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)]"
       style={{ height, width }}
       onPointerDown={onPointerDown}
       onClick={(e) => {
         if (e.target === e.currentTarget) setSelectedClipId(null);
       }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setSelectedClipId(null);
+      }}
     >
       {/* Track label gutter is rendered by the parent Timeline so tracks align */}
       {clips.map((clip) => (
-        <Clip
-          key={clip.id}
-          clip={clip}
-          trackId={id}
-          pxPerMs={pxPerMs}
-          trackHeight={height}
-        />
+        <Clip key={clip.id} clip={clip} trackId={id} pxPerMs={pxPerMs} trackHeight={height} />
       ))}
-    </div>
+      {id === "video" ? (
+        <VideoTransitionControls clips={clips as readonly VideoClip[]} pxPerMs={pxPerMs} />
+      ) : null}
+    </section>
   );
 }
 

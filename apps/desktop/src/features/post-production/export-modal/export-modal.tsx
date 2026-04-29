@@ -120,14 +120,15 @@ export function ExportModal({ storyId }: ExportModalProps) {
   }, [setOutFolder]);
 
   // Project the timeline into a Graph. We subscribe only to the slices
-  // computeGraph reads (tracks + form) so React's snapshot equality check
+  // computeGraph reads (tracks + form + undo extras) so React's snapshot equality check
   // doesn't loop on the fresh object that `computeGraph` returns.
   // `graphAvailable` gates submission so we never enqueue an empty-graph
   // job (e.g. project opened with no video clips).
   const tracks = useEditorStore((s) => s.tracks);
+  const undoExtras = useEditorStore((s) => s._undoExtras);
   const graph = useMemo(
-    () => computeGraph({ tracks, exportForm: form }),
-    [tracks, form],
+    () => computeGraph({ tracks, exportForm: form, _undoExtras: undoExtras }),
+    [tracks, form, undoExtras],
   );
   const graphAvailable = graphIsRenderable(graph);
 

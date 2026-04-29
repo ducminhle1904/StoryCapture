@@ -1,6 +1,6 @@
 //! Bundled cursor skins.
 //!
-//! Five variants ship as PNG assets under `assets/cursor-skins/`. Users can
+//! Five variants ship as PNG assets under `crates/effects/assets/cursors/`. Users can
 //! choose `size_scale` and `color_tint` but cannot upload custom skins.
 
 use std::path::{Path, PathBuf};
@@ -41,20 +41,24 @@ fn skin_filename(kind: CursorSkin) -> &'static str {
 
 /// Resolve the absolute path to a bundled cursor-skin PNG.
 ///
-/// Resolution: `CARGO_MANIFEST_DIR` (= `crates/effects`) → up two → `assets/cursor-skins/<name>.png`.
-pub fn skin_path(kind: CursorSkin) -> PathBuf {
+/// Resolution: `CARGO_MANIFEST_DIR` (= `crates/effects`) →
+/// `assets/cursors/<name>.png`.
+pub fn skin_asset_path(kind: CursorSkin) -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    p.pop(); // crates/effects -> crates
-    p.pop(); // crates -> repo root
     p.push("assets");
-    p.push("cursor-skins");
+    p.push("cursors");
     p.push(skin_filename(kind));
     p
 }
 
+/// Backwards-compatible alias used by existing cursor code/tests.
+pub fn skin_path(kind: CursorSkin) -> PathBuf {
+    skin_asset_path(kind)
+}
+
 /// Load a bundled cursor skin into an RGBA bitmap.
 pub fn load_skin(kind: CursorSkin) -> Result<SkinBitmap, EffectsError> {
-    let path = skin_path(kind);
+    let path = skin_asset_path(kind);
     load_skin_from_path(&path)
 }
 

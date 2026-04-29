@@ -6,7 +6,7 @@
 
 import type { StateCreator } from "zustand";
 
-export type InspectorTab = "presets" | "effects" | "sound";
+export type InspectorTab = "presets" | "effects" | "background" | "sound";
 
 export interface SelectionSlice {
   selectedClipId: string | null;

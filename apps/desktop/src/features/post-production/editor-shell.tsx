@@ -12,7 +12,7 @@
  * from the store so user preferences survive reloads.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   ArrowLeft,
@@ -27,6 +27,7 @@ import {
   SkipBack,
   SkipForward,
   Sparkles,
+  Type,
   Volume2,
   ZoomIn,
 } from "lucide-react";
@@ -47,10 +48,18 @@ import { InspectorPanel } from "./inspector/inspector-panel";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
 import { ExportModal } from "./export-modal/export-modal";
 import { QueueWidget } from "./render-queue/queue-widget";
+import type { AnnotationClip, ZoomClip } from "./state/timeline-slice";
 
 export interface EditorShellProps {
   storyId: string;
   videoSrc?: string;
+}
+
+function createClipId(prefix: string): string {
+  const random =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${random}`;
 }
 
 export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
@@ -58,6 +67,10 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const previewWidthPct = useEditorStore((s) => s.previewWidthPct);
   const setSoundDrawerOpen = useEditorStore((s) => s.setSoundDrawerOpen);
   const setExportModalOpen = useEditorStore((s) => s.setExportModalOpen);
+  const playheadMs = useEditorStore((s) => s.playheadMs);
+  const pushAction = useEditorStore((s) => s.pushAction);
+  const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
+  const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
 
   // Wire the latest project recording into the preview canvas. Explicit
   // `videoSrc` prop (used by tests/storybook) wins over the IPC-loaded path.
@@ -96,20 +109,31 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   const trajectoryQuery = useRecordingTrajectory(latestRecording?.path);
 
-  // One-shot auto-populate: only run when video track is empty so we don't
-  // clobber persisted user edits. Idempotent on identical inputs.
+  // One-shot auto-populate: only run while generated tracks are empty so we
+  // don't clobber persisted user edits. Idempotent on identical inputs.
   const setTracks = useEditorStore((s) => s.setTracks);
   const tracksVideoLen = useEditorStore((s) => s.tracks.video.length);
+  const tracksCursorLen = useEditorStore((s) => s.tracks.cursor.length);
+  const tracksZoomLen = useEditorStore((s) => s.tracks.zoom.length);
   useEffect(() => {
     if (!latestRecording) return;
     if (tracksVideoLen > 0) return;
+    if (tracksCursorLen > 0 || tracksZoomLen > 0) return;
     const built = buildTimelineFromStory({
       story: storyParsed,
       recording: latestRecording,
       trajectory: trajectoryQuery.data ?? null,
     });
     setTracks(built);
-  }, [latestRecording, storyParsed, trajectoryQuery.data, tracksVideoLen, setTracks]);
+  }, [
+    latestRecording,
+    storyParsed,
+    trajectoryQuery.data,
+    tracksVideoLen,
+    tracksCursorLen,
+    tracksZoomLen,
+    setTracks,
+  ]);
 
   useEditorHotkeys();
 
@@ -124,6 +148,40 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   const topHeightPct = 100 - timelineHeightPct;
   const inspectorWidthPct = 100 - previewWidthPct;
+
+  const addZoomAtPlayhead = useCallback(() => {
+    const clip: ZoomClip = {
+      id: createClipId("zoom"),
+      trackId: "zoom",
+      startMs: playheadMs,
+      durationMs: 1_000,
+      label: "Zoom 1.5x",
+      target: { kind: "cursor" },
+      scale: 1.5,
+      center: { x: 0.5, y: 0.5 },
+      preset: "DYNAMIC",
+    };
+    pushAction({ kind: "add-clip", trackId: "zoom", clip });
+    setSelectedClipId(clip.id);
+    setSelectedTab("effects");
+  }, [playheadMs, pushAction, setSelectedClipId, setSelectedTab]);
+
+  const addTextAtPlayhead = useCallback(() => {
+    const clip: AnnotationClip = {
+      id: createClipId("text"),
+      trackId: "annotations",
+      startMs: playheadMs,
+      durationMs: 1_000,
+      label: "Title",
+      text: "Title",
+      pos: { x: 0.5, y: 0.9 },
+      sizePt: 24,
+      color: "#ffffff",
+    };
+    pushAction({ kind: "add-clip", trackId: "annotations", clip });
+    setSelectedClipId(clip.id);
+    setSelectedTab("effects");
+  }, [playheadMs, pushAction, setSelectedClipId, setSelectedTab]);
 
   return (
     <div
@@ -248,11 +306,23 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
               <ScButton
                 size="sm"
                 variant="ghost"
-                disabled
                 icon={<ZoomIn size={12} aria-hidden="true" />}
-                title="Add zoom keyframe — coming soon"
-                aria-label="Add zoom keyframe"
-              />
+                title="Add zoom keyframe"
+                aria-label="Add zoom clip"
+                onClick={addZoomAtPlayhead}
+              >
+                + Zoom
+              </ScButton>
+              <ScButton
+                size="sm"
+                variant="ghost"
+                icon={<Type size={12} aria-hidden="true" />}
+                title="Add text annotation"
+                aria-label="Add text clip"
+                onClick={addTextAtPlayhead}
+              >
+                + Text
+              </ScButton>
               <ScButton
                 size="sm"
                 variant="ghost"
