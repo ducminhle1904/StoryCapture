@@ -85,11 +85,7 @@ fn fanout_plan_mp4_webm() {
     );
     assert!(mp4.iter().any(|a| a == "h264_videotoolbox"));
     assert!(mp4.iter().any(|a| a == "+faststart"));
-    let webm = build_encode_args(
-        Path::new("/tmp/interm.mkv"),
-        &plan.outputs[1],
-        "libopenh264",
-    );
+    let webm = build_encode_args(Path::new("/tmp/interm.mkv"), &plan.outputs[1], "libx264");
     assert!(webm.iter().any(|a| a == "libvpx-vp9"));
     assert!(webm.iter().any(|a| a == "libopus"));
 }
@@ -103,7 +99,7 @@ fn gif_uses_palettegen_and_paletteuse() {
         quality: Quality::Med,
         output_path: PathBuf::from("/tmp/clip.gif"),
     };
-    let args = build_encode_args(Path::new("/tmp/interm.mkv"), &spec, "libopenh264");
+    let args = build_encode_args(Path::new("/tmp/interm.mkv"), &spec, "libx264");
     let joined = args.join(" ");
     assert!(joined.contains("palettegen"), "args={joined}");
     assert!(joined.contains("paletteuse"), "args={joined}");
@@ -138,7 +134,7 @@ async fn multi_encode_parallel_spawns_two_sidecars() {
                 calls: calls_c.clone(),
             }) as Arc<dyn SidecarCommand>
         },
-        "libopenh264",
+        "libx264",
     )
     .await
     .unwrap();

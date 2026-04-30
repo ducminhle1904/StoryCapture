@@ -36,6 +36,18 @@ use uuid::Uuid;
 
 const ENCODER_FRAME_CHANNEL_CAPACITY: usize = 4;
 
+#[derive(Debug, Clone, Copy)]
+struct RecordingQualityPlan {
+    encoder: HardwareEncoder,
+    capture_width: u32,
+    capture_height: u32,
+    output_width: u32,
+    output_height: u32,
+    fps: u32,
+    preset: QualityPreset,
+    target_video_kbps: u32,
+}
+
 // ---------------------------------------------------------------------------
 // SidecarCommand bridge
 // ---------------------------------------------------------------------------
@@ -455,6 +467,9 @@ struct RecordingHandle {
     /// emitted next to the MP4. Stopped from `stop_recording_inner`.
     /// Failures here MUST NOT abort the recording itself.
     trajectory: Option<TrajectoryRecorder>,
+    /// Encoder diagnostics captured at session start so stop can compare
+    /// observed bitrate against the intended quality budget.
+    quality_plan: RecordingQualityPlan,
 }
 
 #[derive(Default)]
@@ -466,6 +481,27 @@ fn registry() -> &'static RecordingRegistry {
     use std::sync::OnceLock;
     static REG: OnceLock<RecordingRegistry> = OnceLock::new();
     REG.get_or_init(RecordingRegistry::default)
+}
+
+fn select_recording_encoder(probe: &EncoderProbe, preset: QualityPreset) -> HardwareEncoder {
+    #[cfg(target_os = "macos")]
+    {
+        // VideoToolbox repeatedly undershoots requested bitrates for dark or
+        // mostly static Retina screen recordings. For quality-first recorder
+        // presets, prefer bundled libx264 CRF; exports can keep using the
+        // generic probe preference and user-selected encoder.
+        if matches!(preset, QualityPreset::High | QualityPreset::Lossless)
+            && probe.available.contains(&HardwareEncoder::Openh264Software)
+        {
+            return HardwareEncoder::Openh264Software;
+        }
+        // If software is unavailable, H.264 VT has been more predictable than
+        // HEVC VT for screen text.
+        if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
+            return HardwareEncoder::VideoToolboxH264;
+        }
+    }
+    probe.preferred
 }
 
 /// Process-wide "a start_recording is currently in flight" flag.
@@ -675,7 +711,12 @@ async fn drain_one(_session_id: &str, handle: RecordingHandle) -> Result<(), Str
 /// Runtime HW-encoder feature detection.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "probe_hw_encoders"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "probe_hw_encoders"),
+    err(Debug)
+)]
 pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
     let cmd = TauriSidecar::new(app);
     let probe = probe_encoders(&cmd)
@@ -687,7 +728,12 @@ pub async fn probe_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppErr
 /// Re-probe HW encoders bypassing any cached result.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "refresh_hw_encoders"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "refresh_hw_encoders"),
+    err(Debug)
+)]
 pub async fn refresh_hw_encoders(app: AppHandle) -> Result<EncoderProbeDto, AppError> {
     let cmd = TauriSidecar::new(app);
     let probe = encoder::probe::force_reprobe(&cmd)
@@ -770,9 +816,15 @@ pub async fn start_recording(
     };
     tracing::info!(
         target: "storycapture::recording",
+        frame_crop = ?args.frame_crop,
         "start_recording requested: target={} {}x{}@{}fps folder={:?}",
         capture_target.kind_label(), args.width, args.height, args.fps, args.project_folder
     );
+
+    let requested_quality: QualityPreset = args
+        .quality_preset
+        .map(Into::into)
+        .unwrap_or(QualityPreset::Med);
 
     // Probe encoders.
     let probe = {
@@ -788,9 +840,19 @@ pub async fn start_recording(
     };
     tracing::info!(
         target: "storycapture::recording",
-        "encoder probe ok: preferred={:?}",
-        probe.preferred
+        preferred = ?probe.preferred,
+        available = ?probe.available,
+        "encoder probe ok"
     );
+    let recording_encoder = select_recording_encoder(&probe, requested_quality);
+    if recording_encoder != probe.preferred {
+        tracing::info!(
+            target: "storycapture::recording",
+            preferred = ?probe.preferred,
+            selected = ?recording_encoder,
+            "recorder encoder override selected for screen-capture quality"
+        );
+    }
 
     // Allocate session and output path.
     let session_id = Uuid::new_v4().to_string();
@@ -997,18 +1059,18 @@ pub async fn start_recording(
     };
     let fit: FitMode = args.fit_mode.map(Into::into).unwrap_or(FitMode::Letterbox);
     let pad: PadColor = args.pad_color.map(Into::into).unwrap_or(PadColor::Black);
-    let algo: ScaleAlgo = args.scale_algo.map(Into::into).unwrap_or(ScaleAlgo::Lanczos);
-    let qp: QualityPreset = args
-        .quality_preset
+    let algo: ScaleAlgo = args
+        .scale_algo
         .map(Into::into)
-        .unwrap_or(QualityPreset::Med);
+        .unwrap_or(ScaleAlgo::Lanczos);
+    let qp = requested_quality;
 
     let mut enc_cfg = EncodeConfig::new(
         output_path.clone(),
         actual_width,
         actual_height,
         args.fps,
-        probe.preferred,
+        recording_encoder,
     )
     .with_output_resolution(output_res)
     .map_err(|e| AppError::Encoder(e.to_string()))?
@@ -1017,6 +1079,41 @@ pub async fn start_recording(
     .with_scale_algo(algo)
     .with_quality_preset(qp)
     .force_ffmpeg_path();
+    let target_video_kbps = encoder::quality::target_kbps(
+        qp,
+        enc_cfg.encoder,
+        enc_cfg.output_width,
+        enc_cfg.output_height,
+        enc_cfg.fps_advisory,
+    );
+    let quality_plan = RecordingQualityPlan {
+        encoder: enc_cfg.encoder,
+        capture_width: enc_cfg.capture_width,
+        capture_height: enc_cfg.capture_height,
+        output_width: enc_cfg.output_width,
+        output_height: enc_cfg.output_height,
+        fps: enc_cfg.fps_advisory,
+        preset: enc_cfg.quality_preset,
+        target_video_kbps,
+    };
+    tracing::info!(
+        target: "storycapture::recording",
+        encoder = ?quality_plan.encoder,
+        preset = ?quality_plan.preset,
+        capture_width = quality_plan.capture_width,
+        capture_height = quality_plan.capture_height,
+        output_width = quality_plan.output_width,
+        output_height = quality_plan.output_height,
+        fps = quality_plan.fps,
+        target_video_kbps = quality_plan.target_video_kbps,
+        scale_area_pct = ((quality_plan.output_width as u64)
+            .saturating_mul(quality_plan.output_height as u64)
+            .saturating_mul(100)
+            / (quality_plan.capture_width as u64)
+                .saturating_mul(quality_plan.capture_height as u64)
+                .max(1)),
+        "recording quality plan"
+    );
     // Forward the optional keyframe knob from the IPC DTO into the encoder
     // config so FFmpeg emits `-g <fps * interval>`. None keeps the default
     // (no `-g`) so existing argv is byte-identical.
@@ -1035,9 +1132,7 @@ pub async fn start_recording(
     // Encoder stdin-write timeouts surface to renderer as FramesDropped.
     let on_event_for_bp = on_event.clone();
     let bp_cb: encoder::BackpressureCallback = Box::new(move |total, delta| {
-        if let Err(e) =
-            on_event_for_bp.send(RecordingEvent::FramesDropped { total, delta })
-        {
+        if let Err(e) = on_event_for_bp.send(RecordingEvent::FramesDropped { total, delta }) {
             tracing::debug!(
                 target: "storycapture::recording",
                 error = %e,
@@ -1047,22 +1142,17 @@ pub async fn start_recording(
             );
         }
     });
-    let encode_join = EncodePipeline::start_with_backpressure(
-        enc_cfg,
-        &sidecar,
-        frame_rx,
-        prog_tx,
-        Some(bp_cb),
-    )
-        .await
-        .map_err(|e| {
-            tracing::error!(
-                target: "storycapture::recording",
-                "encode pipeline start failed: {}",
-                e
-            );
-            AppError::Encoder(e.to_string())
-        })?;
+    let encode_join =
+        EncodePipeline::start_with_backpressure(enc_cfg, &sidecar, frame_rx, prog_tx, Some(bp_cb))
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    target: "storycapture::recording",
+                    "encode pipeline start failed: {}",
+                    e
+                );
+                AppError::Encoder(e.to_string())
+            })?;
     tracing::info!(
         target: "storycapture::recording",
         "encode pipeline started: output={:?}",
@@ -1212,6 +1302,7 @@ pub async fn start_recording(
             audio_fifo,
             heartbeat_abort: Some(heartbeat_abort),
             trajectory,
+            quality_plan,
         },
     );
 
@@ -1291,6 +1382,7 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
     if let Some(traj) = handle.trajectory {
         traj.stop();
     }
+    let quality_plan = handle.quality_plan;
 
     // Stop the 2s heartbeat ticker before we begin teardown so the renderer
     // doesn't observe a tick after it's already surfaced Completed/Failed.
@@ -1335,14 +1427,38 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
     };
     tracing::info!(
         target: "storycapture::recording",
-        "stop_recording: encoder finalized output={:?} bytes={} duration_ms={} frames={} dropped={} observed_kbps={}",
-        result.output_path,
-        result.bytes,
-        result.duration_ms,
-        result.frames_written,
-        result.frames_dropped,
-        observed_kbps
+        output = ?result.output_path,
+        bytes = result.bytes,
+        duration_ms = result.duration_ms,
+        frames = result.frames_written,
+        dropped = result.frames_dropped,
+        observed_kbps,
+        target_video_kbps = quality_plan.target_video_kbps,
+        target_pct = if quality_plan.target_video_kbps > 0 {
+            observed_kbps.saturating_mul(100) / quality_plan.target_video_kbps as u64
+        } else {
+            0
+        },
+        encoder = ?quality_plan.encoder,
+        preset = ?quality_plan.preset,
+        capture_width = quality_plan.capture_width,
+        capture_height = quality_plan.capture_height,
+        output_width = quality_plan.output_width,
+        output_height = quality_plan.output_height,
+        fps = quality_plan.fps,
+        "stop_recording: encoder finalized"
     );
+    if quality_plan.target_video_kbps > 0
+        && observed_kbps.saturating_mul(3) < quality_plan.target_video_kbps as u64
+    {
+        tracing::warn!(
+            target: "storycapture::recording",
+            observed_kbps,
+            target_video_kbps = quality_plan.target_video_kbps,
+            encoder = ?quality_plan.encoder,
+            "recording bitrate undershot target by more than 3x; likely encoder rate-control bottleneck"
+        );
+    }
 
     Ok(result.into())
 }
@@ -1606,10 +1722,7 @@ mod first_frame_and_fifo_tests {
         let _ = handle.await;
 
         let got = emitted.lock().unwrap().clone();
-        assert!(
-            got.len() >= 3,
-            "expected at least 3 emissions, got {got:?}"
-        );
+        assert!(got.len() >= 3, "expected at least 3 emissions, got {got:?}");
         for pair in got.windows(2) {
             assert_eq!(
                 pair[1],
@@ -1658,9 +1771,8 @@ mod first_frame_and_fifo_tests {
     /// start_recording is 2s.
     #[tokio::test(flavor = "current_thread")]
     async fn fifo_handshake_deadline_returns_timeout_error() {
-        let fifo_path = std::path::PathBuf::from(
-            "/tmp/storycapture-nonexistent-fifo-for-handshake-test-xyz",
-        );
+        let fifo_path =
+            std::path::PathBuf::from("/tmp/storycapture-nonexistent-fifo-for-handshake-test-xyz");
         let _ = std::fs::remove_file(&fifo_path);
 
         let fifo_deadline = tokio::time::Instant::now() + Duration::from_millis(200);

@@ -117,11 +117,10 @@ pub fn bitrate_for(r: Resolution, q: Quality, codec: &str) -> String {
     format!("{}k", (base as f32 * mult) as u32)
 }
 
-/// Best H.264 encoder name — defaults to `libopenh264` (LGPL software
-/// baseline). Production wires `encoder::probe_encoders()` here; tests
-/// pass the default.
+/// Best H.264 encoder name — defaults to bundled libx264. Production wires
+/// `encoder::probe_encoders()` here; tests pass the default.
 pub fn default_h264_encoder() -> &'static str {
-    "libopenh264"
+    "libx264"
 }
 
 /// Build the argv for a single MP4/WebM/GIF encode pass. Pure + unit-
@@ -271,18 +270,14 @@ mod tests {
             "h264_videotoolbox",
         );
         assert!(mp4.iter().any(|a| a == "h264_videotoolbox"));
-        let webm = build_encode_args(
-            Path::new("/tmp/interm.mkv"),
-            &plan.outputs[1],
-            "libopenh264",
-        );
+        let webm = build_encode_args(Path::new("/tmp/interm.mkv"), &plan.outputs[1], "libx264");
         assert!(webm.iter().any(|a| a == "libvpx-vp9"));
     }
 
     #[test]
     fn gif_2pass_palette() {
         let s = spec(OutputFormat::Gif, "/tmp/out.gif");
-        let args = build_encode_args(Path::new("/tmp/interm.mkv"), &s, "libopenh264");
+        let args = build_encode_args(Path::new("/tmp/interm.mkv"), &s, "libx264");
         let joined = args.join(" ");
         assert!(joined.contains("palettegen"));
         assert!(joined.contains("paletteuse"));
@@ -357,7 +352,7 @@ mod tests {
                     calls: calls_c.clone(),
                 }) as Arc<dyn SidecarCommand>
             },
-            "libopenh264",
+            "libx264",
         )
         .await
         .unwrap();
@@ -372,7 +367,7 @@ mod tests {
         } else {
             (&joined_0, &joined_1)
         };
-        assert!(mp4_args.contains("libopenh264"));
+        assert!(mp4_args.contains("libx264"));
         assert!(webm_args.contains("libvpx-vp9"));
     }
 
@@ -426,7 +421,7 @@ mod tests {
             &intermediate,
             &plan,
             || Arc::new(WritingCmd) as Arc<dyn SidecarCommand>,
-            "libopenh264",
+            "libx264",
         )
         .await
         .unwrap();

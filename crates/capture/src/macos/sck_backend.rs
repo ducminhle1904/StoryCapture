@@ -127,14 +127,11 @@ impl SckBackend {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
                     .ok_or(CaptureError::WindowNotFound(window_id.0))?;
                 let frame = window.frame();
-                // Request the canvas at physical (Retina) pixels and let
-                // SCK composite the native window backing store via
-                // scales_to_fit(true). Requesting logical-point dims used
-                // to downsample the 2× backing store, softening text on
-                // Retina playback. scales_to_fit(true) also prevents the
-                // "browser top-left, rest black" padding bug that a naive
-                // 2× multiplication previously triggered.
-                let scale = primary_display_scale() as f64;
+                // Request the canvas at the physical scale of the display
+                // containing this window. Using the primary display scale
+                // upscaled 1× external-monitor windows to 2× and softened
+                // text even though Retina/MacBook captures looked correct.
+                let scale = window_display_scale(frame)?;
                 let width = (frame.width * scale).round().max(1.0) as u32;
                 let height = (frame.height * scale).round().max(1.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
@@ -158,10 +155,9 @@ impl SckBackend {
                 )?
                 .ok_or(CaptureError::WindowNotFound(*pid as u64))?;
                 let frame = window.frame();
-                // Same physical-pixel treatment as Window — see the Window
-                // branch comment. Without this, Retina window recordings
-                // render soft when played back on 2× displays.
-                let scale = primary_display_scale() as f64;
+                // Same physical-pixel treatment as Window — derive the
+                // scale from the display containing the resolved window.
+                let scale = window_display_scale(frame)?;
                 let width = (frame.width * scale).round().max(1.0) as u32;
                 let height = (frame.height * scale).round().max(1.0) as u32;
                 let filter = SCContentFilter::create().with_window(&window).build();
@@ -530,6 +526,86 @@ fn primary_display_scale() -> f32 {
         .max(1.0)
 }
 
+fn rect_intersection_area(a: CGRect, b: CGRect) -> f64 {
+    let left = a.x.max(b.x);
+    let top = a.y.max(b.y);
+    let right = (a.x + a.width).min(b.x + b.width);
+    let bottom = (a.y + a.height).min(b.y + b.height);
+    let width = (right - left).max(0.0);
+    let height = (bottom - top).max(0.0);
+    width * height
+}
+
+fn display_scale(logical_frame: CGRect, width_px: u32, height_px: u32) -> f64 {
+    let scale_x = if logical_frame.width > 0.0 {
+        width_px as f64 / logical_frame.width
+    } else {
+        0.0
+    };
+    let scale_y = if logical_frame.height > 0.0 {
+        height_px as f64 / logical_frame.height
+    } else {
+        0.0
+    };
+    if scale_x.is_finite() && scale_y.is_finite() && scale_x > 0.0 && scale_y > 0.0 {
+        ((scale_x + scale_y) / 2.0).max(1.0)
+    } else {
+        scale_x.max(scale_y).max(1.0)
+    }
+}
+
+fn window_display_scale(window_frame: CGRect) -> Result<f64, CaptureError> {
+    let content = SCShareableContent::get()
+        .map_err(|e| CaptureError::Native(format!("SCShareableContent::get: {e}")))?;
+    let displays = content.displays();
+    let mut best: Option<(f64, u32, f64, CGRect, u32, u32)> = None;
+
+    for display in displays.iter() {
+        let display_frame = display.frame();
+        let area = rect_intersection_area(window_frame, display_frame);
+        let scale = display_scale(display_frame, display.width(), display.height());
+        let display_id = display.display_id();
+        if best
+            .as_ref()
+            .map(|(best_area, ..)| area > *best_area)
+            .unwrap_or(true)
+        {
+            best = Some((
+                area,
+                display_id,
+                scale,
+                display_frame,
+                display.width(),
+                display.height(),
+            ));
+        }
+    }
+
+    let Some((area, display_id, scale, display_frame, display_width_px, display_height_px)) = best
+    else {
+        return Ok(primary_display_scale() as f64);
+    };
+
+    tracing::info!(
+        window_x = window_frame.x,
+        window_y = window_frame.y,
+        window_w = window_frame.width,
+        window_h = window_frame.height,
+        matched_display_id = display_id,
+        matched_display_overlap_area = area,
+        matched_display_x = display_frame.x,
+        matched_display_y = display_frame.y,
+        matched_display_w = display_frame.width,
+        matched_display_h = display_frame.height,
+        matched_display_width_px = display_width_px,
+        matched_display_height_px = display_height_px,
+        matched_display_scale = scale,
+        "SckBackend: resolved window display scale"
+    );
+
+    Ok(scale)
+}
+
 /// Compute a region source rect and pixel size for display-region capture.
 pub(crate) fn compute_region_math(
     rect: &crate::target::RegionRect,
@@ -667,6 +743,25 @@ mod region_tests {
         let (w_px, h_px, _src) = compute_region_math(&rect, 1920.0, 2880);
         assert_eq!(w_px, 960);
         assert_eq!(h_px, 540);
+    }
+
+    #[test]
+    fn display_scale_uses_display_backing_ratio() {
+        let logical = CGRect::new(-1920.0, -137.0, 1920.0, 1080.0);
+        assert_eq!(display_scale(logical, 1920, 1080), 1.0);
+
+        let retina = CGRect::new(0.0, 0.0, 1728.0, 1117.0);
+        assert_eq!(display_scale(retina, 3456, 2234), 2.0);
+    }
+
+    #[test]
+    fn rect_intersection_area_picks_external_window_overlap() {
+        let window = CGRect::new(-1920.0, -137.0, 1440.0, 987.0);
+        let external = CGRect::new(-1920.0, -137.0, 1920.0, 1080.0);
+        let internal = CGRect::new(0.0, 0.0, 1728.0, 1117.0);
+
+        assert!(rect_intersection_area(window, external) > 1_000_000.0);
+        assert_eq!(rect_intersection_area(window, internal), 0.0);
     }
 }
 

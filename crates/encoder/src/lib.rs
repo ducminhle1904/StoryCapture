@@ -7,8 +7,7 @@
 //!
 //! Output format is MP4 / H.264 baseline. Hardware encoders (VideoToolbox /
 //! NVENC / QSV / AMF) are selected at startup via `probe_encoders`;
-//! `libopenh264` is the LGPL software fallback. x264/x265 are explicitly
-//! excluded to preserve the LGPL build discipline.
+//! `libx264` is the software fallback in the bundled FFmpeg build.
 
 mod config;
 mod error;
@@ -19,12 +18,12 @@ pub mod filters;
 pub mod macos;
 mod pipeline;
 pub mod pool;
-mod staging;
 pub mod probe;
 pub mod progress;
 pub mod quality;
 pub mod queue;
 mod sidecar;
+mod staging;
 
 pub use config::{AudioFormat, AudioInput, EncodeConfig};
 pub use error::{EncoderError, Result};
@@ -36,10 +35,10 @@ pub use pipeline::{
 };
 pub use pool::{PoolConfig, SidecarHandle, SidecarPermit, SidecarPool};
 pub use probe::{probe_encoders, EncoderProbe, HardwareEncoder};
-pub use quality::{pixel_based_kbps, resolve as resolve_quality_args};
 pub use progress::{
     parse_line, EncodeProgress, ProgressFrag, ProgressParser, RenderProgress, RenderProgressParser,
 };
+pub use quality::{pixel_based_kbps, resolve as resolve_quality_args};
 pub use queue::{
     open_project_conn, spawn_render_queue, JobExecutor, JobOutcome, NoopJobExecutor, QueueMsg,
     RenderQueueActor, RenderQueueConfig, RenderQueueHandle, SharedExecutor,

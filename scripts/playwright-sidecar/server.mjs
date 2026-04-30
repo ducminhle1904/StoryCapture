@@ -83,6 +83,9 @@ let state = {
   browserServer: null,
   appModeRequested: false,
   appModeReused: false,
+  recordingViewport: null,
+  recordingDeviceCdp: null,
+  recordingDeviceScaleFactor: null,
   // Test-only: force `browserProcess` to return the "remote-browser"
   // response shape even though we launched locally. Flipped by the
   // `__test_set_remote_browser` verb exercised from vitest.
@@ -146,6 +149,7 @@ const PREVIEW_MAX_HEIGHT = 1440;
 const PREVIEW_SHARP_IDLE_MS = 220;
 const PREVIEW_SHARP_DEVICE_SCALE_FACTOR = 2;
 const PREVIEW_SHARP_LOG_INTERVAL_MS = 5_000;
+const RECORDING_DEVICE_SCALE_FACTOR_FALLBACK = 1;
 
 function clampPositiveInt(value, fallback) {
   const n = Number(value);
@@ -536,12 +540,87 @@ async function pageDiagnostics(page) {
       innerHeight: window.innerHeight,
       outerWidth: window.outerWidth,
       outerHeight: window.outerHeight,
+      devicePixelRatio: window.devicePixelRatio || 1,
       language: navigator.language,
       languages: Array.from(navigator.languages || []),
     }));
   } catch (e) {
     return { error: e?.message || String(e) };
   }
+}
+
+async function closeRecordingDeviceCdp() {
+  if (!state.recordingDeviceCdp) return;
+  try {
+    await state.recordingDeviceCdp.session.detach();
+  } catch {}
+  state.recordingDeviceCdp = null;
+}
+
+async function recordingDeviceCdpForPage(page) {
+  if (state.recordingDeviceCdp?.page === page) {
+    return state.recordingDeviceCdp.session;
+  }
+  await closeRecordingDeviceCdp();
+  const session = await page.context().newCDPSession(page);
+  state.recordingDeviceCdp = { page, session };
+  return session;
+}
+
+function normalizeRecordingDeviceScaleFactor(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return RECORDING_DEVICE_SCALE_FACTOR_FALLBACK;
+  return Math.min(Math.max(n, 1), 4);
+}
+
+async function detectRecordingDeviceScaleFactor(page) {
+  const diag = await pageDiagnostics(page);
+  return normalizeRecordingDeviceScaleFactor(diag.devicePixelRatio);
+}
+
+async function applyRecordingDeviceScaleFactor(page, viewport, deviceScaleFactor) {
+  if (!viewport?.width || !viewport?.height) return { ok: false, reason: "missing viewport" };
+  const scaleFactor = normalizeRecordingDeviceScaleFactor(deviceScaleFactor);
+  const cdp = await recordingDeviceCdpForPage(page);
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: scaleFactor,
+    mobile: false,
+    screenWidth: viewport.width,
+    screenHeight: viewport.height,
+  });
+  const diag = await pageDiagnostics(page);
+  return {
+    ok: true,
+    expectedDeviceScaleFactor: scaleFactor,
+    actualDevicePixelRatio: diag.devicePixelRatio ?? null,
+    innerWidth: diag.innerWidth ?? null,
+    innerHeight: diag.innerHeight ?? null,
+    outerWidth: diag.outerWidth ?? null,
+    outerHeight: diag.outerHeight ?? null,
+    error: diag.error ?? null,
+  };
+}
+
+async function ensureRecordingDeviceScaleFactor(page, reason) {
+  if (!state.appModeRequested || !state.recordingViewport || page.context() !== state.context) {
+    return null;
+  }
+  if (state.recordingDeviceScaleFactor == null) {
+    state.recordingDeviceScaleFactor = await detectRecordingDeviceScaleFactor(page);
+    sidecarLog("recording_device_scale_factor_detected", {
+      reason,
+      deviceScaleFactor: state.recordingDeviceScaleFactor,
+    });
+  }
+  const result = await applyRecordingDeviceScaleFactor(
+    page,
+    state.recordingViewport,
+    state.recordingDeviceScaleFactor,
+  );
+  sidecarLog("recording_device_scale_factor", { reason, ...result });
+  return result;
 }
 
 async function pageContentCrop(page) {
@@ -707,6 +786,11 @@ const handlers = {
     }
     const appArg = extraArgs.find((a) => typeof a === "string" && a.startsWith("--app="));
     const hasApp = typeof appArg === "string";
+    state.recordingViewport =
+      hasApp && viewport?.width && viewport?.height
+        ? { width: viewport.width, height: viewport.height }
+        : null;
+    state.recordingDeviceScaleFactor = null;
     if (hasApp) {
       sidecarLog("app_mode_launch_requested", {
         appUrl: redactUrlForLog(appArg),
@@ -850,6 +934,13 @@ const handlers = {
           sidecarLog("app_mode_viewport_fit_error", { error: e.message || String(e) });
         }
       }
+      if (hasApp) {
+        try {
+          await ensureRecordingDeviceScaleFactor(state.page, "post_launch_viewport_fit");
+        } catch (e) {
+          sidecarLog("recording_device_scale_factor_error", { error: e.message || String(e) });
+        }
+      }
     }
     return { ok: true };
   },
@@ -866,6 +957,7 @@ const handlers = {
         await state.cdp.detach();
       } catch {}
     }
+    await closeRecordingDeviceCdp();
     if (state.browser) {
       try {
         await state.browser.close();
@@ -891,6 +983,9 @@ const handlers = {
       browserServer: null,
       appModeRequested: false,
       appModeReused: false,
+      recordingViewport: null,
+      recordingDeviceCdp: null,
+      recordingDeviceScaleFactor: null,
       fakeRemoteBrowser: false,
       pickerPending: null,
       pickerBoundPages: new WeakSet(),
@@ -918,6 +1013,9 @@ const handlers = {
     const page = await pickPage();
     await page.goto(target, { waitUntil: "load" });
     if (state.context && page.context() === state.context) {
+      if (state.appModeRequested) {
+        await ensureRecordingDeviceScaleFactor(page, "after_goto");
+      }
       const diag = await pageDiagnostics(page);
       sidecarLog("recording_goto_complete", {
         appModeRequested: state.appModeRequested,
@@ -929,6 +1027,7 @@ const handlers = {
         innerHeight: diag.innerHeight ?? null,
         outerWidth: diag.outerWidth ?? null,
         outerHeight: diag.outerHeight ?? null,
+        devicePixelRatio: diag.devicePixelRatio ?? null,
         language: diag.language ?? null,
         error: diag.error ?? null,
       });
@@ -1126,6 +1225,7 @@ const handlers = {
 
   pageContentCrop: async () => {
     const page = await pickPage();
+    await ensureRecordingDeviceScaleFactor(page, "before_page_content_crop");
     const info = await pageContentCrop(page);
     sidecarLog("page_content_crop", {
       crop: info.crop,

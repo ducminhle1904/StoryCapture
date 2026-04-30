@@ -9,7 +9,9 @@
 use std::path::PathBuf;
 
 use crate::error::{EncoderError, Result};
-use crate::filters::{self, FilterSpec, FitMode, OutputResolution, PadColor, QualityPreset, ScaleAlgo};
+use crate::filters::{
+    self, FilterSpec, FitMode, OutputResolution, PadColor, QualityPreset, ScaleAlgo,
+};
 use crate::probe::HardwareEncoder;
 use crate::quality;
 
@@ -140,11 +142,8 @@ impl EncodeConfig {
 
     /// Sets `bitrate_kbps` to the pixel-based target for the current output dims and fps.
     pub fn with_auto_bitrate(mut self) -> Self {
-        self.bitrate_kbps = quality::pixel_based_kbps(
-            self.output_width,
-            self.output_height,
-            self.fps_advisory,
-        );
+        self.bitrate_kbps =
+            quality::pixel_based_kbps(self.output_width, self.output_height, self.fps_advisory);
         self
     }
 
@@ -200,8 +199,8 @@ impl EncodeConfig {
             pad_color: self.pad_color,
             scale_algo: self.scale_algo,
         };
-        let vf = filters::build_vf(&spec)
-            .expect("EncodeConfig was not validated before to_ffmpeg_args");
+        let vf =
+            filters::build_vf(&spec).expect("EncodeConfig was not validated before to_ffmpeg_args");
 
         let mut args: Vec<String> = vec![
             "-hide_banner".into(),
@@ -262,10 +261,7 @@ impl EncodeConfig {
         // SPS/PPS NALUs), which QuickTime / Safari / Finder preview refuse
         // to open. Force `hvc1` (inline parameter sets) so macOS players
         // accept the file.
-        if matches!(
-            self.encoder,
-            HardwareEncoder::VideoToolboxHevc
-        ) {
+        if matches!(self.encoder, HardwareEncoder::VideoToolboxHevc) {
             args.extend(["-tag:v".into(), "hvc1".into()]);
         }
         args.extend([
@@ -359,7 +355,7 @@ mod tests {
         assert!(args.contains("-f rawvideo"), "rawvideo missing: {args}");
         assert!(args.contains("pipe:0"), "stdin input missing: {args}");
         assert!(args.contains("anullsrc"), "silent audio missing: {args}");
-        assert!(args.contains("libopenh264"), "encoder name missing: {args}");
+        assert!(args.contains("libx264"), "encoder name missing: {args}");
         assert!(args.contains("-s 1280x720"), "capture dims missing: {args}");
     }
 
@@ -439,8 +435,8 @@ mod tests {
         );
     }
 
-    /// Bitrate is target, not floor. Formula bumped to 5 bits/pixel — 4K
-    /// now hits the 40 Mbps cap.
+    /// Bitrate is target, not floor. Formula uses 5 bits/pixel, so 4K at
+    /// 30fps lands at the pixel-derived budget below the 80 Mbps cap.
     #[test]
     fn test_4k_uses_target_bitrate() {
         let cfg = EncodeConfig::new(
@@ -454,22 +450,21 @@ mod tests {
         .unwrap()
         .with_auto_bitrate();
         assert_eq!(
-            cfg.bitrate_kbps, 40_000,
-            "auto_bitrate must clamp to MAX_KBPS for 3840x2160 at 5 bits/pixel"
+            cfg.bitrate_kbps, 41_472,
+            "auto_bitrate should use the 3840x2160@30 pixel budget"
         );
         let args = cfg.to_ffmpeg_args();
         assert!(
             !args.iter().any(|a| a == "-b:v"),
-            "libopenh264 Med must use CRF, not -b:v"
+            "libx264 Med must use CRF, not -b:v"
         );
         assert!(
             args.windows(2).any(|w| w[0] == "-crf" && w[1] == "20"),
             "Med preset → -crf 20 (screen content tune)"
         );
-        assert!(
-            args.windows(2)
-                .any(|w| w[0] == "-tune" && w[1] == "stillimage")
-        );
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "-tune" && w[1] == "stillimage"));
     }
 
     #[test]
@@ -523,7 +518,10 @@ mod tests {
         let mut c = cfg();
         c.keyframe_interval_sec = Some(2);
         let args = c.to_ffmpeg_args();
-        let g_idx = args.iter().position(|a| a == "-g").expect("-g must be present");
+        let g_idx = args
+            .iter()
+            .position(|a| a == "-g")
+            .expect("-g must be present");
         assert_eq!(args[g_idx + 1], "60", "expected -g 60 for 30fps * 2s");
     }
 

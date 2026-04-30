@@ -18,10 +18,10 @@ async fn probe_returns_nonempty() {
     let cmd = LocalFfmpegCommand::new(path);
     let probe = probe_encoders(&cmd).await.expect("probe");
     assert!(!probe.available.is_empty(), "no encoders detected");
-    // libopenh264 fallback should always be present in the LGPL build.
+    // libx264 fallback should always be present in the bundled FFmpeg build.
     assert!(
         probe.available.contains(&HardwareEncoder::Openh264Software),
-        "libopenh264 missing — LGPL build didn't include --enable-libopenh264"
+        "libx264 missing — bundled FFmpeg didn't include --enable-libx264"
     );
 }
 

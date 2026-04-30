@@ -187,6 +187,11 @@ impl LaunchConfig {
                 args.push(format!("--app={}", url));
             }
         }
+        // Chrome's Translate bubble is browser UI, but it still renders over
+        // app-mode windows and gets captured by SCK. Disable it for all
+        // automation launches so recordings remain content-only.
+        args.push("--disable-translate".to_string());
+        args.push("--disable-features=Translate,TranslateUI".to_string());
         args.push("--window-position=-32000,-32000".to_string());
         // --window-size is a bootstrap hint only. In the shared
         // Playwright sidecar path we now verify the actual
@@ -206,6 +211,26 @@ impl LaunchConfig {
             }
             storage_state_json = profile.storage_state_json.clone();
         }
+        let redacted_args: Vec<String> = args
+            .iter()
+            .map(|arg| {
+                if arg.starts_with("--app=") {
+                    "--app=<redacted>".to_string()
+                } else {
+                    arg.clone()
+                }
+            })
+            .collect();
+        tracing::info!(
+            target: "automation::browser_environment",
+            app_mode_requested = args.iter().any(|arg| arg.starts_with("--app=")),
+            translate_disabled = args.iter().any(|arg| arg == "--disable-translate"),
+            viewport_width = viewport.width,
+            viewport_height = viewport.height,
+            chromium_args = ?redacted_args,
+            locale = ?browser_environment.locale,
+            "browser launch args prepared"
+        );
         Self {
             url: meta.app.clone(),
             viewport,
@@ -447,6 +472,18 @@ mod launch_config_tests {
             "expected --window-position in {:?}",
             cfg.args
         );
+        assert!(
+            cfg.args.iter().any(|a| a == "--disable-translate"),
+            "expected translate UI disabled in {:?}",
+            cfg.args
+        );
+        assert!(
+            cfg.args
+                .iter()
+                .any(|a| a == "--disable-features=Translate,TranslateUI"),
+            "expected translate feature disabled in {:?}",
+            cfg.args
+        );
         // Non chrome-hiding still bootstraps with the requested viewport;
         // the sidecar performs the authoritative post-launch content fit.
         assert!(
@@ -502,7 +539,7 @@ mod launch_config_tests {
             ..Default::default()
         };
         let cfg = LaunchConfig::from_meta(&meta_with_app(Some("javascript:alert(1)")), &opts);
-        // Only the unconditional off-screen window flags are allowed; no --app=.
+        // Only unconditional browser hygiene/window flags are allowed; no --app=.
         assert!(
             !cfg.args.iter().any(|a| a.starts_with("--app=")),
             "javascript: URL leaked into args: {:?}",

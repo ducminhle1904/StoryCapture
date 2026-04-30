@@ -817,6 +817,9 @@ describe("browser session profile sync", () => {
     await expect(
       client.call("assert", { target: { kind: "text_exact", value: "Asia/Tokyo" } }),
     ).resolves.toMatchObject({ result: { ok: true } });
+    const crop = await client.call("pageContentCrop", {});
+    expect(crop.result.metrics.innerWidth).toBe(800);
+    expect(crop.result.metrics.innerHeight).toBe(600);
   }, 90_000);
 
   it("app-mode recording launch preserves explicit browser environment", async () => {
@@ -841,6 +844,10 @@ describe("browser session profile sync", () => {
     await expect(
       client.call("assert", { target: { kind: "text_exact", value: "Asia/Tokyo" } }),
     ).resolves.toMatchObject({ result: { ok: true } });
+    const crop = await client.call("pageContentCrop", {});
+    expect(crop.result.metrics.devicePixelRatio).toBeGreaterThanOrEqual(1);
+    expect(crop.result.metrics.innerWidth).toBe(800);
+    expect(crop.result.metrics.innerHeight).toBe(600);
   }, 90_000);
 
   it("reports a scalable crop for browser viewport content", async () => {

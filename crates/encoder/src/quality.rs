@@ -11,9 +11,9 @@
 use crate::filters::QualityPreset;
 use crate::probe::HardwareEncoder;
 
-/// Per-encoder bitrate ceiling. The 40 Mbps cap is enforced here inside
+/// Per-encoder bitrate ceiling. The 80 Mbps cap is enforced here inside
 /// the resolver.
-const MAX_KBPS: u32 = 40_000;
+const MAX_KBPS: u32 = 80_000;
 
 /// Pixel-based target bitrate in kbps, clamped to `MAX_KBPS`.
 /// Screen content (sharp edges, text, high-contrast UI) needs denser bitrate
@@ -30,10 +30,35 @@ pub fn pixel_based_kbps(output_w: u32, output_h: u32, fps: u32) -> u32 {
     raw.min(MAX_KBPS as u64) as u32
 }
 
+/// Target video bitrate for diagnostics. This mirrors the primary target
+/// emitted by `resolve` before encoder-specific maxrate/bufsize expansion.
+pub fn target_kbps(
+    preset: QualityPreset,
+    encoder: HardwareEncoder,
+    output_w: u32,
+    output_h: u32,
+    fps: u32,
+) -> u32 {
+    match encoder {
+        HardwareEncoder::Openh264Software | HardwareEncoder::QsvH264 | HardwareEncoder::AmfH264 => {
+            0
+        }
+        HardwareEncoder::VideoToolboxH264
+        | HardwareEncoder::VideoToolboxHevc
+        | HardwareEncoder::NvencH264 => {
+            let b = pixel_based_kbps(output_w, output_h, fps);
+            match preset {
+                QualityPreset::Low => kbps_scaled(b, 3, 4),
+                QualityPreset::Med => b,
+                QualityPreset::High => kbps_scaled(b, 5, 4),
+                QualityPreset::Lossless => kbps_scaled(b, 3, 2),
+            }
+        }
+    }
+}
+
 fn kbps_scaled(base: u32, numer: u32, denom: u32) -> u32 {
-    let scaled = (base as u64)
-        .saturating_mul(numer as u64)
-        / (denom as u64);
+    let scaled = (base as u64).saturating_mul(numer as u64) / (denom as u64);
     scaled.min(MAX_KBPS as u64) as u32
 }
 
@@ -51,22 +76,25 @@ pub fn resolve(
 ) -> Vec<String> {
     match encoder {
         HardwareEncoder::Openh264Software => match preset {
-            QualityPreset::Low => vec_of!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"],
+            QualityPreset::Low => {
+                vec_of!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"]
+            }
             QualityPreset::Med => vec_of!["-crf", "20", "-preset", "medium", "-tune", "stillimage"],
             QualityPreset::High => vec_of!["-crf", "18", "-preset", "slow", "-tune", "stillimage"],
-            QualityPreset::Lossless => vec_of!["-crf", "15", "-preset", "slow", "-tune", "stillimage"],
+            QualityPreset::Lossless => {
+                vec_of!["-crf", "0", "-preset", "ultrafast", "-tune", "zerolatency"]
+            }
         },
         HardwareEncoder::VideoToolboxH264 | HardwareEncoder::VideoToolboxHevc => {
-            // `-q:v` on h264_videotoolbox is a quality *ceiling*; for
-            // easily-compressible screen content it massively undershoots
-            // the maxrate (observed 999 kb/s with `-q:v 82 -maxrate
-            // 12348k`). Use true VBR target mode via `-b:v` so average
-            // bitrate actually lands near the pixel-based target.
+            // `-q:v` on h264_videotoolbox is a quality *ceiling*, and plain
+            // `-b:v` VBR still undershoots badly on dark/static screen UI
+            // (observed 3 Mbps against a 78 Mbps target). Force CBR so
+            // VideoToolbox preserves sharp text and edges in recorder output.
             let b = pixel_based_kbps(output_w, output_h, fps);
-            match preset {
+            let mut args = match preset {
                 QualityPreset::Low => vec![
                     "-b:v".into(),
-                    format!("{}k", kbps_scaled(b, 3, 4)),
+                    format!("{}k", target_kbps(preset, encoder, output_w, output_h, fps)),
                     "-maxrate".into(),
                     format!("{}k", b),
                     "-bufsize".into(),
@@ -74,7 +102,7 @@ pub fn resolve(
                 ],
                 QualityPreset::Med => vec![
                     "-b:v".into(),
-                    format!("{}k", b),
+                    format!("{}k", target_kbps(preset, encoder, output_w, output_h, fps)),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 5, 4)),
                     "-bufsize".into(),
@@ -82,7 +110,7 @@ pub fn resolve(
                 ],
                 QualityPreset::High => vec![
                     "-b:v".into(),
-                    format!("{}k", kbps_scaled(b, 5, 4)),
+                    format!("{}k", target_kbps(preset, encoder, output_w, output_h, fps)),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 3, 2)),
                     "-bufsize".into(),
@@ -90,13 +118,30 @@ pub fn resolve(
                 ],
                 QualityPreset::Lossless => vec![
                     "-b:v".into(),
-                    format!("{}k", kbps_scaled(b, 3, 2)),
+                    format!("{}k", target_kbps(preset, encoder, output_w, output_h, fps)),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 7, 4)),
                     "-bufsize".into(),
                     format!("{}k", kbps_scaled(b, 2, 1)),
                 ],
+            };
+            args.extend([
+                "-constant_bit_rate".into(),
+                "true".into(),
+                "-prio_speed".into(),
+                "false".into(),
+                "-power_efficient".into(),
+                "0".into(),
+            ]);
+            if matches!(encoder, HardwareEncoder::VideoToolboxH264) {
+                args.extend([
+                    "-profile".into(),
+                    "high".into(),
+                    "-coder".into(),
+                    "cabac".into(),
+                ]);
             }
+            args
         }
         HardwareEncoder::NvencH264 => {
             let b = pixel_based_kbps(output_w, output_h, fps);
@@ -109,7 +154,7 @@ pub fn resolve(
                     "-cq".into(),
                     "26".into(),
                     "-b:v".into(),
-                    format!("{}k", kbps_scaled(b, 3, 4)),
+                    format!("{}k", target_kbps(preset, encoder, output_w, output_h, fps)),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 5, 4)),
                 ],
@@ -121,7 +166,7 @@ pub fn resolve(
                     "-cq".into(),
                     "20".into(),
                     "-b:v".into(),
-                    format!("{}k", b),
+                    format!("{}k", target_kbps(preset, encoder, output_w, output_h, fps)),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 3, 2)),
                 ],
@@ -133,7 +178,7 @@ pub fn resolve(
                     "-cq".into(),
                     "18".into(),
                     "-b:v".into(),
-                    format!("{}k", kbps_scaled(b, 5, 4)),
+                    format!("{}k", target_kbps(preset, encoder, output_w, output_h, fps)),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 7, 4)),
                 ],
@@ -145,23 +190,38 @@ pub fn resolve(
                     "-cq".into(),
                     "15".into(),
                     "-b:v".into(),
-                    format!("{}k", kbps_scaled(b, 3, 2)),
+                    format!("{}k", target_kbps(preset, encoder, output_w, output_h, fps)),
                     "-maxrate".into(),
                     format!("{}k", kbps_scaled(b, 2, 1)),
                 ],
             }
         }
         HardwareEncoder::QsvH264 => match preset {
-            QualityPreset::Low => vec_of!["-preset", "medium", "-global_quality", "26", "-look_ahead", "0"],
+            QualityPreset::Low => vec_of![
+                "-preset",
+                "medium",
+                "-global_quality",
+                "26",
+                "-look_ahead",
+                "0"
+            ],
             QualityPreset::Med => vec_of!["-preset", "medium", "-global_quality", "20"],
             QualityPreset::High => vec_of!["-preset", "slow", "-global_quality", "18"],
             QualityPreset::Lossless => vec_of!["-preset", "veryslow", "-global_quality", "15"],
         },
         HardwareEncoder::AmfH264 => match preset {
-            QualityPreset::Low => vec_of!["-quality", "balanced", "-rc", "cqp", "-qp_i", "26", "-qp_p", "28"],
-            QualityPreset::Med => vec_of!["-quality", "balanced", "-rc", "cqp", "-qp_i", "20", "-qp_p", "22"],
-            QualityPreset::High => vec_of!["-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "20"],
-            QualityPreset::Lossless => vec_of!["-quality", "quality", "-rc", "cqp", "-qp_i", "15", "-qp_p", "17"],
+            QualityPreset::Low => {
+                vec_of!["-quality", "balanced", "-rc", "cqp", "-qp_i", "26", "-qp_p", "28"]
+            }
+            QualityPreset::Med => {
+                vec_of!["-quality", "balanced", "-rc", "cqp", "-qp_i", "20", "-qp_p", "22"]
+            }
+            QualityPreset::High => {
+                vec_of!["-quality", "quality", "-rc", "cqp", "-qp_i", "18", "-qp_p", "20"]
+            }
+            QualityPreset::Lossless => {
+                vec_of!["-quality", "quality", "-rc", "cqp", "-qp_i", "15", "-qp_p", "17"]
+            }
         },
     }
 }
@@ -183,72 +243,190 @@ mod tests {
     }
 
     #[test]
-    fn pixel_based_3840x2160_30fps_clamps_to_40000() {
-        assert_eq!(pixel_based_kbps(3840, 2160, 30), 40_000);
+    fn pixel_based_3840x2160_30fps_is_uncapped_screen_budget() {
+        assert_eq!(pixel_based_kbps(3840, 2160, 30), 41_472);
     }
 
     #[test]
-    fn pixel_based_7680x4320_clamps_to_40000() {
-        assert_eq!(pixel_based_kbps(7680, 4320, 30), 40_000);
+    fn pixel_based_7680x4320_clamps_to_80000() {
+        assert_eq!(pixel_based_kbps(7680, 4320, 30), 80_000);
     }
 
     #[test]
-    fn openh264_med_args() {
-        let got = resolve(QualityPreset::Med, HardwareEncoder::Openh264Software, 1920, 1080, 30);
-        assert_eq!(got, vec!["-crf", "20", "-preset", "medium", "-tune", "stillimage"]);
-    }
-
-    #[test]
-    fn openh264_low_args() {
-        let got = resolve(QualityPreset::Low, HardwareEncoder::Openh264Software, 1920, 1080, 30);
-        assert!(got.iter().any(|a| a == "-tune"));
-        assert_eq!(got, vec!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"]);
-    }
-
-    #[test]
-    fn openh264_high_args() {
-        let got = resolve(QualityPreset::High, HardwareEncoder::Openh264Software, 1920, 1080, 30);
-        assert_eq!(got, vec!["-crf", "18", "-preset", "slow", "-tune", "stillimage"]);
-    }
-
-    #[test]
-    fn openh264_lossless_args() {
-        let got = resolve(QualityPreset::Lossless, HardwareEncoder::Openh264Software, 1920, 1080, 30);
-        assert_eq!(got, vec!["-crf", "15", "-preset", "slow", "-tune", "stillimage"]);
-    }
-
-    #[test]
-    fn videotoolbox_med_1080p_30fps_emits_b_v_vbr() {
-        let got = resolve(QualityPreset::Med, HardwareEncoder::VideoToolboxH264, 1920, 1080, 30);
-        // VBR target mode — -b:v, not -q:v.
+    fn target_kbps_high_retina_60fps_keeps_screen_budget() {
         assert_eq!(
-            got,
-            vec!["-b:v", "10368k", "-maxrate", "12960k", "-bufsize", "20736k"]
+            target_kbps(
+                QualityPreset::High,
+                HardwareEncoder::VideoToolboxH264,
+                2880,
+                1800,
+                60,
+            ),
+            64_800
         );
     }
 
     #[test]
-    fn videotoolbox_hevc_shares_h264_arms() {
-        let h264 = resolve(QualityPreset::Med, HardwareEncoder::VideoToolboxH264, 1920, 1080, 30);
-        let hevc = resolve(QualityPreset::Med, HardwareEncoder::VideoToolboxHevc, 1920, 1080, 30);
-        assert_eq!(h264, hevc);
+    fn software_med_args() {
+        let got = resolve(
+            QualityPreset::Med,
+            HardwareEncoder::Openh264Software,
+            1920,
+            1080,
+            30,
+        );
+        assert_eq!(
+            got,
+            vec!["-crf", "20", "-preset", "medium", "-tune", "stillimage"]
+        );
+    }
+
+    #[test]
+    fn software_low_args() {
+        let got = resolve(
+            QualityPreset::Low,
+            HardwareEncoder::Openh264Software,
+            1920,
+            1080,
+            30,
+        );
+        assert!(got.iter().any(|a| a == "-tune"));
+        assert_eq!(
+            got,
+            vec!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"]
+        );
+    }
+
+    #[test]
+    fn software_high_args() {
+        let got = resolve(
+            QualityPreset::High,
+            HardwareEncoder::Openh264Software,
+            1920,
+            1080,
+            30,
+        );
+        assert_eq!(
+            got,
+            vec!["-crf", "18", "-preset", "slow", "-tune", "stillimage"]
+        );
+    }
+
+    #[test]
+    fn software_lossless_args() {
+        let got = resolve(
+            QualityPreset::Lossless,
+            HardwareEncoder::Openh264Software,
+            1920,
+            1080,
+            30,
+        );
+        assert_eq!(
+            got,
+            vec!["-crf", "0", "-preset", "ultrafast", "-tune", "zerolatency"]
+        );
+    }
+
+    #[test]
+    fn videotoolbox_med_1080p_30fps_emits_cbr_budget() {
+        let got = resolve(
+            QualityPreset::Med,
+            HardwareEncoder::VideoToolboxH264,
+            1920,
+            1080,
+            30,
+        );
+        assert_eq!(
+            got,
+            vec![
+                "-b:v",
+                "10368k",
+                "-maxrate",
+                "12960k",
+                "-bufsize",
+                "20736k",
+                "-constant_bit_rate",
+                "true",
+                "-prio_speed",
+                "false",
+                "-power_efficient",
+                "0",
+                "-profile",
+                "high",
+                "-coder",
+                "cabac",
+            ]
+        );
+    }
+
+    #[test]
+    fn videotoolbox_hevc_omits_h264_only_profile_flags() {
+        let h264 = resolve(
+            QualityPreset::Med,
+            HardwareEncoder::VideoToolboxH264,
+            1920,
+            1080,
+            30,
+        );
+        let hevc = resolve(
+            QualityPreset::Med,
+            HardwareEncoder::VideoToolboxHevc,
+            1920,
+            1080,
+            30,
+        );
+        assert!(h264.iter().any(|a| a == "-coder"));
+        assert!(!hevc.iter().any(|a| a == "-coder"));
+        assert!(hevc
+            .windows(2)
+            .any(|w| w[0] == "-constant_bit_rate" && w[1] == "true"));
     }
 
     #[test]
     fn videotoolbox_emits_b_v_and_no_q_v() {
-        for preset in [QualityPreset::Low, QualityPreset::Med, QualityPreset::High, QualityPreset::Lossless] {
-            for enc in [HardwareEncoder::VideoToolboxH264, HardwareEncoder::VideoToolboxHevc] {
+        for preset in [
+            QualityPreset::Low,
+            QualityPreset::Med,
+            QualityPreset::High,
+            QualityPreset::Lossless,
+        ] {
+            for enc in [
+                HardwareEncoder::VideoToolboxH264,
+                HardwareEncoder::VideoToolboxHevc,
+            ] {
                 let args = resolve(preset, enc, 1920, 1080, 30);
-                assert!(args.iter().any(|a| a == "-b:v"), "VT must emit -b:v for {:?}/{:?}", preset, enc);
-                assert!(!args.iter().any(|a| a == "-q:v"), "VT must not emit -q:v for {:?}/{:?}", preset, enc);
+                assert!(
+                    args.iter().any(|a| a == "-b:v"),
+                    "VT must emit -b:v for {:?}/{:?}",
+                    preset,
+                    enc
+                );
+                assert!(
+                    !args.iter().any(|a| a == "-q:v"),
+                    "VT must not emit -q:v for {:?}/{:?}",
+                    preset,
+                    enc
+                );
             }
         }
     }
 
     #[test]
     fn videotoolbox_60fps_doubles_bitrate() {
-        let args30 = resolve(QualityPreset::Med, HardwareEncoder::VideoToolboxH264, 1920, 1080, 30);
-        let args60 = resolve(QualityPreset::Med, HardwareEncoder::VideoToolboxH264, 1920, 1080, 60);
+        let args30 = resolve(
+            QualityPreset::Med,
+            HardwareEncoder::VideoToolboxH264,
+            1920,
+            1080,
+            30,
+        );
+        let args60 = resolve(
+            QualityPreset::Med,
+            HardwareEncoder::VideoToolboxH264,
+            1920,
+            1080,
+            60,
+        );
         // -b:v at idx 1.
         assert_eq!(args30[0], "-b:v");
         assert_eq!(args60[0], "-b:v");
@@ -258,7 +436,13 @@ mod tests {
 
     #[test]
     fn nvenc_low_1080p_30fps_args() {
-        let got = resolve(QualityPreset::Low, HardwareEncoder::NvencH264, 1920, 1080, 30);
+        let got = resolve(
+            QualityPreset::Low,
+            HardwareEncoder::NvencH264,
+            1920,
+            1080,
+            30,
+        );
         assert_eq!(
             got,
             vec!["-preset", "p5", "-rc", "vbr", "-cq", "26", "-b:v", "7776k", "-maxrate", "12960k"]
@@ -273,7 +457,13 @@ mod tests {
 
     #[test]
     fn amf_lossless_args() {
-        let got = resolve(QualityPreset::Lossless, HardwareEncoder::AmfH264, 1920, 1080, 30);
+        let got = resolve(
+            QualityPreset::Lossless,
+            HardwareEncoder::AmfH264,
+            1920,
+            1080,
+            30,
+        );
         assert_eq!(
             got,
             vec!["-quality", "quality", "-rc", "cqp", "-qp_i", "15", "-qp_p", "17"]
@@ -282,7 +472,12 @@ mod tests {
 
     #[test]
     fn exhaustive_match_holds() {
-        let presets = [QualityPreset::Low, QualityPreset::Med, QualityPreset::High, QualityPreset::Lossless];
+        let presets = [
+            QualityPreset::Low,
+            QualityPreset::Med,
+            QualityPreset::High,
+            QualityPreset::Lossless,
+        ];
         let encoders = [
             HardwareEncoder::VideoToolboxH264,
             HardwareEncoder::VideoToolboxHevc,

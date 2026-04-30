@@ -62,6 +62,208 @@ pub fn bgra_bytes_of_frame(frame: &Frame) -> Result<(Cow<'_, [u8]>, usize)> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct FrameSampleMetrics {
+    sample_count: u64,
+    luma_mean: f64,
+    luma_stddev: f64,
+    luma_min: u8,
+    luma_max: u8,
+    edge_mean: f64,
+    dark_pct: f64,
+    bright_pct: f64,
+}
+
+impl FrameSampleMetrics {
+    fn from_bgra(bytes: &[u8], width_px: u32, height_px: u32, stride: usize) -> Option<Self> {
+        let width = width_px as usize;
+        let height = height_px as usize;
+        if width == 0 || height == 0 || stride < width.saturating_mul(4) {
+            return None;
+        }
+
+        let step_x = (width / 96).max(1);
+        let step_y = (height / 54).max(1);
+        let mut sample_count = 0_u64;
+        let mut sum = 0_f64;
+        let mut sum_sq = 0_f64;
+        let mut min_luma = u8::MAX;
+        let mut max_luma = u8::MIN;
+        let mut dark = 0_u64;
+        let mut bright = 0_u64;
+        let mut edge_sum = 0_f64;
+        let mut edge_count = 0_u64;
+
+        for y in (0..height).step_by(step_y) {
+            for x in (0..width).step_by(step_x) {
+                let Some(luma) = bgra_luma_at(bytes, stride, width, height, x, y) else {
+                    continue;
+                };
+                let luma_f = f64::from(luma);
+                sample_count += 1;
+                sum += luma_f;
+                sum_sq += luma_f * luma_f;
+                min_luma = min_luma.min(luma);
+                max_luma = max_luma.max(luma);
+                if luma < 32 {
+                    dark += 1;
+                }
+                if luma > 224 {
+                    bright += 1;
+                }
+
+                if x + step_x < width {
+                    if let Some(right) = bgra_luma_at(bytes, stride, width, height, x + step_x, y) {
+                        edge_sum += (i16::from(luma) - i16::from(right)).unsigned_abs() as f64;
+                        edge_count += 1;
+                    }
+                }
+                if y + step_y < height {
+                    if let Some(down) = bgra_luma_at(bytes, stride, width, height, x, y + step_y) {
+                        edge_sum += (i16::from(luma) - i16::from(down)).unsigned_abs() as f64;
+                        edge_count += 1;
+                    }
+                }
+            }
+        }
+
+        if sample_count == 0 {
+            return None;
+        }
+
+        let mean = sum / sample_count as f64;
+        let variance = (sum_sq / sample_count as f64 - mean * mean).max(0.0);
+        Some(Self {
+            sample_count,
+            luma_mean: mean,
+            luma_stddev: variance.sqrt(),
+            luma_min: min_luma,
+            luma_max: max_luma,
+            edge_mean: if edge_count > 0 {
+                edge_sum / edge_count as f64
+            } else {
+                0.0
+            },
+            dark_pct: dark as f64 * 100.0 / sample_count as f64,
+            bright_pct: bright as f64 * 100.0 / sample_count as f64,
+        })
+    }
+}
+
+fn bgra_luma_at(
+    bytes: &[u8],
+    stride: usize,
+    width: usize,
+    height: usize,
+    x: usize,
+    y: usize,
+) -> Option<u8> {
+    if x >= width || y >= height {
+        return None;
+    }
+    let offset = y.checked_mul(stride)?.checked_add(x.checked_mul(4)?)?;
+    if offset + 2 >= bytes.len() {
+        return None;
+    }
+    let b = u16::from(bytes[offset]);
+    let g = u16::from(bytes[offset + 1]);
+    let r = u16::from(bytes[offset + 2]);
+    Some(((77 * r + 150 * g + 29 * b + 128) >> 8) as u8)
+}
+
+fn should_log_frame_sample(frame_index: u64) -> bool {
+    frame_index == 1 || frame_index % 300 == 0
+}
+
+fn log_frame_sample_metrics(
+    frame_index: u64,
+    bytes: &[u8],
+    width_px: u32,
+    height_px: u32,
+    stride: usize,
+) {
+    match FrameSampleMetrics::from_bgra(bytes, width_px, height_px, stride) {
+        Some(metrics) => {
+            tracing::info!(
+                target: "storycapture::encoder",
+                frame_index,
+                width_px,
+                height_px,
+                stride,
+                sample_count = metrics.sample_count,
+                luma_mean = metrics.luma_mean,
+                luma_stddev = metrics.luma_stddev,
+                luma_min = metrics.luma_min,
+                luma_max = metrics.luma_max,
+                edge_mean = metrics.edge_mean,
+                dark_pct = metrics.dark_pct,
+                bright_pct = metrics.bright_pct,
+                "encoder input frame sample metrics"
+            );
+        }
+        None => {
+            tracing::warn!(
+                target: "storycapture::encoder",
+                frame_index,
+                width_px,
+                height_px,
+                stride,
+                bytes_len = bytes.len(),
+                "encoder input frame sample metrics unavailable"
+            );
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct FfmpegSummaryMetrics {
+    x264_avg_qp_i: Option<f64>,
+    x264_avg_qp_p: Option<f64>,
+    x264_avg_qp_b: Option<f64>,
+    x264_kbps: Option<f64>,
+    encode_speed: Option<f64>,
+}
+
+impl FfmpegSummaryMetrics {
+    fn has_any(self) -> bool {
+        self.x264_avg_qp_i.is_some()
+            || self.x264_avg_qp_p.is_some()
+            || self.x264_avg_qp_b.is_some()
+            || self.x264_kbps.is_some()
+            || self.encode_speed.is_some()
+    }
+}
+
+fn parse_ffmpeg_summary_metrics(stderr_tail: &str) -> FfmpegSummaryMetrics {
+    let mut metrics = FfmpegSummaryMetrics::default();
+    for line in stderr_tail.lines() {
+        if line.contains("frame I:") {
+            metrics.x264_avg_qp_i = parse_number_after(line, "Avg QP:");
+        } else if line.contains("frame P:") {
+            metrics.x264_avg_qp_p = parse_number_after(line, "Avg QP:");
+        } else if line.contains("frame B:") {
+            metrics.x264_avg_qp_b = parse_number_after(line, "Avg QP:");
+        }
+        if line.contains("kb/s:") {
+            metrics.x264_kbps = parse_number_after(line, "kb/s:");
+        }
+        if line.contains("speed=") {
+            metrics.encode_speed = parse_number_after(line, "speed=");
+        }
+    }
+    metrics
+}
+
+fn parse_number_after(line: &str, needle: &str) -> Option<f64> {
+    let rest = line.get(line.find(needle)? + needle.len()..)?.trim_start();
+    let number_len = rest
+        .char_indices()
+        .take_while(|(_, ch)| ch.is_ascii_digit() || matches!(ch, '.' | '-'))
+        .map(|(idx, ch)| idx + ch.len_utf8())
+        .last()?;
+    rest.get(..number_len)?.parse().ok()
+}
+
 /// RAII guard around the FFmpeg child's stdin.
 ///
 /// Dropping `tokio::process::ChildStdin` closes the pipe, signaling EOF to
@@ -171,9 +373,7 @@ impl EncodePipeline {
         let frames_dropped_mismatch_task = frames_dropped_mismatch.clone();
         let partial_path_for_task = partial_path.clone();
         let target_for_task = target_path.clone();
-        let stdin_write_timeout = cfg
-            .stdin_write_timeout_ms
-            .map(Duration::from_millis);
+        let stdin_write_timeout = cfg.stdin_write_timeout_ms.map(Duration::from_millis);
         let expected_capture_dims = cfg.capture_dims;
         let join = tokio::spawn(async move {
             // Ensure `.partial` is cleaned on any failure/panic path.
@@ -196,9 +396,7 @@ impl EncodePipeline {
                 let height_px = frame.height_px;
                 if let Some((exp_w, exp_h)) = expected_capture_dims {
                     if exp_w != width_px || exp_h != height_px {
-                        let total = frames_dropped_mismatch_task
-                            .fetch_add(1, Ordering::AcqRel)
-                            + 1;
+                        let total = frames_dropped_mismatch_task.fetch_add(1, Ordering::AcqRel) + 1;
                         tracing::warn!(
                             target: "storycapture::encoder",
                             expected_w = exp_w, expected_h = exp_h,
@@ -216,6 +414,7 @@ impl EncodePipeline {
                         continue;
                     }
                 };
+                let frame_index = frames_written + 1;
                 match first_dims {
                     None => {
                         first_dims = Some((width_px, height_px));
@@ -236,6 +435,15 @@ impl EncodePipeline {
                         continue;
                     }
                     _ => {}
+                }
+                if should_log_frame_sample(frame_index) {
+                    log_frame_sample_metrics(
+                        frame_index,
+                        bytes.as_ref(),
+                        width_px,
+                        height_px,
+                        stride,
+                    );
                 }
                 let row_bytes = (width_px as usize) * 4;
                 let bytes_ref: &[u8] = if stride == row_bytes {
@@ -340,6 +548,18 @@ impl EncodePipeline {
                 "ffmpeg exit stderr tail: {}",
                 stderr_tail.lines().rev().take(30).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ")
             );
+            let ffmpeg_metrics = parse_ffmpeg_summary_metrics(&stderr_tail);
+            if ffmpeg_metrics.has_any() {
+                tracing::info!(
+                    target: "storycapture::encoder",
+                    x264_avg_qp_i = ?ffmpeg_metrics.x264_avg_qp_i,
+                    x264_avg_qp_p = ?ffmpeg_metrics.x264_avg_qp_p,
+                    x264_avg_qp_b = ?ffmpeg_metrics.x264_avg_qp_b,
+                    x264_kbps = ?ffmpeg_metrics.x264_kbps,
+                    encode_speed = ?ffmpeg_metrics.encode_speed,
+                    "ffmpeg encode summary metrics"
+                );
+            }
 
             let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -540,5 +760,52 @@ mod tests {
         assert_eq!(s, stride);
         // A1: Owned variant must be borrowed, not cloned.
         assert!(matches!(bytes, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn frame_sample_metrics_reports_luma_and_edges() {
+        let width = 4;
+        let height = 2;
+        let stride = width * 4;
+        let mut data = vec![0_u8; stride * height];
+        for y in 0..height {
+            for x in 0..width {
+                let offset = y * stride + x * 4;
+                let value = if x < 2 { 0 } else { 255 };
+                data[offset] = value;
+                data[offset + 1] = value;
+                data[offset + 2] = value;
+                data[offset + 3] = 255;
+            }
+        }
+
+        let metrics =
+            FrameSampleMetrics::from_bgra(&data, width as u32, height as u32, stride).unwrap();
+
+        assert_eq!(metrics.sample_count, 8);
+        assert_eq!(metrics.luma_min, 0);
+        assert_eq!(metrics.luma_max, 255);
+        assert!(metrics.dark_pct > 40.0);
+        assert!(metrics.bright_pct > 40.0);
+        assert!(metrics.edge_mean > 0.0);
+    }
+
+    #[test]
+    fn parses_ffmpeg_x264_summary_metrics() {
+        let stderr = "\
+[libx264 @ 0x123] frame I:4     Avg QP: 3.65  size: 44248
+[libx264 @ 0x123] frame P:214   Avg QP:14.47  size:  9474
+[libx264 @ 0x123] frame B:635   Avg QP:19.58  size:   865
+frame=  853 fps= 47 q=-1.0 Lsize=    3401KiB time=00:00:14.21 bitrate=1959.8kbits/s speed=0.779x
+[libx264 @ 0x123] kb/s:1944.34";
+
+        let metrics = parse_ffmpeg_summary_metrics(stderr);
+
+        assert_eq!(metrics.x264_avg_qp_i, Some(3.65));
+        assert_eq!(metrics.x264_avg_qp_p, Some(14.47));
+        assert_eq!(metrics.x264_avg_qp_b, Some(19.58));
+        assert_eq!(metrics.x264_kbps, Some(1944.34));
+        assert_eq!(metrics.encode_speed, Some(0.779));
+        assert!(metrics.has_any());
     }
 }

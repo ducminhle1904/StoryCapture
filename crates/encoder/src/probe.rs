@@ -5,13 +5,13 @@
 //! `AppState` for the session (no re-probe per recording).
 //!
 //! Preference order:
-//!   - macOS: `VideoToolboxH264`
+//!   - macOS: `VideoToolboxHevc` > `VideoToolboxH264`
 //!   - Windows: `NvencH264` > `QsvH264` > `AmfH264`
-//!   - Fallback (any OS): `Openh264Software` (LGPL Cisco reference encoder)
+//!   - Fallback (any OS): `Openh264Software` (bundled libx264)
 //!
-//! If no encoder is detected — including the libopenh264 fallback — the
+//! If no encoder is detected — including the software fallback — the
 //! probe returns `EncoderError::NoEncoderAvailable` with a diagnostic
-//! pointing at the LGPL build recipe.
+//! pointing at the FFmpeg build recipe.
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -24,8 +24,7 @@ use crate::sidecar::SidecarCommand;
 /// Process-wide cache of the last successful probe result. A
 /// `parking_lot::RwLock<Option<EncoderProbe>>` lets `force_reprobe`
 /// overwrite atomically — a one-shot static cell cannot be reset.
-static PROBE_CACHE: LazyLock<RwLock<Option<EncoderProbe>>> =
-    LazyLock::new(|| RwLock::new(None));
+static PROBE_CACHE: LazyLock<RwLock<Option<EncoderProbe>>> = LazyLock::new(|| RwLock::new(None));
 
 /// Encoders the runtime probe can select. Kept deliberately small — scope
 /// is H.264 only. HEVC variants are listed for completeness; preferred only
@@ -37,8 +36,8 @@ pub enum HardwareEncoder {
     NvencH264,
     QsvH264,
     AmfH264,
-    /// LGPL software fallback. Always preferred over "nothing" but never
-    /// preferred over any hardware encoder.
+    /// Software H.264 fallback. Kept under the historical DTO name for IPC
+    /// compatibility; the bundled FFmpeg currently provides libx264.
     Openh264Software,
 }
 
@@ -51,7 +50,7 @@ impl HardwareEncoder {
             HardwareEncoder::NvencH264 => "h264_nvenc",
             HardwareEncoder::QsvH264 => "h264_qsv",
             HardwareEncoder::AmfH264 => "h264_amf",
-            HardwareEncoder::Openh264Software => "libopenh264",
+            HardwareEncoder::Openh264Software => "libx264",
         }
     }
 
@@ -90,7 +89,7 @@ pub async fn probe_encoders(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
 
     if available.is_empty() {
         return Err(EncoderError::NoEncoderAvailable(
-            "ffmpeg -encoders listed no H.264 encoder (neither hardware nor libopenh264 fallback). Ensure the LGPL build from scripts/build-ffmpeg/ was produced with --enable-libopenh264.".into(),
+            "ffmpeg -encoders listed no H.264 encoder (neither hardware nor libx264 fallback). Ensure the FFmpeg sidecar was produced with --enable-libx264.".into(),
         ));
     }
 
@@ -139,7 +138,7 @@ pub(crate) fn __test_peek_cache() -> Option<EncoderProbe> {
 /// FFmpeg emits lines of the form (note the leading space):
 /// ```text
 ///  V..... h264_videotoolbox    VideoToolbox H.264 Encoder
-///  V..... libopenh264          OpenH264 H.264 / MPEG-4 AVC encoder
+///  V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC encoder
 /// ```
 /// We match by substring against the known codec names — simple and
 /// resilient to version-to-version whitespace or capability-flag churn.
@@ -222,7 +221,7 @@ mod tests {
 Encoders:
  V..... = Video
  ------
- V..... libopenh264          OpenH264 H.264 / MPEG-4 AVC encoder
+ V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC encoder
  V..... h264_videotoolbox    VideoToolbox H.264 Encoder
  V..... h264_nvenc           NVIDIA NVENC H.264 encoder
  A..... aac                  AAC (Advanced Audio Coding)
@@ -243,7 +242,7 @@ Encoders:
     }
 
     #[test]
-    fn preferred_falls_back_to_openh264_when_no_hw() {
+    fn preferred_falls_back_to_software_when_no_hw() {
         let avail = vec![HardwareEncoder::Openh264Software];
         assert_eq!(pick_preferred(&avail), HardwareEncoder::Openh264Software);
     }
@@ -337,11 +336,11 @@ Encoders:
             Some(1)
         );
 
-        // Fresh probe result: VideoToolbox + libopenh264 from a two-line
+        // Fresh probe result: VideoToolbox + libx264 from a two-line
         // sample. force_reprobe must ignore the cache and replace it.
         let payload = "\
  V..... h264_videotoolbox    VideoToolbox H.264 Encoder
- V..... libopenh264          OpenH264 H.264 / MPEG-4 AVC encoder
+ V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC encoder
 ";
         let calls = Arc::new(AtomicUsize::new(0));
         let cmd = MockCmd {
@@ -350,12 +349,8 @@ Encoders:
         };
 
         let fresh = force_reprobe(&cmd).await.expect("force_reprobe");
-        assert!(fresh
-            .available
-            .contains(&HardwareEncoder::Openh264Software));
-        assert!(fresh
-            .available
-            .contains(&HardwareEncoder::VideoToolboxH264));
+        assert!(fresh.available.contains(&HardwareEncoder::Openh264Software));
+        assert!(fresh.available.contains(&HardwareEncoder::VideoToolboxH264));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 
         // Cache now holds the fresh value, so a subsequent probe_cached
