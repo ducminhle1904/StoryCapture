@@ -31,7 +31,7 @@ pub use driver::{
     accept_language_for_locale, is_supported_browser_locale, ActionKind, BoundingBox,
     BrowserDriver, BrowserEnvironment, BrowserLanguageChoice, BrowserLanguageOption,
     BrowserSessionProfile, Capability, CapabilitySet, ElementState, LaunchConfig, LaunchOptions,
-    ResolvedSelector, BROWSER_LANGUAGE_OPTIONS, BROWSER_LANGUAGE_SYSTEM,
+    ResolvedSelector, WindowPosition, BROWSER_LANGUAGE_OPTIONS, BROWSER_LANGUAGE_SYSTEM,
 };
 pub use error::{AutomationError, Result};
 pub use events::{

@@ -278,6 +278,12 @@ impl EncodeConfig {
             "-color_trc".into(),
             "bt709".into(),
         ]);
+        if matches!(self.encoder, HardwareEncoder::Libx264Software) {
+            args.extend([
+                "-x264-params".into(),
+                "colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv".into(),
+            ]);
+        }
         args.extend(quality::resolve(
             self.quality_preset,
             self.encoder,

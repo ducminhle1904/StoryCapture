@@ -561,7 +561,12 @@ pub async fn nl_load_history(
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "nl_get_session_id"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "nl_get_session_id"),
+    err(Debug)
+)]
 pub async fn nl_get_session_id(app: AppHandle) -> Result<String, NlCommandError> {
     let registry: Arc<NlTaskRegistry> = app.state::<Arc<NlTaskRegistry>>().inner().clone();
     Ok(registry.session_id().to_string())
@@ -569,7 +574,12 @@ pub async fn nl_get_session_id(app: AppHandle) -> Result<String, NlCommandError>
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "session_get_rollup"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "session_get_rollup"),
+    err(Debug)
+)]
 pub async fn session_get_rollup(
     app: AppHandle,
     project_id: String,

@@ -69,7 +69,7 @@ pub enum ClockSource {
 /// describe the full logical window size that the rect was measured against.
 /// The latter lets the capture backend scale browser viewport crops against
 /// the actual native frame size (for example macOS Retina SCK frames).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct FrameCropRect {
     pub x: u32,
     pub y: u32,
@@ -79,6 +79,12 @@ pub struct FrameCropRect {
     pub basis_w: Option<u32>,
     #[serde(default)]
     pub basis_h: Option<u32>,
+    /// Advisory logical-to-native scale from the source that produced this
+    /// crop, for example browser `devicePixelRatio`. Capture backends may use
+    /// it to request a Retina/DPI-sized window canvas before applying the
+    /// crop.
+    #[serde(default)]
+    pub scale_hint: Option<f64>,
 }
 
 /// Backend-supplied presentation timestamp, in nanoseconds, tagged with
@@ -281,6 +287,7 @@ fn resolve_crop_rect(rect: FrameCropRect, frame_w: u32, frame_h: u32) -> Option<
         h,
         basis_w: None,
         basis_h: None,
+        scale_hint: None,
     })
 }
 
@@ -326,6 +333,7 @@ mod crop_tests {
                 h: 2,
                 basis_w: None,
                 basis_h: None,
+                scale_hint: None,
             },
         )
         .expect("crop attempt ok")
@@ -378,6 +386,7 @@ mod crop_tests {
                 h: 3,
                 basis_w: Some(5),
                 basis_h: Some(4),
+                scale_hint: None,
             },
         )
         .expect("crop attempt ok")

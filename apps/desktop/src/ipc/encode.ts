@@ -57,6 +57,7 @@ export interface StartRecordingArgs {
     h: number;
     basis_w?: number | null;
     basis_h?: number | null;
+    scale_hint?: number | null;
   } | null;
 }
 

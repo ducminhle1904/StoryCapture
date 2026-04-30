@@ -291,6 +291,12 @@ pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
         let height = m
             .height()
             .map_err(|e| CaptureError::Native(format!("monitor height: {e}")))?;
+        let x = m
+            .x()
+            .map_err(|e| CaptureError::Native(format!("monitor x: {e}")))?;
+        let y = m
+            .y()
+            .map_err(|e| CaptureError::Native(format!("monitor y: {e}")))?;
         let scale = m
             .scale_factor()
             .map_err(|e| CaptureError::Native(format!("monitor scale: {e}")))?;
@@ -300,6 +306,8 @@ pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
             id: DisplayId(id as u64),
             width_px: (width as f32 * scale) as u32,
             height_px: (height as f32 * scale) as u32,
+            x,
+            y,
             scale_factor: scale,
             name,
             is_primary,

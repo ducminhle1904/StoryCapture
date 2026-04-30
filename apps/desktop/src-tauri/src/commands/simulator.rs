@@ -263,12 +263,25 @@ async fn spawn_run(
         }
         while let Some(ev) = rx.recv().await {
             let variant_tag = match &ev {
-                ExecutorEvent::StepStarted { ordinal, .. } => format!("StepStarted ord={}", ordinal),
-                ExecutorEvent::StepFrameCaptured { ordinal, .. } => format!("StepFrameCaptured ord={}", ordinal),
-                ExecutorEvent::StepSucceeded { ordinal, .. } => format!("StepSucceeded ord={}", ordinal),
+                ExecutorEvent::StepStarted { ordinal, .. } => {
+                    format!("StepStarted ord={}", ordinal)
+                }
+                ExecutorEvent::StepFrameCaptured { ordinal, .. } => {
+                    format!("StepFrameCaptured ord={}", ordinal)
+                }
+                ExecutorEvent::StepSucceeded { ordinal, .. } => {
+                    format!("StepSucceeded ord={}", ordinal)
+                }
                 ExecutorEvent::RunPaused { ordinal } => format!("RunPaused ord={}", ordinal),
-                ExecutorEvent::StepFailed { ordinal, error_message, .. } => format!("StepFailed ord={} err={}", ordinal, error_message),
-                ExecutorEvent::StoryEnded { status } => format!("StoryEnded succeeded={} failed={}", status.succeeded, status.failed),
+                ExecutorEvent::StepFailed {
+                    ordinal,
+                    error_message,
+                    ..
+                } => format!("StepFailed ord={} err={}", ordinal, error_message),
+                ExecutorEvent::StoryEnded { status } => format!(
+                    "StoryEnded succeeded={} failed={}",
+                    status.succeeded, status.failed
+                ),
                 _ => "other".to_string(),
             };
             tracing::info!(target: "storycapture::simulator", event = %variant_tag, "forwarder rx event");
@@ -559,7 +572,12 @@ async fn simulator_start_inner(
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "simulator_step_to"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "simulator_step_to"),
+    err(Debug)
+)]
 pub async fn simulator_step_to(
     registry: State<'_, SimulatorRegistry>,
     author_registry: State<'_, Arc<AuthorDriverRegistry>>,
@@ -577,7 +595,9 @@ pub async fn simulator_step_to(
             session.total_steps
         )));
     }
-    let last = session.last_ordinal.load(std::sync::atomic::Ordering::SeqCst);
+    let last = session
+        .last_ordinal
+        .load(std::sync::atomic::Ordering::SeqCst);
     if ordinal <= last {
         return Err(AppError::InvalidArgument(format!(
             "ordinal {ordinal} already executed (last={last})"
@@ -665,7 +685,12 @@ pub async fn simulator_cancel(
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "simulator_promote_fallback"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "simulator_promote_fallback"),
+    err(Debug)
+)]
 pub async fn simulator_promote_fallback(
     registry: State<'_, SimulatorRegistry>,
     session_id: String,

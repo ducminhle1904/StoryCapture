@@ -99,9 +99,7 @@ fn cancelled(reason: &str) -> PickElementResponse {
 }
 
 // Helper: seed the registry in LivePreview and run the picker once.
-async fn run_once(
-    mock: Arc<MockControl>,
-) -> (Arc<AuthorDriverRegistry>, Result<(), AppError>) {
+async fn run_once(mock: Arc<MockControl>) -> (Arc<AuthorDriverRegistry>, Result<(), AppError>) {
     let registry = AuthorDriverRegistry::new();
     {
         let mut g = registry.state.lock().await;
@@ -129,8 +127,16 @@ async fn pr1_happy_path_no_pause_resume() {
     let mock = Arc::new(MockControl::new(Ok(picked_response())));
     let (registry, res) = run_once(mock.clone()).await;
     res.expect("happy path ok");
-    assert_eq!(mock.paused.load(Ordering::SeqCst), 0, "pause must NOT fire — CDP screencast stays active during picking");
-    assert_eq!(mock.resumed.load(Ordering::SeqCst), 0, "resume must NOT fire — nothing was paused");
+    assert_eq!(
+        mock.paused.load(Ordering::SeqCst),
+        0,
+        "pause must NOT fire — CDP screencast stays active during picking"
+    );
+    assert_eq!(
+        mock.resumed.load(Ordering::SeqCst),
+        0,
+        "resume must NOT fire — nothing was paused"
+    );
     let g = registry.state.lock().await;
     assert!(matches!(&*g, AuthorDriverState::LivePreview { .. }));
 }

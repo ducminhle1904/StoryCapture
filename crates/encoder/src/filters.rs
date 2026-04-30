@@ -133,12 +133,26 @@ pub fn build_vf(spec: &FilterSpec) -> Result<String> {
         )));
     }
 
-    // fast-path also fires for degenerate Letterbox with equal dims — safe no-op
+    let scale_filter = |prefix: String| -> String {
+        format!("{prefix}:in_range=pc:out_range=tv:in_color_matrix=bt709:out_color_matrix=bt709")
+    };
+    let color_tag_filter =
+        "setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709";
+
+    // Equal-size Letterbox still needs an explicit RGB full-range to BT.709
+    // limited-range conversion. Relying on metadata-only tags leaves swscale
+    // defaults/player interpretation to decide the range.
     if spec.capture_w == spec.output_w
         && spec.capture_h == spec.output_h
         && matches!(spec.fit, FitMode::Letterbox)
     {
-        return Ok("format=yuv420p".to_string());
+        return Ok(format!(
+            "{},setsar=1,{color_tag_filter},format=yuv420p",
+            scale_filter(format!(
+                "scale=iw:ih:flags={}",
+                spec.scale_algo.ffmpeg_flag()
+            ))
+        ));
     }
 
     let w = spec.output_w;
@@ -149,16 +163,25 @@ pub fn build_vf(spec: &FilterSpec) -> Result<String> {
         FitMode::Letterbox => {
             let color = spec.pad_color.to_ffmpeg_color();
             format!(
-                "scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags={algo},pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color={color},setsar=1,format=yuv420p"
+                "{},pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color={color},setsar=1,{color_tag_filter},format=yuv420p",
+                scale_filter(format!(
+                    "scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags={algo}"
+                ))
             )
         }
         FitMode::FillCrop => {
             format!(
-                "scale={w}:{h}:force_original_aspect_ratio=increase:flags={algo},crop={w}:{h},setsar=1,format=yuv420p"
+                "{},crop={w}:{h},setsar=1,{color_tag_filter},format=yuv420p",
+                scale_filter(format!(
+                    "scale={w}:{h}:force_original_aspect_ratio=increase:flags={algo}"
+                ))
             )
         }
         FitMode::Stretch => {
-            format!("scale={w}:{h}:flags={algo},setsar=1,format=yuv420p")
+            format!(
+                "{},setsar=1,{color_tag_filter},format=yuv420p",
+                scale_filter(format!("scale={w}:{h}:flags={algo}"))
+            )
         }
     };
 
@@ -249,7 +272,9 @@ mod tests {
 
     #[test]
     fn snapshot_letterbox_matchsource_1920x1080_passthrough() {
-        let (w, h) = OutputResolution::MatchSource.resolve_even(1920, 1080).unwrap();
+        let (w, h) = OutputResolution::MatchSource
+            .resolve_even(1920, 1080)
+            .unwrap();
         let s = spec(
             (1920, 1080),
             (w, h),
@@ -262,7 +287,9 @@ mod tests {
 
     #[test]
     fn snapshot_letterbox_matchsource_1923x1081_rounds_to_1922x1080() {
-        let (w, h) = OutputResolution::MatchSource.resolve_even(1923, 1081).unwrap();
+        let (w, h) = OutputResolution::MatchSource
+            .resolve_even(1923, 1081)
+            .unwrap();
         assert_eq!((w, h), (1922, 1080));
         let s = spec(
             (1923, 1081),
@@ -304,7 +331,11 @@ mod tests {
             (1920, 1130),
             (1920, 1080),
             FitMode::Letterbox,
-            PadColor::Custom { r: 255, g: 0, b: 128 },
+            PadColor::Custom {
+                r: 255,
+                g: 0,
+                b: 128,
+            },
             ScaleAlgo::Lanczos,
         );
         let out = build_vf(&s).unwrap();
@@ -375,7 +406,9 @@ mod tests {
 
     #[test]
     fn matchsource_rounds_odd_dims_to_even() {
-        let (w, h) = OutputResolution::MatchSource.resolve_even(1923, 1081).unwrap();
+        let (w, h) = OutputResolution::MatchSource
+            .resolve_even(1923, 1081)
+            .unwrap();
         assert_eq!((w, h), (1922, 1080));
     }
 
@@ -385,7 +418,9 @@ mod tests {
             if !s.starts_with("0x") || s.len() != 8 {
                 return false;
             }
-            s[2..].chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+            s[2..]
+                .chars()
+                .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
         };
         for r in (0u16..=255).step_by(17) {
             for g in (0u16..=255).step_by(17) {

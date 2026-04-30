@@ -100,14 +100,15 @@ pub fn run() {
             focus_main_window(app);
         }))
         .plugin(
-            // Renderer-facing `log:` IPC. The canonical file on disk is
-            // owned by `tracing` (see `logging::init`); these defaults
-            // can't read user settings because the plugin builder runs
-            // before `setup()` has an AppHandle.
+            // Renderer-facing `log:` IPC. The canonical logger/file is
+            // owned by `tracing` (see `logging::init`); skip the plugin's
+            // global logger so `tracing_log::LogTracer` can bridge `log`
+            // records into the same session-prefixed file.
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)
                 .max_file_size(10 * 1024 * 1024 /* 10 MiB */)
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(10))
+                .skip_logger()
                 .build(),
         )
         .plugin(tauri_plugin_fs::init())

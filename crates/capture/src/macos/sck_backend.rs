@@ -11,7 +11,10 @@ use crate::events::CaptureEvent;
 use crate::frame::Frame;
 use crate::target::CaptureTarget;
 use async_trait::async_trait;
+use core_graphics::color_space::kCGColorSpaceSRGB;
+use objc2::runtime::Sel;
 use parking_lot::Mutex;
+use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -19,9 +22,11 @@ use tokio::sync::mpsc;
 
 use screencapturekit::cg::CGRect;
 use screencapturekit::cm::CMTime;
-use screencapturekit::shareable_content::SCShareableContent;
+use screencapturekit::shareable_content::{SCShareableContent, SCShareableContentInfo};
 use screencapturekit::stream::{
-    configuration::{PixelFormat as SckPixelFormat, SCStreamConfiguration},
+    configuration::{
+        PixelFormat as SckPixelFormat, SCCaptureResolutionType, SCStreamConfiguration,
+    },
     content_filter::SCContentFilter,
     delegate_trait::StreamCallbacks,
     output_type::SCStreamOutputType,
@@ -102,6 +107,7 @@ impl SckBackend {
     /// padding the unused area with black.
     pub(crate) fn build_filter(
         target: &CaptureTarget,
+        scale_hint: Option<f64>,
     ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>, bool), CaptureError> {
         match target {
             CaptureTarget::Display { display_id } => {
@@ -120,6 +126,7 @@ impl SckBackend {
                     .with_display(disp)
                     .with_excluding_windows(&[])
                     .build();
+                let (width, height) = filter_pixel_size(&filter).unwrap_or((width, height));
                 // The builder handles an empty exclusion list safely.
                 Ok((filter, width, height, None, false))
             }
@@ -131,9 +138,11 @@ impl SckBackend {
                 // containing this window. Using the primary display scale
                 // upscaled 1× external-monitor windows to 2× and softened
                 // text even though Retina/MacBook captures looked correct.
-                let scale = window_display_scale(frame)?;
+                let display_scale = window_display_scale(frame)?;
+                let scale = effective_window_scale(display_scale, scale_hint);
                 let width = (frame.width * scale).round().max(1.0) as u32;
                 let height = (frame.height * scale).round().max(1.0) as u32;
+                log_window_canvas_scale(frame, display_scale, scale_hint, scale, width, height);
                 let filter = SCContentFilter::create().with_window(&window).build();
                 Ok((filter, width, height, None, true))
             }
@@ -157,9 +166,11 @@ impl SckBackend {
                 let frame = window.frame();
                 // Same physical-pixel treatment as Window — derive the
                 // scale from the display containing the resolved window.
-                let scale = window_display_scale(frame)?;
+                let display_scale = window_display_scale(frame)?;
+                let scale = effective_window_scale(display_scale, scale_hint);
                 let width = (frame.width * scale).round().max(1.0) as u32;
                 let height = (frame.height * scale).round().max(1.0) as u32;
+                log_window_canvas_scale(frame, display_scale, scale_hint, scale, width, height);
                 let filter = SCContentFilter::create().with_window(&window).build();
                 Ok((filter, width, height, None, true))
             }
@@ -173,14 +184,14 @@ impl SckBackend {
                     .find(|d| d.display_id() as u64 == display_id.0)
                     .or_else(|| displays.first())
                     .ok_or_else(|| CaptureError::Native("no SCDisplay available".into()))?;
-                // Use shared math so tests and production round the same way.
-                let frame = disp.frame();
-                let (width_px, height_px, source_rect) =
-                    compute_region_math(rect, frame.width, disp.width());
                 let filter = SCContentFilter::create()
                     .with_display(disp)
                     .with_excluding_windows(&[])
                     .build();
+                let scale = filter_point_pixel_scale(&filter)
+                    .unwrap_or_else(|| display_scale(disp.frame(), disp.width(), disp.height()));
+                // Use shared math so tests and production round the same way.
+                let (width_px, height_px, source_rect) = compute_region_math(rect, scale);
                 Ok((filter, width_px, height_px, Some(source_rect), false))
             }
         }
@@ -235,8 +246,9 @@ impl CaptureBackend for SckBackend {
 
         // Resolve the filter off the async runtime.
         let target = cfg.target.clone();
+        let scale_hint = cfg.frame_crop.and_then(|rect| rect.scale_hint);
         let (filter, width_px, height_px, source_rect, needs_scales_to_fit) =
-            tokio::task::spawn_blocking(move || Self::build_filter(&target))
+            tokio::task::spawn_blocking(move || Self::build_filter(&target, scale_hint))
                 .await
                 .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
 
@@ -267,9 +279,11 @@ impl CaptureBackend for SckBackend {
             .with_width(width_px)
             .with_height(height_px)
             .with_pixel_format(sck_pf)
+            .with_capture_resolution_type(SCCaptureResolutionType::Best)
             .with_shows_cursor(cfg.include_cursor)
             .with_minimum_frame_interval(&frame_interval)
             .with_queue_depth(8);
+        set_srgb_color_space_name(&mut config);
 
         // Apply native region crop when a source rect is present.
         if let Some(src) = source_rect {
@@ -340,6 +354,7 @@ impl CaptureBackend for SckBackend {
                                         crop_h = rect.h,
                                         crop_basis_w = rect.basis_w,
                                         crop_basis_h = rect.basis_h,
+                                        crop_scale_hint = rect.scale_hint,
                                         output_width_px = cropped.width_px,
                                         output_height_px = cropped.height_px,
                                         "SckBackend: applied frame crop"
@@ -512,6 +527,47 @@ impl CaptureBackend for SckBackend {
     }
 }
 
+/// ScreenCaptureKit defaults to the display color space when `colorSpaceName`
+/// is unspecified. On wide-gamut macOS displays that yields Display P3 buffers,
+/// while our encoder path writes SDR BT.709. Use the CoreGraphics CFString
+/// constant directly instead of screencapturekit 1.5.4's Swift String bridge,
+/// which can trap in `SCStreamConfiguration.copyWithZone` on macOS 26.4.
+fn set_srgb_color_space_name(config: &mut SCStreamConfiguration) {
+    unsafe {
+        let config_ptr = *(config as *mut SCStreamConfiguration as *mut *mut c_void);
+        let color_space_name = kCGColorSpaceSRGB as *const c_void;
+        sc_stream_configuration_set_color_space_name_cfstring(config_ptr, color_space_name);
+    }
+    tracing::info!(
+        target: "storycapture::capture",
+        color_space_name = "kCGColorSpaceSRGB",
+        "SckBackend: requested sRGB capture color space"
+    );
+}
+
+fn sc_stream_configuration_set_color_space_name_cfstring(
+    config: *mut c_void,
+    color_space_name: *const c_void,
+) {
+    unsafe {
+        objc_msg_send_set_color_space_name(
+            config,
+            objc2::sel!(setColorSpaceName:),
+            color_space_name,
+        );
+    }
+}
+
+#[link(name = "objc")]
+unsafe extern "C" {
+    #[link_name = "objc_msgSend"]
+    fn objc_msg_send_set_color_space_name(
+        receiver: *mut c_void,
+        selector: Sel,
+        color_space_name: *const c_void,
+    );
+}
+
 /// Pick the primary display's backing scale factor. Used by window capture
 /// to request a physical-pixel canvas on Retina displays. Falls back to 1.0
 /// (non-Retina) when enumeration fails, so a failure degrades to legacy
@@ -551,6 +607,82 @@ fn display_scale(logical_frame: CGRect, width_px: u32, height_px: u32) -> f64 {
         ((scale_x + scale_y) / 2.0).max(1.0)
     } else {
         scale_x.max(scale_y).max(1.0)
+    }
+}
+
+fn filter_content_info(filter: &SCContentFilter) -> Option<(u32, u32, f64, CGRect)> {
+    let info = SCShareableContentInfo::for_filter(filter)?;
+    let (width, height) = info.pixel_size();
+    let scale = f64::from(info.point_pixel_scale()).max(1.0);
+    let rect = info.content_rect();
+    if width > 0 && height > 0 && scale.is_finite() {
+        Some((width, height, scale, rect))
+    } else {
+        None
+    }
+}
+
+fn filter_pixel_size(filter: &SCContentFilter) -> Option<(u32, u32)> {
+    filter_content_info(filter).map(|(width, height, ..)| (width, height))
+}
+
+fn filter_point_pixel_scale(filter: &SCContentFilter) -> Option<f64> {
+    filter_content_info(filter).map(|(_, _, scale, _)| scale)
+}
+
+fn normalize_scale_hint(scale_hint: Option<f64>) -> Option<f64> {
+    let scale = scale_hint?;
+    if scale.is_finite() && scale >= 1.0 && scale <= 4.0 {
+        Some(scale)
+    } else {
+        None
+    }
+}
+
+fn effective_window_scale(display_scale: f64, scale_hint: Option<f64>) -> f64 {
+    let base = if display_scale.is_finite() && display_scale > 0.0 {
+        display_scale
+    } else {
+        1.0
+    };
+    normalize_scale_hint(scale_hint)
+        .map(|hint| hint.max(base))
+        .unwrap_or(base)
+}
+
+fn log_window_canvas_scale(
+    frame: CGRect,
+    display_scale: f64,
+    scale_hint: Option<f64>,
+    effective_scale: f64,
+    width_px: u32,
+    height_px: u32,
+) {
+    let hint = normalize_scale_hint(scale_hint);
+    if hint.is_some_and(|hint| hint > display_scale + 0.01) {
+        tracing::warn!(
+            target: "storycapture::capture",
+            window_w = frame.width,
+            window_h = frame.height,
+            display_scale,
+            scale_hint = hint,
+            effective_scale,
+            width_px,
+            height_px,
+            "SckBackend: using capture scale hint for window Retina canvas"
+        );
+    } else {
+        tracing::info!(
+            target: "storycapture::capture",
+            window_w = frame.width,
+            window_h = frame.height,
+            display_scale,
+            scale_hint = hint,
+            effective_scale,
+            width_px,
+            height_px,
+            "SckBackend: resolved window capture canvas"
+        );
     }
 }
 
@@ -609,13 +741,12 @@ fn window_display_scale(window_frame: CGRect) -> Result<f64, CaptureError> {
 /// Compute a region source rect and pixel size for display-region capture.
 pub(crate) fn compute_region_math(
     rect: &crate::target::RegionRect,
-    disp_logical_width: f64,
-    disp_pixel_width: u32,
+    point_pixel_scale: f64,
 ) -> (u32, u32, CGRect) {
-    let scale = if disp_logical_width > 0.0 {
-        (disp_pixel_width as f64) / disp_logical_width
+    let scale = if point_pixel_scale.is_finite() && point_pixel_scale > 0.0 {
+        point_pixel_scale
     } else {
-        2.0
+        1.0
     };
     let src = CGRect::new(rect.x, rect.y, rect.w, rect.h);
     let width_px = (rect.w * scale).round() as u32;
@@ -707,7 +838,7 @@ mod region_tests {
             w: 640.0,
             h: 480.0,
         };
-        let (w_px, h_px, src) = compute_region_math(&rect, 1440.0, 2880);
+        let (w_px, h_px, src) = compute_region_math(&rect, 2.0);
         assert_eq!(w_px, 1280);
         assert_eq!(h_px, 960);
         // Source rect stays in logical points.
@@ -725,7 +856,7 @@ mod region_tests {
             w: 800.0,
             h: 600.0,
         };
-        let (w_px, h_px, src) = compute_region_math(&rect, 1920.0, 1920);
+        let (w_px, h_px, src) = compute_region_math(&rect, 1.0);
         assert_eq!(w_px, 800);
         assert_eq!(h_px, 600);
         assert_eq!(src.width, 800.0);
@@ -740,7 +871,7 @@ mod region_tests {
             w: 640.0,
             h: 360.0,
         };
-        let (w_px, h_px, _src) = compute_region_math(&rect, 1920.0, 2880);
+        let (w_px, h_px, _src) = compute_region_math(&rect, 1.5);
         assert_eq!(w_px, 960);
         assert_eq!(h_px, 540);
     }
@@ -777,7 +908,7 @@ pub(crate) fn build_filter_for_test_region(
         display_id: crate::display::DisplayId(display_id),
         rect,
     };
-    SckBackend::build_filter(&target)
+    SckBackend::build_filter(&target, None)
         .ok()
         .map(|(_, w, h, r, _)| (w, h, r))
 }
@@ -788,6 +919,14 @@ mod nv12_reject_tests {
     use crate::display::DisplayId;
     use crate::frame::PixelFormat;
     use crate::target::CaptureTarget;
+
+    #[test]
+    fn effective_window_scale_uses_larger_valid_hint() {
+        assert_eq!(effective_window_scale(1.0, Some(2.0)), 2.0);
+        assert_eq!(effective_window_scale(2.0, Some(1.0)), 2.0);
+        assert_eq!(effective_window_scale(1.0, Some(f64::NAN)), 1.0);
+        assert_eq!(effective_window_scale(1.0, Some(8.0)), 1.0);
+    }
 
     /// Nv12 must be rejected at `start()` entry before any OS resource is
     /// acquired. We don't need SCK permissions or a real display for this
@@ -839,6 +978,12 @@ pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
         let height = m
             .height()
             .map_err(|e| CaptureError::Native(format!("monitor height: {e}")))?;
+        let x = m
+            .x()
+            .map_err(|e| CaptureError::Native(format!("monitor x: {e}")))?;
+        let y = m
+            .y()
+            .map_err(|e| CaptureError::Native(format!("monitor y: {e}")))?;
         let scale = m
             .scale_factor()
             .map_err(|e| CaptureError::Native(format!("monitor scale: {e}")))?;
@@ -848,6 +993,8 @@ pub fn enumerate() -> Result<Vec<DisplayInfo>, CaptureError> {
             id: DisplayId(id as u64),
             width_px: (width as f32 * scale) as u32,
             height_px: (height as f32 * scale) as u32,
+            x,
+            y,
             scale_factor: scale,
             name,
             is_primary,

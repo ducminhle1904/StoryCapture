@@ -263,6 +263,8 @@ mod tests {
             DisplayInfo {
                 id: DisplayId(2),
                 name: "External".into(),
+                x: -1920,
+                y: 0,
                 width_px: 2560,
                 height_px: 1440,
                 scale_factor: 1.0,
@@ -271,6 +273,8 @@ mod tests {
             DisplayInfo {
                 id: DisplayId(5),
                 name: "Internal".into(),
+                x: 0,
+                y: 0,
                 width_px: 3024,
                 height_px: 1964,
                 scale_factor: 2.0,

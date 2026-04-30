@@ -32,7 +32,12 @@ const OVERLAY_LABEL: &str = "region-overlay";
 /// window open; the renderer listens for the event.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "open_region_overlay"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "open_region_overlay"),
+    err(Debug)
+)]
 pub async fn open_region_overlay(app: AppHandle, display_id: u64) -> Result<(), AppError> {
     // If already open, focus and re-target. A user can hit "Crop to
     // region…" twice without piling up windows.
@@ -70,7 +75,12 @@ pub async fn open_region_overlay(app: AppHandle, display_id: u64) -> Result<(), 
 /// closes itself after emit; this is a safety net.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "close_region_overlay"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "close_region_overlay"),
+    err(Debug)
+)]
 pub async fn close_region_overlay(app: AppHandle) -> Result<(), AppError> {
     if let Some(win) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = win.close();

@@ -3,8 +3,7 @@
  * `apps/desktop/src-tauri/src/commands/capture.rs`.
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import { Channel } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 // Rust-side DTO uses `#[serde(rename_all = "kebab-case")]`, so values
 // arrive as lowercase over IPC. Keep TS in lockstep.
@@ -13,6 +12,8 @@ export type PermissionState = "granted" | "denied" | "undetermined";
 export interface DisplayInfo {
   id: bigint | number; // specta emits bigint for u64
   name: string;
+  x: number;
+  y: number;
   width_px: number;
   height_px: number;
   scale_factor: number;
@@ -75,6 +76,7 @@ export interface ResolvedFrameCrop {
   h: number;
   basis_w?: number | null;
   basis_h?: number | null;
+  scale_hint?: number | null;
 }
 
 export type CaptureTarget =

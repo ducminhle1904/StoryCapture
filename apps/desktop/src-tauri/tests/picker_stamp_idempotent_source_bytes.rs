@@ -119,5 +119,8 @@ fn stamp_on_unstamped_line_writes_source() {
     );
 
     let targets = path.with_extension("story.targets.json");
-    assert!(targets.exists(), "targets.json should be seeded on first stamp");
+    assert!(
+        targets.exists(),
+        "targets.json should be seeded on first stamp"
+    );
 }

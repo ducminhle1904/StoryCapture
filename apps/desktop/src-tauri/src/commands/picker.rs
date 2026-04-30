@@ -107,12 +107,8 @@ impl From<TargetRecordDto> for automation::targets_store::TargetRecord {
             TargetRecordDto::Selector { value, nth } => {
                 ("selector", serde_json::Value::String(value), nth)
             }
-            TargetRecordDto::Aria { value, nth } => {
-                ("aria", serde_json::Value::String(value), nth)
-            }
-            TargetRecordDto::Text { value, nth } => {
-                ("text", serde_json::Value::String(value), nth)
-            }
+            TargetRecordDto::Aria { value, nth } => ("aria", serde_json::Value::String(value), nth),
+            TargetRecordDto::Text { value, nth } => ("text", serde_json::Value::String(value), nth),
         };
         automation::targets_store::TargetRecord {
             kind: kind.to_string(),
@@ -301,7 +297,12 @@ pub async fn picker_is_active(state: State<'_, AppState>) -> Result<bool, AppErr
 /// envelope.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_stamp_step_id"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "picker_stamp_step_id"),
+    err(Debug)
+)]
 pub async fn picker_stamp_step_id(
     story_path: String,
     line_offset: u32,
@@ -400,7 +401,6 @@ pub fn stamp_step_id_impl(
         was_freshly_stamped,
     })
 }
-
 
 /// Indirection trait for side-effects under `picker_start_author`. Production
 /// wires `SidecarAuthorPreviewControl` which delegates to the real Playwright
@@ -675,7 +675,12 @@ pub async fn picker_start_author_impl(
 /// `AppError::InvalidArgument`.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "picker_start_author"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "picker_start_author"),
+    err(Debug)
+)]
 pub async fn picker_start_author(
     state: State<'_, AppState>,
     registry: State<'_, Arc<AuthorDriverRegistry>>,

@@ -134,14 +134,23 @@ async fn two_sequential_step_to_calls_never_relaunch() {
         let dir = tmp.path().join("shots1");
         let h = tokio::spawn(async move {
             let _ = continue_run(
-                story1, None, primary, fallback, None, dir, None, 0, Some(2), false, None, false,
+                story1,
+                None,
+                primary,
+                fallback,
+                None,
+                dir,
+                None,
+                0,
+                Some(2),
+                false,
+                None,
+                false,
                 tx,
             )
             .await;
         });
-        let fut = async {
-            while rx.recv().await.is_some() {}
-        };
+        let fut = async { while rx.recv().await.is_some() {} };
         timeout(Duration::from_secs(10), fut).await.unwrap();
         h.abort();
     }
@@ -159,14 +168,23 @@ async fn two_sequential_step_to_calls_never_relaunch() {
         let dir = tmp.path().join("shots2");
         let h = tokio::spawn(async move {
             let _ = continue_run(
-                story2, None, primary, fallback, None, dir, None, 2, Some(4), false, None, false,
+                story2,
+                None,
+                primary,
+                fallback,
+                None,
+                dir,
+                None,
+                2,
+                Some(4),
+                false,
+                None,
+                false,
                 tx,
             )
             .await;
         });
-        let fut = async {
-            while rx.recv().await.is_some() {}
-        };
+        let fut = async { while rx.recv().await.is_some() {} };
         timeout(Duration::from_secs(10), fut).await.unwrap();
         h.abort();
     }
@@ -184,14 +202,23 @@ async fn two_sequential_step_to_calls_never_relaunch() {
         let dir = tmp.path().join("shots3");
         let h = tokio::spawn(async move {
             let _ = continue_run(
-                story3, None, primary, fallback, None, dir, None, 4, Some(5), false, None, false,
+                story3,
+                None,
+                primary,
+                fallback,
+                None,
+                dir,
+                None,
+                4,
+                Some(5),
+                false,
+                None,
+                false,
                 tx,
             )
             .await;
         });
-        let fut = async {
-            while rx.recv().await.is_some() {}
-        };
+        let fut = async { while rx.recv().await.is_some() {} };
         timeout(Duration::from_secs(10), fut).await.unwrap();
         h.abort();
     }

@@ -627,8 +627,7 @@ pub async fn tts_apply_sync(
 
     // Persist drift_ms in tts_clip_metrics for each adjusted step.
     for adj in &plan.adjusted_steps {
-        if let Err(e) =
-            storage::phase3::update_tts_metric_drift(&conn, &adj.step_id, adj.drift_ms)
+        if let Err(e) = storage::phase3::update_tts_metric_drift(&conn, &adj.step_id, adj.drift_ms)
         {
             tracing::warn!(
                 target: "storycapture::tts",

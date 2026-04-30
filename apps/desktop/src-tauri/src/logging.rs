@@ -29,7 +29,6 @@ use tracing_subscriber::{
     },
     layer::SubscriberExt,
     registry::LookupSpan,
-    util::SubscriberInitExt,
     EnvFilter,
 };
 use uuid::Uuid;
@@ -73,7 +72,7 @@ pub fn init(default_log_dir: &Path, config: &LogConfig) -> anyhow::Result<()> {
     SESSION_ID.set(session_id.clone()).ok();
 
     let filter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("storycapture=info,warn"))
+        .or_else(|_| EnvFilter::try_new("info,hyper=warn,reqwest=warn,rustls=warn,wgpu=warn"))
         .context("building EnvFilter")?;
 
     let writer = SizeRollingWriter::new(
@@ -119,13 +118,14 @@ pub fn init(default_log_dir: &Path, config: &LogConfig) -> anyhow::Result<()> {
             .with_writer(std::io::stdout)
             .event_format(stdout_event_format)
             .fmt_fields(DefaultFields::new());
-        registry.with(stdout_layer).try_init()?;
+        tracing::subscriber::set_global_default(registry.with(stdout_layer))?;
     }
 
     #[cfg(not(debug_assertions))]
     {
-        registry.try_init()?;
+        tracing::subscriber::set_global_default(registry)?;
     }
+    tracing::callsite::rebuild_interest_cache();
 
     // Bridge log -> tracing (chromiumoxide, hyper, etc. use `log`).
     // Ignore errors: a logger may already be installed (tauri-plugin-log
@@ -302,10 +302,7 @@ impl Inner {
         // Skip rotation when the file is empty — a single oversized event
         // shouldn't trigger an immediate rotate-on-first-write.
         self.current_size > 0
-            && self
-                .current_size
-                .saturating_add(buf_len as u64)
-                > self.max_file_size_bytes
+            && self.current_size.saturating_add(buf_len as u64) > self.max_file_size_bytes
     }
 }
 
@@ -331,6 +328,9 @@ impl Write for Inner {
             .as_mut()
             .ok_or_else(|| io::Error::other("log writer is mid-rotation"))?;
         let n = writer.write(buf)?;
+        if buf[..n].contains(&b'\n') {
+            writer.flush()?;
+        }
         self.current_size = self.current_size.saturating_add(n as u64);
         Ok(n)
     }

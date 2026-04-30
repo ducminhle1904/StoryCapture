@@ -288,7 +288,12 @@ pub fn export_get_presets() -> ExportPresetsCatalogue {
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "export_validate_config"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "export_validate_config"),
+    err(Debug)
+)]
 pub fn export_validate_config(cfg: ExportOutputDto) -> Result<(), AppError> {
     let fmt = parse_format(&cfg.format)?;
     let res = parse_resolution(&cfg.resolution)?;

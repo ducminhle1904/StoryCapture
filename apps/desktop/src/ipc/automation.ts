@@ -44,15 +44,35 @@ export type ExecutorEvent =
   | { type: "scene_entered"; name: string; ordinal: number }
   | { type: "step_started"; ordinal: number; command: unknown; driver_used: string }
   | { type: "step_attempt"; step_ordinal: number; attempt: unknown }
-  | { type: "step_succeeded"; ordinal: number; duration_ms: number; cursor_x: number; cursor_y: number }
-  | { type: "step_failed"; ordinal: number; attempts: unknown[]; error_message: string; screenshot_path?: string }
-  | { type: "story_ended"; status: { total_steps: number; succeeded: number; failed: number; duration_ms: number } }
+  | {
+      type: "step_succeeded";
+      ordinal: number;
+      duration_ms: number;
+      cursor_x: number;
+      cursor_y: number;
+    }
+  | {
+      type: "step_failed";
+      ordinal: number;
+      attempts: unknown[];
+      error_message: string;
+      screenshot_path?: string;
+    }
+  | {
+      type: "story_ended";
+      status: { total_steps: number; succeeded: number; failed: number; duration_ms: number };
+    }
   | { type: "run_paused"; ordinal: number }
   | { type: "step_frame_captured"; ordinal: number; frame: StepFrame };
 
 export interface LaunchAutomationArgs {
   storySource: string;
   projectFolder: string;
+  /**
+   * Logical desktop origin for the selected recording display. macOS uses it
+   * to place Chromium on the intended monitor before DPR detection.
+   */
+  recordingDisplay?: { x: number; y: number } | null;
   /**
    * When true, the host validates meta.app via `url::Url` and appends
    * `--app=<meta.app>` to Playwright's launch args. Non-sticky: the
@@ -100,5 +120,6 @@ export async function launchAutomation(
     onEvent: channel,
     chromeHiding: args.chromeHiding ?? false,
     recordingSessionId: args.recordingSessionId ?? null,
+    recordingDisplay: args.recordingDisplay ?? null,
   });
 }

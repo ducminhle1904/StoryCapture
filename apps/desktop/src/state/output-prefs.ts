@@ -50,7 +50,10 @@ export interface ExportKnobs {
   qualityValue: number | null;
 }
 
-export const PRESET_BUNDLES: Record<Exclude<PresetName, "Custom">, RecordingKnobs> = {
+export const PRESET_BUNDLES: Record<
+  Exclude<PresetName, "Custom">,
+  RecordingKnobs
+> = {
   Quick: {
     resolution: { kind: "p720" },
     fps: 30,
@@ -59,14 +62,14 @@ export const PRESET_BUNDLES: Record<Exclude<PresetName, "Custom">, RecordingKnob
     quality: "low",
   },
   Standard: {
-    resolution: { kind: "p1080" },
+    resolution: { kind: "match-source" },
     fps: 30,
     fit: "letterbox",
     pad: { kind: "black" },
     quality: "med",
   },
   "High Quality": {
-    resolution: { kind: "p1080" },
+    resolution: { kind: "match-source" },
     fps: 60,
     fit: "letterbox",
     pad: { kind: "black" },
@@ -86,11 +89,21 @@ export const DEFAULT_EXPORT_KNOBS: ExportKnobs = {
   qualityValue: null,
 };
 
-export function matchPreset(knobs: RecordingKnobs): Exclude<PresetName, "Custom"> | null {
+export function matchPreset(
+  knobs: RecordingKnobs,
+): Exclude<PresetName, "Custom"> | null {
   for (const [name, bundle] of Object.entries(PRESET_BUNDLES)) {
     if (knobsEqual(knobs, bundle)) return name as Exclude<PresetName, "Custom">;
   }
   return null;
+}
+
+export function recordingOutputResolutionForStart(
+  knobs: RecordingKnobs,
+  activePreset?: PresetName,
+): OutputResolutionDto | undefined {
+  void activePreset;
+  return knobs.resolution;
 }
 
 function knobsEqual(a: RecordingKnobs, b: RecordingKnobs): boolean {
@@ -103,7 +116,10 @@ function knobsEqual(a: RecordingKnobs, b: RecordingKnobs): boolean {
   );
 }
 
-function resolutionEqual(a: OutputResolutionDto, b: OutputResolutionDto): boolean {
+function resolutionEqual(
+  a: OutputResolutionDto,
+  b: OutputResolutionDto,
+): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "custom" && b.kind === "custom") {
     return a.w === b.w && a.h === b.h;
@@ -123,7 +139,10 @@ interface State {
   activePreset: PresetName;
   recordingKnobs: RecordingKnobs;
   exportKnobs: ExportKnobs;
-  setRecordingKnob<K extends keyof RecordingKnobs>(k: K, v: RecordingKnobs[K]): void;
+  setRecordingKnob<K extends keyof RecordingKnobs>(
+    k: K,
+    v: RecordingKnobs[K],
+  ): void;
   setExportKnob<K extends keyof ExportKnobs>(k: K, v: ExportKnobs[K]): void;
   applyPreset(name: Exclude<PresetName, "Custom">): void;
   hydrate(s: {
@@ -149,7 +168,8 @@ export const useOutputPrefsStore = create<State>((set) => ({
       if (s.exportKnobs[k] === v) return s;
       return { exportKnobs: { ...s.exportKnobs, [k]: v } };
     }),
-  applyPreset: (name) => set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
+  applyPreset: (name) =>
+    set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
   hydrate: ({ activePreset, recordingKnobs, exportKnobs }) =>
     set({ activePreset, recordingKnobs, exportKnobs }),
 }));

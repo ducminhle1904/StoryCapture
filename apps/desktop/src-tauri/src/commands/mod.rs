@@ -2,8 +2,8 @@
 
 pub mod app_settings;
 pub mod audio;
-pub mod automation;
 pub mod author_snapshot;
+pub mod automation;
 pub mod automation_shared;
 pub mod capture;
 pub mod dryrun;

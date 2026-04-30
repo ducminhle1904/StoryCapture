@@ -264,7 +264,11 @@ fn sm_15_end_simulator_from_paused_with_prior_idle_restores() {
         session: "run1".into(),
     };
     s.end_simulator(AuthorDriverState::Idle);
-    assert!(matches!(&s, AuthorDriverState::Idle), "expected Idle, got {:?}", s);
+    assert!(
+        matches!(&s, AuthorDriverState::Idle),
+        "expected Idle, got {:?}",
+        s
+    );
 }
 
 // SM-16 (Phase 11-05): end_simulator is a no-op when state is not

@@ -195,7 +195,12 @@ pub async fn render_cancel(state: State<'_, AppState>, job_id: String) -> Result
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "render_list_active"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "render_list_active"),
+    err(Debug)
+)]
 pub async fn render_list_active(
     state: State<'_, AppState>,
     story_id: String,
@@ -214,7 +219,12 @@ pub async fn render_list_active(
 /// re-armed by the host.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "stream_render_progress"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "stream_render_progress"),
+    err(Debug)
+)]
 pub async fn stream_render_progress(
     state: State<'_, AppState>,
     channel: Channel<RenderProgressDto>,

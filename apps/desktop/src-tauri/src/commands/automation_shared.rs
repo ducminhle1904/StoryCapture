@@ -150,7 +150,8 @@ impl BrowserDriver for SharedAuthorDriver {
     }
     async fn close(&mut self) -> automation::Result<()> {
         Err(AutomationError::Protocol(
-            "SharedAuthorDriver::close unsupported — author sessions close via stop_author_preview".into(),
+            "SharedAuthorDriver::close unsupported — author sessions close via stop_author_preview"
+                .into(),
         ))
     }
     async fn goto(&self, url: &str) -> automation::Result<()> {
@@ -162,35 +163,19 @@ impl BrowserDriver for SharedAuthorDriver {
     async fn type_text(&self, sel: &ResolvedSelector, text: &str) -> automation::Result<()> {
         self.inner.type_text(sel, text).await
     }
-    async fn scroll(
-        &self,
-        direction: ScrollDir,
-        amount: Option<f32>,
-    ) -> automation::Result<()> {
+    async fn scroll(&self, direction: ScrollDir, amount: Option<f32>) -> automation::Result<()> {
         self.inner.scroll(direction, amount).await
     }
     async fn hover(&self, sel: &ResolvedSelector) -> automation::Result<()> {
         self.inner.hover(sel).await
     }
-    async fn drag(
-        &self,
-        from: &ResolvedSelector,
-        to: &ResolvedSelector,
-    ) -> automation::Result<()> {
+    async fn drag(&self, from: &ResolvedSelector, to: &ResolvedSelector) -> automation::Result<()> {
         self.inner.drag(from, to).await
     }
-    async fn select_option(
-        &self,
-        sel: &ResolvedSelector,
-        value: &str,
-    ) -> automation::Result<()> {
+    async fn select_option(&self, sel: &ResolvedSelector, value: &str) -> automation::Result<()> {
         self.inner.select_option(sel, value).await
     }
-    async fn upload_file(
-        &self,
-        sel: &ResolvedSelector,
-        path: &Path,
-    ) -> automation::Result<()> {
+    async fn upload_file(&self, sel: &ResolvedSelector, path: &Path) -> automation::Result<()> {
         self.inner.upload_file(sel, path).await
     }
     async fn wait_ms(&self, ms: u64) -> automation::Result<()> {
@@ -227,4 +212,3 @@ impl BrowserDriver for SharedAuthorDriver {
         "playwright-author-shared"
     }
 }
-

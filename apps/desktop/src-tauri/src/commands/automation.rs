@@ -7,7 +7,7 @@ use crate::error::AppError;
 use crate::state::AppState;
 use automation::{
     BrowserSessionProfile, Executor, ExecutorEvent, LaunchOptions, NoopDriver,
-    PlaywrightSidecarDriver, RunControl,
+    PlaywrightSidecarDriver, RunControl, WindowPosition,
 };
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
@@ -23,6 +23,12 @@ use tokio::sync::Mutex;
 pub struct AutomationEvent {
     /// JSON-stringified `automation::ExecutorEvent`.
     pub json: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, specta::Type)]
+pub struct RecordingDisplayPlacementDto {
+    pub x: i32,
+    pub y: i32,
 }
 
 impl From<ExecutorEvent> for AutomationEvent {
@@ -54,6 +60,10 @@ pub async fn launch_automation(
     // normal completion, error, or channel close — so the encoder sidecar
     // finalizes cleanly without depending on the UI.
     recording_session_id: Option<String>,
+    // Optional selected display origin. Recording launch uses this to keep the
+    // browser window on the same display the user picked for capture, which is
+    // critical for macOS Retina DPR detection.
+    recording_display: Option<RecordingDisplayPlacementDto>,
 ) -> Result<(), AppError> {
     tracing::info!(
         target: "storycapture::automation",
@@ -283,6 +293,10 @@ pub async fn launch_automation(
     let launch_opts = LaunchOptions {
         browser_executable,
         app_url_for_hiding,
+        window_position: recording_display.map(|display| WindowPosition {
+            x: display.x,
+            y: display.y,
+        }),
         language_choice,
         browser_session_profile,
     };
@@ -1343,6 +1357,7 @@ async fn resolve_playwright_content_crop(
                 h: info.crop.h,
                 basis_w: info.crop.basis_w,
                 basis_h: info.crop.basis_h,
+                scale_hint: Some(info.metrics.device_pixel_ratio),
             })
         }
         Err(error) => {
@@ -1424,6 +1439,8 @@ pub struct ResolvedFrameCropDto {
     pub basis_w: Option<u32>,
     #[serde(default)]
     pub basis_h: Option<u32>,
+    #[serde(default)]
+    pub scale_hint: Option<f64>,
 }
 
 #[cfg(test)]

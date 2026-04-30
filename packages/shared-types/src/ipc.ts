@@ -73,9 +73,9 @@ async logFromFrontend(payload: FrontendLogPayload) : Promise<Result<null, AppErr
 /**
  * Launch a story and stream events to the renderer.
  */
-async launchAutomation(storySource: string, projectFolder: string, onEvent: TAURI_CHANNEL<AutomationEvent>, chromeHiding: boolean | null, recordingSessionId: string | null) : Promise<Result<null, AppError>> {
+async launchAutomation(storySource: string, projectFolder: string, onEvent: TAURI_CHANNEL<AutomationEvent>, chromeHiding: boolean | null, recordingSessionId: string | null, recordingDisplay: RecordingDisplayPlacementDto | null) : Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("launch_automation", { storySource, projectFolder, onEvent, chromeHiding, recordingSessionId }) };
+    return { status: "ok", data: await TAURI_INVOKE("launch_automation", { storySource, projectFolder, onEvent, chromeHiding, recordingSessionId, recordingDisplay }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1465,7 +1465,7 @@ export type CreateProjectArgs = { name: string;
  */
 parent: string }
 export type DiagnosticDto = { severity: SeverityDto; message: string; span: SpanDto; suggestion: string | null }
-export type DisplayInfoDto = { id: bigint; name: string; width_px: number; height_px: number; scale_factor: number; is_primary: boolean }
+export type DisplayInfoDto = { id: bigint; name: string; x: number; y: number; width_px: number; height_px: number; scale_factor: number; is_primary: boolean }
 /**
  * IPC wrapper around `intelligence::dryrun::DryRunEvent`.
  * 
@@ -1518,7 +1518,7 @@ export type FitModeDto = "letterbox" | "fill-crop" | "stretch"
  * Result of flushing the offline queue.
  */
 export type FlushResult = { flushed: number; failed: number; remaining: number }
-export type FrameCropRectDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null }
+export type FrameCropRectDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null; scale_hint?: number | null }
 export type FrameMetaDto = { sequence: bigint; 
 /**
  * PTS in nanoseconds.
@@ -1661,6 +1661,7 @@ export type ProjectIdArg = { id: string }
 export type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts"
 export type QualityPresetDto = "low" | "med" | "high" | "lossless"
 export type RateControlDto = "auto" | "cbr" | "vbr" | "crf" | "cq"
+export type RecordingDisplayPlacementDto = { x: number; y: number }
 /**
  * Unified recording event from capture / encode progress and terminal results.
  */
@@ -1695,7 +1696,7 @@ export type RecordingSessionId = string
 export type RegionRectDto = { x: number; y: number; w: number; h: number }
 export type RenderJobDto = { id: string; story_id: string; preset_id: string | null; format: string; resolution: string; fps: number; quality: string; status: string; progress_pct: number; started_at: bigint | null; completed_at: bigint | null; error: string | null; priority: number; output_path: string | null; batch_id: string | null; created_at: bigint }
 export type RenderProgressDto = { job_id: string; pct: number; frame: bigint; fps: number; speed: number; eta_ms: bigint }
-export type ResolvedFrameCropDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null }
+export type ResolvedFrameCropDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null; scale_hint?: number | null }
 /**
  * Returned by `resolve_playwright_target`.
  */

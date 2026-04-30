@@ -458,6 +458,8 @@ pub struct FrameCropRectDto {
     pub basis_w: Option<u32>,
     #[serde(default)]
     pub basis_h: Option<u32>,
+    #[serde(default)]
+    pub scale_hint: Option<f64>,
 }
 
 impl From<FrameCropRectDto> for capture::FrameCropRect {
@@ -469,8 +471,34 @@ impl From<FrameCropRectDto> for capture::FrameCropRect {
             h: r.h,
             basis_w: r.basis_w,
             basis_h: r.basis_h,
+            scale_hint: r.scale_hint,
         }
     }
+}
+
+fn hidpi_capture_under_resolved_reason(
+    frame_crop: Option<FrameCropRectDto>,
+    actual_width: u32,
+    actual_height: u32,
+) -> Option<String> {
+    let crop = frame_crop?;
+    let scale = crop.scale_hint?;
+    if !scale.is_finite() || scale < 1.5 || crop.w == 0 || crop.h == 0 {
+        return None;
+    }
+
+    let expected_width = ((crop.w as f64) * scale).round().max(1.0) as u32;
+    let expected_height = ((crop.h as f64) * scale).round().max(1.0) as u32;
+    let min_width = ((expected_width as f64) * 0.9).round().max(1.0) as u32;
+    let min_height = ((expected_height as f64) * 0.9).round().max(1.0) as u32;
+
+    if actual_width >= min_width && actual_height >= min_height {
+        return None;
+    }
+
+    Some(format!(
+        "High-DPI capture under-resolved: browser DPR is {scale:.2}, expected roughly {expected_width}x{expected_height} after crop, but ScreenCaptureKit delivered {actual_width}x{actual_height}. Refusing to encode a soft 1x recording."
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -527,6 +555,9 @@ fn quality_mode_for_encoder(encoder: HardwareEncoder) -> RecordingQualityMode {
 fn select_recording_encoder(
     probe: &EncoderProbe,
     preset: QualityPreset,
+    _output_w: u32,
+    _output_h: u32,
+    _fps: u32,
 ) -> Result<RecordingEncoderSelection, AppError> {
     #[cfg(target_os = "macos")]
     {
@@ -909,24 +940,6 @@ pub async fn start_recording(
         available = ?probe.available,
         "encoder probe ok"
     );
-    let recording_selection = select_recording_encoder(&probe, requested_quality)?;
-    let recording_encoder = recording_selection.encoder;
-    if let Some(reason) = recording_selection.fallback_reason.as_deref() {
-        tracing::warn!(
-            target: "storycapture::recording",
-            requested_preset = ?requested_quality,
-            selected = ?recording_encoder,
-            reason,
-            "recording encoder fallback selected"
-        );
-    } else if recording_encoder != probe.preferred {
-        tracing::info!(
-            target: "storycapture::recording",
-            preferred = ?probe.preferred,
-            selected = ?recording_encoder,
-            "recorder encoder override selected for screen-capture quality"
-        );
-    }
 
     // Allocate session and output path.
     let session_id = Uuid::new_v4().to_string();
@@ -1051,6 +1064,22 @@ pub async fn start_recording(
                 (args.width, args.height, None)
             }
         };
+    if first_frame.is_some() {
+        if let Some(reason) =
+            hidpi_capture_under_resolved_reason(args.frame_crop, actual_width, actual_height)
+        {
+            tracing::error!(
+                target: "storycapture::recording",
+                actual_width,
+                actual_height,
+                frame_crop = ?args.frame_crop,
+                reason = %reason,
+                "recording capture quality guard failed"
+            );
+            let _ = capture.stop().await;
+            return Err(AppError::Capture(reason));
+        }
+    }
     // Stitch peeked frame back in front of remaining frames.
     let (enc_tx, enc_rx) = mpsc::channel::<Frame>(ENCODER_FRAME_CHANNEL_CAPACITY);
     if let Some(f) = first_frame {
@@ -1138,6 +1167,39 @@ pub async fn start_recording(
         .map(Into::into)
         .unwrap_or(ScaleAlgo::Lanczos);
     let qp = requested_quality;
+    let (planned_output_width, planned_output_height) = output_res
+        .resolve_even(actual_width, actual_height)
+        .map_err(|e| AppError::Encoder(e.to_string()))?;
+    let recording_selection = select_recording_encoder(
+        &probe,
+        qp,
+        planned_output_width,
+        planned_output_height,
+        args.fps,
+    )?;
+    let recording_encoder = recording_selection.encoder;
+    if let Some(reason) = recording_selection.fallback_reason.as_deref() {
+        tracing::warn!(
+            target: "storycapture::recording",
+            requested_preset = ?requested_quality,
+            selected = ?recording_encoder,
+            output_width = planned_output_width,
+            output_height = planned_output_height,
+            fps = args.fps,
+            reason,
+            "recording encoder fallback selected"
+        );
+    } else if recording_encoder != probe.preferred {
+        tracing::info!(
+            target: "storycapture::recording",
+            preferred = ?probe.preferred,
+            selected = ?recording_encoder,
+            output_width = planned_output_width,
+            output_height = planned_output_height,
+            fps = args.fps,
+            "recorder encoder override selected for screen-capture quality"
+        );
+    }
 
     let mut enc_cfg = EncodeConfig::new(
         output_path.clone(),
@@ -1714,6 +1776,9 @@ mod recording_encoder_selection_tests {
                 HardwareEncoder::VideoToolboxH264,
             ),
             QualityPreset::High,
+            1920,
+            1080,
+            30,
         )
         .expect("selection");
 
@@ -1730,6 +1795,9 @@ mod recording_encoder_selection_tests {
                 HardwareEncoder::VideoToolboxH264,
             ),
             QualityPreset::Lossless,
+            1920,
+            1080,
+            30,
         )
         .expect_err("lossless must require libx264");
 
@@ -1747,6 +1815,9 @@ mod recording_encoder_selection_tests {
                 HardwareEncoder::VideoToolboxH264,
             ),
             QualityPreset::High,
+            1920,
+            1080,
+            30,
         )
         .expect("selection");
 
@@ -1771,6 +1842,9 @@ mod recording_encoder_selection_tests {
                 HardwareEncoder::VideoToolboxH264,
             ),
             QualityPreset::Med,
+            1920,
+            1080,
+            30,
         )
         .expect("selection");
 
@@ -1779,6 +1853,51 @@ mod recording_encoder_selection_tests {
             selection.quality_mode,
             RecordingQualityMode::HardwareBitrate
         );
+        assert_eq!(selection.fallback_reason, None);
+    }
+
+    #[test]
+    fn retina_60fps_lossless_keeps_libx264_when_available() {
+        let selection = select_recording_encoder(
+            &probe(
+                vec![
+                    HardwareEncoder::VideoToolboxHevc,
+                    HardwareEncoder::VideoToolboxH264,
+                    HardwareEncoder::Libx264Software,
+                ],
+                HardwareEncoder::VideoToolboxHevc,
+            ),
+            QualityPreset::Lossless,
+            2880,
+            1800,
+            60,
+        )
+        .expect("selection");
+
+        assert_eq!(selection.encoder, HardwareEncoder::Libx264Software);
+        assert_eq!(selection.quality_mode, RecordingQualityMode::SoftwareCrf);
+        assert_eq!(selection.fallback_reason, None);
+    }
+
+    #[test]
+    fn retina_60fps_high_keeps_libx264_when_available() {
+        let selection = select_recording_encoder(
+            &probe(
+                vec![
+                    HardwareEncoder::VideoToolboxH264,
+                    HardwareEncoder::Libx264Software,
+                ],
+                HardwareEncoder::VideoToolboxH264,
+            ),
+            QualityPreset::High,
+            2880,
+            1800,
+            60,
+        )
+        .expect("selection");
+
+        assert_eq!(selection.encoder, HardwareEncoder::Libx264Software);
+        assert_eq!(selection.quality_mode, RecordingQualityMode::SoftwareCrf);
         assert_eq!(selection.fallback_reason, None);
     }
 }

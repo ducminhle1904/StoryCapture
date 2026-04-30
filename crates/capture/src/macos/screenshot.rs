@@ -41,11 +41,12 @@ pub async fn capture_thumbnail(
 
     // Resolve filter + source dimensions on a blocking thread —
     // SCShareableContent::get is synchronous 50-200ms.
-    let (filter, src_w, src_h, _source_rect, _needs_scales_to_fit) = tokio::task::spawn_blocking(move || {
-        crate::macos::sck_backend::SckBackend::build_filter(&target_owned)
-    })
-    .await
-    .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
+    let (filter, src_w, src_h, _source_rect, _needs_scales_to_fit) =
+        tokio::task::spawn_blocking(move || {
+            crate::macos::sck_backend::SckBackend::build_filter(&target_owned, None)
+        })
+        .await
+        .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
 
     // Compute downscale factor — never upscales (scale ≤ 1.0).
     let scale_x = if src_w > 0 {

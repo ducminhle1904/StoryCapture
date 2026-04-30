@@ -31,13 +31,7 @@ impl AuthorPreviewControl for MockControl {
             .lock()
             .await
             .push((stream_id.into(), url.into()));
-        if self
-            .fail_nav_urls
-            .lock()
-            .await
-            .iter()
-            .any(|u| u == url)
-        {
+        if self.fail_nav_urls.lock().await.iter().any(|u| u == url) {
             return Err(AppError::Automation(format!("forced fail: {url}")));
         }
         Ok(())
@@ -232,8 +226,7 @@ story \"RN8\" {
 ";
     let mock = Arc::new(MockControl::default());
     // Subdomain hop within the same site — must skip replay.
-    *mock.current_url.lock().await =
-        "https://en.wikipedia.org/wiki/Tauri_(software)".into();
+    *mock.current_url.lock().await = "https://en.wikipedia.org/wiki/Tauri_(software)".into();
 
     replay_navigate_verbs(mock.as_ref(), "s1", story, 999)
         .await

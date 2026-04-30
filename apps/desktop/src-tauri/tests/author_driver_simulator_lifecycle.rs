@@ -141,7 +141,8 @@ async fn sl_2_simulator_start_happy_transition_and_snapshot() {
 
     let prior = {
         let mut g = registry.state.lock().await;
-        g.can_start_simulator().expect("guard must allow from LivePreview");
+        g.can_start_simulator()
+            .expect("guard must allow from LivePreview");
         g.begin_simulator("run1".into())
     };
 

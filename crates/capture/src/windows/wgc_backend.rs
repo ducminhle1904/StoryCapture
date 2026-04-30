@@ -244,6 +244,7 @@ impl WgcBackend {
                     h: rect.h,
                     basis_w: None,
                     basis_h: None,
+                    scale_hint: None,
                 })
             }
             _ => cfg.frame_crop,

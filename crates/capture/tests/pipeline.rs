@@ -64,6 +64,8 @@ impl CaptureBackend for MockBackend {
         Ok(vec![DisplayInfo {
             id: DisplayId(0),
             name: "mock".into(),
+            x: 0,
+            y: 0,
             width_px: 16,
             height_px: 9,
             scale_factor: 1.0,

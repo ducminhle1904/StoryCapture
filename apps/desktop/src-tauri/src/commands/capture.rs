@@ -31,6 +31,8 @@ pub enum PermissionState {
 pub struct DisplayInfoDto {
     pub id: u64,
     pub name: String,
+    pub x: i32,
+    pub y: i32,
     pub width_px: u32,
     pub height_px: u32,
     pub scale_factor: f32,
@@ -42,6 +44,8 @@ impl From<DisplayInfo> for DisplayInfoDto {
         DisplayInfoDto {
             id: d.id.0,
             name: d.name,
+            x: d.x,
+            y: d.y,
             width_px: d.width_px,
             height_px: d.height_px,
             scale_factor: d.scale_factor,
@@ -187,7 +191,12 @@ pub fn list_displays() -> Result<Vec<DisplayInfoDto>, AppError> {
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "check_screen_capture_permission"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "check_screen_capture_permission"),
+    err(Debug)
+)]
 pub fn check_screen_capture_permission() -> Result<PermissionState, AppError> {
     #[cfg(target_os = "macos")]
     {
@@ -206,7 +215,12 @@ pub fn check_screen_capture_permission() -> Result<PermissionState, AppError> {
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "open_screen_capture_prefs"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "open_screen_capture_prefs"),
+    err(Debug)
+)]
 pub async fn open_screen_capture_prefs(app: AppHandle) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     {
@@ -225,7 +239,12 @@ pub async fn open_screen_capture_prefs(app: AppHandle) -> Result<(), AppError> {
 /// Request macOS screen-capture access and return the resulting state.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "request_screen_capture_access"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "request_screen_capture_access"),
+    err(Debug)
+)]
 pub fn request_screen_capture_access() -> Result<PermissionState, AppError> {
     #[cfg(target_os = "macos")]
     {
@@ -510,7 +529,12 @@ pub async fn list_windows() -> Result<Vec<WindowInfoDto>, AppError> {
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "list_capture_targets"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "list_capture_targets"),
+    err(Debug)
+)]
 pub async fn list_capture_targets() -> Result<CaptureTargetsDto, AppError> {
     let displays = enumerate_displays()
         .map(|v| v.into_iter().map(DisplayInfoDto::from).collect::<Vec<_>>())
@@ -540,7 +564,12 @@ pub struct StartCaptureTargetArgs {
 /// Extended `start_capture` that accepts a `CaptureTarget`.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "start_capture_target"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "start_capture_target"),
+    err(Debug)
+)]
 pub async fn start_capture_target(
     app: AppHandle,
     args: StartCaptureTargetArgs,
@@ -732,7 +761,12 @@ pub async fn start_capture_target(
 /// One-shot thumbnail capture for the recorder preview box.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "capture_target_thumbnail"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "capture_target_thumbnail"),
+    err(Debug)
+)]
 pub async fn capture_target_thumbnail(
     target: CaptureTargetDto,
     max_width: Option<u32>,
@@ -751,7 +785,12 @@ pub async fn capture_target_thumbnail(
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "get_capture_target"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "get_capture_target"),
+    err(Debug)
+)]
 pub async fn get_capture_target(app: AppHandle) -> Result<Option<CaptureTargetDto>, AppError> {
     let settings = crate::commands::app_settings::load(&app);
     Ok(settings.capture_target.map(CaptureTargetDto::from))
@@ -759,7 +798,12 @@ pub async fn get_capture_target(app: AppHandle) -> Result<Option<CaptureTargetDt
 
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "set_capture_target"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "set_capture_target"),
+    err(Debug)
+)]
 pub async fn set_capture_target(app: AppHandle, target: CaptureTargetDto) -> Result<(), AppError> {
     let mut settings = crate::commands::app_settings::load(&app);
     settings.capture_target = Some(target.into());

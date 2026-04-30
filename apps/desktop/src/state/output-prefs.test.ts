@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   DEFAULT_EXPORT_KNOBS,
-  PRESET_BUNDLES,
   matchPreset,
+  PRESET_BUNDLES,
+  recordingOutputResolutionForStart,
   useOutputPrefsStore,
 } from "./output-prefs";
 
@@ -61,7 +62,9 @@ describe("useOutputPrefsStore", () => {
 
   it("re-applying the same value keeps the named preset", () => {
     useOutputPrefsStore.getState().applyPreset("Quick");
-    useOutputPrefsStore.getState().setRecordingKnob("resolution", { kind: "p720" });
+    useOutputPrefsStore
+      .getState()
+      .setRecordingKnob("resolution", { kind: "p720" });
     const s = useOutputPrefsStore.getState();
     expect(s.activePreset).toBe("Quick");
   });
@@ -82,12 +85,41 @@ describe("matchPreset", () => {
   it("returns null for a shape outside the bundles", () => {
     expect(
       matchPreset({
-        resolution: { kind: "p1080" },
+        resolution: { kind: "match-source" },
         fps: 24,
         fit: "letterbox",
         pad: { kind: "black" },
         quality: "med",
       }),
     ).toBeNull();
+  });
+});
+
+describe("recordingOutputResolutionForStart", () => {
+  it("keeps Standard and High Quality source-sized explicitly", () => {
+    expect(
+      recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Standard"),
+    ).toEqual({
+      kind: "match-source",
+    });
+    expect(
+      recordingOutputResolutionForStart(
+        PRESET_BUNDLES["High Quality"],
+        "High Quality",
+      ),
+    ).toEqual({ kind: "match-source" });
+  });
+
+  it("keeps Quick and Custom resolutions explicit", () => {
+    expect(
+      recordingOutputResolutionForStart(PRESET_BUNDLES.Quick, "Quick"),
+    ).toEqual({
+      kind: "p720",
+    });
+    expect(
+      recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Custom"),
+    ).toEqual({
+      kind: "match-source",
+    });
   });
 });

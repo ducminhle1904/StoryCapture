@@ -237,6 +237,7 @@ fn base_cfg(out: &Path, capture_w: u32, capture_h: u32) -> EncodeConfig {
         FPS,
         HardwareEncoder::Libx264Software,
     )
+    .force_ffmpeg_path()
 }
 
 /// Bug repro: 1920x1130 capture, preset P1080 → MUST produce 1920x1080.

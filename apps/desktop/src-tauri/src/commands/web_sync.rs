@@ -178,7 +178,12 @@ async fn post_trpc_mutation(
 /// Push project metadata to the web companion. Queues locally if offline.
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "sync_project_metadata"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "sync_project_metadata"),
+    err(Debug)
+)]
 pub async fn sync_project_metadata(
     state: State<'_, AppState>,
     desktop_id: String,
@@ -242,7 +247,12 @@ pub async fn sync_project_metadata(
 /// does NOT queue on failure (recording status is ephemeral).
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "update_recording_status"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "update_recording_status"),
+    err(Debug)
+)]
 pub async fn update_recording_status(
     state: State<'_, AppState>,
     desktop_id: String,

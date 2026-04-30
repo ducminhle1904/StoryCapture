@@ -12,8 +12,8 @@
 use std::path::PathBuf;
 
 use capture::trajectory::{
-    sidecar_path_for, CaptureRect as TrajectoryCaptureRect,
-    TrajectoryDto as CrateTrajectoryDto, TrajectoryFrame as CrateTrajectoryFrame,
+    sidecar_path_for, CaptureRect as TrajectoryCaptureRect, TrajectoryDto as CrateTrajectoryDto,
+    TrajectoryFrame as CrateTrajectoryFrame,
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -90,7 +90,12 @@ pub struct GetRecordingTrajectoryArgs {
 /// recording or trajectory recorder skipped this session).
 #[tauri::command]
 #[specta::specta]
-#[tracing::instrument(level = "info", skip_all, fields(cmd = "get_recording_trajectory"), err(Debug))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "get_recording_trajectory"),
+    err(Debug)
+)]
 pub fn get_recording_trajectory(
     args: GetRecordingTrajectoryArgs,
 ) -> Result<Option<TrajectoryDto>, AppError> {

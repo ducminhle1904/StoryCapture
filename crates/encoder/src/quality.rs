@@ -160,10 +160,14 @@ pub fn resolve(
             args.extend([
                 "-constant_bit_rate".into(),
                 "true".into(),
+                "-realtime".into(),
+                "false".into(),
                 "-prio_speed".into(),
                 "false".into(),
                 "-power_efficient".into(),
                 "0".into(),
+                "-spatial_aq".into(),
+                "1".into(),
             ]);
             if matches!(encoder, HardwareEncoder::VideoToolboxH264) {
                 args.extend([
@@ -379,10 +383,14 @@ mod tests {
                 "20736k",
                 "-constant_bit_rate",
                 "true",
+                "-realtime",
+                "false",
                 "-prio_speed",
                 "false",
                 "-power_efficient",
                 "0",
+                "-spatial_aq",
+                "1",
                 "-profile",
                 "high",
                 "-coder",

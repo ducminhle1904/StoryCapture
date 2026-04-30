@@ -29,11 +29,11 @@ use objc2_av_foundation::{
     AVAssetWriter, AVAssetWriterInput, AVAssetWriterInputPixelBufferAdaptor, AVAssetWriterStatus,
     AVFileTypeMPEG4, AVMediaTypeVideo, AVVideoAverageBitRateKey, AVVideoCodecKey,
     AVVideoCodecTypeH264, AVVideoColorPrimariesKey, AVVideoColorPrimaries_ITU_R_709_2,
-    AVVideoColorPropertiesKey, AVVideoCompressionPropertiesKey,
-    AVVideoExpectedSourceFrameRateKey, AVVideoH264EntropyModeCABAC, AVVideoH264EntropyModeKey,
-    AVVideoHeightKey, AVVideoMaxKeyFrameIntervalKey, AVVideoProfileLevelH264HighAutoLevel,
-    AVVideoProfileLevelKey, AVVideoTransferFunctionKey, AVVideoTransferFunction_ITU_R_709_2,
-    AVVideoWidthKey, AVVideoYCbCrMatrixKey, AVVideoYCbCrMatrix_ITU_R_709_2,
+    AVVideoColorPropertiesKey, AVVideoCompressionPropertiesKey, AVVideoExpectedSourceFrameRateKey,
+    AVVideoH264EntropyModeCABAC, AVVideoH264EntropyModeKey, AVVideoHeightKey,
+    AVVideoMaxKeyFrameIntervalKey, AVVideoProfileLevelH264HighAutoLevel, AVVideoProfileLevelKey,
+    AVVideoTransferFunctionKey, AVVideoTransferFunction_ITU_R_709_2, AVVideoWidthKey,
+    AVVideoYCbCrMatrixKey, AVVideoYCbCrMatrix_ITU_R_709_2,
 };
 use objc2_core_media::CMTime;
 use objc2_core_video::CVPixelBuffer;
@@ -173,7 +173,11 @@ fn run_worker(
         // encodes at capture dims. Bitrate 0 (preset-driven default) maps
         // to pixel-based target so AVAssetWriter has a sane target.
         let effective_kbps = if cfg.bitrate_kbps == 0 {
-            crate::quality::pixel_based_kbps(cfg.capture_width, cfg.capture_height, cfg.fps_advisory)
+            crate::quality::pixel_based_kbps(
+                cfg.capture_width,
+                cfg.capture_height,
+                cfg.fps_advisory,
+            )
         } else {
             cfg.bitrate_kbps
         };
@@ -182,8 +186,7 @@ fn run_worker(
         let height_num = NSNumber::new_u32(cfg.capture_height);
         let bitrate_num = NSNumber::new_i64(bitrate_bps);
         // Keyframe every 2s — balances seekability against bitrate.
-        let keyframe_interval_num =
-            NSNumber::new_u32(cfg.fps_advisory.saturating_mul(2).max(1));
+        let keyframe_interval_num = NSNumber::new_u32(cfg.fps_advisory.saturating_mul(2).max(1));
         let fps_num = NSNumber::new_u32(cfg.fps_advisory.max(1));
 
         let codec_key = unsafe { AVVideoCodecKey }
@@ -216,18 +219,16 @@ fn run_worker(
         let expected_fps_key = unsafe { AVVideoExpectedSourceFrameRateKey }.ok_or_else(|| {
             EncoderError::Io("AVVideoExpectedSourceFrameRateKey symbol missing".into())
         })?;
-        let color_props_key = unsafe { AVVideoColorPropertiesKey }.ok_or_else(|| {
-            EncoderError::Io("AVVideoColorPropertiesKey symbol missing".into())
-        })?;
-        let color_primaries_key = unsafe { AVVideoColorPrimariesKey }.ok_or_else(|| {
-            EncoderError::Io("AVVideoColorPrimariesKey symbol missing".into())
-        })?;
-        let color_primaries_709 = unsafe { AVVideoColorPrimaries_ITU_R_709_2 }.ok_or_else(|| {
-            EncoderError::Io("AVVideoColorPrimaries_ITU_R_709_2 symbol missing".into())
-        })?;
-        let transfer_key = unsafe { AVVideoTransferFunctionKey }.ok_or_else(|| {
-            EncoderError::Io("AVVideoTransferFunctionKey symbol missing".into())
-        })?;
+        let color_props_key = unsafe { AVVideoColorPropertiesKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoColorPropertiesKey symbol missing".into()))?;
+        let color_primaries_key = unsafe { AVVideoColorPrimariesKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoColorPrimariesKey symbol missing".into()))?;
+        let color_primaries_709 =
+            unsafe { AVVideoColorPrimaries_ITU_R_709_2 }.ok_or_else(|| {
+                EncoderError::Io("AVVideoColorPrimaries_ITU_R_709_2 symbol missing".into())
+            })?;
+        let transfer_key = unsafe { AVVideoTransferFunctionKey }
+            .ok_or_else(|| EncoderError::Io("AVVideoTransferFunctionKey symbol missing".into()))?;
         let transfer_709 = unsafe { AVVideoTransferFunction_ITU_R_709_2 }.ok_or_else(|| {
             EncoderError::Io("AVVideoTransferFunction_ITU_R_709_2 symbol missing".into())
         })?;
@@ -496,7 +497,6 @@ fn run_worker(
         })
     })
 }
-
 
 #[cfg(test)]
 mod tests {

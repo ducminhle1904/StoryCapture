@@ -16,6 +16,9 @@ pub struct DisplayId(pub u64);
 pub struct DisplayInfo {
     pub id: DisplayId,
     pub name: String,
+    /// Logical display origin in the desktop coordinate space.
+    pub x: i32,
+    pub y: i32,
     pub width_px: u32,
     pub height_px: u32,
     pub scale_factor: f32,

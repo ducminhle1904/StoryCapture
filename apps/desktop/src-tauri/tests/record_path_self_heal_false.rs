@@ -159,7 +159,10 @@ async fn record_path_primary_miss_raises_primary_miss_no_heal() {
 
     // Snapshot sidecar bytes + mtime BEFORE the run.
     let bytes_before = std::fs::read(&targets_path).unwrap();
-    let mtime_before = std::fs::metadata(&targets_path).unwrap().modified().unwrap();
+    let mtime_before = std::fs::metadata(&targets_path)
+        .unwrap()
+        .modified()
+        .unwrap();
 
     let parsed = story_parser::parse(STORY_SRC);
     let story = parsed.ast.expect("story must parse");
@@ -232,7 +235,10 @@ async fn record_path_primary_miss_raises_primary_miss_no_heal() {
         bytes_before, bytes_after,
         ".story.targets.json bytes must be unchanged after a record-path primary-miss",
     );
-    let mtime_after = std::fs::metadata(&targets_path).unwrap().modified().unwrap();
+    let mtime_after = std::fs::metadata(&targets_path)
+        .unwrap()
+        .modified()
+        .unwrap();
     assert_eq!(
         mtime_before, mtime_after,
         ".story.targets.json mtime must be unchanged after a record-path primary-miss",

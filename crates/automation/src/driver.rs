@@ -144,8 +144,18 @@ pub struct LaunchOptions {
     pub browser_executable: Option<PathBuf>,
     /// Optional `http(s)` app URL used for chrome-hiding.
     pub app_url_for_hiding: Option<String>,
+    /// Preferred logical desktop position for the launched browser window.
+    /// Recording uses this to keep Chromium on the user-selected display so
+    /// macOS reports the correct Retina/HiDPI backing scale.
+    pub window_position: Option<WindowPosition>,
     pub language_choice: BrowserLanguageChoice,
     pub browser_session_profile: Option<BrowserSessionProfile>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowPosition {
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,7 +202,14 @@ impl LaunchConfig {
         // automation launches so recordings remain content-only.
         args.push("--disable-translate".to_string());
         args.push("--disable-features=Translate,TranslateUI".to_string());
-        args.push("--window-position=-32000,-32000".to_string());
+        let window_position = opts.window_position.unwrap_or(WindowPosition {
+            x: -32000,
+            y: -32000,
+        });
+        args.push(format!(
+            "--window-position={},{}",
+            window_position.x, window_position.y
+        ));
         // --window-size is a bootstrap hint only. In the shared
         // Playwright sidecar path we now verify the actual
         // `window.innerWidth/innerHeight` after launch and retry CDP
@@ -227,6 +244,8 @@ impl LaunchConfig {
             translate_disabled = args.iter().any(|arg| arg == "--disable-translate"),
             viewport_width = viewport.width,
             viewport_height = viewport.height,
+            window_x = window_position.x,
+            window_y = window_position.y,
             chromium_args = ?redacted_args,
             locale = ?browser_environment.locale,
             "browser launch args prepared"
@@ -460,7 +479,7 @@ mod launch_config_tests {
     }
 
     #[test]
-    fn from_meta_always_includes_offscreen_window_flags() {
+    fn from_meta_includes_default_offscreen_window_position() {
         let cfg = LaunchConfig::from_meta(
             &meta_with_app(Some("https://example.com")),
             &LaunchOptions::default(),
@@ -500,6 +519,27 @@ mod launch_config_tests {
         assert!(
             !cfg.args.iter().any(|a| a.starts_with("--app=")),
             "--app= must not appear without chrome-hiding opt-in: {:?}",
+            cfg.args
+        );
+    }
+
+    #[test]
+    fn from_meta_uses_requested_window_position() {
+        let opts = LaunchOptions {
+            window_position: Some(WindowPosition { x: 0, y: 39 }),
+            ..Default::default()
+        };
+        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("https://example.com")), &opts);
+        assert!(
+            cfg.args.iter().any(|a| a == "--window-position=0,39"),
+            "expected selected-display window position in {:?}",
+            cfg.args
+        );
+        assert!(
+            !cfg.args
+                .iter()
+                .any(|a| a == "--window-position=-32000,-32000"),
+            "offscreen fallback leaked into {:?}",
             cfg.args
         );
     }
