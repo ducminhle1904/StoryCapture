@@ -72,6 +72,24 @@ fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
+fn log_native_build_marker() {
+    let current_exe = std::env::current_exe()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    tracing::info!(
+        target: "storycapture::boot",
+        pid = std::process::id(),
+        current_exe = %current_exe,
+        version = env!("CARGO_PKG_VERSION"),
+        git_sha = option_env!("STORYCAPTURE_BUILD_GIT_SHA").unwrap_or("unknown"),
+        git_dirty = option_env!("STORYCAPTURE_BUILD_GIT_DIRTY").unwrap_or("unknown"),
+        build_unix_secs = option_env!("STORYCAPTURE_BUILD_UNIX_SECS").unwrap_or("unknown"),
+        build_profile = option_env!("STORYCAPTURE_BUILD_PROFILE").unwrap_or("unknown"),
+        "native host build marker"
+    );
+}
+
 /// Boot the host. Exits the process when Tauri's main loop returns.
 pub fn run() {
     let specta_builder = ipc_spec::builder();
@@ -139,6 +157,7 @@ pub fn run() {
             if let Err(e) = logging::init(&log_dir, &app_settings.log) {
                 eprintln!("[storycapture] tracing init failed: {e}");
             }
+            log_native_build_marker();
 
             // Install AppState BEFORE panic hook so any panic path can
             // safely look up the data dir.
