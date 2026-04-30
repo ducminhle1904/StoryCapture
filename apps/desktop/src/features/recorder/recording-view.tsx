@@ -24,10 +24,10 @@ import {
 } from "@/ipc/automation";
 import {
   checkScreenCapturePermission,
+  type DisplayInfo,
   isStageManagerEnabled,
   openRegionOverlay,
   openScreenCapturePrefs,
-  type DisplayInfo,
   type PermissionState,
   type RegionSelectedPayload,
   relaunchApp,
@@ -44,15 +44,8 @@ import {
 import { parseStory } from "@/ipc/parse";
 import { getAppSettings } from "@/ipc/settings";
 import { frontendLog } from "@/lib/log";
-import {
-  recordingOutputResolutionForStart,
-  useOutputPrefsStore,
-} from "@/state/output-prefs";
-import {
-  type RecorderStatus,
-  type StepProgress,
-  useRecorderStore,
-} from "@/state/recorder";
+import { recordingOutputResolutionForStart, useOutputPrefsStore } from "@/state/output-prefs";
+import { type RecorderStatus, type StepProgress, useRecorderStore } from "@/state/recorder";
 
 // The recorder-side element picker has been removed. Element picking
 // lives exclusively in the Preview panel via
@@ -62,13 +55,11 @@ import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { CursorTrail } from "./cursor-trail";
 import { LivePreview } from "./live-preview";
+import { PacingControl } from "./PacingControl";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 import { TccPrompt } from "./tcc-prompt";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
-import {
-  useIsRecordingBlocked,
-  VideoOutputSection,
-} from "./video-output/video-output-section";
+import { useIsRecordingBlocked, VideoOutputSection } from "./video-output/video-output-section";
 
 interface RecordingViewProps {
   projectId: string | null;
@@ -80,21 +71,14 @@ interface RecordingViewProps {
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
-    2,
-    "0",
-  );
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
   const seconds = String(totalSeconds % 60).padStart(2, "0");
   return `${hours}:${minutes}:${seconds}`;
 }
 
 /** True if a Tauri IPC error is the typed `NotFound` variant. */
 function isNotFoundIpcError(e: unknown): boolean {
-  return (
-    typeof e === "object" &&
-    e !== null &&
-    (e as { kind?: unknown }).kind === "NotFound"
-  );
+  return typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound";
 }
 
 /** Format a Tauri IPC error into a readable string. */
@@ -233,8 +217,7 @@ export function RecordingView({
           : captureTarget.display_id
         : null;
 
-  const currentStepEntry =
-    steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
+  const currentStepEntry = steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
   const completedSteps = steps.filter((s) => s.status === "succeeded").length;
   const displayLabel = useMemo(() => {
     if (selectedDisplay == null) return null;
@@ -242,9 +225,7 @@ export function RecordingView({
       const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
       return id === selectedDisplay;
     });
-    return match
-      ? `${match.name} · ${match.width_px}×${match.height_px}`
-      : null;
+    return match ? `${match.name} · ${match.width_px}×${match.height_px}` : null;
   }, [displays, selectedDisplay]);
 
   // Detect Stage Manager once on mount (user can toggle it at any time
@@ -482,42 +463,45 @@ export function RecordingView({
     let height = display?.height_px ?? 1080;
     try {
       const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
+      const pacingProfile = useOutputPrefsStore.getState().recordingPacing;
       const launchDisplay = storyHasBrowser
         ? chooseBrowserLaunchDisplay(displays, display)
         : display;
-      const recordingDisplay = launchDisplay
-        ? { x: launchDisplay.x, y: launchDisplay.y }
-        : null;
+      const recordingDisplay = launchDisplay ? { x: launchDisplay.x, y: launchDisplay.y } : null;
       if (
         storyHasBrowser &&
         display &&
         launchDisplay &&
         displayId(display) !== displayId(launchDisplay)
       ) {
-        frontendLog.info(
-          "RecordingView",
-          "using HiDPI display for browser recording launch",
-          {
-            fields: {
-              selected_display_id: displayId(display),
-              selected_display_name: display.name,
-              selected_display_scale: display.scale_factor,
-              launch_display_id: displayId(launchDisplay),
-              launch_display_name: launchDisplay.name,
-              launch_display_scale: launchDisplay.scale_factor,
-              launch_display_x: launchDisplay.x,
-              launch_display_y: launchDisplay.y,
-            },
+        frontendLog.info("RecordingView", "using HiDPI display for browser recording launch", {
+          fields: {
+            selected_display_id: displayId(display),
+            selected_display_name: display.name,
+            selected_display_scale: display.scale_factor,
+            launch_display_id: displayId(launchDisplay),
+            launch_display_name: launchDisplay.name,
+            launch_display_scale: launchDisplay.scale_factor,
+            launch_display_x: launchDisplay.x,
+            launch_display_y: launchDisplay.y,
           },
-        );
+        });
       }
       const userPickedDisplay = captureTarget?.kind === "display";
-      const shouldAutoFollow =
-        storyHasBrowser && (captureTarget == null || userPickedDisplay);
-      let recordingTarget: typeof captureTarget = captureTarget ?? {
-        kind: "display" as const,
-        display_id: selectedDisplay!,
-      };
+      const shouldAutoFollow = storyHasBrowser && (captureTarget == null || userPickedDisplay);
+      const fallbackDisplayTarget =
+        selectedDisplay == null
+          ? null
+          : {
+              kind: "display" as const,
+              display_id: selectedDisplay,
+            };
+      let recordingTarget: typeof captureTarget = captureTarget ?? fallbackDisplayTarget;
+      if (recordingTarget == null) {
+        toast.error("Pick a Target before recording.");
+        setStatus("idle");
+        return;
+      }
       let frameCrop: {
         x: number;
         y: number;
@@ -530,7 +514,13 @@ export function RecordingView({
       if (shouldAutoFollow) {
         // Launch Playwright *before* capture so the window exists.
         launchAutomation(
-          { storySource, projectFolder, chromeHiding, recordingDisplay },
+          {
+            storySource,
+            projectFolder,
+            chromeHiding,
+            pacingProfile,
+            recordingDisplay,
+          },
           (evt) => dispatchAutomation(evt),
           (ch) => {
             automationChannelRef.current = ch;
@@ -545,8 +535,7 @@ export function RecordingView({
         // resolvePlaywrightTarget returns non-null.
         const { resolvePlaywrightTarget } = await import("@/ipc/capture");
         const deadline = Date.now() + 8_000;
-        let resolved: Awaited<ReturnType<typeof resolvePlaywrightTarget>> =
-          null;
+        let resolved: Awaited<ReturnType<typeof resolvePlaywrightTarget>> = null;
         while (Date.now() < deadline) {
           try {
             const hit = await resolvePlaywrightTarget();
@@ -585,14 +574,11 @@ export function RecordingView({
             toast.info("Recording just the browser window");
           }
         } else {
-          toast.warning(
-            "Playwright didn't launch in time — recording full display instead",
-          );
+          toast.warning("Playwright didn't launch in time — recording full display instead");
         }
       }
       // Output knobs from useOutputPrefsStore (one-shot read).
-      const { activePreset, recordingKnobs: prefs } =
-        useOutputPrefsStore.getState();
+      const { activePreset, recordingKnobs: prefs } = useOutputPrefsStore.getState();
       const id = await startRecording(
         {
           project_folder: projectFolder,
@@ -602,10 +588,7 @@ export function RecordingView({
           fps: prefs.fps,
           audio_device_id: audioDeviceId ?? undefined,
           include_cursor: includeCursor,
-          output_resolution: recordingOutputResolutionForStart(
-            prefs,
-            activePreset,
-          ),
+          output_resolution: recordingOutputResolutionForStart(prefs, activePreset),
           fit_mode: prefs.fit,
           pad_color: prefs.pad,
           quality_preset: prefs.quality,
@@ -615,9 +598,7 @@ export function RecordingView({
         (event) => dispatch(event),
       );
       sessionRef.current = id;
-      setSession(
-        typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
-      );
+      setSession(typeof (id as unknown) === "string" ? (id as unknown as string) : id.id);
       // Transition starting -> recording only after the host has
       // confirmed the session. If we error out above, the catch arm
       // resets to "idle" so the Start button re-enables.
@@ -635,10 +616,9 @@ export function RecordingView({
             projectFolder,
             chromeHiding,
             recordingDisplay,
+            pacingProfile,
             recordingSessionId:
-              typeof (id as unknown) === "string"
-                ? (id as unknown as string)
-                : id.id,
+              typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
           },
           (evt) => dispatchAutomation(evt),
           (ch) => {
@@ -687,30 +667,24 @@ export function RecordingView({
             ordinal: evt.ordinal,
             verbExcerpt: miss.verbExcerpt,
           });
-          const body = RECORD_PATH_MISS_BODY.replace(
-            "{N}",
-            String(evt.ordinal),
-          );
+          const body = RECORD_PATH_MISS_BODY.replace("{N}", String(evt.ordinal));
           const targetOrdinal = evt.ordinal;
           const clampedProjectId = projectId;
-          toast.error(
-            `Step ${targetOrdinal}: ${miss.verbExcerpt} could not match any element.`,
-            {
-              description: body,
-              duration: 12_000,
-              action: clampedProjectId
-                ? {
-                    label: "Open in Simulator",
-                    // User decides when to start the simulator — this
-                    // action only routes into the Editor at the failed
-                    // step.
-                    onClick: () => {
-                      window.location.hash = `#/editor/${clampedProjectId}?step=${targetOrdinal}`;
-                    },
-                  }
-                : undefined,
-            },
-          );
+          toast.error(`Step ${targetOrdinal}: ${miss.verbExcerpt} could not match any element.`, {
+            description: body,
+            duration: 12_000,
+            action: clampedProjectId
+              ? {
+                  label: "Open in Simulator",
+                  // User decides when to start the simulator — this
+                  // action only routes into the Editor at the failed
+                  // step.
+                  onClick: () => {
+                    window.location.hash = `#/editor/${clampedProjectId}?step=${targetOrdinal}`;
+                  },
+                }
+              : undefined,
+          });
         } else {
           toast.error(`Step ${evt.ordinal} failed: ${evt.error_message}`);
         }
@@ -813,8 +787,7 @@ export function RecordingView({
       if ((e.metaKey || e.ctrlKey) && e.key === "r") {
         e.preventDefault();
         if (status === "idle") void handleRecord();
-        else if (status === "recording" || status === "paused")
-          void handleStop();
+        else if (status === "recording" || status === "paused") void handleStop();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -829,19 +802,14 @@ export function RecordingView({
   const permissionPending = permission === "undetermined";
 
   return (
-    <main
-      id="main-content"
-      className="relative flex h-full flex-col bg-[var(--color-bg-primary)]"
-    >
+    <main id="main-content" className="relative flex h-full flex-col bg-[var(--color-bg-primary)]">
       <CursorTrail />
 
       {/* ─── Header ─── */}
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
         <div className="flex items-center gap-3">
           {/* Back to editor (falls back to dashboard). Blocked while recording. */}
-          {status === "recording" ||
-          status === "paused" ||
-          status === "stopping" ? (
+          {status === "recording" || status === "paused" || status === "stopping" ? (
             <span
               aria-label="Back button disabled during recording"
               className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-muted)] opacity-50"
@@ -871,17 +839,12 @@ export function RecordingView({
               <span>Record</span>
             )}
             <span>/</span>
-            <span className="font-medium text-[var(--color-fg-primary)]">
-              {projectName}
-            </span>
+            <span className="font-medium text-[var(--color-fg-primary)]">{projectName}</span>
             <span>/</span>
             <span>Record</span>
           </div>
           {(status === "recording" || status === "paused") && (
-            <LiveRecordingBadge
-              paused={status === "paused"}
-              reduceMotion={!!reduceMotion}
-            />
+            <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
           )}
           {/* Persistent badge while a mic failure is active. */}
           {audioUnavailable && (
@@ -895,9 +858,7 @@ export function RecordingView({
           )}
         </div>
         <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
-          {sessionId ? (
-            <span className="font-mono">session · {sessionId.slice(0, 8)}</span>
-          ) : null}
+          {sessionId ? <span className="font-mono">session · {sessionId.slice(0, 8)}</span> : null}
         </div>
       </header>
 
@@ -944,9 +905,7 @@ export function RecordingView({
               await loadCaptureTargets();
               toast.success("Permission check bypassed");
             } catch (e) {
-              toast.error(
-                `Could not load capture targets: ${formatIpcError(e)}`,
-              );
+              toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
             }
           }}
         />
@@ -958,8 +917,7 @@ export function RecordingView({
           <div className="flex min-w-0 items-center gap-2 text-[var(--color-warning)]">
             <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
             <span className="font-medium text-[var(--color-fg-primary)]">
-              Stage Manager is on — window capture will black out if you switch
-              stages.
+              Stage Manager is on — window capture will black out if you switch stages.
             </span>
             <span className="text-[var(--color-fg-secondary)]">
               Turn it off in Control Centre for reliable browser recording.
@@ -1021,11 +979,7 @@ export function RecordingView({
 
           {/* Step rail — horizontal chips */}
           <div className="shrink-0 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-3">
-            <StepRail
-              steps={steps}
-              currentStep={currentStep}
-              completedSteps={completedSteps}
-            />
+            <StepRail steps={steps} currentStep={currentStep} completedSteps={completedSteps} />
           </div>
 
           {/* Primary action strip */}
@@ -1040,13 +994,9 @@ export function RecordingView({
               ) : status === "paused" ? (
                 <span>Recording paused</span>
               ) : status === "completed" ? (
-                <span className="text-[var(--color-success)]">
-                  Recording complete
-                </span>
+                <span className="text-[var(--color-success)]">Recording complete</span>
               ) : status === "failed" ? (
-                <span className="text-[var(--color-danger)]">
-                  Recording failed
-                </span>
+                <span className="text-[var(--color-danger)]">Recording failed</span>
               ) : null}
             </div>
 
@@ -1143,10 +1093,7 @@ export function RecordingView({
               onRefresh={() => loadCaptureTargets()}
               onOpenRegion={(id) => openRegionOverlay(id)}
               disabled={
-                !canRecord ||
-                status === "recording" ||
-                status === "paused" ||
-                status === "stopping"
+                !canRecord || status === "recording" || status === "paused" || status === "stopping"
               }
             />
             {displayLabel && (
@@ -1166,15 +1113,10 @@ export function RecordingView({
             <AudioDevicePicker
               value={audioDeviceId}
               onValueChange={setAudioDeviceId}
-              disabled={
-                status === "recording" ||
-                status === "paused" ||
-                status === "stopping"
-              }
+              disabled={status === "recording" || status === "paused" || status === "stopping"}
             />
             <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
-              Default is off; choose "System default" to include voice-over.
-              Resets every recording.
+              Default is off; choose "System default" to include voice-over. Resets every recording.
             </p>
           </SettingsGroup>
 
@@ -1192,27 +1134,18 @@ export function RecordingView({
               <CursorToggle
                 checked={includeCursor}
                 onChange={setIncludeCursor}
-                disabled={
-                  status === "recording" ||
-                  status === "paused" ||
-                  status === "stopping"
-                }
+                disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
               {/* Chrome-hiding toggle (non-sticky, defaults OFF). */}
               <ChromeHidingToggle
                 checked={chromeHiding}
                 onChange={setChromeHiding}
                 browserPreset={browserPreset}
-                disabled={
-                  status === "recording" ||
-                  status === "paused" ||
-                  status === "stopping"
-                }
+                disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
-              <Toggle
-                label="3s countdown"
-                checked={useCountdown}
-                onChange={setUseCountdown}
+              <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
+              <PacingControl
+                disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
               {/* Live preview toggle (persisted, default ON). */}
               <Toggle
@@ -1225,11 +1158,7 @@ export function RecordingView({
 
           <VideoOutputSection
             ref={videoOutputSectionRef}
-            disabled={
-              status === "recording" ||
-              status === "paused" ||
-              status === "stopping"
-            }
+            disabled={status === "recording" || status === "paused" || status === "stopping"}
           />
 
           <div className="mt-auto rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-2.5">
@@ -1244,24 +1173,14 @@ export function RecordingView({
       </div>
 
       {/* Fallback modal for first-time permission grant (macOS requires app restart) */}
-      <TccPrompt
-        open={tccOpen}
-        permission={permission}
-        onDismiss={() => setTccOpen(false)}
-      />
+      <TccPrompt open={tccOpen} permission={permission} onDismiss={() => setTccOpen(false)} />
     </main>
   );
 }
 
 /* ─── Subcomponents ─── */
 
-function LiveRecordingBadge({
-  paused,
-  reduceMotion,
-}: {
-  paused: boolean;
-  reduceMotion: boolean;
-}) {
+function LiveRecordingBadge({ paused, reduceMotion }: { paused: boolean; reduceMotion: boolean }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
@@ -1305,13 +1224,11 @@ function PermissionBanner({
       <div className="flex min-w-0 items-center gap-2 text-[var(--color-warning)]">
         <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
         <span className="font-medium text-[var(--color-fg-primary)]">
-          {isDenied
-            ? "Screen recording permission denied."
-            : "Screen recording permission needed."}
+          {isDenied ? "Screen recording permission denied." : "Screen recording permission needed."}
         </span>
         <span className="text-[var(--color-fg-secondary)]">
-          macOS Sequoia sometimes reports stale state. If you've already
-          granted, click "Already granted".
+          macOS Sequoia sometimes reports stale state. If you've already granted, click "Already
+          granted".
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -1382,11 +1299,7 @@ function PreviewStage({
             className="relative flex flex-col items-center text-center"
           >
             <div className="grid h-14 w-14 place-items-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
-              <Monitor
-                size={22}
-                className="text-[var(--color-fg-muted)]"
-                aria-hidden="true"
-              />
+              <Monitor size={22} className="text-[var(--color-fg-muted)]" aria-hidden="true" />
             </div>
             <p className="mt-4 text-sm font-medium text-[var(--color-fg-primary)]">
               Ready to record
@@ -1399,9 +1312,7 @@ function PreviewStage({
           </motion.div>
         )}
 
-        {(status === "recording" ||
-          status === "paused" ||
-          status === "stopping") && (
+        {(status === "recording" || status === "paused" || status === "stopping") && (
           <motion.div
             key="recording"
             initial={reduceMotion ? false : { opacity: 0, scale: 0.98 }}
@@ -1457,17 +1368,11 @@ function PreviewStage({
             exit={reduceMotion ? undefined : { opacity: 0 }}
             className="relative flex max-w-md flex-col items-center text-center"
           >
-            <AlertTriangle
-              size={26}
-              className="text-[var(--color-danger)]"
-              aria-hidden="true"
-            />
+            <AlertTriangle size={26} className="text-[var(--color-danger)]" aria-hidden="true" />
             <p className="mt-3 text-sm font-medium text-[var(--color-fg-primary)]">
               Recording failed
             </p>
-            <p className="font-mono mt-1 text-[11px] text-[var(--color-fg-secondary)]">
-              {error}
-            </p>
+            <p className="font-mono mt-1 text-[11px] text-[var(--color-fg-secondary)]">{error}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1523,9 +1428,7 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
           </span>
           <span className="font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
             {String(activeIdx + 1).padStart(2, "0")}
-            <span className="opacity-50">
-              /{String(steps.length).padStart(2, "0")}
-            </span>
+            <span className="opacity-50">/{String(steps.length).padStart(2, "0")}</span>
           </span>
           <span className="min-w-0 truncate text-[11px] text-[var(--color-fg-primary)]">
             {activeStep?.verb ?? "—"}
@@ -1533,9 +1436,7 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
         </div>
         <div className="flex shrink-0 items-center gap-3 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
           <span>
-            <span className="text-[var(--color-success)]">
-              {completedSteps}
-            </span>
+            <span className="text-[var(--color-success)]">{completedSteps}</span>
             <span className="mx-1 opacity-40">·</span>
             <span className={failedCount ? "text-[var(--color-danger)]" : ""}>
               {failedCount} failed
@@ -1572,13 +1473,7 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
               key={i}
               layout
               title={`${i + 1}. ${step.verb}${
-                failed
-                  ? " — failed"
-                  : done
-                    ? " — done"
-                    : running
-                      ? " — running"
-                      : ""
+                failed ? " — failed" : done ? " — done" : running ? " — running" : ""
               }`}
               className="group relative h-2 min-w-0"
               initial={false}
@@ -1603,13 +1498,7 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
   );
 }
 
-function RecordButton({
-  disabled,
-  onClick,
-}: {
-  disabled: boolean;
-  onClick: () => void;
-}) {
+function RecordButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -1652,9 +1541,7 @@ function SettingsRow({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex items-center justify-between">
       <dt className="text-[var(--color-fg-muted)]">{k}</dt>
-      <dd className="font-mono text-[11px] text-[var(--color-fg-primary)]">
-        {v}
-      </dd>
+      <dd className="font-mono text-[11px] text-[var(--color-fg-primary)]">{v}</dd>
     </div>
   );
 }
@@ -1677,9 +1564,7 @@ function Toggle({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`relative h-4 w-7 rounded-full transition-colors duration-150 ${
-          checked
-            ? "bg-[var(--color-accent-primary)]"
-            : "bg-[var(--color-surface-400)]"
+          checked ? "bg-[var(--color-accent-primary)]" : "bg-[var(--color-surface-400)]"
         }`}
       >
         <span

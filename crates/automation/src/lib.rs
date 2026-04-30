@@ -21,6 +21,7 @@ pub mod error;
 pub mod events;
 pub mod executor;
 pub mod noop_driver;
+pub mod pacing;
 pub mod playwright_driver;
 pub mod selector;
 pub mod session;
@@ -39,6 +40,7 @@ pub use events::{
 };
 pub use executor::{continue_run, try_promote_fallback, Executor, PersistenceHandle};
 pub use noop_driver::NoopDriver;
+pub use pacing::{PacingConfig, PacingProfile};
 pub use playwright_driver::{
     BrowserProcessInfo, NavSnapshot, Notification, PickCandidate, PickElementMeta,
     PickElementResponse, PickLocator, PlaywrightSidecarDriver, PreviewFrame, SnapshotResponse,

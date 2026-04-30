@@ -190,6 +190,7 @@ pub fn builder() -> Builder<Wry> {
         .typ::<crate::panic_hook::PanicPayload>()
         .typ::<frontend_log::FrontendLogLevel>()
         .typ::<frontend_log::FrontendLogPayload>()
+        .typ::<automation::PacingProfileDto>()
         .typ::<automation::ResolvedPlaywrightTarget>()
         .typ::<automation::AuthorViewportArgs>()
         .typ::<automation::AuthorInputEvent>()

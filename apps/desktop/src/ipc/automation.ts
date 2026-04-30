@@ -3,7 +3,9 @@
  * `apps/desktop/src-tauri/src/commands/automation.rs`.
  */
 
+import type { PacingProfileDto } from "@storycapture/shared-types";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { DEFAULT_RECORDING_PACING } from "@/state/output-prefs";
 
 /**
  * Mirror of `automation::BoundingBox`. Carried on StepFrame.
@@ -79,6 +81,7 @@ export interface LaunchAutomationArgs {
    * recorder resets the backing toggle each run.
    */
   chromeHiding?: boolean;
+  pacingProfile?: PacingProfileDto;
   /**
    * Attach an active recording session to the DSL run. When set, the host
    * auto-stops the matching recording at story end (normal, error, or
@@ -119,6 +122,7 @@ export async function launchAutomation(
     projectFolder: args.projectFolder,
     onEvent: channel,
     chromeHiding: args.chromeHiding ?? false,
+    pacingProfile: args.pacingProfile ?? DEFAULT_RECORDING_PACING,
     recordingSessionId: args.recordingSessionId ?? null,
     recordingDisplay: args.recordingDisplay ?? null,
   });

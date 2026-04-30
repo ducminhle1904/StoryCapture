@@ -1,6 +1,7 @@
 import type {
   FitModeDto,
   OutputResolutionDto,
+  PacingProfileDto,
   PadColorDto,
   QualityPresetDto,
 } from "@storycapture/shared-types";
@@ -15,6 +16,9 @@ export interface RecordingKnobs {
   pad: PadColorDto;
   quality: QualityPresetDto;
 }
+
+export type RecordingPacingProfile = PacingProfileDto;
+export const DEFAULT_RECORDING_PACING: RecordingPacingProfile = "normal";
 
 export interface AudioKnobs {
   codec: "aac" | "opus";
@@ -50,10 +54,7 @@ export interface ExportKnobs {
   qualityValue: number | null;
 }
 
-export const PRESET_BUNDLES: Record<
-  Exclude<PresetName, "Custom">,
-  RecordingKnobs
-> = {
+export const PRESET_BUNDLES: Record<Exclude<PresetName, "Custom">, RecordingKnobs> = {
   Quick: {
     resolution: { kind: "p720" },
     fps: 30,
@@ -89,9 +90,7 @@ export const DEFAULT_EXPORT_KNOBS: ExportKnobs = {
   qualityValue: null,
 };
 
-export function matchPreset(
-  knobs: RecordingKnobs,
-): Exclude<PresetName, "Custom"> | null {
+export function matchPreset(knobs: RecordingKnobs): Exclude<PresetName, "Custom"> | null {
   for (const [name, bundle] of Object.entries(PRESET_BUNDLES)) {
     if (knobsEqual(knobs, bundle)) return name as Exclude<PresetName, "Custom">;
   }
@@ -116,10 +115,7 @@ function knobsEqual(a: RecordingKnobs, b: RecordingKnobs): boolean {
   );
 }
 
-function resolutionEqual(
-  a: OutputResolutionDto,
-  b: OutputResolutionDto,
-): boolean {
+function resolutionEqual(a: OutputResolutionDto, b: OutputResolutionDto): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "custom" && b.kind === "custom") {
     return a.w === b.w && a.h === b.h;
@@ -138,16 +134,16 @@ function padEqual(a: PadColorDto, b: PadColorDto): boolean {
 interface State {
   activePreset: PresetName;
   recordingKnobs: RecordingKnobs;
+  recordingPacing: RecordingPacingProfile;
   exportKnobs: ExportKnobs;
-  setRecordingKnob<K extends keyof RecordingKnobs>(
-    k: K,
-    v: RecordingKnobs[K],
-  ): void;
+  setRecordingKnob<K extends keyof RecordingKnobs>(k: K, v: RecordingKnobs[K]): void;
+  setRecordingPacing(v: RecordingPacingProfile): void;
   setExportKnob<K extends keyof ExportKnobs>(k: K, v: ExportKnobs[K]): void;
   applyPreset(name: Exclude<PresetName, "Custom">): void;
   hydrate(s: {
     activePreset: PresetName;
     recordingKnobs: RecordingKnobs;
+    recordingPacing: RecordingPacingProfile;
     exportKnobs: ExportKnobs;
   }): void;
 }
@@ -155,6 +151,7 @@ interface State {
 export const useOutputPrefsStore = create<State>((set) => ({
   activePreset: "Standard",
   recordingKnobs: PRESET_BUNDLES.Standard,
+  recordingPacing: DEFAULT_RECORDING_PACING,
   exportKnobs: DEFAULT_EXPORT_KNOBS,
   setRecordingKnob: (k, v) =>
     set((s) => {
@@ -168,8 +165,12 @@ export const useOutputPrefsStore = create<State>((set) => ({
       if (s.exportKnobs[k] === v) return s;
       return { exportKnobs: { ...s.exportKnobs, [k]: v } };
     }),
-  applyPreset: (name) =>
-    set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
-  hydrate: ({ activePreset, recordingKnobs, exportKnobs }) =>
-    set({ activePreset, recordingKnobs, exportKnobs }),
+  setRecordingPacing: (recordingPacing) =>
+    set((s) => {
+      if (s.recordingPacing === recordingPacing) return s;
+      return { recordingPacing };
+    }),
+  applyPreset: (name) => set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
+  hydrate: ({ activePreset, recordingKnobs, recordingPacing, exportKnobs }) =>
+    set({ activePreset, recordingKnobs, recordingPacing, exportKnobs }),
 }));

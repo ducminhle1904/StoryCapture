@@ -17,6 +17,7 @@ use crate::control::RunControl;
 use crate::driver::{ActionKind, BrowserDriver, LaunchConfig, LaunchOptions, ResolvedSelector};
 use crate::error::{AutomationError, Result};
 use crate::events::{AttemptLog, ExecutorEvent, MatchKind, StepFrame, StorySummary};
+use crate::pacing::{PacingConfig, PacingProfile, PacingRuntime};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -118,6 +119,63 @@ impl Executor {
         control: Option<Arc<RunControl>>,
         self_heal: bool,
     ) -> mpsc::Receiver<ExecutorEvent> {
+        Self::run_with_story_path_config(
+            story,
+            story_path,
+            primary,
+            fallback,
+            persistence,
+            screenshot_dir,
+            launch_opts,
+            control,
+            self_heal,
+            PacingConfig::raw(),
+        )
+    }
+
+    /// Recording-mode runner with presentation pacing enabled by the caller.
+    /// Existing executor entrypoints stay raw so simulator/dry-run behavior
+    /// remains unchanged unless they explicitly opt in later.
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_with_story_path_and_pacing(
+        story: Story,
+        story_path: Option<PathBuf>,
+        primary: Box<dyn BrowserDriver>,
+        fallback: Box<dyn BrowserDriver>,
+        persistence: Option<PersistenceHandle>,
+        screenshot_dir: PathBuf,
+        launch_opts: LaunchOptions,
+        control: Option<Arc<RunControl>>,
+        self_heal: bool,
+        pacing: PacingProfile,
+    ) -> mpsc::Receiver<ExecutorEvent> {
+        Self::run_with_story_path_config(
+            story,
+            story_path,
+            primary,
+            fallback,
+            persistence,
+            screenshot_dir,
+            launch_opts,
+            control,
+            self_heal,
+            pacing.config(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_with_story_path_config(
+        story: Story,
+        story_path: Option<PathBuf>,
+        primary: Box<dyn BrowserDriver>,
+        fallback: Box<dyn BrowserDriver>,
+        persistence: Option<PersistenceHandle>,
+        screenshot_dir: PathBuf,
+        launch_opts: LaunchOptions,
+        control: Option<Arc<RunControl>>,
+        self_heal: bool,
+        pacing: PacingConfig,
+    ) -> mpsc::Receiver<ExecutorEvent> {
         let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
         let heal_policy = Self::run_with_story_path_policy(self_heal);
         tokio::spawn(async move {
@@ -136,6 +194,7 @@ impl Executor {
                 heal_policy,
                 0,
                 false,
+                pacing,
                 tx,
             )
             .await;
@@ -180,6 +239,7 @@ impl Executor {
                 heal_policy,
                 0,
                 false,
+                PacingConfig::raw(),
                 tx,
             )
             .await;
@@ -216,6 +276,7 @@ async fn run_story(
     heal_policy: HealPolicy,
     start_after_ordinal: u32,
     already_launched: bool,
+    pacing_config: PacingConfig,
     tx: mpsc::Sender<ExecutorEvent>,
 ) -> Result<()> {
     let started = Instant::now();
@@ -253,6 +314,9 @@ async fn run_story(
     let mut failed: u32 = 0;
     let mut ordinal: u32 = 0;
 
+    let mut pacing = PacingRuntime::new(pacing_config);
+    let pacing_enabled = pacing.is_enabled();
+
     'scenes: for (i, scene) in story.scenes.iter().enumerate() {
         checkpoint(control.as_deref()).await;
         if is_cancelled(control.as_deref()) {
@@ -264,10 +328,16 @@ async fn run_story(
                 ordinal: i as u32,
             })
             .await;
-        for cmd in &scene.commands {
+        for (cmd_index, cmd) in scene.commands.iter().enumerate() {
             checkpoint(control.as_deref()).await;
             if is_cancelled(control.as_deref()) {
                 break 'scenes;
+            }
+            if pacing_enabled {
+                let before_dwell_ms = pacing.before_command(i, cmd_index, cmd);
+                if before_dwell_ms > 0 {
+                    wait_with_pause(before_dwell_ms, control.as_deref(), primary.as_ref()).await?;
+                }
             }
             ordinal += 1;
             total += 1;
@@ -278,6 +348,7 @@ async fn run_story(
             }
             let driver = Executor::pick_driver_for_cmd(primary.as_ref(), fallback.as_ref(), cmd);
             let driver_name = driver.name();
+            let next_cmd = scene.commands.get(cmd_index + 1);
 
             let _ = tx
                 .send(ExecutorEvent::StepStarted {
@@ -312,11 +383,18 @@ async fn run_story(
                 control.as_deref(),
                 story_path.as_deref(),
                 heal_policy,
+                pacing_config,
             )
             .await;
 
             match result {
                 Ok(last_resolved) => {
+                    if pacing_enabled {
+                        let auto_dwell_ms = pacing.after_command(cmd, next_cmd);
+                        if auto_dwell_ms > 0 {
+                            wait_with_pause(auto_dwell_ms, control.as_deref(), driver).await?;
+                        }
+                    }
                     succeeded += 1;
                     let (cx, cy) = driver.current_cursor_position().await.unwrap_or((0, 0));
                     let duration_ms = cmd_started.elapsed().as_millis() as u64;
@@ -342,19 +420,14 @@ async fn run_story(
                         } else {
                             None
                         };
-                        let (matched_selector, matched_bbox, match_kind) = match last_resolved
-                            .as_ref()
-                        {
-                            Some((rs, kind)) => {
-                                let state = driver.element_state(rs).await.ok();
-                                (
-                                    Some(rs.value.clone()),
-                                    state.and_then(|s| s.bbox),
-                                    *kind,
-                                )
-                            }
-                            None => (None, None, MatchKind::None),
-                        };
+                        let (matched_selector, matched_bbox, match_kind) =
+                            match last_resolved.as_ref() {
+                                Some((rs, kind)) => {
+                                    let state = driver.element_state(rs).await.ok();
+                                    (Some(rs.value.clone()), state.and_then(|s| s.bbox), *kind)
+                                }
+                                None => (None, None, MatchKind::None),
+                            };
                         let frame = StepFrame {
                             ordinal,
                             screenshot_path: shot_path,
@@ -401,6 +474,7 @@ async fn run_story(
                 }
             }
         }
+        pacing.finish_scene();
     }
 
     let summary = StorySummary {
@@ -439,6 +513,7 @@ async fn run_command(
     control: Option<&RunControl>,
     story_path: Option<&std::path::Path>,
     heal_policy: HealPolicy,
+    pacing: PacingConfig,
 ) -> std::result::Result<Option<(ResolvedSelector, MatchKind)>, (AutomationError, Vec<AttemptLog>)>
 {
     let mut attempts: Vec<AttemptLog> = Vec::new();
@@ -517,8 +592,7 @@ async fn run_command(
                             ));
                         }
                         HealPolicy::ProbeNoPersist | HealPolicy::ProbeAndPersist => {
-                            let persist =
-                                matches!(heal_policy, HealPolicy::ProbeAndPersist);
+                            let persist = matches!(heal_policy, HealPolicy::ProbeAndPersist);
                             match try_promote_fallback(
                                 driver,
                                 cmd_step_id,
@@ -529,8 +603,7 @@ async fn run_command(
                             .await
                             {
                                 Ok(Some(promoted)) => {
-                                    last_resolved =
-                                        Some((promoted.clone(), MatchKind::Fuzzy));
+                                    last_resolved = Some((promoted.clone(), MatchKind::Fuzzy));
                                     current = promoted;
                                     current
                                 }
@@ -551,6 +624,9 @@ async fn run_command(
         } => {
             let sel = resolve!(target, *target_nth, ActionKind::Click);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Click);
+            wait_with_pause(pacing.clamp_dwell(pacing.before_click_ms), control, driver)
+                .await
+                .map_err(|e| (e, attempts.clone()))?;
             driver.click(&sel).await
         }
         Command::Type {
@@ -680,6 +756,7 @@ pub async fn continue_run(
         heal_policy,
         start_after_ordinal,
         true,
+        PacingConfig::raw(),
         tx,
     )
     .await
@@ -839,6 +916,9 @@ async fn wait_with_pause(
     control: Option<&RunControl>,
     driver: &dyn BrowserDriver,
 ) -> Result<()> {
+    if duration_ms == 0 {
+        return Ok(());
+    }
     if control.is_none() {
         return driver.wait_ms(duration_ms).await;
     }
@@ -846,6 +926,9 @@ async fn wait_with_pause(
     let mut remaining_ms = duration_ms;
     while remaining_ms > 0 {
         checkpoint(control).await;
+        if is_cancelled(control) {
+            return Ok(());
+        }
         let slice_ms = remaining_ms.min(PAUSE_POLL_SLICE_MS);
         driver.wait_ms(slice_ms).await?;
         remaining_ms -= slice_ms;

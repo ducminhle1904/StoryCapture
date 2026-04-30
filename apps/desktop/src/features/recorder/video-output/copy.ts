@@ -1,10 +1,10 @@
-import type { PresetName } from "@/state/output-prefs";
 import type {
   FitModeDto,
   OutputResolutionDto,
   PadColorDto,
   QualityPresetDto,
 } from "@storycapture/shared-types";
+import type { PresetName, RecordingPacingProfile } from "@/state/output-prefs";
 
 /* Section */
 export const SECTION_TITLE = "Video output";
@@ -60,9 +60,17 @@ export const QUALITY_OPTION_LABELS: Record<QualityPresetDto, string> = {
   lossless: "Lossless",
 };
 
+/* Pacing */
+export const LABEL_PACING = "Pacing";
+export const PACING_OPTION_LABELS: Record<RecordingPacingProfile, string> = {
+  raw: "Raw",
+  fast: "Fast",
+  normal: "Normal",
+  cinematic: "Cinematic",
+};
+
 /* Warnings */
-export const WARN_HARD_CUSTOM_DIMS =
-  "Width/height must be even numbers within 16–7680 × 16–4320.";
+export const WARN_HARD_CUSTOM_DIMS = "Width/height must be even numbers within 16–7680 × 16–4320.";
 export const WARN_SOFT_LOSSLESS_4K_HW =
   "Lossless quality at 4K with a HW encoder may exceed hardware bitrate caps and slow renders. Consider dropping to High or switching to Software (libx264).";
 export const WARN_SOFT_OUTPUT_GT_CAPTURE =

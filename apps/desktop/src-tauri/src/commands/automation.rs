@@ -6,7 +6,7 @@
 use crate::error::AppError;
 use crate::state::AppState;
 use automation::{
-    BrowserSessionProfile, Executor, ExecutorEvent, LaunchOptions, NoopDriver,
+    BrowserSessionProfile, Executor, ExecutorEvent, LaunchOptions, NoopDriver, PacingProfile,
     PlaywrightSidecarDriver, RunControl, WindowPosition,
 };
 use serde::{Deserialize, Serialize};
@@ -39,6 +39,26 @@ impl From<ExecutorEvent> for AutomationEvent {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum PacingProfileDto {
+    Raw,
+    Fast,
+    Normal,
+    Cinematic,
+}
+
+impl From<PacingProfileDto> for PacingProfile {
+    fn from(value: PacingProfileDto) -> Self {
+        match value {
+            PacingProfileDto::Raw => PacingProfile::Raw,
+            PacingProfileDto::Fast => PacingProfile::Fast,
+            PacingProfileDto::Normal => PacingProfile::Normal,
+            PacingProfileDto::Cinematic => PacingProfile::Cinematic,
+        }
+    }
+}
+
 /// Launch a story and stream events to the renderer.
 #[tauri::command]
 #[specta::specta]
@@ -55,6 +75,7 @@ pub async fn launch_automation(
     project_folder: String,
     on_event: Channel<AutomationEvent>,
     chrome_hiding: Option<bool>,
+    pacing_profile: Option<PacingProfileDto>,
     // Optional recording session to tear down when the story ends. When set,
     // the matching recording is stopped at the end of the event loop —
     // normal completion, error, or channel close — so the encoder sidecar
@@ -65,11 +86,13 @@ pub async fn launch_automation(
     // critical for macOS Retina DPR detection.
     recording_display: Option<RecordingDisplayPlacementDto>,
 ) -> Result<(), AppError> {
+    let pacing = pacing_profile.unwrap_or(PacingProfileDto::Normal);
     tracing::info!(
         target: "storycapture::automation",
         story_bytes = story_source.len(),
         project_folder = %project_folder,
         recording_session_id = ?recording_session_id,
+        pacing_profile = ?pacing,
         "launch_automation invoked"
     );
     // Parse once and reuse the AST.
@@ -310,8 +333,8 @@ pub async fn launch_automation(
     // HUD surfaces with "Open in Simulator". The record path never consults
     // the targets sidecar, so `story_path` stays `None` (no harm if present
     // — the self_heal=false gate short-circuits before the sidecar is read).
-    tracing::info!(target: "storycapture::automation", "Executor::run_with_story_path starting (self_heal=false)");
-    let mut events = Executor::run_with_story_path(
+    tracing::info!(target: "storycapture::automation", "Executor::run_with_story_path_and_pacing starting (self_heal=false)");
+    let mut events = Executor::run_with_story_path_and_pacing(
         story,
         /* story_path */ None,
         primary,
@@ -321,6 +344,7 @@ pub async fn launch_automation(
         launch_opts,
         Some(control.clone()),
         /* self_heal */ false,
+        pacing.into(),
     );
     while let Some(evt) = events.recv().await {
         // Mirror events into tracing for diagnostics.

@@ -1,19 +1,22 @@
 import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 
-import { LATEST_VERSION, STORE_KEY, getStore } from "@/ipc/output-prefs";
+import { getStore, LATEST_VERSION, STORE_KEY } from "@/ipc/output-prefs";
 import {
   DEFAULT_EXPORT_KNOBS,
+  DEFAULT_RECORDING_PACING,
   type ExportKnobs,
   PRESET_BUNDLES,
   type PresetName,
   type RecordingKnobs,
+  type RecordingPacingProfile,
   useOutputPrefsStore,
 } from "@/state/output-prefs";
 
 export interface PersistShape {
   activePreset: PresetName;
   recordingKnobs: RecordingKnobs;
+  recordingPacing: RecordingPacingProfile;
   exportKnobs: ExportKnobs;
   version: typeof LATEST_VERSION;
 }
@@ -21,6 +24,7 @@ export interface PersistShape {
 const SEED: PersistShape = {
   activePreset: "Standard",
   recordingKnobs: PRESET_BUNDLES.Standard,
+  recordingPacing: DEFAULT_RECORDING_PACING,
   exportKnobs: DEFAULT_EXPORT_KNOBS,
   version: LATEST_VERSION,
 };
@@ -28,6 +32,7 @@ const SEED: PersistShape = {
 type PartialPersist = Partial<{
   activePreset: PresetName;
   recordingKnobs: Partial<RecordingKnobs>;
+  recordingPacing: RecordingPacingProfile;
   exportKnobs: Partial<ExportKnobs> & { audio?: Partial<ExportKnobs["audio"]> };
   version: number;
 }>;
@@ -38,6 +43,7 @@ export function migrate(raw: unknown): PersistShape {
   return {
     activePreset: (r.activePreset ?? SEED.activePreset) as PresetName,
     recordingKnobs: { ...SEED.recordingKnobs, ...(r.recordingKnobs ?? {}) } as RecordingKnobs,
+    recordingPacing: r.recordingPacing ?? SEED.recordingPacing,
     exportKnobs: {
       ...SEED.exportKnobs,
       ...(r.exportKnobs ?? {}),
@@ -58,6 +64,7 @@ export function resolveOverride(
       ...global.recordingKnobs,
       ...(project.recordingKnobs ?? {}),
     } as RecordingKnobs,
+    recordingPacing: project.recordingPacing ?? global.recordingPacing,
     exportKnobs: {
       ...global.exportKnobs,
       ...(project.exportKnobs ?? {}),
@@ -86,17 +93,24 @@ export async function initOutputPrefs(): Promise<void> {
   let last = {
     activePreset: hydrated.activePreset,
     recordingKnobs: hydrated.recordingKnobs,
+    recordingPacing: hydrated.recordingPacing,
     exportKnobs: hydrated.exportKnobs,
   };
   useOutputPrefsStore.subscribe((s) => {
     if (
       s.activePreset === last.activePreset &&
       s.recordingKnobs === last.recordingKnobs &&
+      s.recordingPacing === last.recordingPacing &&
       s.exportKnobs === last.exportKnobs
     ) {
       return;
     }
-    last = { activePreset: s.activePreset, recordingKnobs: s.recordingKnobs, exportKnobs: s.exportKnobs };
+    last = {
+      activePreset: s.activePreset,
+      recordingKnobs: s.recordingKnobs,
+      recordingPacing: s.recordingPacing,
+      exportKnobs: s.exportKnobs,
+    };
     if (timer) clearTimeout(timer);
     timer = setTimeout(async () => {
       try {
@@ -104,6 +118,7 @@ export async function initOutputPrefs(): Promise<void> {
         const shape: PersistShape = {
           activePreset: s.activePreset,
           recordingKnobs: s.recordingKnobs,
+          recordingPacing: s.recordingPacing,
           exportKnobs: s.exportKnobs,
           version: LATEST_VERSION,
         };

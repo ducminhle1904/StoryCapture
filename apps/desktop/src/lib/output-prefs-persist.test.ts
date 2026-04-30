@@ -2,14 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_EXPORT_KNOBS, PRESET_BUNDLES } from "@/state/output-prefs";
 
-import { type PersistShape, migrate, resolveOverride } from "./output-prefs-persist";
+import { migrate, type PersistShape, resolveOverride } from "./output-prefs-persist";
 
-const SEED: PersistShape = {
-  activePreset: "Standard",
-  recordingKnobs: PRESET_BUNDLES.Standard,
-  exportKnobs: DEFAULT_EXPORT_KNOBS,
-  version: 1,
-};
+const SEED = migrate(null);
 
 describe("migrate", () => {
   it("returns the silent seed for null input", () => {
@@ -20,6 +15,7 @@ describe("migrate", () => {
     const input: PersistShape = {
       activePreset: "Quick",
       recordingKnobs: PRESET_BUNDLES.Quick,
+      recordingPacing: "fast",
       exportKnobs: DEFAULT_EXPORT_KNOBS,
       version: 1,
     };
@@ -29,6 +25,7 @@ describe("migrate", () => {
   it("fills missing fields from seed", () => {
     const out = migrate({ activePreset: "Quick" } as unknown);
     expect(out.activePreset).toBe("Quick");
+    expect(out.recordingPacing).toBe("normal");
     expect(out.recordingKnobs).toEqual(SEED.recordingKnobs);
     expect(out.exportKnobs).toEqual(SEED.exportKnobs);
     expect(out.version).toBe(1);
@@ -62,6 +59,11 @@ describe("resolveOverride", () => {
     });
     expect(out.recordingKnobs.fps).toBe(48);
     expect(out.recordingKnobs.quality).toBe(SEED.recordingKnobs.quality);
+  });
+
+  it("project pacing overrides global pacing", () => {
+    const out = resolveOverride(SEED, { recordingPacing: "cinematic" });
+    expect(out.recordingPacing).toBe("cinematic");
   });
 
   it("returns global when project override is null", () => {
