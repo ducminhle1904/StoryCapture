@@ -329,7 +329,7 @@ mod tests {
             1280,
             720,
             30,
-            HardwareEncoder::Openh264Software,
+            HardwareEncoder::Libx264Software,
         )
     }
 
@@ -444,7 +444,7 @@ mod tests {
             3840,
             2160,
             30,
-            HardwareEncoder::Openh264Software,
+            HardwareEncoder::Libx264Software,
         )
         .with_output_resolution(OutputResolution::P2160)
         .unwrap()
@@ -474,7 +474,7 @@ mod tests {
             1920,
             1130,
             30,
-            HardwareEncoder::Openh264Software,
+            HardwareEncoder::Libx264Software,
         )
         .with_output_resolution(OutputResolution::P1080)
         .unwrap();
@@ -499,7 +499,7 @@ mod tests {
             1920,
             1130,
             30,
-            HardwareEncoder::Openh264Software,
+            HardwareEncoder::Libx264Software,
         )
         .with_output_resolution(OutputResolution::P1080)
         .unwrap();

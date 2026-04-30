@@ -49,8 +49,8 @@ const HW_UI_TO_DTO: Record<string, HardwareEncoderDto> = {
   "h264-qsv": "qsv-h264",
   "h264-amf": "amf-h264",
   libopenh264: "openh-264-software",
-  software: "openh-264-software",
-  libx264: "openh-264-software",
+  software: "libx264-software",
+  libx264: "libx264-software",
 };
 
 function buildEncoderOptions(knobs: ExportKnobs): EncoderOptionsDto {

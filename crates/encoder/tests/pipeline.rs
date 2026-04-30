@@ -28,7 +28,7 @@ async fn synthetic_five_second_encode() {
         640,
         360,
         30,
-        HardwareEncoder::Openh264Software,
+        HardwareEncoder::Libx264Software,
     );
 
     let (frame_tx, frame_rx) = mpsc::channel(8);
@@ -70,7 +70,7 @@ async fn stderr_tail_on_invalid_arg() {
     let out_path = tmp.path().join("out.mp4");
 
     // Zero fps → invalid; config validate rejects before spawn.
-    let mut cfg = EncodeConfig::new(out_path, 640, 360, 30, HardwareEncoder::Openh264Software);
+    let mut cfg = EncodeConfig::new(out_path, 640, 360, 30, HardwareEncoder::Libx264Software);
     cfg.fps_advisory = 0;
 
     let (_tx, rx) = mpsc::channel(1);

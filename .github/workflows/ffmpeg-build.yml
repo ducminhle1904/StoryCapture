@@ -1,6 +1,6 @@
-# Build the universal static LGPL FFmpeg sidecars for all three Phase-1
-# target triples. Per D-22 / D-24 these are LGPL-only (no GPL codecs);
-# `verify-static.sh` enforces both the static-link and LGPL invariants.
+# Build the static FFmpeg sidecars for all three target triples. Recorder
+# High/Lossless MP4 output requires GPL libx264, so `verify-static.sh`
+# enforces static linking, libx264 presence, and absence of nonfree codecs.
 #
 # Triggers on every PR that touches the build recipe so a regression in the
 # build script is caught before merge. `workflow_dispatch` lets us re-mint
@@ -37,7 +37,7 @@ jobs:
       - name: Install build deps
         run: |
           brew install nasm yasm pkg-config
-          # libopenh264 is the LGPL software H.264 fallback (D-24).
+          brew install x264
           brew install openh264 || echo "openh264 install failed; proceeding without LGPL software fallback"
 
       - name: Cache FFmpeg source tarball + build tree
@@ -49,10 +49,6 @@ jobs:
           key: ffmpeg-mac-arm64-${{ hashFiles('scripts/build-ffmpeg/build-macos.sh', 'scripts/build-ffmpeg/ffmpeg-7.0.2.sha256') }}
 
       - name: Build ffmpeg (aarch64)
-        env:
-          # Allow first-run SHA bootstrap so a freshly-pinned tarball doesn't
-          # block CI; once stable, this should be removed.
-          FFMPEG_ALLOW_SHA_BOOTSTRAP: '1'
         run: bash scripts/build-ffmpeg/build-macos.sh aarch64
 
       - name: Upload artifact
@@ -74,6 +70,7 @@ jobs:
       - name: Install build deps
         run: |
           brew install nasm yasm pkg-config
+          brew install x264
           brew install openh264 || echo "openh264 install failed; proceeding without LGPL software fallback"
 
       - name: Cache FFmpeg source tarball + build tree
@@ -85,8 +82,6 @@ jobs:
           key: ffmpeg-mac-x64-${{ hashFiles('scripts/build-ffmpeg/build-macos.sh', 'scripts/build-ffmpeg/ffmpeg-7.0.2.sha256') }}
 
       - name: Build ffmpeg (x86_64)
-        env:
-          FFMPEG_ALLOW_SHA_BOOTSTRAP: '1'
         run: bash scripts/build-ffmpeg/build-macos.sh x86_64
 
       - name: Upload artifact
@@ -123,6 +118,7 @@ jobs:
             pkg-config
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-x264
 
       - name: Fetch nv-codec-headers (NVENC)
         run: |
@@ -143,8 +139,6 @@ jobs:
           key: ffmpeg-win64-${{ hashFiles('scripts/build-ffmpeg/build-windows.sh', 'scripts/build-ffmpeg/ffmpeg-7.0.2.sha256') }}
 
       - name: Build ffmpeg (windows x86_64)
-        env:
-          FFMPEG_ALLOW_SHA_BOOTSTRAP: '1'
         run: bash scripts/build-ffmpeg/build-windows.sh
 
       - name: Upload artifact

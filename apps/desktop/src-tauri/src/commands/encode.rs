@@ -39,6 +39,8 @@ const ENCODER_FRAME_CHANNEL_CAPACITY: usize = 4;
 #[derive(Debug, Clone, Copy)]
 struct RecordingQualityPlan {
     encoder: HardwareEncoder,
+    quality_mode: RecordingQualityMode,
+    fallback_reason: Option<&'static str>,
     capture_width: u32,
     capture_height: u32,
     output_width: u32,
@@ -46,6 +48,30 @@ struct RecordingQualityPlan {
     fps: u32,
     preset: QualityPreset,
     target_video_kbps: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecordingQualityMode {
+    SoftwareCrf,
+    SoftwareBitrate,
+    HardwareBitrate,
+}
+
+#[derive(Debug)]
+struct RecordingEncoderSelection {
+    encoder: HardwareEncoder,
+    quality_mode: RecordingQualityMode,
+    fallback_reason: Option<&'static str>,
+}
+
+impl RecordingEncoderSelection {
+    fn new(encoder: HardwareEncoder, fallback_reason: Option<&'static str>) -> Self {
+        Self {
+            encoder,
+            quality_mode: quality_mode_for_encoder(encoder),
+            fallback_reason,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +175,8 @@ pub enum HardwareEncoderDto {
     NvencH264,
     QsvH264,
     AmfH264,
+    #[serde(rename = "libx264-software")]
+    Libx264Software,
     Openh264Software,
 }
 
@@ -160,6 +188,7 @@ impl From<HardwareEncoder> for HardwareEncoderDto {
             HardwareEncoder::NvencH264 => HardwareEncoderDto::NvencH264,
             HardwareEncoder::QsvH264 => HardwareEncoderDto::QsvH264,
             HardwareEncoder::AmfH264 => HardwareEncoderDto::AmfH264,
+            HardwareEncoder::Libx264Software => HardwareEncoderDto::Libx264Software,
             HardwareEncoder::Openh264Software => HardwareEncoderDto::Openh264Software,
         }
     }
@@ -483,25 +512,61 @@ fn registry() -> &'static RecordingRegistry {
     REG.get_or_init(RecordingRegistry::default)
 }
 
-fn select_recording_encoder(probe: &EncoderProbe, preset: QualityPreset) -> HardwareEncoder {
+fn quality_mode_for_encoder(encoder: HardwareEncoder) -> RecordingQualityMode {
+    match encoder {
+        HardwareEncoder::Libx264Software => RecordingQualityMode::SoftwareCrf,
+        HardwareEncoder::Openh264Software => RecordingQualityMode::SoftwareBitrate,
+        HardwareEncoder::VideoToolboxH264
+        | HardwareEncoder::VideoToolboxHevc
+        | HardwareEncoder::NvencH264
+        | HardwareEncoder::QsvH264
+        | HardwareEncoder::AmfH264 => RecordingQualityMode::HardwareBitrate,
+    }
+}
+
+fn select_recording_encoder(
+    probe: &EncoderProbe,
+    preset: QualityPreset,
+) -> Result<RecordingEncoderSelection, AppError> {
     #[cfg(target_os = "macos")]
     {
-        // VideoToolbox repeatedly undershoots requested bitrates for dark or
-        // mostly static Retina screen recordings. For quality-first recorder
-        // presets, prefer bundled libx264 CRF; exports can keep using the
-        // generic probe preference and user-selected encoder.
-        if matches!(preset, QualityPreset::High | QualityPreset::Lossless)
-            && probe.available.contains(&HardwareEncoder::Openh264Software)
+        if probe.available.contains(&HardwareEncoder::Libx264Software)
+            && matches!(preset, QualityPreset::High | QualityPreset::Lossless)
         {
-            return HardwareEncoder::Openh264Software;
+            return Ok(RecordingEncoderSelection::new(
+                HardwareEncoder::Libx264Software,
+                None,
+            ));
         }
-        // If software is unavailable, H.264 VT has been more predictable than
-        // HEVC VT for screen text.
+        if matches!(preset, QualityPreset::Lossless) {
+            return Err(AppError::Encoder(
+                "Lossless MP4 recording requires the bundled libx264 software encoder, but this FFmpeg sidecar does not expose libx264. Rebuild the FFmpeg sidecar with --enable-gpl --enable-libx264, or choose High/Medium hardware recording.".into(),
+            ));
+        }
+        if matches!(preset, QualityPreset::High) {
+            if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
+                return Ok(RecordingEncoderSelection::new(
+                    HardwareEncoder::VideoToolboxH264,
+                    Some(
+                        "libx264 unavailable; falling back to VideoToolbox H.264 hardware bitrate mode",
+                    ),
+                ));
+            }
+            if probe.available.contains(&HardwareEncoder::Openh264Software) {
+                return Ok(RecordingEncoderSelection::new(
+                    HardwareEncoder::Openh264Software,
+                    Some("libx264 unavailable; falling back to OpenH264 software bitrate mode"),
+                ));
+            }
+        }
         if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
-            return HardwareEncoder::VideoToolboxH264;
+            return Ok(RecordingEncoderSelection::new(
+                HardwareEncoder::VideoToolboxH264,
+                None,
+            ));
         }
     }
-    probe.preferred
+    Ok(RecordingEncoderSelection::new(probe.preferred, None))
 }
 
 /// Process-wide "a start_recording is currently in flight" flag.
@@ -844,8 +909,17 @@ pub async fn start_recording(
         available = ?probe.available,
         "encoder probe ok"
     );
-    let recording_encoder = select_recording_encoder(&probe, requested_quality);
-    if recording_encoder != probe.preferred {
+    let recording_selection = select_recording_encoder(&probe, requested_quality)?;
+    let recording_encoder = recording_selection.encoder;
+    if let Some(reason) = recording_selection.fallback_reason.as_deref() {
+        tracing::warn!(
+            target: "storycapture::recording",
+            requested_preset = ?requested_quality,
+            selected = ?recording_encoder,
+            reason,
+            "recording encoder fallback selected"
+        );
+    } else if recording_encoder != probe.preferred {
         tracing::info!(
             target: "storycapture::recording",
             preferred = ?probe.preferred,
@@ -1095,10 +1169,14 @@ pub async fn start_recording(
         fps: enc_cfg.fps_advisory,
         preset: enc_cfg.quality_preset,
         target_video_kbps,
+        quality_mode: recording_selection.quality_mode,
+        fallback_reason: recording_selection.fallback_reason,
     };
     tracing::info!(
         target: "storycapture::recording",
         encoder = ?quality_plan.encoder,
+        quality_mode = ?quality_plan.quality_mode,
+        fallback_reason = ?quality_plan.fallback_reason,
         preset = ?quality_plan.preset,
         capture_width = quality_plan.capture_width,
         capture_height = quality_plan.capture_height,
@@ -1440,6 +1518,8 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
             0
         },
         encoder = ?quality_plan.encoder,
+        quality_mode = ?quality_plan.quality_mode,
+        fallback_reason = ?quality_plan.fallback_reason,
         preset = ?quality_plan.preset,
         capture_width = quality_plan.capture_width,
         capture_height = quality_plan.capture_height,
@@ -1448,7 +1528,10 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
         fps = quality_plan.fps,
         "stop_recording: encoder finalized"
     );
-    if quality_plan.target_video_kbps > 0
+    if matches!(
+        quality_plan.quality_mode,
+        RecordingQualityMode::HardwareBitrate
+    ) && quality_plan.target_video_kbps > 0
         && observed_kbps.saturating_mul(3) < quality_plan.target_video_kbps as u64
     {
         tracing::warn!(
@@ -1604,6 +1687,99 @@ mod double_start_guard_tests {
             !GLOBAL_STARTING.load(Ordering::Acquire),
             "panic must still clear GLOBAL_STARTING via Drop"
         );
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod recording_encoder_selection_tests {
+    use super::{select_recording_encoder, RecordingQualityMode};
+    use crate::error::AppError;
+    use encoder::{EncoderProbe, HardwareEncoder, QualityPreset};
+
+    fn probe(available: Vec<HardwareEncoder>, preferred: HardwareEncoder) -> EncoderProbe {
+        EncoderProbe {
+            available,
+            preferred,
+        }
+    }
+
+    #[test]
+    fn high_prefers_libx264_crf_when_available() {
+        let selection = select_recording_encoder(
+            &probe(
+                vec![
+                    HardwareEncoder::VideoToolboxH264,
+                    HardwareEncoder::Libx264Software,
+                ],
+                HardwareEncoder::VideoToolboxH264,
+            ),
+            QualityPreset::High,
+        )
+        .expect("selection");
+
+        assert_eq!(selection.encoder, HardwareEncoder::Libx264Software);
+        assert_eq!(selection.quality_mode, RecordingQualityMode::SoftwareCrf);
+        assert_eq!(selection.fallback_reason, None);
+    }
+
+    #[test]
+    fn lossless_without_libx264_fails_closed() {
+        let err = select_recording_encoder(
+            &probe(
+                vec![HardwareEncoder::VideoToolboxH264],
+                HardwareEncoder::VideoToolboxH264,
+            ),
+            QualityPreset::Lossless,
+        )
+        .expect_err("lossless must require libx264");
+
+        assert!(matches!(
+            err,
+            AppError::Encoder(message) if message.contains("requires the bundled libx264")
+        ));
+    }
+
+    #[test]
+    fn high_without_libx264_warns_and_falls_back_to_videotoolbox_h264() {
+        let selection = select_recording_encoder(
+            &probe(
+                vec![HardwareEncoder::VideoToolboxH264],
+                HardwareEncoder::VideoToolboxH264,
+            ),
+            QualityPreset::High,
+        )
+        .expect("selection");
+
+        assert_eq!(selection.encoder, HardwareEncoder::VideoToolboxH264);
+        assert_eq!(
+            selection.quality_mode,
+            RecordingQualityMode::HardwareBitrate
+        );
+        assert!(selection
+            .fallback_reason
+            .is_some_and(|reason| reason.contains("VideoToolbox H.264")));
+    }
+
+    #[test]
+    fn medium_keeps_videotoolbox_for_fast_recording() {
+        let selection = select_recording_encoder(
+            &probe(
+                vec![
+                    HardwareEncoder::VideoToolboxH264,
+                    HardwareEncoder::Libx264Software,
+                ],
+                HardwareEncoder::VideoToolboxH264,
+            ),
+            QualityPreset::Med,
+        )
+        .expect("selection");
+
+        assert_eq!(selection.encoder, HardwareEncoder::VideoToolboxH264);
+        assert_eq!(
+            selection.quality_mode,
+            RecordingQualityMode::HardwareBitrate
+        );
+        assert_eq!(selection.fallback_reason, None);
     }
 }
 

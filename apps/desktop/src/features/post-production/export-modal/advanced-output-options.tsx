@@ -49,6 +49,7 @@ const PROBE_TO_UI: Record<string, HwEncoderKind> = {
   "nvenc-h264": "h264-nvenc",
   "qsv-h264": "h264-qsv",
   "amf-h264": "h264-amf",
+  "libx264-software": "libx264",
   "openh-264-software": "libopenh264",
 };
 
@@ -128,6 +129,10 @@ export function AdvancedOutputOptions() {
   });
 
   const availableEncoders = useMemo(() => parseProbe(probeRaw), [probeRaw]);
+  const displayedEncoders = useMemo(
+    () => availableEncoders.filter((encoder) => encoder !== "libx264"),
+    [availableEncoders],
+  );
 
   const isSoftwareOrAuto =
     exportKnobs.hwEncoder === "auto" ||
@@ -193,12 +198,14 @@ export function AdvancedOutputOptions() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="auto">{UI_LABEL.auto}</SelectItem>
-              {availableEncoders.map((e) => (
+              {displayedEncoders.map((e) => (
                 <SelectItem key={e} value={e}>
                   {UI_LABEL[e]}
                 </SelectItem>
               ))}
-              <SelectItem value="software">{UI_LABEL.software}</SelectItem>
+              <SelectItem value={exportKnobs.hwEncoder === "libx264" ? "libx264" : "software"}>
+                {UI_LABEL.software}
+              </SelectItem>
               {hwUnavailable ? (
                 <SelectItem value={exportKnobs.hwEncoder} disabled>
                   {exportKnobs.hwEncoder} {copy.SUFFIX_HW_UNAVAILABLE}

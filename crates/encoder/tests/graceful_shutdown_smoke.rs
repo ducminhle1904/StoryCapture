@@ -32,7 +32,7 @@ async fn test_graceful_shutdown_finalizes_moov() {
         320,
         240,
         30,
-        HardwareEncoder::Openh264Software,
+        HardwareEncoder::Libx264Software,
     );
 
     let (frame_tx, frame_rx) = mpsc::channel(8);
@@ -51,10 +51,7 @@ async fn test_graceful_shutdown_finalizes_moov() {
     }
     drop(frame_tx);
 
-    let result = join
-        .await
-        .expect("join")
-        .expect("encode finalized cleanly");
+    let result = join.await.expect("join").expect("encode finalized cleanly");
     assert!(out_path.exists(), "output missing");
     assert!(result.frames_written >= 10);
 

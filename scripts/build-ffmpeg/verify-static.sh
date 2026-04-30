@@ -3,8 +3,8 @@
 # Post-build verification — fails (exit 1) if:
 #   1. The binary dynamically links against any non-system library
 #      (per D-22 — Tauri notarization rejects unsigned nested Mach-Os).
-#   2. The build advertises any GPL codec (--enable-gpl / libx264 / libx265),
-#      which would force the whole shipped binary under GPL (per D-24).
+#   2. The build does not expose libx264, which recorder High/Lossless MP4
+#      quality depends on.
 #
 # Cross-platform: detects host OS via `uname -s` and runs `otool` (Darwin)
 # or `dumpbin` (MINGW/MSYS) accordingly.
@@ -85,19 +85,27 @@ case "$OS" in
 esac
 
 # ----------------------------------------------------------------------
-# 2. LGPL enforcement
+# 2. Recorder encoder enforcement
 # ----------------------------------------------------------------------
-# `ffmpeg -buildconf` prints all configure flags. We forbid any of:
-#   --enable-gpl, --enable-libx264, --enable-libx265, --enable-nonfree.
+# `ffmpeg -buildconf` prints all configure flags. libx264 requires GPL, and
+# libx265 and nonfree remain forbidden by the repo's codec policy.
 if BUILDCONF="$("$BIN" -hide_banner -buildconf 2>&1)"; then
-  if echo "$BUILDCONF" | grep -E -- '--enable-gpl|--enable-libx264|--enable-libx265|--enable-nonfree' >/dev/null; then
-    echo "[verify-static] FAIL: GPL/non-free codec enabled in build:" >&2
-    echo "$BUILDCONF" | grep -E -- '--enable-gpl|--enable-libx264|--enable-libx265|--enable-nonfree' >&2
+  if ! echo "$BUILDCONF" | grep -E -- '--enable-gpl' >/dev/null; then
+    echo "[verify-static] FAIL: --enable-gpl missing; libx264 requires GPL mode" >&2
     exit 1
   fi
-  echo "[verify-static] LGPL: no GPL/non-free codecs in buildconf"
+  if ! echo "$BUILDCONF" | grep -E -- '--enable-libx264' >/dev/null; then
+    echo "[verify-static] FAIL: --enable-libx264 missing; recorder High/Lossless MP4 quality requires libx264" >&2
+    exit 1
+  fi
+  if echo "$BUILDCONF" | grep -E -- '--enable-libx265|--enable-nonfree' >/dev/null; then
+    echo "[verify-static] FAIL: forbidden codec/config enabled in build:" >&2
+    echo "$BUILDCONF" | grep -E -- '--enable-libx265|--enable-nonfree' >&2
+    exit 1
+  fi
+  echo "[verify-static] encoders: GPL + libx264 present; libx265/nonfree absent"
 else
-  echo "[verify-static] WARN: could not run '$BIN -buildconf' (cross-compiled binary?) — skipping LGPL grep" >&2
+  echo "[verify-static] WARN: could not run '$BIN -buildconf' (cross-compiled binary?) — skipping encoder grep" >&2
 fi
 
-echo "[verify-static] PASS: $BIN is statically linked + LGPL-clean"
+echo "[verify-static] PASS: $BIN is statically linked + recorder encoder ready"

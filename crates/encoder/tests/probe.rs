@@ -18,9 +18,9 @@ async fn probe_returns_nonempty() {
     let cmd = LocalFfmpegCommand::new(path);
     let probe = probe_encoders(&cmd).await.expect("probe");
     assert!(!probe.available.is_empty(), "no encoders detected");
-    // libx264 fallback should always be present in the bundled FFmpeg build.
+    // libx264 fallback should always be present for quality-first MP4 recording.
     assert!(
-        probe.available.contains(&HardwareEncoder::Openh264Software),
+        probe.available.contains(&HardwareEncoder::Libx264Software),
         "libx264 missing — bundled FFmpeg didn't include --enable-libx264"
     );
 }

@@ -40,9 +40,10 @@ pub fn target_kbps(
     fps: u32,
 ) -> u32 {
     match encoder {
-        HardwareEncoder::Openh264Software | HardwareEncoder::QsvH264 | HardwareEncoder::AmfH264 => {
-            0
-        }
+        HardwareEncoder::Libx264Software
+        | HardwareEncoder::Openh264Software
+        | HardwareEncoder::QsvH264
+        | HardwareEncoder::AmfH264 => 0,
         HardwareEncoder::VideoToolboxH264
         | HardwareEncoder::VideoToolboxHevc
         | HardwareEncoder::NvencH264 => {
@@ -75,7 +76,7 @@ pub fn resolve(
     fps: u32,
 ) -> Vec<String> {
     match encoder {
-        HardwareEncoder::Openh264Software => match preset {
+        HardwareEncoder::Libx264Software => match preset {
             QualityPreset::Low => {
                 vec_of!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"]
             }
@@ -85,6 +86,37 @@ pub fn resolve(
                 vec_of!["-crf", "0", "-preset", "ultrafast", "-tune", "zerolatency"]
             }
         },
+        HardwareEncoder::Openh264Software => {
+            let b = pixel_based_kbps(output_w, output_h, fps);
+            match preset {
+                QualityPreset::Low => vec![
+                    "-b:v".into(),
+                    format!("{}k", kbps_scaled(b, 3, 4)),
+                    "-profile:v".into(),
+                    "main".into(),
+                    "-rc_mode".into(),
+                    "bitrate".into(),
+                ],
+                QualityPreset::Med => vec![
+                    "-b:v".into(),
+                    format!("{b}k"),
+                    "-profile:v".into(),
+                    "high".into(),
+                    "-rc_mode".into(),
+                    "bitrate".into(),
+                ],
+                QualityPreset::High | QualityPreset::Lossless => vec![
+                    "-b:v".into(),
+                    format!("{}k", kbps_scaled(b, 5, 4)),
+                    "-profile:v".into(),
+                    "high".into(),
+                    "-rc_mode".into(),
+                    "quality".into(),
+                    "-coder".into(),
+                    "cabac".into(),
+                ],
+            }
+        }
         HardwareEncoder::VideoToolboxH264 | HardwareEncoder::VideoToolboxHevc => {
             // `-q:v` on h264_videotoolbox is a quality *ceiling*, and plain
             // `-b:v` VBR still undershoots badly on dark/static screen UI
@@ -270,7 +302,7 @@ mod tests {
     fn software_med_args() {
         let got = resolve(
             QualityPreset::Med,
-            HardwareEncoder::Openh264Software,
+            HardwareEncoder::Libx264Software,
             1920,
             1080,
             30,
@@ -285,7 +317,7 @@ mod tests {
     fn software_low_args() {
         let got = resolve(
             QualityPreset::Low,
-            HardwareEncoder::Openh264Software,
+            HardwareEncoder::Libx264Software,
             1920,
             1080,
             30,
@@ -301,7 +333,7 @@ mod tests {
     fn software_high_args() {
         let got = resolve(
             QualityPreset::High,
-            HardwareEncoder::Openh264Software,
+            HardwareEncoder::Libx264Software,
             1920,
             1080,
             30,
@@ -316,7 +348,7 @@ mod tests {
     fn software_lossless_args() {
         let got = resolve(
             QualityPreset::Lossless,
-            HardwareEncoder::Openh264Software,
+            HardwareEncoder::Libx264Software,
             1920,
             1080,
             30,
@@ -435,6 +467,30 @@ mod tests {
     }
 
     #[test]
+    fn openh264_high_uses_bitrate_quality_mode() {
+        let got = resolve(
+            QualityPreset::High,
+            HardwareEncoder::Openh264Software,
+            1920,
+            1080,
+            30,
+        );
+        assert_eq!(
+            got,
+            vec![
+                "-b:v",
+                "12960k",
+                "-profile:v",
+                "high",
+                "-rc_mode",
+                "quality",
+                "-coder",
+                "cabac",
+            ]
+        );
+    }
+
+    #[test]
     fn nvenc_low_1080p_30fps_args() {
         let got = resolve(
             QualityPreset::Low,
@@ -484,6 +540,7 @@ mod tests {
             HardwareEncoder::NvencH264,
             HardwareEncoder::QsvH264,
             HardwareEncoder::AmfH264,
+            HardwareEncoder::Libx264Software,
             HardwareEncoder::Openh264Software,
         ];
         for p in presets {

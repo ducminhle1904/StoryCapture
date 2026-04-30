@@ -85,7 +85,7 @@ Commit messages encode the plan ID (`feat(07-05): …` → phase 7, plan 5).
 | `capture-windows.yml` | Windows compile and no-run gate for WGC-specific capture code. |
 | `capture-windows-e2e.yml` | WGC real-hardware E2E on Windows runner. |
 | `encoder-av-drift.yml` | Audio/video sync validation across HW encoders. |
-| `ffmpeg-build.yml` | Cross-compile LGPL FFmpeg 7.0.2 per-triple binaries. |
+| `ffmpeg-build.yml` | Cross-compile static FFmpeg 7.0.2 per-triple binaries with GPL libx264 + hardware encoders. |
 | `installer-size-budget.yml` | Enforces residual installer size budget after excluding bundled sidecars. |
 | `nightly-eval.yml` | Live nightly eval against the golden AI dataset. |
 | `render-benchmark.yml` | PR speed-factor render benchmark gate. |

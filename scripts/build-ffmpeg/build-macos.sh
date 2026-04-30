@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # scripts/build-ffmpeg/build-macos.sh
-# Build a single-arch, fully static, LGPL-only FFmpeg 7.x binary for macOS.
-# Per D-22 / D-23 / D-24: no nested dylibs, no GPL codecs, no x264/x265,
-# libopenh264 as the LGPL software H.264 fallback, VideoToolbox/AudioToolbox
-# for hardware accel.
+# Build a single-arch, fully static FFmpeg 7.x binary for macOS.
+# Recorder High/Lossless MP4 output requires libx264 CRF mode, so this build
+# enables GPL + libx264 alongside VideoToolbox/AudioToolbox.
 #
 # Tauri externalBin requires PER-TRIPLE files (NOT a fat lipo binary), so this
 # script produces ONE arch at a time. Run twice — once with `aarch64`, once
@@ -120,23 +119,58 @@ rm -rf "$PREFIX"
 mkdir -p "$PREFIX"
 
 # --- configure -----------------------------------------------------------
-# LGPL-only build per D-22 / D-24:
-#   * no --enable-gpl, no --enable-libx264, no --enable-libx265
-#   * libopenh264 as the LGPL software H.264 fallback (Cisco; same as Firefox/WebRTC)
+# Static recorder build:
+#   * GPL + libx264 for quality-first MP4 recording
+#   * optional libopenh264 as an LGPL software fallback when present
 #   * VideoToolbox + AudioToolbox for hardware encode/decode
 #   * Static + small + no network/autodetect for tight bundle and predictable surface
 cd "$SRC_DIR"
 
-# libopenh264 is enabled if the system has it; otherwise the build is still
-# valid (we'll fall back to h264_videotoolbox at runtime per D-24). We do not
-# vendor openh264 here — that's a separate sub-task — but we declare the flag
-# so the resulting binary advertises the capability when present.
+STATIC_PC_DIR="$BUILD_DIR/pkgconfig-static-${ARCH}"
+rm -rf "$STATIC_PC_DIR"
+mkdir -p "$STATIC_PC_DIR"
+
+if ! pkg-config --exists x264 2>/dev/null; then
+  echo "[build-macos] x264 pkg-config metadata missing; install x264 first" >&2
+  exit 1
+fi
+X264_PREFIX="$(pkg-config --variable=prefix x264)"
+X264_LIBDIR="$(pkg-config --variable=libdir x264)"
+X264_INCLUDEDIR="$(pkg-config --variable=includedir x264)"
+X264_VERSION="$(pkg-config --modversion x264)"
+X264_STATIC_LIB="$X264_LIBDIR/libx264.a"
+if [[ ! -f "$X264_STATIC_LIB" ]]; then
+  echo "[build-macos] x264 static archive missing: $X264_STATIC_LIB" >&2
+  exit 1
+fi
+cat > "$STATIC_PC_DIR/x264.pc" <<EOF
+prefix=$X264_PREFIX
+libdir=$X264_LIBDIR
+includedir=$X264_INCLUDEDIR
+
+Name: x264
+Description: H.264 (MPEG4 AVC) encoder library
+Version: $X264_VERSION
+Libs: $X264_STATIC_LIB
+Libs.private: -lpthread -lm -ldl
+Cflags: -I$X264_INCLUDEDIR
+EOF
+export PKG_CONFIG_PATH="$STATIC_PC_DIR${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+# libopenh264 is enabled only when a static archive is present. Homebrew ships
+# dylib-only openh264 on some hosts; linking that would create an unsigned
+# nested dependency, so skip it rather than weakening sidecar portability.
 OPENH264_FLAGS=""
 if pkg-config --exists openh264 2>/dev/null; then
-  OPENH264_FLAGS="--enable-libopenh264"
-  echo "[build-macos] libopenh264 detected — enabling LGPL software H.264 fallback"
+  OPENH264_LIBDIR="$(pkg-config --variable=libdir openh264)"
+  if [[ -f "$OPENH264_LIBDIR/libopenh264.a" ]]; then
+    OPENH264_FLAGS="--enable-libopenh264"
+    echo "[build-macos] static libopenh264 detected — enabling LGPL software H.264 fallback"
+  else
+    echo "[build-macos] libopenh264 detected but no static archive at $OPENH264_LIBDIR/libopenh264.a — skipping"
+  fi
 else
-  echo "[build-macos] libopenh264 NOT detected on host — building without (relying on h264_videotoolbox at runtime)"
+  echo "[build-macos] libopenh264 NOT detected on host — building without"
 fi
 
 CONFIGURE_FLAGS=(
@@ -144,7 +178,8 @@ CONFIGURE_FLAGS=(
   --enable-static
   --disable-shared
   --pkg-config-flags=--static
-  --disable-gpl
+  --enable-gpl
+  --enable-libx264
   --disable-nonfree
   --disable-debug
   --disable-doc
@@ -154,7 +189,7 @@ CONFIGURE_FLAGS=(
   --enable-small
   --enable-videotoolbox
   --enable-audiotoolbox
-  --enable-encoder=h264_videotoolbox,hevc_videotoolbox,aac,pcm_s16le
+  --enable-encoder=libx264,h264_videotoolbox,hevc_videotoolbox,aac,pcm_s16le
   --enable-decoder=h264,hevc,aac,pcm_s16le,rawvideo
   --enable-parser=h264,hevc,aac
   --enable-muxer=mp4,mov,matroska,null
@@ -188,7 +223,7 @@ make install
 cp "$PREFIX/bin/ffmpeg"  "$OUT_DIR/ffmpeg-${RUST_TRIPLE}"
 cp "$PREFIX/bin/ffprobe" "$OUT_DIR/ffprobe-${RUST_TRIPLE}"
 
-# --- verify static + LGPL ------------------------------------------------
+# --- verify static + recorder encoder contract ---------------------------
 "$SCRIPT_DIR/verify-static.sh" "$OUT_DIR/ffmpeg-${RUST_TRIPLE}"
 
 SIZE_BYTES="$(stat -f %z "$OUT_DIR/ffmpeg-${RUST_TRIPLE}")"

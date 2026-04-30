@@ -5,9 +5,9 @@
 //! on `tauri` itself. See `apps/desktop/src-tauri/src/commands/encode.rs`
 //! for the host-side bridge.
 //!
-//! Output format is MP4 / H.264 baseline. Hardware encoders (VideoToolbox /
-//! NVENC / QSV / AMF) are selected at startup via `probe_encoders`;
-//! `libx264` is the software fallback in the bundled FFmpeg build.
+//! Output format is MP4. Hardware encoders (VideoToolbox / NVENC / QSV / AMF)
+//! are selected at startup via `probe_encoders`; `libx264` is the
+//! quality-first software path and `libopenh264` is the LGPL fallback.
 
 mod config;
 mod error;

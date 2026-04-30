@@ -32,7 +32,7 @@ packages/               pnpm workspace (TS)
 
 scripts/
   playwright-sidecar/   Node SEA (server.mjs) — JSON-RPC 2.0 Playwright driver + element picker overlay
-  build-ffmpeg/         Static universal FFmpeg 7.0.2 per-triple build (LGPL set; openh264 fallback)
+  build-ffmpeg/         Static universal FFmpeg 7.0.2 per-triple build (GPL libx264 + HW encoders)
   notarize/             macOS signing + notarytool flow
     smoke-app/          Standalone Tauri smoke fixture for signing/notarization validation
   benchmark/, dev/, ci/, release/  runbooks + helpers

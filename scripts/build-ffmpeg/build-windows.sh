@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # scripts/build-ffmpeg/build-windows.sh
-# Build a fully static, LGPL-only FFmpeg 7.x binary for Windows x64 under
+# Build a fully static FFmpeg 7.x binary for Windows x64 under
 # MSYS2/MINGW64. Intended to run inside the GitHub Actions
 # `windows-latest` runner with msys2/setup-msys2 active (msystem: MINGW64).
 #
-# Per D-22 / D-24: no GPL codecs (no x264/x265). Hardware encoders included:
-# NVENC, QSV (libmfx), AMF — runtime feature detection in `crates/encoder`
-# falls back to `libopenh264` (LGPL) when no hardware encoder is available.
+# Recorder High/Lossless MP4 output requires libx264 CRF mode, so this build
+# enables GPL + libx264. Hardware encoders included: NVENC, QSV (libmfx), AMF.
 #
 # Output: out/ffmpeg-x86_64-pc-windows-msvc.exe
 # (Even though we use mingw-w64 to compile, the Rust target triple is
@@ -97,7 +96,8 @@ CONFIGURE_FLAGS=(
   --enable-static
   --disable-shared
   --pkg-config-flags=--static
-  --disable-gpl
+  --enable-gpl
+  --enable-libx264
   --disable-nonfree
   --disable-debug
   --disable-doc
@@ -105,7 +105,7 @@ CONFIGURE_FLAGS=(
   --disable-network
   --disable-autodetect
   --enable-small
-  --enable-encoder=h264_nvenc,hevc_nvenc,h264_qsv,hevc_qsv,h264_amf,hevc_amf,aac,pcm_s16le
+  --enable-encoder=libx264,h264_nvenc,hevc_nvenc,h264_qsv,hevc_qsv,h264_amf,hevc_amf,aac,pcm_s16le
   --enable-decoder=h264,hevc,aac,pcm_s16le,rawvideo
   --enable-parser=h264,hevc,aac
   --enable-muxer=mp4,mov,matroska,null
@@ -147,7 +147,7 @@ make install
 cp "$PREFIX/bin/ffmpeg.exe"  "$OUT_DIR/ffmpeg-${RUST_TRIPLE}.exe"
 cp "$PREFIX/bin/ffprobe.exe" "$OUT_DIR/ffprobe-${RUST_TRIPLE}.exe"
 
-# --- verify static + LGPL ----------------------------------------------
+# --- verify static + recorder encoder contract -------------------------
 "$SCRIPT_DIR/verify-static.sh" "$OUT_DIR/ffmpeg-${RUST_TRIPLE}.exe"
 
 SIZE_BYTES="$(stat -c %s "$OUT_DIR/ffmpeg-${RUST_TRIPLE}.exe" 2>/dev/null || stat -f %z "$OUT_DIR/ffmpeg-${RUST_TRIPLE}.exe")"

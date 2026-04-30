@@ -7,7 +7,7 @@
 //! Preference order:
 //!   - macOS: `VideoToolboxHevc` > `VideoToolboxH264`
 //!   - Windows: `NvencH264` > `QsvH264` > `AmfH264`
-//!   - Fallback (any OS): `Openh264Software` (bundled libx264)
+//!   - Fallback (any OS): `Libx264Software`, then `Openh264Software`
 //!
 //! If no encoder is detected — including the software fallback — the
 //! probe returns `EncoderError::NoEncoderAvailable` with a diagnostic
@@ -36,8 +36,10 @@ pub enum HardwareEncoder {
     NvencH264,
     QsvH264,
     AmfH264,
-    /// Software H.264 fallback. Kept under the historical DTO name for IPC
-    /// compatibility; the bundled FFmpeg currently provides libx264.
+    /// Software H.264 fallback for quality-first MP4 recording.
+    Libx264Software,
+    /// LGPL software H.264 fallback. It is useful when no hardware encoder
+    /// exists, but it does not support x264-style CRF/lossless controls.
     Openh264Software,
 }
 
@@ -50,7 +52,8 @@ impl HardwareEncoder {
             HardwareEncoder::NvencH264 => "h264_nvenc",
             HardwareEncoder::QsvH264 => "h264_qsv",
             HardwareEncoder::AmfH264 => "h264_amf",
-            HardwareEncoder::Openh264Software => "libx264",
+            HardwareEncoder::Libx264Software => "libx264",
+            HardwareEncoder::Openh264Software => "libopenh264",
         }
     }
 
@@ -89,7 +92,7 @@ pub async fn probe_encoders(cmd: &dyn SidecarCommand) -> Result<EncoderProbe> {
 
     if available.is_empty() {
         return Err(EncoderError::NoEncoderAvailable(
-            "ffmpeg -encoders listed no H.264 encoder (neither hardware nor libx264 fallback). Ensure the FFmpeg sidecar was produced with --enable-libx264.".into(),
+            "ffmpeg -encoders listed no H.264 encoder (neither hardware nor software fallback). Ensure the FFmpeg sidecar was produced with VideoToolbox/NVENC/QSV/AMF or libx264/libopenh264.".into(),
         ));
     }
 
@@ -139,6 +142,7 @@ pub(crate) fn __test_peek_cache() -> Option<EncoderProbe> {
 /// ```text
 ///  V..... h264_videotoolbox    VideoToolbox H.264 Encoder
 ///  V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC encoder
+///  V..... libopenh264          OpenH264 H.264 / AVC / MPEG-4 AVC encoder
 /// ```
 /// We match by substring against the known codec names — simple and
 /// resilient to version-to-version whitespace or capability-flag churn.
@@ -149,6 +153,7 @@ fn parse_encoders_output(out: &str) -> Vec<HardwareEncoder> {
         HardwareEncoder::NvencH264,
         HardwareEncoder::QsvH264,
         HardwareEncoder::AmfH264,
+        HardwareEncoder::Libx264Software,
         HardwareEncoder::Openh264Software,
     ];
 
@@ -190,6 +195,7 @@ fn pick_preferred(available: &[HardwareEncoder]) -> HardwareEncoder {
         // if HEVC isn't available for any reason.
         HardwareEncoder::VideoToolboxHevc,
         HardwareEncoder::VideoToolboxH264,
+        HardwareEncoder::Libx264Software,
         HardwareEncoder::Openh264Software,
     ][..];
     #[cfg(target_os = "windows")]
@@ -197,10 +203,14 @@ fn pick_preferred(available: &[HardwareEncoder]) -> HardwareEncoder {
         HardwareEncoder::NvencH264,
         HardwareEncoder::QsvH264,
         HardwareEncoder::AmfH264,
+        HardwareEncoder::Libx264Software,
         HardwareEncoder::Openh264Software,
     ][..];
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let order = &[HardwareEncoder::Openh264Software][..];
+    let order = &[
+        HardwareEncoder::Libx264Software,
+        HardwareEncoder::Openh264Software,
+    ][..];
 
     for &pref in order {
         if available.contains(&pref) {
@@ -222,6 +232,7 @@ Encoders:
  V..... = Video
  ------
  V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC encoder
+ V..... libopenh264          OpenH264 H.264 / AVC / MPEG-4 AVC encoder
  V..... h264_videotoolbox    VideoToolbox H.264 Encoder
  V..... h264_nvenc           NVIDIA NVENC H.264 encoder
  A..... aac                  AAC (Advanced Audio Coding)
@@ -230,6 +241,7 @@ Encoders:
     #[test]
     fn parses_known_encoders() {
         let got = parse_encoders_output(SAMPLE_OUTPUT);
+        assert!(got.contains(&HardwareEncoder::Libx264Software));
         assert!(got.contains(&HardwareEncoder::Openh264Software));
         assert!(got.contains(&HardwareEncoder::VideoToolboxH264));
         assert!(got.contains(&HardwareEncoder::NvencH264));
@@ -243,6 +255,12 @@ Encoders:
 
     #[test]
     fn preferred_falls_back_to_software_when_no_hw() {
+        let avail = vec![HardwareEncoder::Libx264Software];
+        assert_eq!(pick_preferred(&avail), HardwareEncoder::Libx264Software);
+    }
+
+    #[test]
+    fn preferred_uses_openh264_when_it_is_only_software_encoder() {
         let avail = vec![HardwareEncoder::Openh264Software];
         assert_eq!(pick_preferred(&avail), HardwareEncoder::Openh264Software);
     }
@@ -253,6 +271,7 @@ Encoders:
         let avail = vec![
             HardwareEncoder::VideoToolboxHevc,
             HardwareEncoder::VideoToolboxH264,
+            HardwareEncoder::Libx264Software,
             HardwareEncoder::Openh264Software,
         ];
         assert_eq!(pick_preferred(&avail), HardwareEncoder::VideoToolboxHevc);
@@ -263,6 +282,7 @@ Encoders:
     fn preferred_falls_back_to_h264_when_hevc_absent() {
         let avail = vec![
             HardwareEncoder::VideoToolboxH264,
+            HardwareEncoder::Libx264Software,
             HardwareEncoder::Openh264Software,
         ];
         assert_eq!(pick_preferred(&avail), HardwareEncoder::VideoToolboxH264);
@@ -349,7 +369,7 @@ Encoders:
         };
 
         let fresh = force_reprobe(&cmd).await.expect("force_reprobe");
-        assert!(fresh.available.contains(&HardwareEncoder::Openh264Software));
+        assert!(fresh.available.contains(&HardwareEncoder::Libx264Software));
         assert!(fresh.available.contains(&HardwareEncoder::VideoToolboxH264));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 

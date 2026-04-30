@@ -1537,7 +1537,7 @@ source: string; message: string;
  */
 fields?: ([string, string])[]; stack?: string | null; url?: string | null }
 export type GetRecordingTrajectoryArgs = { recording_path: string }
-export type HardwareEncoderDto = "video-toolbox-h264" | "video-toolbox-hevc" | "nvenc-h264" | "qsv-h264" | "amf-h264" | "openh-264-software"
+export type HardwareEncoderDto = "video-toolbox-h264" | "video-toolbox-hevc" | "nvenc-h264" | "qsv-h264" | "amf-h264" | "libx264-software" | "openh-264-software"
 /**
  * Structured failure modes. Each variant is derivable from a keychain or
  * HTTP error without including the key material.

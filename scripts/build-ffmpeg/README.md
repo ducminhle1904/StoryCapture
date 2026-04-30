@@ -1,7 +1,9 @@
 # scripts/build-ffmpeg/
 
-Recipes for building **universal static, LGPL-only FFmpeg 7.x** binaries for
-all StoryCapture target triples. This is a Wave-0 release-gate concern
+Recipes for building **universal static FFmpeg 7.x** binaries for all
+StoryCapture target triples. High/Lossless MP4 recording requires GPL
+`libx264`, so these binaries are GPL-compatible and still forbid nonfree
+codecs. This is a Wave-0 release-gate concern
 (per Phase 1 plan 01-02); the resulting binaries ship as Tauri externalBin
 sidecars from `apps/desktop/src-tauri/binaries/`.
 
@@ -19,10 +21,11 @@ update this README.
 > `FFMPEG_ALLOW_SHA_BOOTSTRAP=1`, auto-correct) the value. Once a clean run
 > is observed, the env var is dropped.
 
-## Codec set + rationale (LGPL-only — D-22, D-24)
+## Codec set + rationale (GPL libx264, nonfree forbidden)
 
-We **never** enable `--enable-gpl`, `--enable-libx264`, or `--enable-libx265`.
-Doing so would force StoryCapture to redistribute under GPL.
+We enable `--enable-gpl --enable-libx264` because recorder High/Lossless MP4
+uses libx264 CRF mode for predictable visual quality. We still never enable
+`--enable-nonfree`, `--enable-libx265`, or other nonfree codecs.
 
 Encoders shipped:
 
@@ -36,13 +39,16 @@ Encoders shipped:
 | `hevc_qsv`           | Windows Intel  | HEVC on Intel                                    |
 | `h264_amf`           | Windows AMD    | AMD Radeon                                       |
 | `hevc_amf`           | Windows AMD    | HEVC on AMD                                      |
-| `libopenh264` (opt.) | both           | LGPL software fallback per D-24                  |
+| `libx264`            | both           | Quality-first software MP4 path                  |
+| `libopenh264` (opt.) | both           | Bitrate-mode software fallback when static       |
 | `aac`                | both           | Audio                                            |
 | `pcm_s16le`          | both           | Uncompressed staging audio                       |
 
 `crates/encoder` probes encoders at runtime (D-24); no available encoder ⇒
-clear diagnostic. **`libopenh264` is the only software H.264 fallback** —
-`libx264` is forbidden by license discipline.
+clear diagnostic. Recorder High/Lossless MP4 prefers `libx264`; Lossless
+fails closed when `libx264` is missing because hardware bitrate encoders cannot
+provide the expected deterministic quality. `libopenh264` remains a fallback
+only when a static archive is available.
 
 Decoders/parsers/muxers/demuxers are limited to the H.264/HEVC/AAC/MP4/MOV/
 Matroska/raw video set actually used by capture + post-pro.
@@ -67,10 +73,12 @@ scripts/build-ffmpeg/out/ffprobe-x86_64-apple-darwin
 ```
 
 Each runs `verify-static.sh` automatically. `verify-static.sh` exits non-zero
-if any non-system dylib is linked or if `--enable-gpl` is in the buildconf.
+if any non-system dylib is linked, if `--enable-gpl --enable-libx264` is
+missing, or if `--enable-nonfree` is present.
 
-Local prereqs: Xcode CLT, `brew install nasm yasm pkg-config`. Optional:
-`brew install openh264` to bake in the LGPL software fallback.
+Local prereqs: Xcode CLT, `brew install nasm yasm pkg-config x264`. Optional:
+`brew install openh264` to bake in the software fallback if Homebrew provides a
+static archive.
 
 ### Windows
 
@@ -101,10 +109,10 @@ Plan 08 (encoder crate) downloads these into
 
 ## Size budget
 
-Target: each FFmpeg binary < 70 MiB. Current builds (with the codec set
-above + `--enable-small --disable-doc --disable-network --disable-autodetect`)
-are typically 40-55 MiB. The verify script logs the actual size after every
-build.
+Target: each FFmpeg binary < 70 MiB. Current macOS arm64 builds with static
+libx264 and hardware encoders are about 14 MiB with `--enable-small
+--disable-doc --disable-network --disable-autodetect`. The verify script logs
+the actual size after every build.
 
 ## Output contract
 

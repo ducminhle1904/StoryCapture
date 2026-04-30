@@ -6,6 +6,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -121,6 +122,21 @@ describe("AdvancedOutputOptions", () => {
     // (lazy-on-mount pattern is fine — the accordion is already expanded
     // in-situ once the user opens it, so this component mounts fresh each open).
     expect(mockProbe).toHaveBeenCalled();
+  });
+
+  it("does not duplicate the software option when probe exposes libx264", async () => {
+    mockProbe.mockResolvedValue({
+      available: ["libx264-software", "video-toolbox-h264"],
+      preferred: "libx264-software",
+    });
+    render(
+      <Wrapped>
+        <AdvancedOutputOptions />
+      </Wrapped>,
+    );
+    await flushQueries();
+    await userEvent.click(screen.getByLabelText("Hardware encoder"));
+    expect(await screen.findAllByText("Software (libx264)")).toHaveLength(1);
   });
 
   it("setExportKnob is wired — bumping the store reflects in the rendered slider value", async () => {

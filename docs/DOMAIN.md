@@ -99,7 +99,7 @@ Sidecar file paired with each `.story`, keyed by step_id. Store: `crates/automat
   │    ├─► one-shot thumbnails for picker/recorder preview
   │    └─► cpal+ringbuf audio (Phase 6)
   └─► encoder::EncodePipeline
-       ├─► probe_encoders() → VideoToolbox | NVENC | QSV | AMF | libopenh264
+       ├─► probe_encoders() → VideoToolbox | NVENC | QSV | AMF | libx264 | libopenh264
        ├─► FfmpegSidecar (static universal, bundled binary)
        └─► macOS: vt_writer zero-copy fastpath (AVAssetWriter, CVPixelBuffer direct)
   → MP4 in project folder (ProjectFolder::EXPORTS_DIRNAME)

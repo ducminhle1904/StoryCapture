@@ -36,7 +36,11 @@ fn host_triple() -> &'static str {
 }
 
 fn exe_suffix() -> &'static str {
-    if cfg!(windows) { ".exe" } else { "" }
+    if cfg!(windows) {
+        ".exe"
+    } else {
+        ""
+    }
 }
 
 fn workspace_root() -> Option<PathBuf> {
@@ -48,10 +52,16 @@ fn workspace_root() -> Option<PathBuf> {
 
 fn sidecar_binary(name: &str) -> Option<PathBuf> {
     let ws = workspace_root()?;
-    let p = ws
-        .join("scripts/build-ffmpeg/out")
-        .join(format!("{name}-{}{}", host_triple(), exe_suffix()));
-    if p.exists() { Some(p) } else { None }
+    let p = ws.join("scripts/build-ffmpeg/out").join(format!(
+        "{name}-{}{}",
+        host_triple(),
+        exe_suffix()
+    ));
+    if p.exists() {
+        Some(p)
+    } else {
+        None
+    }
 }
 
 fn path_lookup(name: &str) -> Option<PathBuf> {
@@ -67,7 +77,9 @@ fn path_lookup(name: &str) -> Option<PathBuf> {
 }
 
 fn env_override(var: &str) -> Option<PathBuf> {
-    std::env::var_os(var).map(PathBuf::from).filter(|p| p.exists())
+    std::env::var_os(var)
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
 }
 
 fn resolve_ffmpeg() -> Option<PathBuf> {
@@ -172,9 +184,7 @@ fn extract_middle_frame_rgb(ffmpeg: &Path, mp4: &Path, tmp_dir: &Path) -> image:
         .status()
         .expect("ffmpeg extract spawn");
     assert!(status.success(), "ffmpeg frame extract failed");
-    image::open(&png_path)
-        .expect("decode png")
-        .to_rgb8()
+    image::open(&png_path).expect("decode png").to_rgb8()
 }
 
 fn sample(img: &image::RgbImage, x: u32, y: u32) -> (u8, u8, u8) {
@@ -225,7 +235,7 @@ fn base_cfg(out: &Path, capture_w: u32, capture_h: u32) -> EncodeConfig {
         capture_w,
         capture_h,
         FPS,
-        HardwareEncoder::Openh264Software,
+        HardwareEncoder::Libx264Software,
     )
 }
 
@@ -392,8 +402,5 @@ async fn test_custom_pad_color_hex_applied() {
     let (r, g, b) = sample(&img, 5, 5);
     assert!(r > 230, "pad R should be ~255, got {r}");
     assert!(g < 25, "pad G should be ~0, got {g}");
-    assert!(
-        (110..=145).contains(&b),
-        "pad B should be ~128, got {b}"
-    );
+    assert!((110..=145).contains(&b), "pad B should be ~128, got {b}");
 }
