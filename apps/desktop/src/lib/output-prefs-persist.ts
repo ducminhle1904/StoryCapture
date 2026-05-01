@@ -30,20 +30,39 @@ const SEED: PersistShape = {
 };
 
 type PartialPersist = Partial<{
-  activePreset: PresetName;
+  activePreset: PresetName | "Quick" | "High Quality";
   recordingKnobs: Partial<RecordingKnobs>;
-  recordingPacing: RecordingPacingProfile;
+  recordingPacing: unknown;
   exportKnobs: Partial<ExportKnobs> & { audio?: Partial<ExportKnobs["audio"]> };
   version: number;
 }>;
 
+function normalizePreset(value: unknown): PresetName {
+  return value === "Lossless" || value === "Custom" ? value : "Standard";
+}
+
+function normalizeRecordingKnobs(knobs: RecordingKnobs): RecordingKnobs {
+  return {
+    ...knobs,
+    quality: knobs.quality === "lossless" ? "lossless" : "high",
+  };
+}
+
 export function migrate(raw: unknown): PersistShape {
   if (!raw || typeof raw !== "object") return { ...SEED };
   const r = raw as PartialPersist;
+  const activePreset = normalizePreset(r.activePreset);
+  const recordingKnobs =
+    activePreset !== "Custom"
+      ? PRESET_BUNDLES[activePreset]
+      : normalizeRecordingKnobs({
+          ...SEED.recordingKnobs,
+          ...(r.recordingKnobs ?? {}),
+        } as RecordingKnobs);
   return {
-    activePreset: (r.activePreset ?? SEED.activePreset) as PresetName,
-    recordingKnobs: { ...SEED.recordingKnobs, ...(r.recordingKnobs ?? {}) } as RecordingKnobs,
-    recordingPacing: r.recordingPacing ?? SEED.recordingPacing,
+    activePreset,
+    recordingKnobs,
+    recordingPacing: DEFAULT_RECORDING_PACING,
     exportKnobs: {
       ...SEED.exportKnobs,
       ...(r.exportKnobs ?? {}),
@@ -58,13 +77,19 @@ export function resolveOverride(
   project: PartialPersist | null,
 ): PersistShape {
   if (!project) return global;
+  const activePreset = normalizePreset(project.activePreset ?? global.activePreset);
+  const hasExplicitPreset = project.activePreset !== undefined;
+  const recordingKnobs =
+    hasExplicitPreset && activePreset !== "Custom"
+      ? PRESET_BUNDLES[activePreset]
+      : normalizeRecordingKnobs({
+          ...global.recordingKnobs,
+          ...(project.recordingKnobs ?? {}),
+        } as RecordingKnobs);
   return {
-    activePreset: (project.activePreset ?? global.activePreset) as PresetName,
-    recordingKnobs: {
-      ...global.recordingKnobs,
-      ...(project.recordingKnobs ?? {}),
-    } as RecordingKnobs,
-    recordingPacing: project.recordingPacing ?? global.recordingPacing,
+    activePreset,
+    recordingKnobs,
+    recordingPacing: DEFAULT_RECORDING_PACING,
     exportKnobs: {
       ...global.exportKnobs,
       ...(project.exportKnobs ?? {}),

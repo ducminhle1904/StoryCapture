@@ -1,5 +1,5 @@
 /**
- * Preset selector. Applies the 3 bundled presets via applyPreset; the
+ * Preset selector. Applies the bundled presets via applyPreset; the
  * "Custom" label is display-only — never user-applied (setRecordingKnob
  * flips the activePreset automatically).
  */
@@ -15,7 +15,7 @@ import {
 import { type PresetName, useOutputPrefsStore } from "@/state/output-prefs";
 import { LABEL_PRESET, PRESET_OPTION_LABELS } from "./copy";
 
-const APPLICABLE: Array<Exclude<PresetName, "Custom">> = ["Quick", "Standard", "High Quality"];
+const APPLICABLE: Array<Exclude<PresetName, "Custom">> = ["Standard", "Lossless"];
 
 interface Props {
   disabled?: boolean;

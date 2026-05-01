@@ -28,7 +28,8 @@ mod staging;
 pub use config::{AudioFormat, AudioInput, EncodeConfig};
 pub use error::{EncoderError, Result};
 pub use filters::{
-    build_vf, FilterSpec, FitMode, OutputResolution, PadColor, QualityPreset, ScaleAlgo,
+    build_vf, ColorAdjustment, FilterSpec, FitMode, OutputResolution, PadColor, QualityPreset,
+    ScaleAlgo,
 };
 pub use pipeline::{
     bgra_bytes_of_frame, BackpressureCallback, EncodePipeline, EncodeResult, SHUTDOWN_TIMEOUT,

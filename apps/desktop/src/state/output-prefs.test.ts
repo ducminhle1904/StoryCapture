@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   DEFAULT_EXPORT_KNOBS,
+  DEFAULT_RECORDING_PACING,
   matchPreset,
   PRESET_BUNDLES,
   recordingOutputResolutionForStart,
@@ -12,6 +13,7 @@ function resetStore() {
   useOutputPrefsStore.setState({
     activePreset: "Standard",
     recordingKnobs: PRESET_BUNDLES.Standard,
+    recordingPacing: DEFAULT_RECORDING_PACING,
     exportKnobs: DEFAULT_EXPORT_KNOBS,
   });
 }
@@ -25,14 +27,20 @@ describe("useOutputPrefsStore", () => {
     const s = useOutputPrefsStore.getState();
     expect(s.activePreset).toBe("Standard");
     expect(s.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
+    expect(s.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
     expect(s.exportKnobs).toEqual(DEFAULT_EXPORT_KNOBS);
   });
 
-  it("applyPreset('Quick') swaps recordingKnobs to the Quick bundle", () => {
-    useOutputPrefsStore.getState().applyPreset("Quick");
+  it("keeps recording pacing fixed at 1x", () => {
+    useOutputPrefsStore.getState().setRecordingPacing("fast" as never);
+    expect(useOutputPrefsStore.getState().recordingPacing).toBe(DEFAULT_RECORDING_PACING);
+  });
+
+  it("applyPreset('Lossless') swaps recordingKnobs to the Lossless bundle", () => {
+    useOutputPrefsStore.getState().applyPreset("Lossless");
     const s = useOutputPrefsStore.getState();
-    expect(s.activePreset).toBe("Quick");
-    expect(s.recordingKnobs).toEqual(PRESET_BUNDLES.Quick);
+    expect(s.activePreset).toBe("Lossless");
+    expect(s.recordingKnobs).toEqual(PRESET_BUNDLES.Lossless);
   });
 
   it("flips to Custom when fps=24 breaks every bundle", () => {
@@ -45,11 +53,10 @@ describe("useOutputPrefsStore", () => {
 
   it("lands back on a named preset when individual knobs happen to match one", () => {
     useOutputPrefsStore.getState().applyPreset("Standard");
-    useOutputPrefsStore.getState().setRecordingKnob("fps", 60);
-    useOutputPrefsStore.getState().setRecordingKnob("quality", "high");
+    useOutputPrefsStore.getState().setRecordingKnob("quality", "lossless");
     const s = useOutputPrefsStore.getState();
-    expect(s.activePreset).toBe("High Quality");
-    expect(s.recordingKnobs).toEqual(PRESET_BUNDLES["High Quality"]);
+    expect(s.activePreset).toBe("Lossless");
+    expect(s.recordingKnobs).toEqual(PRESET_BUNDLES.Lossless);
   });
 
   it("setExportKnob does not touch activePreset", () => {
@@ -61,12 +68,12 @@ describe("useOutputPrefsStore", () => {
   });
 
   it("re-applying the same value keeps the named preset", () => {
-    useOutputPrefsStore.getState().applyPreset("Quick");
+    useOutputPrefsStore.getState().applyPreset("Lossless");
     useOutputPrefsStore
       .getState()
-      .setRecordingKnob("resolution", { kind: "p720" });
+      .setRecordingKnob("quality", "lossless");
     const s = useOutputPrefsStore.getState();
-    expect(s.activePreset).toBe("Quick");
+    expect(s.activePreset).toBe("Lossless");
   });
 
   it("setRecordingKnob rejects wrong value types at compile time", () => {
@@ -77,9 +84,8 @@ describe("useOutputPrefsStore", () => {
 
 describe("matchPreset", () => {
   it("returns the bundle name for a known shape", () => {
-    expect(matchPreset(PRESET_BUNDLES.Quick)).toBe("Quick");
     expect(matchPreset(PRESET_BUNDLES.Standard)).toBe("Standard");
-    expect(matchPreset(PRESET_BUNDLES["High Quality"])).toBe("High Quality");
+    expect(matchPreset(PRESET_BUNDLES.Lossless)).toBe("Lossless");
   });
 
   it("returns null for a shape outside the bundles", () => {
@@ -89,33 +95,25 @@ describe("matchPreset", () => {
         fps: 24,
         fit: "letterbox",
         pad: { kind: "black" },
-        quality: "med",
+        quality: "high",
       }),
     ).toBeNull();
   });
 });
 
 describe("recordingOutputResolutionForStart", () => {
-  it("keeps Standard and High Quality source-sized explicitly", () => {
+  it("keeps Standard and Lossless source-sized explicitly", () => {
     expect(
       recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Standard"),
     ).toEqual({
       kind: "match-source",
     });
     expect(
-      recordingOutputResolutionForStart(
-        PRESET_BUNDLES["High Quality"],
-        "High Quality",
-      ),
+      recordingOutputResolutionForStart(PRESET_BUNDLES.Lossless, "Lossless"),
     ).toEqual({ kind: "match-source" });
   });
 
-  it("keeps Quick and Custom resolutions explicit", () => {
-    expect(
-      recordingOutputResolutionForStart(PRESET_BUNDLES.Quick, "Quick"),
-    ).toEqual({
-      kind: "p720",
-    });
+  it("keeps Custom resolution explicit", () => {
     expect(
       recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Custom"),
     ).toEqual({

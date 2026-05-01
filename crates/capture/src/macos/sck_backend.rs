@@ -8,7 +8,7 @@ use crate::backend::{BackendKind, CaptureBackend, CaptureConfig, CaptureStats};
 use crate::display::DisplayInfo;
 use crate::error::CaptureError;
 use crate::events::CaptureEvent;
-use crate::frame::Frame;
+use crate::frame::{Frame, FrameCropRect};
 use crate::target::CaptureTarget;
 use async_trait::async_trait;
 use core_graphics::color_space::kCGColorSpaceSRGB;
@@ -65,6 +65,17 @@ struct SckState {
     stream: Option<SCStream>,
 }
 
+struct SckStreamPlan {
+    filter: SCContentFilter,
+    width_px: u32,
+    height_px: u32,
+    source_rect: Option<CGRect>,
+    needs_scales_to_fit: bool,
+    native_sck_crop: bool,
+    crop_scale_hint: Option<f64>,
+    effective_scale: Option<f64>,
+}
+
 impl SckBackend {
     pub fn new() -> Result<Self, CaptureError> {
         // Log preflight for diagnostics, but do not gate on it.
@@ -98,17 +109,22 @@ impl SckBackend {
         self.dropped.load(Ordering::Relaxed)
     }
 
-    /// Build an `SCContentFilter` and output dimensions for a target.
-    ///
-    /// Returns `(filter, width_px, height_px, source_rect_opt, needs_scales_to_fit)`.
-    /// `source_rect_opt` is in logical points when present.
-    /// `needs_scales_to_fit` is true for window captures so SCK composites the
-    /// native Retina backing store onto our physical-pixel canvas instead of
-    /// padding the unused area with black.
-    pub(crate) fn build_filter(
+    fn build_stream_plan(
         target: &CaptureTarget,
+        frame_crop: Option<FrameCropRect>,
+    ) -> Result<SckStreamPlan, CaptureError> {
+        Self::build_stream_plan_with_scale_hint(
+            target,
+            frame_crop,
+            frame_crop.and_then(|rect| rect.scale_hint),
+        )
+    }
+
+    fn build_stream_plan_with_scale_hint(
+        target: &CaptureTarget,
+        frame_crop: Option<FrameCropRect>,
         scale_hint: Option<f64>,
-    ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>, bool), CaptureError> {
+    ) -> Result<SckStreamPlan, CaptureError> {
         match target {
             CaptureTarget::Display { display_id } => {
                 let content = SCShareableContent::get()
@@ -126,9 +142,18 @@ impl SckBackend {
                     .with_display(disp)
                     .with_excluding_windows(&[])
                     .build();
-                let (width, height) = filter_pixel_size(&filter).unwrap_or((width, height));
+                let (width_px, height_px) = filter_pixel_size(&filter).unwrap_or((width, height));
                 // The builder handles an empty exclusion list safely.
-                Ok((filter, width, height, None, false))
+                Ok(SckStreamPlan {
+                    filter,
+                    width_px,
+                    height_px,
+                    source_rect: None,
+                    needs_scales_to_fit: false,
+                    native_sck_crop: false,
+                    crop_scale_hint: scale_hint,
+                    effective_scale: None,
+                })
             }
             CaptureTarget::Window { window_id } => {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
@@ -140,11 +165,15 @@ impl SckBackend {
                 // text even though Retina/MacBook captures looked correct.
                 let display_scale = window_display_scale(frame)?;
                 let scale = effective_window_scale(display_scale, scale_hint);
-                let width = (frame.width * scale).round().max(1.0) as u32;
-                let height = (frame.height * scale).round().max(1.0) as u32;
-                log_window_canvas_scale(frame, display_scale, scale_hint, scale, width, height);
                 let filter = SCContentFilter::create().with_window(&window).build();
-                Ok((filter, width, height, None, true))
+                build_window_stream_plan(
+                    filter,
+                    frame,
+                    display_scale,
+                    scale,
+                    scale_hint,
+                    frame_crop,
+                )
             }
             CaptureTarget::WindowByPid { pid, title_hint } => {
                 // Command-layer callers already did the retry loop.
@@ -168,11 +197,15 @@ impl SckBackend {
                 // scale from the display containing the resolved window.
                 let display_scale = window_display_scale(frame)?;
                 let scale = effective_window_scale(display_scale, scale_hint);
-                let width = (frame.width * scale).round().max(1.0) as u32;
-                let height = (frame.height * scale).round().max(1.0) as u32;
-                log_window_canvas_scale(frame, display_scale, scale_hint, scale, width, height);
                 let filter = SCContentFilter::create().with_window(&window).build();
-                Ok((filter, width, height, None, true))
+                build_window_stream_plan(
+                    filter,
+                    frame,
+                    display_scale,
+                    scale,
+                    scale_hint,
+                    frame_crop,
+                )
             }
             // Region capture uses logical-point source rects and pixel output sizes.
             CaptureTarget::DisplayRegion { display_id, rect } => {
@@ -192,9 +225,39 @@ impl SckBackend {
                     .unwrap_or_else(|| display_scale(disp.frame(), disp.width(), disp.height()));
                 // Use shared math so tests and production round the same way.
                 let (width_px, height_px, source_rect) = compute_region_math(rect, scale);
-                Ok((filter, width_px, height_px, Some(source_rect), false))
+                Ok(SckStreamPlan {
+                    filter,
+                    width_px,
+                    height_px,
+                    source_rect: Some(source_rect),
+                    needs_scales_to_fit: false,
+                    native_sck_crop: false,
+                    crop_scale_hint: scale_hint,
+                    effective_scale: Some(scale),
+                })
             }
         }
+    }
+
+    /// Build an `SCContentFilter` and output dimensions for a target.
+    ///
+    /// Returns `(filter, width_px, height_px, source_rect_opt, needs_scales_to_fit)`.
+    /// `source_rect_opt` is in logical points when present.
+    /// `needs_scales_to_fit` is true for window captures so SCK composites the
+    /// native Retina backing store onto our physical-pixel canvas instead of
+    /// padding the unused area with black.
+    pub(crate) fn build_filter(
+        target: &CaptureTarget,
+        scale_hint: Option<f64>,
+    ) -> Result<(SCContentFilter, u32, u32, Option<CGRect>, bool), CaptureError> {
+        let plan = Self::build_stream_plan_with_scale_hint(target, None, scale_hint)?;
+        Ok((
+            plan.filter,
+            plan.width_px,
+            plan.height_px,
+            plan.source_rect,
+            plan.needs_scales_to_fit,
+        ))
     }
 
     async fn stop_stream(&self) -> Result<(), CaptureError> {
@@ -246,18 +309,33 @@ impl CaptureBackend for SckBackend {
 
         // Resolve the filter off the async runtime.
         let target = cfg.target.clone();
-        let scale_hint = cfg.frame_crop.and_then(|rect| rect.scale_hint);
-        let (filter, width_px, height_px, source_rect, needs_scales_to_fit) =
-            tokio::task::spawn_blocking(move || Self::build_filter(&target, scale_hint))
-                .await
-                .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
+        let frame_crop_for_plan = cfg.frame_crop;
+        let plan = tokio::task::spawn_blocking(move || {
+            Self::build_stream_plan(&target, frame_crop_for_plan)
+        })
+        .await
+        .map_err(|e| CaptureError::Native(format!("spawn_blocking join: {e}")))??;
+        let SckStreamPlan {
+            filter,
+            width_px,
+            height_px,
+            source_rect,
+            needs_scales_to_fit,
+            native_sck_crop,
+            crop_scale_hint,
+            effective_scale,
+        } = plan;
 
         tracing::info!(
+            target: "storycapture::capture",
             target_kind = %cfg.target.kind_label(),
             width_px,
             height_px,
             fps = cfg.fps_target,
             frame_crop = ?cfg.frame_crop,
+            native_sck_crop,
+            crop_scale_hint,
+            effective_scale,
             "SckBackend: building SCStream"
         );
 
@@ -285,9 +363,22 @@ impl CaptureBackend for SckBackend {
             .with_queue_depth(8);
         set_srgb_color_space_name(&mut config);
 
-        // Apply native region crop when a source rect is present.
+        // Apply native SCK crop when a source rect is present.
         if let Some(src) = source_rect {
             let dest = CGRect::new(0.0, 0.0, width_px as f64, height_px as f64);
+            tracing::info!(
+                target: "storycapture::capture",
+                native_sck_crop,
+                source_x = src.x,
+                source_y = src.y,
+                source_w = src.width,
+                source_h = src.height,
+                output_width_px = width_px,
+                output_height_px = height_px,
+                crop_scale_hint,
+                effective_scale,
+                "SckBackend: applying SCStream source rect"
+            );
             config = config
                 .with_source_rect(src)
                 .with_destination_rect(dest)
@@ -326,7 +417,11 @@ impl CaptureBackend for SckBackend {
         let dropped_for_handler = self.dropped.clone();
         let delivered_for_handler = self.delivered.clone();
         let paused_for_handler = self.paused.clone();
-        let frame_crop = cfg.frame_crop;
+        let frame_crop = if native_sck_crop {
+            None
+        } else {
+            cfg.frame_crop
+        };
         let crop_logged = Arc::new(AtomicBool::new(false));
         let crop_logged_for_handler = crop_logged.clone();
         let added = stream.add_output_handler(
@@ -686,6 +781,73 @@ fn log_window_canvas_scale(
     }
 }
 
+fn build_window_stream_plan(
+    filter: SCContentFilter,
+    frame: CGRect,
+    display_scale: f64,
+    effective_scale: f64,
+    scale_hint: Option<f64>,
+    frame_crop: Option<FrameCropRect>,
+) -> Result<SckStreamPlan, CaptureError> {
+    if let Some(crop) = frame_crop {
+        let (width_px, height_px, source_rect) =
+            compute_window_crop_math(crop, frame.width, frame.height, effective_scale).ok_or_else(
+                || {
+                    CaptureError::Backend(format!(
+                        "invalid window frame_crop for native SCK crop: {:?}",
+                        crop
+                    ))
+                },
+            )?;
+        tracing::info!(
+            target: "storycapture::capture",
+            native_sck_crop = true,
+            source_x = source_rect.x,
+            source_y = source_rect.y,
+            source_w = source_rect.width,
+            source_h = source_rect.height,
+            output_width_px = width_px,
+            output_height_px = height_px,
+            scale_hint = normalize_scale_hint(scale_hint),
+            effective_scale,
+            window_w = frame.width,
+            window_h = frame.height,
+            "SckBackend: planned native SCK window crop"
+        );
+        Ok(SckStreamPlan {
+            filter,
+            width_px,
+            height_px,
+            source_rect: Some(source_rect),
+            needs_scales_to_fit: false,
+            native_sck_crop: true,
+            crop_scale_hint: scale_hint,
+            effective_scale: Some(effective_scale),
+        })
+    } else {
+        let width_px = (frame.width * effective_scale).round().max(1.0) as u32;
+        let height_px = (frame.height * effective_scale).round().max(1.0) as u32;
+        log_window_canvas_scale(
+            frame,
+            display_scale,
+            scale_hint,
+            effective_scale,
+            width_px,
+            height_px,
+        );
+        Ok(SckStreamPlan {
+            filter,
+            width_px,
+            height_px,
+            source_rect: None,
+            needs_scales_to_fit: true,
+            native_sck_crop: false,
+            crop_scale_hint: scale_hint,
+            effective_scale: Some(effective_scale),
+        })
+    }
+}
+
 fn window_display_scale(window_frame: CGRect) -> Result<f64, CaptureError> {
     let content = SCShareableContent::get()
         .map_err(|e| CaptureError::Native(format!("SCShareableContent::get: {e}")))?;
@@ -752,6 +914,73 @@ pub(crate) fn compute_region_math(
     let width_px = (rect.w * scale).round() as u32;
     let height_px = (rect.h * scale).round() as u32;
     (width_px, height_px, src)
+}
+
+fn compute_window_crop_math(
+    rect: FrameCropRect,
+    window_logical_w: f64,
+    window_logical_h: f64,
+    effective_scale: f64,
+) -> Option<(u32, u32, CGRect)> {
+    if rect.w == 0
+        || rect.h == 0
+        || !window_logical_w.is_finite()
+        || !window_logical_h.is_finite()
+        || !effective_scale.is_finite()
+        || window_logical_w <= 0.0
+        || window_logical_h <= 0.0
+        || effective_scale <= 0.0
+    {
+        return None;
+    }
+
+    let (mut x, mut y, mut w, mut h) = match (rect.basis_w, rect.basis_h) {
+        (Some(basis_w), Some(basis_h)) if basis_w > 0 && basis_h > 0 => {
+            let scale_x = window_logical_w / basis_w as f64;
+            let scale_y = window_logical_h / basis_h as f64;
+            (
+                rect.x as f64 * scale_x,
+                rect.y as f64 * scale_y,
+                rect.w as f64 * scale_x,
+                rect.h as f64 * scale_y,
+            )
+        }
+        _ => (rect.x as f64, rect.y as f64, rect.w as f64, rect.h as f64),
+    };
+
+    if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+        return None;
+    }
+    if x < 0.0 || y < 0.0 || w <= 0.0 || h <= 0.0 || x >= window_logical_w || y >= window_logical_h
+    {
+        return None;
+    }
+
+    if x + w > window_logical_w {
+        w = window_logical_w - x;
+    }
+    if y + h > window_logical_h {
+        h = window_logical_h - y;
+    }
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+
+    // SCK source rects are logical points; stream width/height are pixels.
+    x = clamp_near_zero(x);
+    y = clamp_near_zero(y);
+    let source_rect = CGRect::new(x, y, w, h);
+    let width_px = (w * effective_scale).round().max(1.0) as u32;
+    let height_px = (h * effective_scale).round().max(1.0) as u32;
+    Some((width_px, height_px, source_rect))
+}
+
+fn clamp_near_zero(value: f64) -> f64 {
+    if value.abs() < f64::EPSILON {
+        0.0
+    } else {
+        value
+    }
 }
 
 #[cfg(test)]
@@ -893,6 +1122,112 @@ mod region_tests {
 
         assert!(rect_intersection_area(window, external) > 1_000_000.0);
         assert_eq!(rect_intersection_area(window, internal), 0.0);
+    }
+
+    #[test]
+    fn window_crop_math_retina_2x_keeps_logical_source_rect() {
+        let crop = FrameCropRect {
+            x: 0,
+            y: 0,
+            w: 1800,
+            h: 1012,
+            basis_w: None,
+            basis_h: None,
+            scale_hint: Some(2.0),
+        };
+
+        let (w_px, h_px, src) = compute_window_crop_math(crop, 1800.0, 1012.0, 2.0).unwrap();
+
+        assert_eq!(w_px, 3600);
+        assert_eq!(h_px, 2024);
+        assert_eq!(src.x, 0.0);
+        assert_eq!(src.y, 0.0);
+        assert_eq!(src.width, 1800.0);
+        assert_eq!(src.height, 1012.0);
+    }
+
+    #[test]
+    fn window_crop_math_scales_basis_to_window_logical_points() {
+        let crop = FrameCropRect {
+            x: 100,
+            y: 80,
+            w: 900,
+            h: 506,
+            basis_w: Some(1800),
+            basis_h: Some(1012),
+            scale_hint: Some(2.0),
+        };
+
+        let (w_px, h_px, src) = compute_window_crop_math(crop, 900.0, 506.0, 2.0).unwrap();
+
+        assert_eq!(w_px, 900);
+        assert_eq!(h_px, 506);
+        assert_eq!(src.x, 50.0);
+        assert_eq!(src.y, 40.0);
+        assert_eq!(src.width, 450.0);
+        assert_eq!(src.height, 253.0);
+    }
+
+    #[test]
+    fn window_crop_math_rounds_fractional_scale_output() {
+        let crop = FrameCropRect {
+            x: 10,
+            y: 20,
+            w: 333,
+            h: 222,
+            basis_w: None,
+            basis_h: None,
+            scale_hint: Some(1.5),
+        };
+
+        let (w_px, h_px, src) = compute_window_crop_math(crop, 800.0, 600.0, 1.5).unwrap();
+
+        assert_eq!(w_px, 500);
+        assert_eq!(h_px, 333);
+        assert_eq!(src.x, 10.0);
+        assert_eq!(src.y, 20.0);
+        assert_eq!(src.width, 333.0);
+        assert_eq!(src.height, 222.0);
+    }
+
+    #[test]
+    fn window_crop_math_rejects_invalid_crop() {
+        let zero = FrameCropRect {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 100,
+            basis_w: None,
+            basis_h: None,
+            scale_hint: Some(2.0),
+        };
+        assert!(compute_window_crop_math(zero, 800.0, 600.0, 2.0).is_none());
+
+        let outside = FrameCropRect {
+            x: 801,
+            y: 0,
+            w: 10,
+            h: 10,
+            basis_w: None,
+            basis_h: None,
+            scale_hint: Some(2.0),
+        };
+        assert!(compute_window_crop_math(outside, 800.0, 600.0, 2.0).is_none());
+
+        let valid = FrameCropRect {
+            x: 790,
+            y: 590,
+            w: 20,
+            h: 20,
+            basis_w: None,
+            basis_h: None,
+            scale_hint: Some(2.0),
+        };
+        let (w_px, h_px, src) = compute_window_crop_math(valid, 800.0, 600.0, 2.0).unwrap();
+        assert_eq!(w_px, 20);
+        assert_eq!(h_px, 20);
+        assert_eq!(src.width, 10.0);
+        assert_eq!(src.height, 10.0);
     }
 }
 

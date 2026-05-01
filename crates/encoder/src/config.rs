@@ -10,7 +10,8 @@ use std::path::PathBuf;
 
 use crate::error::{EncoderError, Result};
 use crate::filters::{
-    self, FilterSpec, FitMode, OutputResolution, PadColor, QualityPreset, ScaleAlgo,
+    self, ColorAdjustment, FilterSpec, FitMode, OutputResolution, PadColor, QualityPreset,
+    ScaleAlgo,
 };
 use crate::probe::HardwareEncoder;
 use crate::quality;
@@ -52,6 +53,7 @@ pub struct EncodeConfig {
     pub fit_mode: FitMode,
     pub pad_color: PadColor,
     pub scale_algo: ScaleAlgo,
+    pub color_adjustment: ColorAdjustment,
     pub quality_preset: QualityPreset,
     /// Fixed output cadence for the FFmpeg stdin path. The macOS VT fast
     /// path preserves native capture PTS; raw BGRA over stdin does not.
@@ -72,6 +74,9 @@ pub struct EncodeConfig {
     /// drops the frame and bumps the backpressure counter on elapse.
     /// Default `Some(200)` preserves the previously hardcoded behavior.
     pub stdin_write_timeout_ms: Option<u64>,
+    /// Bias hardware encoder options toward live capture throughput rather
+    /// than offline export quality. Software encoders ignore this.
+    pub realtime_encoding: bool,
     /// Wait budget for the first FFmpeg frame to land on stdin.
     /// Default `Some(30_000)` mirrors a generous startup window.
     pub first_frame_timeout_ms: Option<u64>,
@@ -100,6 +105,7 @@ impl EncodeConfig {
             fit_mode: FitMode::Letterbox,
             pad_color: PadColor::Black,
             scale_algo: ScaleAlgo::Lanczos,
+            color_adjustment: ColorAdjustment::None,
             quality_preset: QualityPreset::Med,
             fps_advisory,
             encoder,
@@ -108,6 +114,7 @@ impl EncodeConfig {
             force_ffmpeg_path: false,
             keyframe_interval_sec: None,
             stdin_write_timeout_ms: Some(200),
+            realtime_encoding: false,
             first_frame_timeout_ms: Some(30_000),
             capture_dims: None,
         }
@@ -135,6 +142,11 @@ impl EncodeConfig {
         self
     }
 
+    pub fn with_color_adjustment(mut self, adjustment: ColorAdjustment) -> Self {
+        self.color_adjustment = adjustment;
+        self
+    }
+
     pub fn with_quality_preset(mut self, preset: QualityPreset) -> Self {
         self.quality_preset = preset;
         self
@@ -155,6 +167,11 @@ impl EncodeConfig {
 
     pub fn force_ffmpeg_path(mut self) -> Self {
         self.force_ffmpeg_path = true;
+        self
+    }
+
+    pub fn with_realtime_encoding(mut self, realtime: bool) -> Self {
+        self.realtime_encoding = realtime;
         self
     }
 
@@ -198,6 +215,7 @@ impl EncodeConfig {
             fit: self.fit_mode,
             pad_color: self.pad_color,
             scale_algo: self.scale_algo,
+            color_adjustment: self.color_adjustment,
         };
         let vf =
             filters::build_vf(&spec).expect("EncodeConfig was not validated before to_ffmpeg_args");
@@ -284,12 +302,13 @@ impl EncodeConfig {
                 "colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv".into(),
             ]);
         }
-        args.extend(quality::resolve(
+        args.extend(quality::resolve_with_realtime(
             self.quality_preset,
             self.encoder,
             self.output_width,
             self.output_height,
             self.fps_advisory,
+            self.realtime_encoding,
         ));
 
         // Keyframe interval (forces GOP). None => default FFmpeg behavior

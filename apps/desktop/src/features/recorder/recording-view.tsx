@@ -44,7 +44,11 @@ import {
 import { parseStory } from "@/ipc/parse";
 import { getAppSettings } from "@/ipc/settings";
 import { frontendLog } from "@/lib/log";
-import { recordingOutputResolutionForStart, useOutputPrefsStore } from "@/state/output-prefs";
+import {
+  DEFAULT_RECORDING_PACING,
+  recordingOutputResolutionForStart,
+  useOutputPrefsStore,
+} from "@/state/output-prefs";
 import { type RecorderStatus, type StepProgress, useRecorderStore } from "@/state/recorder";
 
 // The recorder-side element picker has been removed. Element picking
@@ -55,7 +59,6 @@ import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { CursorTrail } from "./cursor-trail";
 import { LivePreview } from "./live-preview";
-import { PacingControl } from "./PacingControl";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 import { TccPrompt } from "./tcc-prompt";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
@@ -105,6 +108,33 @@ function displayId(display: DisplayInfo): number {
   return typeof display.id === "bigint" ? Number(display.id) : display.id;
 }
 
+interface BrowserViewportSize {
+  width: number;
+  height: number;
+}
+
+const DEFAULT_BROWSER_VIEWPORT: BrowserViewportSize = { width: 1280, height: 800 };
+const RECORDING_BROWSER_CHROME_VERTICAL_BUDGET = 120;
+
+function storyViewportSize(source: string): BrowserViewportSize {
+  const pair = source.match(/\bviewport\s*:\s*(\d{2,5})\s*x\s*(\d{2,5})\b/i);
+  if (pair) {
+    return { width: Number(pair[1]), height: Number(pair[2]) };
+  }
+
+  const named = source.match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]?.toLowerCase();
+  switch (named) {
+    case "desktop":
+      return { width: 1280, height: 800 };
+    case "tablet":
+      return { width: 1024, height: 768 };
+    case "mobile":
+      return { width: 375, height: 667 };
+    default:
+      return DEFAULT_BROWSER_VIEWPORT;
+  }
+}
+
 function preferDisplay(a: DisplayInfo, b: DisplayInfo): DisplayInfo {
   if (a.scale_factor !== b.scale_factor) {
     return a.scale_factor > b.scale_factor ? a : b;
@@ -115,17 +145,93 @@ function preferDisplay(a: DisplayInfo, b: DisplayInfo): DisplayInfo {
   return a;
 }
 
+function displayLogicalSize(display: DisplayInfo): BrowserViewportSize {
+  const scale =
+    Number.isFinite(display.scale_factor) && display.scale_factor > 0 ? display.scale_factor : 1;
+  return {
+    width: Math.max(1, Math.floor(display.width_px / scale)),
+    height: Math.max(1, Math.floor(display.height_px / scale)),
+  };
+}
+
+function displayArea(display: DisplayInfo): number {
+  const logical = displayLogicalSize(display);
+  return logical.width * logical.height;
+}
+
+function preferDisplayArea(a: DisplayInfo, b: DisplayInfo): DisplayInfo {
+  if (displayArea(a) !== displayArea(b)) {
+    return displayArea(a) > displayArea(b) ? a : b;
+  }
+  return preferDisplay(a, b);
+}
+
+function browserWindowFitsDisplay(
+  display: DisplayInfo,
+  viewport: BrowserViewportSize,
+): boolean {
+  // App-mode can fall back to a normal Chromium window, so fit against a
+  // conservative browser-chrome budget in logical pixels.
+  const verticalChromeBudget = RECORDING_BROWSER_CHROME_VERTICAL_BUDGET;
+  const logical = displayLogicalSize(display);
+  return (
+    logical.width >= viewport.width && logical.height >= viewport.height + verticalChromeBudget
+  );
+}
+
+function fitBrowserViewportToDisplay(
+  viewport: BrowserViewportSize,
+  display: DisplayInfo | undefined,
+): {
+  viewport: BrowserViewportSize;
+  displayLogical: BrowserViewportSize | null;
+  scale: number;
+  scaled: boolean;
+} {
+  if (!display) {
+    return { viewport, displayLogical: null, scale: 1, scaled: false };
+  }
+
+  const verticalChromeBudget = RECORDING_BROWSER_CHROME_VERTICAL_BUDGET;
+  const displayLogical = displayLogicalSize(display);
+  const maxWidth = Math.max(1, displayLogical.width);
+  const maxHeight = Math.max(1, displayLogical.height - verticalChromeBudget);
+  const scale = Math.min(1, maxWidth / viewport.width, maxHeight / viewport.height);
+  const fitted = {
+    width: Math.max(1, Math.min(maxWidth, Math.floor(viewport.width * scale))),
+    height: Math.max(1, Math.min(maxHeight, Math.floor(viewport.height * scale))),
+  };
+
+  return {
+    viewport: fitted,
+    displayLogical,
+    scale,
+    scaled: fitted.width !== viewport.width || fitted.height !== viewport.height,
+  };
+}
+
 function chooseBrowserLaunchDisplay(
   displays: DisplayInfo[],
   selected: DisplayInfo | undefined,
+  viewport: BrowserViewportSize,
 ): DisplayInfo | undefined {
-  const best = displays.reduce<DisplayInfo | undefined>(
-    (acc, candidate) => (acc ? preferDisplay(acc, candidate) : candidate),
+  const fitting = displays.filter((candidate) => browserWindowFitsDisplay(candidate, viewport));
+  if (fitting.length > 0) {
+    const bestFit = fitting.reduce<DisplayInfo | undefined>(
+      (acc, candidate) => (acc ? preferDisplay(acc, candidate) : candidate),
+      undefined,
+    );
+    if (!bestFit || !selected) return bestFit;
+    if (browserWindowFitsDisplay(selected, viewport)) {
+      return preferDisplay(selected, bestFit);
+    }
+    return bestFit;
+  }
+
+  return displays.reduce<DisplayInfo | undefined>(
+    (acc, candidate) => (acc ? preferDisplayArea(acc, candidate) : candidate),
     selected,
   );
-  if (!best || !selected) return best;
-
-  return best.scale_factor > selected.scale_factor ? best : selected;
 }
 
 export function RecordingView({
@@ -463,11 +569,47 @@ export function RecordingView({
     let height = display?.height_px ?? 1080;
     try {
       const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
-      const pacingProfile = useOutputPrefsStore.getState().recordingPacing;
+      const storyViewport = storyViewportSize(storySource);
+      const pacingProfile = DEFAULT_RECORDING_PACING;
       const launchDisplay = storyHasBrowser
-        ? chooseBrowserLaunchDisplay(displays, display)
+        ? chooseBrowserLaunchDisplay(displays, display, storyViewport)
         : display;
       const recordingDisplay = launchDisplay ? { x: launchDisplay.x, y: launchDisplay.y } : null;
+      const viewportFit = storyHasBrowser
+        ? fitBrowserViewportToDisplay(storyViewport, launchDisplay)
+        : { viewport: storyViewport, displayLogical: null, scale: 1, scaled: false };
+      const recordingViewport = storyHasBrowser ? viewportFit.viewport : null;
+      if (storyHasBrowser && launchDisplay) {
+        frontendLog.info("RecordingView", "browser recording viewport plan", {
+          fields: {
+            selected_display_id: display ? displayId(display) : null,
+            selected_display_name: display?.name ?? null,
+            selected_display_scale: display?.scale_factor ?? null,
+            launch_display_id: displayId(launchDisplay),
+            launch_display_name: launchDisplay.name,
+            launch_display_scale: launchDisplay.scale_factor,
+            launch_display_physical_width: launchDisplay.width_px,
+            launch_display_physical_height: launchDisplay.height_px,
+            launch_display_logical_width: viewportFit.displayLogical?.width ?? null,
+            launch_display_logical_height: viewportFit.displayLogical?.height ?? null,
+            requested_viewport_width: storyViewport.width,
+            requested_viewport_height: storyViewport.height,
+            effective_viewport_width: viewportFit.viewport.width,
+            effective_viewport_height: viewportFit.viewport.height,
+            viewport_fit_scale: viewportFit.scale,
+            viewport_was_scaled: viewportFit.scaled,
+            launch_display_fits_requested_viewport: browserWindowFitsDisplay(
+              launchDisplay,
+              storyViewport,
+            ),
+          },
+        });
+        if (viewportFit.scaled) {
+          toast.info(
+            `Browser viewport scaled to ${viewportFit.viewport.width}x${viewportFit.viewport.height} to fit the recording display`,
+          );
+        }
+      }
       if (
         storyHasBrowser &&
         display &&
@@ -484,6 +626,14 @@ export function RecordingView({
             launch_display_scale: launchDisplay.scale_factor,
             launch_display_x: launchDisplay.x,
             launch_display_y: launchDisplay.y,
+            story_viewport_width: storyViewport.width,
+            story_viewport_height: storyViewport.height,
+            effective_viewport_width: viewportFit.viewport.width,
+            effective_viewport_height: viewportFit.viewport.height,
+            launch_display_fits_viewport: browserWindowFitsDisplay(
+              launchDisplay,
+              storyViewport,
+            ),
           },
         });
       }
@@ -520,6 +670,7 @@ export function RecordingView({
             chromeHiding,
             pacingProfile,
             recordingDisplay,
+            recordingViewport,
           },
           (evt) => dispatchAutomation(evt),
           (ch) => {
@@ -616,6 +767,7 @@ export function RecordingView({
             projectFolder,
             chromeHiding,
             recordingDisplay,
+            recordingViewport,
             pacingProfile,
             recordingSessionId:
               typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
@@ -1144,9 +1296,6 @@ export function RecordingView({
                 disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
               <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
-              <PacingControl
-                disabled={status === "recording" || status === "paused" || status === "stopping"}
-              />
               {/* Live preview toggle (persisted, default ON). */}
               <Toggle
                 label="Live preview"

@@ -14,9 +14,9 @@ use capture::trajectory::{
 };
 use capture::{ByteBoundedQueue, CaptureConfig, CaptureEvent, CapturePipeline, Frame, PixelFormat};
 use encoder::{
-    probe_encoders, AudioFormat, AudioInput, EncodeConfig, EncodePipeline, EncodeProgress,
-    EncodeResult, EncoderError, EncoderProbe, FitMode, HardwareEncoder, OutputResolution, PadColor,
-    QualityPreset, ScaleAlgo, SidecarChild, SidecarCommand,
+    probe_encoders, AudioFormat, AudioInput, ColorAdjustment, EncodeConfig, EncodePipeline,
+    EncodeProgress, EncodeResult, EncoderError, EncoderProbe, FitMode, HardwareEncoder,
+    OutputResolution, PadColor, QualityPreset, ScaleAlgo, SidecarChild, SidecarCommand,
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,24 @@ use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
 const ENCODER_FRAME_CHANNEL_CAPACITY: usize = 4;
+
+#[derive(Debug, Clone)]
+enum PostMuxAudio {
+    Silent,
+    Pcm {
+        path: PathBuf,
+        sample_rate: u32,
+        channels: u16,
+        format: AudioFormat,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct PostMuxPlan {
+    video_path: PathBuf,
+    output_path: PathBuf,
+    audio: PostMuxAudio,
+}
 
 #[derive(Debug, Clone, Copy)]
 struct RecordingQualityPlan {
@@ -372,6 +390,184 @@ fn emit_audio_unavailable<E: std::fmt::Display>(channel: &Channel<RecordingEvent
     });
 }
 
+fn partial_path_for(target: &std::path::Path) -> PathBuf {
+    let mut p = target.to_path_buf();
+    let Some(stem) = target.file_stem().map(|stem| stem.to_os_string()) else {
+        return p.with_extension("partial");
+    };
+    let mut partial = stem;
+    partial.push(".partial");
+    if let Some(ext) = target.extension() {
+        partial.push(".");
+        partial.push(ext);
+    }
+    p.set_file_name(partial);
+    p
+}
+
+fn build_post_mux_args(plan: &PostMuxPlan, mux_output_path: &std::path::Path) -> Vec<String> {
+    let mut args = vec![
+        "-hide_banner".into(),
+        "-y".into(),
+        "-i".into(),
+        plan.video_path.display().to_string(),
+    ];
+
+    match &plan.audio {
+        PostMuxAudio::Silent => {
+            args.extend([
+                "-f".into(),
+                "lavfi".into(),
+                "-i".into(),
+                "anullsrc=r=48000:cl=mono".into(),
+            ]);
+        }
+        PostMuxAudio::Pcm {
+            path,
+            sample_rate,
+            channels,
+            format,
+        } => {
+            args.extend([
+                "-f".into(),
+                format.ffmpeg_name().into(),
+                "-ar".into(),
+                sample_rate.to_string(),
+                "-ac".into(),
+                channels.to_string(),
+                "-i".into(),
+                path.display().to_string(),
+            ]);
+        }
+    }
+
+    args.extend([
+        "-map".into(),
+        "0:v:0".into(),
+        "-map".into(),
+        "1:a:0".into(),
+        "-c:v".into(),
+        "copy".into(),
+        "-c:a".into(),
+        "aac".into(),
+    ]);
+
+    match &plan.audio {
+        PostMuxAudio::Silent => {
+            args.extend(["-b:a".into(), "64k".into()]);
+        }
+        PostMuxAudio::Pcm { .. } => {
+            args.extend(["-b:a".into(), "128k".into(), "-ac".into(), "2".into()]);
+        }
+    }
+
+    args.extend([
+        "-shortest".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-loglevel".into(),
+        "info".into(),
+        mux_output_path.display().to_string(),
+    ]);
+    args
+}
+
+async fn finalize_post_mux(
+    mut result: EncodeResult,
+    plan: &PostMuxPlan,
+) -> Result<EncodeResult, AppError> {
+    let partial_path = partial_path_for(&plan.output_path);
+    let _ = std::fs::remove_file(&partial_path);
+    let args = build_post_mux_args(plan, &partial_path);
+    tracing::info!(
+        target: "storycapture::recording",
+        video_path = %plan.video_path.display(),
+        output_path = %plan.output_path.display(),
+        audio = ?plan.audio,
+        ffmpeg_args = %args.join(" "),
+        "post-muxing recorder audio with copied VT video stream"
+    );
+
+    let binary_path = resolve_sidecar_path("ffmpeg").map_err(AppError::Encoder)?;
+    let output = TokioCommand::new(&binary_path)
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| AppError::Encoder(format!("spawn ffmpeg mux: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr_tail = stderr
+            .lines()
+            .rev()
+            .take(30)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" | ");
+        tracing::error!(
+            target: "storycapture::recording",
+            status = ?output.status,
+            stderr_tail,
+            preserved_video_path = %plan.video_path.display(),
+            "post-mux failed; preserving video-only temp output"
+        );
+        let _ = std::fs::remove_file(&partial_path);
+        return Err(AppError::Encoder(format!(
+            "audio mux failed with status {}: {stderr_tail}. Preserved video at {}",
+            output.status,
+            plan.video_path.display()
+        )));
+    }
+
+    std::fs::rename(&partial_path, &plan.output_path).map_err(|e| {
+        AppError::Encoder(format!(
+            "rename mux output {} -> {}: {e}",
+            partial_path.display(),
+            plan.output_path.display()
+        ))
+    })?;
+
+    result.output_path = plan.output_path.clone();
+    result.bytes = std::fs::metadata(&result.output_path)
+        .map(|m| m.len())
+        .unwrap_or(result.bytes);
+
+    if let Err(e) = std::fs::remove_file(&plan.video_path) {
+        tracing::debug!(
+            target: "storycapture::recording",
+            error = %e,
+            path = %plan.video_path.display(),
+            "post-mux video temp cleanup skipped"
+        );
+    }
+    if let PostMuxAudio::Pcm { path, .. } = &plan.audio {
+        if let Err(e) = std::fs::remove_file(path) {
+            tracing::debug!(
+                target: "storycapture::recording",
+                error = %e,
+                path = %path.display(),
+                "post-mux audio temp cleanup skipped"
+            );
+        }
+    }
+
+    tracing::info!(
+        target: "storycapture::recording",
+        output_path = %result.output_path.display(),
+        bytes = result.bytes,
+        duration_ms = result.duration_ms,
+        frames_written = result.frames_written,
+        frames_dropped = result.frames_dropped,
+        "post-mux completed"
+    );
+    Ok(result)
+}
+
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct EncodeProgressDto {
     pub frame: u64,
@@ -511,6 +707,8 @@ struct RecordingHandle {
     /// Target output file.
     #[allow(dead_code)]
     output_path: PathBuf,
+    /// Optional post-encode mux step for macOS VideoToolbox recorder output.
+    post_mux: Option<PostMuxPlan>,
     /// Optional mic capture stream.
     audio_stream: Arc<tokio::sync::Mutex<Option<AudioCaptureStream>>>,
     /// Named-pipe handle.
@@ -552,15 +750,60 @@ fn quality_mode_for_encoder(encoder: HardwareEncoder) -> RecordingQualityMode {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn should_post_mux_video_toolbox(encoder: HardwareEncoder) -> bool {
+    matches!(
+        encoder,
+        HardwareEncoder::VideoToolboxH264 | HardwareEncoder::VideoToolboxHevc
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn should_post_mux_video_toolbox(_encoder: HardwareEncoder) -> bool {
+    false
+}
+
+fn has_realtime_60fps_pressure(output_w: u32, output_h: u32, fps: u32) -> bool {
+    let area = (output_w as u64).saturating_mul(output_h as u64);
+    fps >= 50 && area > 1920u64 * 1080u64
+}
+
+fn should_default_output_match_source(
+    frame_crop: Option<FrameCropRectDto>,
+    actual_width: u32,
+    actual_height: u32,
+) -> bool {
+    if frame_crop
+        .and_then(|crop| crop.scale_hint)
+        .is_some_and(|scale| scale.is_finite() && scale >= 1.5)
+    {
+        return true;
+    }
+
+    (actual_width as u64) * (actual_height as u64) >= (1920u64 * 2) * (1080u64 * 2)
+}
+
 fn select_recording_encoder(
     probe: &EncoderProbe,
     preset: QualityPreset,
-    _output_w: u32,
-    _output_h: u32,
-    _fps: u32,
+    output_w: u32,
+    output_h: u32,
+    fps: u32,
 ) -> Result<RecordingEncoderSelection, AppError> {
     #[cfg(target_os = "macos")]
     {
+        if matches!(preset, QualityPreset::High | QualityPreset::Lossless)
+            && has_realtime_60fps_pressure(output_w, output_h, fps)
+        {
+            if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
+                return Ok(RecordingEncoderSelection::new(
+                    HardwareEncoder::VideoToolboxH264,
+                    Some(
+                        "high-resolution 60fps recording uses VideoToolbox H.264 so the encoder can keep up with native capture frames; libx264 CRF/lossless is reserved for smaller realtime captures",
+                    ),
+                ));
+            }
+        }
         if probe.available.contains(&HardwareEncoder::Libx264Software)
             && matches!(preset, QualityPreset::High | QualityPreset::Lossless)
         {
@@ -792,11 +1035,16 @@ async fn drain_one(_session_id: &str, handle: RecordingHandle) -> Result<(), Str
         let mut p = handle.capture.lock().await;
         p.stop().await.map_err(|e| e.to_string())?;
     }
-    handle
+    let result = handle
         .encode_join
         .await
         .map_err(|e| format!("encode join: {e}"))?
         .map_err(|e| e.to_string())?;
+    if let Some(plan) = handle.post_mux {
+        finalize_post_mux(result, &plan)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -954,6 +1202,8 @@ pub async fn start_recording(
         AppError::from(e)
     })?;
     let output_path = exports_dir.join(format!("{session_id}.mp4"));
+    let video_only_path = exports_dir.join(format!("{session_id}.video.mp4"));
+    let audio_pcm_path = exports_dir.join(format!("{session_id}.audio.f32le"));
 
     // Start capture pipeline.
     let cap_cfg = CaptureConfig {
@@ -1136,25 +1386,12 @@ pub async fn start_recording(
         None
     };
 
-    let audio_fifo: Option<FifoHandle> = if negotiated_audio.is_some() {
-        Some(make_fifo("storycapture-audio").map_err(|e| {
-            tracing::error!(
-                target: "storycapture::recording",
-                "audio fifo creation failed: {}",
-                e
-            );
-            AppError::Capture(format!("audio fifo: {e}"))
-        })?)
-    } else {
-        None
-    };
-
     // Defaults; optional DTO fields override them.
     // When the caller did NOT pin an output resolution and the capture is
     // ≥ 2× a 1080p canvas (Retina / HiDPI), prefer MatchSource so we don't
     // throw away real pixel detail on the way to a 1920×1080 MP4.
     let retina_default_match_source =
-        (actual_width as u64) * (actual_height as u64) >= (1920u64 * 2) * (1080u64 * 2);
+        should_default_output_match_source(args.frame_crop, actual_width, actual_height);
     let output_res: OutputResolution = match args.output_resolution {
         Some(dto) => dto.into(),
         None if retina_default_match_source => OutputResolution::MatchSource,
@@ -1201,8 +1438,65 @@ pub async fn start_recording(
         );
     }
 
+    let use_post_mux = should_post_mux_video_toolbox(recording_encoder);
+    let negotiated_audio_info = negotiated_audio.as_ref().map(|audio| audio.info());
+    let encoder_output_path = if use_post_mux {
+        let _ = std::fs::remove_file(&video_only_path);
+        video_only_path.clone()
+    } else {
+        output_path.clone()
+    };
+    let mut post_mux = if use_post_mux {
+        let audio = match negotiated_audio_info {
+            Some(info) => {
+                let _ = std::fs::remove_file(&audio_pcm_path);
+                std::fs::File::create(&audio_pcm_path).map_err(|e| {
+                    AppError::Capture(format!(
+                        "create recorder PCM audio staging file {}: {e}",
+                        audio_pcm_path.display()
+                    ))
+                })?;
+                PostMuxAudio::Pcm {
+                    path: audio_pcm_path.clone(),
+                    sample_rate: info.sample_rate,
+                    channels: info.channels,
+                    format: AudioFormat::F32LE,
+                }
+            }
+            None => PostMuxAudio::Silent,
+        };
+        tracing::info!(
+            target: "storycapture::recording",
+            encoder = ?recording_encoder,
+            video_path = %encoder_output_path.display(),
+            output_path = %output_path.display(),
+            audio = ?audio,
+            "macOS recorder using VideoToolbox video-only encode plus post audio mux"
+        );
+        Some(PostMuxPlan {
+            video_path: encoder_output_path.clone(),
+            output_path: output_path.clone(),
+            audio,
+        })
+    } else {
+        None
+    };
+
+    let audio_fifo: Option<FifoHandle> = if !use_post_mux && negotiated_audio.is_some() {
+        Some(make_fifo("storycapture-audio").map_err(|e| {
+            tracing::error!(
+                target: "storycapture::recording",
+                "audio fifo creation failed: {}",
+                e
+            );
+            AppError::Capture(format!("audio fifo: {e}"))
+        })?)
+    } else {
+        None
+    };
+
     let mut enc_cfg = EncodeConfig::new(
-        output_path.clone(),
+        encoder_output_path.clone(),
         actual_width,
         actual_height,
         args.fps,
@@ -1213,8 +1507,18 @@ pub async fn start_recording(
     .with_fit_mode(fit)
     .with_pad_color(pad)
     .with_scale_algo(algo)
+    .with_color_adjustment(
+        if matches!(qp, QualityPreset::High | QualityPreset::Lossless) {
+            ColorAdjustment::ScreenVivid
+        } else {
+            ColorAdjustment::None
+        },
+    )
     .with_quality_preset(qp)
-    .force_ffmpeg_path();
+    .with_realtime_encoding(true);
+    if !use_post_mux {
+        enc_cfg = enc_cfg.force_ffmpeg_path();
+    }
     let target_video_kbps = encoder::quality::target_kbps(
         qp,
         enc_cfg.encoder,
@@ -1246,6 +1550,7 @@ pub async fn start_recording(
         output_height = quality_plan.output_height,
         fps = quality_plan.fps,
         target_video_kbps = quality_plan.target_video_kbps,
+        color_adjustment = ?enc_cfg.color_adjustment,
         scale_area_pct = ((quality_plan.output_width as u64)
             .saturating_mul(quality_plan.output_height as u64)
             .saturating_mul(100)
@@ -1296,96 +1601,136 @@ pub async fn start_recording(
     tracing::info!(
         target: "storycapture::recording",
         "encode pipeline started: output={:?}",
-        output_path
+        encoder_output_path
     );
 
-    // Let FFmpeg open the FIFO before starting capture.
+    // Start mic capture after the encoder is ready. FFmpeg live encode reads
+    // through a FIFO; the VT path records raw PCM to a staging file and muxes
+    // it after the video-only writer finalizes.
     let app_for_audio_event = app.clone();
-    let audio_stream: Option<AudioCaptureStream> = if let (Some(f), Some(negotiated)) =
-        (&audio_fifo, negotiated_audio)
-    {
-        let fifo_path = f.path().to_path_buf();
-        // FIFO handshake. Poll metadata every 20ms; treat 3 consecutive
-        // Ok results (60ms of stable existence) as "FFmpeg has opened the
-        // FIFO". Deadline at 2s.
-        let fifo_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-        let mut ok_ticks: u8 = 0;
-        loop {
-            match tokio::fs::metadata(&fifo_path).await {
-                Ok(_) => {
-                    ok_ticks += 1;
-                    if ok_ticks >= 3 {
-                        break;
-                    }
-                }
-                Err(_) => {
-                    ok_ticks = 0;
-                }
-            }
-            if tokio::time::Instant::now() >= fifo_deadline {
-                tracing::error!(
-                    target: "storycapture::recording",
-                    path = %fifo_path.display(),
-                    "fifo handshake timed out after 2s"
-                );
-                return Err(AppError::FifoHandshakeTimeout);
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        // cpal work runs on a blocking thread.
-        match tokio::task::spawn_blocking(move || {
-            AudioCaptureStream::start_with_negotiated(negotiated, fifo_path)
-        })
-        .await
-        {
-            Ok(Ok((stream, info))) => {
-                tracing::info!(
-                    target: "storycapture::recording",
-                    sample_rate = info.sample_rate,
-                    channels = info.channels,
-                    "mic audio capture started"
-                );
-                // Poll for a mic disconnect and emit a warning event.
-                let flag = stream.degraded_flag();
-                let audio_degraded_join = tokio::spawn(async move {
-                    let mut ticker = tokio::time::interval(std::time::Duration::from_millis(500));
-                    loop {
-                        ticker.tick().await;
-                        if flag.load(std::sync::atomic::Ordering::Relaxed) {
-                            tracing::warn!(
-                                target: "storycapture::recording",
-                                "audio stream degraded; emitting audio://disconnected"
-                            );
-                            let _ = app_for_audio_event.emit(
-                                "audio://disconnected",
-                                "Microphone disconnected — continuing without audio.",
-                            );
+    let audio_stream: Option<AudioCaptureStream> = if let Some(negotiated) = negotiated_audio {
+        let audio_target = if let Some(f) = &audio_fifo {
+            let fifo_path = f.path().to_path_buf();
+            // FIFO handshake. Poll metadata every 20ms; treat 3 consecutive
+            // Ok results (60ms of stable existence) as "FFmpeg has opened the
+            // FIFO". Deadline at 2s.
+            let fifo_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+            let mut ok_ticks: u8 = 0;
+            loop {
+                match tokio::fs::metadata(&fifo_path).await {
+                    Ok(_) => {
+                        ok_ticks += 1;
+                        if ok_ticks >= 3 {
                             break;
                         }
                     }
-                });
-                spawn_guard.push(audio_degraded_join.abort_handle());
-                Some(stream)
+                    Err(_) => {
+                        ok_ticks = 0;
+                    }
+                }
+                if tokio::time::Instant::now() >= fifo_deadline {
+                    tracing::error!(
+                        target: "storycapture::recording",
+                        path = %fifo_path.display(),
+                        "fifo handshake timed out after 2s"
+                    );
+                    return Err(AppError::FifoHandshakeTimeout);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
-            Ok(Err(e)) => {
-                // Fall through to video-only.
-                tracing::warn!(
-                    target: "storycapture::recording",
-                    error = %e,
-                    "mic audio start failed; continuing video-only"
-                );
-                emit_audio_unavailable(&on_event, &e);
-                None
+            Some((fifo_path, "fifo"))
+        } else if let Some(PostMuxPlan {
+            audio: PostMuxAudio::Pcm { path, .. },
+            ..
+        }) = post_mux.as_ref()
+        {
+            Some((path.clone(), "pcm_file"))
+        } else {
+            None
+        };
+
+        if let Some((audio_path, audio_sink_kind)) = audio_target {
+            tracing::info!(
+                target: "storycapture::recording",
+                audio_sink_kind,
+                path = %audio_path.display(),
+                "starting mic audio capture"
+            );
+            match tokio::task::spawn_blocking(move || {
+                AudioCaptureStream::start_with_negotiated(negotiated, audio_path)
+            })
+            .await
+            {
+                Ok(Ok((stream, info))) => {
+                    tracing::info!(
+                        target: "storycapture::recording",
+                        sample_rate = info.sample_rate,
+                        channels = info.channels,
+                        audio_sink_kind,
+                        "mic audio capture started"
+                    );
+                    // Poll for a mic disconnect and emit a warning event.
+                    let flag = stream.degraded_flag();
+                    let audio_degraded_join = tokio::spawn(async move {
+                        let mut ticker =
+                            tokio::time::interval(std::time::Duration::from_millis(500));
+                        loop {
+                            ticker.tick().await;
+                            if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                                tracing::warn!(
+                                    target: "storycapture::recording",
+                                    "audio stream degraded; emitting audio://disconnected"
+                                );
+                                let _ = app_for_audio_event.emit(
+                                    "audio://disconnected",
+                                    "Microphone disconnected — continuing without audio.",
+                                );
+                                break;
+                            }
+                        }
+                    });
+                    spawn_guard.push(audio_degraded_join.abort_handle());
+                    Some(stream)
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(
+                        target: "storycapture::recording",
+                        error = %e,
+                        "mic audio start failed; continuing video-only"
+                    );
+                    if let Some(plan) = post_mux.as_mut() {
+                        if matches!(plan.audio, PostMuxAudio::Pcm { .. }) {
+                            tracing::warn!(
+                                target: "storycapture::recording",
+                                "post-mux audio switched to silent track after mic start failure"
+                            );
+                            plan.audio = PostMuxAudio::Silent;
+                        }
+                    }
+                    emit_audio_unavailable(&on_event, &e);
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "storycapture::recording",
+                        error = %e,
+                        "mic audio spawn_blocking join error; continuing video-only"
+                    );
+                    if let Some(plan) = post_mux.as_mut() {
+                        if matches!(plan.audio, PostMuxAudio::Pcm { .. }) {
+                            tracing::warn!(
+                                target: "storycapture::recording",
+                                "post-mux audio switched to silent track after mic start join failure"
+                            );
+                            plan.audio = PostMuxAudio::Silent;
+                        }
+                    }
+                    emit_audio_unavailable(&on_event, &e);
+                    None
+                }
             }
-            Err(e) => {
-                tracing::warn!(
-                    target: "storycapture::recording",
-                    error = %e,
-                    "mic audio spawn_blocking join error; continuing video-only"
-                );
-                emit_audio_unavailable(&on_event, &e);
-                None
-            }
+        } else {
+            None
         }
     } else {
         None
@@ -1438,6 +1783,7 @@ pub async fn start_recording(
             capture: Arc::new(tokio::sync::Mutex::new(capture)),
             encode_join,
             output_path,
+            post_mux,
             audio_stream: Arc::new(tokio::sync::Mutex::new(audio_stream)),
             audio_fifo,
             heartbeat_abort: Some(heartbeat_abort),
@@ -1546,7 +1892,7 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
     }
     tracing::info!(target: "storycapture::recording", "stop_recording: capture stopped, waiting on encoder flush");
 
-    let result = handle
+    let mut result = handle
         .encode_join
         .await
         .map_err(|e| {
@@ -1557,6 +1903,9 @@ pub(crate) async fn stop_recording_inner(session_id: &str) -> Result<EncodeResul
             tracing::error!(target: "storycapture::recording", "encoder returned error: {}", e);
             AppError::Encoder(e.to_string())
         })?;
+    if let Some(plan) = handle.post_mux {
+        result = finalize_post_mux(result, &plan).await?;
+    }
     // Surface observed bitrate so we can diagnose encoder under-shoot
     // (VT quality-mode used to produce ~1 Mbps files against a 10 Mbps
     // target). bytes*8 = bits; bits / ms = kbps.
@@ -1754,7 +2103,10 @@ mod double_start_guard_tests {
 
 #[cfg(all(test, target_os = "macos"))]
 mod recording_encoder_selection_tests {
-    use super::{select_recording_encoder, RecordingQualityMode};
+    use super::{
+        select_recording_encoder, should_default_output_match_source, FrameCropRectDto,
+        RecordingQualityMode,
+    };
     use crate::error::AppError;
     use encoder::{EncoderProbe, HardwareEncoder, QualityPreset};
 
@@ -1857,7 +2209,7 @@ mod recording_encoder_selection_tests {
     }
 
     #[test]
-    fn retina_60fps_lossless_keeps_libx264_when_available() {
+    fn retina_60fps_lossless_uses_videotoolbox_for_realtime_capture() {
         let selection = select_recording_encoder(
             &probe(
                 vec![
@@ -1874,13 +2226,72 @@ mod recording_encoder_selection_tests {
         )
         .expect("selection");
 
-        assert_eq!(selection.encoder, HardwareEncoder::Libx264Software);
-        assert_eq!(selection.quality_mode, RecordingQualityMode::SoftwareCrf);
-        assert_eq!(selection.fallback_reason, None);
+        assert_eq!(selection.encoder, HardwareEncoder::VideoToolboxH264);
+        assert_eq!(
+            selection.quality_mode,
+            RecordingQualityMode::HardwareBitrate
+        );
+        assert!(selection
+            .fallback_reason
+            .is_some_and(|reason| reason.contains("high-resolution 60fps")));
     }
 
     #[test]
-    fn retina_60fps_high_keeps_libx264_when_available() {
+    fn above_1080p_60fps_lossless_uses_videotoolbox_for_realtime_capture() {
+        let selection = select_recording_encoder(
+            &probe(
+                vec![
+                    HardwareEncoder::VideoToolboxH264,
+                    HardwareEncoder::Libx264Software,
+                ],
+                HardwareEncoder::VideoToolboxH264,
+            ),
+            QualityPreset::Lossless,
+            2700,
+            1518,
+            60,
+        )
+        .expect("selection");
+
+        assert_eq!(selection.encoder, HardwareEncoder::VideoToolboxH264);
+        assert_eq!(
+            selection.quality_mode,
+            RecordingQualityMode::HardwareBitrate
+        );
+    }
+
+    #[test]
+    fn hidpi_crop_defaults_to_match_source_even_below_4k_area() {
+        let crop = FrameCropRectDto {
+            x: 0,
+            y: 80,
+            w: 1800,
+            h: 1012,
+            basis_w: Some(1800),
+            basis_h: Some(1125),
+            scale_hint: Some(2.0),
+        };
+
+        assert!(should_default_output_match_source(Some(crop), 3600, 2024));
+    }
+
+    #[test]
+    fn non_hidpi_1080p_crop_keeps_1080p_default() {
+        let crop = FrameCropRectDto {
+            x: 0,
+            y: 80,
+            w: 1800,
+            h: 1012,
+            basis_w: Some(1800),
+            basis_h: Some(1125),
+            scale_hint: Some(1.0),
+        };
+
+        assert!(!should_default_output_match_source(Some(crop), 1800, 1012));
+    }
+
+    #[test]
+    fn retina_60fps_high_uses_videotoolbox_for_realtime_capture() {
         let selection = select_recording_encoder(
             &probe(
                 vec![
@@ -1896,9 +2307,60 @@ mod recording_encoder_selection_tests {
         )
         .expect("selection");
 
-        assert_eq!(selection.encoder, HardwareEncoder::Libx264Software);
-        assert_eq!(selection.quality_mode, RecordingQualityMode::SoftwareCrf);
-        assert_eq!(selection.fallback_reason, None);
+        assert_eq!(selection.encoder, HardwareEncoder::VideoToolboxH264);
+        assert_eq!(
+            selection.quality_mode,
+            RecordingQualityMode::HardwareBitrate
+        );
+        assert!(selection
+            .fallback_reason
+            .is_some_and(|reason| reason.contains("high-resolution 60fps")));
+    }
+}
+
+#[cfg(test)]
+mod post_mux_tests {
+    use super::{build_post_mux_args, PostMuxAudio, PostMuxPlan};
+    use encoder::AudioFormat;
+    use std::path::PathBuf;
+
+    #[test]
+    fn silent_mux_copies_video_and_adds_aac_track() {
+        let plan = PostMuxPlan {
+            video_path: PathBuf::from("/tmp/session.video.mp4"),
+            output_path: PathBuf::from("/tmp/session.mp4"),
+            audio: PostMuxAudio::Silent,
+        };
+        let args = build_post_mux_args(&plan, &PathBuf::from("/tmp/session.partial.mp4"));
+        let joined = args.join(" ");
+
+        assert!(joined.contains("-i /tmp/session.video.mp4"));
+        assert!(joined.contains("-f lavfi -i anullsrc=r=48000:cl=mono"));
+        assert!(joined.contains("-c:v copy"));
+        assert!(joined.contains("-c:a aac"));
+        assert!(joined.contains("-b:a 64k"));
+        assert!(joined.ends_with("/tmp/session.partial.mp4"));
+    }
+
+    #[test]
+    fn pcm_mux_uses_raw_audio_file_and_copies_video() {
+        let plan = PostMuxPlan {
+            video_path: PathBuf::from("/tmp/session.video.mp4"),
+            output_path: PathBuf::from("/tmp/session.mp4"),
+            audio: PostMuxAudio::Pcm {
+                path: PathBuf::from("/tmp/session.audio.f32le"),
+                sample_rate: 48_000,
+                channels: 2,
+                format: AudioFormat::F32LE,
+            },
+        };
+        let args = build_post_mux_args(&plan, &PathBuf::from("/tmp/session.partial.mp4"));
+        let joined = args.join(" ");
+
+        assert!(joined.contains("-f f32le -ar 48000 -ac 2 -i /tmp/session.audio.f32le"));
+        assert!(joined.contains("-map 0:v:0 -map 1:a:0"));
+        assert!(joined.contains("-c:v copy"));
+        assert!(joined.contains("-b:a 128k -ac 2"));
     }
 }
 

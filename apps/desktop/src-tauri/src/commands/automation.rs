@@ -31,6 +31,12 @@ pub struct RecordingDisplayPlacementDto {
     pub y: i32,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, specta::Type)]
+pub struct RecordingViewportDto {
+    pub width: u32,
+    pub height: u32,
+}
+
 impl From<ExecutorEvent> for AutomationEvent {
     fn from(e: ExecutorEvent) -> Self {
         AutomationEvent {
@@ -85,6 +91,10 @@ pub async fn launch_automation(
     // browser window on the same display the user picked for capture, which is
     // critical for macOS Retina DPR detection.
     recording_display: Option<RecordingDisplayPlacementDto>,
+    // Optional recording-only viewport override. The renderer computes this
+    // from the selected display's logical size so Chromium never launches a
+    // content viewport larger than the recording screen can fit.
+    recording_viewport: Option<RecordingViewportDto>,
 ) -> Result<(), AppError> {
     let pacing = pacing_profile.unwrap_or(PacingProfileDto::Normal);
     tracing::info!(
@@ -92,6 +102,8 @@ pub async fn launch_automation(
         story_bytes = story_source.len(),
         project_folder = %project_folder,
         recording_session_id = ?recording_session_id,
+        recording_viewport_width = recording_viewport.map(|v| v.width),
+        recording_viewport_height = recording_viewport.map(|v| v.height),
         pacing_profile = ?pacing,
         "launch_automation invoked"
     );
@@ -322,6 +334,10 @@ pub async fn launch_automation(
         }),
         language_choice,
         browser_session_profile,
+        viewport_override: recording_viewport.map(|viewport| story_parser::Viewport {
+            width: viewport.width,
+            height: viewport.height,
+        }),
     };
 
     let persistence = Some(Arc::new(Mutex::new(project_db)) as automation::PersistenceHandle);

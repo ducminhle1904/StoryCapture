@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_EXPORT_KNOBS, PRESET_BUNDLES } from "@/state/output-prefs";
+import {
+  DEFAULT_EXPORT_KNOBS,
+  DEFAULT_RECORDING_PACING,
+  PRESET_BUNDLES,
+} from "@/state/output-prefs";
 
 import { migrate, type PersistShape, resolveOverride } from "./output-prefs-persist";
 
@@ -13,22 +17,42 @@ describe("migrate", () => {
 
   it("returns a valid shape unchanged", () => {
     const input: PersistShape = {
-      activePreset: "Quick",
-      recordingKnobs: PRESET_BUNDLES.Quick,
-      recordingPacing: "fast",
+      activePreset: "Lossless",
+      recordingKnobs: PRESET_BUNDLES.Lossless,
+      recordingPacing: DEFAULT_RECORDING_PACING,
       exportKnobs: DEFAULT_EXPORT_KNOBS,
       version: 1,
     };
     expect(migrate(input)).toEqual(input);
   });
 
-  it("fills missing fields from seed", () => {
+  it("maps legacy presets to Standard", () => {
     const out = migrate({ activePreset: "Quick" } as unknown);
-    expect(out.activePreset).toBe("Quick");
+    expect(out.activePreset).toBe("Standard");
+    expect(out.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
+  });
+
+  it("fills missing fields from seed", () => {
+    const out = migrate({ activePreset: "Standard" } as unknown);
+    expect(out.activePreset).toBe("Standard");
     expect(out.recordingPacing).toBe("normal");
-    expect(out.recordingKnobs).toEqual(SEED.recordingKnobs);
+    expect(out.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
     expect(out.exportKnobs).toEqual(SEED.exportKnobs);
     expect(out.version).toBe(1);
+  });
+
+  it("normalizes legacy medium quality to high", () => {
+    const out = migrate({
+      activePreset: "Custom",
+      recordingKnobs: { ...PRESET_BUNDLES.Standard, quality: "med" },
+    } as unknown);
+    expect(out.activePreset).toBe("Custom");
+    expect(out.recordingKnobs.quality).toBe("high");
+  });
+
+  it("normalizes legacy pacing to the fixed 1x profile", () => {
+    const out = migrate({ recordingPacing: "fast" } as unknown);
+    expect(out.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 
   it("bumps version from 0 to 1", () => {
@@ -61,9 +85,9 @@ describe("resolveOverride", () => {
     expect(out.recordingKnobs.quality).toBe(SEED.recordingKnobs.quality);
   });
 
-  it("project pacing overrides global pacing", () => {
+  it("ignores legacy project pacing overrides", () => {
     const out = resolveOverride(SEED, { recordingPacing: "cinematic" });
-    expect(out.recordingPacing).toBe("cinematic");
+    expect(out.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 
   it("returns global when project override is null", () => {

@@ -11,9 +11,10 @@
 use crate::filters::QualityPreset;
 use crate::probe::HardwareEncoder;
 
-/// Per-encoder bitrate ceiling. The 80 Mbps cap is enforced here inside
-/// the resolver.
-const MAX_KBPS: u32 = 80_000;
+/// Per-encoder bitrate ceiling. Native Retina 60fps screen recordings need a
+/// larger budget than natural video because text and UI edges are expensive to
+/// preserve under H.264/HEVC hardware encoders.
+const MAX_KBPS: u32 = 160_000;
 
 /// Pixel-based target bitrate in kbps, clamped to `MAX_KBPS`.
 /// Screen content (sharp edges, text, high-contrast UI) needs denser bitrate
@@ -74,6 +75,19 @@ pub fn resolve(
     output_w: u32,
     output_h: u32,
     fps: u32,
+) -> Vec<String> {
+    resolve_with_realtime(preset, encoder, output_w, output_h, fps, false)
+}
+
+/// Resolve quality flags, optionally biasing platform hardware encoders toward
+/// realtime capture throughput. Offline exports keep the default quality bias.
+pub fn resolve_with_realtime(
+    preset: QualityPreset,
+    encoder: HardwareEncoder,
+    output_w: u32,
+    output_h: u32,
+    fps: u32,
+    realtime: bool,
 ) -> Vec<String> {
     match encoder {
         HardwareEncoder::Libx264Software => match preset {
@@ -161,13 +175,11 @@ pub fn resolve(
                 "-constant_bit_rate".into(),
                 "true".into(),
                 "-realtime".into(),
-                "false".into(),
+                if realtime { "true" } else { "false" }.into(),
                 "-prio_speed".into(),
-                "false".into(),
+                if realtime { "true" } else { "false" }.into(),
                 "-power_efficient".into(),
                 "0".into(),
-                "-spatial_aq".into(),
-                "1".into(),
             ]);
             if matches!(encoder, HardwareEncoder::VideoToolboxH264) {
                 args.extend([
@@ -284,8 +296,8 @@ mod tests {
     }
 
     #[test]
-    fn pixel_based_7680x4320_clamps_to_80000() {
-        assert_eq!(pixel_based_kbps(7680, 4320, 30), 80_000);
+    fn pixel_based_7680x4320_clamps_to_160000() {
+        assert_eq!(pixel_based_kbps(7680, 4320, 30), 160_000);
     }
 
     #[test]
@@ -299,6 +311,20 @@ mod tests {
                 60,
             ),
             64_800
+        );
+    }
+
+    #[test]
+    fn target_kbps_lossless_2x_browser_60fps_exceeds_old_80mbps_cap() {
+        assert_eq!(
+            target_kbps(
+                QualityPreset::Lossless,
+                HardwareEncoder::VideoToolboxH264,
+                3600,
+                2024,
+                60,
+            ),
+            109_296
         );
     }
 
@@ -389,13 +415,33 @@ mod tests {
                 "false",
                 "-power_efficient",
                 "0",
-                "-spatial_aq",
-                "1",
                 "-profile",
                 "high",
                 "-coder",
                 "cabac",
             ]
+        );
+    }
+
+    #[test]
+    fn videotoolbox_realtime_mode_prioritizes_capture_speed() {
+        let got = resolve_with_realtime(
+            QualityPreset::High,
+            HardwareEncoder::VideoToolboxH264,
+            2880,
+            1800,
+            60,
+            true,
+        );
+        assert!(got
+            .windows(2)
+            .any(|w| w[0] == "-realtime" && w[1] == "true"));
+        assert!(got
+            .windows(2)
+            .any(|w| w[0] == "-prio_speed" && w[1] == "true"));
+        assert!(
+            !got.iter().any(|a| a == "-spatial_aq"),
+            "VideoToolbox sidecar does not expose -spatial_aq"
         );
     }
 

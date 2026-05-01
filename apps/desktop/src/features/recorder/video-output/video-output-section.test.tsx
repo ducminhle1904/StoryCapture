@@ -77,27 +77,28 @@ describe("VideoOutputSection", () => {
     expect(pad).toEqual({ kind: "custom", r: 255, g: 107, b: 45 });
   });
 
-  it("changing FPS 30 → 60 from Standard flips activePreset to Custom", async () => {
+  it("changing FPS 60 → 30 from Standard flips activePreset to Custom", async () => {
     const user = userEvent.setup();
     render(<VideoOutputSection />);
-    const sixty = screen.getByLabelText("60");
-    await user.click(sixty);
+    const thirty = screen.getByLabelText("30");
+    await user.click(thirty);
     expect(useOutputPrefsStore.getState().activePreset).toBe("Custom");
   });
 
-  it("FPS 30 → 60 then Quality med → high flips activePreset back to High Quality", async () => {
+  it("Quality Standard → Lossless flips activePreset to Lossless", async () => {
     const user = userEvent.setup();
     render(<VideoOutputSection />);
-    await user.click(screen.getByLabelText("60"));
-    await user.click(screen.getByLabelText("High"));
-    expect(useOutputPrefsStore.getState().activePreset).toBe("High Quality");
+    await user.click(screen.getByLabelText("Lossless"));
+    expect(useOutputPrefsStore.getState().activePreset).toBe("Lossless");
   });
 });
 
 describe("OutputSummaryBadge", () => {
-  it("renders '1080p • 30fps • Letterbox • Medium' at Standard preset", () => {
+  it("renders 'Match source • 60fps • Letterbox • Standard' at Standard preset", () => {
     render(<OutputSummaryBadge onActivate={() => {}} />);
-    expect(screen.getByRole("button")).toHaveTextContent("1080p • 30fps • Letterbox • Medium");
+    expect(screen.getByRole("button")).toHaveTextContent(
+      "Match source • 60fps • Letterbox • Standard",
+    );
   });
 
   it("invokes scrollIntoView through onActivate when clicked", async () => {

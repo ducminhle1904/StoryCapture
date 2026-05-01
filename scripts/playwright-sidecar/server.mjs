@@ -84,7 +84,6 @@ let state = {
   appModeRequested: false,
   appModeReused: false,
   recordingViewport: null,
-  recordingDeviceCdp: null,
   recordingDeviceScaleFactor: null,
   // Test-only: force `browserProcess` to return the "remote-browser"
   // response shape even though we launched locally. Flipped by the
@@ -150,6 +149,12 @@ const PREVIEW_SHARP_IDLE_MS = 220;
 const PREVIEW_SHARP_DEVICE_SCALE_FACTOR = 2;
 const PREVIEW_SHARP_LOG_INTERVAL_MS = 5_000;
 const RECORDING_DEVICE_SCALE_FACTOR_FALLBACK = 1;
+const CHROMIUM_UI_SUPPRESSION_ARGS = [
+  "--disable-translate",
+  "--disable-extensions",
+  "--disable-component-extensions-with-background-pages",
+  "--disable-features=Translate,TranslateUI,TranslateSubFrames",
+];
 
 function clampPositiveInt(value, fallback) {
   const n = Number(value);
@@ -223,6 +228,28 @@ function redactArgForLog(arg) {
   if (arg.startsWith("--app=")) return `--app=${redactUrlForLog(arg)}`;
   if (arg.startsWith("--accept-lang=")) return "--accept-lang=<set>";
   return arg;
+}
+
+function chromiumUiSuppressionArgs(args = []) {
+  const next = Array.isArray(args) ? [...args] : [];
+  const featureIndex = next.findIndex(
+    (arg) => typeof arg === "string" && arg.startsWith("--disable-features="),
+  );
+  for (const hygieneArg of CHROMIUM_UI_SUPPRESSION_ARGS) {
+    if (hygieneArg.startsWith("--disable-features=")) {
+      const wanted = hygieneArg.slice("--disable-features=".length).split(",");
+      if (featureIndex >= 0) {
+        const existing = new Set(next[featureIndex].slice("--disable-features=".length).split(","));
+        const missing = wanted.filter((flag) => !existing.has(flag));
+        if (missing.length > 0) next[featureIndex] += `,${missing.join(",")}`;
+      } else {
+        next.push(hygieneArg);
+      }
+      continue;
+    }
+    if (!next.includes(hygieneArg)) next.push(hygieneArg);
+  }
+  return next;
 }
 
 function sidecarLog(evt, fields = {}) {
@@ -549,24 +576,6 @@ async function pageDiagnostics(page) {
   }
 }
 
-async function closeRecordingDeviceCdp() {
-  if (!state.recordingDeviceCdp) return;
-  try {
-    await state.recordingDeviceCdp.session.detach();
-  } catch {}
-  state.recordingDeviceCdp = null;
-}
-
-async function recordingDeviceCdpForPage(page) {
-  if (state.recordingDeviceCdp?.page === page) {
-    return state.recordingDeviceCdp.session;
-  }
-  await closeRecordingDeviceCdp();
-  const session = await page.context().newCDPSession(page);
-  state.recordingDeviceCdp = { page, session };
-  return session;
-}
-
 function normalizeRecordingDeviceScaleFactor(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return RECORDING_DEVICE_SCALE_FACTOR_FALLBACK;
@@ -576,31 +585,6 @@ function normalizeRecordingDeviceScaleFactor(value) {
 async function detectRecordingDeviceScaleFactor(page) {
   const diag = await pageDiagnostics(page);
   return normalizeRecordingDeviceScaleFactor(diag.devicePixelRatio);
-}
-
-async function applyRecordingDeviceScaleFactor(page, viewport, deviceScaleFactor) {
-  if (!viewport?.width || !viewport?.height) return { ok: false, reason: "missing viewport" };
-  const scaleFactor = normalizeRecordingDeviceScaleFactor(deviceScaleFactor);
-  const cdp = await recordingDeviceCdpForPage(page);
-  await cdp.send("Emulation.setDeviceMetricsOverride", {
-    width: viewport.width,
-    height: viewport.height,
-    deviceScaleFactor: scaleFactor,
-    mobile: false,
-    screenWidth: viewport.width,
-    screenHeight: viewport.height,
-  });
-  const diag = await pageDiagnostics(page);
-  return {
-    ok: true,
-    expectedDeviceScaleFactor: scaleFactor,
-    actualDevicePixelRatio: diag.devicePixelRatio ?? null,
-    innerWidth: diag.innerWidth ?? null,
-    innerHeight: diag.innerHeight ?? null,
-    outerWidth: diag.outerWidth ?? null,
-    outerHeight: diag.outerHeight ?? null,
-    error: diag.error ?? null,
-  };
 }
 
 async function ensureRecordingDeviceScaleFactor(page, reason) {
@@ -614,11 +598,23 @@ async function ensureRecordingDeviceScaleFactor(page, reason) {
       deviceScaleFactor: state.recordingDeviceScaleFactor,
     });
   }
-  const result = await applyRecordingDeviceScaleFactor(
-    page,
-    state.recordingViewport,
-    state.recordingDeviceScaleFactor,
-  );
+  // Do not use Emulation.setDeviceMetricsOverride here. This is a real,
+  // visible Chromium window captured by ScreenCaptureKit; forcing CDP device
+  // metrics can desynchronize Chromium's compositor surface from the native
+  // window and produce wrapped/duplicated captured pixels. Fit the actual
+  // native window instead, then only report DPR so the host can scale crops.
+  const diag = await pageDiagnostics(page);
+  const result = {
+    ok: !diag.error,
+    expectedDeviceScaleFactor: state.recordingDeviceScaleFactor,
+    actualDevicePixelRatio: diag.devicePixelRatio ?? null,
+    innerWidth: diag.innerWidth ?? null,
+    innerHeight: diag.innerHeight ?? null,
+    outerWidth: diag.outerWidth ?? null,
+    outerHeight: diag.outerHeight ?? null,
+    deviceMetricsOverride: false,
+    error: diag.error ?? null,
+  };
   sidecarLog("recording_device_scale_factor", { reason, ...result });
   return result;
 }
@@ -777,7 +773,7 @@ const handlers = {
     // Plan 06-02: args is an optional array of Chromium CLI flags (e.g.
     // ["--app=https://demo.com"] for chrome-hiding per D-09/D-10). Defaults
     // to [] so pre-06-02 call sites (Plan 05-02 tests) keep working.
-    const extraArgs = Array.isArray(args) ? [...args] : [];
+    const extraArgs = chromiumUiSuppressionArgs(args);
     for (const envArg of browserEnvironmentLaunchArgs(browserEnvironment)) {
       const key = envArg.split("=")[0];
       if (!extraArgs.some((arg) => typeof arg === "string" && arg.startsWith(`${key}=`))) {
@@ -957,7 +953,6 @@ const handlers = {
         await state.cdp.detach();
       } catch {}
     }
-    await closeRecordingDeviceCdp();
     if (state.browser) {
       try {
         await state.browser.close();
@@ -984,7 +979,6 @@ const handlers = {
       appModeRequested: false,
       appModeReused: false,
       recordingViewport: null,
-      recordingDeviceCdp: null,
       recordingDeviceScaleFactor: null,
       fakeRemoteBrowser: false,
       pickerPending: null,
@@ -1332,7 +1326,10 @@ const handlers = {
     // so repeated `captureSnapshot` from the editor doesn't pay cold-start
     // Chromium spawn cost every time.
     if (!state.authorBrowser) {
-      state.authorBrowser = await chromium.launch({ headless: true });
+      state.authorBrowser = await chromium.launch({
+        headless: true,
+        args: chromiumUiSuppressionArgs([]),
+      });
     }
     const contextViewport =
       viewport && typeof viewport.width === "number"
@@ -1405,7 +1402,7 @@ const handlers = {
         code: -32000,
       });
     }
-    const launchOpts = { headless: headless !== false, args: [] };
+    const launchOpts = { headless: headless !== false, args: chromiumUiSuppressionArgs([]) };
     if (executable) launchOpts.executablePath = executable;
     else if (channel) launchOpts.channel = channel;
     const browserServer = await chromium.launchServer(launchOpts);

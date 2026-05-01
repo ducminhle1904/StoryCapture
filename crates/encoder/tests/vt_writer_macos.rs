@@ -1,5 +1,5 @@
-//! Smoke test for `VtWriter` — the AVAssetWriter-backed encode path that
-//! ingests CVPixelBuffers directly (zero-copy) and produces an H.264 MP4.
+//! Smoke test for `VtWriter` — the VideoToolbox-backed encode path that
+//! ingests CVPixelBuffers directly (zero-copy) and muxes H.264 into MP4.
 //!
 //! Gated on `#[cfg(target_os = "macos")]` so the crate still compiles on
 //! Windows CI (the Windows build has no VtWriter module). The real-world

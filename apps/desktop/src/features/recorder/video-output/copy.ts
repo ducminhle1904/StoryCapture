@@ -12,9 +12,8 @@ export const SECTION_TITLE = "Video output";
 /* Preset */
 export const LABEL_PRESET = "Preset";
 export const PRESET_OPTION_LABELS: Record<PresetName, string> = {
-  Quick: "Quick",
   Standard: "Standard",
-  "High Quality": "High quality",
+  Lossless: "Lossless",
   Custom: "Custom",
 };
 
@@ -56,23 +55,20 @@ export const LABEL_QUALITY = "Quality";
 export const QUALITY_OPTION_LABELS: Record<QualityPresetDto, string> = {
   low: "Low",
   med: "Medium",
-  high: "High",
+  high: "Standard",
   lossless: "Lossless",
 };
 
 /* Pacing */
 export const LABEL_PACING = "Pacing";
 export const PACING_OPTION_LABELS: Record<RecordingPacingProfile, string> = {
-  raw: "Raw",
-  fast: "Fast",
-  normal: "Normal",
-  cinematic: "Cinematic",
+  normal: "1x",
 };
 
 /* Warnings */
 export const WARN_HARD_CUSTOM_DIMS = "Width/height must be even numbers within 16–7680 × 16–4320.";
 export const WARN_SOFT_LOSSLESS_4K_HW =
-  "Lossless quality at 4K with a HW encoder may exceed hardware bitrate caps and slow renders. Consider dropping to High or switching to Software (libx264).";
+  "Lossless quality at 4K with a HW encoder creates very large All-I files. Consider Standard for routine recordings.";
 export const WARN_SOFT_OUTPUT_GT_CAPTURE =
   "Capture source is smaller than the output size — the video will keep the source size and add padding instead of upscaling (so text stays sharp).";
 

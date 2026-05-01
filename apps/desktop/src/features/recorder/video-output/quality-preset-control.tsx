@@ -1,5 +1,5 @@
 /**
- * Quality preset knob (low / med / high / lossless). Horizontal
+ * Quality preset knob (standard / lossless). Horizontal
  * RadioGroup mirroring FpsControl.
  */
 
@@ -10,7 +10,7 @@ import { useOutputPrefsStore } from "@/state/output-prefs";
 
 import { LABEL_QUALITY, QUALITY_OPTION_LABELS } from "./copy";
 
-const ORDER: QualityPresetDto[] = ["low", "med", "high", "lossless"];
+const ORDER: QualityPresetDto[] = ["high", "lossless"];
 
 interface Props {
   disabled?: boolean;

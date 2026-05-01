@@ -296,6 +296,81 @@ impl Drop for StdinGuard {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrameWriteOutcome {
+    Written,
+    BrokenPipe,
+    DroppedBackpressure,
+}
+
+async fn write_frame_bytes_to_ffmpeg(
+    stdin: &mut StdinGuard,
+    bytes: &[u8],
+    timeout: Option<Duration>,
+) -> Result<FrameWriteOutcome> {
+    let write_fut = stdin.as_mut().write_all(bytes);
+    let write_outcome = match timeout {
+        Some(t) => tokio::time::timeout(t, write_fut).await,
+        None => Ok(write_fut.await),
+    };
+    match write_outcome {
+        Ok(Ok(())) => Ok(FrameWriteOutcome::Written),
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+            Ok(FrameWriteOutcome::BrokenPipe)
+        }
+        Ok(Err(e)) => Err(EncoderError::Io(format!("stdin write: {e}"))),
+        Err(_elapsed) => Ok(FrameWriteOutcome::DroppedBackpressure),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CfrTimingPlan {
+    duplicate_previous: u64,
+    write_current: bool,
+}
+
+fn cfr_timing_plan(
+    first_pts_ns: i128,
+    current_pts_ns: i128,
+    frame_duration_ns: i128,
+    frames_written: u64,
+) -> CfrTimingPlan {
+    let rel_ns = current_pts_ns.saturating_sub(first_pts_ns).max(0);
+    let desired_before_current = (rel_ns / frame_duration_ns.max(1)) as u64;
+    if frames_written > desired_before_current {
+        return CfrTimingPlan {
+            duplicate_previous: 0,
+            write_current: false,
+        };
+    }
+    CfrTimingPlan {
+        duplicate_previous: desired_before_current.saturating_sub(frames_written),
+        write_current: true,
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn strict_vt_native_frames_required(cfg: &EncodeConfig) -> bool {
+    let output_area = u64::from(cfg.output_width).saturating_mul(u64::from(cfg.output_height));
+    let capture_area = u64::from(cfg.capture_width).saturating_mul(u64::from(cfg.capture_height));
+    cfg.realtime_encoding
+        && cfg.fps_advisory >= 50
+        && output_area.max(capture_area) > 1920_u64 * 1080_u64
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn frame_data_kind(data: &FrameData) -> &'static str {
+    match data {
+        #[cfg(target_os = "macos")]
+        FrameData::NativeMacOS(_) => "NativeMacOS",
+        #[cfg(target_os = "windows")]
+        FrameData::NativeWindows(_) => "NativeWindows",
+        #[cfg(target_os = "windows")]
+        FrameData::Pooled(_, _) => "Pooled",
+        FrameData::Owned(_, _) => "Owned",
+    }
+}
+
 /// Start an encode and return a join handle.
 pub struct EncodePipeline;
 
@@ -332,7 +407,9 @@ impl EncodePipeline {
             } else {
                 tracing::info!(
                     target: "storycapture::encoder",
+                    encoder_path = "ffmpeg_rawvideo",
                     force_ffmpeg_path = cfg.force_ffmpeg_path,
+                    has_audio_input = cfg.audio_input.is_some(),
                     "audio_input set or FFmpeg forced — skipping VT fast path, using FFmpeg pipeline"
                 );
             }
@@ -375,6 +452,7 @@ impl EncodePipeline {
         let target_for_task = target_path.clone();
         let stdin_write_timeout = cfg.stdin_write_timeout_ms.map(Duration::from_millis);
         let expected_capture_dims = cfg.capture_dims;
+        let frame_duration_ns = (1_000_000_000i128 / i128::from(cfg.fps_advisory.max(1))).max(1);
         let join = tokio::spawn(async move {
             // Ensure `.partial` is cleaned on any failure/panic path.
             let partial_guard = PartialFileGuard::new(partial_path_for_task.clone());
@@ -386,12 +464,17 @@ impl EncodePipeline {
             let mut stdin = StdinGuard::new(stdin);
             let mut frames_written: u64 = 0;
             let mut frames_dropped: u64 = 0;
+            let mut timing_duplicate_frames: u64 = 0;
+            let mut timing_skipped_frames: u64 = 0;
             tracing::info!(target: "storycapture::encoder", "frame pump started");
 
             // Frame pump loop.
             let mut packed_buf: Vec<u8> = Vec::new();
+            let mut last_frame_buf: Vec<u8> = Vec::new();
+            let mut first_pts_ns: Option<i128> = None;
             let mut first_dims: Option<(u32, u32)> = None;
             while let Some(frame) = frames.recv().await {
+                let pts_ns = frame.pts.ns;
                 let width_px = frame.width_px;
                 let height_px = frame.height_px;
                 if let Some((exp_w, exp_h)) = expected_capture_dims {
@@ -461,28 +544,87 @@ impl EncodePipeline {
                     }
                     &packed_buf[..]
                 };
-                let write_fut = stdin.as_mut().write_all(bytes_ref);
-                let write_outcome = match stdin_write_timeout {
-                    Some(t) => tokio::time::timeout(t, write_fut).await,
-                    None => Ok(write_fut.await),
-                };
-                match write_outcome {
-                    Ok(Ok(())) => {
-                        frames_written += 1;
-                        if frames_written == 1 || frames_written % 30 == 0 {
-                            tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, "encoder frame pump progress");
+                let current_frame_buf = bytes_ref.to_vec();
+                let timing_plan = match first_pts_ns {
+                    Some(first) => {
+                        cfr_timing_plan(first, pts_ns, frame_duration_ns, frames_written)
+                    }
+                    None => {
+                        first_pts_ns = Some(pts_ns);
+                        CfrTimingPlan {
+                            duplicate_previous: 0,
+                            write_current: true,
                         }
                     }
-                    Ok(Err(e)) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                };
+                let mut stop_frame_pump = false;
+
+                for _ in 0..timing_plan.duplicate_previous {
+                    if last_frame_buf.is_empty() {
+                        break;
+                    }
+                    match write_frame_bytes_to_ffmpeg(
+                        &mut stdin,
+                        &last_frame_buf,
+                        stdin_write_timeout,
+                    )
+                    .await?
+                    {
+                        FrameWriteOutcome::Written => {
+                            frames_written += 1;
+                            timing_duplicate_frames += 1;
+                            if frames_written == 1 || frames_written % 30 == 0 {
+                                tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, timing_duplicate_frames, timing_skipped_frames, "encoder frame pump progress");
+                            }
+                        }
+                        FrameWriteOutcome::BrokenPipe => {
+                            tracing::warn!(target: "storycapture::encoder", "ffmpeg stdin broken pipe; stopping frame pump");
+                            stop_frame_pump = true;
+                            break;
+                        }
+                        FrameWriteOutcome::DroppedBackpressure => {
+                            let total = frames_dropped_bp.fetch_add(1, Ordering::AcqRel) + 1;
+                            frames_dropped += 1;
+                            if let Some(cb) = on_backpressure.as_ref() {
+                                cb(total, 1);
+                            }
+                            tracing::warn!(
+                                target: "storycapture::encoder",
+                                frames_dropped_backpressure = total,
+                                "ffmpeg stdin backpressure: dropped timing duplicate frame"
+                            );
+                        }
+                    }
+                }
+                if stop_frame_pump {
+                    break;
+                }
+
+                if !timing_plan.write_current {
+                    timing_skipped_frames += 1;
+                    last_frame_buf = current_frame_buf;
+                    continue;
+                }
+
+                match write_frame_bytes_to_ffmpeg(
+                    &mut stdin,
+                    &current_frame_buf,
+                    stdin_write_timeout,
+                )
+                .await?
+                {
+                    FrameWriteOutcome::Written => {
+                        frames_written += 1;
+                        last_frame_buf = current_frame_buf;
+                        if frames_written == 1 || frames_written % 30 == 0 {
+                            tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, timing_duplicate_frames, timing_skipped_frames, "encoder frame pump progress");
+                        }
+                    }
+                    FrameWriteOutcome::BrokenPipe => {
                         tracing::warn!(target: "storycapture::encoder", "ffmpeg stdin broken pipe; stopping frame pump");
                         break;
                     }
-                    Ok(Err(e)) => {
-                        return Err(EncoderError::Io(format!("stdin write: {e}")));
-                    }
-                    Err(_elapsed) => {
-                        // FFmpeg stdin backpressure. Drop the frame, bump
-                        // the counter, surface it as telemetry.
+                    FrameWriteOutcome::DroppedBackpressure => {
                         let total = frames_dropped_bp.fetch_add(1, Ordering::AcqRel) + 1;
                         frames_dropped += 1;
                         if let Some(cb) = on_backpressure.as_ref() {
@@ -498,7 +640,7 @@ impl EncodePipeline {
                 drop(frame);
             }
 
-            tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, "frame channel closed; signaling FFmpeg EOF");
+            tracing::info!(target: "storycapture::encoder", frames_written, frames_dropped, timing_duplicate_frames, timing_skipped_frames, "frame channel closed; signaling FFmpeg EOF");
             // Close stdin explicitly to signal EOF BEFORE we await child.wait().
             // The guard's Drop would also close it at end-of-scope, but doing it
             // here preserves the existing "EOF before wait" ordering and keeps
@@ -622,46 +764,123 @@ async fn try_start_vt_fast_path(
         FrameData::NativeMacOS(_) => {
             tracing::info!(
                 target: "storycapture::encoder",
+                encoder_path = "vt_writer_zero_copy",
+                capture_width_px = cfg.capture_width,
+                capture_height_px = cfg.capture_height,
+                output_width_px = cfg.capture_width,
+                output_height_px = cfg.capture_height,
+                configured_output_width_px = cfg.output_width,
+                configured_output_height_px = cfg.output_height,
+                fps_advisory = cfg.fps_advisory,
+                compact_pts = true,
+                strict_native_frames = strict_vt_native_frames_required(cfg),
                 "vt_writer fast path engaged: first frame is NativeMacOS CVPixelBuffer"
             );
         }
         _ => {
             // Non-native frame: fall back to the FFmpeg path.
+            let first_frame_data = frame_data_kind(&first.data);
+            if strict_vt_native_frames_required(cfg) {
+                tracing::error!(
+                    target: "storycapture::encoder",
+                    encoder_path = "vt_writer_zero_copy",
+                    first_frame_data,
+                    capture_width_px = cfg.capture_width,
+                    capture_height_px = cfg.capture_height,
+                    configured_output_width_px = cfg.output_width,
+                    configured_output_height_px = cfg.output_height,
+                    fps_advisory = cfg.fps_advisory,
+                    "vt_writer strict native-frame invariant failed on first frame"
+                );
+                return Err(EncoderError::InvalidConfig(format!(
+                    "vt_writer_zero_copy strict native path expected NativeMacOS first frame during high-resolution realtime recording, got {first_frame_data}"
+                )));
+            }
             let new_rx = forward_with_prefix(first, std::mem::replace(frames, tokio_placeholder()));
             *frames = new_rx;
+            tracing::info!(
+                target: "storycapture::encoder",
+                encoder_path = "ffmpeg_rawvideo",
+                first_frame_data,
+                "vt_writer fast path unavailable: first frame is not NativeMacOS"
+            );
             return Ok(None);
         }
     }
 
     // Build the writer and spawn the append pump.
     let handle = VtWriter::start(cfg.clone(), progress_tx.clone())?;
+    let frame_duration_ns = (1_000_000_000i128 / i128::from(cfg.fps_advisory.max(1))).max(1);
 
     // Queue the first frame we already popped.
+    let mut frames_submitted: u64 = 0;
     if let FrameData::NativeMacOS(buf) = first.data {
-        let pts_ns = first.pts.ns;
-        let _ = handle.append(buf, pts_ns);
+        let pts_ns = i128::from(frames_submitted) * frame_duration_ns;
+        handle
+            .append(buf, pts_ns)
+            .map_err(|e| EncoderError::Io(format!("vt_writer append first frame: {e}")))?;
+        frames_submitted += 1;
     }
 
     // Move the receiver into a detached task that drives the writer.
     let mut frames_owned = std::mem::replace(frames, tokio_placeholder());
+    let strict_native_frames = strict_vt_native_frames_required(cfg);
+    let cfg_for_task = cfg.clone();
     let join: JoinHandle<Result<EncodeResult>> = tokio::spawn(async move {
-        let mut frames_written: u64 = 0;
+        let mut frames_submitted = frames_submitted;
         let mut frames_dropped: u64 = 0;
         while let Some(frame) = frames_owned.recv().await {
             match frame.data {
                 FrameData::NativeMacOS(buf) => {
-                    let pts_ns = frame.pts.ns;
+                    let pts_ns = i128::from(frames_submitted) * frame_duration_ns;
                     if handle.append(buf, pts_ns).is_err() {
                         tracing::warn!(target: "storycapture::encoder", "vt_writer worker closed early");
                         break;
                     }
-                    frames_written += 1;
+                    frames_submitted += 1;
                 }
                 other => {
-                    // Backend switched mid-session; let the orchestrator restart.
+                    let frame_data = frame_data_kind(&other);
+                    if strict_native_frames {
+                        let reason = format!(
+                            "vt_writer_zero_copy strict native path received {frame_data} frame during high-resolution realtime recording"
+                        );
+                        tracing::error!(
+                            target: "storycapture::encoder",
+                            encoder_path = "vt_writer_zero_copy",
+                            frame_data,
+                            sequence = frame.sequence,
+                            width_px = frame.width_px,
+                            height_px = frame.height_px,
+                            fps_advisory = cfg_for_task.fps_advisory,
+                            capture_width_px = cfg_for_task.capture_width,
+                            capture_height_px = cfg_for_task.capture_height,
+                            configured_output_width_px = cfg_for_task.output_width,
+                            configured_output_height_px = cfg_for_task.output_height,
+                            frames_submitted,
+                            frames_dropped,
+                            "vt_writer strict native-frame invariant failed"
+                        );
+                        let cancel_reason = reason.clone();
+                        let cancel_result =
+                            tokio::task::spawn_blocking(move || handle.cancel(cancel_reason))
+                                .await
+                                .map_err(|e| {
+                                    EncoderError::Io(format!("vt_writer cancel join: {e}"))
+                                })?;
+                        return match cancel_result {
+                            Err(e) => Err(e),
+                            Ok(_) => Err(EncoderError::InvalidConfig(reason)),
+                        };
+                    }
+
+                    // Backend switched mid-session in a non-strict run.
                     tracing::warn!(
                         target: "storycapture::encoder",
-                        ?other,
+                        encoder_path = "vt_writer_zero_copy",
+                        frame_data,
+                        frames_submitted,
+                        frames_dropped,
                         "vt_writer path encountered non-NativeMacOS frame; dropping"
                     );
                     frames_dropped += 1;
@@ -670,7 +889,8 @@ async fn try_start_vt_fast_path(
         }
         tracing::info!(
             target: "storycapture::encoder",
-            frames_written,
+            encoder_path = "vt_writer_zero_copy",
+            frames_submitted,
             frames_dropped,
             "vt_writer input channel closed; finalizing MP4"
         );
@@ -712,7 +932,9 @@ fn tokio_placeholder() -> mpsc::Receiver<Frame> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::probe::HardwareEncoder;
     use capture::{ClockSource, Frame, FrameData, PixelFormat, Pts};
+    use std::path::PathBuf;
 
     #[tokio::test]
     async fn backpressure_callback_fires_on_timeout() {
@@ -760,6 +982,72 @@ mod tests {
         assert_eq!(s, stride);
         // A1: Owned variant must be borrowed, not cloned.
         assert!(matches!(bytes, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn strict_vt_native_frames_required_only_for_high_res_realtime_50fps_plus() {
+        let mut cfg = EncodeConfig::new(
+            PathBuf::from("/tmp/vt.mp4"),
+            3840,
+            2160,
+            60,
+            HardwareEncoder::VideoToolboxH264,
+        )
+        .with_realtime_encoding(true);
+        assert!(strict_vt_native_frames_required(&cfg));
+
+        cfg.fps_advisory = 30;
+        assert!(!strict_vt_native_frames_required(&cfg));
+
+        cfg.fps_advisory = 60;
+        cfg.output_width = 1920;
+        cfg.output_height = 1080;
+        cfg.capture_width = 1920;
+        cfg.capture_height = 1080;
+        assert!(!strict_vt_native_frames_required(&cfg));
+
+        cfg.output_width = 3840;
+        cfg.output_height = 2160;
+        cfg.capture_width = 3840;
+        cfg.capture_height = 2160;
+        cfg.realtime_encoding = false;
+        assert!(!strict_vt_native_frames_required(&cfg));
+    }
+
+    #[test]
+    fn frame_data_kind_reports_owned_for_strict_mismatch_errors() {
+        let data = vec![0u8; 16];
+        let frame_data = FrameData::Owned(data, 16);
+
+        assert_eq!(frame_data_kind(&frame_data), "Owned");
+    }
+
+    #[test]
+    fn cfr_timing_plan_duplicates_previous_frames_for_pts_gap() {
+        let frame_duration_ns = 1_000_000_000i128 / 60;
+        let plan = cfr_timing_plan(1_000, 1_000 + 1_000_000_000, frame_duration_ns, 1);
+
+        assert_eq!(
+            plan,
+            CfrTimingPlan {
+                duplicate_previous: 59,
+                write_current: true,
+            }
+        );
+    }
+
+    #[test]
+    fn cfr_timing_plan_skips_frames_that_arrive_inside_existing_tick() {
+        let frame_duration_ns = 1_000_000_000i128 / 60;
+        let plan = cfr_timing_plan(1_000, 1_000 + frame_duration_ns / 2, frame_duration_ns, 1);
+
+        assert_eq!(
+            plan,
+            CfrTimingPlan {
+                duplicate_previous: 0,
+                write_current: false,
+            }
+        );
     }
 
     #[test]

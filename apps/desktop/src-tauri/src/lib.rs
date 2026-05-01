@@ -27,6 +27,40 @@ use tauri::{
     AppHandle, Manager, Runtime,
 };
 
+fn command_output(cwd: &std::path::Path, program: &str, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    Some(stdout.trim().to_string())
+}
+
+fn runtime_git_info() -> (String, String) {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir
+        .join("../../..")
+        .canonicalize()
+        .unwrap_or(manifest_dir);
+    let sha = command_output(&repo_root, "git", &["rev-parse", "--short=12", "HEAD"])
+        .unwrap_or_else(|| "unknown".to_string());
+    let dirty = command_output(&repo_root, "git", &["status", "--porcelain"])
+        .map(|status| {
+            if status.trim().is_empty() {
+                "false"
+            } else {
+                "true"
+            }
+        })
+        .unwrap_or("unknown")
+        .to_string();
+    (sha, dirty)
+}
+
 const TRAY_OPEN_MENU_ID: &str = "tray_open_main_window";
 const TRAY_QUIT_MENU_ID: &str = "tray_quit_app";
 
@@ -76,14 +110,17 @@ fn log_native_build_marker() {
     let current_exe = std::env::current_exe()
         .map(|path| path.display().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
+    let (runtime_git_sha, runtime_git_dirty) = runtime_git_info();
 
     tracing::info!(
         target: "storycapture::boot",
         pid = std::process::id(),
         current_exe = %current_exe,
         version = env!("CARGO_PKG_VERSION"),
-        git_sha = option_env!("STORYCAPTURE_BUILD_GIT_SHA").unwrap_or("unknown"),
-        git_dirty = option_env!("STORYCAPTURE_BUILD_GIT_DIRTY").unwrap_or("unknown"),
+        build_git_sha = option_env!("STORYCAPTURE_BUILD_GIT_SHA").unwrap_or("unknown"),
+        build_git_dirty = option_env!("STORYCAPTURE_BUILD_GIT_DIRTY").unwrap_or("unknown"),
+        runtime_git_sha = %runtime_git_sha,
+        runtime_git_dirty = %runtime_git_dirty,
         build_unix_secs = option_env!("STORYCAPTURE_BUILD_UNIX_SECS").unwrap_or("unknown"),
         build_profile = option_env!("STORYCAPTURE_BUILD_PROFILE").unwrap_or("unknown"),
         "native host build marker"

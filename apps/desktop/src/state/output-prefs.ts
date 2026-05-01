@@ -1,13 +1,12 @@
 import type {
   FitModeDto,
   OutputResolutionDto,
-  PacingProfileDto,
   PadColorDto,
   QualityPresetDto,
 } from "@storycapture/shared-types";
 import { create } from "zustand";
 
-export type PresetName = "Quick" | "Standard" | "High Quality" | "Custom";
+export type PresetName = "Standard" | "Lossless" | "Custom";
 
 export interface RecordingKnobs {
   resolution: OutputResolutionDto;
@@ -17,7 +16,7 @@ export interface RecordingKnobs {
   quality: QualityPresetDto;
 }
 
-export type RecordingPacingProfile = PacingProfileDto;
+export type RecordingPacingProfile = "normal";
 export const DEFAULT_RECORDING_PACING: RecordingPacingProfile = "normal";
 
 export interface AudioKnobs {
@@ -55,26 +54,19 @@ export interface ExportKnobs {
 }
 
 export const PRESET_BUNDLES: Record<Exclude<PresetName, "Custom">, RecordingKnobs> = {
-  Quick: {
-    resolution: { kind: "p720" },
-    fps: 30,
-    fit: "letterbox",
-    pad: { kind: "black" },
-    quality: "low",
-  },
   Standard: {
-    resolution: { kind: "match-source" },
-    fps: 30,
-    fit: "letterbox",
-    pad: { kind: "black" },
-    quality: "med",
-  },
-  "High Quality": {
     resolution: { kind: "match-source" },
     fps: 60,
     fit: "letterbox",
     pad: { kind: "black" },
     quality: "high",
+  },
+  Lossless: {
+    resolution: { kind: "match-source" },
+    fps: 60,
+    fit: "letterbox",
+    pad: { kind: "black" },
+    quality: "lossless",
   },
 };
 
@@ -165,12 +157,17 @@ export const useOutputPrefsStore = create<State>((set) => ({
       if (s.exportKnobs[k] === v) return s;
       return { exportKnobs: { ...s.exportKnobs, [k]: v } };
     }),
-  setRecordingPacing: (recordingPacing) =>
+  setRecordingPacing: () =>
     set((s) => {
-      if (s.recordingPacing === recordingPacing) return s;
-      return { recordingPacing };
+      if (s.recordingPacing === DEFAULT_RECORDING_PACING) return s;
+      return { recordingPacing: DEFAULT_RECORDING_PACING };
     }),
   applyPreset: (name) => set({ activePreset: name, recordingKnobs: PRESET_BUNDLES[name] }),
-  hydrate: ({ activePreset, recordingKnobs, recordingPacing, exportKnobs }) =>
-    set({ activePreset, recordingKnobs, recordingPacing, exportKnobs }),
+  hydrate: ({ activePreset, recordingKnobs, exportKnobs }) =>
+    set({
+      activePreset,
+      recordingKnobs,
+      recordingPacing: DEFAULT_RECORDING_PACING,
+      exportKnobs,
+    }),
 }));

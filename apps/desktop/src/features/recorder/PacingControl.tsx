@@ -4,7 +4,7 @@ import { type RecordingPacingProfile, useOutputPrefsStore } from "@/state/output
 
 import { LABEL_PACING, PACING_OPTION_LABELS } from "./video-output/copy";
 
-const PACING_VALUES = ["raw", "fast", "normal", "cinematic"] as const;
+const PACING_VALUES = ["normal"] as const;
 const PACING_OPTIONS = PACING_VALUES.map((value) => ({
   value,
   label: PACING_OPTION_LABELS[value],

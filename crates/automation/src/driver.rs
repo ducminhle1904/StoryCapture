@@ -150,6 +150,10 @@ pub struct LaunchOptions {
     pub window_position: Option<WindowPosition>,
     pub language_choice: BrowserLanguageChoice,
     pub browser_session_profile: Option<BrowserSessionProfile>,
+    /// Optional recording-only viewport override. The story viewport remains
+    /// authoritative for normal runs; Record uses this when the requested
+    /// viewport cannot physically fit on the selected display.
+    pub viewport_override: Option<Viewport>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,10 +190,13 @@ pub struct LaunchConfig {
 impl LaunchConfig {
     /// Build a launch config from story metadata and host options.
     pub fn from_meta(meta: &story_parser::Meta, opts: &LaunchOptions) -> Self {
-        let viewport = meta.viewport.unwrap_or(Viewport {
-            width: 1280,
-            height: 800,
-        });
+        let viewport = opts
+            .viewport_override
+            .or(meta.viewport)
+            .unwrap_or(Viewport {
+                width: 1280,
+                height: 800,
+            });
         let mut args = Vec::new();
         if let Some(url) = opts.app_url_for_hiding.as_deref() {
             // Defensive second check.
@@ -201,7 +208,9 @@ impl LaunchConfig {
         // app-mode windows and gets captured by SCK. Disable it for all
         // automation launches so recordings remain content-only.
         args.push("--disable-translate".to_string());
-        args.push("--disable-features=Translate,TranslateUI".to_string());
+        args.push("--disable-extensions".to_string());
+        args.push("--disable-component-extensions-with-background-pages".to_string());
+        args.push("--disable-features=Translate,TranslateUI,TranslateSubFrames".to_string());
         let window_position = opts.window_position.unwrap_or(WindowPosition {
             x: -32000,
             y: -32000,
@@ -242,6 +251,7 @@ impl LaunchConfig {
             target: "automation::browser_environment",
             app_mode_requested = args.iter().any(|arg| arg.starts_with("--app=")),
             translate_disabled = args.iter().any(|arg| arg == "--disable-translate"),
+            extensions_disabled = args.iter().any(|arg| arg == "--disable-extensions"),
             viewport_width = viewport.width,
             viewport_height = viewport.height,
             window_x = window_position.x,
@@ -499,8 +509,20 @@ mod launch_config_tests {
         assert!(
             cfg.args
                 .iter()
-                .any(|a| a == "--disable-features=Translate,TranslateUI"),
+                .any(|a| a == "--disable-features=Translate,TranslateUI,TranslateSubFrames"),
             "expected translate feature disabled in {:?}",
+            cfg.args
+        );
+        assert!(
+            cfg.args.iter().any(|a| a == "--disable-extensions"),
+            "expected extensions disabled in {:?}",
+            cfg.args
+        );
+        assert!(
+            cfg.args
+                .iter()
+                .any(|a| a == "--disable-component-extensions-with-background-pages"),
+            "expected component extensions disabled in {:?}",
             cfg.args
         );
         // Non chrome-hiding still bootstraps with the requested viewport;
@@ -678,6 +700,30 @@ mod launch_config_tests {
         let cfg = LaunchConfig::from_meta(&meta, &opts);
         assert_eq!(cfg.viewport.width, 1920);
         assert_eq!(cfg.viewport.height, 1080);
+    }
+
+    #[test]
+    fn from_meta_uses_explicit_viewport_override_for_recording() {
+        let mut meta = meta_with_app(Some("https://demo.com"));
+        meta.viewport = Some(Viewport {
+            width: 1920,
+            height: 1080,
+        });
+        let opts = LaunchOptions {
+            viewport_override: Some(Viewport {
+                width: 1800,
+                height: 1012,
+            }),
+            ..Default::default()
+        };
+        let cfg = LaunchConfig::from_meta(&meta, &opts);
+        assert_eq!(cfg.viewport.width, 1800);
+        assert_eq!(cfg.viewport.height, 1012);
+        assert!(
+            cfg.args.iter().any(|a| a == "--window-size=1800,1012"),
+            "expected bootstrap window-size to follow override in {:?}",
+            cfg.args
+        );
     }
 
     #[test]

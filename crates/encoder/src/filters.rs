@@ -44,6 +44,12 @@ pub enum QualityPreset {
     Lossless,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorAdjustment {
+    None,
+    ScreenVivid,
+}
+
 #[derive(Debug, Clone)]
 pub struct FilterSpec {
     pub capture_w: u32,
@@ -53,6 +59,7 @@ pub struct FilterSpec {
     pub fit: FitMode,
     pub pad_color: PadColor,
     pub scale_algo: ScaleAlgo,
+    pub color_adjustment: ColorAdjustment,
 }
 
 impl ScaleAlgo {
@@ -72,6 +79,18 @@ impl PadColor {
             PadColor::Black => "black".to_string(),
             PadColor::White => "white".to_string(),
             PadColor::Custom { r, g, b } => format!("0x{:02x}{:02x}{:02x}", r, g, b),
+        }
+    }
+}
+
+impl ColorAdjustment {
+    fn ffmpeg_filter(self) -> Option<&'static str> {
+        match self {
+            ColorAdjustment::None => None,
+            // A deliberately mild screen-recording grade. This restores a bit
+            // of perceived P3/Retina vividness after SDR/yuv420p conversion
+            // without turning neutral UI grays visibly colored.
+            ColorAdjustment::ScreenVivid => Some("eq=contrast=1.02:saturation=1.10"),
         }
     }
 }
@@ -138,6 +157,13 @@ pub fn build_vf(spec: &FilterSpec) -> Result<String> {
     };
     let color_tag_filter =
         "setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709";
+    let finish_chain = |chain: String| -> String {
+        if let Some(adjustment) = spec.color_adjustment.ffmpeg_filter() {
+            format!("{chain},{adjustment},setsar=1,{color_tag_filter},format=yuv420p")
+        } else {
+            format!("{chain},setsar=1,{color_tag_filter},format=yuv420p")
+        }
+    };
 
     // Equal-size Letterbox still needs an explicit RGB full-range to BT.709
     // limited-range conversion. Relying on metadata-only tags leaves swscale
@@ -146,13 +172,10 @@ pub fn build_vf(spec: &FilterSpec) -> Result<String> {
         && spec.capture_h == spec.output_h
         && matches!(spec.fit, FitMode::Letterbox)
     {
-        return Ok(format!(
-            "{},setsar=1,{color_tag_filter},format=yuv420p",
-            scale_filter(format!(
-                "scale=iw:ih:flags={}",
-                spec.scale_algo.ffmpeg_flag()
-            ))
-        ));
+        return Ok(finish_chain(scale_filter(format!(
+            "scale=iw:ih:flags={}",
+            spec.scale_algo.ffmpeg_flag()
+        ))));
     }
 
     let w = spec.output_w;
@@ -162,27 +185,20 @@ pub fn build_vf(spec: &FilterSpec) -> Result<String> {
     let chain = match spec.fit {
         FitMode::Letterbox => {
             let color = spec.pad_color.to_ffmpeg_color();
-            format!(
-                "{},pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color={color},setsar=1,{color_tag_filter},format=yuv420p",
+            finish_chain(format!(
+                "{},pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color={color}",
                 scale_filter(format!(
                     "scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags={algo}"
                 ))
-            )
+            ))
         }
-        FitMode::FillCrop => {
-            format!(
-                "{},crop={w}:{h},setsar=1,{color_tag_filter},format=yuv420p",
-                scale_filter(format!(
-                    "scale={w}:{h}:force_original_aspect_ratio=increase:flags={algo}"
-                ))
-            )
-        }
-        FitMode::Stretch => {
-            format!(
-                "{},setsar=1,{color_tag_filter},format=yuv420p",
-                scale_filter(format!("scale={w}:{h}:flags={algo}"))
-            )
-        }
+        FitMode::FillCrop => finish_chain(format!(
+            "{},crop={w}:{h}",
+            scale_filter(format!(
+                "scale={w}:{h}:force_original_aspect_ratio=increase:flags={algo}"
+            ))
+        )),
+        FitMode::Stretch => finish_chain(scale_filter(format!("scale={w}:{h}:flags={algo}"))),
     };
 
     Ok(chain)
@@ -207,6 +223,7 @@ mod tests {
             fit,
             pad_color: pad,
             scale_algo: algo,
+            color_adjustment: ColorAdjustment::None,
         }
     }
 
@@ -443,5 +460,21 @@ mod tests {
         assert_eq!(ScaleAlgo::Bicubic.ffmpeg_flag(), "bicubic");
         assert_eq!(ScaleAlgo::Bilinear.ffmpeg_flag(), "bilinear");
         assert_eq!(ScaleAlgo::Area.ffmpeg_flag(), "area");
+    }
+
+    #[test]
+    fn screen_vivid_adjustment_is_inserted_before_color_tags() {
+        let mut s = spec(
+            (2880, 1800),
+            (2880, 1800),
+            FitMode::Letterbox,
+            PadColor::Black,
+            ScaleAlgo::Lanczos,
+        );
+        s.color_adjustment = ColorAdjustment::ScreenVivid;
+
+        let vf = build_vf(&s).unwrap();
+        assert!(vf.contains("eq=contrast=1.02:saturation=1.10,setsar=1,setparams"));
+        assert!(vf.ends_with("format=yuv420p"));
     }
 }

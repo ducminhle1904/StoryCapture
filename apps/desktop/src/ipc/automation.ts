@@ -3,7 +3,6 @@
  * `apps/desktop/src-tauri/src/commands/automation.rs`.
  */
 
-import type { PacingProfileDto } from "@storycapture/shared-types";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { DEFAULT_RECORDING_PACING } from "@/state/output-prefs";
 
@@ -76,12 +75,17 @@ export interface LaunchAutomationArgs {
    */
   recordingDisplay?: { x: number; y: number } | null;
   /**
+   * Recording-only browser viewport. Used when the story viewport is larger
+   * than the selected display can fit in logical pixels.
+   */
+  recordingViewport?: { width: number; height: number } | null;
+  /**
    * When true, the host validates meta.app via `url::Url` and appends
    * `--app=<meta.app>` to Playwright's launch args. Non-sticky: the
    * recorder resets the backing toggle each run.
    */
   chromeHiding?: boolean;
-  pacingProfile?: PacingProfileDto;
+  pacingProfile?: typeof DEFAULT_RECORDING_PACING;
   /**
    * Attach an active recording session to the DSL run. When set, the host
    * auto-stops the matching recording at story end (normal, error, or
@@ -122,8 +126,9 @@ export async function launchAutomation(
     projectFolder: args.projectFolder,
     onEvent: channel,
     chromeHiding: args.chromeHiding ?? false,
-    pacingProfile: args.pacingProfile ?? DEFAULT_RECORDING_PACING,
+    pacingProfile: DEFAULT_RECORDING_PACING,
     recordingSessionId: args.recordingSessionId ?? null,
     recordingDisplay: args.recordingDisplay ?? null,
+    recordingViewport: args.recordingViewport ?? null,
   });
 }
