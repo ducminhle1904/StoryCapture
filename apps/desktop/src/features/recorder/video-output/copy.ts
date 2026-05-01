@@ -2,9 +2,8 @@ import type {
   FitModeDto,
   OutputResolutionDto,
   PadColorDto,
-  QualityPresetDto,
 } from "@storycapture/shared-types";
-import type { PresetName, RecordingPacingProfile } from "@/state/output-prefs";
+import type { PresetName, RecordingQualityPreset } from "@/state/output-prefs";
 
 /* Section */
 export const SECTION_TITLE = "Video output";
@@ -52,17 +51,9 @@ export const PAD_OPTION_LABELS: Record<PadColorDto["kind"], string> = {
 
 /* Quality */
 export const LABEL_QUALITY = "Quality";
-export const QUALITY_OPTION_LABELS: Record<QualityPresetDto, string> = {
-  low: "Low",
-  med: "Medium",
+export const QUALITY_OPTION_LABELS: Record<RecordingQualityPreset, string> = {
   high: "Standard",
   lossless: "Lossless",
-};
-
-/* Pacing */
-export const LABEL_PACING = "Pacing";
-export const PACING_OPTION_LABELS: Record<RecordingPacingProfile, string> = {
-  normal: "1x",
 };
 
 /* Warnings */

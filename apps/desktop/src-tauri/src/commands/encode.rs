@@ -253,8 +253,6 @@ impl From<ScaleAlgoDto> for ScaleAlgo {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum QualityPresetDto {
-    Low,
-    Med,
     High,
     Lossless,
 }
@@ -262,8 +260,6 @@ pub enum QualityPresetDto {
 impl From<QualityPresetDto> for QualityPreset {
     fn from(v: QualityPresetDto) -> Self {
         match v {
-            QualityPresetDto::Low => QualityPreset::Low,
-            QualityPresetDto::Med => QualityPreset::Med,
             QualityPresetDto::High => QualityPreset::High,
             QualityPresetDto::Lossless => QualityPreset::Lossless,
         }
@@ -1168,7 +1164,7 @@ pub async fn start_recording(
     let requested_quality: QualityPreset = args
         .quality_preset
         .map(Into::into)
-        .unwrap_or(QualityPreset::Med);
+        .unwrap_or(QualityPreset::High);
 
     // Probe encoders.
     let probe = {

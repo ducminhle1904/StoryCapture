@@ -1,13 +1,12 @@
-import type { OutputResolutionDto, QualityPresetDto } from "@storycapture/shared-types";
+import type { OutputResolutionDto } from "@storycapture/shared-types";
+import type { RecordingQualityPreset } from "@/state/output-prefs";
 
 export interface Dims {
   w: number;
   h: number;
 }
 
-const Q_MUL: Record<QualityPresetDto, number> = {
-  low: 0.75,
-  med: 1.0,
+const Q_MUL: Record<RecordingQualityPreset, number> = {
   high: 1.25,
   lossless: 1.5,
 };
@@ -41,7 +40,7 @@ export function computeBitratePreview({
 }: {
   w: number;
   h: number;
-  quality: QualityPresetDto;
+  quality: RecordingQualityPreset;
 }): { mbps: number; mbPerMin: number } {
   if (w <= 0 || h <= 0) return { mbps: 0, mbPerMin: 0 };
   const kbps = ((w * h * 3) / 1000) * Q_MUL[quality];

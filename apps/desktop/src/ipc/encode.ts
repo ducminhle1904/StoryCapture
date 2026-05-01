@@ -45,7 +45,7 @@ export interface StartRecordingArgs {
   fit_mode?: FitModeDto | null;
   /** Pad color. undefined → backend default (black). */
   pad_color?: PadColorDto | null;
-  /** Quality preset. undefined → backend default (med). */
+  /** Quality preset. undefined → backend default (high). */
   quality_preset?: QualityPresetDto | null;
   /** Scale algorithm. undefined → backend default (lanczos). */
   scale_algo?: ScaleAlgoDto | null;

@@ -7,13 +7,14 @@ import type {
 import { create } from "zustand";
 
 export type PresetName = "Standard" | "Lossless" | "Custom";
+export type RecordingQualityPreset = Extract<QualityPresetDto, "high" | "lossless">;
 
 export interface RecordingKnobs {
   resolution: OutputResolutionDto;
   fps: number;
   fit: FitModeDto;
   pad: PadColorDto;
-  quality: QualityPresetDto;
+  quality: RecordingQualityPreset;
 }
 
 export type RecordingPacingProfile = "normal";

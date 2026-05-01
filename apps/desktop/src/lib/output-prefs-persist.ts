@@ -30,35 +30,43 @@ const SEED: PersistShape = {
 };
 
 type PartialPersist = Partial<{
-  activePreset: PresetName | "Quick" | "High Quality";
+  activePreset: unknown;
   recordingKnobs: Partial<RecordingKnobs>;
   recordingPacing: unknown;
   exportKnobs: Partial<ExportKnobs> & { audio?: Partial<ExportKnobs["audio"]> };
   version: number;
 }>;
 
-function normalizePreset(value: unknown): PresetName {
-  return value === "Lossless" || value === "Custom" ? value : "Standard";
+function isPresetName(value: unknown): value is PresetName {
+  return value === "Standard" || value === "Lossless" || value === "Custom";
 }
 
-function normalizeRecordingKnobs(knobs: RecordingKnobs): RecordingKnobs {
+function isRecordingQuality(value: unknown): value is RecordingKnobs["quality"] {
+  return value === "high" || value === "lossless";
+}
+
+function currentRecordingKnobs(
+  base: RecordingKnobs,
+  override?: Partial<RecordingKnobs>,
+): RecordingKnobs {
+  const next = {
+    ...base,
+    ...(override ?? {}),
+  } as RecordingKnobs;
   return {
-    ...knobs,
-    quality: knobs.quality === "lossless" ? "lossless" : "high",
+    ...next,
+    quality: isRecordingQuality(next.quality) ? next.quality : base.quality,
   };
 }
 
 export function migrate(raw: unknown): PersistShape {
   if (!raw || typeof raw !== "object") return { ...SEED };
   const r = raw as PartialPersist;
-  const activePreset = normalizePreset(r.activePreset);
+  const activePreset = isPresetName(r.activePreset) ? r.activePreset : SEED.activePreset;
   const recordingKnobs =
     activePreset !== "Custom"
       ? PRESET_BUNDLES[activePreset]
-      : normalizeRecordingKnobs({
-          ...SEED.recordingKnobs,
-          ...(r.recordingKnobs ?? {}),
-        } as RecordingKnobs);
+      : currentRecordingKnobs(SEED.recordingKnobs, r.recordingKnobs);
   return {
     activePreset,
     recordingKnobs,
@@ -77,15 +85,12 @@ export function resolveOverride(
   project: PartialPersist | null,
 ): PersistShape {
   if (!project) return global;
-  const activePreset = normalizePreset(project.activePreset ?? global.activePreset);
-  const hasExplicitPreset = project.activePreset !== undefined;
+  const activePreset = isPresetName(project.activePreset) ? project.activePreset : global.activePreset;
+  const hasExplicitPreset = isPresetName(project.activePreset);
   const recordingKnobs =
     hasExplicitPreset && activePreset !== "Custom"
       ? PRESET_BUNDLES[activePreset]
-      : normalizeRecordingKnobs({
-          ...global.recordingKnobs,
-          ...(project.recordingKnobs ?? {}),
-        } as RecordingKnobs);
+      : currentRecordingKnobs(global.recordingKnobs, project.recordingKnobs);
   return {
     activePreset,
     recordingKnobs,

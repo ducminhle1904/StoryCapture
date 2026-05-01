@@ -12,10 +12,10 @@ import {
 } from "./bitrate";
 
 describe("computeBitratePreview", () => {
-  it("1080p med → ~6.2 Mbps ~45 MB/min", () => {
-    const out = computeBitratePreview({ w: 1920, h: 1080, quality: "med" });
-    expect(out.mbps).toBeCloseTo(6.22, 1);
-    expect(out.mbPerMin).toBeCloseTo(45.56, 1);
+  it("1080p standard → ~7.8 Mbps ~57 MB/min", () => {
+    const out = computeBitratePreview({ w: 1920, h: 1080, quality: "high" });
+    expect(out.mbps).toBeCloseTo(7.78, 1);
+    expect(out.mbPerMin).toBeCloseTo(56.95, 1);
   });
 
   it("4K lossless → ~37.3 Mbps ~273 MB/min", () => {
@@ -25,7 +25,7 @@ describe("computeBitratePreview", () => {
   });
 
   it("zero dims → zero bitrate (no NaN)", () => {
-    const out = computeBitratePreview({ w: 0, h: 0, quality: "med" });
+    const out = computeBitratePreview({ w: 0, h: 0, quality: "high" });
     expect(out.mbps).toBe(0);
     expect(out.mbPerMin).toBe(0);
   });

@@ -3,14 +3,12 @@
  * RadioGroup mirroring FpsControl.
  */
 
-import type { QualityPresetDto } from "@storycapture/shared-types";
-
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useOutputPrefsStore } from "@/state/output-prefs";
+import { type RecordingQualityPreset, useOutputPrefsStore } from "@/state/output-prefs";
 
 import { LABEL_QUALITY, QUALITY_OPTION_LABELS } from "./copy";
 
-const ORDER: QualityPresetDto[] = ["high", "lossless"];
+const ORDER = ["high", "lossless"] as const satisfies readonly RecordingQualityPreset[];
 
 interface Props {
   disabled?: boolean;
@@ -26,7 +24,7 @@ export function QualityPresetControl({ disabled }: Props) {
       value={quality}
       onValueChange={(raw) => {
         if (typeof raw !== "string") return;
-        if ((ORDER as string[]).includes(raw)) setKnob("quality", raw as QualityPresetDto);
+        if ((ORDER as readonly string[]).includes(raw)) setKnob("quality", raw as RecordingQualityPreset);
       }}
       disabled={disabled}
       className="flex flex-row flex-wrap items-center gap-3"

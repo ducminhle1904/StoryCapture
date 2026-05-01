@@ -26,8 +26,8 @@ describe("migrate", () => {
     expect(migrate(input)).toEqual(input);
   });
 
-  it("maps legacy presets to Standard", () => {
-    const out = migrate({ activePreset: "Quick" } as unknown);
+  it("falls back to Standard for unknown presets", () => {
+    const out = migrate({ activePreset: "Experimental" } as unknown);
     expect(out.activePreset).toBe("Standard");
     expect(out.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
   });
@@ -41,17 +41,17 @@ describe("migrate", () => {
     expect(out.version).toBe(1);
   });
 
-  it("normalizes legacy medium quality to high", () => {
+  it("rejects unsupported quality values in custom recording knobs", () => {
     const out = migrate({
       activePreset: "Custom",
-      recordingKnobs: { ...PRESET_BUNDLES.Standard, quality: "med" },
+      recordingKnobs: { ...PRESET_BUNDLES.Standard, quality: "archived" },
     } as unknown);
     expect(out.activePreset).toBe("Custom");
-    expect(out.recordingKnobs.quality).toBe("high");
+    expect(out.recordingKnobs.quality).toBe(PRESET_BUNDLES.Standard.quality);
   });
 
-  it("normalizes legacy pacing to the fixed 1x profile", () => {
-    const out = migrate({ recordingPacing: "fast" } as unknown);
+  it("keeps pacing fixed at the 1x profile", () => {
+    const out = migrate({ recordingPacing: "speedy" } as unknown);
     expect(out.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 
@@ -85,8 +85,8 @@ describe("resolveOverride", () => {
     expect(out.recordingKnobs.quality).toBe(SEED.recordingKnobs.quality);
   });
 
-  it("ignores legacy project pacing overrides", () => {
-    const out = resolveOverride(SEED, { recordingPacing: "cinematic" });
+  it("ignores project pacing overrides", () => {
+    const out = resolveOverride(SEED, { recordingPacing: "slowmo" });
     expect(out.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 

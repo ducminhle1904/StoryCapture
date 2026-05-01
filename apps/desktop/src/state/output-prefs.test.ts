@@ -32,7 +32,7 @@ describe("useOutputPrefsStore", () => {
   });
 
   it("keeps recording pacing fixed at 1x", () => {
-    useOutputPrefsStore.getState().setRecordingPacing("fast" as never);
+    useOutputPrefsStore.getState().setRecordingPacing("speedy" as never);
     expect(useOutputPrefsStore.getState().recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 
