@@ -28,9 +28,12 @@ import type {
 import { TRACK_IDS, XFADE_KINDS } from "../state/timeline-slice";
 
 const FIELD_CLASS =
-  "rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
+  "min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
 
 const RANGE_CLASS = "w-full accent-[var(--color-accent,#ff5b76)]";
+const SECTION_CLASS =
+  "rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3";
+const FIELD_ROW_CLASS = "flex flex-col gap-1.5";
 
 const PRESET_OPTIONS: ZoomPreset[] = ["DYNAMIC", "CALM", "SUBTLE"];
 const TARGET_KIND_OPTIONS: ZoomTarget["kind"][] = ["cursor", "element", "fixed-region"];
@@ -119,8 +122,37 @@ interface FieldLabelProps {
 
 function FieldLabel({ children }: FieldLabelProps) {
   return (
-    <span className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">{children}</span>
+    <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">
+      {children}
+    </span>
   );
+}
+
+function ValuePill({ children }: FieldLabelProps) {
+  return (
+    <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+      {children}
+    </span>
+  );
+}
+
+function SectionTitle({ children }: FieldLabelProps) {
+  return <legend className="text-xs font-semibold text-[var(--color-fg)]">{children}</legend>;
+}
+
+function clipTypeLabel(trackId: TrackId): string {
+  switch (trackId) {
+    case "video":
+      return "Video";
+    case "cursor":
+      return "Cursor";
+    case "zoom":
+      return "Zoom";
+    case "sound":
+      return "Sound";
+    case "annotations":
+      return "Annotation";
+  }
 }
 
 interface ZoomParamsProps {
@@ -143,7 +175,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
       case "element": {
         const target = clip.target;
         return (
-          <label className="flex flex-col gap-1">
+          <label className={FIELD_ROW_CLASS}>
             <FieldLabel>Selector</FieldLabel>
             <input
               type="text"
@@ -159,7 +191,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
         const target = clip.target;
         return (
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1">
+            <label className={FIELD_ROW_CLASS}>
               <FieldLabel>Region X</FieldLabel>
               <input
                 type="number"
@@ -174,7 +206,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
                 className={FIELD_CLASS}
               />
             </label>
-            <label className="flex flex-col gap-1">
+            <label className={FIELD_ROW_CLASS}>
               <FieldLabel>Region Y</FieldLabel>
               <input
                 type="number"
@@ -189,7 +221,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
                 className={FIELD_CLASS}
               />
             </label>
-            <label className="flex flex-col gap-1">
+            <label className={FIELD_ROW_CLASS}>
               <FieldLabel>Width</FieldLabel>
               <input
                 type="number"
@@ -204,7 +236,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
                 className={FIELD_CLASS}
               />
             </label>
-            <label className="flex flex-col gap-1">
+            <label className={FIELD_ROW_CLASS}>
               <FieldLabel>Height</FieldLabel>
               <input
                 type="number"
@@ -228,9 +260,9 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
   })();
 
   return (
-    <fieldset className="flex flex-col gap-3 border-0 p-0">
-      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">Zoom</legend>
-      <label className="flex flex-col gap-1">
+    <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
+      <SectionTitle>Zoom motion</SectionTitle>
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Target</FieldLabel>
         <select
           aria-label="Zoom target"
@@ -249,8 +281,11 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
         </select>
       </label>
       {targetControls}
-      <label className="flex flex-col gap-1">
-        <FieldLabel>Scale</FieldLabel>
+      <label className={FIELD_ROW_CLASS}>
+        <span className="flex items-center justify-between gap-2">
+          <FieldLabel>Scale</FieldLabel>
+          <ValuePill>{clip.scale.toFixed(2)}x</ValuePill>
+        </span>
         <input
           type="range"
           aria-label="Zoom scale"
@@ -264,12 +299,9 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
           }}
           className={RANGE_CLASS}
         />
-        <span className="text-xs tabular-nums text-[var(--color-fg-muted)]">
-          {clip.scale.toFixed(2)}x
-        </span>
       </label>
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1">
+        <label className={FIELD_ROW_CLASS}>
           <FieldLabel>Center X</FieldLabel>
           <input
             type="number"
@@ -282,7 +314,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
             className={FIELD_CLASS}
           />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className={FIELD_ROW_CLASS}>
           <FieldLabel>Center Y</FieldLabel>
           <input
             type="number"
@@ -296,7 +328,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
           />
         </label>
       </div>
-      <label className="flex flex-col gap-1">
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Preset</FieldLabel>
         <select
           aria-label="Zoom preset"
@@ -333,9 +365,9 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
   };
 
   return (
-    <fieldset className="flex flex-col gap-3 border-0 p-0">
-      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">Text</legend>
-      <label className="flex flex-col gap-1">
+    <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
+      <SectionTitle>Text overlay</SectionTitle>
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Content</FieldLabel>
         <textarea
           aria-label="Annotation text"
@@ -346,7 +378,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
         />
       </label>
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1">
+        <label className={FIELD_ROW_CLASS}>
           <FieldLabel>Position X</FieldLabel>
           <input
             type="number"
@@ -359,7 +391,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
             className={FIELD_CLASS}
           />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className={FIELD_ROW_CLASS}>
           <FieldLabel>Position Y</FieldLabel>
           <input
             type="number"
@@ -373,8 +405,11 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
           />
         </label>
       </div>
-      <label className="flex flex-col gap-1">
-        <FieldLabel>Size</FieldLabel>
+      <label className={FIELD_ROW_CLASS}>
+        <span className="flex items-center justify-between gap-2">
+          <FieldLabel>Size</FieldLabel>
+          <ValuePill>{clip.sizePt} pt</ValuePill>
+        </span>
         <input
           type="range"
           aria-label="Annotation size"
@@ -390,16 +425,15 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
           }}
           className={RANGE_CLASS}
         />
-        <span className="text-xs tabular-nums text-[var(--color-fg-muted)]">{clip.sizePt} pt</span>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Color</FieldLabel>
         <input
           type="color"
           aria-label="Annotation color"
           value={color}
           onChange={(e) => onSetParam(nodePath, "color", clip.color, e.target.value)}
-          className="h-9 w-full rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
+          className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
         />
       </label>
     </fieldset>
@@ -416,11 +450,9 @@ function CursorParams({
   onSetParam: (nodePath: string, field: string, prev: unknown, next: unknown) => void;
 }) {
   return (
-    <fieldset className="flex flex-col gap-3 border-0 p-0">
-      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
-        Cursor
-      </legend>
-      <label className="flex flex-col gap-1">
+    <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
+      <SectionTitle>Cursor style</SectionTitle>
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Skin</FieldLabel>
         <select
           aria-label="Cursor skin"
@@ -435,8 +467,11 @@ function CursorParams({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
-        <FieldLabel>Size</FieldLabel>
+      <label className={FIELD_ROW_CLASS}>
+        <span className="flex items-center justify-between gap-2">
+          <FieldLabel>Size</FieldLabel>
+          <ValuePill>{clip.sizeScale.toFixed(1)}x</ValuePill>
+        </span>
         <input
           type="range"
           aria-label="Cursor size"
@@ -450,9 +485,6 @@ function CursorParams({
           }}
           className={RANGE_CLASS}
         />
-        <span className="text-xs tabular-nums text-[var(--color-fg-muted)]">
-          {clip.sizeScale.toFixed(1)}x
-        </span>
       </label>
     </fieldset>
   );
@@ -468,11 +500,9 @@ function SoundParams({
   onSetParam: (nodePath: string, field: string, prev: unknown, next: unknown) => void;
 }) {
   return (
-    <fieldset className="flex flex-col gap-3 border-0 p-0">
-      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
-        Sound
-      </legend>
-      <label className="flex flex-col gap-1">
+    <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
+      <SectionTitle>Sound clip</SectionTitle>
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Path</FieldLabel>
         <input
           type="text"
@@ -482,7 +512,7 @@ function SoundParams({
           className={FIELD_CLASS}
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Kind</FieldLabel>
         <select
           aria-label="Sound kind"
@@ -497,8 +527,11 @@ function SoundParams({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
-        <FieldLabel>Gain</FieldLabel>
+      <label className={FIELD_ROW_CLASS}>
+        <span className="flex items-center justify-between gap-2">
+          <FieldLabel>Gain</FieldLabel>
+          <ValuePill>{((clip.gain ?? 1) * 100).toFixed(0)}%</ValuePill>
+        </span>
         <input
           type="range"
           aria-label="Sound gain"
@@ -527,11 +560,9 @@ function VideoParams({
 }) {
   const transition = clip.outgoingTransition ?? { kind: "fade" as XfadeKind, durationMs: 500 };
   return (
-    <fieldset className="flex flex-col gap-3 border-0 p-0">
-      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
-        Transition
-      </legend>
-      <label className="flex flex-col gap-1">
+    <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
+      <SectionTitle>Transition</SectionTitle>
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Kind</FieldLabel>
         <select
           aria-label="Video transition kind"
@@ -551,7 +582,7 @@ function VideoParams({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Duration</FieldLabel>
         <input
           type="number"
@@ -593,51 +624,79 @@ function EffectParamsBase() {
 
   if (!selectedClipId) {
     return (
-      <div className="p-4 text-sm text-[var(--color-fg-muted)]">
-        Select a clip on the timeline to edit its effects.
+      <div className="flex min-h-64 flex-col justify-center p-4 text-sm">
+        <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-100)] p-5">
+          <div className="text-sm font-semibold text-[var(--color-fg)]">No clip selected</div>
+          <div className="mt-2 max-w-[32ch] text-xs leading-5 text-[var(--color-fg-muted)]">
+            Select a timeline clip to tune motion, text, cursor, transition, or audio details.
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!hit) {
-    return <div className="p-4 text-sm text-[var(--color-fg-muted)]">Clip not found.</div>;
+    return (
+      <div className="p-4 text-sm">
+        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4 text-[var(--color-fg-muted)]">
+          Clip not found.
+        </div>
+      </div>
+    );
   }
 
   const { trackId, clip, index } = hit;
   const nodePath = `tracks.${trackId}[${index}]`;
+  const clipTitle = clip.label || clipTypeLabel(trackId);
 
   return (
     <form aria-label="Effect parameters" className="flex flex-col gap-3 p-4 text-sm">
-      <div>
-        <FieldLabel>Track</FieldLabel>
-        <div className="text-[var(--color-fg)]">{trackId}</div>
-      </div>
-      <div>
-        <FieldLabel>Start</FieldLabel>
-        <div className="text-[var(--color-fg)] tabular-nums">
-          {(clip.startMs / 1000).toFixed(3)} s
+      <section className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3 shadow-[0_18px_34px_-26px_rgba(0,0,0,0.35)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-fg-muted)]">
+              {clipTypeLabel(trackId)}
+            </div>
+            <div className="mt-1 truncate text-base font-semibold text-[var(--color-fg)]">
+              {clipTitle}
+            </div>
+          </div>
+          <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-muted)]">
+            {trackId}
+          </div>
         </div>
-      </div>
-      <div>
-        <FieldLabel>Duration</FieldLabel>
-        <div className="text-[var(--color-fg)] tabular-nums">
-          {(clip.durationMs / 1000).toFixed(3)} s
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+            <FieldLabel>Start</FieldLabel>
+            <div className="mt-1 font-mono text-xs tabular-nums text-[var(--color-fg)]">
+              {(clip.startMs / 1000).toFixed(3)} s
+            </div>
+          </div>
+          <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+            <FieldLabel>Duration</FieldLabel>
+            <div className="mt-1 font-mono text-xs tabular-nums text-[var(--color-fg)]">
+              {(clip.durationMs / 1000).toFixed(3)} s
+            </div>
+          </div>
         </div>
-      </div>
-      <label className="flex flex-col gap-1">
-        <FieldLabel>Label</FieldLabel>
-        <input
-          type="text"
-          aria-label="Clip label"
-          value={clip.label ?? ""}
-          onChange={(e) => {
-            const prev = clip.label ?? "";
-            const next = e.target.value;
-            onSetParam(nodePath, "label", prev, next);
-          }}
-          className={FIELD_CLASS}
-        />
-      </label>
+      </section>
+
+      <section className={SECTION_CLASS}>
+        <label className={FIELD_ROW_CLASS}>
+          <FieldLabel>Label</FieldLabel>
+          <input
+            type="text"
+            aria-label="Clip label"
+            value={clip.label ?? ""}
+            onChange={(e) => {
+              const prev = clip.label ?? "";
+              const next = e.target.value;
+              onSetParam(nodePath, "label", prev, next);
+            }}
+            className={FIELD_CLASS}
+          />
+        </label>
+      </section>
       {clip.trackId === "zoom" ? (
         <ZoomParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
       ) : null}
@@ -653,12 +712,20 @@ function EffectParamsBase() {
       {clip.trackId === "video" ? (
         <VideoParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
       ) : null}
-      <div>
-        <FieldLabel>Parameters</FieldLabel>
-        <pre className="mt-1 max-h-32 overflow-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[10px] text-[var(--color-fg-muted)]">
+      <details className="group rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-[var(--color-fg)]">
+          Parameters
+          <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-fg-muted)] group-open:hidden">
+            Show
+          </span>
+          <span className="hidden text-[10px] uppercase tracking-[0.14em] text-[var(--color-fg-muted)] group-open:inline">
+            Hide
+          </span>
+        </summary>
+        <pre className="max-h-40 overflow-auto border-t border-[var(--color-border-subtle)] p-3 text-[10px] leading-5 text-[var(--color-fg-muted)]">
           {JSON.stringify(clipParams(clip), null, 2)}
         </pre>
-      </div>
+      </details>
     </form>
   );
 }

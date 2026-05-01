@@ -63,7 +63,7 @@ export function InspectorPanel() {
   return (
     <aside
       aria-label="Inspector"
-      className="grid h-full w-full grid-cols-[52px_minmax(0,1fr)] bg-transparent"
+      className="grid h-full min-h-0 w-full grid-cols-[52px_minmax(0,1fr)] bg-transparent"
     >
       <div
         role="tablist"
@@ -96,7 +96,7 @@ export function InspectorPanel() {
           );
         })}
       </div>
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-col">
         <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-[var(--sc-border)] px-3">
           <div className="min-w-0">
             <div className="truncate text-[12px] font-semibold text-[var(--sc-text)]">
@@ -111,7 +111,7 @@ export function InspectorPanel() {
           role="tabpanel"
           id={`inspector-panel-${selectedTab}`}
           aria-labelledby={`inspector-tab-${selectedTab}`}
-          className="min-h-0 flex-1 overflow-auto px-1 py-1"
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-1 py-1"
         >
           {body}
         </div>

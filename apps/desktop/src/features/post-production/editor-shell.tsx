@@ -683,16 +683,6 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
               >
                 Add Text
               </ScButton>
-              <span
-                className="hidden sm:inline"
-                style={{
-                  fontSize: 11,
-                  color: "var(--sc-text-4)",
-                  fontFamily: "var(--sc-font-mono)",
-                }}
-              >
-                — × — · — fps
-              </span>
             </div>
 
             <div style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>

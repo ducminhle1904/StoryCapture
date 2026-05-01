@@ -1,11 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-
-import { EffectParams } from "./effect-params";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEditorStore } from "../state/store";
-import { Coalescer, COALESCE_IDLE_MS } from "../undo/coalesce";
-import { HistoryBuffer, HISTORY_CAP } from "../undo/history-buffer";
 import type { UndoableAction } from "../undo/actions";
+import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
+import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
+import { EffectParams } from "./effect-params";
 
 function resetStore(pushAction: (action: UndoableAction) => void = vi.fn()) {
   useEditorStore.setState({

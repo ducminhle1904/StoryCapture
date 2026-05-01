@@ -28,7 +28,6 @@ interface EditorLivePreviewPanelProps {
   previewNav: PreviewNavState;
   previewStatus: PreviewLifecycleStatus;
   previewViewport: PreviewViewport;
-  polishIntentCount: number;
   simulatorActiveFrame: SimulatorFrame | null;
   simulatorRunState: string;
   streamId: string | null;
@@ -240,7 +239,6 @@ export function EditorLivePreviewPanel({
   previewNav,
   previewStatus,
   previewViewport,
-  polishIntentCount,
   simulatorActiveFrame,
   simulatorRunState,
   streamId,
@@ -266,11 +264,17 @@ export function EditorLivePreviewPanel({
     <div className="flex h-full flex-col bg-[var(--sc-surface)]">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome-2)] px-3">
         <span className="text-[12px] font-semibold text-[var(--sc-text)]">Live Preview</span>
-        <ScBadge tone={badgeTone} dot>
-          {badgeLabel}
-        </ScBadge>
-        {polishIntentCount > 0 ? (
-          <ScBadge tone="info">{polishIntentCount} polish cues</ScBadge>
+        {badgeLabel === "live" ? (
+          <span
+            role="status"
+            aria-label="Live"
+            className="h-2 w-2 rounded-full bg-[var(--sc-success)] motion-safe:animate-pulse"
+          />
+        ) : null}
+        {badgeTone === "record" ? (
+          <ScBadge tone="record" dot>
+            Check
+          </ScBadge>
         ) : null}
         <PreviewPickerButton />
         <span className="min-w-0 flex-1" />

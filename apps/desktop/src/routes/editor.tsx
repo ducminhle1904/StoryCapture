@@ -3,7 +3,6 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertTriangle,
   ArrowLeft,
-  Check,
   ChevronRight,
   File,
   FolderOpen,
@@ -12,7 +11,6 @@ import {
   Video,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -371,7 +369,6 @@ export default function EditorRoute() {
 
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
   const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
-  const polishIntentCount = Object.keys(polish.steps).length + Object.keys(polish.scenes).length;
   return (
     <main id="main-content" className="relative flex h-full flex-col bg-[var(--sc-bg)]">
       <div
@@ -425,20 +422,10 @@ export default function EditorRoute() {
           )}
         </div>
         <span className="sc-spacer" />
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          {ready && errorCount === 0 && warningCount === 0 && (
-            <ScBadge tone="muted" icon={<Check size={10} aria-hidden="true" />}>
-              Lint clean
-            </ScBadge>
-          )}
-          {polishReady ? (
-            <ScBadge tone={polishDirty ? "warn" : "success"} dot>
-              {polishDirty ? "Polish saving" : "Polish saved"}
-            </ScBadge>
-          ) : null}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {projectId && (
             <>
-              <Link to={`/recorder/${projectId}`} className="sc-btn primary sm">
+              <Link to={`/recorder/${projectId}`} className="sc-btn ghost sm">
                 <Video size={12} aria-hidden="true" />
                 Record
               </Link>
@@ -454,7 +441,7 @@ export default function EditorRoute() {
               {(folder?.session_count ?? 0) > 0 ? (
                 <Link
                   to={`/post-production/${projectId}`}
-                  className="sc-btn sm"
+                  className="sc-btn ghost sm"
                   aria-label="Send to Post-Production"
                 >
                   <Scissors size={12} aria-hidden="true" />
@@ -495,10 +482,13 @@ export default function EditorRoute() {
             onJumpToOffset={queueEditorJump}
           />
           <PageContentTransition className="min-h-0 flex-1">
-            <Group orientation="horizontal" className="min-h-0 flex-1">
+            <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-2">
               {/* Script editor — primary workspace */}
-              <Panel id="editor-script" defaultSize="66%" minSize="42%" maxSize="76%">
-                <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+              <section
+                className="min-h-0 min-w-0 overflow-hidden border-r border-[var(--sc-border-2)]"
+                aria-label="Story"
+              >
+                <div className="flex h-full min-h-0 flex-col bg-[var(--sc-surface)]">
                   {/* File tabs strip — single tab reflects real single-buffer state. */}
                   <div
                     style={{
@@ -564,7 +554,7 @@ export default function EditorRoute() {
                     </span>
                   </div>
 
-                  <div className="min-h-0 flex-1">
+                  <div className="min-h-0 flex-1 overflow-hidden">
                     {editorMode === "ui" ? (
                       <StoryBuilder
                         story={story}
@@ -601,18 +591,15 @@ export default function EditorRoute() {
                     appUrlValid={appUrlValid}
                   />
                 </div>
-              </Panel>
-
-              <Separator className="group relative w-px bg-[var(--sc-border-2)] shadow-[1px_0_0_var(--sc-border)] transition-colors hover:bg-[var(--sc-border-strong)] active:bg-[var(--sc-accent-500)]/50" />
+              </section>
 
               {/* Right side: preview rail */}
-              <Panel id="editor-preview" defaultSize="34%" minSize="24%" maxSize="44%">
+              <section className="min-h-0 min-w-0 overflow-hidden" aria-label="Live Preview">
                 <EditorLivePreviewPanel
                   appUrl={story?.meta?.app ?? null}
                   appUrlValid={appUrlValid}
                   authorDriverVariant={authorDriverVariant}
                   latestRecording={latest}
-                  polishIntentCount={polishIntentCount}
                   previewNav={previewNav}
                   previewStatus={previewStatus}
                   previewViewport={previewViewport}
@@ -621,8 +608,8 @@ export default function EditorRoute() {
                   streamId={authorStreamId}
                   onViewportChange={setPreviewViewport}
                 />
-              </Panel>
-            </Group>
+              </section>
+            </div>
           </PageContentTransition>
         </>
       )}

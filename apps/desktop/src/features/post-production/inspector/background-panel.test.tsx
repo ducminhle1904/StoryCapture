@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BackgroundPanel } from "./background-panel";
 import { useEditorStore } from "../state/store";
-import { Coalescer, COALESCE_IDLE_MS } from "../undo/coalesce";
-import { HistoryBuffer, HISTORY_CAP } from "../undo/history-buffer";
 import type { UndoableAction } from "../undo/actions";
+import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
+import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
+import { BackgroundPanel } from "./background-panel";
 
 function resetStore(pushAction: (action: UndoableAction) => void = vi.fn()) {
   useEditorStore.setState({
@@ -51,6 +51,13 @@ describe("BackgroundPanel", () => {
   it("dispatches change-background for solid color edits", () => {
     const pushAction = vi.fn();
     resetStore(pushAction);
+    useEditorStore.setState({
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "solid", color: { r: 16, g: 18, b: 24, a: 255 } },
+      },
+    });
     render(<BackgroundPanel />);
 
     fireEvent.change(screen.getByLabelText("Solid background color"), {
@@ -59,7 +66,7 @@ describe("BackgroundPanel", () => {
 
     expect(pushAction).toHaveBeenLastCalledWith({
       kind: "change-background",
-      prev: { kind: "transparent" },
+      prev: { kind: "solid", color: { r: 16, g: 18, b: 24, a: 255 } },
       next: { kind: "solid", color: { r: 255, g: 0, b: 85, a: 255 } },
     });
   });
@@ -76,20 +83,43 @@ describe("BackgroundPanel", () => {
     });
     render(<BackgroundPanel />);
 
-    fireEvent.change(screen.getByLabelText("Gradient background preset"), {
-      target: { value: "warm-sunset" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Gradient preset Warm Sunset" }));
     expect(pushAction).toHaveBeenLastCalledWith({
       kind: "change-background",
       prev: { kind: "gradient", preset_id: "runway-dark" },
       next: { kind: "gradient", preset_id: "warm-sunset" },
     });
 
-    fireEvent.click(screen.getByLabelText("Transparent background"));
+    fireEvent.click(screen.getByRole("button", { name: /Transparent/ }));
     expect(pushAction).toHaveBeenLastCalledWith({
       kind: "change-background",
       prev: { kind: "gradient", preset_id: "runway-dark" },
       next: { kind: "transparent" },
+    });
+  });
+
+  it("dispatches change-background for image presets", () => {
+    const pushAction = vi.fn();
+    resetStore(pushAction);
+    useEditorStore.setState({
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "image", path: "" },
+      },
+    });
+    render(<BackgroundPanel />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "macOS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Image background Big Sur Dark" }));
+
+    expect(pushAction).toHaveBeenLastCalledWith({
+      kind: "change-background",
+      prev: { kind: "image", path: "" },
+      next: {
+        kind: "image",
+        path: expect.stringContaining("bigsur-dark.jpg"),
+      },
     });
   });
 });

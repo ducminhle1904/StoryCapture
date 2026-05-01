@@ -19,6 +19,10 @@ export interface TransportControlsProps {
 function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps) {
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const playheadMs = useEditorStore((s) => s.playheadMs);
+  const durationMs = useEditorStore((s) => s.durationMs);
+  const maxPlayheadMs = Math.max(0, durationMs);
+  const canJumpBack = playheadMs > 0;
+  const canJumpForward = maxPlayheadMs === 0 || playheadMs < maxPlayheadMs;
 
   return (
     <div role="toolbar" aria-label="Preview transport" className="flex items-center gap-1.5">
@@ -26,8 +30,9 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         variant="ghost"
         size="icon"
         aria-label="Jump back 5 seconds"
+        disabled={!canJumpBack}
         onClick={() => setPlayhead(Math.max(0, playheadMs - 5000))}
-        className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98]"
+        className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98] disabled:cursor-default disabled:opacity-45"
       >
         <SkipBack className="h-4 w-4" />
       </Button>
@@ -44,8 +49,13 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         variant="ghost"
         size="icon"
         aria-label="Jump forward 5 seconds"
-        onClick={() => setPlayhead(playheadMs + 5000)}
-        className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98]"
+        disabled={!canJumpForward}
+        onClick={() =>
+          setPlayhead(
+            maxPlayheadMs > 0 ? Math.min(maxPlayheadMs, playheadMs + 5000) : playheadMs + 5000,
+          )
+        }
+        className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98] disabled:cursor-default disabled:opacity-45"
       >
         <SkipForward className="h-4 w-4" />
       </Button>

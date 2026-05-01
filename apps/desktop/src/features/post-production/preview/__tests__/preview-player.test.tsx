@@ -113,4 +113,15 @@ describe("PreviewPlayer", () => {
     await waitFor(() => expect(video.currentTime).toBe(2.5));
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
+
+  it("clamps forward jump to the known video duration", async () => {
+    const user = userEvent.setup();
+    useEditorStore.setState({ durationMs: 10_000, playheadMs: 8000 });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    await user.click(screen.getByRole("button", { name: "Jump forward 5 seconds" }));
+
+    expect(useEditorStore.getState().playheadMs).toBe(10_000);
+    expect(screen.getByRole("button", { name: "Jump forward 5 seconds" })).toBeDisabled();
+  });
 });

@@ -1,6 +1,5 @@
 import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 import {
-  ArrowRight,
   ChevronDown,
   Code2,
   Focus,
@@ -124,7 +123,7 @@ function FieldLabel({ children }: { children: string }) {
 
 function PolishGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <fieldset className="min-w-[190px] flex-1 border-0 p-0">
+    <fieldset className="min-w-0 border-0 p-0">
       <legend className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
         {title}
       </legend>
@@ -308,6 +307,7 @@ export function StoryBuilder({
 }: StoryBuilderProps) {
   const [pickingKey, setPickingKey] = useState<string | null>(null);
   const [expandedPolishKey, setExpandedPolishKey] = useState<string | null>(null);
+  const [intentExpanded, setIntentExpanded] = useState(true);
 
   if (!story) {
     return (
@@ -461,149 +461,166 @@ export function StoryBuilder({
         }
       }}
     >
-      <div className="border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome)] p-3">
-        <div className="mb-3 flex items-center gap-2">
+      <div className="shrink-0 border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome)]">
+        <div className="flex h-10 items-center gap-2 px-3">
           <Sparkles size={14} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
-          <span className="text-[12px] font-semibold uppercase text-[var(--sc-text-3)]">
-            Post-production intent
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left text-[12px] font-semibold uppercase text-[var(--sc-text-3)] transition hover:text-[var(--sc-text)]"
+            aria-expanded={intentExpanded}
+            onClick={() => setIntentExpanded((value) => !value)}
+          >
+            <span className="truncate">Post-production intent</span>
+            <ChevronDown
+              size={13}
+              aria-hidden="true"
+              className={`transition-transform ${intentExpanded ? "rotate-180" : ""}`}
+            />
+          </button>
+          <span className="rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 py-0.5 font-mono text-[10px] uppercase text-[var(--sc-text-4)]">
+            {polish.global.recipe}
           </span>
         </div>
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1fr_1fr_1.4fr]">
-          <PolishGroup title="Style">
-            <ScSegmented
-              size="sm"
-              value={polish.global.recipe}
-              aria-label="Polish recipe"
-              disabled={simulatorActive}
-              options={recipeOptions}
-              onValueChange={(value) => updateGlobal({ recipe: value as PolishRecipe })}
-            />
-          </PolishGroup>
-
-          <PolishGroup title="Motion">
-            <LabeledControl label="Auto zoom" className="w-36">
-              <select
-                className={fieldClass}
-                value={polish.global.autoZoom}
+        {intentExpanded ? (
+          <div className="grid grid-cols-1 gap-3 px-3 pb-3 lg:grid-cols-2">
+            <PolishGroup title="Style">
+              <ScSegmented
+                size="sm"
+                value={polish.global.recipe}
+                aria-label="Polish recipe"
                 disabled={simulatorActive}
-                onChange={(event) =>
-                  updateGlobal({ autoZoom: event.target.value as PolishAutoZoom })
-                }
-              >
-                <option value="off">Off</option>
-                <option value="subtle">Subtle</option>
-                <option value="standard">Standard</option>
-                <option value="strong">Strong</option>
-              </select>
-            </LabeledControl>
-            <LabeledControl label="Duration" className="w-24">
-              <input
-                className={fieldClass}
-                type="number"
-                min={200}
-                step={100}
-                value={polish.global.autoZoomDurationMs}
-                disabled={simulatorActive}
-                aria-label="Auto zoom duration"
-                onChange={(event) =>
-                  updateGlobal({
-                    autoZoomDurationMs: Math.max(200, Number(event.target.value) || 800),
-                  })
-                }
+                options={recipeOptions}
+                onValueChange={(value) => updateGlobal({ recipe: value as PolishRecipe })}
               />
-            </LabeledControl>
-          </PolishGroup>
+            </PolishGroup>
 
-          <PolishGroup title="Cursor">
-            <LabeledControl label="Mode" className="w-32">
-              <select
-                className={fieldClass}
-                value={polish.global.cursor}
-                disabled={simulatorActive}
-                onChange={(event) =>
-                  updateGlobal({ cursor: event.target.value as PolishCursorMode })
-                }
-              >
-                <option value="raw">Raw</option>
-                <option value="smooth">Smooth</option>
-                <option value="hidden">Hidden</option>
-              </select>
-            </LabeledControl>
-            <LabeledControl label="Skin" className="w-32">
-              <select
-                className={fieldClass}
-                value={polish.global.cursorSkin}
-                disabled={simulatorActive || polish.global.cursor === "hidden"}
-                onChange={(event) =>
-                  updateGlobal({ cursorSkin: event.target.value as PolishCursorSkin })
-                }
-              >
-                {cursorSkinOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </LabeledControl>
-            <LabeledControl label="Size" className="w-20">
-              <input
-                className={fieldClass}
-                type="number"
-                min={0.5}
-                max={2.5}
-                step={0.1}
-                value={polish.global.cursorSizeScale}
-                disabled={simulatorActive || polish.global.cursor === "hidden"}
-                aria-label="Cursor size"
-                onChange={(event) =>
-                  updateGlobal({ cursorSizeScale: Math.max(0.5, Number(event.target.value) || 1) })
-                }
-              />
-            </LabeledControl>
-          </PolishGroup>
+            <PolishGroup title="Motion">
+              <LabeledControl label="Auto zoom" className="min-w-[140px] flex-1">
+                <select
+                  className={fieldClass}
+                  value={polish.global.autoZoom}
+                  disabled={simulatorActive}
+                  onChange={(event) =>
+                    updateGlobal({ autoZoom: event.target.value as PolishAutoZoom })
+                  }
+                >
+                  <option value="off">Off</option>
+                  <option value="subtle">Subtle</option>
+                  <option value="standard">Standard</option>
+                  <option value="strong">Strong</option>
+                </select>
+              </LabeledControl>
+              <LabeledControl label="Duration" className="w-24">
+                <input
+                  className={fieldClass}
+                  type="number"
+                  min={200}
+                  step={100}
+                  value={polish.global.autoZoomDurationMs}
+                  disabled={simulatorActive}
+                  aria-label="Auto zoom duration"
+                  onChange={(event) =>
+                    updateGlobal({
+                      autoZoomDurationMs: Math.max(200, Number(event.target.value) || 800),
+                    })
+                  }
+                />
+              </LabeledControl>
+            </PolishGroup>
 
-          <PolishGroup title="Canvas & Audio">
-            <LabeledControl label="Background" className="w-40">
-              <select
-                className={fieldClass}
-                value={backgroundToValue(polish.global.background)}
-                disabled={simulatorActive}
-                onChange={(event) =>
-                  updateGlobal({ background: backgroundFromValue(event.target.value) })
-                }
-              >
-                {backgroundOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </LabeledControl>
-            <LabeledControl label="BGM asset" className="min-w-[210px] flex-1">
-              <input
-                className={fieldClass}
-                value={polish.global.bgm?.path ?? ""}
-                disabled={simulatorActive}
-                placeholder="Choose or paste audio path"
-                aria-label="Background music path"
-                onChange={(event) =>
-                  updateGlobal({
-                    bgm: event.target.value.trim()
-                      ? {
-                          ...soundCueObject(polish.global.bgm),
-                          path: event.target.value,
-                          gain: 0.35,
-                        }
-                      : undefined,
-                  })
-                }
-              />
-            </LabeledControl>
-          </PolishGroup>
-        </div>
+            <PolishGroup title="Cursor">
+              <LabeledControl label="Mode" className="min-w-[120px] flex-1">
+                <select
+                  className={fieldClass}
+                  value={polish.global.cursor}
+                  disabled={simulatorActive}
+                  onChange={(event) =>
+                    updateGlobal({ cursor: event.target.value as PolishCursorMode })
+                  }
+                >
+                  <option value="raw">Raw</option>
+                  <option value="smooth">Smooth</option>
+                  <option value="hidden">Hidden</option>
+                </select>
+              </LabeledControl>
+              <LabeledControl label="Skin" className="min-w-[120px] flex-1">
+                <select
+                  className={fieldClass}
+                  value={polish.global.cursorSkin}
+                  disabled={simulatorActive || polish.global.cursor === "hidden"}
+                  onChange={(event) =>
+                    updateGlobal({ cursorSkin: event.target.value as PolishCursorSkin })
+                  }
+                >
+                  {cursorSkinOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </LabeledControl>
+              <LabeledControl label="Size" className="w-20">
+                <input
+                  className={fieldClass}
+                  type="number"
+                  min={0.5}
+                  max={2.5}
+                  step={0.1}
+                  value={polish.global.cursorSizeScale}
+                  disabled={simulatorActive || polish.global.cursor === "hidden"}
+                  aria-label="Cursor size"
+                  onChange={(event) =>
+                    updateGlobal({
+                      cursorSizeScale: Math.max(0.5, Number(event.target.value) || 1),
+                    })
+                  }
+                />
+              </LabeledControl>
+            </PolishGroup>
+
+            <PolishGroup title="Canvas & Audio">
+              <LabeledControl label="Background" className="min-w-[150px] flex-1">
+                <select
+                  className={fieldClass}
+                  value={backgroundToValue(polish.global.background)}
+                  disabled={simulatorActive}
+                  onChange={(event) =>
+                    updateGlobal({ background: backgroundFromValue(event.target.value) })
+                  }
+                >
+                  {backgroundOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </LabeledControl>
+              <LabeledControl label="BGM asset" className="min-w-[180px] flex-1">
+                <input
+                  className={fieldClass}
+                  value={polish.global.bgm?.path ?? ""}
+                  disabled={simulatorActive}
+                  placeholder="Choose or paste audio path"
+                  aria-label="Background music path"
+                  onChange={(event) =>
+                    updateGlobal({
+                      bgm: event.target.value.trim()
+                        ? {
+                            ...soundCueObject(polish.global.bgm),
+                            path: event.target.value,
+                            gain: 0.35,
+                          }
+                        : undefined,
+                    })
+                  }
+                />
+              </LabeledControl>
+            </PolishGroup>
+          </div>
+        ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4">
         {story.scenes.map((scene, sceneIndex) => {
           const scenePolish = polish.scenes[scene.name] ?? {};
           return (
@@ -699,7 +716,9 @@ export function StoryBuilder({
 
                       <div
                         className={
-                          supportsPick ? "grid grid-cols-[1fr_auto] gap-2" : "grid grid-cols-1"
+                          supportsPick
+                            ? "grid grid-cols-[1fr_auto] items-center gap-2"
+                            : "grid grid-cols-1"
                         }
                       >
                         <input
@@ -725,6 +744,7 @@ export function StoryBuilder({
                             disabled={simulatorActive || pickingKey === pickKey}
                             icon={<MousePointer2 size={12} aria-hidden="true" />}
                             title="Pick target from preview"
+                            className="h-9 self-center"
                             onClick={() => pickTarget(sceneIndex, commandIndex, command)}
                           >
                             {pickingKey === pickKey ? "Picking" : "Pick"}
@@ -808,7 +828,13 @@ export function StoryBuilder({
 
                       {polishOpen ? (
                         <div className="mt-3 border-t border-[var(--sc-border-2)] pt-3">
-                          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1.2fr_1fr]">
+                          <div
+                            className={
+                              supportsVisualFocus
+                                ? "grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(120px,0.9fr)_minmax(300px,1.35fr)_minmax(220px,1fr)]"
+                                : "grid grid-cols-1"
+                            }
+                          >
                             {supportsVisualFocus ? (
                               <fieldset className="border-0 p-0">
                                 <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
@@ -890,12 +916,24 @@ export function StoryBuilder({
                               </fieldset>
                             ) : null}
 
-                            <fieldset className="border-0 p-0">
+                            <fieldset
+                              className={
+                                supportsVisualFocus
+                                  ? "min-w-0 border-0 p-0"
+                                  : "min-w-0 border-0 p-0"
+                              }
+                            >
                               <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
                                 <Megaphone size={11} aria-hidden="true" /> Callout
                               </legend>
-                              <div className="flex flex-wrap items-end gap-2">
-                                <LabeledControl label="Text" className="min-w-[220px] flex-1">
+                              <div
+                                className={
+                                  supportsVisualFocus
+                                    ? "grid grid-cols-[minmax(180px,1fr)_80px_56px] items-end gap-3"
+                                    : "grid grid-cols-[minmax(220px,1fr)_80px_56px] items-end gap-3"
+                                }
+                              >
+                                <LabeledControl label="Text" className="min-w-0">
                                   <input
                                     className={fieldClass}
                                     value={calloutValue}
@@ -909,7 +947,7 @@ export function StoryBuilder({
                                     aria-label={`${commandTitle(command)} callout`}
                                   />
                                 </LabeledControl>
-                                <LabeledControl label="Size" className="w-20">
+                                <LabeledControl label="Size">
                                   <input
                                     className={fieldClass}
                                     type="number"
@@ -929,7 +967,7 @@ export function StoryBuilder({
                                     }
                                   />
                                 </LabeledControl>
-                                <LabeledControl label="Color" className="w-14">
+                                <LabeledControl label="Color">
                                   <input
                                     className="h-8 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-1"
                                     type="color"
@@ -951,27 +989,26 @@ export function StoryBuilder({
                                 <legend className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
                                   <Music2 size={11} aria-hidden="true" /> Effects
                                 </legend>
-                                <div className="flex flex-wrap items-end gap-2">
-                                  <label className="inline-flex h-8 items-center gap-2 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] px-2 text-xs text-[var(--sc-text-2)]">
-                                    <input
-                                      type="checkbox"
-                                      checked={highlightActive}
-                                      disabled={simulatorActive}
-                                      onChange={(event) =>
-                                        updateStepPolish(sceneIndex, commandIndex, {
-                                          highlight: {
-                                            ...highlight,
-                                            enabled: event.target.checked,
-                                          },
-                                        })
-                                      }
-                                    />
-                                    Highlight
-                                  </label>
-                                  <LabeledControl
-                                    label="SFX asset"
-                                    className="min-w-[190px] flex-1"
-                                  >
+                                <div className="grid grid-cols-1 items-end gap-3">
+                                  <LabeledControl label="Highlight" className="min-w-0">
+                                    <label className="inline-flex h-8 items-center gap-2 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] px-2 text-xs text-[var(--sc-text-2)]">
+                                      <input
+                                        type="checkbox"
+                                        checked={highlightActive}
+                                        disabled={simulatorActive}
+                                        onChange={(event) =>
+                                          updateStepPolish(sceneIndex, commandIndex, {
+                                            highlight: {
+                                              ...highlight,
+                                              enabled: event.target.checked,
+                                            },
+                                          })
+                                        }
+                                      />
+                                      Enabled
+                                    </label>
+                                  </LabeledControl>
+                                  <LabeledControl label="SFX asset" className="min-w-0">
                                     <input
                                       className={fieldClass}
                                       value={sfx.path}
@@ -1000,11 +1037,6 @@ export function StoryBuilder({
             </section>
           );
         })}
-      </div>
-
-      <div className="flex items-center gap-2 border-t border-[var(--sc-border-2)] bg-[var(--sc-chrome)] px-3 py-2 text-xs text-[var(--sc-text-3)]">
-        <ArrowRight size={12} aria-hidden="true" />
-        Script edits write canonical DSL. Polish controls save to the post-production sidecar.
       </div>
     </form>
   );
