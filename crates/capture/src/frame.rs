@@ -215,6 +215,33 @@ pub fn crop_bgra_frame(frame: Frame, rect: FrameCropRect) -> Result<Option<Frame
     if end_x > frame.width_px || end_y > frame.height_px {
         return Ok(None);
     }
+    if rect.x == 0 && rect.y == 0 && rect.w == frame.width_px && rect.h == frame.height_px {
+        return Ok(Some(frame));
+    }
+
+    #[cfg(target_os = "macos")]
+    if let FrameData::NativeMacOS(handle) = &frame.data {
+        let (out, row_bytes) = match handle
+            .to_owned_bgra_rect(
+                rect.x as usize,
+                rect.y as usize,
+                rect.w as usize,
+                rect.h as usize,
+            )
+            .map_err(|rc| format!("CVPixelBufferLockBaseAddress failed (CVReturn {rc})"))?
+        {
+            Some(crop) => crop,
+            None => return Ok(None),
+        };
+        return Ok(Some(Frame {
+            pts: frame.pts,
+            width_px: rect.w,
+            height_px: rect.h,
+            format: frame.format,
+            data: FrameData::Owned(out, row_bytes),
+            sequence: frame.sequence,
+        }));
+    }
 
     let (bytes, stride): (std::borrow::Cow<'_, [u8]>, usize) = match &frame.data {
         FrameData::Owned(v, stride) => (std::borrow::Cow::Borrowed(v.as_slice()), *stride),
@@ -400,5 +427,40 @@ mod crop_tests {
         assert_eq!(out_stride, 40);
         assert_eq!(&out[0..4], &[0, 2, 0xaa, 0xff]);
         assert_eq!(&out[36..40], &[9, 2, 0xaa, 0xff]);
+    }
+
+    #[test]
+    fn crop_bgra_frame_returns_original_for_full_rect() {
+        let width = 4u32;
+        let height = 3u32;
+        let stride = width as usize * 4;
+        let bytes = vec![7u8; stride * height as usize];
+        let frame = Frame {
+            pts: Pts::synthetic(789),
+            width_px: width,
+            height_px: height,
+            format: PixelFormat::Bgra,
+            data: FrameData::Owned(bytes, stride),
+            sequence: 10,
+        };
+
+        let cropped = crop_bgra_frame(
+            frame,
+            FrameCropRect {
+                x: 0,
+                y: 0,
+                w: width,
+                h: height,
+                basis_w: None,
+                basis_h: None,
+                scale_hint: None,
+            },
+        )
+        .expect("crop attempt ok")
+        .expect("full rect remains a frame");
+
+        assert_eq!(cropped.width_px, width);
+        assert_eq!(cropped.height_px, height);
+        assert_eq!(cropped.sequence, 10);
     }
 }

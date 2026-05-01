@@ -772,7 +772,7 @@ async fn try_start_vt_fast_path(
                 configured_output_width_px = cfg.output_width,
                 configured_output_height_px = cfg.output_height,
                 fps_advisory = cfg.fps_advisory,
-                compact_pts = true,
+                pts_source = "capture_frame_pts",
                 strict_native_frames = strict_vt_native_frames_required(cfg),
                 "vt_writer fast path engaged: first frame is NativeMacOS CVPixelBuffer"
             );
@@ -810,14 +810,13 @@ async fn try_start_vt_fast_path(
 
     // Build the writer and spawn the append pump.
     let handle = VtWriter::start(cfg.clone(), progress_tx.clone())?;
-    let frame_duration_ns = (1_000_000_000i128 / i128::from(cfg.fps_advisory.max(1))).max(1);
 
     // Queue the first frame we already popped.
     let mut frames_submitted: u64 = 0;
+    let first_pts_ns = first.pts.ns;
     if let FrameData::NativeMacOS(buf) = first.data {
-        let pts_ns = i128::from(frames_submitted) * frame_duration_ns;
         handle
-            .append(buf, pts_ns)
+            .append(buf, first_pts_ns)
             .map_err(|e| EncoderError::Io(format!("vt_writer append first frame: {e}")))?;
         frames_submitted += 1;
     }
@@ -830,9 +829,9 @@ async fn try_start_vt_fast_path(
         let mut frames_submitted = frames_submitted;
         let mut frames_dropped: u64 = 0;
         while let Some(frame) = frames_owned.recv().await {
+            let pts_ns = frame.pts.ns;
             match frame.data {
                 FrameData::NativeMacOS(buf) => {
-                    let pts_ns = i128::from(frames_submitted) * frame_duration_ns;
                     if handle.append(buf, pts_ns).is_err() {
                         tracing::warn!(target: "storycapture::encoder", "vt_writer worker closed early");
                         break;

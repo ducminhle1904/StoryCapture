@@ -76,6 +76,12 @@ struct SckStreamPlan {
     effective_scale: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowCropPath {
+    NativeSck,
+    DisplaySourceRect,
+}
+
 impl SckBackend {
     pub fn new() -> Result<Self, CaptureError> {
         // Log preflight for diagnostics, but do not gate on it.
@@ -159,6 +165,13 @@ impl SckBackend {
                 let window = crate::macos::window::resolve_sc_window_by_id(*window_id)?
                     .ok_or(CaptureError::WindowNotFound(window_id.0))?;
                 let frame = window.frame();
+                if let Some(crop) = frame_crop {
+                    if classify_window_crop(crop)? == WindowCropPath::DisplaySourceRect {
+                        return build_window_content_display_crop_plan(
+                            frame, 1.0, scale_hint, crop,
+                        );
+                    }
+                }
                 // Request the canvas at the physical scale of the display
                 // containing this window. Using the primary display scale
                 // upscaled 1× external-monitor windows to 2× and softened
@@ -193,6 +206,13 @@ impl SckBackend {
                 )?
                 .ok_or(CaptureError::WindowNotFound(*pid as u64))?;
                 let frame = window.frame();
+                if let Some(crop) = frame_crop {
+                    if classify_window_crop(crop)? == WindowCropPath::DisplaySourceRect {
+                        return build_window_content_display_crop_plan(
+                            frame, 1.0, scale_hint, crop,
+                        );
+                    }
+                }
                 // Same physical-pixel treatment as Window — derive the
                 // scale from the display containing the resolved window.
                 let display_scale = window_display_scale(frame)?;
@@ -825,8 +845,7 @@ fn build_window_stream_plan(
             effective_scale: Some(effective_scale),
         })
     } else {
-        let width_px = (frame.width * effective_scale).round().max(1.0) as u32;
-        let height_px = (frame.height * effective_scale).round().max(1.0) as u32;
+        let (width_px, height_px) = window_canvas_size(frame, effective_scale);
         log_window_canvas_scale(
             frame,
             display_scale,
@@ -846,6 +865,132 @@ fn build_window_stream_plan(
             effective_scale: Some(effective_scale),
         })
     }
+}
+
+fn classify_window_crop(crop: FrameCropRect) -> Result<WindowCropPath, CaptureError> {
+    match (crop.basis_w, crop.basis_h) {
+        (None, None) => Ok(WindowCropPath::NativeSck),
+        (Some(w), Some(h)) if w > 0 && h > 0 => Ok(WindowCropPath::DisplaySourceRect),
+        _ => Err(CaptureError::Backend(format!(
+            "invalid window frame_crop basis: {:?}",
+            crop
+        ))),
+    }
+}
+
+fn window_canvas_size(frame: CGRect, effective_scale: f64) -> (u32, u32) {
+    (
+        (frame.width * effective_scale).round().max(1.0) as u32,
+        (frame.height * effective_scale).round().max(1.0) as u32,
+    )
+}
+
+fn build_window_content_display_crop_plan(
+    window_frame: CGRect,
+    effective_scale: f64,
+    scale_hint: Option<f64>,
+    crop: FrameCropRect,
+) -> Result<SckStreamPlan, CaptureError> {
+    let (_, _, window_crop) = compute_window_crop_math(
+        crop,
+        window_frame.width,
+        window_frame.height,
+        effective_scale,
+    )
+    .ok_or_else(|| {
+        CaptureError::Backend(format!(
+            "invalid window frame_crop for display source rect: {:?}",
+            crop
+        ))
+    })?;
+
+    let content = SCShareableContent::get()
+        .map_err(|e| CaptureError::Native(format!("SCShareableContent::get: {e}")))?;
+    let displays = content.displays();
+    let display = displays
+        .iter()
+        .max_by(|a, b| {
+            rect_intersection_area(window_frame, a.frame())
+                .partial_cmp(&rect_intersection_area(window_frame, b.frame()))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .ok_or_else(|| CaptureError::Native("no SCDisplay available".into()))?;
+    let display_frame = display.frame();
+    let display_scale = display_scale(display_frame, display.width(), display.height());
+    let mut source_rect = CGRect::new(
+        window_frame.x - display_frame.x + window_crop.x,
+        window_frame.y - display_frame.y + window_crop.y,
+        window_crop.width,
+        window_crop.height,
+    );
+
+    if source_rect.x < 0.0 {
+        source_rect.width += source_rect.x;
+        source_rect.x = 0.0;
+    }
+    if source_rect.y < 0.0 {
+        source_rect.height += source_rect.y;
+        source_rect.y = 0.0;
+    }
+    if source_rect.x + source_rect.width > display_frame.width {
+        source_rect.width = display_frame.width - source_rect.x;
+    }
+    if source_rect.y + source_rect.height > display_frame.height {
+        source_rect.height = display_frame.height - source_rect.y;
+    }
+    if source_rect.width <= 0.0 || source_rect.height <= 0.0 {
+        return Err(CaptureError::Backend(format!(
+            "window content crop outside display bounds: crop={crop:?} window_frame={window_frame:?} display_frame={display_frame:?}"
+        )));
+    }
+
+    let width_px = (source_rect.width * display_scale).round().max(1.0) as u32;
+    let height_px = (source_rect.height * display_scale).round().max(1.0) as u32;
+    let filter = SCContentFilter::create()
+        .with_display(display)
+        .with_excluding_windows(&[])
+        .build();
+
+    tracing::info!(
+        target: "storycapture::capture",
+        native_sck_crop = true,
+        crop_path = "display_source_rect_for_window_content",
+        crop_x = crop.x,
+        crop_y = crop.y,
+        crop_w = crop.w,
+        crop_h = crop.h,
+        crop_basis_w = crop.basis_w,
+        crop_basis_h = crop.basis_h,
+        source_x = source_rect.x,
+        source_y = source_rect.y,
+        source_w = source_rect.width,
+        source_h = source_rect.height,
+        window_x = window_frame.x,
+        window_y = window_frame.y,
+        window_w = window_frame.width,
+        window_h = window_frame.height,
+        display_x = display_frame.x,
+        display_y = display_frame.y,
+        display_w = display_frame.width,
+        display_h = display_frame.height,
+        display_scale,
+        scale_hint = normalize_scale_hint(scale_hint),
+        effective_scale,
+        output_width_px = width_px,
+        output_height_px = height_px,
+        "SckBackend: planned display source rect for window content crop"
+    );
+
+    Ok(SckStreamPlan {
+        filter,
+        width_px,
+        height_px,
+        source_rect: Some(source_rect),
+        needs_scales_to_fit: false,
+        native_sck_crop: true,
+        crop_scale_hint: scale_hint,
+        effective_scale: Some(display_scale),
+    })
 }
 
 fn window_display_scale(window_frame: CGRect) -> Result<f64, CaptureError> {
@@ -1166,6 +1311,82 @@ mod region_tests {
         assert_eq!(src.y, 40.0);
         assert_eq!(src.width, 450.0);
         assert_eq!(src.height, 253.0);
+    }
+
+    #[test]
+    fn window_crop_with_basis_uses_display_source_rect() {
+        let crop = FrameCropRect {
+            x: 0,
+            y: 88,
+            w: 1800,
+            h: 1012,
+            basis_w: Some(1800),
+            basis_h: Some(1100),
+            scale_hint: Some(2.0),
+        };
+
+        assert_eq!(
+            classify_window_crop(crop).unwrap(),
+            WindowCropPath::DisplaySourceRect
+        );
+    }
+
+    #[test]
+    fn window_crop_without_basis_can_use_native_crop() {
+        let crop = FrameCropRect {
+            x: 0,
+            y: 88,
+            w: 1800,
+            h: 1012,
+            basis_w: None,
+            basis_h: None,
+            scale_hint: Some(2.0),
+        };
+
+        assert_eq!(
+            classify_window_crop(crop).unwrap(),
+            WindowCropPath::NativeSck
+        );
+    }
+
+    #[test]
+    fn window_crop_with_partial_basis_is_invalid() {
+        let crop = FrameCropRect {
+            x: 0,
+            y: 88,
+            w: 1800,
+            h: 1012,
+            basis_w: Some(1800),
+            basis_h: None,
+            scale_hint: Some(2.0),
+        };
+
+        assert!(classify_window_crop(crop).is_err());
+    }
+
+    #[test]
+    fn display_source_rect_window_plan_uses_physical_crop_size() {
+        let frame = CGRect::new(0.0, 0.0, 900.0, 550.0);
+        let crop = FrameCropRect {
+            x: 0,
+            y: 44,
+            w: 900,
+            h: 506,
+            basis_w: Some(900),
+            basis_h: Some(550),
+            scale_hint: Some(2.0),
+        };
+
+        assert_eq!(
+            classify_window_crop(crop).unwrap(),
+            WindowCropPath::DisplaySourceRect
+        );
+        let (width_px, height_px, source_rect) =
+            compute_window_crop_math(crop, frame.width, frame.height, 2.0).unwrap();
+        assert_eq!(width_px, 1800);
+        assert_eq!(height_px, 1012);
+        assert_eq!(source_rect.y, 44.0);
+        assert_eq!(source_rect.height, 506.0);
     }
 
     #[test]

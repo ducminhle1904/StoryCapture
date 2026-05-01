@@ -1799,6 +1799,24 @@ async fn resolve_playwright_content_crop(
     let driver = { state.playwright_driver.lock().await.clone() }?;
     let result = {
         let driver = driver.lock().await;
+        if !playwright_first_paint_stash().get() {
+            match driver.wait_for_first_paint(2_000).await {
+                Ok(()) => {
+                    playwright_first_paint_stash().set(true);
+                    tracing::info!(
+                        target: "storycapture::automation",
+                        "resolve_playwright_target: first paint signaled before content crop"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        target: "storycapture::automation",
+                        %error,
+                        "resolve_playwright_target: first paint wait before content crop timed out"
+                    );
+                }
+            }
+        }
         driver.page_content_crop().await
     };
     match result {

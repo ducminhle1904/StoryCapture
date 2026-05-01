@@ -24,6 +24,48 @@ pub fn clamp_count() -> u64 {
     PTS_CLAMP_COUNT.load(Ordering::Acquire)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PtsNormalizationEvent {
+    BeforeFirst,
+    NonMonotonic,
+    LargeGap(i64),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NormalizedPts {
+    rel_ns: i64,
+    event: Option<PtsNormalizationEvent>,
+}
+
+fn normalize_rel_pts(
+    pts_ns: i128,
+    first_pts_ns: i128,
+    last_rel_ns: Option<i64>,
+    frame_duration_ns: i64,
+) -> NormalizedPts {
+    let mut rel_ns = if pts_ns < first_pts_ns {
+        0
+    } else {
+        i64::try_from(pts_ns - first_pts_ns).unwrap_or(i64::MAX)
+    };
+    let mut event = (pts_ns < first_pts_ns).then_some(PtsNormalizationEvent::BeforeFirst);
+
+    if let Some(last) = last_rel_ns {
+        if rel_ns <= last {
+            rel_ns = last.saturating_add(frame_duration_ns.max(1));
+            event = Some(PtsNormalizationEvent::NonMonotonic);
+        } else {
+            let gap_ns = rel_ns - last;
+            let large_gap_threshold_ns = 500_000_000i64.max(frame_duration_ns.saturating_mul(2));
+            if gap_ns > large_gap_threshold_ns {
+                event = Some(PtsNormalizationEvent::LargeGap(gap_ns));
+            }
+        }
+    }
+
+    NormalizedPts { rel_ns, event }
+}
+
 use capture::macos::raii::CVPixelBufferHandle;
 
 use objc2::rc::Retained;
@@ -730,6 +772,7 @@ fn run_worker_inner(
         let all_i_frames = matches!(cfg.quality_preset, QualityPreset::Lossless);
         let keyframe_interval_frames = if all_i_frames { 1 } else { fps };
         let frame_duration = unsafe { CMTime::new(1, fps as i32) };
+        let frame_duration_ns = (1_000_000_000i64 / i64::from(fps)).max(1);
 
         tracing::info!(
             target: "storycapture::encoder::vt",
@@ -865,6 +908,9 @@ fn run_worker_inner(
         let mut frames_dropped: u64 = 0;
         let mut frames_submitted: u64 = 0;
         let mut first_pts_ns: i128 = 0;
+        let mut last_rel_ns: Option<i64> = None;
+        let mut large_gap_count: u64 = 0;
+        let mut max_large_gap_ns: i64 = 0;
         let mut last_progress_at = Instant::now();
         let mut writer_started = false;
         let mut input: Option<Retained<AVAssetWriterInput>> = None;
@@ -892,20 +938,51 @@ fn run_worker_inner(
                         first_pts_ns = pts_ns;
                     }
 
-                    // Normalize PTS relative to first frame (warn on clamp).
-                    let rel_ns: i64 = if pts_ns < first_pts_ns {
-                        let n = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
-                        tracing::warn!(
-                            target: "storycapture::encoder::vt",
-                            pts_ns = pts_ns as i64,
-                            first_pts_ns = first_pts_ns as i64,
-                            clamp_count = n,
-                            "vt_writer: pts < first_pts, clamping to 0 (clock jump?)"
-                        );
-                        0
-                    } else {
-                        (pts_ns - first_pts_ns) as i64
-                    };
+                    let normalized =
+                        normalize_rel_pts(pts_ns, first_pts_ns, last_rel_ns, frame_duration_ns);
+                    match normalized.event {
+                        Some(PtsNormalizationEvent::BeforeFirst) => {
+                            let n = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
+                            tracing::warn!(
+                                target: "storycapture::encoder::vt",
+                                pts_ns = pts_ns as i64,
+                                first_pts_ns = first_pts_ns as i64,
+                                clamp_count = n,
+                                "vt_writer: pts < first_pts, clamping to 0 (clock jump?)"
+                            );
+                        }
+                        Some(PtsNormalizationEvent::NonMonotonic) => {
+                            let n = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
+                            tracing::warn!(
+                                target: "storycapture::encoder::vt",
+                                pts_ns = pts_ns as i64,
+                                first_pts_ns = first_pts_ns as i64,
+                                last_rel_ns,
+                                rel_ns = normalized.rel_ns,
+                                frame_duration_ns,
+                                clamp_count = n,
+                                "vt_writer: non-monotonic pts, bumping by one frame duration"
+                            );
+                        }
+                        Some(PtsNormalizationEvent::LargeGap(gap_ns)) => {
+                            large_gap_count = large_gap_count.saturating_add(1);
+                            max_large_gap_ns = max_large_gap_ns.max(gap_ns);
+                            if large_gap_count <= 3 {
+                                tracing::warn!(
+                                    target: "storycapture::encoder::vt",
+                                    pts_ns = pts_ns as i64,
+                                    first_pts_ns = first_pts_ns as i64,
+                                    last_rel_ns,
+                                    rel_ns = normalized.rel_ns,
+                                    gap_ns,
+                                    large_gap_count,
+                                    "vt_writer: large capture PTS gap preserved"
+                                );
+                            }
+                        }
+                        None => {}
+                    }
+                    let rel_ns = normalized.rel_ns;
                     let cm_pts = unsafe { CMTime::new(rel_ns, 1_000_000_000) };
                     if frames_submitted < 5 {
                         tracing::info!(
@@ -917,6 +994,7 @@ fn run_worker_inner(
                             "vt_writer append"
                         );
                     }
+                    last_rel_ns = Some(rel_ns);
 
                     let raw: *mut c_void = buffer.as_ptr();
                     let pb: &CVPixelBuffer = unsafe { &*(raw as *const CVPixelBuffer) };
@@ -1049,6 +1127,8 @@ fn run_worker_inner(
             bytes,
             frames_written,
             frames_dropped,
+            large_gap_count,
+            max_large_gap_ns,
             "vt_writer encode complete"
         );
 
@@ -1087,13 +1167,12 @@ mod tests {
         let before = PTS_CLAMP_COUNT.load(Ordering::Acquire);
         let first_pts_ns: i128 = 1_000_000_000;
         let pts_ns: i128 = 500_000_000;
-        let rel_ns: i64 = if pts_ns < first_pts_ns {
+        let normalized = normalize_rel_pts(pts_ns, first_pts_ns, None, 16_666_666);
+        if normalized.event == Some(PtsNormalizationEvent::BeforeFirst) {
             let _ = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel) + 1;
-            0
-        } else {
-            (pts_ns - first_pts_ns) as i64
-        };
-        assert_eq!(rel_ns, 0);
+        }
+        assert_eq!(normalized.rel_ns, 0);
+        assert_eq!(normalized.event, Some(PtsNormalizationEvent::BeforeFirst));
         assert_eq!(PTS_CLAMP_COUNT.load(Ordering::Acquire), before + 1);
     }
 
@@ -1103,13 +1182,45 @@ mod tests {
         let before = PTS_CLAMP_COUNT.load(Ordering::Acquire);
         let first_pts_ns: i128 = 1_000;
         let pts_ns: i128 = 2_000;
-        let rel_ns: i64 = if pts_ns < first_pts_ns {
+        let normalized = normalize_rel_pts(pts_ns, first_pts_ns, None, 16_666_666);
+        if normalized.event == Some(PtsNormalizationEvent::BeforeFirst) {
             let _ = PTS_CLAMP_COUNT.fetch_add(1, Ordering::AcqRel);
-            0
-        } else {
-            (pts_ns - first_pts_ns) as i64
-        };
-        assert_eq!(rel_ns, 1_000);
+        }
+        assert_eq!(normalized.rel_ns, 1_000);
+        assert_eq!(normalized.event, None);
         assert_eq!(PTS_CLAMP_COUNT.load(Ordering::Acquire), before);
+    }
+
+    #[test]
+    fn pts_repeated_value_bumps_after_last_relative_pts() {
+        let normalized =
+            normalize_rel_pts(1_050_000_000, 1_000_000_000, Some(50_000_000), 16_666_666);
+
+        assert_eq!(normalized.rel_ns, 66_666_666);
+        assert_eq!(normalized.event, Some(PtsNormalizationEvent::NonMonotonic));
+    }
+
+    #[test]
+    fn pts_increasing_value_preserves_elapsed_time() {
+        let normalized =
+            normalize_rel_pts(1_050_000_000, 1_000_000_000, Some(16_666_666), 16_666_666);
+
+        assert_eq!(normalized.rel_ns, 50_000_000);
+        assert_eq!(normalized.event, None);
+    }
+
+    #[test]
+    fn pts_large_gap_event_uses_cadence_aware_threshold() {
+        let one_fps_duration_ns = 1_000_000_000;
+        let normal_one_fps_gap =
+            normalize_rel_pts(2_000_000_000, 1_000_000_000, Some(0), one_fps_duration_ns);
+        let large_gap =
+            normalize_rel_pts(4_000_000_001, 1_000_000_000, Some(0), one_fps_duration_ns);
+
+        assert_eq!(normal_one_fps_gap.event, None);
+        assert_eq!(
+            large_gap.event,
+            Some(PtsNormalizationEvent::LargeGap(3_000_000_001))
+        );
     }
 }

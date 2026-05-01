@@ -682,6 +682,13 @@ fn hidpi_capture_under_resolved_reason(
         return None;
     }
 
+    // Browser-content crops may be captured through a display source rect that
+    // already matches the logical crop size. That path is intentional: it
+    // avoids unstable SCK window cropping and keeps the encoder load bounded.
+    if actual_width.abs_diff(crop.w) <= 2 && actual_height.abs_diff(crop.h) <= 2 {
+        return None;
+    }
+
     let expected_width = ((crop.w as f64) * scale).round().max(1.0) as u32;
     let expected_height = ((crop.h as f64) * scale).round().max(1.0) as u32;
     let min_width = ((expected_width as f64) * 0.9).round().max(1.0) as u32;
@@ -772,8 +779,26 @@ fn should_post_mux_video_toolbox(_encoder: HardwareEncoder) -> bool {
     false
 }
 
-fn has_realtime_60fps_pressure(output_w: u32, output_h: u32, fps: u32) -> bool {
-    let area = (output_w as u64).saturating_mul(output_h as u64);
+fn should_post_mux_recording_output(
+    encoder: HardwareEncoder,
+    capture_w: u32,
+    capture_h: u32,
+    output_w: u32,
+    output_h: u32,
+) -> bool {
+    should_post_mux_video_toolbox(encoder) && capture_w == output_w && capture_h == output_h
+}
+
+fn has_realtime_60fps_pressure(
+    capture_w: u32,
+    capture_h: u32,
+    output_w: u32,
+    output_h: u32,
+    fps: u32,
+) -> bool {
+    let capture_area = (capture_w as u64).saturating_mul(capture_h as u64);
+    let output_area = (output_w as u64).saturating_mul(output_h as u64);
+    let area = capture_area.max(output_area);
     fps >= 50 && area > 1920u64 * 1080u64
 }
 
@@ -795,6 +820,8 @@ fn should_default_output_match_source(
 fn select_recording_encoder(
     probe: &EncoderProbe,
     preset: QualityPreset,
+    capture_w: u32,
+    capture_h: u32,
     output_w: u32,
     output_h: u32,
     fps: u32,
@@ -802,7 +829,7 @@ fn select_recording_encoder(
     #[cfg(target_os = "macos")]
     {
         if matches!(preset, QualityPreset::High | QualityPreset::Lossless)
-            && has_realtime_60fps_pressure(output_w, output_h, fps)
+            && has_realtime_60fps_pressure(capture_w, capture_h, output_w, output_h, fps)
         {
             if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
                 return Ok(RecordingEncoderSelection::new(
@@ -1422,6 +1449,8 @@ pub async fn start_recording(
     let recording_selection = select_recording_encoder(
         &probe,
         qp,
+        actual_width,
+        actual_height,
         planned_output_width,
         planned_output_height,
         args.fps,
@@ -1450,7 +1479,13 @@ pub async fn start_recording(
         );
     }
 
-    let use_post_mux = should_post_mux_video_toolbox(recording_encoder);
+    let use_post_mux = should_post_mux_recording_output(
+        recording_encoder,
+        actual_width,
+        actual_height,
+        planned_output_width,
+        planned_output_height,
+    );
     let negotiated_audio_info = negotiated_audio.as_ref().map(|audio| audio.info());
     let encoder_output_path = if use_post_mux {
         let _ = std::fs::remove_file(&video_only_path);
@@ -2127,8 +2162,8 @@ mod double_start_guard_tests {
 #[cfg(all(test, target_os = "macos"))]
 mod recording_encoder_selection_tests {
     use super::{
-        select_recording_encoder, should_default_output_match_source, FrameCropRectDto,
-        RecordingQualityMode,
+        hidpi_capture_under_resolved_reason, select_recording_encoder,
+        should_default_output_match_source, FrameCropRectDto, RecordingQualityMode,
     };
     use crate::error::AppError;
     use encoder::{EncoderProbe, HardwareEncoder, QualityPreset};
@@ -2153,6 +2188,8 @@ mod recording_encoder_selection_tests {
             QualityPreset::High,
             1920,
             1080,
+            1920,
+            1080,
             30,
         )
         .expect("selection");
@@ -2170,6 +2207,8 @@ mod recording_encoder_selection_tests {
                 HardwareEncoder::VideoToolboxH264,
             ),
             QualityPreset::Lossless,
+            1920,
+            1080,
             1920,
             1080,
             30,
@@ -2190,6 +2229,8 @@ mod recording_encoder_selection_tests {
                 HardwareEncoder::VideoToolboxH264,
             ),
             QualityPreset::High,
+            1920,
+            1080,
             1920,
             1080,
             30,
@@ -2219,6 +2260,8 @@ mod recording_encoder_selection_tests {
             QualityPreset::Med,
             1920,
             1080,
+            1920,
+            1080,
             30,
         )
         .expect("selection");
@@ -2243,6 +2286,8 @@ mod recording_encoder_selection_tests {
                 HardwareEncoder::VideoToolboxHevc,
             ),
             QualityPreset::Lossless,
+            2880,
+            1800,
             2880,
             1800,
             60,
@@ -2272,6 +2317,34 @@ mod recording_encoder_selection_tests {
             QualityPreset::Lossless,
             2700,
             1518,
+            2700,
+            1518,
+            60,
+        )
+        .expect("selection");
+
+        assert_eq!(selection.encoder, HardwareEncoder::VideoToolboxH264);
+        assert_eq!(
+            selection.quality_mode,
+            RecordingQualityMode::HardwareBitrate
+        );
+    }
+
+    #[test]
+    fn retina_capture_to_1080p_60fps_uses_videotoolbox_for_realtime_capture() {
+        let selection = select_recording_encoder(
+            &probe(
+                vec![
+                    HardwareEncoder::VideoToolboxH264,
+                    HardwareEncoder::Libx264Software,
+                ],
+                HardwareEncoder::VideoToolboxH264,
+            ),
+            QualityPreset::Lossless,
+            3600,
+            1984,
+            1920,
+            1080,
             60,
         )
         .expect("selection");
@@ -2296,6 +2369,39 @@ mod recording_encoder_selection_tests {
         };
 
         assert!(should_default_output_match_source(Some(crop), 3600, 2024));
+    }
+
+    #[test]
+    fn hidpi_crop_guard_allows_stable_display_source_rect_size() {
+        let crop = FrameCropRectDto {
+            x: 0,
+            y: 87,
+            w: 1800,
+            h: 992,
+            basis_w: Some(1800),
+            basis_h: Some(1079),
+            scale_hint: Some(2.0),
+        };
+
+        assert_eq!(
+            hidpi_capture_under_resolved_reason(Some(crop), 1800, 992),
+            None
+        );
+    }
+
+    #[test]
+    fn hidpi_crop_guard_rejects_unexpected_under_resolved_size() {
+        let crop = FrameCropRectDto {
+            x: 0,
+            y: 87,
+            w: 1800,
+            h: 992,
+            basis_w: Some(1800),
+            basis_h: Some(1079),
+            scale_hint: Some(2.0),
+        };
+
+        assert!(hidpi_capture_under_resolved_reason(Some(crop), 1280, 720).is_some());
     }
 
     #[test]
@@ -2324,6 +2430,8 @@ mod recording_encoder_selection_tests {
                 HardwareEncoder::VideoToolboxH264,
             ),
             QualityPreset::High,
+            2880,
+            1800,
             2880,
             1800,
             60,

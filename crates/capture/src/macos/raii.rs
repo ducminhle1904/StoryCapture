@@ -71,6 +71,49 @@ impl CVPixelBufferHandle {
         }
     }
 
+    /// Copy a BGRA sub-rectangle into a tightly packed owned buffer.
+    pub fn to_owned_bgra_rect(
+        &self,
+        x: usize,
+        y: usize,
+        w: usize,
+        h: usize,
+    ) -> Result<Option<(Vec<u8>, usize)>, i32> {
+        unsafe {
+            let rc = CVPixelBufferLockBaseAddress(self.ptr, K_CV_PIXEL_BUFFER_LOCK_READ_ONLY);
+            if rc != 0 {
+                return Err(rc);
+            }
+
+            let width = CVPixelBufferGetWidth(self.ptr);
+            let height = CVPixelBufferGetHeight(self.ptr);
+            let stride = CVPixelBufferGetBytesPerRow(self.ptr);
+            let base = CVPixelBufferGetBaseAddress(self.ptr) as *const u8;
+            if base.is_null()
+                || w == 0
+                || h == 0
+                || x >= width
+                || y >= height
+                || x.saturating_add(w) > width
+                || y.saturating_add(h) > height
+            {
+                CVPixelBufferUnlockBaseAddress(self.ptr, K_CV_PIXEL_BUFFER_LOCK_READ_ONLY);
+                return Ok(None);
+            }
+
+            let row_bytes = w * 4;
+            let mut out: Vec<u8> = Vec::with_capacity(row_bytes * h);
+            for row in 0..h {
+                let src = base.add((y + row) * stride + x * 4);
+                let old_len = out.len();
+                out.set_len(old_len + row_bytes);
+                std::ptr::copy_nonoverlapping(src, out.as_mut_ptr().add(old_len), row_bytes);
+            }
+            CVPixelBufferUnlockBaseAddress(self.ptr, K_CV_PIXEL_BUFFER_LOCK_READ_ONLY);
+            Ok(Some((out, row_bytes)))
+        }
+    }
+
     pub fn width(&self) -> usize {
         unsafe { CVPixelBufferGetWidth(self.ptr) }
     }
