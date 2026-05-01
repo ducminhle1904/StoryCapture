@@ -5,8 +5,8 @@
  * of truth for toggling.
  */
 
-import { memo } from "react";
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { memo } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "../state/store";
@@ -21,17 +21,13 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
   const playheadMs = useEditorStore((s) => s.playheadMs);
 
   return (
-    <div
-      role="toolbar"
-      aria-label="Preview transport"
-      className="flex items-center gap-2"
-    >
+    <div role="toolbar" aria-label="Preview transport" className="flex items-center gap-1.5">
       <Button
         variant="ghost"
         size="icon"
         aria-label="Jump back 5 seconds"
         onClick={() => setPlayhead(Math.max(0, playheadMs - 5000))}
-        className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
+        className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98]"
       >
         <SkipBack className="h-4 w-4" />
       </Button>
@@ -40,7 +36,7 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         size="icon"
         aria-label={playing ? "Pause" : "Play"}
         onClick={onTogglePlay}
-        className="rounded-2xl"
+        className="h-8 w-8 rounded-[var(--sc-r-lg)] bg-[var(--sc-text)] text-[var(--sc-bg)] hover:bg-[var(--sc-text-2)] active:scale-[0.98]"
       >
         {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
       </Button>
@@ -49,11 +45,11 @@ function TransportControlsBase({ playing, onTogglePlay }: TransportControlsProps
         size="icon"
         aria-label="Jump forward 5 seconds"
         onClick={() => setPlayhead(playheadMs + 5000)}
-        className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] hover:bg-[var(--color-surface-300)]"
+        className="h-8 w-8 rounded-[var(--sc-r-lg)] border border-[var(--sc-border)] bg-[var(--sc-surface)] text-[var(--sc-text-2)] hover:bg-[var(--sc-surface-2)] active:scale-[0.98]"
       >
         <SkipForward className="h-4 w-4" />
       </Button>
-      <span className="ml-2 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1 text-xs tabular-nums text-[var(--color-fg-muted)]">
+      <span className="ml-1 min-w-[56px] rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-2.5 py-1 text-center text-xs tabular-nums text-[var(--sc-text-3)]">
         {(playheadMs / 1000).toFixed(2)}s
       </span>
     </div>

@@ -181,31 +181,12 @@ export function PreviewPlayer({
 
   return (
     <div
-      className="flex h-full w-full flex-col bg-[linear-gradient(180deg,#131922_0%,#0f141b_100%)]"
+      className="flex h-full w-full flex-col bg-[var(--sc-surface-2)]"
       data-story-id={storyId}
       data-preview-ready={ready ? "true" : "false"}
     >
-      <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border-subtle)] px-5 py-4">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-fg-muted)]">
-            Preview
-          </div>
-          <p className="font-serif mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
-            Frame the final output, inspect timing, and scrub before export.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-muted)]">
-          <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2 py-1">
-            {width}×{height}
-          </span>
-          <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2 py-1">
-            {ready ? "ready" : "warming"}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex flex-1 items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#0c1016_0%,#090c11_100%)] p-5">
-        <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-fg-primary)] shadow-[var(--shadow-card)]">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3">
+        <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[color-mix(in_oklch,var(--sc-text)_5%,var(--sc-surface))] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--sc-surface)_92%,transparent)]">
           {resolvedSrc ? null : (
             <>
               <img
@@ -214,12 +195,12 @@ export function PreviewPlayer({
                 aria-hidden="true"
                 className="absolute inset-0 h-full w-full object-cover opacity-92"
               />
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,10,14,0.15),rgba(7,10,14,0.35))]" />
-              <div className="pointer-events-none absolute left-4 top-4 z-10 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-primary)]/72">
-                <span className="rounded-full border border-[var(--color-border-default)] bg-[var(--color-surface-500)] px-2 py-1">
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(16,20,27,0.10),rgba(16,20,27,0.32))]" />
+              <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-white/72">
+                <span className="rounded-full border border-white/10 bg-zinc-950/42 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                   PRV_01_FINAL_RENDER
                 </span>
-                <span className="rounded-full border border-[var(--color-border-default)] bg-[var(--color-surface-500)] px-2 py-1">
+                <span className="rounded-full border border-white/10 bg-zinc-950/42 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                   4K UHD
                 </span>
               </div>
@@ -227,32 +208,45 @@ export function PreviewPlayer({
           )}
           {!resolvedSrc ? (
             <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center">
-              <div className="grid h-20 w-20 place-items-center rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-500)] shadow-[var(--shadow-card)]">
-                <Film className="h-8 w-8 text-[var(--color-fg-primary)]/82" />
+              <div className="grid h-16 w-16 place-items-center rounded-[var(--sc-r-xl)] border border-white/10 bg-zinc-950/42 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                <Film className="h-7 w-7 text-white/82" />
               </div>
             </div>
           ) : null}
 
+          {resolvedSrc ? (
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              preload="auto"
+              src={resolvedSrc}
+              onError={handleVideoError}
+              className="relative z-10 h-full w-full object-contain"
+              aria-label="Source video preview"
+            />
+          ) : null}
           <canvas
             ref={canvasRef}
             width={width}
             height={height}
-            className="relative z-10 max-h-full max-w-full"
-            aria-label="Preview canvas"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-0"
+            aria-label="Composited preview canvas"
           />
+          <div className="absolute bottom-3 left-3 z-20 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/88 px-2.5 py-2 shadow-[var(--sc-sh-1)] backdrop-blur">
+            <TransportControls playing={playing} onTogglePlay={togglePlay} />
+          </div>
         </div>
-        <video
-          ref={videoRef}
-          hidden
-          muted
-          playsInline
-          preload="auto"
-          src={resolvedSrc}
-          onError={handleVideoError}
-        />
-      </div>
-      <div className="flex items-center justify-between border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
-        <TransportControls playing={playing} onTogglePlay={togglePlay} />
+        {!resolvedSrc ? (
+          <video
+            ref={videoRef}
+            hidden
+            muted
+            playsInline
+            preload="auto"
+            onError={handleVideoError}
+          />
+        ) : null}
       </div>
     </div>
   );

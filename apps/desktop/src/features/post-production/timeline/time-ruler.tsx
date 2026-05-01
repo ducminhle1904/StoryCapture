@@ -18,27 +18,23 @@ function formatMs(ms: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function TimeRulerBase({ durationMs, pxPerMs, height = 24 }: TimeRulerProps) {
+function TimeRulerBase({ durationMs, pxPerMs, height = 20 }: TimeRulerProps) {
   const totalSec = Math.max(1, Math.ceil(durationMs / 1000));
   const width = Math.max(0, durationMs * pxPerMs);
   const ticks = Array.from({ length: totalSec + 1 }, (_, i) => i);
 
   return (
     <div
-      className="relative select-none border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] text-[10px] text-[var(--color-fg-muted)]"
+      className="relative select-none border-b border-[var(--sc-border)] bg-[var(--sc-surface)] text-[10px] text-[var(--sc-text-4)]"
       style={{ width, height }}
       role="presentation"
     >
       {ticks.map((sec) => {
         const left = sec * 1000 * pxPerMs;
         return (
-          <div
-            key={sec}
-            className="absolute top-0 h-full"
-            style={{ left }}
-          >
-            <div className="h-2 w-px bg-[var(--color-surface-300)]" />
-            <div className="pl-1">{formatMs(sec * 1000)}</div>
+          <div key={sec} className="absolute top-0 h-full" style={{ left }}>
+            <div className="h-1.5 w-px bg-[var(--sc-border-2)]" />
+            <div className="pl-1 leading-4">{formatMs(sec * 1000)}</div>
           </div>
         );
       })}

@@ -13,7 +13,7 @@ export const PANELS_STORAGE_KEY = "storycapture.post-production.panels";
 export interface PanelsSlice {
   /** % of editor height given to the timeline. Defaults to 30. */
   timelineHeightPct: number;
-  /** % of editor width given to the preview pane. Defaults to 60. The
+  /** % of editor width given to the preview pane. Defaults to 74. The
    * inspector's width is derived as `100 - previewWidthPct` at the
    * shell level. */
   previewWidthPct: number;
@@ -28,11 +28,9 @@ export interface PanelsSlice {
 
 const clampPct = (n: number) => Math.max(10, Math.min(90, n));
 
-export const createPanelsSlice: StateCreator<PanelsSlice, [], [], PanelsSlice> = (
-  set,
-) => ({
+export const createPanelsSlice: StateCreator<PanelsSlice, [], [], PanelsSlice> = (set) => ({
   timelineHeightPct: 30,
-  previewWidthPct: 60,
+  previewWidthPct: 74,
   soundDrawerOpen: false,
   exportModalOpen: false,
 

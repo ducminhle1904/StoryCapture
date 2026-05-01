@@ -28,6 +28,7 @@ interface EditorLivePreviewPanelProps {
   previewNav: PreviewNavState;
   previewStatus: PreviewLifecycleStatus;
   previewViewport: PreviewViewport;
+  polishIntentCount: number;
   simulatorActiveFrame: SimulatorFrame | null;
   simulatorRunState: string;
   streamId: string | null;
@@ -239,6 +240,7 @@ export function EditorLivePreviewPanel({
   previewNav,
   previewStatus,
   previewViewport,
+  polishIntentCount,
   simulatorActiveFrame,
   simulatorRunState,
   streamId,
@@ -267,6 +269,9 @@ export function EditorLivePreviewPanel({
         <ScBadge tone={badgeTone} dot>
           {badgeLabel}
         </ScBadge>
+        {polishIntentCount > 0 ? (
+          <ScBadge tone="info">{polishIntentCount} polish cues</ScBadge>
+        ) : null}
         <PreviewPickerButton />
         <span className="min-w-0 flex-1" />
         <ScSegmented

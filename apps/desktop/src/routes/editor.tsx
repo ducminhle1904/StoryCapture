@@ -8,6 +8,7 @@ import {
   File,
   FolderOpen,
   Scissors,
+  Sparkles,
   Video,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -370,6 +371,7 @@ export default function EditorRoute() {
 
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
   const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
+  const polishIntentCount = Object.keys(polish.steps).length + Object.keys(polish.scenes).length;
   return (
     <main id="main-content" className="relative flex h-full flex-col bg-[var(--sc-bg)]">
       <div
@@ -429,6 +431,11 @@ export default function EditorRoute() {
               Lint clean
             </ScBadge>
           )}
+          {polishReady ? (
+            <ScBadge tone={polishDirty ? "warn" : "success"} dot>
+              {polishDirty ? "Polish saving" : "Polish saved"}
+            </ScBadge>
+          ) : null}
           {projectId && (
             <>
               <Link to={`/recorder/${projectId}`} className="sc-btn primary sm">
@@ -439,10 +446,10 @@ export default function EditorRoute() {
                 size="sm"
                 variant="success"
                 disabled={recordPolishStarting}
-                icon={<Scissors size={12} aria-hidden="true" />}
+                icon={<Sparkles size={12} aria-hidden="true" />}
                 onClick={handleRecordAndPolish}
               >
-                {recordPolishStarting ? "Preparing..." : "Record & Polish"}
+                {recordPolishStarting ? "Preparing..." : "Record with Polish"}
               </ScButton>
               {(folder?.session_count ?? 0) > 0 ? (
                 <Link
@@ -451,7 +458,7 @@ export default function EditorRoute() {
                   aria-label="Send to Post-Production"
                 >
                   <Scissors size={12} aria-hidden="true" />
-                  Post-Production
+                  Fine-tune Video
                 </Link>
               ) : (
                 <ScButton
@@ -461,7 +468,7 @@ export default function EditorRoute() {
                   aria-label="Send to Post-Production"
                   title="Record a story first"
                 >
-                  Post-Production
+                  Fine-tune Video
                 </ScButton>
               )}
             </>
@@ -605,6 +612,7 @@ export default function EditorRoute() {
                   appUrlValid={appUrlValid}
                   authorDriverVariant={authorDriverVariant}
                   latestRecording={latest}
+                  polishIntentCount={polishIntentCount}
                   previewNav={previewNav}
                   previewStatus={previewStatus}
                   previewViewport={previewViewport}

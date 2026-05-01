@@ -55,6 +55,13 @@
   --sc-pad-y: 8px;
   --sc-gap:   8px;
 
+  /* Motion */
+  --sc-motion-fast: 120ms;
+  --sc-motion-med: 180ms;
+  --sc-motion-slow: 320ms;
+  --sc-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --sc-ease-spring: cubic-bezier(0.2, 0.9, 0.2, 1);
+
   /* Shadows (dark-first; light overrides below) */
   --sc-sh-1: 0 1px 0 rgba(255,255,255,0.03) inset, 0 1px 2px rgba(0,0,0,0.4);
   --sc-sh-2: 0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.45);

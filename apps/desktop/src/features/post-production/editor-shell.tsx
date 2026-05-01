@@ -16,19 +16,14 @@ import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   ArrowLeft,
-  Eye,
-  Maximize2,
-  Mic,
-  MousePointer2,
+  CheckCircle2,
+  Clock3,
   Music2,
-  Pause,
-  Play,
   Scissors,
-  SkipBack,
-  SkipForward,
   Sparkles,
+  TriangleAlert,
   Type,
-  Volume2,
+  Wand2,
   ZoomIn,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -82,9 +77,21 @@ function fixToneBadge(tone: ReviewFixTone): "info" | "warn" | "record" {
   return tone === "critical" ? "record" : tone;
 }
 
+function fixToneIcon(tone: ReviewFixTone) {
+  if (tone === "critical") {
+    return <TriangleAlert size={14} aria-hidden="true" className="text-[var(--sc-record)]" />;
+  }
+  if (tone === "warn") {
+    return <Clock3 size={14} aria-hidden="true" className="text-[var(--sc-warn)]" />;
+  }
+  return <CheckCircle2 size={14} aria-hidden="true" className="text-[var(--sc-accent-400)]" />;
+}
+
 function ReviewPanel({
   zoomCount,
   calloutCount,
+  soundCount,
+  videoCount,
   hasTrajectory,
   hasStepTiming,
   fixItems,
@@ -95,6 +102,8 @@ function ReviewPanel({
 }: {
   zoomCount: number;
   calloutCount: number;
+  soundCount: number;
+  videoCount: number;
   hasTrajectory: boolean;
   hasStepTiming: boolean;
   fixItems: ReviewFixItem[];
@@ -103,65 +112,123 @@ function ReviewPanel({
   onFineTune: () => void;
   onFixItem: (item: ReviewFixItem) => void;
 }) {
+  const criticalCount = fixItems.filter((item) => item.tone === "critical").length;
+  const readyToExport = criticalCount === 0 && videoCount > 0;
+  const statusTitle = readyToExport ? "Ready For A Final Pass" : "Review Needed Before Export";
+  const statusDetail = readyToExport
+    ? "Generated polish is available. Scrub the preview, then export or fine-tune individual clips."
+    : "Start with the items below. Each row jumps to the relevant timeline moment when available.";
+
   return (
-    <div className="flex h-full flex-col p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <Sparkles size={16} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
-        <div>
-          <h2 className="text-sm font-semibold text-[var(--sc-text)]">Review & Export</h2>
-          <p className="text-xs text-[var(--sc-text-3)]">Auto-polish recipe: {recipe}</p>
+    <div className="flex h-full flex-col overflow-auto p-4">
+      <div className="mb-4">
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--sc-text-3)]">
+            Review Pass
+          </span>
         </div>
+        <h2 className="mt-2 text-lg font-semibold tracking-tight text-[var(--sc-text)]">
+          {statusTitle}
+        </h2>
+        <p className="mt-1 text-sm leading-5 text-[var(--sc-text-3)]">{statusDetail}</p>
       </div>
 
       <div className="grid gap-2">
-        <div className="rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-3">
-          <div className="text-xs text-[var(--sc-text-3)]">Generated polish</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <ScBadge tone="success">{zoomCount} zooms</ScBadge>
-            <ScBadge tone="info">{calloutCount} callouts</ScBadge>
-            <ScBadge tone={hasTrajectory ? "success" : "warn"}>
-              {hasTrajectory ? "cursor trajectory" : "no trajectory"}
-            </ScBadge>
-            <ScBadge tone={hasStepTiming ? "success" : "warn"}>
-              {hasStepTiming ? "step timing" : "estimated timing"}
+        <section className="border-t border-[var(--sc-border-2)] py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-medium text-[var(--sc-text-2)]">
+                Editor Polish Recipe
+              </div>
+              <div className="mt-1 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--sc-text-4)]">
+                {recipe}
+              </div>
+            </div>
+            <ScBadge tone={readyToExport ? "success" : "warn"}>
+              {readyToExport ? "Exportable" : "Needs Review"}
             </ScBadge>
           </div>
-        </div>
+          <div className="mt-3 grid grid-cols-4 gap-2 text-sm">
+            <div>
+              <div className="font-mono text-base text-[var(--sc-text)]">{videoCount}</div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+                Video
+              </div>
+            </div>
+            <div>
+              <div className="font-mono text-base text-[var(--sc-text)]">{zoomCount}</div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+                Zooms
+              </div>
+            </div>
+            <div>
+              <div className="font-mono text-base text-[var(--sc-text)]">{calloutCount}</div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+                Callouts
+              </div>
+            </div>
+            <div>
+              <div className="font-mono text-base text-[var(--sc-text)]">{soundCount}</div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
+                Audio
+              </div>
+            </div>
+          </div>
+        </section>
 
-        <div className="rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-3">
-          <div className="text-xs font-medium text-[var(--sc-text-2)]">Fix list</div>
+        <section className="border-t border-[var(--sc-border-2)] pt-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-xs font-medium text-[var(--sc-text-2)]">Review Checklist</div>
+            <div className="flex gap-1">
+              <ScBadge tone={hasStepTiming ? "success" : "warn"}>
+                {hasStepTiming ? "Timed" : "Estimated"}
+              </ScBadge>
+              <ScBadge tone={hasTrajectory ? "success" : "warn"}>
+                {hasTrajectory ? "Cursor" : "No Cursor"}
+              </ScBadge>
+            </div>
+          </div>
           {fixItems.length === 0 ? (
-            <p className="mt-2 text-xs text-[var(--sc-text-3)]">
-              No generated polish issues found.
-            </p>
+            <div className="border-l border-[var(--sc-success)]/50 pl-3 text-sm text-[var(--sc-text-3)]">
+              No generated polish issues found. Use Fine tune for visual adjustments or export now.
+            </div>
           ) : (
-            <ul className="mt-2 space-y-1 text-xs text-[var(--sc-text-3)]">
+            <ul className="divide-y divide-[var(--sc-border-2)] text-sm">
               {fixItems.map((fix) => (
                 <li key={fix.id}>
                   <button
                     type="button"
-                    className="grid w-full grid-cols-[auto_1fr] gap-2 rounded-[var(--sc-r-sm)] px-1 py-1 text-left hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)]"
+                    className="grid w-full grid-cols-[auto_1fr_auto] items-start gap-3 py-2.5 text-left transition-[background-color,transform] hover:bg-[var(--sc-surface-2)] active:scale-[0.99]"
                     onClick={() => onFixItem(fix)}
                   >
-                    <ScBadge tone={fixToneBadge(fix.tone)}>{fix.tone}</ScBadge>
+                    <span className="mt-0.5">{fixToneIcon(fix.tone)}</span>
                     <span className="min-w-0">
                       <span className="block font-medium text-[var(--sc-text-2)]">{fix.title}</span>
-                      <span className="block text-[var(--sc-text-4)]">{fix.detail}</span>
+                      <span className="mt-0.5 block text-xs leading-4 text-[var(--sc-text-4)]">
+                        {fix.detail}
+                      </span>
                     </span>
+                    <ScBadge tone={fixToneBadge(fix.tone)}>{fix.tone.toUpperCase()}</ScBadge>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-        </div>
+        </section>
       </div>
 
       <span className="flex-1" />
-      <div className="flex gap-2">
-        <ScButton size="sm" variant="ghost" onClick={onFineTune}>
-          Fine tune timeline
+      <div className="mt-5 grid grid-cols-2 gap-2">
+        <ScButton
+          size="sm"
+          variant="ghost"
+          icon={<Wand2 size={12} aria-hidden="true" />}
+          onClick={onFineTune}
+        >
+          Fine Tune
         </ScButton>
-        <ScButton size="sm" variant="success" onClick={onExport}>
+        <ScButton size="sm" variant="success" onClick={onExport} disabled={!readyToExport}>
           Export
         </ScButton>
       </div>
@@ -182,7 +249,6 @@ function clipIdForStep(
 }
 
 export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
-  const timelineHeightPct = useEditorStore((s) => s.timelineHeightPct);
   const previewWidthPct = useEditorStore((s) => s.previewWidthPct);
   const setSoundDrawerOpen = useEditorStore((s) => s.setSoundDrawerOpen);
   const setExportModalOpen = useEditorStore((s) => s.setExportModalOpen);
@@ -421,9 +487,12 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     }
   }, [setDuration]);
 
-  const topHeightPct = 100 - timelineHeightPct;
-  const inspectorWidthPct = 100 - previewWidthPct;
-  const effectiveTopHeightPct = workspaceMode === "review" ? 100 : topHeightPct;
+  const effectivePreviewWidthPct =
+    workspaceMode === "fine-tune" ? Math.max(previewWidthPct, 74) : Math.max(previewWidthPct, 64);
+  const inspectorWidthPct = 100 - effectivePreviewWidthPct;
+  const timelinePanelHeightPx = 284;
+  const effectiveTopHeight =
+    workspaceMode === "review" ? "100%" : `calc(100% - ${timelinePanelHeightPx + 12}px)`;
 
   const addZoomAtPlayhead = useCallback(() => {
     const clip: ZoomClip = {
@@ -467,6 +536,8 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     <ReviewPanel
       zoomCount={tracksZoomLen}
       calloutCount={tracksAnnotationLen}
+      soundCount={tracksSoundLen}
+      videoCount={tracksVideoLen}
       hasTrajectory={hasCursorData}
       hasStepTiming={Boolean(stepTimingQuery.data)}
       fixItems={reviewFixItems}
@@ -502,7 +573,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
           </Link>
           <Scissors size={14} style={{ color: "var(--sc-text-3)" }} aria-hidden="true" />
           <div className="sc-toolbar-title">Post-Production</div>
-          <ScBadge tone="muted">story {storyId}</ScBadge>
+          <ScBadge tone="muted">Story {storyId}</ScBadge>
         </div>
         <span className="sc-spacer" />
         <ScSegmented
@@ -511,28 +582,13 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
           aria-label="Post-production mode"
           options={[
             { value: "review", label: "Review" },
-            { value: "fine-tune", label: "Fine tune" },
+            { value: "fine-tune", label: "Fine Tune" },
           ]}
           onValueChange={(value) => setWorkspaceMode(value as "review" | "fine-tune")}
         />
-        <ScButton
-          size="sm"
-          variant="ghost"
-          icon={<Sparkles size={12} aria-hidden="true" />}
-          disabled
-          title="AI pass coming soon"
-        >
-          AI pass
-        </ScButton>
-        <ScButton
-          size="sm"
-          variant="ghost"
-          icon={<Eye size={12} aria-hidden="true" />}
-          disabled
-          title="Fullscreen preview coming soon"
-        >
-          Preview
-        </ScButton>
+        <ScBadge tone={workspaceMode === "review" ? "info" : "accent"}>
+          {workspaceMode === "review" ? "Guided Review" : "Timeline Editing"}
+        </ScBadge>
         <div
           style={{
             width: 1,
@@ -553,7 +609,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         {projectOpenReady ? (
           <QueueWidget storyId={storyId} />
         ) : (
-          <ScBadge tone="muted">0 queue</ScBadge>
+          <ScBadge tone="muted">0 Queue</ScBadge>
         )}
         <ScButton
           variant="success"
@@ -567,52 +623,33 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
       <PageContentTransition className="min-h-0 flex-1">
         {/* Top region: preview | inspector */}
-        <div
-          className="flex min-h-0 gap-5 px-5 py-5"
-          style={{ height: `${effectiveTopHeightPct}%` }}
-        >
+        <div className="flex min-h-0 gap-3 px-3 py-3" style={{ height: effectiveTopHeight }}>
           <section
-            className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
+            className="min-w-0 overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] shadow-[var(--sc-sh-1)]"
             style={{
-              width: `${previewWidthPct}%`,
+              width: `${effectivePreviewWidthPct}%`,
               display: "flex",
               flexDirection: "column",
             }}
             aria-label="Preview"
           >
-            {/* Canvas sub-toolbar — placeholder */}
+            {/* Canvas sub-toolbar */}
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "6px 12px",
+                gap: 8,
+                padding: "5px 10px",
                 borderBottom: "1px solid var(--sc-border)",
-                background: "var(--sc-chrome)",
-                height: 36,
+                background: "var(--sc-surface)",
+                height: 34,
                 flexShrink: 0,
               }}
             >
-              <ScSegmented
-                size="sm"
-                value="fit"
-                disabled
-                aria-label="Canvas zoom (coming soon)"
-                options={[
-                  { value: "fit", label: "Fit" },
-                  { value: "100", label: "100%" },
-                  { value: "zoom", label: "Zoom" },
-                ]}
-              />
-              <div style={{ width: 1, height: 16, background: "var(--sc-border)" }} />
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<MousePointer2 size={12} aria-hidden="true" />}
-                title="Cursor overlay — coming soon"
-                aria-label="Cursor overlay"
-              />
+              <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--sc-text-4)]">
+                Preview
+              </span>
+              <span style={{ flex: 1 }} />
               <ScButton
                 size="sm"
                 variant="ghost"
@@ -621,7 +658,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 aria-label="Add zoom clip"
                 onClick={addZoomAtPlayhead}
               >
-                + Zoom
+                Add Zoom
               </ScButton>
               <ScButton
                 size="sm"
@@ -631,26 +668,10 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 aria-label="Add text clip"
                 onClick={addTextAtPlayhead}
               >
-                + Text
+                Add Text
               </ScButton>
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<Sparkles size={12} aria-hidden="true" />}
-                title="AI auto-zoom — coming soon"
-                aria-label="AI auto-zoom"
-              />
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<Mic size={12} aria-hidden="true" />}
-                title="Voiceover overlay — coming soon"
-                aria-label="Voiceover overlay"
-              />
-              <span style={{ flex: 1 }} />
               <span
+                className="hidden sm:inline"
                 style={{
                   fontSize: 11,
                   color: "var(--sc-text-4)",
@@ -668,7 +689,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                   className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
                   role="status"
                 >
-                  <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-2 rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/90 px-5 py-4 text-center backdrop-blur">
+                  <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-2 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/92 px-4 py-3 text-center shadow-[var(--sc-sh-1)] backdrop-blur">
                     <div className="text-[12px] font-medium text-[var(--sc-text-2)]">
                       {showErrorOverlay ? "Couldn't load recordings" : "No recording yet"}
                     </div>
@@ -679,82 +700,9 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 </div>
               )}
             </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 14px",
-                background: "var(--sc-chrome)",
-                borderTop: "1px solid var(--sc-border)",
-                flexShrink: 0,
-              }}
-            >
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<SkipBack size={12} aria-hidden="true" />}
-                title="Shell transport — coming soon"
-                aria-label="Previous scene"
-              />
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<Play size={11} aria-hidden="true" />}
-                title="Shell transport — coming soon"
-                aria-label="Play"
-              />
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<Pause size={11} aria-hidden="true" />}
-                title="Shell transport — coming soon"
-                aria-label="Pause"
-              />
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<SkipForward size={12} aria-hidden="true" />}
-                title="Shell transport — coming soon"
-                aria-label="Next scene"
-              />
-              <div
-                style={{
-                  fontFamily: "var(--sc-font-mono)",
-                  fontSize: 12,
-                  color: "var(--sc-text-4)",
-                  letterSpacing: "0.02em",
-                  minWidth: 130,
-                }}
-              >
-                —:—:— / —:—:—
-              </div>
-              <span style={{ flex: 1 }} />
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<Volume2 size={12} aria-hidden="true" />}
-                title="Volume — coming soon"
-                aria-label="Volume"
-              />
-              <ScButton
-                size="sm"
-                variant="ghost"
-                disabled
-                icon={<Maximize2 size={12} aria-hidden="true" />}
-                title="Fullscreen — coming soon"
-                aria-label="Fullscreen"
-              />
-            </div>
           </section>
           <section
-            className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
+            className="min-w-0 overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
             style={{ width: `${inspectorWidthPct}%` }}
           >
             {inspectorContent}
@@ -764,11 +712,24 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         {/* Bottom region: timeline */}
         {workspaceMode === "fine-tune" && (
           <section
-            className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
-            style={{ height: `${timelineHeightPct}%` }}
+            className="mx-3 mb-3 flex shrink-0 flex-col overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
+            style={{ height: timelinePanelHeightPx }}
             aria-label="Timeline area"
           >
-            <Timeline storyId={storyId} />
+            <div className="flex h-8 items-center gap-2 border-b border-[var(--sc-border)] bg-[var(--sc-surface)] px-3">
+              <span className="text-[12px] font-semibold text-[var(--sc-text)]">Timeline</span>
+              <span className="font-mono text-[11px] text-[var(--sc-text-4)]">
+                {tracksVideoLen}V · {tracksZoomLen}Z · {tracksAnnotationLen}T
+                {tracksSoundLen > 0 ? ` · ${tracksSoundLen}A` : ""}
+              </span>
+              <span className="min-w-0 flex-1" />
+              <span className="hidden font-mono text-[11px] text-[var(--sc-text-4)] lg:inline">
+                Drag clips to retime. Select a clip to edit.
+              </span>
+            </div>
+            <div className="min-h-0 flex-1">
+              <Timeline storyId={storyId} />
+            </div>
           </section>
         )}
       </PageContentTransition>

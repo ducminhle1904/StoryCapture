@@ -37,7 +37,7 @@ const TRACK_LABEL: Record<TrackId, string> = {
   annotations: "Annotations",
 };
 
-function TrackBase({ id, clips, pxPerMs, durationMs, height = 48 }: TrackProps) {
+function TrackBase({ id, clips, pxPerMs, durationMs, height = 40 }: TrackProps) {
   const moveClip = useEditorStore((s) => s.moveClip);
   const pushAction = useEditorStore((s) => s.pushAction);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
@@ -98,7 +98,7 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 48 }: TrackProps) 
       ref={containerRef}
       aria-label={`${TRACK_LABEL[id]} track`}
       tabIndex={-1}
-      className="relative border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-300)]"
+      className="relative border-b border-[var(--sc-border)] bg-[var(--sc-surface-2)]"
       style={{ height, width }}
       onPointerDown={onPointerDown}
       onClick={(e) => {

@@ -14,11 +14,11 @@ import { useMemo, useRef } from "react";
 import { AnnotationsTrack } from "../layer-tracks/annotations-track";
 import { CursorTrack } from "../layer-tracks/cursor-track";
 import { ZoomTrack } from "../layer-tracks/zoom-track";
-import { TRACK_IDS, type Clip, type TrackId } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
+import { type Clip, TRACK_IDS, type TrackId } from "../state/timeline-slice";
 import { Playhead } from "./playhead";
 import { TimeRuler } from "./time-ruler";
-import { Track, TRACK_LABEL } from "./track";
+import { TRACK_LABEL, Track } from "./track";
 
 export { TRACK_IDS };
 
@@ -32,8 +32,9 @@ export interface TimelineProps {
   pxPerMs?: number;
 }
 
-const TRACK_HEIGHT = 48;
-const LABEL_GUTTER_PX = 96;
+const TRACK_HEIGHT = 40;
+const RULER_HEIGHT = 20;
+const LABEL_GUTTER_PX = 88;
 
 /**
  * Dispatch a track row to the per-layer adapter when it adds UX (context
@@ -41,12 +42,7 @@ const LABEL_GUTTER_PX = 96;
  * intentionally fall through to the generic <Track> until those layers
  * grow their own affordances.
  */
-function renderTrackBody(
-  id: TrackId,
-  clips: readonly Clip[],
-  pxPerMs: number,
-  durationMs: number,
-) {
+function renderTrackBody(id: TrackId, clips: readonly Clip[], pxPerMs: number, durationMs: number) {
   const common = { pxPerMs, durationMs, height: TRACK_HEIGHT };
   switch (id) {
     case "cursor":
@@ -79,14 +75,14 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
   // Fallback minimum visible duration so the ruler is not collapsed when
   // the story has not been loaded yet (happens on first mount).
   const effectiveDurationMs = Math.max(durationMs, 10_000);
-  const contentHeight = TRACK_IDS.length * TRACK_HEIGHT + 24; /* ruler */
+  const contentHeight = TRACK_IDS.length * TRACK_HEIGHT + RULER_HEIGHT;
 
   const trackRows = useMemo(
     () =>
       TRACK_IDS.map((id) => (
         <div key={id} className="flex">
           <div
-            className="flex shrink-0 items-center border-b border-r border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-medium text-[var(--color-fg-muted)]"
+            className="flex shrink-0 items-center border-b border-r border-[var(--sc-border)] bg-[var(--sc-surface)] px-2.5 text-[11px] font-medium text-[var(--sc-text-3)]"
             style={{ width: LABEL_GUTTER_PX, height: TRACK_HEIGHT }}
           >
             {TRACK_LABEL[id]}
@@ -116,8 +112,7 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
   };
 
   return (
-    <div
-      role="region"
+    <section
       aria-label="Timeline"
       data-story-id={storyId}
       data-snap-enabled={snapEnabled ? "true" : "false"}
@@ -125,15 +120,11 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
     >
       <div className="flex">
         <div
-          className="shrink-0 border-b border-r border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]"
-          style={{ width: LABEL_GUTTER_PX, height: 24 }}
+          className="shrink-0 border-b border-r border-[var(--sc-border)] bg-[var(--sc-surface)]"
+          style={{ width: LABEL_GUTTER_PX, height: RULER_HEIGHT }}
         />
-        <div
-          ref={rulerRef}
-          className="cursor-pointer"
-          onPointerDown={onRulerPointerDown}
-        >
-          <TimeRuler durationMs={effectiveDurationMs} pxPerMs={pxPerMs} />
+        <div ref={rulerRef} className="cursor-pointer" onPointerDown={onRulerPointerDown}>
+          <TimeRuler durationMs={effectiveDurationMs} pxPerMs={pxPerMs} height={RULER_HEIGHT} />
         </div>
       </div>
       <div className="relative flex-1" style={{ minHeight: contentHeight }}>
@@ -146,6 +137,6 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
           <Playhead pxPerMs={pxPerMs} height={TRACK_IDS.length * TRACK_HEIGHT} />
         </div>
       </div>
-    </div>
+    </section>
   );
 }

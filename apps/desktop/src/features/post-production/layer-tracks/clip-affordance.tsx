@@ -8,21 +8,15 @@
  *      VirtualElement. Pointer-down events (drag) still flow through to
  *      the underlying Track unimpeded.
  *
- *   2. A small preset badge in the top-right corner of every clip whose
- *      `metadata.preset_id` is set, rendered as `pointer-events:none` so
- *      it never intercepts drag gestures.
- *
  * Sound + Video tracks intentionally stay as thin Track wrappers — these
  * affordances are scoped to the three layers the user requested.
  */
 
-import { useCallback, useMemo, useState } from "react";
 import { Menu } from "@base-ui-components/react/menu";
+import { useCallback, useMemo, useState } from "react";
 
-import { ScBadge } from "@storycapture/ui";
-
-import type { Clip, TrackId } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
+import type { Clip, TrackId } from "../state/timeline-slice";
 import { Track } from "../timeline/track";
 
 export interface ClipAffordanceProps {
@@ -31,11 +25,6 @@ export interface ClipAffordanceProps {
   pxPerMs: number;
   durationMs: number;
   height?: number;
-  /**
-   * Resolve a short human-readable label from the clip's preset id +
-   * metadata. Returning null or empty hides the badge for that clip.
-   */
-  presetLabel: (clip: Clip) => string | null;
 }
 
 interface MenuState {
@@ -53,8 +42,7 @@ export function ClipAffordance({
   clips,
   pxPerMs,
   durationMs,
-  height = 48,
-  presetLabel,
+  height = 40,
 }: ClipAffordanceProps) {
   const [menu, setMenu] = useState<MenuState>(CLOSED);
 
@@ -65,10 +53,8 @@ export function ClipAffordance({
   // Resolve clipId from the right-click target's data attribute. If the
   // user right-clicks on empty track space we no-op and let the browser
   // show its default menu.
-  const onContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const target = (e.target as HTMLElement).closest<HTMLElement>(
-      "[data-clip-id]",
-    );
+  const onContextMenu = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>("[data-clip-id]");
     if (!target) return;
     const clipId = target.dataset.clipId ?? null;
     if (!clipId) return;
@@ -100,7 +86,7 @@ export function ClipAffordance({
   }, [menu]);
 
   const targetClip = useMemo(
-    () => (menu.clipId ? clips.find((c) => c.id === menu.clipId) ?? null : null),
+    () => (menu.clipId ? (clips.find((c) => c.id === menu.clipId) ?? null) : null),
     [clips, menu.clipId],
   );
 
@@ -124,47 +110,13 @@ export function ClipAffordance({
     setMenu(CLOSED);
   }, [clips, id, pushAction, targetClip]);
 
-  const width = Math.max(0, durationMs * pxPerMs);
-
   return (
-    <div className="relative" onContextMenu={onContextMenu}>
-      <Track
-        id={id}
-        clips={clips}
-        pxPerMs={pxPerMs}
-        durationMs={durationMs}
-        height={height}
-      />
-      {/* Badge overlay — purely decorative, never intercepts drag. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0"
-        style={{ width, height }}
-      >
-        {clips.map((clip) => {
-          const label = presetLabel(clip);
-          if (!label) return null;
-          const left = clip.startMs * pxPerMs;
-          const clipWidth = Math.max(6, clip.durationMs * pxPerMs);
-          // Hide badge when the clip is too narrow to fit it readably.
-          if (clipWidth < 36) return null;
-          return (
-            <div
-              key={clip.id}
-              className="absolute"
-              style={{
-                left: left + clipWidth - 4,
-                top: 4,
-                transform: "translateX(-100%)",
-              }}
-            >
-              <ScBadge tone="accent" className="text-[9px]">
-                {label}
-              </ScBadge>
-            </div>
-          );
-        })}
-      </div>
+    <fieldset
+      className="relative m-0 min-w-0 border-0 p-0"
+      aria-label={`${id} track actions`}
+      onContextMenu={onContextMenu}
+    >
+      <Track id={id} clips={clips} pxPerMs={pxPerMs} durationMs={durationMs} height={height} />
 
       <Menu.Root open={menu.open} onOpenChange={onOpenChange} modal={false}>
         <Menu.Portal>
@@ -190,6 +142,6 @@ export function ClipAffordance({
           </Menu.Positioner>
         </Menu.Portal>
       </Menu.Root>
-    </div>
+    </fieldset>
   );
 }
