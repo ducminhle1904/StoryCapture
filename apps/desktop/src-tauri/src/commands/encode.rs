@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_shell::ShellExt;
@@ -706,6 +706,8 @@ struct RecordingHandle {
     /// Target output file.
     #[allow(dead_code)]
     output_path: PathBuf,
+    /// Monotonic start time used to align automation events to recording time.
+    started_at: Instant,
     /// Optional post-encode mux step for macOS VideoToolbox recorder output.
     post_mux: Option<PostMuxPlan>,
     /// Optional mic capture stream.
@@ -1793,6 +1795,7 @@ pub async fn start_recording(
             capture: Arc::new(tokio::sync::Mutex::new(capture)),
             encode_join,
             output_path,
+            started_at: Instant::now(),
             post_mux,
             audio_stream: Arc::new(tokio::sync::Mutex::new(audio_stream)),
             audio_fifo,
@@ -1807,6 +1810,16 @@ pub async fn start_recording(
     spawn_guard.disarm();
 
     Ok(RecordingSessionId(session_id))
+}
+
+pub(crate) fn recording_elapsed_ms(session_id: &str) -> Option<u64> {
+    registry().sessions.lock().get(session_id).map(|handle| {
+        handle
+            .started_at
+            .elapsed()
+            .as_millis()
+            .min(u64::MAX as u128) as u64
+    })
 }
 
 #[tauri::command]

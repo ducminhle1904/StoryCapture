@@ -123,6 +123,7 @@ describe("computeGraph", () => {
             durationMs: 4000,
             path: "/tmp/bgm.mp3",
             kind: "bgm",
+            gain: 0.35,
           },
         ],
       },
@@ -138,7 +139,8 @@ describe("computeGraph", () => {
       "text-overlay",
       "transition",
     ]);
-    expect(g.audio.map((n) => n.type)).toEqual(["audio-source"]);
+    expect(g.audio.map((n) => n.type)).toEqual(["audio-source", "volume"]);
+    expect(g.audio[1]).toMatchObject({ type: "volume", volume: 0.35 });
 
     const src = videoNodeAt(g, 0);
     if (src.type !== "source") throw new Error("expected source");
@@ -232,6 +234,50 @@ describe("computeGraph", () => {
       (node) => node.type === "transition",
     );
     expect(transitions.map((node) => node.id)).toEqual(second.map((node) => node.id));
+  });
+
+  it("emits ripple highlights before text overlays and preserves annotation color", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "a-highlight",
+            trackId: "annotations",
+            startMs: 1_000,
+            durationMs: 1_500,
+            text: "Important",
+            pos: { x: 0.4, y: 0.8 },
+            sizePt: 30,
+            color: "#ffcc00",
+            highlight: {
+              center: { x: 0.25, y: 0.35 },
+              radiusPx: 72,
+              color: "#00ffaa",
+              durationMs: 900,
+            },
+          },
+        ],
+      },
+    });
+
+    const g = computeGraph(useEditorStore.getState());
+    expect(g.video.map((node) => node.type)).toEqual(["ripple-overlay", "text-overlay"]);
+    const ripple = videoNodeAt(g, 0);
+    if (ripple.type !== "ripple-overlay") throw new Error("expected ripple-overlay");
+    expect(ripple.events[0]).toMatchObject({
+      t_impact_ms: 1_000,
+      duration_ms: 900,
+      center: { x: 0.25, y: 0.35 },
+      max_radius_px: 72,
+      color: { r: 0, g: 255, b: 170, a: 255 },
+    });
+    const text = videoNodeAt(g, 1);
+    if (text.type !== "text-overlay") throw new Error("expected text-overlay");
+    expect(text.boxes[0]?.color).toEqual({ r: 255, g: 204, b: 0, a: 255 });
   });
 
   it("is deterministic — two calls produce byte-equal JSON", () => {

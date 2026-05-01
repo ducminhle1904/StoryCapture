@@ -112,6 +112,15 @@ export interface TextBox {
   anim_out: TextAnim;
 }
 
+export interface RippleEvent {
+  t_anticipate_ms: number;
+  t_impact_ms: number;
+  duration_ms: number;
+  center: Vec2;
+  max_radius_px: number;
+  color: Rgba;
+}
+
 export type VideoNode =
   | { type: "source"; id: string; path: string; pts_offset_ms: number }
   | { type: "zoom-pan"; id: string; target: ZoomTarget; keyframes: ZoomKeyframe[] }
@@ -131,6 +140,7 @@ export type VideoNode =
       color_tint: Rgba | null;
       trajectory: TrajectoryRef;
     }
+  | { type: "ripple-overlay"; id: string; events: RippleEvent[] }
   | { type: "text-overlay"; id: string; boxes: TextBox[] }
   | {
       type: "transition";
@@ -140,7 +150,9 @@ export type VideoNode =
       offset_ms: number;
     };
 
-export type AudioNode = { type: "audio-source"; id: string; path: string; pts_offset_ms: number };
+export type AudioNode =
+  | { type: "audio-source"; id: string; path: string; pts_offset_ms: number }
+  | { type: "volume"; id: string; input_label: string; volume: number };
 
 export interface Graph {
   schema_version: number;
@@ -197,6 +209,10 @@ function deterministicNodeId(clipId: string, role: string): string {
   ].join("-");
 }
 
+function audioNodeLabel(id: string): string {
+  return `a_${id.replaceAll("-", "").slice(-4)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Per-track projections — typed direct access, no metadata bag.
 // ---------------------------------------------------------------------------
@@ -246,6 +262,21 @@ function backgroundNode(background: EditorBackgroundKind): VideoNode | null {
   };
 }
 
+function hexToRgba(
+  hex: string | undefined,
+  fallback: Rgba = { r: 255, g: 255, b: 255, a: 255 },
+): Rgba {
+  if (!hex) return fallback;
+  const clean = hex.replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return fallback;
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16),
+    a: 255,
+  };
+}
+
 function cursorOverlay(clip: CursorClip): VideoNode | null {
   if (!clip.trajectoryDir) return null;
   return {
@@ -271,21 +302,48 @@ function textBox(clip: AnnotationClip): TextBox | null {
     pos: clip.pos,
     font: { kind: "system-default" },
     size_pt: clip.sizePt,
-    color: { r: 255, g: 255, b: 255, a: 255 },
+    color: hexToRgba(clip.color),
     box_style: null,
     anim_in: "fade",
     anim_out: "fade",
   };
 }
 
-function audioSource(clip: SoundClip): AudioNode | null {
-  if (!clip.path) return null;
+function rippleEvent(clip: AnnotationClip): RippleEvent | null {
+  const highlight = clip.highlight;
+  if (!highlight) return null;
+  const impact = Math.max(0, clip.startMs);
   return {
-    type: "audio-source",
-    id: deterministicNodeId(clip.id, "audio"),
-    path: clip.path,
-    pts_offset_ms: clip.startMs,
+    t_anticipate_ms: Math.max(0, impact - 60),
+    t_impact_ms: impact,
+    duration_ms: Math.max(1, highlight.durationMs ?? clip.durationMs),
+    center: highlight.center,
+    max_radius_px: Math.max(1, highlight.radiusPx),
+    color: hexToRgba(highlight.color, { r: 255, g: 255, b: 255, a: 229 }),
   };
+}
+
+function audioNodes(clip: SoundClip): AudioNode[] {
+  if (!clip.path) return [];
+  const sourceId = deterministicNodeId(clip.id, "audio");
+  const nodes: AudioNode[] = [
+    {
+      type: "audio-source",
+      id: sourceId,
+      path: clip.path,
+      pts_offset_ms: clip.startMs,
+    },
+  ];
+  const gain = clip.gain ?? 1;
+  if (Number.isFinite(gain) && gain !== 1) {
+    nodes.push({
+      type: "volume",
+      id: deterministicNodeId(clip.id, "volume"),
+      input_label: audioNodeLabel(sourceId),
+      volume: Math.max(0, gain),
+    });
+  }
+  return nodes;
 }
 
 interface TimelineTransition {
@@ -390,8 +448,21 @@ export function computeGraph(state: ComputeGraphInput): Graph {
     const n = cursorOverlay(clip);
     if (n) video.push(n);
   }
-  const boxes: TextBox[] = [];
   const sortedAnnotations = clipsByStart(tracks.annotations);
+  const ripples: RippleEvent[] = [];
+  for (const clip of sortedAnnotations) {
+    const r = rippleEvent(clip);
+    if (r) ripples.push(r);
+  }
+  const firstRippleClip = sortedAnnotations.find((clip) => clip.highlight);
+  if (ripples.length > 0 && firstRippleClip) {
+    video.push({
+      type: "ripple-overlay",
+      id: deterministicNodeId(firstRippleClip.id, "ripple"),
+      events: ripples,
+    });
+  }
+  const boxes: TextBox[] = [];
   for (const clip of sortedAnnotations) {
     const b = textBox(clip);
     if (b) boxes.push(b);
@@ -409,8 +480,7 @@ export function computeGraph(state: ComputeGraphInput): Graph {
 
   const audio: AudioNode[] = [];
   for (const clip of clipsByStart(tracks.sound)) {
-    const n = audioSource(clip);
-    if (n) audio.push(n);
+    audio.push(...audioNodes(clip));
   }
 
   return {

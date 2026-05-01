@@ -1,4 +1,4 @@
-import { ScBadge, ScButton } from "@storycapture/ui";
+import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertTriangle,
@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { PageContentTransition } from "@/components/page-content-transition";
@@ -20,20 +20,26 @@ import { deriveVariant, useAuthorDriverStore } from "@/features/editor/authorDri
 import { EditorBreadcrumb } from "@/features/editor/editor-breadcrumb";
 import { EditorCommandPalette } from "@/features/editor/editor-command-palette";
 import { EditorLivePreviewPanel } from "@/features/editor/editor-live-preview-panel";
+import {
+  DEFAULT_POLISH_DOC,
+  loadPolishDoc,
+  prunePolishDocForStory,
+  type StoryPolishDoc,
+  savePolishDoc,
+} from "@/features/editor/polish-sidecar";
 import { ProblemsPanel } from "@/features/editor/problems-panel";
-import { SceneListPanel } from "@/features/editor/scene-list-panel";
 import { SimulatorTimeline } from "@/features/editor/simulator-timeline";
+import { StoryBuilder } from "@/features/editor/story-builder";
 import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-editor";
+import { ensureAllStepIds, formatEditableStory } from "@/features/editor/story-ui-model";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
 import { parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
+import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
-function showDiskConflictToast(
-  description: string,
-  onReload: () => void,
-): void {
+function showDiskConflictToast(description: string, onReload: () => void): void {
   toast.warning("Story changed on disk", {
     description,
     action: { label: "Reload", onClick: onReload },
@@ -45,13 +51,19 @@ function showDiskConflictToast(
 
 export default function EditorRoute() {
   const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
   const recordingsQuery = useProjectRecordings(projectId);
   const latest = recordingsQuery.data?.[0] ?? null;
   const [folder, setFolder] = useState<ProjectFolderInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [activeSceneIndex, setActiveSceneIndex] = useState(0);
   const [editorJumpTarget, setEditorJumpTarget] = useState<EditorJumpTarget | null>(null);
   const [cursor, setCursor] = useState<{ line: number; col: number } | null>(null);
+  const [editorMode, setEditorMode] = useState<"ui" | "code">("ui");
+  const [polish, setPolish] = useState<StoryPolishDoc>(DEFAULT_POLISH_DOC);
+  const [polishReady, setPolishReady] = useState(false);
+  const [polishDirty, setPolishDirty] = useState(false);
+  const [recordPolishStarting, setRecordPolishStarting] = useState(false);
+  const latestPolishRef = useRef(polish);
   // Only render once store state matches the URL project to avoid a stale scene flash.
   const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
   // Snapshot of disk content from last load/save. Drives both the no-op-save
@@ -67,8 +79,12 @@ export default function EditorRoute() {
 
   const previewViewport = useEditorStore((s) => s.previewViewport);
   const setPreviewViewport = useEditorStore((s) => s.setViewport);
-  const { streamId: authorStreamId, appUrlValid, nav: previewNav, status: previewStatus } =
-    useEditorLivePreview(story?.meta?.app ?? null);
+  const {
+    streamId: authorStreamId,
+    appUrlValid,
+    nav: previewNav,
+    status: previewStatus,
+  } = useEditorLivePreview(story?.meta?.app ?? null);
   const simulatorRunState = useSimulatorStore((s) => s.runState);
   const simulatorCurrentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
   // Project upstream state into the authorDriverStore so the
@@ -108,8 +124,10 @@ export default function EditorRoute() {
     resetProjectState();
     setFolder(null);
     setLoadError(null);
-    setActiveSceneIndex(0);
     setLoadedProjectId(null);
+    setPolish(DEFAULT_POLISH_DOC);
+    setPolishReady(false);
+    setPolishDirty(false);
     lastDiskSourceRef.current = null;
 
     let cancelled = false;
@@ -132,6 +150,11 @@ export default function EditorRoute() {
         setSource(text);
         lastDiskSourceRef.current = text;
         if (parsed) setLastParse(parsed);
+        const polishDoc = await loadPolishDoc(info.story_path);
+        if (cancelled) return;
+        setPolish(polishDoc);
+        setPolishReady(true);
+        setPolishDirty(false);
         setLoadedProjectId(projectId);
       } catch (e) {
         if (!cancelled) setLoadError(String(e));
@@ -145,13 +168,20 @@ export default function EditorRoute() {
   const ready = loadedProjectId === projectId;
 
   useEffect(() => {
-    if (!story || story.scenes.length === 0) {
-      setActiveSceneIndex(0);
-      return;
-    }
-
-    setActiveSceneIndex((current) => Math.max(0, Math.min(current, story.scenes.length - 1)));
-  }, [story]);
+    if (!ready || editorMode !== "ui") return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      parseStory(source)
+        .then((parsed) => {
+          if (!cancelled) setLastParse(parsed);
+        })
+        .catch(() => {});
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [editorMode, ready, source, setLastParse]);
 
   const autosave = useCallback(
     async (nextSource: string) => {
@@ -169,20 +199,13 @@ export default function EditorRoute() {
           // File might be missing / unreadable; fall through and let writeText
           // either create it or surface the real error.
         }
-        if (
-          currentDisk !== null &&
-          lastDisk !== null &&
-          currentDisk !== lastDisk
-        ) {
+        if (currentDisk !== null && lastDisk !== null && currentDisk !== lastDisk) {
           // Disk diverged from our snapshot — refuse to overwrite an external edit.
           const fromDisk = currentDisk;
-          showDiskConflictToast(
-            "Another process modified this file. Reload from disk?",
-            () => {
-              setSource(fromDisk);
-              lastDiskSourceRef.current = fromDisk;
-            },
-          );
+          showDiskConflictToast("Another process modified this file. Reload from disk?", () => {
+            setSource(fromDisk);
+            lastDiskSourceRef.current = fromDisk;
+          });
           return;
         }
         await writeTextFile(folder.story_path, nextSource);
@@ -193,6 +216,93 @@ export default function EditorRoute() {
     },
     [folder, setSource],
   );
+
+  useEffect(() => {
+    latestPolishRef.current = polish;
+  }, [polish]);
+
+  useEffect(() => {
+    if (!folder || !polishReady || !polishDirty) return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      savePolishDoc(folder.story_path, polish)
+        .then(() => {
+          if (!cancelled && latestPolishRef.current === polish) {
+            setPolishDirty(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) toast.error("Failed to save polish settings");
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [folder, polish, polishDirty, polishReady]);
+
+  const updatePolish = useCallback((next: StoryPolishDoc) => {
+    setPolish(next);
+    setPolishDirty(true);
+  }, []);
+
+  useEffect(() => {
+    if (!polishReady || !story) return;
+    const pruned = prunePolishDocForStory(polish, story);
+    if (!pruned.changed) return;
+    setPolish(pruned.doc);
+    setPolishDirty(true);
+  }, [polish, polishReady, story]);
+
+  const uiAutosave = useDebouncedCallback((nextSource: string) => {
+    void autosave(nextSource);
+  }, 5000);
+
+  const handleUiSourceChange = useCallback(
+    (nextSource: string) => {
+      setSource(nextSource);
+      uiAutosave.run(nextSource);
+    },
+    [setSource, uiAutosave],
+  );
+
+  const commitUiSourceChange = useCallback(
+    async (nextSource: string) => {
+      uiAutosave.cancel();
+      setSource(nextSource);
+      await autosave(nextSource);
+      try {
+        const parsed = await parseStory(nextSource);
+        setLastParse(parsed);
+      } catch {
+        /* Diagnostics will refresh through the regular parse effect. */
+      }
+    },
+    [autosave, setLastParse, setSource, uiAutosave],
+  );
+
+  const flushUiSourceChange = useCallback(() => {
+    uiAutosave.flush();
+  }, [uiAutosave]);
+
+  const handleRecordAndPolish = useCallback(async () => {
+    if (!projectId) return;
+    setRecordPolishStarting(true);
+    try {
+      uiAutosave.flush();
+      const parsed = await parseStory(source);
+      setLastParse(parsed);
+      if (parsed.ast) {
+        const stamped = ensureAllStepIds(parsed.ast);
+        if (stamped.changed) {
+          await commitUiSourceChange(formatEditableStory(stamped.story));
+        }
+      }
+      navigate(`/recorder/${projectId}?polish=1`);
+    } finally {
+      setRecordPolishStarting(false);
+    }
+  }, [commitUiSourceChange, navigate, projectId, setLastParse, source, uiAutosave]);
 
   // Reload when the window regains focus and disk drifted from our snapshot.
   // Clean buffer → silent reload; dirty buffer → prompt before discarding edits.
@@ -219,13 +329,10 @@ export default function EditorRoute() {
           return;
         }
         const fromDisk = currentDisk;
-        showDiskConflictToast(
-          "Reload from disk and discard your unsaved edits?",
-          () => {
-            setSource(fromDisk);
-            lastDiskSourceRef.current = fromDisk;
-          },
-        );
+        showDiskConflictToast("Reload from disk and discard your unsaved edits?", () => {
+          setSource(fromDisk);
+          lastDiskSourceRef.current = fromDisk;
+        });
       } finally {
         inFlight = false;
       }
@@ -240,17 +347,6 @@ export default function EditorRoute() {
       nonce: (current?.nonce ?? 0) + 1,
     }));
   }, []);
-
-  const handleSelectScene = useCallback(
-    (sceneIndex: number) => {
-      setActiveSceneIndex(sceneIndex);
-      const scene = story?.scenes[sceneIndex];
-      if (scene) {
-        queueEditorJump(scene.span.start);
-      }
-    },
-    [queueEditorJump, story],
-  );
 
   if (loadError) {
     return (
@@ -339,6 +435,15 @@ export default function EditorRoute() {
                 <Video size={12} aria-hidden="true" />
                 Record
               </Link>
+              <ScButton
+                size="sm"
+                variant="success"
+                disabled={recordPolishStarting}
+                icon={<Scissors size={12} aria-hidden="true" />}
+                onClick={handleRecordAndPolish}
+              >
+                {recordPolishStarting ? "Preparing..." : "Record & Polish"}
+              </ScButton>
               {(folder?.session_count ?? 0) > 0 ? (
                 <Link
                   to={`/post-production/${projectId}`}
@@ -383,118 +488,133 @@ export default function EditorRoute() {
             onJumpToOffset={queueEditorJump}
           />
           <PageContentTransition className="min-h-0 flex-1">
-          <Group orientation="horizontal" className="min-h-0 flex-1">
-            {/* Scene list — narrow left panel, always visible. */}
-            <Panel id="editor-scene-list" defaultSize="12%" minSize="8%" maxSize="18%">
-              <SceneListPanel
-                activeSceneIndex={activeSceneIndex}
-                onSelectScene={handleSelectScene}
-                onJumpTo={queueEditorJump}
-                cursorLine={cursor?.line}
-              />
-            </Panel>
-            <Separator className="group relative w-px bg-[var(--sc-border-2)] shadow-[1px_0_0_var(--sc-border)] transition-colors hover:bg-[var(--sc-border-strong)] active:bg-[var(--sc-accent-500)]/50" />
-
-            {/* Script editor — primary workspace */}
-            <Panel id="editor-script" defaultSize="54%" minSize="32%" maxSize="68%">
-              <div className="flex h-full flex-col bg-[var(--sc-surface)]">
-                {/* File tabs strip — single tab reflects real single-buffer state. */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    height: 30,
-                    paddingLeft: 8,
-                    background: "var(--sc-chrome-2)",
-                    borderBottom: "1px solid var(--sc-border-2)",
-                  }}
-                >
+            <Group orientation="horizontal" className="min-h-0 flex-1">
+              {/* Script editor — primary workspace */}
+              <Panel id="editor-script" defaultSize="66%" minSize="42%" maxSize="76%">
+                <div className="flex h-full flex-col bg-[var(--sc-surface)]">
+                  {/* File tabs strip — single tab reflects real single-buffer state. */}
                   <div
                     style={{
-                      padding: "0 12px",
-                      height: "100%",
-                      display: "inline-flex",
+                      display: "flex",
                       alignItems: "center",
-                      gap: 6,
-                      background: "var(--sc-surface)",
-                      borderRight: "1px solid var(--sc-border-2)",
-                      fontSize: 12,
-                      color: "var(--sc-text)",
-                      borderTop: "1.5px solid var(--sc-accent-400)",
-                      fontFamily: "var(--sc-font-mono)",
+                      height: 30,
+                      paddingLeft: 8,
+                      background: "var(--sc-chrome-2)",
+                      borderBottom: "1px solid var(--sc-border-2)",
                     }}
                   >
-                    <File size={11} aria-hidden="true" />
-                    {folder?.name ? `${folder.name}.story` : "story"}
-                    <span
-                      aria-hidden="true"
-                      title="Modified indicator (placeholder)"
+                    <div
                       style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 99,
-                        background: "var(--sc-text-4)",
-                        marginLeft: 4,
-                        opacity: 0.6,
+                        padding: "0 12px",
+                        height: "100%",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        background: "var(--sc-surface)",
+                        borderRight: "1px solid var(--sc-border-2)",
+                        fontSize: 12,
+                        color: "var(--sc-text)",
+                        borderTop: "1.5px solid var(--sc-accent-400)",
+                        fontFamily: "var(--sc-font-mono)",
                       }}
+                    >
+                      <File size={11} aria-hidden="true" />
+                      {folder?.name ? `${folder.name}.story` : "story"}
+                      <span
+                        aria-hidden="true"
+                        title="Modified indicator (placeholder)"
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 99,
+                          background: "var(--sc-text-4)",
+                          marginLeft: 4,
+                          opacity: 0.6,
+                        }}
+                      />
+                    </div>
+                    <span style={{ flex: 1 }} />
+                    <ScSegmented
+                      size="sm"
+                      value={editorMode}
+                      aria-label="Editor mode"
+                      options={[
+                        { value: "ui", label: "UI" },
+                        { value: "code", label: "Code" },
+                      ]}
+                      onValueChange={(value) => setEditorMode(value as "ui" | "code")}
                     />
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--sc-text-4)",
+                        padding: "0 10px",
+                        fontFamily: "var(--sc-font-mono)",
+                      }}
+                    >
+                      {cursor ? `Ln ${cursor.line}, Col ${cursor.col}` : "Ln —, Col —"} · SC-DSL ·
+                      UTF-8
+                    </span>
                   </div>
-                  <span style={{ flex: 1 }} />
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: "var(--sc-text-4)",
-                      padding: "0 10px",
-                      fontFamily: "var(--sc-font-mono)",
-                    }}
-                  >
-                    {cursor ? `Ln ${cursor.line}, Col ${cursor.col}` : "Ln —, Col —"} · SC-DSL ·
-                    UTF-8
-                  </span>
-                </div>
 
-                <div className="min-h-0 flex-1">
-                  <StoryEditor
-                    onAutosave={autosave}
-                    jumpTarget={editorJumpTarget}
-                    projectFolder={folder?.folder_path ?? null}
-                    storyPath={folder?.story_path ?? null}
+                  <div className="min-h-0 flex-1">
+                    {editorMode === "ui" ? (
+                      <StoryBuilder
+                        story={story}
+                        polish={polish}
+                        simulatorActive={simulatorRunState === "running"}
+                        storySource={source}
+                        storyPath={folder?.story_path ?? null}
+                        streamId={authorStreamId}
+                        onSourceChange={handleUiSourceChange}
+                        onSourceCommit={commitUiSourceChange}
+                        onFlushSource={flushUiSourceChange}
+                        onPolishChange={updatePolish}
+                        onJumpToOffset={queueEditorJump}
+                      />
+                    ) : (
+                      <StoryEditor
+                        onAutosave={autosave}
+                        jumpTarget={editorJumpTarget}
+                        projectFolder={folder?.folder_path ?? null}
+                        storyPath={folder?.story_path ?? null}
+                        streamId={authorStreamId}
+                        onCursorChange={setCursor}
+                      />
+                    )}
+                  </div>
+
+                  <ProblemsPanel onJumpToOffset={queueEditorJump} />
+
+                  <SimulatorTimeline
+                    projectFolder={folder?.folder_path ?? ""}
+                    storyPath={folder?.story_path ?? ""}
+                    storySource={source}
                     streamId={authorStreamId}
-                    onCursorChange={setCursor}
+                    appUrlValid={appUrlValid}
                   />
                 </div>
+              </Panel>
 
-                <ProblemsPanel onJumpToOffset={queueEditorJump} />
+              <Separator className="group relative w-px bg-[var(--sc-border-2)] shadow-[1px_0_0_var(--sc-border)] transition-colors hover:bg-[var(--sc-border-strong)] active:bg-[var(--sc-accent-500)]/50" />
 
-                <SimulatorTimeline
-                  projectFolder={folder?.folder_path ?? ""}
-                  storyPath={folder?.story_path ?? ""}
-                  storySource={source}
-                  streamId={authorStreamId}
+              {/* Right side: preview rail */}
+              <Panel id="editor-preview" defaultSize="34%" minSize="24%" maxSize="44%">
+                <EditorLivePreviewPanel
+                  appUrl={story?.meta?.app ?? null}
                   appUrlValid={appUrlValid}
+                  authorDriverVariant={authorDriverVariant}
+                  latestRecording={latest}
+                  previewNav={previewNav}
+                  previewStatus={previewStatus}
+                  previewViewport={previewViewport}
+                  simulatorActiveFrame={simulatorActiveFrame}
+                  simulatorRunState={simulatorRunState}
+                  streamId={authorStreamId}
+                  onViewportChange={setPreviewViewport}
                 />
-              </div>
-            </Panel>
-
-            <Separator className="group relative w-px bg-[var(--sc-border-2)] shadow-[1px_0_0_var(--sc-border)] transition-colors hover:bg-[var(--sc-border-strong)] active:bg-[var(--sc-accent-500)]/50" />
-
-            {/* Right side: preview rail */}
-            <Panel id="editor-preview" defaultSize="34%" minSize="24%" maxSize="44%">
-              <EditorLivePreviewPanel
-                appUrl={story?.meta?.app ?? null}
-                appUrlValid={appUrlValid}
-                authorDriverVariant={authorDriverVariant}
-                latestRecording={latest}
-                previewNav={previewNav}
-                previewStatus={previewStatus}
-                previewViewport={previewViewport}
-                simulatorActiveFrame={simulatorActiveFrame}
-                simulatorRunState={simulatorRunState}
-                streamId={authorStreamId}
-                onViewportChange={setPreviewViewport}
-              />
-            </Panel>
-          </Group>
+              </Panel>
+            </Group>
           </PageContentTransition>
         </>
       )}

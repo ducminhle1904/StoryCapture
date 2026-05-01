@@ -48,10 +48,15 @@ export type ExecutorEvent =
   | {
       type: "step_succeeded";
       ordinal: number;
+      step_id: string | null;
       duration_ms: number;
       cursor_x: number;
       cursor_y: number;
+      matched_selector: string | null;
+      matched_bbox: BoundingBox | null;
+      match_kind: MatchKind;
     }
+  | { type: "action_recorded"; event: unknown }
   | {
       type: "step_failed";
       ordinal: number;

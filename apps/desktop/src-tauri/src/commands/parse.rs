@@ -170,77 +170,88 @@ pub enum CommandDto {
     Navigate {
         url: String,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Click {
         target: SelectorOrTextDto,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Type {
         target: SelectorOrTextDto,
         text: String,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Scroll {
         direction: ScrollDirDto,
         amount: Option<f32>,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Hover {
         target: SelectorOrTextDto,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Drag {
         from: SelectorOrTextDto,
         to: SelectorOrTextDto,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Select {
         target: SelectorOrTextDto,
         value: String,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Upload {
         target: SelectorOrTextDto,
         path: String,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Wait {
         duration_ms: u64,
         span: SpanDto,
+        step_id: Option<String>,
     },
     WaitFor {
         target: SelectorOrTextDto,
         timeout_ms: Option<u64>,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Assert {
         target: SelectorOrTextDto,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Screenshot {
         name: String,
         span: SpanDto,
+        step_id: Option<String>,
     },
     Pause {
         span: SpanDto,
+        step_id: Option<String>,
     },
 }
 
 impl From<PCommand> for CommandDto {
     fn from(c: PCommand) -> Self {
+        let step_id = c.step_id().map(|id| id.to_string());
         match c {
-            // NOTE: every Command variant carries `step_id: Option<Uuid>`.
-            // The TS CommandDto mirror does not carry step_id (the renderer
-            // reads it via the story_parser AST directly, not through the
-            // parse command DTO). We ignore it here with `..`; step ids are
-            // routed via the picker + targets store, not this DTO.
             PCommand::Navigate { url, span, .. } => CommandDto::Navigate {
                 url,
                 span: span.into(),
+                step_id,
             },
             PCommand::Click { target, span, .. } => CommandDto::Click {
                 target: target.into(),
                 span: span.into(),
+                step_id,
             },
             PCommand::Type {
                 target, text, span, ..
@@ -248,6 +259,7 @@ impl From<PCommand> for CommandDto {
                 target: target.into(),
                 text,
                 span: span.into(),
+                step_id,
             },
             PCommand::Scroll {
                 direction,
@@ -258,15 +270,18 @@ impl From<PCommand> for CommandDto {
                 direction: direction.into(),
                 amount,
                 span: span.into(),
+                step_id,
             },
             PCommand::Hover { target, span, .. } => CommandDto::Hover {
                 target: target.into(),
                 span: span.into(),
+                step_id,
             },
             PCommand::Drag { from, to, span, .. } => CommandDto::Drag {
                 from: from.into(),
                 to: to.into(),
                 span: span.into(),
+                step_id,
             },
             PCommand::Select {
                 target,
@@ -277,6 +292,7 @@ impl From<PCommand> for CommandDto {
                 target: target.into(),
                 value,
                 span: span.into(),
+                step_id,
             },
             PCommand::Upload {
                 target, path, span, ..
@@ -284,12 +300,14 @@ impl From<PCommand> for CommandDto {
                 target: target.into(),
                 path,
                 span: span.into(),
+                step_id,
             },
             PCommand::Wait {
                 duration_ms, span, ..
             } => CommandDto::Wait {
                 duration_ms,
                 span: span.into(),
+                step_id,
             },
             PCommand::WaitFor {
                 target,
@@ -300,16 +318,22 @@ impl From<PCommand> for CommandDto {
                 target: target.into(),
                 timeout_ms,
                 span: span.into(),
+                step_id,
             },
             PCommand::Assert { target, span, .. } => CommandDto::Assert {
                 target: target.into(),
                 span: span.into(),
+                step_id,
             },
             PCommand::Screenshot { name, span, .. } => CommandDto::Screenshot {
                 name,
                 span: span.into(),
+                step_id,
             },
-            PCommand::Pause { span, .. } => CommandDto::Pause { span: span.into() },
+            PCommand::Pause { span, .. } => CommandDto::Pause {
+                span: span.into(),
+                step_id,
+            },
         }
     }
 }

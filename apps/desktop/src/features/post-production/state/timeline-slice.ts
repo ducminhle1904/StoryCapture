@@ -55,21 +55,24 @@ export type ZoomPreset = "DYNAMIC" | "CALM" | "SUBTLE";
 
 export type SoundKind = "bgm" | "sfx" | "voiceover";
 
-export type XfadeKind =
-  | "fade"
-  | "fade-black"
-  | "fade-white"
-  | "dissolve"
-  | "wipe-left"
-  | "wipe-right"
-  | "wipe-up"
-  | "wipe-down"
-  | "slide-left"
-  | "slide-right"
-  | "slide-up"
-  | "slide-down"
-  | "circle-open"
-  | "circle-close";
+export const XFADE_KINDS = [
+  "fade",
+  "fade-black",
+  "fade-white",
+  "dissolve",
+  "wipe-left",
+  "wipe-right",
+  "wipe-up",
+  "wipe-down",
+  "slide-left",
+  "slide-right",
+  "slide-up",
+  "slide-down",
+  "circle-open",
+  "circle-close",
+] as const;
+
+export type XfadeKind = (typeof XFADE_KINDS)[number];
 
 export interface TransitionSpec {
   kind: XfadeKind;
@@ -130,6 +133,12 @@ export interface AnnotationClip extends ClipBase {
   pos: Vec2;
   sizePt: number;
   color?: string;
+  highlight?: {
+    center: Vec2;
+    radiusPx: number;
+    color?: string;
+    durationMs?: number;
+  };
 }
 
 export type Clip = VideoClip | CursorClip | ZoomClip | SoundClip | AnnotationClip;

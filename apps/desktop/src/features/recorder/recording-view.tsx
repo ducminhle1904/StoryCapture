@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { TargetPicker } from "@/features/capture/TargetPicker";
@@ -69,6 +69,7 @@ interface RecordingViewProps {
   projectName: string;
   projectFolder: string;
   storySource: string;
+  autoOpenPostProduction?: boolean;
 }
 
 function formatTime(ms: number): string {
@@ -166,10 +167,7 @@ function preferDisplayArea(a: DisplayInfo, b: DisplayInfo): DisplayInfo {
   return preferDisplay(a, b);
 }
 
-function browserWindowFitsDisplay(
-  display: DisplayInfo,
-  viewport: BrowserViewportSize,
-): boolean {
+function browserWindowFitsDisplay(display: DisplayInfo, viewport: BrowserViewportSize): boolean {
   // App-mode can fall back to a normal Chromium window, so fit against a
   // conservative browser-chrome budget in logical pixels.
   const verticalChromeBudget = RECORDING_BROWSER_CHROME_VERTICAL_BUDGET;
@@ -239,7 +237,9 @@ export function RecordingView({
   projectName,
   projectFolder,
   storySource,
+  autoOpenPostProduction = false,
 }: RecordingViewProps) {
+  const navigate = useNavigate();
   const {
     status,
     sessionId,
@@ -512,6 +512,9 @@ export function RecordingView({
         toast.success("Recording complete", {
           description: event.result.output_path,
         });
+        if (autoOpenPostProduction && projectId) {
+          navigate(`/post-production/${projectId}`, { replace: true });
+        }
         break;
       case "failed":
         sessionRef.current = null;
@@ -630,10 +633,7 @@ export function RecordingView({
             story_viewport_height: storyViewport.height,
             effective_viewport_width: viewportFit.viewport.width,
             effective_viewport_height: viewportFit.viewport.height,
-            launch_display_fits_viewport: browserWindowFitsDisplay(
-              launchDisplay,
-              storyViewport,
-            ),
+            launch_display_fits_viewport: browserWindowFitsDisplay(launchDisplay, storyViewport),
           },
         });
       }

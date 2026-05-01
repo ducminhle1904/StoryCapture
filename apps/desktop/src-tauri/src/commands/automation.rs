@@ -11,9 +11,11 @@ use automation::{
     WindowPosition, ACTION_TIMELINE_VERSION,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
@@ -37,6 +39,257 @@ pub struct RecordingDisplayPlacementDto {
 pub struct RecordingViewportDto {
     pub width: u32,
     pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordingStepsSidecar {
+    version: u32,
+    recording_path: String,
+    story_hash: String,
+    timebase: &'static str,
+    status: &'static str,
+    steps: Vec<RecordedStepTiming>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingStepTiming {
+    ordinal: u32,
+    step_id: Option<String>,
+    scene_name: String,
+    verb: String,
+    start_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordedStepTiming {
+    ordinal: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    step_id: Option<String>,
+    scene_name: String,
+    verb: String,
+    start_ms: u64,
+    end_ms: u64,
+    duration_ms: u64,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cursor: Option<TimingPoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<TimingTarget>,
+    confidence: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct TimingPoint {
+    x: f64,
+    y: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TimingTarget {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selector: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bbox: Option<TimingBBox>,
+    match_kind: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct TimingBBox {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+}
+
+impl From<automation::BoundingBox> for TimingBBox {
+    fn from(b: automation::BoundingBox) -> Self {
+        Self {
+            x: b.x,
+            y: b.y,
+            w: b.w,
+            h: b.h,
+        }
+    }
+}
+
+struct StepTimingCollector {
+    recording_path: std::path::PathBuf,
+    story_hash: String,
+    current_scene: String,
+    pending: HashMap<u32, PendingStepTiming>,
+    steps: Vec<RecordedStepTiming>,
+}
+
+impl StepTimingCollector {
+    fn new(recording_path: std::path::PathBuf, story_hash: String) -> Self {
+        Self {
+            recording_path,
+            story_hash,
+            current_scene: String::new(),
+            pending: HashMap::new(),
+            steps: Vec::new(),
+        }
+    }
+
+    fn observe(&mut self, evt: &automation::ExecutorEvent, now_ms: u64) {
+        match evt {
+            automation::ExecutorEvent::SceneEntered { name, .. } => {
+                self.current_scene = name.clone();
+            }
+            automation::ExecutorEvent::StepStarted {
+                ordinal, command, ..
+            } => {
+                self.pending.insert(
+                    *ordinal,
+                    PendingStepTiming {
+                        ordinal: *ordinal,
+                        step_id: command.step_id().map(|id| id.to_string()),
+                        scene_name: self.current_scene.clone(),
+                        verb: command.verb().to_string(),
+                        start_ms: now_ms,
+                    },
+                );
+            }
+            automation::ExecutorEvent::StepSucceeded {
+                ordinal,
+                step_id,
+                duration_ms,
+                cursor_x,
+                cursor_y,
+                matched_selector,
+                matched_bbox,
+                match_kind,
+            } => {
+                let pending = self.pending.remove(ordinal).unwrap_or(PendingStepTiming {
+                    ordinal: *ordinal,
+                    step_id: step_id.map(|id| id.to_string()),
+                    scene_name: self.current_scene.clone(),
+                    verb: "unknown".into(),
+                    start_ms: now_ms.saturating_sub(*duration_ms),
+                });
+                let target = if matched_selector.is_some() || matched_bbox.is_some() {
+                    Some(TimingTarget {
+                        selector: matched_selector.clone(),
+                        bbox: matched_bbox.map(Into::into),
+                        match_kind: match_kind_str(*match_kind).to_string(),
+                    })
+                } else {
+                    None
+                };
+                self.steps.push(RecordedStepTiming {
+                    ordinal: pending.ordinal,
+                    step_id: pending.step_id,
+                    scene_name: pending.scene_name,
+                    verb: pending.verb,
+                    start_ms: pending.start_ms,
+                    end_ms: now_ms,
+                    duration_ms: now_ms.saturating_sub(pending.start_ms).max(*duration_ms),
+                    status: "succeeded",
+                    cursor: Some(TimingPoint {
+                        x: *cursor_x as f64,
+                        y: *cursor_y as f64,
+                    }),
+                    target,
+                    confidence: if matches!(*match_kind, automation::MatchKind::None)
+                        || matched_bbox.is_some()
+                    {
+                        "high"
+                    } else {
+                        "medium"
+                    },
+                });
+            }
+            automation::ExecutorEvent::StepFailed {
+                ordinal,
+                error_message: _,
+                ..
+            } => {
+                let pending = self.pending.remove(ordinal).unwrap_or(PendingStepTiming {
+                    ordinal: *ordinal,
+                    step_id: None,
+                    scene_name: self.current_scene.clone(),
+                    verb: "unknown".into(),
+                    start_ms: now_ms,
+                });
+                self.steps.push(RecordedStepTiming {
+                    ordinal: pending.ordinal,
+                    step_id: pending.step_id,
+                    scene_name: pending.scene_name,
+                    verb: pending.verb,
+                    start_ms: pending.start_ms,
+                    end_ms: now_ms,
+                    duration_ms: now_ms.saturating_sub(pending.start_ms),
+                    status: "failed",
+                    cursor: None,
+                    target: None,
+                    confidence: "low",
+                });
+            }
+            _ => {}
+        }
+    }
+
+    fn finish_pending(&mut self, now_ms: u64, status: &'static str) {
+        for (_, pending) in self.pending.drain() {
+            self.steps.push(RecordedStepTiming {
+                ordinal: pending.ordinal,
+                step_id: pending.step_id,
+                scene_name: pending.scene_name,
+                verb: pending.verb,
+                start_ms: pending.start_ms,
+                end_ms: now_ms,
+                duration_ms: now_ms.saturating_sub(pending.start_ms),
+                status,
+                cursor: None,
+                target: None,
+                confidence: "low",
+            });
+        }
+        self.steps.sort_by_key(|step| step.ordinal);
+    }
+
+    fn write(mut self, status: &'static str, now_ms: u64) -> Result<(), AppError> {
+        self.finish_pending(now_ms, status);
+        if self.steps.is_empty() {
+            return Ok(());
+        }
+        let sidecar = recording_steps_sidecar_path(&self.recording_path);
+        let dto = RecordingStepsSidecar {
+            version: 1,
+            recording_path: self.recording_path.to_string_lossy().into_owned(),
+            story_hash: self.story_hash,
+            timebase: "recording-ms",
+            status,
+            steps: self.steps,
+        };
+        let bytes = serde_json::to_vec_pretty(&dto)
+            .map_err(|e| AppError::InvalidArgument(format!("step timing serialize: {e}")))?;
+        std::fs::write(&sidecar, bytes).map_err(AppError::from)
+    }
+}
+
+fn recording_steps_sidecar_path(recording_path: &std::path::Path) -> std::path::PathBuf {
+    recording_path.with_extension("steps.json")
+}
+
+fn match_kind_str(kind: automation::MatchKind) -> &'static str {
+    match kind {
+        automation::MatchKind::Primary => "primary",
+        automation::MatchKind::Fuzzy => "fuzzy",
+        automation::MatchKind::None => "none",
+    }
+}
+
+fn hash_story_source(source: &str) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in source.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{h:016x}")
 }
 
 impl From<ExecutorEvent> for AutomationEvent {
@@ -345,6 +598,14 @@ pub async fn launch_automation(
     let persistence = Some(Arc::new(Mutex::new(project_db)) as automation::PersistenceHandle);
     let control = Arc::new(RunControl::new());
     set_active_run_control(Some(control.clone()));
+    let attached_recording_session_id = recording_session_id.clone();
+    let fallback_timing_origin = Instant::now();
+    let story_timing_hash = hash_story_source(&story_source);
+    let mut step_timing = attached_recording_session_id
+        .as_deref()
+        .and_then(crate::commands::encode::recording_output_path)
+        .map(|path| StepTimingCollector::new(path, story_timing_hash.clone()));
+    let mut step_timing_status: &'static str = "partial";
 
     // The recording path is read-only against `.story.targets.json` —
     // self_heal=false. A primary-miss raises `PrimaryMissNoHeal` which the
@@ -378,10 +639,50 @@ pub async fn launch_automation(
         Some(control.clone()),
         /* self_heal */ false,
         pacing.into(),
+        step_timing.is_some(),
     );
     while let Some(evt) = events.recv().await {
         if let ExecutorEvent::ActionRecorded { event } = &evt {
             push_active_action_event(event.clone());
+        }
+        let recording_elapsed_ms = attached_recording_session_id
+            .as_deref()
+            .and_then(crate::commands::encode::recording_elapsed_ms);
+        let now_ms = recording_elapsed_ms.unwrap_or_else(|| {
+            fallback_timing_origin
+                .elapsed()
+                .as_millis()
+                .min(u64::MAX as u128) as u64
+        });
+        if let Some(collector) = step_timing.as_mut() {
+            collector.observe(&evt, now_ms);
+        }
+        match &evt {
+            automation::ExecutorEvent::StepFailed { .. } => {
+                step_timing_status = "failed";
+            }
+            automation::ExecutorEvent::StoryEnded { status } => {
+                step_timing_status = if status.failed > 0 {
+                    "failed"
+                } else {
+                    "completed"
+                };
+            }
+            _ => {}
+        }
+        if step_timing.is_some()
+            && attached_recording_session_id.is_some()
+            && recording_elapsed_ms.is_none()
+        {
+            if let Some(collector) = step_timing.take() {
+                if let Err(e) = collector.write("recording_stopped", now_ms) {
+                    tracing::warn!(
+                        target: "storycapture::automation",
+                        error = %e,
+                        "recording step timing sidecar write failed after manual stop"
+                    );
+                }
+            }
         }
         // Mirror events into tracing for diagnostics.
         let truncate_at = match &evt {
@@ -397,6 +698,7 @@ pub async fn launch_automation(
         );
         if let Err(e) = on_event.send(AutomationEvent::from(evt)) {
             tracing::warn!(target: "storycapture::automation", "channel send failed: {e}");
+            step_timing_status = "ui_detached";
             break;
         }
     }
@@ -427,18 +729,47 @@ pub async fn launch_automation(
     if let Some(sid) = recording_session_id {
         use automation::RecorderHandle as _;
         let handle = crate::commands::encode::TauriRecorderHandle::new(sid.clone());
+        let recording_was_active = crate::commands::encode::recording_elapsed_ms(&sid).is_some();
         match handle.stop().await {
-            Ok(()) => tracing::info!(
+            Ok(()) => {
+                if !recording_was_active {
+                    step_timing_status = "recording_stopped";
+                }
+                tracing::info!(
+                    target: "storycapture::automation",
+                    session = %sid,
+                    "auto-stopped attached recording at story end"
+                );
+            }
+            Err(e) => {
+                step_timing_status = "partial";
+                tracing::warn!(
+                    target: "storycapture::automation",
+                    session = %sid,
+                    error = %e,
+                    "auto-stop of attached recording failed"
+                );
+            }
+        }
+    }
+
+    if let Some(collector) = step_timing.take() {
+        let final_now_ms = attached_recording_session_id
+            .as_deref()
+            .and_then(crate::commands::encode::recording_elapsed_ms)
+            .unwrap_or_else(|| {
+                fallback_timing_origin
+                    .elapsed()
+                    .as_millis()
+                    .min(u64::MAX as u128) as u64
+            });
+        if let Err(e) = collector.write(step_timing_status, final_now_ms) {
+            tracing::warn!(
                 target: "storycapture::automation",
-                session = %sid,
-                "auto-stopped attached recording at story end"
-            ),
-            Err(e) => tracing::warn!(
-                target: "storycapture::automation",
-                session = %sid,
                 error = %e,
-                "auto-stop of attached recording failed"
-            ),
+                status = %step_timing_status,
+                "recording step timing sidecar write failed"
+            );
         }
     }
 

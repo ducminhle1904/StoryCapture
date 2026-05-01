@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 // Force the browser-side `setTimeout` numeric handle (Node's `setTimeout` from
 // @types/node returns a `Timeout` object that conflicts with `clearTimeout`'s
@@ -21,10 +21,12 @@ export function useDebouncedCallback<TArgs extends unknown[]>(
   run: (...args: TArgs) => void;
   runKeyed: (key: string | number, ...args: TArgs) => void;
   cancel: (key?: string | number) => void;
+  flush: () => void;
 } {
   const fnRef = useRef(fn);
   fnRef.current = fn;
   const single = useRef<Timer | null>(null);
+  const singleArgs = useRef<TArgs | null>(null);
   const keyed = useRef<Map<string | number, Timer>>(new Map());
 
   useEffect(
@@ -36,15 +38,22 @@ export function useDebouncedCallback<TArgs extends unknown[]>(
     [],
   );
 
-  return {
-    run: (...args: TArgs) => {
+  const run = useCallback(
+    (...args: TArgs) => {
       if (single.current != null) window.clearTimeout(single.current);
+      singleArgs.current = args;
       single.current = window.setTimeout(() => {
         single.current = null;
-        fnRef.current(...args);
+        const pendingArgs = singleArgs.current;
+        singleArgs.current = null;
+        if (pendingArgs) fnRef.current(...pendingArgs);
       }, delayMs);
     },
-    runKeyed: (key, ...args) => {
+    [delayMs],
+  );
+
+  const runKeyed = useCallback(
+    (key: string | number, ...args: TArgs) => {
       const prev = keyed.current.get(key);
       if (prev != null) window.clearTimeout(prev);
       const handle = window.setTimeout(() => {
@@ -53,21 +62,35 @@ export function useDebouncedCallback<TArgs extends unknown[]>(
       }, delayMs);
       keyed.current.set(key, handle);
     },
-    cancel: (key) => {
-      if (key === undefined) {
-        if (single.current != null) {
-          window.clearTimeout(single.current);
-          single.current = null;
-        }
-        for (const t of keyed.current.values()) window.clearTimeout(t);
-        keyed.current.clear();
-        return;
+    [delayMs],
+  );
+
+  const cancel = useCallback((key?: string | number) => {
+    if (key === undefined) {
+      if (single.current != null) {
+        window.clearTimeout(single.current);
+        single.current = null;
       }
-      const t = keyed.current.get(key);
-      if (t != null) {
-        window.clearTimeout(t);
-        keyed.current.delete(key);
-      }
-    },
-  };
+      singleArgs.current = null;
+      for (const t of keyed.current.values()) window.clearTimeout(t);
+      keyed.current.clear();
+      return;
+    }
+    const t = keyed.current.get(key);
+    if (t != null) {
+      window.clearTimeout(t);
+      keyed.current.delete(key);
+    }
+  }, []);
+
+  const flush = useCallback(() => {
+    if (single.current == null) return;
+    window.clearTimeout(single.current);
+    single.current = null;
+    const pendingArgs = singleArgs.current;
+    singleArgs.current = null;
+    if (pendingArgs) fnRef.current(...pendingArgs);
+  }, []);
+
+  return useMemo(() => ({ run, runKeyed, cancel, flush }), [cancel, flush, run, runKeyed]);
 }

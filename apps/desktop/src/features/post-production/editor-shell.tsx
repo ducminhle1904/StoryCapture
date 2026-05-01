@@ -31,15 +31,20 @@ import {
   Volume2,
   ZoomIn,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
+import {
+  loadPolishDoc,
+  prunePolishDocForStory,
+  type StoryPolishDoc,
+} from "@/features/editor/polish-sidecar";
 import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
+import { useRecordingActions } from "@/ipc/actions";
 import { type ParseResult, parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, useProjectRecordings } from "@/ipc/projects";
-import { useRecordingTrajectory } from "@/ipc/trajectory";
-import { useRecordingActions } from "@/ipc/actions";
+import { useRecordingStepTiming, useRecordingTrajectory } from "@/ipc/trajectory";
 import { ExportModal } from "./export-modal/export-modal";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { InspectorPanel } from "./inspector/inspector-panel";
@@ -62,15 +67,132 @@ function createClipId(prefix: string): string {
   return `${prefix}-${random}`;
 }
 
+type ReviewFixTone = "info" | "warn" | "critical";
+
+interface ReviewFixItem {
+  id: string;
+  tone: ReviewFixTone;
+  title: string;
+  detail: string;
+  targetClipId?: string;
+  targetMs?: number;
+}
+
+function fixToneBadge(tone: ReviewFixTone): "info" | "warn" | "record" {
+  return tone === "critical" ? "record" : tone;
+}
+
+function ReviewPanel({
+  zoomCount,
+  calloutCount,
+  hasTrajectory,
+  hasStepTiming,
+  fixItems,
+  recipe,
+  onExport,
+  onFineTune,
+  onFixItem,
+}: {
+  zoomCount: number;
+  calloutCount: number;
+  hasTrajectory: boolean;
+  hasStepTiming: boolean;
+  fixItems: ReviewFixItem[];
+  recipe: string;
+  onExport: () => void;
+  onFineTune: () => void;
+  onFixItem: (item: ReviewFixItem) => void;
+}) {
+  return (
+    <div className="flex h-full flex-col p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <Sparkles size={16} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
+        <div>
+          <h2 className="text-sm font-semibold text-[var(--sc-text)]">Review & Export</h2>
+          <p className="text-xs text-[var(--sc-text-3)]">Auto-polish recipe: {recipe}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <div className="rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-3">
+          <div className="text-xs text-[var(--sc-text-3)]">Generated polish</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <ScBadge tone="success">{zoomCount} zooms</ScBadge>
+            <ScBadge tone="info">{calloutCount} callouts</ScBadge>
+            <ScBadge tone={hasTrajectory ? "success" : "warn"}>
+              {hasTrajectory ? "cursor trajectory" : "no trajectory"}
+            </ScBadge>
+            <ScBadge tone={hasStepTiming ? "success" : "warn"}>
+              {hasStepTiming ? "step timing" : "estimated timing"}
+            </ScBadge>
+          </div>
+        </div>
+
+        <div className="rounded-[var(--sc-r-md)] border border-[var(--sc-border)] bg-[var(--sc-surface-2)] p-3">
+          <div className="text-xs font-medium text-[var(--sc-text-2)]">Fix list</div>
+          {fixItems.length === 0 ? (
+            <p className="mt-2 text-xs text-[var(--sc-text-3)]">
+              No generated polish issues found.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-xs text-[var(--sc-text-3)]">
+              {fixItems.map((fix) => (
+                <li key={fix.id}>
+                  <button
+                    type="button"
+                    className="grid w-full grid-cols-[auto_1fr] gap-2 rounded-[var(--sc-r-sm)] px-1 py-1 text-left hover:bg-[var(--sc-surface-3)] hover:text-[var(--sc-text)]"
+                    onClick={() => onFixItem(fix)}
+                  >
+                    <ScBadge tone={fixToneBadge(fix.tone)}>{fix.tone}</ScBadge>
+                    <span className="min-w-0">
+                      <span className="block font-medium text-[var(--sc-text-2)]">{fix.title}</span>
+                      <span className="block text-[var(--sc-text-4)]">{fix.detail}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <span className="flex-1" />
+      <div className="flex gap-2">
+        <ScButton size="sm" variant="ghost" onClick={onFineTune}>
+          Fine tune timeline
+        </ScButton>
+        <ScButton size="sm" variant="success" onClick={onExport}>
+          Export
+        </ScButton>
+      </div>
+    </div>
+  );
+}
+
+function clipIdForStep(
+  stepId: string | null | undefined,
+  zoomClips: readonly ZoomClip[],
+  annotationClips: readonly AnnotationClip[],
+): string | undefined {
+  if (!stepId) return undefined;
+  return (
+    zoomClips.find((clip) => clip.id.endsWith(`-${stepId}`))?.id ??
+    annotationClips.find((clip) => clip.id.endsWith(`-${stepId}`))?.id
+  );
+}
+
 export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const timelineHeightPct = useEditorStore((s) => s.timelineHeightPct);
   const previewWidthPct = useEditorStore((s) => s.previewWidthPct);
   const setSoundDrawerOpen = useEditorStore((s) => s.setSoundDrawerOpen);
   const setExportModalOpen = useEditorStore((s) => s.setExportModalOpen);
   const playheadMs = useEditorStore((s) => s.playheadMs);
+  const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const pushAction = useEditorStore((s) => s.pushAction);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
   const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
+  const zoomClips = useEditorStore((s) => s.tracks.zoom);
+  const annotationClips = useEditorStore((s) => s.tracks.annotations);
 
   // Wire the latest project recording into the preview canvas. Explicit
   // `videoSrc` prop (used by tests/storybook) wins over the IPC-loaded path.
@@ -85,26 +207,39 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   // (open_project IPC → fs.readTextFile → parseStory) instead of duplicating
   // it in a new IPC. Parse failure is non-fatal: we still build a video clip.
   const [storyParsed, setStoryParsed] = useState<ParseResult | null>(null);
+  const [polishDoc, setPolishDoc] = useState<StoryPolishDoc | null>(null);
   const [projectOpenReady, setProjectOpenReady] = useState(Boolean(videoSrc));
+  const [timelineBootstrapReady, setTimelineBootstrapReady] = useState(Boolean(videoSrc));
+  const [workspaceMode, setWorkspaceMode] = useState<"review" | "fine-tune">("review");
   useEffect(() => {
     let cancelled = false;
     setStoryParsed(null);
+    setPolishDoc(null);
     setProjectOpenReady(Boolean(videoSrc));
+    setTimelineBootstrapReady(Boolean(videoSrc));
     (async () => {
       try {
         const info = await fetchProjectFolder(storyId);
         if (cancelled) return;
         setProjectOpenReady(true);
-        const text = await readTextFile(info.story_path);
+        const polishPromise = loadPolishDoc(info.story_path);
+        const storyPromise = readTextFile(info.story_path).then((text) => parseStory(text));
+        const loadedPolish = await polishPromise;
         if (cancelled) return;
-        const parsed = await parseStory(text);
-        if (cancelled) return;
-        setStoryParsed(parsed);
+        setPolishDoc(loadedPolish);
+        try {
+          const parsed = await storyPromise;
+          if (cancelled) return;
+          setStoryParsed(parsed);
+        } finally {
+          if (!cancelled) setTimelineBootstrapReady(true);
+        }
       } catch {
         /* Best-effort. Producer falls back to recording-only timeline. */
         if (!cancelled && videoSrc) {
           setProjectOpenReady(true);
         }
+        if (!cancelled) setTimelineBootstrapReady(true);
       }
     })();
     return () => {
@@ -117,6 +252,8 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     latestRecording?.path,
     actionsQuery.isSuccess && actionsQuery.data === null,
   );
+  const stepTimingQuery = useRecordingStepTiming(latestRecording?.path);
+  const hasCursorData = Boolean(actionsQuery.data || trajectoryQuery.data);
 
   // One-shot auto-populate: only run while generated tracks are empty so we
   // don't clobber persisted user edits. Idempotent on identical inputs.
@@ -124,31 +261,154 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const tracksVideoLen = useEditorStore((s) => s.tracks.video.length);
   const tracksCursorLen = useEditorStore((s) => s.tracks.cursor.length);
   const tracksZoomLen = useEditorStore((s) => s.tracks.zoom.length);
+  const tracksSoundLen = useEditorStore((s) => s.tracks.sound.length);
+  const tracksAnnotationLen = useEditorStore((s) => s.tracks.annotations.length);
+  const reviewFixItems = useMemo(() => {
+    const fixes: ReviewFixItem[] = [];
+    const timing = stepTimingQuery.data;
+    if (!timing) {
+      fixes.push({
+        id: "missing-step-timing",
+        tone: "warn",
+        title: "Estimated step timing",
+        detail: "No step timing sidecar was found; generated clips use fallback spacing.",
+      });
+    } else if (timing.status !== "completed") {
+      fixes.push({
+        id: `timing-status-${timing.status}`,
+        tone: timing.status === "failed" ? "critical" : "warn",
+        title: "Partial timing sidecar",
+        detail: `Recording timing ended as ${timing.status}; review generated clip positions.`,
+        targetMs: timing.steps.at(-1)?.endMs,
+      });
+    }
+    if (!hasCursorData) {
+      fixes.push({
+        id: "missing-trajectory",
+        tone: "warn",
+        title: "Missing cursor data",
+        detail:
+          "Zoom centers may use defaults because action and trajectory sidecars are unavailable.",
+      });
+    }
+    if (tracksZoomLen > 10) {
+      fixes.push({
+        id: "dense-zooms",
+        tone: "info",
+        title: "Dense zoom pacing",
+        detail: "More than 10 zooms were generated; inspect the first scripted zoom.",
+        targetClipId: zoomClips[0]?.id,
+        targetMs: zoomClips[0]?.startMs,
+      });
+    }
+    if (tracksAnnotationLen === 0) {
+      fixes.push({
+        id: "missing-callouts",
+        tone: "info",
+        title: "No callouts",
+        detail: "No callout text was declared in Editor UI mode.",
+      });
+    }
+    const lowConfidenceStep = timing?.steps.find((step) => step.confidence === "low");
+    if (lowConfidenceStep) {
+      fixes.push({
+        id: `low-confidence-${lowConfidenceStep.ordinal}`,
+        tone: "critical",
+        title: "Low-confidence timing",
+        detail: `${lowConfidenceStep.sceneName} step ${lowConfidenceStep.ordinal} needs review.`,
+        targetClipId: clipIdForStep(lowConfidenceStep.stepId, zoomClips, annotationClips),
+        targetMs: lowConfidenceStep.startMs,
+      });
+    }
+    const missingGeometryStep = timing?.steps.find((step) => step.target && !step.target.bbox);
+    if (missingGeometryStep) {
+      fixes.push({
+        id: `missing-geometry-${missingGeometryStep.ordinal}`,
+        tone: "warn",
+        title: "Missing target geometry",
+        detail: `${missingGeometryStep.sceneName} step ${missingGeometryStep.ordinal} has selector timing but no bbox.`,
+        targetClipId: clipIdForStep(missingGeometryStep.stepId, zoomClips, annotationClips),
+        targetMs: missingGeometryStep.startMs,
+      });
+    }
+    const orphanStepId =
+      polishDoc && storyParsed
+        ? prunePolishDocForStory(polishDoc, storyParsed.ast).removedStepIds[0]
+        : null;
+    if (orphanStepId) {
+      fixes.push({
+        id: `orphan-polish-${orphanStepId}`,
+        tone: "warn",
+        title: "Orphan polish entry",
+        detail: "A polish setting points to a deleted or unstamped step.",
+      });
+    }
+    return fixes;
+  }, [
+    annotationClips,
+    polishDoc,
+    stepTimingQuery.data,
+    storyParsed,
+    tracksAnnotationLen,
+    tracksZoomLen,
+    hasCursorData,
+    zoomClips,
+  ]);
   useEffect(() => {
     if (!latestRecording) return;
+    if (!timelineBootstrapReady) return;
+    if (actionsQuery.isLoading || trajectoryQuery.isLoading || stepTimingQuery.isLoading) return;
     if (tracksVideoLen > 0) return;
-    if (tracksCursorLen > 0 || tracksZoomLen > 0) return;
-    if (actionsQuery.isLoading) return;
-    if (!actionsQuery.data && trajectoryQuery.isLoading) return;
+    if (tracksCursorLen > 0 || tracksZoomLen > 0 || tracksSoundLen > 0 || tracksAnnotationLen > 0) {
+      return;
+    }
     const built = buildTimelineFromStory({
       story: storyParsed,
       recording: latestRecording,
       actions: actionsQuery.data ?? null,
       trajectory: trajectoryQuery.data ?? null,
+      polish: polishDoc,
+      stepTiming: stepTimingQuery.data ?? null,
     });
-    setTracks(built);
+    const { background, ...builtTracks } = built;
+    setTracks(builtTracks);
+    useEditorStore.setState((state) => ({
+      _undoExtras: {
+        graphSnapshot: state._undoExtras?.graphSnapshot ?? {},
+        textOverlays: state._undoExtras?.textOverlays ?? {},
+        background,
+      },
+    }));
   }, [
     latestRecording,
+    polishDoc,
     storyParsed,
     actionsQuery.data,
     actionsQuery.isLoading,
+    stepTimingQuery.data,
+    stepTimingQuery.isLoading,
+    timelineBootstrapReady,
     trajectoryQuery.data,
     trajectoryQuery.isLoading,
     tracksVideoLen,
     tracksCursorLen,
     tracksZoomLen,
+    tracksSoundLen,
+    tracksAnnotationLen,
     setTracks,
   ]);
+
+  const handleReviewFixItem = useCallback(
+    (item: ReviewFixItem) => {
+      setWorkspaceMode("fine-tune");
+      if (typeof item.targetMs === "number") setPlayhead(item.targetMs);
+      if (item.targetClipId) {
+        setSelectedClipId(item.targetClipId);
+        setSelectedTab("effects");
+      }
+    },
+    [setPlayhead, setSelectedClipId, setSelectedTab],
+  );
 
   useEditorHotkeys();
 
@@ -163,6 +423,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   const topHeightPct = 100 - timelineHeightPct;
   const inspectorWidthPct = 100 - previewWidthPct;
+  const effectiveTopHeightPct = workspaceMode === "review" ? 100 : topHeightPct;
 
   const addZoomAtPlayhead = useCallback(() => {
     const clip: ZoomClip = {
@@ -198,6 +459,26 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     setSelectedTab("effects");
   }, [playheadMs, pushAction, setSelectedClipId, setSelectedTab]);
 
+  const inspectorContent = !projectOpenReady ? (
+    <div role="status" className="p-5 text-sm text-[var(--sc-text-3)]">
+      Loading project…
+    </div>
+  ) : workspaceMode === "review" ? (
+    <ReviewPanel
+      zoomCount={tracksZoomLen}
+      calloutCount={tracksAnnotationLen}
+      hasTrajectory={hasCursorData}
+      hasStepTiming={Boolean(stepTimingQuery.data)}
+      fixItems={reviewFixItems}
+      recipe={polishDoc?.global.recipe ?? "dynamic"}
+      onExport={() => setExportModalOpen(true)}
+      onFineTune={() => setWorkspaceMode("fine-tune")}
+      onFixItem={handleReviewFixItem}
+    />
+  ) : (
+    <InspectorPanel />
+  );
+
   return (
     <div
       className="flex h-full w-full flex-col bg-[var(--sc-bg)] text-[var(--sc-text)]"
@@ -224,6 +505,16 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
           <ScBadge tone="muted">story {storyId}</ScBadge>
         </div>
         <span className="sc-spacer" />
+        <ScSegmented
+          size="sm"
+          value={workspaceMode}
+          aria-label="Post-production mode"
+          options={[
+            { value: "review", label: "Review" },
+            { value: "fine-tune", label: "Fine tune" },
+          ]}
+          onValueChange={(value) => setWorkspaceMode(value as "review" | "fine-tune")}
+        />
         <ScButton
           size="sm"
           variant="ghost"
@@ -276,7 +567,10 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
       <PageContentTransition className="min-h-0 flex-1">
         {/* Top region: preview | inspector */}
-        <div className="flex min-h-0 gap-5 px-5 py-5" style={{ height: `${topHeightPct}%` }}>
+        <div
+          className="flex min-h-0 gap-5 px-5 py-5"
+          style={{ height: `${effectiveTopHeightPct}%` }}
+        >
           <section
             className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
             style={{
@@ -463,24 +757,20 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
             className="min-w-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
             style={{ width: `${inspectorWidthPct}%` }}
           >
-            {projectOpenReady ? (
-              <InspectorPanel />
-            ) : (
-              <div role="status" className="p-5 text-sm text-[var(--sc-text-3)]">
-                Loading project…
-              </div>
-            )}
+            {inspectorContent}
           </section>
         </div>
 
         {/* Bottom region: timeline */}
-        <section
-          className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
-          style={{ height: `${timelineHeightPct}%` }}
-          aria-label="Timeline area"
-        >
-          <Timeline storyId={storyId} />
-        </section>
+        {workspaceMode === "fine-tune" && (
+          <section
+            className="mx-5 mb-5 shrink-0 overflow-hidden rounded-[var(--sc-r-2xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]"
+            style={{ height: `${timelineHeightPct}%` }}
+            aria-label="Timeline area"
+          >
+            <Timeline storyId={storyId} />
+          </section>
+        )}
       </PageContentTransition>
 
       <SoundDrawer />

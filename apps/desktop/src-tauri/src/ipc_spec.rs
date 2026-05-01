@@ -120,6 +120,7 @@ pub fn builder() -> Builder<Wry> {
             actions::get_recording_actions,
             // Phase 19-02 cursor trajectory sidecar reader.
             trajectory::get_recording_trajectory,
+            trajectory::get_recording_step_timing,
             render::render_enqueue,
             render::render_cancel,
             render::render_list_active,
@@ -261,6 +262,11 @@ pub fn builder() -> Builder<Wry> {
         .typ::<trajectory::TrajectoryFrameDto>()
         .typ::<trajectory::CaptureRectDto>()
         .typ::<trajectory::GetRecordingTrajectoryArgs>()
+        .typ::<trajectory::RecordingStepTimingSidecarDto>()
+        .typ::<trajectory::RecordingStepTimingDto>()
+        .typ::<trajectory::TimingTargetDto>()
+        .typ::<trajectory::TimingPointDto>()
+        .typ::<trajectory::TimingBBoxDto>()
         // render queue
         .typ::<render::NewRenderJobDto>()
         .typ::<render::RenderJobDto>()

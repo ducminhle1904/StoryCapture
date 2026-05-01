@@ -2,10 +2,10 @@
  * Phase 19-03 — unit tests for the post-production timeline producer.
  */
 import { describe, expect, it } from "vitest";
-
-import type { RecordingInfo } from "@/ipc/projects";
-import type { RecordingTrajectory } from "@/ipc/trajectory";
 import type { RecordingActions } from "@/ipc/actions";
+import type { ParseResult } from "@/ipc/parse";
+import type { RecordingInfo } from "@/ipc/projects";
+import type { RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
 
 import { buildTimelineFromStory } from "../state/build-timeline-from-story";
 
@@ -52,6 +52,68 @@ const ACTIONS: RecordingActions = {
   ],
 };
 
+const STEP_TIMING: RecordingStepTimingSidecar = {
+  version: 1,
+  recordingPath: RECORDING.path,
+  storyHash: "hash",
+  timebase: "recording-ms",
+  status: "completed",
+  steps: [
+    {
+      ordinal: 1,
+      stepId: "step-buy",
+      sceneName: "Checkout",
+      verb: "click",
+      startMs: 2_000,
+      endMs: 2_500,
+      durationMs: 500,
+      status: "succeeded",
+      cursor: { x: 960, y: 540 },
+      target: {
+        selector: "button[name='Buy']",
+        bbox: { x: 480, y: 240, w: 240, h: 120 },
+        matchKind: "primary",
+      },
+      confidence: "high",
+    },
+  ],
+};
+
+const STORY: ParseResult = {
+  diagnostics: [],
+  ast: {
+    name: "Demo",
+    meta: {
+      app: null,
+      viewport: null,
+      theme: null,
+      speed: null,
+      span: { start: 0, end: 0, line: 1, col: 1 },
+    },
+    span: { start: 0, end: 0, line: 1, col: 1 },
+    scenes: [
+      {
+        name: "Checkout",
+        span: { start: 0, end: 0, line: 1, col: 1 },
+        commands: [
+          {
+            verb: "click",
+            target: { kind: "role", value: { role: "button", name: "Buy" } },
+            span: { start: 0, end: 0, line: 3, col: 5 },
+            step_id: "step-buy",
+          },
+          {
+            verb: "click",
+            target: { kind: "role", value: { role: "button", name: "Pay" } },
+            span: { start: 0, end: 0, line: 4, col: 5 },
+            step_id: "step-pay",
+          },
+        ],
+      },
+    ],
+  },
+};
+
 function trajectoryWithFrames(frames: RecordingTrajectory["frames"]): RecordingTrajectory {
   return {
     ...TRAJECTORY,
@@ -70,7 +132,9 @@ describe("buildTimelineFromStory", () => {
     expect(out.video).toHaveLength(1);
     expect(out.cursor).toHaveLength(0);
     expect(out.zoom).toHaveLength(0);
-    const v = out.video[0]!;
+    const v = out.video[0];
+    expect(v).toBeDefined();
+    if (!v) return;
     expect(v.trackId).toBe("video");
     expect(v.startMs).toBe(0);
     expect(v.durationMs).toBe(12_345);
@@ -85,7 +149,9 @@ describe("buildTimelineFromStory", () => {
       trajectory: TRAJECTORY,
     });
     expect(out.cursor).toHaveLength(1);
-    const c = out.cursor[0]!;
+    const c = out.cursor[0];
+    expect(c).toBeDefined();
+    if (!c) return;
     expect(c.trackId).toBe("cursor");
     expect(c.startMs).toBe(0);
     expect(c.durationMs).toBe(12_345);
@@ -105,11 +171,11 @@ describe("buildTimelineFromStory", () => {
     });
 
     expect(out.cursor).toHaveLength(1);
-    expect(out.cursor[0]!.trajectoryDir).toBe(
+    expect(out.cursor[0]?.trajectoryDir).toBe(
       "/tmp/projects/p1/recordings/recording-123.actions.json",
     );
-    expect(out.cursor[0]!.trajectoryFps).toBe(60);
-    expect(out.cursor[0]!.trajectoryFrameCount).toBe(741);
+    expect(out.cursor[0]?.trajectoryFps).toBe(60);
+    expect(out.cursor[0]?.trajectoryFrameCount).toBe(741);
     expect(out.zoom).toHaveLength(1);
     expect(out.zoom[0]).toMatchObject({
       id: expect.stringMatching(/^zoom-[a-f0-9]{8}-1000$/),
@@ -125,8 +191,8 @@ describe("buildTimelineFromStory", () => {
       recording: noDuration,
       trajectory: TRAJECTORY, // 720 / 60 fps = 12_000 ms
     });
-    expect(out.video[0]!.durationMs).toBe(12_000);
-    expect(out.cursor[0]!.durationMs).toBe(12_000);
+    expect(out.video[0]?.durationMs).toBe(12_000);
+    expect(out.cursor[0]?.durationMs).toBe(12_000);
   });
 
   it("falls back to 60_000 ms when both recording duration and trajectory are missing", () => {
@@ -136,7 +202,7 @@ describe("buildTimelineFromStory", () => {
       recording: noDuration,
       trajectory: null,
     });
-    expect(out.video[0]!.durationMs).toBe(60_000);
+    expect(out.video[0]?.durationMs).toBe(60_000);
   });
 
   it("is idempotent on identical input", () => {
@@ -180,7 +246,7 @@ describe("buildTimelineFromStory", () => {
     expect(out.zoom).toHaveLength(3);
     expect(out.zoom.map((clip) => clip.startMs)).toEqual([800, 4_800, 9_800]);
     expect(out.zoom.map((clip) => clip.durationMs)).toEqual([800, 800, 800]);
-    expect(out.zoom.map((clip) => clip.scale)).toEqual([1.3, 1.3, 1.3]);
+    expect(out.zoom.map((clip) => clip.scale)).toEqual([1.35, 1.35, 1.35]);
     expect(out.zoom.map((clip) => clip.preset)).toEqual(["CALM", "CALM", "CALM"]);
     expect(out.zoom.map((clip) => clip.target)).toEqual([
       { kind: "cursor" },
@@ -201,8 +267,8 @@ describe("buildTimelineFromStory", () => {
       trajectory: trajectoryWithFrames([{ t_ms: 100, x: 960, y: 540, click: true }]),
     });
 
-    expect(out.zoom[0]!.startMs).toBe(0);
-    expect(out.zoom[0]!.durationMs).toBe(800);
+    expect(out.zoom[0]?.startMs).toBe(0);
+    expect(out.zoom[0]?.durationMs).toBe(800);
   });
 
   it("debounces clicked frames within 800ms of a prior emitted click", () => {
@@ -245,5 +311,160 @@ describe("buildTimelineFromStory", () => {
         expect.stringMatching(/^zoom-[a-f0-9]{8}-5000$/),
       ]),
     );
+  });
+
+  it("adds polish-authored zooms and callouts keyed by step_id", () => {
+    const out = buildTimelineFromStory({
+      story: STORY,
+      recording: RECORDING,
+      trajectory: TRAJECTORY,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "gradient", presetId: "runway-dark" },
+        },
+        scenes: {},
+        steps: {
+          "step-buy": { zoom: "strong", callout: "Start checkout", highlight: true },
+        },
+      },
+    });
+
+    expect(out.zoom).toHaveLength(1);
+    expect(out.zoom[0]).toMatchObject({
+      id: expect.stringContaining("step-buy"),
+      label: "Script zoom",
+      scale: 1.65,
+    });
+    expect(out.annotations).toHaveLength(1);
+    expect(out.annotations[0]).toMatchObject({
+      id: expect.stringContaining("step-buy"),
+      text: "Start checkout",
+      trackId: "annotations",
+    });
+  });
+
+  it("uses recording step timing and target bbox for polish-authored clips", () => {
+    const out = buildTimelineFromStory({
+      story: STORY,
+      recording: RECORDING,
+      trajectory: TRAJECTORY,
+      stepTiming: STEP_TIMING,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "gradient", presetId: "runway-dark" },
+        },
+        scenes: {},
+        steps: {
+          "step-buy": { zoom: "strong", callout: "Start checkout" },
+        },
+      },
+    });
+
+    expect(out.zoom[0]).toMatchObject({
+      startMs: 1_975,
+      center: { x: 0.3125, y: 0.2777777777777778 },
+    });
+    expect(out.annotations[0]?.startMs).toBe(2_125);
+  });
+
+  it("maps v2 editor polish into cursor, background, sound, highlight, zoom target, and transition state", () => {
+    const out = buildTimelineFromStory({
+      story: STORY,
+      recording: RECORDING,
+      trajectory: TRAJECTORY,
+      stepTiming: STEP_TIMING,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "calm",
+          autoZoom: "subtle",
+          autoZoomDurationMs: 1_200,
+          cursor: "hidden",
+          cursorSkin: "big-arrow",
+          cursorSizeScale: 1.4,
+          background: { kind: "solid", color: "#112233" },
+          bgm: { path: "/sounds/bgm.wav", gain: 0.35 },
+        },
+        scenes: {
+          Checkout: { transitionOut: "dissolve", transitionDurationMs: 700 },
+        },
+        steps: {
+          "step-buy": {
+            zoom: "standard",
+            zoomTarget: {
+              kind: "fixed-region",
+              topLeft: { x: 0.2, y: 0.3 },
+              size: { x: 0.4, y: 0.5 },
+            },
+            zoomScale: 1.8,
+            zoomDurationMs: 1_100,
+            callout: {
+              text: "Start checkout",
+              pos: { x: 0.25, y: 0.75 },
+              sizePt: 30,
+              color: "#ffcc00",
+              durationMs: 2_000,
+            },
+            highlight: { enabled: true, radiusPx: 72, color: "#00ffaa", durationMs: 900 },
+            sfx: { path: "/sounds/click.wav", gain: 0.8, durationMs: 600 },
+          },
+        },
+      },
+    });
+
+    expect(out.cursor).toHaveLength(0);
+    expect(out.background).toEqual({ kind: "solid", color: { r: 17, g: 34, b: 51, a: 255 } });
+    expect(out.video[0]?.outgoingTransition).toEqual({ kind: "dissolve", durationMs: 700 });
+    expect(out.zoom).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.stringContaining("step-buy"),
+          durationMs: 1_100,
+          target: { kind: "fixed-region", top_left: { x: 0.2, y: 0.3 }, size: { x: 0.4, y: 0.5 } },
+          scale: 1.8,
+          preset: "CALM",
+        }),
+      ]),
+    );
+    expect(out.annotations[0]).toMatchObject({
+      text: "Start checkout",
+      pos: { x: 0.25, y: 0.75 },
+      sizePt: 30,
+      color: "#ffcc00",
+      highlight: {
+        center: { x: 0.3125, y: 0.2777777777777778 },
+        radiusPx: 72,
+        color: "#00ffaa",
+        durationMs: 900,
+      },
+    });
+    expect(out.sound).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^bgm-/),
+        path: "/sounds/bgm.wav",
+        kind: "bgm",
+        gain: 0.35,
+      }),
+      expect.objectContaining({
+        id: expect.stringContaining("step-buy"),
+        path: "/sounds/click.wav",
+        kind: "sfx",
+        gain: 0.8,
+      }),
+    ]);
   });
 });

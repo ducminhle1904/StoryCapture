@@ -125,9 +125,13 @@ pub enum ExecutorEvent {
     },
     StepSucceeded {
         ordinal: u32,
+        step_id: Option<uuid::Uuid>,
         duration_ms: u64,
         cursor_x: i32,
         cursor_y: i32,
+        matched_selector: Option<String>,
+        matched_bbox: Option<BoundingBox>,
+        match_kind: MatchKind,
     },
     ActionRecorded {
         event: ActionTimelineEvent,

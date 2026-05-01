@@ -12,14 +12,20 @@ import { useEditorStore } from "../state/store";
 import type {
   AnnotationClip,
   Clip,
+  CursorClip,
+  CursorSkin,
+  SoundClip,
+  SoundKind,
   TimelineSlice,
   TrackId,
   Vec2,
+  VideoClip,
+  XfadeKind,
   ZoomClip,
   ZoomPreset,
   ZoomTarget,
 } from "../state/timeline-slice";
-import { TRACK_IDS } from "../state/timeline-slice";
+import { TRACK_IDS, XFADE_KINDS } from "../state/timeline-slice";
 
 const FIELD_CLASS =
   "rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
@@ -28,6 +34,15 @@ const RANGE_CLASS = "w-full accent-[var(--color-accent,#ff5b76)]";
 
 const PRESET_OPTIONS: ZoomPreset[] = ["DYNAMIC", "CALM", "SUBTLE"];
 const TARGET_KIND_OPTIONS: ZoomTarget["kind"][] = ["cursor", "element", "fixed-region"];
+const CURSOR_SKIN_OPTIONS: CursorSkin[] = [
+  "mac-default",
+  "win-default",
+  "dark",
+  "light",
+  "big-arrow",
+];
+const SOUND_KIND_OPTIONS: SoundKind[] = ["bgm", "sfx", "voiceover"];
+const TRANSITION_KIND_OPTIONS = XFADE_KINDS;
 
 function labelForTargetKind(kind: ZoomTarget["kind"]): string {
   switch (kind) {
@@ -391,6 +406,172 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
   );
 }
 
+function CursorParams({
+  clip,
+  nodePath,
+  onSetParam,
+}: {
+  clip: CursorClip;
+  nodePath: string;
+  onSetParam: (nodePath: string, field: string, prev: unknown, next: unknown) => void;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-3 border-0 p-0">
+      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
+        Cursor
+      </legend>
+      <label className="flex flex-col gap-1">
+        <FieldLabel>Skin</FieldLabel>
+        <select
+          aria-label="Cursor skin"
+          value={clip.skin}
+          onChange={(e) => onSetParam(nodePath, "skin", clip.skin, e.target.value as CursorSkin)}
+          className={FIELD_CLASS}
+        >
+          {CURSOR_SKIN_OPTIONS.map((skin) => (
+            <option key={skin} value={skin}>
+              {skin}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <FieldLabel>Size</FieldLabel>
+        <input
+          type="range"
+          aria-label="Cursor size"
+          value={clip.sizeScale}
+          min="0.5"
+          max="2.5"
+          step="0.1"
+          onChange={(e) => {
+            const next = parseFiniteNumber(e.target.value, clip.sizeScale);
+            if (next !== clip.sizeScale) onSetParam(nodePath, "sizeScale", clip.sizeScale, next);
+          }}
+          className={RANGE_CLASS}
+        />
+        <span className="text-xs tabular-nums text-[var(--color-fg-muted)]">
+          {clip.sizeScale.toFixed(1)}x
+        </span>
+      </label>
+    </fieldset>
+  );
+}
+
+function SoundParams({
+  clip,
+  nodePath,
+  onSetParam,
+}: {
+  clip: SoundClip;
+  nodePath: string;
+  onSetParam: (nodePath: string, field: string, prev: unknown, next: unknown) => void;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-3 border-0 p-0">
+      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
+        Sound
+      </legend>
+      <label className="flex flex-col gap-1">
+        <FieldLabel>Path</FieldLabel>
+        <input
+          type="text"
+          aria-label="Sound path"
+          value={clip.path}
+          onChange={(e) => onSetParam(nodePath, "path", clip.path, e.target.value)}
+          className={FIELD_CLASS}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <FieldLabel>Kind</FieldLabel>
+        <select
+          aria-label="Sound kind"
+          value={clip.kind}
+          onChange={(e) => onSetParam(nodePath, "kind", clip.kind, e.target.value as SoundKind)}
+          className={FIELD_CLASS}
+        >
+          {SOUND_KIND_OPTIONS.map((kind) => (
+            <option key={kind} value={kind}>
+              {kind}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <FieldLabel>Gain</FieldLabel>
+        <input
+          type="range"
+          aria-label="Sound gain"
+          value={clip.gain ?? 1}
+          min="0"
+          max="2"
+          step="0.05"
+          onChange={(e) =>
+            onSetParam(nodePath, "gain", clip.gain, parseFiniteNumber(e.target.value, 1))
+          }
+          className={RANGE_CLASS}
+        />
+      </label>
+    </fieldset>
+  );
+}
+
+function VideoParams({
+  clip,
+  nodePath,
+  onSetParam,
+}: {
+  clip: VideoClip;
+  nodePath: string;
+  onSetParam: (nodePath: string, field: string, prev: unknown, next: unknown) => void;
+}) {
+  const transition = clip.outgoingTransition ?? { kind: "fade" as XfadeKind, durationMs: 500 };
+  return (
+    <fieldset className="flex flex-col gap-3 border-0 p-0">
+      <legend className="text-xs uppercase tracking-wide text-[var(--color-fg-muted)]">
+        Transition
+      </legend>
+      <label className="flex flex-col gap-1">
+        <FieldLabel>Kind</FieldLabel>
+        <select
+          aria-label="Video transition kind"
+          value={transition.kind}
+          onChange={(e) =>
+            onSetParam(nodePath, "outgoingTransition", clip.outgoingTransition, {
+              ...transition,
+              kind: e.target.value as XfadeKind,
+            })
+          }
+          className={FIELD_CLASS}
+        >
+          {TRANSITION_KIND_OPTIONS.map((kind) => (
+            <option key={kind} value={kind}>
+              {kind}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <FieldLabel>Duration</FieldLabel>
+        <input
+          type="number"
+          aria-label="Video transition duration"
+          value={transition.durationMs}
+          min="100"
+          step="100"
+          onChange={(e) =>
+            onSetParam(nodePath, "outgoingTransition", clip.outgoingTransition, {
+              ...transition,
+              durationMs: Math.max(100, parseFiniteNumber(e.target.value, 500)),
+            })
+          }
+          className={FIELD_CLASS}
+        />
+      </label>
+    </fieldset>
+  );
+}
+
 function EffectParamsBase() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const pushAction = useEditorStore((s) => s.pushAction);
@@ -462,6 +643,15 @@ function EffectParamsBase() {
       ) : null}
       {clip.trackId === "annotations" ? (
         <AnnotationParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
+      ) : null}
+      {clip.trackId === "cursor" ? (
+        <CursorParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
+      ) : null}
+      {clip.trackId === "sound" ? (
+        <SoundParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
+      ) : null}
+      {clip.trackId === "video" ? (
+        <VideoParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
       ) : null}
       <div>
         <FieldLabel>Parameters</FieldLabel>

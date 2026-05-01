@@ -24,8 +24,13 @@ vi.mock("@/ipc/parse", () => ({
   parseStory: vi.fn(() => Promise.resolve(null)),
 }));
 
+vi.mock("@/ipc/actions", () => ({
+  useRecordingActions: vi.fn(() => ({ data: null, isLoading: false, isSuccess: true })),
+}));
+
 vi.mock("@/ipc/trajectory", () => ({
-  useRecordingTrajectory: vi.fn(() => ({ data: null })),
+  useRecordingStepTiming: vi.fn(() => ({ data: null, isLoading: false })),
+  useRecordingTrajectory: vi.fn(() => ({ data: null, isLoading: false })),
 }));
 
 vi.mock("@/components/preview-surface", () => ({
@@ -133,5 +138,37 @@ describe("EditorShell toolbar actions", () => {
 
     state.undo();
     expect(useEditorStore.getState().tracks.annotations).toHaveLength(0);
+  });
+
+  it("opens fine tune and selects the target clip from a review fix item", () => {
+    useEditorStore.setState((state) => ({
+      tracks: {
+        ...state.tracks,
+        zoom: Array.from({ length: 11 }, (_, index) => ({
+          id: `zoom-${index}`,
+          trackId: "zoom" as const,
+          startMs: 1_000 + index * 100,
+          durationMs: 900,
+          label: "Script zoom",
+          target: { kind: "cursor" as const },
+          scale: 1.5,
+          center: { x: 0.5, y: 0.5 },
+          preset: "DYNAMIC" as const,
+        })),
+      },
+    }));
+
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("Dense zoom pacing"));
+
+    const state = useEditorStore.getState();
+    expect(state.selectedClipId).toBe("zoom-0");
+    expect(state.selectedTab).toBe("effects");
+    expect(state.playheadMs).toBe(1_000);
   });
 });

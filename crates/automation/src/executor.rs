@@ -133,6 +133,7 @@ impl Executor {
             control,
             self_heal,
             PacingConfig::raw(),
+            false,
         )
     }
 
@@ -151,6 +152,7 @@ impl Executor {
         control: Option<Arc<RunControl>>,
         self_heal: bool,
         pacing: PacingProfile,
+        collect_step_geometry: bool,
     ) -> mpsc::Receiver<ExecutorEvent> {
         Self::run_with_story_path_config(
             story,
@@ -163,6 +165,7 @@ impl Executor {
             control,
             self_heal,
             pacing.config(),
+            collect_step_geometry,
         )
     }
 
@@ -178,6 +181,7 @@ impl Executor {
         control: Option<Arc<RunControl>>,
         self_heal: bool,
         pacing: PacingConfig,
+        collect_step_geometry: bool,
     ) -> mpsc::Receiver<ExecutorEvent> {
         let (tx, rx) = mpsc::channel::<ExecutorEvent>(256);
         let heal_policy = Self::run_with_story_path_policy(self_heal);
@@ -198,6 +202,7 @@ impl Executor {
                 0,
                 false,
                 pacing,
+                collect_step_geometry,
                 tx,
             )
             .await;
@@ -243,6 +248,7 @@ impl Executor {
                 0,
                 false,
                 PacingConfig::raw(),
+                false,
                 tx,
             )
             .await;
@@ -280,6 +286,7 @@ async fn run_story(
     start_after_ordinal: u32,
     already_launched: bool,
     pacing_config: PacingConfig,
+    collect_step_geometry: bool,
     tx: mpsc::Sender<ExecutorEvent>,
 ) -> Result<()> {
     let started = Instant::now();
@@ -402,12 +409,28 @@ async fn run_story(
                     succeeded += 1;
                     let (cx, cy) = driver.current_cursor_position().await.unwrap_or((0, 0));
                     let duration_ms = cmd_started.elapsed().as_millis() as u64;
+                    let (matched_selector, matched_bbox, match_kind) = match last_resolved.as_ref()
+                    {
+                        Some((rs, kind)) => {
+                            let bbox = if collect_step_geometry || capture_frames {
+                                driver.element_state(rs).await.ok().and_then(|s| s.bbox)
+                            } else {
+                                None
+                            };
+                            (Some(rs.value.clone()), bbox, *kind)
+                        }
+                        None => (None, None, MatchKind::None),
+                    };
                     let _ = tx
                         .send(ExecutorEvent::StepSucceeded {
                             ordinal,
+                            step_id: cmd.step_id(),
                             duration_ms,
                             cursor_x: cx,
                             cursor_y: cy,
+                            matched_selector: matched_selector.clone(),
+                            matched_bbox,
+                            match_kind,
                         })
                         .await;
                     if let (Some(db), Some(sid)) = (persistence.as_ref(), step_id) {
@@ -424,14 +447,6 @@ async fn run_story(
                         } else {
                             None
                         };
-                        let (matched_selector, matched_bbox, match_kind) =
-                            match last_resolved.as_ref() {
-                                Some((rs, kind)) => {
-                                    let state = driver.element_state(rs).await.ok();
-                                    (Some(rs.value.clone()), state.and_then(|s| s.bbox), *kind)
-                                }
-                                None => (None, None, MatchKind::None),
-                            };
                         let frame = StepFrame {
                             ordinal,
                             screenshot_path: shot_path,
@@ -877,6 +892,7 @@ pub async fn continue_run(
         start_after_ordinal,
         true,
         PacingConfig::raw(),
+        capture_frames,
         tx,
     )
     .await

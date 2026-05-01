@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-
-import { fetchProjectFolder, type ProjectFolderInfo } from "@/ipc/projects";
+import { AlertTriangle, ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { RecordingView } from "@/features/recorder/recording-view";
+import { fetchProjectFolder, type ProjectFolderInfo } from "@/ipc/projects";
 
 export default function RecorderRoute() {
   const { projectId } = useParams<{ projectId: string }>();
+  const [searchParams] = useSearchParams();
   const [folder, setFolder] = useState<ProjectFolderInfo | null>(null);
   const [storySource, setStorySource] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +53,10 @@ export default function RecorderRoute() {
 
   if (!folder) {
     return (
-      <main id="main-content" className="mx-auto max-w-2xl p-8 text-sm text-[var(--color-fg-muted)]">
+      <main
+        id="main-content"
+        className="mx-auto max-w-2xl p-8 text-sm text-[var(--color-fg-muted)]"
+      >
         Loading project…
       </main>
     );
@@ -65,6 +68,7 @@ export default function RecorderRoute() {
       projectName={folder.name}
       projectFolder={folder.folder_path}
       storySource={storySource}
+      autoOpenPostProduction={searchParams.get("polish") === "1"}
     />
   );
 }
