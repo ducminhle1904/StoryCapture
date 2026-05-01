@@ -1,9 +1,7 @@
 /**
- * PreviewPlayer — wraps `PreviewEngine` with a React component:
- *   - owns the <canvas> + hidden <video> refs
- *   - instantiates the engine in useEffect (single GPU ctx per mount)
- *   - drives `renderFrame` from a requestAnimationFrame loop while
- *     playing, or on-demand when the store playhead changes (scrub case)
+ * PreviewPlayer — owns the post-production preview surface:
+ *   - default path displays the source through native <video>
+ *   - composited mode keeps the <video> as a source and renders <canvas>
  *   - syncs `<video>.currentTime = playheadMs / 1000` on every scrub
  *
  * The PreviewRenderPlan consumed here is a minimum viable plan: zoom
@@ -14,7 +12,7 @@
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Film } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import previewBackdrop from "@/assets/gradients/forest-emerald.png";
 import { frontendLog } from "@/lib/log";
@@ -23,12 +21,19 @@ import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
 
+type PreviewOutputMode = "native-video" | "composited-canvas";
+
+const DEFAULT_PREVIEW_OUTPUT_MODE: PreviewOutputMode = "native-video";
+const NATIVE_PLAYHEAD_COMMIT_INTERVAL_MS = 16;
+const COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS = 100;
+
 export interface PreviewPlayerProps {
   storyId: string;
   /** Absolute or asset:// path to the recorded source video. */
   videoSrc?: string;
   width?: number;
   height?: number;
+  outputMode?: PreviewOutputMode;
 }
 
 function buildPlan(width: number, height: number): PreviewRenderPlan {
@@ -49,16 +54,21 @@ export function PreviewPlayer({
   videoSrc,
   width = 1920,
   height = 1080,
+  outputMode = DEFAULT_PREVIEW_OUTPUT_MODE,
 }: PreviewPlayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const engineRef = useRef<PreviewEngine | null>(null);
   const rafRef = useRef<number | null>(null);
+  const lastPlayheadCommitRef = useRef(0);
   const [playing, setPlaying] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [engineReady, setEngineReady] = useState(false);
+  const playingRef = useRef(false);
 
-  const playheadMs = useEditorStore((s) => s.playheadMs);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
+  const useCompositedCanvas = outputMode === "composited-canvas";
+  const displayReady = !useCompositedCanvas || engineReady;
+  const renderPlan = useMemo(() => buildPlan(width, height), [width, height]);
 
   const resolvedSrc = videoSrc
     ? videoSrc.startsWith("asset:") || videoSrc.startsWith("http")
@@ -66,8 +76,16 @@ export function PreviewPlayer({
       : convertFileSrc(videoSrc)
     : undefined;
 
-  // Construct/dispose the engine exactly once per mount.
+  // The current UI shows native video. Keep the compositor dormant until its
+  // canvas output is visible, otherwise playback pays hidden GPU work.
   useEffect(() => {
+    if (!useCompositedCanvas) {
+      engineRef.current?.dispose();
+      engineRef.current = null;
+      setEngineReady(false);
+      return;
+    }
+
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video) return;
@@ -86,7 +104,7 @@ export function PreviewPlayer({
           return;
         }
         engineRef.current = engine;
-        setReady(true);
+        setEngineReady(true);
       })
       .catch((err) => {
         frontendLog.warn(
@@ -99,28 +117,43 @@ export function PreviewPlayer({
       disposed = true;
       engineRef.current?.dispose();
       engineRef.current = null;
-      setReady(false);
+      setEngineReady(false);
     };
-  }, [width, height]);
+  }, [useCompositedCanvas, width, height]);
 
-  // Scrub: when playheadMs changes externally, re-render a single frame
-  // + sync the <video> element. Skipped while the rAF loop is driving.
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
+
+  useEffect(() => {
+    return useEditorStore.subscribe((state, prevState) => {
+      if (state.playheadMs === prevState.playheadMs || playingRef.current) return;
+      const video = videoRef.current;
+      if (!video) return;
+      video.currentTime = state.playheadMs / 1000;
+      lastPlayheadCommitRef.current = state.playheadMs;
+
+      if (useCompositedCanvas) {
+        const eng = engineRef.current;
+        if (eng) void eng.renderFrame(state.playheadMs, renderPlan);
+      }
+    });
+  }, [renderPlan, useCompositedCanvas]);
+
   useEffect(() => {
     if (playing) return;
-    const eng = engineRef.current;
-    if (!eng || !videoRef.current) return;
-    videoRef.current.currentTime = playheadMs / 1000;
-    void eng.renderFrame(playheadMs, buildPlan(width, height));
-  }, [playheadMs, playing, width, height]);
-
-  useEffect(() => {
     const video = videoRef.current;
+    if (!displayReady || !video || !resolvedSrc) return;
     const eng = engineRef.current;
-    if (!ready || !video || !eng || !resolvedSrc) return;
+    if (useCompositedCanvas && !eng) return;
 
     const renderLoadedFrame = () => {
-      video.currentTime = playheadMs / 1000;
-      void eng.renderFrame(playheadMs, buildPlan(width, height));
+      const currentPlayheadMs = useEditorStore.getState().playheadMs;
+      video.currentTime = currentPlayheadMs / 1000;
+      lastPlayheadCommitRef.current = currentPlayheadMs;
+      if (useCompositedCanvas && eng) {
+        void eng.renderFrame(currentPlayheadMs, renderPlan);
+      }
     };
 
     if (video.readyState >= 2) {
@@ -132,29 +165,117 @@ export function PreviewPlayer({
     return () => {
       video.removeEventListener("loadeddata", renderLoadedFrame);
     };
-  }, [resolvedSrc, ready, playheadMs, width, height]);
+  }, [displayReady, playing, renderPlan, resolvedSrc, useCompositedCanvas]);
 
-  // rAF loop while playing.
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || useCompositedCanvas) return;
     const video = videoRef.current;
-    const eng = engineRef.current;
-    if (!video || !eng) return;
-    void video.play().catch(() => setPlaying(false));
+    if (!video || !resolvedSrc) return;
+    let disposed = false;
+
+    const commitCurrentTime = () => {
+      const nextPlayheadMs = video.currentTime * 1000;
+      setPlayhead(nextPlayheadMs);
+      lastPlayheadCommitRef.current = nextPlayheadMs;
+    };
 
     const tick = () => {
-      const t_ms = video.currentTime * 1000;
-      setPlayhead(t_ms);
-      void eng.renderFrame(t_ms, buildPlan(width, height));
+      if (disposed) return;
+      if (video.ended || video.paused) {
+        commitCurrentTime();
+        setPlaying(false);
+        return;
+      }
+
+      const nextPlayheadMs = video.currentTime * 1000;
+      if (
+        Math.abs(nextPlayheadMs - lastPlayheadCommitRef.current) >=
+        NATIVE_PLAYHEAD_COMMIT_INTERVAL_MS
+      ) {
+        setPlayhead(nextPlayheadMs);
+        lastPlayheadCommitRef.current = nextPlayheadMs;
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
-    rafRef.current = requestAnimationFrame(tick);
+
+    const stopPlayback = () => {
+      if (disposed) return;
+      commitCurrentTime();
+      setPlaying(false);
+    };
+
+    video.addEventListener("pause", stopPlayback);
+    video.addEventListener("ended", stopPlayback);
+
+    void video
+      .play()
+      .then(() => {
+        if (!disposed) rafRef.current = requestAnimationFrame(tick);
+      })
+      .catch(() => {
+        if (!disposed) setPlaying(false);
+      });
+
     return () => {
+      disposed = true;
+      video.removeEventListener("pause", stopPlayback);
+      video.removeEventListener("ended", stopPlayback);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
       video.pause();
+      commitCurrentTime();
     };
-  }, [playing, setPlayhead, width, height]);
+  }, [playing, resolvedSrc, setPlayhead, useCompositedCanvas]);
+
+  // rAF loop while playing the visible composited canvas.
+  useEffect(() => {
+    if (!playing || !useCompositedCanvas) return;
+    const video = videoRef.current;
+    const eng = engineRef.current;
+    if (!video || !resolvedSrc) return;
+    if (!eng) return;
+    let disposed = false;
+
+    const tick = () => {
+      if (disposed) return;
+      if (video.ended || video.paused) {
+        const finalPlayheadMs = video.currentTime * 1000;
+        setPlayhead(finalPlayheadMs);
+        lastPlayheadCommitRef.current = finalPlayheadMs;
+        setPlaying(false);
+        return;
+      }
+
+      const t_ms = video.currentTime * 1000;
+      if (
+        Math.abs(t_ms - lastPlayheadCommitRef.current) >= COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS
+      ) {
+        setPlayhead(t_ms);
+        lastPlayheadCommitRef.current = t_ms;
+      }
+      void eng.renderFrame(t_ms, renderPlan);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    void video
+      .play()
+      .then(() => {
+        if (!disposed) rafRef.current = requestAnimationFrame(tick);
+      })
+      .catch(() => {
+        if (!disposed) setPlaying(false);
+      });
+
+    return () => {
+      disposed = true;
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      video.pause();
+      const finalPlayheadMs = video.currentTime * 1000;
+      setPlayhead(finalPlayheadMs);
+      lastPlayheadCommitRef.current = finalPlayheadMs;
+    };
+  }, [playing, renderPlan, resolvedSrc, setPlayhead, useCompositedCanvas]);
 
   const togglePlay = useCallback(() => setPlaying((p) => !p), []);
 
@@ -183,7 +304,7 @@ export function PreviewPlayer({
     <div
       className="flex h-full w-full flex-col bg-[var(--sc-surface-2)]"
       data-story-id={storyId}
-      data-preview-ready={ready ? "true" : "false"}
+      data-preview-ready={displayReady ? "true" : "false"}
     >
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3">
         <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[color-mix(in_oklch,var(--sc-text)_5%,var(--sc-surface))] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--sc-surface)_92%,transparent)]">
@@ -214,7 +335,7 @@ export function PreviewPlayer({
             </div>
           ) : null}
 
-          {resolvedSrc ? (
+          {resolvedSrc && !useCompositedCanvas ? (
             <video
               ref={videoRef}
               muted
@@ -226,17 +347,30 @@ export function PreviewPlayer({
               aria-label="Source video preview"
             />
           ) : null}
-          <canvas
-            ref={canvasRef}
-            width={width}
-            height={height}
-            className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-0"
-            aria-label="Composited preview canvas"
-          />
+          {useCompositedCanvas ? (
+            <canvas
+              ref={canvasRef}
+              width={width}
+              height={height}
+              className="relative z-10 h-full w-full object-contain"
+              aria-label="Composited preview canvas"
+            />
+          ) : null}
           <div className="absolute bottom-3 left-3 z-20 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/88 px-2.5 py-2 shadow-[var(--sc-sh-1)] backdrop-blur">
             <TransportControls playing={playing} onTogglePlay={togglePlay} />
           </div>
         </div>
+        {resolvedSrc && useCompositedCanvas ? (
+          <video
+            ref={videoRef}
+            hidden
+            muted
+            playsInline
+            preload="auto"
+            src={resolvedSrc}
+            onError={handleVideoError}
+          />
+        ) : null}
         {!resolvedSrc ? (
           <video
             ref={videoRef}

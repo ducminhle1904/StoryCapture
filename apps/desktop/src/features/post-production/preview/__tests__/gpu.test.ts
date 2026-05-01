@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initPreviewContext } from "../gpu";
 
-function makeCanvas(
-  getContext: (id: string) => unknown,
-): HTMLCanvasElement {
+function makeCanvas(getContext: (id: string) => unknown): HTMLCanvasElement {
   return { getContext } as unknown as HTMLCanvasElement;
 }
 
@@ -23,6 +21,7 @@ describe("initPreviewContext", () => {
   it("gpu_webgpu_happy_path: returns webgpu ctx when navigator.gpu and adapter available", async () => {
     const device = { __kind: "device" } as unknown as GPUDevice;
     const adapter = {
+      features: new Set(),
       requestDevice: vi.fn(async () => device),
     } as unknown as GPUAdapter;
     const context = {
@@ -76,9 +75,7 @@ describe("initPreviewContext", () => {
 
     const canvas = makeCanvas(() => null);
 
-    await expect(initPreviewContext(canvas)).rejects.toThrow(
-      /preview unsupported/i,
-    );
+    await expect(initPreviewContext(canvas)).rejects.toThrow(/preview unsupported/i);
   });
 
   it("gpu_webgpu_context_missing_falls_back_to_webgl2", async () => {

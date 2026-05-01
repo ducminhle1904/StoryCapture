@@ -7,7 +7,7 @@ import { useProjectRecordings } from "@/ipc/projects";
 
 export type PreviewSurfaceProps =
   | {
-      mode: "composited";
+      mode: "post-production";
       storyId: string;
       videoSrc?: string;
       width?: number;
@@ -19,7 +19,7 @@ export type PreviewSurfaceProps =
     };
 
 export function PreviewSurface(props: PreviewSurfaceProps) {
-  if (props.mode === "composited") {
+  if (props.mode === "post-production") {
     return (
       <PreviewPlayer
         storyId={props.storyId}

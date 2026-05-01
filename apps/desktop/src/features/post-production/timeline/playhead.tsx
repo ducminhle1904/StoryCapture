@@ -16,19 +16,23 @@ export interface PlayheadProps {
 
 function PlayheadBase({ pxPerMs, height }: PlayheadProps) {
   const playheadMs = useEditorStore((s) => s.playheadMs);
-  const left = playheadMs * pxPerMs;
+  const translateX = playheadMs * pxPerMs;
+  const label = `Playhead at ${(playheadMs / 1000).toFixed(2)} seconds`;
 
   return (
-    <div
-      role="separator"
-      aria-label={`Playhead at ${(playheadMs / 1000).toFixed(2)} seconds`}
-      aria-valuenow={Math.round(playheadMs)}
-      className="pointer-events-none absolute top-0 z-10"
-      style={{ left, height }}
-    >
-      <div className="h-full w-px bg-[var(--color-accent,#ff5b76)]" />
-      <div className="absolute -top-1 -left-1 h-2 w-2 rotate-45 bg-[var(--color-accent,#ff5b76)]" />
-    </div>
+    <>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0 left-0 z-10 will-change-transform"
+        style={{ height, transform: `translate3d(${translateX}px, 0, 0)` }}
+      >
+        <div className="h-full w-px bg-[var(--color-accent,#ff5b76)]" />
+        <div className="absolute -top-1 -left-1 h-2 w-2 rotate-45 bg-[var(--color-accent,#ff5b76)]" />
+      </div>
+      <output className="sr-only" aria-live="off">
+        {label}
+      </output>
+    </>
   );
 }
 

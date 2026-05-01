@@ -262,7 +262,6 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const previewWidthPct = useEditorStore((s) => s.previewWidthPct);
   const setSoundDrawerOpen = useEditorStore((s) => s.setSoundDrawerOpen);
   const setExportModalOpen = useEditorStore((s) => s.setExportModalOpen);
-  const playheadMs = useEditorStore((s) => s.playheadMs);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const pushAction = useEditorStore((s) => s.pushAction);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
@@ -507,6 +506,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     workspaceMode === "review" ? "100%" : `calc(100% - ${timelinePanelHeightPx + 12}px)`;
 
   const addZoomAtPlayhead = useCallback(() => {
+    const playheadMs = useEditorStore.getState().playheadMs;
     const clip: ZoomClip = {
       id: createClipId("zoom"),
       trackId: "zoom",
@@ -521,9 +521,10 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     pushAction({ kind: "add-clip", trackId: "zoom", clip });
     setSelectedClipId(clip.id);
     setSelectedTab("effects");
-  }, [playheadMs, pushAction, setSelectedClipId, setSelectedTab]);
+  }, [pushAction, setSelectedClipId, setSelectedTab]);
 
   const addTextAtPlayhead = useCallback(() => {
+    const playheadMs = useEditorStore.getState().playheadMs;
     const clip: AnnotationClip = {
       id: createClipId("text"),
       trackId: "annotations",
@@ -538,7 +539,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     pushAction({ kind: "add-clip", trackId: "annotations", clip });
     setSelectedClipId(clip.id);
     setSelectedTab("effects");
-  }, [playheadMs, pushAction, setSelectedClipId, setSelectedTab]);
+  }, [pushAction, setSelectedClipId, setSelectedTab]);
 
   const inspectorContent = !projectOpenReady ? (
     <div role="status" className="p-5 text-sm text-[var(--sc-text-3)]">
@@ -695,7 +696,11 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>
-              <PreviewSurface mode="composited" storyId={storyId} videoSrc={resolvedVideoSrc} />
+              <PreviewSurface
+                mode="post-production"
+                storyId={storyId}
+                videoSrc={resolvedVideoSrc}
+              />
               {(showEmptyOverlay || showErrorOverlay) && (
                 <div
                   className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"

@@ -9,7 +9,7 @@
  * is a fixed record, not an array.
  */
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { AnnotationsTrack } from "../layer-tracks/annotations-track";
 import { CursorTrack } from "../layer-tracks/cursor-track";
@@ -35,6 +35,8 @@ export interface TimelineProps {
 const TRACK_HEIGHT = 40;
 const RULER_HEIGHT = 20;
 const LABEL_GUTTER_PX = 88;
+const FOLLOW_LEFT_PX = 160;
+const FOLLOW_RIGHT_PX = 240;
 
 /**
  * Dispatch a track row to the per-layer adapter when it adds UX (context
@@ -70,6 +72,7 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const snapEnabled = useEditorStore((s) => s.snapEnabled);
 
+  const scrollRef = useRef<HTMLElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
 
   // Fallback minimum visible duration so the ruler is not collapsed when
@@ -111,8 +114,50 @@ export function Timeline({ storyId, pxPerMs = 0.1 }: TimelineProps) {
     window.addEventListener("pointerup", onUp);
   };
 
+  useEffect(() => {
+    let lastScrollTarget = -1;
+    let pendingScrollLeft: number | null = null;
+    let pendingRaf: number | null = null;
+
+    const flushScroll = () => {
+      pendingRaf = null;
+      if (pendingScrollLeft === null) return;
+      const scrollEl = scrollRef.current;
+      if (scrollEl) scrollEl.scrollLeft = pendingScrollLeft;
+      pendingScrollLeft = null;
+    };
+
+    const unsubscribe = useEditorStore.subscribe((state, prevState) => {
+      if (state.playheadMs === prevState.playheadMs) return;
+      const scrollEl = scrollRef.current;
+      if (!scrollEl) return;
+
+      const playheadX = LABEL_GUTTER_PX + state.playheadMs * pxPerMs;
+      const visibleLeft = scrollEl.scrollLeft;
+      const visibleRight = visibleLeft + scrollEl.clientWidth;
+
+      let nextLeft: number | null = null;
+      if (playheadX > visibleRight - FOLLOW_RIGHT_PX) {
+        nextLeft = Math.max(0, playheadX - Math.round(scrollEl.clientWidth * 0.35));
+      } else if (playheadX < visibleLeft + LABEL_GUTTER_PX + FOLLOW_LEFT_PX) {
+        nextLeft = Math.max(0, playheadX - LABEL_GUTTER_PX - FOLLOW_LEFT_PX);
+      }
+
+      if (nextLeft === null || Math.abs(nextLeft - lastScrollTarget) < 8) return;
+      lastScrollTarget = nextLeft;
+      pendingScrollLeft = nextLeft;
+      if (pendingRaf === null) pendingRaf = requestAnimationFrame(flushScroll);
+    });
+
+    return () => {
+      unsubscribe();
+      if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
+    };
+  }, [pxPerMs]);
+
   return (
     <section
+      ref={scrollRef}
       aria-label="Timeline"
       data-story-id={storyId}
       data-snap-enabled={snapEnabled ? "true" : "false"}

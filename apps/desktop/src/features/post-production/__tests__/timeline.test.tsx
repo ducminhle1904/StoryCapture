@@ -6,9 +6,9 @@
  *   - Clips carry ARIA labels for screen readers
  */
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useEditorStore } from "../state/store";
 import { Timeline } from "../timeline/timeline";
@@ -39,6 +39,10 @@ beforeEach(() => {
   resetStore();
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("Timeline", () => {
   it("renders the region with aria-label and 5 fixed tracks", () => {
     render(<Timeline storyId="s1" pxPerMs={1} />);
@@ -51,6 +55,30 @@ describe("Timeline", () => {
     expect(screen.getByRole("region", { name: /zoom track/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /sound track/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /annotations track/i })).toBeInTheDocument();
+  });
+
+  it("auto-scrolls horizontally to keep the playhead in view", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    render(<Timeline storyId="s1" pxPerMs={1} />);
+    const timeline = screen.getByRole("region", { name: /^timeline$/i });
+    Object.defineProperty(timeline, "clientWidth", { value: 500, configurable: true });
+    Object.defineProperty(timeline, "scrollLeft", { value: 0, writable: true, configurable: true });
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(1_000);
+    });
+
+    expect(timeline.scrollLeft).toBeGreaterThan(0);
+
+    const currentScrollLeft = timeline.scrollLeft;
+    act(() => {
+      useEditorStore.getState().setSnapEnabled(false);
+    });
+    expect(timeline.scrollLeft).toBe(currentScrollLeft);
   });
 
   it("renders clips with descriptive ARIA labels", () => {

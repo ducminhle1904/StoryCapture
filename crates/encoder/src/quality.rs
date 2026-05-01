@@ -91,11 +91,36 @@ pub fn resolve_with_realtime(
 ) -> Vec<String> {
     match encoder {
         HardwareEncoder::Libx264Software => match preset {
-            QualityPreset::Low => {
-                vec_of!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"]
-            }
-            QualityPreset::Med => vec_of!["-crf", "20", "-preset", "medium", "-tune", "stillimage"],
-            QualityPreset::High => vec_of!["-crf", "18", "-preset", "slow", "-tune", "stillimage"],
+            QualityPreset::Low => vec_of![
+                "-crf",
+                "26",
+                "-preset",
+                "veryfast",
+                "-tune",
+                "stillimage",
+                "-profile:v",
+                "high"
+            ],
+            QualityPreset::Med => vec_of![
+                "-crf",
+                "20",
+                "-preset",
+                "medium",
+                "-tune",
+                "stillimage",
+                "-profile:v",
+                "high"
+            ],
+            QualityPreset::High => vec_of![
+                "-crf",
+                "18",
+                "-preset",
+                "slow",
+                "-tune",
+                "stillimage",
+                "-profile:v",
+                "high"
+            ],
             QualityPreset::Lossless => {
                 vec_of!["-crf", "0", "-preset", "ultrafast", "-tune", "zerolatency"]
             }
@@ -339,7 +364,16 @@ mod tests {
         );
         assert_eq!(
             got,
-            vec!["-crf", "20", "-preset", "medium", "-tune", "stillimage"]
+            vec![
+                "-crf",
+                "20",
+                "-preset",
+                "medium",
+                "-tune",
+                "stillimage",
+                "-profile:v",
+                "high"
+            ]
         );
     }
 
@@ -355,7 +389,16 @@ mod tests {
         assert!(got.iter().any(|a| a == "-tune"));
         assert_eq!(
             got,
-            vec!["-crf", "26", "-preset", "veryfast", "-tune", "stillimage"]
+            vec![
+                "-crf",
+                "26",
+                "-preset",
+                "veryfast",
+                "-tune",
+                "stillimage",
+                "-profile:v",
+                "high"
+            ]
         );
     }
 
@@ -370,7 +413,16 @@ mod tests {
         );
         assert_eq!(
             got,
-            vec!["-crf", "18", "-preset", "slow", "-tune", "stillimage"]
+            vec![
+                "-crf",
+                "18",
+                "-preset",
+                "slow",
+                "-tune",
+                "stillimage",
+                "-profile:v",
+                "high"
+            ]
         );
     }
 
