@@ -85,7 +85,7 @@ case "$OS" in
 esac
 
 # ----------------------------------------------------------------------
-# 2. Recorder encoder enforcement
+# 2. Recorder encoder / cursor decoder enforcement
 # ----------------------------------------------------------------------
 # `ffmpeg -buildconf` prints all configure flags. libx264 requires GPL, and
 # libx265 and nonfree remain forbidden by the repo's codec policy.
@@ -106,6 +106,16 @@ if BUILDCONF="$("$BIN" -hide_banner -buildconf 2>&1)"; then
   echo "[verify-static] encoders: GPL + libx264 present; libx265/nonfree absent"
 else
   echo "[verify-static] WARN: could not run '$BIN -buildconf' (cross-compiled binary?) — skipping encoder grep" >&2
+fi
+
+if DECODERS="$("$BIN" -hide_banner -decoders 2>&1)"; then
+  if ! echo "$DECODERS" | grep -E '^[[:space:]]*V[^[:space:]]*[[:space:]]+png[[:space:]]' >/dev/null; then
+    echo "[verify-static] FAIL: png decoder missing; virtual cursor overlay consumes PNG frame sequences" >&2
+    exit 1
+  fi
+  echo "[verify-static] decoders: png present for cursor overlays"
+else
+  echo "[verify-static] WARN: could not run '$BIN -decoders' (cross-compiled binary?) — skipping decoder grep" >&2
 fi
 
 echo "[verify-static] PASS: $BIN is statically linked + recorder encoder ready"

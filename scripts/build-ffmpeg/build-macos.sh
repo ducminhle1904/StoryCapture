@@ -189,8 +189,9 @@ CONFIGURE_FLAGS=(
   --enable-small
   --enable-videotoolbox
   --enable-audiotoolbox
+  --enable-zlib
   --enable-encoder=libx264,h264_videotoolbox,hevc_videotoolbox,aac,pcm_s16le
-  --enable-decoder=h264,hevc,aac,pcm_s16le,rawvideo
+  --enable-decoder=h264,hevc,aac,pcm_s16le,rawvideo,png
   --enable-parser=h264,hevc,aac
   --enable-muxer=mp4,mov,matroska,null
   --enable-demuxer=mov,matroska,rawvideo,aac

@@ -28,7 +28,14 @@ fn fixtures() -> Fx {
     let (notes, _keep_open) = broadcast::channel::<Notification>(32);
     let (preview_tx, preview_rx) = watch::channel::<Option<PreviewFrame>>(None);
     let (nav_tx, nav_rx) = watch::channel::<Option<NavSnapshot>>(None);
-    Fx { pending, notes, preview_tx, preview_rx, nav_tx, nav_rx }
+    Fx {
+        pending,
+        notes,
+        preview_tx,
+        preview_rx,
+        nav_tx,
+        nav_rx,
+    }
 }
 
 // Test A — notification parses and lands on the watch channel.
@@ -41,7 +48,11 @@ async fn notification_publishes_preview_frame_on_watch_channel() {
         .await
         .expect("watch never changed")
         .expect("watch sender dropped");
-    let frame = fx.preview_rx.borrow().clone().expect("expected Some(frame)");
+    let frame = fx
+        .preview_rx
+        .borrow()
+        .clone()
+        .expect("expected Some(frame)");
     assert_eq!(frame.data, "AAAA");
     assert_eq!(frame.width, 16);
     assert_eq!(frame.height, 16);
@@ -53,7 +64,8 @@ async fn notification_publishes_preview_frame_on_watch_channel() {
 #[tokio::test]
 async fn response_resolves_pending_oneshot_and_leaves_watch_untouched() {
     let fx = fixtures();
-    let (oneshot_tx, oneshot_rx) = oneshot::channel::<std::result::Result<serde_json::Value, String>>();
+    let (oneshot_tx, oneshot_rx) =
+        oneshot::channel::<std::result::Result<serde_json::Value, String>>();
     fx.pending.lock().await.insert(7, oneshot_tx);
 
     let line = r#"{"jsonrpc":"2.0","id":7,"result":{"ok":true}}"#;
@@ -65,7 +77,10 @@ async fn response_resolves_pending_oneshot_and_leaves_watch_untouched() {
         .expect("oneshot sender dropped")
         .expect("rpc result was error");
     assert_eq!(resolved["ok"], true);
-    assert!(fx.preview_rx.borrow().is_none(), "watch must not be touched by response");
+    assert!(
+        fx.preview_rx.borrow().is_none(),
+        "watch must not be touched by response"
+    );
 }
 
 // Test C — interleaved stream: response, notification, response, notification.
@@ -135,10 +150,12 @@ async fn malformed_preview_frame_params_do_not_panic_or_update_watch() {
     let fx = fixtures();
     // `data` is the wrong type — serde decode into PreviewFrame must fail
     // and the reader must NOT crash.
-    let line =
-        r#"{"jsonrpc":"2.0","method":"preview/frame","params":{"data":42,"width":1,"height":1,"timestamp":1.0}}"#;
+    let line = r#"{"jsonrpc":"2.0","method":"preview/frame","params":{"data":42,"width":1,"height":1,"timestamp":1.0}}"#;
     handle_sidecar_line(line, &fx.pending, &fx.notes, &fx.preview_tx, &fx.nav_tx).await;
-    assert!(fx.preview_rx.borrow().is_none(), "watch must be unchanged on malformed payload");
+    assert!(
+        fx.preview_rx.borrow().is_none(),
+        "watch must be unchanged on malformed payload"
+    );
 }
 
 // Test E — unknown notification methods are tolerated: no panic, watch
@@ -154,7 +171,10 @@ async fn unknown_notification_method_is_tolerated_and_watch_unchanged() {
         .expect("broadcast never received")
         .expect("channel closed");
     assert_eq!(got.method, "unknown/thing");
-    assert!(fx.preview_rx.borrow().is_none(), "watch must be unchanged on unknown method");
+    assert!(
+        fx.preview_rx.borrow().is_none(),
+        "watch must be unchanged on unknown method"
+    );
 }
 
 // preview/nav notification parses and lands on the nav watch channel.
@@ -167,7 +187,11 @@ async fn notification_publishes_nav_snapshot_on_watch_channel() {
         .await
         .expect("nav watch never changed")
         .expect("nav watch sender dropped");
-    let snap = fx.nav_rx.borrow().clone().expect("expected Some(NavSnapshot)");
+    let snap = fx
+        .nav_rx
+        .borrow()
+        .clone()
+        .expect("expected Some(NavSnapshot)");
     assert_eq!(snap.stream_id, "s1");
     assert_eq!(snap.url, "https://example.com/");
     assert!(snap.can_go_back);

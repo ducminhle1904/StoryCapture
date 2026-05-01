@@ -44,12 +44,10 @@ export async function fetchRecordingTrajectory(
   });
 }
 
-export function useRecordingTrajectory(recordingPath: string | undefined) {
+export function useRecordingTrajectory(recordingPath: string | undefined, enabled = true) {
   return useQuery({
-    queryKey: recordingPath
-      ? KEYS.trajectory(recordingPath)
-      : ["trajectory", "__disabled__"],
+    queryKey: recordingPath ? KEYS.trajectory(recordingPath) : ["trajectory", "__disabled__"],
     queryFn: () => fetchRecordingTrajectory(recordingPath as string),
-    enabled: !!recordingPath,
+    enabled: !!recordingPath && enabled,
   });
 }

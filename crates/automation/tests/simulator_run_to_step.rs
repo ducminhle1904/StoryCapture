@@ -279,6 +279,7 @@ async fn run_stops_at_ordinal() {
             ExecutorEvent::StoryEnded { .. } => "story_ended",
             ExecutorEvent::RunPaused { .. } => "run_paused",
             ExecutorEvent::StepFrameCaptured { .. } => "step_frame_captured",
+            ExecutorEvent::ActionRecorded { .. } => "action_recorded",
         })
         .collect();
     assert!(

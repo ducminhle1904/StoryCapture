@@ -12,6 +12,9 @@
 //! pattern). The optional `ProjectDb` writer persists session / step /
 //! attempt rows.
 
+use crate::action_timeline::{
+    ActionPoint, ActionPointer, ActionTarget, ActionTimelineEvent, PointerButton,
+};
 use crate::capability::{driver_for, required_for};
 use crate::control::RunControl;
 use crate::driver::{ActionKind, BrowserDriver, LaunchConfig, LaunchOptions, ResolvedSelector};
@@ -384,6 +387,7 @@ async fn run_story(
                 story_path.as_deref(),
                 heal_policy,
                 pacing_config,
+                started,
             )
             .await;
 
@@ -514,6 +518,7 @@ async fn run_command(
     story_path: Option<&std::path::Path>,
     heal_policy: HealPolicy,
     pacing: PacingConfig,
+    run_started: Instant,
 ) -> std::result::Result<Option<(ResolvedSelector, MatchKind)>, (AutomationError, Vec<AttemptLog>)>
 {
     let mut attempts: Vec<AttemptLog> = Vec::new();
@@ -624,10 +629,29 @@ async fn run_command(
         } => {
             let sel = resolve!(target, *target_nth, ActionKind::Click);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Click);
+            let target_box = action_target(driver, &sel, Some(target_label(target))).await;
             wait_with_pause(pacing.clamp_dwell(pacing.before_click_ms), control, driver)
                 .await
                 .map_err(|e| (e, attempts.clone()))?;
-            driver.click(&sel).await
+            let t_action_ms = timeline_ms(run_started);
+            let action_result = driver.click(&sel).await;
+            emit_successful_action(
+                tx,
+                &action_result,
+                ActionEventDraft {
+                    step_id: cmd_step_id,
+                    ordinal,
+                    verb: "click",
+                    t_start_ms: t_action_ms,
+                    t_action_ms,
+                    target: target_box,
+                    secondary_target: None,
+                    pointer: Some(click_pointer()),
+                },
+                run_started,
+            )
+            .await;
+            action_result
         }
         Command::Type {
             target,
@@ -637,7 +661,26 @@ async fn run_command(
         } => {
             let sel = resolve!(target, *target_nth, ActionKind::Type);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Type);
-            driver.type_text(&sel, text).await
+            let target_box = action_target(driver, &sel, Some(target_label(target))).await;
+            let t_start_ms = timeline_ms(run_started);
+            let action_result = driver.type_text(&sel, text).await;
+            emit_successful_action(
+                tx,
+                &action_result,
+                ActionEventDraft {
+                    step_id: cmd_step_id,
+                    ordinal,
+                    verb: "type",
+                    t_start_ms,
+                    t_action_ms: t_start_ms,
+                    target: target_box,
+                    secondary_target: None,
+                    pointer: None,
+                },
+                run_started,
+            )
+            .await;
+            action_result
         }
         Command::Scroll {
             direction, amount, ..
@@ -647,7 +690,26 @@ async fn run_command(
         } => {
             let sel = resolve!(target, *target_nth, ActionKind::Hover);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Hover);
-            driver.hover(&sel).await
+            let target_box = action_target(driver, &sel, Some(target_label(target))).await;
+            let t_start_ms = timeline_ms(run_started);
+            let action_result = driver.hover(&sel).await;
+            emit_successful_action(
+                tx,
+                &action_result,
+                ActionEventDraft {
+                    step_id: cmd_step_id,
+                    ordinal,
+                    verb: "hover",
+                    t_start_ms,
+                    t_action_ms: t_start_ms,
+                    target: target_box,
+                    secondary_target: None,
+                    pointer: None,
+                },
+                run_started,
+            )
+            .await;
+            action_result
         }
         Command::Drag {
             from,
@@ -667,7 +729,27 @@ async fn run_command(
             {
                 return Err((e, attempts));
             }
-            driver.drag(&sf, &st).await
+            let from_box = action_target(driver, &sf, Some(target_label(from))).await;
+            let to_box = action_target(driver, &st, Some(target_label(to))).await;
+            let t_start_ms = timeline_ms(run_started);
+            let action_result = driver.drag(&sf, &st).await;
+            emit_successful_action(
+                tx,
+                &action_result,
+                ActionEventDraft {
+                    step_id: cmd_step_id,
+                    ordinal,
+                    verb: "drag",
+                    t_start_ms,
+                    t_action_ms: t_start_ms,
+                    target: from_box,
+                    secondary_target: to_box,
+                    pointer: None,
+                },
+                run_started,
+            )
+            .await;
+            action_result
         }
         Command::Select {
             target,
@@ -677,7 +759,26 @@ async fn run_command(
         } => {
             let sel = resolve!(target, *target_nth, ActionKind::Select);
             let sel = wait_actionable_or_heal!(sel, ActionKind::Select);
-            driver.select_option(&sel, value).await
+            let target_box = action_target(driver, &sel, Some(target_label(target))).await;
+            let t_start_ms = timeline_ms(run_started);
+            let action_result = driver.select_option(&sel, value).await;
+            emit_successful_action(
+                tx,
+                &action_result,
+                ActionEventDraft {
+                    step_id: cmd_step_id,
+                    ordinal,
+                    verb: "select",
+                    t_start_ms,
+                    t_action_ms: t_start_ms,
+                    target: target_box,
+                    secondary_target: None,
+                    pointer: None,
+                },
+                run_started,
+            )
+            .await;
+            action_result
         }
         Command::Upload {
             target,
@@ -686,7 +787,26 @@ async fn run_command(
             ..
         } => {
             let sel = resolve!(target, *target_nth, ActionKind::Upload);
-            driver.upload_file(&sel, std::path::Path::new(path)).await
+            let target_box = action_target(driver, &sel, Some(target_label(target))).await;
+            let t_start_ms = timeline_ms(run_started);
+            let action_result = driver.upload_file(&sel, std::path::Path::new(path)).await;
+            emit_successful_action(
+                tx,
+                &action_result,
+                ActionEventDraft {
+                    step_id: cmd_step_id,
+                    ordinal,
+                    verb: "upload",
+                    t_start_ms,
+                    t_action_ms: t_start_ms,
+                    target: target_box,
+                    secondary_target: None,
+                    pointer: None,
+                },
+                run_started,
+            )
+            .await;
+            action_result
         }
         Command::Wait { duration_ms, .. } => wait_with_pause(*duration_ms, control, driver).await,
         Command::WaitFor {
@@ -909,6 +1029,88 @@ fn format_verb_excerpt(cmd: &Command) -> String {
 
 fn is_cancelled(control: Option<&RunControl>) -> bool {
     control.map(|c| c.is_cancelled()).unwrap_or(false)
+}
+
+fn timeline_ms(started: Instant) -> u64 {
+    started.elapsed().as_millis() as u64
+}
+
+struct ActionEventDraft {
+    step_id: Option<uuid::Uuid>,
+    ordinal: u32,
+    verb: &'static str,
+    t_start_ms: u64,
+    t_action_ms: u64,
+    target: Option<ActionTarget>,
+    secondary_target: Option<ActionTarget>,
+    pointer: Option<ActionPointer>,
+}
+
+async fn emit_successful_action(
+    tx: &mpsc::Sender<ExecutorEvent>,
+    action_result: &Result<()>,
+    draft: ActionEventDraft,
+    run_started: Instant,
+) {
+    if action_result.is_err() {
+        return;
+    }
+    emit_action(
+        tx,
+        ActionTimelineEvent {
+            step_id: draft.step_id.map(|id| id.to_string()),
+            ordinal: draft.ordinal,
+            verb: draft.verb.into(),
+            t_start_ms: draft.t_start_ms,
+            t_action_ms: draft.t_action_ms,
+            t_end_ms: timeline_ms(run_started),
+            target: draft.target,
+            secondary_target: draft.secondary_target,
+            pointer: draft.pointer,
+        },
+    )
+    .await;
+}
+
+fn click_pointer() -> ActionPointer {
+    ActionPointer {
+        button: PointerButton::Left,
+        effect: "click".into(),
+    }
+}
+
+async fn emit_action(tx: &mpsc::Sender<ExecutorEvent>, event: ActionTimelineEvent) {
+    let _ = tx.send(ExecutorEvent::ActionRecorded { event }).await;
+}
+
+async fn action_target(
+    driver: &dyn BrowserDriver,
+    sel: &ResolvedSelector,
+    label: Option<String>,
+) -> Option<ActionTarget> {
+    let state = driver.element_state(sel).await.ok()?;
+    let bounds = state.bbox?;
+    Some(ActionTarget {
+        kind: "element".into(),
+        label,
+        center: ActionPoint {
+            x: bounds.x + bounds.w / 2.0,
+            y: bounds.y + bounds.h / 2.0,
+        },
+        bounds,
+    })
+}
+
+fn target_label(target: &story_parser::SelectorOrText) -> String {
+    match target {
+        story_parser::SelectorOrText::Text(s)
+        | story_parser::SelectorOrText::Selector(s)
+        | story_parser::SelectorOrText::TestId(s)
+        | story_parser::SelectorOrText::Aria(s)
+        | story_parser::SelectorOrText::Label(s)
+        | story_parser::SelectorOrText::TextExact(s) => s.clone(),
+        story_parser::SelectorOrText::Role { name, .. } => name.clone(),
+    }
 }
 
 async fn wait_with_pause(

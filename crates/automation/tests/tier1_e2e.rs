@@ -57,15 +57,10 @@ async fn tier1_new_and_legacy_forms_compile_against_smart_selector() {
                 Command::Hover { target, .. } => (target, ActionKind::Hover),
                 _ => continue,
             };
-            let (resolved, attempts) = SmartSelector::resolve_with_attempts(
-                driver.as_ref(),
-                action,
-                target,
-                None,
-                5_000,
-            )
-            .await
-            .unwrap_or_else(|e| panic!("resolve failed for {target:?}: {e:?}"));
+            let (resolved, attempts) =
+                SmartSelector::resolve_with_attempts(driver.as_ref(), action, target, None, 5_000)
+                    .await
+                    .unwrap_or_else(|e| panic!("resolve failed for {target:?}: {e:?}"));
 
             match target {
                 SelectorOrText::Role { .. } => {

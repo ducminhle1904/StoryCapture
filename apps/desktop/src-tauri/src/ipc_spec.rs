@@ -18,7 +18,7 @@ use tauri_specta::{collect_commands, Builder};
 
 use crate::{
     commands::{
-        app_settings, audio, author_snapshot, automation, capture, dryrun, encode, export,
+        actions, app_settings, audio, author_snapshot, automation, capture, dryrun, encode, export,
         frontend_log, keys, lsp, nl, parse, picker, preset, projects, region_overlay, render,
         simulator, sound_library, system, timeline, trajectory, tts, updater, upload, web_account,
         web_sync,
@@ -117,6 +117,7 @@ pub fn builder() -> Builder<Wry> {
             projects::open_project,
             projects::remove_project,
             projects::list_project_recordings,
+            actions::get_recording_actions,
             // Phase 19-02 cursor trajectory sidecar reader.
             trajectory::get_recording_trajectory,
             render::render_enqueue,
@@ -245,6 +246,16 @@ pub fn builder() -> Builder<Wry> {
         .typ::<projects::CreateProjectArgs>()
         .typ::<projects::ProjectIdArg>()
         .typ::<projects::RecordingInfoDto>()
+        // Semantic cursor action sidecar.
+        .typ::<actions::ActionTimelineDto>()
+        .typ::<actions::ActionTimelineEventDto>()
+        .typ::<actions::ActionTargetDto>()
+        .typ::<actions::ActionPointDto>()
+        .typ::<actions::ActionBoundsDto>()
+        .typ::<actions::ActionPointerDto>()
+        .typ::<actions::ActionCaptureRectDto>()
+        .typ::<actions::ActionViewportDto>()
+        .typ::<actions::GetRecordingActionsArgs>()
         // Phase 19-02 cursor trajectory.
         .typ::<trajectory::TrajectoryDto>()
         .typ::<trajectory::TrajectoryFrameDto>()

@@ -488,7 +488,12 @@ mod targets_store_tests {
         let by_kind: std::collections::HashMap<_, _> = file
             .steps
             .values()
-            .map(|s| (s.primary.value.as_str().unwrap_or("").to_string(), s.primary.nth))
+            .map(|s| {
+                (
+                    s.primary.value.as_str().unwrap_or("").to_string(),
+                    s.primary.nth,
+                )
+            })
             .collect();
         assert_eq!(by_kind.get("old").copied(), Some(None));
         assert_eq!(by_kind.get("row").copied(), Some(Some(2)));

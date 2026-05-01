@@ -1,6 +1,7 @@
 /**
- * Per-recording include-cursor switch. Non-sticky, defaults ON every
- * recording. The bool reaches both SCK `with_shows_cursor` and WGC
+ * Per-recording real OS cursor switch. Non-sticky, defaults OFF because
+ * polished demo cursor paths are synthesized later in Post Production.
+ * The bool reaches both SCK `with_shows_cursor` and WGC
  * `CursorCaptureSettings` via `StartRecordingArgs.include_cursor`.
  */
 
@@ -20,15 +21,15 @@ export function CursorToggle({ checked, onChange, disabled }: CursorToggleProps)
       className={`flex items-center justify-between text-[var(--color-fg-secondary)] ${
         disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
       }`}
-      title="Include the mouse cursor in the captured video."
+      title="Include the real OS cursor in the raw recording."
     >
-      <span>Show cursor</span>
+      <span>Capture real cursor</span>
       <button
         id={id}
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-label="Include cursor in recording"
+        aria-label="Include real cursor in recording"
         disabled={disabled}
         onClick={() => {
           if (!disabled) onChange(!checked);

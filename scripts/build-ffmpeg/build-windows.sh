@@ -105,8 +105,9 @@ CONFIGURE_FLAGS=(
   --disable-network
   --disable-autodetect
   --enable-small
+  --enable-zlib
   --enable-encoder=libx264,h264_nvenc,hevc_nvenc,h264_qsv,hevc_qsv,h264_amf,hevc_amf,aac,pcm_s16le
-  --enable-decoder=h264,hevc,aac,pcm_s16le,rawvideo
+  --enable-decoder=h264,hevc,aac,pcm_s16le,rawvideo,png
   --enable-parser=h264,hevc,aac
   --enable-muxer=mp4,mov,matroska,null
   --enable-demuxer=mov,matroska,rawvideo,aac

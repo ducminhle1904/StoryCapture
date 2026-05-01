@@ -5,8 +5,9 @@ use std::path::Path;
 use effects::ast::types::{Rgba, Vec2};
 use effects::ast::video::CursorSkin;
 use effects::cursor::{
-    apply_tint, build_ripples, load_skin, render_cursor_pngs, render_png_sequence, ripple_alpha,
-    ripple_radius, sample_trajectory, CursorSample, RippleOptions, TrajectoryOptions,
+    apply_tint, build_ripples, load_skin, render_cursor_pngs, render_cursor_pngs_from_actions,
+    render_png_sequence, ripple_alpha, ripple_radius, sample_trajectory, CursorSample,
+    RippleOptions, TrajectoryOptions,
 };
 use effects::math::min_jerk::{Waypoint, WaypointKind};
 use image::{ImageBuffer, Rgba as ImageRgba, RgbaImage};
@@ -177,6 +178,63 @@ fn render_cursor_pngs_from_trajectory_json_creates_frames() {
     assert_eq!(first.width(), 40);
     assert_eq!(first.height(), 30);
     assert_eq!(first.get_pixel(2, 3).0, [255, 0, 0, 255]);
+}
+
+#[test]
+fn render_cursor_pngs_from_actions_json_starts_center_and_draws_ripple() {
+    let tmp = tempfile::tempdir().unwrap();
+    let actions = tmp.path().join("sample.actions.json");
+    let skin = tmp.path().join("skin.png");
+    let out = tmp.path().join("cursor-out");
+
+    let skin_img: RgbaImage = ImageBuffer::from_pixel(4, 4, ImageRgba([255, 0, 0, 255]));
+    skin_img.save(&skin).unwrap();
+    std::fs::write(
+        &actions,
+        r#"{
+          "version": 1,
+          "recording_path": "/tmp/sample.mp4",
+          "viewport": { "width": 40, "height": 30 },
+          "capture_rect": { "x": 0.0, "y": 0.0, "width": 40.0, "height": 30.0 },
+          "fps": 10,
+          "frame_count": 8,
+          "events": [
+            {
+              "step_id": "step-1",
+              "ordinal": 1,
+              "verb": "click",
+              "t_start_ms": 300,
+              "t_action_ms": 500,
+              "t_end_ms": 600,
+              "target": {
+                "kind": "element",
+                "label": "Save",
+                "center": { "x": 30.0, "y": 20.0 },
+                "bounds": { "x": 25.0, "y": 18.0, "w": 10.0, "h": 4.0 }
+              },
+              "pointer": { "button": "left", "effect": "click" }
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    let result = render_cursor_pngs_from_actions(&actions, &skin, &out).unwrap();
+    assert_eq!(result.fps, 10);
+    assert_eq!(result.frame_count, 8);
+    assert_eq!(result.canvas_width, 40);
+    assert_eq!(result.canvas_height, 30);
+    assert!(out.join("frame_00000.png").exists());
+    assert!(out.join("frame_00007.png").exists());
+
+    let first = image::open(out.join("frame_00000.png")).unwrap().to_rgba8();
+    assert_eq!(first.get_pixel(20, 15).0, [255, 0, 0, 255]);
+
+    let impact = image::open(out.join("frame_00005.png")).unwrap().to_rgba8();
+    assert!(
+        impact.pixels().any(|pixel| pixel.0[3] > 0),
+        "impact frame should contain cursor or ripple pixels"
+    );
 }
 
 #[test]

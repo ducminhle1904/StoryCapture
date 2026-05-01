@@ -6,10 +6,12 @@
 use crate::error::AppError;
 use crate::state::AppState;
 use automation::{
-    BrowserSessionProfile, Executor, ExecutorEvent, LaunchOptions, NoopDriver, PacingProfile,
-    PlaywrightSidecarDriver, RunControl, WindowPosition,
+    ActionCaptureRect, ActionTimelineDto, ActionTimelineEvent, BrowserSessionProfile, Executor,
+    ExecutorEvent, LaunchOptions, NoopDriver, PacingProfile, PlaywrightSidecarDriver, RunControl,
+    WindowPosition, ACTION_TIMELINE_VERSION,
 };
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::ipc::Channel;
@@ -350,6 +352,21 @@ pub async fn launch_automation(
     // the targets sidecar, so `story_path` stays `None` (no harm if present
     // — the self_heal=false gate short-circuits before the sidecar is read).
     tracing::info!(target: "storycapture::automation", "Executor::run_with_story_path_and_pacing starting (self_heal=false)");
+    let action_viewport = recording_viewport
+        .map(|viewport| story_parser::Viewport {
+            width: viewport.width,
+            height: viewport.height,
+        })
+        .or(story.meta.viewport)
+        .unwrap_or(story_parser::Viewport {
+            width: 1280,
+            height: 800,
+        });
+    let initial_action_recording_path = recording_session_id
+        .as_deref()
+        .and_then(crate::commands::encode::recording_output_path);
+    begin_active_action_timeline(action_viewport, initial_action_recording_path);
+
     let mut events = Executor::run_with_story_path_and_pacing(
         story,
         /* story_path */ None,
@@ -363,6 +380,9 @@ pub async fn launch_automation(
         pacing.into(),
     );
     while let Some(evt) = events.recv().await {
+        if let ExecutorEvent::ActionRecorded { event } = &evt {
+            push_active_action_event(event.clone());
+        }
         // Mirror events into tracing for diagnostics.
         let truncate_at = match &evt {
             automation::ExecutorEvent::StepFailed { .. }
@@ -381,6 +401,7 @@ pub async fn launch_automation(
         }
     }
     tracing::info!(target: "storycapture::automation", "Executor channel closed (story ended)");
+    flush_active_action_timeline();
     clear_active_run_control(&control);
     // Clear the stash when the story ends.
     playwright_pid_stash().set(None);
@@ -441,6 +462,82 @@ fn clear_active_run_control(expected: &Arc<RunControl>) {
         .is_some_and(|current| Arc::ptr_eq(current, expected))
     {
         *guard = None;
+    }
+}
+
+struct ActiveActionTimeline {
+    recording_path: Option<PathBuf>,
+    viewport: story_parser::Viewport,
+    events: Vec<ActionTimelineEvent>,
+}
+
+fn active_action_timeline() -> &'static parking_lot::Mutex<Option<ActiveActionTimeline>> {
+    use std::sync::OnceLock;
+    static ACTIVE: OnceLock<parking_lot::Mutex<Option<ActiveActionTimeline>>> = OnceLock::new();
+    ACTIVE.get_or_init(|| parking_lot::Mutex::new(None))
+}
+
+fn begin_active_action_timeline(viewport: story_parser::Viewport, recording_path: Option<PathBuf>) {
+    *active_action_timeline().lock() = Some(ActiveActionTimeline {
+        recording_path,
+        viewport,
+        events: Vec::new(),
+    });
+}
+
+pub(crate) fn attach_active_action_recording(recording_path: PathBuf) {
+    if let Some(active) = active_action_timeline().lock().as_mut() {
+        active.recording_path = Some(recording_path);
+    }
+}
+
+fn push_active_action_event(event: ActionTimelineEvent) {
+    if let Some(active) = active_action_timeline().lock().as_mut() {
+        active.events.push(event);
+    }
+}
+
+fn flush_active_action_timeline() {
+    let Some(active) = active_action_timeline().lock().take() else {
+        return;
+    };
+    let Some(recording_path) = active.recording_path else {
+        return;
+    };
+    if active.events.is_empty() {
+        return;
+    }
+
+    let fps = 60;
+    let duration_ms = active
+        .events
+        .iter()
+        .map(|event| event.t_end_ms)
+        .max()
+        .unwrap_or_default();
+    let dto = ActionTimelineDto {
+        version: ACTION_TIMELINE_VERSION,
+        recording_path: recording_path.to_string_lossy().to_string(),
+        viewport: active.viewport,
+        capture_rect: ActionCaptureRect::from_viewport(active.viewport),
+        fps,
+        frame_count: ((duration_ms as f64 / 1000.0) * fps as f64).ceil() as u32,
+        events: active.events,
+    };
+    let sidecar = automation::action_timeline_sidecar_path_for(&recording_path);
+    match automation::write_action_timeline(&sidecar, &dto) {
+        Ok(()) => tracing::info!(
+            target: "storycapture::automation",
+            path = %sidecar.display(),
+            events = dto.events.len(),
+            "actions sidecar written"
+        ),
+        Err(e) => tracing::warn!(
+            target: "storycapture::automation",
+            path = %sidecar.display(),
+            error = %e,
+            "actions sidecar write failed"
+        ),
     }
 }
 

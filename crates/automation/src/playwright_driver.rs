@@ -600,8 +600,10 @@ impl BrowserDriver for PlaywrightSidecarDriver {
             "drag",
             json!({
                 "from": from.value,
+                "fromStrategy": from.strategy.as_str(),
                 "fromNth": from.nth,
                 "to": to.value,
+                "toStrategy": to.strategy.as_str(),
                 "toNth": to.nth,
             }),
         )
@@ -612,7 +614,12 @@ impl BrowserDriver for PlaywrightSidecarDriver {
     async fn select_option(&self, sel: &ResolvedSelector, value: &str) -> Result<()> {
         self.call(
             "select",
-            json!({ "selector": sel.value, "value": value, "nth": sel.nth }),
+            json!({
+                "selector": sel.value,
+                "strategy": sel.strategy.as_str(),
+                "value": value,
+                "nth": sel.nth,
+            }),
         )
         .await?;
         Ok(())
@@ -623,6 +630,7 @@ impl BrowserDriver for PlaywrightSidecarDriver {
             "upload",
             json!({
                 "selector": sel.value,
+                "strategy": sel.strategy.as_str(),
                 "path": path.to_string_lossy(),
                 "nth": sel.nth,
             }),
@@ -677,7 +685,11 @@ impl BrowserDriver for PlaywrightSidecarDriver {
         let v = self
             .call(
                 "elementState",
-                json!({ "selector": sel.value, "strategy": sel.strategy.as_str() }),
+                json!({
+                    "selector": sel.value,
+                    "strategy": sel.strategy.as_str(),
+                    "nth": sel.nth,
+                }),
             )
             .await?;
         Ok(ElementState {

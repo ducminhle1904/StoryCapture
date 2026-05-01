@@ -1,5 +1,6 @@
 // Command registry for the StoryCapture host.
 
+pub mod actions;
 pub mod app_settings;
 pub mod audio;
 pub mod author_snapshot;

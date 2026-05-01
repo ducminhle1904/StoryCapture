@@ -401,6 +401,18 @@ fn partial_path_for(target: &std::path::Path) -> PathBuf {
     p
 }
 
+fn stderr_tail(stderr: &[u8]) -> String {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .rev()
+        .take(30)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
 fn build_post_mux_args(plan: &PostMuxPlan, mux_output_path: &std::path::Path) -> Vec<String> {
     let mut args = vec![
         "-hide_banner".into(),
@@ -495,16 +507,7 @@ async fn finalize_post_mux(
         .map_err(|e| AppError::Encoder(format!("spawn ffmpeg mux: {e}")))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stderr_tail = stderr
-            .lines()
-            .rev()
-            .take(30)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-            .join(" | ");
+        let stderr_tail = stderr_tail(&output.stderr);
         tracing::error!(
             target: "storycapture::recording",
             status = ?output.status,
@@ -732,6 +735,14 @@ fn registry() -> &'static RecordingRegistry {
     use std::sync::OnceLock;
     static REG: OnceLock<RecordingRegistry> = OnceLock::new();
     REG.get_or_init(RecordingRegistry::default)
+}
+
+pub(crate) fn recording_output_path(session_id: &str) -> Option<PathBuf> {
+    registry()
+        .sessions
+        .lock()
+        .get(session_id)
+        .map(|handle| handle.output_path.clone())
 }
 
 fn quality_mode_for_encoder(encoder: HardwareEncoder) -> RecordingQualityMode {
@@ -1200,11 +1211,14 @@ pub async fn start_recording(
     let output_path = exports_dir.join(format!("{session_id}.mp4"));
     let video_only_path = exports_dir.join(format!("{session_id}.video.mp4"));
     let audio_pcm_path = exports_dir.join(format!("{session_id}.audio.f32le"));
+    crate::commands::automation::attach_active_action_recording(output_path.clone());
+
+    let include_cursor = args.include_cursor.unwrap_or(false);
 
     // Start capture pipeline.
     let cap_cfg = CaptureConfig {
         target: capture_target,
-        include_cursor: args.include_cursor.unwrap_or(true),
+        include_cursor,
         fps_target: args.fps,
         pixel_format: PixelFormat::Bgra,
         queue_cap_bytes: ByteBoundedQueue::DEFAULT_CAP_BYTES,

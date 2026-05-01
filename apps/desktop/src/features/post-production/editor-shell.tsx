@@ -39,6 +39,7 @@ import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
 import { type ParseResult, parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, useProjectRecordings } from "@/ipc/projects";
 import { useRecordingTrajectory } from "@/ipc/trajectory";
+import { useRecordingActions } from "@/ipc/actions";
 import { ExportModal } from "./export-modal/export-modal";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { InspectorPanel } from "./inspector/inspector-panel";
@@ -111,7 +112,11 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     };
   }, [storyId, videoSrc]);
 
-  const trajectoryQuery = useRecordingTrajectory(latestRecording?.path);
+  const actionsQuery = useRecordingActions(latestRecording?.path);
+  const trajectoryQuery = useRecordingTrajectory(
+    latestRecording?.path,
+    actionsQuery.isSuccess && actionsQuery.data === null,
+  );
 
   // One-shot auto-populate: only run while generated tracks are empty so we
   // don't clobber persisted user edits. Idempotent on identical inputs.
@@ -123,16 +128,22 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     if (!latestRecording) return;
     if (tracksVideoLen > 0) return;
     if (tracksCursorLen > 0 || tracksZoomLen > 0) return;
+    if (actionsQuery.isLoading) return;
+    if (!actionsQuery.data && trajectoryQuery.isLoading) return;
     const built = buildTimelineFromStory({
       story: storyParsed,
       recording: latestRecording,
+      actions: actionsQuery.data ?? null,
       trajectory: trajectoryQuery.data ?? null,
     });
     setTracks(built);
   }, [
     latestRecording,
     storyParsed,
+    actionsQuery.data,
+    actionsQuery.isLoading,
     trajectoryQuery.data,
+    trajectoryQuery.isLoading,
     tracksVideoLen,
     tracksCursorLen,
     tracksZoomLen,

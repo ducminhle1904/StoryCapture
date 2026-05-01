@@ -51,7 +51,8 @@ provide the expected deterministic quality. `libopenh264` remains a fallback
 only when a static archive is available.
 
 Decoders/parsers/muxers/demuxers are limited to the H.264/HEVC/AAC/MP4/MOV/
-Matroska/raw video set actually used by capture + post-pro.
+Matroska/raw video set actually used by capture + post-pro, plus PNG for the
+virtual cursor overlay frame sequence.
 
 ## How to run locally
 
@@ -76,15 +77,15 @@ Each runs `verify-static.sh` automatically. `verify-static.sh` exits non-zero
 if any non-system dylib is linked, if `--enable-gpl --enable-libx264` is
 missing, or if `--enable-nonfree` is present.
 
-Local prereqs: Xcode CLT, `brew install nasm yasm pkg-config x264`. Optional:
-`brew install openh264` to bake in the software fallback if Homebrew provides a
-static archive.
+Local prereqs: Xcode CLT, `brew install nasm yasm pkg-config x264`. The PNG
+decoder uses system zlib on macOS. Optional: `brew install openh264` to bake in
+the software fallback if Homebrew provides a static archive.
 
 ### Windows
 
 ```bash
 # inside MSYS2 MINGW64 (CI does this via msys2/setup-msys2@v2)
-pacman -S --needed make yasm nasm pkg-config mingw-w64-x86_64-gcc
+pacman -S --needed make yasm nasm pkg-config mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib
 bash scripts/build-ffmpeg/build-windows.sh
 ```
 

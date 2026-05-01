@@ -64,7 +64,10 @@ fn parse_extracts_nth_per_tier() {
             assert_eq!(v, "row");
             assert_eq!(*target_nth, Some(2));
         }
-        other => panic!("cmds[0] expected Click(testid 'row' nth 2), got {:?}", other),
+        other => panic!(
+            "cmds[0] expected Click(testid 'row' nth 2), got {:?}",
+            other
+        ),
     }
     match &cmds[1] {
         Command::Click {
@@ -98,7 +101,10 @@ fn parse_extracts_nth_per_tier() {
             assert_eq!(v, "Learn more");
             assert_eq!(*target_nth, Some(4));
         }
-        other => panic!("cmds[3] expected Click(text 'Learn more' nth 4), got {:?}", other),
+        other => panic!(
+            "cmds[3] expected Click(text 'Learn more' nth 4), got {:?}",
+            other
+        ),
     }
 }
 
@@ -209,7 +215,10 @@ fn parse_backward_compat_no_nth_is_none() {
             assert_eq!(v, "without-nth");
             assert_eq!(*target_nth, None);
         }
-        other => panic!("cmds[12] expected Click(testid 'without-nth'), got {:?}", other),
+        other => panic!(
+            "cmds[12] expected Click(testid 'without-nth'), got {:?}",
+            other
+        ),
     }
     match &cmds[13] {
         Command::Click {
@@ -220,7 +229,10 @@ fn parse_backward_compat_no_nth_is_none() {
             assert_eq!(name, "WithoutNth");
             assert_eq!(*target_nth, None);
         }
-        other => panic!("cmds[13] expected Click(button WithoutNth), got {:?}", other),
+        other => panic!(
+            "cmds[13] expected Click(button WithoutNth), got {:?}",
+            other
+        ),
     }
 }
 
@@ -235,7 +247,11 @@ fn round_trip_preserves_nth() {
     let mut story2 = parse_clean(&formatted);
     strip_spans(&mut story1);
     strip_spans(&mut story2);
-    assert_eq!(story1, story2, "AST drift after round-trip\nformatted:\n{}", formatted);
+    assert_eq!(
+        story1, story2,
+        "AST drift after round-trip\nformatted:\n{}",
+        formatted
+    );
 }
 
 // ── 6: formatter emits `nth N` postfix iff Some ───────────────────────

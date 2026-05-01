@@ -1282,7 +1282,7 @@ export function RecordingView({
 
           <SettingsGroup label="Options">
             <div className="space-y-2 text-xs">
-              {/* Cursor toggle (non-sticky, defaults ON). */}
+              {/* Real OS cursor toggle (non-sticky, defaults OFF). */}
               <CursorToggle
                 checked={includeCursor}
                 onChange={setIncludeCursor}

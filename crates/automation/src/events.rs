@@ -4,6 +4,7 @@
 //! pure-Rust (headless) contexts. Only `serde` derives are required here —
 //! the Tauri host wraps its own specta mirror so this crate stays decoupled.
 
+use crate::action_timeline::ActionTimelineEvent;
 use crate::driver::BoundingBox;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -127,6 +128,9 @@ pub enum ExecutorEvent {
         duration_ms: u64,
         cursor_x: i32,
         cursor_y: i32,
+    },
+    ActionRecorded {
+        event: ActionTimelineEvent,
     },
     StepFailed {
         ordinal: u32,

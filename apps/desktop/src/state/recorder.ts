@@ -94,7 +94,7 @@ export interface RecorderData {
    *  mount and recording completion. */
   audioDeviceId: AudioPickerValue;
 
-  /** Per-recording include-cursor flag. Non-sticky, defaults to true. */
+  /** Per-recording real OS cursor capture flag. Non-sticky, defaults off. */
   includeCursor: boolean;
 
   /** Per-recording chrome-hiding flag. Non-sticky, defaults to true.
@@ -162,10 +162,10 @@ const INITIAL: RecorderData = {
   captureTarget: null,
   availableTargets: null,
   // Non-sticky: reset() is called on recorder-view mount and recording
-  // completion, so every new recording starts with "No audio" / cursor
-  // on / browser chrome hidden regardless of prior session state.
+  // completion, so every new recording starts with "No audio" / real cursor
+  // off / browser chrome hidden regardless of prior session state.
   audioDeviceId: null,
-  includeCursor: true,
+  includeCursor: false,
   chromeHiding: true,
   // Default ON; hydrated from app_settings by
   // `hydrateLivePreviewEnabled` on recorder-view mount.

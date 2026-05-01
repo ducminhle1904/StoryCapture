@@ -83,11 +83,20 @@ impl BrowserDriver for Mock {
         self.touch();
         Ok(())
     }
-    async fn wait_for(&self, _: &SelectorOrText, _nth: Option<u32>, _: u64) -> automation::Result<()> {
+    async fn wait_for(
+        &self,
+        _: &SelectorOrText,
+        _nth: Option<u32>,
+        _: u64,
+    ) -> automation::Result<()> {
         self.touch();
         Ok(())
     }
-    async fn assert_present(&self, _: &SelectorOrText, _nth: Option<u32>) -> automation::Result<()> {
+    async fn assert_present(
+        &self,
+        _: &SelectorOrText,
+        _nth: Option<u32>,
+    ) -> automation::Result<()> {
         self.touch();
         Ok(())
     }
@@ -187,8 +196,8 @@ async fn upload_routes_to_playwright() {
                 strategy: automation::SelectorStrategy::Css,
                 value: "#f".into(),
                 origin: SelectorOrText::Selector("#f".into()),
-                            nth: None,
-},
+                nth: None,
+            },
             Path::new("/tmp/x"),
         )
         .await
@@ -211,8 +220,8 @@ async fn plain_click_routes_to_limited_primary() {
             strategy: automation::SelectorStrategy::Css,
             value: "#save".into(),
             origin: SelectorOrText::Selector("#save".into()),
-                    nth: None,
-})
+            nth: None,
+        })
         .await
         .unwrap();
 

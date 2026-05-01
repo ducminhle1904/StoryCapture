@@ -13,6 +13,7 @@
 //! - [`SmartSelector`] — explicit-strict + ranked-text resolution.
 //! - [`SessionActor`] — actor wrap for the recorder UI to drive.
 
+pub mod action_timeline;
 pub mod auto_wait;
 pub mod capability;
 pub mod control;
@@ -27,6 +28,11 @@ pub mod selector;
 pub mod session;
 pub mod targets_store;
 
+pub use action_timeline::{
+    sidecar_path_for as action_timeline_sidecar_path_for, write_atomic as write_action_timeline,
+    ActionCaptureRect, ActionPoint, ActionPointer, ActionTarget, ActionTimelineDto,
+    ActionTimelineEvent, PointerButton, ACTION_TIMELINE_VERSION,
+};
 pub use control::RunControl;
 pub use driver::{
     accept_language_for_locale, is_supported_browser_locale, ActionKind, BoundingBox,

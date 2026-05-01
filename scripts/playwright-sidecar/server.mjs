@@ -1061,39 +1061,33 @@ const handlers = {
     return { ok: true };
   },
 
-  drag: async ({ from, to, fromNth, toNth }) => {
-    // Playwright's `dragAndDrop` takes raw selector strings only — no
-    // `.nth()` chain. When EITHER side has nth, fall back to manual
-    // mouse.move+down/up driven by bounding boxes of the resolved Locators.
-    if (fromNth != null || toNth != null) {
-      const page = pickPage();
-      const fromLoc = applyNth(page.locator(from), fromNth, pickPage);
-      const toLoc = applyNth(page.locator(to), toNth, pickPage);
-      const fb = await fromLoc.boundingBox();
-      const tb = await toLoc.boundingBox();
-      if (!fb || !tb) {
-        throw new Error("drag failed: cannot resolve bounding box for nth-locator");
-      }
-      await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, {
-        steps: 8,
-      });
-      await page.mouse.up();
-      return { ok: true };
+  drag: async ({ from, to, fromStrategy, toStrategy, fromNth, toNth }) => {
+    const page = pickPage();
+    const [fromLoc, toLoc] = await Promise.all([
+      locate(from, fromStrategy, fromNth),
+      locate(to, toStrategy, toNth),
+    ]);
+    const [fb, tb] = await Promise.all([fromLoc.boundingBox(), toLoc.boundingBox()]);
+    if (!fb || !tb) {
+      throw new Error("drag failed: cannot resolve bounding box for locator");
     }
-    await pickPage().dragAndDrop(from, to);
+    await page.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, {
+      steps: 8,
+    });
+    await page.mouse.up();
     return { ok: true };
   },
 
-  select: async ({ selector, value, nth }) => {
-    const loc = applyNth(pickPage().locator(selector), nth, pickPage);
+  select: async ({ selector, strategy, value, nth }) => {
+    const loc = await locate(selector, strategy, nth);
     await loc.selectOption(value);
     return { ok: true };
   },
 
-  upload: async ({ selector, path, nth }) => {
-    const loc = applyNth(pickPage().locator(selector), nth, pickPage);
+  upload: async ({ selector, strategy, path, nth }) => {
+    const loc = await locate(selector, strategy, nth);
     await loc.setInputFiles(path);
     return { ok: true };
   },
@@ -1138,11 +1132,11 @@ const handlers = {
     return { ok: true, path };
   },
 
-  elementState: async ({ selector, strategy }) => {
+  elementState: async ({ selector, strategy, nth }) => {
     // Route through the same `locate()` helper as click/type so that
     // prefixed values (aria-name=, text=, label=, text~=) are resolved
     // via Playwright's locator engine instead of raw CSS querySelector.
-    const locator = await locate(selector, strategy);
+    const locator = await locate(selector, strategy, nth);
     const handle = await locator
       .first()
       .elementHandle()
