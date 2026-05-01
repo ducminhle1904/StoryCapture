@@ -1716,8 +1716,6 @@ export type RecordingEvent = { type: "capture-status"; json: string } | { type: 
 { type: "heartbeat"; seq: bigint }
 /**
  * File-system metadata for a single `.mp4` under `<project>/exports/`.
- * Dimensions/duration are left `None` in this first pass — the frontend
- * falls back to hardcoded strings when absent.
  */
 export type RecordingInfoDto = { path: string; captured_at: bigint; duration_ms: bigint | null; width: number | null; height: number | null }
 export type RecordingSessionId = string

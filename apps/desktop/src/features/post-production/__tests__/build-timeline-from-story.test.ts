@@ -122,6 +122,18 @@ function trajectoryWithFrames(frames: RecordingTrajectory["frames"]): RecordingT
   };
 }
 
+function actionsEndingAt(tEndMs: number): RecordingActions {
+  return {
+    ...ACTIONS,
+    frame_count: Math.ceil((tEndMs / 1000) * ACTIONS.fps),
+    events: ACTIONS.events.map((event) => ({
+      ...event,
+      t_action_ms: Math.min(event.t_action_ms, tEndMs),
+      t_end_ms: tEndMs,
+    })),
+  };
+}
+
 describe("buildTimelineFromStory", () => {
   it("builds 1 video clip and 0 cursor clips when trajectory is missing", () => {
     const out = buildTimelineFromStory({
@@ -195,7 +207,44 @@ describe("buildTimelineFromStory", () => {
     expect(out.cursor[0]?.durationMs).toBe(12_000);
   });
 
-  it("falls back to 60_000 ms when both recording duration and trajectory are missing", () => {
+  it("uses recording.duration_ms over actions and trajectory", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: { ...RECORDING, duration_ms: 40_064 },
+      actions: actionsEndingAt(17_142),
+      trajectory: trajectoryWithFrames([{ t_ms: 40_887, x: 960, y: 540, click: false }]),
+    });
+
+    expect(out.video[0]?.durationMs).toBe(40_064);
+    expect(out.cursor[0]?.durationMs).toBe(40_064);
+  });
+
+  it("uses trajectory final timestamp before actions when recording.duration_ms is missing", () => {
+    const noDuration: RecordingInfo = { ...RECORDING, duration_ms: null };
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: noDuration,
+      actions: actionsEndingAt(17_142),
+      trajectory: trajectoryWithFrames([{ t_ms: 40_887, x: 960, y: 540, click: false }]),
+    });
+
+    expect(out.video[0]?.durationMs).toBe(40_887);
+    expect(out.cursor[0]?.durationMs).toBe(40_887);
+  });
+
+  it("uses action sidecar only as legacy fallback when recording and trajectory durations are unavailable", () => {
+    const noDuration: RecordingInfo = { ...RECORDING, duration_ms: null };
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: noDuration,
+      actions: actionsEndingAt(17_142),
+      trajectory: null,
+    });
+
+    expect(out.video[0]?.durationMs).toBe(17_142);
+  });
+
+  it("falls back to 60_000 ms when recording duration, trajectory, and actions are missing", () => {
     const noDuration: RecordingInfo = { ...RECORDING, duration_ms: null };
     const out = buildTimelineFromStory({
       story: null,

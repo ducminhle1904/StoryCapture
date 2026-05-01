@@ -17,6 +17,7 @@ pub mod ipc_spec;
 
 pub use commands::simulator::prune_runs_retain_5;
 pub mod logging;
+pub mod media_probe;
 pub mod panic_hook;
 pub mod state;
 pub mod title_hints;

@@ -194,6 +194,37 @@ function cursorSidecarFor(
   };
 }
 
+function trajectoryDurationMs(trajectory: RecordingTrajectory | null): number {
+  if (!trajectory) return 0;
+  const finalFrameMs = trajectory.frames.at(-1)?.t_ms ?? 0;
+  if (finalFrameMs > 0) return finalFrameMs;
+  return trajectory.fps > 0 ? Math.round((trajectory.frame_count / trajectory.fps) * 1000) : 0;
+}
+
+function actionsDurationMs(actions: RecordingActions | null): number {
+  if (!actions) return 0;
+  let eventMaxEndMs = 0;
+  for (const event of actions.events) {
+    eventMaxEndMs = Math.max(eventMaxEndMs, event.t_end_ms);
+  }
+  if (eventMaxEndMs > 0) return eventMaxEndMs;
+  return actions.fps > 0 ? Math.round((actions.frame_count / actions.fps) * 1000) : 0;
+}
+
+function mediaDurationMs(
+  recording: RecordingInfo,
+  trajectory: RecordingTrajectory | null,
+  actions: RecordingActions | null,
+): number {
+  const recordingDurationMs = recording.duration_ms ?? 0;
+  if (recordingDurationMs > 0) return recordingDurationMs;
+  const trajectoryMs = trajectoryDurationMs(trajectory);
+  if (trajectoryMs > 0) return trajectoryMs;
+  const actionMs = actionsDurationMs(actions);
+  if (actionMs > 0) return actionMs;
+  return FALLBACK_DURATION_MS;
+}
+
 function flattenStorySteps(story: ParseResult | null): Array<{
   sceneName: string;
   stepId: string | null;
@@ -410,14 +441,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const actions = input.actions ?? null;
   const idBase = hashPath(recording.path);
 
-  let durationMs = recording.duration_ms ?? 0;
-  if (durationMs <= 0 && actions && actions.fps > 0) {
-    durationMs = Math.round((actions.frame_count / actions.fps) * 1000);
-  }
-  if (durationMs <= 0 && trajectory && trajectory.fps > 0) {
-    durationMs = Math.round((trajectory.frame_count / trajectory.fps) * 1000);
-  }
-  if (durationMs <= 0) durationMs = FALLBACK_DURATION_MS;
+  const durationMs = mediaDurationMs(recording, trajectory, actions);
 
   const baseVideo: VideoClip[] = [
     {

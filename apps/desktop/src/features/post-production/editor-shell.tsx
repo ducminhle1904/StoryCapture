@@ -47,7 +47,7 @@ import { QueueWidget } from "./render-queue/queue-widget";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
 import { buildTimelineFromStory } from "./state/build-timeline-from-story";
 import { useEditorStore } from "./state/store";
-import type { AnnotationClip, ZoomClip } from "./state/timeline-slice";
+import type { AnnotationClip, TimelineSlice, ZoomClip } from "./state/timeline-slice";
 import { Timeline } from "./timeline/timeline";
 
 export interface EditorShellProps {
@@ -60,6 +60,16 @@ function createClipId(prefix: string): string {
     globalThis.crypto?.randomUUID?.() ??
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   return `${prefix}-${random}`;
+}
+
+function maxTrackEndMs(tracks: TimelineSlice["tracks"]): number {
+  let maxEndMs = 0;
+  for (const clips of Object.values(tracks)) {
+    for (const clip of clips) {
+      maxEndMs = Math.max(maxEndMs, clip.startMs + clip.durationMs);
+    }
+  }
+  return maxEndMs;
 }
 
 type ReviewFixTone = "info" | "warn" | "critical";
@@ -324,6 +334,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   // One-shot auto-populate: only run while generated tracks are empty so we
   // don't clobber persisted user edits. Idempotent on identical inputs.
   const setTracks = useEditorStore((s) => s.setTracks);
+  const setDuration = useEditorStore((s) => s.setDuration);
   const tracksVideoLen = useEditorStore((s) => s.tracks.video.length);
   const tracksCursorLen = useEditorStore((s) => s.tracks.cursor.length);
   const tracksZoomLen = useEditorStore((s) => s.tracks.zoom.length);
@@ -438,6 +449,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     });
     const { background, ...builtTracks } = built;
     setTracks(builtTracks);
+    setDuration(maxTrackEndMs(builtTracks));
     useEditorStore.setState((state) => ({
       _undoExtras: {
         graphSnapshot: state._undoExtras?.graphSnapshot ?? {},
@@ -462,6 +474,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     tracksSoundLen,
     tracksAnnotationLen,
     setTracks,
+    setDuration,
   ]);
 
   const handleReviewFixItem = useCallback(
@@ -479,8 +492,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   useEditorHotkeys();
 
   // Set a default duration so the timeline ruler has visible ticks on
-  // first mount. Real durations will flow from loaded stories in P13.
-  const setDuration = useEditorStore((s) => s.setDuration);
+  // first mount. Loaded recordings override it during bootstrap.
   useEffect(() => {
     if (useEditorStore.getState().durationMs === 0) {
       setDuration(60_000);

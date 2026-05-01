@@ -10,6 +10,7 @@
 // `AppError::Storage`. NotFound cases use `AppError::NotFound`.
 
 use crate::error::AppError;
+use crate::media_probe::probe_mp4_metadata;
 use crate::state::AppState;
 use encoder::{NoopJobExecutor, QueueMsg, RenderQueueConfig};
 use serde::{Deserialize, Serialize};
@@ -203,8 +204,6 @@ async fn install_project_render_queue(
 }
 
 /// File-system metadata for a single `.mp4` under `<project>/exports/`.
-/// Dimensions/duration are left `None` in this first pass — the frontend
-/// falls back to hardcoded strings when absent.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct RecordingInfoDto {
     pub path: String,
@@ -245,12 +244,13 @@ fn scan_exports_dir(dir: &Path) -> Vec<RecordingInfoDto> {
                 .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
+            let media = probe_mp4_metadata(&path);
             Some(RecordingInfoDto {
                 path: path.to_string_lossy().into_owned(),
                 captured_at,
-                duration_ms: None,
-                width: None,
-                height: None,
+                duration_ms: media.duration_ms,
+                width: media.width,
+                height: media.height,
             })
         })
         .collect();
@@ -346,6 +346,21 @@ mod tests {
         assert!(got[0].duration_ms.is_none());
         assert!(got[0].width.is_none());
         assert!(got[0].height.is_none());
+    }
+
+    #[test]
+    fn scan_lists_corrupt_mp4_with_empty_media_metadata() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("corrupt.mp4");
+        fs::write(&file, b"not a real mp4").unwrap();
+
+        let got = scan_exports_dir(tmp.path());
+
+        assert_eq!(got.len(), 1);
+        assert!(got[0].path.ends_with("corrupt.mp4"));
+        assert_eq!(got[0].duration_ms, None);
+        assert_eq!(got[0].width, None);
+        assert_eq!(got[0].height, None);
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,17 +7,21 @@ import { useEditorStore } from "../state/store";
 import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
 import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
 
+const ipcMocks = vi.hoisted(() => ({
+  fetchProjectFolder: vi.fn(),
+  useProjectRecordings: vi.fn(),
+  useRecordingActions: vi.fn(),
+  useRecordingStepTiming: vi.fn(),
+  useRecordingTrajectory: vi.fn(),
+}));
+
 vi.mock("@tauri-apps/plugin-fs", () => ({
   readTextFile: vi.fn(() => Promise.reject(new Error("not loaded in toolbar tests"))),
 }));
 
 vi.mock("@/ipc/projects", () => ({
-  fetchProjectFolder: vi.fn(() => Promise.reject(new Error("not loaded"))),
-  useProjectRecordings: vi.fn(() => ({
-    data: [],
-    isSuccess: true,
-    isError: false,
-  })),
+  fetchProjectFolder: ipcMocks.fetchProjectFolder,
+  useProjectRecordings: ipcMocks.useProjectRecordings,
 }));
 
 vi.mock("@/ipc/parse", () => ({
@@ -25,12 +29,12 @@ vi.mock("@/ipc/parse", () => ({
 }));
 
 vi.mock("@/ipc/actions", () => ({
-  useRecordingActions: vi.fn(() => ({ data: null, isLoading: false, isSuccess: true })),
+  useRecordingActions: ipcMocks.useRecordingActions,
 }));
 
 vi.mock("@/ipc/trajectory", () => ({
-  useRecordingStepTiming: vi.fn(() => ({ data: null, isLoading: false })),
-  useRecordingTrajectory: vi.fn(() => ({ data: null, isLoading: false })),
+  useRecordingStepTiming: ipcMocks.useRecordingStepTiming,
+  useRecordingTrajectory: ipcMocks.useRecordingTrajectory,
 }));
 
 vi.mock("@/components/preview-surface", () => ({
@@ -79,6 +83,19 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore();
+  ipcMocks.fetchProjectFolder.mockRejectedValue(new Error("not loaded"));
+  ipcMocks.useProjectRecordings.mockReturnValue({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  });
+  ipcMocks.useRecordingActions.mockReturnValue({
+    data: null,
+    isLoading: false,
+    isSuccess: true,
+  });
+  ipcMocks.useRecordingStepTiming.mockReturnValue({ data: null, isLoading: false });
+  ipcMocks.useRecordingTrajectory.mockReturnValue({ data: null, isLoading: false });
 });
 
 describe("EditorShell toolbar actions", () => {
@@ -170,5 +187,35 @@ describe("EditorShell toolbar actions", () => {
     expect(state.selectedClipId).toBe("zoom-0");
     expect(state.selectedTab).toBe("effects");
     expect(state.playheadMs).toBe(1_000);
+  });
+
+  it("sets timeline duration from generated tracks during recording bootstrap", async () => {
+    resetStore();
+    useEditorStore.setState({ durationMs: 0 });
+    ipcMocks.useProjectRecordings.mockReturnValue({
+      data: [
+        {
+          path: "/recordings/full-duration.mp4",
+          captured_at: 1,
+          duration_ms: 40_064,
+          width: 1920,
+          height: 1080,
+        },
+      ],
+      isSuccess: true,
+      isError: false,
+    });
+
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      const state = useEditorStore.getState();
+      expect(state.tracks.video[0]?.durationMs).toBe(40_064);
+      expect(state.durationMs).toBe(40_064);
+    });
   });
 });
