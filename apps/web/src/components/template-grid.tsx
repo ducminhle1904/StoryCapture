@@ -1,9 +1,9 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTRPC } from "@/trpc/client";
-import { useQuery } from "@tanstack/react-query";
-import { TemplateCard, formatCategoryLabel } from "./template-card";
+import { formatCategoryLabel, TemplateCard } from "./template-card";
 
 const ALL_CATEGORIES = [
   "SAAS_ONBOARDING",
@@ -36,6 +36,7 @@ export function TemplateGrid({ onUseTemplate }: TemplateGridProps) {
       {/* Category filter tabs */}
       <div className="flex gap-2 overflow-x-auto pb-2">
         <button
+          type="button"
           onClick={() => setActiveCategory(null)}
           className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
             activeCategory === null
@@ -48,6 +49,7 @@ export function TemplateGrid({ onUseTemplate }: TemplateGridProps) {
         {ALL_CATEGORIES.map((cat) => (
           <button
             key={cat}
+            type="button"
             onClick={() => setActiveCategory(cat)}
             className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
               activeCategory === cat
@@ -83,6 +85,10 @@ export function TemplateGrid({ onUseTemplate }: TemplateGridProps) {
                     name={template.name}
                     description={template.description}
                     category={template.category}
+                    workflowType={template.workflowType}
+                    bestFor={template.bestFor}
+                    durationTarget={template.durationTarget}
+                    polishPreset={template.polishPreset}
                     forkCount={template.forkCount}
                     thumbnailUrl={template.thumbnailUrl}
                     onUseTemplate={onUseTemplate}
@@ -93,9 +99,7 @@ export function TemplateGrid({ onUseTemplate }: TemplateGridProps) {
           ))}
 
           {Object.keys(data.grouped).length === 0 && (
-            <p className="py-12 text-center text-sm text-zinc-500">
-              No templates found.
-            </p>
+            <p className="py-12 text-center text-sm text-zinc-500">No templates found.</p>
           )}
         </div>
       )}

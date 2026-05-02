@@ -35,6 +35,67 @@ export interface RecordingInfo {
   height: number | null;
 }
 
+export type WorkflowType =
+  | "product_demo"
+  | "tutorial"
+  | "feature_launch"
+  | "sales_marketing"
+  | "support"
+  | "internal_training"
+  | "bug_reproduction"
+  | "documentation"
+  | "freestyle";
+
+export type WorkflowStepStatus = "todo" | "drafted" | "recorded" | "polished";
+
+export interface WorkflowStep {
+  id: string;
+  title: string;
+  status: WorkflowStepStatus;
+  sceneName?: string;
+  requiredInputs: string[];
+  notes?: string;
+}
+
+export interface WorkflowState {
+  version: number;
+  type: WorkflowType;
+  steps: WorkflowStep[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type WebWorkflowType =
+  | "PRODUCT_DEMO"
+  | "TUTORIAL"
+  | "FEATURE_LAUNCH"
+  | "SALES_MARKETING"
+  | "SUPPORT"
+  | "INTERNAL_TRAINING"
+  | "BUG_REPRODUCTION"
+  | "DOCUMENTATION"
+  | "FREESTYLE";
+
+const WORKFLOW_TYPE_TO_WEB: Record<WorkflowType, WebWorkflowType> = {
+  product_demo: "PRODUCT_DEMO",
+  tutorial: "TUTORIAL",
+  feature_launch: "FEATURE_LAUNCH",
+  sales_marketing: "SALES_MARKETING",
+  support: "SUPPORT",
+  internal_training: "INTERNAL_TRAINING",
+  bug_reproduction: "BUG_REPRODUCTION",
+  documentation: "DOCUMENTATION",
+  freestyle: "FREESTYLE",
+};
+
+export interface CreateProjectInput {
+  name: string;
+  parent: string;
+  workflow_type?: WorkflowType;
+  starter_story_source?: string;
+  workflow_state?: WorkflowState;
+}
+
 const KEYS = {
   all: ["projects"] as const,
   detail: (id: string) => ["projects", id] as const,
@@ -56,8 +117,7 @@ export function fetchProjects(): Promise<Project[]> {
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { name: string; parent: string }) =>
-      invoke<Project>("create_project", { args }),
+    mutationFn: (args: CreateProjectInput) => invoke<Project>("create_project", { args }),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
   });
 }
@@ -98,4 +158,32 @@ export function useProjectRecordings(projectId: string | undefined) {
       invoke<RecordingInfo[]>("list_project_recordings", { args: { id: projectId as string } }),
     enabled: !!projectId,
   });
+}
+
+export async function fetchProjectWorkflow(projectId: string): Promise<WorkflowState | null> {
+  return invoke<WorkflowState | null>("get_project_workflow", { args: { id: projectId } });
+}
+
+export async function fetchProjectWorkflowSyncMetadata(projectId: string): Promise<{
+  workflowType: WebWorkflowType | null;
+  workflowState: WorkflowState | null;
+}> {
+  const workflowState = await fetchProjectWorkflow(projectId);
+  return {
+    workflowType: workflowState ? workflowTypeToWeb(workflowState.type) : null,
+    workflowState,
+  };
+}
+
+export async function updateProjectWorkflow(
+  projectId: string,
+  workflowState: WorkflowState,
+): Promise<WorkflowState> {
+  return invoke<WorkflowState>("update_project_workflow", {
+    args: { id: projectId, workflow_state: workflowState },
+  });
+}
+
+export function workflowTypeToWeb(type: WorkflowType): WebWorkflowType {
+  return WORKFLOW_TYPE_TO_WEB[type];
 }

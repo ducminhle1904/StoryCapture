@@ -111,6 +111,24 @@ fn queue_metadata_update(
     Ok(())
 }
 
+fn build_project_metadata_payload(
+    desktop_id: &str,
+    workspace_id: &str,
+    project_name: &str,
+    story_source: Option<String>,
+    workflow_type: Option<String>,
+    workflow_state: Option<serde_json::Value>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "desktopId": desktop_id,
+        "workspaceId": workspace_id,
+        "projectName": project_name,
+        "storySource": story_source,
+        "workflowType": workflow_type,
+        "workflowState": workflow_state,
+    })
+}
+
 fn get_pending_count(conn: &rusqlite::Connection) -> Result<u32, WebSyncError> {
     let count: u32 = conn.query_row(
         "SELECT COUNT(*) FROM sync_queue WHERE status = 'pending'",
@@ -190,6 +208,8 @@ pub async fn sync_project_metadata(
     workspace_id: String,
     project_name: String,
     story_source: Option<String>,
+    workflow_type: Option<String>,
+    workflow_state_json: Option<String>,
 ) -> Result<SyncResult, WebSyncError> {
     tracing::info!(
         target: "storycapture::web_sync",
@@ -205,12 +225,20 @@ pub async fn sync_project_metadata(
         }
     };
 
-    let payload = serde_json::json!({
-        "desktopId": desktop_id,
-        "workspaceId": workspace_id,
-        "projectName": project_name,
-        "storySource": story_source,
-    });
+    let workflow_state = workflow_state_json
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|e| WebSyncError::ServerError(format!("invalid workflow state json: {e}")))?;
+
+    let payload = build_project_metadata_payload(
+        &desktop_id,
+        &workspace_id,
+        &project_name,
+        story_source,
+        workflow_type,
+        workflow_state,
+    );
 
     let client = &state.http_client;
 
@@ -240,6 +268,31 @@ pub async fn sync_project_metadata(
 
             Err(e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_project_metadata_payload;
+
+    #[test]
+    fn metadata_payload_includes_workflow_fields() {
+        let workflow_state = serde_json::json!({
+            "version": 1,
+            "type": "product_demo",
+            "steps": [{"id": "problem", "title": "Problem", "status": "drafted"}],
+        });
+        let payload = build_project_metadata_payload(
+            "desktop-1",
+            "workspace-1",
+            "Launch demo",
+            Some("story source".into()),
+            Some("PRODUCT_DEMO".into()),
+            Some(workflow_state.clone()),
+        );
+
+        assert_eq!(payload["workflowType"], "PRODUCT_DEMO");
+        assert_eq!(payload["workflowState"], workflow_state);
     }
 }
 

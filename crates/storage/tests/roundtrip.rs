@@ -4,8 +4,10 @@
 
 use std::path::{Path, PathBuf};
 use storage::{
-    create_project, list_projects, open_project, NewExport, NewSession, StorageError,
-    ASSETS_DIRNAME, DB_FILENAME, EXPORTS_DIRNAME, META_DIRNAME, STORY_FILENAME, VERSION_FILENAME,
+    create_project, create_project_with_options, list_projects, open_project, read_workflow_state,
+    write_workflow_state, CreateProjectOptions, NewExport, NewSession, StorageError, WorkflowState,
+    WorkflowStep, WorkflowStepStatus, WorkflowType, ASSETS_DIRNAME, DB_FILENAME, EXPORTS_DIRNAME,
+    META_DIRNAME, STORY_FILENAME, VERSION_FILENAME,
 };
 use tempfile::tempdir;
 
@@ -103,6 +105,79 @@ fn starter_story_parses() {
         result.diagnostics
     );
     assert!(result.ast.is_some(), "starter story produced no AST");
+}
+
+#[test]
+fn guided_starter_story_is_written_and_parses() {
+    let parent = tempdir().unwrap();
+    let source = r#"story "Guided Demo" {
+  meta {
+    app: "https://example.com"
+    viewport: desktop
+    theme: dark
+    speed: 1.0
+  }
+
+  scene "Problem" {
+    pause
+  }
+}
+"#;
+    let folder = create_project_with_options(
+        parent.path(),
+        "Guided Demo",
+        CreateProjectOptions {
+            starter_story_source: Some(source),
+            workflow_state: None,
+        },
+    )
+    .unwrap();
+    let written = std::fs::read_to_string(folder.story_path()).unwrap();
+    assert_eq!(written, source);
+    let result = story_parser::parse(&written);
+    assert!(
+        result.diagnostics.is_empty(),
+        "guided story produced diagnostics: {:#?}",
+        result.diagnostics
+    );
+    assert!(result.ast.is_some(), "guided story produced no AST");
+}
+
+#[test]
+fn workflow_metadata_round_trips() {
+    let parent = tempdir().unwrap();
+    let state = WorkflowState {
+        version: 1,
+        workflow_type: WorkflowType::ProductDemo,
+        steps: vec![WorkflowStep {
+            id: "problem".into(),
+            title: "Problem".into(),
+            status: WorkflowStepStatus::Drafted,
+            scene_name: Some("Problem".into()),
+            required_inputs: vec!["target_url".into()],
+            notes: Some("Show current friction.".into()),
+        }],
+        created_at: 1,
+        updated_at: 1,
+    };
+    let folder = create_project_with_options(
+        parent.path(),
+        "Workflow Demo",
+        CreateProjectOptions {
+            starter_story_source: None,
+            workflow_state: Some(&state),
+        },
+    )
+    .unwrap();
+    assert_eq!(read_workflow_state(&folder).unwrap(), Some(state.clone()));
+
+    let reopened = open_project(folder.root()).unwrap();
+    assert_eq!(read_workflow_state(&reopened).unwrap(), Some(state.clone()));
+
+    let mut updated = state;
+    updated.steps[0].status = WorkflowStepStatus::Recorded;
+    write_workflow_state(&reopened, &updated).unwrap();
+    assert_eq!(read_workflow_state(&reopened).unwrap(), Some(updated));
 }
 
 #[test]

@@ -15,13 +15,13 @@
  * channel alive within Vercel's 60s timeout.
  */
 
-import { TRPCError } from "@trpc/server";
-import { tracked } from "@trpc/server";
-import { z } from "zod";
-import type { PrismaClient } from "@prisma/client";
 import { EventEmitter, on } from "node:events";
-import { router, publicProcedure, protectedProcedure } from "../init";
+import type { PrismaClient } from "@prisma/client";
+import { TRPCError, tracked } from "@trpc/server";
+import { z } from "zod";
+import { Prisma, WorkflowType } from "@/generated/prisma";
 import { verifyJwt } from "@/lib/jwt";
+import { protectedProcedure, publicProcedure, router } from "../init";
 import { requireWorkspaceMember } from "../lib/guards";
 
 // ── Sync event emitter (in-memory, per-process) ──
@@ -36,16 +36,32 @@ function nextEventId(): string {
 
 // ── Shared enums ──
 
-export const recordingStatusEnum = z.enum([
-  "idle",
-  "recording",
-  "processing",
-  "complete",
-  "error",
-]);
+export const recordingStatusEnum = z.enum(["idle", "recording", "processing", "complete", "error"]);
 
 /** Recording status type for frontend use. */
 export type RecordingStatus = z.infer<typeof recordingStatusEnum>;
+
+const workflowTypeEnum = z.nativeEnum(WorkflowType);
+const workflowStepInput = z
+  .object({
+    id: z.string().max(120),
+    title: z.string().max(160),
+    status: z.string().max(40),
+    sceneName: z.string().max(160).optional().nullable(),
+    requiredInputs: z.array(z.string().max(120)).max(20).optional(),
+    notes: z.string().max(500).optional().nullable(),
+  })
+  .passthrough();
+
+const workflowStateInput = z
+  .object({
+    version: z.number().int().min(1).max(10),
+    type: z.string().max(80),
+    steps: z.array(workflowStepInput).max(20),
+    createdAt: z.union([z.number(), z.string()]).optional(),
+    updatedAt: z.union([z.number(), z.string()]).optional(),
+  })
+  .passthrough();
 
 // ── Input schemas ──
 
@@ -54,6 +70,8 @@ const pushMetadataInput = z.object({
   workspaceId: z.string(),
   projectName: z.string(),
   storySource: z.string().optional(),
+  workflowType: workflowTypeEnum.optional().nullable(),
+  workflowState: workflowStateInput.optional().nullable(),
   recordingStatus: recordingStatusEnum.optional(),
 });
 
@@ -71,11 +89,7 @@ const sseSubscriptionInput = z.object({
 
 // ── Helper: verify JWT + workspace membership ──
 
-async function verifySubscriber(
-  token: string,
-  workspaceId: string,
-  prisma: PrismaClient,
-) {
+async function verifySubscriber(token: string, workspaceId: string, prisma: PrismaClient) {
   const { userId } = await verifyJwt(token).catch(() => {
     throw new TRPCError({
       code: "UNAUTHORIZED",
@@ -88,6 +102,17 @@ async function verifySubscriber(
   return { userId };
 }
 
+function requireUserId(userId: string | undefined) {
+  if (!userId) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Authentication required.",
+    });
+  }
+
+  return userId;
+}
+
 // ── Router ──
 
 export const syncRouter = router({
@@ -95,61 +120,78 @@ export const syncRouter = router({
    * Push project metadata from desktop. Upserts SyncedProject.
    * Desktop is the source of truth; last-write-wins.
    */
-  pushMetadata: protectedProcedure
-    .input(pushMetadataInput)
-    .mutation(async ({ ctx, input }) => {
-      // Verify workspace membership
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId);
+  pushMetadata: protectedProcedure.input(pushMetadataInput).mutation(async ({ ctx, input }) => {
+    // Verify workspace membership
+    await requireWorkspaceMember(ctx.prisma, requireUserId(ctx.user.id), input.workspaceId);
 
-      const synced = await ctx.prisma.syncedProject.upsert({
-        where: {
-          desktopId_workspaceId: {
-            desktopId: input.desktopId,
-            workspaceId: input.workspaceId,
-          },
-        },
-        update: {
-          projectName: input.projectName,
-          ...(input.storySource !== undefined && {
-            storySource: input.storySource,
-          }),
-          ...(input.recordingStatus !== undefined && {
-            recordingStatus: input.recordingStatus,
-          }),
-          lastSyncedAt: new Date(),
-        },
-        create: {
+    const workflowStateForPrisma =
+      input.workflowState === undefined
+        ? undefined
+        : input.workflowState === null
+          ? Prisma.JsonNull
+          : (input.workflowState as Prisma.InputJsonValue);
+
+    const synced = await ctx.prisma.syncedProject.upsert({
+      where: {
+        desktopId_workspaceId: {
           desktopId: input.desktopId,
           workspaceId: input.workspaceId,
-          projectName: input.projectName,
-          storySource: input.storySource ?? null,
-          recordingStatus: input.recordingStatus ?? "idle",
         },
-      });
-
-      // Emit events for SSE subscribers
-      const eventId = nextEventId();
-      syncEmitter.emit(`sync:${input.workspaceId}`, {
-        id: eventId,
-        type: "project_update",
-        desktopId: input.desktopId,
+      },
+      update: {
         projectName: input.projectName,
-        storySource: input.storySource,
-        recordingStatus: synced.recordingStatus,
-        lastSyncedAt: synced.lastSyncedAt.toISOString(),
+        ...(input.storySource !== undefined && {
+          storySource: input.storySource,
+        }),
+        ...(input.workflowType !== undefined && {
+          workflowType: input.workflowType,
+        }),
+        ...(workflowStateForPrisma !== undefined && {
+          workflowState: workflowStateForPrisma,
+        }),
+        ...(input.recordingStatus !== undefined && {
+          recordingStatus: input.recordingStatus,
+        }),
+        lastSyncedAt: new Date(),
+      },
+      create: {
+        desktopId: input.desktopId,
+        workspaceId: input.workspaceId,
+        projectName: input.projectName,
+        storySource: input.storySource ?? null,
+        workflowType: input.workflowType ?? null,
+        ...(workflowStateForPrisma !== undefined && {
+          workflowState: workflowStateForPrisma,
+        }),
+        recordingStatus: input.recordingStatus ?? "idle",
+      },
+    });
+
+    // Emit events for SSE subscribers
+    const eventId = nextEventId();
+    syncEmitter.emit(`sync:${input.workspaceId}`, {
+      id: eventId,
+      type: "project_update",
+      desktopId: input.desktopId,
+      projectName: input.projectName,
+      storySource: input.storySource,
+      workflowType: synced.workflowType,
+      workflowState: synced.workflowState,
+      recordingStatus: synced.recordingStatus,
+      lastSyncedAt: synced.lastSyncedAt.toISOString(),
+    });
+
+    if (input.recordingStatus !== undefined) {
+      syncEmitter.emit(`recording:${input.workspaceId}`, {
+        id: eventId,
+        desktopId: input.desktopId,
+        status: input.recordingStatus,
+        projectName: input.projectName,
       });
+    }
 
-      if (input.recordingStatus !== undefined) {
-        syncEmitter.emit(`recording:${input.workspaceId}`, {
-          id: eventId,
-          desktopId: input.desktopId,
-          status: input.recordingStatus,
-          projectName: input.projectName,
-        });
-      }
-
-      return { synced: true, lastSyncedAt: synced.lastSyncedAt };
-    }),
+    return { synced: true, lastSyncedAt: synced.lastSyncedAt };
+  }),
 
   /**
    * Update recording status. Called frequently during recording (every step change).
@@ -157,7 +199,7 @@ export const syncRouter = router({
   updateRecordingStatus: protectedProcedure
     .input(updateRecordingStatusInput)
     .mutation(async ({ ctx, input }) => {
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId);
+      await requireWorkspaceMember(ctx.prisma, requireUserId(ctx.user.id), input.workspaceId);
 
       await ctx.prisma.syncedProject.updateMany({
         where: {
@@ -190,11 +232,7 @@ export const syncRouter = router({
     .input(sseSubscriptionInput)
     .subscription(async function* (opts) {
       // Verify JWT + workspace membership
-      await verifySubscriber(
-        opts.input.token,
-        opts.input.workspaceId,
-        opts.ctx.prisma,
-      );
+      await verifySubscriber(opts.input.token, opts.input.workspaceId, opts.ctx.prisma);
 
       const eventName = `recording:${opts.input.workspaceId}`;
 
@@ -236,11 +274,7 @@ export const syncRouter = router({
   onProjectUpdates: publicProcedure
     .input(sseSubscriptionInput)
     .subscription(async function* (opts) {
-      await verifySubscriber(
-        opts.input.token,
-        opts.input.workspaceId,
-        opts.ctx.prisma,
-      );
+      await verifySubscriber(opts.input.token, opts.input.workspaceId, opts.ctx.prisma);
 
       const eventName = `sync:${opts.input.workspaceId}`;
 
@@ -265,6 +299,8 @@ export const syncRouter = router({
             desktopId: string;
             projectName: string;
             storySource?: string;
+            workflowType?: string | null;
+            workflowState?: unknown;
             recordingStatus?: string;
             lastSyncedAt: string;
           };
@@ -274,6 +310,8 @@ export const syncRouter = router({
             desktopId: event.desktopId,
             projectName: event.projectName,
             storySource: event.storySource,
+            workflowType: event.workflowType,
+            workflowState: event.workflowState,
             recordingStatus: event.recordingStatus,
             lastSyncedAt: event.lastSyncedAt,
           });
@@ -289,7 +327,7 @@ export const syncRouter = router({
   listProjects: protectedProcedure
     .input(z.object({ workspaceId: z.string() }))
     .query(async ({ ctx, input }) => {
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId);
+      await requireWorkspaceMember(ctx.prisma, requireUserId(ctx.user.id), input.workspaceId);
 
       const projects = await ctx.prisma.syncedProject.findMany({
         where: { workspaceId: input.workspaceId },
@@ -301,6 +339,8 @@ export const syncRouter = router({
         desktopId: p.desktopId,
         projectName: p.projectName,
         storySource: p.storySource,
+        workflowType: p.workflowType,
+        workflowState: p.workflowState,
         recordingStatus: p.recordingStatus,
         lastSyncedAt: p.lastSyncedAt.toISOString(),
       }));

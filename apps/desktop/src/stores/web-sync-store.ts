@@ -7,8 +7,9 @@
  * On app startup: calls flush_sync_queue and get_sync_status.
  */
 
-import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { create } from "zustand";
+import type { WebWorkflowType, WorkflowState } from "@/ipc/projects";
 
 interface SyncStatus {
   connected: boolean;
@@ -51,115 +52,119 @@ interface WebSyncActions {
     workspaceId: string,
     projectName: string,
     storySource?: string,
+    workflowType?: WebWorkflowType | null,
+    workflowState?: WorkflowState | null,
   ) => Promise<void>;
   /** Check current sync status */
   checkStatus: () => Promise<void>;
   /** Flush the offline queue */
   flushQueue: () => Promise<void>;
   /** Update recording status (fire-and-forget) */
-  updateRecordingStatus: (
-    desktopId: string,
-    workspaceId: string,
-    status: string,
-  ) => Promise<void>;
+  updateRecordingStatus: (desktopId: string, workspaceId: string, status: string) => Promise<void>;
 }
 
-export const useWebSyncStore = create<WebSyncState & WebSyncActions>(
-  (set) => ({
-    // State
-    connected: false,
-    pendingCount: 0,
-    lastSync: null,
-    recordingStatus: "idle",
-    syncing: false,
-    error: null,
+export const useWebSyncStore = create<WebSyncState & WebSyncActions>((set) => ({
+  // State
+  connected: false,
+  pendingCount: 0,
+  lastSync: null,
+  recordingStatus: "idle",
+  syncing: false,
+  error: null,
 
-    // Actions
-    initialize: async () => {
-      try {
-        // Flush any pending items first
-        await invoke<FlushResult>("flush_sync_queue").catch(() => {
-          // May fail if not connected — that's OK
-        });
+  // Actions
+  initialize: async () => {
+    try {
+      // Flush any pending items first
+      await invoke<FlushResult>("flush_sync_queue").catch(() => {
+        // May fail if not connected — that's OK
+      });
 
-        // Then check status
-        const status = await invoke<SyncStatus>("get_sync_status");
-        set({
-          connected: status.connected,
-          pendingCount: status.pendingCount,
-          lastSync: status.lastSync,
-          error: null,
-        });
-      } catch (err) {
-        // Not connected or no account — silently degrade
-        set({ connected: false, error: null });
-      }
-    },
+      // Then check status
+      const status = await invoke<SyncStatus>("get_sync_status");
+      set({
+        connected: status.connected,
+        pendingCount: status.pendingCount,
+        lastSync: status.lastSync,
+        error: null,
+      });
+    } catch {
+      // Not connected or no account — silently degrade
+      set({ connected: false, error: null });
+    }
+  },
 
-    syncProject: async (desktopId, workspaceId, projectName, storySource) => {
-      set({ syncing: true, error: null });
-      try {
-        const result = await invoke<SyncResult>("sync_project_metadata", {
-          desktopId,
-          workspaceId,
-          projectName,
-          storySource: storySource ?? null,
-        });
-        set({
-          syncing: false,
-          lastSync: result.lastSyncedAt,
-          connected: true,
-        });
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : String(err);
-        set({
-          syncing: false,
-          error: message,
-        });
-        // Re-check pending count (item may have been queued)
-        try {
-          const status = await invoke<SyncStatus>("get_sync_status");
-          set({ pendingCount: status.pendingCount });
-        } catch {
-          // Ignore
-        }
-      }
-    },
-
-    checkStatus: async () => {
+  syncProject: async (
+    desktopId,
+    workspaceId,
+    projectName,
+    storySource,
+    workflowType,
+    workflowState,
+  ) => {
+    set({ syncing: true, error: null });
+    try {
+      const result = await invoke<SyncResult>("sync_project_metadata", {
+        desktopId,
+        workspaceId,
+        projectName,
+        storySource: storySource ?? null,
+        workflowType: workflowType ?? null,
+        workflowStateJson: workflowState ? JSON.stringify(workflowState) : null,
+      });
+      set({
+        syncing: false,
+        lastSync: result.lastSyncedAt,
+        connected: true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({
+        syncing: false,
+        error: message,
+      });
+      // Re-check pending count (item may have been queued)
       try {
         const status = await invoke<SyncStatus>("get_sync_status");
-        set({
-          connected: status.connected,
-          pendingCount: status.pendingCount,
-          lastSync: status.lastSync,
-        });
+        set({ pendingCount: status.pendingCount });
       } catch {
-        set({ connected: false });
+        // Ignore
       }
-    },
+    }
+  },
 
-    flushQueue: async () => {
-      try {
-        const result = await invoke<FlushResult>("flush_sync_queue");
-        set({ pendingCount: result.remaining });
-      } catch {
-        // Silently fail
-      }
-    },
+  checkStatus: async () => {
+    try {
+      const status = await invoke<SyncStatus>("get_sync_status");
+      set({
+        connected: status.connected,
+        pendingCount: status.pendingCount,
+        lastSync: status.lastSync,
+      });
+    } catch {
+      set({ connected: false });
+    }
+  },
 
-    updateRecordingStatus: async (desktopId, workspaceId, status) => {
-      set({ recordingStatus: status });
-      try {
-        await invoke("update_recording_status", {
-          desktopId,
-          workspaceId,
-          status,
-        });
-      } catch {
-        // Fire-and-forget: don't propagate errors
-      }
-    },
-  }),
-);
+  flushQueue: async () => {
+    try {
+      const result = await invoke<FlushResult>("flush_sync_queue");
+      set({ pendingCount: result.remaining });
+    } catch {
+      // Silently fail
+    }
+  },
+
+  updateRecordingStatus: async (desktopId, workspaceId, status) => {
+    set({ recordingStatus: status });
+    try {
+      await invoke("update_recording_status", {
+        desktopId,
+        workspaceId,
+        status,
+      });
+    } catch {
+      // Fire-and-forget: don't propagate errors
+    }
+  },
+}));

@@ -24,8 +24,10 @@ pub use preset_io::{
 };
 pub use project_db::{ProjectDb, PROJECT_DB_FILENAME};
 pub use project_folder::{
-    create_project, list_projects, open_project, ProjectFolder, ASSETS_DIRNAME, DB_FILENAME,
-    EXPORTS_DIRNAME, FOLDER_FORMAT_VERSION, META_DIRNAME, STORY_FILENAME, VERSION_FILENAME,
+    create_project, create_project_with_options, list_projects, open_project, read_workflow_state,
+    write_workflow_state, CreateProjectOptions, ProjectFolder, WorkflowState, WorkflowStep,
+    WorkflowStepStatus, WorkflowType, ASSETS_DIRNAME, DB_FILENAME, EXPORTS_DIRNAME,
+    FOLDER_FORMAT_VERSION, META_DIRNAME, STORY_FILENAME, VERSION_FILENAME, WORKFLOW_FILENAME,
 };
 /// Re-export `rusqlite::Connection` so downstream crates that wire the
 /// two-tier DB (e.g. the Tauri host bridging the render queue) don't have

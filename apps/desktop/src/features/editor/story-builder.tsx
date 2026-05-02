@@ -1,5 +1,4 @@
 import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
-import { SelectField } from "@/components/ui/select-field";
 import {
   ChevronDown,
   Code2,
@@ -13,6 +12,8 @@ import {
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
+import { SelectField } from "@/components/ui/select-field";
+import { WorkflowRoadmapPanel } from "@/features/workflows/workflow-roadmap-panel";
 import type { Command, Story } from "@/ipc/parse";
 import {
   isPicked,
@@ -22,9 +23,11 @@ import {
   pickerStampStepId,
   type TargetRecordDto,
 } from "@/ipc/picker";
+import type { WorkflowState } from "@/ipc/projects";
 import {
   calloutText,
   highlightEnabled,
+  type PolishActionFocus,
   type PolishAutoZoom,
   type PolishBackground,
   type PolishCallout,
@@ -63,6 +66,8 @@ interface StoryBuilderProps {
   onSourceCommit: (source: string) => Promise<void>;
   onFlushSource?: () => void;
   onPolishChange: (doc: StoryPolishDoc) => void;
+  workflowState: WorkflowState | null;
+  onWorkflowChange: (workflow: WorkflowState) => void;
   onJumpToOffset: (offset: number) => void;
 }
 
@@ -85,6 +90,7 @@ const autoZoomOptions = [
   { value: "standard", label: "Standard" },
   { value: "strong", label: "Strong" },
 ];
+const actionFocusOptions = autoZoomOptions;
 const cursorModeOptions = [
   { value: "raw", label: "Raw" },
   { value: "smooth", label: "Smooth" },
@@ -320,6 +326,8 @@ export function StoryBuilder({
   onSourceCommit,
   onFlushSource,
   onPolishChange,
+  workflowState,
+  onWorkflowChange,
   onJumpToOffset,
 }: StoryBuilderProps) {
   const [pickingKey, setPickingKey] = useState<string | null>(null);
@@ -338,6 +346,7 @@ export function StoryBuilder({
     patch: Partial<{
       recipe: PolishRecipe;
       autoZoom: PolishAutoZoom;
+      actionFocus: PolishActionFocus;
       autoZoomDurationMs: number;
       cursor: PolishCursorMode;
       cursorSkin: PolishCursorSkin;
@@ -478,6 +487,13 @@ export function StoryBuilder({
         }
       }}
     >
+      {workflowState ? (
+        <WorkflowRoadmapPanel
+          workflow={workflowState}
+          disabled={simulatorActive}
+          onChange={onWorkflowChange}
+        />
+      ) : null}
       <div className="shrink-0 border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome)]">
         <div className="flex h-10 items-center gap-2 px-3">
           <Sparkles size={14} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
@@ -521,6 +537,17 @@ export function StoryBuilder({
                   aria-label="Auto zoom"
                 />
               </LabeledControl>
+              <LabeledControl label="Action focus" className="min-w-[140px] flex-1">
+                <SelectField
+                  value={polish.global.actionFocus}
+                  disabled={simulatorActive}
+                  options={actionFocusOptions}
+                  onValueChange={(value) =>
+                    updateGlobal({ actionFocus: value as PolishActionFocus })
+                  }
+                  aria-label="Action focus"
+                />
+              </LabeledControl>
               <LabeledControl label="Duration" className="w-24">
                 <input
                   className={fieldClass}
@@ -554,9 +581,7 @@ export function StoryBuilder({
                   value={polish.global.cursorSkin}
                   disabled={simulatorActive || polish.global.cursor === "hidden"}
                   options={cursorSkinOptions}
-                  onValueChange={(value) =>
-                    updateGlobal({ cursorSkin: value as PolishCursorSkin })
-                  }
+                  onValueChange={(value) => updateGlobal({ cursorSkin: value as PolishCursorSkin })}
                   aria-label="Cursor skin"
                 />
               </LabeledControl>
@@ -585,7 +610,9 @@ export function StoryBuilder({
                   value={backgroundToValue(polish.global.background)}
                   disabled={simulatorActive}
                   options={backgroundOptions}
-                  onValueChange={(value) => updateGlobal({ background: backgroundFromValue(value) })}
+                  onValueChange={(value) =>
+                    updateGlobal({ background: backgroundFromValue(value) })
+                  }
                   aria-label="Background"
                 />
               </LabeledControl>

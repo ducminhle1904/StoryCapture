@@ -4,6 +4,7 @@
 
 use crate::error::StorageError;
 use crate::project_db::{ProjectDb, PROJECT_DB_FILENAME};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub const FOLDER_FORMAT_VERSION: &str = "1";
@@ -12,6 +13,7 @@ pub const ASSETS_DIRNAME: &str = "assets";
 pub const EXPORTS_DIRNAME: &str = "exports";
 pub const META_DIRNAME: &str = ".storycapture";
 pub const VERSION_FILENAME: &str = "version.txt";
+pub const WORKFLOW_FILENAME: &str = "workflow.json";
 pub const DB_FILENAME: &str = PROJECT_DB_FILENAME;
 
 pub struct ProjectFolder {
@@ -44,6 +46,67 @@ impl ProjectFolder {
     pub fn version_file(&self) -> PathBuf {
         self.meta_dir().join(VERSION_FILENAME)
     }
+    pub fn workflow_path(&self) -> PathBuf {
+        self.meta_dir().join(WORKFLOW_FILENAME)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowType {
+    ProductDemo,
+    Tutorial,
+    FeatureLaunch,
+    SalesMarketing,
+    Support,
+    InternalTraining,
+    BugReproduction,
+    Documentation,
+    Freestyle,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowStepStatus {
+    Todo,
+    Drafted,
+    Recorded,
+    Polished,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowStep {
+    pub id: String,
+    pub title: String,
+    pub status: WorkflowStepStatus,
+    #[serde(rename = "sceneName", skip_serializing_if = "Option::is_none")]
+    pub scene_name: Option<String>,
+    #[serde(
+        rename = "requiredInputs",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub required_inputs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowState {
+    pub version: u32,
+    #[serde(rename = "type")]
+    pub workflow_type: WorkflowType,
+    pub steps: Vec<WorkflowStep>,
+    #[serde(rename = "createdAt")]
+    pub created_at: i64,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CreateProjectOptions<'a> {
+    pub starter_story_source: Option<&'a str>,
+    pub workflow_state: Option<&'a WorkflowState>,
 }
 
 fn starter_story_content(name: &str) -> String {
@@ -58,6 +121,16 @@ fn starter_story_content(name: &str) -> String {
 /// `name` via slugification, scaffold all subdirs, write the starter story
 /// file and version marker, then initialize `project.sqlite`.
 pub fn create_project(parent: &Path, name: &str) -> Result<ProjectFolder, StorageError> {
+    create_project_with_options(parent, name, CreateProjectOptions::default())
+}
+
+/// Create a project with optional caller-provided starter story and workflow
+/// roadmap metadata.
+pub fn create_project_with_options(
+    parent: &Path,
+    name: &str,
+    options: CreateProjectOptions<'_>,
+) -> Result<ProjectFolder, StorageError> {
     if !parent.exists() {
         std::fs::create_dir_all(parent)?;
     }
@@ -84,10 +157,20 @@ pub fn create_project(parent: &Path, name: &str) -> Result<ProjectFolder, Storag
         root.join(META_DIRNAME).join(VERSION_FILENAME),
         FOLDER_FORMAT_VERSION,
     )?;
-    std::fs::write(root.join(STORY_FILENAME), starter_story_content(name))?;
+    std::fs::write(
+        root.join(STORY_FILENAME),
+        options
+            .starter_story_source
+            .map(str::to_owned)
+            .unwrap_or_else(|| starter_story_content(name)),
+    )?;
 
     let db = ProjectDb::open(&root)?;
-    Ok(ProjectFolder { root, db })
+    let folder = ProjectFolder { root, db };
+    if let Some(workflow_state) = options.workflow_state {
+        write_workflow_state(&folder, workflow_state)?;
+    }
+    Ok(folder)
 }
 
 /// Open an existing project folder. Verifies the format-version marker. Does
@@ -118,6 +201,25 @@ pub fn open_project(folder: &Path) -> Result<ProjectFolder, StorageError> {
         root: folder.to_path_buf(),
         db,
     })
+}
+
+pub fn read_workflow_state(folder: &ProjectFolder) -> Result<Option<WorkflowState>, StorageError> {
+    let text = match std::fs::read_to_string(folder.workflow_path()) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err.into()),
+    };
+    Ok(Some(serde_json::from_str(&text)?))
+}
+
+pub fn write_workflow_state(
+    folder: &ProjectFolder,
+    state: &WorkflowState,
+) -> Result<(), StorageError> {
+    std::fs::create_dir_all(folder.meta_dir())?;
+    let text = serde_json::to_string_pretty(state)?;
+    std::fs::write(folder.workflow_path(), text)?;
+    Ok(())
 }
 
 /// Walk `parent` for direct subdirectories that contain a valid project marker.

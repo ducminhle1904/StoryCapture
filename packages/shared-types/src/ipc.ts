@@ -82,6 +82,32 @@ async launchAutomation(storySource: string, projectFolder: string, onEvent: TAUR
 }
 },
 /**
+ * Open the story browser window before capture without executing DSL steps.
+ * Recorder uses this to resolve a window/content target, then launches the
+ * story once after capture has attached.
+ */
+async prepareRecordingBrowser(storySource: string, chromeHiding: boolean | null, recordingDisplay: RecordingDisplayPlacementDto | null, recordingViewport: RecordingViewportDto | null) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prepare_recording_browser", { storySource, chromeHiding, recordingDisplay, recordingViewport }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run the story once before capture and allow the executor's existing
+ * self-healing path to promote passing fallbacks in `.story.targets.json`.
+ * The renderer blocks recording start if this stream emits `StepFailed`.
+ */
+async validateRecordingTargets(storySource: string, projectFolder: string, storyPath: string, onEvent: TAURI_CHANNEL<AutomationEvent>, chromeHiding: boolean | null, recordingDisplay: RecordingDisplayPlacementDto | null, recordingViewport: RecordingViewportDto | null) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("validate_recording_targets", { storySource, projectFolder, storyPath, onEvent, chromeHiding, recordingDisplay, recordingViewport }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Resolve the current Playwright auto-target to a window id.
  */
 async resolvePlaywrightTarget() : Promise<Result<ResolvedPlaywrightTarget | null, AppError>> {
@@ -734,6 +760,22 @@ async openProject(args: ProjectIdArg) : Promise<Result<ProjectFolderInfoDto, App
     else return { status: "error", error: e  as any };
 }
 },
+async getProjectWorkflow(args: ProjectIdArg) : Promise<Result<WorkflowStateDto | null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_project_workflow", { args }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateProjectWorkflow(args: UpdateProjectWorkflowArgs) : Promise<Result<WorkflowStateDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_project_workflow", { args }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async removeProject(args: ProjectIdArg) : Promise<Result<null, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("remove_project", { args }) };
@@ -1298,9 +1340,9 @@ async getWebApiToken() : Promise<Result<string | null, WebAccountError>> {
 /**
  * Push project metadata to the web companion. Queues locally if offline.
  */
-async syncProjectMetadata(desktopId: string, workspaceId: string, projectName: string, storySource: string | null) : Promise<Result<SyncResult, WebSyncError>> {
+async syncProjectMetadata(desktopId: string, workspaceId: string, projectName: string, storySource: string | null, workflowType: string | null, workflowStateJson: string | null) : Promise<Result<SyncResult, WebSyncError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("sync_project_metadata", { desktopId, workspaceId, projectName, storySource }) };
+    return { status: "ok", data: await TAURI_INVOKE("sync_project_metadata", { desktopId, workspaceId, projectName, storySource, workflowType, workflowStateJson }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1483,7 +1525,7 @@ export type CreateProjectArgs = { name: string;
  * name itself is derived from `name` via slugification (see
  * `storage::project_folder::create_project`).
  */
-parent: string }
+parent: string; workflow_type: WorkflowTypeDto | null; starter_story_source: string | null; workflow_state: WorkflowStateDto | null }
 export type DiagnosticBundleResult = { path: string }
 export type DiagnosticDto = { severity: SeverityDto; message: string; span: SpanDto; suggestion: string | null }
 export type DisplayInfoDto = { id: bigint; name: string; x: number; y: number; width_px: number; height_px: number; scale_factor: number; is_primary: boolean }
@@ -1863,6 +1905,7 @@ body: string | null;
  * Current installed version, for the UI to display a "X → Y" diff.
  */
 current_version: string }
+export type UpdateProjectWorkflowArgs = { id: string; workflow_state: WorkflowStateDto }
 export type UpdateSettings = { check_updates_on_launch: boolean }
 /**
  * Structured error for upload operations.
@@ -1895,6 +1938,10 @@ export type WebAccountInfo = { email: string; name: string | null; avatarUrl: st
  */
 export type WebSyncError = { kind: "NotConnected" } | { kind: "NetworkError"; message: string } | { kind: "ServerError"; message: string } | { kind: "DatabaseError"; message: string }
 export type WindowInfoDto = { window_id: bigint; title: string | null; app_name: string; pid: number; bundle_id: string; x: number; y: number; width: number; height: number; is_on_screen: boolean }
+export type WorkflowStateDto = { version: number; type: WorkflowTypeDto; steps: WorkflowStepDto[]; createdAt: bigint; updatedAt: bigint }
+export type WorkflowStepDto = { id: string; title: string; status: WorkflowStepStatusDto; sceneName?: string | null; requiredInputs: string[]; notes?: string | null }
+export type WorkflowStepStatusDto = "todo" | "drafted" | "recorded" | "polished"
+export type WorkflowTypeDto = "product_demo" | "tutorial" | "feature_launch" | "sales_marketing" | "support" | "internal_training" | "bug_reproduction" | "documentation" | "freestyle"
 export type X264PresetDto = "ultrafast" | "superfast" | "veryfast" | "faster" | "fast" | "medium" | "slow" | "slower" | "veryslow"
 
 /** tauri-specta globals **/

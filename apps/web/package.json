@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
@@ -48,6 +49,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "typescript": "^6.0.3",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.5"
   }
 }

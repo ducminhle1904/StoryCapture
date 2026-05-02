@@ -1,6 +1,8 @@
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, publicProcedure, protectedProcedure } from "../init";
+import { z } from "zod";
+import { TemplateCategory, WorkflowType } from "@/generated/prisma";
+import { slugify } from "@/lib/slugify";
+import { protectedProcedure, publicProcedure, router } from "../init";
 
 /**
  * Template marketplace router.
@@ -12,17 +14,8 @@ import { router, publicProcedure, protectedProcedure } from "../init";
  *   public (curated system templates).
  */
 
-const templateCategoryEnum = z.enum([
-  "SAAS_ONBOARDING",
-  "ECOMMERCE_CHECKOUT",
-  "API_WALKTHROUGH",
-  "MOBILE_DEMO",
-  "CLI_TOOL",
-  "LANDING_PAGE",
-  "FEATURE_ANNOUNCEMENT",
-  "BUG_REPRODUCTION",
-  "INTERNAL_TRAINING",
-]);
+const templateCategoryEnum = z.nativeEnum(TemplateCategory);
+const workflowTypeEnum = z.nativeEnum(WorkflowType);
 
 export const templateRouter = router({
   /**
@@ -35,11 +28,15 @@ export const templateRouter = router({
       z
         .object({
           category: templateCategoryEnum.optional(),
+          workflowType: workflowTypeEnum.optional(),
         })
         .optional(),
     )
     .query(async ({ ctx, input }) => {
-      const where = input?.category ? { category: input.category } : {};
+      const where = {
+        ...(input?.category ? { category: input.category } : {}),
+        ...(input?.workflowType ? { workflowType: input.workflowType } : {}),
+      };
 
       const templates = await ctx.prisma.template.findMany({
         where,
@@ -48,6 +45,11 @@ export const templateRouter = router({
           name: true,
           description: true,
           category: true,
+          workflowType: true,
+          bestFor: true,
+          durationTarget: true,
+          polishPreset: true,
+          requiredInputs: true,
           forkCount: true,
           thumbnailUrl: true,
         },
@@ -55,17 +57,13 @@ export const templateRouter = router({
       });
 
       // Group by category
-      const grouped: Record<
-        string,
-        typeof templates
-      > = {};
+      const grouped: Record<string, typeof templates> = {};
 
       for (const template of templates) {
         const cat = template.category;
-        if (!grouped[cat]) {
-          grouped[cat] = [];
-        }
-        grouped[cat]!.push(template);
+        const categoryTemplates = grouped[cat] ?? [];
+        categoryTemplates.push(template);
+        grouped[cat] = categoryTemplates;
       }
 
       return { templates, grouped };
@@ -74,35 +72,39 @@ export const templateRouter = router({
   /**
    * Get full template details including storySource preview (first 500 chars).
    */
-  getById: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const template = await ctx.prisma.template.findUnique({
-        where: { id: input.id },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          category: true,
-          storySource: true,
-          forkCount: true,
-          thumbnailUrl: true,
-          createdAt: true,
-        },
+  getById: publicProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+    const template = await ctx.prisma.template.findUnique({
+      where: { id: input.id },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        workflowType: true,
+        storySource: true,
+        workflowState: true,
+        bestFor: true,
+        durationTarget: true,
+        polishPreset: true,
+        requiredInputs: true,
+        forkCount: true,
+        thumbnailUrl: true,
+        createdAt: true,
+      },
+    });
+
+    if (!template) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Template not found.",
       });
+    }
 
-      if (!template) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Template not found.",
-        });
-      }
-
-      return {
-        ...template,
-        storySourcePreview: template.storySource.slice(0, 500),
-      };
-    }),
+    return {
+      ...template,
+      storySourcePreview: template.storySource.slice(0, 500),
+    };
+  }),
 
   /**
    * Fork a template — deep copy storySource as downloadable .story content.
@@ -122,6 +124,10 @@ export const templateRouter = router({
           id: true,
           name: true,
           storySource: true,
+          workflowType: true,
+          workflowState: true,
+          requiredInputs: true,
+          polishPreset: true,
         },
       });
 
@@ -138,13 +144,16 @@ export const templateRouter = router({
         data: { forkCount: { increment: 1 } },
       });
 
-      // Return storySource for download as .story file
-      const fileName = `${template.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}.story`;
+      const fileName = `${slugify(template.name)}.story`;
 
       return {
         storySource: template.storySource,
         fileName,
         templateName: template.name,
+        workflowType: template.workflowType,
+        workflowState: template.workflowState,
+        requiredInputs: template.requiredInputs,
+        polishPreset: template.polishPreset,
       };
     }),
 });

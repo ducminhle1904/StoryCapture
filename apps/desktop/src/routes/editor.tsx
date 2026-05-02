@@ -33,7 +33,14 @@ import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-edit
 import { ensureAllStepIds, formatEditableStory } from "@/features/editor/story-ui-model";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
 import { parseStory } from "@/ipc/parse";
-import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
+import {
+  fetchProjectFolder,
+  fetchProjectWorkflow,
+  type ProjectFolderInfo,
+  updateProjectWorkflow,
+  useProjectRecordings,
+  type WorkflowState,
+} from "@/ipc/projects";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";
@@ -60,6 +67,7 @@ export default function EditorRoute() {
   const [cursor, setCursor] = useState<{ line: number; col: number } | null>(null);
   const [editorMode, setEditorMode] = useState<"ui" | "code">("ui");
   const [polish, setPolish] = useState<StoryPolishDoc>(DEFAULT_POLISH_DOC);
+  const [workflowState, setWorkflowState] = useState<WorkflowState | null>(null);
   const [polishReady, setPolishReady] = useState(false);
   const [polishDirty, setPolishDirty] = useState(false);
   const [recordPolishStarting, setRecordPolishStarting] = useState(false);
@@ -70,6 +78,7 @@ export default function EditorRoute() {
   // skip (so external edits aren't clobbered by a clean buffer) and the
   // focus-time divergence check.
   const lastDiskSourceRef = useRef<string | null>(null);
+  const workflowSaveSeqRef = useRef(0);
   const setSource = useEditorStore((s) => s.setSource);
   const setLastParse = useEditorStore((s) => s.setLastParse);
   const resetProjectState = useEditorStore((s) => s.resetProjectState);
@@ -127,6 +136,7 @@ export default function EditorRoute() {
     setLoadError(null);
     setLoadedProjectId(null);
     setPolish(DEFAULT_POLISH_DOC);
+    setWorkflowState(null);
     setPolishReady(false);
     setPolishDirty(false);
     lastDiskSourceRef.current = null;
@@ -138,22 +148,19 @@ export default function EditorRoute() {
         if (cancelled) return;
         const text = await readTextFile(info.story_path);
         if (cancelled) return;
-        // Parse before marking ready so the first paint already has scenes and diagnostics.
-        let parsed: Awaited<ReturnType<typeof parseStory>> | null = null;
-        try {
-          parsed = await parseStory(text);
-        } catch {
-          /* Render anyway; diagnostics surface elsewhere. */
-        }
+        const [parsed, polishDoc, workflow] = await Promise.all([
+          parseStory(text).catch(() => null),
+          loadPolishDoc(info.story_path),
+          fetchProjectWorkflow(projectId),
+        ]);
         if (cancelled) return;
         // Commit folder, source, parse result, and ready flag together.
         setFolder(info);
         setSource(text);
         lastDiskSourceRef.current = text;
         if (parsed) setLastParse(parsed);
-        const polishDoc = await loadPolishDoc(info.story_path);
-        if (cancelled) return;
         setPolish(polishDoc);
+        setWorkflowState(workflow);
         setPolishReady(true);
         setPolishDirty(false);
         setLoadedProjectId(projectId);
@@ -246,6 +253,22 @@ export default function EditorRoute() {
     setPolish(next);
     setPolishDirty(true);
   }, []);
+
+  const updateWorkflow = useCallback(
+    (next: WorkflowState) => {
+      if (!projectId) return;
+      if (workflowState === next) return;
+      const saveSeq = workflowSaveSeqRef.current + 1;
+      workflowSaveSeqRef.current = saveSeq;
+      setWorkflowState(next);
+      updateProjectWorkflow(projectId, next)
+        .then((saved) => {
+          if (workflowSaveSeqRef.current === saveSeq) setWorkflowState(saved);
+        })
+        .catch(() => toast.error("Failed to save workflow roadmap"));
+    },
+    [projectId, workflowState],
+  );
 
   useEffect(() => {
     if (!polishReady || !story) return;
@@ -571,6 +594,8 @@ export default function EditorRoute() {
                         onSourceCommit={commitUiSourceChange}
                         onFlushSource={flushUiSourceChange}
                         onPolishChange={updatePolish}
+                        workflowState={workflowState}
+                        onWorkflowChange={updateWorkflow}
                         onJumpToOffset={queueEditorJump}
                       />
                     ) : (

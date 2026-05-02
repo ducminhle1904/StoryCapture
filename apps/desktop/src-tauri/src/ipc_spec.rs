@@ -47,6 +47,8 @@ pub fn builder() -> Builder<Wry> {
             system::trigger_panic,
             frontend_log::log_from_frontend,
             automation::launch_automation,
+            automation::prepare_recording_browser,
+            automation::validate_recording_targets,
             automation::resolve_playwright_target,
             automation::is_stage_manager_enabled,
             // Live preview pump (Rust → `preview://frame`).
@@ -113,6 +115,8 @@ pub fn builder() -> Builder<Wry> {
             projects::list_projects,
             projects::create_project,
             projects::open_project,
+            projects::get_project_workflow,
+            projects::update_project_workflow,
             projects::remove_project,
             projects::list_project_recordings,
             actions::get_recording_actions,
@@ -255,6 +259,11 @@ pub fn builder() -> Builder<Wry> {
         .typ::<projects::ProjectFolderInfoDto>()
         .typ::<projects::CreateProjectArgs>()
         .typ::<projects::ProjectIdArg>()
+        .typ::<projects::WorkflowTypeDto>()
+        .typ::<projects::WorkflowStepStatusDto>()
+        .typ::<projects::WorkflowStepDto>()
+        .typ::<projects::WorkflowStateDto>()
+        .typ::<projects::UpdateProjectWorkflowArgs>()
         .typ::<projects::RecordingInfoDto>()
         // Semantic cursor action sidecar.
         .typ::<actions::ActionTimelineDto>()

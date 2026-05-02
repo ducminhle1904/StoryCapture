@@ -62,6 +62,162 @@ pub struct ProjectFolderInfoDto {
     pub session_count: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowTypeDto {
+    ProductDemo,
+    Tutorial,
+    FeatureLaunch,
+    SalesMarketing,
+    Support,
+    InternalTraining,
+    BugReproduction,
+    Documentation,
+    Freestyle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowStepStatusDto {
+    Todo,
+    Drafted,
+    Recorded,
+    Polished,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct WorkflowStepDto {
+    pub id: String,
+    pub title: String,
+    pub status: WorkflowStepStatusDto,
+    #[serde(rename = "sceneName", skip_serializing_if = "Option::is_none")]
+    pub scene_name: Option<String>,
+    #[serde(
+        rename = "requiredInputs",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub required_inputs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct WorkflowStateDto {
+    pub version: u32,
+    #[serde(rename = "type")]
+    pub workflow_type: WorkflowTypeDto,
+    pub steps: Vec<WorkflowStepDto>,
+    #[serde(rename = "createdAt")]
+    pub created_at: i64,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: i64,
+}
+
+impl From<WorkflowTypeDto> for storage::WorkflowType {
+    fn from(value: WorkflowTypeDto) -> Self {
+        match value {
+            WorkflowTypeDto::ProductDemo => storage::WorkflowType::ProductDemo,
+            WorkflowTypeDto::Tutorial => storage::WorkflowType::Tutorial,
+            WorkflowTypeDto::FeatureLaunch => storage::WorkflowType::FeatureLaunch,
+            WorkflowTypeDto::SalesMarketing => storage::WorkflowType::SalesMarketing,
+            WorkflowTypeDto::Support => storage::WorkflowType::Support,
+            WorkflowTypeDto::InternalTraining => storage::WorkflowType::InternalTraining,
+            WorkflowTypeDto::BugReproduction => storage::WorkflowType::BugReproduction,
+            WorkflowTypeDto::Documentation => storage::WorkflowType::Documentation,
+            WorkflowTypeDto::Freestyle => storage::WorkflowType::Freestyle,
+        }
+    }
+}
+
+impl From<storage::WorkflowType> for WorkflowTypeDto {
+    fn from(value: storage::WorkflowType) -> Self {
+        match value {
+            storage::WorkflowType::ProductDemo => WorkflowTypeDto::ProductDemo,
+            storage::WorkflowType::Tutorial => WorkflowTypeDto::Tutorial,
+            storage::WorkflowType::FeatureLaunch => WorkflowTypeDto::FeatureLaunch,
+            storage::WorkflowType::SalesMarketing => WorkflowTypeDto::SalesMarketing,
+            storage::WorkflowType::Support => WorkflowTypeDto::Support,
+            storage::WorkflowType::InternalTraining => WorkflowTypeDto::InternalTraining,
+            storage::WorkflowType::BugReproduction => WorkflowTypeDto::BugReproduction,
+            storage::WorkflowType::Documentation => WorkflowTypeDto::Documentation,
+            storage::WorkflowType::Freestyle => WorkflowTypeDto::Freestyle,
+        }
+    }
+}
+
+impl From<WorkflowStepStatusDto> for storage::WorkflowStepStatus {
+    fn from(value: WorkflowStepStatusDto) -> Self {
+        match value {
+            WorkflowStepStatusDto::Todo => storage::WorkflowStepStatus::Todo,
+            WorkflowStepStatusDto::Drafted => storage::WorkflowStepStatus::Drafted,
+            WorkflowStepStatusDto::Recorded => storage::WorkflowStepStatus::Recorded,
+            WorkflowStepStatusDto::Polished => storage::WorkflowStepStatus::Polished,
+        }
+    }
+}
+
+impl From<storage::WorkflowStepStatus> for WorkflowStepStatusDto {
+    fn from(value: storage::WorkflowStepStatus) -> Self {
+        match value {
+            storage::WorkflowStepStatus::Todo => WorkflowStepStatusDto::Todo,
+            storage::WorkflowStepStatus::Drafted => WorkflowStepStatusDto::Drafted,
+            storage::WorkflowStepStatus::Recorded => WorkflowStepStatusDto::Recorded,
+            storage::WorkflowStepStatus::Polished => WorkflowStepStatusDto::Polished,
+        }
+    }
+}
+
+impl From<WorkflowStepDto> for storage::WorkflowStep {
+    fn from(value: WorkflowStepDto) -> Self {
+        storage::WorkflowStep {
+            id: value.id,
+            title: value.title,
+            status: value.status.into(),
+            scene_name: value.scene_name,
+            required_inputs: value.required_inputs,
+            notes: value.notes,
+        }
+    }
+}
+
+impl From<storage::WorkflowStep> for WorkflowStepDto {
+    fn from(value: storage::WorkflowStep) -> Self {
+        WorkflowStepDto {
+            id: value.id,
+            title: value.title,
+            status: value.status.into(),
+            scene_name: value.scene_name,
+            required_inputs: value.required_inputs,
+            notes: value.notes,
+        }
+    }
+}
+
+impl From<WorkflowStateDto> for storage::WorkflowState {
+    fn from(value: WorkflowStateDto) -> Self {
+        storage::WorkflowState {
+            version: value.version,
+            workflow_type: value.workflow_type.into(),
+            steps: value.steps.into_iter().map(Into::into).collect(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<storage::WorkflowState> for WorkflowStateDto {
+    fn from(value: storage::WorkflowState) -> Self {
+        WorkflowStateDto {
+            version: value.version,
+            workflow_type: value.workflow_type.into(),
+            steps: value.steps.into_iter().map(Into::into).collect(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
 fn map_storage_err(e: StorageError) -> AppError {
     match e {
         StorageError::NotFound(m) => AppError::NotFound(m),
@@ -90,6 +246,9 @@ pub struct CreateProjectArgs {
     /// name itself is derived from `name` via slugification (see
     /// `storage::project_folder::create_project`).
     pub parent: String,
+    pub workflow_type: Option<WorkflowTypeDto>,
+    pub starter_story_source: Option<String>,
+    pub workflow_state: Option<WorkflowStateDto>,
 }
 
 #[tauri::command]
@@ -102,8 +261,27 @@ pub fn create_project(
     if args.name.trim().is_empty() {
         return Err(AppError::InvalidArgument("project name required".into()));
     }
+    if let (Some(requested), Some(state)) = (&args.workflow_type, &args.workflow_state) {
+        if requested != &state.workflow_type {
+            return Err(AppError::InvalidArgument(
+                "workflow_type must match workflow_state.type".into(),
+            ));
+        }
+    }
     let parent = PathBuf::from(&args.parent);
-    let folder = storage::create_project(&parent, &args.name).map_err(map_storage_err)?;
+    let workflow_state = args
+        .workflow_state
+        .clone()
+        .map(storage::WorkflowState::from);
+    let folder = storage::create_project_with_options(
+        &parent,
+        &args.name,
+        storage::CreateProjectOptions {
+            starter_story_source: args.starter_story_source.as_deref(),
+            workflow_state: workflow_state.as_ref(),
+        },
+    )
+    .map_err(map_storage_err)?;
     let folder_path = folder.root().to_path_buf();
     // Register in AppDb.
     let mut db = open_app_db(&state)?;
@@ -130,6 +308,20 @@ pub struct ProjectIdArg {
     pub id: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Type)]
+pub struct UpdateProjectWorkflowArgs {
+    pub id: String,
+    pub workflow_state: WorkflowStateDto,
+}
+
+fn find_project_row(db: &storage::AppDb, id: uuid::Uuid) -> Result<storage::Project, AppError> {
+    db.list_projects()
+        .map_err(map_storage_err)?
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("project {id}")))
+}
+
 #[tauri::command]
 #[specta::specta]
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "open_project"), err(Debug))]
@@ -142,12 +334,7 @@ pub async fn open_project(
         .map_err(|e| AppError::InvalidArgument(format!("invalid project id: {e}")))?;
 
     let mut db = open_app_db(&state)?;
-    let row = db
-        .list_projects()
-        .map_err(map_storage_err)?
-        .into_iter()
-        .find(|p| p.id == id)
-        .ok_or_else(|| AppError::NotFound(format!("project {id}")))?;
+    let row = find_project_row(&db, id)?;
 
     let folder = storage::open_project(&row.folder_path).map_err(map_storage_err)?;
     let story_path = folder.story_path();
@@ -177,6 +364,58 @@ pub async fn open_project(
         exports_dir: exports_dir.to_string_lossy().into_owned(),
         session_count,
     })
+}
+
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "get_project_workflow"),
+    err(Debug)
+)]
+pub fn get_project_workflow(
+    state: State<'_, AppState>,
+    args: ProjectIdArg,
+) -> Result<Option<WorkflowStateDto>, AppError> {
+    let id = uuid::Uuid::parse_str(&args.id)
+        .map_err(|e| AppError::InvalidArgument(format!("invalid project id: {e}")))?;
+    let db = open_app_db(&state)?;
+    let row = find_project_row(&db, id)?;
+    let folder = storage::open_project(&row.folder_path).map_err(map_storage_err)?;
+    storage::read_workflow_state(&folder)
+        .map_err(map_storage_err)
+        .map(|state| state.map(Into::into))
+}
+
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "update_project_workflow"),
+    err(Debug)
+)]
+pub fn update_project_workflow(
+    state: State<'_, AppState>,
+    args: UpdateProjectWorkflowArgs,
+) -> Result<WorkflowStateDto, AppError> {
+    let id = uuid::Uuid::parse_str(&args.id)
+        .map_err(|e| AppError::InvalidArgument(format!("invalid project id: {e}")))?;
+    let db = open_app_db(&state)?;
+    let row = find_project_row(&db, id)?;
+    let folder = storage::open_project(&row.folder_path).map_err(map_storage_err)?;
+    let mut workflow_state: storage::WorkflowState = args.workflow_state.into();
+    workflow_state.updated_at = now_millis();
+    storage::write_workflow_state(&folder, &workflow_state).map_err(map_storage_err)?;
+    Ok(workflow_state.into())
+}
+
+fn now_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 async fn install_project_render_queue(

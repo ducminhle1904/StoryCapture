@@ -183,7 +183,13 @@ model Template {
   name         String
   description  String?          @db.Text
   category     TemplateCategory
+  workflowType WorkflowType?
   storySource  String           @db.Text // DSL content
+  workflowState Json?
+  bestFor      String?
+  durationTarget String?
+  polishPreset String?
+  requiredInputs Json?
   thumbnailUrl String?
   workspaceId  String?          // null = system template
   workspace    Workspace?       @relation(fields: [workspaceId], references: [id])
@@ -192,6 +198,7 @@ model Template {
   updatedAt    DateTime         @updatedAt
 
   @@index([category])
+  @@index([workflowType])
 }
 
 enum TemplateCategory {
@@ -206,6 +213,18 @@ enum TemplateCategory {
   INTERNAL_TRAINING
 }
 
+enum WorkflowType {
+  PRODUCT_DEMO
+  TUTORIAL
+  FEATURE_LAUNCH
+  SALES_MARKETING
+  SUPPORT
+  INTERNAL_TRAINING
+  BUG_REPRODUCTION
+  DOCUMENTATION
+  FREESTYLE
+}
+
 // ─── Desktop sync (project mirror metadata) ───
 
 model SyncedProject {
@@ -214,6 +233,8 @@ model SyncedProject {
   workspaceId     String
   projectName     String
   storySource     String?  @db.Text
+  workflowType    WorkflowType?
+  workflowState   Json?
   recordingStatus String?  // "idle" | "recording" | "step:3/7"
   workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lastSyncedAt    DateTime @default(now())
