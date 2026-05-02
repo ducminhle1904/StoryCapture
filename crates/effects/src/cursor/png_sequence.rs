@@ -12,7 +12,7 @@ use serde::Deserialize;
 use tracing::warn;
 
 use crate::ast::types::Vec2;
-use crate::ast::video::RippleEvent;
+use crate::ast::video::{CursorMotionPreset, RippleEvent};
 use crate::error::EffectsError;
 use crate::math::vec2::Vec2Ops;
 use crate::math::{Waypoint, WaypointKind};
@@ -24,10 +24,60 @@ use super::skins::{load_skin_from_path, SkinBitmap};
 use super::trajectory::{sample_trajectory, CursorSample, TrajectoryOptions};
 
 const MAX_CURSOR_PNG_FRAMES: usize = 108_000;
-const MIN_ACTION_TRAVEL_MS: u64 = 320;
-const MAX_ACTION_TRAVEL_MS: u64 = 980;
-const ACTION_TRAVEL_PX_PER_MS: f32 = 2.4;
-const MEANINGFUL_DECLARED_WINDOW_MS: u64 = MIN_ACTION_TRAVEL_MS / 2;
+#[derive(Debug, Clone, Copy)]
+struct CursorMotionProfile {
+    min_travel_ms: u64,
+    max_travel_ms: u64,
+    travel_px_per_ms: f32,
+}
+
+impl CursorMotionPreset {
+    fn profile(self) -> CursorMotionProfile {
+        match self {
+            Self::Natural => CursorMotionProfile {
+                min_travel_ms: 320,
+                max_travel_ms: 980,
+                travel_px_per_ms: 2.4,
+            },
+            Self::Snappy => CursorMotionProfile {
+                min_travel_ms: 220,
+                max_travel_ms: 720,
+                travel_px_per_ms: 3.2,
+            },
+            Self::Cinematic => CursorMotionProfile {
+                min_travel_ms: 420,
+                max_travel_ms: 1250,
+                travel_px_per_ms: 1.8,
+            },
+        }
+    }
+
+    fn trajectory_options(self, fps: u32) -> TrajectoryOptions {
+        match self {
+            Self::Natural => TrajectoryOptions {
+                fps,
+                jitter_amplitude_px: 0.5,
+                ..TrajectoryOptions::default()
+            },
+            Self::Snappy => TrajectoryOptions {
+                fps,
+                jitter_amplitude_px: 0.35,
+                reversal_pause_ms: 60,
+                peak_velocity_cap_px_per_s: 3200.0,
+                post_click_dwell_ms: 140,
+                ..TrajectoryOptions::default()
+            },
+            Self::Cinematic => TrajectoryOptions {
+                fps,
+                jitter_amplitude_px: 0.25,
+                reversal_pause_ms: 140,
+                post_click_dwell_ms: 260,
+                peak_velocity_cap_px_per_s: 1900.0,
+                ..TrajectoryOptions::default()
+            },
+        }
+    }
+}
 
 /// Result metadata from a successful render.
 #[derive(Debug, Clone)]
@@ -136,7 +186,13 @@ pub fn render_cursor_pngs_from_actions(
     skin_png: &Path,
     output_dir: &Path,
 ) -> Result<RenderedCursorPng, EffectsError> {
-    render_cursor_pngs_from_actions_with_min_frame_count(actions_json, skin_png, output_dir, 0)
+    render_cursor_pngs_from_actions_with_motion(
+        actions_json,
+        skin_png,
+        output_dir,
+        0,
+        CursorMotionPreset::Natural,
+    )
 }
 
 /// Render a semantic action sidecar, extending the held final cursor sample
@@ -147,11 +203,28 @@ pub fn render_cursor_pngs_from_actions_with_min_frame_count(
     output_dir: &Path,
     min_frame_count: u32,
 ) -> Result<RenderedCursorPng, EffectsError> {
+    render_cursor_pngs_from_actions_with_motion(
+        actions_json,
+        skin_png,
+        output_dir,
+        min_frame_count,
+        CursorMotionPreset::Natural,
+    )
+}
+
+/// Render a semantic action sidecar using an explicit cursor motion preset.
+pub fn render_cursor_pngs_from_actions_with_motion(
+    actions_json: &Path,
+    skin_png: &Path,
+    output_dir: &Path,
+    min_frame_count: u32,
+    motion_preset: CursorMotionPreset,
+) -> Result<RenderedCursorPng, EffectsError> {
     let bytes = std::fs::read(actions_json)?;
     let mut dto: ActionTimelineDto = serde_json::from_slice(&bytes)?;
     dto.frame_count = dto.frame_count.max(min_frame_count);
     let skin = load_skin_from_path(skin_png)?;
-    render_cursor_pngs_from_actions_dto(&dto, &skin, output_dir)
+    render_cursor_pngs_from_actions_dto(&dto, &skin, output_dir, motion_preset)
 }
 
 fn render_cursor_pngs_from_dto(
@@ -224,6 +297,7 @@ fn render_cursor_pngs_from_actions_dto(
     dto: &ActionTimelineDto,
     skin: &SkinBitmap,
     output_dir: &Path,
+    motion_preset: CursorMotionPreset,
 ) -> Result<RenderedCursorPng, EffectsError> {
     std::fs::create_dir_all(output_dir)?;
     let canvas_width = dto
@@ -240,6 +314,7 @@ fn render_cursor_pngs_from_actions_dto(
         .max(1.0) as u32;
     let fps = dto.fps.max(1);
     let frame_count = dto.frame_count.max(1);
+    let profile = motion_preset.profile();
     if frame_count as usize > MAX_CURSOR_PNG_FRAMES {
         return Err(EffectsError::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -264,7 +339,7 @@ fn render_cursor_pngs_from_actions_dto(
             .map(|target| clamp_point(target.center, canvas_width, canvas_height))
             .unwrap_or(previous.pos);
         let kind = waypoint_kind(event);
-        let start_ms = action_movement_start_ms(previous.t_ms, event, previous.pos, pos);
+        let start_ms = action_movement_start_ms(previous.t_ms, event, previous.pos, pos, profile);
         let action_ms = event.t_action_ms.max(start_ms);
         push_waypoint(&mut waypoints, start_ms, previous.pos, WaypointKind::Hover);
         push_waypoint(&mut waypoints, action_ms, pos, kind);
@@ -274,14 +349,7 @@ fn render_cursor_pngs_from_actions_dto(
         }
     }
 
-    let mut trajectory = sample_trajectory(
-        &waypoints,
-        TrajectoryOptions {
-            fps,
-            jitter_amplitude_px: 0.5,
-            ..TrajectoryOptions::default()
-        },
-    );
+    let mut trajectory = sample_trajectory(&waypoints, motion_preset.trajectory_options(fps));
     normalize_sample_count(
         &mut trajectory,
         frame_count,
@@ -320,16 +388,22 @@ fn push_waypoint(waypoints: &mut Vec<Waypoint>, t_ms: u64, pos: Vec2, kind: Wayp
     }
 }
 
-fn action_travel_duration_ms(from: Vec2, to: Vec2) -> u64 {
+fn action_travel_duration_ms(from: Vec2, to: Vec2, profile: CursorMotionProfile) -> u64 {
     let distance_px = to.sub(from).length();
-    (distance_px / ACTION_TRAVEL_PX_PER_MS)
+    (distance_px / profile.travel_px_per_ms)
         .round()
-        .clamp(MIN_ACTION_TRAVEL_MS as f32, MAX_ACTION_TRAVEL_MS as f32) as u64
+        .clamp(profile.min_travel_ms as f32, profile.max_travel_ms as f32) as u64
 }
 
-fn action_movement_start_ms(previous_t: u64, event: &ActionEventDto, from: Vec2, to: Vec2) -> u64 {
+fn action_movement_start_ms(
+    previous_t: u64,
+    event: &ActionEventDto,
+    from: Vec2,
+    to: Vec2,
+    profile: CursorMotionProfile,
+) -> u64 {
     let declared_window = event.t_action_ms.saturating_sub(event.t_start_ms);
-    if declared_window >= MEANINGFUL_DECLARED_WINDOW_MS {
+    if declared_window >= profile.min_travel_ms / 2 {
         return previous_t.max(event.t_start_ms).min(event.t_action_ms);
     }
     if event.t_action_ms == 0 {
@@ -339,7 +413,7 @@ fn action_movement_start_ms(previous_t: u64, event: &ActionEventDto, from: Vec2,
         .max(
             event
                 .t_action_ms
-                .saturating_sub(action_travel_duration_ms(from, to)),
+                .saturating_sub(action_travel_duration_ms(from, to, profile)),
         )
         .min(event.t_action_ms)
 }
@@ -502,11 +576,20 @@ mod tests {
         }
     }
 
+    fn natural_profile() -> CursorMotionProfile {
+        CursorMotionPreset::Natural.profile()
+    }
+
     #[test]
     fn action_movement_start_synthesizes_zero_window_travel() {
         let event = action_event(2_000, 2_000, 2_100);
-        let start =
-            action_movement_start_ms(0, &event, Vec2::new(500.0, 250.0), Vec2::new(800.0, 300.0));
+        let start = action_movement_start_ms(
+            0,
+            &event,
+            Vec2::new(500.0, 250.0),
+            Vec2::new(800.0, 300.0),
+            natural_profile(),
+        );
 
         assert_eq!(start, 1_680);
     }
@@ -514,8 +597,13 @@ mod tests {
     #[test]
     fn action_movement_start_bounds_long_distance_travel() {
         let event = action_event(2_000, 2_000, 2_100);
-        let start =
-            action_movement_start_ms(0, &event, Vec2::new(0.0, 0.0), Vec2::new(3_000.0, 2_000.0));
+        let start = action_movement_start_ms(
+            0,
+            &event,
+            Vec2::new(0.0, 0.0),
+            Vec2::new(3_000.0, 2_000.0),
+            natural_profile(),
+        );
 
         assert_eq!(start, 1_020);
     }
@@ -523,8 +611,13 @@ mod tests {
     #[test]
     fn action_movement_start_keeps_minimum_short_distance_travel() {
         let event = action_event(2_000, 2_000, 2_100);
-        let start =
-            action_movement_start_ms(0, &event, Vec2::new(500.0, 250.0), Vec2::new(510.0, 250.0));
+        let start = action_movement_start_ms(
+            0,
+            &event,
+            Vec2::new(500.0, 250.0),
+            Vec2::new(510.0, 250.0),
+            natural_profile(),
+        );
 
         assert_eq!(start, 1_680);
     }
@@ -534,7 +627,13 @@ mod tests {
         let event = action_event(1_000, 2_000, 2_100);
 
         assert_eq!(
-            action_movement_start_ms(0, &event, Vec2::new(500.0, 250.0), Vec2::new(800.0, 300.0),),
+            action_movement_start_ms(
+                0,
+                &event,
+                Vec2::new(500.0, 250.0),
+                Vec2::new(800.0, 300.0),
+                natural_profile(),
+            ),
             1_000,
         );
     }
@@ -549,8 +648,32 @@ mod tests {
                 &event,
                 Vec2::new(800.0, 300.0),
                 Vec2::new(200.0, 100.0),
+                natural_profile(),
             ),
             1_200,
         );
+    }
+
+    #[test]
+    fn action_movement_start_uses_motion_profile_timing() {
+        let event = action_event(2_000, 2_000, 2_100);
+
+        let snappy = action_movement_start_ms(
+            0,
+            &event,
+            Vec2::new(0.0, 0.0),
+            Vec2::new(3_000.0, 2_000.0),
+            CursorMotionPreset::Snappy.profile(),
+        );
+        let cinematic = action_movement_start_ms(
+            0,
+            &event,
+            Vec2::new(0.0, 0.0),
+            Vec2::new(3_000.0, 2_000.0),
+            CursorMotionPreset::Cinematic.profile(),
+        );
+
+        assert_eq!(snappy, 1_280);
+        assert_eq!(cinematic, 750);
     }
 }

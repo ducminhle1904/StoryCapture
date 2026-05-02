@@ -111,6 +111,7 @@ impl GraphBuilder {
             id,
             skin,
             size_scale,
+            motion_preset: Default::default(),
             color_tint,
             trajectory,
         })

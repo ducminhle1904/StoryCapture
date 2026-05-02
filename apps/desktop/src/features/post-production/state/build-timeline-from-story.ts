@@ -470,6 +470,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       trajectoryFps: cursorSidecar.fps,
       trajectoryFrameCount: cursorSidecar.frameCount,
       skin: polish?.global.cursorSkin ?? "mac-default",
+      motionPreset: "natural",
       sizeScale: polish?.global.cursorSizeScale ?? 1.0,
     });
   }

@@ -423,7 +423,11 @@ export function PreviewPlayer({
         return;
       }
 
-      const sample = sampleVirtualCursor(currentActions, playheadMs - clip.startMs);
+      const sample = sampleVirtualCursor(
+        currentActions,
+        playheadMs - clip.startMs,
+        clip.motionPreset,
+      );
       const src = cursorSkinSrc(clip.skin);
       if (!sample || !src) {
         hideCursorOverlay();

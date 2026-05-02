@@ -13,6 +13,7 @@ import type {
   AnnotationClip,
   Clip,
   CursorClip,
+  CursorMotionPreset,
   CursorSkin,
   SoundClip,
   SoundKind,
@@ -25,7 +26,12 @@ import type {
   ZoomPreset,
   ZoomTarget,
 } from "../state/timeline-slice";
-import { TRACK_IDS, XFADE_KINDS } from "../state/timeline-slice";
+import {
+  CURSOR_MOTION_PRESETS,
+  normalizeCursorMotionPreset,
+  TRACK_IDS,
+  XFADE_KINDS,
+} from "../state/timeline-slice";
 
 const FIELD_CLASS =
   "min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
@@ -44,6 +50,11 @@ const CURSOR_SKIN_OPTIONS: CursorSkin[] = [
   "light",
   "big-arrow",
 ];
+const CURSOR_MOTION_LABELS: Record<CursorMotionPreset, string> = {
+  natural: "Natural",
+  snappy: "Snappy",
+  cinematic: "Cinematic",
+};
 const SOUND_KIND_OPTIONS: SoundKind[] = ["bgm", "sfx", "voiceover"];
 const TRANSITION_KIND_OPTIONS = XFADE_KINDS;
 
@@ -463,6 +474,28 @@ function CursorParams({
           {CURSOR_SKIN_OPTIONS.map((skin) => (
             <option key={skin} value={skin}>
               {skin}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className={FIELD_ROW_CLASS}>
+        <FieldLabel>Motion</FieldLabel>
+        <select
+          aria-label="Cursor motion"
+          value={normalizeCursorMotionPreset(clip.motionPreset)}
+          onChange={(e) =>
+            onSetParam(
+              nodePath,
+              "motionPreset",
+              normalizeCursorMotionPreset(clip.motionPreset),
+              e.target.value as CursorMotionPreset,
+            )
+          }
+          className={FIELD_CLASS}
+        >
+          {CURSOR_MOTION_PRESETS.map((preset) => (
+            <option key={preset} value={preset}>
+              {CURSOR_MOTION_LABELS[preset]}
             </option>
           ))}
         </select>

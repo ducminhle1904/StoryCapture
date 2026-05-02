@@ -86,6 +86,19 @@ describe("sampleVirtualCursor", () => {
     expect(early?.x).toBeLessThan(1);
   });
 
+  it("uses the selected motion preset for synthetic travel timing", () => {
+    const actions = actionsWithEvents(
+      [eventWithTarget({ x: 3000, y: 2000 }, { start: 2000, action: 2000, end: 2100 })],
+      { width: 3000, height: 2000 },
+    );
+
+    const snappy = sampleVirtualCursor(actions, 1000, "snappy");
+    const cinematic = sampleVirtualCursor(actions, 1000, "cinematic");
+
+    expect(snappy?.x).toBeCloseTo(0.5);
+    expect(cinematic?.x).toBeGreaterThan(0.5);
+  });
+
   it("keeps a minimum visible travel window for short-distance zero-window actions", () => {
     const actions = actionsWithEvents([
       eventWithTarget({ x: 510, y: 250 }, { start: 2000, action: 2000, end: 2100 }),

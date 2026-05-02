@@ -98,6 +98,28 @@ pub enum CursorSkin {
     BigArrow,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-export", derive(TS))]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(
+        export,
+        export_to = "../../../packages/shared-types/src/generated/effects.ts"
+    )
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum CursorMotionPreset {
+    Natural,
+    Snappy,
+    Cinematic,
+}
+
+impl Default for CursorMotionPreset {
+    fn default() -> Self {
+        Self::Natural
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -305,6 +327,8 @@ pub enum VideoNode {
         id: NodeId,
         skin: CursorSkin,
         size_scale: f32,
+        #[serde(default)]
+        motion_preset: CursorMotionPreset,
         color_tint: Option<Rgba>,
         trajectory: TrajectoryRef,
     },

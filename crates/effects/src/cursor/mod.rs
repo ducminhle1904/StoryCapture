@@ -17,7 +17,8 @@ pub mod trajectory;
 pub use compositor::compose_frame;
 pub use png_sequence::{
     render_cursor_pngs, render_cursor_pngs_from_actions,
-    render_cursor_pngs_from_actions_with_min_frame_count, render_png_sequence, PngSequenceResult,
+    render_cursor_pngs_from_actions_with_min_frame_count,
+    render_cursor_pngs_from_actions_with_motion, render_png_sequence, PngSequenceResult,
     RenderedCursorPng,
 };
 pub use ripple::{build_ripples, ripple_alpha, ripple_radius, RippleOptions};

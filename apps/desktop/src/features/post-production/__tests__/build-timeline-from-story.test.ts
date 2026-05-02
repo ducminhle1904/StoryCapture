@@ -171,6 +171,7 @@ describe("buildTimelineFromStory", () => {
     expect(c.trajectoryFps).toBe(60);
     expect(c.trajectoryFrameCount).toBe(720);
     expect(c.skin).toBe("mac-default");
+    expect(c.motionPreset).toBe("natural");
     expect(c.sizeScale).toBe(1.0);
   });
 

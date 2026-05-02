@@ -21,18 +21,20 @@ export type BackgroundKind = { "kind": "gradient", preset_id: string, } | { "kin
 export type BoxStyle = { padding_px: number, radius_px: number, bg_color: Rgba, border_color: Rgba | null, };
 
 /**
- * Canonical stage assigned to each node variant. Defines the D-19 order:
+ * Canonical stage assigned to each node variant. Defines the order:
  * Source → ZoomPan → Background → Cursor → Ripple → Text → Transition → AudioMix.
  */
 export type CanonicalStage = "Source" | "ZoomPan" | "Background" | "Cursor" | "Ripple" | "Text" | "Transition" | "AudioMix";
+
+export type CursorMotionPreset = "natural" | "snappy" | "cinematic";
 
 export type CursorSkin = "mac-default" | "win-default" | "dark" | "light" | "big-arrow";
 
 export type Duration = { ms: bigint, };
 
 /**
- * Easing functions for keyframe interpolation. Details live in Plan 05;
- * we only need the variants reachable from the AST here.
+ * Easing functions for keyframe interpolation. We only need the variants
+ * reachable from the AST here.
  */
 export type EasingKind = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "ease-in-out-cubic" | "ease-out-quad";
 
@@ -44,7 +46,7 @@ export type FontChoice = { "kind": "bundled", family: string, weight: number, } 
 export type Graph = { 
 /**
  * See [`types::SCHEMA_VERSION`]. Presets with a different version are
- * migrated by the loader (Plan 03).
+ * migrated by the loader.
  */
 schema_version: number, output_width: number, output_height: number, output_fps: number, video: Array<VideoNode>, audio: Array<AudioNode>, };
 
@@ -65,7 +67,7 @@ export type PreviewRenderPlan = { output_width: number, output_height: number, f
 export type Rgba = { r: number, g: number, b: number, a: number, };
 
 /**
- * A ripple pulse emitted on click. Defaults (Research §3 / D-10):
+ * A ripple pulse emitted on click. Defaults:
  * `t_anticipate = t_impact - 60`, `duration = 300`, `max_radius_px = 60.0`,
  * `color = white @ 0.9 alpha`.
  */
@@ -84,15 +86,15 @@ export type TrajectoryRef = { png_sequence_dir: string, fps: number, frame_count
 export type Vec2 = { x: number, y: number, };
 
 /**
- * Video AST node. One variant per canonical stage (D-19). Ordering is
- * enforced at build-time by [`crate::builder::order::validate_order`].
+ * Video AST node. One variant per canonical stage. Ordering is enforced
+ * at build-time by [`crate::builder::order::validate_order`].
  */
 export type VideoNode = { "type": "source", id: NodeId, path: string, pts_offset_ms: bigint, } | { "type": "zoom-pan", id: NodeId, target: ZoomTarget, keyframes: Array<ZoomKeyframe>, } | { "type": "background", id: NodeId, kind: BackgroundKind, radius_px: number, shadow: Shadow | null, 
 /**
  * Inner padding around the foreground video after compositing onto the
- * background layer (Plan 07 / POST-04). Range: 0..=128 px.
+ * background layer. Range: 0..=128 px.
  */
-padding_px: number, } | { "type": "cursor-overlay", id: NodeId, skin: CursorSkin, size_scale: number, color_tint: Rgba | null, trajectory: TrajectoryRef, } | { "type": "ripple-overlay", id: NodeId, events: Array<RippleEvent>, } | { "type": "text-overlay", id: NodeId, boxes: Array<TextBox>, } | { "type": "transition", id: NodeId, kind: XfadeKind, duration_ms: number, offset_ms: number, };
+padding_px: number, } | { "type": "cursor-overlay", id: NodeId, skin: CursorSkin, size_scale: number, motion_preset: CursorMotionPreset, color_tint: Rgba | null, trajectory: TrajectoryRef, } | { "type": "ripple-overlay", id: NodeId, events: Array<RippleEvent>, } | { "type": "text-overlay", id: NodeId, boxes: Array<TextBox>, } | { "type": "transition", id: NodeId, kind: XfadeKind, duration_ms: number, offset_ms: number, };
 
 export type Waypoint = { t_ms: bigint, pos: Vec2, kind: WaypointKind, };
 
@@ -104,14 +106,14 @@ export type WaypointKind = "click" | "hover" | "scroll" | "type" | "drag";
 export type XfadeKind = "fade" | "fade-black" | "fade-white" | "dissolve" | "wipe-left" | "wipe-right" | "wipe-up" | "wipe-down" | "slide-left" | "slide-right" | "slide-up" | "slide-down" | "circle-open" | "circle-close";
 
 /**
- * Keyframe for the ZoomPan stage. Plan 05 resolves interpolation; the AST
- * stores endpoints.
+ * Keyframe for the ZoomPan stage. The runtime resolves interpolation;
+ * the AST stores endpoints.
  */
 export type ZoomKeyframe = { t_ms: bigint, center: Vec2, scale: number, easing: EasingKind, };
 
 /**
- * One frame sample of the zoom-pan curve. Plan 05 replaces the placeholder
- * sampler with true keyframe interpolation; the type is fixed now so the
+ * One frame sample of the zoom-pan curve. The placeholder sampler is
+ * replaced with true keyframe interpolation; the type is fixed so the
  * frontend never reshapes.
  */
 export type ZoomMatrixFrame = { t_ms: bigint, center: Vec2, scale: number, };
@@ -123,7 +125,7 @@ export type ZoomMatrixFrame = { t_ms: bigint, center: Vec2, scale: number, };
 export type ZoomPresetKind = "dynamic" | "calm" | "subtle";
 
 /**
- * What the ZoomPan stage is tracking. Plan 05 uses this to pick cursor vs
+ * What the ZoomPan stage is tracking. Used to pick cursor vs
  * fixed-region tracking logic.
  */
 export type ZoomTarget = { "kind": "cursor" } | { "kind": "fixed-region", top_left: Vec2, size: Vec2, } | { "kind": "element", selector: string, };

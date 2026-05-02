@@ -29,6 +29,7 @@ import type {
   AnnotationClip,
   Clip,
   CursorClip,
+  CursorMotionPreset,
   CursorSkin,
   SoundClip,
   TimelineSlice,
@@ -39,6 +40,7 @@ import type {
   ZoomClip,
   ZoomTarget,
 } from "./timeline-slice";
+import { normalizeCursorMotionPreset } from "./timeline-slice";
 
 /**
  * Minimal slice of the editor store that `computeGraph` reads. Narrowing
@@ -137,6 +139,7 @@ export type VideoNode =
       id: string;
       skin: CursorSkin;
       size_scale: number;
+      motion_preset: CursorMotionPreset;
       color_tint: Rgba | null;
       trajectory: TrajectoryRef;
     }
@@ -284,6 +287,7 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
     id: deterministicNodeId(clip.id, "cursor"),
     skin: clip.skin,
     size_scale: clip.sizeScale,
+    motion_preset: normalizeCursorMotionPreset(clip.motionPreset),
     color_tint: null,
     trajectory: {
       png_sequence_dir: clip.trajectoryDir,

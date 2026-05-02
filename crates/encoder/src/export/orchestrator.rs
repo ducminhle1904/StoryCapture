@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use effects::ast::video::{CursorSkin, VideoNode};
 use effects::cursor::{
-    render_cursor_pngs, render_cursor_pngs_from_actions_with_min_frame_count, skin_asset_path,
+    render_cursor_pngs, render_cursor_pngs_from_actions_with_motion, skin_asset_path,
 };
 use rusqlite::Connection;
 use storage::repos::render_job_repo;
@@ -207,6 +207,7 @@ fn render_cursor_overlay_sidecars(
     for node in &mut graph.video {
         let VideoNode::CursorOverlay {
             id,
+            motion_preset,
             skin,
             trajectory,
             ..
@@ -221,11 +222,12 @@ fn render_cursor_overlay_sidecars(
         let skin_path = skin_path_with_fallback(*skin);
         let out_dir = tmp_root.join(format!("cursor-{}", id.stable_label("clip")));
         let rendered = if is_actions_json(&trajectory.png_sequence_dir) {
-            render_cursor_pngs_from_actions_with_min_frame_count(
+            render_cursor_pngs_from_actions_with_motion(
                 &trajectory.png_sequence_dir,
                 &skin_path,
                 &out_dir,
                 trajectory.frame_count,
+                *motion_preset,
             )
         } else {
             render_cursor_pngs(&trajectory.png_sequence_dir, &skin_path, &out_dir)
@@ -271,7 +273,7 @@ mod tests {
     use crate::export::quality::Quality;
     use crate::export::resolution::Resolution;
     use effects::ast::types::NodeId;
-    use effects::ast::video::{CursorSkin, TrajectoryRef, VideoNode};
+    use effects::ast::video::{CursorMotionPreset, CursorSkin, TrajectoryRef, VideoNode};
     use storage::migrations::project as project_migrations;
 
     fn fresh_db() -> Arc<Mutex<Connection>> {
@@ -392,6 +394,7 @@ mod tests {
             id: NodeId::from_bytes([0x0C; 16]),
             skin: CursorSkin::MacDefault,
             size_scale: 1.0,
+            motion_preset: Default::default(),
             color_tint: None,
             trajectory: TrajectoryRef {
                 png_sequence_dir: trajectory.clone(),
@@ -442,6 +445,7 @@ mod tests {
             id: NodeId::from_bytes([0x0D; 16]),
             skin: CursorSkin::MacDefault,
             size_scale: 1.0,
+            motion_preset: CursorMotionPreset::Cinematic,
             color_tint: None,
             trajectory: TrajectoryRef {
                 png_sequence_dir: actions.clone(),
@@ -453,17 +457,20 @@ mod tests {
         let result = export_run(req, None, &db).await.unwrap();
         let raw = std::fs::read_to_string(result.graph_snapshot_path).unwrap();
         let graph: effects::Graph = serde_json::from_str(&raw).unwrap();
-        let cursor_dir = graph
+        let (motion_preset, cursor_dir) = graph
             .video
             .iter()
             .find_map(|node| match node {
-                VideoNode::CursorOverlay { trajectory, .. } => {
-                    Some(trajectory.png_sequence_dir.clone())
-                }
+                VideoNode::CursorOverlay {
+                    motion_preset,
+                    trajectory,
+                    ..
+                } => Some((*motion_preset, trajectory.png_sequence_dir.clone())),
                 _ => None,
             })
             .expect("cursor overlay");
 
+        assert_eq!(motion_preset, CursorMotionPreset::Cinematic);
         assert_ne!(cursor_dir, actions);
         assert!(cursor_dir.join("frame_00000.png").exists());
         assert!(cursor_dir.join("frame_00007.png").exists());
@@ -505,6 +512,7 @@ mod tests {
             id: NodeId::from_bytes([0x0C; 16]),
             skin: CursorSkin::MacDefault,
             size_scale: 1.0,
+            motion_preset: Default::default(),
             color_tint: None,
             trajectory: TrajectoryRef {
                 png_sequence_dir: trajectory,

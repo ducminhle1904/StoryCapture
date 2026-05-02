@@ -194,4 +194,45 @@ describe("EffectParams", () => {
       next: "#ff0055",
     });
   });
+
+  it("dispatches cursor motion preset edits", () => {
+    const pushAction = vi.fn();
+    resetStore(pushAction);
+    useEditorStore.setState({
+      selectedClipId: "cursor-1",
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 1000,
+            trajectoryDir: "/tmp/demo.actions.json",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 60,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(<EffectParams />);
+
+    expect(screen.getByLabelText("Cursor motion")).toHaveValue("natural");
+    fireEvent.change(screen.getByLabelText("Cursor motion"), {
+      target: { value: "cinematic" },
+    });
+    expectSetParam(pushAction, {
+      kind: "set-effect-param",
+      nodePath: "tracks.cursor[0]",
+      field: "motionPreset",
+      prev: "natural",
+      next: "cinematic",
+    });
+  });
 });

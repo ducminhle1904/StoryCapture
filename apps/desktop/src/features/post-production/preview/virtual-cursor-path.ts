@@ -1,4 +1,5 @@
 import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
+import { type CursorMotionPreset, normalizeCursorMotionPreset } from "../state/timeline-slice";
 
 export interface VirtualCursorSample {
   x: number;
@@ -12,10 +13,18 @@ export interface VirtualCursorSample {
 }
 
 const CLICK_RIPPLE_MS = 520;
-const MIN_TRAVEL_MS = 320;
-const MAX_TRAVEL_MS = 980;
-const ACTION_TRAVEL_PX_PER_MS = 2.4;
-const MEANINGFUL_DECLARED_WINDOW_MS = MIN_TRAVEL_MS / 2;
+
+interface CursorMotionProfile {
+  minTravelMs: number;
+  maxTravelMs: number;
+  travelPxPerMs: number;
+}
+
+const CURSOR_MOTION_PROFILES: Record<CursorMotionPreset, CursorMotionProfile> = {
+  natural: { minTravelMs: 320, maxTravelMs: 980, travelPxPerMs: 2.4 },
+  snappy: { minTravelMs: 220, maxTravelMs: 720, travelPxPerMs: 3.2 },
+  cinematic: { minTravelMs: 420, maxTravelMs: 1250, travelPxPerMs: 1.8 },
+};
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -36,9 +45,13 @@ function distance(a: ActionPoint, b: ActionPoint): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
-function travelDurationMs(from: ActionPoint, to: ActionPoint): number {
+function travelDurationMs(
+  from: ActionPoint,
+  to: ActionPoint,
+  profile: CursorMotionProfile,
+): number {
   return Math.round(
-    clamp(distance(from, to) / ACTION_TRAVEL_PX_PER_MS, MIN_TRAVEL_MS, MAX_TRAVEL_MS),
+    clamp(distance(from, to) / profile.travelPxPerMs, profile.minTravelMs, profile.maxTravelMs),
   );
 }
 
@@ -47,14 +60,15 @@ function movementStartMs(
   event: ActionTimelineEvent,
   from: ActionPoint,
   to: ActionPoint,
+  profile: CursorMotionProfile,
 ) {
   const actionT = Math.max(0, event.t_action_ms);
   const declaredWindow = actionT - event.t_start_ms;
-  if (declaredWindow >= MEANINGFUL_DECLARED_WINDOW_MS) {
+  if (declaredWindow >= profile.minTravelMs / 2) {
     return Math.min(actionT, Math.max(previousT, event.t_start_ms));
   }
   if (actionT === 0) return 0;
-  return Math.min(actionT, Math.max(previousT, actionT - travelDurationMs(from, to)));
+  return Math.min(actionT, Math.max(previousT, actionT - travelDurationMs(from, to, profile)));
 }
 
 function canvasSize(actions: RecordingActions): { width: number; height: number } {
@@ -84,16 +98,18 @@ function isClickEvent(event: ActionTimelineEvent): boolean {
 export function sampleVirtualCursor(
   actions: RecordingActions | null | undefined,
   tMs: number,
+  motionPreset?: CursorMotionPreset,
 ): VirtualCursorSample | null {
   if (!actions || actions.events.length === 0) return null;
 
+  const profile = CURSOR_MOTION_PROFILES[normalizeCursorMotionPreset(motionPreset)];
   const size = canvasSize(actions);
   let previous: ActionPoint = { x: size.width / 2, y: size.height / 2 };
   let previousT = 0;
 
   for (const event of actions.events) {
     const target = eventPoint(actions, event, previous, size);
-    const startT = movementStartMs(previousT, event, previous, target);
+    const startT = movementStartMs(previousT, event, previous, target, profile);
     const actionT = Math.max(startT, event.t_action_ms);
 
     if (tMs < startT) {

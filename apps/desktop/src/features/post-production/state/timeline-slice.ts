@@ -51,6 +51,15 @@ export type ZoomTarget =
 
 export type CursorSkin = "mac-default" | "win-default" | "dark" | "light" | "big-arrow";
 
+export const CURSOR_MOTION_PRESETS = ["natural", "snappy", "cinematic"] as const;
+export type CursorMotionPreset = (typeof CURSOR_MOTION_PRESETS)[number];
+
+export function normalizeCursorMotionPreset(
+  preset: CursorMotionPreset | undefined,
+): CursorMotionPreset {
+  return preset ?? "natural";
+}
+
 export type ZoomPreset = "DYNAMIC" | "CALM" | "SUBTLE";
 
 export type SoundKind = "bgm" | "sfx" | "voiceover";
@@ -107,6 +116,7 @@ export interface CursorClip extends ClipBase {
   trajectoryFps: number;
   trajectoryFrameCount: number;
   skin: CursorSkin;
+  motionPreset?: CursorMotionPreset;
   /** Multiplier on the cursor's render size. 1.0 = native. */
   sizeScale: number;
   colorTint?: string | null;

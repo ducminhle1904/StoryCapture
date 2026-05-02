@@ -101,6 +101,7 @@ describe("computeGraph", () => {
             trajectoryFps: 60,
             trajectoryFrameCount: 240,
             skin: "mac-default",
+            motionPreset: "cinematic",
             sizeScale: 1,
           },
         ],
@@ -158,6 +159,10 @@ describe("computeGraph", () => {
     expect(background.kind).toEqual({ kind: "gradient", preset_id: "runway-dark" });
     expect(background.radius_px).toBe(24);
     expect(background.padding_px).toBe(64);
+
+    const cursor = videoNodeAt(g, 4);
+    if (cursor.type !== "cursor-overlay") throw new Error("expected cursor-overlay");
+    expect(cursor.motion_preset).toBe("cinematic");
 
     const text = videoNodeAt(g, 5);
     if (text.type !== "text-overlay") throw new Error("expected text-overlay");
