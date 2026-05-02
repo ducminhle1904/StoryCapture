@@ -22,7 +22,8 @@ use std::sync::Arc;
 
 use effects::ast::video::{CursorSkin, VideoNode};
 use effects::cursor::{
-    render_cursor_pngs, render_cursor_pngs_from_actions_with_motion, skin_asset_path,
+    render_cursor_pngs, render_cursor_pngs_from_actions_with_options, skin_asset_path,
+    CursorActionRenderOptions,
 };
 use rusqlite::Connection;
 use storage::repos::render_job_repo;
@@ -222,12 +223,14 @@ fn render_cursor_overlay_sidecars(
         let skin_path = skin_path_with_fallback(*skin);
         let out_dir = tmp_root.join(format!("cursor-{}", id.stable_label("clip")));
         let rendered = if is_actions_json(&trajectory.png_sequence_dir) {
-            render_cursor_pngs_from_actions_with_motion(
+            render_cursor_pngs_from_actions_with_options(
                 &trajectory.png_sequence_dir,
                 &skin_path,
                 &out_dir,
-                trajectory.frame_count,
-                *motion_preset,
+                CursorActionRenderOptions {
+                    min_frame_count: trajectory.frame_count,
+                    motion_preset: *motion_preset,
+                },
             )
         } else {
             render_cursor_pngs(&trajectory.png_sequence_dir, &skin_path, &out_dir)

@@ -24,6 +24,22 @@ use super::skins::{load_skin_from_path, SkinBitmap};
 use super::trajectory::{sample_trajectory, CursorSample, TrajectoryOptions};
 
 const MAX_CURSOR_PNG_FRAMES: usize = 108_000;
+
+#[derive(Debug, Clone, Copy)]
+pub struct CursorActionRenderOptions {
+    pub min_frame_count: u32,
+    pub motion_preset: CursorMotionPreset,
+}
+
+impl Default for CursorActionRenderOptions {
+    fn default() -> Self {
+        Self {
+            min_frame_count: 0,
+            motion_preset: CursorMotionPreset::Natural,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CursorMotionProfile {
     min_travel_ms: u64,
@@ -40,14 +56,14 @@ impl CursorMotionPreset {
                 travel_px_per_ms: 2.4,
             },
             Self::Snappy => CursorMotionProfile {
-                min_travel_ms: 220,
-                max_travel_ms: 720,
-                travel_px_per_ms: 3.2,
+                min_travel_ms: 160,
+                max_travel_ms: 520,
+                travel_px_per_ms: 5.0,
             },
             Self::Cinematic => CursorMotionProfile {
-                min_travel_ms: 420,
-                max_travel_ms: 1250,
-                travel_px_per_ms: 1.8,
+                min_travel_ms: 760,
+                max_travel_ms: 1800,
+                travel_px_per_ms: 1.15,
             },
         }
     }
@@ -61,18 +77,18 @@ impl CursorMotionPreset {
             },
             Self::Snappy => TrajectoryOptions {
                 fps,
-                jitter_amplitude_px: 0.35,
-                reversal_pause_ms: 60,
-                peak_velocity_cap_px_per_s: 3200.0,
-                post_click_dwell_ms: 140,
+                jitter_amplitude_px: 0.25,
+                reversal_pause_ms: 40,
+                peak_velocity_cap_px_per_s: 4200.0,
+                post_click_dwell_ms: 100,
                 ..TrajectoryOptions::default()
             },
             Self::Cinematic => TrajectoryOptions {
                 fps,
-                jitter_amplitude_px: 0.25,
-                reversal_pause_ms: 140,
-                post_click_dwell_ms: 260,
-                peak_velocity_cap_px_per_s: 1900.0,
+                jitter_amplitude_px: 0.15,
+                reversal_pause_ms: 180,
+                post_click_dwell_ms: 340,
+                peak_velocity_cap_px_per_s: 1500.0,
                 ..TrajectoryOptions::default()
             },
         }
@@ -186,12 +202,11 @@ pub fn render_cursor_pngs_from_actions(
     skin_png: &Path,
     output_dir: &Path,
 ) -> Result<RenderedCursorPng, EffectsError> {
-    render_cursor_pngs_from_actions_with_motion(
+    render_cursor_pngs_from_actions_with_options(
         actions_json,
         skin_png,
         output_dir,
-        0,
-        CursorMotionPreset::Natural,
+        CursorActionRenderOptions::default(),
     )
 }
 
@@ -203,28 +218,29 @@ pub fn render_cursor_pngs_from_actions_with_min_frame_count(
     output_dir: &Path,
     min_frame_count: u32,
 ) -> Result<RenderedCursorPng, EffectsError> {
-    render_cursor_pngs_from_actions_with_motion(
+    render_cursor_pngs_from_actions_with_options(
         actions_json,
         skin_png,
         output_dir,
-        min_frame_count,
-        CursorMotionPreset::Natural,
+        CursorActionRenderOptions {
+            min_frame_count,
+            ..CursorActionRenderOptions::default()
+        },
     )
 }
 
-/// Render a semantic action sidecar using an explicit cursor motion preset.
-pub fn render_cursor_pngs_from_actions_with_motion(
+/// Render a semantic action sidecar using explicit cursor render options.
+pub fn render_cursor_pngs_from_actions_with_options(
     actions_json: &Path,
     skin_png: &Path,
     output_dir: &Path,
-    min_frame_count: u32,
-    motion_preset: CursorMotionPreset,
+    options: CursorActionRenderOptions,
 ) -> Result<RenderedCursorPng, EffectsError> {
     let bytes = std::fs::read(actions_json)?;
     let mut dto: ActionTimelineDto = serde_json::from_slice(&bytes)?;
-    dto.frame_count = dto.frame_count.max(min_frame_count);
+    dto.frame_count = dto.frame_count.max(options.min_frame_count);
     let skin = load_skin_from_path(skin_png)?;
-    render_cursor_pngs_from_actions_dto(&dto, &skin, output_dir, motion_preset)
+    render_cursor_pngs_from_actions_dto(&dto, &skin, output_dir, options.motion_preset)
 }
 
 fn render_cursor_pngs_from_dto(
@@ -673,7 +689,7 @@ mod tests {
             CursorMotionPreset::Cinematic.profile(),
         );
 
-        assert_eq!(snappy, 1_280);
-        assert_eq!(cinematic, 750);
+        assert_eq!(snappy, 1_480);
+        assert_eq!(cinematic, 200);
     }
 }

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEditorStore } from "../state/store";
 import type { UndoableAction } from "../undo/actions";
@@ -40,6 +41,12 @@ function expectSetParam(
   expect(pushAction).toHaveBeenLastCalledWith(action);
 }
 
+async function selectFieldOption(label: string, optionName: string) {
+  const user = userEvent.setup();
+  await user.click(screen.getByLabelText(label));
+  await user.click(await screen.findByRole("option", { name: optionName }));
+}
+
 beforeEach(() => {
   resetStore();
 });
@@ -49,7 +56,7 @@ afterEach(() => {
 });
 
 describe("EffectParams", () => {
-  it("dispatches typed zoom parameter edits with numeric track paths", () => {
+  it("dispatches typed zoom parameter edits with numeric track paths", async () => {
     const pushAction = vi.fn();
     resetStore(pushAction);
     useEditorStore.setState({
@@ -77,9 +84,7 @@ describe("EffectParams", () => {
 
     render(<EffectParams />);
 
-    fireEvent.change(screen.getByLabelText("Zoom target"), {
-      target: { value: "element" },
-    });
+    await selectFieldOption("Zoom target", "Element");
     expectSetParam(pushAction, {
       kind: "set-effect-param",
       nodePath: "tracks.zoom[0]",
@@ -110,9 +115,7 @@ describe("EffectParams", () => {
       next: 0.25,
     });
 
-    fireEvent.change(screen.getByLabelText("Zoom preset"), {
-      target: { value: "CALM" },
-    });
+    await selectFieldOption("Zoom preset", "CALM");
     expectSetParam(pushAction, {
       kind: "set-effect-param",
       nodePath: "tracks.zoom[0]",
@@ -195,7 +198,7 @@ describe("EffectParams", () => {
     });
   });
 
-  it("dispatches cursor motion preset edits", () => {
+  it("dispatches cursor motion preset edits", async () => {
     const pushAction = vi.fn();
     resetStore(pushAction);
     useEditorStore.setState({
@@ -223,15 +226,66 @@ describe("EffectParams", () => {
 
     render(<EffectParams />);
 
-    expect(screen.getByLabelText("Cursor motion")).toHaveValue("natural");
-    fireEvent.change(screen.getByLabelText("Cursor motion"), {
-      target: { value: "cinematic" },
-    });
+    expect(screen.getByLabelText("Cursor motion")).toHaveTextContent("Natural");
+    await selectFieldOption("Cursor motion", "Cinematic");
     expectSetParam(pushAction, {
       kind: "set-effect-param",
       nodePath: "tracks.cursor[0]",
       field: "motionPreset",
       prev: "natural",
+      next: "cinematic",
+    });
+  });
+
+  it("exposes active cursor motion while editing an overlapping zoom clip", async () => {
+    const pushAction = vi.fn();
+    resetStore(pushAction);
+    useEditorStore.setState({
+      selectedClipId: "zoom-1",
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 5000,
+            trajectoryDir: "/tmp/demo.actions.json",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 300,
+            skin: "mac-default",
+            motionPreset: "snappy",
+            sizeScale: 1,
+          },
+        ],
+        zoom: [
+          {
+            id: "zoom-1",
+            trackId: "zoom",
+            startMs: 3000,
+            durationMs: 900,
+            label: "Script zoom",
+            target: { kind: "cursor" },
+            scale: 1.65,
+            center: { x: 0.5, y: 0.5 },
+            preset: "DYNAMIC",
+          },
+        ],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(<EffectParams />);
+
+    expect(screen.getByLabelText("Zoom scale")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cursor motion")).toHaveTextContent("Snappy");
+    await selectFieldOption("Cursor motion", "Cinematic");
+    expectSetParam(pushAction, {
+      kind: "set-effect-param",
+      nodePath: "tracks.cursor[0]",
+      field: "motionPreset",
+      prev: "snappy",
       next: "cinematic",
     });
   });

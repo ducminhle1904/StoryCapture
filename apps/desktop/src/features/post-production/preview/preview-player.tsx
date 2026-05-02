@@ -18,7 +18,7 @@ import previewBackdrop from "@/assets/gradients/forest-emerald.png";
 import type { RecordingActions } from "@/ipc/actions";
 import { frontendLog } from "@/lib/log";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
-import type { CursorClip, CursorSkin } from "../state/timeline-slice";
+import type { CursorClip, CursorSkin, ZoomClip } from "../state/timeline-slice";
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
@@ -296,6 +296,41 @@ function activeCursorClip(clips: readonly CursorClip[], playheadMs: number): Cur
   return active;
 }
 
+interface ActivePreviewZoom {
+  scale: number;
+  center: { x: number; y: number };
+}
+
+function activeZoomClip(clips: readonly ZoomClip[], playheadMs: number): ZoomClip | null {
+  let active: ZoomClip | null = null;
+  for (const clip of clips) {
+    const endMs = clip.startMs + clip.durationMs;
+    if (playheadMs < clip.startMs || playheadMs >= endMs) continue;
+    if (!active || clip.startMs >= active.startMs) active = clip;
+  }
+  return active;
+}
+
+function easeInOutCubic(value: number): number {
+  const t = Math.max(0, Math.min(1, value));
+  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+}
+
+export function samplePreviewZoom(
+  clips: readonly ZoomClip[],
+  playheadMs: number,
+): ActivePreviewZoom {
+  const clip = activeZoomClip(clips, playheadMs);
+  if (!clip) return { scale: 1, center: { x: 0.5, y: 0.5 } };
+
+  const progress = (playheadMs - clip.startMs) / Math.max(1, clip.durationMs);
+  const targetScale = Number.isFinite(clip.scale) ? Math.max(1, clip.scale) : 1;
+  return {
+    scale: 1 + (targetScale - 1) * easeInOutCubic(progress),
+    center: clip.center ?? { x: 0.5, y: 0.5 },
+  };
+}
+
 function isActionsCursorClip(clip: CursorClip): boolean {
   return clip.trajectoryKind === "actions" || clip.trajectoryDir.endsWith(ACTIONS_SIDECAR_SUFFIX);
 }
@@ -346,6 +381,7 @@ export function PreviewPlayer({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const ambientLayerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewFrameContentRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cursorRef = useRef<HTMLImageElement | null>(null);
   const cursorRippleRef = useRef<HTMLDivElement | null>(null);
@@ -365,10 +401,12 @@ export function PreviewPlayer({
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const playingRef = useRef(false);
   const cursorClipsRef = useRef<CursorClip[]>([]);
+  const zoomClipsRef = useRef<ZoomClip[]>([]);
   const actionsRef = useRef<RecordingActions | null>(actions);
 
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const cursorClips = useEditorStore((s) => s.tracks.cursor);
+  const zoomClips = useEditorStore((s) => s.tracks.zoom);
   const useCompositedCanvas = outputMode === "composited-canvas";
   const displayReady = !useCompositedCanvas || engineReady;
   const renderPlan = useMemo(() => buildPlan(width, height), [width, height]);
@@ -405,6 +443,17 @@ export function PreviewPlayer({
     const ripple = cursorRippleRef.current;
     if (cursor) cursor.style.opacity = "0";
     if (ripple) ripple.style.opacity = "0";
+  }, []);
+
+  const applyPreviewZoom = useCallback((playheadMs: number) => {
+    const frame = previewFrameContentRef.current;
+    if (!frame) return;
+
+    const zoom = samplePreviewZoom(zoomClipsRef.current, playheadMs);
+    const centerX = Math.max(0, Math.min(1, zoom.center.x));
+    const centerY = Math.max(0, Math.min(1, zoom.center.y));
+    frame.style.transformOrigin = `${centerX * 100}% ${centerY * 100}%`;
+    frame.style.transform = `translate3d(0, 0, 0) scale(${zoom.scale})`;
   }, []);
 
   const renderCursorOverlay = useCallback(
@@ -559,8 +608,15 @@ export function PreviewPlayer({
   useEffect(() => {
     cursorClipsRef.current = cursorClips;
     actionsRef.current = actions;
-    renderCursorOverlay(useEditorStore.getState().playheadMs);
-  }, [actions, cursorClips, renderCursorOverlay]);
+    const playheadMs = useEditorStore.getState().playheadMs;
+    applyPreviewZoom(playheadMs);
+    renderCursorOverlay(playheadMs);
+  }, [actions, applyPreviewZoom, cursorClips, renderCursorOverlay]);
+
+  useEffect(() => {
+    zoomClipsRef.current = zoomClips;
+    applyPreviewZoom(useEditorStore.getState().playheadMs);
+  }, [applyPreviewZoom, zoomClips]);
 
   useEffect(() => {
     setMediaAspect(safeAspect(width, height));
@@ -646,6 +702,7 @@ export function PreviewPlayer({
         applyAmbientPalette(ambientDisplayedPaletteRef.current);
       }
       lastPlayheadCommitRef.current = state.playheadMs;
+      applyPreviewZoom(state.playheadMs);
       renderCursorOverlay(state.playheadMs);
 
       if (useCompositedCanvas) {
@@ -655,6 +712,7 @@ export function PreviewPlayer({
     });
   }, [
     applyAmbientPalette,
+    applyPreviewZoom,
     renderPlan,
     renderCursorOverlay,
     sampleAmbientPalette,
@@ -682,6 +740,7 @@ export function PreviewPlayer({
         applyAmbientPalette(ambientDisplayedPaletteRef.current);
       }
       lastPlayheadCommitRef.current = currentPlayheadMs;
+      applyPreviewZoom(currentPlayheadMs);
       renderCursorOverlay(currentPlayheadMs);
       if (useCompositedCanvas && eng) {
         void eng.renderFrame(currentPlayheadMs, renderPlan);
@@ -701,6 +760,7 @@ export function PreviewPlayer({
     displayReady,
     playing,
     applyAmbientPalette,
+    applyPreviewZoom,
     renderPlan,
     renderCursorOverlay,
     resolvedSrc,
@@ -731,6 +791,7 @@ export function PreviewPlayer({
 
       const nextPlayheadMs = video.currentTime * 1000;
       syncAmbientPlayback(video);
+      applyPreviewZoom(nextPlayheadMs);
       renderCursorOverlay(nextPlayheadMs);
       if (
         Math.abs(nextPlayheadMs - lastPlayheadCommitRef.current) >=
@@ -776,6 +837,7 @@ export function PreviewPlayer({
     };
   }, [
     playing,
+    applyPreviewZoom,
     renderCursorOverlay,
     resolvedSrc,
     setPlayhead,
@@ -804,6 +866,7 @@ export function PreviewPlayer({
 
       const t_ms = video.currentTime * 1000;
       syncAmbientPlayback(video);
+      applyPreviewZoom(t_ms);
       renderCursorOverlay(t_ms);
       if (
         Math.abs(t_ms - lastPlayheadCommitRef.current) >= COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS
@@ -840,6 +903,7 @@ export function PreviewPlayer({
     };
   }, [
     playing,
+    applyPreviewZoom,
     renderCursorOverlay,
     renderPlan,
     resolvedSrc,
@@ -946,43 +1010,49 @@ export function PreviewPlayer({
             className="relative z-10 flex max-w-[1480px] items-center justify-center overflow-hidden rounded-[18px] border border-white/14 bg-transparent shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68),inset_0_1px_0_rgba(255,255,255,0.10)]"
             style={frameStyle}
           >
-            {resolvedSrc && !useCompositedCanvas ? (
-              <video
-                ref={videoRef}
-                muted
-                playsInline
-                preload="auto"
-                src={resolvedSrc}
-                onError={handleVideoError}
-                onLoadedMetadata={handleVideoMetadata}
-                className="relative h-full w-full object-contain"
-                aria-label="Source video preview"
-              />
-            ) : null}
-            {useCompositedCanvas ? (
-              <canvas
-                ref={canvasRef}
-                width={width}
-                height={height}
-                className="relative h-full w-full object-contain"
-                aria-label="Composited preview canvas"
-              />
-            ) : null}
             <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 overflow-hidden"
-              data-testid="virtual-cursor-overlay"
+              ref={previewFrameContentRef}
+              className="relative h-full w-full will-change-transform"
+              data-testid="preview-zoom-layer"
             >
+              {resolvedSrc && !useCompositedCanvas ? (
+                <video
+                  ref={videoRef}
+                  muted
+                  playsInline
+                  preload="auto"
+                  src={resolvedSrc}
+                  onError={handleVideoError}
+                  onLoadedMetadata={handleVideoMetadata}
+                  className="relative h-full w-full object-contain"
+                  aria-label="Source video preview"
+                />
+              ) : null}
+              {useCompositedCanvas ? (
+                <canvas
+                  ref={canvasRef}
+                  width={width}
+                  height={height}
+                  className="relative h-full w-full object-contain"
+                  aria-label="Composited preview canvas"
+                />
+              ) : null}
               <div
-                ref={cursorRippleRef}
-                className="absolute rounded-full border-2 border-white/80 bg-white/10 opacity-0 shadow-[0_0_18px_rgba(255,255,255,0.28)]"
-              />
-              <img
-                ref={cursorRef}
-                alt=""
-                className="absolute opacity-0 drop-shadow-[0_5px_12px_rgba(0,0,0,0.42)]"
-                draggable={false}
-              />
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 overflow-hidden"
+                data-testid="virtual-cursor-overlay"
+              >
+                <div
+                  ref={cursorRippleRef}
+                  className="absolute rounded-full border-2 border-white/80 bg-white/10 opacity-0 shadow-[0_0_18px_rgba(255,255,255,0.28)]"
+                />
+                <img
+                  ref={cursorRef}
+                  alt=""
+                  className="absolute opacity-0 drop-shadow-[0_5px_12px_rgba(0,0,0,0.42)]"
+                  draggable={false}
+                />
+              </div>
             </div>
           </div>
           <div className="absolute bottom-3 left-3 z-20 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/88 px-2.5 py-2 shadow-[var(--sc-sh-1)] backdrop-blur">

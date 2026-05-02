@@ -1,5 +1,6 @@
 import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
-import { type CursorMotionPreset, normalizeCursorMotionPreset } from "../state/timeline-slice";
+import { type CursorMotionProfile, cursorMotionProfile } from "../state/cursor-motion";
+import type { CursorMotionPreset } from "../state/timeline-slice";
 
 export interface VirtualCursorSample {
   x: number;
@@ -13,18 +14,6 @@ export interface VirtualCursorSample {
 }
 
 const CLICK_RIPPLE_MS = 520;
-
-interface CursorMotionProfile {
-  minTravelMs: number;
-  maxTravelMs: number;
-  travelPxPerMs: number;
-}
-
-const CURSOR_MOTION_PROFILES: Record<CursorMotionPreset, CursorMotionProfile> = {
-  natural: { minTravelMs: 320, maxTravelMs: 980, travelPxPerMs: 2.4 },
-  snappy: { minTravelMs: 220, maxTravelMs: 720, travelPxPerMs: 3.2 },
-  cinematic: { minTravelMs: 420, maxTravelMs: 1250, travelPxPerMs: 1.8 },
-};
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -102,7 +91,7 @@ export function sampleVirtualCursor(
 ): VirtualCursorSample | null {
   if (!actions || actions.events.length === 0) return null;
 
-  const profile = CURSOR_MOTION_PROFILES[normalizeCursorMotionPreset(motionPreset)];
+  const profile = cursorMotionProfile(motionPreset);
   const size = canvasSize(actions);
   let previous: ActionPoint = { x: size.width / 2, y: size.height / 2 };
   let previousT = 0;

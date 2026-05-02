@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SelectField } from "@/components/ui/select-field";
+import { CURSOR_MOTION_LABELS } from "../state/cursor-motion";
 import { useEditorStore } from "../state/store";
 import type {
   AnnotationClip,
@@ -51,11 +52,6 @@ const CURSOR_SKIN_OPTIONS: CursorSkin[] = [
   "light",
   "big-arrow",
 ];
-const CURSOR_MOTION_LABELS: Record<CursorMotionPreset, string> = {
-  natural: "Natural",
-  snappy: "Snappy",
-  cinematic: "Cinematic",
-};
 const SOUND_KIND_OPTIONS: SoundKind[] = ["bgm", "sfx", "voiceover"];
 const TRANSITION_KIND_OPTIONS = XFADE_KINDS;
 
@@ -131,6 +127,11 @@ interface SelectedClipHit {
   index: number;
 }
 
+interface CursorClipHit {
+  clip: CursorClip;
+  index: number;
+}
+
 function findSelectedClip(
   tracks: TimelineSlice["tracks"],
   selectedClipId: string | null,
@@ -142,6 +143,19 @@ function findSelectedClip(
     if (clip) return { trackId: track, clip, index };
   }
   return null;
+}
+
+function findActiveCursorClip(
+  tracks: TimelineSlice["tracks"],
+  referenceMs: number,
+): CursorClipHit | null {
+  let active: CursorClipHit | null = null;
+  tracks.cursor.forEach((clip, index) => {
+    const endMs = clip.startMs + clip.durationMs;
+    if (referenceMs < clip.startMs || referenceMs >= endMs) return;
+    if (!active || clip.startMs >= active.clip.startMs) active = { clip, index };
+  });
+  return active;
 }
 
 interface FieldLabelProps {
@@ -290,7 +304,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
   return (
     <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
       <SectionTitle>Zoom motion</SectionTitle>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Target</FieldLabel>
         <SelectField
           aria-label="Zoom target"
@@ -301,7 +315,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
           }}
           options={targetKindSelectOptions}
         />
-      </label>
+      </div>
       {targetControls}
       <label className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
@@ -350,15 +364,17 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
           />
         </label>
       </div>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Preset</FieldLabel>
         <SelectField
           aria-label="Zoom preset"
           value={clip.preset ?? "DYNAMIC"}
-          onValueChange={(value) => onSetParam(nodePath, "preset", clip.preset, value as ZoomPreset)}
+          onValueChange={(value) =>
+            onSetParam(nodePath, "preset", clip.preset, value as ZoomPreset)
+          }
           options={presetSelectOptions}
         />
-      </label>
+      </div>
     </fieldset>
   );
 }
@@ -466,7 +482,7 @@ function CursorParams({
   return (
     <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
       <SectionTitle>Cursor style</SectionTitle>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Skin</FieldLabel>
         <SelectField
           aria-label="Cursor skin"
@@ -474,8 +490,8 @@ function CursorParams({
           onValueChange={(value) => onSetParam(nodePath, "skin", clip.skin, value as CursorSkin)}
           options={cursorSkinSelectOptions}
         />
-      </label>
-      <label className={FIELD_ROW_CLASS}>
+      </div>
+      <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Motion</FieldLabel>
         <SelectField
           aria-label="Cursor motion"
@@ -490,7 +506,7 @@ function CursorParams({
           }
           options={cursorMotionSelectOptions}
         />
-      </label>
+      </div>
       <label className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
           <FieldLabel>Size</FieldLabel>
@@ -536,7 +552,7 @@ function SoundParams({
           className={FIELD_CLASS}
         />
       </label>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Kind</FieldLabel>
         <SelectField
           aria-label="Sound kind"
@@ -544,7 +560,7 @@ function SoundParams({
           onValueChange={(value) => onSetParam(nodePath, "kind", clip.kind, value as SoundKind)}
           options={soundKindSelectOptions}
         />
-      </label>
+      </div>
       <label className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
           <FieldLabel>Gain</FieldLabel>
@@ -580,7 +596,7 @@ function VideoParams({
   return (
     <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
       <SectionTitle>Transition</SectionTitle>
-      <label className={FIELD_ROW_CLASS}>
+      <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Kind</FieldLabel>
         <SelectField
           aria-label="Video transition kind"
@@ -593,7 +609,7 @@ function VideoParams({
           }
           options={transitionKindSelectOptions}
         />
-      </label>
+      </div>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Duration</FieldLabel>
         <input
@@ -619,6 +635,16 @@ function EffectParamsBase() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const pushAction = useEditorStore((s) => s.pushAction);
   const hit = useEditorStore(useShallow((s) => findSelectedClip(s.tracks, s.selectedClipId)));
+  const companionCursor = useEditorStore(
+    useShallow((s) => {
+      const selected = findSelectedClip(s.tracks, s.selectedClipId);
+      if (!selected || selected.trackId === "cursor") return null;
+      return (
+        findActiveCursorClip(s.tracks, selected.clip.startMs) ??
+        findActiveCursorClip(s.tracks, s.playheadMs)
+      );
+    }),
+  );
 
   const onSetParam = useCallback(
     (nodePath: string, field: string, prev: unknown, next: unknown) => {
@@ -717,6 +743,13 @@ function EffectParamsBase() {
       ) : null}
       {clip.trackId === "cursor" ? (
         <CursorParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
+      ) : null}
+      {clip.trackId !== "cursor" && companionCursor ? (
+        <CursorParams
+          clip={companionCursor.clip}
+          nodePath={`tracks.cursor[${companionCursor.index}]`}
+          onSetParam={onSetParam}
+        />
       ) : null}
       {clip.trackId === "sound" ? (
         <SoundParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />

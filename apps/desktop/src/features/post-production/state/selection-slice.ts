@@ -18,19 +18,19 @@ export interface SelectionSlice {
   setSelectedTab: (tab: InspectorTab) => void;
 }
 
-export const createSelectionSlice: StateCreator<
-  SelectionSlice,
-  [],
-  [],
-  SelectionSlice
-> = (set, get) => ({
+export const createSelectionSlice: StateCreator<SelectionSlice, [], [], SelectionSlice> = (
+  set,
+  get,
+) => ({
   selectedClipId: null,
   selectedPresetId: null,
   selectedTab: "presets",
 
   setSelectedClipId: (id) => {
-    if (get().selectedClipId === id) return;
-    set({ selectedClipId: id });
+    const state = get();
+    const nextTab = id ? "effects" : state.selectedTab;
+    if (state.selectedClipId === id && state.selectedTab === nextTab) return;
+    set({ selectedClipId: id, selectedTab: nextTab });
   },
   setSelectedPresetId: (id) => {
     if (get().selectedPresetId === id) return;

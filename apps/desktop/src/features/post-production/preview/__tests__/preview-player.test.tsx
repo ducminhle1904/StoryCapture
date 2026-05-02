@@ -156,6 +156,41 @@ describe("PreviewPlayer", () => {
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
 
+  it("applies timeline zoom clips in the native preview path", async () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [
+          {
+            id: "zoom-1",
+            trackId: "zoom",
+            startMs: 1000,
+            durationMs: 1000,
+            label: "Zoom",
+            target: { kind: "cursor" },
+            scale: 2,
+            center: { x: 0.25, y: 0.75 },
+            preset: "DYNAMIC",
+          },
+        ],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(1500);
+    });
+
+    const zoomLayer = screen.getByTestId("preview-zoom-layer");
+    await waitFor(() => expect(zoomLayer.style.transform).toContain("scale(1.5)"));
+    expect(zoomLayer.style.transformOrigin).toBe("25% 75%");
+    expect(PreviewEngine).not.toHaveBeenCalled();
+  });
+
   it("clamps forward jump to the known video duration", async () => {
     const user = userEvent.setup();
     useEditorStore.setState({ durationMs: 10_000, playheadMs: 8000 });

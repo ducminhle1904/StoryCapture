@@ -10,7 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useEditorStore } from "../state/store";
-import { snapToNearest, SNAP_THRESHOLD_PX } from "../state/timeline-slice";
+import { SNAP_THRESHOLD_PX, snapToNearest } from "../state/timeline-slice";
 
 function resetStore() {
   useEditorStore.setState({
@@ -28,11 +28,26 @@ function resetStore() {
   });
 }
 
+function findVideoClip(id: string) {
+  const clip = useEditorStore.getState().tracks.video.find((c) => c.id === id);
+  if (!clip) throw new Error(`expected video clip ${id}`);
+  return clip;
+}
+
 beforeEach(() => {
   resetStore();
 });
 
 describe("timeline-slice", () => {
+  it("selecting a clip opens the effects inspector tab", () => {
+    useEditorStore.setState({ selectedTab: "presets" });
+
+    useEditorStore.getState().setSelectedClipId("clip-1");
+
+    expect(useEditorStore.getState().selectedClipId).toBe("clip-1");
+    expect(useEditorStore.getState().selectedTab).toBe("effects");
+  });
+
   it("setPlayhead updates playheadMs and clamps at 0", () => {
     useEditorStore.getState().setPlayhead(1234);
     expect(useEditorStore.getState().playheadMs).toBe(1234);
@@ -55,7 +70,13 @@ describe("timeline-slice", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          {
+            id: "neighbour",
+            trackId: "video",
+            startMs: 500,
+            durationMs: 500,
+            sourcePath: "/v.mp4",
+          },
           { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
@@ -65,13 +86,9 @@ describe("timeline-slice", () => {
       },
     });
 
-    useEditorStore
-      .getState()
-      .moveClip("video", "dragged", 995, { pxPerMs: 1 });
+    useEditorStore.getState().moveClip("video", "dragged", 995, { pxPerMs: 1 });
 
-    const dragged = useEditorStore
-      .getState()
-      .tracks.video.find((c) => c.id === "dragged")!;
+    const dragged = findVideoClip("dragged");
     expect(dragged.startMs).toBe(1000);
   });
 
@@ -79,7 +96,13 @@ describe("timeline-slice", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          {
+            id: "neighbour",
+            trackId: "video",
+            startMs: 500,
+            durationMs: 500,
+            sourcePath: "/v.mp4",
+          },
           { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
@@ -88,12 +111,8 @@ describe("timeline-slice", () => {
         annotations: [],
       },
     });
-    useEditorStore
-      .getState()
-      .moveClip("video", "dragged", 985, { pxPerMs: 1 });
-    const dragged = useEditorStore
-      .getState()
-      .tracks.video.find((c) => c.id === "dragged")!;
+    useEditorStore.getState().moveClip("video", "dragged", 985, { pxPerMs: 1 });
+    const dragged = findVideoClip("dragged");
     // 15 px away from 1000 — outside threshold — stays at 985.
     expect(dragged.startMs).toBe(985);
   });
@@ -102,7 +121,13 @@ describe("timeline-slice", () => {
     useEditorStore.setState({
       tracks: {
         video: [
-          { id: "neighbour", trackId: "video", startMs: 500, durationMs: 500, sourcePath: "/v.mp4" },
+          {
+            id: "neighbour",
+            trackId: "video",
+            startMs: 500,
+            durationMs: 500,
+            sourcePath: "/v.mp4",
+          },
           { id: "dragged", trackId: "video", startMs: 2000, durationMs: 200, sourcePath: "/v.mp4" },
         ],
         cursor: [],
@@ -111,12 +136,8 @@ describe("timeline-slice", () => {
         annotations: [],
       },
     });
-    useEditorStore
-      .getState()
-      .moveClip("video", "dragged", 995, { altHeld: true, pxPerMs: 1 });
-    const dragged = useEditorStore
-      .getState()
-      .tracks.video.find((c) => c.id === "dragged")!;
+    useEditorStore.getState().moveClip("video", "dragged", 995, { altHeld: true, pxPerMs: 1 });
+    const dragged = findVideoClip("dragged");
     expect(dragged.startMs).toBe(995);
     // Persistent flag unchanged.
     expect(useEditorStore.getState().snapEnabled).toBe(true);
