@@ -42,6 +42,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function mockNativePlayback() {
+  const play = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockImplementation(async () => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  const requestAnimationFrameSpy = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation(() => 1);
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+
+  return { play, requestAnimationFrameSpy };
+}
+
 describe("PreviewPlayer", () => {
   it("uses native video by default without initializing the preview engine", () => {
     render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
@@ -67,14 +80,7 @@ describe("PreviewPlayer", () => {
 
   it("starts native video playback without requiring a preview engine", async () => {
     const user = userEvent.setup();
-    const play = vi
-      .spyOn(HTMLMediaElement.prototype, "play")
-      .mockImplementation(async () => undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    const requestAnimationFrameSpy = vi
-      .spyOn(window, "requestAnimationFrame")
-      .mockImplementation(() => 1);
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    const { play, requestAnimationFrameSpy } = mockNativePlayback();
 
     render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
     await user.click(screen.getByRole("button", { name: "Play" }));
@@ -86,10 +92,7 @@ describe("PreviewPlayer", () => {
 
   it("commits native playback time when media pauses", async () => {
     const user = userEvent.setup();
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    mockNativePlayback();
 
     render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
     const video = screen.getByLabelText("Source video preview") as HTMLVideoElement;
@@ -112,6 +115,26 @@ describe("PreviewPlayer", () => {
     });
 
     await waitFor(() => expect(video.currentTime).toBe(2.5));
+    expect(PreviewEngine).not.toHaveBeenCalled();
+  });
+
+  it("seeks native video when playhead changes while playing", async () => {
+    const user = userEvent.setup();
+    mockNativePlayback();
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    const video = screen.getByLabelText("Source video preview") as HTMLVideoElement;
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument());
+    video.currentTime = 1;
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(4000);
+    });
+
+    await waitFor(() => expect(video.currentTime).toBe(4));
+    expect(useEditorStore.getState().playheadMs).toBe(4000);
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
 

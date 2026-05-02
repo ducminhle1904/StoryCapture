@@ -41,6 +41,7 @@ type PreviewOutputMode = "native-video" | "composited-canvas";
 const DEFAULT_PREVIEW_OUTPUT_MODE: PreviewOutputMode = "native-video";
 const NATIVE_PLAYHEAD_COMMIT_INTERVAL_MS = 16;
 const COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS = 100;
+const MEDIA_SYNC_EPSILON_MS = 80;
 const PREVIEW_FRAME_SCALE = 0.86;
 const AMBIENT_SAMPLE_WIDTH = 40;
 const AMBIENT_SAMPLE_HEIGHT = 22;
@@ -628,7 +629,10 @@ export function PreviewPlayer({
   const syncAmbientPlayback = useCallback((sourceVideo: HTMLVideoElement) => {
     const ambientVideo = ambientVideoRef.current;
     if (!ambientVideo) return;
-    if (Math.abs(ambientVideo.currentTime - sourceVideo.currentTime) > 0.08) {
+    if (
+      Math.abs(ambientVideo.currentTime - sourceVideo.currentTime) >
+      MEDIA_SYNC_EPSILON_MS / 1000
+    ) {
       ambientVideo.currentTime = sourceVideo.currentTime;
     }
   }, []);
@@ -657,6 +661,43 @@ export function PreviewPlayer({
       return false;
     }
   }, [useAmbientBackdrop]);
+
+  const seekPreviewToPlayhead = useCallback(
+    (targetMs: number) => {
+      const video = videoRef.current;
+      if (!video) return;
+      const nextMs = Math.max(0, targetMs);
+      const nextSeconds = nextMs / 1000;
+
+      video.currentTime = nextSeconds;
+      syncAmbientVideo(nextSeconds);
+      if (sampleAmbientPalette()) {
+        ambientDisplayedPaletteRef.current = smoothPalette(
+          ambientDisplayedPaletteRef.current,
+          ambientTargetPaletteRef.current,
+          0.55,
+        );
+        applyAmbientPalette(ambientDisplayedPaletteRef.current);
+      }
+      lastPlayheadCommitRef.current = nextMs;
+      applyPreviewZoom(nextMs);
+      renderCursorOverlay(nextMs);
+
+      if (useCompositedCanvas) {
+        const eng = engineRef.current;
+        if (eng) void eng.renderFrame(nextMs, renderPlan);
+      }
+    },
+    [
+      applyAmbientPalette,
+      applyPreviewZoom,
+      renderPlan,
+      renderCursorOverlay,
+      sampleAmbientPalette,
+      syncAmbientVideo,
+      useCompositedCanvas,
+    ],
+  );
 
   // The current UI shows native video. Keep the compositor dormant until its
   // canvas output is visible, otherwise playback pays hidden GPU work.
@@ -790,37 +831,18 @@ export function PreviewPlayer({
 
   useEffect(() => {
     return useEditorStore.subscribe((state, prevState) => {
-      if (state.playheadMs === prevState.playheadMs || playingRef.current) return;
+      if (state.playheadMs === prevState.playheadMs) return;
       const video = videoRef.current;
       if (!video) return;
-      video.currentTime = state.playheadMs / 1000;
-      syncAmbientVideo(video.currentTime);
-      if (sampleAmbientPalette()) {
-        ambientDisplayedPaletteRef.current = smoothPalette(
-          ambientDisplayedPaletteRef.current,
-          ambientTargetPaletteRef.current,
-          0.55,
-        );
-        applyAmbientPalette(ambientDisplayedPaletteRef.current);
-      }
-      lastPlayheadCommitRef.current = state.playheadMs;
-      applyPreviewZoom(state.playheadMs);
-      renderCursorOverlay(state.playheadMs);
 
-      if (useCompositedCanvas) {
-        const eng = engineRef.current;
-        if (eng) void eng.renderFrame(state.playheadMs, renderPlan);
+      if (playingRef.current) {
+        const currentVideoMs = video.currentTime * 1000;
+        if (Math.abs(state.playheadMs - currentVideoMs) <= MEDIA_SYNC_EPSILON_MS) return;
       }
+
+      seekPreviewToPlayhead(state.playheadMs);
     });
-  }, [
-    applyAmbientPalette,
-    applyPreviewZoom,
-    renderPlan,
-    renderCursorOverlay,
-    sampleAmbientPalette,
-    syncAmbientVideo,
-    useCompositedCanvas,
-  ]);
+  }, [seekPreviewToPlayhead]);
 
   useEffect(() => {
     if (playing) return;
@@ -831,22 +853,7 @@ export function PreviewPlayer({
 
     const renderLoadedFrame = () => {
       const currentPlayheadMs = useEditorStore.getState().playheadMs;
-      video.currentTime = currentPlayheadMs / 1000;
-      syncAmbientVideo(video.currentTime);
-      if (sampleAmbientPalette()) {
-        ambientDisplayedPaletteRef.current = smoothPalette(
-          ambientDisplayedPaletteRef.current,
-          ambientTargetPaletteRef.current,
-          0.55,
-        );
-        applyAmbientPalette(ambientDisplayedPaletteRef.current);
-      }
-      lastPlayheadCommitRef.current = currentPlayheadMs;
-      applyPreviewZoom(currentPlayheadMs);
-      renderCursorOverlay(currentPlayheadMs);
-      if (useCompositedCanvas && eng) {
-        void eng.renderFrame(currentPlayheadMs, renderPlan);
-      }
+      seekPreviewToPlayhead(currentPlayheadMs);
     };
 
     if (video.readyState >= 2) {
@@ -861,13 +868,8 @@ export function PreviewPlayer({
   }, [
     displayReady,
     playing,
-    applyAmbientPalette,
-    applyPreviewZoom,
-    renderPlan,
-    renderCursorOverlay,
     resolvedSrc,
-    sampleAmbientPalette,
-    syncAmbientVideo,
+    seekPreviewToPlayhead,
     useCompositedCanvas,
   ]);
 
