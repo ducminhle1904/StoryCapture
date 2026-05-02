@@ -14,17 +14,14 @@ StoryCapture turns a written `.story` script into a polished demo video.
 - Web companion: Next.js 16 + tRPC 11 + Prisma 6 + R2/S3 for sharing,
   workspaces, analytics, and desktop sync.
 
-## Current Repo Reality (refreshed 2026-04-25)
+## Current Repo Reality (refreshed 2026-05-02)
 
 - Desktop routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`,
   `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`.
-- Tauri IPC surface is ~26 modules / 70+ commands (system, automation,
-  picker, author_snapshot, app_settings, audio, capture, encode, parse,
-  projects, render, export, preset, timeline, sound_library, updater, keys,
-  dryrun, simulator, lsp, nl, tts, upload, web_account, web_sync). Single
-  source of truth: `apps/desktop/src-tauri/src/ipc_spec.rs`
-  via tauri-specta — generated TS lands in `packages/shared-types/src/ipc.ts`
-  (never hand-edited).
+- Tauri IPC surface is large and actively evolving: 28 exported IPC modules,
+  122 commands, and 145 Specta types as of this refresh. Single source of
+  truth: `apps/desktop/src-tauri/src/ipc_spec.rs` via tauri-specta; generated
+  TS lands in `packages/shared-types/src/ipc.ts` (never hand-edited).
 - Domain crates active and non-trivial: `story-parser`, `automation`,
   `capture`, `encoder`, `effects`, `storage`, `intelligence`, `util`.
   No `crates/gpu_scale/` yet (Phase 8 still planned).
@@ -35,19 +32,27 @@ StoryCapture turns a written `.story` script into a polished demo video.
 - Author-time simulator (Phase 10) ships with filmstrip scrubber, step
   decoration, pause/step events, Promote-to-fallback gate, and editor
   read-only lock during runs.
+- Post-production is now real-recording backed: latest recording preview,
+  typed 5-track Clip union, computeGraph → Effects AST JSON, Story → Timeline
+  auto-population, and recording sidecars (`.actions.json`, `.trajectory.json`,
+  `.steps.json`) feed cursor/zoom/callout defaults.
+- Editor has hybrid UI / Code modes. UI mode edits canonical DSL blocks and
+  optional `<story>.polish.json`; `Record & Polish` records, then opens
+  post-production in Review & Export mode.
 - Logging was overhauled (commit `a8e78b6`): `tracing` + size-rolling files,
   per-run session UUID prefix, `log_from_frontend` IPC bridge, ~95
   `#[tracing::instrument(err)]` wrappers, configurable from Settings →
   Logs. All local-only — no telemetry.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
-  10 `Sc*` primitives (Button/Input/Badge/Switch/Card/Kbd/Slider/Select/
-  Segmented + tests). Tailwind v4 `@theme` block is canonical.
+  15 `Sc*` primitive families. Tailwind v4 `@theme` block is canonical; inspect
+  `packages/ui/src/claude-design/primitives/` instead of trusting stale counts.
 - Web companion runs Next.js 16 + tRPC 11 + Prisma 6, NextAuth v5
   (5.0.0-beta.31), GitHub + Google OAuth, R2 multipart upload, Resend
   invites, Vercel cron analytics aggregation.
-- Live project status is `.planning/STATE.md`. Treat `.planning/PROJECT.md`
-  and `.planning/REQUIREMENTS.md` as historical planning artifacts unless
-  explicitly refreshed.
+- Live project status is `.planning/STATE.md` plus
+  `.planning/POST-PROD-ROADMAP.md` for the current post-production push. Treat
+  `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and old roadmap tables
+  as historical planning artifacts unless explicitly refreshed.
 
 ## Source Of Truth
 
@@ -57,8 +62,8 @@ Read only what the task needs.
    Use for repo layout, crate ownership, IPC, route surfaces, web APIs, CI and
    release topology.
 2. `docs/DOMAIN.md`
-   Use for DSL semantics, pipeline behavior, self-healing targets, post-prod
-   graph model, intelligence layer, and live roadmap summary.
+   Use for DSL semantics, pipeline behavior, self-healing targets, recording
+   sidecars, post-prod graph model, and intelligence layer.
 3. `docs/CONVENTIONS.md`
    Use for code style, testing, state management, file layout, commit format,
    and workflow conventions.
@@ -66,8 +71,9 @@ Read only what the task needs.
    Use for signing, notarization, updater, OAuth, R2, JWT, cron, and email
    secrets.
 5. `.planning/STATE.md`
-   Use for current milestone, live progress, operator-gated blockers, and
-   latest shipped phases.
+   Use for current milestone snapshot, operator-gated blockers, and latest
+   shipped highlights. For post-production follow-ups also read
+   `.planning/POST-PROD-ROADMAP.md`.
 
 ## Load-On-Demand Map
 

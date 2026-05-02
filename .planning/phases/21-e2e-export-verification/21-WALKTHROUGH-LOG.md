@@ -2,8 +2,11 @@
 
 **Status:** PREFLIGHT RUN, OPERATOR UAT PENDING
 **Prepared:** 2026-04-29
+**Refreshed:** 2026-05-02
 **Owner:** Operator for walkthrough; agent for triage after logs exist
-**Depends on:** Phase 20 cursor overlay export-time PNG rendering, currently uncommitted in parent workspace
+**Depends on:** Phase 20 cursor overlay export-time PNG rendering. Source now
+contains the cursor sidecar → PNG sequence preprocessing path; operator UAT is
+still pending.
 
 ## Scope
 
@@ -15,7 +18,7 @@ Commands were run through `rtk`.
 
 | Check | Result |
 |---|---|
-| `rtk git status --short` | Phase 20 cursor/export changes are uncommitted; do not clean or switch away before UAT. |
+| `rtk git status --short` | Historical note: original preflight saw Phase 20 cursor/export changes uncommitted. Refresh note: current `main` contains the relevant source path; rerun status before UAT for the latest local dirtiness. |
 | `rtk run "node --version"` | `v24.14.1` |
 | `rtk run "pnpm --version"` | `9.15.0` |
 | `rtk run "rustc -vV"` | `rustc 1.88.0`, host `aarch64-apple-darwin` |
@@ -83,7 +86,9 @@ No full operator run has been performed yet. Agent preflight found no code/build
 
 ## Likely Blockers To Watch
 
-- Phase 20 prerequisite is uncommitted in this workspace. Do not run cleanup/reset commands before UAT.
+- Phase 20 prerequisite is now present in source, but it still needs a real
+  record/export UAT run before treating cursor overlay export as production
+  verified.
 - macOS TCC permissions may block browser automation, screen capture, or click capture. Record the denied permission and continue only if the app degrades gracefully.
 - Graph JSON can still fail at runtime if a populated real graph exposes a snake_case/camelCase mismatch, numeric width issue, or relative path assumption.
 - Cursor skin path resolution may differ between dev and packaged builds. Phase 21 should verify dev first; packaged behavior can be deferred if dev passes.

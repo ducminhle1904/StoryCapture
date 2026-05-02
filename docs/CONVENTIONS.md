@@ -42,8 +42,25 @@ Concrete patterns actually used in the codebase. Read on demand; don't invent ne
   - `criterion` benches under `crates/capture/benches/` (Windows CPU crop <5ms target on 1080p).
   - Real-hardware / real-binary tests are **feature-gated** (see `docs/ARCHITECTURE.md` — feature table) and marked `#[ignore]` so default `cargo test` stays fast.
 - **Desktop frontend:** Vitest + `happy-dom` + `@testing-library/react`. Setup in `apps/desktop/test-setup.ts` (jest-dom matchers, matchMedia shim). Tests colocated next to code as `*.test.tsx`, or grouped in `__tests__/` subfolders for related integration suites. Stub IPC with `@tauri-apps/api/mocks::mockIPC` when a component talks to Tauri.
-- **Web (`apps/web`):** tRPC procedures tested via direct calls; Playwright for user-flow E2E.
+- **Web (`apps/web`):** currently has build/typecheck coverage only. Direct
+  tRPC procedure tests and Playwright user-flow E2E are planned but not wired
+  in `apps/web/package.json`.
 - **Tauri E2E:** WebdriverIO + `tauri-driver` (Windows primary; macOS `tauri-driver` unsupported — gate macOS E2E accordingly).
+
+### Rust test surface snapshot
+
+Integration test files by crate as of 2026-05-02:
+
+| Crate | Integration test files | Notes |
+|---|---:|---|
+| `automation` | 7 | Includes real Playwright gates behind `real-playwright-tests`. |
+| `capture` | 9 | Real macOS/Windows capture tests are ignored + feature-gated; only crate with a bench (`windows_cpu_crop`). |
+| `effects` | 19 | Heavy snapshot/parity coverage for emitters, cursor, zoom, audio, presets. |
+| `encoder` | 9 | Real FFmpeg tests behind `real-ffmpeg`; export/pipeline hardening coverage. |
+| `intelligence` | 13 | Provider parsing, NL goldens, selector fixtures, eval support. |
+| `storage` | 7 | Migration and repository coverage. |
+| `story-parser` | 5 | DSL parse/format/snapshot coverage. |
+| `util` | 0 | Small helper crate; unit-test inline when needed. |
 
 ## Commits
 
@@ -74,7 +91,10 @@ Commit messages encode the plan ID (`feat(07-05): …` → phase 7, plan 5).
 ## Lint / format
 
 - **TS/JS:** `biome` is the single tool (no ESLint/Prettier). Config: `biome.json` — 2-space indent, 100-col, double quotes, trailing commas `all`, semicolons `always`. Ignore globs: `target/`, `node_modules/`, `.next/`, `dist/`, `.planning/`, `**/binaries/**`. Run `pnpm lint` / `pnpm format`.
-- **Rust:** `rustfmt` defaults, `clippy` with workspace defaults. `rust-toolchain.toml` pins 1.88. `cargo-nextest` for faster tests, `cargo-deny` for license/advisory scan in CI.
+- **Rust:** `rustfmt` defaults, `clippy` with workspace defaults.
+  `rust-toolchain.toml` pins 1.88. `cargo-nextest` is used for faster tests.
+  `cargo-deny` is not currently wired in CI; add it explicitly before relying
+  on license/advisory enforcement.
 
 ## CI workflows (`.github/workflows/`)
 
@@ -92,7 +112,7 @@ Commit messages encode the plan ID (`feat(07-05): …` → phase 7, plan 5).
 | `release.yml` | Signed + notarized multi-platform release bundle. |
 | `notarize-smoke.yml` | Pre-release notarization smoke test. |
 | `release-soak.yml`, `release-benchmark.yml` | Post-release validation. |
-| `rust-check.yml` | Standalone clippy + cargo-deny. |
+| `rust-check.yml` | Standalone Rust fmt / clippy / check gate. |
 | `playwright-sidecar-build.yml` | Build Node SEA sidecar per-triple. |
 
 ## Local sidecar binaries
@@ -101,7 +121,12 @@ Tauri's `externalBin` requires `apps/desktop/src-tauri/binaries/{ffmpeg,playwrig
 
 Two flows produce them:
 
-1. **Real Playwright SEA** (~50 MB+): `pnpm tauri:dev` runs `pnpm --filter playwright-sidecar build` first; that delegates to `scripts/playwright-sidecar/build-sea.mjs` which packages Node 20 + `playwright-core` + `server.mjs`.
+1. **Real Playwright SEA** (~50 MB+): `pnpm tauri:dev` first runs
+   `scripts/dev/kill-stale-desktop.sh`, then `pnpm --filter
+   playwright-sidecar build`; that delegates to
+   `scripts/playwright-sidecar/build-sea.mjs` which packages Node 20 +
+   `server.mjs` and stages runtime payloads beside the binary under
+   `playwright-sidecar-modules/` (`playwright-core` and `overlay.iife.js`).
 2. **Placeholder stubs** (≤ 1 KB shell scripts that exit 127): `bash scripts/dev/install-sidecar-placeholders.sh` drops them just to satisfy the `externalBin` path check so a fresh checkout can run `cargo check -p storycapture --lib`.
 
 ### Gotcha: placeholder ↔ SEA staleness conflict

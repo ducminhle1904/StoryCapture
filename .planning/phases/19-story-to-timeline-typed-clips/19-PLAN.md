@@ -1,9 +1,15 @@
 # Phase 19 — Story → Timeline Producer + Typed Clip Schema
 
-**Status:** PROPOSED — not yet approved or executed
+**Status:** SHIPPED IN SOURCE — original plan retained for traceability
 **Date drafted:** 2026-04-27
 **Depends on:** Phase 18 (real video wiring + computeGraph plumbing landed)
 **Driver:** Phase 18 P18-B's producer audit confirmed `compute-graph.ts` will always emit empty graphs in production until clip-population path exists. This phase builds that path.
+
+> Refresh note (2026-05-02): source now contains the Phase 19 outcomes:
+> typed Clip discriminated union, `get_recording_trajectory`,
+> `get_recording_actions`, `get_recording_step_timing`, and
+> `build-timeline-from-story.ts`. This artifact remains plan-shaped because no
+> separate `19-SUMMARY.md` has been written yet.
 
 ## Goal
 

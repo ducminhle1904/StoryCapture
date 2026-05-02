@@ -1,7 +1,7 @@
 # StoryCapture — Domain & Pipeline
 
 The business layer: DSL grammar, the recording → encode → post-production
-pipeline, the intelligence layer, and a compact live roadmap summary.
+pipeline, the intelligence layer, and pointers to live planning state.
 Read-on-demand.
 
 ## DSL (`.story` format)
@@ -41,7 +41,25 @@ click text "Exactly this text"
 select option "2024"
 ```
 
-Target kinds (`grammar.pest` lines 104–124): `selector | testid | aria | role | field | text | bare_text`. Supported ARIA roles (23): `button, link, heading, image, img, checkbox, radio, tab, menuitem, menu, option, combobox, listbox, dialog, alert, tooltip, switch, slider, row, cell, navigation, main`.
+Target kinds (`grammar.pest` lines 104–124): `selector | testid | aria | role
+| field | text | bare_text`. Supported ARIA roles: 21 normalized roles and 22
+accepted spellings because `image` and `img` both normalize to `Image`:
+`button, link, heading, image, img, checkbox, radio, tab, menuitem, menu,
+option, combobox, listbox, dialog, alert, tooltip, switch, slider, row, cell,
+navigation, main`.
+
+Target postfix disambiguation:
+
+```
+click button "Save" nth 2
+fill field "Email" nth 1 with "admin@example.com"
+drag text "Card" nth 3 to text "Done" nth 1
+```
+
+`nth N` is 1-indexed. It parses on all targets, but runtime disambiguation is
+honored only for Playwright-disambiguable locator tiers such as test id,
+role+name, field/label, and exact text. Invalid `nth 0` is ignored with a
+diagnostic rather than crashing legacy flows.
 
 ### step_id round-trip (Phase 7)
 
@@ -88,20 +106,21 @@ Sidecar file paired with each `.story`, keyed by step_id. Store: `crates/automat
   └─► story-parser::parse()              → Story AST + Diagnostics
        └─► automation::Executor           → drives BrowserDriver per command
             │   ├─► SmartSelector          → resolves against .story.targets.json
-            │   └─► targets_store          → self-heal fallback promotion
+            │   ├─► targets_store          → self-heal fallback promotion
+            │   └─► action/timing sidecars → .actions.json + .steps.json
             └─► BrowserDriver
                  └─► PlaywrightSidecarDriver  (JSON-RPC via stdio to Node SEA)
                       └─► Chromium via playwright-core CDP
   ┌─► capture::CapturePipeline              (parallel, started on record)
   │    ├─► SckBackend (macOS) / WgcBackend (Windows) / XcapBackend (fallback)
-  │    ├─► target kinds: display, window, WindowByPid, region
+  │    ├─► target kinds: Display, Window, WindowByPid, DisplayRegion
   │    ├─► ByteBoundedQueue (default 256 MiB)
   │    ├─► one-shot thumbnails for picker/recorder preview
   │    └─► cpal+ringbuf audio (Phase 6)
   └─► encoder::EncodePipeline
        ├─► probe_encoders() → VideoToolbox | NVENC | QSV | AMF | libx264 | libopenh264
        ├─► FfmpegSidecar (static universal, bundled binary)
-       └─► macOS: vt_writer zero-copy fastpath (AVAssetWriter, CVPixelBuffer direct)
+       └─► macOS: VT HEVC/H.264 fastpath (AVAssetWriter, CVPixelBuffer direct)
   → MP4 in project folder (ProjectFolder::EXPORTS_DIRNAME)
 
 Browser session sync:
@@ -116,16 +135,31 @@ Browser session sync:
   it does not translate target text or guarantee a site supports the requested
   language.
 
-Post-production (Phase 2):
-  effects::GraphBuilder  → Graph AST (canonical order: video → cursor → zoom → annotations → audio)
-    ├─► FfmpegEmit    → filter_complex string → FFmpeg render
-    └─► PreviewEmit   → PreviewRenderPlan → WebGPU/WebGL2 preview
+Recording sidecars:
+  <recording>.actions.json     semantic action timeline from automation
+  <recording>.trajectory.json  best-effort OS cursor samples at ~60 Hz
+  <recording>.steps.json       recording-relative step timing and target metadata
+
+Post-production:
+  build-timeline-from-story.ts → typed 5-track Clip union
+  compute-graph.ts            → Effects Graph JSON
+  effects::GraphBuilder       → Graph AST (canonical order)
+    ├─► FfmpegEmit            → filter_complex string → FFmpeg render
+    └─► PreviewEmit           → PreviewRenderPlan → WebGPU/WebGL2 preview
 
 Render queue: encoder::RenderQueueActor drives MP4/WebM/GIF × resolution × quality fanout, persists jobs in project.sqlite.
 
 Web companion (Phase 4):
   upload to R2 (multipart presigned URLs, SSE-S3) → Prisma Video row → shareable /watch/<slug> + embed + analytics + desktop-web sync.
 ```
+
+Recording encode hardening: `EncodeConfig` separates capture dimensions from
+output dimensions and carries fit mode, pad color, scale algorithm, color
+adjustment, quality preset, optional force-FFmpeg, keyframe interval, stdin
+write timeout, first-frame timeout metadata, realtime mode, and
+capture-dimension mismatch telemetry. Encodes stage to `.partial` and
+atomically rename on success. macOS prefers VideoToolbox HEVC before H.264
+when available and forces `hvc1` for QuickTime/Safari compatibility.
 
 ## Storage and project model
 
@@ -144,16 +178,24 @@ surfaces like content hashing and frame-drop callbacks used across crates.
 
 ## Effects AST & post-production model
 
-`crates/effects/src/ast.rs` — `Graph { video: Vec<VideoNode>, audio: Vec<AudioNode> }`, `SCHEMA_VERSION` for `.scpreset` compatibility.
+`crates/effects/src/ast/` — `Graph { video: Vec<VideoNode>, audio: Vec<AudioNode> }`, `SCHEMA_VERSION = 2` for `.scpreset` compatibility.
 
 - **5-track timeline:** Video | Cursor | Zoom | Sound | Annotations.
-- **VideoNode variants:** `Background`, `Transition`, `Cursor`, `Zoom`, `TextOverlay`, plus primitives `Scale`, `Crop`, `Fade`, `SlideTransition`, `LetterBox`, `ZoomRectTracker`, `CursorTrajectory`.
-- **AudioNode variants:** `AudioMix`, `Normalize`, `DuckOnSpeech`, `Crossfade`, `AudioClip`.
+- **VideoNode variants:** `Source`, `ZoomPan`, `Background`,
+  `CursorOverlay`, `RippleOverlay`, `TextOverlay`, `Transition`.
+- **AudioNode variants:** `AudioSource`, `Volume`, `Delay`, `Sidechain`,
+  `Amix`, `Alimiter`.
+- **CursorOverlay input:** final export consumes rendered PNG sequences.
+  Export pre-processes `.trajectory.json` and `.actions.json` sidecars into a
+  Rust-owned temp PNG sequence before FFmpeg receives the graph.
 - **Math primitives** (`effects/src/math/`): `min_jerk` (cursor smoothing), `spring` (zoom pan), `perlin` (natural jitter), `ease`, `lowpass`.
 - **Cursor** (`effects/src/cursor/`): trajectory, compositor, 5 skins, click ripple, PNG sequence loading.
 - **Auto-zoom** (`effects/src/zoom/`): click-tracking ken-burns; 3 presets (Dynamic/Calm/Subtle).
 - **Background** (`effects/src/background/`): gradients, rounded frame, shadow.
-- **Sound library** (`assets/sound-library/`): 20 bundled CC0/CC-BY-4.0 files (12 SFX + 8 BGM, 48kHz, -16 LUFS). Curation runbook: `scripts/curate-sound-library.md`.
+- **Sound library** (`assets/sound-library/`): scaffold for 20 target files
+  (12 SFX + 8 BGM, 48kHz, -16 LUFS). The committed assets are placeholders;
+  real CC0/CC-BY-4.0 curation and listen-test remain operator-gated by
+  `02-08-RESUME.md`. Curation runbook: `scripts/curate-sound-library.md`.
 - **Text/fonts:** 5 OFL-licensed fonts downloaded via `scripts/download-fonts.sh` (Geist, JetBrains Mono, …).
 - **Presets:** `.scpreset` JSON (5 bundled: Dynamic / Calm / Subtle / Dramatic / Minimal). User presets persisted in `project.sqlite` + `~/.config/storycapture/presets/`.
 - **Undo/redo:** 50-step ring buffer + 500ms coalescer in post-production Zustand slice.
@@ -166,7 +208,10 @@ surfaces like content hashing and frame-drop callbacks used across crates.
 - **Voiceover ↔ timeline sync** + BGM auto-ducking on speech (Phase 3 Plan 12).
 - **tower-lsp** (`lsp/`): `did_open`/`did_change` / diagnostics / hover / completion. Bridged to CodeMirror 6 via **Tauri IPC** (`lsp_request` command) — **not stdio** (avoids shell-escaping issues in packaged app).
 - **Selector heuristic linter** (`lsp/selector_lint.rs`): 6 rules for common selector smells.
-- **Dry-Run** (`dryrun/`): reuses Phase 1 Executor without capture/encode; per-step selector fallback attempts, wait-for timeouts, assertion results. Seconds-scale iteration.
+- **Dry-Run** (`dryrun/`): with `phase1-wired`, reuses automation's real
+  `BrowserDriver` without capture/encode; default builds against a local trait
+  stub to avoid circular dependencies. Per-step selector fallback attempts,
+  wait-for timeouts, assertion results. Seconds-scale iteration.
 - **`bin/eval_report`:** offline evaluation CLI against golden dataset (25 prompts in `tests/fixtures/golden/`).
 - **Secrets:** `Redacted<T>` wrapper hides API keys in logs via custom `Display`. All provider keys in OS keychain via `keyring` crate (Stronghold is deprecated — do not use).
 - **Verb-whitelist enforcement:** `scripts/verb-whitelist-grep.sh` validates golden fixtures against the canonical verb list.
@@ -181,48 +226,19 @@ Prisma models (12) + tRPC surface summary — details in `docs/ARCHITECTURE.md`.
 - **Templates:** 9 categories (SAAS_ONBOARDING, ECOMMERCE_CHECKOUT, API_WALKTHROUGH, MOBILE_DEMO, CLI_TOOL, LANDING_PAGE, FEATURE_ANNOUNCEMENT, BUG_REPRODUCTION, INTERNAL_TRAINING), system templates have `workspaceId = null`.
 - **Desktop ↔ web sync:** `SyncedProject` mirrors desktop project metadata (desktopId, recordingStatus, lastSyncedAt). SSE with short-lived JWT (`/api/auth/mint-sse-jwt`).
 
-## Live roadmap summary
-
-Source of truth: `.planning/STATE.md`.
-
-As of 2026-04-25:
-
-- Phases 1-5 are code-complete, with remaining operator-gated verification on
-  capture soak, release signing, audio curation, accounts walkthrough, and web
-  integration walkthrough.
-- Phase 6 shipped mic audio, region capture, and chrome-hiding foundations.
-- Phase 7 semantic verbs, picker, step IDs, and self-healing targets shipped.
-- Phase 8 (GPU downscale + cursor overlay) still planned, not started.
-- Phase 9 live preview code-complete.
-- Phase 10 author-time simulator code-complete; UX hardening continued
-  (failure visibility, editor file safety, one-click re-pick from failed
-  simulator step — commits `9e59438`, `1ae57bd`).
-- Phase 11 author-time picker relocation is **code-complete** (flipped
-  2026-04-23, commit `7930f2a`). Picker drives author-session via
-  `picker_start_author`; reads `.story` + `.story.targets.json` only;
-  cancel is FSM-routed (commit `e13e8b5`); CDP screencast remains active
-  during picking for canvas input UX (commit `a2276ef`); canvas pointer
-  events forwarded to the headless author browser (`8cc0efb`).
-- Phase 12 (output resolution + letterbox) and Phase 13 (output
-  customization knobs) shipped.
-- Phase 14 Claude Design port: Waves 1, 3, 4 shipped; Wave 5 token
-  consolidation pending.
-- Phase 15 editor / post-production boundary cleanup: Waves 1–4 shipped;
-  15-05 cleanup + regression matrix pending operator QA.
-- Phase 16 dependency refresh complete (deferred: Prisma 7,
-  windows-rs 0.62 unification, tauri-specta rc.24 — see ARCHITECTURE.md
-  pinned versions table).
-- Phase 17 recording lifecycle hardening complete (19 fixes across
-  cleanup / start-safety / encoder robustness / UX feedback / polish).
+## Live roadmap pointer
 
 Do not duplicate the full phase ledger here. Read `.planning/STATE.md` for the
-live milestone position and operator blockers.
+current snapshot, `.planning/POST-PROD-ROADMAP.md` for the active
+post-production push, and per-phase summaries under `.planning/phases/` for
+historical detail.
 
 ## References
 
 - `docs/ARCHITECTURE.md` — repo layout, crate responsibilities, IPC, trait boundaries.
 - `docs/CONVENTIONS.md` — coding conventions, testing, commits, GSD artifacts.
-- `.planning/STATE.md` — live status.
-- `.planning/ROADMAP.md` — phase breakdown with requirement IDs.
+- `.planning/STATE.md` — current snapshot.
+- `.planning/POST-PROD-ROADMAP.md` — active post-production roadmap.
+- `.planning/ROADMAP.md` — historical phase breakdown with requirement IDs.
 - `.planning/phases/NN-*/NN-CONTEXT.md` — phase-specific decision logs.
 - `docs/CREDENTIALS.md` — secret/credential conventions.

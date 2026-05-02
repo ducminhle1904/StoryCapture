@@ -1,7 +1,8 @@
 # Post-Production E2E Roadmap
 
 **Drafted:** 2026-04-28
-**Context:** Phase 18 + 19 shipped real-video preview, computeGraph plumbing, typed Clip union, trajectory recording, and Story → Timeline auto-population. End-to-end is NOT yet ship-ready — gaps documented below.
+**Refreshed:** 2026-05-02
+**Context:** Phase 18 + 19 shipped real-video preview, computeGraph plumbing, typed Clip union, trajectory recording, and Story → Timeline auto-population. Follow-up quick work on 2026-05-01 added hybrid Editor UI / Code mode, polish sidecars, Record & Polish, step timing sidecars, review fix-list surfacing, and extra design-system primitives. End-to-end still needs operator verification and CI coverage.
 
 ## What's done
 
@@ -10,39 +11,40 @@
 | Wave 1 (post-prod review fixes) | Encoder hardening, parity test, persist export form, generic add-clip undo, track UI affordance | ✅ shipped |
 | Phase 18 | Real video preview wiring + computeGraph plumbing | ✅ shipped (with caveat: graph empty in prod until producer existed) |
 | Phase 19-01 | Typed Clip discriminated union | ✅ shipped |
-| Phase 19-02 | Trajectory recording sidecar + IPC | ✅ shipped (no click events yet) |
-| Phase 19-03 | Story → Timeline producer + auto-population | ✅ shipped (video + cursor only) |
+| Phase 19-02 | Trajectory recording sidecar + IPC | ✅ shipped |
+| Phase 19-03 | Story → Timeline producer + auto-population | ✅ shipped |
+| Phase 20 | Cursor overlay render fix | ✅ source present: export pre-processes `.trajectory.json` / `.actions.json` into cursor PNG sequences |
+| Quick 260501-g26 | Hybrid Editor UI mode + polish sidecar + Record & Polish | ✅ shipped |
+| Quick 260501-ku1/l88 | Accurate record timing sidecars + review fix-list | ✅ shipped |
+| Quick 260501-dse | Design-system primitive enhancements | ✅ shipped |
 
 ## Critical gaps to ship E2E
 
 | Phase | Title | Blocker level | Effort | Depends on |
 |---|---|---|---|---|
-| **20** | Cursor overlay render fix | 🔴 BLOCKER | 2-3h | none |
-| **21** | E2E export verification | 🔴 BLOCKER | 1-2h + operator | 20 |
-| **22** | Cinematic editing UI | 🟡 UX gap | 8-12h | none (parallel to 20/21) |
-| **23** | Click events + auto-zoom | 🟢 enhancement | 3-4h | 19-02 |
-| **24** | E2E integration test in CI | 🟢 quality | 2-3h | 20 |
-| **25** | Post-prod polish | 🟢 polish | 2-3h | 22 |
+| **21** | E2E export verification | 🔴 BLOCKER | 1-2h + operator | 20 source present |
+| **24** | E2E integration test in CI | 🟡 quality | 2-3h | 21 |
+| **22** | Cinematic editing UI | 🟡 UX gap | 8-12h | can proceed in parallel |
+| **23** | Click events + auto-zoom | 🟡 partly shipped | remaining polish TBD | actions/timing sidecars present |
+| **25** | Post-prod polish | 🟢 polish | 2-3h | 21/22 findings |
 
 ## Sequence + dependencies
 
 ```
-[20 cursor fix]──→[21 E2E verify]──→[24 CI test]
-       │                                    │
-       │                                    │
-       └──────────→[25 polish]              │
-                                            │
-[22 cinematic UI]───────────────────────────┘
-       │                                    │
-       │                                    │
-[23 click + auto-zoom]──────────────────────┘
+[20 source present]──→[21 E2E verify]──→[24 CI test]
+                          │
+                          └──→[25 polish]
+
+[22 cinematic UI]──────────────┘
+[23 remaining auto-zoom polish]┘
 ```
 
-- **Critical path**: 20 → 21 → 24 — must be sequential. ~6h total + operator.
+- **Critical path**: 21 → 24. Phase 20 code is now present in source; Phase 21
+  still needs a real record/export run to validate it.
 - **Parallel tracks**:
   - 22 cinematic UI (independent, gates UX value)
-  - 23 click events (independent of 20/21/22)
-  - 25 polish (after 22, since some polish items are UI-side)
+  - 23 remaining auto-zoom/click polish if operator feedback shows gaps
+  - 25 polish after Phase 21/22 findings clarify priority
 
 ## Operator-blocking work (separate from coding)
 
@@ -51,22 +53,25 @@
 
 ## Total estimate
 
-- **Critical path (20+21+24)**: ~6-8h coding + 1-2h operator UAT.
+- **Critical path (21+24)**: ~3-5h coding + 1-2h operator UAT.
 - **UX completeness (22)**: +8-12h.
 - **Enhancement (23)**: +3-4h.
 - **Polish (25)**: +2-3h.
 
-**Code total: ~20-30h. Operator: 02-08 audio + 02-12b + 21 verify.**
+**Code total: ~15-25h depending on Phase 21 findings. Operator: 02-08 audio +
+02-12b + 21 verify.**
 
 ## Recommended order of execution
 
-1. **Phase 20** — close the cursor render mismatch. Without this, every "cursor overlay" claim is hollow.
-2. **Phase 21** — operator runs an actual E2E export. Surface bugs no code review will find.
+1. **Phase 21** — operator runs an actual E2E export. Surface bugs no code
+   review will find.
+2. **Phase 24** — once Phase 21 passes or produces bounded fixes, wire E2E
+   coverage in CI.
 3. **In parallel from now:**
    - Phase 22 — cinematic UI (zoom, annotation, background, transitions). Largest UX value.
-   - Phase 23 — click events + auto-zoom (rounds out 19-02 and 19-03's deferred features).
-4. **Phase 24** — once 20+21 land, wire E2E test in CI to prevent regression.
-5. **Phase 25** — last-mile polish. Optional if shipping under time pressure.
+   - Phase 23 — remaining auto-zoom/click polish, if still needed after the
+     2026-05-01 timing-sidecar work.
+4. **Phase 25** — last-mile polish. Optional if shipping under time pressure.
 
 ## Out of scope for these phases
 
@@ -78,7 +83,7 @@
 
 ## File index
 
-- `phases/20-cursor-overlay-render-fix/20-PLAN.md` — cursor render fix (4 plans)
+- `phases/20-cursor-overlay-render-fix/20-PLAN.md` — original cursor render fix plan; source now contains the core fix
 - `phases/21-e2e-export-verification/21-PLAN.md` — operator E2E verify (2 plans)
 - `phases/22-cinematic-editing-ui/22-PLAN.md` — zoom/annotation/background/transition UI (4 plans)
 - `phases/23-click-events-auto-zoom/23-PLAN.md` — OS click hooks + auto-zoom heuristic (2 plans)

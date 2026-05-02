@@ -3,158 +3,104 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-24T00:26:52.931Z"
+last_updated: "2026-05-02T00:00:00.000+07:00"
 progress:
-  total_phases: 17
-  completed_phases: 11
-  total_plans: 117
-  completed_plans: 107
-  percent: 91
+  total_phases: 25
+  completed_phases: 19
+  total_plans: null
+  completed_plans: null
+  percent: null
 ---
 
 # State: StoryCapture
 
-**Last updated:** 2026-04-18
+**Last updated:** 2026-05-02
+
+This file is the compact live snapshot. Older long-form context lives in
+per-phase summaries under `.planning/phases/`, quick task summaries under
+`.planning/quick/`, and the active post-production ledger in
+`.planning/POST-PROD-ROADMAP.md`.
 
 ## Project Reference
 
 - **Name:** StoryCapture
-- **Core Value:** Turn a written story into a polished, shareable demo video automatically — no recording, editing, or video-production skill required.
-- **Current Focus:** Phase 11 — author-time-element-picker-relocate-pick-to-preview-panel-ro
+- **Core Value:** Turn a written `.story` script into a polished, shareable demo
+  video automatically.
+- **Stack:** Tauri 2.10 + React 19 + Vite 8 desktop; Next.js 16 + tRPC 11 +
+  Prisma 6 web companion; Rust domain crates for parser, automation, capture,
+  encoder, effects, storage, intelligence, and util.
 
 ## Current Position
 
-Phase: 11 (author-time-element-picker-relocate-pick-to-preview-panel-ro) — EXECUTING
-Plan: 1 of 4
+- Core v1 phases through recording, semantic picking, live preview, simulator,
+  output customization, dependency refresh, and recording lifecycle hardening
+  are code-complete, with several operator-gated verification items still open.
+- Post-production functional gap work advanced beyond the older Phase 17 ledger:
+  Phase 18 shipped real-video preview wiring and computeGraph plumbing; Phase 19
+  shipped typed timeline clips, recording sidecar IPC, and Story → Timeline
+  auto-population.
+- Current active push is post-production E2E readiness. See
+  `.planning/POST-PROD-ROADMAP.md` for the live Phase 20-25 breakdown.
+- Latest quick work (2026-05-01) shipped hybrid Editor UI / Code mode,
+  `<story>.polish.json`, `Record & Polish`, and polish-driven post-production
+  defaults for zoom/callout/highlight/transition/cursor intent. Follow-up quick
+  work added accurate `.steps.json` timing sidecars, low-confidence partial
+  timing flushes, actionable post-production review fix-list items, and pruning
+  for stale polish entries.
 
-Also complete (merged from origin 2026-04-22):
+## Latest Shipped Highlights
 
-- Phase 17 — Record engine lifecycle hardening — COMPLETE (all 6 plans, 22 commits, 19/19 decisions verified).
-- Phase 10 Wave 1 — Author-time simulator (executor parameterization + RunControl + pause/step events).
-- Phase 9 all 4 waves code-complete.
+- **Desktop IPC:** `apps/desktop/src-tauri/src/ipc_spec.rs` exports 28 IPC
+  modules, 122 commands, and 145 Specta types. Newer surfaces include
+  `actions`, `trajectory`, and `frontend_log`.
+- **Recording sidecars:** recording runs can produce `<recording>.actions.json`,
+  `<recording>.trajectory.json`, and `<recording>.steps.json`; post-production
+  consumes these for cursor/zoom/callout defaults.
+- **Post-production:** latest-recording preview, typed 5-track Clip union,
+  computeGraph → Effects Graph JSON, cursor sidecar preprocessing, and
+  Story → Timeline auto-population are in source.
+- **Cursor export path:** export preprocessing now renders cursor overlay JSON
+  sidecars into PNG sequences before FFmpeg receives the graph. Real E2E UAT is
+  still required before calling the flow production-verified.
+- **Editor:** UI mode writes canonical DSL back to the source buffer; polish
+  controls write only after user edits, so opening a project does not create a
+  default polish sidecar.
+- **Design system:** `packages/ui` exposes the `claude-design` namespace and 15
+  Sc* primitive families over Base UI and Tailwind v4 tokens.
 
-Prior executing phase: 15 — Editor/Post-Production boundary cleanup — Wave 4 complete; 15-05 cleanup + regression matrix still pending user QA.
+## Active Blockers / Operator-Gated Work
 
-## Phase 8-11 Planning Audit (2026-04-21)
+- **01-07 capture soak:** real macOS Screen Recording TCC host required for the
+  30-minute capture soak workflow.
+- **01-10 release signing:** requires Apple/Windows signing secrets and clean
+  release verification on macOS arm64, macOS x64, and Windows x64.
+- **02-08 audio curation:** committed sound library files are placeholders.
+  Human curation of 20 CC0/CC-BY-4.0 assets plus listen-test is still required.
+- **02-12b / Phase 21 post-production UAT:** real record → timeline → export
+  walkthrough still needs operator execution.
+- **03-20 accounts / AI disclosure UAT:** Settings → Accounts and disclosure
+  walkthrough still needs operator verification.
+- **04-10 web integration UAT:** OAuth, desktop upload, share page, invites,
+  analytics, and sync walkthrough still needs operator verification.
+- **Licensing:** resolve FFmpeg LGPL/GPL packaging posture before public beta.
 
-Full audit of Phases 8-11 planning validity vs. current codebase:
+## Deferred Version / Dependency Work
 
-- **Phase 8** (GPU downscale + cursor overlay): Planned, not started. `crates/gpu_scale/` scaffolding (08-01) never executed. ROADMAP entry + Progress row added this date.
-- **Phase 9** (Live Preview CDP pane): All 4 waves code-complete (2026-04-22). Wave 3 Task 3 (operator perf battery on 2023 M2 MBP) is a `checkpoint:human-verify` pending phase sign-off. Wave 1 — sidecar verbs + `preview/frame` notifications (`c80c7a9`); Rust `SidecarMsg::Notification` + `subscribe_preview()` + `PreviewFrame` (`1814088`). Wave 2 — Tauri `preview_start`/`preview_stop` + pump + `app_settings` toggle (`461d1fa`); React `<LivePreview />` canvas + Options toggle default-ON (`b19cabe`). Wave 3 — sidecar drop counter + HiDPI `everyNthFrame` + Rust pump log window (`09a816b`); LivePreview status machine + auto-recovery + drop counter (`c8236f2`). Wave 4 — multi-stream sidecar + `author.launch`/`close`/`setViewport` + `pauseStream`/`resumeStream` (`d0bc481`); `AuthorPreviewSession` registry in AppState + `attach_author_driver` Tauri command + per-stream wrappers (`ffbcc46`); editor-surface Live Preview + viewport switcher + `useEditorLivePreview` hook (default OFF per D-17) (`2cf1fca`). **PHASE-9.8/9.9 contract surface LOCKED as shipped — Phases 10 and 11 are unblocked.**
-- **Phase 10** (Author-time simulator): **All 3 waves code-complete (2026-04-22).** Wave 1 — executor parameterization + RunControl + pause/step events (`678eca6`, `d1fd0ef`, `7f2566a`, `c8cbf4e`). Wave 2 — simulator Tauri command surface + retention trim + TS IPC facade; no-relaunch invariant test-proven (`88afc4d`, `b952505`). Wave 3 (frontend-only) — simulatorStore Zustand slice + reducer tests (`d5fcc44`); CodeMirror simulator line decoration + theme (`199f335`); SimulatorTimeline filmstrip + scrubber + Promote-to-fallback gate + error bar (`65df041`); editor banner + readOnly + Cmd-. keymap + context menu + timeline mount (`1daf3b3`); preview panel swaps live canvas for static StepFrame during simulator runs (`bc0df39`). Vitest 112/112 (editor + recorder + live-preview); Phase 9-04 + Phase 3 DryRunPanel untouched. Phase 10 complete end-to-end pending operator smoke.
-- **Phase 11** (Element picker relocation): Phase 9-04 + 10-02 primitives shipped (2026-04-22) — 11-01 registry + 11-02 picker-in-preview + 11-03/04 unblocked.
+- Prisma 7 upgrade is deferred.
+- `windows-rs` 0.62 unification is deferred until Windows WGC verification is
+  available.
+- `tauri-specta` / `specta` rc.24 is deferred because the newer rc requires
+  nightly Rust features; current pinned line stays on stable Rust 1.88.
 
-Phase 6 + Phase 7 confirmed fully shipped. Phase 7's `PickElementButton` at `apps/desktop/src/features/recorder/pick-element-button.tsx` — Phase 11-05's relocation target path is correct.
+## Planning Pointers
 
-No Phase 15 rearrangement invalidates file-path references in Phase 8-11 plans. Proceed-when-unblocked.
-
-- **Milestone:** v1
-- **Phase:** 13 — Video output customization knobs (recording + export UI)
-- **Plan:** All 5 plans complete; verified 8/8 (ENC-12..ENC-19 PASS)
-- **Status:** Executing Phase 11
-- **Progress:** [████████░░] 84%
-
-## Performance Metrics
-
-- Phases completed: 4 / 5 (Phase 1 fully complete; Phases 2–5 code-complete pending verification gate)
-- Plans completed: 59 / 59
-- Requirements validated: 87 / 87 (Phase 1: FOUND-01..08, DSL-01..07, AUTO-01..06, CAP-01..07, ENC-01..05, UI-01..04,08..10, DIST-01..05 | Phase 2: POST-01..09, EXPORT-01..06, UI-05, UI-11 | Phase 3: AI-01..06, UI-07 | Phase 4: WEB-01..08, UI-06, DIST-06)
-
-## Accumulated Context
-
-### Roadmap Evolution
-
-- Phase 5 added: Window-targeted screen capture with Playwright auto-follow — replaces SckBackend stub with real SCK streaming + window/app target enum + Playwright PID→SCWindow bridge. Research done, stack corrections noted (`screencapturekit = =1.5.4`, not 1.70.x).
-- Phase 6 added: Recording v2 — promotes Phase 5's deferred list (audio capture, region capture, chrome-hiding, multi-browser auto-follow, live preview, per-recording cursor toggle, Windows E2E CI) into a dedicated polish phase. CONTEXT.md drafted with 24 locked decisions; groups into 4 plans.
-- Phase 9 added: Live Preview pane — render Chromium automation inside the Recorder window via CDP `Page.startScreencast`. Cosmetic companion to the shipped window-target capture; final video still uses real-Chromium pixels via SCK/WGC, not screencast frames. Proposed 3-plan split: sidecar CDP verbs + Rust event bridge, React canvas renderer + toggle, perf/backpressure hardening.
-- Phase 11 added: Author-time element picker — relocate Pick from the recording toolbar to the Preview panel, route through the Phase 10 author-session, and make the Record path read-only against `.story` + `.story.targets.json` (self-healing deferred to explicit Promote-to-fallback). Depends on Phase 10 author-session primitives and editor read-only lock.
-- Phase 12 added (2026-04-19): Fix video output resolution lock — replace `scale='min(1920,iw)':-2,…` with letterbox chain (`scale … force_original_aspect_ratio=decrease:force_divisible_by=2 + pad + setsar + format=yuv420p`). Split capture dims from output dims in `EncodeConfig`. Add `OutputResolution` enum (720p/1080p/1440p/4K/MatchSource/Custom). Source < target stays at source size + letterbox (no upscale). Fix `bitrate_kbps`-as-floor tech-debt. Backend + IPC only (UI hard-codes default 1080p + letterbox + black pad).
-- Phase 13 added (2026-04-19): Video output customization knobs — expose recording-time (5 knobs) + export-time (expanded) UI; per-encoder quality preset mapping (VT bitrate-based, NVENC cq-based, libx264 CRF+tune=stillimage); persist via tauri-plugin-store with Phase 12 migration. Depends on Phase 12.
-- Phase 16 added (2026-04-21): Upgrade all dependencies to latest — bump every JS/TS package and Rust crate across the monorepo (apps/desktop, apps/web, packages/*, crates/*, tools/*, scripts/*) per `.planning/notes/deps-upgrade-plan.md`. Scope: ~173 deps audited (~18 patch, ~60 minor, ~33 major). Coordinated groups: Tauri + plugins (Rust↔JS major alignment), tRPC 11 suite, Prisma client+CLI. Rust 0.x breakers: rusqlite across 4 crates, objc2 0.5→0.6 unify, intelligence stack (serde_yaml replacement, schemars 1, rand 0.10, toml 1, reqwest 0.13). JS majors gated on user approval: Next 16, Prisma 7, jose 6, NextAuth. Also resync CLAUDE.md (windows-capture 2.x, screencapturekit pin, chromiumoxide presence check). Every bump group = atomic commit; verify with cargo nextest + pnpm build + biome per step.
-- Phase 14 added (2026-04-21): Port Claude Design into apps/desktop — wire `packages/ui/src/claude-design/` (tokens.css + app.css + `.sc-*` primitives) into the desktop app and port JSX screens/overlays/primitives from `.planning/design/storycapture-claude-design/project/`. Open decision: reconcile `sc-*` tokens with existing Cursor-inspired `packages/ui/src/tokens.css` (merge into single system vs namespace alongside).
-- Phase 17 added (2026-04-22): Record engine lifecycle hardening — fix 19 issues found via 4-agent deep-dive investigation across capture / encoder / IPC / frontend layers. Clusters: (1) CLEANUP — exit-drain recording sessions, orphan spawn tasks on start-fail, xcap thread-join hang; (2) START-SAFETY — FE+BE double-start race, WGC HWND live-check, SCK pause/resume atomicity; (3) ENCODER-ROBUST — FFmpeg stdin backpressure, staging+atomic-rename output, first-frame timeout config, 200ms FIFO hardcode, explicit `-g` keyframe, PTS clamp; (4) UX-FEEDBACK — `RecordingEvent::AudioUnavailable` new variant, state-desync heartbeat, dangling automation Channel on unmount, no auto-nav to editor; (5) POLISH — NV12 config-coerce reject, HW encoder re-probe, atomic counter ordering, `@ts-ignore` test cleanup. No public IPC / DSL contract changes beyond additive event variants. Investigation report in conversation (not archived — re-derive from `crates/capture` + `crates/encoder` + `apps/desktop/src-tauri/src/commands/encode.rs` + `apps/desktop/src/features/recorder/`).
-
-### Decisions
-
-See PROJECT.md → Key Decisions. Highlights:
-
-- Tauri v2 over Electron (startup/memory/bundle budgets)
-- shadcn/ui + Base UI (`base-vega`), NOT Radix
-- chromiumoxide CDP primary + Playwright sidecar fallback (BrowserDriver trait from day one)
-- FFmpeg bundled as static universal Tauri sidecar
-- Platform-native capture (ScreenCaptureKit / Windows.Graphics.Capture) + XCap fallback
-- Direct distribution + notarization on macOS (not MAS)
-- Turborepo + Cargo workspace monorepo
-- Use `tauri-plugin-keyring` for secrets (Stronghold deprecated)
-- Use Motion (`motion/react`) — Framer Motion rebrand
-- Node SEA (Single Executable Application) chosen for Playwright sidecar packaging
-- BrowserDriver trait abstraction from day one to allow seamless chromiumoxide ↔ Playwright switching
-- CaptureBackend trait abstraction wraps SCK/WGC/xcap behind a single interface
-- Encoder uses FFmpeg sidecar with runtime HW probe; falls back to libx264
-- tauri-specta for typed IPC codegen (Rust → TypeScript types auto-generated)
-- Effects AST with canonical-order builder + dual emitters (FFmpeg filter-graph + JSON snapshot)
-- WebGPU/WebGL2 preview engine with VideoFrame lifecycle management
-- 5-track post-production timeline (Video, Cursor, Zoom, Sound, Annotations) with Zustand slices
-- Per-action coalesced undo/redo ring buffer (50 steps, cmd+z/shift+z)
-- LlmProvider/TtsProvider trait abstractions isolate Anthropic/OpenAI/ElevenLabs behind a unified interface
-- NL→DSL orchestrator uses tool-use partial-JSON accumulator + verb whitelist retry + diff engine
-- TTS cache keyed on (provider, voice, content-hash) with sanitized on-disk paths and GC
-- tower-lsp LanguageServer over story_parser: did_open/change, diagnostics, hover, completion
-- LSP bridged to CodeMirror 6 via Tauri IPC (not stdio) to avoid shell escaping issues in packaged app
-- Dry-Run reuses Phase 1 BrowserDriver without capture pipeline — fastest possible iteration loop
-- All LLM/TTS keys stored in OS keychain via tauri-plugin-keyring; never in SQLite or plaintext
-- [Phase 05]: Plan 05-01: real SCK streaming for display+window + grouped Target picker + silent xcap fallback; capture_target persists to app_settings.json
-- [Phase 05]: Plan 05-02: launchServer+connect in sidecar (Browser class has no .process()); process-global PlaywrightPidStash + background probe task for pid acquisition; SharedPlaywrightDriver adapter so probe+executor share the driver; host-side pid rewrite in start_capture_target for WindowByPid sentinel (T-05-02-01)
-- [Phase 05]: Plan 05-03: Chromium parent/child resolution via ToolHelp snapshot walk restricted to chrome.exe/msedge.exe/chromium.exe process names (T-05-03-07)
-- [Phase 05]: Plan 05-03: PTS clock source set to ClockSource::Synthetic on WGC path (QPC plumbing deferred to encoder-coordinated follow-up)
-- [Phase 14-01]: Retired Cursor-warm tokens (D-01); kept packages/ui/src/tokens.css as TRANSITIONAL alias layer mapping 770 legacy --color-* onto --sc-* (Wave 5 cleanup). Swapped to @fontsource-variable/{inter,jetbrains-mono} (D-11). Shipped 9 Sc* primitives (ScButton/Input/Badge/Switch/Card/Kbd/Slider/Select/Segmented) over Base UI in packages/ui. Dark default (D-02). Hidden /_design-system/{tokens,components} routes (D-06f).
-- [Phase 14-03]: Wave 3 routes restyled inside legacy AppLayout shell (D-03/D-06a permanently dropped). Dashboard+Settings+Editor-shell+post-production editor-shell use sc-* tokens + ScButton/ScCard from @storycapture/ui. Every IPC/Zustand/CodeMirror/LSP/WebGPU/motion wire preserved per D-09.
-- [Phase 14-04]: Wave 4 overlays + Export restyle. CommandPalette (cmdk + Cmd/Ctrl+K) mounts inside AppLayout + FullscreenLayout (useNavigate needs RouterProvider descendant context; plan's "sibling to RouterProvider" language predates react-router-dom v7 data router). RecordingIndicator driven by useRecorderStore.status. Sonner skinned via --normal-bg/--normal-text/--normal-border/--border-radius/--toast-animation-duration pulling from --sc-surface / --sc-text / --sc-border-2 / --sc-r-lg. theme="dark" hard-coded until Wave 5 tweaks-store swap. Export-modal retokened to --sc-* + ScButton; ENC-12..ENC-19 Phase 13 wiring preserved verbatim (71/71 post-production tests green).
-- [Phase 15-03]: Wave 3 Post-Production landing route. New `apps/desktop/src/routes/post-production-landing.tsx` (182 LoC) reuses ProjectGrid + useProjects verbatim; onOpen → `/post-production/:projectId` (vs dashboard's `/editor/:id`). Toolbar omits New Story; empty-state CTA "Go to Projects" → `/`. Router gains `{ path: "/post-production", element: <PostProductionLandingRoute /> }` under AppLayout; `/post-production/:storyId` stays under FullscreenLayout. Zero sidebar/command-palette edits — matchPattern already covers both routes. Typecheck + build green; 201/209 vitest (8 pre-existing failures, not regressions). session_count split deferred (needs list_project_recordings IPC).
-- [Phase 15-01]: Wave 1 VoiceoverCompact relocation. Moved component + helpers verbatim (D-11) from routes/editor.tsx into features/post-production/voiceover-compact/{voiceover-compact.tsx,index.ts}. VoiceCatalogDialog now mounts only inside post-production EditorShell (D-10). Editor right rail collapsed to single preview rail (RailTabButton + motion cross-fade + railTab state removed). findSceneIndexForOffset stayed in editor.tsx (not voiceover-specific). VoiceoverCompact mounted in a dormant hidden slot in EditorShell pending full story-data wiring in a later wave. Net −115 LoC; typecheck + build green; 201/209 vitest pass (8 failures pre-existing, not regressions).
-- [Phase 15-04]: Wave 4 Editor additions. Added "Send to Post-Production" toolbar button in editor.tsx right-side action cluster (after Record) — disabled ScButton when folder?.session_count === 0, enabled `<Link to={`/post-production/${projectId}`} className="sc-btn sm">` once a recording exists; uses Scissors icon for parity with sidebar. Dropped `sceneCount > 0 &&` gate on SceneListPanel; rail always mounts. SceneListPanel adds useRef Story cache updated on successful parse; under hasParseError it renders the cached tree with `<ScBadge tone="warn">parse error — showing last known</ScBadge>` in the header. Empty-state refined to "No scenes yet". layoutId motion pill + click-to-jump preserved (D-11). Plan's `.sc-btn.secondary` class doesn't exist — used bare `.sc-btn sm` (base IS secondary per claude-design/app.css). Accent-pulse on enable transition deferred (Claude's Discretion). 2 files modified; typecheck + build green; 201/209 vitest (baseline preserved).
-
-### Open Todos
-
-- **[BLOCKING] 01-07 — CI capture-soak workflow:** The `capture-soak` GitHub Actions workflow must be manually triggered on a real runner and pass (30-min soak, RAM under 800 MB). Operator approved plan without a real CI run. Trigger: `.github/workflows/capture-soak.yml`.
-- **[BLOCKING] 01-10 — Release signing + first tagged release verification:** Requires 13 GitHub Secrets to be configured (Apple signing cert, notarization credentials, Windows code-signing cert/token, etc.) and a first tagged release (`v0.1.0-beta.1`) to be cut and verified on clean macOS arm64, macOS x64, and Windows x64 VMs. See `.planning/phases/01-foundation-dsl-automation-capture-encode/01-10-RESUME.md` for full checklist.
-- **[BLOCKING] 02-08 — Audio curation + listen-test:** 20 CC0/CC-BY-4.0 audio files (12 SFX + 8 BGM) must be sourced, normalized to -16 LUFS, committed with attribution, and human-verified via the listen-test checklist. See `.planning/phases/02-cinematic-post-production-export/02-08-RESUME.md` and `scripts/curate-sound-library.md`. After curation: remove `#[ignore]` on tests in `crates/effects/tests/sound_library.rs` + `audio_rms_check.rs`, run them green, then write `02-08-SUMMARY.md`.
-- **[BLOCKING] 02-12b — Post-Production Editor UI human-verify walkthrough:** Operator must run `pnpm --filter @storycapture/desktop tauri dev`, navigate to `/post-production/<story-id>`, and complete the 5-step walkthrough (scrub 60fps, apply presets, export MP4/WebM/GIF, undo/redo, accessibility smoke). See `.planning/phases/02-cinematic-post-production-export/02-12b-RESUME.md`. Known deferrals: real source video wiring, undo-ring (P13), real AST graph (P13) — these are expected cross-plan handoffs.
-- **[BLOCKING] 03-20 — Accounts settings + AI disclosure UI human-verify:** Operator must run the app, navigate to Settings → Accounts, verify token counters, cost warnings, AI disclosure copy (G7/G8/G9 compliance), and confirm WCAG 2.1 AA accessibility. See `.planning/phases/03-intelligence-layer-ai-authoring-voiceover/03-20-RESUME.md` for the full verification checklist. After passing: write `03-20-SUMMARY.md`.
-- **[BLOCKING] 04-10 — Landing page + integration walkthrough human-verify:** Operator must visit the running Next.js app, review the landing page, and complete the end-to-end integration walkthrough (OAuth sign-in, desktop upload, shareable viewer, workspace invite, analytics dashboard, desktop-web sync). See `.planning/phases/04-web-companion-sharing/04-10-RESUME.md` for the full checklist. After passing: write `04-10-SUMMARY.md`.
-- Resolve FFmpeg LGPL vs. GPL licensing before first public beta.
-- Pin exact versions: Tauri 2.8.x, chromiumoxide 0.7.x, screencapturekit 1.70.x, windows-capture 1.5.x, NextAuth v5.
-
-### Blockers
-
-currently blocking post-v1 work. All six verification items above are operator-gated (require secrets, real hardware, or manual review). All v1 code is committed.
-
-- [05-02] Human-verify checkpoint auto-approved under workflow.auto_advance=true: macOS host with Screen Recording TCC grant required to exercise (a) 3x real-capture find_window_by_pid tests, (b) cargo run -p e2e-playwright-capture, (c) 8-step UI walkthrough. Defer to operator same as 01-07 soak.
-- [05-01] Human-verify checkpoint auto-approved: TCC-granted macOS host for `cargo test -p capture --features real-capture -- --ignored` + 30-min SCK-window soak (<800 MB) + TCC-deny fallback + 2nd-failure modal smoke.
-- [05-03] Human-verify checkpoint auto-approved: Windows 10/11 operator VM for `cargo test -p capture --features real-capture-windows -- --ignored` + 6-step WGC walkthrough + first live `capture-windows.yml` CI run (requires a push).
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260418-gkg | Recording engine quick fixes: drop Chromium sentinel, panic guard on frame-pump, export drop counts | 2026-04-18 | 1fe6fe8 | [260418-gkg-recording-engine-quick-fixes-drop-chromi](./quick/260418-gkg-recording-engine-quick-fixes-drop-chromi/) |
-| 260418-ios | Fix focus-steal during recording: re-focus main window after Playwright launch + start_recording | 2026-04-18 | 9fad310 | [260418-ios-fix-focus-steal-during-recording-so-play](./quick/260418-ios-fix-focus-steal-during-recording-so-play/) |
-| 260421-t83 | Recording playback in Editor Preview pane — `list_project_recordings` IPC + scrubbable `<video>` + live status strip | 2026-04-21 | f902ec7 | [260421-t83-recording-playback-in-editor-preview-pan](./quick/260421-t83-recording-playback-in-editor-preview-pan/) |
-| 260426-icon | Restore app icon optical padding to fix oversized macOS Dock active icon | 2026-04-26 | 0608fdf | n/a |
-| Phase 14 P01 | 25m | 3 tasks | 23 files |
-| Phase 14 P03 | 20m | 3 tasks | 4 files |
-| Phase 14 P04 | 35m | 3 tasks | 7 files |
-
-## Session Continuity
-
-- Last activity: 2026-04-22 — Recording quality hardening (ad-hoc, post-Phase-17): bitrate formula 3→5 bits/px + fps scaling; VT switched from `-q:v` quality-ceiling to `-b:v` VBR target; H.264 High + CABAC + BT.709 tagging on VT fast path; physical-pixel Retina window capture with `scales_to_fit(true)`; HEVC preferred on macOS with forced `hvc1` fourcc for QuickTime/Safari compat; observed_kbps logged at finalize for diagnosis.
-- Last action (local): 11 commits (7c12d95, 15bf206, 47221db, ef47cdf, 82c9517, 47df538, 1b0650d, a1bd389, 8db1230, 5e1b1be). Verified end-to-end: recording `64148249` probes as `hevc (Main) (hvc1)` 3560×2220 @ 60fps, opens natively in QuickTime.
-- Earlier local action: Phase 16 Plan 05 — Wave E gated framework majors + docs sync (`ac8e8f8` / `3d1625b` / `e5d7fab`). E22/E25/E26/E27 deferred per plan stop-conditions.
-- Earlier local action: Phase 10 Wave 3 — simulatorStore + SceneTimeline + Promote-to-fallback gate + locked-run dry-run + preview swap (`d5fcc44` / `199f335` / `65df041` / `1daf3b3` / `bc0df39`). Phase 10 code-complete.
-- Last action (origin): Phase 17 complete (22 commits, 19/19 decisions verified); Phase 10 Wave 1 complete; Phase 9 all waves code-complete.
-- Next action: operator smoke on recording quality (subjective crispness on real projects); `/gsd-execute-phase 11 --wave 1` (picker registry foundation); or Phase 8 (GPU downscale) / Phase 14 Wave 5 / Phase 15 Wave 5 in parallel. Three Phase 16 bumps still deferred: (a) Prisma 7, (b) windows 0.62, (c) tauri-specta/specta rc.24.
-
----
-*State initialized: 2026-04-14 | Phase 1 code-complete: 2026-04-15 | Phase 2 code-complete: 2026-04-15 | Phase 3 code-complete: 2026-04-15 | Phase 4 code-complete: 2026-04-15 | Phase 5 code-complete: 2026-04-17 | Phase 12 planned: 2026-04-19*
-
-**Planned Phase:** 17 (Record engine lifecycle hardening) — 6 plans — 2026-04-22T05:55:06.563Z
+- `.planning/POST-PROD-ROADMAP.md` — active post-production E2E roadmap.
+- `.planning/phases/18-post-prod-review-real-video-compute-graph/18-SUMMARY.md`
+  — real video + computeGraph context.
+- `.planning/phases/19-story-to-timeline-typed-clips/19-PLAN.md` — original
+  Phase 19 plan; source now reflects the shipped work even though this artifact
+  remains plan-shaped.
+- `.planning/phases/20-cursor-overlay-render-fix/20-PLAN.md` through
+  `.planning/phases/25-post-prod-polish/25-PLAN.md` — current follow-up plans.
+- `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and
+  `.planning/ROADMAP.md` are historical unless explicitly refreshed.
