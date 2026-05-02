@@ -15,11 +15,14 @@ import { Film } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import previewBackdrop from "@/assets/gradients/forest-emerald.png";
+import type { RecordingActions } from "@/ipc/actions";
 import { frontendLog } from "@/lib/log";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
+import type { CursorClip, CursorSkin } from "../state/timeline-slice";
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
+import { sampleVirtualCursor } from "./virtual-cursor-path";
 
 type PreviewOutputMode = "native-video" | "composited-canvas";
 
@@ -31,6 +34,15 @@ const AMBIENT_SAMPLE_WIDTH = 40;
 const AMBIENT_SAMPLE_HEIGHT = 22;
 const AMBIENT_SAMPLE_INTERVAL_MS = 90;
 const AMBIENT_FRAME_SMOOTHING = 0.13;
+const CURSOR_BASE_SIZE_PX = 32;
+const CURSOR_RIPPLE_MAX_PX = 96;
+
+const cursorSkinAssets = import.meta.glob("../../../../../../assets/cursor-skins/*.png", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+const ACTIONS_SIDECAR_SUFFIX = ".actions.json";
 
 interface Rgb {
   r: number;
@@ -64,6 +76,7 @@ export interface PreviewPlayerProps {
   width?: number;
   height?: number;
   outputMode?: PreviewOutputMode;
+  actions?: RecordingActions | null;
 }
 
 function buildPlan(width: number, height: number): PreviewRenderPlan {
@@ -269,6 +282,32 @@ function resolvePreviewImageSrc(path: string): string {
   return convertFileSrc(path);
 }
 
+function cursorSkinSrc(skin: CursorSkin): string | undefined {
+  return cursorSkinAssets[`../../../../../../assets/cursor-skins/${skin}.png`];
+}
+
+function activeCursorClip(clips: readonly CursorClip[], playheadMs: number): CursorClip | null {
+  let active: CursorClip | null = null;
+  for (const clip of clips) {
+    const endMs = clip.startMs + clip.durationMs;
+    if (playheadMs < clip.startMs || playheadMs >= endMs) continue;
+    if (!active || clip.startMs >= active.startMs) active = clip;
+  }
+  return active;
+}
+
+function isActionsCursorClip(clip: CursorClip): boolean {
+  return clip.trajectoryKind === "actions" || clip.trajectoryDir.endsWith(ACTIONS_SIDECAR_SUFFIX);
+}
+
+type CursorStyleKey = "height" | "left" | "opacity" | "top" | "transform" | "width";
+
+function setStyleValue(style: CSSStyleDeclaration, key: CursorStyleKey, value: string) {
+  if (style[key] !== value) {
+    style[key] = value;
+  }
+}
+
 function stageBackgroundStyle(background: EditorBackgroundKind): CSSProperties {
   if (background.kind === "solid") {
     const color = rgbaCss(background.color);
@@ -302,11 +341,14 @@ export function PreviewPlayer({
   width = 1920,
   height = 1080,
   outputMode = DEFAULT_PREVIEW_OUTPUT_MODE,
+  actions = null,
 }: PreviewPlayerProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const ambientLayerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cursorRef = useRef<HTMLImageElement | null>(null);
+  const cursorRippleRef = useRef<HTMLDivElement | null>(null);
   const ambientVideoRef = useRef<HTMLVideoElement | null>(null);
   const ambientSampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const ambientDisplayedPaletteRef = useRef<AmbientPalette>(DEFAULT_AMBIENT_PALETTE);
@@ -322,8 +364,11 @@ export function PreviewPlayer({
   const [mediaAspect, setMediaAspect] = useState(() => safeAspect(width, height));
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const playingRef = useRef(false);
+  const cursorClipsRef = useRef<CursorClip[]>([]);
+  const actionsRef = useRef<RecordingActions | null>(actions);
 
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
+  const cursorClips = useEditorStore((s) => s.tracks.cursor);
   const useCompositedCanvas = outputMode === "composited-canvas";
   const displayReady = !useCompositedCanvas || engineReady;
   const renderPlan = useMemo(() => buildPlan(width, height), [width, height]);
@@ -354,6 +399,62 @@ export function PreviewPlayer({
       : convertFileSrc(videoSrc)
     : undefined;
   const useAmbientBackdrop = editorBackground.kind === "transparent" && Boolean(resolvedSrc);
+
+  const hideCursorOverlay = useCallback(() => {
+    const cursor = cursorRef.current;
+    const ripple = cursorRippleRef.current;
+    if (cursor) cursor.style.opacity = "0";
+    if (ripple) ripple.style.opacity = "0";
+  }, []);
+
+  const renderCursorOverlay = useCallback(
+    (playheadMs: number) => {
+      const cursor = cursorRef.current;
+      const ripple = cursorRippleRef.current;
+      const currentActions = actionsRef.current;
+      if (!cursor || !currentActions) {
+        hideCursorOverlay();
+        return;
+      }
+
+      const clip = activeCursorClip(cursorClipsRef.current, playheadMs);
+      if (!clip || !isActionsCursorClip(clip)) {
+        hideCursorOverlay();
+        return;
+      }
+
+      const sample = sampleVirtualCursor(currentActions, playheadMs - clip.startMs);
+      const src = cursorSkinSrc(clip.skin);
+      if (!sample || !src) {
+        hideCursorOverlay();
+        return;
+      }
+
+      if (cursor.getAttribute("src") !== src) cursor.setAttribute("src", src);
+      const size = CURSOR_BASE_SIZE_PX * Math.max(0.1, clip.sizeScale || 1);
+      setStyleValue(cursor.style, "width", `${size}px`);
+      setStyleValue(cursor.style, "height", `${size}px`);
+      setStyleValue(cursor.style, "left", `${sample.x * 100}%`);
+      setStyleValue(cursor.style, "top", `${sample.y * 100}%`);
+      setStyleValue(cursor.style, "opacity", "1");
+      setStyleValue(cursor.style, "transform", "translate3d(-1px, -1px, 0)");
+
+      if (!ripple) return;
+      const activeRipple = sample.ripple;
+      if (!activeRipple) {
+        ripple.style.opacity = "0";
+        return;
+      }
+      const rippleSize = 18 + activeRipple.progress * CURSOR_RIPPLE_MAX_PX;
+      setStyleValue(ripple.style, "width", `${rippleSize}px`);
+      setStyleValue(ripple.style, "height", `${rippleSize}px`);
+      setStyleValue(ripple.style, "left", `${activeRipple.x * 100}%`);
+      setStyleValue(ripple.style, "top", `${activeRipple.y * 100}%`);
+      setStyleValue(ripple.style, "opacity", String(Math.max(0, activeRipple.opacity * 0.72)));
+      setStyleValue(ripple.style, "transform", "translate3d(-50%, -50%, 0)");
+    },
+    [hideCursorOverlay],
+  );
 
   const applyAmbientPalette = useCallback((palette: AmbientPalette) => {
     const layer = ambientLayerRef.current;
@@ -452,6 +553,12 @@ export function PreviewPlayer({
   }, [playing]);
 
   useEffect(() => {
+    cursorClipsRef.current = cursorClips;
+    actionsRef.current = actions;
+    renderCursorOverlay(useEditorStore.getState().playheadMs);
+  }, [actions, cursorClips, renderCursorOverlay]);
+
+  useEffect(() => {
     setMediaAspect(safeAspect(width, height));
   }, [width, height]);
 
@@ -535,6 +642,7 @@ export function PreviewPlayer({
         applyAmbientPalette(ambientDisplayedPaletteRef.current);
       }
       lastPlayheadCommitRef.current = state.playheadMs;
+      renderCursorOverlay(state.playheadMs);
 
       if (useCompositedCanvas) {
         const eng = engineRef.current;
@@ -544,6 +652,7 @@ export function PreviewPlayer({
   }, [
     applyAmbientPalette,
     renderPlan,
+    renderCursorOverlay,
     sampleAmbientPalette,
     syncAmbientVideo,
     useCompositedCanvas,
@@ -569,6 +678,7 @@ export function PreviewPlayer({
         applyAmbientPalette(ambientDisplayedPaletteRef.current);
       }
       lastPlayheadCommitRef.current = currentPlayheadMs;
+      renderCursorOverlay(currentPlayheadMs);
       if (useCompositedCanvas && eng) {
         void eng.renderFrame(currentPlayheadMs, renderPlan);
       }
@@ -588,6 +698,7 @@ export function PreviewPlayer({
     playing,
     applyAmbientPalette,
     renderPlan,
+    renderCursorOverlay,
     resolvedSrc,
     sampleAmbientPalette,
     syncAmbientVideo,
@@ -616,6 +727,7 @@ export function PreviewPlayer({
 
       const nextPlayheadMs = video.currentTime * 1000;
       syncAmbientPlayback(video);
+      renderCursorOverlay(nextPlayheadMs);
       if (
         Math.abs(nextPlayheadMs - lastPlayheadCommitRef.current) >=
         NATIVE_PLAYHEAD_COMMIT_INTERVAL_MS
@@ -658,7 +770,14 @@ export function PreviewPlayer({
       ambientVideoRef.current?.pause();
       commitCurrentTime();
     };
-  }, [playing, resolvedSrc, setPlayhead, syncAmbientPlayback, useCompositedCanvas]);
+  }, [
+    playing,
+    renderCursorOverlay,
+    resolvedSrc,
+    setPlayhead,
+    syncAmbientPlayback,
+    useCompositedCanvas,
+  ]);
 
   // rAF loop while playing the visible composited canvas.
   useEffect(() => {
@@ -681,6 +800,7 @@ export function PreviewPlayer({
 
       const t_ms = video.currentTime * 1000;
       syncAmbientPlayback(video);
+      renderCursorOverlay(t_ms);
       if (
         Math.abs(t_ms - lastPlayheadCommitRef.current) >= COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS
       ) {
@@ -714,7 +834,15 @@ export function PreviewPlayer({
       setPlayhead(finalPlayheadMs);
       lastPlayheadCommitRef.current = finalPlayheadMs;
     };
-  }, [playing, renderPlan, resolvedSrc, setPlayhead, syncAmbientPlayback, useCompositedCanvas]);
+  }, [
+    playing,
+    renderCursorOverlay,
+    renderPlan,
+    resolvedSrc,
+    setPlayhead,
+    syncAmbientPlayback,
+    useCompositedCanvas,
+  ]);
 
   const togglePlay = useCallback(() => setPlaying((p) => !p), []);
 
@@ -836,6 +964,22 @@ export function PreviewPlayer({
                 aria-label="Composited preview canvas"
               />
             ) : null}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 overflow-hidden"
+              data-testid="virtual-cursor-overlay"
+            >
+              <div
+                ref={cursorRippleRef}
+                className="absolute rounded-full border-2 border-white/80 bg-white/10 opacity-0 shadow-[0_0_18px_rgba(255,255,255,0.28)]"
+              />
+              <img
+                ref={cursorRef}
+                alt=""
+                className="absolute opacity-0 drop-shadow-[0_5px_12px_rgba(0,0,0,0.42)]"
+                draggable={false}
+              />
+            </div>
           </div>
           <div className="absolute bottom-3 left-3 z-20 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/88 px-2.5 py-2 shadow-[var(--sc-sh-1)] backdrop-blur">
             <TransportControls playing={playing} onTogglePlay={togglePlay} />

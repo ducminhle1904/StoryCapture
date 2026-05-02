@@ -176,12 +176,13 @@ function cursorSidecarFor(
   actions: RecordingActions | null,
   trajectory: RecordingTrajectory | null,
   durationMs: number,
-): { path: string; fps: number; frameCount: number } | null {
+): { path: string; kind: "actions" | "trajectory"; fps: number; frameCount: number } | null {
   if (actions) {
     const fps = actions.fps > 0 ? actions.fps : 60;
     const durationFrameCount = Math.ceil((Math.max(0, durationMs) / 1000) * fps);
     return {
       path: deriveActionsPath(recordingPath),
+      kind: "actions",
       fps,
       frameCount: Math.max(actions.frame_count, durationFrameCount, 1),
     };
@@ -189,6 +190,7 @@ function cursorSidecarFor(
   if (!trajectory) return null;
   return {
     path: deriveTrajectoryPath(recordingPath),
+    kind: "trajectory",
     fps: trajectory.fps,
     frameCount: trajectory.frame_count,
   };
@@ -464,6 +466,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       startMs: 0,
       durationMs,
       trajectoryDir: cursorSidecar.path,
+      trajectoryKind: cursorSidecar.kind,
       trajectoryFps: cursorSidecar.fps,
       trajectoryFrameCount: cursorSidecar.frameCount,
       skin: polish?.global.cursorSkin ?? "mac-default",

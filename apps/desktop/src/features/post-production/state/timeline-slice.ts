@@ -101,8 +101,9 @@ export interface VideoClip extends ClipBase {
 
 export interface CursorClip extends ClipBase {
   trackId: "cursor";
-  /** PNG-sequence directory captured at recording time. */
+  /** Cursor sidecar path or generated PNG-sequence directory. */
   trajectoryDir: string;
+  trajectoryKind?: "actions" | "trajectory" | "png-sequence";
   trajectoryFps: number;
   trajectoryFrameCount: number;
   skin: CursorSkin;

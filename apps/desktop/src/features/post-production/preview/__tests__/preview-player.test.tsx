@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEditorStore } from "../../state/store";
 import { PreviewEngine } from "../preview-engine";
 import { PreviewPlayer } from "../preview-player";
+import { ACTIONS } from "./fixtures";
 
 vi.mock("../preview-engine", () => ({
   PreviewEngine: vi.fn().mockImplementation(function MockPreviewEngine() {
@@ -111,6 +112,47 @@ describe("PreviewPlayer", () => {
     });
 
     await waitFor(() => expect(video.currentTime).toBe(2.5));
+    expect(PreviewEngine).not.toHaveBeenCalled();
+  });
+
+  it("shows the virtual cursor overlay from active cursor clips without starting the compositor", async () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 10_000,
+            trajectoryDir: "/tmp/demo.actions.json",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 600,
+            skin: "mac-default",
+            sizeScale: 1.25,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(2000);
+    });
+
+    const overlay = screen.getByTestId("virtual-cursor-overlay");
+    const cursor = overlay.querySelector("img");
+
+    await waitFor(() => expect(cursor?.style.opacity).toBe("1"));
+    expect(cursor?.style.left).toBe("80%");
+    expect(cursor?.style.top).toBe("60%");
+    expect(cursor?.style.width).toBe("40px");
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
 

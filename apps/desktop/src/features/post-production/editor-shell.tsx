@@ -690,6 +690,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 mode="post-production"
                 storyId={storyId}
                 videoSrc={resolvedVideoSrc}
+                actions={actionsQuery.data ?? null}
               />
               {(showEmptyOverlay || showErrorOverlay) && (
                 <div

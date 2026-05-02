@@ -3,6 +3,7 @@ import { Film } from "lucide-react";
 import { motion } from "motion/react";
 
 import { PreviewPlayer } from "@/features/post-production/preview/preview-player";
+import type { RecordingActions } from "@/ipc/actions";
 import { useProjectRecordings } from "@/ipc/projects";
 
 export type PreviewSurfaceProps =
@@ -12,6 +13,7 @@ export type PreviewSurfaceProps =
       videoSrc?: string;
       width?: number;
       height?: number;
+      actions?: RecordingActions | null;
     }
   | {
       mode: "recording";
@@ -26,6 +28,7 @@ export function PreviewSurface(props: PreviewSurfaceProps) {
         videoSrc={props.videoSrc}
         width={props.width}
         height={props.height}
+        actions={props.actions}
       />
     );
   }
