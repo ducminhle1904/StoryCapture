@@ -54,6 +54,15 @@ Decoders/parsers/muxers/demuxers are limited to the H.264/HEVC/AAC/MP4/MOV/
 Matroska/raw video set actually used by capture + post-pro, plus PNG for the
 virtual cursor overlay frame sequence.
 
+Post-production rendering also requires FFmpeg filters for the effects graph:
+`drawtext` for text overlays, `movie` + `overlay` for cursor PNG sequences,
+`geq`/`crop`/`zoompan` for rounded background and motion, `xfade` for
+transitions, and palette filters for GIF fanout. FFmpeg 7's `drawtext` depends
+on `libfreetype` and `libharfbuzz`; `verify-static.sh` fails the build if these
+dependencies or required filters are missing. The macOS build script compiles a
+minimal static HarfBuzz locally so the signed sidecar does not link against
+Homebrew text-shaping dylibs.
+
 ## How to run locally
 
 ### macOS
@@ -77,7 +86,8 @@ Each runs `verify-static.sh` automatically. `verify-static.sh` exits non-zero
 if any non-system dylib is linked, if `--enable-gpl --enable-libx264` is
 missing, or if `--enable-nonfree` is present.
 
-Local prereqs: Xcode CLT, `brew install nasm yasm pkg-config x264`. The PNG
+Local prereqs: Xcode CLT,
+`brew install nasm yasm pkg-config meson ninja x264 freetype libpng`. The PNG
 decoder uses system zlib on macOS. Optional: `brew install openh264` to bake in
 the software fallback if Homebrew provides a static archive.
 
@@ -85,7 +95,7 @@ the software fallback if Homebrew provides a static archive.
 
 ```bash
 # inside MSYS2 MINGW64 (CI does this via msys2/setup-msys2@v2)
-pacman -S --needed make yasm nasm pkg-config mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib
+pacman -S --needed make yasm nasm pkg-config mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-freetype mingw-w64-x86_64-harfbuzz
 bash scripts/build-ffmpeg/build-windows.sh
 ```
 

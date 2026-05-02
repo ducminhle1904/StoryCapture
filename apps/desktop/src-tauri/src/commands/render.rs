@@ -56,6 +56,7 @@ impl From<NewRenderJobDto> for NewRenderJob {
             fps: d.fps,
             quality: d.quality,
             priority: d.priority,
+            output_path: None,
             batch_id: d.batch_id,
         }
     }
@@ -138,6 +139,7 @@ impl From<RenderProgress> for RenderProgressDto {
 pub struct RenderQueueState {
     pub handle: RenderQueueHandle,
     pub db: Arc<Mutex<Connection>>,
+    pub project_db_path: PathBuf,
     /// One-shot receiver for `stream_render_progress`. Parking it inside a
     /// `Mutex<Option<_>>` enforces single-subscriber semantics.
     pub progress_rx: Arc<Mutex<Option<mpsc::Receiver<RenderProgress>>>>,
@@ -239,7 +241,11 @@ pub async fn stream_render_progress(
     drop(guard);
 
     while let Some(p) = rx.recv().await {
-        let _ = channel.send(RenderProgressDto::from(p));
+        if channel.send(RenderProgressDto::from(p)).is_err() {
+            let mut guard = queue.progress_rx.lock().await;
+            *guard = Some(rx);
+            return Ok(());
+        }
     }
     Ok(())
 }

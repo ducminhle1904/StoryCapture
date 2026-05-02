@@ -98,6 +98,8 @@ CONFIGURE_FLAGS=(
   --pkg-config-flags=--static
   --enable-gpl
   --enable-libx264
+  --enable-libfreetype
+  --enable-libharfbuzz
   --disable-nonfree
   --disable-debug
   --disable-doc
@@ -112,7 +114,7 @@ CONFIGURE_FLAGS=(
   --enable-muxer=mp4,mov,matroska,null
   --enable-demuxer=mov,matroska,rawvideo,aac
   --enable-protocol=file,pipe
-  --enable-filter=scale,format,fps,setpts,asetpts,aresample,anull,null
+  --enable-filter=scale,format,fps,setpts,asetpts,aresample,anull,anullsrc,null,crop,overlay,geq,zoompan,movie,drawtext,color,pad,setsar,setparams,eq,split,palettegen,paletteuse,xfade
   --enable-bsf=h264_mp4toannexb,hevc_mp4toannexb
   --target-os=mingw64
   --arch=x86_64

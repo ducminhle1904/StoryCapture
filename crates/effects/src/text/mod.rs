@@ -34,10 +34,10 @@ pub use animation::{
 };
 pub use auto_annotate::{auto_annotate_step, AutoAnnotateOptions, StepAstRef};
 pub use callout::{emit_callout_overlay, render_callout_png, ArrowDir, CalloutSpec};
-pub use drawtext::{emit_drawtext, escape_drawtext_text, path_to_ffmpeg_arg};
+pub use drawtext::{bundled_filename_for, emit_drawtext, escape_drawtext_text, path_to_ffmpeg_arg};
 pub use fonts::{
-    ensure_fonts_extracted, font_filename_for, resolve_bundled_font_path, BundledFont,
-    BUNDLED_FONT_FILES,
+    ensure_fonts_extracted, font_filename_for, resolve_bundled_font_path,
+    resolve_bundled_font_path_by_name, BundledFont, BUNDLED_FONT_FILES,
 };
 pub use highlight_ring::{
     emit_ring_overlay, pulse_alpha_expr, render_highlight_ring_png, RingSpec,

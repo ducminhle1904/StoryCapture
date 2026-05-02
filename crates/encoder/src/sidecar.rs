@@ -15,6 +15,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout};
 
 use crate::error::{EncoderError, Result};
@@ -38,17 +39,60 @@ pub trait SidecarCommand: Send + Sync {
         // sees EOF; callers that need to pump raw frames should use
         // `spawn` directly and drive the child themselves.
         drop(child.stdin);
+        let mut stdout = child.stdout;
+        let mut stderr = child.stderr;
+        let stdout_task = tokio::spawn(async move {
+            let mut sink = tokio::io::sink();
+            let _ = tokio::io::copy(&mut stdout, &mut sink).await;
+        });
+        let stderr_task = tokio::spawn(async move { read_stderr_tail(&mut stderr).await });
         let status = child
             .child
             .wait()
             .await
             .map_err(|e| EncoderError::Io(format!("sidecar wait: {e}")))?;
+        let _ = stdout_task.await;
+        let stderr_tail = stderr_task.await.unwrap_or_default();
         if !status.success() {
-            return Err(EncoderError::SpawnFailed(format!(
-                "sidecar exited with status {status}"
+            return Err(EncoderError::SpawnFailed(sidecar_exit_message(
+                status,
+                &stderr_tail,
             )));
         }
         Ok(())
+    }
+}
+
+pub(crate) async fn read_stderr_tail<R>(reader: &mut R) -> String
+where
+    R: AsyncRead + Unpin,
+{
+    const MAX_TAIL_BYTES: usize = 4096;
+
+    let mut tail = Vec::new();
+    let mut chunk = [0_u8; 1024];
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(n) => {
+                tail.extend_from_slice(&chunk[..n]);
+                if tail.len() > MAX_TAIL_BYTES {
+                    let drain = tail.len() - MAX_TAIL_BYTES;
+                    tail.drain(..drain);
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    String::from_utf8_lossy(&tail).trim().to_string()
+}
+
+pub(crate) fn sidecar_exit_message(status: std::process::ExitStatus, stderr_tail: &str) -> String {
+    if stderr_tail.is_empty() {
+        format!("sidecar exited with status {status}")
+    } else {
+        format!("sidecar exited with status {status}; stderr tail: {stderr_tail}")
     }
 }
 

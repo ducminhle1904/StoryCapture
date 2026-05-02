@@ -82,5 +82,6 @@ pub struct NewRenderJob {
     pub fps: u32,
     pub quality: String,
     pub priority: i32,
+    pub output_path: Option<PathBuf>,
     pub batch_id: Option<String>,
 }

@@ -35,6 +35,7 @@ fn new_job(story: &str, priority: i32) -> NewRenderJob {
         fps: 60,
         quality: "high".into(),
         priority,
+        output_path: None,
         batch_id: None,
     }
 }

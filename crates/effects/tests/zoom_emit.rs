@@ -51,6 +51,41 @@ fn build_graph_with_preset(preset_kfs: Vec<effects::ast::video::ZoomKeyframe>) -
 }
 
 #[test]
+fn consecutive_zoom_nodes_emit_single_zoompan() {
+    let first = vec![
+        effects::ast::video::ZoomKeyframe {
+            t_ms: 0,
+            center: Vec2::new(960.0, 540.0),
+            scale: 1.0,
+            easing: effects::ast::EasingKind::Linear,
+        },
+        effects::ast::video::ZoomKeyframe {
+            t_ms: 500,
+            center: Vec2::new(900.0, 500.0),
+            scale: 1.1,
+            easing: effects::ast::EasingKind::Linear,
+        },
+    ];
+    let second = vec![effects::ast::video::ZoomKeyframe {
+        t_ms: 1_000,
+        center: Vec2::new(800.0, 450.0),
+        scale: 1.2,
+        easing: effects::ast::EasingKind::Linear,
+    }];
+    let graph = GraphBuilder::new(1920, 1080, 60)
+        .source(fixed_id(0xA1), PathBuf::from("in.mp4"), 0)
+        .zoom_pan(fixed_id(0xA2), ZoomTarget::Cursor, first)
+        .zoom_pan(fixed_id(0xA3), ZoomTarget::Cursor, second)
+        .build()
+        .expect("multi zoom graph must build");
+
+    let out = FfmpegEmit::emit(&graph);
+
+    assert_eq!(out.matches("zoompan=").count(), 1, "{out}");
+    assert!(out.contains("[v_a3a3]"), "{out}");
+}
+
+#[test]
 fn snapshot_zoom_dynamic() {
     let kfs = plan_zoom(&reference_waypoints(), &DYNAMIC, 1920, 1080);
     let g = build_graph_with_preset(kfs);
@@ -148,12 +183,12 @@ fn preview_and_ffmpeg_consume_same_keyframes() {
     for k in &kfs {
         let t_s = format!("{:.6}", (k.t_ms as f64) / 1000.0);
         // Skip the last keyframe, which is the outer "else" of the ladder and
-        // doesn't need a literal lt(t,...) gate.
+        // doesn't need a literal lt(in_time,...) gate.
         if k.t_ms == kfs.last().unwrap().t_ms {
             continue;
         }
         assert!(
-            ff.contains(&format!("lt(t,{t_s})")),
+            ff.contains(&format!("lt(in_time,{t_s})")),
             "expected ffmpeg to gate at {t_s}s (kf={k:?}): {ff}"
         );
     }

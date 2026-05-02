@@ -3,13 +3,18 @@
 //! Stable labels keep the export graph deterministic.
 
 use std::fmt::Write;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use crate::ast::audio::{AudioNode, SidechainParams};
 use crate::ast::types::{EasingKind, NodeId};
 use crate::ast::video::{TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe};
 use crate::ast::Graph;
 use crate::background::compositor::emit_background;
-use crate::text::{escape_drawtext_text, path_to_ffmpeg_arg};
+use crate::text::{
+    bundled_filename_for, escape_drawtext_text, path_to_ffmpeg_arg,
+    resolve_bundled_font_path_by_name,
+};
 
 /// Axis selector for [`zoompan_expr`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,17 +60,17 @@ pub fn zoompan_expr(keyframes: &[ZoomKeyframe], axis: ExprAxis) -> String {
             v1 = v1,
             progress = progress,
         );
-        expr = format!("if(lt(t,{t_hi:.6}),{segment},{expr})");
+        expr = format!("if(lt(in_time,{t_hi:.6}),{segment},{expr})");
     }
 
     // Hold the first value before the initial keyframe.
     let first = format_axis_value(keyframes[0], axis);
     let t0 = (keyframes[0].t_ms as f64) / 1000.0;
-    format!("if(lt(t,{t0:.6}),{first},{expr})")
+    format!("if(lt(in_time,{t0:.6}),{first},{expr})")
 }
 
 fn easing_progress_expr(kind: EasingKind, t_lo: f64, dt: f64) -> String {
-    let u = format!("((t-{t_lo:.6})/{dt:.6})");
+    let u = format!("((in_time-{t_lo:.6})/{dt:.6})");
     match kind {
         EasingKind::Linear => u,
         EasingKind::EaseIn => format!("pow({u},2)"),
@@ -102,7 +107,7 @@ pub fn emit_filter_complex(g: &Graph) -> String {
         if !out.is_empty() {
             out.push(';');
         }
-        emit_audio_chain(&mut out, g);
+        emit_audio_chain(&mut out, g, audio_input_start_index(g));
     }
     out
 }
@@ -117,8 +122,10 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
     let mut cur: String = "[0:v]".to_string();
     let mut source_count: usize = 0;
     let mut first_node = true;
+    let mut i = 0;
 
-    for node in &g.video {
+    while i < g.video.len() {
+        let node = &g.video[i];
         if !first_node {
             out.push(';');
         }
@@ -146,11 +153,12 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 let _ = id;
                 cur = out_label;
             }
-            VideoNode::ZoomPan { keyframes, .. } => {
-                // Piecewise-linear interpolation across the keyframe list.
-                let z_expr = zoompan_expr(keyframes, ExprAxis::Z);
-                let x_expr = zoompan_expr(keyframes, ExprAxis::X);
-                let y_expr = zoompan_expr(keyframes, ExprAxis::Y);
+            VideoNode::ZoomPan { .. } => {
+                let (keyframes, last_id, next_i) = collect_consecutive_zoompan_nodes(&g.video, i);
+                let out_label = format!("[{}]", last_id.stable_label("v"));
+                let z_expr = zoompan_expr(&keyframes, ExprAxis::Z);
+                let x_expr = zoompan_expr(&keyframes, ExprAxis::X);
+                let y_expr = zoompan_expr(&keyframes, ExprAxis::Y);
                 let fps = g.output_fps;
                 write!(
                     out,
@@ -166,6 +174,8 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 )
                 .unwrap();
                 cur = out_label;
+                i = next_i;
+                continue;
             }
             VideoNode::Background { .. } => {
                 // Delegate to the background compositor.
@@ -304,6 +314,7 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
         }
+        i += 1;
     }
 
     // Alias final label to [out_v] if we emitted anything.
@@ -313,6 +324,31 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
         }
         write!(out, "{cur}null[out_v]", cur = cur).unwrap();
     }
+}
+
+fn collect_consecutive_zoompan_nodes(
+    nodes: &[VideoNode],
+    start: usize,
+) -> (Vec<ZoomKeyframe>, NodeId, usize) {
+    let mut keyframes = Vec::new();
+    let mut last_id = nodes[start].id();
+    let mut i = start;
+    let mut node_count = 0;
+
+    while let Some(VideoNode::ZoomPan {
+        id, keyframes: kfs, ..
+    }) = nodes.get(i)
+    {
+        node_count += 1;
+        last_id = *id;
+        keyframes.extend_from_slice(kfs);
+        i += 1;
+    }
+
+    if node_count > 1 {
+        keyframes.sort_by_key(|k| k.t_ms);
+    }
+    (keyframes, last_id, i)
 }
 
 fn drawtext_args(tb: &TextBox) -> String {
@@ -327,7 +363,8 @@ fn drawtext_args(tb: &TextBox) -> String {
     };
     let _ = alpha_expr;
     format!(
-        "text='{t}':x={x:.1}:y={y:.1}:fontsize={fs:.1}:fontcolor=0x{R:02X}{G:02X}{B:02X}@{A:.3}:enable='between(t,{f:.3},{to:.3})'",
+        "fontfile='{font}':text='{t}':x={x:.1}:y={y:.1}:fontsize={fs:.1}:fontcolor=0x{R:02X}{G:02X}{B:02X}@{A:.3}:enable='between(t,{f:.3},{to:.3})'",
+        font = path_to_ffmpeg_arg(&drawtext_font_path(tb)),
         t = escape_drawtext_text(&tb.text),
         x = tb.pos.x, y = tb.pos.y,
         fs = tb.size_pt,
@@ -335,6 +372,60 @@ fn drawtext_args(tb: &TextBox) -> String {
         A = (tb.color.a as f32) / 255.0,
         f = enable_from, to = enable_to,
     )
+}
+
+fn drawtext_font_path(tb: &TextBox) -> PathBuf {
+    let bundled_name = bundled_filename_for(&tb.font);
+    for candidate in [
+        PathBuf::from("assets").join("fonts").join(bundled_name),
+        PathBuf::from("..")
+            .join("..")
+            .join("assets")
+            .join("fonts")
+            .join(bundled_name),
+    ] {
+        if is_usable_drawtext_font(&candidate) {
+            return candidate;
+        }
+    }
+    match resolve_bundled_font_path_by_name(bundled_name) {
+        Ok(path) if is_usable_drawtext_font(&path) => path,
+        _ => default_system_font_path(),
+    }
+}
+
+fn is_usable_drawtext_font(path: &Path) -> bool {
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let Ok(meta) = file.metadata() else {
+        return false;
+    };
+    if !meta.is_file() || meta.len() < 1024 {
+        return false;
+    }
+
+    let mut header = [0_u8; 4];
+    if file.read_exact(&mut header).is_err() {
+        return false;
+    }
+
+    matches!(&header, b"OTTO" | b"ttcf") || header == [0x00, 0x01, 0x00, 0x00]
+}
+
+fn default_system_font_path() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        PathBuf::from("/System/Library/Fonts/Helvetica.ttc")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        PathBuf::from("C:/Windows/Fonts/arial.ttf")
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+    }
 }
 
 fn node_label_core(id: NodeId) -> String {
@@ -352,9 +443,9 @@ fn cursor_sequence_pattern(path: &std::path::Path) -> std::path::PathBuf {
 
 // ---------- audio ----------
 
-fn emit_audio_chain(out: &mut String, g: &Graph) {
-    let mut cur: String = "[0:a]".to_string();
-    let mut source_count: usize = 0;
+fn emit_audio_chain(out: &mut String, g: &Graph, first_audio_input_index: usize) {
+    let mut cur: String = format!("[{}:a]", first_audio_input_index);
+    let mut source_count = first_audio_input_index;
     let mut first = true;
 
     for node in &g.audio {
@@ -461,6 +552,22 @@ fn emit_audio_chain(out: &mut String, g: &Graph) {
         out.push(';');
         write!(out, "{cur}anull[out_a]", cur = cur).unwrap();
     }
+}
+
+fn audio_input_start_index(g: &Graph) -> usize {
+    let mut source_count = 0;
+    for node in &g.video {
+        match node {
+            VideoNode::Source { .. } => source_count += 1,
+            VideoNode::Background { .. } => {
+                let bge = emit_background(node, "[ignored]", "[ignored]", g, source_count)
+                    .expect("emit_background failed");
+                source_count += bge.extra_inputs.len();
+            }
+            _ => {}
+        }
+    }
+    source_count
 }
 
 fn sidechain_args(p: &SidechainParams) -> String {

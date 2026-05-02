@@ -149,10 +149,30 @@ impl RenderQueueActor {
         }
 
         let executor = self.executor.clone();
-        let progress_tx = self.progress_tx.clone();
+        let external_progress_tx = self.progress_tx.clone();
+        let db = self.db.clone();
+        let (progress_tx, mut progress_rx) = mpsc::channel::<RenderProgress>(64);
         let pool = self.pool.clone();
         let done_tx = self.done_tx.clone();
         let job_id = job.id;
+
+        tokio::spawn(async move {
+            while let Some(progress) = progress_rx.recv().await {
+                {
+                    let conn = db.lock().await;
+                    if let Err(e) =
+                        render_job_repo::update_progress(&conn, progress.job_id, progress.pct)
+                    {
+                        warn!(
+                            job_id = %progress.job_id,
+                            error = %e,
+                            "update_progress failed"
+                        );
+                    }
+                }
+                let _ = external_progress_tx.send(progress).await;
+            }
+        });
 
         tokio::spawn(async move {
             // Permit binds the sidecar pool concurrency. When this task

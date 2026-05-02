@@ -36,8 +36,9 @@ jobs:
 
       - name: Install build deps
         run: |
-          brew install nasm yasm pkg-config
+          brew install nasm yasm pkg-config meson ninja
           brew install x264
+          brew install freetype libpng
           brew install openh264 || echo "openh264 install failed; proceeding without LGPL software fallback"
 
       - name: Cache FFmpeg source tarball + build tree
@@ -69,8 +70,9 @@ jobs:
 
       - name: Install build deps
         run: |
-          brew install nasm yasm pkg-config
+          brew install nasm yasm pkg-config meson ninja
           brew install x264
+          brew install freetype libpng
           brew install openh264 || echo "openh264 install failed; proceeding without LGPL software fallback"
 
       - name: Cache FFmpeg source tarball + build tree
@@ -119,6 +121,8 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-x264
+            mingw-w64-x86_64-freetype
+            mingw-w64-x86_64-harfbuzz
             mingw-w64-x86_64-zlib
 
       - name: Fetch nv-codec-headers (NVENC)

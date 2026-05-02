@@ -4,7 +4,10 @@
 pub mod intermediate;
 pub mod multi_encode;
 
-pub use intermediate::{build_intermediate_args, render_intermediate, IntermediateOutput};
+pub use intermediate::{
+    build_direct_mp4_args, build_intermediate_args, render_direct_mp4, render_intermediate,
+    IntermediateOutput, IntermediateProgress,
+};
 pub use multi_encode::{
     bitrate_for, build_encode_args, default_h264_encoder, fanout_encode, resolution_height,
     resolution_width, FanoutPlan, OutputFormat, OutputSpec, Quality, Resolution,

@@ -32,6 +32,10 @@ FFMPEG_VERSION="${FFMPEG_VERSION:-7.0.2}"
 FFMPEG_TARBALL="ffmpeg-${FFMPEG_VERSION}.tar.xz"
 FFMPEG_URL="https://ffmpeg.org/releases/${FFMPEG_TARBALL}"
 SHA_FILE="$SCRIPT_DIR/ffmpeg-${FFMPEG_VERSION}.sha256"
+HARFBUZZ_VERSION="${HARFBUZZ_VERSION:-14.2.0}"
+HARFBUZZ_TARBALL="harfbuzz-${HARFBUZZ_VERSION}.tar.xz"
+HARFBUZZ_URL="https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/${HARFBUZZ_TARBALL}"
+HARFBUZZ_SHA256="94017020f96d025bb66ae91574e4cf334bcad23e8175a8a40565b3721bc2eaff"
 
 # --- arg parsing ---------------------------------------------------------
 if [[ $# -lt 1 ]]; then
@@ -66,7 +70,7 @@ if [[ "$ARCH" == "aarch64" && "$HOST_ARCH" != "arm64" ]]; then
   exit 1
 fi
 
-for dep in nasm yasm pkg-config make curl shasum; do
+for dep in nasm yasm pkg-config make curl shasum meson ninja; do
   command -v "$dep" >/dev/null 2>&1 || {
     echo "[build-macos] missing required tool: $dep" >&2
     exit 1
@@ -130,6 +134,32 @@ STATIC_PC_DIR="$BUILD_DIR/pkgconfig-static-${ARCH}"
 rm -rf "$STATIC_PC_DIR"
 mkdir -p "$STATIC_PC_DIR"
 
+write_static_pc() {
+  local name="$1"
+  local description="$2"
+  local version="$3"
+  local includedir="$4"
+  local archive="$5"
+  local private_libs="$6"
+
+  if [[ ! -f "$archive" ]]; then
+    echo "[build-macos] static archive missing for $name: $archive" >&2
+    exit 1
+  fi
+
+  cat > "$STATIC_PC_DIR/${name}.pc" <<EOF
+prefix=/
+includedir=$includedir
+
+Name: $name
+Description: $description
+Version: $version
+Libs: $archive
+Libs.private: $private_libs
+Cflags: -I$includedir
+EOF
+}
+
 if ! pkg-config --exists x264 2>/dev/null; then
   echo "[build-macos] x264 pkg-config metadata missing; install x264 first" >&2
   exit 1
@@ -157,6 +187,94 @@ Cflags: -I$X264_INCLUDEDIR
 EOF
 export PKG_CONFIG_PATH="$STATIC_PC_DIR${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
+if ! pkg-config --exists libpng 2>/dev/null; then
+  echo "[build-macos] libpng pkg-config metadata missing; install libpng first" >&2
+  exit 1
+fi
+LIBPNG_LIBDIR="$(pkg-config --variable=libdir libpng)"
+LIBPNG_INCLUDEDIR="$(pkg-config --variable=includedir libpng)"
+LIBPNG_VERSION="$(pkg-config --modversion libpng)"
+write_static_pc \
+  "libpng" \
+  "PNG image loading library" \
+  "$LIBPNG_VERSION" \
+  "$LIBPNG_INCLUDEDIR" \
+  "$LIBPNG_LIBDIR/libpng16.a" \
+  "-lz"
+cp "$STATIC_PC_DIR/libpng.pc" "$STATIC_PC_DIR/libpng16.pc"
+
+if ! pkg-config --exists freetype2 2>/dev/null; then
+  echo "[build-macos] freetype2 pkg-config metadata missing; install freetype first" >&2
+  exit 1
+fi
+FREETYPE_LIBDIR="$(pkg-config --variable=libdir freetype2)"
+FREETYPE_INCLUDEDIR="$(pkg-config --variable=includedir freetype2)"
+FREETYPE_VERSION="$(pkg-config --modversion freetype2)"
+write_static_pc \
+  "freetype2" \
+  "FreeType font rendering library" \
+  "$FREETYPE_VERSION" \
+  "$FREETYPE_INCLUDEDIR/freetype2" \
+  "$FREETYPE_LIBDIR/libfreetype.a" \
+  "$LIBPNG_LIBDIR/libpng16.a -lbz2 -lz"
+
+HARFBUZZ_TARBALL_PATH="$CACHE_DIR/$HARFBUZZ_TARBALL"
+if [[ ! -f "$HARFBUZZ_TARBALL_PATH" ]]; then
+  echo "[build-macos] downloading $HARFBUZZ_URL"
+  curl -fL --retry 3 -o "$HARFBUZZ_TARBALL_PATH" "$HARFBUZZ_URL"
+fi
+HARFBUZZ_ACTUAL_SHA="$(shasum -a 256 "$HARFBUZZ_TARBALL_PATH" | awk '{print $1}')"
+if [[ "$HARFBUZZ_SHA256" != "$HARFBUZZ_ACTUAL_SHA" ]]; then
+  echo "[build-macos] harfbuzz SHA256 mismatch! expected=$HARFBUZZ_SHA256 actual=$HARFBUZZ_ACTUAL_SHA" >&2
+  exit 1
+fi
+
+HARFBUZZ_SRC_DIR="$BUILD_DIR/harfbuzz-${HARFBUZZ_VERSION}-${ARCH}"
+HARFBUZZ_PREFIX="$BUILD_DIR/harfbuzz-static-${ARCH}"
+rm -rf "$HARFBUZZ_SRC_DIR" "$HARFBUZZ_PREFIX" "$BUILD_DIR/harfbuzz-${HARFBUZZ_VERSION}"
+tar -xJf "$HARFBUZZ_TARBALL_PATH" -C "$BUILD_DIR"
+mv "$BUILD_DIR/harfbuzz-${HARFBUZZ_VERSION}" "$HARFBUZZ_SRC_DIR"
+
+echo "[build-macos] building static harfbuzz (arch=$ARCH_FLAG)"
+env PKG_CONFIG_PATH="$STATIC_PC_DIR" \
+  CFLAGS="-mmacosx-version-min=11.0 -arch ${ARCH_FLAG}" \
+  CXXFLAGS="-mmacosx-version-min=11.0 -arch ${ARCH_FLAG}" \
+  LDFLAGS="-mmacosx-version-min=11.0 -arch ${ARCH_FLAG}" \
+  meson setup "$HARFBUZZ_SRC_DIR/build" "$HARFBUZZ_SRC_DIR" \
+    --prefix="$HARFBUZZ_PREFIX" \
+    --default-library=static \
+    --wrap-mode=nodownload \
+    -Dcairo=disabled \
+    -Dcoretext=enabled \
+    -Dfreetype=enabled \
+    -Dglib=disabled \
+    -Dgobject=disabled \
+    -Dgraphite=disabled \
+    -Dgraphite2=disabled \
+    -Dicu=disabled \
+    -Dintrospection=disabled \
+    -Dpng=disabled \
+    -Dzlib=disabled \
+    -Draster=disabled \
+    -Dvector=disabled \
+    -Dgpu=disabled \
+    -Dsubset=disabled \
+    -Dutilities=disabled \
+    -Ddocs=disabled \
+    -Dtests=disabled
+ninja -C "$HARFBUZZ_SRC_DIR/build"
+ninja -C "$HARFBUZZ_SRC_DIR/build" install
+
+HARFBUZZ_LIBDIR="$HARFBUZZ_PREFIX/lib"
+HARFBUZZ_INCLUDEDIR="$HARFBUZZ_PREFIX/include/harfbuzz"
+write_static_pc \
+  "harfbuzz" \
+  "OpenType text shaping engine" \
+  "$HARFBUZZ_VERSION" \
+  "$HARFBUZZ_INCLUDEDIR" \
+  "$HARFBUZZ_LIBDIR/libharfbuzz.a" \
+  "$FREETYPE_LIBDIR/libfreetype.a $LIBPNG_LIBDIR/libpng16.a -lbz2 -lz -liconv -lm -lc++ -framework ApplicationServices -framework CoreFoundation -framework Foundation"
+
 # libopenh264 is enabled only when a static archive is present. Homebrew ships
 # dylib-only openh264 on some hosts; linking that would create an unsigned
 # nested dependency, so skip it rather than weakening sidecar portability.
@@ -180,6 +298,8 @@ CONFIGURE_FLAGS=(
   --pkg-config-flags=--static
   --enable-gpl
   --enable-libx264
+  --enable-libfreetype
+  --enable-libharfbuzz
   --disable-nonfree
   --disable-debug
   --disable-doc
@@ -196,7 +316,7 @@ CONFIGURE_FLAGS=(
   --enable-muxer=mp4,mov,matroska,null
   --enable-demuxer=mov,matroska,rawvideo,aac
   --enable-protocol=file,pipe
-  --enable-filter=scale,format,fps,setpts,asetpts,aresample,anull,null
+  --enable-filter=scale,format,fps,setpts,asetpts,aresample,anull,anullsrc,null,crop,overlay,geq,zoompan,movie,drawtext,color,pad,setsar,setparams,eq,split,palettegen,paletteuse,xfade
   --enable-bsf=h264_mp4toannexb,hevc_mp4toannexb
   --extra-cflags="-mmacosx-version-min=11.0 -arch ${ARCH_FLAG}"
   --extra-ldflags="-mmacosx-version-min=11.0 -arch ${ARCH_FLAG}"

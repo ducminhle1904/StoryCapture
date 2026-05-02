@@ -158,6 +158,7 @@ pub async fn export_run(
             fps: spec.fps,
             quality: quality_label(spec.quality).into(),
             priority: req.priority,
+            output_path: Some(spec.output_path.clone()),
             batch_id: Some(batch_id.to_string()),
         };
         let id = {

@@ -54,6 +54,7 @@ fn intermediate_ffv1_flags() {
         "[0:v]null[out_v];[0:a]anull[out_a]".into(),
         &[vec!["-i".into(), "/tmp/in.mp4".into()]],
         Path::new("/tmp/interm.mkv"),
+        60_000,
     );
     let joined = args.join(" ");
     assert!(joined.contains("-c:v ffv1"));
@@ -65,6 +66,20 @@ fn intermediate_ffv1_flags() {
     assert!(joined.contains("-slices 24"));
     assert!(joined.contains("-pix_fmt yuv420p"));
     assert!(joined.contains("-c:a pcm_s16le"));
+}
+
+#[test]
+fn intermediate_omits_missing_audio_filter_label() {
+    let args = build_intermediate_args(
+        "[0:v]null[out_v]".into(),
+        &[vec!["-i".into(), "/tmp/in.mp4".into()]],
+        Path::new("/tmp/interm.mkv"),
+        60_000,
+    );
+    let joined = args.join(" ");
+    assert!(joined.contains("-map [out_v]"), "args={joined}");
+    assert!(!joined.contains("[out_a]"), "args={joined}");
+    assert!(!joined.contains("-c:a"), "args={joined}");
 }
 
 #[test]

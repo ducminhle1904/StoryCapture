@@ -85,7 +85,7 @@ case "$OS" in
 esac
 
 # ----------------------------------------------------------------------
-# 2. Recorder encoder / cursor decoder enforcement
+# 2. Recorder encoder / post-production filter enforcement
 # ----------------------------------------------------------------------
 # `ffmpeg -buildconf` prints all configure flags. libx264 requires GPL, and
 # libx265 and nonfree remain forbidden by the repo's codec policy.
@@ -98,12 +98,20 @@ if BUILDCONF="$("$BIN" -hide_banner -buildconf 2>&1)"; then
     echo "[verify-static] FAIL: --enable-libx264 missing; recorder High/Lossless MP4 quality requires libx264" >&2
     exit 1
   fi
+  if ! echo "$BUILDCONF" | grep -E -- '--enable-libfreetype' >/dev/null; then
+    echo "[verify-static] FAIL: --enable-libfreetype missing; post-production text overlays require drawtext" >&2
+    exit 1
+  fi
+  if ! echo "$BUILDCONF" | grep -E -- '--enable-libharfbuzz' >/dev/null; then
+    echo "[verify-static] FAIL: --enable-libharfbuzz missing; FFmpeg 7 drawtext requires harfbuzz" >&2
+    exit 1
+  fi
   if echo "$BUILDCONF" | grep -E -- '--enable-libx265|--enable-nonfree' >/dev/null; then
     echo "[verify-static] FAIL: forbidden codec/config enabled in build:" >&2
     echo "$BUILDCONF" | grep -E -- '--enable-libx265|--enable-nonfree' >&2
     exit 1
   fi
-  echo "[verify-static] encoders: GPL + libx264 present; libx265/nonfree absent"
+  echo "[verify-static] encoders/filters deps: GPL + libx264 + drawtext deps present; libx265/nonfree absent"
 else
   echo "[verify-static] WARN: could not run '$BIN -buildconf' (cross-compiled binary?) — skipping encoder grep" >&2
 fi
@@ -116,6 +124,23 @@ if DECODERS="$("$BIN" -hide_banner -decoders 2>&1)"; then
   echo "[verify-static] decoders: png present for cursor overlays"
 else
   echo "[verify-static] WARN: could not run '$BIN -decoders' (cross-compiled binary?) — skipping decoder grep" >&2
+fi
+
+if FILTERS="$("$BIN" -hide_banner -filters 2>&1)"; then
+  REQUIRED_FILTERS=(
+    scale format fps setpts asetpts aresample anull anullsrc null
+    crop overlay geq zoompan movie drawtext color pad setsar setparams
+    eq split palettegen paletteuse xfade
+  )
+  for filter in "${REQUIRED_FILTERS[@]}"; do
+    if ! echo "$FILTERS" | grep -E "^[[:space:]]*[^[:space:]]+[[:space:]]+${filter}[[:space:]]" >/dev/null; then
+      echo "[verify-static] FAIL: required FFmpeg filter missing: $filter" >&2
+      exit 1
+    fi
+  done
+  echo "[verify-static] filters: recorder + post-production render filters present"
+else
+  echo "[verify-static] WARN: could not run '$BIN -filters' (cross-compiled binary?) — skipping filter grep" >&2
 fi
 
 echo "[verify-static] PASS: $BIN is statically linked + recorder encoder ready"

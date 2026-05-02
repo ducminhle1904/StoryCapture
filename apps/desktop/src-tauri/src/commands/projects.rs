@@ -12,7 +12,7 @@
 use crate::error::AppError;
 use crate::media_probe::probe_mp4_metadata;
 use crate::state::AppState;
-use encoder::{NoopJobExecutor, QueueMsg, RenderQueueConfig};
+use encoder::{FanoutJobExecutor, QueueMsg, RenderQueueConfig, SharedExecutor};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::{Path, PathBuf};
@@ -341,6 +341,7 @@ pub async fn open_project(
     let exports_dir = folder.exports_dir();
     let settings = super::app_settings::load(&app);
     install_project_render_queue(
+        &app,
         &state,
         &row.folder_path,
         &exports_dir,
@@ -419,22 +420,38 @@ fn now_millis() -> i64 {
 }
 
 async fn install_project_render_queue(
+    app: &AppHandle,
     state: &AppState,
     project_folder: &Path,
-    exports_dir: &Path,
+    _exports_dir: &Path,
     parallel_renders: u32,
 ) -> Result<(), AppError> {
+    let ffmpeg = Arc::new(super::encode::TauriSidecar::new(app.clone()));
+    let executor = Arc::new(FanoutJobExecutor::new(
+        ffmpeg,
+        encoder::default_h264_encoder(),
+    ));
+    install_project_render_queue_with_executor(state, project_folder, parallel_renders, executor)
+        .await
+}
+
+async fn install_project_render_queue_with_executor(
+    state: &AppState,
+    project_folder: &Path,
+    parallel_renders: u32,
+    executor: SharedExecutor,
+) -> Result<(), AppError> {
+    let db_path = project_folder.join(storage::PROJECT_DB_FILENAME);
     if let Some(existing) = state.render_queue() {
+        if existing.project_db_path == db_path {
+            return Ok(());
+        }
         let _ = existing.handle.send(QueueMsg::Shutdown).await;
         state.clear_render_queue();
     }
 
-    let db_path = project_folder.join(storage::PROJECT_DB_FILENAME);
     let db = encoder::open_project_conn(&db_path).map_err(AppError::from)?;
     let (progress_tx, progress_rx) = tokio::sync::mpsc::channel(128);
-    let executor = Arc::new(NoopJobExecutor {
-        output_root: exports_dir.to_path_buf(),
-    });
     let handle = encoder::spawn_render_queue(
         RenderQueueConfig {
             pool: encoder::PoolConfig {
@@ -452,6 +469,7 @@ async fn install_project_render_queue(
     state.install_render_queue(RenderQueueState {
         handle,
         db,
+        project_db_path: db_path,
         progress_rx: Arc::new(tokio::sync::Mutex::new(Some(progress_rx))),
     });
     Ok(())
@@ -626,7 +644,10 @@ mod tests {
         let exports_dir = folder.exports_dir();
         let state = AppState::new(state_dir.path().to_path_buf(), log_dir.path().to_path_buf());
 
-        install_project_render_queue(&state, folder.root(), &exports_dir, 2)
+        let executor = Arc::new(encoder::NoopJobExecutor {
+            output_root: exports_dir,
+        });
+        install_project_render_queue_with_executor(&state, folder.root(), 2, executor)
             .await
             .unwrap();
 
@@ -637,6 +658,61 @@ mod tests {
                 storage::repos::preset_repo::list_by_scope(&conn, storage::PresetTier::Project)
                     .unwrap();
             assert!(rows.is_empty());
+        }
+        let _ = queue.handle.send(QueueMsg::Shutdown).await;
+    }
+
+    #[tokio::test]
+    async fn reinstall_same_project_reuses_running_queue() {
+        let projects_dir = tempfile::tempdir().unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let log_dir = tempfile::tempdir().unwrap();
+        let folder = storage::create_project(projects_dir.path(), "Queue Reuse").unwrap();
+        let exports_dir = folder.exports_dir();
+        let state = AppState::new(state_dir.path().to_path_buf(), log_dir.path().to_path_buf());
+
+        let executor = Arc::new(encoder::NoopJobExecutor {
+            output_root: exports_dir.clone(),
+        });
+        install_project_render_queue_with_executor(&state, folder.root(), 2, executor.clone())
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let queue = state.render_queue().expect("queue installed");
+        let job_id = {
+            let conn = queue.db.lock().await;
+            let id = storage::repos::render_job_repo::enqueue(
+                &conn,
+                &storage::NewRenderJob {
+                    story_id: "story".into(),
+                    preset_id: None,
+                    format: "mp4".into(),
+                    resolution: "1080p".into(),
+                    fps: 60,
+                    quality: "high".into(),
+                    priority: 0,
+                    output_path: Some(exports_dir.join("out.mp4")),
+                    batch_id: Some("batch".into()),
+                },
+            )
+            .unwrap();
+            storage::repos::render_job_repo::mark_running(&conn, id).unwrap();
+            id
+        };
+
+        install_project_render_queue_with_executor(&state, folder.root(), 2, executor)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let queue = state.render_queue().expect("queue still installed");
+        {
+            let conn = queue.db.lock().await;
+            let row = storage::repos::render_job_repo::get(&conn, job_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(row.status, storage::RenderJobStatus::Running);
         }
         let _ = queue.handle.send(QueueMsg::Shutdown).await;
     }

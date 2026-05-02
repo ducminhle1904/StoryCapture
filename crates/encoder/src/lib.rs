@@ -41,8 +41,9 @@ pub use progress::{
 };
 pub use quality::{pixel_based_kbps, resolve as resolve_quality_args};
 pub use queue::{
-    open_project_conn, spawn_render_queue, JobExecutor, JobOutcome, NoopJobExecutor, QueueMsg,
-    RenderQueueActor, RenderQueueConfig, RenderQueueHandle, SharedExecutor,
+    open_project_conn, spawn_render_queue, FanoutJobExecutor, JobExecutor, JobOutcome,
+    NoopJobExecutor, QueueMsg, RenderQueueActor, RenderQueueConfig, RenderQueueHandle,
+    SharedExecutor,
 };
 pub use sidecar::{FfmpegSidecar, LocalFfmpegCommand, SidecarChild, SidecarCommand};
 

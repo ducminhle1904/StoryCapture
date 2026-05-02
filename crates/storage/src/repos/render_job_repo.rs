@@ -55,8 +55,8 @@ pub fn enqueue(conn: &Connection, j: &NewRenderJob) -> Result<Uuid, StorageError
     let id = Uuid::now_v7();
     let created_at = now_millis();
     conn.execute(
-        "INSERT INTO render_jobs (id, story_id, preset_id, format, resolution, fps, quality, status, progress_pct, priority, batch_id, created_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', 0.0, ?8, ?9, ?10)",
+        "INSERT INTO render_jobs (id, story_id, preset_id, format, resolution, fps, quality, status, progress_pct, priority, output_path, batch_id, created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', 0.0, ?8, ?9, ?10, ?11)",
         params![
             id.to_string(),
             j.story_id,
@@ -66,6 +66,9 @@ pub fn enqueue(conn: &Connection, j: &NewRenderJob) -> Result<Uuid, StorageError
             j.fps as i64,
             j.quality,
             j.priority as i64,
+            j.output_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
             j.batch_id,
             created_at,
         ],
@@ -235,6 +238,7 @@ mod tests {
             fps: 60,
             quality: "high".into(),
             priority,
+            output_path: None,
             batch_id: None,
         }
     }
