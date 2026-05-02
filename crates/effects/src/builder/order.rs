@@ -17,7 +17,7 @@ use crate::error::EffectsError;
 use ts_rs::TS;
 
 /// Canonical stage assigned to each node variant. Defines the order:
-/// Source → ZoomPan → Background → Cursor → Ripple → Text → Transition → AudioMix.
+/// Source → ZoomPan → Background → Highlight → Cursor → Ripple → Text → Transition → AudioMix.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-export", derive(TS))]
 #[cfg_attr(
@@ -32,11 +32,12 @@ pub enum CanonicalStage {
     Source = 0,
     ZoomPan = 1,
     Background = 2,
-    Cursor = 3,
-    Ripple = 4,
-    Text = 5,
-    Transition = 6,
-    AudioMix = 7,
+    Highlight = 3,
+    Cursor = 4,
+    Ripple = 5,
+    Text = 6,
+    Transition = 7,
+    AudioMix = 8,
 }
 
 /// Map a video node variant to its canonical stage.
@@ -45,6 +46,7 @@ pub fn node_stage(n: &VideoNode) -> CanonicalStage {
         VideoNode::Source { .. } => CanonicalStage::Source,
         VideoNode::ZoomPan { .. } => CanonicalStage::ZoomPan,
         VideoNode::Background { .. } => CanonicalStage::Background,
+        VideoNode::HighlightOverlay { .. } => CanonicalStage::Highlight,
         VideoNode::CursorOverlay { .. } => CanonicalStage::Cursor,
         VideoNode::RippleOverlay { .. } => CanonicalStage::Ripple,
         VideoNode::TextOverlay { .. } => CanonicalStage::Text,

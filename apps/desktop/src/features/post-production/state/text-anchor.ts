@@ -95,7 +95,7 @@ export function targetAnchorPosition(
   }
 
   const step = stepForAnchor(stepTiming, anchor.stepId);
-  const rect = actions?.capture_rect ?? captureRect ?? null;
+  const rect = stepTiming?.captureRect ?? actions?.capture_rect ?? captureRect ?? null;
   if (step?.target?.bbox && rect) {
     return positionAroundBounds(step.target.bbox, rect, anchor.placement);
   }

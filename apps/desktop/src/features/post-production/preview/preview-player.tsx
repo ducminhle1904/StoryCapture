@@ -34,7 +34,12 @@ import {
 } from "../state/text-anchor";
 import { resolvedTextStyle, type TextStylePreset, textFontCss } from "../state/text-style";
 import type { AnnotationClip, CursorClip, CursorSkin, ZoomClip } from "../state/timeline-slice";
-import { applyZoomToPoint, normalizedZoomCropTopLeft, sampleZoom } from "../state/zoom-motion";
+import {
+  applyZoomToBounds,
+  applyZoomToPoint,
+  normalizedZoomCropTopLeft,
+  sampleZoom,
+} from "../state/zoom-motion";
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
@@ -105,6 +110,7 @@ function buildPlan(width: number, height: number): PreviewRenderPlan {
     zoom_matrices: [],
     cursor_atlas_ref: null,
     ripples: [],
+    highlights: [],
     text_boxes: [],
     background: null,
   };
@@ -1254,6 +1260,9 @@ export function PreviewPlayer({
                   const highlight = clip.highlight;
                   if (!highlight) return null;
                   const center = applyZoomToPoint(highlight.center, previewZoom);
+                  const bounds = highlight.bounds
+                    ? applyZoomToBounds(highlight.bounds, previewZoom)
+                    : null;
                   const progress = Math.max(
                     0,
                     Math.min(
@@ -1262,20 +1271,36 @@ export function PreviewPlayer({
                         Math.max(1, highlight.durationMs ?? clip.durationMs),
                     ),
                   );
-                  const opacity = Math.max(0, 1 - progress) * 0.72;
+                  const baseOpacity = highlight.opacity ?? 0.72;
+                  const effectiveOpacity = Math.max(0, 1 - progress) * baseOpacity;
                   const radius = Math.max(8, highlight.radiusPx * Math.max(1, previewZoom.scale));
+                  const borderRadius = bounds ? Math.min(12, Math.max(4, radius * 0.18)) : radius;
+                  const paddingPx = bounds
+                    ? (highlight.paddingPx ?? Math.min(12, Math.max(6, radius * 0.14)))
+                    : 0;
+                  const strokePx = highlight.strokePx ?? 2;
+                  const glowPx = highlight.glowPx ?? 16;
+                  const isSpotlight = highlight.shape === "spotlight";
                   return (
                     <div
                       key={clip.id}
-                      className="absolute rounded-full border-2 shadow-[0_0_22px_rgba(255,255,255,0.24)]"
+                      className="absolute border-solid"
                       style={{
-                        left: percent(center.x),
-                        top: percent(center.y),
-                        width: `${radius * 2}px`,
-                        height: `${radius * 2}px`,
+                        left: bounds ? percent(bounds.x) : percent(center.x),
+                        top: bounds ? percent(bounds.y) : percent(center.y),
+                        width: bounds ? percent(bounds.w) : `${radius * 2}px`,
+                        height: bounds ? percent(bounds.h) : `${radius * 2}px`,
                         borderColor: highlight.color,
-                        opacity,
-                        transform: "translate3d(-50%, -50%, 0)",
+                        borderWidth: `${strokePx}px`,
+                        borderRadius: `${borderRadius}px`,
+                        opacity: effectiveOpacity,
+                        boxShadow: isSpotlight
+                          ? `0 0 0 9999px rgba(0,0,0,0.46), 0 0 ${glowPx}px ${highlight.color ?? "#ffffff"}`
+                          : `0 0 ${glowPx}px rgba(255,255,255,0.28)`,
+                        transform: bounds
+                          ? `translate3d(${-paddingPx}px, ${-paddingPx}px, 0)`
+                          : "translate3d(-50%, -50%, 0)",
+                        padding: bounds ? `${paddingPx}px` : undefined,
                       }}
                     />
                   );

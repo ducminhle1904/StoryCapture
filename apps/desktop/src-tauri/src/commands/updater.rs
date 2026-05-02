@@ -38,6 +38,15 @@ pub struct UpdateInfo {
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "check_update"), err(Debug))]
 pub async fn check_update(app: AppHandle<Wry>) -> Result<Option<UpdateInfo>, AppError> {
     tracing::info!(target: "storycapture::updater", "check_update invoked");
+    #[cfg(debug_assertions)]
+    if std::env::var_os("STORYCAPTURE_DEBUG_UPDATER").is_none() {
+        tracing::info!(
+            target: "storycapture::updater",
+            "skipping updater check in debug build; set STORYCAPTURE_DEBUG_UPDATER=1 to opt in"
+        );
+        return Ok(None);
+    }
+
     let current_version = app.package_info().version.to_string();
     let updater = app
         .updater()

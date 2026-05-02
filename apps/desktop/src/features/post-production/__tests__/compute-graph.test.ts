@@ -292,7 +292,7 @@ describe("computeGraph", () => {
     expect(transitions.map((node) => node.id)).toEqual(second.map((node) => node.id));
   });
 
-  it("emits ripple highlights before text overlays and preserves annotation color", () => {
+  it("emits PNG highlight overlays before text overlays and preserves annotation color", () => {
     useEditorStore.setState({
       tracks: {
         video: [],
@@ -312,6 +312,7 @@ describe("computeGraph", () => {
             highlight: {
               center: { x: 0.25, y: 0.35 },
               radiusPx: 72,
+              bounds: { x: 0.2, y: 0.3, w: 0.1, h: 0.08 },
               color: "#00ffaa",
               durationMs: 900,
             },
@@ -321,17 +322,22 @@ describe("computeGraph", () => {
     });
 
     const g = computeGraph(useEditorStore.getState());
-    expect(g.video.map((node) => node.type)).toEqual(["ripple-overlay", "text-overlay"]);
-    const ripple = videoNodeAt(g, 0);
-    if (ripple.type !== "ripple-overlay") throw new Error("expected ripple-overlay");
-    expect(ripple.events[0]).toMatchObject({
-      t_impact_ms: 1_000,
+    expect(g.video.map((node) => node.type)).toEqual(["highlight-overlay", "text-overlay"]);
+    const highlight = videoNodeAt(g, 0);
+    if (highlight.type !== "highlight-overlay") throw new Error("expected highlight-overlay");
+    expect(highlight.highlights[0]).toMatchObject({
+      t_start_ms: 1_000,
       duration_ms: 900,
       max_radius_px: 72,
+      shape: "ring",
       color: { r: 0, g: 255, b: 170, a: 255 },
     });
-    expect(ripple.events[0]?.center.x).toBeCloseTo(320);
-    expect(ripple.events[0]?.center.y).toBeCloseTo(252);
+    expect(highlight.highlights[0]?.center.x).toBeCloseTo(320);
+    expect(highlight.highlights[0]?.center.y).toBeCloseTo(252);
+    expect(highlight.highlights[0]?.bounds?.x).toBeCloseTo(256);
+    expect(highlight.highlights[0]?.bounds?.y).toBeCloseTo(216);
+    expect(highlight.highlights[0]?.bounds?.w).toBeCloseTo(128);
+    expect(highlight.highlights[0]?.bounds?.h).toBeCloseTo(57.6);
     const text = videoNodeAt(g, 1);
     if (text.type !== "text-overlay") throw new Error("expected text-overlay");
     expect(text.boxes[0]?.color).toEqual({ r: 255, g: 204, b: 0, a: 255 });
@@ -376,12 +382,14 @@ describe("computeGraph", () => {
     });
 
     const g = computeGraph(useEditorStore.getState());
-    const ripple = g.video.find((node) => node.type === "ripple-overlay");
-    if (!ripple || ripple.type !== "ripple-overlay") throw new Error("expected ripple-overlay");
+    const highlight = g.video.find((node) => node.type === "highlight-overlay");
+    if (!highlight || highlight.type !== "highlight-overlay") {
+      throw new Error("expected highlight-overlay");
+    }
 
-    expect(ripple.events[0]?.center.x).toBeCloseTo(640);
-    expect(ripple.events[0]?.center.y).toBeCloseTo(360);
-    expect(ripple.events[0]?.max_radius_px).toBeCloseTo(80);
+    expect(highlight.highlights[0]?.center.x).toBeCloseTo(640);
+    expect(highlight.highlights[0]?.center.y).toBeCloseTo(360);
+    expect(highlight.highlights[0]?.max_radius_px).toBeCloseTo(80);
 
     const text = g.video.find((node) => node.type === "text-overlay");
     if (!text || text.type !== "text-overlay") throw new Error("expected text-overlay");

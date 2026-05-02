@@ -174,6 +174,12 @@ export interface AnnotationClip extends ClipBase {
   highlight?: {
     center: Vec2;
     radiusPx: number;
+    bounds?: { x: number; y: number; w: number; h: number };
+    shape?: "ring" | "spotlight";
+    paddingPx?: number;
+    strokePx?: number;
+    glowPx?: number;
+    opacity?: number;
     color?: string;
     durationMs?: number;
   };

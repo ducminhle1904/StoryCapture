@@ -25,6 +25,23 @@ export interface RippleEvent {
   color: { r: number; g: number; b: number; a: number };
 }
 
+export interface HighlightOverlaySpec {
+  t_start_ms: number;
+  duration_ms: number;
+  shape: "ring" | "spotlight";
+  center: { x: number; y: number };
+  max_radius_px: number;
+  bounds?: { x: number; y: number; w: number; h: number } | null;
+  padding_px: number;
+  radius_px: number;
+  stroke_px: number;
+  glow_px: number;
+  color: { r: number; g: number; b: number; a: number };
+  opacity: number;
+  png_path?: string | null;
+  overlay_pos?: { x: number; y: number } | null;
+}
+
 export interface TextBoxPreview {
   t_start_ms: number;
   t_end_ms: number;
@@ -54,6 +71,7 @@ export interface PreviewRenderPlan {
   zoom_matrices: ZoomMatrixFrame[];
   cursor_atlas_ref: CursorAtlasRef | null;
   ripples: RippleEvent[];
+  highlights: HighlightOverlaySpec[];
   text_boxes: TextBoxPreview[];
   background: BackgroundPreview | null;
 }

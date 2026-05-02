@@ -46,6 +46,7 @@ import type {
 } from "./timeline-slice";
 import { normalizeCursorMotionPreset } from "./timeline-slice";
 import {
+  applyZoomToBounds,
   applyZoomToPoint,
   normalizedZoomCenterToPixels,
   sampleZoom,
@@ -140,7 +141,27 @@ export interface RippleEvent {
   duration_ms: number;
   center: Vec2;
   max_radius_px: number;
+  bounds?: { x: number; y: number; w: number; h: number };
   color: Rgba;
+}
+
+export type HighlightShape = "ring" | "spotlight";
+
+export interface HighlightOverlaySpec {
+  t_start_ms: number;
+  duration_ms: number;
+  shape: HighlightShape;
+  center: Vec2;
+  max_radius_px: number;
+  bounds?: { x: number; y: number; w: number; h: number };
+  padding_px: number;
+  radius_px: number;
+  stroke_px: number;
+  glow_px: number;
+  color: Rgba;
+  opacity: number;
+  png_path?: string | null;
+  overlay_pos?: Vec2 | null;
 }
 
 export type VideoNode =
@@ -164,6 +185,7 @@ export type VideoNode =
       trajectory: TrajectoryRef;
     }
   | { type: "ripple-overlay"; id: string; events: RippleEvent[] }
+  | { type: "highlight-overlay"; id: string; highlights: HighlightOverlaySpec[] }
   | { type: "text-overlay"; id: string; boxes: TextBox[] }
   | {
       type: "transition";
@@ -364,23 +386,37 @@ function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
   };
 }
 
-function rippleEvent(
+function highlightOverlaySpec(
   clip: AnnotationClip,
   zoomAt: (playheadMs: number) => ReturnType<typeof sampleZoom>,
   output: { w: number; h: number },
-): RippleEvent | null {
+): HighlightOverlaySpec | null {
   const highlight = clip.highlight;
   if (!highlight) return null;
   const impact = Math.max(0, clip.startMs);
   const zoom = zoomAt(impact);
   const center = applyZoomToPoint(highlight.center, zoom);
+  const bounds = highlight.bounds ? applyZoomToBounds(highlight.bounds, zoom) : undefined;
   return {
-    t_anticipate_ms: Math.max(0, impact - 60),
-    t_impact_ms: impact,
+    t_start_ms: impact,
     duration_ms: Math.max(1, highlight.durationMs ?? clip.durationMs),
+    shape: highlight.shape ?? "ring",
     center: { x: center.x * output.w, y: center.y * output.h },
     max_radius_px: Math.max(1, highlight.radiusPx * Math.max(1, zoom.scale)),
+    bounds: bounds
+      ? {
+          x: bounds.x * output.w,
+          y: bounds.y * output.h,
+          w: bounds.w * output.w,
+          h: bounds.h * output.h,
+        }
+      : undefined,
+    padding_px: highlight.paddingPx ?? 8,
+    radius_px: highlight.bounds ? Math.min(12, Math.max(4, highlight.radiusPx * 0.18)) : highlight.radiusPx,
+    stroke_px: highlight.strokePx ?? 2,
+    glow_px: highlight.glowPx ?? 16,
     color: hexToRgba(highlight.color, { r: 255, g: 255, b: 255, a: 229 }),
+    opacity: highlight.opacity ?? 0.72,
   };
 }
 
@@ -514,17 +550,17 @@ export function computeGraph(state: ComputeGraphInput): Graph {
     zoomSampleCache.set(playheadMs, next);
     return next;
   };
-  const ripples: RippleEvent[] = [];
+  const highlights: HighlightOverlaySpec[] = [];
   for (const clip of sortedAnnotations) {
-    const r = rippleEvent(clip, zoomAt, px);
-    if (r) ripples.push(r);
+    const h = highlightOverlaySpec(clip, zoomAt, px);
+    if (h) highlights.push(h);
   }
-  const firstRippleClip = sortedAnnotations.find((clip) => clip.highlight);
-  if (ripples.length > 0 && firstRippleClip) {
+  const firstHighlightClip = sortedAnnotations.find((clip) => clip.highlight);
+  if (highlights.length > 0 && firstHighlightClip) {
     video.push({
-      type: "ripple-overlay",
-      id: deterministicNodeId(firstRippleClip.id, "ripple"),
-      events: ripples,
+      type: "highlight-overlay",
+      id: deterministicNodeId(firstHighlightClip.id, "highlight"),
+      highlights,
     });
   }
   for (const clip of clipsByStart(tracks.cursor)) {

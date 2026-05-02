@@ -187,7 +187,7 @@ function ReviewPanel({
             <div className="text-xs font-medium text-[var(--sc-text-2)]">Review Checklist</div>
             <div className="flex gap-1">
               <ScBadge tone={hasStepTiming ? "success" : "warn"}>
-                {hasStepTiming ? "Timed" : "Estimated"}
+                {hasStepTiming ? "Timed" : "Step Timing Missing"}
               </ScBadge>
               <ScBadge tone={hasTrajectory ? "success" : "warn"}>
                 {hasTrajectory ? "Cursor" : "No Cursor"}
@@ -359,8 +359,9 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       fixes.push({
         id: "missing-step-timing",
         tone: "warn",
-        title: "Estimated step timing",
-        detail: "No step timing sidecar was found; generated clips use fallback spacing.",
+        title: "Step timing missing",
+        detail:
+          "No steps sidecar was found; polish highlights and callouts are limited to verified action targets.",
       });
     } else if (timing.status !== "completed") {
       fixes.push({

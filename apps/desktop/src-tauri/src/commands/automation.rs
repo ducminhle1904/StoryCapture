@@ -46,6 +46,7 @@ pub struct RecordingViewportDto {
 struct RecordingStepsSidecar {
     version: u32,
     recording_path: String,
+    capture_rect: ActionCaptureRect,
     story_hash: String,
     timebase: &'static str,
     status: &'static str,
@@ -117,6 +118,7 @@ impl From<automation::BoundingBox> for TimingBBox {
 
 struct StepTimingCollector {
     recording_path: std::path::PathBuf,
+    capture_rect: ActionCaptureRect,
     story_hash: String,
     current_scene: String,
     pending: HashMap<u32, PendingStepTiming>,
@@ -124,9 +126,14 @@ struct StepTimingCollector {
 }
 
 impl StepTimingCollector {
-    fn new(recording_path: std::path::PathBuf, story_hash: String) -> Self {
+    fn new(
+        recording_path: std::path::PathBuf,
+        capture_rect: ActionCaptureRect,
+        story_hash: String,
+    ) -> Self {
         Self {
             recording_path,
+            capture_rect,
             story_hash,
             current_scene: String::new(),
             pending: HashMap::new(),
@@ -253,13 +260,14 @@ impl StepTimingCollector {
 
     fn write(mut self, status: &'static str, now_ms: u64) -> Result<(), AppError> {
         self.finish_pending(now_ms, status);
-        if self.steps.is_empty() {
-            return Ok(());
-        }
         let sidecar = recording_steps_sidecar_path(&self.recording_path);
+        if let Some(parent) = sidecar.parent() {
+            std::fs::create_dir_all(parent).map_err(AppError::from)?;
+        }
         let dto = RecordingStepsSidecar {
             version: 1,
             recording_path: self.recording_path.to_string_lossy().into_owned(),
+            capture_rect: self.capture_rect,
             story_hash: self.story_hash,
             timebase: "recording-ms",
             status,
@@ -267,7 +275,15 @@ impl StepTimingCollector {
         };
         let bytes = serde_json::to_vec_pretty(&dto)
             .map_err(|e| AppError::InvalidArgument(format!("step timing serialize: {e}")))?;
-        std::fs::write(&sidecar, bytes).map_err(AppError::from)
+        std::fs::write(&sidecar, bytes).map_err(AppError::from)?;
+        tracing::info!(
+            target: "storycapture::automation",
+            path = %sidecar.display(),
+            status,
+            step_count = dto.steps.len(),
+            "recording step timing sidecar written"
+        );
+        Ok(())
     }
 }
 
@@ -608,18 +624,6 @@ pub async fn launch_automation(
     let attached_recording_session_id = recording_session_id.clone();
     let fallback_timing_origin = Instant::now();
     let story_timing_hash = hash_story_source(&story_source);
-    let mut step_timing = attached_recording_session_id
-        .as_deref()
-        .and_then(crate::commands::encode::recording_output_path)
-        .map(|path| StepTimingCollector::new(path, story_timing_hash.clone()));
-    let mut step_timing_status: &'static str = "partial";
-
-    // The recording path is read-only against `.story.targets.json` —
-    // self_heal=false. A primary-miss raises `PrimaryMissNoHeal` which the
-    // HUD surfaces with "Open in Simulator". The record path never consults
-    // the targets sidecar, so `story_path` stays `None` (no harm if present
-    // — the self_heal=false gate short-circuits before the sidecar is read).
-    tracing::info!(target: "storycapture::automation", "Executor::run_with_story_path_and_pacing starting (self_heal=false)");
     let action_viewport = recording_viewport
         .map(|viewport| story_parser::Viewport {
             width: viewport.width,
@@ -630,6 +634,28 @@ pub async fn launch_automation(
             width: 1280,
             height: 800,
         });
+    let step_timing_capture_rect = ActionCaptureRect::from_viewport(action_viewport);
+    let initial_step_timing_path = attached_recording_session_id
+        .as_deref()
+        .and_then(crate::commands::encode::recording_output_path);
+    if attached_recording_session_id.is_some() && initial_step_timing_path.is_none() {
+        tracing::warn!(
+            target: "storycapture::automation",
+            "recording session is attached but output path is not available yet; step timing sidecar will attach lazily"
+        );
+    }
+    let mut step_timing = initial_step_timing_path.map(|path| {
+        StepTimingCollector::new(path, step_timing_capture_rect, story_timing_hash.clone())
+    });
+    let mut step_timing_finalized = false;
+    let mut step_timing_status: &'static str = "partial";
+
+    // The recording path is read-only against `.story.targets.json` —
+    // self_heal=false. A primary-miss raises `PrimaryMissNoHeal` which the
+    // HUD surfaces with "Open in Simulator". The record path never consults
+    // the targets sidecar, so `story_path` stays `None` (no harm if present
+    // — the self_heal=false gate short-circuits before the sidecar is read).
+    tracing::info!(target: "storycapture::automation", "Executor::run_with_story_path_and_pacing starting (self_heal=false)");
     let initial_action_recording_path = recording_session_id
         .as_deref()
         .and_then(crate::commands::encode::recording_output_path);
@@ -646,11 +672,28 @@ pub async fn launch_automation(
         Some(control.clone()),
         /* self_heal */ false,
         pacing.into(),
-        step_timing.is_some(),
+        attached_recording_session_id.is_some(),
     );
     while let Some(evt) = events.recv().await {
         if let ExecutorEvent::ActionRecorded { event } = &evt {
             push_active_action_event(event.clone());
+        }
+        if !step_timing_finalized && step_timing.is_none() {
+            if let Some(path) = attached_recording_session_id
+                .as_deref()
+                .and_then(crate::commands::encode::recording_output_path)
+            {
+                tracing::info!(
+                    target: "storycapture::automation",
+                    path = %path.display(),
+                    "recording step timing sidecar attached lazily"
+                );
+                step_timing = Some(StepTimingCollector::new(
+                    path,
+                    step_timing_capture_rect,
+                    story_timing_hash.clone(),
+                ));
+            }
         }
         let recording_elapsed_ms = attached_recording_session_id
             .as_deref()
@@ -689,6 +732,7 @@ pub async fn launch_automation(
                         "recording step timing sidecar write failed after manual stop"
                     );
                 }
+                step_timing_finalized = true;
             }
         }
         // Mirror events into tracing for diagnostics.
@@ -778,6 +822,11 @@ pub async fn launch_automation(
                 "recording step timing sidecar write failed"
             );
         }
+    } else if attached_recording_session_id.is_some() && !step_timing_finalized {
+        tracing::warn!(
+            target: "storycapture::automation",
+            "recording step timing sidecar was not written because the recording output path never resolved"
+        );
     }
 
     if attached_recording_session_id.is_none() {

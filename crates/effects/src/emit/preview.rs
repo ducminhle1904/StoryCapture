@@ -8,7 +8,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ast::types::Vec2;
-use crate::ast::video::{BackgroundKind, RippleEvent, TextBox, TrajectoryRef, VideoNode};
+use crate::ast::video::{
+    BackgroundKind, HighlightOverlaySpec, RippleEvent, TextBox, TrajectoryRef, VideoNode,
+};
 use crate::ast::Graph;
 use crate::zoom::ZoomKeyframeSampler;
 
@@ -50,6 +52,7 @@ pub struct PreviewRenderPlan {
     pub zoom_matrices: Vec<ZoomMatrixFrame>,
     pub cursor_atlas_ref: Option<TrajectoryRef>,
     pub ripples: Vec<RippleEvent>,
+    pub highlights: Vec<HighlightOverlaySpec>,
     pub text_boxes: Vec<TextBox>,
     pub background: Option<BackgroundKind>,
 }
@@ -68,6 +71,7 @@ pub fn emit_preview_plan(g: &Graph) -> PreviewRenderPlan {
     let mut zoom_matrices = Vec::new();
     let mut cursor_atlas_ref: Option<TrajectoryRef> = None;
     let mut ripples: Vec<RippleEvent> = Vec::new();
+    let mut highlights: Vec<HighlightOverlaySpec> = Vec::new();
     let mut text_boxes: Vec<TextBox> = Vec::new();
     let mut background: Option<BackgroundKind> = None;
 
@@ -109,6 +113,11 @@ pub fn emit_preview_plan(g: &Graph) -> PreviewRenderPlan {
             VideoNode::RippleOverlay { events, .. } => {
                 ripples.extend(events.iter().copied());
             }
+            VideoNode::HighlightOverlay {
+                highlights: items, ..
+            } => {
+                highlights.extend(items.iter().cloned());
+            }
             VideoNode::TextOverlay { boxes, .. } => {
                 text_boxes.extend(boxes.iter().cloned());
             }
@@ -122,6 +131,7 @@ pub fn emit_preview_plan(g: &Graph) -> PreviewRenderPlan {
         zoom_matrices,
         cursor_atlas_ref,
         ripples,
+        highlights,
         text_boxes,
         background,
     }

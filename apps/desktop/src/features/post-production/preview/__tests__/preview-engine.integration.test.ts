@@ -32,6 +32,7 @@ function emptyPlan(): PreviewRenderPlan {
     zoom_matrices: [],
     cursor_atlas_ref: null,
     ripples: [],
+    highlights: [],
     text_boxes: [],
     background: null,
   };

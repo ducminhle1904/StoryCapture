@@ -6,7 +6,76 @@
  */
 export type EasingKind = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "ease-in-out-cubic" | "ease-out-quad";
 
+export type FontChoice = { "kind": "bundled", family: string, weight: number, } | { "kind": "system-default" };
+
+/**
+ * Root of the filter-graph AST. One Graph == one renderable scene.
+ */
+export type Graph = {
+/**
+ * See [`types::SCHEMA_VERSION`]. Presets with a different version are
+ * migrated by the loader.
+ */
+schema_version: number, output_width: number, output_height: number, output_fps: number, video: Array<VideoNode>, audio: Array<AudioNode>, };
+
+/**
+ * A stable, globally-unique identifier for an AST node.
+ *
+ * The UUID determines:
+ *   - the node's identity across preset save/load
+ *   - the short hex label used by the FFmpeg emitter (`stable_label`)
+ */
+export type NodeId = string;
+
+/**
+ * JSON payload consumed by the WebGPU preview player.
+ */
+export type PreviewRenderPlan = { output_width: number, output_height: number, fps: number, zoom_matrices: Array<ZoomMatrixFrame>, cursor_atlas_ref: TrajectoryRef | null, ripples: Array<RippleEvent>, highlights: Array<HighlightOverlaySpec>, text_boxes: Array<TextBox>, background: BackgroundKind | null, };
+
+export type Rgba = { r: number, g: number, b: number, a: number, };
+
+/**
+ * A ripple pulse emitted on click. Defaults:
+ * `t_anticipate = t_impact - 60`, `duration = 300`, `max_radius_px = 60.0`,
+ * `color = white @ 0.9 alpha`.
+ */
+export type RippleEvent = { t_anticipate_ms: bigint, t_impact_ms: bigint, duration_ms: number, center: Vec2, max_radius_px: number, bounds: HighlightBounds | null, color: Rgba, };
+export type HighlightBounds = { x: number, y: number, w: number, h: number, };
+export type HighlightShape = "ring" | "spotlight";
+
+export type HighlightOverlaySpec = { t_start_ms: bigint, duration_ms: number, shape: HighlightShape, center: Vec2, max_radius_px: number, bounds: HighlightBounds | null, padding_px: number, radius_px: number, stroke_px: number, glow_px: number, color: Rgba, opacity: number, png_path: string | null, overlay_pos: Vec2 | null, };
+
+export type Shadow = { blur_px: number, offset: Vec2, color: Rgba, };
+
+export type SidechainParams = { threshold: number, ratio: number, attack_ms: number, release_ms: number, };
+
+export type TextAnim = "none" | "fade" | "slide-up" | "scale-in";
+
+export type TextBox = { t_start_ms: bigint, t_end_ms: bigint, text: string, pos: Vec2, font: FontChoice, size_pt: number, color: Rgba, box_style: BoxStyle | null, anim_in: TextAnim, anim_out: TextAnim, };
+
+export type TrajectoryRef = { png_sequence_dir: string, fps: number, frame_count: number, };
+
 export type Vec2 = { x: number, y: number, };
+
+/**
+ * Video AST node. One variant per canonical stage. Ordering is enforced
+ * at build-time by [`crate::builder::order::validate_order`].
+ */
+export type VideoNode = { "type": "source", id: NodeId, path: string, pts_offset_ms: bigint, } | { "type": "zoom-pan", id: NodeId, target: ZoomTarget, keyframes: Array<ZoomKeyframe>, } | { "type": "background", id: NodeId, kind: BackgroundKind, radius_px: number, shadow: Shadow | null,
+/**
+ * Inner padding around the foreground video after compositing onto the
+ * background layer. Range: 0..=128 px.
+ */
+padding_px: number, } | { "type": "cursor-overlay", id: NodeId, skin: CursorSkin, size_scale: number, motion_preset: CursorMotionPreset, color_tint: Rgba | null, trajectory: TrajectoryRef, } | { "type": "ripple-overlay", id: NodeId, events: Array<RippleEvent>, } | { "type": "highlight-overlay", id: NodeId, highlights: Array<HighlightOverlaySpec>, } | { "type": "text-overlay", id: NodeId, boxes: Array<TextBox>, } | { "type": "transition", id: NodeId, kind: XfadeKind, duration_ms: number, offset_ms: number, };
+
+export type Waypoint = { t_ms: bigint, pos: Vec2, kind: WaypointKind, };
+
+export type WaypointKind = "click" | "hover" | "scroll" | "type" | "drag";
+
+/**
+ * The 14-value xfade subset exposed to the user (Research §5).
+ */
+export type XfadeKind = "fade" | "fade-black" | "fade-white" | "dissolve" | "wipe-left" | "wipe-right" | "wipe-up" | "wipe-down" | "slide-left" | "slide-right" | "slide-up" | "slide-down" | "circle-open" | "circle-close";
 
 /**
  * Keyframe for the ZoomPan stage. The runtime resolves interpolation;

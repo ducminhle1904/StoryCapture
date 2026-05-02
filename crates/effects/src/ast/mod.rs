@@ -11,8 +11,9 @@ pub mod video;
 pub use audio::{AmixParams, AudioNode, SidechainParams};
 pub use types::{Duration, EasingKind, NodeId, Rgba, Vec2, SCHEMA_VERSION};
 pub use video::{
-    BackgroundKind, BoxStyle, CursorMotionPreset, CursorSkin, FontChoice, RippleEvent, Shadow,
-    TextAnim, TextBox, TrajectoryRef, VideoNode, XfadeKind, ZoomKeyframe, ZoomTarget,
+    BackgroundKind, BoxStyle, CursorMotionPreset, CursorSkin, FontChoice, HighlightBounds,
+    HighlightOverlaySpec, HighlightShape, RippleEvent, Shadow, TextAnim, TextBox, TrajectoryRef,
+    VideoNode, XfadeKind, ZoomKeyframe, ZoomTarget,
 };
 
 use serde::{Deserialize, Serialize};

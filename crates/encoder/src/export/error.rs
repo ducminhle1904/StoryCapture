@@ -41,6 +41,9 @@ pub enum ExportError {
     #[error("cursor overlay render failed: {0}")]
     CursorRender(String),
 
+    #[error("highlight overlay render failed: {0}")]
+    HighlightRender(String),
+
     #[error("psnr output could not be parsed")]
     PsnrParse,
 

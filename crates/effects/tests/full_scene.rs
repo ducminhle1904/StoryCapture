@@ -1,6 +1,6 @@
 //! insta golden: full scene with all canonical stages present. Pins the
 //! canonical filter token order (Source → zoompan → bg overlay → cursor
-//! overlay → ripple drawbox → drawtext → xfade) so optimisations in later
+//! overlay → ripple passthrough → drawtext → xfade) so optimisations in later
 //! optimisations cannot silently reorder nodes.
 
 use std::path::PathBuf;

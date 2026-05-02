@@ -54,6 +54,7 @@ export interface RecordingStepTiming {
 export interface RecordingStepTimingSidecar {
   version: number;
   recordingPath: string;
+  captureRect?: CaptureRect | null;
   storyHash: string;
   timebase: "recording-ms" | string;
   status: "completed" | "failed" | "partial" | "recording_stopped" | "ui_detached" | string;

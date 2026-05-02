@@ -1730,7 +1730,7 @@ export type RecordingEvent = { type: "capture-status"; json: string } | { type: 
 export type RecordingInfoDto = { path: string; captured_at: bigint; duration_ms: bigint | null; width: number | null; height: number | null }
 export type RecordingSessionId = string
 export type RecordingStepTimingDto = { ordinal: number; stepId: string | null; sceneName: string; verb: string; startMs: bigint; endMs: bigint; durationMs: bigint; status: string; cursor: TimingPointDto | null; target: TimingTargetDto | null; confidence: string }
-export type RecordingStepTimingSidecarDto = { version: number; recordingPath: string; storyHash: string; timebase: string; status: string; steps: RecordingStepTimingDto[] }
+export type RecordingStepTimingSidecarDto = { version: number; recordingPath: string; captureRect?: CaptureRectDto | null; storyHash: string; timebase: string; status: string; steps: RecordingStepTimingDto[] }
 export type RecordingViewportDto = { width: number; height: number }
 /**
  * Logical-point rect over a display.

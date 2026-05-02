@@ -40,5 +40,6 @@ pub use fonts::{
     resolve_bundled_font_path_by_name, BundledFont, BUNDLED_FONT_FILES,
 };
 pub use highlight_ring::{
-    emit_ring_overlay, pulse_alpha_expr, render_highlight_ring_png, RingSpec,
+    emit_ring_overlay, pulse_alpha_expr, render_highlight_overlay_png, render_highlight_ring_png,
+    HighlightRenderResult, RingSpec,
 };

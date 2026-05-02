@@ -153,7 +153,69 @@ pub struct RippleEvent {
     pub duration_ms: u32,
     pub center: Vec2,
     pub max_radius_px: f32,
+    #[serde(default)]
+    pub bounds: Option<HighlightBounds>,
     pub color: Rgba,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-export", derive(TS))]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(
+        export,
+        export_to = "../../../packages/shared-types/src/generated/effects.ts"
+    )
+)]
+pub struct HighlightBounds {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-export", derive(TS))]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(
+        export,
+        export_to = "../../../packages/shared-types/src/generated/effects.ts"
+    )
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum HighlightShape {
+    Ring,
+    Spotlight,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-export", derive(TS))]
+#[cfg_attr(
+    feature = "ts-export",
+    ts(
+        export,
+        export_to = "../../../packages/shared-types/src/generated/effects.ts"
+    )
+)]
+pub struct HighlightOverlaySpec {
+    pub t_start_ms: u64,
+    pub duration_ms: u32,
+    pub shape: HighlightShape,
+    pub center: Vec2,
+    pub max_radius_px: f32,
+    #[serde(default)]
+    pub bounds: Option<HighlightBounds>,
+    pub padding_px: f32,
+    pub radius_px: f32,
+    pub stroke_px: f32,
+    pub glow_px: f32,
+    pub color: Rgba,
+    pub opacity: f32,
+    #[serde(default)]
+    pub png_path: Option<PathBuf>,
+    #[serde(default)]
+    pub overlay_pos: Option<Vec2>,
 }
 
 impl RippleEvent {
@@ -165,6 +227,7 @@ impl RippleEvent {
             duration_ms: 300,
             center,
             max_radius_px: 60.0,
+            bounds: None,
             color: Rgba::new(255, 255, 255, 229), // 0.9 alpha
         }
     }
@@ -336,6 +399,10 @@ pub enum VideoNode {
         id: NodeId,
         events: Vec<RippleEvent>,
     },
+    HighlightOverlay {
+        id: NodeId,
+        highlights: Vec<HighlightOverlaySpec>,
+    },
     TextOverlay {
         id: NodeId,
         boxes: Vec<TextBox>,
@@ -356,6 +423,7 @@ impl VideoNode {
             | VideoNode::Background { id, .. }
             | VideoNode::CursorOverlay { id, .. }
             | VideoNode::RippleOverlay { id, .. }
+            | VideoNode::HighlightOverlay { id, .. }
             | VideoNode::TextOverlay { id, .. }
             | VideoNode::Transition { id, .. } => *id,
         }

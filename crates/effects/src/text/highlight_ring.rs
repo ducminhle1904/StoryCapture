@@ -1,16 +1,14 @@
-//! Highlight-ring PNG rendering + pulse-alpha FFmpeg overlay.
+//! Highlight PNG rendering for export overlays.
 //!
-//! A highlight ring is a transparent PNG with a stroked (and optionally
-//! rounded) rectangle matching a DOM/UI element's bounding box. The
-//! pulse-alpha overlay expression `0.5+0.5*sin(2*PI*(t-TSTART)/period)`
-//! breathes between 0.0 and 1.0 once per `period_s` seconds, giving the
-//! "look here" affordance.
+//! Ring highlights emit small transparent PNGs around the target. Spotlight
+//! highlights emit a full-frame dim layer with a soft cutout plus ring.
 
 use std::path::Path;
 
 use image::{ImageBuffer, Rgba as ImageRgba};
 
 use crate::ast::types::{Rgba, Vec2};
+use crate::ast::video::{HighlightBounds, HighlightOverlaySpec, HighlightShape};
 use crate::error::Result;
 
 #[derive(Debug, Clone, Copy)]
@@ -20,6 +18,13 @@ pub struct RingSpec {
     pub stroke_px: u32,
     pub color: Rgba,
     pub rounded_radius_px: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HighlightRenderResult {
+    pub width: u32,
+    pub height: u32,
+    pub overlay_pos: Vec2,
 }
 
 fn to_image_rgba(c: Rgba) -> ImageRgba<u8> {
@@ -58,6 +63,179 @@ pub fn render_highlight_ring_png(spec: &RingSpec, out: &Path) -> Result<(u32, u3
     img.save(out)
         .map_err(|e| crate::error::EffectsError::ImageDecode(e.to_string()))?;
     Ok((total_w, total_h))
+}
+
+pub fn render_highlight_overlay_png(
+    spec: &HighlightOverlaySpec,
+    output_w: u32,
+    output_h: u32,
+    out: &Path,
+) -> Result<HighlightRenderResult> {
+    match spec.shape {
+        HighlightShape::Ring => render_ring_overlay_png(spec, output_w, output_h, out),
+        HighlightShape::Spotlight => render_spotlight_overlay_png(spec, output_w, output_h, out),
+    }
+}
+
+fn render_ring_overlay_png(
+    spec: &HighlightOverlaySpec,
+    output_w: u32,
+    output_h: u32,
+    out: &Path,
+) -> Result<HighlightRenderResult> {
+    let target = target_bounds(spec, output_w, output_h);
+    let pad = spec.padding_px.max(0.0);
+    let glow = spec.glow_px.max(0.0);
+    let inflate = pad + glow + spec.stroke_px.max(1.0);
+    let x = (target.x - inflate).floor().max(0.0);
+    let y = (target.y - inflate).floor().max(0.0);
+    let right = (target.x + target.w + inflate).ceil().min(output_w as f32);
+    let bottom = (target.y + target.h + inflate).ceil().min(output_h as f32);
+    let w = (right - x).max(1.0).round() as u32;
+    let h = (bottom - y).max(1.0).round() as u32;
+    let local = HighlightBounds {
+        x: target.x - x + pad,
+        y: target.y - y + pad,
+        w: (target.w - pad * 2.0).max(1.0),
+        h: (target.h - pad * 2.0).max(1.0),
+    };
+    let mut img: ImageBuffer<ImageRgba<u8>, Vec<u8>> =
+        ImageBuffer::from_pixel(w, h, ImageRgba([0, 0, 0, 0]));
+    paint_ring(&mut img, local, spec);
+    img.save(out)
+        .map_err(|e| crate::error::EffectsError::ImageDecode(e.to_string()))?;
+    Ok(HighlightRenderResult {
+        width: w,
+        height: h,
+        overlay_pos: Vec2::new(x, y),
+    })
+}
+
+fn render_spotlight_overlay_png(
+    spec: &HighlightOverlaySpec,
+    output_w: u32,
+    output_h: u32,
+    out: &Path,
+) -> Result<HighlightRenderResult> {
+    let target = target_bounds(spec, output_w, output_h);
+    let dim_alpha = (138.0 * spec.opacity.clamp(0.0, 1.0)).round() as u8;
+    let mut img: ImageBuffer<ImageRgba<u8>, Vec<u8>> =
+        ImageBuffer::from_pixel(output_w, output_h, ImageRgba([0, 0, 0, dim_alpha]));
+    let feather = spec.glow_px.max(12.0);
+    let radius = spec.radius_px.max(1.0);
+    for py in 0..output_h {
+        for px in 0..output_w {
+            let sd = rounded_rect_signed_distance(px as f32 + 0.5, py as f32 + 0.5, target, radius);
+            if sd <= 0.0 {
+                img.put_pixel(px, py, ImageRgba([0, 0, 0, 0]));
+            } else if sd < feather {
+                let alpha = ((sd / feather) * dim_alpha as f32).round() as u8;
+                img.put_pixel(px, py, ImageRgba([0, 0, 0, alpha]));
+            }
+        }
+    }
+    paint_ring(&mut img, target, spec);
+    img.save(out)
+        .map_err(|e| crate::error::EffectsError::ImageDecode(e.to_string()))?;
+    Ok(HighlightRenderResult {
+        width: output_w,
+        height: output_h,
+        overlay_pos: Vec2::ZERO,
+    })
+}
+
+fn target_bounds(spec: &HighlightOverlaySpec, output_w: u32, output_h: u32) -> HighlightBounds {
+    let raw = spec.bounds.unwrap_or_else(|| {
+        let r = spec.max_radius_px.max(1.0);
+        HighlightBounds {
+            x: spec.center.x - r,
+            y: spec.center.y - r,
+            w: r * 2.0,
+            h: r * 2.0,
+        }
+    });
+    let pad = spec.padding_px.max(0.0);
+    let x = (raw.x - pad).max(0.0);
+    let y = (raw.y - pad).max(0.0);
+    let right = (raw.x + raw.w + pad).min(output_w as f32);
+    let bottom = (raw.y + raw.h + pad).min(output_h as f32);
+    HighlightBounds {
+        x,
+        y,
+        w: (right - x).max(1.0),
+        h: (bottom - y).max(1.0),
+    }
+}
+
+fn paint_ring(
+    img: &mut ImageBuffer<ImageRgba<u8>, Vec<u8>>,
+    target: HighlightBounds,
+    spec: &HighlightOverlaySpec,
+) {
+    let color = spec.color;
+    let opacity = spec.opacity.clamp(0.0, 1.0);
+    let stroke = spec.stroke_px.max(1.0);
+    let glow = spec.glow_px.max(0.0);
+    let radius = spec.radius_px.max(1.0).min(target.w.min(target.h) / 2.0);
+    for py in 0..img.height() {
+        for px in 0..img.width() {
+            let sd = rounded_rect_signed_distance(px as f32 + 0.5, py as f32 + 0.5, target, radius);
+            let stroke_alpha: f32 = if sd.abs() <= stroke / 2.0 { 1.0 } else { 0.0 };
+            let glow_alpha = if glow > 0.0 && sd > stroke / 2.0 && sd <= glow {
+                (1.0 - (sd - stroke / 2.0) / glow) * 0.28
+            } else {
+                0.0
+            };
+            let alpha = ((stroke_alpha.max(glow_alpha) * opacity * color.a as f32)
+                .round()
+                .clamp(0.0, 255.0)) as u8;
+            if alpha > 0 {
+                blend_pixel(img, px, py, ImageRgba([color.r, color.g, color.b, alpha]));
+            }
+        }
+    }
+}
+
+fn rounded_rect_signed_distance(px: f32, py: f32, b: HighlightBounds, r: f32) -> f32 {
+    let cx = b.x + b.w / 2.0;
+    let cy = b.y + b.h / 2.0;
+    let qx = (px - cx).abs() - (b.w / 2.0 - r).max(0.0);
+    let qy = (py - cy).abs() - (b.h / 2.0 - r).max(0.0);
+    let outside_x = qx.max(0.0);
+    let outside_y = qy.max(0.0);
+    let outside = (outside_x * outside_x + outside_y * outside_y).sqrt();
+    let inside = qx.max(qy).min(0.0);
+    outside + inside - r
+}
+
+fn blend_pixel(
+    img: &mut ImageBuffer<ImageRgba<u8>, Vec<u8>>,
+    px: u32,
+    py: u32,
+    src: ImageRgba<u8>,
+) {
+    let dst = *img.get_pixel(px, py);
+    let sa = src[3] as f32 / 255.0;
+    let da = dst[3] as f32 / 255.0;
+    let out_a = sa + da * (1.0 - sa);
+    if out_a <= 0.0 {
+        return;
+    }
+    let blend = |s: u8, d: u8| -> u8 {
+        (((s as f32 * sa + d as f32 * da * (1.0 - sa)) / out_a)
+            .round()
+            .clamp(0.0, 255.0)) as u8
+    };
+    img.put_pixel(
+        px,
+        py,
+        ImageRgba([
+            blend(src[0], dst[0]),
+            blend(src[1], dst[1]),
+            blend(src[2], dst[2]),
+            (out_a * 255.0).round() as u8,
+        ]),
+    );
 }
 
 fn on_rounded_border(

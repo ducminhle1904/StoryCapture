@@ -7,7 +7,7 @@ import {
   highlightEnabled,
   type StoryPolishDoc,
 } from "@/features/editor/polish-sidecar";
-import type { RecordingActions } from "@/ipc/actions";
+import type { ActionTarget, RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
 import type {
@@ -46,6 +46,7 @@ export interface BuildTimelineOutput {
 }
 
 type CaptureRect = { x: number; y: number; width: number; height: number };
+type NormalizedBounds = { x: number; y: number; w: number; h: number };
 
 const FALLBACK_DURATION_MS = 60_000;
 const AUTO_ZOOM_PRE_ROLL_MS = 200;
@@ -60,9 +61,36 @@ const ZOOM_SCALE = {
 } as const;
 
 const ACTION_FOCUS_HIGHLIGHT = {
-  subtle: { radiusPx: 36, color: "#ffffff", durationMs: 520 },
-  standard: { radiusPx: 56, color: "#ffffff", durationMs: 700 },
-  strong: { radiusPx: 72, color: "#ffffff", durationMs: 840 },
+  subtle: {
+    radiusPx: 36,
+    color: "#ffffff",
+    durationMs: 520,
+    shape: "ring",
+    paddingPx: 6,
+    strokePx: 2,
+    glowPx: 8,
+    opacity: 0.66,
+  },
+  standard: {
+    radiusPx: 56,
+    color: "#ffffff",
+    durationMs: 700,
+    shape: "ring",
+    paddingPx: 8,
+    strokePx: 2,
+    glowPx: 16,
+    opacity: 0.72,
+  },
+  strong: {
+    radiusPx: 72,
+    color: "#ffffff",
+    durationMs: 840,
+    shape: "spotlight",
+    paddingPx: 10,
+    strokePx: 3,
+    glowPx: 22,
+    opacity: 0.86,
+  },
 } as const;
 
 const DEFAULT_BACKGROUND: EditorBackgroundKind = { kind: "transparent" };
@@ -124,6 +152,23 @@ function normalizeCenter(rect: CaptureRect, x: number, y: number): { x: number; 
     x: clamp01((x - rect.x) / rect.width),
     y: clamp01((y - rect.y) / rect.height),
   };
+}
+
+function normalizeBounds(
+  rect: CaptureRect,
+  bounds: { x: number; y: number; w: number; h: number } | null | undefined,
+): NormalizedBounds | undefined {
+  if (!bounds || rect.width <= 0 || rect.height <= 0 || bounds.w <= 0 || bounds.h <= 0) {
+    return undefined;
+  }
+  const x1 = clamp01((bounds.x - rect.x) / rect.width);
+  const y1 = clamp01((bounds.y - rect.y) / rect.height);
+  const x2 = clamp01((bounds.x + bounds.w - rect.x) / rect.width);
+  const y2 = clamp01((bounds.y + bounds.h - rect.y) / rect.height);
+  const w = x2 - x1;
+  const h = y2 - y1;
+  if (w <= 0 || h <= 0) return undefined;
+  return { x: x1, y: y1, w, h };
 }
 
 function buildAutoZoomClips(
@@ -191,12 +236,14 @@ function buildActionFocusAnnotations(
       (event) => event.target && (event.verb === "click" || event.pointer?.effect === "click"),
     )
     .filter((event) => !event.step_id || !excludeStepIds.has(event.step_id))
+    .filter((event) => normalizeBounds(actions.capture_rect, event.target?.bounds))
     .map((event) => {
       const center = normalizeCenter(
         actions.capture_rect,
         event.target?.center.x ?? 0.5,
         event.target?.center.y ?? 0.5,
       );
+      const bounds = normalizeBounds(actions.capture_rect, event.target?.bounds);
       const stepId = event.step_id ?? `action-${event.ordinal}`;
       return {
         id: `action-focus-${idBase}-${stepId}-${event.t_action_ms}`,
@@ -214,6 +261,12 @@ function buildActionFocusAnnotations(
         highlight: {
           center,
           radiusPx: recipe.radiusPx,
+          bounds,
+          shape: recipe.shape,
+          paddingPx: recipe.paddingPx,
+          strokePx: recipe.strokePx,
+          glowPx: recipe.glowPx,
+          opacity: recipe.opacity,
           color: recipe.color,
           durationMs: recipe.durationMs,
         },
@@ -281,6 +334,7 @@ function flattenStorySteps(story: ParseResult | null): Array<{
   sceneName: string;
   stepId: string | null;
   ordinal: number;
+  verb: string;
 }> {
   const scenes = story?.ast?.scenes ?? [];
   let ordinal = 0;
@@ -291,34 +345,10 @@ function flattenStorySteps(story: ParseResult | null): Array<{
         sceneName: scene.name,
         stepId: command.step_id ?? null,
         ordinal,
+        verb: command.verb,
       };
     }),
   );
-}
-
-function estimatedStepTimeMs(index: number, total: number, durationMs: number): number {
-  if (total <= 0) return 0;
-  const slot = durationMs / Math.max(1, total);
-  return Math.round(Math.min(durationMs, Math.max(0, slot * index + slot * 0.45)));
-}
-
-function centerFromTrajectoryAt(
-  trajectory: RecordingTrajectory | null,
-  tMs: number,
-): { x: number; y: number } {
-  if (!trajectory || trajectory.frames.length === 0) return { x: 0.5, y: 0.5 };
-  const frames = trajectory.frames;
-  let lo = 0;
-  let hi = frames.length - 1;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (frames[mid]?.t_ms == null || frames[mid].t_ms < tMs) lo = mid + 1;
-    else hi = mid;
-  }
-  const next = frames[lo];
-  const prev = lo > 0 ? frames[lo - 1] : null;
-  const best = prev && next && Math.abs(prev.t_ms - tMs) <= Math.abs(next.t_ms - tMs) ? prev : next;
-  return best ? normalizeCenter(trajectory.capture_rect, best.x, best.y) : { x: 0.5, y: 0.5 };
 }
 
 function centerFromTimingTarget(
@@ -330,20 +360,53 @@ function centerFromTimingTarget(
   return normalizeCenter(rect, bbox.x + bbox.w / 2, bbox.y + bbox.h / 2);
 }
 
+function boundsFromTimingTarget(
+  timing: RecordingStepTiming | null,
+  rect: CaptureRect | null,
+): NormalizedBounds | undefined {
+  return normalizeBounds(rect ?? { x: 0, y: 0, width: 0, height: 0 }, timing?.target?.bbox);
+}
+
+function actionTargetForStep(
+  actions: RecordingActions | null,
+  stepId: string,
+  ordinal: number,
+): ActionTarget | null {
+  return actionEventForStep(actions, stepId, ordinal)?.target ?? null;
+}
+
+function actionEventForStep(
+  actions: RecordingActions | null,
+  stepId: string,
+  ordinal: number,
+): RecordingActions["events"][number] | null {
+  if (!actions) return null;
+  return (
+    actions.events.find(
+      (item) =>
+        item.target &&
+        ((stepId && item.step_id === stepId) || (!item.step_id && item.ordinal === ordinal)),
+    ) ?? null
+  );
+}
+
 function centerFromActionTarget(
   actions: RecordingActions | null,
   stepId: string,
   ordinal: number,
 ): { x: number; y: number } | null {
   if (!actions) return null;
-  const event = actions.events.find(
-    (item) =>
-      item.target &&
-      ((stepId && item.step_id === stepId) || (!item.step_id && item.ordinal === ordinal)),
-  );
-  return event?.target
-    ? normalizeCenter(actions.capture_rect, event.target.center.x, event.target.center.y)
-    : null;
+  const target = actionTargetForStep(actions, stepId, ordinal);
+  return target ? normalizeCenter(actions.capture_rect, target.center.x, target.center.y) : null;
+}
+
+function boundsFromActionTarget(
+  actions: RecordingActions | null,
+  stepId: string,
+  ordinal: number,
+): NormalizedBounds | undefined {
+  if (!actions) return undefined;
+  return normalizeBounds(actions.capture_rect, actionTargetForStep(actions, stepId, ordinal)?.bounds);
 }
 
 function stepTimingLookup(sidecar: RecordingStepTimingSidecar | null | undefined): {
@@ -357,6 +420,26 @@ function stepTimingLookup(sidecar: RecordingStepTimingSidecar | null | undefined
     byOrdinal.set(step.ordinal, step);
   }
   return { byStepId, byOrdinal };
+}
+
+function stepSceneEndMs(
+  sidecar: RecordingStepTimingSidecar | null | undefined,
+  stepTime: RecordingStepTiming | null,
+  durationMs: number,
+): number {
+  if (!sidecar || !stepTime) return durationMs;
+  const nextSceneStep = sidecar.steps
+    .filter((step) => step.startMs > stepTime.startMs && step.sceneName !== stepTime.sceneName)
+    .sort((a, b) => a.startMs - b.startMs)[0];
+  return Math.min(durationMs, nextSceneStep?.startMs ?? durationMs);
+}
+
+function clampClipDuration(startMs: number, requestedDurationMs: number, endBoundaryMs: number): number {
+  return Math.max(1, Math.min(requestedDurationMs, Math.max(1, endBoundaryMs - startMs)));
+}
+
+function isInteractionVerb(verb: string | null | undefined): boolean {
+  return verb === "click" || verb === "type";
 }
 
 function transitionKind(kind: string | undefined): XfadeKind | null {
@@ -394,7 +477,7 @@ function applySceneTransitionIntent(
 interface BuildPolishClipsContext {
   story: ParseResult | null;
   polish: StoryPolishDoc | null | undefined;
-  trajectory: RecordingTrajectory | null;
+  captureRect: CaptureRect | null;
   actions: RecordingActions | null;
   stepTiming: RecordingStepTimingSidecar | null | undefined;
   durationMs: number;
@@ -404,7 +487,7 @@ interface BuildPolishClipsContext {
 function buildPolishClips({
   story,
   polish,
-  trajectory,
+  captureRect,
   actions,
   stepTiming,
   durationMs,
@@ -417,28 +500,35 @@ function buildPolishClips({
   if (!polish) return { zoom: [], annotations: [], sound: [] };
   const steps = flattenStorySteps(story);
   const timing = stepTimingLookup(stepTiming);
-  const rect = actions?.capture_rect ?? trajectory?.capture_rect ?? null;
+  const stepRect = stepTiming?.captureRect ?? captureRect;
   const zoom: ZoomClip[] = [];
   const annotations: AnnotationClip[] = [];
   const sound: SoundClip[] = [];
 
-  steps.forEach((step, index) => {
+  steps.forEach((step) => {
     if (!step.stepId) return;
     const stepPolish = polish.steps[step.stepId];
     if (!stepPolish) return;
     const stepTime = timing.byStepId.get(step.stepId) ?? timing.byOrdinal.get(step.ordinal) ?? null;
+    const actionEvent = actionEventForStep(actions, step.stepId, step.ordinal);
+    const interactionStep = isInteractionVerb(stepTime?.verb ?? actionEvent?.verb ?? step.verb);
+    const actionTimeMs =
+      interactionStep && actionEvent ? Math.min(durationMs, Math.max(0, actionEvent.t_action_ms)) : null;
     const tMs = stepTime
       ? Math.min(durationMs, Math.max(0, stepTime.startMs + Math.round(stepTime.durationMs * 0.45)))
-      : estimatedStepTimeMs(index, steps.length, durationMs);
+      : actionTimeMs;
+    if (tMs == null) return;
+    const sceneEndMs = stepSceneEndMs(stepTiming, stepTime, durationMs);
     const zoomLevel = stepPolish.zoom && stepPolish.zoom !== "off" ? stepPolish.zoom : null;
     const callout = calloutText(stepPolish.callout);
     const highlight = highlightEnabled(stepPolish.highlight);
-    const needsTargetCenter = Boolean(zoomLevel || highlight);
-    const center = needsTargetCenter
-      ? (centerFromActionTarget(actions, step.stepId, step.ordinal) ??
-        centerFromTimingTarget(stepTime, rect) ??
-        centerFromTrajectoryAt(trajectory, tMs))
-      : { x: 0.5, y: 0.5 };
+    const actionCenter = interactionStep ? centerFromActionTarget(actions, step.stepId, step.ordinal) : null;
+    const timingCenter = centerFromTimingTarget(stepTime, stepRect);
+    const center = actionCenter ?? timingCenter;
+    const actionBounds = interactionStep ? boundsFromActionTarget(actions, step.stepId, step.ordinal) : undefined;
+    const targetBounds = highlight
+      ? (actionBounds ?? boundsFromTimingTarget(stepTime, stepRect))
+      : undefined;
     if (zoomLevel && zoomLevel in ZOOM_SCALE) {
       const zoomTarget = (() => {
         switch (stepPolish.zoomTarget?.kind) {
@@ -454,38 +544,53 @@ function buildPolishClips({
             return { kind: "cursor" as const };
         }
       })();
-      zoom.push({
-        id: `polish-zoom-${idBase}-${step.stepId}`,
-        trackId: "zoom",
-        startMs: Math.max(0, tMs - 250),
-        durationMs: stepPolish.zoomDurationMs ?? 900,
-        label: "Script zoom",
-        target: zoomTarget,
-        scale: stepPolish.zoomScale ?? ZOOM_SCALE[zoomLevel as keyof typeof ZOOM_SCALE],
-        center,
-        preset: polish.global.recipe === "calm" ? "CALM" : "DYNAMIC",
-      });
+      if (zoomTarget.kind === "fixed-region" || center) {
+        const zoomStartMs = Math.max(0, tMs - 250);
+        zoom.push({
+          id: `polish-zoom-${idBase}-${step.stepId}`,
+          trackId: "zoom",
+          startMs: zoomStartMs,
+          durationMs: clampClipDuration(zoomStartMs, stepPolish.zoomDurationMs ?? 900, sceneEndMs),
+          label: "Script zoom",
+          target: zoomTarget,
+          scale: stepPolish.zoomScale ?? ZOOM_SCALE[zoomLevel as keyof typeof ZOOM_SCALE],
+          center: center ?? { x: 0.5, y: 0.5 },
+          preset: polish.global.recipe === "calm" ? "CALM" : "DYNAMIC",
+        });
+      }
     }
     const calloutSpec = typeof stepPolish.callout === "object" ? stepPolish.callout : null;
     const highlightSpec = typeof stepPolish.highlight === "object" ? stepPolish.highlight : null;
-    if (callout || highlight) {
+    const highlightClip = highlight && center && targetBounds;
+    if (callout || highlightClip) {
       const defaults = styleDefaults(callout ? "callout" : "hotspot");
+      const annotationStartMs = Math.max(0, tMs - 100);
+      const requestedDurationMs =
+        calloutSpec?.durationMs ?? highlightSpec?.durationMs ?? CALLOUT_DURATION_MS;
       annotations.push({
         id: `${callout ? "callout" : "highlight"}-${idBase}-${step.stepId}`,
         trackId: "annotations",
-        startMs: Math.max(0, tMs - 100),
-        durationMs: calloutSpec?.durationMs ?? highlightSpec?.durationMs ?? CALLOUT_DURATION_MS,
+        startMs: annotationStartMs,
+        durationMs: clampClipDuration(annotationStartMs, requestedDurationMs, sceneEndMs),
         label: callout ? "Callout" : "Highlight",
         ...defaults,
         text: callout,
         pos: calloutSpec?.pos ?? defaults.pos,
         sizePt: calloutSpec?.sizePt ?? defaults.sizePt,
         color: calloutSpec?.color ?? defaults.color,
-        anchor: { kind: "target", stepId: step.stepId, placement: "top" },
-        highlight: highlight
+        anchor: center
+          ? ({ kind: "target", stepId: step.stepId, placement: "top" } as const)
+          : ({ kind: "screen", pos: calloutSpec?.pos ?? defaults.pos } as const),
+        highlight: highlightClip
           ? {
               center,
-              radiusPx: highlightSpec?.radiusPx ?? 56,
+              radiusPx: highlightSpec?.radiusPx ?? 32,
+              bounds: targetBounds,
+              shape: "ring",
+              paddingPx: 6,
+              strokePx: 2,
+              glowPx: 10,
+              opacity: 0.66,
               color: highlightSpec?.color ?? "#ffffff",
               durationMs: highlightSpec?.durationMs ?? 700,
             }
@@ -559,7 +664,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const polishClips = buildPolishClips({
     story: input.story,
     polish,
-    trajectory,
+    captureRect: actions?.capture_rect ?? trajectory?.capture_rect ?? null,
     actions,
     stepTiming,
     durationMs,

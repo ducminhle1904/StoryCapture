@@ -48,6 +48,7 @@ pub fn build_ripples(waypoints: &[Waypoint], opts: &RippleOptions) -> Vec<Ripple
             duration_ms: opts.duration_ms,
             center: w.pos,
             max_radius_px: opts.max_radius_px,
+            bounds: None,
             color: opts.color,
         })
         .collect()

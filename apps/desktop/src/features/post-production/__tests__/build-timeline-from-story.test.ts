@@ -5,7 +5,10 @@ import { describe, expect, it } from "vitest";
 import type { RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
-import type { RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
+import type {
+  RecordingStepTimingSidecar,
+  RecordingTrajectory,
+} from "@/ipc/trajectory";
 
 import { buildTimelineFromStory } from "../state/build-timeline-from-story";
 
@@ -113,8 +116,11 @@ const STORY: ParseResult = {
     ],
   },
 };
+const STORY_AST = STORY.ast!;
 
-function trajectoryWithFrames(frames: RecordingTrajectory["frames"]): RecordingTrajectory {
+function trajectoryWithFrames(
+  frames: RecordingTrajectory["frames"],
+): RecordingTrajectory {
   return {
     ...TRAJECTORY,
     frame_count: frames.length,
@@ -167,7 +173,9 @@ describe("buildTimelineFromStory", () => {
     expect(c.trackId).toBe("cursor");
     expect(c.startMs).toBe(0);
     expect(c.durationMs).toBe(12_345);
-    expect(c.trajectoryDir).toBe("/tmp/projects/p1/recordings/recording-123.trajectory.json");
+    expect(c.trajectoryDir).toBe(
+      "/tmp/projects/p1/recordings/recording-123.trajectory.json",
+    );
     expect(c.trajectoryFps).toBe(60);
     expect(c.trajectoryFrameCount).toBe(720);
     expect(c.skin).toBe("mac-default");
@@ -180,7 +188,9 @@ describe("buildTimelineFromStory", () => {
       story: null,
       recording: RECORDING,
       actions: ACTIONS,
-      trajectory: trajectoryWithFrames([{ t_ms: 5_000, x: 1_920, y: 1_080, click: true }]),
+      trajectory: trajectoryWithFrames([
+        { t_ms: 5_000, x: 1_920, y: 1_080, click: true },
+      ]),
     });
 
     expect(out.cursor).toHaveLength(1);
@@ -205,10 +215,16 @@ describe("buildTimelineFromStory", () => {
       highlight: {
         center: { x: 0.5, y: 0.5 },
         radiusPx: 56,
+        shape: "ring",
         color: "#ffffff",
         durationMs: 700,
       },
     });
+    const bounds = out.annotations[0]?.highlight?.bounds;
+    expect(bounds?.x).toBeCloseTo(900 / 1920);
+    expect(bounds?.y).toBeCloseTo(500 / 1080);
+    expect(bounds?.w).toBeCloseTo(120 / 1920);
+    expect(bounds?.h).toBeCloseTo(80 / 1080);
   });
 
   it("lets action focus be disabled independently from auto zoom", () => {
@@ -238,6 +254,36 @@ describe("buildTimelineFromStory", () => {
     expect(out.annotations).toHaveLength(0);
   });
 
+  it("maps strong action focus to spotlight highlight shape", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      actions: ACTIONS,
+      trajectory: null,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          actionFocus: "strong",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "transparent" },
+        },
+        scenes: {},
+        steps: {},
+      },
+    });
+
+    expect(out.annotations[0]?.highlight).toMatchObject({
+      shape: "spotlight",
+      strokePx: 3,
+      glowPx: 22,
+    });
+  });
+
   it("derives durationMs from trajectory when recording.duration_ms is missing", () => {
     const noDuration: RecordingInfo = { ...RECORDING, duration_ms: null };
     const out = buildTimelineFromStory({
@@ -254,7 +300,9 @@ describe("buildTimelineFromStory", () => {
       story: null,
       recording: { ...RECORDING, duration_ms: 40_064 },
       actions: actionsEndingAt(17_142),
-      trajectory: trajectoryWithFrames([{ t_ms: 40_887, x: 960, y: 540, click: false }]),
+      trajectory: trajectoryWithFrames([
+        { t_ms: 40_887, x: 960, y: 540, click: false },
+      ]),
     });
 
     expect(out.video[0]?.durationMs).toBe(40_064);
@@ -267,7 +315,9 @@ describe("buildTimelineFromStory", () => {
       story: null,
       recording: noDuration,
       actions: actionsEndingAt(17_142),
-      trajectory: trajectoryWithFrames([{ t_ms: 40_887, x: 960, y: 540, click: false }]),
+      trajectory: trajectoryWithFrames([
+        { t_ms: 40_887, x: 960, y: 540, click: false },
+      ]),
     });
 
     expect(out.video[0]?.durationMs).toBe(40_887);
@@ -338,7 +388,11 @@ describe("buildTimelineFromStory", () => {
     expect(out.zoom.map((clip) => clip.startMs)).toEqual([800, 4_800, 9_800]);
     expect(out.zoom.map((clip) => clip.durationMs)).toEqual([800, 800, 800]);
     expect(out.zoom.map((clip) => clip.scale)).toEqual([1.35, 1.35, 1.35]);
-    expect(out.zoom.map((clip) => clip.preset)).toEqual(["CALM", "CALM", "CALM"]);
+    expect(out.zoom.map((clip) => clip.preset)).toEqual([
+      "CALM",
+      "CALM",
+      "CALM",
+    ]);
     expect(out.zoom.map((clip) => clip.target)).toEqual([
       { kind: "cursor" },
       { kind: "cursor" },
@@ -355,7 +409,9 @@ describe("buildTimelineFromStory", () => {
     const out = buildTimelineFromStory({
       story: null,
       recording: RECORDING,
-      trajectory: trajectoryWithFrames([{ t_ms: 100, x: 960, y: 540, click: true }]),
+      trajectory: trajectoryWithFrames([
+        { t_ms: 100, x: 960, y: 540, click: true },
+      ]),
     });
 
     expect(out.zoom[0]?.startMs).toBe(0);
@@ -395,7 +451,9 @@ describe("buildTimelineFromStory", () => {
       trajectory,
     });
 
-    expect(a.zoom.map((clip) => clip.id)).toEqual(b.zoom.map((clip) => clip.id));
+    expect(a.zoom.map((clip) => clip.id)).toEqual(
+      b.zoom.map((clip) => clip.id),
+    );
     expect(a.zoom.map((clip) => clip.id)).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/^zoom-[a-f0-9]{8}-1000$/),
@@ -404,11 +462,12 @@ describe("buildTimelineFromStory", () => {
     );
   });
 
-  it("adds polish-authored zooms and callouts keyed by step_id", () => {
+  it("adds polish-authored zooms and callouts keyed by step_id when step timing is present", () => {
     const out = buildTimelineFromStory({
       story: STORY,
       recording: RECORDING,
       trajectory: TRAJECTORY,
+      stepTiming: STEP_TIMING,
       polish: {
         version: 2,
         global: {
@@ -423,7 +482,11 @@ describe("buildTimelineFromStory", () => {
         },
         scenes: {},
         steps: {
-          "step-buy": { zoom: "strong", callout: "Start checkout", highlight: true },
+          "step-buy": {
+            zoom: "strong",
+            callout: "Start checkout",
+            highlight: true,
+          },
         },
       },
     });
@@ -442,6 +505,130 @@ describe("buildTimelineFromStory", () => {
       pos: { x: 0.5, y: 0.16 },
       sizePt: 14,
       color: "#f8fafc",
+    });
+  });
+
+  it("does not estimate polish FX for non-action steps when step timing is missing", () => {
+    const story: ParseResult = {
+      ...STORY,
+      ast: {
+        ...STORY_AST,
+        scenes: [
+          {
+            ...STORY_AST.scenes[0]!,
+            commands: [
+              {
+                verb: "wait-for",
+                target: { kind: "text", value: "Ready" },
+                timeout_ms: null,
+                span: { start: 0, end: 0, line: 3, col: 5 },
+                step_id: "step-wait",
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const out = buildTimelineFromStory({
+      story,
+      recording: RECORDING,
+      trajectory: trajectoryWithFrames([
+        { t_ms: 3_000, x: 400, y: 400, click: false },
+      ]),
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          actionFocus: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "transparent" },
+        },
+        scenes: {},
+        steps: {
+          "step-wait": {
+            zoom: "strong",
+            callout: "Wait for state",
+            highlight: true,
+          },
+        },
+      },
+    });
+
+    expect(out.zoom).toHaveLength(0);
+    expect(out.annotations).toHaveLength(0);
+  });
+
+  it("allows wait/assert callouts from step timing but disables highlight without bbox", () => {
+    const story: ParseResult = {
+      ...STORY,
+      ast: {
+        ...STORY_AST,
+        scenes: [
+          {
+            ...STORY_AST.scenes[0]!,
+            commands: [
+              {
+                verb: "assert",
+                target: { kind: "text", value: "Ready" },
+                span: { start: 0, end: 0, line: 3, col: 5 },
+                step_id: "step-assert",
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const stepTiming: RecordingStepTimingSidecar = {
+      ...STEP_TIMING,
+      steps: [
+        {
+          ordinal: 1,
+          stepId: "step-assert",
+          sceneName: "Checkout",
+          verb: "assert",
+          startMs: 2_000,
+          endMs: 2_300,
+          durationMs: 300,
+          status: "succeeded",
+          cursor: null,
+          target: null,
+          confidence: "medium",
+        },
+      ],
+    };
+    const out = buildTimelineFromStory({
+      story,
+      recording: RECORDING,
+      trajectory: TRAJECTORY,
+      stepTiming,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          actionFocus: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "transparent" },
+        },
+        scenes: {},
+        steps: {
+          "step-assert": { callout: "Ready state", highlight: true },
+        },
+      },
+    });
+
+    expect(out.annotations).toHaveLength(1);
+    expect(out.annotations[0]).toMatchObject({
+      text: "Ready state",
+      highlight: undefined,
+      anchor: { kind: "screen", pos: { x: 0.5, y: 0.16 } },
     });
   });
 
@@ -516,7 +703,12 @@ describe("buildTimelineFromStory", () => {
               color: "#ffcc00",
               durationMs: 2_000,
             },
-            highlight: { enabled: true, radiusPx: 72, color: "#00ffaa", durationMs: 900 },
+            highlight: {
+              enabled: true,
+              radiusPx: 72,
+              color: "#00ffaa",
+              durationMs: 900,
+            },
             sfx: { path: "/sounds/click.wav", gain: 0.8, durationMs: 600 },
           },
         },
@@ -524,14 +716,24 @@ describe("buildTimelineFromStory", () => {
     });
 
     expect(out.cursor).toHaveLength(0);
-    expect(out.background).toEqual({ kind: "solid", color: { r: 17, g: 34, b: 51, a: 255 } });
-    expect(out.video[0]?.outgoingTransition).toEqual({ kind: "dissolve", durationMs: 700 });
+    expect(out.background).toEqual({
+      kind: "solid",
+      color: { r: 17, g: 34, b: 51, a: 255 },
+    });
+    expect(out.video[0]?.outgoingTransition).toEqual({
+      kind: "dissolve",
+      durationMs: 700,
+    });
     expect(out.zoom).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: expect.stringContaining("step-buy"),
           durationMs: 1_100,
-          target: { kind: "fixed-region", top_left: { x: 0.2, y: 0.3 }, size: { x: 0.4, y: 0.5 } },
+          target: {
+            kind: "fixed-region",
+            top_left: { x: 0.2, y: 0.3 },
+            size: { x: 0.4, y: 0.5 },
+          },
           scale: 1.8,
           preset: "CALM",
         }),
@@ -609,5 +811,204 @@ describe("buildTimelineFromStory", () => {
     });
 
     expect(out.annotations[0]?.highlight?.center).toEqual({ x: 0.8, y: 0.75 });
+  });
+
+  it("clamps polish annotations to the next scene boundary", () => {
+    const story: ParseResult = {
+      ...STORY,
+      ast: {
+        ...STORY_AST,
+        scenes: [
+          STORY_AST.scenes[0]!,
+          {
+            name: "Summary",
+            span: { start: 0, end: 0, line: 6, col: 1 },
+            commands: [
+              {
+                verb: "wait-for",
+                target: { kind: "text", value: "Done" },
+                timeout_ms: null,
+                span: { start: 0, end: 0, line: 7, col: 5 },
+                step_id: "step-summary",
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const stepTiming: RecordingStepTimingSidecar = {
+      ...STEP_TIMING,
+      steps: [
+        {
+          ...STEP_TIMING.steps[0]!,
+          stepId: "step-buy",
+          sceneName: "Checkout",
+          startMs: 2_000,
+          endMs: 2_500,
+          durationMs: 500,
+        },
+        {
+          ordinal: 3,
+          stepId: "step-summary",
+          sceneName: "Summary",
+          verb: "wait-for",
+          startMs: 2_700,
+          endMs: 3_100,
+          durationMs: 400,
+          status: "succeeded",
+          cursor: null,
+          target: null,
+          confidence: "medium",
+        },
+      ],
+    };
+    const out = buildTimelineFromStory({
+      story,
+      recording: RECORDING,
+      trajectory: TRAJECTORY,
+      stepTiming,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          actionFocus: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "transparent" },
+        },
+        scenes: {},
+        steps: {
+          "step-buy": {
+            callout: {
+              text: "Buy now",
+              pos: { x: 0.5, y: 0.16 },
+              sizePt: 14,
+              color: "#f8fafc",
+              durationMs: 5_000,
+            },
+            highlight: {
+              enabled: true,
+              radiusPx: 56,
+              color: "#ffffff",
+              durationMs: 5_000,
+            },
+          },
+        },
+      },
+    });
+
+    const annotation = out.annotations[0];
+    expect(annotation?.startMs).toBe(2_125);
+    expect(
+      annotation ? annotation.startMs + annotation.durationMs : 0,
+    ).toBeLessThanOrEqual(2_700);
+  });
+
+  it("normalizes action targets from the actions capture rect when trajectory is physical scale", () => {
+    const action = ACTIONS.events[0];
+    if (!action) throw new Error("expected action fixture");
+    const actions: RecordingActions = {
+      ...ACTIONS,
+      capture_rect: { x: 0, y: 0, width: 1800, height: 1012 },
+      events: [
+        {
+          ...action,
+          step_id: "step-buy",
+          ordinal: 1,
+          target: {
+            kind: "element",
+            label: "Buy",
+            center: { x: 900, y: 506 },
+            bounds: { x: 810, y: 456, w: 180, h: 100 },
+          },
+        },
+      ],
+    };
+    const out = buildTimelineFromStory({
+      story: STORY,
+      recording: RECORDING,
+      trajectory: {
+        ...TRAJECTORY,
+        capture_rect: { x: 0, y: 0, width: 3600, height: 2024 },
+      },
+      actions,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          actionFocus: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "transparent" },
+        },
+        scenes: {},
+        steps: {
+          "step-buy": { highlight: true },
+        },
+      },
+    });
+
+    expect(out.annotations[0]?.highlight?.center).toEqual({ x: 0.5, y: 0.5 });
+    const bounds = out.annotations[0]?.highlight?.bounds;
+    expect(bounds?.x).toBeCloseTo(0.45);
+    expect(bounds?.y).toBeCloseTo(456 / 1012);
+    expect(bounds?.w).toBeCloseTo(0.1);
+    expect(bounds?.h).toBeCloseTo(100 / 1012);
+  });
+
+  it("normalizes step timing bbox from the step capture rect when trajectory is physical scale", () => {
+    const stepTiming: RecordingStepTimingSidecar = {
+      ...STEP_TIMING,
+      captureRect: { x: 0, y: 0, width: 1800, height: 1012 },
+      steps: [
+        {
+          ...STEP_TIMING.steps[0]!,
+          target: {
+            selector: "button[name='Buy']",
+            bbox: { x: 810, y: 456, w: 180, h: 100 },
+            matchKind: "primary",
+          },
+        },
+      ],
+    };
+    const out = buildTimelineFromStory({
+      story: STORY,
+      recording: RECORDING,
+      trajectory: {
+        ...TRAJECTORY,
+        capture_rect: { x: 0, y: 0, width: 3600, height: 2024 },
+      },
+      stepTiming,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          actionFocus: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "transparent" },
+        },
+        scenes: {},
+        steps: {
+          "step-buy": { highlight: true },
+        },
+      },
+    });
+
+    expect(out.annotations[0]?.highlight?.center).toEqual({ x: 0.5, y: 0.5 });
+    const bounds = out.annotations[0]?.highlight?.bounds;
+    expect(bounds?.x).toBeCloseTo(0.45);
+    expect(bounds?.y).toBeCloseTo(456 / 1012);
+    expect(bounds?.w).toBeCloseTo(0.1);
+    expect(bounds?.h).toBeCloseTo(100 / 1012);
   });
 });

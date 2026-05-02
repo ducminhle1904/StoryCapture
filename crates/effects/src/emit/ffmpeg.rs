@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::ast::audio::{AudioNode, SidechainParams};
-use crate::ast::types::{EasingKind, NodeId};
+use crate::ast::types::{EasingKind, NodeId, Vec2};
 use crate::ast::video::{TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe};
 use crate::ast::Graph;
 use crate::background::compositor::emit_background;
@@ -208,42 +208,25 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
             VideoNode::RippleOverlay { events, .. } => {
-                let mut ripple_cur = cur.clone();
-                for (i, event) in events.iter().enumerate() {
-                    if i > 0 {
-                        out.push(';');
-                    }
-                    let step_label = if i + 1 == events.len() {
-                        out_label.clone()
-                    } else {
-                        format!("[{}_r{}]", node_label_core(node.id()), i)
-                    };
-                    let r = event.max_radius_px.max(1.0);
-                    let x = event.center.x - r;
-                    let y = event.center.y - r;
-                    let size = r * 2.0;
-                    let from = event.t_anticipate_ms as f64 / 1000.0;
-                    let to = (event.t_impact_ms + event.duration_ms as u64) as f64 / 1000.0;
-                    let alpha = event.color.a as f32 / 255.0;
-                    write!(
-                        out,
-                        "{ripple_cur}drawbox=x={x:.1}:y={y:.1}:w={size:.1}:h={size:.1}:t=3:color=0x{R:02X}{G:02X}{B:02X}@{A:.3}:enable='between(t,{from:.3},{to:.3})'{step_label}",
-                        ripple_cur = ripple_cur,
-                        x = x,
-                        y = y,
-                        size = size,
-                        R = event.color.r,
-                        G = event.color.g,
-                        B = event.color.b,
-                        A = alpha,
-                        from = from,
-                        to = to,
-                        step_label = step_label,
-                    )
-                    .unwrap();
-                    ripple_cur = step_label;
-                }
-                if events.is_empty() {
+                let _ = events;
+                write!(
+                    out,
+                    "{cur}null{out_label}",
+                    cur = cur,
+                    out_label = out_label
+                )
+                .unwrap();
+                cur = out_label;
+            }
+            VideoNode::HighlightOverlay { highlights, .. } => {
+                let renderable: Vec<_> = highlights
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, highlight)| {
+                        highlight.png_path.as_ref().map(|path| (i, highlight, path))
+                    })
+                    .collect();
+                if renderable.is_empty() {
                     write!(
                         out,
                         "{cur}null{out_label}",
@@ -251,6 +234,38 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                         out_label = out_label
                     )
                     .unwrap();
+                    cur = out_label;
+                    continue;
+                }
+                let mut highlight_cur = cur.clone();
+                for (step_idx, (highlight_idx, highlight, path)) in renderable.iter().enumerate() {
+                    if step_idx > 0 {
+                        out.push(';');
+                    }
+                    let step_label = if step_idx + 1 == renderable.len() {
+                        out_label.clone()
+                    } else {
+                        format!("[{}_h{}]", node_label_core(node.id()), highlight_idx)
+                    };
+                    let overlay_label =
+                        format!("[{}_hsrc{}]", node_label_core(node.id()), highlight_idx);
+                    let pos = highlight.overlay_pos.unwrap_or(Vec2::ZERO);
+                    let from = highlight.t_start_ms as f64 / 1000.0;
+                    let to = (highlight.t_start_ms + highlight.duration_ms as u64) as f64 / 1000.0;
+                    write!(
+                        out,
+                        "movie='{path}',format=rgba{overlay_label};{highlight_cur}{overlay_label}overlay=x={x:.1}:y={y:.1}:enable='between(t,{from:.3},{to:.3})'{step_label}",
+                        path = path_to_ffmpeg_arg(path),
+                        overlay_label = overlay_label,
+                        highlight_cur = highlight_cur,
+                        x = pos.x,
+                        y = pos.y,
+                        from = from,
+                        to = to,
+                        step_label = step_label,
+                    )
+                    .unwrap();
+                    highlight_cur = step_label;
                 }
                 cur = out_label;
             }

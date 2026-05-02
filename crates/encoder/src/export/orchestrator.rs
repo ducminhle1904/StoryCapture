@@ -25,6 +25,7 @@ use effects::cursor::{
     render_cursor_pngs, render_cursor_pngs_from_actions_with_options, skin_asset_path,
     CursorActionRenderOptions,
 };
+use effects::text::render_highlight_overlay_png;
 use rusqlite::Connection;
 use storage::repos::render_job_repo;
 use storage::NewRenderJob;
@@ -138,7 +139,7 @@ pub async fn export_run(
     }
 
     let mut graph = req.graph;
-    preprocess_cursor_overlays(&mut graph, &req.output_folder, batch_id)?;
+    preprocess_render_assets(&mut graph, &req.output_folder, batch_id)?;
 
     // Persist the graph snapshot once per batch — the queue worker will
     // reload it per job without needing the UI process to stay alive.
@@ -189,17 +190,44 @@ fn quality_label(q: super::quality::Quality) -> &'static str {
     }
 }
 
-fn preprocess_cursor_overlays(
+fn preprocess_render_assets(
     graph: &mut effects::Graph,
     output_folder: &Path,
     batch_id: Uuid,
 ) -> Result<(), ExportError> {
     let tmp_root = output_folder.join(format!(".tmp-render-{batch_id}"));
-    let result = render_cursor_overlay_sidecars(graph, &tmp_root);
+    let result = render_highlight_overlays(graph, &tmp_root)
+        .and_then(|_| render_cursor_overlay_sidecars(graph, &tmp_root));
     if result.is_err() {
         let _ = std::fs::remove_dir_all(&tmp_root);
     }
     result
+}
+
+fn render_highlight_overlays(
+    graph: &mut effects::Graph,
+    tmp_root: &Path,
+) -> Result<(), ExportError> {
+    for node in &mut graph.video {
+        let VideoNode::HighlightOverlay { id, highlights } = node else {
+            continue;
+        };
+        let out_dir = tmp_root.join(format!("highlight-{}", id.stable_label("clip")));
+        std::fs::create_dir_all(&out_dir)?;
+        for (idx, highlight) in highlights.iter_mut().enumerate() {
+            let out = out_dir.join(format!("highlight-{idx:03}.png"));
+            let rendered = render_highlight_overlay_png(
+                highlight,
+                graph.output_width,
+                graph.output_height,
+                &out,
+            )
+            .map_err(|e| ExportError::HighlightRender(e.to_string()))?;
+            highlight.png_path = Some(out);
+            highlight.overlay_pos = Some(rendered.overlay_pos);
+        }
+    }
+    Ok(())
 }
 
 fn render_cursor_overlay_sidecars(
@@ -290,7 +318,10 @@ mod tests {
     use crate::export::quality::Quality;
     use crate::export::resolution::Resolution;
     use effects::ast::types::NodeId;
-    use effects::ast::video::{CursorMotionPreset, CursorSkin, TrajectoryRef, VideoNode};
+    use effects::ast::video::{
+        CursorMotionPreset, CursorSkin, HighlightBounds, HighlightOverlaySpec, HighlightShape,
+        TrajectoryRef, VideoNode,
+    };
     use storage::migrations::project as project_migrations;
 
     fn fresh_db() -> Arc<Mutex<Connection>> {
@@ -502,6 +533,60 @@ mod tests {
                 .count(),
             8
         );
+    }
+
+    #[tokio::test]
+    async fn export_run_preprocesses_highlight_png_before_snapshot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = fresh_db();
+        let mut req = sample_request(tmp.path().to_path_buf());
+        req.outputs.truncate(1);
+        let batch_id = req.outputs[0].batch_id;
+        req.graph.video.push(VideoNode::HighlightOverlay {
+            id: NodeId::from_bytes([0x0B; 16]),
+            highlights: vec![HighlightOverlaySpec {
+                t_start_ms: 1_000,
+                duration_ms: 700,
+                shape: HighlightShape::Ring,
+                center: effects::ast::Vec2::new(500.0, 300.0),
+                max_radius_px: 50.0,
+                bounds: Some(HighlightBounds {
+                    x: 460.0,
+                    y: 280.0,
+                    w: 80.0,
+                    h: 40.0,
+                }),
+                padding_px: 8.0,
+                radius_px: 8.0,
+                stroke_px: 2.0,
+                glow_px: 16.0,
+                color: effects::ast::Rgba::WHITE,
+                opacity: 0.72,
+                png_path: None,
+                overlay_pos: None,
+            }],
+        });
+
+        let result = export_run(req, None, &db).await.unwrap();
+        let raw = std::fs::read_to_string(result.graph_snapshot_path).unwrap();
+        let graph: effects::Graph = serde_json::from_str(&raw).unwrap();
+        let highlight = graph
+            .video
+            .iter()
+            .find_map(|node| match node {
+                VideoNode::HighlightOverlay { highlights, .. } => highlights.first(),
+                _ => None,
+            })
+            .expect("highlight overlay");
+        let png = highlight.png_path.as_ref().expect("rendered png path");
+        assert!(png.exists());
+        assert!(png.starts_with(tmp.path().join(format!(".tmp-render-{batch_id}"))));
+        assert!(highlight.overlay_pos.is_some());
+
+        let filter = effects::FfmpegEmit::emit(&graph);
+        assert!(filter.contains("movie='"));
+        assert!(filter.contains("highlight-000.png"));
+        assert!(filter.contains("overlay=x="));
     }
 
     #[tokio::test]

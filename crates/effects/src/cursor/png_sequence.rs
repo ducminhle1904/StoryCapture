@@ -531,6 +531,12 @@ impl<'a> ZoomProjection<'a> {
                 RippleEvent {
                     center: self.transform_point_with_sample(r.center, center, scale),
                     max_radius_px: r.max_radius_px * scale,
+                    bounds: r.bounds.map(|bounds| crate::ast::video::HighlightBounds {
+                        x: (bounds.x - center.x) * scale + center.x,
+                        y: (bounds.y - center.y) * scale + center.y,
+                        w: bounds.w * scale,
+                        h: bounds.h * scale,
+                    }),
                     ..*r
                 }
             })

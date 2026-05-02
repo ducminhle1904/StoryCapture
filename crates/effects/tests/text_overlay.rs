@@ -7,13 +7,15 @@
 use std::path::{Path, PathBuf};
 
 use effects::ast::types::{Rgba, Vec2};
-use effects::ast::video::{FontChoice, TextAnim, TextBox};
+use effects::ast::video::{
+    FontChoice, HighlightBounds, HighlightOverlaySpec, HighlightShape, TextAnim, TextBox,
+};
 use effects::text::{
     anim_fade_params, anim_scale_in_params, anim_slide_up_params, auto_annotate_step,
     emit_callout_overlay, emit_drawtext, emit_ring_overlay, ensure_fonts_extracted,
     escape_drawtext_text, path_to_ffmpeg_arg, pulse_alpha_expr, render_callout_png,
-    render_highlight_ring_png, resolve_bundled_font_path, ArrowDir, AutoAnnotateOptions,
-    BundledFont, CalloutSpec, RingSpec, StepAstRef, BUNDLED_FONT_FILES,
+    render_highlight_overlay_png, render_highlight_ring_png, resolve_bundled_font_path, ArrowDir,
+    AutoAnnotateOptions, BundledFont, CalloutSpec, RingSpec, StepAstRef, BUNDLED_FONT_FILES,
 };
 
 // ------------------------------------------------------------
@@ -514,6 +516,79 @@ fn render_highlight_ring_png_bbox() {
     assert_eq!(w, 208);
     assert_eq!(h, 108);
     assert!(out.exists());
+}
+
+#[test]
+fn render_highlight_overlay_png_rounded_ring() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("highlight.png");
+    let rendered = render_highlight_overlay_png(
+        &HighlightOverlaySpec {
+            t_start_ms: 1_000,
+            duration_ms: 700,
+            shape: HighlightShape::Ring,
+            center: Vec2::new(100.0, 80.0),
+            max_radius_px: 40.0,
+            bounds: Some(HighlightBounds {
+                x: 80.0,
+                y: 50.0,
+                w: 120.0,
+                h: 50.0,
+            }),
+            padding_px: 8.0,
+            radius_px: 10.0,
+            stroke_px: 2.0,
+            glow_px: 14.0,
+            color: Rgba::new(255, 255, 255, 230),
+            opacity: 0.8,
+            png_path: None,
+            overlay_pos: None,
+        },
+        320,
+        180,
+        &out,
+    )
+    .unwrap();
+    assert!(out.exists());
+    assert!(rendered.width > 120);
+    assert!(rendered.height > 50);
+    assert!(rendered.overlay_pos.x < 80.0);
+}
+
+#[test]
+fn render_highlight_overlay_png_spotlight() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("spotlight.png");
+    let rendered = render_highlight_overlay_png(
+        &HighlightOverlaySpec {
+            t_start_ms: 1_000,
+            duration_ms: 700,
+            shape: HighlightShape::Spotlight,
+            center: Vec2::new(100.0, 80.0),
+            max_radius_px: 40.0,
+            bounds: Some(HighlightBounds {
+                x: 80.0,
+                y: 50.0,
+                w: 120.0,
+                h: 50.0,
+            }),
+            padding_px: 8.0,
+            radius_px: 10.0,
+            stroke_px: 2.0,
+            glow_px: 14.0,
+            color: Rgba::new(255, 255, 255, 230),
+            opacity: 0.8,
+            png_path: None,
+            overlay_pos: None,
+        },
+        320,
+        180,
+        &out,
+    )
+    .unwrap();
+    assert_eq!(rendered.width, 320);
+    assert_eq!(rendered.height, 180);
+    assert_eq!(rendered.overlay_pos, Vec2::ZERO);
 }
 
 #[test]

@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use crate::ast::audio::{AudioNode, SidechainParams};
 use crate::ast::types::{NodeId, Rgba};
 use crate::ast::video::{
-    BackgroundKind, CursorSkin, RippleEvent, Shadow, TextBox, TrajectoryRef, VideoNode, XfadeKind,
-    ZoomKeyframe, ZoomTarget,
+    BackgroundKind, CursorSkin, HighlightOverlaySpec, RippleEvent, Shadow, TextBox, TrajectoryRef,
+    VideoNode, XfadeKind, ZoomKeyframe, ZoomTarget,
 };
 use crate::ast::Graph;
 use crate::error::EffectsError;
@@ -119,6 +119,10 @@ impl GraphBuilder {
 
     pub fn ripple(&mut self, id: NodeId, events: Vec<RippleEvent>) -> &mut Self {
         self.push_video(VideoNode::RippleOverlay { id, events })
+    }
+
+    pub fn highlight(&mut self, id: NodeId, highlights: Vec<HighlightOverlaySpec>) -> &mut Self {
+        self.push_video(VideoNode::HighlightOverlay { id, highlights })
     }
 
     pub fn text(&mut self, id: NodeId, boxes: Vec<TextBox>) -> &mut Self {

@@ -128,6 +128,8 @@ pub struct RecordingStepTimingDto {
 pub struct RecordingStepTimingSidecarDto {
     pub version: u32,
     pub recording_path: String,
+    #[serde(default)]
+    pub capture_rect: Option<CaptureRectDto>,
     pub story_hash: String,
     pub timebase: String,
     pub status: String,

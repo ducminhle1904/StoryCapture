@@ -406,6 +406,10 @@ fn estimate_duration_ms(graph: &effects::Graph) -> u64 {
                 .iter()
                 .map(|e| e.t_impact_ms + u64::from(e.duration_ms))
                 .max(),
+            VideoNode::HighlightOverlay { highlights, .. } => highlights
+                .iter()
+                .map(|h| h.t_start_ms + u64::from(h.duration_ms))
+                .max(),
             VideoNode::TextOverlay { boxes, .. } => boxes.iter().map(|b| b.t_end_ms).max(),
             VideoNode::Transition {
                 duration_ms,
