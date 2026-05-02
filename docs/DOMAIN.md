@@ -161,6 +161,19 @@ capture-dimension mismatch telemetry. Encodes stage to `.partial` and
 atomically rename on success. macOS prefers VideoToolbox HEVC before H.264
 when available and forces `hvc1` for QuickTime/Safari compatibility.
 
+Post-production export encode reality (2026-05-02): recording-time
+`EncodePipeline` can select hardware encoders via `probe_encoders()`, but the
+post-production `RenderQueueActor` path still constructs `FanoutJobExecutor`
+with `encoder::default_h264_encoder()`, which returns `libx264`. Single MP4
+exports now bypass the FFV1 intermediate and render directly from
+`filter_complex` to MP4, but the encode itself is still CPU H.264. FFmpeg
+filters such as `zoompan`, `scale`, overlays, cursor PNG sequence compositing,
+and `drawtext` are also CPU-bound unless a future export path explicitly moves
+work to hardware filters. When optimizing export performance, inspect
+`crates/encoder/src/queue/fanout_executor.rs`,
+`crates/encoder/src/fanout/intermediate.rs`, and
+`apps/desktop/src-tauri/src/commands/projects.rs::install_project_render_queue`.
+
 ## Storage and project model
 
 - `storage::AppDb` stores global app-level data such as projects, recent state,

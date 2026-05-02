@@ -36,6 +36,9 @@ StoryCapture turns a written `.story` script into a polished demo video.
   typed 5-track Clip union, computeGraph → Effects AST JSON, Story → Timeline
   auto-population, and recording sidecars (`.actions.json`, `.trajectory.json`,
   `.steps.json`) feed cursor/zoom/callout defaults.
+- Export reality: post-production MP4 export currently uses FFmpeg `libx264`
+  CPU encode via `RenderQueueActor`; recorder-time hardware encoder probing is
+  not wired into export yet. Details live in `docs/DOMAIN.md`.
 - Editor has hybrid UI / Code modes. UI mode edits canonical DSL blocks and
   optional `<story>.polish.json`; `Record & Polish` records, then opens
   post-production in Review & Export mode.
