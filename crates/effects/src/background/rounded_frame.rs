@@ -1,9 +1,12 @@
 //! Rounded-corner frame mask emitter.
 //!
-//! Generates a single FFmpeg filter segment that takes an RGBA input labelled
-//! `input_label` and produces an output label where pixels inside the four
-//! corner-radius arcs are transparent. Implemented via `geq` with a per-pixel
-//! test against the nearest corner centre.
+//! Generates the FFmpeg filter segment for the foreground frame mask.
+//!
+//! The previous implementation used `geq` to evaluate a rounded-corner alpha
+//! expression for every pixel of every frame. On 1080p60 exports that made a
+//! 38-second clip take about 5 minutes to render, because the final hardware
+//! encoder was waiting on CPU-bound filter work. Until export has a precomputed
+//! mask asset or GPU compositor path, FFmpeg export keeps this as a no-op.
 
 /// Parameters for the rounded-corner mask.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -13,28 +16,14 @@ pub struct RoundedFrameParams {
     pub radius_px: f32,
 }
 
-/// Emit a single `format=rgba,geq=...` chain that masks the four corners of
-/// an input stream. `input_label` includes its brackets (e.g. `"[v_a]"`) and
-/// `output_label` likewise. If `radius_px == 0`, emits a no-op `null` segment.
-pub fn emit_rounded_mask(p: &RoundedFrameParams, input_label: &str, output_label: &str) -> String {
-    let r = p.radius_px.round() as u32;
-    if r == 0 {
-        return format!("{input_label}null{output_label}");
-    }
-    // Per-pixel alpha test: if the pixel is inside one of the four corner
-    // "outside the arc" regions, alpha = 0; otherwise preserve alpha(X,Y).
-    //
-    // For the top-left corner, the corner-centre is at (r, r). The pixel is
-    // "outside the arc" when X<r && Y<r && (r-X)^2 + (r-Y)^2 > r^2.
-    //
-    // FFmpeg's `geq` evaluates boolean ops as 0/1; the nested `if` ladder
-    // returns 0 for transparent, alpha(X,Y) for opaque.
-    format!(
-        "{input_label}format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(X,{r})*lt(Y,{r})*gt(pow({r}-X,2)+pow({r}-Y,2),pow({r},2)),0,if(gt(X,W-{r})*lt(Y,{r})*gt(pow(X-(W-{r}),2)+pow({r}-Y,2),pow({r},2)),0,if(lt(X,{r})*gt(Y,H-{r})*gt(pow({r}-X,2)+pow(Y-(H-{r}),2),pow({r},2)),0,if(gt(X,W-{r})*gt(Y,H-{r})*gt(pow(X-(W-{r}),2)+pow(Y-(H-{r}),2),pow({r},2)),0,alpha(X,Y)))))'{output_label}",
-        input_label = input_label,
-        output_label = output_label,
-        r = r,
-    )
+/// Emit the foreground mask chain. `input_label` includes its brackets (e.g.
+/// `"[v_a]"`) and `output_label` likewise.
+pub fn emit_rounded_mask(
+    _p: &RoundedFrameParams,
+    input_label: &str,
+    output_label: &str,
+) -> String {
+    format!("{input_label}null{output_label}")
 }
 
 #[cfg(test)]
@@ -42,7 +31,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn emits_geq_for_nonzero_radius() {
+    fn nonzero_radius_uses_fast_noop_mask() {
         let out = emit_rounded_mask(
             &RoundedFrameParams {
                 width: 1920,
@@ -52,9 +41,7 @@ mod tests {
             "[in]",
             "[out]",
         );
-        assert!(out.starts_with("[in]format=rgba,geq=r="));
-        assert!(out.ends_with("[out]"));
-        assert!(out.contains("pow(24-X,2)"));
+        assert_eq!(out, "[in]null[out]");
     }
 
     #[test]

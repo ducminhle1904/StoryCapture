@@ -7,7 +7,7 @@
 //!   - 64 px padding
 //!
 //! Then asserts the emitted filter_complex contains the expected tokens
-//! (boxblur, geq rounded mask, gradient-presets PNG path) and locks the
+//! (boxblur, fast rounded-mask pass-through, gradient-presets PNG path) and locks the
 //! byte-for-byte emission via an insta snapshot.
 
 use std::path::PathBuf;
@@ -42,15 +42,13 @@ fn build_bg_graph() -> effects::Graph {
 }
 
 #[test]
-fn background_emits_geq_rounded_mask() {
+fn background_rounded_mask_uses_fast_passthrough() {
     let g = build_bg_graph();
     let out = FfmpegEmit::emit(&g);
     assert!(
-        out.contains("geq=r='r(X,Y)'"),
-        "expected rounded-corner geq mask: {out}"
+        out.contains("[n_3333_fg_scaled]null[n_3333_fg_rounded]"),
+        "expected rounded mask fast pass-through: {out}"
     );
-    // Radius 24 appears in the corner-distance test.
-    assert!(out.contains("pow(24-X,2)"));
 }
 
 #[test]

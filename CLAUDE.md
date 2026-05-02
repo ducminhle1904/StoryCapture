@@ -39,7 +39,11 @@ StoryCapture turns a written `.story` script into a polished demo video.
 - Export reality: post-production MP4 export now probes FFmpeg encoders and
   prefers H.264 hardware encode (`h264_videotoolbox` on macOS, NVENC/QSV/AMF
   on Windows) with `libx264` fallback via `RenderQueueActor`. FFmpeg effects
-  filters remain CPU-bound. Details live in `docs/DOMAIN.md`.
+  filters remain CPU-bound. Export rounded-frame masking is intentionally a
+  fast no-op for now because the old FFmpeg `geq` corner mask made a 38s
+  1080p60 export take ~5m; preview can still show rounded framing, but final
+  export will be square-corner until a precomputed mask or GPU compositor lands.
+  Details live in `docs/DOMAIN.md`.
 - Editor has hybrid UI / Code modes. UI mode edits canonical DSL blocks and
   optional `<story>.polish.json`; `Record & Polish` records, then opens
   post-production in Review & Export mode.

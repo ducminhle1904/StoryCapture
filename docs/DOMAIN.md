@@ -161,7 +161,7 @@ capture-dimension mismatch telemetry. Encodes stage to `.partial` and
 atomically rename on success. macOS prefers VideoToolbox HEVC before H.264
 when available and forces `hvc1` for QuickTime/Safari compatibility.
 
-Post-production export encode reality (2026-05-02): recording-time
+Post-production export encode reality (2026-05-03): recording-time
 `EncodePipeline` can select hardware encoders via `probe_encoders()`, and the
 post-production `RenderQueueActor` now uses an export-specific H.264 picker for
 MP4: macOS prefers `h264_videotoolbox`, Windows prefers NVENC → QSV → AMF, and
@@ -169,7 +169,23 @@ all platforms keep libx264 as the software fallback. Single MP4 exports bypass
 the FFV1 intermediate and render directly from `filter_complex` to MP4. FFmpeg
 filters such as `zoompan`, `scale`, overlays, cursor PNG sequence compositing,
 and `drawtext` remain CPU-bound unless a future export path explicitly moves
-work to hardware filters. When optimizing export performance, inspect
+work to hardware filters.
+
+Rounded-frame export tradeoff (2026-05-03): FFmpeg export intentionally treats
+`Background.radius_px` as a no-op in
+`crates/effects/src/background/rounded_frame.rs`. The old implementation used a
+`format=rgba,geq=...pow(...)` alpha expression to cut rounded corners for every
+pixel of every frame; on the 38.36s / 2302-frame VanTixS demo it dominated the
+render and produced ~322s exports even with `h264_videotoolbox`. Replacing that
+mask with `null` brought the same export down to ~11.7s. Preview/WebGPU may
+still show rounded framing, but final FFmpeg exports currently have square
+foreground corners. If a user asks why rounded video corners are missing in
+export, or asks to restore bo tròn/rounded export, do not reintroduce per-frame
+`geq`; implement a precomputed mask/alpha asset, GPU compositor, or another
+measured fast path first.
+
+When optimizing export performance, inspect
+`crates/effects/src/background/rounded_frame.rs`,
 `crates/encoder/src/queue/fanout_executor.rs`,
 `crates/encoder/src/fanout/intermediate.rs`, and
 `apps/desktop/src-tauri/src/commands/projects.rs::install_project_render_queue`.
@@ -205,6 +221,8 @@ surfaces like content hashing and frame-drop callbacks used across crates.
 - **Cursor** (`effects/src/cursor/`): trajectory, compositor, 5 skins, click ripple, PNG sequence loading.
 - **Auto-zoom** (`effects/src/zoom/`): click-tracking ken-burns; 3 presets (Dynamic/Calm/Subtle).
 - **Background** (`effects/src/background/`): gradients, rounded frame, shadow.
+  Preview can represent rounded frames; FFmpeg export currently skips the
+  rounded mask for performance. See "Rounded-frame export tradeoff" above.
 - **Sound library** (`assets/sound-library/`): scaffold for 20 target files
   (12 SFX + 8 BGM, 48kHz, -16 LUFS). The committed assets are placeholders;
   real CC0/CC-BY-4.0 curation and listen-test remain operator-gated by
