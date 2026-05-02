@@ -287,6 +287,107 @@ describe("computeGraph", () => {
     expect(text.boxes[0]?.color).toEqual({ r: 255, g: 204, b: 0, a: 255 });
   });
 
+  it("maps inherited text preset styling, background, font, and animation into text overlay boxes", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "styled-text",
+            trackId: "annotations",
+            startMs: 1_000,
+            durationMs: 2_200,
+            text: "Styled",
+            pos: { x: 0.5, y: 0.18 },
+            sizePt: 18,
+            styleId: "callout",
+          },
+        ],
+      },
+    });
+
+    const graph = computeGraph(useEditorStore.getState());
+    const text = graph.video.find((node) => node.type === "text-overlay");
+    if (!text || text.type !== "text-overlay") throw new Error("expected text-overlay");
+    expect(text.boxes[0]).toMatchObject({
+      text: "Styled",
+      font: { kind: "bundled", family: "Geist", weight: 700 },
+      size_pt: 18,
+      color: { r: 255, g: 255, b: 255, a: 255 },
+      box_style: {
+        padding_px: 12,
+        radius_px: 12,
+        bg_color: { r: 17, g: 19, b: 23, a: 204 },
+        border_color: { r: 255, g: 255, b: 255, a: 36 },
+      },
+      anim_in: "fade",
+      anim_out: "fade",
+    });
+  });
+
+  it("resolves target text anchors before emitting export text boxes", () => {
+    useEditorStore.setState({
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "transparent" },
+        actions: {
+          version: 1,
+          recording_path: "/tmp/demo.mp4",
+          viewport: { width: 1000, height: 500 },
+          capture_rect: { x: 0, y: 0, width: 1000, height: 500 },
+          fps: 60,
+          frame_count: 600,
+          events: [
+            {
+              step_id: "step-1",
+              ordinal: 1,
+              verb: "click",
+              t_start_ms: 1000,
+              t_action_ms: 2000,
+              t_end_ms: 2200,
+              target: {
+                kind: "element",
+                label: "Sign In",
+                center: { x: 800, y: 300 },
+                bounds: { x: 760, y: 280, w: 80, h: 40 },
+              },
+              secondary_target: null,
+              pointer: { button: "left", effect: "click" },
+            },
+          ],
+        },
+      },
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "target-text",
+            trackId: "annotations",
+            startMs: 1_000,
+            durationMs: 2_200,
+            text: "Attached",
+            pos: { x: 0.12, y: 0.12 },
+            sizePt: 18,
+            anchor: { kind: "target", stepId: "step-1", placement: "right" },
+          },
+        ],
+      },
+    });
+
+    const graph = computeGraph(useEditorStore.getState());
+    const text = graph.video.find((node) => node.type === "text-overlay");
+    if (!text || text.type !== "text-overlay") throw new Error("expected text-overlay");
+    expect(text.boxes[0]?.pos.x).toBeCloseTo(0.9);
+    expect(text.boxes[0]?.pos.y).toBeCloseTo(0.6);
+  });
+
   it("is deterministic — two calls produce byte-equal JSON", () => {
     useEditorStore.setState({
       tracks: {

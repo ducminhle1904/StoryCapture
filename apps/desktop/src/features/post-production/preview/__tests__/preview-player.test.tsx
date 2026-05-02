@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -200,6 +200,260 @@ describe("PreviewPlayer", () => {
     await waitFor(() => expect(zoomLayer.style.transform).toContain("scale(1.5)"));
 
     expect(PreviewEngine).not.toHaveBeenCalled();
+  });
+
+  it("renders active annotation text over the native video preview", async () => {
+    useEditorStore.setState({
+      playheadMs: 1500,
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "text-1",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 2000,
+            label: "Title",
+            text: "Checkout ready",
+            pos: { x: 0.5, y: 0.82 },
+            sizePt: 32,
+            color: "#ffcc00",
+          },
+          {
+            id: "text-2",
+            trackId: "annotations",
+            startMs: 4000,
+            durationMs: 1000,
+            label: "Later",
+            text: "Later title",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 24,
+            color: "#ffffff",
+          },
+        ],
+      },
+    });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    expect(screen.getByTestId("text-overlay")).toBeInTheDocument();
+    expect(screen.getByText("Checkout ready")).toBeInTheDocument();
+    expect(screen.queryByText("Later title")).not.toBeInTheDocument();
+    expect(PreviewEngine).not.toHaveBeenCalled();
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(4500);
+    });
+
+    await waitFor(() => expect(screen.getByText("Later title")).toBeInTheDocument());
+    expect(screen.queryByText("Checkout ready")).not.toBeInTheDocument();
+  });
+
+  it("resolves cursor and target text anchors in the native preview", async () => {
+    useEditorStore.setState({
+      playheadMs: 2000,
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 10_000,
+            trajectoryDir: "/tmp/demo.actions.json",
+            trajectoryKind: "actions",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 600,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "text-cursor",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 3000,
+            label: "Cursor",
+            text: "Cursor label",
+            pos: { x: 0.2, y: 0.2 },
+            sizePt: 24,
+            anchor: { kind: "cursor", offset: { x: 0.1, y: -0.1 } },
+          },
+          {
+            id: "text-target",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 3000,
+            label: "Target",
+            text: "Target label",
+            pos: { x: 0.1, y: 0.1 },
+            sizePt: 24,
+            anchor: { kind: "target", stepId: "step-1", placement: "right" },
+          },
+        ],
+      },
+    });
+
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+
+    await waitFor(() => expect(screen.getByText("Cursor label")).toBeInTheDocument());
+    expect(screen.getByText("Cursor label")).toHaveStyle({ left: "90%", top: "50%" });
+    expect(screen.getByText("Target label")).toHaveStyle({ left: "90%", top: "60%" });
+  });
+
+  it("falls target-anchored text back to its saved screen position without geometry", () => {
+    useEditorStore.setState({
+      playheadMs: 2000,
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "text-missing-target",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 3000,
+            label: "Target",
+            text: "Fallback label",
+            pos: { x: 0.22, y: 0.33 },
+            sizePt: 24,
+            anchor: { kind: "target", stepId: "missing-step", placement: "top" },
+          },
+        ],
+      },
+    });
+
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+
+    expect(screen.getByText("Fallback label")).toHaveStyle({ left: "22%", top: "33%" });
+  });
+
+  it("converts anchored text to a screen position when dragged directly", () => {
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 500,
+      width: 1000,
+      height: 500,
+      toJSON: () => ({}),
+    } as DOMRect);
+    useEditorStore.setState({
+      playheadMs: 1500,
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "safe-text",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 2000,
+            label: "Safe",
+            text: "Safe label",
+            pos: { x: 0.1, y: 0.1 },
+            sizePt: 24,
+            anchor: { kind: "safe-area", placement: "bottom" },
+          },
+        ],
+      },
+    });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    const text = screen.getByRole("button", { name: "Text overlay Safe label" });
+    fireEvent.pointerDown(text, { clientX: 500, clientY: 430 });
+    fireEvent.pointerMove(window, { clientX: 600, clientY: 380 });
+    fireEvent.pointerUp(window);
+
+    const clip = useEditorStore.getState().tracks.annotations[0];
+    expect(clip?.pos).toEqual({ x: 0.6, y: 0.76 });
+    expect(clip?.anchor).toEqual({ kind: "screen", pos: { x: 0.6, y: 0.76 } });
+    rectSpy.mockRestore();
+  });
+
+  it("selects, drags, resizes, and inline-edits preview text", async () => {
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 500,
+      width: 1000,
+      height: 500,
+      toJSON: () => ({}),
+    } as DOMRect);
+    useEditorStore.setState({
+      playheadMs: 1500,
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "text-1",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 2000,
+            label: "Title",
+            text: "Move me",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 24,
+            color: "#ffffff",
+            styleId: "title",
+          },
+        ],
+      },
+    });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    const text = screen.getByRole("button", { name: "Text overlay Move me" });
+    fireEvent.pointerDown(text, { clientX: 500, clientY: 250 });
+    fireEvent.pointerMove(window, { clientX: 600, clientY: 300 });
+    fireEvent.pointerUp(window);
+
+    expect(useEditorStore.getState().selectedClipId).toBe("text-1");
+    expect(useEditorStore.getState().selectedTab).toBe("effects");
+    expect(useEditorStore.getState().tracks.annotations[0]?.pos).toEqual({ x: 0.6, y: 0.6 });
+    expect(useEditorStore.getState().tracks.annotations[0]?.anchor).toEqual({
+      kind: "screen",
+      pos: { x: 0.6, y: 0.6 },
+    });
+    expect(useEditorStore.getState().canUndo).toBe(true);
+
+    const resize = screen.getByRole("button", { name: "Resize text overlay" });
+    fireEvent.pointerDown(resize, { clientX: 600, clientY: 300 });
+    fireEvent.pointerMove(window, { clientX: 650, clientY: 330 });
+    fireEvent.pointerUp(window);
+
+    expect(useEditorStore.getState().tracks.annotations[0]?.sizePt).toBeGreaterThan(24);
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Text overlay Move me" }));
+    const editor = screen.getByLabelText("Edit text overlay");
+    fireEvent.change(editor, { target: { value: "Edited copy" } });
+    fireEvent.blur(editor);
+
+    expect(useEditorStore.getState().tracks.annotations[0]?.text).toBe("Edited copy");
+    rectSpy.mockRestore();
   });
 
   it("clamps forward jump to the known video duration", async () => {

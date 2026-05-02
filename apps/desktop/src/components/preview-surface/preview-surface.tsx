@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { PreviewPlayer } from "@/features/post-production/preview/preview-player";
 import type { RecordingActions } from "@/ipc/actions";
 import { useProjectRecordings } from "@/ipc/projects";
+import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/trajectory";
 
 export type PreviewSurfaceProps =
   | {
@@ -14,6 +15,8 @@ export type PreviewSurfaceProps =
       width?: number;
       height?: number;
       actions?: RecordingActions | null;
+      stepTiming?: RecordingStepTimingSidecar | null;
+      captureRect?: CaptureRect | null;
     }
   | {
       mode: "recording";
@@ -29,6 +32,8 @@ export function PreviewSurface(props: PreviewSurfaceProps) {
         width={props.width}
         height={props.height}
         actions={props.actions}
+        stepTiming={props.stepTiming}
+        captureRect={props.captureRect}
       />
     );
   }

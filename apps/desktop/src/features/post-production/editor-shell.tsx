@@ -46,20 +46,15 @@ import { InspectorPanel } from "./inspector/inspector-panel";
 import { QueueWidget } from "./render-queue/queue-widget";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
 import { buildTimelineFromStory } from "./state/build-timeline-from-story";
+import { createClipId } from "./state/clip-id";
 import { useEditorStore } from "./state/store";
+import { styleDefaults } from "./state/text-style";
 import type { AnnotationClip, TimelineSlice, ZoomClip } from "./state/timeline-slice";
 import { Timeline } from "./timeline/timeline";
 
 export interface EditorShellProps {
   storyId: string;
   videoSrc?: string;
-}
-
-function createClipId(prefix: string): string {
-  const random =
-    globalThis.crypto?.randomUUID?.() ??
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  return `${prefix}-${random}`;
 }
 
 function maxTrackEndMs(tracks: TimelineSlice["tracks"]): number {
@@ -330,6 +325,21 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const stepTimingQuery = useRecordingStepTiming(latestRecording?.path);
   const hasCursorData = Boolean(actionsQuery.data || trajectoryQuery.data);
 
+  useEffect(() => {
+    useEditorStore.setState((state) => ({
+      _undoExtras: {
+        ...(state._undoExtras ?? {
+          graphSnapshot: {},
+          textOverlays: {},
+          background: { kind: "transparent" },
+        }),
+        actions: actionsQuery.data ?? null,
+        stepTiming: stepTimingQuery.data ?? null,
+        captureRect: actionsQuery.data?.capture_rect ?? trajectoryQuery.data?.capture_rect ?? null,
+      },
+    }));
+  }, [actionsQuery.data, stepTimingQuery.data, trajectoryQuery.data]);
+
   // One-shot auto-populate: only run while generated tracks are empty so we
   // don't clobber persisted user edits. Idempotent on identical inputs.
   const setTracks = useEditorStore((s) => s.setTracks);
@@ -525,16 +535,14 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
 
   const addTextAtPlayhead = useCallback(() => {
     const playheadMs = useEditorStore.getState().playheadMs;
+    const defaults = styleDefaults("title");
     const clip: AnnotationClip = {
       id: createClipId("text"),
       trackId: "annotations",
       startMs: playheadMs,
-      durationMs: 1_000,
-      label: "Title",
-      text: "Title",
-      pos: { x: 0.5, y: 0.9 },
-      sizePt: 24,
-      color: "#ffffff",
+      durationMs: 2_200,
+      label: defaults.text,
+      ...defaults,
     };
     pushAction({ kind: "add-clip", trackId: "annotations", clip });
     setSelectedClipId(clip.id);
@@ -691,6 +699,8 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 storyId={storyId}
                 videoSrc={resolvedVideoSrc}
                 actions={actionsQuery.data ?? null}
+                stepTiming={stepTimingQuery.data ?? null}
+                captureRect={actionsQuery.data?.capture_rect ?? trajectoryQuery.data?.capture_rect ?? null}
               />
               {(showEmptyOverlay || showErrorOverlay) && (
                 <div

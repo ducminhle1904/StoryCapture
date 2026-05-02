@@ -12,13 +12,24 @@
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Film } from "lucide-react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import previewBackdrop from "@/assets/gradients/forest-emerald.png";
 import type { RecordingActions } from "@/ipc/actions";
+import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/trajectory";
 import { frontendLog } from "@/lib/log";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
-import type { CursorClip, CursorSkin, ZoomClip } from "../state/timeline-slice";
+import { activeCursorClip, isActionsCursorClip, resolveTextAnchorPosition } from "../state/text-anchor";
+import { resolvedTextStyle, type TextStylePreset, textFontCss } from "../state/text-style";
+import type { AnnotationClip, CursorClip, CursorSkin, ZoomClip } from "../state/timeline-slice";
 import { zoomTiming } from "../state/zoom-motion";
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
@@ -43,8 +54,6 @@ const cursorSkinAssets = import.meta.glob("../../../../../../assets/cursor-skins
   query: "?url",
   import: "default",
 }) as Record<string, string>;
-const ACTIONS_SIDECAR_SUFFIX = ".actions.json";
-
 interface Rgb {
   r: number;
   g: number;
@@ -78,6 +87,8 @@ export interface PreviewPlayerProps {
   height?: number;
   outputMode?: PreviewOutputMode;
   actions?: RecordingActions | null;
+  stepTiming?: RecordingStepTimingSidecar | null;
+  captureRect?: CaptureRect | null;
 }
 
 function buildPlan(width: number, height: number): PreviewRenderPlan {
@@ -287,14 +298,8 @@ function cursorSkinSrc(skin: CursorSkin): string | undefined {
   return cursorSkinAssets[`../../../../../../assets/cursor-skins/${skin}.png`];
 }
 
-function activeCursorClip(clips: readonly CursorClip[], playheadMs: number): CursorClip | null {
-  let active: CursorClip | null = null;
-  for (const clip of clips) {
-    const endMs = clip.startMs + clip.durationMs;
-    if (playheadMs < clip.startMs || playheadMs >= endMs) continue;
-    if (!active || clip.startMs >= active.startMs) active = clip;
-  }
-  return active;
+function activeTextClips(clips: readonly AnnotationClip[], playheadMs: number): AnnotationClip[] {
+  return clips.filter((clip) => playheadMs >= clip.startMs && playheadMs < clip.startMs + clip.durationMs);
 }
 
 interface ActivePreviewZoom {
@@ -340,8 +345,9 @@ export function samplePreviewZoom(
   };
 }
 
-function isActionsCursorClip(clip: CursorClip): boolean {
-  return clip.trajectoryKind === "actions" || clip.trajectoryDir.endsWith(ACTIONS_SIDECAR_SUFFIX);
+function percent(value: number): string {
+  if (!Number.isFinite(value)) return "50%";
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 10_000) / 100}%`;
 }
 
 type CursorStyleKey = "height" | "left" | "opacity" | "top" | "transform" | "width";
@@ -350,6 +356,51 @@ function setStyleValue(style: CSSStyleDeclaration, key: CursorStyleKey, value: s
   if (style[key] !== value) {
     style[key] = value;
   }
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
+
+function textMotionStyle(
+  animation: TextStylePreset["animation"],
+  clip: AnnotationClip,
+  playheadMs: number,
+): CSSProperties {
+  const duration = Math.max(1, animation.durationMs);
+  const inProgress = clamp01((playheadMs - clip.startMs) / duration);
+  const outProgress = clamp01((clip.startMs + clip.durationMs - playheadMs) / duration);
+  let opacity = 1;
+  let yPx = 0;
+  let scale = 1;
+
+  if (animation.in === "fade") opacity = Math.min(opacity, inProgress);
+  if (animation.in === "slide-up") {
+    opacity = Math.min(opacity, inProgress);
+    yPx += (1 - inProgress) * 12;
+  }
+  if (animation.in === "scale-in") {
+    opacity = Math.min(opacity, inProgress);
+    scale = 0.94 + inProgress * 0.06;
+  }
+  if (animation.out === "fade") opacity = Math.min(opacity, outProgress);
+
+  return {
+    opacity,
+    transform: `translate(-50%, calc(-50% + ${yPx}px)) scale(${scale})`,
+  };
+}
+
+function updateAnnotationClipDirect(clipId: string, patch: Partial<AnnotationClip>) {
+  useEditorStore.setState((state) => ({
+    tracks: {
+      ...state.tracks,
+      annotations: state.tracks.annotations.map((clip) =>
+        clip.id === clipId ? { ...clip, ...patch } : clip,
+      ),
+    },
+  }));
 }
 
 function stageBackgroundStyle(background: EditorBackgroundKind): CSSProperties {
@@ -386,6 +437,8 @@ export function PreviewPlayer({
   height = 1080,
   outputMode = DEFAULT_PREVIEW_OUTPUT_MODE,
   actions = null,
+  stepTiming = null,
+  captureRect = null,
 }: PreviewPlayerProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const ambientLayerRef = useRef<HTMLDivElement | null>(null);
@@ -406,6 +459,8 @@ export function PreviewPlayer({
   const [playing, setPlaying] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
   const [ambientSamplingReady, setAmbientSamplingReady] = useState(false);
+  const [editingTextClipId, setEditingTextClipId] = useState<string | null>(null);
+  const [textDraft, setTextDraft] = useState("");
   const [mediaAspect, setMediaAspect] = useState(() => safeAspect(width, height));
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const playingRef = useRef(false);
@@ -414,13 +469,35 @@ export function PreviewPlayer({
   const actionsRef = useRef<RecordingActions | null>(actions);
 
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
+  const pushAction = useEditorStore((s) => s.pushAction);
+  const selectedClipId = useEditorStore((s) => s.selectedClipId);
+  const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
+  const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
   const cursorClips = useEditorStore((s) => s.tracks.cursor);
   const zoomClips = useEditorStore((s) => s.tracks.zoom);
+  const annotationClips = useEditorStore((s) => s.tracks.annotations);
+  const playheadMs = useEditorStore((s) => s.playheadMs);
   const useCompositedCanvas = outputMode === "composited-canvas";
   const displayReady = !useCompositedCanvas || engineReady;
   const renderPlan = useMemo(() => buildPlan(width, height), [width, height]);
   const editorBackground = useEditorStore(readEditorBackground);
   const stageStyle = useMemo(() => stageBackgroundStyle(editorBackground), [editorBackground]);
+  const sortedTextClips = useMemo(
+    () =>
+      annotationClips
+        .filter((clip) => clip.text.trim())
+        .slice()
+        .sort((a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id)),
+    [annotationClips],
+  );
+  const activeTextOverlays = useMemo(
+    () => activeTextClips(sortedTextClips, playheadMs),
+    [playheadMs, sortedTextClips],
+  );
+  const editingTextClip = useMemo(
+    () => annotationClips.find((clip) => clip.id === editingTextClipId) ?? null,
+    [annotationClips, editingTextClipId],
+  );
   const frameStyle = useMemo<CSSProperties>(() => {
     const maxWidth = stageSize.width * PREVIEW_FRAME_SCALE;
     const maxHeight = stageSize.height * PREVIEW_FRAME_SCALE;
@@ -950,6 +1027,134 @@ export function PreviewPlayer({
     setMediaAspect(safeAspect(video.videoWidth, video.videoHeight));
   }, []);
 
+  const selectTextClip = useCallback(
+    (clipId: string) => {
+      setSelectedClipId(clipId);
+      setSelectedTab("effects");
+    },
+    [setSelectedClipId, setSelectedTab],
+  );
+
+  const pushAnnotationParamChange = useCallback(
+    (clipId: string, field: string, prev: unknown, next: unknown) => {
+      if (Object.is(prev, next)) return;
+      const index = useEditorStore
+        .getState()
+        .tracks.annotations.findIndex((item) => item.id === clipId);
+      if (index < 0) return;
+      pushAction({
+        kind: "set-effect-param",
+        nodePath: `tracks.annotations[${index}]`,
+        field,
+        prev,
+        next,
+      });
+    },
+    [pushAction],
+  );
+
+  const commitTextDraft = useCallback(() => {
+    const clip = editingTextClip;
+    if (!clip) {
+      setEditingTextClipId(null);
+      return;
+    }
+    const next = textDraft.trim() ? textDraft : clip.text;
+    setEditingTextClipId(null);
+    pushAnnotationParamChange(clip.id, "text", clip.text, next);
+  }, [editingTextClip, pushAnnotationParamChange, textDraft]);
+
+  const beginTextEdit = useCallback(
+    (clip: AnnotationClip) => {
+      selectTextClip(clip.id);
+      setTextDraft(clip.text);
+      setEditingTextClipId(clip.id);
+    },
+    [selectTextClip],
+  );
+
+  const onTextPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>, clip: AnnotationClip) => {
+      if (editingTextClipId === clip.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      selectTextClip(clip.id);
+      const frame = e.currentTarget.parentElement?.getBoundingClientRect();
+      if (!frame || frame.width <= 0 || frame.height <= 0) return;
+      const origin = resolveTextAnchorPosition(
+        clip,
+        playheadMs,
+        actions,
+        cursorClips,
+        stepTiming,
+        captureRect,
+      );
+      const startX = e.clientX;
+      const startY = e.clientY;
+
+      const onMove = (ev: PointerEvent) => {
+        const next = {
+          x: clamp01(origin.x + (ev.clientX - startX) / frame.width),
+          y: clamp01(origin.y + (ev.clientY - startY) / frame.height),
+        };
+        updateAnnotationClipDirect(clip.id, { pos: next, anchor: { kind: "screen", pos: next } });
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        const finalClip = useEditorStore
+          .getState()
+          .tracks.annotations.find((item) => item.id === clip.id);
+        if (!finalClip) return;
+        if (finalClip.pos.x === origin.x && finalClip.pos.y === origin.y) return;
+        pushAnnotationParamChange(clip.id, "pos", clip.pos, finalClip.pos);
+        pushAnnotationParamChange(clip.id, "anchor", clip.anchor, finalClip.anchor);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [
+      actions,
+      captureRect,
+      cursorClips,
+      editingTextClipId,
+      playheadMs,
+      pushAnnotationParamChange,
+      selectTextClip,
+      stepTiming,
+    ],
+  );
+
+  const onTextResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>, clip: AnnotationClip) => {
+      e.preventDefault();
+      e.stopPropagation();
+      selectTextClip(clip.id);
+      const origin = clip.sizePt;
+      const startX = e.clientX;
+      const startY = e.clientY;
+
+      const onMove = (ev: PointerEvent) => {
+        const delta = (ev.clientX - startX + ev.clientY - startY) * 0.16;
+        updateAnnotationClipDirect(clip.id, {
+          sizePt: Math.max(12, Math.min(72, Math.round(origin + delta))),
+        });
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        const finalClip = useEditorStore
+          .getState()
+          .tracks.annotations.find((item) => item.id === clip.id);
+        if (!finalClip || finalClip.sizePt === origin) return;
+        pushAnnotationParamChange(clip.id, "sizePt", origin, finalClip.sizePt);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [pushAnnotationParamChange, selectTextClip],
+  );
+
   return (
     <div
       className="flex h-full w-full flex-col bg-[var(--sc-surface-2)]"
@@ -1063,6 +1268,99 @@ export function PreviewPlayer({
                 />
               </div>
             </div>
+            {activeTextOverlays.length > 0 ? (
+              <div
+                className="pointer-events-none absolute inset-0 overflow-hidden"
+                data-testid="text-overlay"
+              >
+                {activeTextOverlays.map((clip) => {
+                  const style = resolvedTextStyle(clip);
+                  const selected = selectedClipId === clip.id;
+                  const editing = editingTextClipId === clip.id;
+                  const position = resolveTextAnchorPosition(
+                    clip,
+                    playheadMs,
+                    actions,
+                    cursorClips,
+                    stepTiming,
+                    captureRect,
+                  );
+                  const font = textFontCss(style.font);
+                  return (
+                    <div
+                      key={clip.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Text overlay ${clip.text}`}
+                      data-text-clip-id={clip.id}
+                      className={`pointer-events-auto absolute max-w-[78%] whitespace-pre-wrap leading-[1.08] drop-shadow-[0_3px_12px_rgba(0,0,0,0.62)] transition-[box-shadow,outline-color] ${
+                        selected
+                          ? "rounded-md outline outline-2 outline-[var(--sc-focus-ring)]"
+                          : "outline outline-1 outline-transparent hover:outline-white/32"
+                      }`}
+                      style={{
+                        left: percent(position.x),
+                        top: percent(position.y),
+                        ...textMotionStyle(style.animation, clip, playheadMs),
+                        color: style.color,
+                        fontFamily: font.fontFamily,
+                        fontSize: `clamp(12px, ${style.sizePt}px, 72px)`,
+                        fontWeight: font.fontWeight,
+                        textAlign: style.align,
+                        maxWidth: `${style.maxWidthPct}%`,
+                        padding: style.boxStyle ? `${style.boxStyle.paddingPx}px` : undefined,
+                        borderRadius: style.boxStyle ? `${style.boxStyle.radiusPx}px` : undefined,
+                        background: style.boxStyle?.bgColor,
+                        border: style.boxStyle?.borderColor
+                          ? `1px solid ${style.boxStyle.borderColor}`
+                          : undefined,
+                      }}
+                      onPointerDown={(e) => onTextPointerDown(e, clip)}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        beginTextEdit(clip);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") beginTextEdit(clip);
+                      }}
+                    >
+                      {editing ? (
+                        <textarea
+                          autoFocus
+                          aria-label="Edit text overlay"
+                          value={textDraft}
+                          className="min-h-[2.4em] w-[min(420px,62vw)] resize-none rounded-md border border-white/18 bg-zinc-950/82 px-2 py-1 text-inherit outline-none"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onChange={(e) => setTextDraft(e.currentTarget.value)}
+                          onBlur={commitTextDraft}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              setEditingTextClipId(null);
+                            }
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              commitTextDraft();
+                            }
+                          }}
+                        />
+                      ) : (
+                        clip.text
+                      )}
+                      {selected && !editing ? (
+                        <button
+                          type="button"
+                          aria-label="Resize text overlay"
+                          className="absolute -bottom-2 -right-2 h-4 w-4 rounded-full border border-white/70 bg-zinc-950/88 shadow-[0_4px_12px_rgba(0,0,0,0.34)]"
+                          onPointerDown={(e) => onTextResizePointerDown(e, clip)}
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
           <div className="absolute bottom-3 left-3 z-20 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/88 px-2.5 py-2 shadow-[var(--sc-sh-1)] backdrop-blur">
             <TransportControls playing={playing} onTogglePlay={togglePlay} />

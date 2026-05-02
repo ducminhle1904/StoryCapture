@@ -41,9 +41,7 @@ export type EditorStore = TimelineSlice &
   ExportSlice &
   QueueSlice &
   UndoSlice & {
-    _undoExtras?: UndoExtras & {
-      background: EditorBackgroundKind;
-    };
+    _undoExtras?: UndoExtras & { background: EditorBackgroundKind };
   };
 
 export const DEFAULT_BACKGROUND: EditorBackgroundKind = { kind: "transparent" };

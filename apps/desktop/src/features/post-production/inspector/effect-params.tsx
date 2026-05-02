@@ -10,7 +10,17 @@ import { memo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SelectField } from "@/components/ui/select-field";
 import { CURSOR_MOTION_LABELS } from "../state/cursor-motion";
+import { createClipId } from "../state/clip-id";
 import { useEditorStore } from "../state/store";
+import {
+  avoidAnchorPosition,
+  currentStepForPlayhead,
+  resolveTextAnchorPosition,
+  safeAreaPosition,
+  targetAnchorHasGeometry,
+  targetAnchorPosition,
+} from "../state/text-anchor";
+import { TEXT_STYLE_IDS, TEXT_STYLE_PRESETS, styleDefaults } from "../state/text-style";
 import type {
   AnnotationClip,
   Clip,
@@ -19,6 +29,10 @@ import type {
   CursorSkin,
   SoundClip,
   SoundKind,
+  TextAlign,
+  TextAnchor,
+  TextAnimationKind,
+  TextStyleId,
   TimelineSlice,
   TrackId,
   Vec2,
@@ -42,6 +56,10 @@ const RANGE_CLASS = "w-full accent-[var(--color-accent,#ff5b76)]";
 const SECTION_CLASS =
   "rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3";
 const FIELD_ROW_CLASS = "flex flex-col gap-1.5";
+const SECONDARY_BUTTON_CLASS =
+  "rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-2 text-xs text-[var(--color-fg)] transition hover:bg-[var(--color-surface-100)] disabled:opacity-45";
+const TINY_BUTTON_CLASS =
+  "rounded-md border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]";
 
 const PRESET_OPTIONS: ZoomPreset[] = ["DYNAMIC", "CALM", "SUBTLE"];
 const TARGET_KIND_OPTIONS: ZoomTarget["kind"][] = ["cursor", "element", "fixed-region"];
@@ -54,6 +72,21 @@ const CURSOR_SKIN_OPTIONS: CursorSkin[] = [
 ];
 const SOUND_KIND_OPTIONS: SoundKind[] = ["bgm", "sfx", "voiceover"];
 const TRANSITION_KIND_OPTIONS = XFADE_KINDS;
+const TEXT_ALIGN_OPTIONS: TextAlign[] = ["left", "center", "right"];
+const TEXT_ANIM_IN_OPTIONS: TextAnimationKind[] = ["none", "fade", "slide-up", "scale-in"];
+const TEXT_ANIM_OUT_OPTIONS: Array<"none" | "fade"> = ["none", "fade"];
+const TEXT_ANCHOR_KIND_OPTIONS: TextAnchor["kind"][] = ["screen", "safe-area", "cursor", "target"];
+const TEXT_TARGET_PLACEMENT_OPTIONS: Array<Extract<TextAnchor, { kind: "target" }>["placement"]> = [
+  "top",
+  "right",
+  "bottom",
+  "left",
+];
+const TEXT_SAFE_AREA_OPTIONS: Array<Extract<TextAnchor, { kind: "safe-area" }>["placement"]> = [
+  "top",
+  "bottom",
+  "center",
+];
 
 const targetKindSelectOptions = TARGET_KIND_OPTIONS.map((kind) => ({
   value: kind,
@@ -69,6 +102,25 @@ const soundKindSelectOptions = SOUND_KIND_OPTIONS.map((kind) => ({ value: kind, 
 const transitionKindSelectOptions = TRANSITION_KIND_OPTIONS.map((kind) => ({
   value: kind,
   label: kind,
+}));
+const textStyleSelectOptions = TEXT_STYLE_IDS.map((id) => ({
+  value: id,
+  label: TEXT_STYLE_PRESETS[id].label,
+}));
+const textAlignSelectOptions = TEXT_ALIGN_OPTIONS.map((align) => ({ value: align, label: align }));
+const textAnimInSelectOptions = TEXT_ANIM_IN_OPTIONS.map((anim) => ({ value: anim, label: anim }));
+const textAnimOutSelectOptions = TEXT_ANIM_OUT_OPTIONS.map((anim) => ({ value: anim, label: anim }));
+const textAnchorKindSelectOptions = TEXT_ANCHOR_KIND_OPTIONS.map((kind) => ({
+  value: kind,
+  label: kind,
+}));
+const textTargetPlacementSelectOptions = TEXT_TARGET_PLACEMENT_OPTIONS.map((placement) => ({
+  value: placement,
+  label: placement,
+}));
+const textSafeAreaSelectOptions = TEXT_SAFE_AREA_OPTIONS.map((placement) => ({
+  value: placement,
+  label: placement,
 }));
 
 function labelForTargetKind(kind: ZoomTarget["kind"]): string {
@@ -387,86 +439,391 @@ interface AnnotationParamsProps {
 
 function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps) {
   const posPath = `${nodePath}.pos`;
+  const playheadMs = useEditorStore((s) => s.playheadMs);
+  const cursorClips = useEditorStore((s) => s.tracks.cursor);
+  const actions = useEditorStore((s) => s._undoExtras?.actions ?? null);
+  const stepTiming = useEditorStore((s) => s._undoExtras?.stepTiming ?? null);
+  const captureRect = useEditorStore((s) => s._undoExtras?.captureRect ?? null);
   const color = clip.color ?? "#ffffff";
+  const preset = TEXT_STYLE_PRESETS[clip.styleId ?? "callout"];
+  const boxStyle = clip.boxStyle ?? preset.boxStyle;
+  const animation = clip.animation ?? preset.animation;
+  const anchor = clip.anchor ?? { kind: "screen", pos: clip.pos };
+  const currentStep = currentStepForPlayhead(stepTiming, playheadMs);
+  const targetWarning =
+    anchor.kind === "target" && !targetAnchorHasGeometry(anchor, actions, stepTiming, captureRect);
 
   const onPosChange = (field: keyof Vec2, value: string) => {
     const next = parseFiniteNumber(value, clip.pos[field]);
     if (next !== clip.pos[field]) onSetParam(posPath, field, clip.pos[field], next);
   };
 
+  const setScreenPosition = (next: Vec2) => {
+    onSetParam(nodePath, "pos", clip.pos, next);
+    onSetParam(nodePath, "anchor", clip.anchor, { kind: "screen", pos: next });
+  };
+
+  const fitToCurrentStep = () => {
+    if (!currentStep) return;
+    onSetParam(nodePath, "startMs", clip.startMs, currentStep.startMs);
+    onSetParam(nodePath, "durationMs", clip.durationMs, Math.max(100, currentStep.durationMs));
+  };
+
+  const attachToCurrentTarget = () => {
+    if (!currentStep?.stepId) return;
+    const nextAnchor: TextAnchor = { kind: "target", stepId: currentStep.stepId, placement: "top" };
+    const nextPos = targetAnchorPosition(nextAnchor, actions, stepTiming, captureRect) ?? clip.pos;
+    onSetParam(nodePath, "anchor", clip.anchor, nextAnchor);
+    onSetParam(nodePath, "pos", clip.pos, nextPos);
+  };
+
+  const avoidCurrentTargetOrCursor = () => {
+    const targetPoint =
+      currentStep?.stepId
+        ? targetAnchorPosition(
+            { kind: "target", stepId: currentStep.stepId, placement: "top" },
+            actions,
+            stepTiming,
+            captureRect,
+          )
+        : null;
+    const cursorPoint =
+      targetPoint ??
+      resolveTextAnchorPosition(
+        { ...clip, anchor: { kind: "cursor", offset: { x: 0, y: 0 } } },
+        playheadMs,
+        actions,
+        cursorClips,
+        stepTiming,
+        captureRect,
+      );
+    setScreenPosition(avoidAnchorPosition(cursorPoint, clip.pos));
+  };
+
   return (
-    <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
-      <SectionTitle>Text overlay</SectionTitle>
-      <label className={FIELD_ROW_CLASS}>
-        <FieldLabel>Content</FieldLabel>
-        <textarea
-          aria-label="Annotation text"
-          value={clip.text}
-          rows={3}
-          onChange={(e) => onSetParam(nodePath, "text", clip.text, e.target.value)}
-          className={`${FIELD_CLASS} resize-y`}
-        />
-      </label>
-      <div className="grid grid-cols-2 gap-2">
+    <div className="flex flex-col gap-3">
+      <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
+        <SectionTitle>Text preset</SectionTitle>
         <label className={FIELD_ROW_CLASS}>
-          <FieldLabel>Position X</FieldLabel>
-          <input
-            type="number"
-            aria-label="Annotation position x"
-            value={clip.pos.x}
-            step="0.01"
-            min="0"
-            max="1"
-            onChange={(e) => onPosChange("x", e.target.value)}
-            className={FIELD_CLASS}
+          <FieldLabel>Style</FieldLabel>
+          <SelectField
+            aria-label="Text style preset"
+            value={clip.styleId ?? "callout"}
+            onValueChange={(value) => {
+              const nextStyle = value as TextStyleId;
+              const defaults = styleDefaults(nextStyle);
+              onSetParam(nodePath, "styleId", clip.styleId, nextStyle);
+              onSetParam(nodePath, "sizePt", clip.sizePt, defaults.sizePt);
+              onSetParam(nodePath, "color", clip.color, defaults.color);
+              onSetParam(nodePath, "align", clip.align, defaults.align);
+              onSetParam(nodePath, "boxStyle", clip.boxStyle, defaults.boxStyle);
+              onSetParam(nodePath, "animation", clip.animation, defaults.animation);
+            }}
+            options={textStyleSelectOptions}
           />
         </label>
         <label className={FIELD_ROW_CLASS}>
-          <FieldLabel>Position Y</FieldLabel>
-          <input
-            type="number"
-            aria-label="Annotation position y"
-            value={clip.pos.y}
-            step="0.01"
-            min="0"
-            max="1"
-            onChange={(e) => onPosChange("y", e.target.value)}
-            className={FIELD_CLASS}
+          <FieldLabel>Content</FieldLabel>
+          <textarea
+            aria-label="Annotation text"
+            value={clip.text}
+            rows={3}
+            onChange={(e) => onSetParam(nodePath, "text", clip.text, e.target.value)}
+            className={`${FIELD_CLASS} resize-y`}
           />
         </label>
-      </div>
-      <label className={FIELD_ROW_CLASS}>
-        <span className="flex items-center justify-between gap-2">
-          <FieldLabel>Size</FieldLabel>
-          <ValuePill>{clip.sizePt} pt</ValuePill>
-        </span>
-        <input
-          type="range"
-          aria-label="Annotation size"
-          value={clip.sizePt}
-          min="12"
-          max="72"
-          step="1"
-          onChange={(e) => {
-            const next = parseFiniteNumber(e.target.value, clip.sizePt);
-            if (next !== clip.sizePt) {
-              onSetParam(nodePath, "sizePt", clip.sizePt, next);
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "Top", pos: { x: 0.5, y: 0.16 } },
+            { label: "Center", pos: { x: 0.5, y: 0.5 } },
+            { label: "Bottom", pos: { x: 0.5, y: 0.84 } },
+          ].map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-fg)] transition hover:bg-[var(--color-surface-100)] active:scale-[0.98]"
+              onClick={() => {
+                setScreenPosition(item.pos);
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
+        <SectionTitle>Appearance</SectionTitle>
+        <label className={FIELD_ROW_CLASS}>
+          <span className="flex items-center justify-between gap-2">
+            <FieldLabel>Size</FieldLabel>
+            <ValuePill>{clip.sizePt} pt</ValuePill>
+          </span>
+          <input
+            type="range"
+            aria-label="Annotation size"
+            value={clip.sizePt}
+            min="12"
+            max="72"
+            step="1"
+            onChange={(e) => {
+              const next = parseFiniteNumber(e.target.value, clip.sizePt);
+              if (next !== clip.sizePt) {
+                onSetParam(nodePath, "sizePt", clip.sizePt, next);
+              }
+            }}
+            className={RANGE_CLASS}
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className={FIELD_ROW_CLASS}>
+            <FieldLabel>Align</FieldLabel>
+            <SelectField
+              aria-label="Text alignment"
+              value={clip.align ?? preset.align}
+              onValueChange={(value) => onSetParam(nodePath, "align", clip.align, value)}
+              options={textAlignSelectOptions}
+            />
+          </label>
+          <label className={FIELD_ROW_CLASS}>
+            <FieldLabel>Color</FieldLabel>
+            <input
+              type="color"
+              aria-label="Annotation color"
+              value={color}
+              onChange={(e) => onSetParam(nodePath, "color", clip.color, e.target.value)}
+              className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
+            />
+          </label>
+        </div>
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+          <span>
+            <span className="block text-xs font-medium text-[var(--color-fg)]">Background</span>
+            <span className="text-[11px] text-[var(--color-fg-muted)]">
+              Add a readable pill behind the text.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            aria-label="Text background"
+            checked={Boolean(boxStyle)}
+            onChange={(e) =>
+              onSetParam(
+                nodePath,
+                "boxStyle",
+                clip.boxStyle,
+                e.currentTarget.checked
+                  ? (preset.boxStyle ?? TEXT_STYLE_PRESETS.callout.boxStyle)
+                  : undefined,
+              )
             }
-          }}
-          className={RANGE_CLASS}
-        />
-      </label>
-      <label className={FIELD_ROW_CLASS}>
-        <FieldLabel>Color</FieldLabel>
-        <input
-          type="color"
-          aria-label="Annotation color"
-          value={color}
-          onChange={(e) => onSetParam(nodePath, "color", clip.color, e.target.value)}
-          className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
-        />
-      </label>
-    </fieldset>
+          />
+        </label>
+      </fieldset>
+
+      <details className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3">
+        <summary className="cursor-pointer text-xs font-semibold text-[var(--color-fg)]">
+          Advanced position and motion
+        </summary>
+        <div className="mt-3 flex flex-col gap-3">
+          <label className={FIELD_ROW_CLASS}>
+            <FieldLabel>Anchor</FieldLabel>
+            <SelectField
+              aria-label="Text anchor"
+              value={anchor.kind}
+              onValueChange={(value) => {
+                const kind = value as TextAnchor["kind"];
+                const next: TextAnchor =
+                  kind === "safe-area"
+                    ? { kind: "safe-area", placement: "bottom" }
+                    : kind === "cursor"
+                      ? { kind: "cursor", offset: { x: 0.04, y: -0.06 } }
+                      : kind === "target"
+                        ? { kind: "target", stepId: currentStep?.stepId ?? "", placement: "top" }
+                        : { kind: "screen", pos: clip.pos };
+                onSetParam(nodePath, "anchor", clip.anchor, next);
+                if (next.kind === "safe-area") {
+                  onSetParam(nodePath, "pos", clip.pos, safeAreaPosition(next.placement));
+                } else if (next.kind === "target") {
+                  const nextPos = targetAnchorPosition(next, actions, stepTiming, captureRect);
+                  if (nextPos) onSetParam(nodePath, "pos", clip.pos, nextPos);
+                }
+              }}
+              options={textAnchorKindSelectOptions}
+            />
+          </label>
+          {anchor.kind === "target" ? (
+            <div
+              className={`rounded-lg border px-3 py-2 text-xs ${
+                targetWarning
+                  ? "border-amber-400/28 bg-amber-400/8 text-amber-900 dark:text-amber-100"
+                  : "border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-[var(--color-fg-muted)]"
+              }`}
+            >
+              {targetWarning
+                ? "Target geometry is unavailable. Preview falls back to the saved screen position."
+                : `Attached to ${anchor.stepId} target ${anchor.placement}.`}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                className={SECONDARY_BUTTON_CLASS}
+                onClick={fitToCurrentStep}
+                disabled={!currentStep}
+              >
+              Fit step
+            </button>
+              <button
+                type="button"
+                className={SECONDARY_BUTTON_CLASS}
+                onClick={attachToCurrentTarget}
+                disabled={!currentStep?.stepId}
+              >
+              Attach target
+            </button>
+              <button
+                type="button"
+                className={SECONDARY_BUTTON_CLASS}
+                onClick={avoidCurrentTargetOrCursor}
+              >
+                Avoid
+            </button>
+          </div>
+          {anchor.kind === "target" ? (
+            <label className={FIELD_ROW_CLASS}>
+              <FieldLabel>Target placement</FieldLabel>
+              <SelectField
+                aria-label="Text target placement"
+                value={anchor.placement}
+                onValueChange={(value) => {
+                  const nextAnchor: TextAnchor = {
+                    ...anchor,
+                    placement: value as Extract<TextAnchor, { kind: "target" }>["placement"],
+                  };
+                  onSetParam(nodePath, "anchor", clip.anchor, nextAnchor);
+                  const nextPos = targetAnchorPosition(nextAnchor, actions, stepTiming, captureRect);
+                  if (nextPos) onSetParam(nodePath, "pos", clip.pos, nextPos);
+                }}
+                options={textTargetPlacementSelectOptions}
+              />
+            </label>
+          ) : null}
+          {anchor.kind === "safe-area" ? (
+            <label className={FIELD_ROW_CLASS}>
+              <FieldLabel>Safe placement</FieldLabel>
+              <SelectField
+                aria-label="Text safe-area placement"
+                value={anchor.placement}
+                onValueChange={(value) => {
+                  const placement = value as Extract<TextAnchor, { kind: "safe-area" }>["placement"];
+                  const nextAnchor: TextAnchor = { kind: "safe-area", placement };
+                  onSetParam(nodePath, "anchor", clip.anchor, nextAnchor);
+                  onSetParam(nodePath, "pos", clip.pos, safeAreaPosition(placement));
+                }}
+                options={textSafeAreaSelectOptions}
+              />
+            </label>
+          ) : null}
+          {anchor.kind === "cursor" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <label className={FIELD_ROW_CLASS}>
+                <FieldLabel>Cursor offset X</FieldLabel>
+                <input
+                  type="number"
+                  aria-label="Text cursor offset x"
+                  value={anchor.offset.x}
+                  step="0.01"
+                  onChange={(e) => {
+                    const next = parseFiniteNumber(e.target.value, anchor.offset.x);
+                    onSetParam(nodePath, "anchor", clip.anchor, {
+                      kind: "cursor",
+                      offset: { ...anchor.offset, x: next },
+                    });
+                  }}
+                  className={FIELD_CLASS}
+                />
+              </label>
+              <label className={FIELD_ROW_CLASS}>
+                <FieldLabel>Cursor offset Y</FieldLabel>
+                <input
+                  type="number"
+                  aria-label="Text cursor offset y"
+                  value={anchor.offset.y}
+                  step="0.01"
+                  onChange={(e) => {
+                    const next = parseFiniteNumber(e.target.value, anchor.offset.y);
+                    onSetParam(nodePath, "anchor", clip.anchor, {
+                      kind: "cursor",
+                      offset: { ...anchor.offset, y: next },
+                    });
+                  }}
+                  className={FIELD_CLASS}
+                />
+              </label>
+            </div>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
+            <label className={FIELD_ROW_CLASS}>
+              <FieldLabel>Position X</FieldLabel>
+              <input
+                type="number"
+                aria-label="Annotation position x"
+                value={clip.pos.x}
+                step="0.01"
+                min="0"
+                max="1"
+                onChange={(e) => onPosChange("x", e.target.value)}
+                className={FIELD_CLASS}
+              />
+            </label>
+            <label className={FIELD_ROW_CLASS}>
+              <FieldLabel>Position Y</FieldLabel>
+              <input
+                type="number"
+                aria-label="Annotation position y"
+                value={clip.pos.y}
+                step="0.01"
+                min="0"
+                max="1"
+                onChange={(e) => onPosChange("y", e.target.value)}
+                className={FIELD_CLASS}
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className={FIELD_ROW_CLASS}>
+              <FieldLabel>In</FieldLabel>
+              <SelectField
+                aria-label="Text animation in"
+                value={animation.in}
+                onValueChange={(value) =>
+                  onSetParam(nodePath, "animation", clip.animation, {
+                    ...animation,
+                    in: value as TextAnimationKind,
+                  })
+                }
+                options={textAnimInSelectOptions}
+              />
+            </label>
+            <label className={FIELD_ROW_CLASS}>
+              <FieldLabel>Out</FieldLabel>
+              <SelectField
+                aria-label="Text animation out"
+                value={animation.out}
+                onValueChange={(value) =>
+                  onSetParam(nodePath, "animation", clip.animation, {
+                    ...animation,
+                    out: value as "none" | "fade",
+                  })
+                }
+                options={textAnimOutSelectOptions}
+              />
+            </label>
+          </div>
+        </div>
+      </details>
+    </div>
   );
 }
 
@@ -631,6 +988,166 @@ function VideoParams({
   );
 }
 
+function cloneAnnotationStyle(clip: AnnotationClip): Partial<AnnotationClip> {
+  return {
+    styleId: clip.styleId,
+    sizePt: clip.sizePt,
+    color: clip.color,
+    align: clip.align,
+    boxStyle: clip.boxStyle,
+    animation: clip.animation,
+  };
+}
+
+function TextClipList() {
+  const allAnnotations = useEditorStore((s) => s.tracks.annotations);
+  const annotations = allAnnotations.filter((clip) => clip.text.trim());
+  const selectedClipId = useEditorStore((s) => s.selectedClipId);
+  const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
+  const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
+  const setPlayhead = useEditorStore((s) => s.setPlayhead);
+  const pushAction = useEditorStore((s) => s.pushAction);
+
+  if (annotations.length === 0) return null;
+
+  const selectClip = (clip: AnnotationClip) => {
+    setSelectedClipId(clip.id);
+    setSelectedTab("effects");
+    setPlayhead(clip.startMs);
+  };
+
+  const duplicateClip = (clip: AnnotationClip) => {
+    pushAction({
+      kind: "add-clip",
+      trackId: "annotations",
+      clip: {
+        ...clip,
+        id: createClipId("text"),
+        startMs: clip.startMs + Math.min(600, Math.max(200, clip.durationMs / 3)),
+        label: `${clip.label ?? clip.text} copy`,
+      },
+    });
+  };
+
+  const duplicateStyle = (clip: AnnotationClip) => {
+    pushAction({
+      kind: "add-clip",
+      trackId: "annotations",
+      clip: {
+        ...clip,
+        ...cloneAnnotationStyle(clip),
+        id: createClipId("text-style"),
+        text: "Styled text",
+        label: "Styled text",
+        startMs: clip.startMs + Math.min(600, Math.max(200, clip.durationMs / 3)),
+        anchor: { kind: "screen", pos: clip.pos },
+        highlight: undefined,
+      },
+    });
+  };
+
+  const deleteClip = (clip: AnnotationClip) => {
+    const index = allAnnotations.findIndex((item) => item.id === clip.id);
+    pushAction({
+      kind: "delete-clip",
+      trackId: "annotations",
+      clipId: clip.id,
+      snapshot: clip,
+      atIndex: index >= 0 ? index : undefined,
+    });
+  };
+
+  const applyStyleToAll = (source: AnnotationClip) => {
+    const style = cloneAnnotationStyle(source);
+    annotations.forEach((clip) => {
+      if (clip.id === source.id) return;
+      const trackIndex = allAnnotations.findIndex((item) => item.id === clip.id);
+      if (trackIndex < 0) return;
+      Object.entries(style).forEach(([field, next]) => {
+        const prev = clip[field as keyof AnnotationClip];
+        if (Object.is(prev, next)) return;
+        pushAction({
+          kind: "set-effect-param",
+          nodePath: `tracks.annotations[${trackIndex}]`,
+          field,
+          prev,
+          next,
+        });
+      });
+    });
+  };
+
+  return (
+    <section className={`${SECTION_CLASS} mb-3`}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <SectionTitle>Text clips</SectionTitle>
+        <ValuePill>{annotations.length}</ValuePill>
+      </div>
+      <div className="space-y-2">
+        {annotations
+          .slice()
+          .sort((a, b) => a.startMs - b.startMs)
+          .map((clip) => {
+            const selected = selectedClipId === clip.id;
+            return (
+              <div
+                key={clip.id}
+                className={`rounded-lg border p-2 ${
+                  selected
+                    ? "border-[var(--color-accent,#ff5b76)] bg-[var(--color-surface)]"
+                    : "border-[var(--color-border-subtle)] bg-[var(--color-surface)]/70"
+                }`}
+              >
+                <button
+                  type="button"
+                  className="block w-full text-left"
+                  onClick={() => selectClip(clip)}
+                >
+                  <span className="block truncate text-xs font-medium text-[var(--color-fg)]">
+                    {clip.text}
+                  </span>
+                  <span className="mt-1 block font-mono text-[10px] text-[var(--color-fg-muted)]">
+                    {(clip.startMs / 1000).toFixed(2)}s · {TEXT_STYLE_PRESETS[clip.styleId ?? "callout"].label}
+                  </span>
+                </button>
+                <div className="mt-2 grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    className={TINY_BUTTON_CLASS}
+                    onClick={() => duplicateClip(clip)}
+                  >
+                    Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    className={TINY_BUTTON_CLASS}
+                    onClick={() => duplicateStyle(clip)}
+                  >
+                    Dupe style
+                  </button>
+                  <button
+                    type="button"
+                    className={TINY_BUTTON_CLASS}
+                    onClick={() => applyStyleToAll(clip)}
+                  >
+                    Style all
+                  </button>
+                  <button
+                    type="button"
+                    className={TINY_BUTTON_CLASS}
+                    onClick={() => deleteClip(clip)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    </section>
+  );
+}
+
 function EffectParamsBase() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const pushAction = useEditorStore((s) => s.pushAction);
@@ -662,11 +1179,14 @@ function EffectParamsBase() {
 
   if (!selectedClipId) {
     return (
-      <div className="flex min-h-64 flex-col justify-center p-4 text-sm">
-        <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-100)] p-5">
-          <div className="text-sm font-semibold text-[var(--color-fg)]">No clip selected</div>
-          <div className="mt-2 max-w-[32ch] text-xs leading-5 text-[var(--color-fg-muted)]">
-            Select a timeline clip to tune motion, text, cursor, transition, or audio details.
+      <div className="p-4 text-sm">
+        <TextClipList />
+        <div className="flex min-h-52 flex-col justify-center">
+          <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-100)] p-5">
+            <div className="text-sm font-semibold text-[var(--color-fg)]">No clip selected</div>
+            <div className="mt-2 max-w-[32ch] text-xs leading-5 text-[var(--color-fg-muted)]">
+              Select a timeline clip to tune motion, text, cursor, transition, or audio details.
+            </div>
           </div>
         </div>
       </div>
@@ -689,6 +1209,7 @@ function EffectParamsBase() {
 
   return (
     <form aria-label="Effect parameters" className="flex flex-col gap-3 p-4 text-sm">
+      <TextClipList />
       <section className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3 shadow-[0_18px_34px_-26px_rgba(0,0,0,0.35)]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">

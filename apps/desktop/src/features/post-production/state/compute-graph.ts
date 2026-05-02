@@ -23,8 +23,12 @@
  */
 
 import type { ExportResolution } from "../../../ipc/export";
+import type { RecordingActions } from "../../../ipc/actions";
+import type { CaptureRect, RecordingStepTimingSidecar } from "../../../ipc/trajectory";
 import type { ExportFormState } from "./export-slice";
 import { type EditorBackgroundKind, readEditorBackground } from "./store";
+import { resolveTextAnchorPosition } from "./text-anchor";
+import { hexToRgbaWithAlpha, resolvedTextStyle } from "./text-style";
 import type {
   AnnotationClip,
   Clip,
@@ -54,6 +58,9 @@ export interface ComputeGraphInput {
   exportForm: ExportFormState;
   _undoExtras?: {
     background?: EditorBackgroundKind;
+    actions?: RecordingActions | null;
+    stepTiming?: RecordingStepTimingSidecar | null;
+    captureRect?: CaptureRect | null;
   };
 }
 
@@ -102,6 +109,13 @@ export type FontChoice =
 
 export type TextAnim = "none" | "fade" | "slide-up" | "scale-in";
 
+export interface BoxStyle {
+  padding_px: number;
+  radius_px: number;
+  bg_color: Rgba;
+  border_color: Rgba | null;
+}
+
 export interface TextBox {
   t_start_ms: number;
   t_end_ms: number;
@@ -110,9 +124,9 @@ export interface TextBox {
   font: FontChoice;
   size_pt: number;
   color: Rgba;
-  box_style: null;
+  box_style: BoxStyle | null;
   anim_in: TextAnim;
-  anim_out: TextAnim;
+  anim_out: Extract<TextAnim, "none" | "fade">;
 }
 
 export interface RippleEvent {
@@ -311,19 +325,29 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
   };
 }
 
-function textBox(clip: AnnotationClip): TextBox | null {
+function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
   if (!clip.text) return null;
+  const style = resolvedTextStyle(clip);
   return {
     t_start_ms: clip.startMs,
     t_end_ms: clip.startMs + clip.durationMs,
     text: clip.text,
-    pos: clip.pos,
-    font: { kind: "system-default" },
-    size_pt: clip.sizePt,
-    color: hexToRgba(clip.color),
-    box_style: null,
-    anim_in: "fade",
-    anim_out: "fade",
+    pos,
+    font: style.font,
+    size_pt: style.sizePt,
+    color: hexToRgba(style.color),
+    box_style: style.boxStyle
+      ? {
+          padding_px: style.boxStyle.paddingPx,
+          radius_px: style.boxStyle.radiusPx,
+          bg_color: hexToRgbaWithAlpha(style.boxStyle.bgColor, { r: 17, g: 19, b: 23, a: 216 }),
+          border_color: style.boxStyle.borderColor
+            ? hexToRgbaWithAlpha(style.boxStyle.borderColor, { r: 255, g: 255, b: 255, a: 36 })
+            : null,
+        }
+      : null,
+    anim_in: style.animation.in,
+    anim_out: style.animation.out,
   };
 }
 
@@ -482,7 +506,16 @@ export function computeGraph(state: ComputeGraphInput): Graph {
   }
   const boxes: TextBox[] = [];
   for (const clip of sortedAnnotations) {
-    const b = textBox(clip);
+    const sampleMs = clip.startMs + clip.durationMs / 2;
+    const pos = resolveTextAnchorPosition(
+      clip,
+      sampleMs,
+      state._undoExtras?.actions,
+      tracks.cursor,
+      state._undoExtras?.stepTiming,
+      state._undoExtras?.captureRect,
+    );
+    const b = textBox(clip, pos);
     if (b) boxes.push(b);
   }
   const firstAnnotation = sortedAnnotations[0];

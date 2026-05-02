@@ -25,6 +25,7 @@ import type {
 } from "../state/timeline-slice";
 import { XFADE_KINDS } from "../state/timeline-slice";
 import type { EditorBackgroundKind, Rgba } from "./store";
+import { styleDefaults } from "./text-style";
 
 export interface BuildTimelineInput {
   story: ParseResult | null;
@@ -401,16 +402,19 @@ function buildPolishClips({
     const calloutSpec = typeof stepPolish.callout === "object" ? stepPolish.callout : null;
     const highlightSpec = typeof stepPolish.highlight === "object" ? stepPolish.highlight : null;
     if (callout || highlight) {
+      const defaults = styleDefaults(callout ? "callout" : "hotspot");
       annotations.push({
         id: `${callout ? "callout" : "highlight"}-${idBase}-${step.stepId}`,
         trackId: "annotations",
         startMs: Math.max(0, tMs - 100),
         durationMs: calloutSpec?.durationMs ?? highlightSpec?.durationMs ?? CALLOUT_DURATION_MS,
         label: callout ? "Callout" : "Highlight",
+        ...defaults,
         text: callout,
         pos: calloutSpec?.pos ?? { x: 0.5, y: 0.86 },
         sizePt: calloutSpec?.sizePt ?? 24,
         color: calloutSpec?.color ?? "#ffffff",
+        anchor: { kind: "target", stepId: step.stepId, placement: "top" },
         highlight: highlight
           ? {
               center,

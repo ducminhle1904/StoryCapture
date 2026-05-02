@@ -138,12 +138,39 @@ export interface SoundClip extends ClipBase {
   gain?: number;
 }
 
+export type TextStyleId = "title" | "callout" | "lower-third" | "hotspot" | "caption";
+export type TextAlign = "left" | "center" | "right";
+export type TextAnimationKind = "none" | "fade" | "slide-up" | "scale-in";
+export type TextAnchor =
+  | { kind: "screen"; pos: Vec2 }
+  | { kind: "cursor"; offset: Vec2 }
+  | { kind: "target"; stepId: string; placement: "top" | "right" | "bottom" | "left" }
+  | { kind: "safe-area"; placement: "top" | "bottom" | "center" };
+
+export interface TextBoxStyle {
+  paddingPx: number;
+  radiusPx: number;
+  bgColor?: string;
+  borderColor?: string | null;
+}
+
+export interface TextAnimation {
+  in: TextAnimationKind;
+  out: Exclude<TextAnimationKind, "slide-up" | "scale-in">;
+  durationMs: number;
+}
+
 export interface AnnotationClip extends ClipBase {
   trackId: "annotations";
   text: string;
   pos: Vec2;
   sizePt: number;
   color?: string;
+  styleId?: TextStyleId;
+  boxStyle?: TextBoxStyle;
+  align?: TextAlign;
+  anchor?: TextAnchor;
+  animation?: TextAnimation;
   highlight?: {
     center: Vec2;
     radiusPx: number;

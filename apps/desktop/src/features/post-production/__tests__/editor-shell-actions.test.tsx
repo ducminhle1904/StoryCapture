@@ -142,12 +142,16 @@ describe("EditorShell toolbar actions", () => {
     expect(state.tracks.annotations[0]).toMatchObject({
       trackId: "annotations",
       startMs: 2_500,
-      durationMs: 1_000,
+      durationMs: 2_200,
       label: "Title",
       text: "Title",
-      pos: { x: 0.5, y: 0.9 },
-      sizePt: 24,
+      pos: { x: 0.5, y: 0.78 },
+      sizePt: 34,
       color: "#ffffff",
+      styleId: "title",
+      align: "center",
+      anchor: { kind: "screen", pos: { x: 0.5, y: 0.78 } },
+      animation: { in: "slide-up", out: "fade", durationMs: 220 },
     });
     expect(state.selectedClipId).toBe(state.tracks.annotations[0]?.id);
     expect(state.selectedTab).toBe("effects");

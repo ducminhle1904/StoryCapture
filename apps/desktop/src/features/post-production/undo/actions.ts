@@ -26,6 +26,8 @@
  * value, so we bypass setters entirely.
  */
 
+import type { RecordingActions } from "@/ipc/actions";
+import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/trajectory";
 import type { Clip, SoundClip, TrackId } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
 
@@ -128,6 +130,9 @@ export interface UndoExtras {
   graphSnapshot: GraphSnapshot;
   textOverlays: Record<string, TextOverlay>;
   background: BackgroundKind;
+  actions?: RecordingActions | null;
+  stepTiming?: RecordingStepTimingSidecar | null;
+  captureRect?: CaptureRect | null;
 }
 
 export const DEFAULT_UNDO_EXTRAS: UndoExtras = {
