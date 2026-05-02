@@ -7,47 +7,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::video::{
-    BackgroundKind, RippleEvent, TextBox, TrajectoryRef, VideoNode, ZoomKeyframe,
-};
-use crate::ast::{types::Vec2, Graph};
-
-/// Linear-interpolate the keyframe list at time `t_ms`, returning
-/// `(center, scale)`. Caller guarantees `!keyframes.is_empty()`.
-///
-/// Before the first keyframe, holds the first value; after the last, holds
-/// the last value.
-fn sample_keyframes_lerp(keyframes: &[ZoomKeyframe], t_ms: u64) -> (Vec2, f32) {
-    debug_assert!(!keyframes.is_empty());
-    if t_ms <= keyframes.first().unwrap().t_ms {
-        let k = keyframes.first().unwrap();
-        return (k.center, k.scale);
-    }
-    if t_ms >= keyframes.last().unwrap().t_ms {
-        let k = keyframes.last().unwrap();
-        return (k.center, k.scale);
-    }
-    // Find the bracketing pair.
-    for pair in keyframes.windows(2) {
-        let a = pair[0];
-        let b = pair[1];
-        if t_ms >= a.t_ms && t_ms <= b.t_ms {
-            let span = (b.t_ms - a.t_ms) as f32;
-            let u = if span > 0.0 {
-                (t_ms - a.t_ms) as f32 / span
-            } else {
-                0.0
-            };
-            let cx = a.center.x + (b.center.x - a.center.x) * u;
-            let cy = a.center.y + (b.center.y - a.center.y) * u;
-            let sc = a.scale + (b.scale - a.scale) * u;
-            return (Vec2::new(cx, cy), sc);
-        }
-    }
-    // Unreachable for sorted keyframes.
-    let k = keyframes.last().unwrap();
-    (k.center, k.scale)
-}
+use crate::ast::types::Vec2;
+use crate::ast::video::{BackgroundKind, RippleEvent, TextBox, TrajectoryRef, VideoNode};
+use crate::ast::Graph;
+use crate::zoom::ZoomKeyframeSampler;
 
 #[cfg(feature = "ts-export")]
 use ts_rs::TS;
@@ -112,11 +75,7 @@ pub fn emit_preview_plan(g: &Graph) -> PreviewRenderPlan {
         match node {
             VideoNode::Source { .. } | VideoNode::Transition { .. } => {}
             VideoNode::ZoomPan { keyframes, .. } => {
-                // Expand keyframes to per-frame samples at g.output_fps via
-                // linear interpolation. Spring low-pass was already applied
-                // at plan time so the frontend just lerps between samples.
                 if keyframes.is_empty() {
-                    // Nothing to emit.
                 } else if keyframes.len() == 1 {
                     zoom_matrices.push(ZoomMatrixFrame {
                         t_ms: keyframes[0].t_ms,
@@ -129,9 +88,10 @@ pub fn emit_preview_plan(g: &Graph) -> PreviewRenderPlan {
                     let t_start = keyframes.first().unwrap().t_ms;
                     let t_end = keyframes.last().unwrap().t_ms;
                     let total_frames = (((t_end - t_start) as f32) / frame_ms).ceil() as u64 + 1;
+                    let mut sampler = ZoomKeyframeSampler::new(keyframes);
                     for i in 0..total_frames {
                         let t_ms = t_start + (i as f32 * frame_ms).round() as u64;
-                        let sample = sample_keyframes_lerp(keyframes, t_ms);
+                        let sample = sampler.sample(t_ms);
                         zoom_matrices.push(ZoomMatrixFrame {
                             t_ms,
                             center: sample.0,

@@ -195,6 +195,47 @@ describe("buildTimelineFromStory", () => {
       startMs: 800,
       center: { x: 0.5, y: 0.5 },
     });
+    expect(out.annotations).toHaveLength(1);
+    expect(out.annotations[0]).toMatchObject({
+      id: expect.stringMatching(/^action-focus-[a-f0-9]{8}-step-1-1000$/),
+      startMs: 940,
+      durationMs: 700,
+      text: "",
+      anchor: { kind: "target", stepId: "step-1", placement: "top" },
+      highlight: {
+        center: { x: 0.5, y: 0.5 },
+        radiusPx: 56,
+        color: "#ffffff",
+        durationMs: 700,
+      },
+    });
+  });
+
+  it("lets action focus be disabled independently from auto zoom", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      actions: ACTIONS,
+      trajectory: null,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "standard",
+          actionFocus: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "gradient", presetId: "runway-dark" },
+        },
+        scenes: {},
+        steps: {},
+      },
+    });
+
+    expect(out.zoom).toHaveLength(1);
+    expect(out.annotations).toHaveLength(0);
   });
 
   it("derives durationMs from trajectory when recording.duration_ms is missing", () => {
@@ -373,6 +414,7 @@ describe("buildTimelineFromStory", () => {
         global: {
           recipe: "dynamic",
           autoZoom: "off",
+          actionFocus: "off",
           autoZoomDurationMs: 800,
           cursor: "smooth",
           cursorSkin: "mac-default",
@@ -414,6 +456,7 @@ describe("buildTimelineFromStory", () => {
         global: {
           recipe: "dynamic",
           autoZoom: "off",
+          actionFocus: "off",
           autoZoomDurationMs: 800,
           cursor: "smooth",
           cursorSkin: "mac-default",
@@ -445,6 +488,7 @@ describe("buildTimelineFromStory", () => {
         global: {
           recipe: "calm",
           autoZoom: "subtle",
+          actionFocus: "standard",
           autoZoomDurationMs: 1_200,
           cursor: "hidden",
           cursorSkin: "big-arrow",
@@ -519,5 +563,51 @@ describe("buildTimelineFromStory", () => {
         gain: 0.8,
       }),
     ]);
+  });
+
+  it("uses action targets for step-authored highlight centers when step timing is missing", () => {
+    const action = ACTIONS.events[0];
+    if (!action) throw new Error("expected action fixture");
+    const actions: RecordingActions = {
+      ...ACTIONS,
+      events: [
+        {
+          ...action,
+          step_id: "step-buy",
+          ordinal: 1,
+          target: {
+            kind: "element",
+            label: "Buy",
+            center: { x: 1536, y: 810 },
+            bounds: { x: 1480, y: 780, w: 112, h: 60 },
+          },
+        },
+      ],
+    };
+    const out = buildTimelineFromStory({
+      story: STORY,
+      recording: RECORDING,
+      trajectory: null,
+      actions,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          actionFocus: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "gradient", presetId: "runway-dark" },
+        },
+        scenes: {},
+        steps: {
+          "step-buy": { highlight: true },
+        },
+      },
+    });
+
+    expect(out.annotations[0]?.highlight?.center).toEqual({ x: 0.8, y: 0.75 });
   });
 });

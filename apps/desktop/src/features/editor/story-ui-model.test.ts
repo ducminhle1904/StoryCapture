@@ -105,6 +105,7 @@ describe("story-ui-model", () => {
       global: {
         recipe: "dynamic",
         autoZoom: "standard",
+        actionFocus: "standard",
         autoZoomDurationMs: 800,
         cursor: "smooth",
         cursorSkin: "mac-default",
@@ -150,6 +151,7 @@ describe("story-ui-model", () => {
     expect(doc.version).toBe(2);
     expect(doc.global.background).toEqual({ kind: "solid", color: "#101218" });
     expect(doc.global.cursorSkin).toBe("mac-default");
+    expect(doc.global.actionFocus).toBe("standard");
     expect(doc.global.autoZoomDurationMs).toBe(800);
     expect(doc.steps["step-buy"]?.callout).toBe("Buy");
     expect(doc.steps["step-buy"]?.highlight).toBe(true);
@@ -160,6 +162,7 @@ describe("story-ui-model", () => {
       global: {
         recipe: "fast",
         autoZoom: "huge",
+        actionFocus: "giant",
         cursor: "gone",
         cursorSkin: "triangle",
       },
@@ -173,6 +176,7 @@ describe("story-ui-model", () => {
 
     expect(doc.global.recipe).toBe("dynamic");
     expect(doc.global.autoZoom).toBe("standard");
+    expect(doc.global.actionFocus).toBe("standard");
     expect(doc.global.cursor).toBe("smooth");
     expect(doc.global.cursorSkin).toBe("mac-default");
     expect(doc.scenes.Checkout?.transitionOut).toBe("none");

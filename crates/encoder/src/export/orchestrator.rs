@@ -205,6 +205,17 @@ fn render_cursor_overlay_sidecars(
     graph: &mut effects::Graph,
     tmp_root: &Path,
 ) -> Result<(), ExportError> {
+    let zoom_keyframes: Vec<_> = graph
+        .video
+        .iter()
+        .filter_map(|node| match node {
+            VideoNode::ZoomPan { keyframes, .. } => Some(keyframes.as_slice()),
+            _ => None,
+        })
+        .flatten()
+        .copied()
+        .collect();
+    let output_size = (graph.output_width, graph.output_height);
     for node in &mut graph.video {
         let VideoNode::CursorOverlay {
             id,
@@ -230,6 +241,8 @@ fn render_cursor_overlay_sidecars(
                 CursorActionRenderOptions {
                     min_frame_count: trajectory.frame_count,
                     motion_preset: *motion_preset,
+                    output_size: Some(output_size),
+                    zoom_keyframes: &zoom_keyframes,
                 },
             )
         } else {

@@ -27,10 +27,14 @@ import type { RecordingActions } from "@/ipc/actions";
 import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/trajectory";
 import { frontendLog } from "@/lib/log";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
-import { activeCursorClip, isActionsCursorClip, resolveTextAnchorPosition } from "../state/text-anchor";
+import {
+  activeCursorClip,
+  isActionsCursorClip,
+  resolveTextAnchorPosition,
+} from "../state/text-anchor";
 import { resolvedTextStyle, type TextStylePreset, textFontCss } from "../state/text-style";
 import type { AnnotationClip, CursorClip, CursorSkin, ZoomClip } from "../state/timeline-slice";
-import { zoomTiming } from "../state/zoom-motion";
+import { applyZoomToPoint, normalizedZoomCropTopLeft, sampleZoom } from "../state/zoom-motion";
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
@@ -301,50 +305,16 @@ function cursorSkinSrc(skin: CursorSkin): string | undefined {
 }
 
 function activeTextClips(clips: readonly AnnotationClip[], playheadMs: number): AnnotationClip[] {
-  return clips.filter((clip) => playheadMs >= clip.startMs && playheadMs < clip.startMs + clip.durationMs);
+  return clips.filter(
+    (clip) => playheadMs >= clip.startMs && playheadMs < clip.startMs + clip.durationMs,
+  );
 }
 
-interface ActivePreviewZoom {
-  scale: number;
-  center: { x: number; y: number };
-}
-
-function activeZoomClip(clips: readonly ZoomClip[], playheadMs: number): ZoomClip | null {
-  let active: ZoomClip | null = null;
-  for (const clip of clips) {
-    const endMs = clip.startMs + clip.durationMs;
-    if (playheadMs < clip.startMs || playheadMs >= endMs) continue;
-    if (!active || clip.startMs >= active.startMs) active = clip;
-  }
-  return active;
-}
-
-function easeInOutCubic(value: number): number {
-  const t = Math.max(0, Math.min(1, value));
-  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-}
-
-export function samplePreviewZoom(
-  clips: readonly ZoomClip[],
+function activeHighlightClips(
+  clips: readonly AnnotationClip[],
   playheadMs: number,
-): ActivePreviewZoom {
-  const clip = activeZoomClip(clips, playheadMs);
-  if (!clip) return { scale: 1, center: { x: 0.5, y: 0.5 } };
-
-  const targetScale = Number.isFinite(clip.scale) ? Math.max(1, clip.scale) : 1;
-  const timing = zoomTiming(clip);
-  const scaleProgress =
-    playheadMs < timing.inEndMs
-      ? (playheadMs - clip.startMs) / Math.max(1, timing.inEndMs - clip.startMs)
-      : playheadMs > timing.outStartMs
-        ? 1 -
-          (playheadMs - timing.outStartMs) /
-            Math.max(1, clip.startMs + clip.durationMs - timing.outStartMs)
-        : 1;
-  return {
-    scale: 1 + (targetScale - 1) * easeInOutCubic(scaleProgress),
-    center: clip.center ?? { x: 0.5, y: 0.5 },
-  };
+): AnnotationClip[] {
+  return activeTextClips(clips, playheadMs).filter((clip) => clip.highlight);
 }
 
 function percent(value: number): string {
@@ -404,8 +374,7 @@ function textMotionStyle(
   return {
     opacity,
     transform: `translate(${textTranslateX(posX)}, calc(-50% + ${yPx}px)) scale(${scale})`,
-    transformOrigin:
-      posX < 0.18 ? "left center" : posX > 0.82 ? "right center" : "center center",
+    transformOrigin: posX < 0.18 ? "left center" : posX > 0.82 ? "right center" : "center center",
   };
 }
 
@@ -511,6 +480,11 @@ export function PreviewPlayer({
     () => activeTextClips(sortedTextClips, playheadMs),
     [playheadMs, sortedTextClips],
   );
+  const activeHighlights = useMemo(
+    () => activeHighlightClips(annotationClips, playheadMs),
+    [annotationClips, playheadMs],
+  );
+  const previewZoom = useMemo(() => sampleZoom(zoomClips, playheadMs), [playheadMs, zoomClips]);
   const editingTextClip = useMemo(
     () => annotationClips.find((clip) => clip.id === editingTextClipId) ?? null,
     [annotationClips, editingTextClipId],
@@ -552,11 +526,14 @@ export function PreviewPlayer({
     const frame = previewFrameContentRef.current;
     if (!frame) return;
 
-    const zoom = samplePreviewZoom(zoomClipsRef.current, playheadMs);
-    const centerX = Math.max(0, Math.min(1, zoom.center.x));
-    const centerY = Math.max(0, Math.min(1, zoom.center.y));
-    frame.style.transformOrigin = `${centerX * 100}% ${centerY * 100}%`;
-    frame.style.transform = `translate3d(0, 0, 0) scale(${zoom.scale})`;
+    const zoom = sampleZoom(zoomClipsRef.current, playheadMs);
+    const crop = normalizedZoomCropTopLeft(zoom.center, zoom.scale);
+    const width = frame.clientWidth || frame.getBoundingClientRect().width;
+    const height = frame.clientHeight || frame.getBoundingClientRect().height;
+    const tx = -crop.x * width * zoom.scale;
+    const ty = -crop.y * height * zoom.scale;
+    frame.style.transformOrigin = "0 0";
+    frame.style.transform = `matrix(${zoom.scale}, 0, 0, ${zoom.scale}, ${tx}, ${ty})`;
   }, []);
 
   const renderCursorOverlay = useCallback(
@@ -587,11 +564,13 @@ export function PreviewPlayer({
       }
 
       if (cursor.getAttribute("src") !== src) cursor.setAttribute("src", src);
+      const zoom = sampleZoom(zoomClipsRef.current, playheadMs);
+      const cursorPoint = applyZoomToPoint(sample, zoom);
       const size = CURSOR_BASE_SIZE_PX * Math.max(0.1, clip.sizeScale || 1);
       setStyleValue(cursor.style, "width", `${size}px`);
       setStyleValue(cursor.style, "height", `${size}px`);
-      setStyleValue(cursor.style, "left", `${sample.x * 100}%`);
-      setStyleValue(cursor.style, "top", `${sample.y * 100}%`);
+      setStyleValue(cursor.style, "left", `${cursorPoint.x * 100}%`);
+      setStyleValue(cursor.style, "top", `${cursorPoint.y * 100}%`);
       setStyleValue(cursor.style, "opacity", "1");
       setStyleValue(cursor.style, "transform", "translate3d(-1px, -1px, 0)");
 
@@ -601,11 +580,12 @@ export function PreviewPlayer({
         ripple.style.opacity = "0";
         return;
       }
+      const ripplePoint = applyZoomToPoint({ x: activeRipple.x, y: activeRipple.y }, zoom);
       const rippleSize = 18 + activeRipple.progress * CURSOR_RIPPLE_MAX_PX;
       setStyleValue(ripple.style, "width", `${rippleSize}px`);
       setStyleValue(ripple.style, "height", `${rippleSize}px`);
-      setStyleValue(ripple.style, "left", `${activeRipple.x * 100}%`);
-      setStyleValue(ripple.style, "top", `${activeRipple.y * 100}%`);
+      setStyleValue(ripple.style, "left", `${ripplePoint.x * 100}%`);
+      setStyleValue(ripple.style, "top", `${ripplePoint.y * 100}%`);
       setStyleValue(ripple.style, "opacity", String(Math.max(0, activeRipple.opacity * 0.72)));
       setStyleValue(ripple.style, "transform", "translate3d(-50%, -50%, 0)");
     },
@@ -865,13 +845,7 @@ export function PreviewPlayer({
     return () => {
       video.removeEventListener("loadeddata", renderLoadedFrame);
     };
-  }, [
-    displayReady,
-    playing,
-    resolvedSrc,
-    seekPreviewToPlayhead,
-    useCompositedCanvas,
-  ]);
+  }, [displayReady, playing, resolvedSrc, seekPreviewToPlayhead, useCompositedCanvas]);
 
   useEffect(() => {
     if (!playing || useCompositedCanvas) return;
@@ -1269,22 +1243,60 @@ export function PreviewPlayer({
                   aria-label="Composited preview canvas"
                 />
               ) : null}
+            </div>
+            {activeHighlights.length > 0 ? (
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 overflow-hidden"
-                data-testid="virtual-cursor-overlay"
+                data-testid="highlight-overlay"
               >
-                <div
-                  ref={cursorRippleRef}
-                  className="absolute rounded-full border-2 border-white/80 bg-white/10 opacity-0 shadow-[0_0_18px_rgba(255,255,255,0.28)]"
-                />
-                <img
-                  ref={cursorRef}
-                  alt=""
-                  className="absolute opacity-0 drop-shadow-[0_5px_12px_rgba(0,0,0,0.42)]"
-                  draggable={false}
-                />
+                {activeHighlights.map((clip) => {
+                  const highlight = clip.highlight;
+                  if (!highlight) return null;
+                  const center = applyZoomToPoint(highlight.center, previewZoom);
+                  const progress = Math.max(
+                    0,
+                    Math.min(
+                      1,
+                      (playheadMs - clip.startMs) /
+                        Math.max(1, highlight.durationMs ?? clip.durationMs),
+                    ),
+                  );
+                  const opacity = Math.max(0, 1 - progress) * 0.72;
+                  const radius = Math.max(8, highlight.radiusPx * Math.max(1, previewZoom.scale));
+                  return (
+                    <div
+                      key={clip.id}
+                      className="absolute rounded-full border-2 shadow-[0_0_22px_rgba(255,255,255,0.24)]"
+                      style={{
+                        left: percent(center.x),
+                        top: percent(center.y),
+                        width: `${radius * 2}px`,
+                        height: `${radius * 2}px`,
+                        borderColor: highlight.color,
+                        opacity,
+                        transform: "translate3d(-50%, -50%, 0)",
+                      }}
+                    />
+                  );
+                })}
               </div>
+            ) : null}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 overflow-hidden"
+              data-testid="virtual-cursor-overlay"
+            >
+              <div
+                ref={cursorRippleRef}
+                className="absolute rounded-full border-2 border-white/80 bg-white/10 opacity-0 shadow-[0_0_18px_rgba(255,255,255,0.28)]"
+              />
+              <img
+                ref={cursorRef}
+                alt=""
+                className="absolute opacity-0 drop-shadow-[0_5px_12px_rgba(0,0,0,0.42)]"
+                draggable={false}
+              />
             </div>
             {activeTextOverlays.length > 0 ? (
               <div
@@ -1295,7 +1307,7 @@ export function PreviewPlayer({
                   const style = resolvedTextStyle(clip);
                   const selected = selectedClipId === clip.id;
                   const editing = editingTextClipId === clip.id;
-                  const position = resolveTextAnchorPosition(
+                  const anchorPosition = resolveTextAnchorPosition(
                     clip,
                     playheadMs,
                     actions,
@@ -1303,6 +1315,10 @@ export function PreviewPlayer({
                     stepTiming,
                     captureRect,
                   );
+                  const position =
+                    clip.anchor?.kind === "target" || clip.anchor?.kind === "cursor"
+                      ? applyZoomToPoint(anchorPosition, previewZoom)
+                      : anchorPosition;
                   const font = textFontCss(style.font);
                   const hasBox = Boolean(style.boxStyle);
                   return (

@@ -105,19 +105,12 @@ fn subtle_never_emits_scale_change() {
     // The rendered zoompan expression should therefore contain "1.0000" as the
     // only literal for z (and no other scale literal).
     let z_expr = zoompan_expr(&kfs, ExprAxis::Z);
-    // No literal > 1.0 should appear.
-    for tok in z_expr.split(|c: char| !(c.is_ascii_digit() || c == '.')) {
-        if let Ok(v) = tok.parse::<f32>() {
-            // Time values could be arbitrary; filter to things that look like
-            // scale (always ≤ preset.max_zoom = 1.0 for Subtle, but timestamps
-            // can be ≥ 1.0). We skip parsed floats that match a keyframe t_ms
-            // in seconds — much simpler: just assert no scale literal of
-            // 2.0000/3.0000 etc. appears.
-            if (v - 2.0).abs() < 1e-3 || (v - 3.0).abs() < 1e-3 {
-                panic!("Subtle z-expression contains non-identity scale literal: {v}");
-            }
-        }
-    }
+    // Easing expressions may contain powers such as `pow(u,3)`, so check the
+    // formatted scale literals instead of every numeric token.
+    assert!(
+        !z_expr.contains("2.0000") && !z_expr.contains("3.0000"),
+        "Subtle z-expression contains a non-identity scale literal: {z_expr}"
+    );
 }
 
 #[test]

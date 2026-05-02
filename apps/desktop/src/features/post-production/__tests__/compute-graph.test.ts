@@ -154,6 +154,12 @@ describe("computeGraph", () => {
     expect(zoom.keyframes).toHaveLength(4);
     expect(zoom.keyframes.map((k) => k.t_ms)).toEqual([1000, 1220, 2280, 2500]);
     expect(zoom.keyframes.map((k) => k.scale)).toEqual([1.0, 2.0, 2.0, 1.0]);
+    expect(zoom.keyframes.map((k) => k.center)).toEqual([
+      { x: 960, y: 540 },
+      { x: 960, y: 540 },
+      { x: 960, y: 540 },
+      { x: 960, y: 540 },
+    ]);
     expect(zoom.keyframes[1]?.scale).toBe(2.0);
 
     const background = videoNodeAt(g, 3);
@@ -177,6 +183,49 @@ describe("computeGraph", () => {
     expect(transition.offset_ms).toBe(3500);
 
     expect(graphIsRenderable(g)).toBe(true);
+  });
+
+  it("converts normalized zoom centers to crop-safe output pixels", () => {
+    useEditorStore.setState({
+      exportForm: {
+        formats: ["mp4"],
+        resolution: "720p",
+        fps: 60,
+        quality: "high",
+        outFolder: null,
+        baseName: "export",
+      },
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [
+          {
+            id: "z-edge",
+            trackId: "zoom",
+            startMs: 0,
+            durationMs: 1000,
+            target: { kind: "cursor" },
+            scale: 2,
+            center: { x: 0.05, y: 0.95 },
+          },
+        ],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    const g = computeGraph(useEditorStore.getState());
+    const zoom = videoNodeAt(g, 0);
+    if (zoom.type !== "zoom-pan") throw new Error("expected zoom-pan");
+
+    expect(g.output_width).toBe(1280);
+    expect(g.output_height).toBe(720);
+    expect(zoom.keyframes.map((k) => k.center)).toEqual([
+      { x: 640, y: 360 },
+      { x: 320, y: 540 },
+      { x: 320, y: 540 },
+      { x: 640, y: 360 },
+    ]);
   });
 
   it("emits transition nodes with deterministic boundary order and Rust-compatible offsets", () => {
@@ -278,13 +327,66 @@ describe("computeGraph", () => {
     expect(ripple.events[0]).toMatchObject({
       t_impact_ms: 1_000,
       duration_ms: 900,
-      center: { x: 0.25, y: 0.35 },
       max_radius_px: 72,
       color: { r: 0, g: 255, b: 170, a: 255 },
     });
+    expect(ripple.events[0]?.center.x).toBeCloseTo(320);
+    expect(ripple.events[0]?.center.y).toBeCloseTo(252);
     const text = videoNodeAt(g, 1);
     if (text.type !== "text-overlay") throw new Error("expected text-overlay");
     expect(text.boxes[0]?.color).toEqual({ r: 255, g: 204, b: 0, a: 255 });
+  });
+
+  it("transforms highlight and callout anchors through active zoom", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [
+          {
+            id: "zoom-focus",
+            trackId: "zoom",
+            startMs: 500,
+            durationMs: 1200,
+            target: { kind: "cursor" },
+            scale: 2,
+            center: { x: 0.25, y: 0.35 },
+          },
+        ],
+        sound: [],
+        annotations: [
+          {
+            id: "a-focus",
+            trackId: "annotations",
+            startMs: 1_000,
+            durationMs: 1_000,
+            text: "Focus",
+            pos: { x: 0.25, y: 0.35 },
+            sizePt: 24,
+            anchor: { kind: "target", stepId: "step-1", placement: "right" },
+            highlight: {
+              center: { x: 0.25, y: 0.35 },
+              radiusPx: 40,
+              color: "#ffffff",
+              durationMs: 700,
+            },
+          },
+        ],
+      },
+    });
+
+    const g = computeGraph(useEditorStore.getState());
+    const ripple = g.video.find((node) => node.type === "ripple-overlay");
+    if (!ripple || ripple.type !== "ripple-overlay") throw new Error("expected ripple-overlay");
+
+    expect(ripple.events[0]?.center.x).toBeCloseTo(640);
+    expect(ripple.events[0]?.center.y).toBeCloseTo(360);
+    expect(ripple.events[0]?.max_radius_px).toBeCloseTo(80);
+
+    const text = g.video.find((node) => node.type === "text-overlay");
+    if (!text || text.type !== "text-overlay") throw new Error("expected text-overlay");
+    expect(text.boxes[0]?.pos.x).toBeCloseTo(0.5);
+    expect(text.boxes[0]?.pos.y).toBeCloseTo(0.5);
   });
 
   it("maps inherited text preset styling, background, font, and animation into text overlay boxes", () => {

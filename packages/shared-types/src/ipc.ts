@@ -82,32 +82,6 @@ async launchAutomation(storySource: string, projectFolder: string, onEvent: TAUR
 }
 },
 /**
- * Open the story browser window before capture without executing DSL steps.
- * Recorder uses this to resolve a window/content target, then launches the
- * story once after capture has attached.
- */
-async prepareRecordingBrowser(storySource: string, chromeHiding: boolean | null, recordingDisplay: RecordingDisplayPlacementDto | null, recordingViewport: RecordingViewportDto | null) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("prepare_recording_browser", { storySource, chromeHiding, recordingDisplay, recordingViewport }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Run the story once before capture and allow the executor's existing
- * self-healing path to promote passing fallbacks in `.story.targets.json`.
- * The renderer blocks recording start if this stream emits `StepFailed`.
- */
-async validateRecordingTargets(storySource: string, projectFolder: string, storyPath: string, onEvent: TAURI_CHANNEL<AutomationEvent>, chromeHiding: boolean | null, recordingDisplay: RecordingDisplayPlacementDto | null, recordingViewport: RecordingViewportDto | null) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("validate_recording_targets", { storySource, projectFolder, storyPath, onEvent, chromeHiding, recordingDisplay, recordingViewport }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
  * Resolve the current Playwright auto-target to a window id.
  */
 async resolvePlaywrightTarget() : Promise<Result<ResolvedPlaywrightTarget | null, AppError>> {

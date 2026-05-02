@@ -12,11 +12,12 @@ use serde::Deserialize;
 use tracing::warn;
 
 use crate::ast::types::Vec2;
-use crate::ast::video::{CursorMotionPreset, RippleEvent};
+use crate::ast::video::{CursorMotionPreset, RippleEvent, ZoomKeyframe};
 use crate::error::EffectsError;
 use crate::math::vec2::Vec2Ops;
 use crate::math::{Waypoint, WaypointKind};
 use crate::zoom::waypoint_source::parse_waypoint_kind;
+use crate::zoom::ZoomKeyframeSampler;
 
 use super::compositor::compose_frame;
 use super::ripple::{ripple_alpha, ripple_radius};
@@ -26,16 +27,20 @@ use super::trajectory::{sample_trajectory, CursorSample, TrajectoryOptions};
 const MAX_CURSOR_PNG_FRAMES: usize = 108_000;
 
 #[derive(Debug, Clone, Copy)]
-pub struct CursorActionRenderOptions {
+pub struct CursorActionRenderOptions<'a> {
     pub min_frame_count: u32,
     pub motion_preset: CursorMotionPreset,
+    pub output_size: Option<(u32, u32)>,
+    pub zoom_keyframes: &'a [ZoomKeyframe],
 }
 
-impl Default for CursorActionRenderOptions {
+impl Default for CursorActionRenderOptions<'_> {
     fn default() -> Self {
         Self {
             min_frame_count: 0,
             motion_preset: CursorMotionPreset::Natural,
+            output_size: None,
+            zoom_keyframes: &[],
         }
     }
 }
@@ -234,13 +239,13 @@ pub fn render_cursor_pngs_from_actions_with_options(
     actions_json: &Path,
     skin_png: &Path,
     output_dir: &Path,
-    options: CursorActionRenderOptions,
+    options: CursorActionRenderOptions<'_>,
 ) -> Result<RenderedCursorPng, EffectsError> {
     let bytes = std::fs::read(actions_json)?;
     let mut dto: ActionTimelineDto = serde_json::from_slice(&bytes)?;
     dto.frame_count = dto.frame_count.max(options.min_frame_count);
     let skin = load_skin_from_path(skin_png)?;
-    render_cursor_pngs_from_actions_dto(&dto, &skin, output_dir, options.motion_preset)
+    render_cursor_pngs_from_actions_dto(&dto, &skin, output_dir, options)
 }
 
 fn render_cursor_pngs_from_dto(
@@ -313,23 +318,26 @@ fn render_cursor_pngs_from_actions_dto(
     dto: &ActionTimelineDto,
     skin: &SkinBitmap,
     output_dir: &Path,
-    motion_preset: CursorMotionPreset,
+    options: CursorActionRenderOptions<'_>,
 ) -> Result<RenderedCursorPng, EffectsError> {
     std::fs::create_dir_all(output_dir)?;
-    let canvas_width = dto
+    let source_width = dto
         .capture_rect
         .width
         .round()
         .max(dto.viewport.width as f32)
         .max(1.0) as u32;
-    let canvas_height = dto
+    let source_height = dto
         .capture_rect
         .height
         .round()
         .max(dto.viewport.height as f32)
         .max(1.0) as u32;
+    let (canvas_width, canvas_height) =
+        options.output_size.unwrap_or((source_width, source_height));
     let fps = dto.fps.max(1);
     let frame_count = dto.frame_count.max(1);
+    let motion_preset = options.motion_preset;
     let profile = motion_preset.profile();
     if frame_count as usize > MAX_CURSOR_PNG_FRAMES {
         return Err(EffectsError::Io(std::io::Error::new(
@@ -352,7 +360,7 @@ fn render_cursor_pngs_from_actions_dto(
         let previous = *waypoints.last().expect("actions cursor path is seeded");
         let pos = event
             .target
-            .map(|target| clamp_point(target.center, canvas_width, canvas_height))
+            .map(|target| clamp_point(target.center, source_width, source_height))
             .unwrap_or(previous.pos);
         let kind = waypoint_kind(event);
         let start_ms = action_movement_start_ms(previous.t_ms, event, previous.pos, pos, profile);
@@ -372,6 +380,21 @@ fn render_cursor_pngs_from_actions_dto(
         fps,
         *waypoints.last().unwrap(),
     );
+    let projection = ZoomProjection::new(
+        options.zoom_keyframes,
+        source_width,
+        source_height,
+        canvas_width,
+        canvas_height,
+    );
+    let ripples = if projection.is_identity() {
+        ripples
+    } else {
+        projection.transform_ripples(&ripples)
+    };
+    if !projection.is_identity() {
+        projection.transform_trajectory(&mut trajectory);
+    }
 
     let rendered = render_png_sequence(
         &trajectory,
@@ -449,6 +472,70 @@ fn clamp_point(point: ActionPointDto, canvas_width: u32, canvas_height: u32) -> 
         x.clamp(0.0, canvas_width as f32),
         y.clamp(0.0, canvas_height as f32),
     )
+}
+
+struct ZoomProjection<'a> {
+    keyframes: &'a [ZoomKeyframe],
+    source_width: u32,
+    source_height: u32,
+    output_width: u32,
+    output_height: u32,
+}
+
+impl<'a> ZoomProjection<'a> {
+    fn new(
+        keyframes: &'a [ZoomKeyframe],
+        source_width: u32,
+        source_height: u32,
+        output_width: u32,
+        output_height: u32,
+    ) -> Self {
+        Self {
+            keyframes,
+            source_width,
+            source_height,
+            output_width,
+            output_height,
+        }
+    }
+
+    fn is_identity(&self) -> bool {
+        self.keyframes.is_empty()
+    }
+
+    fn transform_point_with_sample(&self, point: Vec2, center: Vec2, scale: f32) -> Vec2 {
+        let content = Vec2::new(
+            (point.x / self.source_width.max(1) as f32).clamp(0.0, 1.0) * self.output_width as f32,
+            (point.y / self.source_height.max(1) as f32).clamp(0.0, 1.0)
+                * self.output_height as f32,
+        );
+        let crop_x = center.x - self.output_width as f32 / (2.0 * scale);
+        let crop_y = center.y - self.output_height as f32 / (2.0 * scale);
+        Vec2::new((content.x - crop_x) * scale, (content.y - crop_y) * scale)
+    }
+
+    fn transform_trajectory(&self, trajectory: &mut [CursorSample]) {
+        let mut sampler = ZoomKeyframeSampler::new(self.keyframes);
+        for sample in trajectory {
+            let (center, scale) = sampler.sample(sample.t_ms);
+            sample.pos = self.transform_point_with_sample(sample.pos, center, scale);
+        }
+    }
+
+    fn transform_ripples(&self, ripples: &[RippleEvent]) -> Vec<RippleEvent> {
+        let mut sampler = ZoomKeyframeSampler::new(self.keyframes);
+        ripples
+            .iter()
+            .map(|r| {
+                let (center, scale) = sampler.sample(r.t_impact_ms);
+                RippleEvent {
+                    center: self.transform_point_with_sample(r.center, center, scale),
+                    max_radius_px: r.max_radius_px * scale,
+                    ..*r
+                }
+            })
+            .collect()
+    }
 }
 
 fn waypoint_kind(event: &ActionEventDto) -> WaypointKind {

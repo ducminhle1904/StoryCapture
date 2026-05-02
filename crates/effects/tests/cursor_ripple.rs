@@ -2,12 +2,12 @@
 
 use std::path::Path;
 
-use effects::ast::types::{Rgba, Vec2};
-use effects::ast::video::CursorSkin;
+use effects::ast::types::{EasingKind, Rgba, Vec2};
+use effects::ast::video::{CursorMotionPreset, CursorSkin, ZoomKeyframe};
 use effects::cursor::{
     apply_tint, build_ripples, load_skin, render_cursor_pngs, render_cursor_pngs_from_actions,
-    render_png_sequence, ripple_alpha, ripple_radius, sample_trajectory, CursorSample,
-    RippleOptions, TrajectoryOptions,
+    render_cursor_pngs_from_actions_with_options, render_png_sequence, ripple_alpha, ripple_radius,
+    sample_trajectory, CursorActionRenderOptions, CursorSample, RippleOptions, TrajectoryOptions,
 };
 use effects::math::min_jerk::{Waypoint, WaypointKind};
 use image::{ImageBuffer, Rgba as ImageRgba, RgbaImage};
@@ -235,6 +235,70 @@ fn render_cursor_pngs_from_actions_json_starts_center_and_draws_ripple() {
         impact.pixels().any(|pixel| pixel.0[3] > 0),
         "impact frame should contain cursor or ripple pixels"
     );
+}
+
+#[test]
+fn render_cursor_pngs_from_actions_applies_zoom_to_output_space() {
+    let tmp = tempfile::tempdir().unwrap();
+    let actions = tmp.path().join("sample.actions.json");
+    let skin = tmp.path().join("skin.png");
+    let out = tmp.path().join("cursor-out");
+
+    let skin_img: RgbaImage = ImageBuffer::from_pixel(4, 4, ImageRgba([255, 0, 0, 255]));
+    skin_img.save(&skin).unwrap();
+    std::fs::write(
+        &actions,
+        r#"{
+          "version": 1,
+          "recording_path": "/tmp/sample.mp4",
+          "viewport": { "width": 40, "height": 30 },
+          "capture_rect": { "x": 0.0, "y": 0.0, "width": 40.0, "height": 30.0 },
+          "fps": 10,
+          "frame_count": 8,
+          "events": [
+            {
+              "step_id": "step-1",
+              "ordinal": 1,
+              "verb": "click",
+              "t_start_ms": 300,
+              "t_action_ms": 500,
+              "t_end_ms": 600,
+              "target": {
+                "kind": "element",
+                "label": "Save",
+                "center": { "x": 30.0, "y": 20.0 },
+                "bounds": { "x": 25.0, "y": 18.0, "w": 10.0, "h": 4.0 }
+              },
+              "pointer": { "button": "left", "effect": "click" }
+            }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    let zoom_keyframes = [ZoomKeyframe {
+        t_ms: 0,
+        center: Vec2::new(60.0, 40.0),
+        scale: 2.0,
+        easing: EasingKind::Linear,
+    }];
+    let result = render_cursor_pngs_from_actions_with_options(
+        &actions,
+        &skin,
+        &out,
+        CursorActionRenderOptions {
+            min_frame_count: 8,
+            motion_preset: CursorMotionPreset::Natural,
+            output_size: Some((80, 60)),
+            zoom_keyframes: &zoom_keyframes,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.canvas_width, 80);
+    assert_eq!(result.canvas_height, 60);
+    let impact = image::open(out.join("frame_00005.png")).unwrap().to_rgba8();
+    assert_eq!(impact.get_pixel(40, 30).0, [255, 0, 0, 255]);
 }
 
 #[test]

@@ -22,8 +22,8 @@
  * `metadata` bag to read from. Field access here is direct.
  */
 
-import type { ExportResolution } from "../../../ipc/export";
 import type { RecordingActions } from "../../../ipc/actions";
+import type { ExportResolution } from "../../../ipc/export";
 import type { CaptureRect, RecordingStepTimingSidecar } from "../../../ipc/trajectory";
 import type { ExportFormState } from "./export-slice";
 import { type EditorBackgroundKind, readEditorBackground } from "./store";
@@ -45,7 +45,12 @@ import type {
   ZoomTarget,
 } from "./timeline-slice";
 import { normalizeCursorMotionPreset } from "./timeline-slice";
-import { zoomTiming } from "./zoom-motion";
+import {
+  applyZoomToPoint,
+  normalizedZoomCenterToPixels,
+  sampleZoom,
+  zoomTiming,
+} from "./zoom-motion";
 
 /**
  * Minimal slice of the editor store that `computeGraph` reads. Narrowing
@@ -245,30 +250,38 @@ function videoSource(clip: VideoClip): VideoNode | null {
   };
 }
 
-function zoomPan(clip: ZoomClip): VideoNode {
+function zoomPan(clip: ZoomClip, outputWidth: number, outputHeight: number): VideoNode {
   const timing = zoomTiming(clip);
+  const targetScale = Number.isFinite(clip.scale) ? Math.max(1, clip.scale) : 1;
+  const centerAtRest = normalizedZoomCenterToPixels(clip.center, 1, outputWidth, outputHeight);
+  const centerAtScale = normalizedZoomCenterToPixels(
+    clip.center,
+    targetScale,
+    outputWidth,
+    outputHeight,
+  );
   const keyframes: ZoomKeyframe[] = [
     {
       t_ms: clip.startMs,
-      center: clip.center,
+      center: centerAtRest,
       scale: 1.0,
       easing: "ease-in-out-cubic",
     },
     {
       t_ms: timing.inEndMs,
-      center: clip.center,
-      scale: clip.scale,
+      center: centerAtScale,
+      scale: targetScale,
       easing: "ease-in-out-cubic",
     },
     {
       t_ms: timing.outStartMs,
-      center: clip.center,
-      scale: clip.scale,
+      center: centerAtScale,
+      scale: targetScale,
       easing: "ease-in-out-cubic",
     },
     {
       t_ms: clip.startMs + clip.durationMs,
-      center: clip.center,
+      center: centerAtRest,
       scale: 1.0,
       easing: "ease-in-out-cubic",
     },
@@ -351,16 +364,22 @@ function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
   };
 }
 
-function rippleEvent(clip: AnnotationClip): RippleEvent | null {
+function rippleEvent(
+  clip: AnnotationClip,
+  zoomAt: (playheadMs: number) => ReturnType<typeof sampleZoom>,
+  output: { w: number; h: number },
+): RippleEvent | null {
   const highlight = clip.highlight;
   if (!highlight) return null;
   const impact = Math.max(0, clip.startMs);
+  const zoom = zoomAt(impact);
+  const center = applyZoomToPoint(highlight.center, zoom);
   return {
     t_anticipate_ms: Math.max(0, impact - 60),
     t_impact_ms: impact,
     duration_ms: Math.max(1, highlight.durationMs ?? clip.durationMs),
-    center: highlight.center,
-    max_radius_px: Math.max(1, highlight.radiusPx),
+    center: { x: center.x * output.w, y: center.y * output.h },
+    max_radius_px: Math.max(1, highlight.radiusPx * Math.max(1, zoom.scale)),
     color: hexToRgba(highlight.color, { r: 255, g: 255, b: 255, a: 229 }),
   };
 }
@@ -482,18 +501,22 @@ export function computeGraph(state: ComputeGraphInput): Graph {
     if (n) video.push(n);
   }
   for (const clip of clipsByStart(tracks.zoom)) {
-    video.push(zoomPan(clip));
+    video.push(zoomPan(clip, px.w, px.h));
   }
   const bg = backgroundNode(readEditorBackground(state));
   if (bg) video.push(bg);
-  for (const clip of clipsByStart(tracks.cursor)) {
-    const n = cursorOverlay(clip);
-    if (n) video.push(n);
-  }
   const sortedAnnotations = clipsByStart(tracks.annotations);
+  const zoomSampleCache = new Map<number, ReturnType<typeof sampleZoom>>();
+  const zoomAt = (playheadMs: number): ReturnType<typeof sampleZoom> => {
+    const cached = zoomSampleCache.get(playheadMs);
+    if (cached) return cached;
+    const next = sampleZoom(tracks.zoom, playheadMs);
+    zoomSampleCache.set(playheadMs, next);
+    return next;
+  };
   const ripples: RippleEvent[] = [];
   for (const clip of sortedAnnotations) {
-    const r = rippleEvent(clip);
+    const r = rippleEvent(clip, zoomAt, px);
     if (r) ripples.push(r);
   }
   const firstRippleClip = sortedAnnotations.find((clip) => clip.highlight);
@@ -504,10 +527,14 @@ export function computeGraph(state: ComputeGraphInput): Graph {
       events: ripples,
     });
   }
+  for (const clip of clipsByStart(tracks.cursor)) {
+    const n = cursorOverlay(clip);
+    if (n) video.push(n);
+  }
   const boxes: TextBox[] = [];
   for (const clip of sortedAnnotations) {
     const sampleMs = clip.startMs + clip.durationMs / 2;
-    const pos = resolveTextAnchorPosition(
+    const anchorPos = resolveTextAnchorPosition(
       clip,
       sampleMs,
       state._undoExtras?.actions,
@@ -515,6 +542,10 @@ export function computeGraph(state: ComputeGraphInput): Graph {
       state._undoExtras?.stepTiming,
       state._undoExtras?.captureRect,
     );
+    const pos =
+      clip.anchor?.kind === "target" || clip.anchor?.kind === "cursor"
+        ? applyZoomToPoint(anchorPos, zoomAt(sampleMs))
+        : anchorPos;
     const b = textBox(clip, pos);
     if (b) boxes.push(b);
   }

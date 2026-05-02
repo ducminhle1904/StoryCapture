@@ -268,3 +268,50 @@ fn preview_and_ffmpeg_agree_at_sample_times() {
 
     eprintln!("preview_render_parity: {assertions} assertions passed");
 }
+
+#[test]
+fn preview_and_ffmpeg_apply_zoom_keyframe_easing() {
+    let kfs = vec![
+        ZoomKeyframe {
+            t_ms: 0,
+            center: Vec2::new(960.0, 540.0),
+            scale: 1.0,
+            easing: EasingKind::Linear,
+        },
+        ZoomKeyframe {
+            t_ms: 1000,
+            center: Vec2::new(480.0, 270.0),
+            scale: 2.0,
+            easing: EasingKind::EaseInOutCubic,
+        },
+    ];
+
+    let mut builder = GraphBuilder::new(1920, 1080, 1000);
+    builder
+        .source(fixed_id(0x11), PathBuf::from("in.mp4"), 0)
+        .zoom_pan(fixed_id(0x12), ZoomTarget::Cursor, kfs);
+    let g = builder.build().expect("graph must build");
+
+    let preview = PreviewEmit::emit(&g);
+    let sample = preview
+        .zoom_matrices
+        .iter()
+        .find(|frame| frame.t_ms == 250)
+        .expect("1000 fps preview should sample 250ms exactly");
+
+    assert!((sample.scale - 1.0625).abs() < 1e-6);
+    assert!((sample.center.x - 930.0).abs() < 1e-6);
+    assert!((sample.center.y - 523.125).abs() < 1e-6);
+
+    let z_expr = zoompan_expr(
+        match &g.video[1] {
+            effects::ast::video::VideoNode::ZoomPan { keyframes, .. } => keyframes,
+            other => panic!("expected zoom-pan, got {other:?}"),
+        },
+        ExprAxis::Z,
+    );
+    assert!(
+        z_expr.contains("pow("),
+        "FFmpeg zoom expression should encode easing: {z_expr}"
+    );
+}

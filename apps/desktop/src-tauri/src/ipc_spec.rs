@@ -47,8 +47,6 @@ pub fn builder() -> Builder<Wry> {
             system::trigger_panic,
             frontend_log::log_from_frontend,
             automation::launch_automation,
-            automation::prepare_recording_browser,
-            automation::validate_recording_targets,
             automation::resolve_playwright_target,
             automation::is_stage_manager_enabled,
             // Live preview pump (Rust → `preview://frame`).

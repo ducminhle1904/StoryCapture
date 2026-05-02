@@ -179,6 +179,56 @@ describe("PreviewPlayer", () => {
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
 
+  it("keeps cursor screen-sized while positioning it through active zoom", async () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 10_000,
+            trajectoryDir: "/tmp/demo.actions.json",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 600,
+            skin: "mac-default",
+            sizeScale: 1.25,
+          },
+        ],
+        zoom: [
+          {
+            id: "zoom-1",
+            trackId: "zoom",
+            startMs: 1500,
+            durationMs: 1000,
+            target: { kind: "cursor" },
+            scale: 2,
+            center: { x: 0.8, y: 0.6 },
+          },
+        ],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(2000);
+    });
+
+    const overlay = screen.getByTestId("virtual-cursor-overlay");
+    const cursor = overlay.querySelector("img");
+
+    await waitFor(() => expect(cursor?.style.opacity).toBe("1"));
+    expect(cursor?.style.left).toBe("60.00000000000001%");
+    expect(cursor?.style.top).toBe("50%");
+    expect(cursor?.style.width).toBe("40px");
+  });
+
   it("applies timeline zoom clips in the native preview path", async () => {
     useEditorStore.setState({
       tracks: {
@@ -209,18 +259,19 @@ describe("PreviewPlayer", () => {
     });
 
     const zoomLayer = screen.getByTestId("preview-zoom-layer");
-    await waitFor(() => expect(zoomLayer.style.transform).toContain("scale(1.5)"));
-    expect(zoomLayer.style.transformOrigin).toBe("25% 75%");
+    await waitFor(() => expect(zoomLayer.style.transform).toContain("matrix(1.5"));
+    expect(zoomLayer.style.transformOrigin).toBe("0 0");
 
     act(() => {
       useEditorStore.getState().setPlayhead(1500);
     });
-    await waitFor(() => expect(zoomLayer.style.transform).toContain("scale(2)"));
+    await waitFor(() => expect(zoomLayer.style.transform).toContain("matrix(2"));
+    expect(zoomLayer.style.transformOrigin).toBe("0 0");
 
     act(() => {
       useEditorStore.getState().setPlayhead(1890);
     });
-    await waitFor(() => expect(zoomLayer.style.transform).toContain("scale(1.5)"));
+    await waitFor(() => expect(zoomLayer.style.transform).toContain("matrix(1.5"));
 
     expect(PreviewEngine).not.toHaveBeenCalled();
   });

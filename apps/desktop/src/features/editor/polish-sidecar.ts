@@ -3,6 +3,7 @@ import type { Story } from "@/ipc/parse";
 
 export type PolishRecipe = "dynamic" | "calm" | "minimal" | "dramatic";
 export type PolishAutoZoom = "off" | "subtle" | "standard" | "strong";
+export type PolishActionFocus = "off" | "subtle" | "standard" | "strong";
 export type PolishCursorMode = "raw" | "smooth" | "hidden";
 export type PolishCursorSkin = "mac-default" | "win-default" | "dark" | "light" | "big-arrow";
 export type PolishZoom = "off" | "subtle" | "standard" | "strong";
@@ -58,6 +59,7 @@ export interface PolishSoundCue {
 export interface StoryPolishGlobal {
   recipe: PolishRecipe;
   autoZoom: PolishAutoZoom;
+  actionFocus: PolishActionFocus;
   autoZoomDurationMs: number;
   cursor: PolishCursorMode;
   cursorSkin: PolishCursorSkin;
@@ -100,6 +102,7 @@ export const DEFAULT_POLISH_DOC: StoryPolishDoc = {
   global: {
     recipe: "dynamic",
     autoZoom: "standard",
+    actionFocus: "standard",
     autoZoomDurationMs: 800,
     cursor: "smooth",
     cursorSkin: "mac-default",
@@ -112,6 +115,7 @@ export const DEFAULT_POLISH_DOC: StoryPolishDoc = {
 
 const POLISH_RECIPES: readonly PolishRecipe[] = ["dynamic", "calm", "minimal", "dramatic"];
 const POLISH_AUTO_ZOOMS: readonly PolishAutoZoom[] = ["off", "subtle", "standard", "strong"];
+const POLISH_ACTION_FOCUS: readonly PolishActionFocus[] = ["off", "subtle", "standard", "strong"];
 const POLISH_CURSOR_MODES: readonly PolishCursorMode[] = ["raw", "smooth", "hidden"];
 const POLISH_CURSOR_SKINS: readonly PolishCursorSkin[] = [
   "mac-default",
@@ -289,6 +293,11 @@ export function normalizePolishDoc(value: unknown): StoryPolishDoc {
         (rawGlobal as { autoZoom?: unknown }).autoZoom,
         POLISH_AUTO_ZOOMS,
         DEFAULT_POLISH_DOC.global.autoZoom,
+      ),
+      actionFocus: enumOr(
+        (rawGlobal as { actionFocus?: unknown }).actionFocus,
+        POLISH_ACTION_FOCUS,
+        DEFAULT_POLISH_DOC.global.actionFocus,
       ),
       cursor: enumOr(
         (rawGlobal as { cursor?: unknown }).cursor,

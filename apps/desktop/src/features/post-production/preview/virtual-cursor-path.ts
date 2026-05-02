@@ -14,6 +14,9 @@ export interface VirtualCursorSample {
 }
 
 const CLICK_RIPPLE_MS = 520;
+const QUICK_SUCCESSION_MS = 180;
+const MIN_TARGET_WIDTH_PX = 12;
+const SETTLE_START = 0.86;
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -34,14 +37,23 @@ function distance(a: ActionPoint, b: ActionPoint): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
+function targetWidth(event: ActionTimelineEvent): number {
+  const bounds = event.target?.bounds;
+  if (!bounds) return MIN_TARGET_WIDTH_PX;
+  return Math.max(MIN_TARGET_WIDTH_PX, Math.min(Math.abs(bounds.w), Math.abs(bounds.h)));
+}
+
 function travelDurationMs(
   from: ActionPoint,
   to: ActionPoint,
+  event: ActionTimelineEvent,
   profile: CursorMotionProfile,
 ): number {
-  return Math.round(
-    clamp(distance(from, to) / profile.travelPxPerMs, profile.minTravelMs, profile.maxTravelMs),
-  );
+  const d = distance(from, to);
+  const ballistic = d / profile.travelPxPerMs;
+  const indexOfDifficulty = Math.log2(d / targetWidth(event) + 1);
+  const aimed = profile.fittsInterceptMs + profile.fittsSlopeMs * indexOfDifficulty;
+  return Math.round(clamp(Math.max(ballistic, aimed), profile.minTravelMs, profile.maxTravelMs));
 }
 
 function movementStartMs(
@@ -57,7 +69,10 @@ function movementStartMs(
     return Math.min(actionT, Math.max(previousT, event.t_start_ms));
   }
   if (actionT === 0) return 0;
-  return Math.min(actionT, Math.max(previousT, actionT - travelDurationMs(from, to, profile)));
+  return Math.min(
+    actionT,
+    Math.max(previousT, actionT - travelDurationMs(from, to, event, profile)),
+  );
 }
 
 function canvasSize(actions: RecordingActions): { width: number; height: number } {
@@ -84,6 +99,78 @@ function isClickEvent(event: ActionTimelineEvent): boolean {
   return event.verb === "click" || event.pointer?.effect === "click";
 }
 
+function hashString(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function curveSign(event: ActionTimelineEvent, from: ActionPoint, to: ActionPoint): number {
+  const key = `${event.step_id ?? ""}:${event.ordinal}:${event.t_action_ms}:${Math.round(
+    from.x,
+  )},${Math.round(from.y)}:${Math.round(to.x)},${Math.round(to.y)}`;
+  return hashString(key) % 2 === 0 ? 1 : -1;
+}
+
+function quadraticBezier(a: ActionPoint, c: ActionPoint, b: ActionPoint, t: number): ActionPoint {
+  const inv = 1 - t;
+  return {
+    x: inv * inv * a.x + 2 * inv * t * c.x + t * t * b.x,
+    y: inv * inv * a.y + 2 * inv * t * c.y + t * t * b.y,
+  };
+}
+
+function curvedCursorPoint(
+  from: ActionPoint,
+  to: ActionPoint,
+  event: ActionTimelineEvent,
+  rawProgress: number,
+  profile: CursorMotionProfile,
+): ActionPoint {
+  const d = distance(from, to);
+  if (d < 1) return to;
+
+  const progress = smootherstep(rawProgress);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const nx = -dy / d;
+  const ny = dx / d;
+  const bend = clamp(d * profile.curveBend, 18, 90) * curveSign(event, from, to);
+  const control = {
+    x: (from.x + to.x) / 2 + nx * bend,
+    y: (from.y + to.y) / 2 + ny * bend,
+  };
+  const overshootDistance = clamp(d * profile.overshoot, 0, 14);
+  const overshoot = {
+    x: to.x + (dx / d) * overshootDistance,
+    y: to.y + (dy / d) * overshootDistance,
+  };
+
+  if (progress < SETTLE_START && overshootDistance > 0) {
+    return quadraticBezier(from, control, overshoot, progress / SETTLE_START);
+  }
+
+  const settle = smootherstep((progress - SETTLE_START) / (1 - SETTLE_START));
+  return {
+    x: overshoot.x + (to.x - overshoot.x) * settle,
+    y: overshoot.y + (to.y - overshoot.y) * settle,
+  };
+}
+
+function nextPreviousT(
+  event: ActionTimelineEvent,
+  actionT: number,
+  next: ActionTimelineEvent | undefined,
+): number {
+  const eventEnd = Math.max(actionT, event.t_end_ms);
+  if (!next) return eventEnd;
+  const nextStart = Math.max(0, Math.min(next.t_start_ms, next.t_action_ms));
+  return nextStart - eventEnd < QUICK_SUCCESSION_MS ? actionT : eventEnd;
+}
+
 export function sampleVirtualCursor(
   actions: RecordingActions | null | undefined,
   tMs: number,
@@ -96,7 +183,9 @@ export function sampleVirtualCursor(
   let previous: ActionPoint = { x: size.width / 2, y: size.height / 2 };
   let previousT = 0;
 
-  for (const event of actions.events) {
+  for (let i = 0; i < actions.events.length; i += 1) {
+    const event = actions.events[i];
+    if (!event) continue;
     const target = eventPoint(actions, event, previous, size);
     const startT = movementStartMs(previousT, event, previous, target, profile);
     const actionT = Math.max(startT, event.t_action_ms);
@@ -107,16 +196,12 @@ export function sampleVirtualCursor(
 
     if (tMs <= actionT) {
       const span = Math.max(1, actionT - startT);
-      const amount = smootherstep((tMs - startT) / span);
-      const pos = {
-        x: previous.x + (target.x - previous.x) * amount,
-        y: previous.y + (target.y - previous.y) * amount,
-      };
+      const pos = curvedCursorPoint(previous, target, event, (tMs - startT) / span, profile);
       return withRipple(actions, { x: pos.x / size.width, y: pos.y / size.height }, tMs);
     }
 
     previous = target;
-    previousT = Math.max(actionT, event.t_end_ms);
+    previousT = nextPreviousT(event, actionT, actions.events[i + 1]);
   }
 
   return withRipple(actions, { x: previous.x / size.width, y: previous.y / size.height }, tMs);

@@ -59,6 +59,12 @@ const ZOOM_SCALE = {
   strong: 1.65,
 } as const;
 
+const ACTION_FOCUS_HIGHLIGHT = {
+  subtle: { radiusPx: 36, color: "#ffffff", durationMs: 520 },
+  standard: { radiusPx: 56, color: "#ffffff", durationMs: 700 },
+  strong: { radiusPx: 72, color: "#ffffff", durationMs: 840 },
+} as const;
+
 const DEFAULT_BACKGROUND: EditorBackgroundKind = { kind: "transparent" };
 
 function hashPath(path: string): string {
@@ -172,6 +178,49 @@ function buildAutoZoomClips(
   return zoom;
 }
 
+function buildActionFocusAnnotations(
+  actions: RecordingActions | null,
+  idBase: string,
+  mode: keyof typeof ACTION_FOCUS_HIGHLIGHT,
+  excludeStepIds: ReadonlySet<string>,
+): AnnotationClip[] {
+  if (!actions) return [];
+  const recipe = ACTION_FOCUS_HIGHLIGHT[mode];
+  return actions.events
+    .filter(
+      (event) => event.target && (event.verb === "click" || event.pointer?.effect === "click"),
+    )
+    .filter((event) => !event.step_id || !excludeStepIds.has(event.step_id))
+    .map((event) => {
+      const center = normalizeCenter(
+        actions.capture_rect,
+        event.target?.center.x ?? 0.5,
+        event.target?.center.y ?? 0.5,
+      );
+      const stepId = event.step_id ?? `action-${event.ordinal}`;
+      return {
+        id: `action-focus-${idBase}-${stepId}-${event.t_action_ms}`,
+        trackId: "annotations" as const,
+        startMs: Math.max(0, event.t_action_ms - 60),
+        durationMs: recipe.durationMs,
+        label: "Action focus",
+        text: "",
+        pos: center,
+        sizePt: 18,
+        color: recipe.color,
+        anchor: event.step_id
+          ? ({ kind: "target", stepId: event.step_id, placement: "top" } as const)
+          : ({ kind: "screen", pos: center } as const),
+        highlight: {
+          center,
+          radiusPx: recipe.radiusPx,
+          color: recipe.color,
+          durationMs: recipe.durationMs,
+        },
+      };
+    });
+}
+
 function cursorSidecarFor(
   recordingPath: string,
   actions: RecordingActions | null,
@@ -281,6 +330,22 @@ function centerFromTimingTarget(
   return normalizeCenter(rect, bbox.x + bbox.w / 2, bbox.y + bbox.h / 2);
 }
 
+function centerFromActionTarget(
+  actions: RecordingActions | null,
+  stepId: string,
+  ordinal: number,
+): { x: number; y: number } | null {
+  if (!actions) return null;
+  const event = actions.events.find(
+    (item) =>
+      item.target &&
+      ((stepId && item.step_id === stepId) || (!item.step_id && item.ordinal === ordinal)),
+  );
+  return event?.target
+    ? normalizeCenter(actions.capture_rect, event.target.center.x, event.target.center.y)
+    : null;
+}
+
 function stepTimingLookup(sidecar: RecordingStepTimingSidecar | null | undefined): {
   byStepId: Map<string, RecordingStepTiming>;
   byOrdinal: Map<number, RecordingStepTiming>;
@@ -370,7 +435,9 @@ function buildPolishClips({
     const highlight = highlightEnabled(stepPolish.highlight);
     const needsTargetCenter = Boolean(zoomLevel || highlight);
     const center = needsTargetCenter
-      ? (centerFromTimingTarget(stepTime, rect) ?? centerFromTrajectoryAt(trajectory, tMs))
+      ? (centerFromActionTarget(actions, step.stepId, step.ordinal) ??
+        centerFromTimingTarget(stepTime, rect) ??
+        centerFromTrajectoryAt(trajectory, tMs))
       : { x: 0.5, y: 0.5 };
     if (zoomLevel && zoomLevel in ZOOM_SCALE) {
       const zoomTarget = (() => {
@@ -499,6 +566,20 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     idBase,
   });
   const zoom = [...autoZoom, ...polishClips.zoom];
+  const actionFocusMode = polish?.global.actionFocus ?? "standard";
+  const actionFocusAnnotations =
+    actionFocusMode === "off"
+      ? []
+      : buildActionFocusAnnotations(
+          actions,
+          idBase,
+          actionFocusMode,
+          new Set(
+            polishClips.annotations
+              .map((clip) => (clip.anchor?.kind === "target" ? clip.anchor.stepId : null))
+              .filter((stepId): stepId is string => Boolean(stepId)),
+          ),
+        );
   const sound: SoundClip[] = [];
   if (polish?.global.bgm?.path.trim()) {
     sound.push({
@@ -519,7 +600,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     cursor,
     zoom,
     sound,
-    annotations: polishClips.annotations,
+    annotations: [...actionFocusAnnotations, ...polishClips.annotations],
     background: backgroundFromPolish(polish),
   };
 }

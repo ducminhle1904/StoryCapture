@@ -5,7 +5,7 @@
 use std::fmt::Write;
 
 use crate::ast::audio::{AudioNode, SidechainParams};
-use crate::ast::types::NodeId;
+use crate::ast::types::{EasingKind, NodeId};
 use crate::ast::video::{TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe};
 use crate::ast::Graph;
 use crate::background::compositor::emit_background;
@@ -46,15 +46,14 @@ pub fn zoompan_expr(keyframes: &[ZoomKeyframe], axis: ExprAxis) -> String {
         let t_hi = (k1.t_ms as f64) / 1000.0;
         let v0 = format_axis_value(k0, axis);
         let v1 = format_axis_value(k1, axis);
-        // Linear interpolation between the two keyframes.
         let t_lo = (k0.t_ms as f64) / 1000.0;
         let dt = (t_hi - t_lo).max(1e-6);
+        let progress = easing_progress_expr(k1.easing, t_lo, dt);
         let segment = format!(
-            "({v0})+(({v1})-({v0}))*(t-{t_lo:.6})/{dt:.6}",
+            "({v0})+(({v1})-({v0}))*({progress})",
             v0 = v0,
             v1 = v1,
-            t_lo = t_lo,
-            dt = dt,
+            progress = progress,
         );
         expr = format!("if(lt(t,{t_hi:.6}),{segment},{expr})");
     }
@@ -63,6 +62,18 @@ pub fn zoompan_expr(keyframes: &[ZoomKeyframe], axis: ExprAxis) -> String {
     let first = format_axis_value(keyframes[0], axis);
     let t0 = (keyframes[0].t_ms as f64) / 1000.0;
     format!("if(lt(t,{t0:.6}),{first},{expr})")
+}
+
+fn easing_progress_expr(kind: EasingKind, t_lo: f64, dt: f64) -> String {
+    let u = format!("((t-{t_lo:.6})/{dt:.6})");
+    match kind {
+        EasingKind::Linear => u,
+        EasingKind::EaseIn => format!("pow({u},2)"),
+        EasingKind::EaseOut | EasingKind::EaseOutQuad => format!("1-pow(1-{u},2)"),
+        EasingKind::EaseInOut | EasingKind::EaseInOutCubic => {
+            format!("if(lt({u},0.5),4*pow({u},3),1-pow(-2*{u}+2,3)/2)")
+        }
+    }
 }
 
 fn format_axis_value(k: ZoomKeyframe, axis: ExprAxis) -> String {
@@ -187,15 +198,50 @@ fn emit_video_chain(out: &mut String, g: &Graph) {
                 cur = out_label;
             }
             VideoNode::RippleOverlay { events, .. } => {
-                // Ripples are baked into the cursor sequence, so this is a passthrough.
-                let _ = events;
-                write!(
-                    out,
-                    "{cur}null{out_label}",
-                    cur = cur,
-                    out_label = out_label
-                )
-                .unwrap();
+                let mut ripple_cur = cur.clone();
+                for (i, event) in events.iter().enumerate() {
+                    if i > 0 {
+                        out.push(';');
+                    }
+                    let step_label = if i + 1 == events.len() {
+                        out_label.clone()
+                    } else {
+                        format!("[{}_r{}]", node_label_core(node.id()), i)
+                    };
+                    let r = event.max_radius_px.max(1.0);
+                    let x = event.center.x - r;
+                    let y = event.center.y - r;
+                    let size = r * 2.0;
+                    let from = event.t_anticipate_ms as f64 / 1000.0;
+                    let to = (event.t_impact_ms + event.duration_ms as u64) as f64 / 1000.0;
+                    let alpha = event.color.a as f32 / 255.0;
+                    write!(
+                        out,
+                        "{ripple_cur}drawbox=x={x:.1}:y={y:.1}:w={size:.1}:h={size:.1}:t=3:color=0x{R:02X}{G:02X}{B:02X}@{A:.3}:enable='between(t,{from:.3},{to:.3})'{step_label}",
+                        ripple_cur = ripple_cur,
+                        x = x,
+                        y = y,
+                        size = size,
+                        R = event.color.r,
+                        G = event.color.g,
+                        B = event.color.b,
+                        A = alpha,
+                        from = from,
+                        to = to,
+                        step_label = step_label,
+                    )
+                    .unwrap();
+                    ripple_cur = step_label;
+                }
+                if events.is_empty() {
+                    write!(
+                        out,
+                        "{cur}null{out_label}",
+                        cur = cur,
+                        out_label = out_label
+                    )
+                    .unwrap();
+                }
                 cur = out_label;
             }
             VideoNode::TextOverlay { boxes, .. } => {

@@ -318,12 +318,15 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   }, [storyId, videoSrc]);
 
   const actionsQuery = useRecordingActions(latestRecording?.path);
+  const recordingActions = actionsQuery.data ?? null;
   const trajectoryQuery = useRecordingTrajectory(
     latestRecording?.path,
     actionsQuery.isSuccess && actionsQuery.data === null,
   );
   const stepTimingQuery = useRecordingStepTiming(latestRecording?.path);
-  const hasCursorData = Boolean(actionsQuery.data || trajectoryQuery.data);
+  const resolvedCaptureRect =
+    recordingActions?.capture_rect ?? trajectoryQuery.data?.capture_rect ?? null;
+  const hasCursorData = Boolean(recordingActions || trajectoryQuery.data);
 
   useEffect(() => {
     useEditorStore.setState((state) => ({
@@ -333,12 +336,12 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
           textOverlays: {},
           background: { kind: "transparent" },
         }),
-        actions: actionsQuery.data ?? null,
+        actions: recordingActions,
         stepTiming: stepTimingQuery.data ?? null,
-        captureRect: actionsQuery.data?.capture_rect ?? trajectoryQuery.data?.capture_rect ?? null,
+        captureRect: resolvedCaptureRect,
       },
     }));
-  }, [actionsQuery.data, stepTimingQuery.data, trajectoryQuery.data]);
+  }, [recordingActions, resolvedCaptureRect, stepTimingQuery.data]);
 
   // One-shot auto-populate: only run while generated tracks are empty so we
   // don't clobber persisted user edits. Idempotent on identical inputs.
@@ -451,7 +454,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     const built = buildTimelineFromStory({
       story: storyParsed,
       recording: latestRecording,
-      actions: actionsQuery.data ?? null,
+      actions: recordingActions,
       trajectory: trajectoryQuery.data ?? null,
       polish: polishDoc,
       stepTiming: stepTimingQuery.data ?? null,
@@ -470,8 +473,8 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     latestRecording,
     polishDoc,
     storyParsed,
-    actionsQuery.data,
     actionsQuery.isLoading,
+    recordingActions,
     stepTimingQuery.data,
     stepTimingQuery.isLoading,
     timelineBootstrapReady,
@@ -698,9 +701,9 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 mode="post-production"
                 storyId={storyId}
                 videoSrc={resolvedVideoSrc}
-                actions={actionsQuery.data ?? null}
+                actions={recordingActions}
                 stepTiming={stepTimingQuery.data ?? null}
-                captureRect={actionsQuery.data?.capture_rect ?? trajectoryQuery.data?.capture_rect ?? null}
+                captureRect={resolvedCaptureRect}
               />
               {(showEmptyOverlay || showErrorOverlay) && (
                 <div

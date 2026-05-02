@@ -64,7 +64,9 @@ describe("sampleVirtualCursor", () => {
       eventWithTarget({ x: 800, y: 300 }, { start: 2000, action: 2000, end: 2100 }),
     ]);
 
-    expect(sampleVirtualCursor(actions, 1600)).toMatchObject({ x: 0.5, y: 0.5 });
+    const early = sampleVirtualCursor(actions, 1600);
+    expect(early?.x).toBeGreaterThan(0.5);
+    expect(early?.x).toBeLessThan(0.8);
 
     const moving = sampleVirtualCursor(actions, 1800);
     expect(moving?.x).toBeGreaterThan(0.5);
@@ -118,9 +120,9 @@ describe("sampleVirtualCursor", () => {
     ]);
 
     const moving = sampleVirtualCursor(actions, 1250);
-    expect(moving?.x).toBeGreaterThan(0.2);
+    expect(moving?.x).toBeGreaterThan(0.18);
     expect(moving?.x).toBeLessThan(0.8);
-    expect(moving?.y).toBeGreaterThan(0.2);
+    expect(moving?.y).toBeGreaterThan(0.18);
     expect(moving?.y).toBeLessThan(0.6);
   });
 
@@ -128,5 +130,17 @@ describe("sampleVirtualCursor", () => {
     const moving = sampleVirtualCursor(ACTIONS, 1200);
     expect(moving?.x).toBeGreaterThan(0.5);
     expect(moving?.x).toBeLessThan(0.8);
+  });
+
+  it("uses a curved path instead of a straight line during travel", () => {
+    const actions = actionsWithEvents([
+      eventWithTarget({ x: 900, y: 250 }, { start: 1000, action: 2000, end: 2100 }),
+    ]);
+
+    const moving = sampleVirtualCursor(actions, 1500);
+
+    expect(moving?.x).toBeGreaterThan(0.5);
+    expect(moving?.x).toBeLessThan(0.9);
+    expect(moving?.y).not.toBeCloseTo(0.5, 4);
   });
 });
