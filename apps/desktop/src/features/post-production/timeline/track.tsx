@@ -14,6 +14,7 @@ import { memo, useCallback, useRef } from "react";
 
 import { useEditorStore } from "../state/store";
 import type { Clip as ClipModel, TrackId, VideoClip } from "../state/timeline-slice";
+import { MIN_RESIZABLE_ZOOM_DURATION_MS } from "../state/zoom-motion";
 import { Clip } from "./clip";
 import { VideoTransitionControls } from "./video-transition-controls";
 
@@ -39,6 +40,7 @@ const TRACK_LABEL: Record<TrackId, string> = {
 
 function TrackBase({ id, clips, pxPerMs, durationMs, height = 40 }: TrackProps) {
   const moveClip = useEditorStore((s) => s.moveClip);
+  const trimClip = useEditorStore((s) => s.trimClip);
   const pushAction = useEditorStore((s) => s.pushAction);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
   const containerRef = useRef<HTMLElement>(null);
@@ -57,11 +59,35 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 40 }: TrackProps) 
 
       const startX = e.clientX;
       const originMs = clip.startMs;
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      const originDurationMs = clip.durationMs;
+      const resizeTarget = (e.target as HTMLElement).closest<HTMLElement>(
+        "[data-clip-resize-edge]",
+      );
+      const resizeEdge = resizeTarget?.dataset.clipResizeEdge;
+      const pointerTarget = e.target as HTMLElement;
+      pointerTarget.setPointerCapture?.(e.pointerId);
 
       const onMove = (ev: PointerEvent) => {
         const deltaPx = ev.clientX - startX;
         const deltaMs = deltaPx / pxPerMs;
+        if (resizeEdge === "start") {
+          const fixedEndMs = originMs + originDurationMs;
+          let startMs = Math.max(0, originMs + deltaMs);
+          if (fixedEndMs - startMs < MIN_RESIZABLE_ZOOM_DURATION_MS) {
+            startMs = Math.max(0, fixedEndMs - MIN_RESIZABLE_ZOOM_DURATION_MS);
+          }
+          trimClip(id, clipId, {
+            startMs,
+            durationMs: Math.max(MIN_RESIZABLE_ZOOM_DURATION_MS, fixedEndMs - startMs),
+          });
+          return;
+        }
+        if (resizeEdge === "end") {
+          trimClip(id, clipId, {
+            durationMs: Math.max(MIN_RESIZABLE_ZOOM_DURATION_MS, originDurationMs + deltaMs),
+          });
+          return;
+        }
         moveClip(id, clipId, originMs + deltaMs, {
           altHeld: ev.altKey,
           pxPerMs,
@@ -76,6 +102,22 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 40 }: TrackProps) 
         // store so snap-adjusted values land in the undo record, not
         // the pointer delta.
         const finalClip = useEditorStore.getState().tracks[id].find((c) => c.id === clipId);
+        if (resizeEdge === "start" || resizeEdge === "end") {
+          const toRange: [number, number] = [
+            finalClip?.startMs ?? originMs,
+            finalClip?.durationMs ?? originDurationMs,
+          ];
+          if (toRange[0] !== originMs || toRange[1] !== originDurationMs) {
+            pushAction({
+              kind: "trim-clip",
+              trackId: id,
+              clipId,
+              fromRange: [originMs, originDurationMs],
+              toRange,
+            });
+          }
+          return;
+        }
         const toMs = finalClip?.startMs ?? originMs;
         if (toMs !== originMs) {
           pushAction({
@@ -90,7 +132,7 @@ function TrackBase({ id, clips, pxPerMs, durationMs, height = 40 }: TrackProps) 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [clips, id, moveClip, pushAction, pxPerMs],
+    [clips, id, moveClip, pushAction, pxPerMs, trimClip],
   );
 
   return (

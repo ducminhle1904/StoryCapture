@@ -6,7 +6,7 @@
  *   - Clips carry ARIA labels for screen readers
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -111,6 +111,46 @@ describe("Timeline", () => {
     });
     expect(btns.length).toBeGreaterThanOrEqual(1);
     expect(btns[0]).toHaveAttribute("data-track-id", "cursor");
+  });
+
+  it("renders zoom in/out markers and resizes zoom clips from the end handle", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [
+          {
+            id: "zoom-1",
+            trackId: "zoom",
+            startMs: 1000,
+            durationMs: 500,
+            label: "Script zoom",
+            target: { kind: "cursor" },
+            scale: 1.7,
+            center: { x: 0.5, y: 0.5 },
+            preset: "DYNAMIC",
+          },
+        ],
+        sound: [],
+        annotations: [],
+      },
+      durationMs: 3000,
+    });
+    render(<Timeline storyId="s1" pxPerMs={1} />);
+
+    const zoomClip = screen.getByRole("button", {
+      name: /zoom clip at 1\.00s, 0\.50s duration/i,
+    });
+    expect(zoomClip.querySelector("[data-clip-resize-edge='start'] svg")).not.toBeNull();
+    const endHandle = zoomClip.querySelector("[data-clip-resize-edge='end']");
+    if (!(endHandle instanceof HTMLElement)) throw new Error("expected zoom end handle");
+
+    fireEvent.pointerDown(endHandle, { clientX: 1500, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1700, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 1700, pointerId: 1 });
+
+    expect(useEditorStore.getState().tracks.zoom[0]?.durationMs).toBe(700);
+    expect(useEditorStore.getState().canUndo).toBe(true);
   });
 
   it("moveClip snaps a clip within 10 px of a neighbour edge", () => {

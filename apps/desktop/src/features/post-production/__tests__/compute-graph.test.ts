@@ -151,7 +151,9 @@ describe("computeGraph", () => {
     const zoom = videoNodeAt(g, 2);
     if (zoom.type !== "zoom-pan") throw new Error("expected zoom-pan");
     expect(zoom.target).toEqual({ kind: "cursor" });
-    expect(zoom.keyframes).toHaveLength(2);
+    expect(zoom.keyframes).toHaveLength(4);
+    expect(zoom.keyframes.map((k) => k.t_ms)).toEqual([1000, 1220, 2280, 2500]);
+    expect(zoom.keyframes.map((k) => k.scale)).toEqual([1.0, 2.0, 2.0, 1.0]);
     expect(zoom.keyframes[1]?.scale).toBe(2.0);
 
     const background = videoNodeAt(g, 3);

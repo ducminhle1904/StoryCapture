@@ -41,6 +41,7 @@ import type {
   ZoomTarget,
 } from "./timeline-slice";
 import { normalizeCursorMotionPreset } from "./timeline-slice";
+import { zoomTiming } from "./zoom-motion";
 
 /**
  * Minimal slice of the editor store that `computeGraph` reads. Narrowing
@@ -231,6 +232,7 @@ function videoSource(clip: VideoClip): VideoNode | null {
 }
 
 function zoomPan(clip: ZoomClip): VideoNode {
+  const timing = zoomTiming(clip);
   const keyframes: ZoomKeyframe[] = [
     {
       t_ms: clip.startMs,
@@ -239,9 +241,21 @@ function zoomPan(clip: ZoomClip): VideoNode {
       easing: "ease-in-out-cubic",
     },
     {
-      t_ms: clip.startMs + clip.durationMs,
+      t_ms: timing.inEndMs,
       center: clip.center,
       scale: clip.scale,
+      easing: "ease-in-out-cubic",
+    },
+    {
+      t_ms: timing.outStartMs,
+      center: clip.center,
+      scale: clip.scale,
+      easing: "ease-in-out-cubic",
+    },
+    {
+      t_ms: clip.startMs + clip.durationMs,
+      center: clip.center,
+      scale: 1.0,
       easing: "ease-in-out-cubic",
     },
   ];

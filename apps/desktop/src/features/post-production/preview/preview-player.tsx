@@ -19,6 +19,7 @@ import type { RecordingActions } from "@/ipc/actions";
 import { frontendLog } from "@/lib/log";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
 import type { CursorClip, CursorSkin, ZoomClip } from "../state/timeline-slice";
+import { zoomTiming } from "../state/zoom-motion";
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
@@ -323,10 +324,18 @@ export function samplePreviewZoom(
   const clip = activeZoomClip(clips, playheadMs);
   if (!clip) return { scale: 1, center: { x: 0.5, y: 0.5 } };
 
-  const progress = (playheadMs - clip.startMs) / Math.max(1, clip.durationMs);
   const targetScale = Number.isFinite(clip.scale) ? Math.max(1, clip.scale) : 1;
+  const timing = zoomTiming(clip);
+  const scaleProgress =
+    playheadMs < timing.inEndMs
+      ? (playheadMs - clip.startMs) / Math.max(1, timing.inEndMs - clip.startMs)
+      : playheadMs > timing.outStartMs
+        ? 1 -
+          (playheadMs - timing.outStartMs) /
+            Math.max(1, clip.startMs + clip.durationMs - timing.outStartMs)
+        : 1;
   return {
-    scale: 1 + (targetScale - 1) * easeInOutCubic(progress),
+    scale: 1 + (targetScale - 1) * easeInOutCubic(scaleProgress),
     center: clip.center ?? { x: 0.5, y: 0.5 },
   };
 }

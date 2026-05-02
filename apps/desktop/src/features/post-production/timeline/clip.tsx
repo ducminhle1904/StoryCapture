@@ -7,6 +7,7 @@
  * start + duration; focus-visible ring comes from the design tokens.
  */
 
+import { ZoomIn, ZoomOut } from "lucide-react";
 import { memo } from "react";
 
 import { useEditorStore } from "../state/store";
@@ -78,6 +79,7 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
   const { label: displayLabel, meta } = clipDisplayText(clip);
   const showText = width >= 44;
   const showMeta = width >= 78 && meta;
+  const showZoomMarkers = clip.trackId === "zoom" && width >= 54;
   const style = TRACK_STYLE[trackId];
 
   const label = `${trackId.charAt(0).toUpperCase() + trackId.slice(1)} clip at ${(
@@ -105,8 +107,28 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
         className="absolute inset-y-1 left-1 w-0.5 rounded-full"
         style={{ background: style.accent }}
       />
+      {clip.trackId === "zoom" ? (
+        <>
+          <span
+            aria-hidden="true"
+            data-clip-resize-edge="start"
+            className="absolute inset-y-0 left-0 z-10 flex w-4 cursor-ew-resize items-center justify-center border-r border-current/20 bg-black/5"
+            title="Resize zoom start"
+          >
+            {showZoomMarkers ? <ZoomIn className="h-3 w-3" strokeWidth={2} /> : null}
+          </span>
+          <span
+            aria-hidden="true"
+            data-clip-resize-edge="end"
+            className="absolute inset-y-0 right-0 z-10 flex w-4 cursor-ew-resize items-center justify-center border-l border-current/20 bg-black/5"
+            title="Resize zoom end"
+          >
+            {showZoomMarkers ? <ZoomOut className="h-3 w-3" strokeWidth={2} /> : null}
+          </span>
+        </>
+      ) : null}
       {showText ? (
-        <span className="min-w-0 px-2 pl-2.5 leading-none">
+        <span className={`min-w-0 px-2 pl-2.5 leading-none ${showZoomMarkers ? "mx-4" : ""}`}>
           <span className="block truncate font-medium text-[var(--sc-text)]">{displayLabel}</span>
           {showMeta ? (
             <span className="mt-0.5 block truncate text-[9px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">

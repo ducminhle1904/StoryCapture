@@ -182,12 +182,23 @@ describe("PreviewPlayer", () => {
     render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
 
     act(() => {
-      useEditorStore.getState().setPlayhead(1500);
+      useEditorStore.getState().setPlayhead(1110);
     });
 
     const zoomLayer = screen.getByTestId("preview-zoom-layer");
     await waitFor(() => expect(zoomLayer.style.transform).toContain("scale(1.5)"));
     expect(zoomLayer.style.transformOrigin).toBe("25% 75%");
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(1500);
+    });
+    await waitFor(() => expect(zoomLayer.style.transform).toContain("scale(2)"));
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(1890);
+    });
+    await waitFor(() => expect(zoomLayer.style.transform).toContain("scale(1.5)"));
+
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
 
