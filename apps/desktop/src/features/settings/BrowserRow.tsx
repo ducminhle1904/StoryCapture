@@ -4,7 +4,8 @@ import { exists } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 import { AlertTriangle, FolderSearch, X } from "lucide-react";
 
-import { getAppSettings, setBrowserExecutable } from "@/ipc/settings";
+import { setBrowserExecutable } from "@/ipc/settings";
+import { useAppSettingsStore } from "@/state/app-settings";
 
 const PRESETS = [
   { label: "Chrome", path: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" },
@@ -18,6 +19,8 @@ export function BrowserRow() {
   const [path, setPath] = useState<string | null>(null);
   const [pathMissing, setPathMissing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const settings = useAppSettingsStore((s) => s.settings);
+  const hydrate = useAppSettingsStore((s) => s.hydrate);
 
   const checkPath = useCallback(async (p: string | null) => {
     if (!p) {
@@ -32,13 +35,19 @@ export function BrowserRow() {
   }, []);
 
   useEffect(() => {
-    getAppSettings()
+    if (settings) {
+      const existing = settings.browser_executable ?? null;
+      setPath(existing);
+      void checkPath(existing);
+      return;
+    }
+    hydrate()
       .then((s) => {
         setPath(s.browser_executable);
         void checkPath(s.browser_executable);
       })
       .catch(() => {});
-  }, [checkPath]);
+  }, [checkPath, hydrate, settings]);
 
   const save = useCallback(
     async (value: string | null) => {
@@ -59,6 +68,7 @@ export function BrowserRow() {
           }
         }
         const next = await setBrowserExecutable(value);
+        useAppSettingsStore.setState({ settings: next });
         setPath(next.browser_executable);
         await checkPath(next.browser_executable);
         toast.success(

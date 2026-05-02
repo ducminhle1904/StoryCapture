@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog } from "@base-ui-components/react/dialog";
 import { FolderOpen, Loader2, X } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { useCreateProject } from "@/ipc/projects";
+import { useAppSettingsStore } from "@/state/app-settings";
 import {
   dialogBackdropMotionClassName,
   dialogCenteredPopupMotionClassName,
@@ -25,6 +26,13 @@ export function NewProjectDialog({
   const [parent, setParent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const create = useCreateProject();
+  const settings = useAppSettingsStore((s) => s.settings);
+
+  useEffect(() => {
+    if (!open || parent) return;
+    const configured = settings?.general.projects_folder ?? settings?.default_projects_folder;
+    if (configured) setParent(configured);
+  }, [open, parent, settings]);
 
   const pickParent = async () => {
     try {
@@ -53,7 +61,6 @@ export function NewProjectDialog({
     try {
       const project = await create.mutateAsync({ name: name.trim(), parent });
       setName("");
-      setParent("");
       onCreated(project.id);
       onOpenChange(false);
     } catch (e) {

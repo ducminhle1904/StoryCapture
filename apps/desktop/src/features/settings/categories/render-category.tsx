@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { ScSegmented, ScSlider, ScSwitch } from "@storycapture/ui";
 import type { OutputResolutionDto } from "@storycapture/shared-types";
+import { toast } from "sonner";
 
 import { useOutputPrefsStore } from "@/state/output-prefs";
+import { useAppSettingsStore } from "@/state/app-settings";
 import {
-  NotWiredCaption,
   SettingsCard,
   SettingsPanel,
   SettingsRow,
@@ -23,8 +25,11 @@ function fromResoKey(k: ResoKey): OutputResolutionDto {
   return { kind: k };
 }
 
-// Wired where it maps to output-prefs; placeholder for fields outside that store.
+// Render defaults combine output-prefs (recorder/export knobs) and app_settings
+// (queue-level defaults).
 export function RenderCategory() {
+  const settings = useAppSettingsStore((s) => s.settings);
+  const patchRender = useAppSettingsStore((s) => s.patchRender);
   const recordingKnobs = useOutputPrefsStore((s) => s.recordingKnobs);
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);
   const setRecordingKnob = useOutputPrefsStore((s) => s.setRecordingKnob);
@@ -32,7 +37,27 @@ export function RenderCategory() {
 
   const resoKey = resolutionKey(recordingKnobs.resolution);
   const codec = exportKnobs.codec; // always "h264" today
-  const hwOn = exportKnobs.hwEncoder !== "none";
+  const hwOn = exportKnobs.hwEncoder === "auto";
+  const savedParallelRenders = settings?.render.parallel_renders ?? 2;
+  const [parallelDraft, setParallelDraft] = useState(savedParallelRenders);
+
+  useEffect(() => {
+    setParallelDraft(savedParallelRenders);
+  }, [savedParallelRenders]);
+
+  const saveParallelRenders = async (parallel_renders: number) => {
+    if (parallel_renders === savedParallelRenders) return;
+    try {
+      await patchRender({ parallel_renders });
+      toast.success("Render defaults saved", {
+        description: "Open projects will use this the next time they are opened.",
+      });
+    } catch (err) {
+      toast.error("Could not save render defaults", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   return (
     <SettingsPanel title="Render defaults">
@@ -55,18 +80,9 @@ export function RenderCategory() {
         />
         <SettingsRow
           label="Codec"
-          hint="H.264 ships today; HEVC and ProRes arrive with codec plan"
+          hint="Current encoder path ships H.264."
           control={
-            <ScSegmented
-              size="sm"
-              value={codec}
-              disabled
-              options={[
-                { value: "h264", label: "H.264" },
-                { value: "hevc", label: "HEVC" },
-                { value: "prores", label: "ProRes" },
-              ]}
-            />
+            <ScSegmented size="sm" value={codec} options={[{ value: "h264", label: "H.264" }]} />
           }
         />
         <SettingsRow
@@ -75,7 +91,7 @@ export function RenderCategory() {
           control={
             <ScSwitch
               checked={hwOn}
-              onCheckedChange={(next) => setExportKnob("hwEncoder", next ? "auto" : "none")}
+              onCheckedChange={(next) => setExportKnob("hwEncoder", next ? "auto" : "software")}
             />
           }
         />
@@ -83,17 +99,26 @@ export function RenderCategory() {
           label="Parallel renders"
           hint="Cap background jobs"
           control={
-            <div style={{ width: 160 }}>
-              <ScSlider value={2} min={1} max={6} step={1} disabled />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, width: 190 }}>
+              <ScSlider
+                value={settings?.render.parallel_renders ?? 2}
+                min={1}
+                max={6}
+                step={1}
+                onValueChange={(value) => {
+                  if (typeof value === "number") setParallelDraft(value);
+                }}
+                onValueCommitted={() => void saveParallelRenders(parallelDraft)}
+                onBlur={() => void saveParallelRenders(parallelDraft)}
+              />
+              <span style={{ width: 18, fontSize: 12, color: "var(--sc-text-3)" }}>
+                {parallelDraft}
+              </span>
             </div>
           }
           last
         />
       </SettingsCard>
-      <NotWiredCaption>
-        Resolution and HW encoder toggle write to the Phase 13 output-prefs
-        store. Codec and parallel-renders are placeholders.
-      </NotWiredCaption>
     </SettingsPanel>
   );
 }

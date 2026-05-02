@@ -91,15 +91,15 @@
 12. From the repo root: `pnpm --filter @storycapture/desktop tauri dev`.
     Wait for the Tauri window to appear.
 
-13. Navigate to the Recorder view. In the Target dropdown, select
-    **"Specific window"** and pick the Chromium entry. Toggle **Include
-    cursor** on. Click **Start recording**.
+13. Navigate to the Recorder view. In the Target dropdown, select the display
+    where Chromium should launch. Toggle **Include cursor** on. Click
+    **Start recording**.
 
 14. Interact with the Chromium window for ~5s (type in the URL bar,
     scroll). Click **Stop recording**.
 
 15. Play the resulting MP4 in the Library view. Verify visually:
-    - Contains the Chromium window and **only** the Chromium window.
+    - Contains the Chromium window on the selected display.
     - Does NOT show StoryCapture's own UI chrome.
     - Does NOT show the desktop behind the window.
     - Cursor is visible when hovering inside the window.

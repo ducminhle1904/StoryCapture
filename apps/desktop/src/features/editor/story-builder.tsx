@@ -1,4 +1,5 @@
 import { ScBadge, ScButton, ScSegmented } from "@storycapture/ui";
+import { SelectField } from "@/components/ui/select-field";
 import {
   ChevronDown,
   Code2,
@@ -77,6 +78,22 @@ const zoomOptions = [
   { value: "subtle", label: "Subtle" },
   { value: "standard", label: "Standard" },
   { value: "strong", label: "Strong" },
+];
+const autoZoomOptions = [
+  { value: "off", label: "Off" },
+  { value: "subtle", label: "Subtle" },
+  { value: "standard", label: "Standard" },
+  { value: "strong", label: "Strong" },
+];
+const cursorModeOptions = [
+  { value: "raw", label: "Raw" },
+  { value: "smooth", label: "Smooth" },
+  { value: "hidden", label: "Hidden" },
+];
+const zoomTargetOptions = [
+  { value: "cursor", label: "Cursor" },
+  { value: "element", label: "Element" },
+  { value: "fixed-region", label: "Region" },
 ];
 
 const transitionOptions: Array<{ value: PolishTransition; label: string }> = [
@@ -496,19 +513,13 @@ export function StoryBuilder({
 
             <PolishGroup title="Motion">
               <LabeledControl label="Auto zoom" className="min-w-[140px] flex-1">
-                <select
-                  className={fieldClass}
+                <SelectField
                   value={polish.global.autoZoom}
                   disabled={simulatorActive}
-                  onChange={(event) =>
-                    updateGlobal({ autoZoom: event.target.value as PolishAutoZoom })
-                  }
-                >
-                  <option value="off">Off</option>
-                  <option value="subtle">Subtle</option>
-                  <option value="standard">Standard</option>
-                  <option value="strong">Strong</option>
-                </select>
+                  options={autoZoomOptions}
+                  onValueChange={(value) => updateGlobal({ autoZoom: value as PolishAutoZoom })}
+                  aria-label="Auto zoom"
+                />
               </LabeledControl>
               <LabeledControl label="Duration" className="w-24">
                 <input
@@ -530,34 +541,24 @@ export function StoryBuilder({
 
             <PolishGroup title="Cursor">
               <LabeledControl label="Mode" className="min-w-[120px] flex-1">
-                <select
-                  className={fieldClass}
+                <SelectField
                   value={polish.global.cursor}
                   disabled={simulatorActive}
-                  onChange={(event) =>
-                    updateGlobal({ cursor: event.target.value as PolishCursorMode })
-                  }
-                >
-                  <option value="raw">Raw</option>
-                  <option value="smooth">Smooth</option>
-                  <option value="hidden">Hidden</option>
-                </select>
+                  options={cursorModeOptions}
+                  onValueChange={(value) => updateGlobal({ cursor: value as PolishCursorMode })}
+                  aria-label="Cursor mode"
+                />
               </LabeledControl>
               <LabeledControl label="Skin" className="min-w-[120px] flex-1">
-                <select
-                  className={fieldClass}
+                <SelectField
                   value={polish.global.cursorSkin}
                   disabled={simulatorActive || polish.global.cursor === "hidden"}
-                  onChange={(event) =>
-                    updateGlobal({ cursorSkin: event.target.value as PolishCursorSkin })
+                  options={cursorSkinOptions}
+                  onValueChange={(value) =>
+                    updateGlobal({ cursorSkin: value as PolishCursorSkin })
                   }
-                >
-                  {cursorSkinOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  aria-label="Cursor skin"
+                />
               </LabeledControl>
               <LabeledControl label="Size" className="w-20">
                 <input
@@ -580,20 +581,13 @@ export function StoryBuilder({
 
             <PolishGroup title="Canvas & Audio">
               <LabeledControl label="Background" className="min-w-[150px] flex-1">
-                <select
-                  className={fieldClass}
+                <SelectField
                   value={backgroundToValue(polish.global.background)}
                   disabled={simulatorActive}
-                  onChange={(event) =>
-                    updateGlobal({ background: backgroundFromValue(event.target.value) })
-                  }
-                >
-                  {backgroundOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  options={backgroundOptions}
+                  onValueChange={(value) => updateGlobal({ background: backgroundFromValue(value) })}
+                  aria-label="Background"
+                />
               </LabeledControl>
               <LabeledControl label="BGM asset" className="min-w-[180px] flex-1">
                 <input
@@ -641,25 +635,19 @@ export function StoryBuilder({
                   aria-label={`Scene ${sceneIndex + 1} name`}
                 />
                 <LabeledControl label="Transition" className="w-40">
-                  <select
-                    className={fieldClass}
+                  <SelectField
                     value={scenePolish.transitionOut ?? "none"}
                     disabled={simulatorActive}
-                    onChange={(event) =>
+                    options={transitionOptions}
+                    onValueChange={(value) =>
                       onPolishChange(
                         setScenePolish(polish, scene.name, {
-                          transitionOut: event.target.value as PolishTransition,
+                          transitionOut: value as PolishTransition,
                         }),
                       )
                     }
                     aria-label={`Transition for ${scene.name}`}
-                  >
-                    {transitionOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </LabeledControl>
                 <LabeledControl label="Duration" className="w-24">
                   <input
@@ -842,33 +830,26 @@ export function StoryBuilder({
                                 </legend>
                                 <div className="flex flex-wrap items-end gap-2">
                                   <LabeledControl label="Zoom" className="w-32">
-                                    <select
-                                      className={fieldClass}
+                                    <SelectField
                                       value={stepPolish?.zoom ?? "off"}
                                       disabled={simulatorActive}
-                                      onChange={(event) =>
+                                      options={zoomOptions}
+                                      onValueChange={(value) =>
                                         updateStepPolish(sceneIndex, commandIndex, {
-                                          zoom: event.target.value as PolishZoom,
+                                          zoom: value as PolishZoom,
                                         })
                                       }
                                       aria-label={`${commandTitle(command)} zoom`}
-                                    >
-                                      {zoomOptions.map((option) => (
-                                        <option key={option.value} value={option.value}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
+                                    />
                                   </LabeledControl>
                                   {zoomEnabled ? (
                                     <LabeledControl label="Target" className="w-36">
-                                      <select
-                                        className={fieldClass}
+                                      <SelectField
                                         value={zoomTarget.kind}
                                         disabled={simulatorActive}
-                                        onChange={(event) => {
-                                          const kind = event.target
-                                            .value as PolishZoomTarget["kind"];
+                                        options={zoomTargetOptions}
+                                        onValueChange={(value) => {
+                                          const kind = value as PolishZoomTarget["kind"];
                                           updateStepPolish(sceneIndex, commandIndex, {
                                             zoomTarget:
                                               kind === "element"
@@ -883,11 +864,7 @@ export function StoryBuilder({
                                           });
                                         }}
                                         aria-label={`${commandTitle(command)} zoom target`}
-                                      >
-                                        <option value="cursor">Cursor</option>
-                                        <option value="element">Element</option>
-                                        <option value="fixed-region">Region</option>
-                                      </select>
+                                      />
                                     </LabeledControl>
                                   ) : null}
                                   {zoomEnabled && zoomTarget.kind === "element" ? (

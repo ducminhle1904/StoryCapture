@@ -17,13 +17,12 @@ StoryCapture turns a written `.story` script into a polished demo video.
 ## Current Repo Reality (refreshed 2026-04-25)
 
 - Desktop routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`,
-  `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`,
-  `/region-overlay`.
+  `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`.
 - Tauri IPC surface is ~26 modules / 70+ commands (system, automation,
-  picker, author_snapshot, app_settings, audio, capture, region_overlay,
-  encode, parse, projects, render, export, preset, timeline, sound_library,
-  updater, keys, dryrun, simulator, lsp, nl, tts, upload, web_account,
-  web_sync). Single source of truth: `apps/desktop/src-tauri/src/ipc_spec.rs`
+  picker, author_snapshot, app_settings, audio, capture, encode, parse,
+  projects, render, export, preset, timeline, sound_library, updater, keys,
+  dryrun, simulator, lsp, nl, tts, upload, web_account, web_sync). Single
+  source of truth: `apps/desktop/src-tauri/src/ipc_spec.rs`
   via tauri-specta — generated TS lands in `packages/shared-types/src/ipc.ts`
   (never hand-edited).
 - Domain crates active and non-trivial: `story-parser`, `automation`,

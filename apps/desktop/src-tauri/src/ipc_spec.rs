@@ -19,9 +19,8 @@ use tauri_specta::{collect_commands, Builder};
 use crate::{
     commands::{
         actions, app_settings, audio, author_snapshot, automation, capture, dryrun, encode, export,
-        frontend_log, keys, lsp, nl, parse, picker, preset, projects, region_overlay, render,
-        simulator, sound_library, system, timeline, trajectory, tts, updater, upload, web_account,
-        web_sync,
+        frontend_log, keys, lsp, nl, parse, picker, preset, projects, render, simulator,
+        sound_library, system, timeline, trajectory, tts, updater, upload, web_account, web_sync,
     },
     error::AppError,
 };
@@ -79,13 +78,15 @@ pub fn builder() -> Builder<Wry> {
             author_snapshot::author_snapshot_list,
             author_snapshot::author_snapshot_validate,
             app_settings::get_app_settings,
+            app_settings::set_app_settings,
+            app_settings::reset_app_settings_category,
             app_settings::get_browser_language_options,
             app_settings::set_browser_executable,
             app_settings::set_browser_language,
-            app_settings::set_live_preview_enabled,
             app_settings::get_log_config,
             app_settings::set_log_config,
             app_settings::open_log_dir,
+            app_settings::export_diagnostic_bundle,
             // Mic audio enumeration.
             audio::list_audio_inputs,
             capture::list_displays,
@@ -102,9 +103,6 @@ pub fn builder() -> Builder<Wry> {
             capture::set_capture_target,
             // One-shot thumbnail for recorder preview.
             capture::capture_target_thumbnail,
-            // Region selection overlay.
-            region_overlay::open_region_overlay,
-            region_overlay::close_region_overlay,
             encode::probe_hw_encoders,
             encode::refresh_hw_encoders,
             encode::start_recording,
@@ -185,6 +183,17 @@ pub fn builder() -> Builder<Wry> {
         ])
         .typ::<AppError>()
         .typ::<app_settings::AppSettingsDto>()
+        .typ::<app_settings::AppSettingsUpdate>()
+        .typ::<app_settings::GeneralSettings>()
+        .typ::<app_settings::CaptureDefaults>()
+        .typ::<app_settings::RenderDefaults>()
+        .typ::<app_settings::PrivacySettings>()
+        .typ::<app_settings::UpdateSettings>()
+        .typ::<app_settings::StartupBehavior>()
+        .typ::<app_settings::AudioInputDefault>()
+        .typ::<app_settings::ColorProfile>()
+        .typ::<app_settings::SettingsCategory>()
+        .typ::<app_settings::DiagnosticBundleResult>()
         .typ::<app_settings::BrowserLanguageOptionDto>()
         .typ::<app_settings::LogConfigDto>()
         .typ::<app_settings::LogConfigUpdate>()

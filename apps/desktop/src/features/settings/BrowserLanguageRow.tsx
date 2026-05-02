@@ -10,10 +10,10 @@ import {
 
 import {
   type BrowserLanguageOption,
-  getAppSettings,
   getBrowserLanguageOptions,
   setBrowserLanguage,
 } from "@/ipc/settings";
+import { useAppSettingsStore } from "@/state/app-settings";
 
 export function BrowserLanguageRow() {
   const [language, setLanguage] = useState("system");
@@ -21,17 +21,19 @@ export function BrowserLanguageRow() {
     { value: "system", label: "System default" },
   ]);
   const [busy, setBusy] = useState(false);
+  const settings = useAppSettingsStore((s) => s.settings);
+  const hydrate = useAppSettingsStore((s) => s.hydrate);
 
   useEffect(() => {
-    Promise.all([getAppSettings(), getBrowserLanguageOptions()])
-      .then(([settings, nextOptions]) => {
-        setLanguage(settings.browser_language || "system");
+    Promise.all([settings ? Promise.resolve(settings) : hydrate(), getBrowserLanguageOptions()])
+      .then(([nextSettings, nextOptions]) => {
+        setLanguage(nextSettings.browser_language || "system");
         if (nextOptions.length > 0) {
           setOptions(nextOptions);
         }
       })
       .catch(() => {});
-  }, []);
+  }, [hydrate, settings]);
 
   const save = useCallback(
     async (nextLanguage: string) => {
@@ -40,6 +42,7 @@ export function BrowserLanguageRow() {
       setBusy(true);
       try {
         const next = await setBrowserLanguage(nextLanguage);
+        useAppSettingsStore.setState({ settings: next });
         setLanguage(next.browser_language);
         toast.success("Browser language updated");
       } catch {

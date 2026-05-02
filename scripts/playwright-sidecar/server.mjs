@@ -508,6 +508,25 @@ async function fitViewportToContent(page, context, viewport) {
   }
 }
 
+async function ensureCaptureWindowVisible(page) {
+  await page.bringToFront().catch(() => {});
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const { windowId } = await cdp.send("Browser.getWindowForTarget");
+    const before = await cdp.send("Browser.getWindowBounds", { windowId }).catch(() => null);
+    await cdp.send("Browser.setWindowBounds", {
+      windowId,
+      bounds: { windowState: "normal" },
+    });
+    await page.waitForTimeout(120);
+    await page.bringToFront().catch(() => {});
+    const after = await cdp.send("Browser.getWindowBounds", { windowId }).catch(() => null);
+    return { ok: true, before: before?.bounds ?? null, after: after?.bounds ?? null };
+  } finally {
+    await cdp.detach().catch(() => {});
+  }
+}
+
 async function waitForAppModeContext(browser, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -1225,6 +1244,17 @@ const handlers = {
       bounds: info.bounds ?? null,
     });
     return info;
+  },
+
+  ensureCaptureWindowVisible: async () => {
+    const page = await pickPage();
+    const result = await ensureCaptureWindowVisible(page);
+    sidecarLog("capture_window_visible", {
+      ok: Boolean(result?.ok),
+      before: result?.before ?? null,
+      after: result?.after ?? null,
+    });
+    return result;
   },
 
   // Quick 260418-fpr — block until the launched page has painted its

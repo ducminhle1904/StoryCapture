@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Download, RefreshCcw, CheckCircle2, AlertTriangle } from "lucide-react";
 
 import { checkUpdate, installUpdate, type UpdateInfo } from "@/ipc/updater";
-
-const PREF_KEY = "storycapture.updater.check-on-launch";
+import { useAppSettingsStore } from "@/state/app-settings";
 
 type CheckState =
   | { kind: "idle" }
@@ -13,31 +12,34 @@ type CheckState =
   | { kind: "error"; message: string }
   | { kind: "installing" };
 
-function loadPref(): boolean {
-  try {
-    return window.localStorage.getItem(PREF_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-function savePref(v: boolean) {
-  try {
-    window.localStorage.setItem(PREF_KEY, v ? "true" : "false");
-  } catch {}
-}
-
 export function AutoUpdaterSettings() {
-  const [checkOnLaunch, setCheckOnLaunch] = useState(false);
   const [checkState, setCheckState] = useState<CheckState>({ kind: "idle" });
+  const settings = useAppSettingsStore((s) => s.settings);
+  const hydrate = useAppSettingsStore((s) => s.hydrate);
+  const patchUpdates = useAppSettingsStore((s) => s.patchUpdates);
+  const checkOnLaunch = settings?.updates.check_updates_on_launch ?? false;
 
   useEffect(() => {
-    setCheckOnLaunch(loadPref());
-  }, []);
+    hydrate()
+      .then((next) => {
+        if (next.updates.check_updates_on_launch) return;
+        try {
+          if (window.localStorage.getItem("storycapture.updater.check-on-launch") === "true") {
+            void patchUpdates({ check_updates_on_launch: true });
+            window.localStorage.removeItem("storycapture.updater.check-on-launch");
+          }
+        } catch {}
+      })
+      .catch(() => {});
+  }, [hydrate, patchUpdates]);
 
-  const onToggle = useCallback((next: boolean) => {
-    setCheckOnLaunch(next);
-    savePref(next);
-  }, []);
+  const onToggle = useCallback(
+    async (next: boolean) => {
+      if (!settings) await hydrate();
+      await patchUpdates({ check_updates_on_launch: next });
+    },
+    [hydrate, patchUpdates, settings],
+  );
 
   const runCheck = useCallback(async () => {
     setCheckState({ kind: "checking" });
@@ -71,7 +73,7 @@ export function AutoUpdaterSettings() {
           id="check-on-launch"
           type="checkbox"
           checked={checkOnLaunch}
-          onChange={(e) => onToggle(e.target.checked)}
+          onChange={(e) => void onToggle(e.target.checked)}
           className="h-4 w-4 rounded accent-[var(--color-accent-primary)]"
         />
         <div>

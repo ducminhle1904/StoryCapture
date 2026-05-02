@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import type { PickElementMeta } from "@/ipc/picker";
+import { SelectField } from "@/components/ui/select-field";
 import type {
   PickerAction,
   PickerActionItem,
@@ -223,7 +224,7 @@ function FormBody({
   onBack: () => void;
   optionLabels: string[];
 }) {
-  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -246,21 +247,14 @@ function FormBody({
         {label}
       </label>
       {useDropdown ? (
-        <select
-          ref={(el) => {
-            inputRef.current = el;
-          }}
+        <SelectField
           value={draft}
-          onChange={(e) => onChange(e.target.value)}
-          className={fieldClass}
-        >
-          <option value="">— choose —</option>
-          {optionLabels.map((label) => (
-            <option key={label} value={label}>
-              {label}
-            </option>
-          ))}
-        </select>
+          onValueChange={onChange}
+          options={optionLabels.map((label) => ({ value: label, label }))}
+          placeholder="Choose"
+          aria-label={label}
+          autoFocus
+        />
       ) : (
         <input
           ref={(el) => {

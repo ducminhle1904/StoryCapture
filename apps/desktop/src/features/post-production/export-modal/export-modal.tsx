@@ -25,6 +25,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { SelectField } from "@/components/ui/select-field";
 import {
   dialogBackdropMotionClassName,
   dialogSideSheetPopupMotionClassName,
@@ -322,16 +323,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
                       >
                         Quality
                       </label>
-                      <select
-                        id="export-quality"
+                      <SelectField
                         value={form.quality}
-                        onChange={(e) => setQuality(e.target.value as "low" | "med" | "high")}
-                        className="mt-3 w-full rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-4 py-3 text-sm text-[var(--sc-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-accent-500)]"
-                      >
-                        <option value="low">Low</option>
-                        <option value="med">Medium</option>
-                        <option value="high">High</option>
-                      </select>
+                        onValueChange={(value) => setQuality(value as "low" | "med" | "high")}
+                        options={[
+                          { value: "low", label: "Low" },
+                          { value: "med", label: "Medium" },
+                          { value: "high", label: "High" },
+                        ]}
+                        aria-label="Export quality"
+                        className="mt-3 min-h-12 rounded-2xl px-4 py-3 text-sm"
+                      />
                     </div>
 
                     <div>

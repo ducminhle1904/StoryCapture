@@ -18,7 +18,6 @@ pub mod parse;
 pub mod picker;
 pub mod preset;
 pub mod projects;
-pub mod region_overlay;
 pub mod render;
 pub mod simulator;
 pub mod sound_library;

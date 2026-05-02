@@ -35,6 +35,7 @@ import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview"
 import { parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
+import { useAppSettingsStore } from "@/state/app-settings";
 import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
@@ -73,6 +74,7 @@ export default function EditorRoute() {
   const setLastParse = useEditorStore((s) => s.setLastParse);
   const resetProjectState = useEditorStore((s) => s.resetProjectState);
   const source = useEditorStore((s) => s.source);
+  const appSettings = useAppSettingsStore((s) => s.settings);
   const story = useEditorStore((s) => s.lastParse?.ast ?? null);
   const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
 
@@ -253,16 +255,18 @@ export default function EditorRoute() {
     setPolishDirty(true);
   }, [polish, polishReady, story]);
 
+  const autosaveEnabled = appSettings?.general.autosave_enabled ?? true;
+  const autosaveDelayMs = (appSettings?.general.autosave_interval_sec ?? 5) * 1000;
   const uiAutosave = useDebouncedCallback((nextSource: string) => {
-    void autosave(nextSource);
-  }, 5000);
+    if (autosaveEnabled) void autosave(nextSource);
+  }, autosaveDelayMs);
 
   const handleUiSourceChange = useCallback(
     (nextSource: string) => {
       setSource(nextSource);
-      uiAutosave.run(nextSource);
+      if (autosaveEnabled) uiAutosave.run(nextSource);
     },
-    [setSource, uiAutosave],
+    [autosaveEnabled, setSource, uiAutosave],
   );
 
   const commitUiSourceChange = useCallback(
@@ -572,6 +576,8 @@ export default function EditorRoute() {
                     ) : (
                       <StoryEditor
                         onAutosave={autosave}
+                        autosaveEnabled={autosaveEnabled}
+                        autosaveDelayMs={autosaveDelayMs}
                         jumpTarget={editorJumpTarget}
                         projectFolder={folder?.folder_path ?? null}
                         storyPath={folder?.story_path ?? null}

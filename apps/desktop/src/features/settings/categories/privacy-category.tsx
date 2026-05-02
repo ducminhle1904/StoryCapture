@@ -1,62 +1,102 @@
-import { ScSwitch } from "@storycapture/ui";
+import { open } from "@tauri-apps/plugin-dialog";
+import { FolderArchive } from "lucide-react";
+import { toast } from "sonner";
+import { ScBadge, ScButton, ScSwitch } from "@storycapture/ui";
 
-import {
-  NotWiredCaption,
-  SettingsCard,
-  SettingsPanel,
-  SettingsRow,
-} from "../settings-row";
+import { exportDiagnosticBundle, type PrivacySettings } from "@/ipc/settings";
+import { useAppSettingsStore } from "@/state/app-settings";
+import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
 
-// Telemetry is off by default per CLAUDE.md; switches are disabled placeholders
-// until an opt-in diagnostic-upload flow ships.
 export function PrivacyCategory() {
+  const settings = useAppSettingsStore((s) => s.settings);
+  const patchPrivacy = useAppSettingsStore((s) => s.patchPrivacy);
+
+  const savePrivacy = async (patch: Partial<PrivacySettings>) => {
+    try {
+      await patchPrivacy(patch);
+      toast.success("Privacy settings saved");
+    } catch (err) {
+      toast.error("Could not save privacy settings", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const exportBundle = async () => {
+    const selected = await open({
+      multiple: false,
+      directory: true,
+      title: "Select folder for diagnostic bundle",
+    });
+    if (typeof selected !== "string") return;
+    try {
+      const result = await exportDiagnosticBundle(selected);
+      toast.success("Diagnostic bundle exported", {
+        description: result.path,
+      });
+    } catch (err) {
+      toast.error("Could not export diagnostic bundle", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  if (!settings) {
+    return <SettingsPanel title="Privacy & telemetry">Loading settings...</SettingsPanel>;
+  }
+
   return (
     <SettingsPanel
       title="Privacy & telemetry"
-      desc="Telemetry is off by default. Nothing about your stories, prompts, or recordings leaves your machine unless you explicitly share."
+      desc="Telemetry remains local-only. Story content and recordings are never included in diagnostic bundles."
     >
       <SettingsCard>
         <SettingsRow
           label="Crash reports"
-          hint="Anonymized stack traces only"
-          control={<ScSwitch checked={false} disabled />}
+          hint="Local log capture only; no automatic upload."
+          control={<ScBadge tone="muted">Off</ScBadge>}
         />
         <SettingsRow
           label="Usage analytics"
-          hint="Feature counts; no content"
-          control={<ScSwitch checked={false} disabled />}
-        />
-        <SettingsRow
-          label="Auto-update"
-          hint="Managed under About → Updates"
-          control={<ScSwitch checked disabled />}
+          hint="No product analytics are collected."
+          control={<ScBadge tone="muted">Off</ScBadge>}
         />
         <SettingsRow
           label="Prompt redaction"
-          hint="Strip values from .story before sending to LLM"
-          control={<ScSwitch checked disabled />}
+          hint="Redact user prompt content from local diagnostic exports where possible."
+          control={
+            <ScSwitch
+              checked={settings.privacy.prompt_redaction_enabled}
+              onCheckedChange={(checked) =>
+                void savePrivacy({ prompt_redaction_enabled: checked })
+              }
+            />
+          }
+        />
+        <SettingsRow
+          label="Diagnostic bundle"
+          hint="Exports logs and app metadata only."
+          control={
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <ScSwitch
+                checked={settings.privacy.diagnostic_bundle_enabled}
+                onCheckedChange={(checked) =>
+                  void savePrivacy({ diagnostic_bundle_enabled: checked })
+                }
+              />
+              <ScButton
+                size="sm"
+                variant="ghost"
+                onClick={() => void exportBundle()}
+                disabled={!settings.privacy.diagnostic_bundle_enabled}
+              >
+                <FolderArchive size={12} /> Export
+              </ScButton>
+            </div>
+          }
           last
         />
       </SettingsCard>
-      <div
-        style={{
-          marginTop: 16,
-          padding: 14,
-          background: "var(--sc-surface-2)",
-          border: "1px solid var(--sc-border)",
-          borderRadius: "var(--sc-r-md)",
-          fontSize: 12,
-          color: "var(--sc-text-3)",
-          lineHeight: 1.5,
-        }}
-      >
-        Diagnostic bundle export is opt-in only and never auto-uploaded. Bundle
-        export UI arrives with the privacy settings plan.
-      </div>
-      <NotWiredCaption>
-        Telemetry toggles are disabled by design — the app does not collect
-        analytics today.
-      </NotWiredCaption>
     </SettingsPanel>
   );
 }

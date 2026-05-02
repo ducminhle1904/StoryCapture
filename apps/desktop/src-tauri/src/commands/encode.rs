@@ -828,7 +828,17 @@ fn select_recording_encoder(
 ) -> Result<RecordingEncoderSelection, AppError> {
     #[cfg(target_os = "macos")]
     {
-        if matches!(preset, QualityPreset::High | QualityPreset::Lossless)
+        if matches!(preset, QualityPreset::High) && fps >= 50 {
+            if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
+                return Ok(RecordingEncoderSelection::new(
+                    HardwareEncoder::VideoToolboxH264,
+                    Some(
+                        "60fps macOS Standard recording uses VideoToolbox H.264 bitrate mode so screen text does not undershoot bitrate on static UI; libx264 CRF is reserved for lower-fps/offline paths",
+                    ),
+                ));
+            }
+        }
+        if matches!(preset, QualityPreset::Lossless)
             && has_realtime_60fps_pressure(capture_w, capture_h, output_w, output_h, fps)
         {
             if probe.available.contains(&HardwareEncoder::VideoToolboxH264) {
@@ -2176,7 +2186,7 @@ mod recording_encoder_selection_tests {
     }
 
     #[test]
-    fn high_prefers_libx264_crf_when_available() {
+    fn high_30fps_prefers_libx264_crf_when_available() {
         let selection = select_recording_encoder(
             &probe(
                 vec![
@@ -2197,6 +2207,35 @@ mod recording_encoder_selection_tests {
         assert_eq!(selection.encoder, HardwareEncoder::Libx264Software);
         assert_eq!(selection.quality_mode, RecordingQualityMode::SoftwareCrf);
         assert_eq!(selection.fallback_reason, None);
+    }
+
+    #[test]
+    fn high_1080p_60fps_uses_videotoolbox_to_avoid_static_ui_bitrate_undershoot() {
+        let selection = select_recording_encoder(
+            &probe(
+                vec![
+                    HardwareEncoder::VideoToolboxH264,
+                    HardwareEncoder::Libx264Software,
+                ],
+                HardwareEncoder::VideoToolboxH264,
+            ),
+            QualityPreset::High,
+            1920,
+            1080,
+            1920,
+            1080,
+            60,
+        )
+        .expect("selection");
+
+        assert_eq!(selection.encoder, HardwareEncoder::VideoToolboxH264);
+        assert_eq!(
+            selection.quality_mode,
+            RecordingQualityMode::HardwareBitrate
+        );
+        assert!(selection
+            .fallback_reason
+            .is_some_and(|reason| reason.contains("60fps macOS Standard")));
     }
 
     #[test]
@@ -2445,7 +2484,7 @@ mod recording_encoder_selection_tests {
         );
         assert!(selection
             .fallback_reason
-            .is_some_and(|reason| reason.contains("high-resolution 60fps")));
+            .is_some_and(|reason| reason.contains("60fps macOS Standard")));
     }
 }
 

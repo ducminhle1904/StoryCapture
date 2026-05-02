@@ -134,6 +134,7 @@ pub struct ProjectIdArg {
 #[specta::specta]
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "open_project"), err(Debug))]
 pub async fn open_project(
+    app: AppHandle,
     state: State<'_, AppState>,
     args: ProjectIdArg,
 ) -> Result<ProjectFolderInfoDto, AppError> {
@@ -151,7 +152,14 @@ pub async fn open_project(
     let folder = storage::open_project(&row.folder_path).map_err(map_storage_err)?;
     let story_path = folder.story_path();
     let exports_dir = folder.exports_dir();
-    install_project_render_queue(&state, &row.folder_path, &exports_dir).await?;
+    let settings = super::app_settings::load(&app);
+    install_project_render_queue(
+        &state,
+        &row.folder_path,
+        &exports_dir,
+        settings.render_defaults.parallel_renders,
+    )
+    .await?;
     let session_count = folder
         .db()
         .list_sessions()
@@ -175,6 +183,7 @@ async fn install_project_render_queue(
     state: &AppState,
     project_folder: &Path,
     exports_dir: &Path,
+    parallel_renders: u32,
 ) -> Result<(), AppError> {
     if let Some(existing) = state.render_queue() {
         let _ = existing.handle.send(QueueMsg::Shutdown).await;
@@ -188,7 +197,13 @@ async fn install_project_render_queue(
         output_root: exports_dir.to_path_buf(),
     });
     let handle = encoder::spawn_render_queue(
-        RenderQueueConfig::default(),
+        RenderQueueConfig {
+            pool: encoder::PoolConfig {
+                max_concurrent: parallel_renders as usize,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
         db.clone(),
         executor,
         progress_tx,
@@ -372,7 +387,7 @@ mod tests {
         let exports_dir = folder.exports_dir();
         let state = AppState::new(state_dir.path().to_path_buf(), log_dir.path().to_path_buf());
 
-        install_project_render_queue(&state, folder.root(), &exports_dir)
+        install_project_render_queue(&state, folder.root(), &exports_dir, 2)
             .await
             .unwrap();
 

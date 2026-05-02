@@ -5,7 +5,7 @@
 //! Each event renders as e.g.:
 //!
 //! ```text
-//! 2026-04-25T10:15:33Z ERROR storycapture::frontend source=RegionOverlay
+//! 2026-04-25T10:15:33Z ERROR storycapture::frontend source=RecordingView
 //!   reason="getDisplayMedia rejected" stack="…" "frontend error"
 //! ```
 
@@ -28,7 +28,7 @@ pub enum FrontendLogLevel {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct FrontendLogPayload {
     pub level: FrontendLogLevel,
-    /// Originating component / module — e.g. `"RegionOverlay"`. Free-form.
+    /// Originating component / module — e.g. `"RecordingView"`. Free-form.
     pub source: String,
     pub message: String,
     /// Dynamic key/value pairs rendered into the event tail as `key="value"`.

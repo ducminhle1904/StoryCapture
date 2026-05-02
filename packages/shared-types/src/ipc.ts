@@ -438,6 +438,22 @@ async getAppSettings() : Promise<Result<AppSettingsDto, AppError>> {
     else return { status: "error", error: e  as any };
 }
 },
+async setAppSettings(update: AppSettingsUpdate) : Promise<Result<AppSettingsDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_app_settings", { update }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async resetAppSettingsCategory(category: SettingsCategory) : Promise<Result<AppSettingsDto, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reset_app_settings_category", { category }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getBrowserLanguageOptions() : Promise<Result<BrowserLanguageOptionDto[], AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_browser_language_options") };
@@ -462,14 +478,6 @@ async setBrowserLanguage(language: string) : Promise<Result<AppSettingsDto, AppE
     else return { status: "error", error: e  as any };
 }
 },
-async setLivePreviewEnabled(enabled: boolean) : Promise<Result<AppSettingsDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_live_preview_enabled", { enabled }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async getLogConfig() : Promise<Result<LogConfigDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_log_config") };
@@ -489,6 +497,14 @@ async setLogConfig(config: LogConfigUpdate) : Promise<Result<LogConfigDto, AppEr
 async openLogDir() : Promise<Result<string, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("open_log_dir") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async exportDiagnosticBundle(parentDir: string) : Promise<Result<DiagnosticBundleResult, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("export_diagnostic_bundle", { parentDir }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -615,35 +631,6 @@ async setCaptureTarget(target: CaptureTargetDto) : Promise<Result<null, AppError
 async captureTargetThumbnail(target: CaptureTargetDto, maxWidth: number | null, maxHeight: number | null) : Promise<Result<number[], AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("capture_target_thumbnail", { target, maxWidth, maxHeight }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Open (or focus) the region-selection overlay on the specified display.
- * 
- * When the user finishes interacting, the overlay emits
- * `region://selected` back to the main window and closes itself. The
- * caller does not `await` a response here — it's a fire-and-forget
- * window open; the renderer listens for the event.
- */
-async openRegionOverlay(displayId: bigint) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("open_region_overlay", { displayId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Close the overlay from the host side (e.g. if the main window
- * navigates away while the overlay is open). The overlay normally
- * closes itself after emit; this is a safety net.
- */
-async closeRegionOverlay() : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("close_region_overlay") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1400,8 +1387,10 @@ export type AppInfo = { version: string; platform: string; arch: string; data_di
  * reference the exact slice of the log file the user is running in.
  */
 session_id: string; pid: number }
-export type AppSettingsDto = { browser_executable: string | null; live_preview_enabled: boolean; browser_language: string }
+export type AppSettingsDto = { browser_executable: string | null; browser_language: string; general: GeneralSettings; capture: CaptureDefaults; render: RenderDefaults; privacy: PrivacySettings; updates: UpdateSettings; default_projects_folder: string; dock_progress_badge_supported: boolean }
+export type AppSettingsUpdate = { general: GeneralSettings; capture: CaptureDefaults; render: RenderDefaults; privacy: PrivacySettings; updates: UpdateSettings }
 export type AudioCodecDto = "aac" | "opus"
+export type AudioInputDefault = "none" | "system_default"
 /**
  * Serializable DTO for the audio-device picker. Mirrors
  * `capture::audio::AudioInputInfo` but lives in the host crate so
@@ -1471,6 +1460,7 @@ export type CaptureConfigDto = { display_id: bigint; include_cursor: boolean; fp
  * Defaults to 256 MiB if `None`.
  */
 queue_cap_bytes: bigint | null }
+export type CaptureDefaults = { capture_fps: number; include_cursor_default: boolean; audio_input_default: AudioInputDefault; color_profile: ColorProfile }
 /**
  * Wrapper around `capture::CaptureEvent` for the typed `Channel<T>`.
  */
@@ -1484,6 +1474,7 @@ export type CaptureTargetDto = { kind: "display"; display_id: bigint } | { kind:
 export type CaptureTargetsDto = { displays: DisplayInfoDto[]; windows: WindowInfoDto[]; playwright_auto_available: boolean }
 export type ClockSourceDto = "host-time" | "qpc" | "synthetic"
 export type CodecDto = "h264"
+export type ColorProfile = "srgb_rec_709"
 export type CommandDto = { verb: "navigate"; url: string; span: SpanDto; step_id: string | null } | { verb: "click"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null } | { verb: "type"; target: SelectorOrTextDto; text: string; span: SpanDto; step_id: string | null } | { verb: "scroll"; direction: ScrollDirDto; amount: number | null; span: SpanDto; step_id: string | null } | { verb: "hover"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null } | { verb: "drag"; from: SelectorOrTextDto; to: SelectorOrTextDto; span: SpanDto; step_id: string | null } | { verb: "select"; target: SelectorOrTextDto; value: string; span: SpanDto; step_id: string | null } | { verb: "upload"; target: SelectorOrTextDto; path: string; span: SpanDto; step_id: string | null } | { verb: "wait"; duration_ms: bigint; span: SpanDto; step_id: string | null } | { verb: "wait-for"; target: SelectorOrTextDto; timeout_ms: bigint | null; span: SpanDto; step_id: string | null } | { verb: "assert"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null } | { verb: "screenshot"; name: string; span: SpanDto; step_id: string | null } | { verb: "pause"; span: SpanDto; step_id: string | null }
 export type ContainerDto = "mp4" | "mov" | "webm"
 export type CreateProjectArgs = { name: string; 
@@ -1493,6 +1484,7 @@ export type CreateProjectArgs = { name: string;
  * `storage::project_folder::create_project`).
  */
 parent: string }
+export type DiagnosticBundleResult = { path: string }
 export type DiagnosticDto = { severity: SeverityDto; message: string; span: SpanDto; suggestion: string | null }
 export type DisplayInfoDto = { id: bigint; name: string; x: number; y: number; width_px: number; height_px: number; scale_factor: number; is_primary: boolean }
 /**
@@ -1556,7 +1548,7 @@ pts_ns: bigint; clock_source: ClockSourceDto; bytes: bigint; width_px: number; h
 export type FrontendLogLevel = "trace" | "debug" | "info" | "warn" | "error"
 export type FrontendLogPayload = { level: FrontendLogLevel; 
 /**
- * Originating component / module — e.g. `"RegionOverlay"`. Free-form.
+ * Originating component / module — e.g. `"RecordingView"`. Free-form.
  */
 source: string; message: string; 
 /**
@@ -1565,6 +1557,7 @@ source: string; message: string;
  * hence the string-tuple shape.
  */
 fields?: ([string, string])[]; stack?: string | null; url?: string | null }
+export type GeneralSettings = { projects_folder: string | null; startup_behavior: StartupBehavior; autosave_enabled: boolean; autosave_interval_sec: number; dock_progress_badge: boolean }
 export type GetRecordingActionsArgs = { recording_path: string }
 export type GetRecordingTrajectoryArgs = { recording_path: string }
 export type HardwareEncoderDto = "video-toolbox-h264" | "video-toolbox-hevc" | "nvenc-h264" | "qsv-h264" | "amf-h264" | "libx264-software" | "openh-264-software"
@@ -1672,6 +1665,7 @@ step_id: string;
 was_freshly_stamped: boolean }
 export type PixelFormatDto = "bgra" | "nv-12"
 export type PresetScopeDto = "project" | "global"
+export type PrivacySettings = { crash_reports_enabled: boolean; usage_analytics_enabled: boolean; prompt_redaction_enabled: boolean; diagnostic_bundle_enabled: boolean }
 /**
  * DTO mirror of `storage::Project`. Serializes `Uuid` as a string and
  * `PathBuf` as a string so the renderer sees plain JSON. `last_opened_at`
@@ -1726,6 +1720,7 @@ export type RecordingViewportDto = { width: number; height: number }
  * Logical-point rect over a display.
  */
 export type RegionRectDto = { x: number; y: number; w: number; h: number }
+export type RenderDefaults = { parallel_renders: number }
 export type RenderJobDto = { id: string; story_id: string; preset_id: string | null; format: string; resolution: string; fps: number; quality: string; status: string; progress_pct: number; started_at: bigint | null; completed_at: bigint | null; error: string | null; priority: number; output_path: string | null; batch_id: string | null; created_at: bigint }
 export type RenderProgressDto = { job_id: string; pct: number; frame: bigint; fps: number; speed: number; eta_ms: bigint }
 export type ResolvedFrameCropDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null; scale_hint?: number | null }
@@ -1763,6 +1758,7 @@ export type ScrollDirDto = "up" | "down" | "left" | "right"
 export type SelectorOrTextDto = { kind: "text"; value: string } | { kind: "selector"; value: string } | { kind: "test_id"; value: string } | { kind: "aria"; value: string } | { kind: "role"; value: RoleSelectorDto } | { kind: "label"; value: string } | { kind: "text_exact"; value: string }
 export type SessionId = string
 export type SessionRollupDto = { turn_count: bigint; total_cost_usd: number; total_tokens: bigint; avg_first_token_ms: number | null }
+export type SettingsCategory = "general" | "capture" | "render" | "privacy" | "updates" | "all"
 export type SeverityDto = "error" | "warning" | "info"
 export type SimulatorBbox = { x: number; y: number; w: number; h: number }
 export type SimulatorEvent = { type: "started"; session_id: string; run_id: string; total_steps: number } | { type: "step_started"; ordinal: number } | { type: "frame_captured"; ordinal: number; frame: SimulatorStepFrame } | { type: "paused"; ordinal: number } | { type: "failed"; ordinal: number; error_message: string } | { type: "completed"; succeeded: number; failed: number } | { type: "cancelled" }
@@ -1807,6 +1803,7 @@ keyframe_interval_sec?: number | null;
  * actual native frame size.
  */
 frame_crop?: FrameCropRectDto | null }
+export type StartupBehavior = "welcome" | "last_project" | "new_story"
 /**
  * Step timing DTO for the `tts_apply_sync` command.
  * 
@@ -1866,6 +1863,7 @@ body: string | null;
  * Current installed version, for the UI to display a "X → Y" diff.
  */
 current_version: string }
+export type UpdateSettings = { check_updates_on_launch: boolean }
 /**
  * Structured error for upload operations.
  */

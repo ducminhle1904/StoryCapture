@@ -15,6 +15,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
 
 import { useDashboardStore } from "@/state/projects";
+import { GLOBAL_SHORTCUTS } from "@/lib/shortcuts";
 
 type NavigateFn = ReturnType<typeof useNavigate>;
 
@@ -33,13 +34,13 @@ interface PaletteItem {
 }
 
 const ITEMS: PaletteItem[] = [
-  { id: "dashboard", label: "Go to Projects", group: "Navigate", icon: <Home size={13} />, kbd: "⌘1", run: ({ navigate }) => navigate("/") },
-  { id: "editor", label: "Go to Story Editor", group: "Navigate", icon: <Code size={13} />, kbd: "⌘2", run: ({ navigate }) => navigate("/") },
-  { id: "post", label: "Go to Post-Production", group: "Navigate", icon: <Scissors size={13} />, kbd: "⌘3", run: ({ navigate }) => navigate("/") },
-  { id: "export", label: "Render & Export…", group: "Navigate", icon: <Download size={13} />, kbd: "⌘E", run: ({ navigate }) => navigate("/post-production") },
-  { id: "settings", label: "Open Settings", group: "Navigate", icon: <SettingsIcon size={13} />, kbd: "⌘,", run: ({ navigate }) => navigate("/settings") },
-  { id: "new", label: "New Story…", group: "Actions", icon: <Plus size={13} />, kbd: "⌘N", run: ({ navigate, requestNewProject }) => { navigate("/"); requestNewProject(); } },
-  { id: "record", label: "Start Recording", group: "Actions", icon: <Circle size={13} />, kbd: "⌘⇧R", run: ({ navigate }) => navigate("/recorder") },
+  { id: "dashboard", label: "Go to Projects", group: "Navigate", icon: <Home size={13} />, run: ({ navigate }) => navigate("/") },
+  { id: "editor", label: "Go to Story Editor", group: "Navigate", icon: <Code size={13} />, run: ({ navigate }) => navigate("/") },
+  { id: "post", label: "Go to Post-Production", group: "Navigate", icon: <Scissors size={13} />, run: ({ navigate }) => navigate("/") },
+  { id: "export", label: "Render & Export…", group: "Navigate", icon: <Download size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "export")?.keys, run: ({ navigate }) => navigate("/post-production") },
+  { id: "settings", label: "Open Settings", group: "Navigate", icon: <SettingsIcon size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "settings")?.keys, run: ({ navigate }) => navigate("/settings") },
+  { id: "new", label: "New Story…", group: "Actions", icon: <Plus size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "new-story")?.keys, run: ({ navigate, requestNewProject }) => { navigate("/"); requestNewProject(); } },
+  { id: "record", label: "Start Recording", group: "Actions", icon: <Circle size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "record")?.keys, run: ({ navigate }) => navigate("/recorder") },
 ];
 
 export function CommandPalette() {

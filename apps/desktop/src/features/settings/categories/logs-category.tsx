@@ -19,12 +19,13 @@ import {
 
 const BYTES_PER_MIB = 1024 * 1024;
 
-function bytesToMib(bytes: number): number {
-  return Math.round((bytes / BYTES_PER_MIB) * 100) / 100;
+function bytesToMib(bytes: number | bigint): number {
+  const value = typeof bytes === "bigint" ? Number(bytes) : bytes;
+  return Math.round((value / BYTES_PER_MIB) * 100) / 100;
 }
 
-function mibToBytes(mib: number): number {
-  return Math.round(mib * BYTES_PER_MIB);
+function mibToBytes(mib: number): bigint {
+  return BigInt(Math.round(mib * BYTES_PER_MIB));
 }
 
 interface RangeRule {

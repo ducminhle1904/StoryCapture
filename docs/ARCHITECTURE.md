@@ -119,7 +119,7 @@ through `AuthorInputEvent`:
 
 ## Frontend desktop (`apps/desktop`)
 
-- **Routing:** React Router v7 data router in `src/routes/index.tsx`. Layouts: `AppLayout` (dashboard/onboarding/settings/post-production landing), `FullscreenLayout` (editor/recorder/post-production editor), plus a transparent overlay route. Routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`, `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`, `/region-overlay`.
+- **Routing:** React Router v7 data router in `src/routes/index.tsx`. Layouts: `AppLayout` (dashboard/onboarding/settings/post-production landing), `FullscreenLayout` (editor/recorder/post-production editor). Routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`, `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`.
 - **State (Zustand 5):**
   - `features/post-production/state/store.ts` — 6-slice compound store with `persist()`: `timeline-slice`, `panels-slice`, `selection-slice`, `export-slice`, `queue-slice`, `undo-slice` (HistoryBuffer cap 50 + Coalescer 500ms, not persisted).
   - `state/projects.ts` — dashboard UI state.

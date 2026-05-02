@@ -3,15 +3,12 @@ import {
   getCaptureTarget,
   listCaptureTargets,
   setCaptureTarget as ipcSetCaptureTarget,
-  resolvePlaywrightTarget,
-  PLAYWRIGHT_AUTO_TARGET,
   captureTargetKey,
   type CaptureTarget,
   type CaptureTargets,
 } from "@/ipc/capture";
 import type { AudioPickerValue } from "@/ipc/audio";
 import { frontendLog } from "@/lib/log";
-import { getAppSettings, setLivePreviewEnabled as ipcSetLivePreviewEnabled } from "@/ipc/settings";
 
 export type RecorderStatus =
   | "idle"
@@ -102,10 +99,6 @@ export interface RecorderData {
    *  LaunchConfig.args before automation starts. */
   chromeHiding: boolean;
 
-  /** Persisted Options toggle for the in-recorder live preview pane.
-   *  Default ON; hydrated from app_settings on first access. */
-  livePreviewEnabled: boolean;
-
   /** Record-path primary-miss payload. Set from the StepFailed handler
    *  when the error_message matches the locked PrimaryMissNoHeal copy;
    *  consumed by the HUD to render the destructive block + "Open in
@@ -128,19 +121,10 @@ export interface RecorderActions {
   loadCaptureTargets: () => Promise<void>;
   setCaptureTarget: (target: CaptureTarget) => Promise<void>;
 
-  refreshPlaywrightAvailability: () => Promise<void>;
-
   setAudioDeviceId: (id: AudioPickerValue) => void;
 
   setIncludeCursor: (v: boolean) => void;
   setChromeHiding: (v: boolean) => void;
-
-  /** Flip the live-preview toggle; persists through
-   *  `set_live_preview_enabled` so the choice survives app restarts. */
-  setLivePreviewEnabled: (v: boolean) => void;
-  /** Hydrate `livePreviewEnabled` from app_settings. Safe to call more
-   *  than once; silently no-ops on IPC error. */
-  hydrateLivePreviewEnabled: () => Promise<void>;
 
   /** Set or clear the record-path PrimaryMissNoHeal payload the HUD
    *  renders. Pass `null` to dismiss the block. */
@@ -167,9 +151,6 @@ const INITIAL: RecorderData = {
   audioDeviceId: null,
   includeCursor: false,
   chromeHiding: true,
-  // Default ON; hydrated from app_settings by
-  // `hydrateLivePreviewEnabled` on recorder-view mount.
-  livePreviewEnabled: true,
   // No primary-miss on a fresh recording.
   primaryMiss: null,
 };
@@ -206,20 +187,6 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
   setIncludeCursor: (includeCursor) => set({ includeCursor }),
   setChromeHiding: (chromeHiding) => set({ chromeHiding }),
-  setLivePreviewEnabled: (livePreviewEnabled) => {
-    set({ livePreviewEnabled });
-    ipcSetLivePreviewEnabled(livePreviewEnabled).catch(() => {
-      /* non-fatal: persistence failure shouldn't block the UI choice */
-    });
-  },
-  hydrateLivePreviewEnabled: async () => {
-    try {
-      const s = await getAppSettings();
-      set({ livePreviewEnabled: s.live_preview_enabled });
-    } catch {
-      /* non-fatal: stick with the INITIAL default */
-    }
-  },
   setPrimaryMiss: (primaryMiss) => set({ primaryMiss }),
 
   loadCaptureTargets: async () => {
@@ -228,8 +195,14 @@ export const useRecorderStore = create<RecorderState>((set) => ({
       getCaptureTarget().catch(() => null),
     ]);
     // Fall back to the first display if nothing is persisted.
+    const normalizedPersisted: CaptureTarget | null =
+      persisted?.kind === "display"
+        ? persisted
+        : persisted?.kind === "display_region"
+          ? { kind: "display", display_id: persisted.display_id }
+          : null;
     const fallback: CaptureTarget | null =
-      persisted ??
+      normalizedPersisted ??
       (targets.displays[0]
         ? { kind: "display" as const, display_id: targets.displays[0].id }
         : null);
@@ -256,55 +229,4 @@ export const useRecorderStore = create<RecorderState>((set) => ({
     });
     set({ captureTarget: target });
   },
-
-  // Query the host for Playwright window availability and update
-  // `availableTargets.playwright_auto_available`. When the Playwright
-  // auto-target becomes available AND the user hasn't made an explicit
-  // non-auto choice this session, pre-select it. Debounced to ≤1 call/s
-  // via the module-level gate below.
-  refreshPlaywrightAvailability: async () => {
-    if (!canRefreshPlaywright()) return;
-    const resolved = await resolvePlaywrightTarget().catch(() => null);
-    const isAvailable = resolved !== null;
-    set((s) => {
-      const prevTargets = s.availableTargets;
-      const nextTargets: CaptureTargets | null = prevTargets
-        ? { ...prevTargets, playwright_auto_available: isAvailable }
-        : prevTargets;
-      // Auto-pre-select the Playwright-auto entry when:
-      //   1. it just became available
-      //   2. AND the stored target is either null or the first-run sentinel
-      //      (we treat "display 0 or first display" as the first-run fallback)
-      const currentKey = s.captureTarget ? captureTargetKey(s.captureTarget) : "";
-      const storedIsFirstRunFallback =
-        !s.captureTarget ||
-        (prevTargets !== null &&
-          prevTargets.displays.length > 0 &&
-          s.captureTarget.kind === "display" &&
-          currentKey ===
-            captureTargetKey({
-              kind: "display",
-              display_id:
-                typeof prevTargets.displays[0].id === "bigint"
-                  ? Number(prevTargets.displays[0].id)
-                  : prevTargets.displays[0].id,
-            }));
-      const nextTarget =
-        isAvailable && storedIsFirstRunFallback ? PLAYWRIGHT_AUTO_TARGET : s.captureTarget;
-      return {
-        availableTargets: nextTargets,
-        captureTarget: nextTarget,
-      };
-    });
-  },
 }));
-
-// ─── Debounce gate for refreshPlaywrightAvailability ─────
-
-let lastPlaywrightRefreshMs = 0;
-function canRefreshPlaywright(): boolean {
-  const now = Date.now();
-  if (now - lastPlaywrightRefreshMs < 1000) return false;
-  lastPlaywrightRefreshMs = now;
-  return true;
-}

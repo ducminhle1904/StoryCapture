@@ -160,6 +160,7 @@ async fn run_with_pacing(src: &str, pacing: PacingProfile) -> Tracking {
         None,
         false,
         pacing,
+        false,
     );
     timeout(Duration::from_secs(5), async {
         while let Some(event) = rx.recv().await {

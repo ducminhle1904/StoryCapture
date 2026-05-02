@@ -1,22 +1,12 @@
 import { SettingsPanel } from "../settings-row";
-
-// Static shortcut list. Reflects hotkeys registered in Dashboard (14-03a),
-// CommandPalette, and EditorHotkeys. Rebinding is not yet wired.
-const ROWS: [string, string][] = [
-  ["Command palette", "⌘ K"],
-  ["New story", "⌘ N"],
-  ["Focus search", "⌘ F"],
-  ["Run scene", "⌘ ↵"],
-  ["Record", "⌘ ⇧ R"],
-  ["Split clip", "⌘ K"],
-  ["Toggle preview", "⌘ ."],
-  ["Open project", "⌘ O"],
-  ["Export", "⌘ E"],
-];
+import { SETTINGS_SHORTCUTS } from "@/lib/shortcuts";
 
 export function KeyboardCategory() {
   return (
-    <SettingsPanel title="Keyboard shortcuts">
+    <SettingsPanel
+      title="Keyboard shortcuts"
+      desc="Reference for the shortcuts currently registered by the workspace and editor command palettes."
+    >
       <div
         style={{
           border: "1px solid var(--sc-border)",
@@ -24,19 +14,19 @@ export function KeyboardCategory() {
           background: "var(--sc-surface)",
         }}
       >
-        {ROWS.map(([label, keys], i) => (
+        {SETTINGS_SHORTCUTS.map((shortcut, i) => (
           <div
-            key={label}
+            key={shortcut.id}
             style={{
               display: "flex",
               padding: "10px 16px",
               borderBottom:
-                i < ROWS.length - 1 ? "1px solid var(--sc-border)" : "none",
+                i < SETTINGS_SHORTCUTS.length - 1 ? "1px solid var(--sc-border)" : "none",
               fontSize: 12.5,
             }}
           >
-            <span style={{ flex: 1 }}>{label}</span>
-            <span className="sc-kbd">{keys}</span>
+            <span style={{ flex: 1 }}>{shortcut.label}</span>
+            <span className="sc-kbd">{shortcut.keys}</span>
           </div>
         ))}
       </div>

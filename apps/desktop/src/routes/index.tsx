@@ -1,8 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppLayout, FullscreenLayout } from "@/components/title-bar";
-// Transparent region-selection overlay window.
-import { RegionOverlay } from "@/features/capture/RegionOverlay";
 import DashboardRoute from "./dashboard";
 import EditorRoute from "./editor";
 import OnboardingRoute from "./onboarding";
@@ -29,9 +27,5 @@ export const router = createBrowserRouter([
       { path: "/post-production/:storyId", element: <PostProductionRoute /> },
     ],
   },
-  // Overlay window — no AppLayout / FullscreenLayout chrome; rendered as
-  // a bare, transparent page. The Tauri window is configured with
-  // transparent: true + decorations: false + fullscreen: true.
-  { path: "/region-overlay", element: <RegionOverlay /> },
   { path: "*", element: <Navigate to="/" replace /> },
 ]);

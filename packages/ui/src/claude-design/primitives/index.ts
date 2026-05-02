@@ -23,6 +23,7 @@ export {
   ScSelectTrigger,
   ScSelectValue,
 } from "./sc-select";
+export { ScTabs, ScTabsContent, ScTabsList, ScTabsTrigger } from "./sc-tabs";
 export type { ScSkeletonProps, ScSkeletonVariant } from "./sc-skeleton";
 export { ScSkeleton } from "./sc-skeleton";
 export type { ScSliderProps } from "./sc-slider";

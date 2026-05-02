@@ -45,8 +45,12 @@ const KEYS = {
 export function useProjects() {
   return useQuery({
     queryKey: KEYS.all,
-    queryFn: () => invoke<Project[]>("list_projects"),
+    queryFn: fetchProjects,
   });
+}
+
+export function fetchProjects(): Promise<Project[]> {
+  return invoke<Project[]>("list_projects");
 }
 
 export function useCreateProject() {

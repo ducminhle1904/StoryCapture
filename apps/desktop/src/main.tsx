@@ -9,6 +9,8 @@ import { queryClient } from "./ipc/query-client";
 import { frontendLog, installGlobalErrorHandlers } from "./lib/log";
 import { initOutputPrefs } from "./lib/output-prefs-persist";
 import { applyPersistedTheme } from "./lib/theme";
+import { useAppSettingsStore } from "./state/app-settings";
+import { applyCaptureFpsDefault } from "./state/output-prefs";
 
 installGlobalErrorHandlers();
 applyPersistedTheme();
@@ -20,12 +22,26 @@ if (!container) {
 const root = createRoot(container);
 
 async function bootstrap() {
-  try {
-    await initOutputPrefs();
-  } catch (err) {
-    frontendLog.error("bootstrap", "initOutputPrefs failed; rendering anyway", {
-      error: err,
+  const [settingsResult, outputPrefsResult] = await Promise.allSettled([
+    useAppSettingsStore.getState().hydrate(),
+    initOutputPrefs(),
+  ]);
+  const settings =
+    settingsResult.status === "fulfilled"
+      ? settingsResult.value
+      : useAppSettingsStore.getState().settings;
+  if (settingsResult.status === "rejected") {
+    frontendLog.error("bootstrap", "app settings init failed; rendering anyway", {
+      error: settingsResult.reason,
     });
+  }
+  if (outputPrefsResult.status === "rejected") {
+    frontendLog.error("bootstrap", "initOutputPrefs failed; rendering anyway", {
+      error: outputPrefsResult.reason,
+    });
+  }
+  if (settings) {
+    applyCaptureFpsDefault(settings.capture);
   }
   root.render(
     <StrictMode>

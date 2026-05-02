@@ -264,6 +264,36 @@ impl PlaywrightSidecarDriver {
         })
     }
 
+    /// Close Chromium through the sidecar protocol, then terminate the
+    /// sidecar process itself. The JSON-RPC `close` verb intentionally keeps
+    /// the server alive for reuse, so owners that are done with a driver must
+    /// call this instead of only dropping their `Arc`.
+    pub async fn shutdown(&self) -> Result<()> {
+        let _ = self.call("close", json!({})).await;
+        {
+            let mut stdin = self.stdin.lock().await;
+            let _ = stdin.shutdown().await;
+        }
+
+        let mut child = {
+            let mut slot = self._child.lock().await;
+            slot.take()
+        };
+        let Some(mut child) = child.take() else {
+            return Ok(());
+        };
+
+        match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(AutomationError::Protocol(format!("sidecar wait: {e}"))),
+            Err(_) => {
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+                Ok(())
+            }
+        }
+    }
+
     /// Subscribe to the latest-wins preview-frame channel. Initial value is
     /// `None`. Each subscriber sees the MOST RECENT frame on `changed()` —
     /// intermediate frames are dropped by design.
@@ -787,6 +817,12 @@ impl PlaywrightSidecarDriver {
         let info: PageContentCropInfo = serde_json::from_value(v)
             .map_err(|e| AutomationError::Protocol(format!("pageContentCrop decode: {e}")))?;
         Ok(info)
+    }
+
+    pub async fn ensure_capture_window_visible(&self) -> Result<()> {
+        self.call("ensureCaptureWindowVisible", serde_json::json!({}))
+            .await?;
+        Ok(())
     }
 
     pub async fn wait_for_first_paint(&self, timeout_ms: u64) -> Result<()> {

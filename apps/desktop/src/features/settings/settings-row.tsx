@@ -79,19 +79,3 @@ export function SettingsCard({ children }: SettingsCardProps) {
     </div>
   );
 }
-
-// Muted caption shown under a placeholder section to signal "not wired".
-export function NotWiredCaption({ children }: { children: ReactNode }) {
-  return (
-    <div
-      style={{
-        marginTop: 12,
-        fontSize: 11.5,
-        color: "var(--sc-text-4)",
-        fontStyle: "italic",
-      }}
-    >
-      {children}
-    </div>
-  );
-}

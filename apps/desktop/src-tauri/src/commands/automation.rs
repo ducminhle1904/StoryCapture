@@ -352,6 +352,9 @@ pub async fn launch_automation(
     recording_viewport: Option<RecordingViewportDto>,
 ) -> Result<(), AppError> {
     let pacing = pacing_profile.unwrap_or(PacingProfileDto::Normal);
+    let recording_fullscreen = chrome_hiding == Some(true)
+        && recording_viewport
+            .is_some_and(|viewport| viewport.width >= 1900 && viewport.height >= 1080);
     tracing::info!(
         target: "storycapture::automation",
         story_bytes = story_source.len(),
@@ -359,6 +362,7 @@ pub async fn launch_automation(
         recording_session_id = ?recording_session_id,
         recording_viewport_width = recording_viewport.map(|v| v.width),
         recording_viewport_height = recording_viewport.map(|v| v.height),
+        recording_fullscreen,
         pacing_profile = ?pacing,
         "launch_automation invoked"
     );
@@ -575,11 +579,13 @@ pub async fn launch_automation(
         });
     }
 
-    let primary: Box<dyn automation::BrowserDriver> =
-        Box::new(crate::commands::automation_shared::SharedPlaywrightDriver::new(shared_pw));
+    let primary: Box<dyn automation::BrowserDriver> = Box::new(
+        crate::commands::automation_shared::SharedPlaywrightDriver::new(shared_pw.clone()),
+    );
     let fallback: Box<dyn automation::BrowserDriver> = Box::new(NoopDriver::new());
 
     let browser_session_profile = refresh_latest_browser_session_profile(&state).await;
+    stop_all_author_preview_sessions(&state, "recording_launch").await;
     let launch_opts = LaunchOptions {
         browser_executable,
         app_url_for_hiding,
@@ -593,6 +599,7 @@ pub async fn launch_automation(
             width: viewport.width,
             height: viewport.height,
         }),
+        recording_fullscreen,
     };
 
     let persistence = Some(Arc::new(Mutex::new(project_db)) as automation::PersistenceHandle);
@@ -773,6 +780,11 @@ pub async fn launch_automation(
         }
     }
 
+    if attached_recording_session_id.is_none() {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    shutdown_recording_playwright_driver(shared_pw).await;
+
     Ok(())
 }
 
@@ -875,7 +887,9 @@ fn flush_active_action_timeline() {
 pub(crate) async fn refresh_latest_browser_session_profile(
     state: &AppState,
 ) -> Option<BrowserSessionProfile> {
-    let stream_id = state.active_author_stream_id.lock().await.clone()?;
+    let Some(stream_id) = state.active_author_stream_id.lock().await.clone() else {
+        return state.latest_browser_session_profile.lock().await.clone();
+    };
     let driver = {
         let sessions = state.author_preview_sessions.lock().await;
         sessions
@@ -895,6 +909,34 @@ pub(crate) async fn refresh_latest_browser_session_profile(
                 "failed to export author browser session profile; recording will continue without refreshed profile"
             );
             state.latest_browser_session_profile.lock().await.clone()
+        }
+    }
+}
+
+async fn store_author_preview_session_profile(
+    state: &AppState,
+    stream_id: &str,
+    driver: &PlaywrightSidecarDriver,
+    reason: &str,
+) {
+    match driver.call_author_session_profile(stream_id).await {
+        Ok(profile) => {
+            *state.latest_browser_session_profile.lock().await = Some(profile);
+            tracing::info!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                reason,
+                "stored author browser session profile before teardown"
+            );
+        }
+        Err(err) => {
+            tracing::debug!(
+                target: "storycapture::automation",
+                stream_id = %stream_id,
+                reason,
+                error = %err,
+                "failed to store author browser session profile before teardown"
+            );
         }
     }
 }
@@ -1075,6 +1117,91 @@ async fn author_driver(
         .ok_or_else(|| AppError::InvalidArgument(format!("unknown author stream: {stream_id}")))
 }
 
+async fn shutdown_recording_playwright_driver(shared: Arc<Mutex<PlaywrightSidecarDriver>>) {
+    let driver = shared.lock().await;
+    match driver.shutdown().await {
+        Ok(()) => tracing::info!(
+            target: "storycapture::automation",
+            "recording Playwright sidecar shut down"
+        ),
+        Err(e) => tracing::warn!(
+            target: "storycapture::automation",
+            error = %e,
+            "recording Playwright sidecar shutdown failed"
+        ),
+    }
+}
+
+async fn teardown_author_preview_session(
+    stream_id: &str,
+    mut session: crate::state::AuthorPreviewSession,
+    reason: &str,
+) {
+    if let Some(pump) = session.pump.take() {
+        pump.abort();
+    }
+    if let Some(pump) = session.nav_pump.take() {
+        pump.abort();
+    }
+    if let Err(e) = session.driver.call_preview_stop_stream(stream_id).await {
+        tracing::debug!(
+            target: "storycapture::automation",
+            stream_id = %stream_id,
+            reason,
+            error = %e,
+            "author preview stop_stream returned error during teardown (best-effort)"
+        );
+    }
+    if let Err(e) = session.driver.call_author_close(stream_id).await {
+        tracing::debug!(
+            target: "storycapture::automation",
+            stream_id = %stream_id,
+            reason,
+            error = %e,
+            "author preview close returned error during teardown (best-effort)"
+        );
+    }
+    match session.driver.shutdown().await {
+        Ok(()) => tracing::info!(
+            target: "storycapture::automation",
+            stream_id = %stream_id,
+            reason,
+            "author Playwright sidecar shut down"
+        ),
+        Err(e) => tracing::warn!(
+            target: "storycapture::automation",
+            stream_id = %stream_id,
+            reason,
+            error = %e,
+            "author Playwright sidecar shutdown failed"
+        ),
+    }
+}
+
+async fn stop_all_author_preview_sessions(state: &AppState, reason: &str) {
+    {
+        let mut active = state.active_author_stream_id.lock().await;
+        *active = None;
+    }
+    let sessions = {
+        let mut sessions = state.author_preview_sessions.lock().await;
+        sessions.drain().collect::<Vec<_>>()
+    };
+    if sessions.is_empty() {
+        return;
+    }
+    tracing::info!(
+        target: "storycapture::automation",
+        reason,
+        count = sessions.len(),
+        "stopping author preview sessions"
+    );
+    for (stream_id, session) in sessions {
+        store_author_preview_session_profile(state, &stream_id, &session.driver, reason).await;
+        teardown_author_preview_session(&stream_id, session, reason).await;
+    }
+}
+
 /// Spawn a Playwright sidecar child process and wrap it as a driver. Shared
 /// by `launch_automation` and `start_author_preview`.
 async fn spawn_playwright_sidecar(app: &AppHandle) -> Result<PlaywrightSidecarDriver, AppError> {
@@ -1099,7 +1226,8 @@ async fn spawn_playwright_sidecar(app: &AppHandle) -> Result<PlaywrightSidecarDr
     tokio_cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     if let Some(dir) = modules_dir.as_ref() {
         tracing::info!(
             target: "storycapture::automation",
@@ -1152,6 +1280,7 @@ pub async fn start_author_preview(
     viewport_width: Option<u32>,
     viewport_height: Option<u32>,
 ) -> Result<String, AppError> {
+    stop_all_author_preview_sessions(&state, "start_author_preview").await;
     let stream_id = format!("author-{}", uuid::Uuid::new_v4());
     let settings = crate::commands::app_settings::load(&app);
     let browser_environment =
@@ -1275,36 +1404,21 @@ pub async fn stop_author_preview(
         let mut active = state.active_author_stream_id.lock().await;
         if active.as_deref() == Some(stream_id.as_str()) {
             *active = None;
-            *state.latest_browser_session_profile.lock().await = None;
         }
     }
     let session_opt = {
         let mut sessions = state.author_preview_sessions.lock().await;
         sessions.remove(&stream_id)
     };
-    if let Some(mut session) = session_opt {
-        if let Some(pump) = session.pump.take() {
-            pump.abort();
-        }
-        if let Some(pump) = session.nav_pump.take() {
-            pump.abort();
-        }
-        if let Err(e) = session.driver.call_preview_stop_stream(&stream_id).await {
-            tracing::debug!(
-                target: "storycapture::automation",
-                stream_id = %stream_id,
-                error = %e,
-                "author preview stop_stream returned error during teardown (best-effort)"
-            );
-        }
-        if let Err(e) = session.driver.call_author_close(&stream_id).await {
-            tracing::debug!(
-                target: "storycapture::automation",
-                stream_id = %stream_id,
-                error = %e,
-                "author preview close returned error during teardown (best-effort)"
-            );
-        }
+    if let Some(session) = session_opt {
+        store_author_preview_session_profile(
+            &state,
+            &stream_id,
+            &session.driver,
+            "stop_author_preview",
+        )
+        .await;
+        teardown_author_preview_session(&stream_id, session, "stop_author_preview").await;
     }
     Ok(())
 }
@@ -1742,6 +1856,7 @@ pub async fn resolve_playwright_target(
         // Remote-browser or similar: keep the auto target disabled.
         return Ok(None);
     };
+    ensure_playwright_capture_window_visible(&state).await;
     let content_crop = resolve_playwright_content_crop(&state).await;
 
     #[cfg(target_os = "macos")]
@@ -1790,6 +1905,24 @@ pub async fn resolve_playwright_target(
     {
         let _ = pid;
         Ok(None)
+    }
+}
+
+async fn ensure_playwright_capture_window_visible(state: &State<'_, AppState>) {
+    let Some(driver) = state.playwright_driver.lock().await.clone() else {
+        return;
+    };
+    let driver = driver.lock().await;
+    match driver.ensure_capture_window_visible().await {
+        Ok(()) => tracing::info!(
+            target: "storycapture::automation",
+            "resolve_playwright_target: capture window made visible"
+        ),
+        Err(error) => tracing::warn!(
+            target: "storycapture::automation",
+            %error,
+            "resolve_playwright_target: failed to make capture window visible"
+        ),
     }
 }
 

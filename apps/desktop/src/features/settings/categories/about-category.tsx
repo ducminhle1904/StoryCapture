@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getVersion, getTauriVersion } from "@tauri-apps/api/app";
 
+import { BrandMark } from "@/components/brand";
 import AutoUpdaterSettings from "../auto-updater";
 import { SettingsPanel } from "../settings-row";
 
@@ -31,7 +32,7 @@ export function AboutCategory() {
           background: "var(--sc-surface)",
         }}
       >
-        <div className="sc-brand-mark" style={{ width: 48, height: 48, borderRadius: 12 }} />
+        <BrandMark size={48} />
         <div>
           <div style={{ fontSize: 17, fontWeight: 600 }}>StoryCapture</div>
           <div

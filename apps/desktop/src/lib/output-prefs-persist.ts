@@ -59,6 +59,21 @@ function currentRecordingKnobs(
   };
 }
 
+function mergeExportKnobs(
+  base: ExportKnobs,
+  override?: Partial<ExportKnobs> & { audio?: Partial<ExportKnobs["audio"]> },
+): ExportKnobs {
+  const next = {
+    ...base,
+    ...(override ?? {}),
+    audio: { ...base.audio, ...(override?.audio ?? {}) },
+  } as ExportKnobs;
+  if (next.hwEncoder === "none") {
+    next.hwEncoder = "software";
+  }
+  return next;
+}
+
 export function migrate(raw: unknown): PersistShape {
   if (!raw || typeof raw !== "object") return { ...SEED };
   const r = raw as PartialPersist;
@@ -67,15 +82,12 @@ export function migrate(raw: unknown): PersistShape {
     activePreset !== "Custom"
       ? PRESET_BUNDLES[activePreset]
       : currentRecordingKnobs(SEED.recordingKnobs, r.recordingKnobs);
+  const exportKnobs = mergeExportKnobs(SEED.exportKnobs, r.exportKnobs);
   return {
     activePreset,
     recordingKnobs,
     recordingPacing: DEFAULT_RECORDING_PACING,
-    exportKnobs: {
-      ...SEED.exportKnobs,
-      ...(r.exportKnobs ?? {}),
-      audio: { ...SEED.exportKnobs.audio, ...(r.exportKnobs?.audio ?? {}) },
-    } as ExportKnobs,
+    exportKnobs,
     version: LATEST_VERSION,
   };
 }
@@ -91,15 +103,12 @@ export function resolveOverride(
     hasExplicitPreset && activePreset !== "Custom"
       ? PRESET_BUNDLES[activePreset]
       : currentRecordingKnobs(global.recordingKnobs, project.recordingKnobs);
+  const exportKnobs = mergeExportKnobs(global.exportKnobs, project.exportKnobs);
   return {
     activePreset,
     recordingKnobs,
     recordingPacing: DEFAULT_RECORDING_PACING,
-    exportKnobs: {
-      ...global.exportKnobs,
-      ...(project.exportKnobs ?? {}),
-      audio: { ...global.exportKnobs.audio, ...(project.exportKnobs?.audio ?? {}) },
-    } as ExportKnobs,
+    exportKnobs,
     version: LATEST_VERSION,
   };
 }

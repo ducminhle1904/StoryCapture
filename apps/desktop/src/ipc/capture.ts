@@ -152,15 +152,6 @@ export function captureTargetKey(t: CaptureTarget): string {
   }
 }
 
-/** The Playwright-auto sentinel. The Rust `start_capture_target` command
- *  rewrites the pid from the host-side Playwright stash at call time —
- *  the renderer never supplies a pid directly. */
-export const PLAYWRIGHT_AUTO_TARGET: CaptureTarget = {
-  kind: "window_by_pid",
-  pid: -1,
-  title_hint: "storycapture-playwright",
-};
-
 // ─── Playwright auto-target resolution ────────────────────────────────
 
 export interface ResolvedPlaywrightTarget {
@@ -208,27 +199,3 @@ export function captureTargetThumbnail(
     maxHeight: maxHeight ?? null,
   });
 }
-
-// ─── Region selection overlay ─────────────────────────────────────────
-
-/** Open the transparent, fullscreen, always-on-top region-selection
- *  overlay on the requested display. The overlay emits a `region://selected`
- *  Tauri event on confirm/cancel (see {@link RegionSelectedPayload}). */
-export function openRegionOverlay(displayId: number | bigint): Promise<void> {
-  return invoke<void>("open_region_overlay", { displayId: Number(displayId) });
-}
-
-export function closeRegionOverlay(): Promise<void> {
-  return invoke<void>("close_region_overlay");
-}
-
-export type RegionSelectedPayload =
-  | {
-      display_id: number;
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-      cancelled?: false;
-    }
-  | { cancelled: true };

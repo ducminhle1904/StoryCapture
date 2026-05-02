@@ -172,3 +172,9 @@ export const useOutputPrefsStore = create<State>((set) => ({
       exportKnobs,
     }),
 }));
+
+export function applyCaptureFpsDefault(capture: { capture_fps?: number | null }): void {
+  if (typeof capture.capture_fps === "number") {
+    useOutputPrefsStore.getState().setRecordingKnob("fps", capture.capture_fps);
+  }
+}

@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 
 import { useRecorderStore } from "@/state/recorder";
+import { useAppSettingsStore } from "@/state/app-settings";
 
 function formatClock(ms: number): string {
   const total = Math.floor(ms / 1000);
@@ -12,7 +13,10 @@ function formatClock(ms: number): string {
 export function RecordingIndicator() {
   const status = useRecorderStore((s) => s.status);
   const elapsedMs = useRecorderStore((s) => s.elapsedMs);
-  const active = status === "recording" || status === "paused";
+  const showProgressBadge = useAppSettingsStore(
+    (s) => s.settings?.general.dock_progress_badge ?? true,
+  );
+  const active = showProgressBadge && (status === "recording" || status === "paused");
 
   return (
     <AnimatePresence>

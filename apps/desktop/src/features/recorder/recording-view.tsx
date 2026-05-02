@@ -12,11 +12,12 @@ import {
   Square as StopIcon,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { TargetPicker } from "@/features/capture/TargetPicker";
+import { stopPreviewNow } from "@/features/editor/preview-lifecycle";
 import {
   type AutomationChannelHandle,
   type ExecutorEvent,
@@ -24,12 +25,11 @@ import {
 } from "@/ipc/automation";
 import {
   checkScreenCapturePermission,
+  type CaptureTarget,
   type DisplayInfo,
   isStageManagerEnabled,
-  openRegionOverlay,
   openScreenCapturePrefs,
   type PermissionState,
-  type RegionSelectedPayload,
   relaunchApp,
   requestScreenCaptureAccess,
 } from "@/ipc/capture";
@@ -42,9 +42,10 @@ import {
   stopRecording,
 } from "@/ipc/encode";
 import { parseStory } from "@/ipc/parse";
-import { getAppSettings } from "@/ipc/settings";
 import { frontendLog } from "@/lib/log";
+import { useAppSettingsStore } from "@/state/app-settings";
 import {
+  applyCaptureFpsDefault,
   DEFAULT_RECORDING_PACING,
   recordingOutputResolutionForStart,
   useOutputPrefsStore,
@@ -58,7 +59,6 @@ import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { CursorTrail } from "./cursor-trail";
-import { LivePreview } from "./live-preview";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 import { TccPrompt } from "./tcc-prompt";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
@@ -167,10 +167,21 @@ function preferDisplayArea(a: DisplayInfo, b: DisplayInfo): DisplayInfo {
   return preferDisplay(a, b);
 }
 
-function browserWindowFitsDisplay(display: DisplayInfo, viewport: BrowserViewportSize): boolean {
+function browserChromeBudget(chromeHiding: boolean): number {
+  return chromeHiding ? 0 : RECORDING_BROWSER_CHROME_VERTICAL_BUDGET;
+}
+
+function browserWindowFitsDisplay(
+  display: DisplayInfo,
+  viewport: BrowserViewportSize,
+  chromeHiding: boolean,
+): boolean {
   // App-mode can fall back to a normal Chromium window, so fit against a
-  // conservative browser-chrome budget in logical pixels.
-  const verticalChromeBudget = RECORDING_BROWSER_CHROME_VERTICAL_BUDGET;
+  // conservative browser-chrome budget in logical pixels only when chrome
+  // hiding is off. In app-mode we crop to browser content; shrinking a
+  // 1920x1080 viewport to 1706x960 on a 1080p external display destroys
+  // detail before the encoder ever sees the frame.
+  const verticalChromeBudget = browserChromeBudget(chromeHiding);
   const logical = displayLogicalSize(display);
   return (
     logical.width >= viewport.width && logical.height >= viewport.height + verticalChromeBudget
@@ -180,6 +191,7 @@ function browserWindowFitsDisplay(display: DisplayInfo, viewport: BrowserViewpor
 function fitBrowserViewportToDisplay(
   viewport: BrowserViewportSize,
   display: DisplayInfo | undefined,
+  chromeHiding: boolean,
 ): {
   viewport: BrowserViewportSize;
   displayLogical: BrowserViewportSize | null;
@@ -190,7 +202,7 @@ function fitBrowserViewportToDisplay(
     return { viewport, displayLogical: null, scale: 1, scaled: false };
   }
 
-  const verticalChromeBudget = RECORDING_BROWSER_CHROME_VERTICAL_BUDGET;
+  const verticalChromeBudget = browserChromeBudget(chromeHiding);
   const displayLogical = displayLogicalSize(display);
   const maxWidth = Math.max(1, displayLogical.width);
   const maxHeight = Math.max(1, displayLogical.height - verticalChromeBudget);
@@ -212,17 +224,18 @@ function chooseBrowserLaunchDisplay(
   displays: DisplayInfo[],
   selected: DisplayInfo | undefined,
   viewport: BrowserViewportSize,
+  chromeHiding: boolean,
 ): DisplayInfo | undefined {
-  const fitting = displays.filter((candidate) => browserWindowFitsDisplay(candidate, viewport));
+  if (selected) return selected;
+
+  const fitting = displays.filter((candidate) =>
+    browserWindowFitsDisplay(candidate, viewport, chromeHiding),
+  );
   if (fitting.length > 0) {
     const bestFit = fitting.reduce<DisplayInfo | undefined>(
       (acc, candidate) => (acc ? preferDisplay(acc, candidate) : candidate),
       undefined,
     );
-    if (!bestFit || !selected) return bestFit;
-    if (browserWindowFitsDisplay(selected, viewport)) {
-      return preferDisplay(selected, bestFit);
-    }
     return bestFit;
   }
 
@@ -256,9 +269,6 @@ export function RecordingView({
     setIncludeCursor,
     chromeHiding,
     setChromeHiding,
-    livePreviewEnabled,
-    setLivePreviewEnabled,
-    hydrateLivePreviewEnabled,
     setStatus,
     setSession,
     setSteps,
@@ -288,11 +298,24 @@ export function RecordingView({
 
   // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
+  const appSettings = useAppSettingsStore((s) => s.settings);
+
+  const applyRecorderDefaults = () => {
+    const capture = useAppSettingsStore.getState().settings?.capture;
+    setAudioDeviceId(capture?.audio_input_default === "system_default" ? "default" : null);
+    setIncludeCursor(capture?.include_cursor_default ?? false);
+    if (capture) applyCaptureFpsDefault(capture);
+  };
+
   useEffect(() => {
-    getAppSettings()
-      .then((s) => setBrowserPreset(s.browser_executable))
-      .catch(() => {});
-  }, []);
+    setBrowserPreset(appSettings?.browser_executable ?? null);
+  }, [appSettings?.browser_executable]);
+
+  useEffect(() => {
+    applyRecorderDefaults();
+    // Run when persisted defaults hydrate/change; setter identities are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appSettings?.capture]);
 
   const reduceMotion = useReducedMotion();
   const [permission, setPermission] = useState<PermissionState>("undetermined");
@@ -317,22 +340,10 @@ export function RecordingView({
       ? typeof captureTarget.display_id === "bigint"
         ? Number(captureTarget.display_id)
         : captureTarget.display_id
-      : captureTarget?.kind === "display_region"
-        ? typeof captureTarget.display_id === "bigint"
-          ? Number(captureTarget.display_id)
-          : captureTarget.display_id
-        : null;
+      : null;
 
   const currentStepEntry = steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
   const completedSteps = steps.filter((s) => s.status === "succeeded").length;
-  const displayLabel = useMemo(() => {
-    if (selectedDisplay == null) return null;
-    const match = displays.find((d) => {
-      const id = typeof d.id === "bigint" ? Number(d.id) : d.id;
-      return id === selectedDisplay;
-    });
-    return match ? `${match.name} · ${match.width_px}×${match.height_px}` : null;
-  }, [displays, selectedDisplay]);
 
   // Detect Stage Manager once on mount (user can toggle it at any time
   // but the cost of not re-polling is a stale banner — acceptable).
@@ -343,11 +354,6 @@ export function RecordingView({
         /* non-fatal; default off */
       });
   }, []);
-
-  // Hydrate the persisted live-preview toggle once per recorder mount.
-  useEffect(() => {
-    void hydrateLivePreviewEnabled();
-  }, [hydrateLivePreviewEnabled]);
 
   // Preflight and enumerate targets on mount.
   useEffect(() => {
@@ -419,38 +425,6 @@ export function RecordingView({
       cancelled = true;
     };
   }, [setSteps, storySource]);
-
-  // Handle region selections from the overlay window.
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    listen<RegionSelectedPayload>("region://selected", (event) => {
-      const payload = event.payload;
-      if ("cancelled" in payload && payload.cancelled) return;
-      if (!("x" in payload)) return;
-      void setCaptureTarget({
-        kind: "display_region",
-        display_id: payload.display_id,
-        rect: {
-          x: payload.x,
-          y: payload.y,
-          w: payload.w,
-          h: payload.h,
-        },
-      });
-      toast.success(
-        `Region set: ${Math.round(payload.w)}×${Math.round(payload.h)} on display ${payload.display_id}`,
-      );
-    })
-      .then((fn) => {
-        unlisten = fn;
-      })
-      .catch(() => {
-        /* non-fatal */
-      });
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, [setCaptureTarget]);
 
   // Surface non-fatal mic degradation events.
   useEffect(() => {
@@ -554,7 +528,7 @@ export function RecordingView({
       setStatus("idle");
       return;
     }
-    if (selectedDisplay == null && captureTarget?.kind !== "window_by_pid") {
+    if (selectedDisplay == null) {
       toast.error("Pick a Target before recording.");
       setStatus("idle");
       return;
@@ -574,14 +548,23 @@ export function RecordingView({
       const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
       const storyViewport = storyViewportSize(storySource);
       const pacingProfile = DEFAULT_RECORDING_PACING;
+      if (storyHasBrowser) {
+        await stopPreviewNow("recording-start");
+      }
       const launchDisplay = storyHasBrowser
-        ? chooseBrowserLaunchDisplay(displays, display, storyViewport)
+        ? chooseBrowserLaunchDisplay(displays, display, storyViewport, chromeHiding)
         : display;
       const recordingDisplay = launchDisplay ? { x: launchDisplay.x, y: launchDisplay.y } : null;
       const viewportFit = storyHasBrowser
-        ? fitBrowserViewportToDisplay(storyViewport, launchDisplay)
+        ? fitBrowserViewportToDisplay(storyViewport, launchDisplay, chromeHiding)
         : { viewport: storyViewport, displayLogical: null, scale: 1, scaled: false };
       const recordingViewport = storyHasBrowser ? viewportFit.viewport : null;
+      const recordingFullscreen =
+        storyHasBrowser &&
+        chromeHiding &&
+        viewportFit.displayLogical != null &&
+        viewportFit.viewport.width === viewportFit.displayLogical.width &&
+        viewportFit.viewport.height === viewportFit.displayLogical.height;
       if (storyHasBrowser && launchDisplay) {
         frontendLog.info("RecordingView", "browser recording viewport plan", {
           fields: {
@@ -601,9 +584,11 @@ export function RecordingView({
             effective_viewport_height: viewportFit.viewport.height,
             viewport_fit_scale: viewportFit.scale,
             viewport_was_scaled: viewportFit.scaled,
+            recording_fullscreen: recordingFullscreen,
             launch_display_fits_requested_viewport: browserWindowFitsDisplay(
               launchDisplay,
               storyViewport,
+              chromeHiding,
             ),
           },
         });
@@ -633,25 +618,19 @@ export function RecordingView({
             story_viewport_height: storyViewport.height,
             effective_viewport_width: viewportFit.viewport.width,
             effective_viewport_height: viewportFit.viewport.height,
-            launch_display_fits_viewport: browserWindowFitsDisplay(launchDisplay, storyViewport),
+            launch_display_fits_viewport: browserWindowFitsDisplay(
+              launchDisplay,
+              storyViewport,
+              chromeHiding,
+            ),
           },
         });
       }
-      const userPickedDisplay = captureTarget?.kind === "display";
-      const shouldAutoFollow = storyHasBrowser && (captureTarget == null || userPickedDisplay);
-      const fallbackDisplayTarget =
-        selectedDisplay == null
-          ? null
-          : {
-              kind: "display" as const,
-              display_id: selectedDisplay,
-            };
-      let recordingTarget: typeof captureTarget = captureTarget ?? fallbackDisplayTarget;
-      if (recordingTarget == null) {
-        toast.error("Pick a Target before recording.");
-        setStatus("idle");
-        return;
-      }
+      const shouldAutoFollow = storyHasBrowser;
+      let recordingTarget: CaptureTarget = {
+        kind: "display" as const,
+        display_id: selectedDisplay,
+      };
       let frameCrop: {
         x: number;
         y: number;
@@ -725,7 +704,19 @@ export function RecordingView({
             toast.info("Recording just the browser window");
           }
         } else {
-          toast.warning("Playwright didn't launch in time — recording full display instead");
+          const msg =
+            "Browser target is not available. Restore the browser window and try recording again.";
+          frontendLog.warn("RecordingView", "browser auto-target unavailable; refusing display fallback", {
+            fields: {
+              deadline_ms: 8000,
+              recording_target_kind: recordingTarget.kind,
+              story_has_browser: storyHasBrowser,
+            },
+          });
+          toast.error(msg);
+          setError(msg);
+          setStatus("idle");
+          return;
         }
       }
       // Output knobs from useOutputPrefsStore (one-shot read).
@@ -1111,22 +1102,16 @@ export function RecordingView({
         {/* LEFT: preview/stage */}
         <section className="flex min-h-0 flex-col border-r border-[var(--color-border-subtle)]">
           <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-            {status === "recording" &&
-            livePreviewEnabled &&
-            captureTarget?.kind === "window_by_pid" ? (
-              <LivePreview />
-            ) : (
-              <PreviewStage
-                status={status}
-                elapsedMs={elapsedMs}
-                currentStepLabel={currentStepEntry?.verb ?? null}
-                currentStepIndex={currentStep}
-                totalSteps={steps.length}
-                error={error}
-                outputPath={outputPath}
-                reduceMotion={!!reduceMotion}
-              />
-            )}
+            <PreviewStage
+              status={status}
+              elapsedMs={elapsedMs}
+              currentStepLabel={currentStepEntry?.verb ?? null}
+              currentStepIndex={currentStep}
+              totalSteps={steps.length}
+              error={error}
+              outputPath={outputPath}
+              reduceMotion={!!reduceMotion}
+            />
           </div>
 
           {/* Step rail — horizontal chips */}
@@ -1217,6 +1202,7 @@ export function RecordingView({
                   onClick={() => {
                     reset();
                     setStatus("idle");
+                    applyRecorderDefaults();
                   }}
                   className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs text-[var(--color-fg-primary)] hover:bg-[var(--color-surface-300)]"
                 >
@@ -1243,16 +1229,10 @@ export function RecordingView({
                 void setCaptureTarget(t);
               }}
               onRefresh={() => loadCaptureTargets()}
-              onOpenRegion={(id) => openRegionOverlay(id)}
               disabled={
                 !canRecord || status === "recording" || status === "paused" || status === "stopping"
               }
             />
-            {displayLabel && (
-              <p className="mt-1.5 font-mono text-[10px] text-[var(--color-fg-muted)]">
-                {displayLabel}
-              </p>
-            )}
           </SettingsGroup>
 
           <SettingsGroup label="Microphone" icon={<SettingsIcon size={13} />}>
@@ -1296,12 +1276,6 @@ export function RecordingView({
                 disabled={status === "recording" || status === "paused" || status === "stopping"}
               />
               <Toggle label="3s countdown" checked={useCountdown} onChange={setUseCountdown} />
-              {/* Live preview toggle (persisted, default ON). */}
-              <Toggle
-                label="Live preview"
-                checked={livePreviewEnabled}
-                onChange={setLivePreviewEnabled}
-              />
             </div>
           </SettingsGroup>
 

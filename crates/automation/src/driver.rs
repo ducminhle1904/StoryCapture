@@ -154,6 +154,10 @@ pub struct LaunchOptions {
     /// authoritative for normal runs; Record uses this when the requested
     /// viewport cannot physically fit on the selected display.
     pub viewport_override: Option<Viewport>,
+    /// Record-only fullscreen launch. This keeps a full-display browser
+    /// viewport from being reduced by macOS app/window chrome on 1x external
+    /// displays.
+    pub recording_fullscreen: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,6 +206,9 @@ impl LaunchConfig {
             // Defensive second check.
             if url.starts_with("http://") || url.starts_with("https://") {
                 args.push(format!("--app={}", url));
+                if opts.recording_fullscreen {
+                    args.push("--start-fullscreen".to_string());
+                }
             }
         }
         // Chrome's Translate bubble is browser UI, but it still renders over
@@ -588,6 +595,26 @@ mod launch_config_tests {
                 )
             }),
             "expected 1:1 --window-size under chrome-hiding in {:?}",
+            cfg.args
+        );
+    }
+
+    #[test]
+    fn from_meta_with_recording_fullscreen_appends_fullscreen_arg() {
+        let opts = LaunchOptions {
+            app_url_for_hiding: Some("https://demo.com".into()),
+            recording_fullscreen: true,
+            ..Default::default()
+        };
+        let cfg = LaunchConfig::from_meta(&meta_with_app(Some("https://demo.com")), &opts);
+        assert!(
+            cfg.args.iter().any(|a| a == "--app=https://demo.com"),
+            "expected --app= in {:?}",
+            cfg.args
+        );
+        assert!(
+            cfg.args.iter().any(|a| a == "--start-fullscreen"),
+            "expected fullscreen launch in {:?}",
             cfg.args
         );
     }

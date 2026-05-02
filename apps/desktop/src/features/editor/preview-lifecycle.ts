@@ -243,6 +243,16 @@ export function acquirePreview(
   };
 }
 
+export async function stopPreviewNow(reason: string) {
+  cancelPendingStop();
+  state.refcount = 0;
+  if (state.streamId == null && !state.starting) return;
+  frontendLog.info("previewLifecycle", "stopping preview immediately", {
+    fields: { reason },
+  });
+  await teardown();
+}
+
 function scheduleStop() {
   cancelPendingStop();
   if (state.streamId == null) return;

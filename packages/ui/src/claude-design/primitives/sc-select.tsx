@@ -3,6 +3,22 @@ import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "reac
 
 import { cn } from "../../lib/cn";
 
+function SelectChevron() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4.25 6.25 8 10l3.75-3.75" />
+    </svg>
+  );
+}
+
 export const ScSelect = Select.Root;
 export const ScSelectValue = Select.Value;
 
@@ -12,7 +28,9 @@ export const ScSelectTrigger = forwardRef<
 >(({ className, children, ...props }, ref) => (
   <Select.Trigger ref={ref} className={cn("sc-select", className)} {...props}>
     {children}
-    <Select.Icon />
+    <Select.Icon className="sc-select-icon">
+      <SelectChevron />
+    </Select.Icon>
   </Select.Trigger>
 ));
 ScSelectTrigger.displayName = "ScSelectTrigger";
@@ -22,8 +40,8 @@ export const ScSelectContent = forwardRef<
   ComponentPropsWithoutRef<typeof Select.Popup>
 >(({ className, children, ...props }, ref) => (
   <Select.Portal>
-    <Select.Positioner sideOffset={4}>
-      <Select.Popup ref={ref} className={cn("sc-select-popup sc-card", className)} {...props}>
+    <Select.Positioner sideOffset={6} className="sc-select-positioner">
+      <Select.Popup ref={ref} className={cn("sc-select-popup", className)} {...props}>
         {children}
       </Select.Popup>
     </Select.Positioner>
@@ -36,6 +54,11 @@ export const ScSelectItem = forwardRef<
   ComponentPropsWithoutRef<typeof Select.Item>
 >(({ className, children, ...props }, ref) => (
   <Select.Item ref={ref} className={cn("sc-select-item", className)} {...props}>
+    <span className="sc-select-check" aria-hidden="true">
+      <Select.ItemIndicator className="sc-select-indicator">
+        <span className="sc-select-indicator-mark" />
+      </Select.ItemIndicator>
+    </span>
     <Select.ItemText>{children}</Select.ItemText>
   </Select.Item>
 ));

@@ -7,7 +7,10 @@
 
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tauri::{AppHandle, Manager};
 
 pub const DEFAULT_LOG_MAX_FILE_SIZE_BYTES: u64 = 10 * 1024 * 1024;
@@ -16,6 +19,191 @@ pub const MIN_LOG_MAX_FILE_SIZE_BYTES: u64 = 64 * 1024;
 pub const MAX_LOG_MAX_FILE_SIZE_BYTES: u64 = 1024 * 1024 * 1024;
 pub const MIN_LOG_MAX_FILES: usize = 1;
 pub const MAX_LOG_MAX_FILES: usize = 100;
+pub const DEFAULT_AUTOSAVE_INTERVAL_SEC: u32 = 5;
+pub const MIN_AUTOSAVE_INTERVAL_SEC: u32 = 2;
+pub const MAX_AUTOSAVE_INTERVAL_SEC: u32 = 60;
+pub const DEFAULT_PARALLEL_RENDERS: u32 = 2;
+pub const MIN_PARALLEL_RENDERS: u32 = 1;
+pub const MAX_PARALLEL_RENDERS: u32 = 6;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupBehavior {
+    Welcome,
+    LastProject,
+    NewStory,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioInputDefault {
+    None,
+    SystemDefault,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ColorProfile {
+    SrgbRec709,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingsCategory {
+    General,
+    Capture,
+    Render,
+    Privacy,
+    Updates,
+    All,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct GeneralSettings {
+    pub projects_folder: Option<String>,
+    pub startup_behavior: StartupBehavior,
+    pub autosave_enabled: bool,
+    pub autosave_interval_sec: u32,
+    pub dock_progress_badge: bool,
+}
+
+impl Default for GeneralSettings {
+    fn default() -> Self {
+        Self {
+            projects_folder: None,
+            startup_behavior: StartupBehavior::LastProject,
+            autosave_enabled: true,
+            autosave_interval_sec: DEFAULT_AUTOSAVE_INTERVAL_SEC,
+            dock_progress_badge: true,
+        }
+    }
+}
+
+impl GeneralSettings {
+    fn clamped(mut self) -> Self {
+        self.autosave_interval_sec = self
+            .autosave_interval_sec
+            .clamp(MIN_AUTOSAVE_INTERVAL_SEC, MAX_AUTOSAVE_INTERVAL_SEC);
+        if let Some(folder) = self.projects_folder.as_ref() {
+            if folder.trim().is_empty() {
+                self.projects_folder = None;
+            }
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct CaptureDefaults {
+    pub capture_fps: u32,
+    pub include_cursor_default: bool,
+    pub audio_input_default: AudioInputDefault,
+    pub color_profile: ColorProfile,
+}
+
+impl Default for CaptureDefaults {
+    fn default() -> Self {
+        Self {
+            capture_fps: 60,
+            include_cursor_default: false,
+            audio_input_default: AudioInputDefault::None,
+            color_profile: ColorProfile::SrgbRec709,
+        }
+    }
+}
+
+impl CaptureDefaults {
+    fn clamped(mut self) -> Self {
+        if !matches!(self.capture_fps, 24 | 30 | 60) {
+            self.capture_fps = 60;
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct RenderDefaults {
+    pub parallel_renders: u32,
+}
+
+impl Default for RenderDefaults {
+    fn default() -> Self {
+        Self {
+            parallel_renders: DEFAULT_PARALLEL_RENDERS,
+        }
+    }
+}
+
+impl RenderDefaults {
+    fn clamped(mut self) -> Self {
+        self.parallel_renders = self
+            .parallel_renders
+            .clamp(MIN_PARALLEL_RENDERS, MAX_PARALLEL_RENDERS);
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct PrivacySettings {
+    pub crash_reports_enabled: bool,
+    pub usage_analytics_enabled: bool,
+    pub prompt_redaction_enabled: bool,
+    pub diagnostic_bundle_enabled: bool,
+}
+
+impl Default for PrivacySettings {
+    fn default() -> Self {
+        Self {
+            crash_reports_enabled: false,
+            usage_analytics_enabled: false,
+            prompt_redaction_enabled: true,
+            diagnostic_bundle_enabled: true,
+        }
+    }
+}
+
+impl PrivacySettings {
+    fn normalized(mut self) -> Self {
+        // StoryCapture remains local-only; these cannot be enabled until a
+        // future explicit upload/consent system exists.
+        self.crash_reports_enabled = false;
+        self.usage_analytics_enabled = false;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Default)]
+#[serde(default)]
+pub struct UpdateSettings {
+    pub check_updates_on_launch: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct AppSettingsUpdate {
+    pub general: GeneralSettings,
+    pub capture: CaptureDefaults,
+    pub render: RenderDefaults,
+    pub privacy: PrivacySettings,
+    pub updates: UpdateSettings,
+}
+
+impl Default for AppSettingsUpdate {
+    fn default() -> Self {
+        Self {
+            general: GeneralSettings::default(),
+            capture: CaptureDefaults::default(),
+            render: RenderDefaults::default(),
+            privacy: PrivacySettings::default(),
+            updates: UpdateSettings::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LogConfig {
@@ -89,11 +277,14 @@ pub struct AppSettings {
     /// get_capture_target / set_capture_target in commands/capture.rs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capture_target: Option<capture::CaptureTarget>,
-    /// Persisted Options toggle for the in-recorder live preview pane.
-    pub live_preview_enabled: bool,
     /// Fixed-list browser language preference. None/system preserves default browser behavior.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser_language: Option<String>,
+    pub general: GeneralSettings,
+    pub capture_defaults: CaptureDefaults,
+    pub render_defaults: RenderDefaults,
+    pub privacy: PrivacySettings,
+    pub updates: UpdateSettings,
     /// User-configurable file logging policy.
     pub log: LogConfig,
 }
@@ -103,8 +294,12 @@ impl Default for AppSettings {
         Self {
             browser_executable: None,
             capture_target: None,
-            live_preview_enabled: true,
             browser_language: None,
+            general: GeneralSettings::default(),
+            capture_defaults: CaptureDefaults::default(),
+            render_defaults: RenderDefaults::default(),
+            privacy: PrivacySettings::default(),
+            updates: UpdateSettings::default(),
             log: LogConfig::default(),
         }
     }
@@ -117,8 +312,14 @@ impl Default for AppSettings {
 #[serde(default)]
 pub struct AppSettingsDto {
     pub browser_executable: Option<String>,
-    pub live_preview_enabled: bool,
     pub browser_language: String,
+    pub general: GeneralSettings,
+    pub capture: CaptureDefaults,
+    pub render: RenderDefaults,
+    pub privacy: PrivacySettings,
+    pub updates: UpdateSettings,
+    pub default_projects_folder: String,
+    pub dock_progress_badge_supported: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -131,21 +332,64 @@ impl Default for AppSettingsDto {
     fn default() -> Self {
         Self {
             browser_executable: None,
-            live_preview_enabled: true,
             browser_language: automation::BROWSER_LANGUAGE_SYSTEM.to_string(),
+            general: GeneralSettings::default(),
+            capture: CaptureDefaults::default(),
+            render: RenderDefaults::default(),
+            privacy: PrivacySettings::default(),
+            updates: UpdateSettings::default(),
+            default_projects_folder: String::new(),
+            dock_progress_badge_supported: cfg!(target_os = "macos"),
         }
     }
 }
 
-impl From<&AppSettings> for AppSettingsDto {
+impl AppSettings {
+    pub fn normalized(mut self) -> Self {
+        self.browser_language = normalize_browser_language(self.browser_language);
+        self.general = self.general.clamped();
+        self.capture_defaults = self.capture_defaults.clamped();
+        self.render_defaults = self.render_defaults.clamped();
+        self.privacy = self.privacy.normalized();
+        self.log = self.log.clamped();
+        self
+    }
+}
+
+fn default_projects_folder(app: &AppHandle) -> PathBuf {
+    app.path()
+        .document_dir()
+        .map(|dir| dir.join("StoryCapture"))
+        .or_else(|_| app.path().home_dir().map(|dir| dir.join("StoryCapture")))
+        .unwrap_or_else(|_| PathBuf::from("StoryCapture"))
+}
+
+fn build_app_settings_dto(app: &AppHandle, s: &AppSettings) -> AppSettingsDto {
+    let default_projects_folder = default_projects_folder(app).to_string_lossy().into_owned();
+    AppSettingsDto {
+        browser_executable: s.browser_executable.clone(),
+        browser_language: s
+            .browser_language
+            .clone()
+            .unwrap_or_else(|| automation::BROWSER_LANGUAGE_SYSTEM.to_string()),
+        general: s.general.clone(),
+        capture: s.capture_defaults.clone(),
+        render: s.render_defaults.clone(),
+        privacy: s.privacy.clone(),
+        updates: s.updates.clone(),
+        default_projects_folder,
+        dock_progress_badge_supported: cfg!(target_os = "macos"),
+    }
+}
+
+impl From<&AppSettings> for AppSettingsUpdate {
     fn from(s: &AppSettings) -> Self {
         Self {
-            browser_executable: s.browser_executable.clone(),
-            live_preview_enabled: s.live_preview_enabled,
-            browser_language: s
-                .browser_language
-                .clone()
-                .unwrap_or_else(|| automation::BROWSER_LANGUAGE_SYSTEM.to_string()),
+            general: s.general.clone(),
+            capture: s.capture_defaults.clone(),
+            render: s.render_defaults.clone(),
+            privacy: s.privacy.clone(),
+            updates: s.updates.clone(),
         }
     }
 }
@@ -214,10 +458,8 @@ pub fn load(app: &AppHandle) -> AppSettings {
     let Ok(bytes) = std::fs::read(&path) else {
         return AppSettings::default();
     };
-    let mut s: AppSettings = serde_json::from_slice(&bytes).unwrap_or_default();
-    s.browser_language = normalize_browser_language(s.browser_language);
-    s.log = s.log.clamped();
-    s
+    let s: AppSettings = serde_json::from_slice(&bytes).unwrap_or_default();
+    s.normalized()
 }
 
 /// Load settings from a known config directory without an `AppHandle` — used
@@ -228,10 +470,8 @@ pub fn load_from_config_dir(config_dir: &Path) -> AppSettings {
     let Ok(bytes) = std::fs::read(&path) else {
         return AppSettings::default();
     };
-    let mut s: AppSettings = serde_json::from_slice(&bytes).unwrap_or_default();
-    s.browser_language = normalize_browser_language(s.browser_language);
-    s.log = s.log.clamped();
-    s
+    let s: AppSettings = serde_json::from_slice(&bytes).unwrap_or_default();
+    s.normalized()
 }
 
 pub fn save(app: &AppHandle, settings: &AppSettings) -> Result<(), AppError> {
@@ -268,7 +508,69 @@ fn build_log_config_dto(app: &AppHandle, settings: &AppSettings) -> Result<LogCo
 #[specta::specta]
 #[tracing::instrument(level = "info", skip_all, fields(cmd = "get_app_settings"), err(Debug))]
 pub async fn get_app_settings(app: AppHandle) -> Result<AppSettingsDto, AppError> {
-    Ok((&load(&app)).into())
+    let s = load(&app);
+    Ok(build_app_settings_dto(&app, &s))
+}
+
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(level = "info", skip_all, fields(cmd = "set_app_settings"), err(Debug))]
+pub async fn set_app_settings(
+    app: AppHandle,
+    update: AppSettingsUpdate,
+) -> Result<AppSettingsDto, AppError> {
+    let mut s = load(&app);
+    s.general = update.general.clamped();
+    s.capture_defaults = update.capture.clamped();
+    s.render_defaults = update.render.clamped();
+    s.privacy = update.privacy.normalized();
+    s.updates = update.updates;
+
+    if let Some(folder) = s.general.projects_folder.as_ref() {
+        let path = PathBuf::from(folder);
+        std::fs::create_dir_all(&path).map_err(|e| {
+            AppError::InvalidArgument(format!(
+                "projects_folder {} is not writable: {}",
+                path.display(),
+                e
+            ))
+        })?;
+    }
+
+    save(&app, &s)?;
+    Ok(build_app_settings_dto(&app, &s))
+}
+
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "reset_app_settings_category"),
+    err(Debug)
+)]
+pub async fn reset_app_settings_category(
+    app: AppHandle,
+    category: SettingsCategory,
+) -> Result<AppSettingsDto, AppError> {
+    let mut s = load(&app);
+    let defaults = AppSettings::default();
+    match category {
+        SettingsCategory::General => s.general = defaults.general,
+        SettingsCategory::Capture => s.capture_defaults = defaults.capture_defaults,
+        SettingsCategory::Render => s.render_defaults = defaults.render_defaults,
+        SettingsCategory::Privacy => s.privacy = defaults.privacy,
+        SettingsCategory::Updates => s.updates = defaults.updates,
+        SettingsCategory::All => {
+            s.general = defaults.general;
+            s.capture_defaults = defaults.capture_defaults;
+            s.render_defaults = defaults.render_defaults;
+            s.privacy = defaults.privacy;
+            s.updates = defaults.updates;
+        }
+    }
+    save(&app, &s)?;
+    Ok(build_app_settings_dto(&app, &s))
 }
 
 #[tauri::command]
@@ -304,25 +606,7 @@ pub async fn set_browser_executable(
     let mut s = load(&app);
     s.browser_executable = path.filter(|p| !p.is_empty());
     save(&app, &s)?;
-    Ok((&s).into())
-}
-
-#[tauri::command]
-#[specta::specta]
-#[tracing::instrument(
-    level = "info",
-    skip_all,
-    fields(cmd = "set_live_preview_enabled"),
-    err(Debug)
-)]
-pub async fn set_live_preview_enabled(
-    app: AppHandle,
-    enabled: bool,
-) -> Result<AppSettingsDto, AppError> {
-    let mut s = load(&app);
-    s.live_preview_enabled = enabled;
-    save(&app, &s)?;
-    Ok((&s).into())
+    Ok(build_app_settings_dto(&app, &s))
 }
 
 #[tauri::command]
@@ -348,7 +632,7 @@ pub async fn set_browser_language(
     let mut s = load(&app);
     s.browser_language = normalize_browser_language(Some(trimmed.to_string()));
     save(&app, &s)?;
-    Ok((&s).into())
+    Ok(build_app_settings_dto(&app, &s))
 }
 
 #[tauri::command]
@@ -403,4 +687,87 @@ pub async fn open_log_dir(app: AppHandle) -> Result<String, AppError> {
         .open_path(path_str.clone(), None::<&str>)
         .map_err(|e| AppError::Internal(format!("open log dir: {e}")))?;
     Ok(path_str)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct DiagnosticBundleResult {
+    pub path: String,
+}
+
+#[tauri::command]
+#[specta::specta]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(cmd = "export_diagnostic_bundle"),
+    err(Debug)
+)]
+pub async fn export_diagnostic_bundle(
+    app: AppHandle,
+    parent_dir: String,
+) -> Result<DiagnosticBundleResult, AppError> {
+    let settings = load(&app);
+    if !settings.privacy.diagnostic_bundle_enabled {
+        return Err(AppError::InvalidArgument(
+            "diagnostic bundle export is disabled in privacy settings".into(),
+        ));
+    }
+
+    let parent = PathBuf::from(parent_dir);
+    std::fs::create_dir_all(&parent).map_err(AppError::from)?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let out_dir = parent.join(format!("storycapture-diagnostics-{stamp}"));
+    std::fs::create_dir_all(&out_dir).map_err(AppError::from)?;
+
+    let default_dir = default_log_dir(&app)?;
+    let effective_log_dir = settings.log.resolve_dir(&default_dir);
+    let logs_out = out_dir.join("logs");
+    std::fs::create_dir_all(&logs_out).map_err(AppError::from)?;
+    if let Ok(entries) = std::fs::read_dir(&effective_log_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name() else {
+                continue;
+            };
+            if path.is_file() {
+                let _ = std::fs::copy(&path, logs_out.join(name));
+            }
+        }
+    }
+
+    let package = app.package_info();
+    let manifest = serde_json::json!({
+        "app": {
+            "name": package.name,
+            "version": package.version.to_string(),
+        },
+        "privacy": {
+            "prompt_redaction_enabled": settings.privacy.prompt_redaction_enabled,
+            "crash_reports_enabled": false,
+            "usage_analytics_enabled": false,
+        },
+        "logs": {
+            "source": effective_log_dir.to_string_lossy(),
+        },
+        "contents": [
+            "logs",
+            "manifest.json"
+        ],
+        "excluded": [
+            "story source",
+            "recordings",
+            "project databases",
+            "api keys"
+        ]
+    });
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest)
+        .map_err(|e| AppError::Internal(format!("serialize diagnostic manifest: {e}")))?;
+    std::fs::write(out_dir.join("manifest.json"), manifest_bytes).map_err(AppError::from)?;
+
+    Ok(DiagnosticBundleResult {
+        path: out_dir.to_string_lossy().into_owned(),
+    })
 }

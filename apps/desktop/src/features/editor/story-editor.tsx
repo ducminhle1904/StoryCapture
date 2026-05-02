@@ -22,6 +22,8 @@ export interface EditorJumpTarget {
 
 interface StoryEditorProps {
   onAutosave?: (source: string) => void;
+  autosaveEnabled?: boolean;
+  autosaveDelayMs?: number;
   jumpTarget?: EditorJumpTarget | null;
   projectDir?: string | null;
   projectFolder?: string | null;
@@ -32,6 +34,8 @@ interface StoryEditorProps {
 
 export function StoryEditor({
   onAutosave,
+  autosaveEnabled = true,
+  autosaveDelayMs = 5000,
   jumpTarget,
   projectDir,
   projectFolder,
@@ -64,7 +68,10 @@ export function StoryEditor({
   projectFolderRef.current = projectFolder;
   storyPathRef.current = storyPath;
   streamIdRef.current = streamId;
-  const autosave = useDebouncedCallback((value: string) => saveSourceRef.current(value), 5000);
+  const autosave = useDebouncedCallback(
+    (value: string) => saveSourceRef.current(value),
+    autosaveDelayMs,
+  );
   const autosaveRef = useRef(autosave);
   autosaveRef.current = autosave;
 
@@ -148,7 +155,7 @@ export function StoryEditor({
   const handleChange = (value: string) => {
     if (simulatorActive) return;
     setSource(value);
-    if (onAutosave) autosave.run(value);
+    if (onAutosave && autosaveEnabled) autosave.run(value);
   };
 
   useEffect(() => {

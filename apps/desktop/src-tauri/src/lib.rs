@@ -271,6 +271,9 @@ fn drain_author_preview_sessions(app_handle: &AppHandle) {
         if let Some(pump) = session.pump.take() {
             pump.abort();
         }
+        if let Some(pump) = session.nav_pump.take() {
+            pump.abort();
+        }
     }
 }
 

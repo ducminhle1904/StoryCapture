@@ -8,6 +8,7 @@
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { SelectField } from "@/components/ui/select-field";
 import { useEditorStore } from "../state/store";
 import type {
   AnnotationClip,
@@ -57,6 +58,22 @@ const CURSOR_MOTION_LABELS: Record<CursorMotionPreset, string> = {
 };
 const SOUND_KIND_OPTIONS: SoundKind[] = ["bgm", "sfx", "voiceover"];
 const TRANSITION_KIND_OPTIONS = XFADE_KINDS;
+
+const targetKindSelectOptions = TARGET_KIND_OPTIONS.map((kind) => ({
+  value: kind,
+  label: labelForTargetKind(kind),
+}));
+const presetSelectOptions = PRESET_OPTIONS.map((preset) => ({ value: preset, label: preset }));
+const cursorSkinSelectOptions = CURSOR_SKIN_OPTIONS.map((skin) => ({ value: skin, label: skin }));
+const cursorMotionSelectOptions = CURSOR_MOTION_PRESETS.map((preset) => ({
+  value: preset,
+  label: CURSOR_MOTION_LABELS[preset],
+}));
+const soundKindSelectOptions = SOUND_KIND_OPTIONS.map((kind) => ({ value: kind, label: kind }));
+const transitionKindSelectOptions = TRANSITION_KIND_OPTIONS.map((kind) => ({
+  value: kind,
+  label: kind,
+}));
 
 function labelForTargetKind(kind: ZoomTarget["kind"]): string {
   switch (kind) {
@@ -275,21 +292,15 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
       <SectionTitle>Zoom motion</SectionTitle>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Target</FieldLabel>
-        <select
+        <SelectField
           aria-label="Zoom target"
           value={clip.target.kind}
-          onChange={(e) => {
-            const next = defaultTarget(e.target.value as ZoomTarget["kind"]);
+          onValueChange={(value) => {
+            const next = defaultTarget(value as ZoomTarget["kind"]);
             onSetParam(nodePath, "target", clip.target, next);
           }}
-          className={FIELD_CLASS}
-        >
-          {TARGET_KIND_OPTIONS.map((kind) => (
-            <option key={kind} value={kind}>
-              {labelForTargetKind(kind)}
-            </option>
-          ))}
-        </select>
+          options={targetKindSelectOptions}
+        />
       </label>
       {targetControls}
       <label className={FIELD_ROW_CLASS}>
@@ -341,20 +352,12 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
       </div>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Preset</FieldLabel>
-        <select
+        <SelectField
           aria-label="Zoom preset"
           value={clip.preset ?? "DYNAMIC"}
-          onChange={(e) =>
-            onSetParam(nodePath, "preset", clip.preset, e.target.value as ZoomPreset)
-          }
-          className={FIELD_CLASS}
-        >
-          {PRESET_OPTIONS.map((preset) => (
-            <option key={preset} value={preset}>
-              {preset}
-            </option>
-          ))}
-        </select>
+          onValueChange={(value) => onSetParam(nodePath, "preset", clip.preset, value as ZoomPreset)}
+          options={presetSelectOptions}
+        />
       </label>
     </fieldset>
   );
@@ -465,40 +468,28 @@ function CursorParams({
       <SectionTitle>Cursor style</SectionTitle>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Skin</FieldLabel>
-        <select
+        <SelectField
           aria-label="Cursor skin"
           value={clip.skin}
-          onChange={(e) => onSetParam(nodePath, "skin", clip.skin, e.target.value as CursorSkin)}
-          className={FIELD_CLASS}
-        >
-          {CURSOR_SKIN_OPTIONS.map((skin) => (
-            <option key={skin} value={skin}>
-              {skin}
-            </option>
-          ))}
-        </select>
+          onValueChange={(value) => onSetParam(nodePath, "skin", clip.skin, value as CursorSkin)}
+          options={cursorSkinSelectOptions}
+        />
       </label>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Motion</FieldLabel>
-        <select
+        <SelectField
           aria-label="Cursor motion"
           value={normalizeCursorMotionPreset(clip.motionPreset)}
-          onChange={(e) =>
+          onValueChange={(value) =>
             onSetParam(
               nodePath,
               "motionPreset",
               normalizeCursorMotionPreset(clip.motionPreset),
-              e.target.value as CursorMotionPreset,
+              value as CursorMotionPreset,
             )
           }
-          className={FIELD_CLASS}
-        >
-          {CURSOR_MOTION_PRESETS.map((preset) => (
-            <option key={preset} value={preset}>
-              {CURSOR_MOTION_LABELS[preset]}
-            </option>
-          ))}
-        </select>
+          options={cursorMotionSelectOptions}
+        />
       </label>
       <label className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
@@ -547,18 +538,12 @@ function SoundParams({
       </label>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Kind</FieldLabel>
-        <select
+        <SelectField
           aria-label="Sound kind"
           value={clip.kind}
-          onChange={(e) => onSetParam(nodePath, "kind", clip.kind, e.target.value as SoundKind)}
-          className={FIELD_CLASS}
-        >
-          {SOUND_KIND_OPTIONS.map((kind) => (
-            <option key={kind} value={kind}>
-              {kind}
-            </option>
-          ))}
-        </select>
+          onValueChange={(value) => onSetParam(nodePath, "kind", clip.kind, value as SoundKind)}
+          options={soundKindSelectOptions}
+        />
       </label>
       <label className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
@@ -597,23 +582,17 @@ function VideoParams({
       <SectionTitle>Transition</SectionTitle>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Kind</FieldLabel>
-        <select
+        <SelectField
           aria-label="Video transition kind"
           value={transition.kind}
-          onChange={(e) =>
+          onValueChange={(value) =>
             onSetParam(nodePath, "outgoingTransition", clip.outgoingTransition, {
               ...transition,
-              kind: e.target.value as XfadeKind,
+              kind: value as XfadeKind,
             })
           }
-          className={FIELD_CLASS}
-        >
-          {TRANSITION_KIND_OPTIONS.map((kind) => (
-            <option key={kind} value={kind}>
-              {kind}
-            </option>
-          ))}
-        </select>
+          options={transitionKindSelectOptions}
+        />
       </label>
       <label className={FIELD_ROW_CLASS}>
         <FieldLabel>Duration</FieldLabel>
