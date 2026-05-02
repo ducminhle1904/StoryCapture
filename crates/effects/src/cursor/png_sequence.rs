@@ -14,6 +14,7 @@ use tracing::warn;
 use crate::ast::types::Vec2;
 use crate::ast::video::RippleEvent;
 use crate::error::EffectsError;
+use crate::math::vec2::Vec2Ops;
 use crate::math::{Waypoint, WaypointKind};
 use crate::zoom::waypoint_source::parse_waypoint_kind;
 
@@ -23,6 +24,10 @@ use super::skins::{load_skin_from_path, SkinBitmap};
 use super::trajectory::{sample_trajectory, CursorSample, TrajectoryOptions};
 
 const MAX_CURSOR_PNG_FRAMES: usize = 108_000;
+const MIN_ACTION_TRAVEL_MS: u64 = 320;
+const MAX_ACTION_TRAVEL_MS: u64 = 980;
+const ACTION_TRAVEL_PX_PER_MS: f32 = 2.4;
+const MEANINGFUL_DECLARED_WINDOW_MS: u64 = MIN_ACTION_TRAVEL_MS / 2;
 
 /// Result metadata from a successful render.
 #[derive(Debug, Clone)]
@@ -253,18 +258,16 @@ fn render_cursor_pngs_from_actions_dto(
     let mut ripples = Vec::new();
 
     for event in &dto.events {
+        let previous = *waypoints.last().expect("actions cursor path is seeded");
         let pos = event
             .target
             .map(|target| clamp_point(target.center, canvas_width, canvas_height))
-            .unwrap_or_else(|| {
-                waypoints
-                    .last()
-                    .map(|w| w.pos)
-                    .unwrap_or(Vec2::new(0.0, 0.0))
-            });
+            .unwrap_or(previous.pos);
         let kind = waypoint_kind(event);
-        push_waypoint(&mut waypoints, event.t_start_ms, pos, WaypointKind::Hover);
-        push_waypoint(&mut waypoints, event.t_action_ms, pos, kind);
+        let start_ms = action_movement_start_ms(previous.t_ms, event, previous.pos, pos);
+        let action_ms = event.t_action_ms.max(start_ms);
+        push_waypoint(&mut waypoints, start_ms, previous.pos, WaypointKind::Hover);
+        push_waypoint(&mut waypoints, action_ms, pos, kind);
         push_waypoint(&mut waypoints, event.t_end_ms, pos, WaypointKind::Hover);
         if is_click_event(event) {
             ripples.push(RippleEvent::at_impact(event.t_action_ms, pos));
@@ -315,6 +318,30 @@ fn push_waypoint(waypoints: &mut Vec<Waypoint>, t_ms: u64, pos: Vec2, kind: Wayp
         }
         _ => waypoints.push(Waypoint { t_ms, pos, kind }),
     }
+}
+
+fn action_travel_duration_ms(from: Vec2, to: Vec2) -> u64 {
+    let distance_px = to.sub(from).length();
+    (distance_px / ACTION_TRAVEL_PX_PER_MS)
+        .round()
+        .clamp(MIN_ACTION_TRAVEL_MS as f32, MAX_ACTION_TRAVEL_MS as f32) as u64
+}
+
+fn action_movement_start_ms(previous_t: u64, event: &ActionEventDto, from: Vec2, to: Vec2) -> u64 {
+    let declared_window = event.t_action_ms.saturating_sub(event.t_start_ms);
+    if declared_window >= MEANINGFUL_DECLARED_WINDOW_MS {
+        return previous_t.max(event.t_start_ms).min(event.t_action_ms);
+    }
+    if event.t_action_ms == 0 {
+        return 0;
+    }
+    previous_t
+        .max(
+            event
+                .t_action_ms
+                .saturating_sub(action_travel_duration_ms(from, to)),
+        )
+        .min(event.t_action_ms)
 }
 
 fn clamp_point(point: ActionPointDto, canvas_width: u32, canvas_height: u32) -> Vec2 {
@@ -458,4 +485,72 @@ pub fn render_png_sequence(
         width: canvas_w,
         height: canvas_h,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn action_event(start: u64, action: u64, end: u64) -> ActionEventDto {
+        ActionEventDto {
+            verb: "click".to_string(),
+            t_start_ms: start,
+            t_action_ms: action,
+            t_end_ms: end,
+            target: None,
+            pointer: None,
+        }
+    }
+
+    #[test]
+    fn action_movement_start_synthesizes_zero_window_travel() {
+        let event = action_event(2_000, 2_000, 2_100);
+        let start =
+            action_movement_start_ms(0, &event, Vec2::new(500.0, 250.0), Vec2::new(800.0, 300.0));
+
+        assert_eq!(start, 1_680);
+    }
+
+    #[test]
+    fn action_movement_start_bounds_long_distance_travel() {
+        let event = action_event(2_000, 2_000, 2_100);
+        let start =
+            action_movement_start_ms(0, &event, Vec2::new(0.0, 0.0), Vec2::new(3_000.0, 2_000.0));
+
+        assert_eq!(start, 1_020);
+    }
+
+    #[test]
+    fn action_movement_start_keeps_minimum_short_distance_travel() {
+        let event = action_event(2_000, 2_000, 2_100);
+        let start =
+            action_movement_start_ms(0, &event, Vec2::new(500.0, 250.0), Vec2::new(510.0, 250.0));
+
+        assert_eq!(start, 1_680);
+    }
+
+    #[test]
+    fn action_movement_start_respects_declared_window() {
+        let event = action_event(1_000, 2_000, 2_100);
+
+        assert_eq!(
+            action_movement_start_ms(0, &event, Vec2::new(500.0, 250.0), Vec2::new(800.0, 300.0),),
+            1_000,
+        );
+    }
+
+    #[test]
+    fn action_movement_start_clamps_to_previous_time_for_tight_events() {
+        let event = action_event(1_300, 1_300, 1_400);
+
+        assert_eq!(
+            action_movement_start_ms(
+                1_200,
+                &event,
+                Vec2::new(800.0, 300.0),
+                Vec2::new(200.0, 100.0),
+            ),
+            1_200,
+        );
+    }
 }

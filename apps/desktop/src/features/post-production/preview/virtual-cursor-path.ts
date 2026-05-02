@@ -1,4 +1,4 @@
-import type { ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
+import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
 
 export interface VirtualCursorSample {
   x: number;
@@ -12,6 +12,10 @@ export interface VirtualCursorSample {
 }
 
 const CLICK_RIPPLE_MS = 520;
+const MIN_TRAVEL_MS = 320;
+const MAX_TRAVEL_MS = 980;
+const ACTION_TRAVEL_PX_PER_MS = 2.4;
+const MEANINGFUL_DECLARED_WINDOW_MS = MIN_TRAVEL_MS / 2;
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -26,6 +30,31 @@ function clamp(value: number, min: number, max: number): number {
 function smootherstep(value: number): number {
   const t = clamp01(value);
   return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+function distance(a: ActionPoint, b: ActionPoint): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function travelDurationMs(from: ActionPoint, to: ActionPoint): number {
+  return Math.round(
+    clamp(distance(from, to) / ACTION_TRAVEL_PX_PER_MS, MIN_TRAVEL_MS, MAX_TRAVEL_MS),
+  );
+}
+
+function movementStartMs(
+  previousT: number,
+  event: ActionTimelineEvent,
+  from: ActionPoint,
+  to: ActionPoint,
+) {
+  const actionT = Math.max(0, event.t_action_ms);
+  const declaredWindow = actionT - event.t_start_ms;
+  if (declaredWindow >= MEANINGFUL_DECLARED_WINDOW_MS) {
+    return Math.min(actionT, Math.max(previousT, event.t_start_ms));
+  }
+  if (actionT === 0) return 0;
+  return Math.min(actionT, Math.max(previousT, actionT - travelDurationMs(from, to)));
 }
 
 function canvasSize(actions: RecordingActions): { width: number; height: number } {
@@ -59,12 +88,12 @@ export function sampleVirtualCursor(
   if (!actions || actions.events.length === 0) return null;
 
   const size = canvasSize(actions);
-  let previous = { x: size.width / 2, y: size.height / 2 };
+  let previous: ActionPoint = { x: size.width / 2, y: size.height / 2 };
   let previousT = 0;
 
   for (const event of actions.events) {
     const target = eventPoint(actions, event, previous, size);
-    const startT = Math.max(previousT, event.t_start_ms);
+    const startT = movementStartMs(previousT, event, previous, target);
     const actionT = Math.max(startT, event.t_action_ms);
 
     if (tMs < startT) {
