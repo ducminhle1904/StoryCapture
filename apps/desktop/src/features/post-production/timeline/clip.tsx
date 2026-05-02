@@ -48,6 +48,9 @@ const TRACK_STYLE: Record<TrackId, { background: string; borderColor: string; ac
   },
 };
 
+const ZOOM_HANDLE_CLASS =
+  "absolute inset-y-1 z-10 flex w-5 cursor-ew-resize items-center justify-center rounded-[6px] text-[#8a5a08] transition-[background-color,color,transform] hover:bg-white/45 hover:text-[#5f3b00] active:scale-[0.96]";
+
 function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
@@ -80,6 +83,7 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
   const showText = width >= 44;
   const showMeta = width >= 78 && meta;
   const showZoomMarkers = clip.trackId === "zoom" && width >= 54;
+  const compactZoom = clip.trackId === "zoom" && width < 92;
   const style = TRACK_STYLE[trackId];
 
   const label = `${trackId.charAt(0).toUpperCase() + trackId.slice(1)} clip at ${(
@@ -95,42 +99,77 @@ function ClipBase({ clip, trackId, pxPerMs, trackHeight }: ClipProps) {
       data-track-id={trackId}
       className={`absolute top-1 flex items-center overflow-hidden rounded-[var(--sc-r-sm)] border text-left text-[10px] text-[var(--sc-text)] shadow-[inset_0_1px_0_color-mix(in_oklch,var(--sc-surface)_92%,transparent)] transition-[box-shadow,transform,border-color] active:scale-[0.99] ${
         selected ? "ring-2 ring-[var(--sc-focus-ring)]" : ""
+      } ${
+        clip.trackId === "zoom" ? "font-sans" : ""
       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-focus-ring)]`}
-      style={{ left, width, height: trackHeight - 8, ...style }}
+      style={{
+        left,
+        width,
+        height: trackHeight - 8,
+        ...style,
+        ...(clip.trackId === "zoom"
+          ? {
+              background:
+                "linear-gradient(135deg, color-mix(in oklch, #f59e0b 20%, var(--sc-surface)) 0%, color-mix(in oklch, #f59e0b 11%, var(--sc-surface)) 48%, color-mix(in oklch, #fbbf24 9%, var(--sc-surface)) 100%)",
+              borderColor: "color-mix(in oklch, #d97706 44%, var(--sc-border))",
+              boxShadow:
+                "inset 0 1px 0 color-mix(in oklch, white 58%, transparent), inset 0 -1px 0 color-mix(in oklch, #92400e 18%, transparent)",
+            }
+          : undefined),
+      }}
       onClick={(e) => {
         e.stopPropagation();
         setSelectedClipId(clip.id);
       }}
     >
-      <span
-        aria-hidden="true"
-        className="absolute inset-y-1 left-1 w-0.5 rounded-full"
-        style={{ background: style.accent }}
-      />
+      {clip.trackId === "zoom" ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-6 bottom-1 h-px rounded-full bg-[#92400e]/18"
+        />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-1 left-1 w-0.5 rounded-full"
+          style={{ background: style.accent }}
+        />
+      )}
       {clip.trackId === "zoom" ? (
         <>
           <span
             aria-hidden="true"
             data-clip-resize-edge="start"
-            className="absolute inset-y-0 left-0 z-10 flex w-4 cursor-ew-resize items-center justify-center border-r border-current/20 bg-black/5"
+            className={`${ZOOM_HANDLE_CLASS} left-1`}
             title="Resize zoom start"
           >
-            {showZoomMarkers ? <ZoomIn className="h-3 w-3" strokeWidth={2} /> : null}
+            {showZoomMarkers ? <ZoomIn className="h-3.5 w-3.5" strokeWidth={2} /> : null}
           </span>
           <span
             aria-hidden="true"
             data-clip-resize-edge="end"
-            className="absolute inset-y-0 right-0 z-10 flex w-4 cursor-ew-resize items-center justify-center border-l border-current/20 bg-black/5"
+            className={`${ZOOM_HANDLE_CLASS} right-1`}
             title="Resize zoom end"
           >
-            {showZoomMarkers ? <ZoomOut className="h-3 w-3" strokeWidth={2} /> : null}
+            {showZoomMarkers ? <ZoomOut className="h-3.5 w-3.5" strokeWidth={2} /> : null}
           </span>
         </>
       ) : null}
       {showText ? (
-        <span className={`min-w-0 px-2 pl-2.5 leading-none ${showZoomMarkers ? "mx-4" : ""}`}>
-          <span className="block truncate font-medium text-[var(--sc-text)]">{displayLabel}</span>
-          {showMeta ? (
+        <span
+          className={`min-w-0 leading-none ${
+            clip.trackId === "zoom"
+              ? "relative z-[1] flex flex-1 flex-col items-center justify-center px-7 text-center"
+              : "px-2 pl-2.5"
+          }`}
+        >
+          <span
+            className={`block truncate font-semibold text-[var(--sc-text)] ${
+              clip.trackId === "zoom" ? "tracking-tight" : ""
+            }`}
+          >
+            {compactZoom ? "Zoom" : displayLabel}
+          </span>
+          {showMeta && !compactZoom ? (
             <span className="mt-0.5 block truncate text-[9px] uppercase tracking-[0.12em] text-[var(--sc-text-4)]">
               {meta}
             </span>

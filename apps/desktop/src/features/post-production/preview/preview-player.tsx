@@ -48,6 +48,7 @@ const AMBIENT_SAMPLE_INTERVAL_MS = 90;
 const AMBIENT_FRAME_SMOOTHING = 0.13;
 const CURSOR_BASE_SIZE_PX = 32;
 const CURSOR_RIPPLE_MAX_PX = 96;
+const TEXT_DRAG_OVERSCAN = 0.25;
 
 const cursorSkinAssets = import.meta.glob("../../../../../../assets/cursor-skins/*.png", {
   eager: true,
@@ -347,7 +348,7 @@ export function samplePreviewZoom(
 
 function percent(value: number): string {
   if (!Number.isFinite(value)) return "50%";
-  return `${Math.round(Math.max(0, Math.min(1, value)) * 10_000) / 100}%`;
+  return `${Math.round(value * 10_000) / 100}%`;
 }
 
 type CursorStyleKey = "height" | "left" | "opacity" | "top" | "transform" | "width";
@@ -363,10 +364,23 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function clampTextPosition(value: number): number {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(-TEXT_DRAG_OVERSCAN, Math.min(1 + TEXT_DRAG_OVERSCAN, value));
+}
+
+function textTranslateX(posX: number): string {
+  if (!Number.isFinite(posX)) return "-50%";
+  if (posX < 0.18) return "0%";
+  if (posX > 0.82) return "-100%";
+  return "-50%";
+}
+
 function textMotionStyle(
   animation: TextStylePreset["animation"],
   clip: AnnotationClip,
   playheadMs: number,
+  posX: number,
 ): CSSProperties {
   const duration = Math.max(1, animation.durationMs);
   const inProgress = clamp01((playheadMs - clip.startMs) / duration);
@@ -388,7 +402,9 @@ function textMotionStyle(
 
   return {
     opacity,
-    transform: `translate(-50%, calc(-50% + ${yPx}px)) scale(${scale})`,
+    transform: `translate(${textTranslateX(posX)}, calc(-50% + ${yPx}px)) scale(${scale})`,
+    transformOrigin:
+      posX < 0.18 ? "left center" : posX > 0.82 ? "right center" : "center center",
   };
 }
 
@@ -1094,8 +1110,8 @@ export function PreviewPlayer({
 
       const onMove = (ev: PointerEvent) => {
         const next = {
-          x: clamp01(origin.x + (ev.clientX - startX) / frame.width),
-          y: clamp01(origin.y + (ev.clientY - startY) / frame.height),
+          x: clampTextPosition(origin.x + (ev.clientX - startX) / frame.width),
+          y: clampTextPosition(origin.y + (ev.clientY - startY) / frame.height),
         };
         updateAnnotationClipDirect(clip.id, { pos: next, anchor: { kind: "screen", pos: next } });
       };
@@ -1221,12 +1237,12 @@ export function PreviewPlayer({
           ) : null}
 
           <div
-            className="relative z-10 flex max-w-[1480px] items-center justify-center overflow-hidden rounded-[18px] border border-white/14 bg-transparent shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68),inset_0_1px_0_rgba(255,255,255,0.10)]"
+            className="relative z-10 flex max-w-[1480px] items-center justify-center overflow-visible rounded-[18px] border border-white/14 bg-transparent shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68),inset_0_1px_0_rgba(255,255,255,0.10)]"
             style={frameStyle}
           >
             <div
               ref={previewFrameContentRef}
-              className="relative h-full w-full will-change-transform"
+              className="relative h-full w-full overflow-hidden rounded-[inherit] will-change-transform"
               data-testid="preview-zoom-layer"
             >
               {resolvedSrc && !useCompositedCanvas ? (
@@ -1270,7 +1286,7 @@ export function PreviewPlayer({
             </div>
             {activeTextOverlays.length > 0 ? (
               <div
-                className="pointer-events-none absolute inset-0 overflow-hidden"
+                className="pointer-events-none absolute inset-0 overflow-visible"
                 data-testid="text-overlay"
               >
                 {activeTextOverlays.map((clip) => {
@@ -1286,6 +1302,7 @@ export function PreviewPlayer({
                     captureRect,
                   );
                   const font = textFontCss(style.font);
+                  const hasBox = Boolean(style.boxStyle);
                   return (
                     <div
                       key={clip.id}
@@ -1293,7 +1310,7 @@ export function PreviewPlayer({
                       tabIndex={0}
                       aria-label={`Text overlay ${clip.text}`}
                       data-text-clip-id={clip.id}
-                      className={`pointer-events-auto absolute max-w-[78%] whitespace-pre-wrap leading-[1.08] drop-shadow-[0_3px_12px_rgba(0,0,0,0.62)] transition-[box-shadow,outline-color] ${
+                      className={`pointer-events-auto absolute max-w-[78%] whitespace-pre-wrap transition-[box-shadow,outline-color,transform,opacity] ${
                         selected
                           ? "rounded-md outline outline-2 outline-[var(--sc-focus-ring)]"
                           : "outline outline-1 outline-transparent hover:outline-white/32"
@@ -1301,12 +1318,15 @@ export function PreviewPlayer({
                       style={{
                         left: percent(position.x),
                         top: percent(position.y),
-                        ...textMotionStyle(style.animation, clip, playheadMs),
+                        ...textMotionStyle(style.animation, clip, playheadMs, position.x),
                         color: style.color,
                         fontFamily: font.fontFamily,
                         fontSize: `clamp(12px, ${style.sizePt}px, 72px)`,
                         fontWeight: font.fontWeight,
                         textAlign: style.align,
+                        letterSpacing: "0",
+                        lineHeight: hasBox ? 1.18 : 1.08,
+                        width: "max-content",
                         maxWidth: `${style.maxWidthPct}%`,
                         padding: style.boxStyle ? `${style.boxStyle.paddingPx}px` : undefined,
                         borderRadius: style.boxStyle ? `${style.boxStyle.radiusPx}px` : undefined,
@@ -1314,6 +1334,10 @@ export function PreviewPlayer({
                         border: style.boxStyle?.borderColor
                           ? `1px solid ${style.boxStyle.borderColor}`
                           : undefined,
+                        boxShadow: hasBox
+                          ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 42px -28px rgba(0,0,0,0.72)"
+                          : "0 3px 12px rgba(0,0,0,0.62)",
+                        backdropFilter: hasBox ? "blur(10px)" : undefined,
                       }}
                       onPointerDown={(e) => onTextPointerDown(e, clip)}
                       onDoubleClick={(e) => {

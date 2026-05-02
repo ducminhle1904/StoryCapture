@@ -411,9 +411,9 @@ function buildPolishClips({
         label: callout ? "Callout" : "Highlight",
         ...defaults,
         text: callout,
-        pos: calloutSpec?.pos ?? { x: 0.5, y: 0.86 },
-        sizePt: calloutSpec?.sizePt ?? 24,
-        color: calloutSpec?.color ?? "#ffffff",
+        pos: calloutSpec?.pos ?? defaults.pos,
+        sizePt: calloutSpec?.sizePt ?? defaults.sizePt,
+        color: calloutSpec?.color ?? defaults.color,
         anchor: { kind: "target", stepId: step.stepId, placement: "top" },
         highlight: highlight
           ? {

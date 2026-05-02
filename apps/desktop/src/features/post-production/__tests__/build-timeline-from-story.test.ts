@@ -397,6 +397,9 @@ describe("buildTimelineFromStory", () => {
       id: expect.stringContaining("step-buy"),
       text: "Start checkout",
       trackId: "annotations",
+      pos: { x: 0.5, y: 0.16 },
+      sizePt: 14,
+      color: "#f8fafc",
     });
   });
 

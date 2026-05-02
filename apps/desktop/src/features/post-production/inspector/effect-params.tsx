@@ -6,7 +6,7 @@
  */
 
 import type { ReactNode } from "react";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SelectField } from "@/components/ui/select-field";
 import { CURSOR_MOTION_LABELS } from "../state/cursor-motion";
@@ -50,16 +50,18 @@ import {
 } from "../state/timeline-slice";
 
 const FIELD_CLASS =
-  "min-h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
+  "min-h-10 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
 
 const RANGE_CLASS = "w-full accent-[var(--color-accent,#ff5b76)]";
 const SECTION_CLASS =
-  "rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3";
+  "rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3";
 const FIELD_ROW_CLASS = "flex flex-col gap-1.5";
 const SECONDARY_BUTTON_CLASS =
-  "rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-2 text-xs text-[var(--color-fg)] transition hover:bg-[var(--color-surface-100)] disabled:opacity-45";
+  "rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-2 text-xs font-medium text-[var(--color-fg)] transition-[background-color,transform,border-color] hover:border-[var(--color-border)] hover:bg-[var(--color-surface-100)] active:scale-[0.98] disabled:opacity-45";
 const TINY_BUTTON_CLASS =
-  "rounded-md border border-[var(--color-border-subtle)] px-2 py-1 text-[10px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]";
+  "rounded-[6px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1 text-[10px] font-medium text-[var(--color-fg-muted)] transition-[background-color,color,transform,border-color] hover:border-[var(--color-border)] hover:text-[var(--color-fg)] active:scale-[0.98]";
+
+const FX_LAYER_IDS: TrackId[] = ["annotations", "zoom", "cursor", "sound", "video"];
 
 const PRESET_OPTIONS: ZoomPreset[] = ["DYNAMIC", "CALM", "SUBTLE"];
 const TARGET_KIND_OPTIONS: ZoomTarget["kind"][] = ["cursor", "element", "fixed-region"];
@@ -154,6 +156,10 @@ function parseFiniteNumber(value: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
 /**
  * Project a clip into the JSON view shown in the inspector — the
  * variant-specific parameter fields, with the framing fields (id,
@@ -224,7 +230,7 @@ function FieldLabel({ children }: FieldLabelProps) {
 
 function ValuePill({ children }: FieldLabelProps) {
   return (
-    <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)]">
+    <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-[10px] tabular-nums text-[var(--color-fg-muted)] shadow-[inset_0_1px_0_rgba(255,255,255,0.56)]">
       {children}
     </span>
   );
@@ -232,6 +238,10 @@ function ValuePill({ children }: FieldLabelProps) {
 
 function SectionTitle({ children }: FieldLabelProps) {
   return <legend className="text-xs font-semibold text-[var(--color-fg)]">{children}</legend>;
+}
+
+function SectionCopy({ children }: FieldLabelProps) {
+  return <p className="mt-1 text-[11px] leading-4 text-[var(--color-fg-muted)]">{children}</p>;
 }
 
 function clipTypeLabel(trackId: TrackId): string {
@@ -245,8 +255,72 @@ function clipTypeLabel(trackId: TrackId): string {
     case "sound":
       return "Sound";
     case "annotations":
-      return "Annotation";
+      return "Text";
   }
+}
+
+function layerDescription(trackId: TrackId): string {
+  switch (trackId) {
+    case "video":
+      return "Base clips and transitions.";
+    case "cursor":
+      return "Pointer skin and motion.";
+    case "zoom":
+      return "Camera moves and focus.";
+    case "sound":
+      return "BGM, SFX, and voiceover.";
+    case "annotations":
+      return "Callouts and captions.";
+  }
+}
+
+function clipTypeAccent(trackId: TrackId): string {
+  switch (trackId) {
+    case "video":
+      return "#0284c7";
+    case "cursor":
+      return "#059669";
+    case "zoom":
+      return "#b45309";
+    case "sound":
+      return "#15803d";
+    case "annotations":
+      return "#c2410c";
+  }
+}
+
+function clipListTitle(clip: Clip): string {
+  switch (clip.trackId) {
+    case "video":
+      return clip.label ?? basename(clip.sourcePath);
+    case "cursor":
+      return clip.label ?? "Cursor Path";
+    case "zoom":
+      return clip.label ?? "Script Zoom";
+    case "sound":
+      return clip.label ?? basename(clip.path);
+    case "annotations":
+      return clip.text || clip.label || "Text";
+  }
+}
+
+function clipListMeta(clip: Clip): string {
+  switch (clip.trackId) {
+    case "video":
+      return clip.outgoingTransition?.kind.replace(/-/g, " ") ?? "source";
+    case "cursor":
+      return CURSOR_MOTION_LABELS[normalizeCursorMotionPreset(clip.motionPreset)];
+    case "zoom":
+      return `${clip.scale.toFixed(2)}x · ${clip.preset ?? "DYNAMIC"}`;
+    case "sound":
+      return clip.kind.toUpperCase();
+    case "annotations":
+      return TEXT_STYLE_PRESETS[clip.styleId ?? "callout"].label;
+  }
+}
+
+function clipNodePath(trackId: TrackId, index: number): string {
+  return `tracks.${trackId}[${index}]`;
 }
 
 interface ZoomParamsProps {
@@ -355,7 +429,10 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
 
   return (
     <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
-      <SectionTitle>Zoom motion</SectionTitle>
+      <div>
+        <SectionTitle>Zoom motion</SectionTitle>
+        <SectionCopy>Choose what the camera follows, then tune the intensity.</SectionCopy>
+      </div>
       <div className={FIELD_ROW_CLASS}>
         <FieldLabel>Target</FieldLabel>
         <SelectField
@@ -388,7 +465,7 @@ function ZoomParams({ clip, nodePath, onSetParam }: ZoomParamsProps) {
           className={RANGE_CLASS}
         />
       </label>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2">
         <label className={FIELD_ROW_CLASS}>
           <FieldLabel>Center X</FieldLabel>
           <input
@@ -503,7 +580,10 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
   return (
     <div className="flex flex-col gap-3">
       <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
-        <SectionTitle>Text preset</SectionTitle>
+        <div>
+          <SectionTitle>Text</SectionTitle>
+          <SectionCopy>Preset, copy, and fast placement for the selected callout.</SectionCopy>
+        </div>
         <label className={FIELD_ROW_CLASS}>
           <FieldLabel>Style</FieldLabel>
           <SelectField
@@ -541,7 +621,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
             <button
               key={item.label}
               type="button"
-              className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-fg)] transition hover:bg-[var(--color-surface-100)] active:scale-[0.98]"
+              className={SECONDARY_BUTTON_CLASS}
               onClick={() => {
                 setScreenPosition(item.pos);
               }}
@@ -553,7 +633,10 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
       </fieldset>
 
       <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
-        <SectionTitle>Appearance</SectionTitle>
+        <div>
+          <SectionTitle>Appearance</SectionTitle>
+          <SectionCopy>Keep text readable while preserving the video frame.</SectionCopy>
+        </div>
         <label className={FIELD_ROW_CLASS}>
           <span className="flex items-center justify-between gap-2">
             <FieldLabel>Size</FieldLabel>
@@ -592,11 +675,11 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
               aria-label="Annotation color"
               value={color}
               onChange={(e) => onSetParam(nodePath, "color", clip.color, e.target.value)}
-              className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
+              className="h-10 w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
             />
           </label>
         </div>
-        <label className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+        <label className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)]">
           <span>
             <span className="block text-xs font-medium text-[var(--color-fg)]">Background</span>
             <span className="text-[11px] text-[var(--color-fg-muted)]">
@@ -621,7 +704,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
         </label>
       </fieldset>
 
-      <details className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3">
+      <details className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3">
         <summary className="cursor-pointer text-xs font-semibold text-[var(--color-fg)]">
           Advanced position and motion
         </summary>
@@ -654,7 +737,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
           </label>
           {anchor.kind === "target" ? (
             <div
-              className={`rounded-lg border px-3 py-2 text-xs ${
+              className={`rounded-[8px] border px-3 py-2 text-xs ${
                 targetWarning
                   ? "border-amber-400/28 bg-amber-400/8 text-amber-900 dark:text-amber-100"
                   : "border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-[var(--color-fg-muted)]"
@@ -999,22 +1082,79 @@ function cloneAnnotationStyle(clip: AnnotationClip): Partial<AnnotationClip> {
   };
 }
 
-function TextClipList() {
-  const allAnnotations = useEditorStore((s) => s.tracks.annotations);
-  const annotations = allAnnotations.filter((clip) => clip.text.trim());
-  const selectedClipId = useEditorStore((s) => s.selectedClipId);
-  const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
-  const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
-  const setPlayhead = useEditorStore((s) => s.setPlayhead);
-  const pushAction = useEditorStore((s) => s.pushAction);
+function clipsForLayer(tracks: TimelineSlice["tracks"], layerId: TrackId): Clip[] {
+  return [...tracks[layerId]] as Clip[];
+}
 
-  if (annotations.length === 0) return null;
+interface LayerTabsProps {
+  activeLayer: TrackId;
+  tracks: TimelineSlice["tracks"];
+  onLayerChange: (layerId: TrackId) => void;
+}
 
-  const selectClip = (clip: AnnotationClip) => {
-    setSelectedClipId(clip.id);
-    setSelectedTab("effects");
-    setPlayhead(clip.startMs);
-  };
+function LayerTabs({ activeLayer, tracks, onLayerChange }: LayerTabsProps) {
+  return (
+    <section className={SECTION_CLASS}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-semibold text-[var(--color-fg)]">FX layers</h3>
+          <p className="mt-1 text-[11px] leading-4 text-[var(--color-fg-muted)]">
+            Pick a layer type first, then edit only the selected item in that layer.
+          </p>
+        </div>
+      </div>
+      <div className="grid grid-cols-5 gap-1 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-1">
+        {FX_LAYER_IDS.map((layerId) => {
+          const active = activeLayer === layerId;
+          const count = tracks[layerId].length;
+          return (
+            <button
+              key={layerId}
+              type="button"
+              aria-pressed={active}
+              className={`min-w-0 cursor-pointer rounded-[6px] px-1.5 py-2 text-center transition-[background-color,color,transform] active:scale-[0.98] ${
+                active
+                  ? "bg-[var(--color-surface-100)] text-[var(--color-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]"
+                  : "text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-100)] hover:text-[var(--color-fg)]"
+              }`}
+              onClick={() => onLayerChange(layerId)}
+            >
+              <span className="block truncate text-[10px] font-semibold">
+                {clipTypeLabel(layerId)}
+              </span>
+              <span className="mt-1 inline-flex rounded-full border border-[var(--color-border-subtle)] px-1.5 font-mono text-[9px] tabular-nums">
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+interface LayerClipListProps {
+  activeLayer: TrackId;
+  clips: Clip[];
+  selectedClipId: string | null;
+  allAnnotations: AnnotationClip[];
+  onSelectClip: (clip: Clip) => void;
+  pushAction: ReturnType<typeof useEditorStore.getState>["pushAction"];
+}
+
+function LayerClipList({
+  activeLayer,
+  clips,
+  selectedClipId,
+  allAnnotations,
+  onSelectClip,
+  pushAction,
+}: LayerClipListProps) {
+  const sortedClips = useMemo(
+    () => [...clips].sort((a, b) => a.startMs - b.startMs),
+    [clips],
+  );
+  const annotationClips = allAnnotations.filter((clip) => clip.text.trim());
 
   const duplicateClip = (clip: AnnotationClip) => {
     pushAction({
@@ -1059,7 +1199,7 @@ function TextClipList() {
 
   const applyStyleToAll = (source: AnnotationClip) => {
     const style = cloneAnnotationStyle(source);
-    annotations.forEach((clip) => {
+    annotationClips.forEach((clip) => {
       if (clip.id === source.id) return;
       const trackIndex = allAnnotations.findIndex((item) => item.id === clip.id);
       if (trackIndex < 0) return;
@@ -1068,7 +1208,7 @@ function TextClipList() {
         if (Object.is(prev, next)) return;
         pushAction({
           kind: "set-effect-param",
-          nodePath: `tracks.annotations[${trackIndex}]`,
+          nodePath: clipNodePath("annotations", trackIndex),
           field,
           prev,
           next,
@@ -1078,72 +1218,95 @@ function TextClipList() {
   };
 
   return (
-    <section className={`${SECTION_CLASS} mb-3`}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <SectionTitle>Text clips</SectionTitle>
-        <ValuePill>{annotations.length}</ValuePill>
+    <section className={SECTION_CLASS}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-semibold text-[var(--color-fg)]">
+            {clipTypeLabel(activeLayer)} layer
+          </h3>
+          <p className="mt-1 text-[11px] leading-4 text-[var(--color-fg-muted)]">
+            {layerDescription(activeLayer)}
+          </p>
+        </div>
+        <ValuePill>{clips.length}</ValuePill>
       </div>
-      <div className="space-y-2">
-        {annotations
-          .slice()
-          .sort((a, b) => a.startMs - b.startMs)
-          .map((clip) => {
+      {sortedClips.length === 0 ? (
+        <div className="rounded-[8px] border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-xs leading-5 text-[var(--color-fg-muted)]">
+          No {clipTypeLabel(activeLayer).toLowerCase()} clips yet.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {sortedClips.map((clip) => {
             const selected = selectedClipId === clip.id;
+            const accent = clipTypeAccent(clip.trackId);
             return (
               <div
                 key={clip.id}
-                className={`rounded-lg border p-2 ${
+                className={`rounded-[8px] border p-2 transition-[background-color,border-color,transform] ${
                   selected
-                    ? "border-[var(--color-accent,#ff5b76)] bg-[var(--color-surface)]"
-                    : "border-[var(--color-border-subtle)] bg-[var(--color-surface)]/70"
+                    ? "border-[var(--color-accent,#ff5b76)] bg-[var(--color-surface)] shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]"
+                    : "border-[var(--color-border-subtle)] bg-[var(--color-surface)]/70 hover:border-[var(--color-border)]"
                 }`}
               >
                 <button
                   type="button"
-                  className="block w-full text-left"
-                  onClick={() => selectClip(clip)}
+                  className="grid w-full cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-2 text-left"
+                  onClick={() => onSelectClip(clip)}
                 >
-                  <span className="block truncate text-xs font-medium text-[var(--color-fg)]">
-                    {clip.text}
+                  <span
+                    aria-hidden="true"
+                    className="h-7 w-1 rounded-full"
+                    style={{ background: accent }}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-medium text-[var(--color-fg)]">
+                      {clipListTitle(clip)}
+                    </span>
+                    <span className="mt-1 block truncate font-mono text-[10px] text-[var(--color-fg-muted)]">
+                      {(clip.startMs / 1000).toFixed(2)}s · {clipListMeta(clip)}
+                    </span>
                   </span>
-                  <span className="mt-1 block font-mono text-[10px] text-[var(--color-fg-muted)]">
-                    {(clip.startMs / 1000).toFixed(2)}s · {TEXT_STYLE_PRESETS[clip.styleId ?? "callout"].label}
+                  <span className="rounded-full border border-[var(--color-border-subtle)] px-2 py-0.5 text-[10px] text-[var(--color-fg-muted)]">
+                    {(clip.durationMs / 1000).toFixed(1)}s
                   </span>
                 </button>
-                <div className="mt-2 grid grid-cols-4 gap-1">
-                  <button
-                    type="button"
-                    className={TINY_BUTTON_CLASS}
-                    onClick={() => duplicateClip(clip)}
-                  >
-                    Duplicate
-                  </button>
-                  <button
-                    type="button"
-                    className={TINY_BUTTON_CLASS}
-                    onClick={() => duplicateStyle(clip)}
-                  >
-                    Dupe style
-                  </button>
-                  <button
-                    type="button"
-                    className={TINY_BUTTON_CLASS}
-                    onClick={() => applyStyleToAll(clip)}
-                  >
-                    Style all
-                  </button>
-                  <button
-                    type="button"
-                    className={TINY_BUTTON_CLASS}
-                    onClick={() => deleteClip(clip)}
-                  >
-                    Delete
-                  </button>
-                </div>
+                {clip.trackId === "annotations" ? (
+                  <div className="mt-2 grid grid-cols-4 gap-1">
+                    <button
+                      type="button"
+                      className={TINY_BUTTON_CLASS}
+                      onClick={() => duplicateClip(clip)}
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      type="button"
+                      className={TINY_BUTTON_CLASS}
+                      onClick={() => duplicateStyle(clip)}
+                    >
+                      Dupe style
+                    </button>
+                    <button
+                      type="button"
+                      className={TINY_BUTTON_CLASS}
+                      onClick={() => applyStyleToAll(clip)}
+                    >
+                      Style all
+                    </button>
+                    <button
+                      type="button"
+                      className={TINY_BUTTON_CLASS}
+                      onClick={() => deleteClip(clip)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ) : null}
               </div>
             );
           })}
-      </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -1151,7 +1314,13 @@ function TextClipList() {
 function EffectParamsBase() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const pushAction = useEditorStore((s) => s.pushAction);
+  const tracks = useEditorStore((s) => s.tracks);
+  const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
+  const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
+  const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const hit = useEditorStore(useShallow((s) => findSelectedClip(s.tracks, s.selectedClipId)));
+  const [activeLayer, setActiveLayer] = useState<TrackId>(() => hit?.trackId ?? "annotations");
+  const nowEditingRef = useRef<HTMLElement | null>(null);
   const companionCursor = useEditorStore(
     useShallow((s) => {
       const selected = findSelectedClip(s.tracks, s.selectedClipId);
@@ -1161,6 +1330,42 @@ function EffectParamsBase() {
         findActiveCursorClip(s.tracks, s.playheadMs)
       );
     }),
+  );
+  const selectedTrackId = hit?.trackId;
+  const activeClips = useMemo(() => clipsForLayer(tracks, activeLayer), [tracks, activeLayer]);
+  const activeHit = hit?.trackId === activeLayer ? hit : null;
+
+  useEffect(() => {
+    if (selectedTrackId) setActiveLayer(selectedTrackId);
+  }, [selectedTrackId]);
+
+  const scrollNowEditingIntoView = useCallback(() => {
+    window.setTimeout(() => {
+      nowEditingRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    }, 0);
+  }, []);
+
+  const selectClip = useCallback(
+    (clip: Clip, options: { scrollToEditor?: boolean } = {}) => {
+      setSelectedClipId(clip.id);
+      setSelectedTab("effects");
+      setPlayhead(clip.startMs);
+      if (options.scrollToEditor) scrollNowEditingIntoView();
+    },
+    [scrollNowEditingIntoView, setPlayhead, setSelectedClipId, setSelectedTab],
+  );
+
+  const selectLayer = useCallback(
+    (layerId: TrackId) => {
+      setActiveLayer(layerId);
+      const firstClip = clipsForLayer(tracks, layerId).sort((a, b) => a.startMs - b.startMs)[0];
+      if (firstClip) {
+        selectClip(firstClip);
+      } else {
+        setSelectedClipId(null);
+      }
+    },
+    [selectClip, setSelectedClipId, tracks],
   );
 
   const onSetParam = useCallback(
@@ -1177,71 +1382,93 @@ function EffectParamsBase() {
     [pushAction],
   );
 
-  if (!selectedClipId) {
+  if (!selectedClipId || !activeHit) {
     return (
-      <div className="p-4 text-sm">
-        <TextClipList />
-        <div className="flex min-h-52 flex-col justify-center">
-          <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-100)] p-5">
-            <div className="text-sm font-semibold text-[var(--color-fg)]">No clip selected</div>
-            <div className="mt-2 max-w-[32ch] text-xs leading-5 text-[var(--color-fg-muted)]">
-              Select a timeline clip to tune motion, text, cursor, transition, or audio details.
+      <div className="flex flex-col gap-3 p-4 text-sm">
+        <LayerTabs activeLayer={activeLayer} tracks={tracks} onLayerChange={selectLayer} />
+        <LayerClipList
+          activeLayer={activeLayer}
+          clips={activeClips}
+          selectedClipId={selectedClipId}
+          allAnnotations={tracks.annotations}
+          onSelectClip={(clip) => selectClip(clip, { scrollToEditor: true })}
+          pushAction={pushAction}
+        />
+        <div className="rounded-[8px] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-100)] p-5">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 rounded-full"
+              style={{ background: clipTypeAccent(activeLayer) }}
+            />
+            <div className="text-sm font-semibold text-[var(--color-fg)]">
+              No {clipTypeLabel(activeLayer).toLowerCase()} selected
             </div>
+          </div>
+          <div className="mt-2 max-w-[34ch] text-xs leading-5 text-[var(--color-fg-muted)]">
+            Pick a clip from the {clipTypeLabel(activeLayer).toLowerCase()} layer list above to
+            reveal its controls.
           </div>
         </div>
       </div>
     );
   }
 
-  if (!hit) {
-    return (
-      <div className="p-4 text-sm">
-        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-4 text-[var(--color-fg-muted)]">
-          Clip not found.
-        </div>
-      </div>
-    );
-  }
-
-  const { trackId, clip, index } = hit;
-  const nodePath = `tracks.${trackId}[${index}]`;
-  const clipTitle = clip.label || clipTypeLabel(trackId);
+  const { trackId, clip, index } = activeHit;
+  const nodePath = clipNodePath(trackId, index);
+  const clipTitle = clip.label || clipListTitle(clip);
+  const accent = clipTypeAccent(trackId);
 
   return (
     <form aria-label="Effect parameters" className="flex flex-col gap-3 p-4 text-sm">
-      <TextClipList />
-      <section className="rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3 shadow-[0_18px_34px_-26px_rgba(0,0,0,0.35)]">
-        <div className="flex items-start justify-between gap-3">
+      <LayerTabs activeLayer={activeLayer} tracks={tracks} onLayerChange={selectLayer} />
+      <LayerClipList
+        activeLayer={activeLayer}
+        clips={activeClips}
+        selectedClipId={selectedClipId}
+        allAnnotations={tracks.annotations}
+        onSelectClip={(clip) => selectClip(clip, { scrollToEditor: true })}
+        pushAction={pushAction}
+      />
+      <section
+        ref={nowEditingRef}
+        className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3 shadow-[0_18px_34px_-26px_rgba(0,0,0,0.35)]"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border-subtle)] pb-3">
           <div className="min-w-0">
-            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-fg-muted)]">
-              {clipTypeLabel(trackId)}
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 rounded-full"
+                style={{ background: accent }}
+              />
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--color-fg-muted)]">
+                Now editing
+              </div>
             </div>
             <div className="mt-1 truncate text-base font-semibold text-[var(--color-fg)]">
               {clipTitle}
             </div>
           </div>
-          <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-muted)]">
-            {trackId}
+          <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+            {clipTypeLabel(trackId)}
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+          <div className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
             <FieldLabel>Start</FieldLabel>
             <div className="mt-1 font-mono text-xs tabular-nums text-[var(--color-fg)]">
               {(clip.startMs / 1000).toFixed(3)} s
             </div>
           </div>
-          <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
+          <div className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2">
             <FieldLabel>Duration</FieldLabel>
             <div className="mt-1 font-mono text-xs tabular-nums text-[var(--color-fg)]">
               {(clip.durationMs / 1000).toFixed(3)} s
             </div>
           </div>
         </div>
-      </section>
-
-      <section className={SECTION_CLASS}>
-        <label className={FIELD_ROW_CLASS}>
+        <label className={`${FIELD_ROW_CLASS} mt-3`}>
           <FieldLabel>Label</FieldLabel>
           <input
             type="text"
@@ -1278,7 +1505,7 @@ function EffectParamsBase() {
       {clip.trackId === "video" ? (
         <VideoParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
       ) : null}
-      <details className="group rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
+      <details className="group rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)]">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-[var(--color-fg)]">
           Parameters
           <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-fg-muted)] group-open:hidden">

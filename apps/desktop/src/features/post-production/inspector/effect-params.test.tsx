@@ -177,6 +177,69 @@ describe("EffectParams", () => {
     });
   });
 
+  it("switches FX layer tabs and selects the first clip in that layer", async () => {
+    const user = userEvent.setup();
+    resetStore(vi.fn());
+    useEditorStore.setState({
+      selectedClipId: "text-1",
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [
+          {
+            id: "zoom-1",
+            trackId: "zoom",
+            startMs: 2500,
+            durationMs: 800,
+            label: "Script zoom",
+            target: { kind: "cursor" },
+            scale: 1.65,
+            center: { x: 0.5, y: 0.5 },
+            preset: "DYNAMIC",
+          },
+        ],
+        sound: [],
+        annotations: [
+          {
+            id: "text-1",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 1200,
+            label: "Callout",
+            text: "One line callout",
+            pos: { x: 0.5, y: 0.16 },
+            sizePt: 14,
+            color: "#f8fafc",
+            styleId: "callout",
+          },
+        ],
+      },
+    });
+
+    render(<EffectParams />);
+
+    expect(screen.getByRole("button", { name: /Text\s+1/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByLabelText("Annotation text")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Zoom\s+1/i }));
+
+    expect(useEditorStore.getState().selectedClipId).toBe("zoom-1");
+    expect(useEditorStore.getState().playheadMs).toBe(2500);
+    expect(screen.getByRole("button", { name: /Zoom\s+1/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByLabelText("Zoom scale")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Text\s+1/i }));
+
+    expect(useEditorStore.getState().selectedClipId).toBe("text-1");
+    expect(screen.getByLabelText("Annotation text")).toBeInTheDocument();
+  });
+
   it("dispatches typed annotation edits with numeric track paths", () => {
     const pushAction = vi.fn();
     resetStore(pushAction);

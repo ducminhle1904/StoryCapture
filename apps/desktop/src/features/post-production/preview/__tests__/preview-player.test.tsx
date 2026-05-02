@@ -340,6 +340,103 @@ describe("PreviewPlayer", () => {
     expect(screen.getByText("Fallback label")).toHaveStyle({ left: "22%", top: "33%" });
   });
 
+  it("anchors text boxes to the nearest frame edge without shrinking", () => {
+    useEditorStore.setState({
+      playheadMs: 1500,
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "left-text",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 2000,
+            label: "Left",
+            text: "Left edge text",
+            pos: { x: 0.08, y: 0.4 },
+            sizePt: 24,
+          },
+          {
+            id: "right-text",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 2000,
+            label: "Right",
+            text: "Right edge text",
+            pos: { x: 0.92, y: 0.6 },
+            sizePt: 24,
+          },
+        ],
+      },
+    });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    expect(screen.getByText("Left edge text")).toHaveStyle({
+      width: "max-content",
+      transformOrigin: "left center",
+    });
+    expect(screen.getByText("Left edge text").style.transform).toContain("translate(0%");
+    expect(screen.getByText("Right edge text")).toHaveStyle({
+      width: "max-content",
+      transformOrigin: "right center",
+    });
+    expect(screen.getByText("Right edge text").style.transform).toContain("translate(-100%");
+  });
+
+  it("allows direct-dragged text to move outside the video frame", () => {
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 500,
+      width: 1000,
+      height: 500,
+      toJSON: () => ({}),
+    } as DOMRect);
+    useEditorStore.setState({
+      playheadMs: 1500,
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "outside-text",
+            trackId: "annotations",
+            startMs: 1000,
+            durationMs: 2000,
+            label: "Outside",
+            text: "Outside frame",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 24,
+          },
+        ],
+      },
+    });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    const text = screen.getByRole("button", { name: "Text overlay Outside frame" });
+    fireEvent.pointerDown(text, { clientX: 500, clientY: 250 });
+    fireEvent.pointerMove(window, { clientX: -100, clientY: 650 });
+    fireEvent.pointerUp(window);
+
+    const clip = useEditorStore.getState().tracks.annotations[0];
+    expect(clip?.pos.x).toBeCloseTo(-0.1);
+    expect(clip?.pos.y).toBe(1.25);
+    expect(clip?.anchor).toMatchObject({ kind: "screen", pos: { y: 1.25 } });
+    if (clip?.anchor?.kind !== "screen") throw new Error("expected screen anchor");
+    expect(clip.anchor.pos.x).toBeCloseTo(-0.1);
+    rectSpy.mockRestore();
+  });
+
   it("converts anchored text to a screen position when dragged directly", () => {
     const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       x: 0,
