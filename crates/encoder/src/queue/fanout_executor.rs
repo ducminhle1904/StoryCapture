@@ -15,22 +15,60 @@ use crate::fanout::{
     fanout_encode, render_direct_mp4, render_intermediate, FanoutPlan, IntermediateProgress,
     OutputFormat, OutputSpec, Quality, Resolution,
 };
+use crate::probe::{
+    export_h264_software_fallback, pick_export_h264_encoder, EncoderProbe, HardwareEncoder,
+};
 use crate::progress::RenderProgress;
 use crate::queue::job::{JobExecutor, JobOutcome};
 use crate::sidecar::SidecarCommand;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExportEncoderConfig {
+    primary: HardwareEncoder,
+    fallback: Option<HardwareEncoder>,
+}
+
+impl ExportEncoderConfig {
+    pub fn new(primary: HardwareEncoder, fallback: Option<HardwareEncoder>) -> Self {
+        Self { primary, fallback }
+    }
+
+    pub fn software_default() -> Self {
+        Self {
+            primary: HardwareEncoder::Libx264Software,
+            fallback: None,
+        }
+    }
+
+    pub fn from_probe(probe: &EncoderProbe) -> Self {
+        let primary = pick_export_h264_encoder(probe);
+        Self {
+            primary,
+            fallback: export_h264_software_fallback(probe, primary),
+        }
+    }
+
+    pub fn primary(self) -> HardwareEncoder {
+        self.primary
+    }
+
+    pub fn fallback(self) -> Option<HardwareEncoder> {
+        self.fallback
+    }
+}
 
 /// Production executor for post-production export jobs.
 #[derive(Clone)]
 pub struct FanoutJobExecutor {
     sidecar: Arc<dyn SidecarCommand>,
-    h264_encoder: String,
+    encoder_config: ExportEncoderConfig,
 }
 
 impl FanoutJobExecutor {
-    pub fn new(sidecar: Arc<dyn SidecarCommand>, h264_encoder: impl Into<String>) -> Self {
+    pub fn new(sidecar: Arc<dyn SidecarCommand>, encoder_config: ExportEncoderConfig) -> Self {
         Self {
             sidecar,
-            h264_encoder: h264_encoder.into(),
+            encoder_config,
         }
     }
 }
@@ -87,25 +125,25 @@ impl JobExecutor for FanoutJobExecutor {
         };
 
         if spec.format == OutputFormat::Mp4 {
-            let result = render_direct_mp4(
-                &graph,
-                &extra_inputs,
-                &spec,
-                self.sidecar.as_ref(),
-                &self.h264_encoder,
-                duration_ms,
-                Some(IntermediateProgress {
-                    job_id: job.id,
-                    tx: progress_tx.clone(),
-                    start_pct: 1.0,
-                    end_pct: 100.0,
-                }),
-            )
-            .await;
+            let result = self
+                .render_mp4_with_fallback(
+                    &graph,
+                    &extra_inputs,
+                    &spec,
+                    duration_ms,
+                    job.id,
+                    progress_tx.clone(),
+                    &cancel,
+                )
+                .await;
             if result.is_err() {
                 cleanup_export_temps(&cursor_temp_dir, None).await;
             }
             result?;
+            if cancel.is_cancelled() {
+                cleanup_export_temps(&cursor_temp_dir, None).await;
+                return Ok(JobOutcome::Cancelled);
+            }
             let metadata_result = tokio::fs::metadata(&output_path).await.map_err(|e| {
                 EncoderError::Io(format!("output missing {}: {e}", output_path.display()))
             });
@@ -166,7 +204,7 @@ impl JobExecutor for FanoutJobExecutor {
             &intermediate,
             &plan,
             move || sidecar.clone(),
-            &self.h264_encoder,
+            self.encoder_config.primary,
         )
         .await;
         if fanout_result.is_err() {
@@ -183,6 +221,91 @@ impl JobExecutor for FanoutJobExecutor {
         cleanup_export_temps(&cursor_temp_dir, Some(&intermediate_path)).await;
         send_progress(&progress_tx, job.id, 100.0).await;
         Ok(JobOutcome::Completed { output_path })
+    }
+}
+
+impl FanoutJobExecutor {
+    async fn render_mp4_with_fallback(
+        &self,
+        graph: &effects::Graph,
+        extra_inputs: &[Vec<String>],
+        spec: &OutputSpec,
+        duration_ms: u64,
+        job_id: uuid::Uuid,
+        progress_tx: mpsc::Sender<RenderProgress>,
+        cancel: &CancellationToken,
+    ) -> Result<()> {
+        let primary = self.encoder_config.primary;
+        let primary_result = render_direct_mp4(
+            graph,
+            extra_inputs,
+            spec,
+            self.sidecar.as_ref(),
+            primary,
+            duration_ms,
+            Some(IntermediateProgress {
+                job_id,
+                tx: progress_tx.clone(),
+                start_pct: 1.0,
+                end_pct: 100.0,
+            }),
+        )
+        .await;
+
+        let Err(primary_error) = primary_result else {
+            return Ok(());
+        };
+
+        let Some(fallback) = self.encoder_config.fallback else {
+            return Err(primary_error);
+        };
+        if !primary.is_hardware() {
+            return Err(primary_error);
+        }
+        if cancel.is_cancelled() {
+            return Ok(());
+        }
+
+        tracing::warn!(
+            target: "storycapture::export",
+            %job_id,
+            primary_encoder = primary.ffmpeg_codec_name(),
+            fallback_encoder = fallback.ffmpeg_codec_name(),
+            output_resolution = ?spec.resolution,
+            fps = spec.fps,
+            quality = ?spec.quality,
+            error = %primary_error,
+            "post-production hardware export failed; retrying with software encoder"
+        );
+
+        match render_direct_mp4(
+            graph,
+            extra_inputs,
+            spec,
+            self.sidecar.as_ref(),
+            fallback,
+            duration_ms,
+            None,
+        )
+        .await
+        {
+            Ok(()) => Ok(()),
+            Err(fallback_error) => {
+                tracing::error!(
+                    target: "storycapture::export",
+                    %job_id,
+                    primary_encoder = primary.ffmpeg_codec_name(),
+                    fallback_encoder = fallback.ffmpeg_codec_name(),
+                    output_resolution = ?spec.resolution,
+                    fps = spec.fps,
+                    quality = ?spec.quality,
+                    primary_error = %primary_error,
+                    fallback_error = %fallback_error,
+                    "post-production software fallback export failed"
+                );
+                Err(fallback_error)
+            }
+        }
     }
 }
 
@@ -337,6 +460,7 @@ mod tests {
     use effects::ast::types::{NodeId, SCHEMA_VERSION};
     use effects::ast::Rgba;
     use std::path::PathBuf;
+    use std::sync::{Arc as StdArc, Mutex};
     use storage::RenderJobStatus;
 
     struct WritingSidecar;
@@ -345,37 +469,7 @@ mod tests {
     impl SidecarCommand for WritingSidecar {
         async fn spawn(&self, args: Vec<String>) -> Result<SidecarChild> {
             let out = args.last().expect("output arg").to_string();
-            #[cfg(unix)]
-            let mut cmd = {
-                let mut cmd = tokio::process::Command::new("sh");
-                cmd.arg("-c")
-                    .arg("printf video > \"$1\"")
-                    .arg("sh")
-                    .arg(out);
-                cmd
-            };
-            #[cfg(windows)]
-            let mut cmd = {
-                let mut cmd = tokio::process::Command::new("cmd");
-                cmd.arg("/C").arg(format!("echo video>{out}"));
-                cmd
-            };
-            use std::process::Stdio;
-            cmd.stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            let mut child = cmd
-                .spawn()
-                .map_err(|e| EncoderError::SpawnFailed(e.to_string()))?;
-            let stdin = child.stdin.take().unwrap();
-            let stdout = child.stdout.take().unwrap();
-            let stderr = child.stderr.take().unwrap();
-            Ok(SidecarChild {
-                stdin,
-                stdout,
-                stderr,
-                child,
-            })
+            spawn_test_child(out, false)
         }
 
         async fn run(&self, args: Vec<String>) -> Result<()> {
@@ -384,6 +478,62 @@ mod tests {
                 .await
                 .map_err(|e| EncoderError::Io(format!("write {out}: {e}")))
         }
+    }
+
+    struct FailsHardwareSidecar {
+        calls: StdArc<Mutex<Vec<Vec<String>>>>,
+    }
+
+    #[async_trait]
+    impl SidecarCommand for FailsHardwareSidecar {
+        async fn spawn(&self, args: Vec<String>) -> Result<SidecarChild> {
+            self.calls.lock().unwrap().push(args.clone());
+            let out = args.last().expect("output arg").to_string();
+            let fail_hardware = args.iter().any(|arg| arg == "h264_videotoolbox");
+            spawn_test_child(out, fail_hardware)
+        }
+    }
+
+    fn spawn_test_child(out: String, fail: bool) -> Result<SidecarChild> {
+        #[cfg(unix)]
+        let mut cmd = {
+            let mut cmd = tokio::process::Command::new("sh");
+            if fail {
+                cmd.arg("-c").arg("exit 1");
+            } else {
+                cmd.arg("-c")
+                    .arg("printf video > \"$1\"")
+                    .arg("sh")
+                    .arg(out);
+            }
+            cmd
+        };
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut cmd = tokio::process::Command::new("cmd");
+            if fail {
+                cmd.arg("/C").arg("exit 1");
+            } else {
+                cmd.arg("/C").arg(format!("echo video>{out}"));
+            }
+            cmd
+        };
+        use std::process::Stdio;
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| EncoderError::SpawnFailed(e.to_string()))?;
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+        Ok(SidecarChild {
+            stdin,
+            stdout,
+            stderr,
+            child,
+        })
     }
 
     #[test]
@@ -519,7 +669,10 @@ mod tests {
             created_at: 0,
         };
         let (tx, _rx) = mpsc::channel(8);
-        let executor = FanoutJobExecutor::new(Arc::new(WritingSidecar), "libx264");
+        let executor = FanoutJobExecutor::new(
+            Arc::new(WritingSidecar),
+            ExportEncoderConfig::software_default(),
+        );
 
         let outcome = executor
             .execute(job, tx, CancellationToken::new())
@@ -528,5 +681,73 @@ mod tests {
 
         assert!(matches!(outcome, JobOutcome::Completed { .. }));
         assert!(output_path.exists());
+    }
+
+    #[tokio::test]
+    async fn fanout_executor_retries_hardware_mp4_with_software_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("recording.mp4");
+        tokio::fs::write(&source, b"source").await.unwrap();
+
+        let batch_id = uuid::Uuid::now_v7().to_string();
+        let graph = effects::Graph {
+            schema_version: SCHEMA_VERSION,
+            output_width: 1280,
+            output_height: 720,
+            output_fps: 30,
+            video: vec![VideoNode::Source {
+                id: NodeId::from_bytes([1; 16]),
+                path: source,
+                pts_offset_ms: 0,
+            }],
+            audio: vec![],
+        };
+        let graph_path = tmp.path().join(format!(".export-graph-{batch_id}.json"));
+        tokio::fs::write(&graph_path, serde_json::to_string(&graph).unwrap())
+            .await
+            .unwrap();
+
+        let output_path = tmp.path().join("demo.720p.30.mp4");
+        let job = RenderJob {
+            id: uuid::Uuid::now_v7(),
+            story_id: "story".into(),
+            preset_id: None,
+            format: "mp4".into(),
+            resolution: "720p".into(),
+            fps: 30,
+            quality: "med".into(),
+            status: RenderJobStatus::Running,
+            progress_pct: 0.0,
+            started_at: None,
+            completed_at: None,
+            error: None,
+            priority: 0,
+            output_path: Some(output_path.clone()),
+            batch_id: Some(batch_id),
+            created_at: 0,
+        };
+        let calls = StdArc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let executor = FanoutJobExecutor::new(
+            Arc::new(FailsHardwareSidecar {
+                calls: calls.clone(),
+            }),
+            ExportEncoderConfig::new(
+                HardwareEncoder::VideoToolboxH264,
+                Some(HardwareEncoder::Libx264Software),
+            ),
+        );
+        let (tx, _rx) = mpsc::channel(8);
+
+        let outcome = executor
+            .execute(job, tx, CancellationToken::new())
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, JobOutcome::Completed { .. }));
+        assert!(output_path.exists());
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert!(calls[0].iter().any(|arg| arg == "h264_videotoolbox"));
+        assert!(calls[1].iter().any(|arg| arg == "libx264"));
     }
 }

@@ -16,7 +16,10 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::error::{EncoderError, Result};
-use crate::fanout::multi_encode::{bitrate_for, resolution_height, resolution_width, OutputSpec};
+use crate::fanout::multi_encode::{
+    push_mp4_video_encode_args, resolution_height, resolution_width, OutputSpec,
+};
+use crate::probe::HardwareEncoder;
 use crate::progress::{parse_line, ProgressFrag, RenderProgress, RenderProgressParser};
 use crate::sidecar::{read_stderr_tail, sidecar_exit_message, SidecarChild, SidecarCommand};
 
@@ -124,7 +127,7 @@ pub async fn render_direct_mp4(
     extra_inputs: &[Vec<String>],
     spec: &OutputSpec,
     sidecar_cmd: &dyn SidecarCommand,
-    h264_encoder: &str,
+    h264_encoder: HardwareEncoder,
     duration_ms: u64,
     progress: Option<IntermediateProgress>,
 ) -> Result<()> {
@@ -143,7 +146,7 @@ pub fn build_direct_mp4_args(
     filter_complex: String,
     extra_inputs: &[Vec<String>],
     spec: &OutputSpec,
-    h264_encoder: &str,
+    h264_encoder: HardwareEncoder,
     duration_ms: u64,
 ) -> Vec<String> {
     let has_audio_output = filter_complex.contains("[out_a]");
@@ -166,12 +169,13 @@ pub fn build_direct_mp4_args(
         args.push("-map".into());
         args.push("[out_a]".into());
     }
-    args.push("-c:v".into());
-    args.push(h264_encoder.into());
-    args.push("-b:v".into());
-    args.push(bitrate_for(spec.resolution, spec.quality, "h264"));
-    args.push("-pix_fmt".into());
-    args.push("yuv420p".into());
+    push_mp4_video_encode_args(
+        &mut args,
+        spec,
+        h264_encoder,
+        resolution_width(spec.resolution),
+        resolution_height(spec.resolution),
+    );
     if has_audio_output {
         args.push("-c:a".into());
         args.push("aac".into());
@@ -320,6 +324,91 @@ mod tests {
         assert!(!joined.contains("-c:a"), "{joined}");
     }
 
+    fn direct_mp4_spec() -> OutputSpec {
+        OutputSpec {
+            format: crate::fanout::OutputFormat::Mp4,
+            resolution: crate::fanout::Resolution::R1080p,
+            fps: 60,
+            quality: crate::fanout::Quality::Med,
+            output_path: PathBuf::from("/tmp/out.mp4"),
+        }
+    }
+
+    #[test]
+    fn direct_mp4_videotoolbox_uses_encoder_quality_args() {
+        let args = build_direct_mp4_args(
+            "[0:v]null[out_v]".into(),
+            &[vec!["-i".into(), "/tmp/in.mp4".into()]],
+            &direct_mp4_spec(),
+            HardwareEncoder::VideoToolboxH264,
+            60_000,
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("-c:v h264_videotoolbox"), "{joined}");
+        assert!(joined.contains("-constant_bit_rate true"), "{joined}");
+        assert!(!joined.contains("-crf"), "{joined}");
+    }
+
+    #[test]
+    fn direct_mp4_nvenc_uses_encoder_quality_args() {
+        let args = build_direct_mp4_args(
+            "[0:v]null[out_v]".into(),
+            &[vec!["-i".into(), "/tmp/in.mp4".into()]],
+            &direct_mp4_spec(),
+            HardwareEncoder::NvencH264,
+            60_000,
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("-c:v h264_nvenc"), "{joined}");
+        assert!(joined.contains("-rc vbr"), "{joined}");
+        assert!(joined.contains("-cq 20"), "{joined}");
+    }
+
+    #[test]
+    fn direct_mp4_qsv_uses_encoder_quality_args() {
+        let args = build_direct_mp4_args(
+            "[0:v]null[out_v]".into(),
+            &[vec!["-i".into(), "/tmp/in.mp4".into()]],
+            &direct_mp4_spec(),
+            HardwareEncoder::QsvH264,
+            60_000,
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("-c:v h264_qsv"), "{joined}");
+        assert!(joined.contains("-global_quality 20"), "{joined}");
+    }
+
+    #[test]
+    fn direct_mp4_amf_uses_encoder_quality_args() {
+        let args = build_direct_mp4_args(
+            "[0:v]null[out_v]".into(),
+            &[vec!["-i".into(), "/tmp/in.mp4".into()]],
+            &direct_mp4_spec(),
+            HardwareEncoder::AmfH264,
+            60_000,
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("-c:v h264_amf"), "{joined}");
+        assert!(joined.contains("-quality balanced"), "{joined}");
+        assert!(joined.contains("-rc cqp"), "{joined}");
+    }
+
+    #[test]
+    fn direct_mp4_libx264_uses_crf_quality_args() {
+        let args = build_direct_mp4_args(
+            "[0:v]null[out_v]".into(),
+            &[vec!["-i".into(), "/tmp/in.mp4".into()]],
+            &direct_mp4_spec(),
+            HardwareEncoder::Libx264Software,
+            60_000,
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("-c:v libx264"), "{joined}");
+        assert!(joined.contains("-crf 20"), "{joined}");
+        assert!(joined.contains("-preset medium"), "{joined}");
+        assert!(!joined.contains("-b:v"), "{joined}");
+    }
+
     #[test]
     fn direct_mp4_args_use_filter_graph_without_intermediate() {
         let spec = OutputSpec {
@@ -333,7 +422,7 @@ mod tests {
             "[0:v]null[out_v]".into(),
             &[vec!["-i".into(), "/tmp/in.mp4".into()]],
             &spec,
-            "libx264",
+            HardwareEncoder::Libx264Software,
             38_000,
         );
         let joined = args.join(" ");

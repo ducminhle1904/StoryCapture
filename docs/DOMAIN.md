@@ -147,7 +147,7 @@ Post-production:
     ├─► FfmpegEmit            → filter_complex string → FFmpeg render
     └─► PreviewEmit           → PreviewRenderPlan → WebGPU/WebGL2 preview
 
-Render queue: encoder::RenderQueueActor drives MP4/WebM/GIF × resolution × quality fanout, persists jobs in project.sqlite.
+Render queue: encoder::RenderQueueActor drives MP4/WebM/GIF × resolution × quality fanout, persists jobs in project.sqlite. MP4 export probes H.264 hardware encoders first and falls back to libx264 when hardware export fails or probing is unavailable.
 
 Web companion (Phase 4):
   upload to R2 (multipart presigned URLs, SSE-S3) → Prisma Video row → shareable /watch/<slug> + embed + analytics + desktop-web sync.
@@ -162,13 +162,13 @@ atomically rename on success. macOS prefers VideoToolbox HEVC before H.264
 when available and forces `hvc1` for QuickTime/Safari compatibility.
 
 Post-production export encode reality (2026-05-02): recording-time
-`EncodePipeline` can select hardware encoders via `probe_encoders()`, but the
-post-production `RenderQueueActor` path still constructs `FanoutJobExecutor`
-with `encoder::default_h264_encoder()`, which returns `libx264`. Single MP4
-exports now bypass the FFV1 intermediate and render directly from
-`filter_complex` to MP4, but the encode itself is still CPU H.264. FFmpeg
+`EncodePipeline` can select hardware encoders via `probe_encoders()`, and the
+post-production `RenderQueueActor` now uses an export-specific H.264 picker for
+MP4: macOS prefers `h264_videotoolbox`, Windows prefers NVENC → QSV → AMF, and
+all platforms keep libx264 as the software fallback. Single MP4 exports bypass
+the FFV1 intermediate and render directly from `filter_complex` to MP4. FFmpeg
 filters such as `zoompan`, `scale`, overlays, cursor PNG sequence compositing,
-and `drawtext` are also CPU-bound unless a future export path explicitly moves
+and `drawtext` remain CPU-bound unless a future export path explicitly moves
 work to hardware filters. When optimizing export performance, inspect
 `crates/encoder/src/queue/fanout_executor.rs`,
 `crates/encoder/src/fanout/intermediate.rs`, and

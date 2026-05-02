@@ -61,6 +61,18 @@ impl HardwareEncoder {
     fn probe_token(self) -> &'static str {
         self.ffmpeg_codec_name()
     }
+
+    /// True for hardware-backed encoders.
+    pub fn is_hardware(self) -> bool {
+        matches!(
+            self,
+            HardwareEncoder::VideoToolboxH264
+                | HardwareEncoder::VideoToolboxHevc
+                | HardwareEncoder::NvencH264
+                | HardwareEncoder::QsvH264
+                | HardwareEncoder::AmfH264
+        )
+    }
 }
 
 /// Result of `probe_encoders`.
@@ -223,6 +235,81 @@ fn pick_preferred(available: &[HardwareEncoder]) -> HardwareEncoder {
     available[0]
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExportPlatform {
+    Macos,
+    Windows,
+    Other,
+}
+
+fn current_export_platform() -> ExportPlatform {
+    #[cfg(target_os = "macos")]
+    {
+        ExportPlatform::Macos
+    }
+    #[cfg(target_os = "windows")]
+    {
+        ExportPlatform::Windows
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        ExportPlatform::Other
+    }
+}
+
+fn export_h264_order(platform: ExportPlatform) -> &'static [HardwareEncoder] {
+    match platform {
+        ExportPlatform::Macos => &[
+            HardwareEncoder::VideoToolboxH264,
+            HardwareEncoder::Libx264Software,
+            HardwareEncoder::Openh264Software,
+        ],
+        ExportPlatform::Windows => &[
+            HardwareEncoder::NvencH264,
+            HardwareEncoder::QsvH264,
+            HardwareEncoder::AmfH264,
+            HardwareEncoder::Libx264Software,
+            HardwareEncoder::Openh264Software,
+        ],
+        ExportPlatform::Other => &[
+            HardwareEncoder::Libx264Software,
+            HardwareEncoder::Openh264Software,
+        ],
+    }
+}
+
+fn pick_export_h264_encoder_for_platform(
+    probe: &EncoderProbe,
+    platform: ExportPlatform,
+) -> HardwareEncoder {
+    export_h264_order(platform)
+        .iter()
+        .copied()
+        .find(|encoder| probe.available.contains(encoder))
+        .unwrap_or(probe.available[0])
+}
+
+/// Pick the default H.264 encoder for post-production MP4 export.
+///
+/// This intentionally differs from `EncoderProbe::preferred` on macOS:
+/// recording may prefer HEVC, but current post-production MP4 export is
+/// H.264-only unless a future feature adds explicit HEVC UI/container support.
+pub fn pick_export_h264_encoder(probe: &EncoderProbe) -> HardwareEncoder {
+    pick_export_h264_encoder_for_platform(probe, current_export_platform())
+}
+
+/// Pick the Phase 1 software fallback for MP4 export.
+pub fn export_h264_software_fallback(
+    probe: &EncoderProbe,
+    primary: HardwareEncoder,
+) -> Option<HardwareEncoder> {
+    if primary.is_hardware() && probe.available.contains(&HardwareEncoder::Libx264Software) {
+        Some(HardwareEncoder::Libx264Software)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +350,118 @@ Encoders:
     fn preferred_uses_openh264_when_it_is_only_software_encoder() {
         let avail = vec![HardwareEncoder::Openh264Software];
         assert_eq!(pick_preferred(&avail), HardwareEncoder::Openh264Software);
+    }
+
+    #[test]
+    fn export_picker_macos_prefers_h264_over_hevc() {
+        let probe = EncoderProbe {
+            available: vec![
+                HardwareEncoder::VideoToolboxHevc,
+                HardwareEncoder::VideoToolboxH264,
+                HardwareEncoder::Libx264Software,
+            ],
+            preferred: HardwareEncoder::VideoToolboxHevc,
+        };
+
+        assert_eq!(
+            pick_export_h264_encoder_for_platform(&probe, ExportPlatform::Macos),
+            HardwareEncoder::VideoToolboxH264
+        );
+    }
+
+    #[test]
+    fn export_picker_macos_falls_back_to_libx264() {
+        let probe = EncoderProbe {
+            available: vec![HardwareEncoder::Libx264Software],
+            preferred: HardwareEncoder::Libx264Software,
+        };
+
+        assert_eq!(
+            pick_export_h264_encoder_for_platform(&probe, ExportPlatform::Macos),
+            HardwareEncoder::Libx264Software
+        );
+    }
+
+    #[test]
+    fn export_picker_windows_prefers_nvenc_then_qsv_then_amf() {
+        let probe = EncoderProbe {
+            available: vec![
+                HardwareEncoder::AmfH264,
+                HardwareEncoder::QsvH264,
+                HardwareEncoder::NvencH264,
+                HardwareEncoder::Libx264Software,
+            ],
+            preferred: HardwareEncoder::NvencH264,
+        };
+
+        assert_eq!(
+            pick_export_h264_encoder_for_platform(&probe, ExportPlatform::Windows),
+            HardwareEncoder::NvencH264
+        );
+
+        let probe = EncoderProbe {
+            available: vec![
+                HardwareEncoder::AmfH264,
+                HardwareEncoder::QsvH264,
+                HardwareEncoder::Libx264Software,
+            ],
+            preferred: HardwareEncoder::QsvH264,
+        };
+
+        assert_eq!(
+            pick_export_h264_encoder_for_platform(&probe, ExportPlatform::Windows),
+            HardwareEncoder::QsvH264
+        );
+    }
+
+    #[test]
+    fn export_picker_windows_falls_back_to_libx264() {
+        let probe = EncoderProbe {
+            available: vec![HardwareEncoder::Libx264Software],
+            preferred: HardwareEncoder::Libx264Software,
+        };
+
+        assert_eq!(
+            pick_export_h264_encoder_for_platform(&probe, ExportPlatform::Windows),
+            HardwareEncoder::Libx264Software
+        );
+    }
+
+    #[test]
+    fn export_picker_other_platforms_use_software() {
+        let probe = EncoderProbe {
+            available: vec![
+                HardwareEncoder::NvencH264,
+                HardwareEncoder::Libx264Software,
+                HardwareEncoder::Openh264Software,
+            ],
+            preferred: HardwareEncoder::NvencH264,
+        };
+
+        assert_eq!(
+            pick_export_h264_encoder_for_platform(&probe, ExportPlatform::Other),
+            HardwareEncoder::Libx264Software
+        );
+    }
+
+    #[test]
+    fn export_fallback_only_uses_libx264_for_hardware_primary() {
+        let probe = EncoderProbe {
+            available: vec![
+                HardwareEncoder::VideoToolboxH264,
+                HardwareEncoder::Libx264Software,
+            ],
+            preferred: HardwareEncoder::VideoToolboxH264,
+        };
+
+        assert_eq!(
+            export_h264_software_fallback(&probe, HardwareEncoder::VideoToolboxH264),
+            Some(HardwareEncoder::Libx264Software)
+        );
+        assert_eq!(
+            export_h264_software_fallback(&probe, HardwareEncoder::Libx264Software),
+            None
+        );
     }
 
     #[cfg(target_os = "macos")]

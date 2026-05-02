@@ -12,7 +12,9 @@
 use crate::error::AppError;
 use crate::media_probe::probe_mp4_metadata;
 use crate::state::AppState;
-use encoder::{FanoutJobExecutor, QueueMsg, RenderQueueConfig, SharedExecutor};
+use encoder::{
+    ExportEncoderConfig, FanoutJobExecutor, QueueMsg, RenderQueueConfig, SharedExecutor,
+};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::{Path, PathBuf};
@@ -426,11 +428,41 @@ async fn install_project_render_queue(
     _exports_dir: &Path,
     parallel_renders: u32,
 ) -> Result<(), AppError> {
+    let db_path = project_folder.join(storage::PROJECT_DB_FILENAME);
+    if state
+        .render_queue()
+        .is_some_and(|existing| existing.project_db_path == db_path)
+    {
+        return Ok(());
+    }
+
     let ffmpeg = Arc::new(super::encode::TauriSidecar::new(app.clone()));
-    let executor = Arc::new(FanoutJobExecutor::new(
-        ffmpeg,
-        encoder::default_h264_encoder(),
-    ));
+    let encoder_config = match encoder::probe::probe_cached(ffmpeg.as_ref()).await {
+        Ok(probe) => {
+            let encoder_config = ExportEncoderConfig::from_probe(&probe);
+            let primary = encoder_config.primary();
+            let fallback = encoder_config.fallback();
+            tracing::info!(
+                target: "storycapture::export",
+                available = ?probe.available,
+                selected = ?primary,
+                codec = primary.ffmpeg_codec_name(),
+                fallback = fallback.map(|encoder| encoder.ffmpeg_codec_name()),
+                "post-production export encoder selected"
+            );
+            encoder_config
+        }
+        Err(error) => {
+            tracing::warn!(
+                target: "storycapture::export",
+                error = %error,
+                fallback = encoder::default_h264_encoder().ffmpeg_codec_name(),
+                "post-production export encoder probe failed; falling back to software encoder"
+            );
+            ExportEncoderConfig::software_default()
+        }
+    };
+    let executor = Arc::new(FanoutJobExecutor::new(ffmpeg, encoder_config));
     install_project_render_queue_with_executor(state, project_folder, parallel_renders, executor)
         .await
 }

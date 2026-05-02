@@ -11,6 +11,9 @@ use futures::future::try_join_all;
 
 use crate::error::{EncoderError, Result};
 use crate::fanout::intermediate::IntermediateOutput;
+use crate::filters::QualityPreset;
+use crate::probe::HardwareEncoder;
+use crate::quality;
 use crate::sidecar::SidecarCommand;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,10 +120,9 @@ pub fn bitrate_for(r: Resolution, q: Quality, codec: &str) -> String {
     format!("{}k", (base as f32 * mult) as u32)
 }
 
-/// Best H.264 encoder name — defaults to bundled libx264. Production wires
-/// `encoder::probe_encoders()` here; tests pass the default.
-pub fn default_h264_encoder() -> &'static str {
-    "libx264"
+/// Best H.264 encoder — defaults to bundled libx264.
+pub fn default_h264_encoder() -> HardwareEncoder {
+    HardwareEncoder::Libx264Software
 }
 
 /// Build the argv for a single MP4/WebM/GIF encode pass. Pure + unit-
@@ -128,7 +130,7 @@ pub fn default_h264_encoder() -> &'static str {
 pub fn build_encode_args(
     intermediate: &Path,
     spec: &OutputSpec,
-    h264_encoder: &str,
+    h264_encoder: HardwareEncoder,
 ) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "-y".into(),
@@ -142,12 +144,7 @@ pub fn build_encode_args(
         OutputFormat::Mp4 => {
             args.push("-vf".into());
             args.push(format!("scale={w}:{h}:flags=lanczos"));
-            args.push("-c:v".into());
-            args.push(h264_encoder.into());
-            args.push("-b:v".into());
-            args.push(bitrate_for(spec.resolution, spec.quality, "h264"));
-            args.push("-pix_fmt".into());
-            args.push("yuv420p".into());
+            push_mp4_video_encode_args(&mut args, spec, h264_encoder, w, h);
             args.push("-c:a".into());
             args.push("aac".into());
             args.push("-b:a".into());
@@ -189,6 +186,35 @@ pub fn build_encode_args(
     args
 }
 
+pub(crate) fn export_quality_to_preset(quality: Quality) -> QualityPreset {
+    match quality {
+        Quality::Low => QualityPreset::Low,
+        Quality::Med => QualityPreset::Med,
+        Quality::High => QualityPreset::High,
+    }
+}
+
+pub(crate) fn push_mp4_video_encode_args(
+    args: &mut Vec<String>,
+    spec: &OutputSpec,
+    encoder: HardwareEncoder,
+    width: u32,
+    height: u32,
+) {
+    args.push("-c:v".into());
+    args.push(encoder.ffmpeg_codec_name().into());
+    args.extend(quality::resolve(
+        export_quality_to_preset(spec.quality),
+        encoder,
+        width,
+        height,
+        spec.fps,
+    ));
+    args.push("-pix_fmt".into());
+    args.push("yuv420p".into());
+    args.extend(quality::mp4_color_args(encoder));
+}
+
 /// Fan out to N parallel encoders. Each `SidecarCommand` is invoked with
 /// the per-output argv; [`try_join_all`] awaits all of them.
 ///
@@ -200,7 +226,7 @@ pub async fn fanout_encode(
     intermediate: &IntermediateOutput,
     plan: &FanoutPlan,
     sidecar_factory: impl Fn() -> Arc<dyn SidecarCommand>,
-    h264_encoder: &str,
+    h264_encoder: HardwareEncoder,
 ) -> Result<Vec<PathBuf>> {
     let tasks: Vec<_> = plan
         .outputs
@@ -209,9 +235,8 @@ pub async fn fanout_encode(
             let cmd = sidecar_factory();
             let input = intermediate.path.clone();
             let spec = spec.clone();
-            let h264 = h264_encoder.to_string();
             tokio::spawn(async move {
-                let args = build_encode_args(&input, &spec, &h264);
+                let args = build_encode_args(&input, &spec, h264_encoder);
                 // `run` spawns the sidecar AND awaits its exit status. The
                 // returned path therefore always refers to a completed
                 // encode: callers downstream (RenderQueueActor,
@@ -267,17 +292,25 @@ mod tests {
         let mp4 = build_encode_args(
             Path::new("/tmp/interm.mkv"),
             &plan.outputs[0],
-            "h264_videotoolbox",
+            HardwareEncoder::VideoToolboxH264,
         );
         assert!(mp4.iter().any(|a| a == "h264_videotoolbox"));
-        let webm = build_encode_args(Path::new("/tmp/interm.mkv"), &plan.outputs[1], "libx264");
+        let webm = build_encode_args(
+            Path::new("/tmp/interm.mkv"),
+            &plan.outputs[1],
+            HardwareEncoder::Libx264Software,
+        );
         assert!(webm.iter().any(|a| a == "libvpx-vp9"));
     }
 
     #[test]
     fn gif_2pass_palette() {
         let s = spec(OutputFormat::Gif, "/tmp/out.gif");
-        let args = build_encode_args(Path::new("/tmp/interm.mkv"), &s, "libx264");
+        let args = build_encode_args(
+            Path::new("/tmp/interm.mkv"),
+            &s,
+            HardwareEncoder::Libx264Software,
+        );
         let joined = args.join(" ");
         assert!(joined.contains("palettegen"));
         assert!(joined.contains("paletteuse"));
@@ -352,7 +385,7 @@ mod tests {
                     calls: calls_c.clone(),
                 }) as Arc<dyn SidecarCommand>
             },
-            "libx264",
+            HardwareEncoder::Libx264Software,
         )
         .await
         .unwrap();
@@ -421,7 +454,7 @@ mod tests {
             &intermediate,
             &plan,
             || Arc::new(WritingCmd) as Arc<dyn SidecarCommand>,
-            "libx264",
+            HardwareEncoder::Libx264Software,
         )
         .await
         .unwrap();

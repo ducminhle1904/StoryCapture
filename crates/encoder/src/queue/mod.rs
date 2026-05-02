@@ -8,5 +8,5 @@ pub use actor::{
     open_project_conn, spawn_render_queue, QueueMsg, RenderQueueActor, RenderQueueConfig,
     RenderQueueHandle,
 };
-pub use fanout_executor::FanoutJobExecutor;
+pub use fanout_executor::{ExportEncoderConfig, FanoutJobExecutor};
 pub use job::{JobExecutor, JobOutcome, NoopJobExecutor, SharedExecutor};

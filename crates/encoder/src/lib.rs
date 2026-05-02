@@ -35,14 +35,17 @@ pub use pipeline::{
     bgra_bytes_of_frame, BackpressureCallback, EncodePipeline, EncodeResult, SHUTDOWN_TIMEOUT,
 };
 pub use pool::{PoolConfig, SidecarHandle, SidecarPermit, SidecarPool};
-pub use probe::{probe_encoders, EncoderProbe, HardwareEncoder};
+pub use probe::{
+    export_h264_software_fallback, pick_export_h264_encoder, probe_encoders, EncoderProbe,
+    HardwareEncoder,
+};
 pub use progress::{
     parse_line, EncodeProgress, ProgressFrag, ProgressParser, RenderProgress, RenderProgressParser,
 };
 pub use quality::{pixel_based_kbps, resolve as resolve_quality_args};
 pub use queue::{
-    open_project_conn, spawn_render_queue, FanoutJobExecutor, JobExecutor, JobOutcome,
-    NoopJobExecutor, QueueMsg, RenderQueueActor, RenderQueueConfig, RenderQueueHandle,
+    open_project_conn, spawn_render_queue, ExportEncoderConfig, FanoutJobExecutor, JobExecutor,
+    JobOutcome, NoopJobExecutor, QueueMsg, RenderQueueActor, RenderQueueConfig, RenderQueueHandle,
     SharedExecutor,
 };
 pub use sidecar::{FfmpegSidecar, LocalFfmpegCommand, SidecarChild, SidecarCommand};
