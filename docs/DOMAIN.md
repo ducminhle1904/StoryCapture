@@ -147,7 +147,7 @@ Post-production:
     ├─► FfmpegEmit            → filter_complex string → FFmpeg render
     └─► PreviewEmit           → PreviewRenderPlan → WebGPU/WebGL2 preview
 
-Render queue: encoder::RenderQueueActor drives MP4/WebM/GIF × resolution × quality fanout, persists jobs in project.sqlite. MP4 export probes H.264 hardware encoders first and falls back to libx264 when hardware export fails or probing is unavailable.
+Render queue: encoder::RenderQueueActor drives MP4/WebM/GIF × resolution × quality fanout, persists jobs in project.sqlite. MP4 export defaults to libx264 for offline quality and keeps hardware encoders available as explicit/fast-path choices.
 
 Web companion (Phase 4):
   upload to R2 (multipart presigned URLs, SSE-S3) → Prisma Video row → shareable /watch/<slug> + embed + analytics + desktop-web sync.
@@ -164,12 +164,25 @@ when available and forces `hvc1` for QuickTime/Safari compatibility.
 Post-production export encode reality (2026-05-03): recording-time
 `EncodePipeline` can select hardware encoders via `probe_encoders()`, and the
 post-production `RenderQueueActor` now uses an export-specific H.264 picker for
-MP4: macOS prefers `h264_videotoolbox`, Windows prefers NVENC → QSV → AMF, and
-all platforms keep libx264 as the software fallback. Single MP4 exports bypass
-the FFV1 intermediate and render directly from `filter_complex` to MP4. FFmpeg
-filters such as `zoompan`, `scale`, overlays, cursor PNG sequence compositing,
-and `drawtext` remain CPU-bound unless a future export path explicitly moves
-work to hardware filters.
+MP4: macOS auto export now prefers `libx264` over VideoToolbox because
+VideoToolbox undershot bitrate on post-processed screen content; Windows still
+prefers NVENC → QSV → AMF when available. The export UI can still request a
+specific hardware encoder. Source-fill export omits the background/padded frame.
+Framed `match-source` export expands the canvas by the frame padding so the
+foreground can keep native source pixels instead of being scaled down inside a
+1920x1080 canvas. `match-source` and custom export dimensions persist with each
+render job, and advanced export options persist as per-job JSON so encoder
+choice, CRF/CQ/bitrate, x264 preset, keyframe interval, downscale algorithm, and
+audio settings reach FFmpeg argv after app restart. Single MP4 exports bypass
+the FFV1 intermediate and render directly from `filter_complex` to MP4 with a final
+`scale=...,fps=<target>,setpts=N/(<target>*TB)` timing stage plus
+`-fps_mode cfr`. Background plates are also normalized with
+`fps=<target>,setpts=N/<target>/TB` before they become the main input to
+`overlay`; otherwise looped still-image backgrounds can impose their default
+image cadence and make framed exports look like 30fps despite 60fps output
+metadata. FFmpeg filters such as `zoompan`, `scale`, overlays, cursor PNG
+sequence compositing, and `drawtext` remain CPU-bound unless a future export path
+explicitly moves work to hardware filters.
 
 Rounded-frame export tradeoff (2026-05-03): FFmpeg export intentionally treats
 `Background.radius_px` as a no-op in

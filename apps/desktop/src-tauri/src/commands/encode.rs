@@ -212,6 +212,20 @@ impl From<HardwareEncoder> for HardwareEncoderDto {
     }
 }
 
+impl From<HardwareEncoderDto> for HardwareEncoder {
+    fn from(e: HardwareEncoderDto) -> Self {
+        match e {
+            HardwareEncoderDto::VideoToolboxH264 => HardwareEncoder::VideoToolboxH264,
+            HardwareEncoderDto::VideoToolboxHevc => HardwareEncoder::VideoToolboxHevc,
+            HardwareEncoderDto::NvencH264 => HardwareEncoder::NvencH264,
+            HardwareEncoderDto::QsvH264 => HardwareEncoder::QsvH264,
+            HardwareEncoderDto::AmfH264 => HardwareEncoder::AmfH264,
+            HardwareEncoderDto::Libx264Software => HardwareEncoder::Libx264Software,
+            HardwareEncoderDto::Openh264Software => HardwareEncoder::Openh264Software,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum FitModeDto {

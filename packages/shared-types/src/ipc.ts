@@ -1527,7 +1527,7 @@ export type EffectPresetDto = { id: string;
 scope: string; name: string; description: string; ast_json: string; version: number; bundled: boolean; created_at: bigint; author: string | null; tags: string[] }
 export type EncodeProgressDto = { frame: bigint; fps: number; bitrate_kbps: number; out_time_ms: bigint; drop_frames: bigint; dup_frames: bigint; speed: number; finished: boolean }
 export type EncodeResultDto = { output_path: string; duration_ms: bigint; bytes: bigint; frames_written: bigint; frames_dropped: bigint }
-export type EncoderOptionsDto = { container?: ContainerDto | null; codec?: CodecDto | null; rate_control?: RateControlDto | null; hw_encoder?: HardwareEncoderDto | null; x264_preset?: X264PresetDto | null; keyframe_interval_sec?: number | null; downscale_algo?: ScaleAlgoDto | null; audio?: AudioOptionsDto | null }
+export type EncoderOptionsDto = { container?: ContainerDto | null; codec?: CodecDto | null; rate_control?: RateControlDto | null; hw_encoder?: HardwareEncoderDto | null; quality_value?: number | null; x264_preset?: X264PresetDto | null; keyframe_interval_sec?: number | null; downscale_algo?: ScaleAlgoDto | null; audio?: AudioOptionsDto | null }
 export type EncoderProbeDto = { available: HardwareEncoderDto[]; preferred: HardwareEncoderDto }
 export type ExportOutputDto = { 
 /**
@@ -1537,7 +1537,7 @@ format: string;
 /**
  * "720p" | "1080p" | "4k"
  */
-resolution: string; fps: number; 
+resolution: string; output_width?: number | null; output_height?: number | null; fps: number; 
 /**
  * "low" | "med" | "high"
  */
@@ -1615,7 +1615,7 @@ export type LspNotificationDto = { method: string;
  */
 params_json: string }
 export type MetaDto = { app: string | null; viewport: ViewportDto | null; theme: ThemeDto | null; speed: number | null; span: SpanDto }
-export type NewRenderJobDto = { story_id: string; preset_id: string | null; format: string; resolution: string; fps: number; quality: string; priority: number; batch_id: string | null }
+export type NewRenderJobDto = { story_id: string; preset_id: string | null; format: string; resolution: string; output_width: number | null; output_height: number | null; fps: number; quality: string; encoder_options_json: string | null; priority: number; batch_id: string | null }
 /**
  * Event payload streamed to the webview via `Channel<NlChatEvent>`.
  */
@@ -1737,7 +1737,7 @@ export type RecordingViewportDto = { width: number; height: number }
  */
 export type RegionRectDto = { x: number; y: number; w: number; h: number }
 export type RenderDefaults = { parallel_renders: number }
-export type RenderJobDto = { id: string; story_id: string; preset_id: string | null; format: string; resolution: string; fps: number; quality: string; status: string; progress_pct: number; started_at: bigint | null; completed_at: bigint | null; error: string | null; priority: number; output_path: string | null; batch_id: string | null; created_at: bigint }
+export type RenderJobDto = { id: string; story_id: string; preset_id: string | null; format: string; resolution: string; output_width: number | null; output_height: number | null; fps: number; quality: string; encoder_options_json: string | null; status: string; progress_pct: number; started_at: bigint | null; completed_at: bigint | null; error: string | null; priority: number; output_path: string | null; batch_id: string | null; created_at: bigint }
 export type RenderProgressDto = { job_id: string; pct: number; frame: bigint; fps: number; speed: number; eta_ms: bigint }
 export type ResolvedFrameCropDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null; scale_hint?: number | null }
 /**

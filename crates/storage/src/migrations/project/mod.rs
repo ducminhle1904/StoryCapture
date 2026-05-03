@@ -19,5 +19,5 @@ pub fn migrations() -> Migrations<'static> {
 }
 
 /// Count of migrations applied at `to_latest`. v1 contributes 1, v2
-/// contributes 5, v3 contributes 5 → total 11.
-pub const LATEST_VERSION: u32 = 11;
+/// contributes 5, v3 contributes 6 → total 12.
+pub const LATEST_VERSION: u32 = 12;

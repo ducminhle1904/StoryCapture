@@ -260,8 +260,8 @@ fn current_export_platform() -> ExportPlatform {
 fn export_h264_order(platform: ExportPlatform) -> &'static [HardwareEncoder] {
     match platform {
         ExportPlatform::Macos => &[
-            HardwareEncoder::VideoToolboxH264,
             HardwareEncoder::Libx264Software,
+            HardwareEncoder::VideoToolboxH264,
             HardwareEncoder::Openh264Software,
         ],
         ExportPlatform::Windows => &[
@@ -353,7 +353,7 @@ Encoders:
     }
 
     #[test]
-    fn export_picker_macos_prefers_h264_over_hevc() {
+    fn export_picker_macos_prefers_libx264_over_hardware() {
         let probe = EncoderProbe {
             available: vec![
                 HardwareEncoder::VideoToolboxHevc,
@@ -365,7 +365,7 @@ Encoders:
 
         assert_eq!(
             pick_export_h264_encoder_for_platform(&probe, ExportPlatform::Macos),
-            HardwareEncoder::VideoToolboxH264
+            HardwareEncoder::Libx264Software
         );
     }
 

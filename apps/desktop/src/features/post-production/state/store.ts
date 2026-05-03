@@ -97,6 +97,15 @@ export const useEditorStore = create<EditorStore>()(
       // partial `exportForm` is rehydrated, fill missing fields from
       // `DEFAULT_EXPORT_FORM` so future schema additions don't strand the
       // form in an undefined state.
+      migrate: (persisted) => {
+        const p = (persisted ?? {}) as Partial<EditorStore> & {
+          exportForm?: Partial<EditorStore["exportForm"]>;
+        };
+        if (p.exportForm) {
+          p.exportForm = { ...p.exportForm, frameMode: "framed" };
+        }
+        return p;
+      },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<EditorStore> & {
           exportForm?: Partial<EditorStore["exportForm"]>;
@@ -108,10 +117,11 @@ export const useEditorStore = create<EditorStore>()(
             ...DEFAULT_EXPORT_FORM,
             ...current.exportForm,
             ...(p.exportForm ?? {}),
+            frameMode: p.exportForm?.frameMode ?? "framed",
           },
         };
       },
-      version: 2,
+      version: 4,
     },
   ),
 );

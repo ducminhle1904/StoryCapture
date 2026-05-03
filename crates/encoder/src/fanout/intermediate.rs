@@ -17,7 +17,8 @@ use tokio::sync::mpsc;
 
 use crate::error::{EncoderError, Result};
 use crate::fanout::multi_encode::{
-    push_mp4_video_encode_args, resolution_height, resolution_width, OutputSpec,
+    push_audio_args, push_mp4_video_encode_args, resolution_height, resolution_width, scale_algo,
+    OutputSpec,
 };
 use crate::probe::HardwareEncoder;
 use crate::progress::{parse_line, ProgressFrag, RenderProgress, RenderProgressParser};
@@ -151,9 +152,12 @@ pub fn build_direct_mp4_args(
 ) -> Vec<String> {
     let has_audio_output = filter_complex.contains("[out_a]");
     let filter_complex = format!(
-        "{filter_complex};[out_v]scale={}:{}:flags=lanczos[final_v]",
+        "{filter_complex};[out_v]scale={}:{}:flags={},fps={},setpts=N/({}*TB)[final_v]",
         resolution_width(spec.resolution),
-        resolution_height(spec.resolution)
+        resolution_height(spec.resolution),
+        scale_algo(spec).ffmpeg_flag(),
+        spec.fps,
+        spec.fps
     );
     let mut args: Vec<String> = vec!["-y".into(), "-hide_banner".into()];
     for ins in extra_inputs {
@@ -177,13 +181,12 @@ pub fn build_direct_mp4_args(
         resolution_height(spec.resolution),
     );
     if has_audio_output {
-        args.push("-c:a".into());
-        args.push("aac".into());
-        args.push("-b:a".into());
-        args.push("128k".into());
+        push_audio_args(&mut args, spec);
     }
     args.push("-movflags".into());
     args.push("+faststart".into());
+    args.push("-fps_mode".into());
+    args.push("cfr".into());
     args.push("-r".into());
     args.push(spec.fps.to_string());
     push_duration_and_progress_args(&mut args, duration_ms);
@@ -330,6 +333,7 @@ mod tests {
             resolution: crate::fanout::Resolution::R1080p,
             fps: 60,
             quality: crate::fanout::Quality::Med,
+            encoder_options: None,
             output_path: PathBuf::from("/tmp/out.mp4"),
         }
     }
@@ -404,7 +408,7 @@ mod tests {
         );
         let joined = args.join(" ");
         assert!(joined.contains("-c:v libx264"), "{joined}");
-        assert!(joined.contains("-crf 20"), "{joined}");
+        assert!(joined.contains("-crf 18"), "{joined}");
         assert!(joined.contains("-preset medium"), "{joined}");
         assert!(!joined.contains("-b:v"), "{joined}");
     }
@@ -416,6 +420,7 @@ mod tests {
             resolution: crate::fanout::Resolution::R1080p,
             fps: 60,
             quality: crate::fanout::Quality::Med,
+            encoder_options: None,
             output_path: PathBuf::from("/tmp/out.mp4"),
         };
         let args = build_direct_mp4_args(
@@ -426,11 +431,50 @@ mod tests {
             38_000,
         );
         let joined = args.join(" ");
-        assert!(joined.contains("[0:v]null[out_v];[out_v]scale=1920:1080:flags=lanczos[final_v]"));
+        assert!(joined.contains(
+            "[0:v]null[out_v];[out_v]scale=1920:1080:flags=lanczos,fps=60,setpts=N/(60*TB)[final_v]"
+        ));
         assert!(joined.contains("-map [final_v]"));
+        assert!(joined.contains("-fps_mode cfr"));
         assert!(joined.contains("-c:v libx264"));
         assert!(joined.contains("-t 38.000"));
         assert!(joined.ends_with("/tmp/out.mp4"));
+    }
+
+    #[test]
+    fn direct_mp4_advanced_options_affect_ffmpeg_args() {
+        let mut spec = direct_mp4_spec();
+        spec.encoder_options = Some(crate::fanout::ExportEncodeOptions {
+            encoder: Some(HardwareEncoder::Libx264Software),
+            rate_control: crate::fanout::ExportRateControl::Crf,
+            quality_value: Some(17),
+            x264_preset: Some(crate::fanout::ExportX264Preset::Slow),
+            keyframe_interval_sec: Some(2),
+            downscale_algo: crate::filters::ScaleAlgo::Bicubic,
+            audio: crate::fanout::ExportAudioOptions {
+                codec: crate::fanout::ExportAudioCodec::Aac,
+                bitrate_kbps: 160,
+                channels: 2,
+                sample_rate_hz: 48_000,
+            },
+        });
+
+        let args = build_direct_mp4_args(
+            "[0:v]null[out_v];[0:a]anull[out_a]".into(),
+            &[vec!["-i".into(), "/tmp/in.mp4".into()]],
+            &spec,
+            HardwareEncoder::Libx264Software,
+            60_000,
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("scale=1920:1080:flags=bicubic,fps=60,setpts=N/(60*TB)"));
+        assert!(joined.contains("-crf 17"), "{joined}");
+        assert!(joined.contains("-preset slow"), "{joined}");
+        assert!(joined.contains("-g 120"), "{joined}");
+        assert!(joined.contains("-c:a aac"), "{joined}");
+        assert!(joined.contains("-b:a 160k"), "{joined}");
+        assert!(joined.contains("-ac 2"), "{joined}");
+        assert!(joined.contains("-ar 48000"), "{joined}");
     }
 
     #[test]

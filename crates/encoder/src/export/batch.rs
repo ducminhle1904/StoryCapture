@@ -12,13 +12,23 @@ use uuid::Uuid;
 use super::error::ExportError;
 use super::format::OutputFormat;
 use super::quality::Quality;
-use super::resolution::{res_label, Resolution, VALID_FPS};
+use super::resolution::{res_label, validate_dimensions, Resolution, VALID_FPS};
+use crate::fanout::ExportEncodeOptions;
 
-/// User-facing request. One entry per (format, resolution, fps, quality)
-/// tuple; the same batch_id is stamped across every emitted OutputSpec.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchOutputRequest {
+    pub format: OutputFormat,
+    pub resolution: Resolution,
+    pub fps: u32,
+    pub quality: Quality,
+    pub encoder_options: Option<ExportEncodeOptions>,
+}
+
+/// User-facing request. One entry per output; the same batch_id is stamped
+/// across every emitted OutputSpec.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchExportRequest {
-    pub outputs: Vec<(OutputFormat, Resolution, u32, Quality)>,
+    pub outputs: Vec<BatchOutputRequest>,
     pub out_folder: PathBuf,
     pub base_name: String,
 }
@@ -32,8 +42,11 @@ pub struct OutputSpec {
     pub batch_id: Uuid,
     pub format: OutputFormat,
     pub resolution: Resolution,
+    pub output_width: u32,
+    pub output_height: u32,
     pub fps: u32,
     pub quality: Quality,
+    pub encoder_options: Option<ExportEncodeOptions>,
     pub output_path: PathBuf,
 }
 
@@ -46,6 +59,11 @@ pub fn validate(fmt: OutputFormat, res: Resolution, fps: u32) -> Result<(), Expo
     // No 4K GIF — unreasonable payload, no consumer.
     if matches!(fmt, OutputFormat::Gif) && matches!(res, Resolution::R4k) {
         return Err(ExportError::UnsupportedCombination);
+    }
+    if let Resolution::Custom { width, height } = res {
+        if !validate_dimensions(width, height) {
+            return Err(ExportError::UnsupportedCombination);
+        }
     }
     // GIF above 30 fps is brittle across tools; cap.
     if matches!(fmt, OutputFormat::Gif) && fps > 30 {
@@ -64,22 +82,27 @@ pub fn build_batch(req: &BatchExportRequest) -> Result<Vec<OutputSpec>, ExportEr
     let batch_id = Uuid::now_v7();
     req.outputs
         .iter()
-        .map(|(fmt, res, fps, q)| {
-            validate(*fmt, *res, *fps)?;
+        .map(|output| {
+            validate(output.format, output.resolution, output.fps)?;
+            let (output_width, output_height) =
+                super::resolution::dimensions_for(output.resolution);
             let filename = format!(
                 "{}.{}.{}.{}",
                 req.base_name,
-                res_label(*res),
-                fps,
-                fmt.extension()
+                res_label(output.resolution),
+                output.fps,
+                output.format.extension()
             );
             Ok(OutputSpec {
                 id: Uuid::new_v4(),
                 batch_id,
-                format: *fmt,
-                resolution: *res,
-                fps: *fps,
-                quality: *q,
+                format: output.format,
+                resolution: output.resolution,
+                output_width,
+                output_height,
+                fps: output.fps,
+                quality: output.quality,
+                encoder_options: output.encoder_options.clone(),
                 output_path: req.out_folder.join(filename),
             })
         })
@@ -94,9 +117,27 @@ mod tests {
     fn build_batch_assigns_single_batch_id() {
         let req = BatchExportRequest {
             outputs: vec![
-                (OutputFormat::Mp4, Resolution::R1080p, 60, Quality::Med),
-                (OutputFormat::WebM, Resolution::R1080p, 30, Quality::High),
-                (OutputFormat::Gif, Resolution::R720p, 24, Quality::Low),
+                BatchOutputRequest {
+                    format: OutputFormat::Mp4,
+                    resolution: Resolution::R1080p,
+                    fps: 60,
+                    quality: Quality::Med,
+                    encoder_options: None,
+                },
+                BatchOutputRequest {
+                    format: OutputFormat::WebM,
+                    resolution: Resolution::R1080p,
+                    fps: 30,
+                    quality: Quality::High,
+                    encoder_options: None,
+                },
+                BatchOutputRequest {
+                    format: OutputFormat::Gif,
+                    resolution: Resolution::R720p,
+                    fps: 24,
+                    quality: Quality::Low,
+                    encoder_options: None,
+                },
             ],
             out_folder: PathBuf::from("/tmp/out"),
             base_name: "clip".into(),

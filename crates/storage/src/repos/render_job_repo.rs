@@ -17,8 +17,8 @@ fn parse_uuid(s: &str) -> Result<Uuid, rusqlite::Error> {
 fn row_to_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<RenderJob> {
     let id: String = row.get(0)?;
     let preset_id: Option<String> = row.get(2)?;
-    let status: String = row.get(7)?;
-    let output_path: Option<String> = row.get(13)?;
+    let status: String = row.get(10)?;
+    let output_path: Option<String> = row.get(16)?;
     Ok(RenderJob {
         id: parse_uuid(&id)?,
         story_id: row.get(1)?,
@@ -28,23 +28,26 @@ fn row_to_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<RenderJob> {
         },
         format: row.get(3)?,
         resolution: row.get(4)?,
-        fps: row.get::<_, i64>(5)? as u32,
-        quality: row.get(6)?,
+        output_width: row.get::<_, Option<i64>>(5)?.map(|v| v as u32),
+        output_height: row.get::<_, Option<i64>>(6)?.map(|v| v as u32),
+        fps: row.get::<_, i64>(7)? as u32,
+        quality: row.get(8)?,
+        encoder_options_json: row.get(9)?,
         status: RenderJobStatus::from_str(&status).map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, e.into())
         })?,
-        progress_pct: row.get::<_, f64>(8)? as f32,
-        started_at: row.get(9)?,
-        completed_at: row.get(10)?,
-        error: row.get(11)?,
-        priority: row.get::<_, i64>(12)? as i32,
+        progress_pct: row.get::<_, f64>(11)? as f32,
+        started_at: row.get(12)?,
+        completed_at: row.get(13)?,
+        error: row.get(14)?,
+        priority: row.get::<_, i64>(15)? as i32,
         output_path: output_path.map(PathBuf::from),
-        batch_id: row.get(14)?,
-        created_at: row.get(15)?,
+        batch_id: row.get(17)?,
+        created_at: row.get(18)?,
     })
 }
 
-const SELECT_COLS: &str = "id, story_id, preset_id, format, resolution, fps, quality, status, progress_pct, started_at, completed_at, error, priority, output_path, batch_id, created_at";
+const SELECT_COLS: &str = "id, story_id, preset_id, format, resolution, output_width, output_height, fps, quality, encoder_options_json, status, progress_pct, started_at, completed_at, error, priority, output_path, batch_id, created_at";
 
 /// Default retention window for terminal (completed/failed/cancelled) rows.
 /// Prevents the render_jobs table from growing unboundedly over months of
@@ -55,16 +58,19 @@ pub fn enqueue(conn: &Connection, j: &NewRenderJob) -> Result<Uuid, StorageError
     let id = Uuid::now_v7();
     let created_at = now_millis();
     conn.execute(
-        "INSERT INTO render_jobs (id, story_id, preset_id, format, resolution, fps, quality, status, progress_pct, priority, output_path, batch_id, created_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', 0.0, ?8, ?9, ?10, ?11)",
+        "INSERT INTO render_jobs (id, story_id, preset_id, format, resolution, output_width, output_height, fps, quality, encoder_options_json, status, progress_pct, priority, output_path, batch_id, created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', 0.0, ?11, ?12, ?13, ?14)",
         params![
             id.to_string(),
             j.story_id,
             j.preset_id.map(|u| u.to_string()),
             j.format,
             j.resolution,
+            j.output_width.map(|v| v as i64),
+            j.output_height.map(|v| v as i64),
             j.fps as i64,
             j.quality,
+            j.encoder_options_json,
             j.priority as i64,
             j.output_path
                 .as_ref()
@@ -235,8 +241,11 @@ mod tests {
             preset_id: None,
             format: "mp4".into(),
             resolution: "1080p".into(),
+            output_width: Some(1920),
+            output_height: Some(1080),
             fps: 60,
             quality: "high".into(),
+            encoder_options_json: None,
             priority,
             output_path: None,
             batch_id: None,

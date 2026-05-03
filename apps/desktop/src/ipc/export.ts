@@ -10,16 +10,19 @@ import type { EncoderOptionsDto } from "@storycapture/shared-types";
 import { invoke } from "@tauri-apps/api/core";
 
 export type ExportFormat = "mp4" | "webm" | "gif";
-export type ExportResolution = "720p" | "1080p" | "4k";
+export type ExportResolution = "match-source" | "720p" | "1080p" | "4k" | "custom";
 export type ExportQuality = "low" | "med" | "high";
+export type ExportEncoderOptions = EncoderOptionsDto & { quality_value?: number | null };
 
 export interface ExportOutput {
   format: ExportFormat | string;
   resolution: ExportResolution | string;
+  output_width?: number | null;
+  output_height?: number | null;
   fps: number;
   quality: ExportQuality | string;
   /** Export-only encoder knobs. Undefined → defaults. */
-  encoder_options?: EncoderOptionsDto | null;
+  encoder_options?: ExportEncoderOptions | null;
 }
 
 export interface ExportRunArgs {

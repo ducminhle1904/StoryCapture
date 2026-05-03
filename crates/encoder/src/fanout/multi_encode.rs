@@ -12,9 +12,101 @@ use futures::future::try_join_all;
 use crate::error::{EncoderError, Result};
 use crate::fanout::intermediate::IntermediateOutput;
 use crate::filters::QualityPreset;
+use crate::filters::ScaleAlgo;
 use crate::probe::HardwareEncoder;
 use crate::quality;
 use crate::sidecar::SidecarCommand;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExportRateControl {
+    Auto,
+    Cbr,
+    Vbr,
+    Crf,
+    Cq,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExportX264Preset {
+    Ultrafast,
+    Superfast,
+    Veryfast,
+    Faster,
+    Fast,
+    Medium,
+    Slow,
+    Slower,
+    Veryslow,
+}
+
+impl ExportX264Preset {
+    fn ffmpeg_value(self) -> &'static str {
+        match self {
+            ExportX264Preset::Ultrafast => "ultrafast",
+            ExportX264Preset::Superfast => "superfast",
+            ExportX264Preset::Veryfast => "veryfast",
+            ExportX264Preset::Faster => "faster",
+            ExportX264Preset::Fast => "fast",
+            ExportX264Preset::Medium => "medium",
+            ExportX264Preset::Slow => "slow",
+            ExportX264Preset::Slower => "slower",
+            ExportX264Preset::Veryslow => "veryslow",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExportAudioCodec {
+    Aac,
+    Opus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExportAudioOptions {
+    pub codec: ExportAudioCodec,
+    pub bitrate_kbps: u32,
+    pub channels: u8,
+    pub sample_rate_hz: u32,
+}
+
+impl Default for ExportAudioOptions {
+    fn default() -> Self {
+        Self {
+            codec: ExportAudioCodec::Aac,
+            bitrate_kbps: 160,
+            channels: 2,
+            sample_rate_hz: 48_000,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExportEncodeOptions {
+    pub encoder: Option<HardwareEncoder>,
+    pub rate_control: ExportRateControl,
+    pub quality_value: Option<u32>,
+    pub x264_preset: Option<ExportX264Preset>,
+    pub keyframe_interval_sec: Option<u32>,
+    pub downscale_algo: ScaleAlgo,
+    pub audio: ExportAudioOptions,
+}
+
+impl Default for ExportEncodeOptions {
+    fn default() -> Self {
+        Self {
+            encoder: None,
+            rate_control: ExportRateControl::Auto,
+            quality_value: None,
+            x264_preset: None,
+            keyframe_interval_sec: Some(2),
+            downscale_algo: ScaleAlgo::Lanczos,
+            audio: ExportAudioOptions::default(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -25,9 +117,11 @@ pub enum OutputFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Resolution {
+    MatchSource,
     R720p,
     R1080p,
     R4k,
+    Custom { width: u32, height: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +137,7 @@ pub struct OutputSpec {
     pub resolution: Resolution,
     pub fps: u32,
     pub quality: Quality,
+    pub encoder_options: Option<ExportEncodeOptions>,
     pub output_path: PathBuf,
 }
 
@@ -69,6 +164,7 @@ impl FanoutPlan {
                 resolution,
                 fps,
                 quality,
+                encoder_options: None,
                 output_path: out_dir.join(format!("{stem}{}", ext_for(format))),
             })
             .collect();
@@ -86,17 +182,21 @@ fn ext_for(f: OutputFormat) -> &'static str {
 
 pub fn resolution_width(r: Resolution) -> u32 {
     match r {
+        Resolution::MatchSource => 1920,
         Resolution::R720p => 1280,
         Resolution::R1080p => 1920,
         Resolution::R4k => 3840,
+        Resolution::Custom { width, .. } => width,
     }
 }
 
 pub fn resolution_height(r: Resolution) -> u32 {
     match r {
+        Resolution::MatchSource => 1080,
         Resolution::R720p => 720,
         Resolution::R1080p => 1080,
         Resolution::R4k => 2160,
+        Resolution::Custom { height, .. } => height,
     }
 }
 
@@ -143,20 +243,25 @@ pub fn build_encode_args(
     match spec.format {
         OutputFormat::Mp4 => {
             args.push("-vf".into());
-            args.push(format!("scale={w}:{h}:flags=lanczos"));
+            args.push(format!(
+                "scale={w}:{h}:flags={}",
+                scale_algo(spec).ffmpeg_flag()
+            ));
             push_mp4_video_encode_args(&mut args, spec, h264_encoder, w, h);
-            args.push("-c:a".into());
-            args.push("aac".into());
-            args.push("-b:a".into());
-            args.push("128k".into());
+            push_audio_args(&mut args, spec);
             args.push("-movflags".into());
             args.push("+faststart".into());
+            args.push("-fps_mode".into());
+            args.push("cfr".into());
             args.push("-r".into());
             args.push(spec.fps.to_string());
         }
         OutputFormat::WebM => {
             args.push("-vf".into());
-            args.push(format!("scale={w}:{h}:flags=lanczos"));
+            args.push(format!(
+                "scale={w}:{h}:flags={}",
+                scale_algo(spec).ffmpeg_flag()
+            ));
             args.push("-c:v".into());
             args.push("libvpx-vp9".into());
             args.push("-b:v".into());
@@ -203,16 +308,160 @@ pub(crate) fn push_mp4_video_encode_args(
 ) {
     args.push("-c:v".into());
     args.push(encoder.ffmpeg_codec_name().into());
-    args.extend(quality::resolve(
-        export_quality_to_preset(spec.quality),
-        encoder,
-        width,
-        height,
-        spec.fps,
-    ));
+    if let Some(options) = spec.encoder_options.as_ref() {
+        args.extend(resolve_export_quality_args(
+            options, spec, encoder, width, height,
+        ));
+    } else {
+        args.extend(quality::resolve(
+            export_quality_to_preset(spec.quality),
+            encoder,
+            width,
+            height,
+            spec.fps,
+        ));
+    }
+    if let Some(seconds) = spec
+        .encoder_options
+        .as_ref()
+        .and_then(|options| options.keyframe_interval_sec)
+    {
+        args.push("-g".into());
+        args.push((spec.fps.saturating_mul(seconds)).to_string());
+    }
     args.push("-pix_fmt".into());
     args.push("yuv420p".into());
     args.extend(quality::mp4_color_args(encoder));
+}
+
+pub(crate) fn scale_algo(spec: &OutputSpec) -> ScaleAlgo {
+    spec.encoder_options
+        .as_ref()
+        .map(|options| options.downscale_algo)
+        .unwrap_or(ScaleAlgo::Lanczos)
+}
+
+pub(crate) fn push_audio_args(args: &mut Vec<String>, spec: &OutputSpec) {
+    let audio = spec
+        .encoder_options
+        .as_ref()
+        .map(|options| options.audio.clone())
+        .unwrap_or_default();
+    args.push("-c:a".into());
+    args.push(
+        match audio.codec {
+            ExportAudioCodec::Aac => "aac",
+            ExportAudioCodec::Opus => "libopus",
+        }
+        .into(),
+    );
+    args.push("-b:a".into());
+    args.push(format!("{}k", audio.bitrate_kbps));
+    args.push("-ac".into());
+    args.push(audio.channels.to_string());
+    args.push("-ar".into());
+    args.push(audio.sample_rate_hz.to_string());
+}
+
+fn resolve_export_quality_args(
+    options: &ExportEncodeOptions,
+    spec: &OutputSpec,
+    encoder: HardwareEncoder,
+    width: u32,
+    height: u32,
+) -> Vec<String> {
+    if options.rate_control == ExportRateControl::Auto && options.quality_value.is_none() {
+        return quality::resolve(
+            export_quality_to_preset(spec.quality),
+            encoder,
+            width,
+            height,
+            spec.fps,
+        );
+    }
+    let value = options.quality_value.unwrap_or(match encoder {
+        HardwareEncoder::Libx264Software => 18,
+        HardwareEncoder::NvencH264
+        | HardwareEncoder::QsvH264
+        | HardwareEncoder::AmfH264
+        | HardwareEncoder::Openh264Software => 20,
+        HardwareEncoder::VideoToolboxH264 | HardwareEncoder::VideoToolboxHevc => {
+            quality::target_kbps(
+                export_quality_to_preset(spec.quality),
+                encoder,
+                width,
+                height,
+                spec.fps,
+            ) / 1000
+        }
+    });
+    match encoder {
+        HardwareEncoder::Libx264Software => {
+            let preset = options
+                .x264_preset
+                .unwrap_or(ExportX264Preset::Slow)
+                .ffmpeg_value();
+            vec![
+                "-crf".into(),
+                value.to_string(),
+                "-preset".into(),
+                preset.into(),
+                "-tune".into(),
+                "stillimage".into(),
+                "-profile:v".into(),
+                "high".into(),
+            ]
+        }
+        HardwareEncoder::VideoToolboxH264 | HardwareEncoder::VideoToolboxHevc => vec![
+            "-b:v".into(),
+            format!("{value}M"),
+            "-constant_bit_rate".into(),
+            matches!(options.rate_control, ExportRateControl::Cbr).to_string(),
+            "-realtime".into(),
+            "false".into(),
+            "-prio_speed".into(),
+            "false".into(),
+            "-power_efficient".into(),
+            "0".into(),
+        ],
+        HardwareEncoder::NvencH264 => vec![
+            "-preset".into(),
+            "p4".into(),
+            "-rc".into(),
+            if matches!(options.rate_control, ExportRateControl::Cbr) {
+                "cbr"
+            } else {
+                "vbr"
+            }
+            .into(),
+            "-cq".into(),
+            value.to_string(),
+        ],
+        HardwareEncoder::QsvH264 => vec![
+            "-preset".into(),
+            "medium".into(),
+            "-global_quality".into(),
+            value.to_string(),
+        ],
+        HardwareEncoder::AmfH264 => vec![
+            "-quality".into(),
+            "quality".into(),
+            "-rc".into(),
+            "cqp".into(),
+            "-qp_i".into(),
+            value.to_string(),
+            "-qp_p".into(),
+            value.saturating_add(2).to_string(),
+        ],
+        HardwareEncoder::Openh264Software => vec![
+            "-b:v".into(),
+            format!("{value}M"),
+            "-profile:v".into(),
+            "high".into(),
+            "-rc_mode".into(),
+            "bitrate".into(),
+        ],
+    }
 }
 
 /// Fan out to N parallel encoders. Each `SidecarCommand` is invoked with
@@ -265,6 +514,7 @@ mod tests {
             resolution: Resolution::R1080p,
             fps: 60,
             quality: Quality::Med,
+            encoder_options: None,
             output_path: PathBuf::from(path),
         }
     }

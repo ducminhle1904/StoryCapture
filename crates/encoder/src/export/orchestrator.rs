@@ -155,9 +155,16 @@ pub async fn export_run(
             story_id: req.story_id.clone(),
             preset_id: req.preset_id,
             format: spec.format.extension().to_string(),
-            resolution: res_label(spec.resolution).to_string(),
+            resolution: res_label(spec.resolution),
+            output_width: Some(spec.output_width),
+            output_height: Some(spec.output_height),
             fps: spec.fps,
             quality: quality_label(spec.quality).into(),
+            encoder_options_json: spec
+                .encoder_options
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?,
             priority: req.priority,
             output_path: Some(spec.output_path.clone()),
             batch_id: Some(batch_id.to_string()),
@@ -313,7 +320,7 @@ fn skin_path_with_fallback(skin: CursorSkin) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::export::batch::{build_batch, BatchExportRequest};
+    use crate::export::batch::{build_batch, BatchExportRequest, BatchOutputRequest};
     use crate::export::format::OutputFormat;
     use crate::export::quality::Quality;
     use crate::export::resolution::Resolution;
@@ -386,9 +393,27 @@ mod tests {
     fn sample_request(folder: PathBuf) -> ExportRequest {
         let specs = build_batch(&BatchExportRequest {
             outputs: vec![
-                (OutputFormat::Mp4, Resolution::R1080p, 60, Quality::Med),
-                (OutputFormat::WebM, Resolution::R1080p, 30, Quality::High),
-                (OutputFormat::Gif, Resolution::R720p, 24, Quality::Low),
+                BatchOutputRequest {
+                    format: OutputFormat::Mp4,
+                    resolution: Resolution::R1080p,
+                    fps: 60,
+                    quality: Quality::Med,
+                    encoder_options: None,
+                },
+                BatchOutputRequest {
+                    format: OutputFormat::WebM,
+                    resolution: Resolution::R1080p,
+                    fps: 30,
+                    quality: Quality::High,
+                    encoder_options: None,
+                },
+                BatchOutputRequest {
+                    format: OutputFormat::Gif,
+                    resolution: Resolution::R720p,
+                    fps: 24,
+                    quality: Quality::Low,
+                    encoder_options: None,
+                },
             ],
             out_folder: folder.clone(),
             base_name: "t".into(),
@@ -650,7 +675,13 @@ mod tests {
             story_id: "x".into(),
             graph: sample_graph(),
             outputs: build_batch(&BatchExportRequest {
-                outputs: vec![(OutputFormat::Mp4, Resolution::R720p, 30, Quality::Med)],
+                outputs: vec![BatchOutputRequest {
+                    format: OutputFormat::Mp4,
+                    resolution: Resolution::R720p,
+                    fps: 30,
+                    quality: Quality::Med,
+                    encoder_options: None,
+                }],
                 out_folder: PathBuf::from("/nonexistent/xyzzy"),
                 base_name: "f".into(),
             })
@@ -681,7 +712,13 @@ mod tests {
             story_id: "x".into(),
             graph: sample_graph(),
             outputs: build_batch(&BatchExportRequest {
-                outputs: vec![(OutputFormat::Mp4, Resolution::R720p, 30, Quality::Med)],
+                outputs: vec![BatchOutputRequest {
+                    format: OutputFormat::Mp4,
+                    resolution: Resolution::R720p,
+                    fps: 30,
+                    quality: Quality::Med,
+                    encoder_options: None,
+                }],
                 out_folder: forbidden.clone(),
                 base_name: "f".into(),
             })

@@ -18,11 +18,7 @@ pub struct RoundedFrameParams {
 
 /// Emit the foreground mask chain. `input_label` includes its brackets (e.g.
 /// `"[v_a]"`) and `output_label` likewise.
-pub fn emit_rounded_mask(
-    _p: &RoundedFrameParams,
-    input_label: &str,
-    output_label: &str,
-) -> String {
+pub fn emit_rounded_mask(_p: &RoundedFrameParams, input_label: &str, output_label: &str) -> String {
     format!("{input_label}null{output_label}")
 }
 

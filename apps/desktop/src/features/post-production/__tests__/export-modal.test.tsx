@@ -30,6 +30,7 @@ vi.mock("sonner", () => ({
 
 // Re-import AFTER the mock is in place.
 import { ExportModal } from "../export-modal/export-modal";
+import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
 
 function Wrapped({ children }: { children: ReactNode }) {
@@ -53,6 +54,7 @@ function resetStore() {
     activeJobs: {},
     progressByJobId: {},
     exportForm: {
+      ...DEFAULT_EXPORT_FORM,
       formats: ["mp4"],
       resolution: "1080p",
       fps: 60,
@@ -72,6 +74,7 @@ describe("ExportModal", () => {
   it("disables Export when no formats are selected", () => {
     useEditorStore.setState({
       exportForm: {
+        ...DEFAULT_EXPORT_FORM,
         formats: [],
         resolution: "1080p",
         fps: 60,
@@ -95,6 +98,7 @@ describe("ExportModal", () => {
     // prevent empty-graph jobs reaching the backend.
     useEditorStore.setState({
       exportForm: {
+        ...DEFAULT_EXPORT_FORM,
         formats: ["mp4"],
         resolution: "1080p",
         fps: 60,
@@ -133,6 +137,7 @@ describe("ExportModal", () => {
         annotations: [],
       },
       exportForm: {
+        ...DEFAULT_EXPORT_FORM,
         formats: ["mp4"],
         resolution: "1080p",
         fps: 60,
@@ -152,7 +157,7 @@ describe("ExportModal", () => {
     expect(btn).not.toBeDisabled();
   });
 
-  it("includes editor background in exported graph_json", async () => {
+  it("includes editor background in exported graph_json only for framed exports", async () => {
     useEditorStore.setState({
       tracks: {
         video: [
@@ -175,10 +180,12 @@ describe("ExportModal", () => {
         background: { kind: "gradient", preset_id: "runway-dark" },
       },
       exportForm: {
+        ...DEFAULT_EXPORT_FORM,
         formats: ["mp4"],
         resolution: "1080p",
         fps: 60,
         quality: "med",
+        frameMode: "framed",
         outFolder: "/tmp/out",
         baseName: "demo",
       },
@@ -227,6 +234,7 @@ describe("ExportModal", () => {
   it("surfaces validation failures as warning text and keeps submit disabled", async () => {
     useEditorStore.setState({
       exportForm: {
+        ...DEFAULT_EXPORT_FORM,
         formats: ["gif"],
         resolution: "4k",
         fps: 60,

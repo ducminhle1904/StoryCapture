@@ -11,9 +11,11 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{EncoderError, Result};
+use crate::export::resolution::{resolve_label, validate_dimensions};
 use crate::fanout::{
-    fanout_encode, render_direct_mp4, render_intermediate, FanoutPlan, IntermediateProgress,
-    OutputFormat, OutputSpec, Quality, Resolution,
+    fanout_encode, render_direct_mp4, render_intermediate, resolution_height, resolution_width,
+    ExportEncodeOptions, FanoutPlan, IntermediateProgress, OutputFormat, OutputSpec, Quality,
+    Resolution,
 };
 use crate::probe::{
     export_h264_software_fallback, pick_export_h264_encoder, EncoderProbe, HardwareEncoder,
@@ -118,9 +120,10 @@ impl JobExecutor for FanoutJobExecutor {
         let duration_ms = estimate_duration_ms(&graph);
         let spec = OutputSpec {
             format: parse_format(&job.format)?,
-            resolution: parse_resolution(&job.resolution)?,
+            resolution: parse_resolution(&job.resolution, job.output_width, job.output_height)?,
             fps: job.fps,
             quality: parse_quality(&job.quality)?,
+            encoder_options: parse_encoder_options(job.encoder_options_json.as_deref())?,
             output_path: output_path.clone(),
         };
 
@@ -130,6 +133,7 @@ impl JobExecutor for FanoutJobExecutor {
                     &graph,
                     &extra_inputs,
                     &spec,
+                    selected_encoder_config(self.encoder_config, spec.encoder_options.as_ref()),
                     duration_ms,
                     job.id,
                     progress_tx.clone(),
@@ -197,14 +201,14 @@ impl JobExecutor for FanoutJobExecutor {
         }
 
         let plan = FanoutPlan {
-            outputs: vec![spec],
+            outputs: vec![spec.clone()],
         };
         let sidecar = self.sidecar.clone();
         let fanout_result = fanout_encode(
             &intermediate,
             &plan,
             move || sidecar.clone(),
-            self.encoder_config.primary,
+            selected_encoder_config(self.encoder_config, spec.encoder_options.as_ref()).primary,
         )
         .await;
         if fanout_result.is_err() {
@@ -230,12 +234,13 @@ impl FanoutJobExecutor {
         graph: &effects::Graph,
         extra_inputs: &[Vec<String>],
         spec: &OutputSpec,
+        encoder_config: ExportEncoderConfig,
         duration_ms: u64,
         job_id: uuid::Uuid,
         progress_tx: mpsc::Sender<RenderProgress>,
         cancel: &CancellationToken,
     ) -> Result<()> {
-        let primary = self.encoder_config.primary;
+        let primary = encoder_config.primary;
         let primary_result = render_direct_mp4(
             graph,
             extra_inputs,
@@ -256,7 +261,7 @@ impl FanoutJobExecutor {
             return Ok(());
         };
 
-        let Some(fallback) = self.encoder_config.fallback else {
+        let Some(fallback) = encoder_config.fallback else {
             return Err(primary_error);
         };
         if !primary.is_hardware() {
@@ -433,14 +438,42 @@ fn parse_format(value: &str) -> Result<OutputFormat> {
     }
 }
 
-fn parse_resolution(value: &str) -> Result<Resolution> {
-    match value {
-        "720p" => Ok(Resolution::R720p),
-        "1080p" => Ok(Resolution::R1080p),
-        "4k" => Ok(Resolution::R4k),
-        other => Err(EncoderError::InvalidConfig(format!(
-            "unsupported render resolution: {other}"
-        ))),
+fn parse_resolution(value: &str, width: Option<u32>, height: Option<u32>) -> Result<Resolution> {
+    let export_res = resolve_label(value, width, height)
+        .map_err(|e| EncoderError::InvalidConfig(format!("render resolution: {e}")))?;
+    let res = match export_res {
+        crate::export::resolution::Resolution::MatchSource { width, height }
+        | crate::export::resolution::Resolution::Custom { width, height } => {
+            Resolution::Custom { width, height }
+        }
+        crate::export::resolution::Resolution::R720p => Resolution::R720p,
+        crate::export::resolution::Resolution::R1080p => Resolution::R1080p,
+        crate::export::resolution::Resolution::R4k => Resolution::R4k,
+    };
+    let (width, height) = (resolution_width(res), resolution_height(res));
+    if !validate_dimensions(width, height) {
+        return Err(EncoderError::InvalidConfig(format!(
+            "render resolution dimensions out of bounds: {width}x{height}"
+        )));
+    }
+    Ok(res)
+}
+
+fn parse_encoder_options(raw: Option<&str>) -> Result<Option<ExportEncodeOptions>> {
+    raw.map(|json| {
+        serde_json::from_str(json)
+            .map_err(|e| EncoderError::InvalidConfig(format!("encoder_options_json: {e}")))
+    })
+    .transpose()
+}
+
+fn selected_encoder_config(
+    auto_config: ExportEncoderConfig,
+    options: Option<&ExportEncodeOptions>,
+) -> ExportEncoderConfig {
+    match options.and_then(|opts| opts.encoder) {
+        Some(encoder) => ExportEncoderConfig::new(encoder, None),
+        None => auto_config,
     }
 }
 
@@ -660,8 +693,11 @@ mod tests {
             preset_id: None,
             format: "mp4".into(),
             resolution: "720p".into(),
+            output_width: Some(1280),
+            output_height: Some(720),
             fps: 30,
             quality: "med".into(),
+            encoder_options_json: None,
             status: RenderJobStatus::Running,
             progress_pct: 0.0,
             started_at: None,
@@ -718,8 +754,11 @@ mod tests {
             preset_id: None,
             format: "mp4".into(),
             resolution: "720p".into(),
+            output_width: Some(1280),
+            output_height: Some(720),
             fps: 30,
             quality: "med".into(),
+            encoder_options_json: None,
             status: RenderJobStatus::Running,
             progress_pct: 0.0,
             started_at: None,

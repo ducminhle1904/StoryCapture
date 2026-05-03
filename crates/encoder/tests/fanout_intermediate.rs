@@ -116,6 +116,7 @@ fn gif_uses_palettegen_and_paletteuse() {
         resolution: Resolution::R720p,
         fps: 24,
         quality: Quality::Med,
+        encoder_options: None,
         output_path: PathBuf::from("/tmp/clip.gif"),
     };
     let args = build_encode_args(

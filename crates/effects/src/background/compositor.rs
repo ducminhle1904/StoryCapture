@@ -102,8 +102,14 @@ pub fn emit_background(
     // Stable label core for this node.
     let core = stable_core(id);
 
-    // Scale the background plate to output size.
+    // Scale the background plate to output size and normalize its timestamps.
+    // `overlay` follows the first input's clock. Background images are looped
+    // stills and otherwise carry the image demuxer's default frame cadence,
+    // which can make framed exports look like 30fps even when the foreground
+    // and final encoder are configured for 60fps.
     let bg_scaled = format!("[{}_bg_scaled]", core);
+    let bg_timed = format!("[{}_bg_timed]", core);
+    let fps = graph.output_fps.max(1);
     let mut chain = String::new();
     chain.push_str(&format!(
         "{bg_raw}scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}{bg_scaled}",
@@ -111,6 +117,13 @@ pub fn emit_background(
         w = w,
         h = h,
         bg_scaled = bg_scaled,
+    ));
+    chain.push(';');
+    chain.push_str(&format!(
+        "{bg_scaled}fps={fps},setpts=N/{fps}/TB{bg_timed}",
+        bg_scaled = bg_scaled,
+        fps = fps,
+        bg_timed = bg_timed,
     ));
 
     // Scale the foreground inside the padding box.
@@ -165,7 +178,7 @@ pub fn emit_background(
         chain.push(';');
         chain.push_str(&format!(
             "{bg_scaled}{shadow_label}overlay=x={ox:.0}:y={oy:.0}{bg_plus_shadow}",
-            bg_scaled = bg_scaled,
+            bg_scaled = bg_timed,
             shadow_label = shadow_label,
             ox = ox,
             oy = oy,
@@ -173,7 +186,7 @@ pub fn emit_background(
         ));
         (split_a, bg_plus_shadow)
     } else {
-        (fg_rounded, bg_scaled)
+        (fg_rounded, bg_timed)
     };
 
     // Final overlay of the rounded video.
@@ -205,5 +218,39 @@ pub fn shadow_params_from(s: &Shadow) -> ShadowParams {
         blur_px: s.blur_px,
         offset: s.offset,
         color: s.color,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::video::BackgroundKind;
+    use crate::ast::Rgba;
+
+    #[test]
+    fn normalizes_background_plate_to_graph_fps_before_overlay() {
+        let node = VideoNode::Background {
+            id: NodeId::from_bytes([2; 16]),
+            kind: BackgroundKind::Solid {
+                color: Rgba::new(1, 2, 3, 255),
+            },
+            radius_px: 24.0,
+            shadow: None,
+            padding_px: 64,
+        };
+        let graph = Graph {
+            schema_version: crate::ast::types::SCHEMA_VERSION,
+            output_width: 1920,
+            output_height: 1080,
+            output_fps: 60,
+            video: vec![node.clone()],
+            audio: vec![],
+        };
+
+        let emitted = emit_background(&node, "[fg]", "[out]", &graph, 1).unwrap();
+
+        assert!(emitted.filter_chain.contains("fps=60,setpts=N/60/TB"));
+        assert!(emitted.filter_chain.contains("_bg_timed]"));
+        assert!(emitted.filter_chain.contains("_bg_timed]["));
     }
 }

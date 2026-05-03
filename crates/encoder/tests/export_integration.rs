@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use encoder::export::batch::{build_batch, BatchExportRequest};
+use encoder::export::batch::{build_batch, BatchExportRequest, BatchOutputRequest};
 use encoder::export::format::OutputFormat;
 use encoder::export::orchestrator::{export_run, ExportRequest};
 use encoder::export::psnr::{compute_psnr, parse_psnr_stats};
@@ -31,9 +31,27 @@ async fn export_run_enqueues_three_jobs_with_shared_batch_id() {
     let db = fresh_db();
     let specs = build_batch(&BatchExportRequest {
         outputs: vec![
-            (OutputFormat::Mp4, Resolution::R1080p, 60, Quality::Med),
-            (OutputFormat::WebM, Resolution::R1080p, 30, Quality::High),
-            (OutputFormat::Gif, Resolution::R720p, 24, Quality::Low),
+            BatchOutputRequest {
+                format: OutputFormat::Mp4,
+                resolution: Resolution::R1080p,
+                fps: 60,
+                quality: Quality::Med,
+                encoder_options: None,
+            },
+            BatchOutputRequest {
+                format: OutputFormat::WebM,
+                resolution: Resolution::R1080p,
+                fps: 30,
+                quality: Quality::High,
+                encoder_options: None,
+            },
+            BatchOutputRequest {
+                format: OutputFormat::Gif,
+                resolution: Resolution::R720p,
+                fps: 24,
+                quality: Quality::Low,
+                encoder_options: None,
+            },
         ],
         out_folder: tmp.path().to_path_buf(),
         base_name: "integration".into(),
@@ -82,8 +100,11 @@ async fn export_run_rejects_mismatched_batch_id() {
             batch_id: Uuid::now_v7(),
             format: OutputFormat::Mp4,
             resolution: Resolution::R1080p,
+            output_width: 1920,
+            output_height: 1080,
             fps: 60,
             quality: Quality::Med,
+            encoder_options: None,
             output_path: tmp.path().join("a.mp4"),
         },
         OutputSpec {
@@ -91,8 +112,11 @@ async fn export_run_rejects_mismatched_batch_id() {
             batch_id: Uuid::now_v7(),
             format: OutputFormat::WebM,
             resolution: Resolution::R1080p,
+            output_width: 1920,
+            output_height: 1080,
             fps: 30,
             quality: Quality::Med,
+            encoder_options: None,
             output_path: tmp.path().join("a.webm"),
         },
     ];

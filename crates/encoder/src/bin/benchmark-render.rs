@@ -19,7 +19,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use encoder::export::batch::{build_batch, BatchExportRequest};
+use encoder::export::batch::{build_batch, BatchExportRequest, BatchOutputRequest};
 use encoder::export::format::OutputFormat;
 use encoder::export::quality::Quality;
 use encoder::export::reference_graph::BenchmarkFixture;
@@ -136,7 +136,13 @@ fn main() -> ExitCode {
         outputs: args
             .formats
             .iter()
-            .map(|f| (*f, Resolution::R1080p, fixture.fps, Quality::Med))
+            .map(|f| BatchOutputRequest {
+                format: *f,
+                resolution: Resolution::R1080p,
+                fps: fixture.fps,
+                quality: Quality::Med,
+                encoder_options: None,
+            })
             .collect(),
         out_folder: args.out_dir.clone(),
         base_name: "bench".into(),

@@ -13,7 +13,7 @@
  */
 
 import { Dialog } from "@base-ui-components/react/dialog";
-import type { EncoderOptionsDto, HardwareEncoderDto } from "@storycapture/shared-types";
+import type { HardwareEncoderDto } from "@storycapture/shared-types";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight, FolderOpen, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -34,7 +34,12 @@ import {
 import { AiDisclosureModal } from "@/features/export/AiDisclosureModal";
 import { ScButton } from "@storycapture/ui";
 import { useVoiceoverStore } from "@/features/voiceover/voiceoverStore";
-import { type ExportOutput, exportRun, exportValidateConfig } from "@/ipc/export";
+import {
+  type ExportEncoderOptions,
+  type ExportOutput,
+  exportRun,
+  exportValidateConfig,
+} from "@/ipc/export";
 import { type ExportKnobs, useOutputPrefsStore } from "@/state/output-prefs";
 
 import { computeGraph, graphIsRenderable } from "../state/compute-graph";
@@ -54,13 +59,14 @@ const HW_UI_TO_DTO: Record<string, HardwareEncoderDto> = {
   libx264: "libx264-software",
 };
 
-function buildEncoderOptions(knobs: ExportKnobs): EncoderOptionsDto {
+function buildEncoderOptions(knobs: ExportKnobs): ExportEncoderOptions {
   const hw = HW_UI_TO_DTO[knobs.hwEncoder] ?? null;
   return {
     container: knobs.container,
     codec: knobs.codec,
     rate_control: knobs.rateControl,
     hw_encoder: hw,
+    quality_value: knobs.qualityValue,
     x264_preset: knobs.x264Preset,
     keyframe_interval_sec: knobs.keyframeSec,
     downscale_algo: knobs.downscaleAlgo,
@@ -85,8 +91,10 @@ export function ExportModal({ storyId }: ExportModalProps) {
   const form = useEditorStore((s) => s.exportForm);
   const setFormats = useEditorStore((s) => s.setExportFormats);
   const setResolution = useEditorStore((s) => s.setExportResolution);
+  const setCustomSize = useEditorStore((s) => s.setExportCustomSize);
   const setFps = useEditorStore((s) => s.setExportFps);
   const setQuality = useEditorStore((s) => s.setExportQuality);
+  const setFrameMode = useEditorStore((s) => s.setExportFrameMode);
   const setOutFolder = useEditorStore((s) => s.setExportOutFolder);
   const setBaseName = useEditorStore((s) => s.setExportBaseName);
   const ttsClipCount = useVoiceoverStore((s) => Object.keys(s.clipByStepId).length);
@@ -96,18 +104,6 @@ export function ExportModal({ storyId }: ExportModalProps) {
   const [disclosureOpen, setDisclosureOpen] = useState(false);
 
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);
-
-  const outputs: ExportOutput[] = useMemo(() => {
-    // encoder_options sourced from useOutputPrefsStore.
-    const encoderOptions = buildEncoderOptions(exportKnobs);
-    return form.formats.map((f) => ({
-      format: f,
-      resolution: form.resolution,
-      fps: form.fps,
-      quality: form.quality,
-      encoder_options: encoderOptions,
-    }));
-  }, [form.formats, form.resolution, form.fps, form.quality, exportKnobs]);
 
   const pickFolder = useCallback(async () => {
     try {
@@ -133,6 +129,27 @@ export function ExportModal({ storyId }: ExportModalProps) {
   );
   const graphAvailable = graphIsRenderable(graph);
 
+  const outputs: ExportOutput[] = useMemo(() => {
+    const encoderOptions = buildEncoderOptions(exportKnobs);
+    return form.formats.map((f) => ({
+      format: f,
+      resolution: form.resolution,
+      output_width: graph.output_width,
+      output_height: graph.output_height,
+      fps: form.fps,
+      quality: form.quality,
+      encoder_options: encoderOptions,
+    }));
+  }, [
+    form.formats,
+    form.resolution,
+    form.fps,
+    form.quality,
+    exportKnobs,
+    graph.output_width,
+    graph.output_height,
+  ]);
+
   const canSubmit =
     !submitting &&
     outputs.length > 0 &&
@@ -142,14 +159,13 @@ export function ExportModal({ storyId }: ExportModalProps) {
     graphAvailable;
 
   const runValidate = useCallback(async () => {
-    const errs: string[] = [];
-    for (const cfg of outputs) {
-      try {
-        await exportValidateConfig(cfg);
-      } catch (err) {
-        errs.push(`${cfg.format} @ ${cfg.resolution}/${cfg.fps}: ${String(err)}`);
-      }
-    }
+    const results = await Promise.allSettled(outputs.map((cfg) => exportValidateConfig(cfg)));
+    const errs = results.flatMap((result, index) => {
+      if (result.status === "fulfilled") return [];
+      const cfg = outputs[index];
+      if (!cfg) return [String(result.reason)];
+      return [`${cfg.format} @ ${cfg.resolution}/${cfg.fps}: ${String(result.reason)}`];
+    });
     setWarnings(errs);
     return errs.length === 0;
   }, [outputs]);
@@ -263,7 +279,9 @@ export function ExportModal({ storyId }: ExportModalProps) {
                       Resolution
                     </div>
                     <div className="mt-2 text-sm font-medium text-[var(--sc-text)]">
-                      {form.resolution.toUpperCase()}
+                      {form.resolution === "match-source"
+                        ? `${graph.output_width}x${graph.output_height}`
+                        : form.resolution.toUpperCase()}
                     </div>
                   </div>
                   <div className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-4 py-3">
@@ -283,7 +301,47 @@ export function ExportModal({ storyId }: ExportModalProps) {
                 </section>
 
                 <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
-                  <ResolutionPicker value={form.resolution} onChange={setResolution} />
+                  <ResolutionPicker
+                    value={form.resolution}
+                    customWidth={form.customWidth}
+                    customHeight={form.customHeight}
+                    onChange={setResolution}
+                    onCustomSizeChange={setCustomSize}
+                  />
+                </section>
+
+                <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--sc-text-4)]">
+                    Frame treatment
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {(["source", "framed"] as const).map((mode) => (
+                      <label
+                        key={mode}
+                        className={`cursor-pointer rounded-2xl border px-3 py-3 text-center text-sm font-medium transition ${
+                          form.frameMode === mode
+                            ? "border-[var(--sc-accent-500)]/50 bg-[var(--sc-accent-500)]/10 text-[var(--sc-text)]"
+                            : "border-[var(--sc-border)] bg-[var(--sc-surface-2)] text-[var(--sc-text-3)] hover:border-[var(--sc-border-2)]"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="export-frame-mode"
+                          value={mode}
+                          checked={form.frameMode === mode}
+                          onChange={() => setFrameMode(mode)}
+                          className="sr-only"
+                        />
+                        {mode === "source" ? "Source fill" : "Cinematic frame"}
+                      </label>
+                    ))}
+                  </div>
+                  {form.frameMode === "framed" ? (
+                    <p className="font-serif mt-3 text-xs leading-5 text-[var(--sc-text-3)]">
+                      Cinematic frame adds padding around the recording. Use a higher resolution
+                      when preserving native 1080p text detail matters.
+                    </p>
+                  ) : null}
                 </section>
 
                 <section className="rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)] p-4">

@@ -3,12 +3,18 @@
 
 use std::path::PathBuf;
 
-use encoder::export::batch::{build_batch, validate as validate_spec, BatchExportRequest};
+use encoder::export::batch::{
+    build_batch, validate as validate_spec, BatchExportRequest, BatchOutputRequest,
+};
 use encoder::export::error::ExportError;
 use encoder::export::format::OutputFormat;
 use encoder::export::orchestrator::{export_run as export_run_inner, ExportRequest};
 use encoder::export::quality::Quality;
-use encoder::export::resolution::{Resolution, VALID_FPS};
+use encoder::export::resolution::{resolve_label, Resolution, VALID_FPS};
+use encoder::fanout::{
+    ExportAudioCodec, ExportAudioOptions, ExportEncodeOptions, ExportRateControl, ExportX264Preset,
+};
+use encoder::filters::ScaleAlgo;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -36,7 +42,7 @@ impl From<ExportError> for AppError {
 // DTOs — TS-bound via specta
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum ContainerDto {
     Mp4,
@@ -45,13 +51,13 @@ pub enum ContainerDto {
     WebM,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum CodecDto {
     H264,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum RateControlDto {
     Auto,
@@ -61,7 +67,7 @@ pub enum RateControlDto {
     Cq,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum X264PresetDto {
     Ultrafast,
@@ -75,7 +81,7 @@ pub enum X264PresetDto {
     Veryslow,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum AudioCodecDto {
     Aac,
@@ -105,6 +111,8 @@ pub struct EncoderOptionsDto {
     #[serde(default)]
     pub hw_encoder: Option<crate::commands::encode::HardwareEncoderDto>,
     #[serde(default)]
+    pub quality_value: Option<u32>,
+    #[serde(default)]
     pub x264_preset: Option<X264PresetDto>,
     #[serde(default)]
     pub keyframe_interval_sec: Option<u32>,
@@ -120,6 +128,10 @@ pub struct ExportOutputDto {
     pub format: String,
     /// "720p" | "1080p" | "4k"
     pub resolution: String,
+    #[serde(default)]
+    pub output_width: Option<u32>,
+    #[serde(default)]
+    pub output_height: Option<u32>,
     pub fps: u32,
     /// "low" | "med" | "high"
     pub quality: String,
@@ -170,15 +182,8 @@ fn parse_format(s: &str) -> Result<OutputFormat, AppError> {
     }
 }
 
-fn parse_resolution(s: &str) -> Result<Resolution, AppError> {
-    match s.to_ascii_lowercase().as_str() {
-        "720p" => Ok(Resolution::R720p),
-        "1080p" => Ok(Resolution::R1080p),
-        "4k" => Ok(Resolution::R4k),
-        other => Err(AppError::InvalidArgument(format!(
-            "unknown resolution: {other}"
-        ))),
-    }
+fn parse_output_resolution(o: &ExportOutputDto) -> Result<Resolution, AppError> {
+    resolve_label(&o.resolution, o.output_width, o.output_height).map_err(AppError::InvalidArgument)
 }
 
 fn parse_quality(s: &str) -> Result<Quality, AppError> {
@@ -190,6 +195,52 @@ fn parse_quality(s: &str) -> Result<Quality, AppError> {
             "unknown quality: {other}"
         ))),
     }
+}
+
+fn convert_encoder_options(
+    opts: Option<&EncoderOptionsDto>,
+) -> Result<Option<ExportEncodeOptions>, AppError> {
+    opts.map(|opts| {
+        let audio = opts.audio.as_ref();
+        let audio_options = ExportAudioOptions {
+            codec: match audio.and_then(|a| a.codec) {
+                Some(AudioCodecDto::Opus) => ExportAudioCodec::Opus,
+                _ => ExportAudioCodec::Aac,
+            },
+            bitrate_kbps: audio.and_then(|a| a.bitrate_kbps).unwrap_or(160),
+            channels: audio.and_then(|a| a.channels).unwrap_or(2),
+            sample_rate_hz: audio.and_then(|a| a.sample_rate_hz).unwrap_or(48_000),
+        };
+        Ok(ExportEncodeOptions {
+            encoder: opts.hw_encoder.map(Into::into),
+            rate_control: match opts.rate_control.unwrap_or(RateControlDto::Auto) {
+                RateControlDto::Auto => ExportRateControl::Auto,
+                RateControlDto::Cbr => ExportRateControl::Cbr,
+                RateControlDto::Vbr => ExportRateControl::Vbr,
+                RateControlDto::Crf => ExportRateControl::Crf,
+                RateControlDto::Cq => ExportRateControl::Cq,
+            },
+            quality_value: opts.quality_value,
+            x264_preset: opts.x264_preset.map(|preset| match preset {
+                X264PresetDto::Ultrafast => ExportX264Preset::Ultrafast,
+                X264PresetDto::Superfast => ExportX264Preset::Superfast,
+                X264PresetDto::Veryfast => ExportX264Preset::Veryfast,
+                X264PresetDto::Faster => ExportX264Preset::Faster,
+                X264PresetDto::Fast => ExportX264Preset::Fast,
+                X264PresetDto::Medium => ExportX264Preset::Medium,
+                X264PresetDto::Slow => ExportX264Preset::Slow,
+                X264PresetDto::Slower => ExportX264Preset::Slower,
+                X264PresetDto::Veryslow => ExportX264Preset::Veryslow,
+            }),
+            keyframe_interval_sec: opts.keyframe_interval_sec,
+            downscale_algo: match opts.downscale_algo {
+                Some(algo) => ScaleAlgo::from(algo),
+                None => ScaleAlgo::Lanczos,
+            },
+            audio: audio_options,
+        })
+    })
+    .transpose()
 }
 
 // ---------------------------------------------------------------------------
@@ -210,16 +261,17 @@ pub async fn export_run(
     let graph: effects::Graph = serde_json::from_str(&args.graph_json)
         .map_err(|e| AppError::Serialization(format!("graph_json: {e}")))?;
 
-    let outputs: Vec<(OutputFormat, Resolution, u32, Quality)> = args
+    let outputs: Vec<BatchOutputRequest> = args
         .outputs
         .iter()
         .map(|o| {
-            Ok::<_, AppError>((
-                parse_format(&o.format)?,
-                parse_resolution(&o.resolution)?,
-                o.fps,
-                parse_quality(&o.quality)?,
-            ))
+            Ok::<_, AppError>(BatchOutputRequest {
+                format: parse_format(&o.format)?,
+                resolution: parse_output_resolution(o)?,
+                fps: o.fps,
+                quality: parse_quality(&o.quality)?,
+                encoder_options: convert_encoder_options(o.encoder_options.as_ref())?,
+            })
         })
         .collect::<Result<_, _>>()?;
 
@@ -269,7 +321,7 @@ pub fn export_get_presets() -> ExportPresetsCatalogue {
             .collect(),
         resolutions: Resolution::all()
             .iter()
-            .map(|r| encoder::export::resolution::res_label(*r).to_string())
+            .map(|r| encoder::export::resolution::res_label(*r))
             .collect(),
         fps: VALID_FPS.to_vec(),
         qualities: Quality::all()
@@ -296,7 +348,7 @@ pub fn export_get_presets() -> ExportPresetsCatalogue {
 )]
 pub fn export_validate_config(cfg: ExportOutputDto) -> Result<(), AppError> {
     let fmt = parse_format(&cfg.format)?;
-    let res = parse_resolution(&cfg.resolution)?;
+    let res = parse_output_resolution(&cfg)?;
     validate_spec(fmt, res, cfg.fps).map_err(AppError::from)?;
 
     if let Some(opts) = cfg.encoder_options.as_ref() {
@@ -408,7 +460,7 @@ mod tests {
     fn presets_catalogue_shape() {
         let p = export_get_presets();
         assert_eq!(p.formats, vec!["mp4", "webm", "gif"]);
-        assert_eq!(p.resolutions, vec!["720p", "1080p", "4k"]);
+        assert_eq!(p.resolutions, vec!["match-source", "720p", "1080p", "4k"]);
         assert_eq!(p.fps, vec![24, 30, 60]);
         assert_eq!(p.qualities, vec!["low", "med", "high"]);
     }
@@ -418,6 +470,8 @@ mod tests {
         assert!(export_validate_config(ExportOutputDto {
             format: "mp4".into(),
             resolution: "1080p".into(),
+            output_width: Some(1920),
+            output_height: Some(1080),
             fps: 60,
             quality: "high".into(),
             encoder_options: None,
@@ -430,6 +484,8 @@ mod tests {
         let e = export_validate_config(ExportOutputDto {
             format: "gif".into(),
             resolution: "4k".into(),
+            output_width: Some(3840),
+            output_height: Some(2160),
             fps: 30,
             quality: "med".into(),
             encoder_options: None,
@@ -442,6 +498,8 @@ mod tests {
         ExportOutputDto {
             format: "mp4".into(),
             resolution: "1080p".into(),
+            output_width: Some(1920),
+            output_height: Some(1080),
             fps: 30,
             quality: "med".into(),
             encoder_options: None,
@@ -456,6 +514,7 @@ mod tests {
             codec: None,
             rate_control: None,
             hw_encoder: None,
+            quality_value: None,
             x264_preset: None,
             keyframe_interval_sec: Some(0),
             downscale_algo: None,
@@ -473,6 +532,7 @@ mod tests {
             codec: None,
             rate_control: None,
             hw_encoder: None,
+            quality_value: None,
             x264_preset: None,
             keyframe_interval_sec: None,
             downscale_algo: None,
@@ -495,6 +555,7 @@ mod tests {
             codec: None,
             rate_control: None,
             hw_encoder: None,
+            quality_value: None,
             x264_preset: None,
             keyframe_interval_sec: None,
             downscale_algo: None,
@@ -517,6 +578,7 @@ mod tests {
             codec: Some(CodecDto::H264),
             rate_control: Some(RateControlDto::Crf),
             hw_encoder: None,
+            quality_value: Some(18),
             x264_preset: Some(X264PresetDto::Medium),
             keyframe_interval_sec: Some(2),
             downscale_algo: None,

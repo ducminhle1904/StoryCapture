@@ -13,5 +13,6 @@ pub fn project_migrations() -> Vec<M<'static>> {
         M::up(include_str!("m003_llm_turn_metrics.sql")),
         M::up(include_str!("m004_tts_clip_metrics.sql")),
         M::up(include_str!("m005_tts_cache_duration.sql")),
+        M::up(include_str!("m006_render_job_export_options.sql")),
     ]
 }

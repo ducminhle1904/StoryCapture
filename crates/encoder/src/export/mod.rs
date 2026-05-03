@@ -16,7 +16,7 @@ pub mod quality;
 pub mod reference_graph;
 pub mod resolution;
 
-pub use batch::{build_batch, validate, BatchExportRequest, OutputSpec};
+pub use batch::{build_batch, validate, BatchExportRequest, BatchOutputRequest, OutputSpec};
 pub use error::ExportError;
 pub use format::{codec_for, ContainerExt, OutputFormat};
 pub use orchestrator::{export_run, ExportRequest, ExportResult};

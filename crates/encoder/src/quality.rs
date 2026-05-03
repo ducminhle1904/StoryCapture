@@ -93,7 +93,7 @@ pub fn resolve_with_realtime(
         HardwareEncoder::Libx264Software => match preset {
             QualityPreset::Low => vec_of![
                 "-crf",
-                "26",
+                "24",
                 "-preset",
                 "veryfast",
                 "-tune",
@@ -103,7 +103,7 @@ pub fn resolve_with_realtime(
             ],
             QualityPreset::Med => vec_of![
                 "-crf",
-                "20",
+                "18",
                 "-preset",
                 "medium",
                 "-tune",
@@ -113,7 +113,7 @@ pub fn resolve_with_realtime(
             ],
             QualityPreset::High => vec_of![
                 "-crf",
-                "18",
+                "14",
                 "-preset",
                 "slow",
                 "-tune",
@@ -390,7 +390,7 @@ mod tests {
             got,
             vec![
                 "-crf",
-                "20",
+                "18",
                 "-preset",
                 "medium",
                 "-tune",
@@ -415,7 +415,7 @@ mod tests {
             got,
             vec![
                 "-crf",
-                "26",
+                "24",
                 "-preset",
                 "veryfast",
                 "-tune",
@@ -439,7 +439,7 @@ mod tests {
             got,
             vec![
                 "-crf",
-                "18",
+                "14",
                 "-preset",
                 "slow",
                 "-tune",

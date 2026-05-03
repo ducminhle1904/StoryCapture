@@ -12,6 +12,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Graph, VideoNode } from "../state/compute-graph";
 import { computeGraph, graphIsRenderable } from "../state/compute-graph";
+import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
 
 function videoNodeAt(graph: Graph, index: number): VideoNode {
@@ -31,6 +32,7 @@ function resetStore() {
     selectedTab: "presets",
     soundDrawerOpen: false,
     exportModalOpen: false,
+    exportForm: { ...DEFAULT_EXPORT_FORM },
     activeJobs: {},
     progressByJobId: {},
     _undoExtras: {
@@ -61,6 +63,17 @@ describe("computeGraph", () => {
         graphSnapshot: {},
         textOverlays: {},
         background: { kind: "gradient", preset_id: "runway-dark" },
+      },
+      exportForm: {
+        formats: ["mp4"],
+        resolution: "1080p",
+        customWidth: 1920,
+        customHeight: 1080,
+        fps: 60,
+        quality: "high",
+        frameMode: "framed",
+        outFolder: null,
+        baseName: "export",
       },
       tracks: {
         video: [
@@ -185,13 +198,87 @@ describe("computeGraph", () => {
     expect(graphIsRenderable(g)).toBe(true);
   });
 
+  it("does not emit a background node for source-preserving exports", () => {
+    useEditorStore.setState({
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        frameMode: "source",
+      },
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "gradient", preset_id: "runway-dark" },
+      },
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/in.mp4",
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    const g = computeGraph(useEditorStore.getState());
+
+    expect(g.video.map((n) => n.type)).toEqual(["source"]);
+  });
+
+  it("expands match-source framed exports so the foreground keeps native pixels", () => {
+    useEditorStore.setState({
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        resolution: "match-source",
+        frameMode: "framed",
+      },
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "gradient", preset_id: "runway-dark" },
+        captureRect: { x: 0, y: 0, width: 1920, height: 1080 },
+      },
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/in.mp4",
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    const g = computeGraph(useEditorStore.getState());
+    const background = g.video.find((n) => n.type === "background");
+
+    expect(g.output_width).toBe(2048);
+    expect(g.output_height).toBe(1208);
+    expect(background).toMatchObject({ type: "background", padding_px: 64 });
+  });
+
   it("converts normalized zoom centers to crop-safe output pixels", () => {
     useEditorStore.setState({
       exportForm: {
         formats: ["mp4"],
         resolution: "720p",
+        customWidth: 1920,
+        customHeight: 1080,
         fps: 60,
         quality: "high",
+        frameMode: "source",
         outFolder: null,
         baseName: "export",
       },
@@ -294,6 +381,10 @@ describe("computeGraph", () => {
 
   it("emits PNG highlight overlays before text overlays and preserves annotation color", () => {
     useEditorStore.setState({
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        resolution: "720p",
+      },
       tracks: {
         video: [],
         cursor: [],
@@ -345,6 +436,10 @@ describe("computeGraph", () => {
 
   it("transforms highlight and callout anchors through active zoom", () => {
     useEditorStore.setState({
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        resolution: "720p",
+      },
       tracks: {
         video: [],
         cursor: [],

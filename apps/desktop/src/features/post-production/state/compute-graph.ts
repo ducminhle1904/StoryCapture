@@ -216,10 +216,14 @@ export interface Graph {
 const SCHEMA_VERSION = 2;
 
 const RESOLUTION_PX: Record<ExportResolution, { w: number; h: number }> = {
+  "match-source": { w: 1920, h: 1080 },
   "720p": { w: 1280, h: 720 },
   "1080p": { w: 1920, h: 1080 },
   "4k": { w: 3840, h: 2160 },
+  custom: { w: 1920, h: 1080 },
 };
+
+const FRAMED_BACKGROUND_PADDING_PX = 64;
 
 /**
  * Deterministic UUID-shaped string derived from a clip id + role. Same
@@ -324,8 +328,40 @@ function backgroundNode(background: EditorBackgroundKind): VideoNode | null {
     kind: background,
     radius_px: 24,
     shadow: null,
-    padding_px: 64,
+    padding_px: FRAMED_BACKGROUND_PADDING_PX,
   };
+}
+
+function evenDimension(n: number, fallback: number): number {
+  if (!Number.isFinite(n)) return fallback;
+  const rounded = Math.round(n);
+  const even = rounded % 2 === 0 ? rounded : rounded - 1;
+  return Math.max(16, even);
+}
+
+function outputPixels(state: ComputeGraphInput): { w: number; h: number } {
+  const { exportForm } = state;
+  if (exportForm.resolution === "custom") {
+    return {
+      w: evenDimension(exportForm.customWidth, 1920),
+      h: evenDimension(exportForm.customHeight, 1080),
+    };
+  }
+  if (exportForm.resolution === "match-source") {
+    const rect = state._undoExtras?.captureRect;
+    if (rect && rect.width > 0 && rect.height > 0) {
+      const background = readEditorBackground(state);
+      const framedPadding =
+        exportForm.frameMode === "framed" && background.kind !== "transparent"
+          ? FRAMED_BACKGROUND_PADDING_PX * 2
+          : 0;
+      return {
+        w: evenDimension(rect.width + framedPadding, 1920),
+        h: evenDimension(rect.height + framedPadding, 1080),
+      };
+    }
+  }
+  return RESOLUTION_PX[exportForm.resolution as ExportResolution] ?? RESOLUTION_PX["1080p"];
 }
 
 function hexToRgba(
@@ -525,7 +561,7 @@ function clipsByStart<C extends Clip>(clips: readonly C[]): C[] {
  */
 export function computeGraph(state: ComputeGraphInput): Graph {
   const { tracks, exportForm } = state;
-  const px = RESOLUTION_PX[exportForm.resolution as ExportResolution] ?? RESOLUTION_PX["1080p"];
+  const px = outputPixels(state);
 
   const video: VideoNode[] = [];
 
@@ -539,7 +575,7 @@ export function computeGraph(state: ComputeGraphInput): Graph {
   for (const clip of clipsByStart(tracks.zoom)) {
     video.push(zoomPan(clip, px.w, px.h));
   }
-  const bg = backgroundNode(readEditorBackground(state));
+  const bg = exportForm.frameMode === "framed" ? backgroundNode(readEditorBackground(state)) : null;
   if (bg) video.push(bg);
   const sortedAnnotations = clipsByStart(tracks.annotations);
   const zoomSampleCache = new Map<number, ReturnType<typeof sampleZoom>>();
