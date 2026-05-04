@@ -157,7 +157,23 @@ describe("buildTimelineFromStory", () => {
     expect(v.startMs).toBe(0);
     expect(v.durationMs).toBe(12_345);
     expect(v.sourcePath).toBe(RECORDING.path);
+    expect(v.sourceSize).toEqual({ width: 1920, height: 1080 });
     expect(v.label).toBe("recording-123.mp4");
+  });
+
+  it("falls back to capture rect dimensions when recording dimensions are missing", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: { ...RECORDING, width: 0, height: 0 },
+      trajectory: {
+        ...TRAJECTORY,
+        capture_rect: { x: 0, y: 0, width: 1800, height: 1012 },
+      },
+    });
+
+    expect(out.video[0]).toMatchObject({
+      sourceSize: { width: 1800, height: 1012 },
+    });
   });
 
   it("emits a cursor clip with derived trajectory path when sidecar present", () => {

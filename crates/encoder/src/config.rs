@@ -458,8 +458,8 @@ mod tests {
             "libx264 Med must use CRF, not -b:v"
         );
         assert!(
-            args.windows(2).any(|w| w[0] == "-crf" && w[1] == "20"),
-            "Med preset → -crf 20 (screen content tune)"
+            args.windows(2).any(|w| w[0] == "-crf" && w[1] == "18"),
+            "Med preset → -crf 18 (screen content tune)"
         );
         assert!(args
             .windows(2)

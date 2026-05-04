@@ -104,6 +104,7 @@ export interface VideoClip extends ClipBase {
   trackId: "video";
   /** Absolute or `convertFileSrc`-resolvable path to the source recording. */
   sourcePath: string;
+  sourceSize?: { width: number; height: number };
   /** Optional transition from this clip into the next video clip. */
   outgoingTransition?: TransitionSpec;
 }

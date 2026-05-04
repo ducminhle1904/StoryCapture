@@ -339,6 +339,20 @@ function evenDimension(n: number, fallback: number): number {
   return Math.max(16, even);
 }
 
+function firstSourceDimensions(tracks: TimelineSlice["tracks"]): { w: number; h: number } | null {
+  const source = tracks.video
+    .filter((clip) => clip.sourcePath)
+    .reduce<VideoClip | null>(
+      (earliest, clip) =>
+        !earliest || clip.startMs < earliest.startMs || (clip.startMs === earliest.startMs && clip.id < earliest.id)
+          ? clip
+          : earliest,
+      null,
+    );
+  if (!source) return null;
+  return source.sourceSize ? { w: source.sourceSize.width, h: source.sourceSize.height } : null;
+}
+
 function outputPixels(state: ComputeGraphInput): { w: number; h: number } {
   const { exportForm } = state;
   if (exportForm.resolution === "custom") {
@@ -348,16 +362,19 @@ function outputPixels(state: ComputeGraphInput): { w: number; h: number } {
     };
   }
   if (exportForm.resolution === "match-source") {
+    const source = firstSourceDimensions(state.tracks);
     const rect = state._undoExtras?.captureRect;
-    if (rect && rect.width > 0 && rect.height > 0) {
+    const sourceWidth = source?.w ?? rect?.width;
+    const sourceHeight = source?.h ?? rect?.height;
+    if (sourceWidth && sourceHeight && sourceWidth > 0 && sourceHeight > 0) {
       const background = readEditorBackground(state);
       const framedPadding =
         exportForm.frameMode === "framed" && background.kind !== "transparent"
           ? FRAMED_BACKGROUND_PADDING_PX * 2
           : 0;
       return {
-        w: evenDimension(rect.width + framedPadding, 1920),
-        h: evenDimension(rect.height + framedPadding, 1080),
+        w: evenDimension(sourceWidth + framedPadding, 1920),
+        h: evenDimension(sourceHeight + framedPadding, 1080),
       };
     }
   }

@@ -48,15 +48,44 @@ pub fn target_kbps(
         HardwareEncoder::VideoToolboxH264
         | HardwareEncoder::VideoToolboxHevc
         | HardwareEncoder::NvencH264 => {
-            let b = pixel_based_kbps(output_w, output_h, fps);
-            match preset {
-                QualityPreset::Low => kbps_scaled(b, 3, 4),
-                QualityPreset::Med => b,
-                QualityPreset::High => kbps_scaled(b, 5, 4),
-                QualityPreset::Lossless => kbps_scaled(b, 3, 2),
-            }
+            scaled_screen_kbps(preset, pixel_based_kbps(output_w, output_h, fps))
         }
     }
+}
+
+/// Target bitrate for post-production screen exports when CRF undershoots.
+pub fn screen_export_target_kbps(
+    preset: QualityPreset,
+    output_w: u32,
+    output_h: u32,
+    fps: u32,
+) -> u32 {
+    scaled_screen_kbps(preset, pixel_based_kbps(output_w, output_h, fps))
+}
+
+fn scaled_screen_kbps(preset: QualityPreset, base: u32) -> u32 {
+    match preset {
+        QualityPreset::Low => kbps_scaled(base, 3, 4),
+        QualityPreset::Med => base,
+        QualityPreset::High => kbps_scaled(base, 5, 4),
+        QualityPreset::Lossless => kbps_scaled(base, 3, 2),
+    }
+}
+
+/// Pathology floor for screen exports. Falling below this means text-heavy UI
+/// is likely being under-budgeted and should be retried with bitrate control.
+pub fn screen_export_floor_kbps(
+    preset: QualityPreset,
+    output_w: u32,
+    output_h: u32,
+    fps: u32,
+) -> u32 {
+    let target = screen_export_target_kbps(preset, output_w, output_h, fps);
+    kbps_scaled(target, 1, 12).max(match preset {
+        QualityPreset::Low => 1_000,
+        QualityPreset::Med => 1_500,
+        QualityPreset::High | QualityPreset::Lossless => 2_000,
+    })
 }
 
 fn kbps_scaled(base: u32, numer: u32, denom: u32) -> u32 {
@@ -337,6 +366,46 @@ mod tests {
     fn pixel_based_1920x1080_60fps_is_20736() {
         // 60fps doubles the budget.
         assert_eq!(pixel_based_kbps(1920, 1080, 60), 20736);
+    }
+
+    #[test]
+    fn screen_export_high_1080p60_targets_screen_readability() {
+        assert_eq!(
+            screen_export_target_kbps(QualityPreset::High, 1920, 1080, 60),
+            25_920
+        );
+        assert_eq!(
+            screen_export_floor_kbps(QualityPreset::High, 1920, 1080, 60),
+            2_160
+        );
+    }
+
+    #[test]
+    fn screen_export_high_framed_match_source_floor_catches_sub_1mbps() {
+        assert_eq!(
+            screen_export_target_kbps(QualityPreset::High, 2048, 1208, 60),
+            30_923
+        );
+        assert_eq!(
+            screen_export_floor_kbps(QualityPreset::High, 2048, 1208, 60),
+            2_576
+        );
+    }
+
+    #[test]
+    fn screen_export_target_scales_with_fps_and_dimensions() {
+        assert_eq!(
+            screen_export_target_kbps(QualityPreset::Med, 1280, 720, 30),
+            4_608
+        );
+        assert_eq!(
+            screen_export_target_kbps(QualityPreset::Med, 1280, 720, 60),
+            9_216
+        );
+        assert_eq!(
+            screen_export_target_kbps(QualityPreset::Med, 3840, 2160, 60),
+            82_944
+        );
     }
 
     #[test]

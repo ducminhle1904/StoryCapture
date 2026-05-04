@@ -252,6 +252,7 @@ describe("computeGraph", () => {
             startMs: 0,
             durationMs: 1000,
             sourcePath: "/tmp/in.mp4",
+            sourceSize: { width: 1920, height: 1080 },
           },
         ],
         cursor: [],
@@ -267,6 +268,79 @@ describe("computeGraph", () => {
     expect(g.output_width).toBe(2048);
     expect(g.output_height).toBe(1208);
     expect(background).toMatchObject({ type: "background", padding_px: 64 });
+  });
+
+  it("preserves source dimensions for source-mode match-source exports", () => {
+    useEditorStore.setState({
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        resolution: "match-source",
+        frameMode: "source",
+      },
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "gradient", preset_id: "runway-dark" },
+        captureRect: { x: 0, y: 0, width: 1800, height: 1012 },
+      },
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/in.mp4",
+            sourceSize: { width: 1920, height: 1080 },
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    const g = computeGraph(useEditorStore.getState());
+
+    expect(g.output_width).toBe(1920);
+    expect(g.output_height).toBe(1080);
+    expect(g.video.some((n) => n.type === "background")).toBe(false);
+  });
+
+  it("falls back explicitly when match-source dimensions are unavailable", () => {
+    useEditorStore.setState({
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        resolution: "match-source",
+        frameMode: "framed",
+      },
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "gradient", preset_id: "runway-dark" },
+      },
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/in.mp4",
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    const g = computeGraph(useEditorStore.getState());
+
+    expect(g.output_width).toBe(1920);
+    expect(g.output_height).toBe(1080);
   });
 
   it("converts normalized zoom centers to crop-safe output pixels", () => {

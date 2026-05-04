@@ -341,6 +341,42 @@ pub(crate) fn scale_algo(spec: &OutputSpec) -> ScaleAlgo {
         .unwrap_or(ScaleAlgo::Lanczos)
 }
 
+pub(crate) fn screen_bitrate_retry_options(
+    spec: &OutputSpec,
+    width: u32,
+    height: u32,
+) -> OutputSpec {
+    let target_kbps = quality::screen_export_target_kbps(
+        export_quality_to_preset(spec.quality),
+        width,
+        height,
+        spec.fps,
+    );
+    let mut retry = spec.clone();
+    retry.encoder_options = Some(ExportEncodeOptions {
+        encoder: Some(HardwareEncoder::Libx264Software),
+        rate_control: ExportRateControl::Vbr,
+        quality_value: Some(kbps_to_mbps_ceil(target_kbps)),
+        x264_preset: Some(ExportX264Preset::Slow),
+        keyframe_interval_sec: spec
+            .encoder_options
+            .as_ref()
+            .and_then(|options| options.keyframe_interval_sec)
+            .or(Some(2)),
+        downscale_algo: scale_algo(spec),
+        audio: spec
+            .encoder_options
+            .as_ref()
+            .map(|options| options.audio.clone())
+            .unwrap_or_default(),
+    });
+    retry
+}
+
+fn kbps_to_mbps_ceil(kbps: u32) -> u32 {
+    kbps.saturating_add(999) / 1000
+}
+
 pub(crate) fn push_audio_args(args: &mut Vec<String>, spec: &OutputSpec) {
     let audio = spec
         .encoder_options
@@ -401,16 +437,10 @@ fn resolve_export_quality_args(
                 .x264_preset
                 .unwrap_or(ExportX264Preset::Slow)
                 .ffmpeg_value();
-            vec![
-                "-crf".into(),
-                value.to_string(),
-                "-preset".into(),
-                preset.into(),
-                "-tune".into(),
-                "stillimage".into(),
-                "-profile:v".into(),
-                "high".into(),
-            ]
+            match resolve_x264_rate_control(options.rate_control, value) {
+                X264RateControl::BitrateMbps(mbps) => x264_bitrate_args(mbps, preset),
+                X264RateControl::Crf(crf) => x264_crf_args(crf, preset),
+            }
         }
         HardwareEncoder::VideoToolboxH264 | HardwareEncoder::VideoToolboxHevc => vec![
             "-b:v".into(),
@@ -462,6 +492,51 @@ fn resolve_export_quality_args(
             "bitrate".into(),
         ],
     }
+}
+
+enum X264RateControl {
+    Crf(u32),
+    BitrateMbps(u32),
+}
+
+fn resolve_x264_rate_control(rate_control: ExportRateControl, value: u32) -> X264RateControl {
+    match rate_control {
+        ExportRateControl::Cbr | ExportRateControl::Vbr => X264RateControl::BitrateMbps(value),
+        ExportRateControl::Auto | ExportRateControl::Crf | ExportRateControl::Cq => {
+            X264RateControl::Crf(value)
+        }
+    }
+}
+
+fn x264_crf_args(crf: u32, preset: &str) -> Vec<String> {
+    let mut args = vec!["-crf".into(), crf.to_string()];
+    push_x264_common_args(&mut args, preset);
+    args
+}
+
+fn x264_bitrate_args(mbps: u32, preset: &str) -> Vec<String> {
+    let target_kbps = mbps.saturating_mul(1000);
+    let mut args = vec![
+        "-b:v".into(),
+        format!("{mbps}M"),
+        "-maxrate".into(),
+        format!("{}k", target_kbps.saturating_mul(3) / 2),
+        "-bufsize".into(),
+        format!("{}k", target_kbps.saturating_mul(2)),
+    ];
+    push_x264_common_args(&mut args, preset);
+    args
+}
+
+fn push_x264_common_args(args: &mut Vec<String>, preset: &str) {
+    args.extend([
+        "-preset".into(),
+        preset.into(),
+        "-tune".into(),
+        "stillimage".into(),
+        "-profile:v".into(),
+        "high".into(),
+    ]);
 }
 
 /// Fan out to N parallel encoders. Each `SidecarCommand` is invoked with

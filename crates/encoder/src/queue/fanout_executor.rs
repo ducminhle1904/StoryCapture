@@ -12,15 +12,17 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::{EncoderError, Result};
 use crate::export::resolution::{resolve_label, validate_dimensions};
+use crate::fanout::multi_encode::export_quality_to_preset;
 use crate::fanout::{
     fanout_encode, render_direct_mp4, render_intermediate, resolution_height, resolution_width,
-    ExportEncodeOptions, FanoutPlan, IntermediateProgress, OutputFormat, OutputSpec, Quality,
-    Resolution,
+    screen_bitrate_retry_options, ExportEncodeOptions, ExportRateControl, FanoutPlan,
+    IntermediateProgress, OutputFormat, OutputSpec, Quality, Resolution,
 };
 use crate::probe::{
     export_h264_software_fallback, pick_export_h264_encoder, EncoderProbe, HardwareEncoder,
 };
 use crate::progress::RenderProgress;
+use crate::quality;
 use crate::queue::job::{JobExecutor, JobOutcome};
 use crate::sidecar::SidecarCommand;
 
@@ -258,7 +260,19 @@ impl FanoutJobExecutor {
         .await;
 
         let Err(primary_error) = primary_result else {
-            return Ok(());
+            if cancel.is_cancelled() {
+                return Ok(());
+            }
+            return self
+                .retry_low_bitrate_if_needed(
+                    spec,
+                    encoder_config,
+                    graph,
+                    extra_inputs,
+                    duration_ms,
+                    job_id,
+                )
+                .await;
         };
 
         let Some(fallback) = encoder_config.fallback else {
@@ -294,7 +308,20 @@ impl FanoutJobExecutor {
         )
         .await
         {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                if cancel.is_cancelled() {
+                    return Ok(());
+                }
+                self.retry_low_bitrate_if_needed(
+                    spec,
+                    ExportEncoderConfig::new(fallback, None),
+                    graph,
+                    extra_inputs,
+                    duration_ms,
+                    job_id,
+                )
+                .await
+            }
             Err(fallback_error) => {
                 tracing::error!(
                     target: "storycapture::export",
@@ -312,6 +339,141 @@ impl FanoutJobExecutor {
             }
         }
     }
+
+    async fn retry_low_bitrate_if_needed(
+        &self,
+        spec: &OutputSpec,
+        encoder_config: ExportEncoderConfig,
+        graph: &effects::Graph,
+        extra_inputs: &[Vec<String>],
+        duration_ms: u64,
+        job_id: uuid::Uuid,
+    ) -> Result<()> {
+        if !should_retry_low_bitrate(spec, encoder_config) {
+            return Ok(());
+        }
+        let width = resolution_width(spec.resolution);
+        let height = resolution_height(spec.resolution);
+        let floor = quality::screen_export_floor_kbps(
+            export_quality_to_preset(spec.quality),
+            width,
+            height,
+            spec.fps,
+        );
+        let Some(actual_kbps) = output_bitrate_kbps(spec, duration_ms).await? else {
+            return Ok(());
+        };
+        if actual_kbps >= floor {
+            tracing::info!(
+                target: "storycapture::export",
+                %job_id,
+                output_path = %spec.output_path.display(),
+                width,
+                height,
+                fps = spec.fps,
+                quality = ?spec.quality,
+                actual_kbps,
+                floor_kbps = floor,
+                retry = false,
+                "post-production MP4 bitrate guardrail checked"
+            );
+            return Ok(());
+        }
+
+        let retry_spec = screen_bitrate_retry_options(spec, width, height);
+        let target = quality::screen_export_target_kbps(
+            export_quality_to_preset(spec.quality),
+            width,
+            height,
+            spec.fps,
+        );
+        tracing::warn!(
+            target: "storycapture::export",
+            %job_id,
+            output_path = %spec.output_path.display(),
+            width,
+            height,
+            fps = spec.fps,
+            quality = ?spec.quality,
+            actual_kbps,
+            floor_kbps = floor,
+            target_kbps = target,
+            "post-production MP4 bitrate below screen-content floor; retrying with libx264 bitrate policy"
+        );
+        render_direct_mp4(
+            graph,
+            extra_inputs,
+            &retry_spec,
+            self.sidecar.as_ref(),
+            HardwareEncoder::Libx264Software,
+            duration_ms,
+            None,
+        )
+        .await?;
+        let retry_kbps = output_bitrate_kbps(&retry_spec, duration_ms)
+            .await?
+            .ok_or_else(|| {
+                EncoderError::ProbeFailed(format!(
+                    "missing retry output metadata for {}",
+                    retry_spec.output_path.display()
+                ))
+            })?;
+        if retry_kbps < floor {
+            return Err(EncoderError::ProbeFailed(format!(
+                "post-production MP4 bitrate remained below screen-content floor after retry: actual={}kbps floor={}kbps output={}",
+                retry_kbps,
+                floor,
+                retry_spec.output_path.display()
+            )));
+        }
+        tracing::info!(
+            target: "storycapture::export",
+            %job_id,
+            output_path = %retry_spec.output_path.display(),
+            width,
+            height,
+            fps = spec.fps,
+            quality = ?spec.quality,
+            actual_kbps = retry_kbps,
+            floor_kbps = floor,
+            retry = true,
+            "post-production MP4 bitrate guardrail passed after retry"
+        );
+        Ok(())
+    }
+}
+
+async fn output_bitrate_kbps(spec: &OutputSpec, duration_ms: u64) -> Result<Option<u32>> {
+    if duration_ms == 0 {
+        return Ok(None);
+    }
+    let metadata = tokio::fs::metadata(&spec.output_path).await.map_err(|e| {
+        EncoderError::Io(format!(
+            "output metadata {}: {e}",
+            spec.output_path.display()
+        ))
+    })?;
+    let average_kbps = ((metadata.len() as u128).saturating_mul(8) / duration_ms as u128)
+        .min(u32::MAX as u128) as u32;
+    Ok(Some(average_kbps))
+}
+
+fn should_retry_low_bitrate(spec: &OutputSpec, encoder_config: ExportEncoderConfig) -> bool {
+    if spec.quality != Quality::High {
+        return false;
+    }
+    let auto_policy = spec
+        .encoder_options
+        .as_ref()
+        .map(|options| {
+            options.encoder.is_none()
+                && options.rate_control == ExportRateControl::Auto
+                && options.quality_value.is_none()
+        })
+        .unwrap_or(true);
+    auto_policy
+        && (encoder_config.primary == HardwareEncoder::Libx264Software
+            || encoder_config.fallback == Some(HardwareEncoder::Libx264Software))
 }
 
 async fn cleanup_export_temps(
@@ -363,7 +525,7 @@ fn graph_input_args(graph: &effects::Graph) -> Result<Vec<Vec<String>>> {
                         "-loop".into(),
                         "1".into(),
                         "-i".into(),
-                        path.to_string_lossy().into_owned(),
+                        normalize_graph_input_path(path),
                     ]);
                 }
                 BackgroundKind::Solid { color } => {
@@ -392,6 +554,13 @@ fn graph_input_args(graph: &effects::Graph) -> Result<Vec<Vec<String>>> {
         }
     }
     Ok(args)
+}
+
+fn normalize_graph_input_path(path: &std::path::Path) -> String {
+    let raw = path.to_string_lossy();
+    raw.strip_prefix("/@fs/")
+        .map(|rest| format!("/{rest}"))
+        .unwrap_or_else(|| raw.into_owned())
 }
 
 fn estimate_duration_ms(graph: &effects::Graph) -> u64 {
@@ -495,8 +664,10 @@ mod tests {
     use crate::{SidecarChild, SidecarCommand};
     use async_trait::async_trait;
     use effects::ast::types::{NodeId, SCHEMA_VERSION};
-    use effects::ast::Rgba;
+    use effects::ast::video::{FontChoice, TextAnim, TextBox};
+    use effects::ast::{Rgba, Vec2};
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc as StdArc, Mutex};
     use storage::RenderJobStatus;
 
@@ -531,6 +702,21 @@ mod tests {
         }
     }
 
+    struct LowBitrateThenPassSidecar {
+        calls: StdArc<Mutex<Vec<Vec<String>>>>,
+        count: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl SidecarCommand for LowBitrateThenPassSidecar {
+        async fn spawn(&self, args: Vec<String>) -> Result<SidecarChild> {
+            self.calls.lock().unwrap().push(args.clone());
+            let out = args.last().expect("output arg").to_string();
+            let call = self.count.fetch_add(1, Ordering::SeqCst);
+            spawn_sized_test_child(out, if call == 0 { 128 } else { 2_000_000 })
+        }
+    }
+
     fn spawn_test_child(out: String, fail: bool) -> Result<SidecarChild> {
         #[cfg(unix)]
         let mut cmd = {
@@ -553,6 +739,45 @@ mod tests {
             } else {
                 cmd.arg("/C").arg(format!("echo video>{out}"));
             }
+            cmd
+        };
+        use std::process::Stdio;
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| EncoderError::SpawnFailed(e.to_string()))?;
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+        Ok(SidecarChild {
+            stdin,
+            stdout,
+            stderr,
+            child,
+        })
+    }
+
+    fn spawn_sized_test_child(out: String, bytes: usize) -> Result<SidecarChild> {
+        #[cfg(unix)]
+        let mut cmd = {
+            let mut cmd = tokio::process::Command::new("sh");
+            cmd.arg("-c")
+                .arg("dd if=/dev/zero of=\"$1\" bs=1 count=0 seek=\"$2\" 2>/dev/null")
+                .arg("sh")
+                .arg(out)
+                .arg(bytes.to_string());
+            cmd
+        };
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut cmd = tokio::process::Command::new("cmd");
+            cmd.arg("/C").arg(format!(
+                "powershell -NoProfile -Command \"$f=[IO.File]::OpenWrite('{}');$f.SetLength({});$f.Close()\"",
+                out.replace('\'', "''"),
+                bytes
+            ));
             cmd
         };
         use std::process::Stdio;
@@ -634,6 +859,31 @@ mod tests {
         assert_eq!(args.len(), 1);
         assert_eq!(args[0][0..3], ["-f", "lavfi", "-i"]);
         assert!(args[0][3].contains("color=c=0x010203@1.000:s=1280x720"));
+    }
+
+    #[test]
+    fn graph_input_args_normalize_vite_fs_image_paths() {
+        let graph = effects::Graph {
+            schema_version: SCHEMA_VERSION,
+            output_width: 1280,
+            output_height: 720,
+            output_fps: 30,
+            video: vec![VideoNode::Background {
+                id: NodeId::from_bytes([2; 16]),
+                kind: BackgroundKind::Image {
+                    path: PathBuf::from("/@fs/Users/example/project/assets/cosmic/1.jpg"),
+                },
+                radius_px: 24.0,
+                shadow: None,
+                padding_px: 64,
+            }],
+            audio: vec![],
+        };
+
+        let args = graph_input_args(&graph).unwrap();
+
+        assert_eq!(args[0][0..3], ["-loop", "1", "-i"]);
+        assert_eq!(args[0][3], "/Users/example/project/assets/cosmic/1.jpg");
     }
 
     #[test]
@@ -792,5 +1042,94 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert!(calls[0].iter().any(|arg| arg == "h264_videotoolbox"));
         assert!(calls[1].iter().any(|arg| arg == "libx264"));
+    }
+
+    #[tokio::test]
+    async fn fanout_executor_retries_auto_high_low_bitrate_with_libx264_budget() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("recording.mp4");
+        tokio::fs::write(&source, b"source").await.unwrap();
+
+        let batch_id = uuid::Uuid::now_v7().to_string();
+        let graph = effects::Graph {
+            schema_version: SCHEMA_VERSION,
+            output_width: 1920,
+            output_height: 1080,
+            output_fps: 60,
+            video: vec![
+                VideoNode::Source {
+                    id: NodeId::from_bytes([1; 16]),
+                    path: source,
+                    pts_offset_ms: 0,
+                },
+                VideoNode::TextOverlay {
+                    id: NodeId::from_bytes([2; 16]),
+                    boxes: vec![TextBox {
+                        t_start_ms: 0,
+                        t_end_ms: 1000,
+                        text: "Readable UI text".into(),
+                        pos: Vec2::new(100.0, 100.0),
+                        font: FontChoice::SystemDefault,
+                        size_pt: 24.0,
+                        color: Rgba::WHITE,
+                        box_style: None,
+                        anim_in: TextAnim::None,
+                        anim_out: TextAnim::None,
+                    }],
+                },
+            ],
+            audio: vec![],
+        };
+        let graph_path = tmp.path().join(format!(".export-graph-{batch_id}.json"));
+        tokio::fs::write(&graph_path, serde_json::to_string(&graph).unwrap())
+            .await
+            .unwrap();
+
+        let output_path = tmp.path().join("demo.match-source.60.mp4");
+        let job = RenderJob {
+            id: uuid::Uuid::now_v7(),
+            story_id: "story".into(),
+            preset_id: None,
+            format: "mp4".into(),
+            resolution: "match-source".into(),
+            output_width: Some(1920),
+            output_height: Some(1080),
+            fps: 60,
+            quality: "high".into(),
+            encoder_options_json: Some(
+                serde_json::to_string(&ExportEncodeOptions::default()).unwrap(),
+            ),
+            status: RenderJobStatus::Running,
+            progress_pct: 0.0,
+            started_at: None,
+            completed_at: None,
+            error: None,
+            priority: 0,
+            output_path: Some(output_path.clone()),
+            batch_id: Some(batch_id),
+            created_at: 0,
+        };
+        let calls = StdArc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let executor = FanoutJobExecutor::new(
+            Arc::new(LowBitrateThenPassSidecar {
+                calls: calls.clone(),
+                count: AtomicUsize::new(0),
+            }),
+            ExportEncoderConfig::software_default(),
+        );
+        let (tx, _rx) = mpsc::channel(8);
+
+        let outcome = executor
+            .execute(job, tx, CancellationToken::new())
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, JobOutcome::Completed { .. }));
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        let retry = calls[1].join(" ");
+        assert!(retry.contains("-c:v libx264"), "{retry}");
+        assert!(retry.contains("-b:v 26M"), "{retry}");
+        assert!(!retry.contains("-crf"), "{retry}");
     }
 }

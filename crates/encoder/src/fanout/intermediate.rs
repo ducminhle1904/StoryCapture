@@ -478,6 +478,33 @@ mod tests {
     }
 
     #[test]
+    fn direct_mp4_libx264_bitrate_options_use_vbr_budget() {
+        let mut spec = direct_mp4_spec();
+        spec.encoder_options = Some(crate::fanout::ExportEncodeOptions {
+            encoder: Some(HardwareEncoder::Libx264Software),
+            rate_control: crate::fanout::ExportRateControl::Vbr,
+            quality_value: Some(26),
+            x264_preset: Some(crate::fanout::ExportX264Preset::Slow),
+            keyframe_interval_sec: Some(2),
+            downscale_algo: crate::filters::ScaleAlgo::Lanczos,
+            audio: crate::fanout::ExportAudioOptions::default(),
+        });
+
+        let args = build_direct_mp4_args(
+            "[0:v]null[out_v]".into(),
+            &[vec!["-i".into(), "/tmp/in.mp4".into()]],
+            &spec,
+            HardwareEncoder::Libx264Software,
+            60_000,
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("-b:v 26M"), "{joined}");
+        assert!(joined.contains("-maxrate 39000k"), "{joined}");
+        assert!(joined.contains("-bufsize 52000k"), "{joined}");
+        assert!(!joined.contains("-crf"), "{joined}");
+    }
+
+    #[test]
     fn duration_guard_allows_small_tolerance() {
         assert_eq!(duration_guard_ms(38_000), 43_000);
         assert_eq!(duration_guard_ms(100_000), 110_000);

@@ -93,6 +93,29 @@ const ACTION_FOCUS_HIGHLIGHT = {
   },
 } as const;
 
+function positiveDimension(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : null;
+}
+
+function sourceSize(input: BuildTimelineInput): VideoClip["sourceSize"] {
+  const recordingWidth = positiveDimension(input.recording.width);
+  const recordingHeight = positiveDimension(input.recording.height);
+  if (recordingWidth && recordingHeight) {
+    return { width: recordingWidth, height: recordingHeight };
+  }
+
+  const rect =
+    input.actions?.capture_rect ??
+    input.trajectory?.capture_rect ??
+    input.stepTiming?.captureRect ??
+    null;
+  const width = positiveDimension(rect?.width);
+  const height = positiveDimension(rect?.height);
+  return width && height ? { width, height } : undefined;
+}
+
 const DEFAULT_BACKGROUND: EditorBackgroundKind = { kind: "transparent" };
 
 function hashPath(path: string): string {
@@ -620,6 +643,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const idBase = hashPath(recording.path);
 
   const durationMs = mediaDurationMs(recording, trajectory, actions);
+  const source = sourceSize(input);
 
   const baseVideo: VideoClip[] = [
     {
@@ -628,6 +652,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       startMs: 0,
       durationMs,
       sourcePath: recording.path,
+      sourceSize: source,
       label: basename(recording.path),
     },
   ];
