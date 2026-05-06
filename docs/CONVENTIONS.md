@@ -49,7 +49,7 @@ Concrete patterns actually used in the codebase. Read on demand; don't invent ne
 
 ### Rust test surface snapshot
 
-Integration test files by crate as of 2026-05-02:
+Integration test files by crate as of 2026-05-06:
 
 | Crate | Integration test files | Notes |
 |---|---:|---|

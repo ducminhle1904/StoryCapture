@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-02T00:00:00.000+07:00"
+last_updated: "2026-05-06T00:00:00.000+07:00"
 progress:
   total_phases: 25
   completed_phases: 19
@@ -14,7 +14,7 @@ progress:
 
 # State: StoryCapture
 
-**Last updated:** 2026-05-02
+**Last updated:** 2026-05-06
 
 This file is the compact live snapshot. Older long-form context lives in
 per-phase summaries under `.planning/phases/`, quick task summaries under
@@ -47,21 +47,27 @@ per-phase summaries under `.planning/phases/`, quick task summaries under
   work added accurate `.steps.json` timing sidecars, low-confidence partial
   timing flushes, actionable post-production review fix-list items, and pruning
   for stale polish entries.
+- Export hardening after 2026-05-03 added the export backend boundary,
+  interrupted-render cancellation, stabilized render progress, match-source
+  dimension hardening, direct MP4 color/fps fixes, and highlight overlay
+  preprocessing. Remaining Phase 21 work is operator UAT, not an obvious source
+  gap.
 
 ## Latest Shipped Highlights
 
 - **Desktop IPC:** `apps/desktop/src-tauri/src/ipc_spec.rs` exports 28 IPC
-  modules, 122 commands, and 145 Specta types. Newer surfaces include
-  `actions`, `trajectory`, and `frontend_log`.
+  modules, 124 registered commands, and 150 Specta `.typ::<T>()`
+  registrations. Generated `packages/shared-types/src/ipc.ts` currently emits
+  124 async wrappers and 161 exported type aliases.
 - **Recording sidecars:** recording runs can produce `<recording>.actions.json`,
   `<recording>.trajectory.json`, and `<recording>.steps.json`; post-production
   consumes these for cursor/zoom/callout defaults.
 - **Post-production:** latest-recording preview, typed 5-track Clip union,
-  computeGraph → Effects Graph JSON, cursor sidecar preprocessing, and
+  computeGraph → Effects Graph JSON, cursor/highlight preprocessing, and
   Story → Timeline auto-population are in source.
-- **Cursor export path:** export preprocessing now renders cursor overlay JSON
-  sidecars into PNG sequences before FFmpeg receives the graph. Real E2E UAT is
-  still required before calling the flow production-verified.
+- **Export path:** preprocessing now renders cursor sidecars and highlight
+  overlays into temp PNG assets before FFmpeg receives the graph. Real E2E UAT
+  is still required before calling the flow production-verified.
 - **Editor:** UI mode writes canonical DSL back to the source buffer; polish
   controls write only after user edits, so opening a project does not create a
   default polish sidecar.
@@ -77,7 +83,8 @@ per-phase summaries under `.planning/phases/`, quick task summaries under
 - **02-08 audio curation:** committed sound library files are placeholders.
   Human curation of 20 CC0/CC-BY-4.0 assets plus listen-test is still required.
 - **02-12b / Phase 21 post-production UAT:** real record → timeline → export
-  walkthrough still needs operator execution.
+  walkthrough still needs operator execution; source fixes for export backend,
+  progress, cancellation, match-source, and color/fps are present.
 - **03-20 accounts / AI disclosure UAT:** Settings → Accounts and disclosure
   walkthrough still needs operator verification.
 - **04-10 web integration UAT:** OAuth, desktop upload, share page, invites,

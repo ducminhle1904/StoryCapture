@@ -54,7 +54,7 @@ assets/                 sound-library, fonts, icons
 - Desktop scripts: `tauri:dev` kills stale native desktop processes, rebuilds
   the Playwright sidecar SEA, then starts Tauri; `tauri:build` also rebuilds
   the sidecar first.
-- Web scripts: `dev`, `build`, `start`, `typecheck`, plus Prisma helpers
+- Web scripts: `dev`, `build`, `start`, `typecheck`, `test`, plus Prisma helpers
   (`db:migrate`, `db:push`, `db:generate`, `db:seed`).
 
 ## Trait boundaries (the key abstractions)
@@ -79,8 +79,10 @@ Other important boundaries that matter in practice:
 
 - **Entry:** `main.rs` shim → `lib.rs::run()` builds `tauri_specta::Builder`, wires plugins, installs panic hook, creates `AppState`, exports TS bindings in debug to `packages/shared-types/src/ipc.ts`.
 - **Single source of truth for IPC:** `src/ipc_spec.rs` (collect_commands! + .typ::<T>()). All types listed there auto-become TS.
-- **Commands:** module-per-feature under `src/commands/`. As of 2026-05-02,
-  `ipc_spec.rs` exports 28 IPC modules, 122 commands, and 145 Specta types:
+- **Commands:** module-per-feature under `src/commands/`. As of 2026-05-06,
+  `ipc_spec.rs` exports 28 IPC modules, 124 registered commands, and 150
+  Specta `.typ::<T>()` registrations; generated `ipc.ts` currently emits 124
+  async wrappers and 161 exported type aliases:
   `actions`, `app_settings`, `audio`, `author_snapshot`, `automation`,
   `capture`, `dryrun`, `encode`, `export`, `frontend_log`, `keys`, `lsp`,
   `nl`, `parse`, `picker`, `preset`, `projects`, `render`, `simulator`,
@@ -185,10 +187,10 @@ through `AuthorInputEvent`:
 
 ## Web companion (`apps/web`)
 
-- **Next.js 16 App Router** (Turbopack is the default bundler as of Next 16), src/app organized as `(auth)/`, `(dashboard)/`, public (`/`, `/watch/[slug]`, `/embed/[id]`, `/invite/[token]`), and `api/` for tRPC/auth/upload/oembed/analytics/cron.
+- **Next.js 16 App Router** (Turbopack is the default bundler as of Next 16), src/app organized as public/auth pages (`/`, `/sign-in`, `/watch/[slug]`, `/embed/[id]`, `/invite/[token]`), dashboard pages (`/`, `/analytics/[videoId]`, `/sync`, `/templates`, `/videos/[videoId]`, `/workspace/[workspaceId]`, `/workspace/[workspaceId]/members`, `/workspace/[workspaceId]/settings`), and `api/` for tRPC/auth/upload/oEmbed/analytics/cron/desktop auth.
 - **tRPC 11:** `src/trpc/init.ts` — protectedProcedure gates on NextAuth session. Routers in `src/trpc/routers/`: `_app`, `video`, `workspace`, `user`, `analytics`, `template`, `sync`, `health`. Superjson transformer.
 - **Prisma 6 schema (`prisma/schema.prisma`, 12 models):** Auth (`User`/`Account`/`Session`/`VerificationToken`), RBAC (`Workspace`/`WorkspaceMember`/`WorkspaceInvite`), media (`Video` with r2Key + multipart uploadId + storySource + sceneBoundaries), analytics (`ViewEvent`, `DailyVideoStats`), `Template` (9 categories), `SyncedProject` (desktop mirror).
-- **Auth:** NextAuth v5 (pinned at `5.0.0-beta.31` — no newer beta on npm dist-tags) in `src/lib/auth.ts` — GitHub + Google OAuth, Prisma adapter, database session strategy, auto-creates personal workspace on first sign-in.
+- **Auth:** NextAuth v5 beta pinned at `5.0.0-beta.31` in `apps/web/package.json` and wired in `src/lib/auth.ts` — GitHub + Google OAuth, Prisma adapter, database session strategy, auto-creates personal workspace on first sign-in.
 - **R2/S3:** `src/lib/r2.ts` — Cloudflare R2 via AWS SDK v3. Multipart via `UploadPartCommand` presigned URLs (1h expiry); `GetObjectCommand` cached 55min; PUT uses SSE-S3.
 - **HTTP/API surface:** beyond tRPC, route handlers cover desktop token minting, SSE JWT minting, analytics session bootstrap, multipart upload initiate/presign/complete, oEmbed, and analytics cron aggregation.
 - **GeoIP + deploy config:** `@maxmind/geoip2-node` runs as a server external package against `public/geolite2/GeoLite2-Country.mmdb`; `next.config.ts` defines security headers and R2 image patterns; `vercel.json` schedules analytics aggregation.
@@ -196,7 +198,7 @@ through `AuthorInputEvent`:
 
 ## End-to-end recording flow
 
-`.story` → Parse (`story-parser`) → Executor launches sidecar + Chromium → BrowserDriver runs verbs, SmartSelector resolves targets against `.story.targets.json` (self-healing promotes fallbacks atomically) → action/timing sidecars (`.actions.json`, `.steps.json`) written for recording runs → CaptureBackend streams frames to byte-bounded queue (256 MiB default) + best-effort cursor trajectory sidecar (`.trajectory.json`) → audio via cpal+ringbuf → EncodePipeline feeds FFmpeg sidecar stdin (recorder HW encoder chosen by `probe_encoders()`) → MP4 written to project folder → post-production builds typed timeline clips from story/polish/sidecars → computeGraph emits Effects Graph JSON → FfmpegEmit produces filter_complex for post-production render → RenderQueueActor orchestrates export fanout (MP4/WebM/GIF × resolution/quality; post-production MP4 prefers H.264 hardware encode with libx264 fallback, while filters remain CPU-bound) → optional upload to R2 via multipart presigned URLs → sync push to web workspace.
+`.story` → Parse (`story-parser`) → Executor launches sidecar + Chromium → BrowserDriver runs verbs, SmartSelector resolves targets against `.story.targets.json` (self-healing promotes fallbacks atomically) → action/timing sidecars (`.actions.json`, `.steps.json`) written for recording runs → CaptureBackend streams frames to byte-bounded queue (256 MiB default) + best-effort cursor trajectory sidecar (`.trajectory.json`) → audio via cpal+ringbuf → EncodePipeline feeds FFmpeg sidecar stdin (recorder HW encoder chosen by `probe_encoders()`) → MP4 written to project folder → post-production builds typed timeline clips from story/polish/sidecars → computeGraph emits Effects Graph JSON → FfmpegEmit produces filter_complex for post-production render → RenderQueueActor orchestrates export fanout (MP4/WebM/GIF × resolution/quality; post-production MP4 auto prefers `libx264` on macOS and NVENC → QSV → AMF on Windows when available, while filters remain CPU-bound) → optional upload to R2 via multipart presigned URLs → sync push to web workspace.
 
 ## Key feature gates (Cargo)
 
@@ -271,7 +273,7 @@ Web companion:
 | next | 16.2.4 (Turbopack default) |
 | React / React-DOM | 19.2.5 |
 | @prisma/client / prisma | 6.x (Prisma 7 deferred — `@auth/prisma-adapter` peerDeps still list `>=6` only) |
-| next-auth | 5.0.0-beta.31 (no newer beta on npm dist-tags) |
+| next-auth | 5.0.0-beta.31 |
 | @auth/prisma-adapter | 2.11 |
 | @trpc/* | 11.16 |
 | @tanstack/react-query | 5.99 |

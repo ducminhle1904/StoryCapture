@@ -137,7 +137,8 @@ Browser session sync:
 
 Recording sidecars:
   <recording>.actions.json     semantic action timeline from automation
-  <recording>.trajectory.json  best-effort OS cursor samples at ~60 Hz
+  <recording>.trajectory.json  best-effort OS cursor samples at ~60 Hz,
+                                including click=true samples when available
   <recording>.steps.json       recording-relative step timing and target metadata
 
 Post-production:
@@ -182,7 +183,13 @@ the FFV1 intermediate and render directly from `filter_complex` to MP4 with a fi
 image cadence and make framed exports look like 30fps despite 60fps output
 metadata. FFmpeg filters such as `zoompan`, `scale`, overlays, cursor PNG
 sequence compositing, and `drawtext` remain CPU-bound unless a future export path
-explicitly moves work to hardware filters.
+explicitly moves work to hardware filters. Export preprocessing now turns
+`.trajectory.json` / `.actions.json` cursor sidecars and highlight overlay specs
+into Rust-owned temp PNG assets before FFmpeg receives the graph, persists
+`.export-graph-{batch_id}.json`, then enqueues one render job per batch output.
+The hidden `STORYCAPTURE_POSTPROD_EXPORT_BACKEND` boundary can select the future
+GPU compositor path, but that direct MP4 compositor is not implemented; the
+FFmpeg filter graph is still the production backend.
 
 Rounded-frame export tradeoff (2026-05-03): FFmpeg export intentionally treats
 `Background.radius_px` as a no-op in
@@ -201,6 +208,10 @@ When optimizing export performance, inspect
 `crates/effects/src/background/rounded_frame.rs`,
 `crates/encoder/src/queue/fanout_executor.rs`,
 `crates/encoder/src/fanout/intermediate.rs`, and
+`crates/encoder/src/fanout/multi_encode.rs`,
+`crates/encoder/src/quality.rs`,
+`apps/desktop/src-tauri/src/commands/render.rs`,
+`apps/desktop/src/features/post-production/hooks/use-render-progress.ts`, and
 `apps/desktop/src-tauri/src/commands/projects.rs::install_project_render_queue`.
 
 ## Storage and project model
@@ -224,12 +235,15 @@ surfaces like content hashing and frame-drop callbacks used across crates.
 
 - **5-track timeline:** Video | Cursor | Zoom | Sound | Annotations.
 - **VideoNode variants:** `Source`, `ZoomPan`, `Background`,
-  `CursorOverlay`, `RippleOverlay`, `TextOverlay`, `Transition`.
+  `CursorOverlay`, `RippleOverlay`, `HighlightOverlay`, `TextOverlay`,
+  `Transition`.
 - **AudioNode variants:** `AudioSource`, `Volume`, `Delay`, `Sidechain`,
   `Amix`, `Alimiter`.
 - **CursorOverlay input:** final export consumes rendered PNG sequences.
   Export pre-processes `.trajectory.json` and `.actions.json` sidecars into a
   Rust-owned temp PNG sequence before FFmpeg receives the graph.
+- **HighlightOverlay input:** final export pre-renders highlight overlay specs
+  into temp PNG assets so FFmpeg can composite them like other image overlays.
 - **Math primitives** (`effects/src/math/`): `min_jerk` (cursor smoothing), `spring` (zoom pan), `perlin` (natural jitter), `ease`, `lowpass`.
 - **Cursor** (`effects/src/cursor/`): trajectory, compositor, 5 skins, click ripple, PNG sequence loading.
 - **Auto-zoom** (`effects/src/zoom/`): click-tracking ken-burns; 3 presets (Dynamic/Calm/Subtle).

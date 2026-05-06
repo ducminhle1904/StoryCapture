@@ -1,8 +1,8 @@
 # Post-Production E2E Roadmap
 
 **Drafted:** 2026-04-28
-**Refreshed:** 2026-05-02
-**Context:** Phase 18 + 19 shipped real-video preview, computeGraph plumbing, typed Clip union, trajectory recording, and Story → Timeline auto-population. Follow-up quick work on 2026-05-01 added hybrid Editor UI / Code mode, polish sidecars, Record & Polish, step timing sidecars, review fix-list surfacing, and extra design-system primitives. End-to-end still needs operator verification and CI coverage.
+**Refreshed:** 2026-05-06
+**Context:** Phase 18 + 19 shipped real-video preview, computeGraph plumbing, typed Clip union, trajectory recording, and Story → Timeline auto-population. Follow-up quick work added hybrid Editor UI / Code mode, polish sidecars, Record & Polish, step timing sidecars, review fix-list surfacing, extra design-system primitives, and May 4-6 export hardening. End-to-end still needs operator verification and CI coverage.
 
 ## What's done
 
@@ -17,12 +17,13 @@
 | Quick 260501-g26 | Hybrid Editor UI mode + polish sidecar + Record & Polish | ✅ shipped |
 | Quick 260501-ku1/l88 | Accurate record timing sidecars + review fix-list | ✅ shipped |
 | Quick 260501-dse | Design-system primitive enhancements | ✅ shipped |
+| May 4-6 export hardening | Backend boundary, interrupted-render cancellation, progress stabilization, match-source hardening, direct MP4 color/fps fixes, highlight preprocessing | ✅ source present |
 
 ## Critical gaps to ship E2E
 
 | Phase | Title | Blocker level | Effort | Depends on |
 |---|---|---|---|---|
-| **21** | E2E export verification | 🔴 BLOCKER | 1-2h + operator | 20 source present |
+| **21** | E2E export verification | 🔴 BLOCKER | 1-2h + operator | source fixes present; operator UAT needed |
 | **24** | E2E integration test in CI | 🟡 quality | 2-3h | 21 |
 | **22** | Cinematic editing UI | 🟡 UX gap | 8-12h | can proceed in parallel |
 | **23** | Click events + auto-zoom | 🟡 partly shipped | remaining polish TBD | actions/timing sidecars present |

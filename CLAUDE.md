@@ -14,14 +14,15 @@ StoryCapture turns a written `.story` script into a polished demo video.
 - Web companion: Next.js 16 + tRPC 11 + Prisma 6 + R2/S3 for sharing,
   workspaces, analytics, and desktop sync.
 
-## Current Repo Reality (refreshed 2026-05-02)
+## Current Repo Reality (refreshed 2026-05-06)
 
 - Desktop routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`,
   `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`.
 - Tauri IPC surface is large and actively evolving: 28 exported IPC modules,
-  122 commands, and 145 Specta types as of this refresh. Single source of
-  truth: `apps/desktop/src-tauri/src/ipc_spec.rs` via tauri-specta; generated
-  TS lands in `packages/shared-types/src/ipc.ts` (never hand-edited).
+  124 registered commands, and 150 Specta `.typ::<T>()` registrations as of
+  this refresh. Generated TS currently emits 124 async wrappers and 161
+  exported type aliases in `packages/shared-types/src/ipc.ts` (never
+  hand-edited).
 - Domain crates active and non-trivial: `story-parser`, `automation`,
   `capture`, `encoder`, `effects`, `storage`, `intelligence`, `util`.
   No `crates/gpu_scale/` yet (Phase 8 still planned).
@@ -35,14 +36,12 @@ StoryCapture turns a written `.story` script into a polished demo video.
 - Post-production is now real-recording backed: latest recording preview,
   typed 5-track Clip union, computeGraph → Effects AST JSON, Story → Timeline
   auto-population, and recording sidecars (`.actions.json`, `.trajectory.json`,
-  `.steps.json`) feed cursor/zoom/callout defaults.
-- Export reality: post-production MP4 export now probes FFmpeg encoders and
-  prefers H.264 hardware encode (`h264_videotoolbox` on macOS, NVENC/QSV/AMF
-  on Windows) with `libx264` fallback via `RenderQueueActor`. FFmpeg effects
-  filters remain CPU-bound. Export rounded-frame masking is intentionally a
-  fast no-op for now because the old FFmpeg `geq` corner mask made a 38s
-  1080p60 export take ~5m; preview can still show rounded framing, but final
-  export will be square-corner until a precomputed mask or GPU compositor lands.
+  `.steps.json`) feed cursor/zoom/callout/highlight defaults.
+- Export reality: post-production MP4 auto export prefers `libx264` on macOS
+  for screen-content quality and NVENC → QSV → AMF on Windows when available;
+  explicit hardware choices still exist. FFmpeg effects filters remain
+  CPU-bound; rounded-frame masking is intentionally a fast export no-op for
+  now. The GPU compositor boundary exists but is not the production backend.
   Details live in `docs/DOMAIN.md`.
 - Editor has hybrid UI / Code modes. UI mode edits canonical DSL blocks and
   optional `<story>.polish.json`; `Record & Polish` records, then opens
@@ -54,9 +53,12 @@ StoryCapture turns a written `.story` script into a polished demo video.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
   15 `Sc*` primitive families. Tailwind v4 `@theme` block is canonical; inspect
   `packages/ui/src/claude-design/primitives/` instead of trusting stale counts.
-- Web companion runs Next.js 16 + tRPC 11 + Prisma 6, NextAuth v5
-  (5.0.0-beta.31), GitHub + Google OAuth, R2 multipart upload, Resend
-  invites, Vercel cron analytics aggregation.
+- Current manifest pins: desktop Tauri CLI `^2.10.1`, React `^19.2.5`, Vite
+  `^8.0.9`, Tailwind `^4.2.4`; web Next `^16.2.4`, tRPC `^11.16.0`, Prisma
+  `^6.0.0`, NextAuth `5.0.0-beta.31`.
+- Web companion has public/watch/embed/invite pages, dashboard workspace/video
+  surfaces, tRPC routers, NextAuth v5 GitHub + Google OAuth, R2 multipart
+  upload, Resend invites, Vercel cron analytics aggregation, and desktop sync.
 - Live project status is `.planning/STATE.md` plus
   `.planning/POST-PROD-ROADMAP.md` for the current post-production push. Treat
   `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and old roadmap tables
