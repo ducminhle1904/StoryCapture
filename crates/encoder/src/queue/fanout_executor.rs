@@ -11,6 +11,10 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{EncoderError, Result};
+use crate::export::compositor::{
+    choose_export_render_backend, render_compositor_direct_mp4, CompositorExportRequest,
+    ExportRenderBackend, SourceInput,
+};
 use crate::export::resolution::{resolve_label, validate_dimensions};
 use crate::fanout::multi_encode::export_quality_to_preset;
 use crate::fanout::{
@@ -242,6 +246,54 @@ impl FanoutJobExecutor {
         progress_tx: mpsc::Sender<RenderProgress>,
         cancel: &CancellationToken,
     ) -> Result<()> {
+        let backend_decision = choose_export_render_backend(graph);
+        log_export_backend_decision(
+            job_id,
+            graph,
+            spec,
+            encoder_config.primary,
+            &backend_decision,
+        );
+        if backend_decision.backend == ExportRenderBackend::GpuCompositor {
+            let compositor_result = render_compositor_direct_mp4(
+                CompositorExportRequest {
+                    graph: graph.clone(),
+                    output_width: resolution_width(spec.resolution),
+                    output_height: resolution_height(spec.resolution),
+                    fps: spec.fps,
+                    duration_ms,
+                    source_inputs: source_inputs_from_graph(graph),
+                    output_path: spec.output_path.clone(),
+                    encoder: encoder_config.primary,
+                    encode_options: spec.encoder_options.clone().unwrap_or_default(),
+                },
+                self.sidecar.as_ref(),
+                Some(IntermediateProgress {
+                    job_id,
+                    tx: progress_tx.clone(),
+                    start_pct: 1.0,
+                    end_pct: 70.0,
+                }),
+                cancel.clone(),
+            )
+            .await;
+            match compositor_result {
+                Ok(()) => return Ok(()),
+                Err(error) if !cancel.is_cancelled() => {
+                    let _ = tokio::fs::remove_file(&spec.output_path).await;
+                    tracing::warn!(
+                        target: "storycapture::export",
+                        %job_id,
+                        output_path = %spec.output_path.display(),
+                        error = %error,
+                        fallback_backend = ExportRenderBackend::FfmpegFilterGraph.as_log_value(),
+                        "gpu compositor export failed before commit; retrying with FFmpeg filter graph"
+                    );
+                }
+                Err(_) => return Ok(()),
+            }
+        }
+
         let primary = encoder_config.primary;
         let primary_result = render_direct_mp4(
             graph,
@@ -441,6 +493,59 @@ impl FanoutJobExecutor {
         );
         Ok(())
     }
+}
+
+fn source_inputs_from_graph(graph: &effects::Graph) -> Vec<SourceInput> {
+    graph
+        .video
+        .iter()
+        .filter_map(|node| match node {
+            VideoNode::Source {
+                path,
+                pts_offset_ms,
+                ..
+            } => Some(SourceInput {
+                path: path.clone(),
+                pts_offset_ms: *pts_offset_ms,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+fn log_export_backend_decision(
+    job_id: uuid::Uuid,
+    graph: &effects::Graph,
+    spec: &OutputSpec,
+    h264_encoder: HardwareEncoder,
+    decision: &crate::export::compositor::ExportBackendDecision,
+) {
+    let unsupported_features = decision
+        .unsupported_features
+        .iter()
+        .map(|feature| feature.as_log_value())
+        .collect::<Vec<_>>()
+        .join(",");
+    tracing::info!(
+        target: "storycapture::export",
+        %job_id,
+        selected_export_backend = decision.backend.as_log_value(),
+        export_backend_preference = decision.preference.as_log_value(),
+        reason = %decision.reason,
+        unsupported_features,
+        format = ?spec.format,
+        output_path = %spec.output_path.display(),
+        output_width = resolution_width(spec.resolution),
+        output_height = resolution_height(spec.resolution),
+        graph_output_width = graph.output_width,
+        graph_output_height = graph.output_height,
+        fps = spec.fps,
+        graph_fps = graph.output_fps,
+        video_nodes = graph.video.len(),
+        audio_nodes = graph.audio.len(),
+        h264_encoder = h264_encoder.ffmpeg_codec_name(),
+        "selected post-production export backend"
+    );
 }
 
 async fn output_bitrate_kbps(spec: &OutputSpec, duration_ms: u64) -> Result<Option<u32>> {
@@ -971,6 +1076,74 @@ mod tests {
 
         assert!(matches!(outcome, JobOutcome::Completed { .. }));
         assert!(output_path.exists());
+    }
+
+    #[tokio::test]
+    async fn fanout_executor_default_mp4_uses_ffmpeg_filter_graph() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("recording.mp4");
+        tokio::fs::write(&source, b"source").await.unwrap();
+
+        let batch_id = uuid::Uuid::now_v7().to_string();
+        let graph = effects::Graph {
+            schema_version: SCHEMA_VERSION,
+            output_width: 1280,
+            output_height: 720,
+            output_fps: 30,
+            video: vec![VideoNode::Source {
+                id: NodeId::from_bytes([1; 16]),
+                path: source,
+                pts_offset_ms: 0,
+            }],
+            audio: vec![],
+        };
+        let graph_path = tmp.path().join(format!(".export-graph-{batch_id}.json"));
+        tokio::fs::write(&graph_path, serde_json::to_string(&graph).unwrap())
+            .await
+            .unwrap();
+
+        let output_path = tmp.path().join("demo.720p.30.mp4");
+        let job = RenderJob {
+            id: uuid::Uuid::now_v7(),
+            story_id: "story".into(),
+            preset_id: None,
+            format: "mp4".into(),
+            resolution: "720p".into(),
+            output_width: Some(1280),
+            output_height: Some(720),
+            fps: 30,
+            quality: "med".into(),
+            encoder_options_json: None,
+            status: RenderJobStatus::Running,
+            progress_pct: 0.0,
+            started_at: None,
+            completed_at: None,
+            error: None,
+            priority: 0,
+            output_path: Some(output_path.clone()),
+            batch_id: Some(batch_id),
+            created_at: 0,
+        };
+        let calls = StdArc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let executor = FanoutJobExecutor::new(
+            Arc::new(FailsHardwareSidecar {
+                calls: calls.clone(),
+            }),
+            ExportEncoderConfig::software_default(),
+        );
+        let (tx, _rx) = mpsc::channel(8);
+
+        let outcome = executor
+            .execute(job, tx, CancellationToken::new())
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, JobOutcome::Completed { .. }));
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        let joined = calls[0].join(" ");
+        assert!(joined.contains("-filter_complex"), "{joined}");
+        assert!(joined.contains("-c:v libx264"), "{joined}");
     }
 
     #[tokio::test]

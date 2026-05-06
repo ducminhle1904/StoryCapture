@@ -8,6 +8,7 @@
 //! The PSNR regression harness lives in [`psnr`].
 
 pub mod batch;
+pub mod compositor;
 pub mod error;
 pub mod format;
 pub mod orchestrator;
@@ -17,6 +18,10 @@ pub mod reference_graph;
 pub mod resolution;
 
 pub use batch::{build_batch, validate, BatchExportRequest, BatchOutputRequest, OutputSpec};
+pub use compositor::{
+    choose_export_render_backend, CompositorExportRequest, CompositorFrame, CompositorGraphFeature,
+    CompositorPixelFormat, ExportRenderBackend, SourceInput,
+};
 pub use error::ExportError;
 pub use format::{codec_for, ContainerExt, OutputFormat};
 pub use orchestrator::{export_run, ExportRequest, ExportResult};
