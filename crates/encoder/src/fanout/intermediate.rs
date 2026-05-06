@@ -151,14 +151,8 @@ pub fn build_direct_mp4_args(
     duration_ms: u64,
 ) -> Vec<String> {
     let has_audio_output = filter_complex.contains("[out_a]");
-    let filter_complex = format!(
-        "{filter_complex};[out_v]scale={}:{}:flags={},fps={},setpts=N/({}*TB)[final_v]",
-        resolution_width(spec.resolution),
-        resolution_height(spec.resolution),
-        scale_algo(spec).ffmpeg_flag(),
-        spec.fps,
-        spec.fps
-    );
+    let final_video_filter = build_direct_mp4_final_video_filter(spec);
+    let filter_complex = format!("{filter_complex};[out_v]{final_video_filter}[final_v]");
     let mut args: Vec<String> = vec!["-y".into(), "-hide_banner".into()];
     for ins in extra_inputs {
         for a in ins {
@@ -192,6 +186,23 @@ pub fn build_direct_mp4_args(
     push_duration_and_progress_args(&mut args, duration_ms);
     args.push(spec.output_path.to_string_lossy().into_owned());
     args
+}
+
+fn build_direct_mp4_final_video_filter(spec: &OutputSpec) -> String {
+    [
+        format!(
+            "scale={}:{}:flags={}:in_range=tv:out_range=tv:in_color_matrix=bt709:out_color_matrix=bt709",
+            resolution_width(spec.resolution),
+            resolution_height(spec.resolution),
+            scale_algo(spec).ffmpeg_flag(),
+        ),
+        format!("fps={}", spec.fps),
+        format!("setpts=N/({}*TB)", spec.fps),
+        "setsar=1".into(),
+        "setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709".into(),
+        "format=yuv420p".into(),
+    ]
+    .join(",")
 }
 
 fn push_duration_and_progress_args(args: &mut Vec<String>, duration_ms: u64) {
@@ -432,8 +443,9 @@ mod tests {
         );
         let joined = args.join(" ");
         assert!(joined.contains(
-            "[0:v]null[out_v];[out_v]scale=1920:1080:flags=lanczos,fps=60,setpts=N/(60*TB)[final_v]"
+            "[0:v]null[out_v];[out_v]scale=1920:1080:flags=lanczos:in_range=tv:out_range=tv:in_color_matrix=bt709:out_color_matrix=bt709,fps=60,setpts=N/(60*TB),setsar=1,setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709,format=yuv420p[final_v]"
         ));
+        assert!(!joined.contains("eq=contrast=1.02:saturation=1.10"));
         assert!(joined.contains("-map [final_v]"));
         assert!(joined.contains("-fps_mode cfr"));
         assert!(joined.contains("-c:v libx264"));
@@ -467,7 +479,10 @@ mod tests {
             60_000,
         );
         let joined = args.join(" ");
-        assert!(joined.contains("scale=1920:1080:flags=bicubic,fps=60,setpts=N/(60*TB)"));
+        assert!(joined.contains(
+            "scale=1920:1080:flags=bicubic:in_range=tv:out_range=tv:in_color_matrix=bt709:out_color_matrix=bt709,fps=60,setpts=N/(60*TB)"
+        ));
+        assert!(!joined.contains("eq=contrast=1.02:saturation=1.10"));
         assert!(joined.contains("-crf 17"), "{joined}");
         assert!(joined.contains("-preset slow"), "{joined}");
         assert!(joined.contains("-g 120"), "{joined}");
