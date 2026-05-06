@@ -175,12 +175,12 @@ pub fn mark_failed(conn: &Connection, id: Uuid, error: &str) -> Result<(), Stora
     Ok(())
 }
 
-/// Cancel only if currently pending or running.
+/// Cancel only if currently pending, running, or interrupted.
 pub fn cancel(conn: &Connection, id: Uuid) -> Result<(), StorageError> {
     let now = now_millis();
     let n = conn.execute(
         "UPDATE render_jobs SET status='cancelled', completed_at=?1 \
-         WHERE id=?2 AND status IN ('pending','running')",
+         WHERE id=?2 AND status IN ('pending','running','interrupted')",
         params![now, id.to_string()],
     )?;
     if n == 0 {
@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_transitions_only_pending_or_running() {
+    fn cancel_transitions_only_cancellable_jobs() {
         let c = conn();
         let id = enqueue(&c, &new_job("s1", 0)).unwrap();
         cancel(&c, id).unwrap();
@@ -294,8 +294,29 @@ mod tests {
             get(&c, id).unwrap().unwrap().status,
             RenderJobStatus::Cancelled
         );
-        // Second cancel fails (not in pending/running).
+        // Second cancel fails (not in pending/running/interrupted).
         assert!(cancel(&c, id).is_err());
+    }
+
+    #[test]
+    fn cancel_clears_interrupted_jobs_from_active_list() {
+        let c = conn();
+        let id = enqueue(&c, &new_job("s1", 0)).unwrap();
+        mark_running(&c, id).unwrap();
+        on_startup_mark_orphans(&c).unwrap();
+
+        assert_eq!(
+            get(&c, id).unwrap().unwrap().status,
+            RenderJobStatus::Interrupted
+        );
+        assert_eq!(list_active(&c, "s1").unwrap().len(), 1);
+
+        cancel(&c, id).unwrap();
+
+        let job = get(&c, id).unwrap().unwrap();
+        assert_eq!(job.status, RenderJobStatus::Cancelled);
+        assert!(job.completed_at.is_some());
+        assert!(list_active(&c, "s1").unwrap().is_empty());
     }
 
     #[test]
