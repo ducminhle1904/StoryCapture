@@ -2,37 +2,47 @@
  * Subscribe to render-progress ticks and mirror them into local state.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 import type { RenderProgress } from "@/ipc/render";
 import { frontendLog } from "@/lib/log";
 import { useEditorStore } from "../state/store";
 
-export function useRenderProgress(): Record<string, RenderProgress> {
-  const [map, setMap] = useState<Record<string, RenderProgress>>({});
-  const applyProgress = useEditorStore((s) => s.applyProgress);
+let activeChannel: Channel<RenderProgress> | null = null;
+let streamPromise: Promise<void> | null = null;
 
-  useEffect(() => {
-    const channel = new Channel<RenderProgress>();
-    channel.onmessage = (p: RenderProgress) => {
-      setMap((prev) => ({ ...prev, [p.job_id]: p }));
-      applyProgress(p);
-    };
-    // Fire-and-forget subscription.
-    void invoke<void>("stream_render_progress", { channel }).catch((err) => {
+function ensureRenderProgressStream() {
+  if (streamPromise) return;
+
+  const channel = new Channel<RenderProgress>();
+  activeChannel = channel;
+  channel.onmessage = (p: RenderProgress) => {
+    useEditorStore.getState().applyProgress(p);
+  };
+
+  streamPromise = invoke<void>("stream_render_progress", { channel })
+    .catch((err) => {
       frontendLog.warn(
         "post-production/useRenderProgress",
         "stream_render_progress IPC subscription failed",
         { error: err },
       );
+    })
+    .finally(() => {
+      if (activeChannel === channel) {
+        activeChannel = null;
+        streamPromise = null;
+      }
     });
+}
 
-    return () => {
-      // Drop the receiver on unmount.
-      channel.onmessage = () => {};
-    };
-  }, [applyProgress]);
+export function useRenderProgress(): Record<string, RenderProgress> {
+  const progressByJobId = useEditorStore((s) => s.progressByJobId);
 
-  return map;
+  useEffect(() => {
+    ensureRenderProgressStream();
+  }, []);
+
+  return progressByJobId;
 }

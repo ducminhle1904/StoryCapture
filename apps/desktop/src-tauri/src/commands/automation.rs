@@ -1293,12 +1293,28 @@ async fn spawn_playwright_sidecar(app: &AppHandle) -> Result<PlaywrightSidecarDr
             use tokio::io::{AsyncBufReadExt, BufReader};
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                tracing::warn!(target: "storycapture::automation", sidecar_stderr = %line);
+                log_sidecar_stderr(&line);
             }
         });
     }
     PlaywrightSidecarDriver::from_child(child)
         .map_err(|e| AppError::Automation(format!("sidecar wrap: {e}")))
+}
+
+fn log_sidecar_stderr(line: &str) {
+    if sidecar_stderr_is_warning(line) {
+        tracing::warn!(target: "storycapture::automation", sidecar_stderr = %line);
+    } else {
+        tracing::info!(target: "storycapture::automation", sidecar_stderr = %line);
+    }
+}
+
+fn sidecar_stderr_is_warning(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.contains("warn")
+        || lower.contains("error")
+        || lower.contains("failed")
+        || lower.contains("placeholder")
 }
 
 /// Arguments for the editor-surface viewport switcher.
@@ -2120,6 +2136,23 @@ mod tests {
         // Clear the stash.
         playwright_pid_stash().set(None);
         assert!(playwright_pid_stash().get().is_none());
+    }
+
+    #[test]
+    fn sidecar_stderr_classifies_preview_diagnostics_as_info() {
+        assert!(!sidecar_stderr_is_warning(
+            "[sc-sidecar] preview sharp frame emitted streamId=author-1"
+        ));
+    }
+
+    #[test]
+    fn sidecar_stderr_keeps_failures_as_warnings() {
+        assert!(sidecar_stderr_is_warning(
+            "[sc-sidecar] dispatchInput click FAILED: target closed"
+        ));
+        assert!(sidecar_stderr_is_warning(
+            "[playwright-sidecar] warn: stopScreencast on close"
+        ));
     }
 
     #[test]
