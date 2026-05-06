@@ -237,8 +237,11 @@ fn pick_preferred(available: &[HardwareEncoder]) -> HardwareEncoder {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExportPlatform {
+    #[cfg(any(target_os = "macos", test))]
     Macos,
+    #[cfg(any(target_os = "windows", test))]
     Windows,
+    #[cfg(any(not(any(target_os = "macos", target_os = "windows")), test))]
     Other,
 }
 
@@ -259,11 +262,13 @@ fn current_export_platform() -> ExportPlatform {
 
 fn export_h264_order(platform: ExportPlatform) -> &'static [HardwareEncoder] {
     match platform {
+        #[cfg(any(target_os = "macos", test))]
         ExportPlatform::Macos => &[
             HardwareEncoder::Libx264Software,
             HardwareEncoder::VideoToolboxH264,
             HardwareEncoder::Openh264Software,
         ],
+        #[cfg(any(target_os = "windows", test))]
         ExportPlatform::Windows => &[
             HardwareEncoder::NvencH264,
             HardwareEncoder::QsvH264,
@@ -271,6 +276,7 @@ fn export_h264_order(platform: ExportPlatform) -> &'static [HardwareEncoder] {
             HardwareEncoder::Libx264Software,
             HardwareEncoder::Openh264Software,
         ],
+        #[cfg(any(not(any(target_os = "macos", target_os = "windows")), test))]
         ExportPlatform::Other => &[
             HardwareEncoder::Libx264Software,
             HardwareEncoder::Openh264Software,
