@@ -407,8 +407,8 @@ function actionEventForStep(
   return (
     actions.events.find(
       (item) =>
-        item.target &&
-        ((stepId && item.step_id === stepId) || (!item.step_id && item.ordinal === ordinal)),
+        (stepId && item.step_id === stepId) ||
+        (!item.step_id && item.ordinal === ordinal),
     ) ?? null
   );
 }
@@ -459,6 +459,18 @@ function stepSceneEndMs(
 
 function clampClipDuration(startMs: number, requestedDurationMs: number, endBoundaryMs: number): number {
   return Math.max(1, Math.min(requestedDurationMs, Math.max(1, endBoundaryMs - startMs)));
+}
+
+function fallbackPolishStepTimeMs(
+  polishedSteps: Array<{ stepId: string | null }>,
+  stepId: string,
+  durationMs: number,
+): number | null {
+  const index = polishedSteps.findIndex((step) => step.stepId === stepId);
+  if (index < 0 || polishedSteps.length === 0) return null;
+  const safeStartMs = Math.min(300, Math.max(0, durationMs - 1));
+  const safeEndMs = Math.max(safeStartMs + 1, durationMs - 500);
+  return Math.round(safeStartMs + ((index + 0.5) / polishedSteps.length) * (safeEndMs - safeStartMs));
 }
 
 function isInteractionVerb(verb: string | null | undefined): boolean {
@@ -527,23 +539,25 @@ function buildPolishClips({
   const zoom: ZoomClip[] = [];
   const annotations: AnnotationClip[] = [];
   const sound: SoundClip[] = [];
+  const polishedSteps = steps.filter((step) => step.stepId && polish.steps[step.stepId]);
 
   steps.forEach((step) => {
     if (!step.stepId) return;
     const stepPolish = polish.steps[step.stepId];
     if (!stepPolish) return;
+    const callout = calloutText(stepPolish.callout);
     const stepTime = timing.byStepId.get(step.stepId) ?? timing.byOrdinal.get(step.ordinal) ?? null;
     const actionEvent = actionEventForStep(actions, step.stepId, step.ordinal);
     const interactionStep = isInteractionVerb(stepTime?.verb ?? actionEvent?.verb ?? step.verb);
     const actionTimeMs =
       interactionStep && actionEvent ? Math.min(durationMs, Math.max(0, actionEvent.t_action_ms)) : null;
+    const fallbackTimeMs = callout ? fallbackPolishStepTimeMs(polishedSteps, step.stepId, durationMs) : null;
     const tMs = stepTime
       ? Math.min(durationMs, Math.max(0, stepTime.startMs + Math.round(stepTime.durationMs * 0.45)))
-      : actionTimeMs;
+      : (actionTimeMs ?? fallbackTimeMs);
     if (tMs == null) return;
     const sceneEndMs = stepSceneEndMs(stepTiming, stepTime, durationMs);
     const zoomLevel = stepPolish.zoom && stepPolish.zoom !== "off" ? stepPolish.zoom : null;
-    const callout = calloutText(stepPolish.callout);
     const highlight = highlightEnabled(stepPolish.highlight);
     const actionCenter = interactionStep ? centerFromActionTarget(actions, step.stepId, step.ordinal) : null;
     const timingCenter = centerFromTimingTarget(stepTime, stepRect);

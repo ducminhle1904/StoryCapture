@@ -6,9 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use effects::ast::types::{Rgba, Vec2};
+use effects::ast::types::{NodeId, Rgba, Vec2};
 use effects::ast::video::{
-    FontChoice, HighlightBounds, HighlightOverlaySpec, HighlightShape, TextAnim, TextBox,
+    BoxStyle, FontChoice, HighlightBounds, HighlightOverlaySpec, HighlightShape, TextAnim, TextBox,
 };
 use effects::text::{
     anim_fade_params, anim_scale_in_params, anim_slide_up_params, auto_annotate_step,
@@ -17,6 +17,7 @@ use effects::text::{
     render_highlight_overlay_png, render_highlight_ring_png, resolve_bundled_font_path, ArrowDir,
     AutoAnnotateOptions, BundledFont, CalloutSpec, RingSpec, StepAstRef, BUNDLED_FONT_FILES,
 };
+use effects::{FfmpegEmit, GraphBuilder};
 
 // ------------------------------------------------------------
 // Task 1 — escaping
@@ -217,6 +218,48 @@ fn emit_drawtext_full_stage() {
         !emit_drawtext_font_region(&s).contains('\\'),
         "font path contains backslash: {}",
         s
+    );
+}
+
+#[test]
+fn ffmpeg_export_text_overlay_uses_normalized_canvas_position_and_box_style() {
+    let mut builder = GraphBuilder::new(1920, 1080, 60);
+    let graph = builder
+        .source(NodeId::from_bytes([0x11; 16]), "in.mp4", 0)
+        .text(
+            NodeId::from_bytes([0x22; 16]),
+            vec![TextBox {
+                t_start_ms: 1_000,
+                t_end_ms: 2_500,
+                text: "Open details".into(),
+                pos: Vec2::new(0.5, 0.82),
+                font: FontChoice::Bundled {
+                    family: "Geist".into(),
+                    weight: 700,
+                },
+                size_pt: 26.0,
+                color: Rgba::WHITE,
+                box_style: Some(BoxStyle {
+                    padding_px: 10.0,
+                    radius_px: 10.0,
+                    bg_color: Rgba::new(16, 18, 21, 230),
+                    border_color: Some(Rgba::new(255, 255, 255, 46)),
+                }),
+                anim_in: TextAnim::Fade,
+                anim_out: TextAnim::Fade,
+            }],
+        )
+        .build()
+        .expect("text graph should be valid");
+
+    let filter = FfmpegEmit::emit(&graph);
+
+    assert!(filter.contains("x='(W-text_w)*0.500000'"), "{filter}");
+    assert!(filter.contains("y='(H-text_h)*0.820000'"), "{filter}");
+    assert!(!filter.contains(":x=0.5:y=0.8"), "{filter}");
+    assert!(
+        filter.contains(":box=1:boxcolor=0x101215@0.902:boxborderw=10"),
+        "{filter}"
     );
 }
 

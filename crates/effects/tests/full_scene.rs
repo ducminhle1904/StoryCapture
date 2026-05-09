@@ -69,7 +69,7 @@ fn build_full() -> effects::Graph {
                 t_end_ms: 1800,
                 // Includes an apostrophe + colon to exercise drawtext escaping (T-02-02).
                 text: "It's 3:14 — hello".into(),
-                pos: Vec2::new(100.0, 100.0),
+                pos: Vec2::new(0.5, 0.2),
                 font: FontChoice::SystemDefault,
                 size_pt: 36.0,
                 color: Rgba::WHITE,

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::audio::{AudioNode, SidechainParams};
 use crate::ast::types::{EasingKind, NodeId, Vec2};
-use crate::ast::video::{TextAnim, TextBox, VideoNode, XfadeKind, ZoomKeyframe};
+use crate::ast::video::{TextBox, VideoNode, XfadeKind, ZoomKeyframe};
 use crate::ast::Graph;
 use crate::background::compositor::emit_background;
 use crate::text::{
@@ -369,23 +369,44 @@ fn collect_consecutive_zoompan_nodes(
 fn drawtext_args(tb: &TextBox) -> String {
     let enable_from = (tb.t_start_ms as f64) / 1000.0;
     let enable_to = (tb.t_end_ms as f64) / 1000.0;
-    // Optional alpha ramp if anim_in/out is Fade — shape only.
-    let alpha_expr = match (tb.anim_in, tb.anim_out) {
-        (TextAnim::Fade, _) | (_, TextAnim::Fade) => {
-            ":alpha='min(1,max(0,(t-{in})/0.3))'".to_string()
-        }
-        _ => String::new(),
-    };
-    let _ = alpha_expr;
+    let x = drawtext_pos_expr(tb.pos.x, 'x');
+    let y = drawtext_pos_expr(tb.pos.y, 'y');
+    let box_args = drawtext_box_args(tb);
     format!(
-        "fontfile='{font}':text='{t}':x={x:.1}:y={y:.1}:fontsize={fs:.1}:fontcolor=0x{R:02X}{G:02X}{B:02X}@{A:.3}:enable='between(t,{f:.3},{to:.3})'",
+        "fontfile='{font}':text='{t}':x='{x}':y='{y}':fontsize={fs:.1}:fontcolor=0x{R:02X}{G:02X}{B:02X}@{A:.3}{box_args}:enable='between(t,{f:.3},{to:.3})'",
         font = path_to_ffmpeg_arg(&drawtext_font_path(tb)),
         t = escape_drawtext_text(&tb.text),
-        x = tb.pos.x, y = tb.pos.y,
+        x = x,
+        y = y,
         fs = tb.size_pt,
         R = tb.color.r, G = tb.color.g, B = tb.color.b,
         A = (tb.color.a as f32) / 255.0,
+        box_args = box_args,
         f = enable_from, to = enable_to,
+    )
+}
+
+fn drawtext_pos_expr(value: f32, axis: char) -> String {
+    let value = value.clamp(0.0, 1.0);
+    match axis {
+        'x' => format!("(W-text_w)*{value:.6}"),
+        'y' => format!("(H-text_h)*{value:.6}"),
+        _ => unreachable!("drawtext position axis must be x or y"),
+    }
+}
+
+fn drawtext_box_args(tb: &TextBox) -> String {
+    let Some(style) = &tb.box_style else {
+        return String::new();
+    };
+    let alpha = (style.bg_color.a as f32) / 255.0;
+    format!(
+        ":box=1:boxcolor=0x{R:02X}{G:02X}{B:02X}@{A:.3}:boxborderw={padding:.0}",
+        R = style.bg_color.r,
+        G = style.bg_color.g,
+        B = style.bg_color.b,
+        A = alpha,
+        padding = style.padding_px.max(0.0),
     )
 }
 

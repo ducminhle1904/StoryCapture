@@ -524,7 +524,7 @@ describe("buildTimelineFromStory", () => {
     });
   });
 
-  it("does not estimate polish FX for non-action steps when step timing is missing", () => {
+  it("uses fallback timing for callouts but not target FX when step timing is missing", () => {
     const story: ParseResult = {
       ...STORY,
       ast: {
@@ -575,7 +575,62 @@ describe("buildTimelineFromStory", () => {
     });
 
     expect(out.zoom).toHaveLength(0);
-    expect(out.annotations).toHaveLength(0);
+    expect(out.annotations).toHaveLength(1);
+    expect(out.annotations[0]).toMatchObject({
+      text: "Wait for state",
+      startMs: 5_973,
+      highlight: undefined,
+      anchor: { kind: "screen", pos: { x: 0.5, y: 0.16 } },
+    });
+  });
+
+  it("uses action timing for polish callouts when step timing sidecar is missing", () => {
+    const action = ACTIONS.events[0];
+    if (!action) throw new Error("expected action fixture");
+    const actions: RecordingActions = {
+      ...ACTIONS,
+      events: [
+        {
+          ...action,
+          step_id: "step-pay",
+          ordinal: 2,
+          target: null,
+          t_action_ms: 4_000,
+          t_end_ms: 4_200,
+        },
+      ],
+    };
+    const out = buildTimelineFromStory({
+      story: STORY,
+      recording: RECORDING,
+      trajectory: TRAJECTORY,
+      actions,
+      polish: {
+        version: 2,
+        global: {
+          recipe: "dynamic",
+          autoZoom: "off",
+          actionFocus: "off",
+          autoZoomDurationMs: 800,
+          cursor: "smooth",
+          cursorSkin: "mac-default",
+          cursorSizeScale: 1,
+          background: { kind: "transparent" },
+        },
+        scenes: {},
+        steps: {
+          "step-pay": { callout: "Submit payment", highlight: true },
+        },
+      },
+    });
+
+    expect(out.annotations).toHaveLength(1);
+    expect(out.annotations[0]).toMatchObject({
+      text: "Submit payment",
+      startMs: 3_900,
+      highlight: undefined,
+      anchor: { kind: "screen", pos: { x: 0.5, y: 0.16 } },
+    });
   });
 
   it("allows wait/assert callouts from step timing but disables highlight without bbox", () => {
