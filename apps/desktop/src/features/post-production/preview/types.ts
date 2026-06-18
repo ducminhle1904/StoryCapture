@@ -1,14 +1,4 @@
-/**
- * Mirrors crates/effects PreviewRenderPlan shape.
- *
- * When the shared-types package re-exports the ts-rs-generated
- * PreviewRenderPlan, swap the local declarations for:
- *   export type { PreviewRenderPlan } from "@storycapture/shared-types";
- * The runtime is pure data shape, so the swap is type-only.
- *
- * Drift guard: if you change anything here, run `cargo test -p effects`
- * and verify `packages/shared-types/src/generated/effects.ts` matches.
- */
+/** Preview render plan data shape used by the renderer compositor. */
 
 export interface ZoomMatrixFrame {
   t_ms: number;

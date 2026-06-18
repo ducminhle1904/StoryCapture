@@ -1,7 +1,7 @@
 # Bundled Fonts (SIL OFL 1.1)
 
 This directory contains 5 TrueType fonts used by the post-production text
-overlay engine (`crates/effects::text`). All fonts are licensed under the
+overlay engine. All fonts are licensed under the
 **SIL Open Font License 1.1** — see `LICENSES.md` for per-font copyright
 and source URLs.
 
@@ -28,8 +28,7 @@ stubs are only acceptable for offline CI where the network is unavailable.
 
 ## Why stubs?
 
-- Render-time fallback: `fonts::resolve_font_path` always returns a
-  concrete path; tests only need `exists()` to pass.
+- Render-time fallback: tests only need font files to exist.
 - Licence compliance: every real font we ship is OFL, so we never
   re-distribute a restricted font by accident.
 - Determinism: CI runs without network access still pass, and

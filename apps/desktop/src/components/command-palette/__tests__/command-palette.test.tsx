@@ -1,8 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { useDashboardStore } from "@/state/projects";
 import { CommandPalette } from "../command-palette";
 
 function LocationProbe() {
@@ -23,6 +24,10 @@ function renderWithRouter() {
 }
 
 describe("CommandPalette", () => {
+  beforeEach(() => {
+    useDashboardStore.setState({ paletteOpen: false });
+  });
+
   it("opens on Cmd/Ctrl+K", async () => {
     const user = userEvent.setup();
     renderWithRouter();

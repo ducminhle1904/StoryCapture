@@ -15,22 +15,18 @@ video automatically.
 
 ## Stack
 
-- Desktop: Tauri v2, React 19, Vite 8, Tailwind v4, Base UI, Zustand,
-  TanStack Query, Motion
-- Rust workspace: story parser, automation, capture, encoder, effects,
-  storage, intelligence
+- Desktop: Electron, React 19, Vite 8, Tailwind v4, Base UI, Zustand, TanStack
+  Query, Motion
 - Web: Next.js 16, tRPC 11, Prisma 6, NextAuth v5 beta, Cloudflare R2
 
 ## Repo Layout
 
 ```text
 apps/
-  desktop/   Tauri desktop app
+  desktop/   Electron desktop app
   web/       Next.js web companion
-crates/      Pure Rust domain crates
 packages/    Shared TS packages
-scripts/     Build, release, notarize, sidecar, CI helpers
-tools/       Utility binaries and smoke tools
+scripts/     Build, release, notarize, and CI helpers
 docs/        Read-on-demand technical docs
 .planning/   GSD roadmap, phase artifacts, live state
 ```

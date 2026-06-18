@@ -91,7 +91,7 @@ export function Sidebar() {
         <BrandMark size={28} className="rounded-md" />
         <div>
           <div className="sc-brand-name">StoryCapture</div>
-          <div className="text-[10.5px] text-[var(--sc-text-4)] mt-[1px]">v0.4.2 · Tauri</div>
+          <div className="text-[10.5px] text-[var(--sc-text-4)] mt-[1px]">Electron desktop</div>
         </div>
       </div>
 

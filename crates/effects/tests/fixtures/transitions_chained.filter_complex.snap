@@ -1,5 +1,0 @@
----
-source: crates/effects/tests/transitions.rs
-expression: out
----
-[v0][v1]xfade=transition=fade:duration=1.000:offset=9.000[v01];[v01][v2]xfade=transition=dissolve:duration=1.000:offset=18.000[out]

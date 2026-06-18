@@ -34,9 +34,8 @@ export type TrackId = (typeof TRACK_IDS)[number];
 export const SNAP_THRESHOLD_PX = 10;
 
 // ---------------------------------------------------------------------------
-// Shared shapes used by clip variants. Mirrors of the Rust-side AST shapes
-// in `crates/effects/src/ast/`. Defined here (not in `compute-graph.ts`) so
-// `timeline-slice.ts` is the single source of truth for editor state.
+// Shared shapes used by clip variants. Defined here (not in `compute-graph.ts`)
+// so `timeline-slice.ts` is the single source of truth for editor state.
 // ---------------------------------------------------------------------------
 
 export interface Vec2 {

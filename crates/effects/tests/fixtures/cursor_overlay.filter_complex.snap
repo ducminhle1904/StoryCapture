@@ -1,6 +1,0 @@
----
-source: crates/effects/tests/cursor_emit.rs
-assertion_line: 91
-expression: out
----
-[0:v]setpts=PTS-STARTPTS+0.000000/TB[v_0101];movie='/tmp/cursor/frame_%05d.png':loop=0,setpts=N/60/TB,scale=iw*1.000:ih*1.000[n_0c0c_cursor];[v_0101][n_0c0c_cursor]overlay=eof_action=pass:x=0:y=0[v_0c0c];[v_0c0c]null[v_0d0d];[v_0d0d]null[out_v]

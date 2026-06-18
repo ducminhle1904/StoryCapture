@@ -1,5 +1,5 @@
 // @storycapture/story-dsl
 // TypeScript exports for the Story DSL.
-// `ast.ts` is generated from the Rust parser; do not edit it by hand.
+// `ast.ts` is the checked-in Story AST surface; keep it in sync with DSL changes.
 export * from "./ast";
 export * from "./codemirror-lang";

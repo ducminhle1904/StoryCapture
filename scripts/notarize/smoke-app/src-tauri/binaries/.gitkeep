@@ -1,8 +1,0 @@
-# Placeholder — the FFmpeg sidecar binaries land here at build time.
-# CI downloads them from the ffmpeg-build.yml artifacts; locally, run
-# scripts/build-ffmpeg/build-macos.sh and copy the output here.
-#
-# Expected names (Tauri externalBin convention):
-#   ffmpeg-aarch64-apple-darwin
-#   ffmpeg-x86_64-apple-darwin
-#   ffmpeg-x86_64-pc-windows-msvc.exe

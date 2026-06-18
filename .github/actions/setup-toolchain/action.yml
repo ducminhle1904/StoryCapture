@@ -1,5 +1,5 @@
 name: "Setup StoryCapture toolchain"
-description: "Install pnpm, Node, Rust (per rust-toolchain.toml), sccache, cargo-nextest, and warm caches."
+description: "Install pnpm and Node for the Electron workspace."
 
 runs:
   using: "composite"
@@ -15,35 +15,3 @@ runs:
       with:
         node-version: 20.x
         cache: pnpm
-
-    # rust-toolchain.toml drives channel + components + targets.
-    # We pass `toolchain: stable` only as a fallback; rustup will honor the file.
-    - name: Setup Rust toolchain (rust-toolchain.toml)
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt, clippy
-
-    - name: Install cargo-nextest
-      uses: taiki-e/install-action@v2
-      with:
-        tool: cargo-nextest
-
-    - name: Setup sccache
-      uses: mozilla-actions/sccache-action@v0.0.6
-
-    - name: Configure sccache as RUSTC_WRAPPER
-      shell: bash
-      run: |
-        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-        echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-
-    - name: Cache cargo registry + git + target
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-cargo-

@@ -1,9 +1,7 @@
 /**
  * Element-picker IPC wrappers.
  *
- * Thin typed facade for the `picker_*` Tauri commands defined in
- * `apps/desktop/src-tauri/src/commands/picker.rs`. Routes to the
- * Playwright sidecar's `pickElement.{start,cancel,isActive}` JSON-RPC.
+ * Thin typed facade for the `picker_*` host commands.
  *
  * Wire contract — `result.emitted` is a single DSL line with NO trailing
  * newline. The caller (PickElementButton) appends `"\n"` and inserts at

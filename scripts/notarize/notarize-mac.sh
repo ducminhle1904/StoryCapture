@@ -103,7 +103,7 @@ for tool in codesign ditto xcrun stapler spctl; do
 done
 
 # Resolve entitlements path. Prefer explicit flag/env; otherwise look inside
-# the bundle (common Tauri layout: Contents/Resources/Entitlements.plist).
+# the bundle at Contents/Resources/Entitlements.plist.
 if [[ -z "$ENTITLEMENTS" ]]; then
   if [[ -f "$APP_PATH/Contents/Resources/Entitlements.plist" ]]; then
     ENTITLEMENTS="$APP_PATH/Contents/Resources/Entitlements.plist"

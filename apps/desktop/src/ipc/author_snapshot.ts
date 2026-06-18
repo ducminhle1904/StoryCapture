@@ -1,14 +1,12 @@
 /**
  * Author-time selector validator IPC wrappers.
  *
- * Thin facade over the Tauri commands defined in
- * `apps/desktop/src-tauri/src/commands/author_snapshot.rs`.
+ * Thin facade over the author snapshot host commands.
  *
  * The author-time flow is READ-ONLY by default — validation loads the
- * cached `.story.snapshots/<sha>.html` file and runs the Rust-side
- * `SmartSelector::validate_against_dom`. Capture is the only mutating
- * verb and requires an active Playwright sidecar (normally started
- * by `launch_automation` for the recording session).
+ * cached `.story.snapshots/<sha>.html` file and runs host-side selector
+ * validation. Capture is the only mutating verb and requires an active
+ * browser automation session.
  */
 
 import { invoke } from "@tauri-apps/api/core";

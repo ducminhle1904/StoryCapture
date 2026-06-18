@@ -1,7 +1,5 @@
 /**
- * App-settings IPC wrappers. See
- * `apps/desktop/src-tauri/src/commands/app_settings.rs` (and
- * `set_browser_executable` in the browser-preset registration).
+ * App-settings IPC wrappers.
  *
  * Keeps the `invoke<AppSettings>("get_app_settings")` call in one
  * place so UI components don't re-describe the IPC shape inline.

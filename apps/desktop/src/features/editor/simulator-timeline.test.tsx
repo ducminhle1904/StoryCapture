@@ -53,7 +53,7 @@ describe("SimulatorTimeline", () => {
       />,
     );
     expect(screen.getByRole("button", { name: /run simulator/i })).toBeInTheDocument();
-    expect(screen.getByText(/no simulator run yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/run to replay this story/i)).toBeInTheDocument();
   });
 
   it("switches to Cancel button when running", () => {
@@ -97,11 +97,11 @@ describe("SimulatorTimeline", () => {
         appUrlValid={true}
       />,
     );
-    const cards = screen.getAllByRole("button", { name: /simulator frame/i });
+    const cards = screen.getAllByRole("option", { name: /simulator frame/i });
     expect(cards).toHaveLength(3);
   });
 
-  it("scrubber updates currentFrameOrdinal", () => {
+  it("frame strip updates currentFrameOrdinal", () => {
     useSimulatorStore
       .getState()
       .handleEvent({ type: "started", session_id: "s", run_id: "r", total_steps: 3 });
@@ -120,8 +120,7 @@ describe("SimulatorTimeline", () => {
         appUrlValid={true}
       />,
     );
-    const scrubber = screen.getByLabelText("Simulator frame scrubber") as HTMLInputElement;
-    fireEvent.change(scrubber, { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("option", { name: /simulator frame 1/i }));
     expect(useSimulatorStore.getState().currentFrameOrdinal).toBe(1);
   });
 
@@ -147,6 +146,7 @@ describe("SimulatorTimeline", () => {
         appUrlValid={true}
       />,
     );
+    fireEvent.click(screen.getByRole("option", { name: /simulator frame 2/i }));
     const promoteButtons = screen.queryAllByRole("button", { name: /promote/i });
     expect(promoteButtons).toHaveLength(1);
   });

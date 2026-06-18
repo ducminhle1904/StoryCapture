@@ -5,23 +5,23 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "inputs": ["src/**", "Cargo.toml", "Cargo.lock", "**/Cargo.toml"]
+      "inputs": ["src/**", "electron/**", "scripts/**"]
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "outputs": ["dist/**", "dist-electron/**", "release-electron/**", ".next/**", "!.next/cache/**"],
       "inputs": [
         "src/**",
+        "electron/**",
+        "scripts/**",
         "package.json",
         "tsconfig.json",
-        "Cargo.toml",
-        "Cargo.lock",
-        "**/Cargo.toml"
+        "vite.config.*"
       ]
     },
     "typecheck": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "tsconfig.json", "package.json"]
+      "inputs": ["src/**", "electron/**", "scripts/**", "tsconfig.json", "package.json"]
     },
     "lint": {
       "inputs": ["src/**", "biome.json", "package.json"]

@@ -1,13 +1,10 @@
-/**
- * Automation IPC wrappers. Thin typed facade for the commands defined in
- * `apps/desktop/src-tauri/src/commands/automation.rs`.
- */
+/** Automation IPC wrappers. */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { DEFAULT_RECORDING_PACING } from "@/state/output-prefs";
 
 /**
- * Mirror of `automation::BoundingBox`. Carried on StepFrame.
+ * Bounding box carried on StepFrame.
  */
 export interface BoundingBox {
   x: number;

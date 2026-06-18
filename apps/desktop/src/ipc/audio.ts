@@ -1,10 +1,8 @@
 /**
- * Audio IPC wrappers. See `apps/desktop/src-tauri/src/commands/audio.rs`.
+ * Audio IPC wrappers.
  *
  * Laziness contract: `listAudioInputs` is called ONLY when the
- * AudioDevicePicker first opens. Don't prefetch on app launch —
- * cpal's default-device resolution touches the mic hardware on macOS
- * and triggers the TCC prompt.
+ * AudioDevicePicker first opens. Don't prefetch on app launch.
  */
 
 import { invoke } from "@tauri-apps/api/core";

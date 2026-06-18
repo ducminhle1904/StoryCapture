@@ -1,7 +1,4 @@
-/**
- * Encoder / recording IPC wrappers. See
- * `apps/desktop/src-tauri/src/commands/encode.rs`.
- */
+/** Encoder / recording IPC wrappers. */
 
 import type {
   FitModeDto,

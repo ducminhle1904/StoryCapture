@@ -2,9 +2,8 @@
  * Canonical browser-preset table.
  *
  * Source of truth: `packages/shared-types/browser-presets.json`. This module
- * is the TypeScript surface; the Rust side (apps/desktop/src-tauri) reads
- * the same JSON at build time via `build.rs` codegen into a `&[PresetEntry]`
- * const. Do not fork the data — edit the JSON.
+ * is the TypeScript surface for both renderer and Electron host callers.
+ * Do not fork the data — edit the JSON.
  *
  * Iteration order in the JSON is specific-first: Chrome Canary/Beta/Dev
  * come before Chrome, Edge Canary/Beta/Dev before Edge. Callers relying on

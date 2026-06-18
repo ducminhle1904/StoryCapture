@@ -33,9 +33,9 @@ interface SerializedError {
 }
 
 /**
- * Format a thrown value into a single-line message. Tauri IPC errors
+ * Format a thrown value into a single-line message. Host IPC errors
  * (`{ kind, message }`) get rendered as `kind: message` so the log line
- * matches what the Rust side produced — without this they'd be raw JSON.
+ * stays readable — without this they'd be raw JSON.
  */
 function serializeError(err: unknown): SerializedError {
   if (err instanceof Error) {
@@ -99,6 +99,13 @@ const CONSOLE_DISPATCH: Record<FrontendLogLevel, (...args: unknown[]) => void> =
   error: (...a) => console.error(...a),
 };
 
+function hostInvokeAvailable(): boolean {
+  if (typeof window === "undefined") return false;
+  const internals = (window as Window & { __TAURI_INTERNALS__?: { invoke?: unknown } })
+    .__TAURI_INTERNALS__;
+  return typeof internals?.invoke === "function";
+}
+
 async function emit(
   level: FrontendLogLevel,
   source: string,
@@ -116,6 +123,8 @@ async function emit(
   if (fields.length > 0) consoleArgs.push(Object.fromEntries(fields));
   if (err?.stack) consoleArgs.push(err.stack);
   CONSOLE_DISPATCH[level](...consoleArgs);
+
+  if (!hostInvokeAvailable()) return;
 
   try {
     await invoke("log_from_frontend", {

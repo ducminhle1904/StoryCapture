@@ -2,8 +2,7 @@
  * Web Account connection panel for Settings > Accounts.
  *
  * Shows web account connection status with connect/disconnect flow.
- * OAuth flow opens the system browser and captures the callback
- * via a localhost server managed by the Rust backend.
+ * OAuth flow opens the system browser and captures the callback via the host.
  *
  * data-testid="web-account-panel"
  */

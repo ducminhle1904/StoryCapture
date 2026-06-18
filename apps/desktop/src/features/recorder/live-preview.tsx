@@ -64,7 +64,9 @@ export type PreviewStatus = "attaching" | "streaming" | "recovering" | "unavaila
 function isUnavailableBackend(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const kind = (err as { kind?: unknown }).kind;
-  return typeof kind === "string" && kind === "UnavailableOnBackend";
+  if (typeof kind === "string" && kind === "UnavailableOnBackend") return true;
+  const message = (err as { message?: unknown }).message;
+  return typeof message === "string" && message.includes("UnavailableOnBackend");
 }
 
 function delay(ms: number): Promise<void> {

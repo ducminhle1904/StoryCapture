@@ -1,12 +1,8 @@
-/**
- * Capture IPC wrappers. See
- * `apps/desktop/src-tauri/src/commands/capture.rs`.
- */
+/** Capture IPC wrappers. */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
-// Rust-side DTO uses `#[serde(rename_all = "kebab-case")]`, so values
-// arrive as lowercase over IPC. Keep TS in lockstep.
+// Host DTO values arrive as lowercase over IPC. Keep TS in lockstep.
 export type PermissionState = "granted" | "denied" | "undetermined";
 
 export interface DisplayInfo {

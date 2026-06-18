@@ -1,22 +1,25 @@
 import { useEffect, useState } from "react";
-import { getVersion, getTauriVersion } from "@tauri-apps/api/app";
 
 import { BrandMark } from "@/components/brand";
+import { appInfo } from "@/ipc";
 import AutoUpdaterSettings from "../auto-updater";
 import { SettingsPanel } from "../settings-row";
 
-// Live: app + Tauri versions read from the Tauri API.
+// Live: app metadata read from the host IPC.
 export function AboutCategory() {
   const [appVersion, setAppVersion] = useState<string>("…");
-  const [tauriVersion, setTauriVersion] = useState<string>("…");
+  const [runtime, setRuntime] = useState<string>("Electron");
 
   useEffect(() => {
-    getVersion()
-      .then(setAppVersion)
-      .catch(() => setAppVersion("unknown"));
-    getTauriVersion()
-      .then(setTauriVersion)
-      .catch(() => setTauriVersion("unknown"));
+    appInfo()
+      .then((info) => {
+        setAppVersion(info.version);
+        setRuntime(`Electron ${info.platform}/${info.arch}`);
+      })
+      .catch(() => {
+        setAppVersion("unknown");
+        setRuntime("Electron");
+      });
   }, []);
 
   return (
@@ -43,7 +46,7 @@ export function AboutCategory() {
               fontFamily: "var(--sc-font-mono)",
             }}
           >
-            v{appVersion} · tauri {tauriVersion}
+            v{appVersion} · {runtime}
           </div>
           <div style={{ fontSize: 12, color: "var(--sc-text-3)", marginTop: 8 }}>
             DSL → polished demo videos. Built for teams who ship demos daily.

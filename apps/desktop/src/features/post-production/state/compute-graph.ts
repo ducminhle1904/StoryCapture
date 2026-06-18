@@ -1,14 +1,11 @@
 /**
  * computeGraph — pure projection from the timeline editor store into the
- * effects-crate `Graph` AST that the export pipeline consumes.
+ * export graph shape that the Electron export pipeline consumes.
  *
- * The Rust shape is the source of truth (see `crates/effects/src/ast/`).
  * The TS reference lives in `packages/shared-types/src/generated/effects.ts`,
  * but that file uses `bigint` for u64 fields which JSON.stringify cannot
- * encode. We instead emit plain numbers (JSON numbers deserialize into
- * Rust u64 via serde with no precision loss for ms-scale timestamps), and
- * narrow our own structurally-identical local types so the boundary stays
- * type-checked.
+ * encode. We instead emit plain numbers for ms-scale timestamps and narrow our
+ * own structurally-identical local types so the boundary stays type-checked.
  *
  * Determinism: NodeId UUIDs are derived from a stable hash of the clip id,
  * so calling `computeGraph` twice with the same store produces JSON.stringify
@@ -71,9 +68,9 @@ export interface ComputeGraphInput {
 }
 
 // ---------------------------------------------------------------------------
-// Local Graph types — mirror Rust shape, but use `number` instead of `bigint`
-// for u64 fields so JSON.stringify works. Drift guard: any change here MUST
-// match a corresponding change in `crates/effects/src/ast/`.
+// Local Graph types use `number` instead of `bigint` for timestamp fields so
+// JSON.stringify works. Keep this in sync with the shared generated effects
+// types where those are still consumed.
 //
 // Vec2, ZoomTarget, CursorSkin are re-exported from timeline-slice so the
 // editor's store shape and the wire format share a single definition.

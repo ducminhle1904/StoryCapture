@@ -14,23 +14,8 @@ permissions:
 
 jobs:
   build-test:
-    name: build-test (${{ matrix.os }} / ${{ matrix.target }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            target: aarch64-apple-darwin
-          - os: macos-13
-            target: x86_64-apple-darwin
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
-    env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
-      CARGO_INCREMENTAL: "0"
-      CARGO_TERM_COLOR: "always"
+    name: build-test
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,59 +27,22 @@ jobs:
         shell: bash
         run: pnpm install --frozen-lockfile
 
-      - name: Biome lint
+      - name: Typecheck
         shell: bash
-        run: pnpm biome check .
+        run: pnpm typecheck
 
-      - name: Rust fmt check
+      - name: Desktop tests
         shell: bash
-        run: cargo fmt --all -- --check
+        run: pnpm --dir apps/desktop exec vitest run
 
-      - name: Rust clippy
+      - name: UI tests
         shell: bash
-        run: cargo clippy --workspace --all-targets --target ${{ matrix.target }} -- -D warnings
+        run: pnpm --dir packages/ui test
 
-      - name: Rust check
+      - name: Web tests
         shell: bash
-        run: cargo check --workspace --all-targets --target ${{ matrix.target }}
+        run: pnpm --dir apps/web test
 
-      - name: Rust test (nextest with cargo-test fallback)
+      - name: Desktop Electron build
         shell: bash
-        run: |
-          cargo nextest run --workspace --target ${{ matrix.target }} \
-            || cargo test --workspace --target ${{ matrix.target }}
-
-      - name: sccache stats
-        if: always()
-        shell: bash
-        run: sccache --show-stats || true
-
-  offline-eval:
-    name: offline-eval (AI golden dataset)
-    runs-on: ubuntu-latest
-    env:
-      CARGO_TERM_COLOR: "always"
-      STORYCAPTURE_EVAL_MODE: offline
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Verb whitelist grep
-        shell: bash
-        run: bash scripts/verb-whitelist-grep.sh
-
-      - name: Offline golden eval (mock provider)
-        shell: bash
-        run: |
-          cargo nextest run -p intelligence --test eval_golden_dataset --no-fail-fast \
-            || cargo test -p intelligence --test eval_golden_dataset
-
-      - name: Eval report (threshold check)
-        shell: bash
-        run: |
-          cargo run -p intelligence --bin eval_report -- \
-            --results eval_result.json \
-            --thresholds crates/intelligence/tests/fixtures/eval_thresholds.toml \
-            --ci
+        run: pnpm --dir apps/desktop run build

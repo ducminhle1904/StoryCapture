@@ -9,8 +9,7 @@
  *
  * The preset id set and basename fragments are sourced from
  * `@storycapture/shared-types` (canonical
- * `packages/shared-types/browser-presets.json`). Rust and TS share the
- * same JSON. This module is a thin adapter so `isChromiumFamily` and
+ * `packages/shared-types/browser-presets.json`). This module is a thin adapter so `isChromiumFamily` and
  * `CHROMIUM_PRESETS` callers (e.g. ChromeHidingToggle.tsx) do not need
  * to change their imports.
  */
