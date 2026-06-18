@@ -161,6 +161,19 @@ const eventInternals = {
   unregisterListener: () => {},
 };
 
+const desktopPlatform = process.platform;
+const designPlatform = desktopPlatform === "win32" ? "win" : desktopPlatform;
+
+function applyDesktopPlatformDataset(): void {
+  const root = document.documentElement;
+  if (!root) return;
+  root.dataset.desktopPlatform = desktopPlatform;
+  root.dataset.platform = designPlatform;
+}
+
+applyDesktopPlatformDataset();
+window.addEventListener("DOMContentLoaded", applyDesktopPlatformDataset, { once: true });
+
 ipcRenderer.on(
   "tauri-callback",
   (_event, payload: { id: number; value: unknown }) => {

@@ -6,10 +6,26 @@ import { registerIpcHandlers } from "./ipc";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:1420";
+const titleBarOverlayHeight = 48;
 
 let mainWindow: BrowserWindow | null = null;
 
 function createMainWindow(): void {
+  const titleBarOptions =
+    process.platform === "darwin"
+      ? {
+          titleBarStyle: "hidden" as const,
+          trafficLightPosition: { x: 14, y: 14 },
+        }
+      : {
+          titleBarStyle: "hidden" as const,
+          titleBarOverlay: {
+            color: "#050504",
+            symbolColor: "#f3efe7",
+            height: titleBarOverlayHeight,
+          },
+        };
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,
@@ -18,6 +34,7 @@ function createMainWindow(): void {
     title: "StoryCapture",
     show: false,
     backgroundColor: "#111111",
+    ...titleBarOptions,
     webPreferences: {
       preload: path.join(here, "preload.cjs"),
       contextIsolation: true,

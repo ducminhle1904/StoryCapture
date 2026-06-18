@@ -582,7 +582,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       data-story-id={storyId}
     >
       {/* Top bar */}
-      <div className="sc-toolbar">
+      <div className="sc-toolbar sc-window-chrome">
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Link
             to="/"

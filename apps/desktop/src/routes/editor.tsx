@@ -376,8 +376,8 @@ export default function EditorRoute() {
 
   if (loadError) {
     return (
-      <main id="main-content" className="mx-auto max-w-2xl p-8" role="alert">
-        <div className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[var(--sc-record)]/40 bg-[var(--sc-record)]/8 p-4 text-sm text-[var(--sc-record)]">
+      <main id="main-content" className="sc-window-chrome h-full p-8" role="alert">
+        <div className="mx-auto flex max-w-2xl items-start gap-3 rounded-[var(--radius-md)] border border-[var(--sc-record)]/40 bg-[var(--sc-record)]/8 p-4 text-sm text-[var(--sc-record)]">
           <AlertTriangle size={16} aria-hidden="true" className="mt-0.5" />
           <div>
             <p className="font-medium">Failed to open project</p>
@@ -407,7 +407,7 @@ export default function EditorRoute() {
         }}
       />
       {/* ─── Toolbar ─── */}
-      <div className="sc-toolbar">
+      <div className="sc-toolbar sc-window-chrome">
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Link
             to="/"

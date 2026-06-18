@@ -153,7 +153,7 @@ export default function DashboardRoute() {
       id="main-content"
       style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
     >
-      <div className="sc-toolbar">
+      <div className="sc-toolbar sc-window-chrome">
         <div>
           <div className="sc-toolbar-title">Projects</div>
           <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 1 }}>{metaLine}</div>

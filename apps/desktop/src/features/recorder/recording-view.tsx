@@ -949,8 +949,8 @@ export function RecordingView({
       <CursorTrail />
 
       {/* ─── Header ─── */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
-        <div className="flex items-center gap-3">
+      <header className="sc-window-chrome flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
+        <div className="flex min-w-0 items-center gap-3">
           {/* Back to editor (falls back to dashboard). Blocked while recording. */}
           {status === "recording" || status === "paused" || status === "stopping" ? (
             <span
@@ -970,7 +970,7 @@ export function RecordingView({
             </Link>
           )}
 
-          <div className="flex items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
             {projectId ? (
               <Link
                 to={`/editor/${projectId}`}
@@ -982,7 +982,7 @@ export function RecordingView({
               <span>Record</span>
             )}
             <span>/</span>
-            <span className="font-medium text-[var(--color-fg-primary)]">{projectName}</span>
+            <span className="truncate font-medium text-[var(--color-fg-primary)]">{projectName}</span>
             <span>/</span>
             <span>Record</span>
           </div>
@@ -1000,7 +1000,7 @@ export function RecordingView({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
+        <div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
           {sessionId ? <span className="font-mono">session · {sessionId.slice(0, 8)}</span> : null}
         </div>
       </header>

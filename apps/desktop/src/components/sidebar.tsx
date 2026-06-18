@@ -85,7 +85,7 @@ export function Sidebar() {
   const startRecord = () => navigate("/recorder");
 
   return (
-    <nav aria-label="Main navigation" className="sc-nav" style={{ width: 224 }}>
+    <nav aria-label="Main navigation" className="sc-nav sc-window-sidebar" style={{ width: 224 }}>
       {/* Brand */}
       <div className="sc-brand">
         <BrandMark size={28} className="rounded-md" />
