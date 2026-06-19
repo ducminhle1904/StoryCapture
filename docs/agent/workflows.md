@@ -56,3 +56,11 @@
 - Release/signing helpers: `scripts/release/sign-windows.ps1`,
   `scripts/release/verify-installer-size.sh`,
   `scripts/notarize/adhoc-sign.sh`, `scripts/notarize/notarize-mac.sh`.
+
+## Agent Docs Maintenance
+
+- After code changes, update agent-facing docs if the change affects how future
+  agents should find, modify, verify, or avoid parts of the repo.
+- Keep `CLAUDE.md` as the routing index only. Put longer details in
+  `docs/agent/` or the relevant `docs/*.md` source doc, then link or summarize
+  from `CLAUDE.md` only when future sessions need the rule up front.

@@ -135,5 +135,9 @@ file explicitly says otherwise.
 - Avoid generated/build/cache/artifact directories unless the task is
   specifically about them: `node_modules/`, `.turbo/`, `.next/`, `dist/`,
   `release-electron/`, `output/`, `tmp/`, and generated Prisma output.
+- After code changes, update agent docs when the change affects future agent
+  routing, workflows, commands, architecture, generated-file rules, or module
+  ownership; keep `CLAUDE.md` concise and put detail in `docs/agent/` or the
+  relevant source doc as read-on-demand context.
 - Keep agent docs token-efficient: update this file only at the routing level
   and put detail in `docs/agent/` or the existing `docs/*.md` source docs.
