@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, nativeImage, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,7 +16,14 @@ let mainWindow: BrowserWindow | null = null;
 
 registerLocalAssetScheme();
 
+function createAppIcon(): Electron.NativeImage | undefined {
+  const iconFilename = process.platform === "win32" ? "icon.ico" : "icon.png";
+  const image = nativeImage.createFromPath(path.join(app.getAppPath(), "icons", iconFilename));
+  return image.isEmpty() ? undefined : image;
+}
+
 function createMainWindow(): void {
+  const appIcon = createAppIcon();
   const titleBarOptions =
     process.platform === "darwin"
       ? {
@@ -40,6 +47,7 @@ function createMainWindow(): void {
     title: "StoryCapture",
     show: false,
     backgroundColor: "#111111",
+    ...(appIcon ? { icon: appIcon } : {}),
     ...titleBarOptions,
     webPreferences: {
       preload: path.join(here, "preload.cjs"),
@@ -75,6 +83,10 @@ registerIpcHandlers();
 
 void app.whenReady().then(() => {
   registerLocalAssetProtocol();
+  const appIcon = createAppIcon();
+  if (process.platform === "darwin" && appIcon) {
+    app.dock?.setIcon(appIcon);
+  }
   createMainWindow();
 
   app.on("activate", () => {

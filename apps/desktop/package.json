@@ -98,6 +98,7 @@
     "files": [
       "dist/**",
       "dist-electron/**",
+      "icons/**",
       "package.json"
     ],
     "mac": {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { cp, mkdir, readFile, rename as fsRename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -10,12 +11,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(here, "..");
 const identity = JSON.parse(await readFile(path.join(desktopRoot, "electron", "identity.json"), "utf8"));
 
-const scriptVersion = 3;
+const scriptVersion = 4;
 const devAppName = identity.devAppName;
 const devBundleId = identity.devBundleId;
 const devRoot = path.join(desktopRoot, ".electron-dev");
 const devAppPath = path.join(devRoot, `${devAppName}.app`);
 const markerPath = path.join(devRoot, "metadata.json");
+const iconFilename = "icon.icns";
+const iconSourcePath = path.join(desktopRoot, "icons", iconFilename);
 
 function stockElectronAppPath(electronExecutable) {
   const macOSDir = path.dirname(electronExecutable);
@@ -43,6 +46,10 @@ async function readJson(pathname) {
   }
 }
 
+async function fileHash(pathname) {
+  return createHash("sha256").update(await readFile(pathname)).digest("hex");
+}
+
 export async function prepareDevElectronApp() {
   const electronExecutable = require("electron");
   if (process.platform !== "darwin") {
@@ -54,12 +61,14 @@ export async function prepareDevElectronApp() {
 
   const electronVersion = require("electron/package.json").version;
   const sourceAppPath = stockElectronAppPath(electronExecutable);
+  const iconHash = await fileHash(iconSourcePath);
   const expectedMarker = {
     scriptVersion,
     electronVersion,
     sourceAppPath,
     appName: devAppName,
     bundleId: devBundleId,
+    iconHash,
   };
   const currentMarker = await readJson(markerPath);
   const markerMatches =
@@ -82,10 +91,15 @@ export async function prepareDevElectronApp() {
     await rm(devExecutablePath, { force: true });
     await fsRename(originalExecutablePath, devExecutablePath);
 
+    const resourcesPath = path.join(devAppPath, "Contents", "Resources");
+    await mkdir(resourcesPath, { recursive: true });
+    await cp(iconSourcePath, path.join(resourcesPath, iconFilename));
+
     setPlistString(plistPath, "CFBundleIdentifier", devBundleId);
     setPlistString(plistPath, "CFBundleName", devAppName);
     setPlistString(plistPath, "CFBundleDisplayName", devAppName);
     setPlistString(plistPath, "CFBundleExecutable", devAppName);
+    setPlistString(plistPath, "CFBundleIconFile", iconFilename);
     setPlistString(
       plistPath,
       "NSMicrophoneUsageDescription",
