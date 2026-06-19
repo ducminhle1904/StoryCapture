@@ -1,5 +1,9 @@
 # Architecture Research — StoryCapture
 
+> Historical planning note: this research predates the current Electron host
+> and may mention Tauri/Rust paths that no longer exist. Use
+> `docs/ARCHITECTURE.md` for current architecture.
+
 **Domain:** Tauri v2 desktop app + Next.js web companion, Turborepo monorepo (TS + Rust)
 **Researched:** 2026-04-14
 **Confidence:** HIGH (validates/refines proposed PROJECT.md layout against standard Tauri v2 patterns)

@@ -1,5 +1,9 @@
 # Roadmap: StoryCapture
 
+> Historical planning note: this roadmap predates the current
+> Electron/Next.js 16 source reality. For current status, read
+> `.planning/STATE.md`; for current structure, read `docs/ARCHITECTURE.md`.
+
 **Created:** 2026-04-14
 **Granularity:** coarse
 **Core Value:** Turn a written story into a polished, shareable demo video automatically — no recording, editing, or video-production skill required.

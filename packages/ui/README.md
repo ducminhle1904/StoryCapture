@@ -23,6 +23,33 @@ Shared design tokens and UI primitives for StoryCapture.
 - Base UI is the primitive layer. Do not introduce Radix-based assumptions
   here.
 
+## Primitive Families
+
+The `claude-design` primitive barrel exports these `Sc*` families:
+
+- `ScBadge`
+- `ScButton`
+- `ScCallout`
+- `ScCard`
+- `ScEmptyState`
+- `ScField`
+- `ScInput`
+- `ScKbd`
+- `ScSegmented`
+- `ScSelect`
+- `ScSkeleton`
+- `ScSlider`
+- `ScSwitch`
+- `ScTabs`
+- `ScTextarea`
+
+Use these before adding local one-off UI primitives in desktop/web surfaces.
+
+## Commands
+
+- `pnpm --dir packages/ui test`
+- `pnpm --dir packages/ui exec vitest run <path>`
+
 ## Notes
 
 - Tokens are hand-authored and versioned in-repo.

@@ -1,5 +1,10 @@
 # Requirements: StoryCapture
 
+> Historical planning note: this artifact predates the Electron cleanup and may
+> mention Tauri/Rust paths that no longer exist. For current source reality,
+> read `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, and
+> `.planning/STATE.md`.
+
 **Defined:** 2026-04-14
 **Core Value:** Turn a written story into a polished, shareable demo video automatically — no recording, editing, or video-production skill required.
 

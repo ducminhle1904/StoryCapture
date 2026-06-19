@@ -1,6 +1,8 @@
 # StoryCapture - Architecture Map
 
-Read-on-demand reference for structure, IPC, routes, CI, and release topology.
+Read-on-demand reference for structure, IPC, routes, package boundaries, CI, and
+release topology. This file describes the current source tree, not the older
+Tauri/Rust planning artifacts.
 
 ## Repo Layout
 
@@ -8,91 +10,218 @@ Read-on-demand reference for structure, IPC, routes, CI, and release topology.
 apps/
   desktop/              Electron + React 19 + Vite 8 desktop app
     electron/           Electron main/preload process and host IPC handlers
-    icons/              Desktop app icons used by electron-builder
-    scripts/            Desktop build helpers
-    src/                Renderer UI, feature modules, stores, IPC facades
+      ipc.ts            registers the tauri-invoke bridge
+      ipc/handlers.ts   grouped handler registry
+      ipc/*.ts          modular host handler groups
+      ipc/plugin/*.ts   Tauri-compatible plugin shims
+      ipc/legacy.ts     large remaining host implementation/fallback
+    icons/              desktop app icons used by electron-builder
+    scripts/            desktop build helpers
+    src/                renderer UI, feature modules, stores, IPC facades
   web/                  Next.js 16 web companion
 
 packages/
-  ui/                   Shared tokens and claude-design primitives
-  shared-types/         Shared browser presets and DTO/type surfaces
-  story-dsl/            CodeMirror language support and DSL vocabulary
-  config/               Shared TypeScript config
+  config/               shared TypeScript config package
+  shared-types/         browser presets, generated graph types, IPC surface
+  story-dsl/            Story AST/vocabulary and CodeMirror language support
+  ui/                   shared tokens and claude-design primitives
 
-assets/                 Sound library, fonts, image assets
-scripts/                Release/signing helpers and runbooks
-docs/                   Read-on-demand technical docs
-.github/workflows/      Node/Electron CI
+assets/                 sound library, fonts, image/assets/preset defaults
+scripts/                CI, release, signing, notarization helpers
+docs/                   current read-on-demand technical docs
+.planning/              state plus historical planning artifacts
+.github/workflows/      current CI
 ```
 
-## Workspace And Scripts
+Workspace globs are only `apps/*` and `packages/*`. Package manager is
+`pnpm@9.15.0`; Node is `>=20` locally and `20.x` in CI.
 
-- Root scripts: `dev`, `build`, `lint`, `format`, `typecheck`.
-- Desktop scripts:
-  - `dev` starts Electron with a Vite renderer.
-  - `build` packages Electron via `electron-builder`.
-  - `renderer:*` runs renderer-only Vite workflows.
-- Web scripts: `dev`, `build`, `start`, `typecheck`, `test`, plus Prisma helpers.
+## Workspace Scripts
+
+Root `package.json` scripts:
+
+- `pnpm dev` -> Turbo dev tasks.
+- `pnpm build` -> Turbo build tasks.
+- `pnpm lint` -> `biome check .`.
+- `pnpm format` -> `biome format --write .`.
+- `pnpm typecheck` -> Turbo typecheck.
+
+There is no root `pnpm test` and Turbo has no `test` task. Use package-level
+Vitest commands from `docs/CONVENTIONS.md`.
+
+Desktop scripts in `apps/desktop/package.json`:
+
+- `pnpm --dir apps/desktop dev` starts Electron with a Vite renderer.
+- `pnpm --dir apps/desktop electron:build-main` builds Electron main/preload.
+- `pnpm --dir apps/desktop renderer:build` runs `tsc -b && vite build`.
+- `pnpm --dir apps/desktop build` packages Electron via `electron-builder`.
+
+Web scripts in `apps/web/package.json`:
+
+- `dev`, `build`, `start`, `typecheck`, `test`.
+- Prisma helpers: `db:migrate`, `db:push`, `db:generate`, `db:seed`.
 
 ## Desktop Runtime
 
-Electron is the runtime host. The renderer still imports `@tauri-apps/api` and
-selected Tauri plugin packages as a compatibility API surface; Electron
-implements the corresponding bridge in `apps/desktop/electron/preload.ts` and
-`apps/desktop/electron/ipc.ts`.
+Electron is the runtime host. `apps/desktop/electron/main.ts` creates the
+`BrowserWindow`, loads `preload.cjs`, uses Vite in dev, loads `dist/index.html`
+in production, and registers IPC.
 
-The packaged app includes only:
+The renderer still imports `@tauri-apps/api` and selected Tauri plugin packages
+as a compatibility API surface. Usage is not limited to `src/ipc`; imports also
+exist in settings, dashboard dialogs, NL mode, recorder preview, post-production
+export/progress, voiceover, editor preview/picker, stores, LSP transport,
+logging, and output preferences.
+
+The packaged app includes:
 
 - `dist/**`
 - `dist-electron/**`
 - `package.json`
 
-No Rust workspace, Tauri host, or Cargo target output is packaged.
+No Rust workspace, Tauri host, `src-tauri`, Cargo target output, or native Rust
+crates are part of the current app.
+
+## Desktop Routes
+
+React Router v7 lives in `apps/desktop/src/routes`.
+
+| URL | Route file | Primary surface |
+|---|---|---|
+| `/` | `dashboard.tsx` | project dashboard and new/open/remove flows |
+| `/onboarding` | `onboarding.tsx` | first-run onboarding |
+| `/settings` | `settings.tsx` | app/provider/account settings |
+| `/editor/:projectId` | `editor.tsx` | story authoring, preview, simulator, UI mode |
+| `/recorder/:projectId` | `recorder.tsx` | record a project story |
+| `/post-production` | `post-production-landing.tsx` | choose a project/recording to polish |
+| `/post-production/:storyId` | `post-production.tsx` | post-production `EditorShell` |
+| `*` | `index.tsx` | redirect to `/` |
 
 ## IPC Flow
 
-1. Renderer code calls thin wrappers in `apps/desktop/src/ipc/*.ts` or imports
-   Tauri-compatible plugin APIs.
-2. `apps/desktop/electron/preload.ts` exposes Tauri-compatible internals and
-   routes calls to Electron IPC.
-3. `apps/desktop/electron/ipc.ts` handles host operations: project storage,
-   browser automation, recording, preview, export, web sync, settings, logs,
-   updater, and plugin compatibility.
-4. Long-running operations use Tauri-compatible channel/event shims implemented
-   in the Electron bridge.
+1. Renderer calls thin wrappers in `apps/desktop/src/ipc/*.ts` or imports
+   Tauri-compatible plugin APIs directly.
+2. `apps/desktop/electron/preload.ts` forwards Tauri-style invokes to
+   `ipcRenderer.invoke("tauri-invoke", ...)` and exposes
+   `__TAURI_INTERNALS__`, `__TAURI_EVENT_PLUGIN_INTERNALS__`, and
+   `__STORYCAPTURE_ELECTRON__`.
+3. `apps/desktop/electron/ipc.ts` registers the bridge and dispatches into
+   `ipc/handlers.ts`.
+4. `ipc/handlers.ts` groups modular handlers and falls back to `ipc/legacy.ts`
+   for commands not yet split out.
+5. Long-running operations use the existing Tauri-compatible channel/event shim
+   rather than a second streaming abstraction.
 
-## Frontend Desktop
+Current grouped handler areas include app/settings/logs/secrets, projects,
+post-production, capture, export, web sync, AI, updates, recording, render,
+picker, preview, simulator, and plugin shims for dialog/events/fs/log/os-process
+/shell/store/updater/window-state.
 
-- Routing: React Router v7 in `apps/desktop/src/routes`.
-- Feature state: colocated Zustand stores under `features/*`, plus shared
-  stores under `src/state` and `src/stores`.
-- Server/host state: TanStack Query wrappers under `src/ipc`.
-- Editor: CodeMirror-based DSL authoring with live preview, simulator timeline,
-  selector picker flow, and UI/code hybrid editing.
-- Recorder: Electron-hosted browser capture and FFmpeg export via
-  `ffmpeg-static`.
-- Post-production: timeline, inspector, preview, effects graph construction,
-  sound/cursor/zoom/annotation tracks, and export UI.
+## Renderer Feature Map
+
+- `features/dashboard`: project grid, new-project dialog, search/sort, cards.
+- `features/editor`: CodeMirror authoring, parser/LSP bridge, UI builder mode,
+  live preview, selector picker, fallback targets, dry run panel, simulator
+  timeline, command palette, polish sidecar.
+- `features/recorder`: recording view, browser/capture lifecycle, pause/resume,
+  audio availability, review prompts.
+- `features/post-production`: editor shell, timeline, inspector, preview engine,
+  compute graph, export modal, render queue, sound drawer, voiceover compact UI,
+  undo/history.
+- `features/nl-mode`: natural-language edit chat, diff cards, regeneration and
+  apply flows.
+- `features/voiceover`: voice catalog and TTS clip surfaces.
+- Shared renderer folders: `src/components`, `src/lib`, `src/state`,
+  `src/stores`, `src/ipc`.
+
+Capture/render/export are desktop app boundaries, not shared packages. They are
+split between renderer IPC facades, post-production feature state, and Electron
+host handlers.
+
+## Shared Packages
+
+- `@storycapture/config`: shared TypeScript base config.
+- `@storycapture/story-dsl`: checked-in Story AST surface and CodeMirror
+  language support. Runtime parsing is reached through desktop IPC
+  (`apps/desktop/src/ipc/parse.ts`) and host handlers.
+- `@storycapture/shared-types`: browser presets, generated effect graph types
+  (`src/generated/effects.ts`), and checked-in IPC compatibility commands/types
+  (`src/ipc.ts`). Do not hand-edit generated surfaces without updating the
+  source/provenance.
+- `@storycapture/ui`: shared token layer, `claude-design` CSS, and `Sc*`
+  primitives. Base UI is the primitive foundation.
 
 ## Web Companion
 
-`apps/web` is a Next.js app with tRPC, Prisma, NextAuth, R2 upload/share flows,
-workspace/video dashboards, analytics, invites, and desktop sync endpoints.
+`apps/web` is a Next.js 16 app with App Router, tRPC, Prisma, NextAuth v5,
+Cloudflare R2 multipart uploads, workspace/video dashboards, invites,
+templates, analytics, oEmbed, and desktop sync.
+
+Routes and APIs:
+
+| Path | Source | Purpose |
+|---|---|---|
+| `/` | `src/app/page.tsx` | public home or redirect based on session |
+| `/watch/[slug]` | `src/app/watch/[slug]/page.tsx` | public watch page |
+| `/embed/[id]` | `src/app/embed/[id]/page.tsx` | embeddable player |
+| `/invite/[token]` | `src/app/invite/[token]/page.tsx` | workspace invite accept |
+| `/sign-in` | `src/app/(auth)/sign-in/page.tsx` | sign-in UI |
+| dashboard group | `src/app/(dashboard)/**` | dashboard, videos, analytics, sync, templates, workspace members/settings |
+| `/api/trpc/[trpc]` | API route | tRPC endpoint |
+| `/api/auth/*` | API routes | NextAuth plus desktop token/JWT minting |
+| `/api/upload/*` | API routes | R2 multipart initiate/presign/complete |
+| `/api/analytics/*` | API routes | view session and event ingest |
+| `/api/cron/aggregate-analytics` | API route | Vercel cron aggregation |
+| `/api/oembed` | API route | oEmbed metadata |
+
+Current source caveat: `src/app/page.tsx` redirects authenticated users to
+`/dashboard`, while dashboard pages live under the `(dashboard)` route group.
+Verify route behavior before assuming `/dashboard` exists as a concrete path.
+
+tRPC routers:
+
+- `user`: current user and workspace memberships.
+- `workspace`: create/list/update/delete workspaces, members, invites,
+  acceptance, RBAC checks.
+- `video`: video metadata, privacy/share fields, workspace-scoped operations.
+- `analytics`: video stats and dashboard analytics.
+- `template`: public curated templates plus protected fork flow.
+- `sync`: desktop metadata sync, recording status, SSE-style subscriptions, and
+  polling fallback.
+- `health`: health checks.
+
+Prisma models: Auth.js `User`, `Account`, `Session`, `VerificationToken`, plus
+`Workspace`, `WorkspaceMember`, `WorkspaceInvite`, `Video`, `ViewEvent`,
+`DailyVideoStats`, `Template`, and `SyncedProject`. Enums include `Role`,
+`VideoVisibility`, and `TemplateCategory`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs the Node/Electron verification path:
+Current CI is `.github/workflows/ci.yml` on `macos-14`:
 
-- pnpm install
-- root typecheck
-- desktop Vitest
-- UI package Vitest
-- web Vitest
-- desktop Electron package build
+1. setup pnpm `9.15.0` and Node `20.x`;
+2. `pnpm install --frozen-lockfile`;
+3. `pnpm typecheck`;
+4. desktop Vitest;
+5. UI package Vitest;
+6. web Vitest;
+7. desktop Electron package build.
 
-## Release Notes
+There is no current GitHub release workflow. Release/signing scripts exist but
+are standalone unless a future workflow wires them in.
 
-Electron packaging is configured in `apps/desktop/package.json` under the
-`build` key. Local macOS package builds skip signing when no Developer ID
-certificate is installed; production signing/notarization credentials are
-documented in `docs/CREDENTIALS.md`.
+## Release Topology
+
+Electron packaging is configured in `apps/desktop/package.json` under `build`.
+Outputs go to `apps/desktop/release-electron`.
+
+Relevant scripts:
+
+- `scripts/notarize/notarize-mac.sh`
+- `scripts/notarize/adhoc-sign.sh`
+- `scripts/release/sign-windows.ps1`
+- `scripts/release/verify-installer-size.sh`
+
+Local macOS package builds skip signing when no Developer ID certificate is
+installed. Production signing/notarization credentials are documented in
+`docs/CREDENTIALS.md`.

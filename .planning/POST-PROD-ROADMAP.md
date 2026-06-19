@@ -1,5 +1,9 @@
 # Post-Production E2E Roadmap
 
+> Current planning artifact for Phase 20-25 post-production follow-up. Validate
+> file paths against the current Electron/TypeScript source tree before acting;
+> older linked phase docs may still mention removed Tauri/Rust paths.
+
 **Drafted:** 2026-04-28
 **Refreshed:** 2026-05-06
 **Context:** Phase 18 + 19 shipped real-video preview, computeGraph plumbing, typed Clip union, trajectory recording, and Story → Timeline auto-population. Follow-up quick work added hybrid Editor UI / Code mode, polish sidecars, Record & Polish, step timing sidecars, review fix-list surfacing, extra design-system primitives, and May 4-6 export hardening. End-to-end still needs operator verification and CI coverage.
@@ -49,7 +53,7 @@
 
 ## Operator-blocking work (separate from coding)
 
-- **02-08 audio curation**: 20 CC0/CC-BY-4.0 audio files (12 SFX + 8 BGM), normalized to -16 LUFS, listen-test checklist passed. Required to unblock sound track value + 5 ignored tests in `crates/effects/tests/sound_library.rs`. See `.planning/phases/02-cinematic-post-production-export/02-08-RESUME.md`. **No code work.**
+- **02-08 audio curation**: 20 CC0/CC-BY-4.0 audio files (12 SFX + 8 BGM), normalized to -16 LUFS, listen-test checklist passed. Required to unblock real sound track value; older ignored-test references in linked Phase 02 docs point at removed Rust crate paths. See `.planning/phases/02-cinematic-post-production-export/02-08-RESUME.md`. **No code work.**
 - **02-12b walkthrough**: 5-step manual UAT (scrub 60fps, presets, export MP4/WebM/GIF, undo, a11y). See `.planning/phases/02-cinematic-post-production-export/02-12b-RESUME.md`. **Re-runnable after Phase 21 verifies E2E.**
 
 ## Total estimate

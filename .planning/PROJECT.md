@@ -1,5 +1,10 @@
 # StoryCapture
 
+> Historical planning note: this artifact predates the Electron cleanup and may
+> mention Tauri/Rust paths that no longer exist. For current source reality,
+> read `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DOMAIN.md`, and
+> `.planning/STATE.md`.
+
 ## What This Is
 
 StoryCapture is a cross-platform desktop application (Windows + macOS) that turns structured user stories into polished demo videos. Users write stories in a simple DSL describing UI actions (click, type, navigate, etc.); the app automates those actions against a real browser (and, eventually, native apps), records the screen, and applies cinematic post-production (auto-zoom, cursor animations, transitions, sound, backgrounds). A Next.js web companion hosts, shares, and analyzes the resulting recordings.

@@ -1,5 +1,9 @@
 # /simplify Handoff — Phase 12 + 13
 
+> Historical planning note: this handoff predates the current Electron-only
+> host and may mention removed Rust/Tauri paths. Use it only as historical
+> context unless refreshed.
+
 **Paused:** 2026-04-20 (context budget exhausted mid-task)
 **Scope:** chạy `/simplify` trên toàn bộ code thay đổi ở Phase 12 và Phase 13.
 
