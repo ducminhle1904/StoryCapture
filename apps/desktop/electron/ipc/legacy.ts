@@ -36,6 +36,7 @@ import ffmpegPath from "ffmpeg-static";
 import identity from "../identity.json";
 import { screenCapturePermissionReport } from "../permissions/screen-capture";
 import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime, isPackagedRuntime } from "../runtime";
+import { setActiveElementValueScript, simulatorTargetCenterScript } from "./simulator-dom";
 import { parseStorySource, parsedCommands, type ParsedCommand } from "./story-parser";
 import type { InvokeArgs, InvokeEnvelope } from "./types";
 
@@ -3907,95 +3908,10 @@ async function elementCenter(
   targetNth?: number,
 ): Promise<{ x: number; y: number } | null> {
   const selector = targetSelector(target);
-  const targetJson = JSON.stringify(target);
-  const selectorJson = JSON.stringify(selector);
-  const targetNthJson = JSON.stringify(targetNth ?? null);
-  return contents.executeJavaScript(`
-    (() => {
-      const selector = ${selectorJson};
-      const target = ${targetJson};
-      const nth = ${targetNthJson};
-      const textOf = (el) => (el.innerText || el.textContent || '').trim();
-      const formLabelOf = (el) => {
-        if (!el) return '';
-        const id = el.getAttribute('id');
-        if (id) {
-          const label = document.querySelector('label[for="' + CSS.escape(id) + '"]');
-          if (label) return textOf(label);
-        }
-        const wrappingLabel = el.closest?.('label');
-        return wrappingLabel ? textOf(wrappingLabel) : '';
-      };
-      const nameOf = (el) =>
-        (el.getAttribute('aria-label') || formLabelOf(el) || el.getAttribute('alt') || textOf(el) || '').trim();
-      const roleOf = (el) => {
-        const explicit = el.getAttribute('role');
-        if (explicit) return explicit;
-        const tag = el.tagName.toLowerCase();
-        const type = (el.getAttribute('type') || '').toLowerCase();
-        if (tag === 'button') return 'button';
-        if (tag === 'a' && el.hasAttribute('href')) return 'link';
-        if (/^h[1-6]$/.test(tag)) return 'heading';
-        if (tag === 'img') return 'image';
-        if (tag === 'select') return el.hasAttribute('multiple') ? 'listbox' : 'combobox';
-        if (tag === 'dialog') return 'dialog';
-        if (tag === 'nav') return 'navigation';
-        if (tag === 'main') return 'main';
-        if (tag === 'input') {
-          if (type === 'checkbox') return 'checkbox';
-          if (type === 'radio') return 'radio';
-          if (type === 'range') return 'slider';
-          if (['button', 'submit', 'reset'].includes(type)) return 'button';
-          if (type === 'image') return 'button';
-          return 'textbox';
-        }
-        if (tag === 'textarea') return 'textbox';
-        return '';
-      };
-      const isVisible = (el) => {
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-      };
-      let matches = [];
-      if (selector) {
-        try {
-          matches = [...document.querySelectorAll(selector)];
-        } catch {
-          matches = [];
-        }
-      } else if (target && typeof target === 'object') {
-        const all = [...document.querySelectorAll('*')];
-        const kind = target.kind;
-        const value = target.value;
-        if (kind === 'label') {
-          const needle = String(value).toLowerCase();
-          matches = all.filter((candidate) => formLabelOf(candidate).toLowerCase().includes(needle) || nameOf(candidate).toLowerCase().includes(needle));
-        } else if (kind === 'text_exact') {
-          matches = all.filter((candidate) => textOf(candidate) === String(value));
-        } else if (kind === 'text') {
-          const needle = String(value).toLowerCase();
-          matches = all.filter((candidate) => textOf(candidate).toLowerCase().includes(needle));
-        } else if (kind === 'role') {
-          const role = value && typeof value === 'object' ? String(value.role || '') : '';
-          const name = value && typeof value === 'object' ? String(value.name || '').toLowerCase() : '';
-          matches = all.filter((candidate) => roleOf(candidate) === role && (!name || nameOf(candidate).toLowerCase().includes(name)));
-        } else if (typeof value === 'string') {
-          const needle = value.toLowerCase();
-          matches = all.filter((candidate) => {
-            const text = nameOf(candidate).toLowerCase();
-            return text === needle || text.includes(needle);
-          });
-        }
-      }
-      const visibleMatches = matches.filter(isVisible);
-      const index = Number.isInteger(nth) && nth > 0 ? nth - 1 : 0;
-      const el = visibleMatches[index] || matches[index] || null;
-      if (!el) return null;
-      const rect = el.getBoundingClientRect();
-      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    })()
-  `) as Promise<{ x: number; y: number } | null>;
+  return contents.executeJavaScript(simulatorTargetCenterScript(target, targetNth, selector)) as Promise<{
+    x: number;
+    y: number;
+  } | null>;
 }
 
 async function executeParsedCommand(
@@ -4084,20 +4000,12 @@ async function executeParsedCommand(
       button: "left",
       clickCount: 1,
     });
-    if (command.verb === "type")
-      contents.sendInputEvent({ type: "char", keyCode: command.text ?? "" });
-    if (command.verb === "select") {
-      const value = JSON.stringify(command.value ?? "");
-      await contents.executeJavaScript(`
-        (() => {
-          const active = document.activeElement;
-          if (active && 'value' in active) {
-            active.value = ${value};
-            active.dispatchEvent(new Event('input', { bubbles: true }));
-            active.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        })()
-      `);
+    if (command.verb === "type" || command.verb === "select") {
+      const value = command.verb === "type" ? (command.text ?? "") : (command.value ?? "");
+      const didWrite = await contents.executeJavaScript(setActiveElementValueScript(value));
+      if (!didWrite) {
+        throw new Error(`target is not editable for ${command.verb}: ${selectorSummary(command.target)}`);
+      }
     }
     return { cursor: center };
   }

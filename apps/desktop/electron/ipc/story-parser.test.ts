@@ -25,6 +25,11 @@ describe("story parser host command targets", () => {
       target: { kind: "label", value: "Email Address" },
       text: "debug@example.com",
     });
+    expect(commandFor('type field "EMAIL ADDRESS" "debug"')).toMatchObject({
+      verb: "type",
+      target: { kind: "label", value: "EMAIL ADDRESS" },
+      text: "debug",
+    });
     expect(commandFor('type field "Email Address" with "debug@example.com"')).toMatchObject({
       verb: "type",
       target: { kind: "label", value: "Email Address" },
