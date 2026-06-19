@@ -61,7 +61,6 @@ import { type RecorderStatus, type StepProgress, useRecorderStore } from "@/stat
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
-import { CursorTrail } from "./cursor-trail";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 import { authorPreviewRecordingPlan } from "./recording-target";
 import { storyAppUrlForRecording, storyViewportSize } from "./recording-viewport";
@@ -731,8 +730,6 @@ export function RecordingView({
 
   return (
     <main id="main-content" className="relative flex h-full flex-col bg-[var(--color-bg-primary)]">
-      <CursorTrail />
-
       {/* ─── Header ─── */}
       <header className="sc-window-chrome flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
         <div className="flex min-w-0 items-center gap-3">
