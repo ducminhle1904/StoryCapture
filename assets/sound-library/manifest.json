@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "_note": "UNCURATED SCAFFOLD — duration_ms/license/source_url/author are PLACEHOLDER until scripts/curate-sound-library.md has been executed and the 20 real files committed. See .planning/phases/02-cinematic-post-production-export/02-08-RESUME.md.",
+  "_note": "UNCURATED SCAFFOLD — duration_ms/license/source_url/author are PLACEHOLDER until scripts/curate-sound-library.md has been executed and the 20 real files committed.",
   "entries": [
     { "id": "click", "category": "sfx", "file": "click.wav", "duration_ms": 0, "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER" },
     { "id": "type", "category": "sfx", "file": "type.wav", "duration_ms": 0, "license": "PLACEHOLDER", "source_url": "PLACEHOLDER", "author": "PLACEHOLDER" },

@@ -20,9 +20,9 @@ post-production, AI/NL/TTS surfaces, and the web companion.
 ## DSL (`.story`)
 
 Stories describe browser actions and post-production intent. `packages/story-dsl`
-contains the checked-in AST/vocabulary and CodeMirror language support; runtime
-parsing is exposed to the renderer through `apps/desktop/src/ipc/parse.ts` and
-the Electron host.
+contains the checked-in, `ts-rs`-generated AST/vocabulary and CodeMirror stream
+language/highlight support; runtime parsing is exposed to the renderer through
+`apps/desktop/src/ipc/parse.ts` and the Electron host.
 
 Common verbs:
 
@@ -91,7 +91,8 @@ Main files live under `apps/desktop/src/features/editor`.
 - Polish controls write `<story>.polish.json` only after user edits; opening a
   project should not create default polish data.
 - NL mode lives in `features/nl-mode` and applies per-step diffs rather than
-  opaque source rewrites.
+  opaque source rewrites. Current source has feature code/tests for chat,
+  diffs, apply, and regeneration, but no desktop route-level mount was found.
 
 ## Automation And Recording
 
@@ -104,19 +105,26 @@ Rust/native capture crates.
   `webContents.capturePage`.
 - Frame capture writes a PNG sequence and then encodes through
   `ffmpeg-static`.
-- Audio is optional and merged during encode when available.
+- Audio is optional and merged during encode when available. The Electron
+  preload special-cases recording start/stop so renderer-side browser
+  `MediaRecorder` microphone capture can be handed back to the host through
+  `electron_recording_set_audio`.
 - Recording lifecycle supports start/stop and pause/resume surfaces.
 - Recording sidecars feed post-production cursor, zoom, callout, highlight, and
   sound defaults.
 
 Operator-gated capture work still requires real macOS Screen Recording/TCC
 verification; do not treat simulated tests as equivalent to OS-level UAT.
+The current source includes helper/test coverage for screen-capture permission
+probing, but that does not replace operating-system permission testing.
 
 ## Post-Production
 
 Main files live under `apps/desktop/src/features/post-production`.
 
-The editor owns:
+The editor loads story source, the latest recording where applicable, action
+events, cursor trajectory, step timing, and optional polish data before building
+timeline tracks. The editor owns:
 
 - `editor-shell.tsx`: primary route surface.
 - Timeline and track state: video, cursor, zoom, sound, annotation/highlight.
@@ -179,6 +187,25 @@ The web app supports:
 - desktop token exchange and short-lived SSE JWT minting;
 - metadata-only desktop sync through `SyncedProject`, recording status, and
   SSE-style subscriptions with polling fallback.
+
+Important web behavior details:
+
+- Auth uses NextAuth/Auth.js v5 database sessions through Prisma. User creation
+  also creates a personal workspace.
+- Desktop token exchange validates an Auth.js session token and mints a
+  30-day desktop JWT; SSE subscription JWTs are short-lived, currently
+  15 minutes.
+- Workspace roles are `OWNER`, `EDITOR`, and `VIEWER`.
+- Upload APIs create multipart R2 uploads, persist `Video` rows as
+  `UPLOADING`, presign parts/thumbnails, complete to `READY`, or mark failed.
+- Watch and embed pages serve `READY` videos by slug/id. oEmbed requires the
+  video to be public.
+- Analytics uses an anonymous `sc_session` cookie, accepts event batches of
+  1-50, has an in-memory 10 requests/second/IP guard, aggregates daily stats
+  through cron, and retains raw events for 90 days.
+- Sync uses metadata-only `SyncedProject` records, recording status updates,
+  in-memory EventEmitter subscriptions, short-lived JWT membership checks for
+  subscriptions, and polling fallback.
 
 Web tests are currently narrow. Do not infer full coverage for auth callbacks,
 upload APIs, invite/RBAC, analytics cron, watch/embed/oEmbed, or route

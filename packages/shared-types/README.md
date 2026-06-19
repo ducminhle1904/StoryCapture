@@ -9,7 +9,9 @@ Shared TypeScript surfaces used across StoryCapture packages and apps.
 - `src/web-account.ts`: desktop/web account DTOs.
 - `src/ipc.ts`: checked-in host IPC compatibility surface for the
   Tauri-compatible invoke bridge.
-- `src/generated/effects.ts`: generated effect graph/render types.
+- `src/generated/effects.ts`: checked-in generated effect graph/render types.
+  This file is present in the package tree but is not currently exposed through
+  the package export map or root barrel.
 
 ## Generated / Compatibility Files
 

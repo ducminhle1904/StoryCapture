@@ -22,9 +22,9 @@ cursor hotspot is the top-left corner; the compositor anchors skins at
 `sample.pos` directly.
 
 Users can select between these skins and optionally apply a `size_scale` /
-`color_tint` (see D-09 in `.planning/phases/02-cinematic-post-production-export/02-CONTEXT.md`).
-**Custom user-supplied skins are out of scope for Phase 2** — deferred to a
-later phase.
+`color_tint`; current post-production behavior is documented in
+`docs/DOMAIN.md`. **Custom user-supplied skins are out of scope for the current
+asset set** and remain deferred unless product scope changes.
 
 ## Licence
 

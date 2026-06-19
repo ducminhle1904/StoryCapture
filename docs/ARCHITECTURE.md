@@ -12,7 +12,7 @@ apps/
     electron/           Electron main/preload process and host IPC handlers
       ipc.ts            registers the tauri-invoke bridge
       ipc/handlers.ts   grouped handler registry
-      ipc/*.ts          modular host handler groups
+      ipc/*.ts          grouped command registries, many delegating to legacy
       ipc/plugin/*.ts   Tauri-compatible plugin shims
       ipc/legacy.ts     large remaining host implementation/fallback
     icons/              desktop app icons used by electron-builder
@@ -22,14 +22,14 @@ apps/
 
 packages/
   config/               shared TypeScript config package
-  shared-types/         browser presets, generated graph types, IPC surface
+  shared-types/         browser presets, IPC surface, checked-in generated files
   story-dsl/            Story AST/vocabulary and CodeMirror language support
   ui/                   shared tokens and claude-design primitives
 
 assets/                 sound library, fonts, image/assets/preset defaults
-scripts/                CI, release, signing, notarization helpers
+scripts/                local CI, release, signing, benchmark helpers
 docs/                   current read-on-demand technical docs
-.planning/              state plus historical planning artifacts
+.github/actions/        local composite setup action
 .github/workflows/      current CI
 ```
 
@@ -67,11 +67,28 @@ Electron is the runtime host. `apps/desktop/electron/main.ts` creates the
 `BrowserWindow`, loads `preload.cjs`, uses Vite in dev, loads `dist/index.html`
 in production, and registers IPC.
 
+Desktop build entrypoints:
+
+- `apps/desktop/scripts/build-electron.mjs` esbuilds `electron/main.ts` to
+  `dist-electron/main.mjs` and `electron/preload.ts` to
+  `dist-electron/preload.cjs`.
+- `apps/desktop/scripts/start-dev-electron.mjs` launches Electron after the
+  Vite dev server is available.
+- `.electron-dev/` is the prepared development app directory.
+- There is no `electron-builder.yml`; Electron Builder configuration is inline
+  under `apps/desktop/package.json#build`.
+
 The renderer still imports `@tauri-apps/api` and selected Tauri plugin packages
 as a compatibility API surface. Usage is not limited to `src/ipc`; imports also
 exist in settings, dashboard dialogs, NL mode, recorder preview, post-production
 export/progress, voiceover, editor preview/picker, stores, LSP transport,
 logging, and output preferences.
+
+`apps/desktop/electron/preload.ts` exposes the compatibility globals
+`__TAURI_INTERNALS__`, `__TAURI_EVENT_PLUGIN_INTERNALS__`, and
+`__STORYCAPTURE_ELECTRON__`. It also special-cases recording start/stop so the
+renderer can use browser `MediaRecorder` microphone capture and pass captured
+audio back to the host through `electron_recording_set_audio`.
 
 The packaged app includes:
 
@@ -107,8 +124,9 @@ React Router v7 lives in `apps/desktop/src/routes`.
    `__STORYCAPTURE_ELECTRON__`.
 3. `apps/desktop/electron/ipc.ts` registers the bridge and dispatches into
    `ipc/handlers.ts`.
-4. `ipc/handlers.ts` groups modular handlers and falls back to `ipc/legacy.ts`
-   for commands not yet split out.
+4. `ipc/handlers.ts` groups modular handlers. Most grouped modules currently
+   call `legacyHandlers([...])`, so they are command ownership registries while
+   `ipc/legacy.ts` still owns much of the implementation.
 5. Long-running operations use the existing Tauri-compatible channel/event shim
    rather than a second streaming abstraction.
 
@@ -116,6 +134,31 @@ Current grouped handler areas include app/settings/logs/secrets, projects,
 post-production, capture, export, web sync, AI, updates, recording, render,
 picker, preview, simulator, and plugin shims for dialog/events/fs/log/os-process
 /shell/store/updater/window-state.
+
+Current non-plugin command ownership:
+
+| Module | Commands |
+|---|---|
+| `ipc/app.ts` | `ping`, `app_info`, `parse_story`, panic, audio inputs, hardware encoder probe, displays/windows/capture targets, screen-capture permission, relaunch, Playwright target resolution, Stage Manager check |
+| `ipc/settings.ts` | app settings, reset category, browser executable/language |
+| `ipc/logs.ts` | log config, open log dir, frontend log ingest, diagnostic bundle |
+| `ipc/secrets.ts` | key presence/set/delete/test plus generic secret store/load/delete |
+| `ipc/projects.ts` | list/create/open/remove projects and list project recordings |
+| `ipc/preview.ts` | automation launch, preview stream, author preview lifecycle, viewport/url, back/forward/reload, author input, author snapshots |
+| `ipc/picker.ts` | author/general picker start, cancel, activity check, stamp step id |
+| `ipc/simulator.ts` | simulator start/step/cancel/promote fallback and dry-run start/cancel |
+| `ipc/recording.ts` | start/stop/pause/resume recording and host audio handoff |
+| `ipc/capture.ts` | capture target get/set/thumbnail and capture start/stop |
+| `ipc/post-production.ts` | workflow state, timeline load/save, recording actions/trajectory/step timing, presets, sound library |
+| `ipc/render.ts` | render enqueue/cancel/list active/progress stream |
+| `ipc/export.ts` | export presets, validation, run |
+| `ipc/ai.ts` | LSP requests, NL sessions/chat/diffs/regeneration, session rollup, TTS voices/generation/sync/cache |
+| `ipc/web-sync.ts` | web account/token, sync/upload status, OAuth, metadata sync queue, upload/cancel, recording status |
+| `ipc/updates.ts` | update check/install |
+
+Plugin shims live under `ipc/plugin/*` and cover Tauri-compatible
+dialog/event/log/resource, fs, os/process, shell, store, updater, and
+window-state commands.
 
 ## Renderer Feature Map
 
@@ -129,7 +172,8 @@ picker, preview, simulator, and plugin shims for dialog/events/fs/log/os-process
   compute graph, export modal, render queue, sound drawer, voiceover compact UI,
   undo/history.
 - `features/nl-mode`: natural-language edit chat, diff cards, regeneration and
-  apply flows.
+  apply flows. Current source has feature code and tests, but no route-level
+  mount was found in the desktop router.
 - `features/voiceover`: voice catalog and TTS clip surfaces.
 - Shared renderer folders: `src/components`, `src/lib`, `src/state`,
   `src/stores`, `src/ipc`.
@@ -141,13 +185,14 @@ host handlers.
 ## Shared Packages
 
 - `@storycapture/config`: shared TypeScript base config.
-- `@storycapture/story-dsl`: checked-in Story AST surface and CodeMirror
-  language support. Runtime parsing is reached through desktop IPC
+- `@storycapture/story-dsl`: checked-in, `ts-rs`-generated Story AST surface
+  plus CodeMirror language support. Runtime parsing is reached through desktop IPC
   (`apps/desktop/src/ipc/parse.ts`) and host handlers.
-- `@storycapture/shared-types`: browser presets, generated effect graph types
-  (`src/generated/effects.ts`), and checked-in IPC compatibility commands/types
-  (`src/ipc.ts`). Do not hand-edit generated surfaces without updating the
-  source/provenance.
+- `@storycapture/shared-types`: public package exports are `.` and `./ipc`.
+  The root barrel exports IPC types/commands, browser presets, and
+  `APP_PANIC_EVENT`. `src/generated/effects.ts` is a checked-in
+  `ts-rs`-generated file in the package tree, but it is not currently exposed
+  through the package export map or root barrel.
 - `@storycapture/ui`: shared token layer, `claude-design` CSS, and `Sc*`
   primitives. Base UI is the primitive foundation.
 
@@ -156,6 +201,11 @@ host handlers.
 `apps/web` is a Next.js 16 app with App Router, tRPC, Prisma, NextAuth v5,
 Cloudflare R2 multipart uploads, workspace/video dashboards, invites,
 templates, analytics, oEmbed, and desktop sync.
+
+`apps/web/next.config.ts` uses standalone output, transpiles
+`@storycapture/ui` and `@storycapture/shared-types`, externalizes MaxMind, and
+sets frame-ancestor policy so `/embed/*` can be framed while other routes deny
+framing.
 
 Routes and APIs:
 
@@ -193,11 +243,13 @@ tRPC routers:
 Prisma models: Auth.js `User`, `Account`, `Session`, `VerificationToken`, plus
 `Workspace`, `WorkspaceMember`, `WorkspaceInvite`, `Video`, `ViewEvent`,
 `DailyVideoStats`, `Template`, and `SyncedProject`. Enums include `Role`,
-`VideoVisibility`, and `TemplateCategory`.
+`VideoStatus`, `TemplateCategory`, and `WorkflowType`.
 
 ## CI
 
-Current CI is `.github/workflows/ci.yml` on `macos-14`:
+Current CI is `.github/workflows/ci.yml` on `macos-14`. It runs on pull
+requests and pushes to `main`, uses `contents: read`, and cancels older runs on
+the same ref through workflow concurrency.
 
 1. setup pnpm `9.15.0` and Node `20.x`;
 2. `pnpm install --frozen-lockfile`;
@@ -209,6 +261,11 @@ Current CI is `.github/workflows/ci.yml` on `macos-14`:
 
 There is no current GitHub release workflow. Release/signing scripts exist but
 are standalone unless a future workflow wires them in.
+
+Benchmark and auxiliary scripts such as `scripts/benchmark/render-1min.sh`,
+`scripts/ci/check-av-drift.sh`, `scripts/ci/generate-synthetic-recording.sh`,
+and `scripts/download-fonts.sh` are local/manual helpers unless explicitly
+called by a workflow.
 
 ## Release Topology
 

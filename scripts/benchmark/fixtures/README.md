@@ -1,9 +1,11 @@
 # Render benchmark fixtures (EXPORT-06)
 
 This directory holds the reference fixture consumed by
-`scripts/benchmark/render-1min.sh` — both the PR-level gate
-(`.github/workflows/render-benchmark.yml`) and the release-tag strict
-wall-clock gate (`.github/workflows/release-benchmark.yml`).
+`scripts/benchmark/render-1min.sh`.
+
+There is no benchmark GitHub Actions workflow in the current tree. Treat this
+script and fixture as local/manual benchmarking infrastructure unless a future
+workflow explicitly wires it into CI or release.
 
 ## What the fixture is
 
@@ -38,9 +40,9 @@ benchmark path switches automatically.
 
 ## Generating the canonical fixture
 
-Run this locally (or as a one-off GitHub Actions workflow) and upload
-the resulting MP4 + JSON as a long-lived artifact that the benchmark
-jobs download.
+Run this locally and keep the resulting MP4 + JSON wherever the local benchmark
+caller expects them. If a future workflow is added, document its artifact source
+here at the same time.
 
 ```bash
 ffmpeg -y -f lavfi -i "testsrc2=size=1920x1080:rate=60:duration=60" \
@@ -66,15 +68,9 @@ JSON
 gradient noise) so the encoder actually has work to do, yet it's fully
 deterministic across runners so the benchmark result is comparable.
 
-## Gate semantics
+## Local Benchmark Semantics
 
-| Gate | Trigger | Runner | Assertion | Source of truth |
-|------|---------|--------|-----------|-----------------|
-| PR-level | `pull_request` | `macos-14`, `windows-latest` | `speed=N.Nx > 2.0` | `.github/workflows/render-benchmark.yml` |
-| Release | `push: tags: release/*` | `[self-hosted, macos-m2pro]` | speed-factor gate **and** wall-clock `< 30000 ms` | `.github/workflows/release-benchmark.yml` |
-
-The PR-level speed factor is hardware-independent by construction (FFmpeg
-`speed=N.Nx` is the ratio of encoded-clip time to wall-clock time) so it
-catches regressions without coupling the gate to a specific runner's CPU.
-The release-time strict wall-clock gate is the canonical EXPORT-06
-success criterion per the plan.
+The script reports FFmpeg `speed=N.Nx`, the ratio of encoded-clip time to
+wall-clock time. That makes local comparisons useful even when machines differ,
+but it is not currently enforced by CI. If benchmark gates are restored, add the
+workflow paths, triggers, runner labels, and pass/fail thresholds here.

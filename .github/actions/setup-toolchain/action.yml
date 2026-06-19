@@ -1,5 +1,5 @@
 name: "Setup StoryCapture toolchain"
-description: "Install pnpm and Node for the Electron workspace."
+description: "Install pnpm and Node for the StoryCapture monorepo."
 
 runs:
   using: "composite"

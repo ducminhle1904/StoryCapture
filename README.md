@@ -28,7 +28,6 @@ apps/
 packages/    Shared TS packages
 scripts/     Build, release, notarize, and CI helpers
 docs/        Read-on-demand technical docs
-.planning/   GSD roadmap, phase artifacts, live state
 ```
 
 ## Read First
@@ -40,10 +39,10 @@ docs/        Read-on-demand technical docs
   intelligence, roadmap summary
 - [`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md): patterns, testing, workflow
 - [`docs/CREDENTIALS.md`](./docs/CREDENTIALS.md): signing and service secrets
-- [`.planning/STATE.md`](./.planning/STATE.md): live project status
 
 ## Status
 
 This repo moves quickly. Do not treat `README.md` as the live project tracker.
-For current milestone, completed phases, and operator-gated blockers, read
-[`./.planning/STATE.md`](./.planning/STATE.md).
+There is no `.planning/` directory in the current checkout. Treat `docs/*.md`
+and the live source tree as the current references unless a future planning
+state file is restored.

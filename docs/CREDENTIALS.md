@@ -108,8 +108,12 @@ only when `CRON_SECRET` is set; leaving it empty disables that protection.
 
 - Desktop token exchange and SSE JWT minting live under `apps/web/src/app/api/auth`.
 - `JWT_SECRET` signs desktop tokens and short-lived subscription tokens.
+- Current desktop tokens are 30-day JWTs; current SSE subscription tokens are
+  15-minute JWTs.
 - Sync subscriptions verify JWT plus workspace membership before streaming
   project or recording-status updates.
+- `apps/web/vercel.json` wires `/api/cron/aggregate-analytics` to run daily at
+  midnight; production must set `CRON_SECRET` for that endpoint.
 
 ## Missing-Secret Behavior
 

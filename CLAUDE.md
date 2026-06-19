@@ -30,8 +30,10 @@ video.
   in `ipc/*`, and `ipc/legacy.ts` still owns many host operations.
 - `packages/story-dsl` is AST/vocabulary plus CodeMirror support. Runtime parse
   and simulator behavior is desktop IPC/host code, not a shared parser package.
-- `packages/shared-types` exposes browser presets, generated effect graph
-  types, and the checked-in IPC compatibility surface.
+- `packages/shared-types` publicly exports browser presets and the checked-in
+  IPC compatibility surface. `src/generated/effects.ts` is a checked-in
+  generated file in the package tree, but it is not currently exported through
+  the package export map.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
   `Sc*` primitive families.
 - Current manifest pins: desktop Electron `^42.4.1`, Electron Builder
@@ -54,9 +56,9 @@ Read only what the task needs.
    format, and agent workflow.
 4. `docs/CREDENTIALS.md`
    Signing, auth, R2, email, cron, desktop runtime env, and service secrets.
-5. `.planning/STATE.md`
-   Current milestone snapshot, current-source caveats, operator-gated blockers,
-   and which planning artifacts are still live.
+There is no `.planning/` directory in the current checkout. If planning
+artifacts are restored later, treat them as historical unless a current state
+file explicitly says otherwise.
 
 ## Load-On-Demand Map
 
@@ -71,9 +73,9 @@ Read only what the task needs.
 - Changing signing, auth, R2, email, cron, desktop-web token exchange, provider
   keys, or runtime env:
   read `docs/CREDENTIALS.md`.
-- Reading `.planning/*`:
-  start with `.planning/STATE.md`. Treat old roadmap/research/phase artifacts
-  as historical unless `STATE.md` explicitly names them as current.
+- Reading restored planning artifacts:
+  treat old roadmap/research/phase docs as historical unless a current state
+  file explicitly names them as live.
 
 ## Working Rules
 

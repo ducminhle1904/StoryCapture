@@ -49,5 +49,5 @@ See `scripts/curate-sound-library.md` for the procedure to source, normalize,
 and validate every file.
 
 > **STATUS:** SCAFFOLD — the committed files are placeholders. Real audio
-> must be curated by a human operator before Phase 2 ships. See
-> `.planning/phases/02-cinematic-post-production-export/02-08-RESUME.md`.
+> must be curated by a human operator before release. Use
+> `scripts/curate-sound-library.md` as the current curation procedure.

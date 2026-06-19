@@ -51,5 +51,6 @@ docs/             read-on-demand technical docs
 
 ## Getting Help
 
-Check `docs/` for current technical references and `.planning/` for historical
-phase artifacts.
+Check `docs/` for current technical references. There is no `.planning/`
+directory in the current checkout; if planning artifacts are restored later,
+treat them as historical unless a current state file says otherwise.
