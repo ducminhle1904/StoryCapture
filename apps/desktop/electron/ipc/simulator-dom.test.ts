@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   findSimulatorTarget,
   setActiveElementValueScript,
+  setSimulatorTargetValueScript,
   simulatorTargetCenterScript,
 } from "./simulator-dom";
 
@@ -66,6 +67,62 @@ describe("simulator DOM helpers", () => {
 
     expect(didWrite).toBe(true);
     expect(input.value).toBe("debug");
+    expect(events).toEqual(["input", "change"]);
+  });
+
+  it("builds a target value script that writes to a resolved label target and emits events", () => {
+    document.body.innerHTML = `
+      <label for="email">Email Address</label>
+      <input id="email" type="email" />
+    `;
+    document.querySelectorAll("*").forEach(makeVisible);
+    const input = document.getElementById("email") as HTMLInputElement;
+    const events: string[] = [];
+    input.addEventListener("input", () => events.push("input"));
+    input.addEventListener("change", () => events.push("change"));
+
+    const didWrite = window.eval(
+      setSimulatorTargetValueScript({ kind: "label", value: "EMAIL ADDRESS" }, "debug"),
+    );
+
+    expect(didWrite).toBe(true);
+    expect(input.value).toBe("debug");
+    expect(events).toEqual(["input", "change"]);
+  });
+
+  it("does not report success when the resolved target is not editable", () => {
+    document.body.innerHTML = `<div>Email Address</div>`;
+    document.querySelectorAll("*").forEach(makeVisible);
+
+    const didWrite = window.eval(
+      setSimulatorTargetValueScript({ kind: "text", value: "Email Address" }, "debug"),
+    );
+
+    expect(didWrite).toBe(false);
+  });
+
+  it("falls back to a focused child input for role wrapper targets", () => {
+    document.body.innerHTML = `
+      <div role="combobox" aria-label="Country">
+        <input id="country" />
+      </div>
+    `;
+    document.querySelectorAll("*").forEach(makeVisible);
+    const input = document.getElementById("country") as HTMLInputElement;
+    const events: string[] = [];
+    input.addEventListener("input", () => events.push("input"));
+    input.addEventListener("change", () => events.push("change"));
+    input.focus();
+
+    const didWrite = window.eval(
+      setSimulatorTargetValueScript(
+        { kind: "role", value: { role: "combobox", name: "Country" } },
+        "France",
+      ),
+    );
+
+    expect(didWrite).toBe(true);
+    expect(input.value).toBe("France");
     expect(events).toEqual(["input", "change"]);
   });
 });

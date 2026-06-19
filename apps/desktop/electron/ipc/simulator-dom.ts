@@ -169,32 +169,88 @@ function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectE
   }
 }
 
-export function setActiveElementValue(value: string): boolean {
-  const active = document.activeElement;
-  if (!active || !(active instanceof HTMLElement)) return false;
-  if (
-    active instanceof HTMLInputElement ||
-    active instanceof HTMLTextAreaElement ||
-    active instanceof HTMLSelectElement
-  ) {
-    setNativeValue(active, value);
-  } else if (active.isContentEditable || active.getAttribute("contenteditable") === "true") {
-    active.textContent = value;
-  } else if ("value" in active) {
-    (active as HTMLElement & { value: string }).value = value;
+function writeElementValue(el: HTMLElement, value: string): boolean {
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+    setNativeValue(el, value);
+  } else if (el.isContentEditable || el.getAttribute("contenteditable") === "true") {
+    el.textContent = value;
+  } else if ("value" in el) {
+    (el as HTMLElement & { value: string }).value = value;
   } else {
     return false;
   }
-  active.dispatchEvent(new Event("input", { bubbles: true }));
-  active.dispatchEvent(new Event("change", { bubbles: true }));
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
+}
+
+export function setSimulatorTargetValue(el: Element | null, value: string): boolean {
+  if (!el || !(el instanceof HTMLElement) || !isEditableElement(el)) return false;
+  return writeElementValue(el, value);
+}
+
+function setResolvedTargetValue(el: Element | null, value: string): boolean {
+  if (setSimulatorTargetValue(el, value)) return true;
+  if (!(el instanceof HTMLElement)) return false;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && (el === active || el.contains(active))) {
+    if (writeElementValue(active, value)) return true;
+  }
+  const candidates = [...el.querySelectorAll("*")];
+  for (const candidate of candidates) {
+    if (
+      candidate instanceof HTMLElement &&
+      isEditableElement(candidate) &&
+      writeElementValue(candidate, value)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function setActiveElementValue(value: string): boolean {
+  const active = document.activeElement;
+  if (!active || !(active instanceof HTMLElement)) return false;
+  return writeElementValue(active, value);
 }
 
 export function setActiveElementValueScript(value: string): string {
   return `
     (() => {
       ${setNativeValue.toString()}
+      ${writeElementValue.toString()}
       return (${setActiveElementValue.toString()})(${JSON.stringify(value)});
+    })()
+  `;
+}
+
+export function setSimulatorTargetValueScript(
+  target: unknown,
+  value: string,
+  targetNth?: number,
+  selector?: string | null,
+): string {
+  return `
+    (() => {
+      ${textOf.toString()}
+      ${cssEscape.toString()}
+      ${formLabelOf.toString()}
+      ${nameOf.toString()}
+      ${roleOf.toString()}
+      ${isVisible.toString()}
+      ${isEditableElement.toString()}
+      ${labelMatches.toString()}
+      ${setNativeValue.toString()}
+      ${writeElementValue.toString()}
+      ${setSimulatorTargetValue.toString()}
+      ${setResolvedTargetValue.toString()}
+      const el = (${findSimulatorTarget.toString()})(
+        ${JSON.stringify(target)},
+        ${JSON.stringify(targetNth ?? null)},
+        ${JSON.stringify(selector ?? null)}
+      );
+      return setResolvedTargetValue(el, ${JSON.stringify(value)});
     })()
   `;
 }

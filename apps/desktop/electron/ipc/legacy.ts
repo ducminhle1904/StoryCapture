@@ -36,7 +36,8 @@ import ffmpegPath from "ffmpeg-static";
 import identity from "../identity.json";
 import { screenCapturePermissionReport } from "../permissions/screen-capture";
 import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime, isPackagedRuntime } from "../runtime";
-import { setActiveElementValueScript, simulatorTargetCenterScript } from "./simulator-dom";
+import { recordingTailFrameDelaysMs } from "./recording-tail";
+import { setSimulatorTargetValueScript, simulatorTargetCenterScript } from "./simulator-dom";
 import { parseStorySource, parsedCommands, type ParsedCommand } from "./story-parser";
 import type { InvokeArgs, InvokeEnvelope } from "./types";
 
@@ -2689,6 +2690,29 @@ async function captureRecordingFrame(session: RecordingSession): Promise<void> {
   }
 }
 
+function waitMs(durationMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
+}
+
+function queueRecordingFrame(session: RecordingSession): Promise<void> {
+  if (session.captureInFlight) return session.captureInFlight;
+  const capture = captureRecordingFrame(session).finally(() => {
+    if (session.captureInFlight === capture) session.captureInFlight = null;
+  });
+  session.captureInFlight = capture;
+  return capture;
+}
+
+async function captureAutomationRecordingTail(session: RecordingSession): Promise<void> {
+  for (const delayMs of recordingTailFrameDelaysMs()) {
+    if (recordingSessions.get(session.id) !== session) return;
+    if (session.captureInFlight) await session.captureInFlight;
+    if (delayMs > 0) await waitMs(delayMs);
+    if (recordingSessions.get(session.id) !== session) return;
+    await queueRecordingFrame(session);
+  }
+}
+
 async function captureAuthorPreviewNativeImage(
   streamId: string,
   width: number,
@@ -3265,10 +3289,7 @@ async function startRecording(raw: unknown, onEvent: unknown, sender: WebContent
     heartbeat,
     captureTimer: setInterval(
       () => {
-        if (session.captureInFlight) return;
-        session.captureInFlight = captureRecordingFrame(session).finally(() => {
-          session.captureInFlight = null;
-        });
+        void queueRecordingFrame(session);
       },
       Math.max(1000 / fps, 16),
     ),
@@ -4000,12 +4021,17 @@ async function executeParsedCommand(
       button: "left",
       clickCount: 1,
     });
-    if (command.verb === "type" || command.verb === "select") {
-      const value = command.verb === "type" ? (command.text ?? "") : (command.value ?? "");
-      const didWrite = await contents.executeJavaScript(setActiveElementValueScript(value));
-      if (!didWrite) {
-        throw new Error(`target is not editable for ${command.verb}: ${selectorSummary(command.target)}`);
-      }
+    const value = command.verb === "type" ? (command.text ?? "") : (command.value ?? "");
+    const didWrite = await contents.executeJavaScript(
+      setSimulatorTargetValueScript(
+        command.target,
+        value,
+        command.target_nth,
+        targetSelector(command.target),
+      ),
+    );
+    if (!didWrite) {
+      throw new Error(`target is not editable for ${command.verb}: ${selectorSummary(command.target)}`);
     }
     return { cursor: center };
   }
@@ -4283,6 +4309,11 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
   });
   const recordingSessionId =
     typeof args.recordingSessionId === "string" ? args.recordingSessionId : null;
+  const recordingSession = recordingSessionId ? recordingSessions.get(recordingSessionId) : null;
+  if (recordingSession) {
+    clearInterval(recordingSession.captureTimer);
+    await captureAutomationRecordingTail(recordingSession);
+  }
   if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
     await stopRecording({ id: recordingSessionId });
   }
