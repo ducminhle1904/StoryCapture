@@ -17,15 +17,18 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { TargetPicker } from "@/features/capture/TargetPicker";
-import { stopPreviewNow } from "@/features/editor/preview-lifecycle";
+import {
+  acquirePreviewForRecording,
+  type PreviewRecordingLease,
+} from "@/features/editor/preview-lifecycle";
 import {
   type AutomationChannelHandle,
   type ExecutorEvent,
   launchAutomation,
 } from "@/ipc/automation";
 import {
-  checkScreenCapturePermission,
   type CaptureTarget,
+  checkScreenCapturePermission,
   type DisplayInfo,
   isStageManagerEnabled,
   openScreenCapturePrefs,
@@ -44,6 +47,7 @@ import {
 import { parseStory } from "@/ipc/parse";
 import { frontendLog } from "@/lib/log";
 import { useAppSettingsStore } from "@/state/app-settings";
+import type { PreviewViewport } from "@/state/editor";
 import {
   applyCaptureFpsDefault,
   DEFAULT_RECORDING_PACING,
@@ -148,6 +152,15 @@ function storyViewportSize(source: string): BrowserViewportSize {
     default:
       return DEFAULT_BROWSER_VIEWPORT;
   }
+}
+
+function storyAppUrlForRecording(source: string): string | null {
+  return source.match(/\bapp\s*:\s*["'](https?:\/\/[^"']+)["']/i)?.[1] ?? null;
+}
+
+function storyPreviewViewport(source: string): PreviewViewport {
+  const named = source.match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]?.toLowerCase();
+  return named === "tablet" || named === "mobile" ? named : "desktop";
 }
 
 function preferDisplay(a: DisplayInfo, b: DisplayInfo): DisplayInfo {
@@ -344,6 +357,8 @@ export function RecordingView({
   const [stageManagerWarning, setStageManagerWarning] = useState(false);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
+  const previewLeaseRef = useRef<PreviewRecordingLease | null>(null);
+  const startInFlightRef = useRef(false);
   const startedAtRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
   const automationOwnsStopRef = useRef(false);
@@ -360,6 +375,11 @@ export function RecordingView({
 
   const currentStepEntry = steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
   const completedSteps = steps.filter((s) => s.status === "succeeded").length;
+
+  const releasePreviewLease = () => {
+    previewLeaseRef.current?.release();
+    previewLeaseRef.current = null;
+  };
 
   // Detect Stage Manager once on mount (user can toggle it at any time
   // but the cost of not re-polling is a stale banner — acceptable).
@@ -412,6 +432,8 @@ export function RecordingView({
           });
         });
       }
+      previewLeaseRef.current?.release();
+      previewLeaseRef.current = null;
       reset();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -494,6 +516,7 @@ export function RecordingView({
         startedAtRef.current = null;
         pausedAtRef.current = null;
         automationOwnsStopRef.current = false;
+        releasePreviewLease();
         setSession(null);
         setStatus("completed");
         setOutputPath(event.result.output_path);
@@ -509,6 +532,7 @@ export function RecordingView({
         startedAtRef.current = null;
         pausedAtRef.current = null;
         automationOwnsStopRef.current = false;
+        releasePreviewLease();
         setSession(null);
         setStatus("failed");
         setError(event.message);
@@ -532,7 +556,8 @@ export function RecordingView({
   const handleRecord = async () => {
     // Double-start guard. Synchronous status flip before any await so a
     // 10 ms double-click cannot enter this function twice.
-    if (status !== "idle") return;
+    if (startInFlightRef.current || useRecorderStore.getState().status !== "idle") return;
+    startInFlightRef.current = true;
     setStatus("starting");
     // Fresh per-session UX state for the audio/heartbeat badges.
     setAudioUnavailable(false);
@@ -540,11 +565,13 @@ export function RecordingView({
     lastHeartbeatRef.current = null;
     if (permission !== "granted") {
       setStatus("idle");
+      startInFlightRef.current = false;
       return;
     }
     if (selectedDisplay == null) {
       toast.error("Pick a Target before recording.");
       setStatus("idle");
+      startInFlightRef.current = false;
       return;
     }
     startedAtRef.current = Date.now();
@@ -562,9 +589,6 @@ export function RecordingView({
       const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
       const storyViewport = storyViewportSize(storySource);
       const pacingProfile = DEFAULT_RECORDING_PACING;
-      if (storyHasBrowser) {
-        await stopPreviewNow("recording-start");
-      }
       const launchDisplay = storyHasBrowser
         ? chooseBrowserLaunchDisplay(displays, display, storyViewport, chromeHiding)
         : display;
@@ -654,35 +678,27 @@ export function RecordingView({
         basis_h?: number | null;
         scale_hint?: number | null;
       } | null = null;
+      let browserStreamId: string | null = null;
       if (shouldAutoFollow) {
-        // Launch Playwright *before* capture so the window exists.
-        launchAutomation(
-          {
-            storySource,
-            projectFolder,
-            chromeHiding,
-            pacingProfile,
-            recordingDisplay,
-            recordingViewport,
-          },
-          (evt) => dispatchAutomation(evt),
-          (ch) => {
-            automationChannelRef.current = ch;
-          },
-        ).catch((e) => {
-          const msg = formatIpcError(e);
-          toast.error(`Automation failed: ${msg}`);
-          setError(msg);
+        const appUrl = storyAppUrlForRecording(storySource);
+        if (!appUrl) throw new Error("Browser story is missing a valid meta.app URL");
+        releasePreviewLease();
+        const lease = await acquirePreviewForRecording({
+          appUrl,
+          viewport: storyPreviewViewport(storySource),
+          reason: "recording-start",
         });
-        // Poll the HOST directly for the Chromium pid (bypassing the
-        // store's 1s-debounced refresher). Up to 8s; return as soon as
-        // resolvePlaywrightTarget returns non-null.
+        previewLeaseRef.current = lease;
+        browserStreamId = lease.streamId;
         const { resolvePlaywrightTarget } = await import("@/ipc/capture");
         const deadline = Date.now() + 8_000;
         let resolved: Awaited<ReturnType<typeof resolvePlaywrightTarget>> = null;
         while (Date.now() < deadline) {
           try {
-            const hit = await resolvePlaywrightTarget();
+            const hit = await resolvePlaywrightTarget({
+              streamId: browserStreamId,
+              ensureVisible: true,
+            });
             if (hit && hit.window_id != null) {
               resolved = hit;
               break;
@@ -720,16 +736,23 @@ export function RecordingView({
         } else {
           const msg =
             "Browser target is not available. Restore the browser window and try recording again.";
-          frontendLog.warn("RecordingView", "browser auto-target unavailable; refusing display fallback", {
-            fields: {
-              deadline_ms: 8000,
-              recording_target_kind: recordingTarget.kind,
-              story_has_browser: storyHasBrowser,
+          frontendLog.warn(
+            "RecordingView",
+            "browser auto-target unavailable; refusing display fallback",
+            {
+              fields: {
+                deadline_ms: 8000,
+                recording_target_kind: recordingTarget.kind,
+                story_has_browser: storyHasBrowser,
+                stream_id: browserStreamId,
+              },
             },
-          });
+          );
           toast.error(msg);
           setError(msg);
           setStatus("idle");
+          releasePreviewLease();
+          startInFlightRef.current = false;
           return;
         }
       }
@@ -759,40 +782,40 @@ export function RecordingView({
       // confirmed the session. If we error out above, the catch arm
       // resets to "idle" so the Start button re-enables.
       setStatus("recording");
+      startInFlightRef.current = false;
 
-      // Launch DSL automation here ONLY if we didn't already launch it
-      // for auto-follow (`shouldAutoFollow` fires launchAutomation BEFORE
-      // capture starts so the Chromium pid is resolvable). Otherwise, we'd
-      // spawn two Playwright sessions.
-      if (!shouldAutoFollow) {
-        automationOwnsStopRef.current = true;
-        launchAutomation(
-          {
-            storySource,
-            projectFolder,
-            chromeHiding,
-            recordingDisplay,
-            recordingViewport,
-            pacingProfile,
-            recordingSessionId:
-              typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
-          },
-          (evt) => dispatchAutomation(evt),
-          (ch) => {
-            automationChannelRef.current = ch;
-          },
-        ).catch((e) => {
-          automationOwnsStopRef.current = false;
-          const msg = formatIpcError(e);
-          toast.error(`Automation failed: ${msg}`);
-          setError(msg);
-        });
-      }
+      automationOwnsStopRef.current = true;
+      launchAutomation(
+        {
+          storySource,
+          projectFolder,
+          streamId: browserStreamId,
+          chromeHiding,
+          recordingDisplay,
+          recordingViewport,
+          pacingProfile,
+          recordingSessionId:
+            typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
+        },
+        (evt) => dispatchAutomation(evt),
+        (ch) => {
+          automationChannelRef.current = ch;
+        },
+      ).catch((e) => {
+        automationOwnsStopRef.current = false;
+        releasePreviewLease();
+        const msg = formatIpcError(e);
+        toast.error(`Automation failed: ${msg}`);
+        setError(msg);
+        if (sessionRef.current) void handleStop();
+      });
     } catch (e) {
+      releasePreviewLease();
       setError(formatIpcError(e));
       // Error path resets to idle so the Start button re-enables; the
       // toast + error banner still surface the failure to the user.
       setStatus("idle");
+      startInFlightRef.current = false;
       toast.error(`Recording failed to start: ${formatIpcError(e)}`);
     }
   };
@@ -874,6 +897,7 @@ export function RecordingView({
     } catch (e) {
       sessionRef.current = null;
       startedAtRef.current = null;
+      releasePreviewLease();
       setSession(null);
       const message = formatIpcError(e);
       setStatus("failed");
@@ -905,6 +929,7 @@ export function RecordingView({
     startedAtRef.current = null;
     pausedAtRef.current = null;
     automationOwnsStopRef.current = false;
+    releasePreviewLease();
     setStatus("idle");
     setElapsed(0);
   };
@@ -996,7 +1021,9 @@ export function RecordingView({
               <span>Record</span>
             )}
             <span>/</span>
-            <span className="truncate font-medium text-[var(--color-fg-primary)]">{projectName}</span>
+            <span className="truncate font-medium text-[var(--color-fg-primary)]">
+              {projectName}
+            </span>
             <span>/</span>
             <span>Record</span>
           </div>

@@ -71,6 +71,8 @@ export type ExecutorEvent =
 export interface LaunchAutomationArgs {
   storySource: string;
   projectFolder: string;
+  /** Existing author-preview stream to execute against instead of spawning a throwaway browser. */
+  streamId?: string | null;
   /**
    * Logical desktop origin for the selected recording display. macOS uses it
    * to place Chromium on the intended monitor before DPR detection.
@@ -126,6 +128,7 @@ export async function launchAutomation(
   await invoke("launch_automation", {
     storySource: args.storySource,
     projectFolder: args.projectFolder,
+    streamId: args.streamId ?? null,
     onEvent: channel,
     chromeHiding: args.chromeHiding ?? false,
     pacingProfile: DEFAULT_RECORDING_PACING,

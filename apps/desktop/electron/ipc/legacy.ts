@@ -298,7 +298,10 @@ interface ParsedCommand {
   text?: string;
   value?: string;
   path?: string;
+  direction?: string;
+  amount?: number | null;
   duration_ms?: number;
+  timeout_ms?: number | null;
   name?: string;
 }
 
@@ -426,6 +429,37 @@ interface AuthorPreviewSession {
   frameEvent: string;
   navEvent: string;
   paused: boolean;
+}
+
+interface StoryBrowserRunHooks {
+  onStepStarted?: (ordinal: number, command: ParsedCommand) => void;
+  onStepSucceeded?: (
+    ordinal: number,
+    command: ParsedCommand,
+    result: ParsedCommandResult,
+    durationMs: number,
+  ) => void;
+  onFrameCaptured?: (ordinal: number, frame: SimulatorStepFrame) => void;
+  onStepFailed?: (ordinal: number, error: unknown) => void;
+}
+
+interface StoryBrowserRunOptions {
+  contents: WebContents;
+  commands: ParsedCommand[];
+  projectFolder: string;
+  storySource: string;
+  targets: { version: number; steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }> };
+  stopAfter?: number;
+  frameDir?: string | null;
+  shouldCancel?: () => boolean;
+  hooks?: StoryBrowserRunHooks;
+}
+
+type StoryBrowserRunExitReason = "completed" | "paused" | "cancelled" | "failed";
+
+interface ParsedCommandResult {
+  screenshotPath?: string | null;
+  cursor?: { x: number; y: number } | null;
 }
 
 type PickResult =
@@ -2470,12 +2504,32 @@ async function stopCaptureStream(raw: unknown) {
   return stats;
 }
 
-function resolveActiveAuthorPreviewTarget() {
-  for (const session of authorPreviewSessions.values()) {
+function resolveActiveAuthorPreviewTarget(streamId?: string | null, ensureVisible = false) {
+  const candidates =
+    streamId && streamId.length > 0
+      ? [authorPreviewSessions.get(streamId)].filter((session): session is AuthorPreviewSession =>
+          Boolean(session),
+        )
+      : [...authorPreviewSessions.values()];
+  for (const session of candidates) {
     if (session.window.isDestroyed()) continue;
+    if (ensureVisible && !session.window.isVisible()) {
+      session.window.showInactive();
+    }
     const mediaSourceId = session.window.getMediaSourceId();
     const windowId = parseSourceNumericId(mediaSourceId);
     const bounds = session.window.getContentBounds();
+    void hostLog("info", "resolve_playwright_target", {
+      requested_stream_id: streamId ?? "",
+      author_session_count: authorPreviewSessions.size,
+      resolved_stream_id: session.id,
+      browser_window_id: session.window.id,
+      media_source_id: mediaSourceId,
+      window_id: windowId,
+      visible: session.window.isVisible(),
+      width_px: bounds.width,
+      height_px: bounds.height,
+    });
     return {
       window_id: windowId,
       pid: process.pid,
@@ -2492,6 +2546,11 @@ function resolveActiveAuthorPreviewTarget() {
       },
     };
   }
+  void hostLog("warn", "resolve_playwright_target unavailable", {
+    requested_stream_id: streamId ?? "",
+    author_session_count: authorPreviewSessions.size,
+    candidate_ids: [...authorPreviewSessions.keys()].join(","),
+  });
   return null;
 }
 
@@ -2741,6 +2800,11 @@ async function stopAuthorPreviewSession(streamId: string): Promise<void> {
   if (!session) return;
   authorPreviewSessions.delete(streamId);
   if (globalPreviewStreamSessionId === streamId) globalPreviewStreamSessionId = null;
+  void hostLog("info", "stop_author_preview", {
+    stream_id: streamId,
+    browser_window_id: session.window.id,
+    was_destroyed: session.window.isDestroyed(),
+  });
   if (!session.window.isDestroyed()) session.window.destroy();
 }
 
@@ -2797,6 +2861,16 @@ async function startAuthorPreviewSession(
       : "about:blank";
   await preview.loadURL(initialUrl);
   emitAuthorNav(session);
+  void hostLog("info", "start_author_preview", {
+    stream_id: id,
+    initial_url: initialUrl,
+    viewport_width: width,
+    viewport_height: height,
+    show: preview.isVisible(),
+    offscreen: true,
+    browser_window_id: preview.id,
+    media_source_id: preview.getMediaSourceId(),
+  });
   return id;
 }
 
@@ -3915,6 +3989,11 @@ function storyHash(source: string): string {
   return createHash("sha256").update(source).digest("hex");
 }
 
+function storyAppUrl(source: string): string | null {
+  const parsed = parseStorySource(source);
+  return parsed.ast?.meta?.app ?? null;
+}
+
 function parsedCommands(source: string): ParsedCommand[] {
   const parsed = parseStorySource(source);
   const ast = parsed.ast as { scenes?: Array<{ commands?: unknown[] }> } | null;
@@ -3966,7 +4045,7 @@ async function executeParsedCommand(
   contents: WebContents,
   command: ParsedCommand,
   projectFolder: string,
-): Promise<{ screenshotPath?: string | null; cursor?: { x: number; y: number } | null }> {
+): Promise<ParsedCommandResult> {
   if (command.verb === "navigate" && command.url) {
     await contents.loadURL(command.url);
     return {};
@@ -3976,8 +4055,41 @@ async function executeParsedCommand(
     return {};
   }
   if (command.verb === "pause") return {};
+  if (command.verb === "scroll") {
+    const direction = command.direction ?? "down";
+    if (!["up", "down", "left", "right"].includes(direction)) {
+      throw new Error(`unsupported scroll direction: ${direction}`);
+    }
+    const amount = Number(command.amount ?? 1);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error(`invalid scroll amount: ${command.amount ?? 1}`);
+    }
+    const sign = direction === "up" || direction === "left" ? -1 : 1;
+    contents.sendInputEvent({
+      type: "mouseWheel",
+      x: 10,
+      y: 10,
+      deltaX: direction === "left" || direction === "right" ? sign * 500 * amount : 0,
+      deltaY: direction === "up" || direction === "down" ? sign * 500 * amount : 0,
+    });
+    return {};
+  }
 
   const center = command.target ? await elementCenter(contents, command.target) : null;
+  if ((command.verb === "wait-for" || command.verb === "assert") && command.target) {
+    const deadline = Date.now() + Math.min(Number(command.timeout_ms ?? 5_000), 30_000);
+    let found = center;
+    while (!found && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      found = await elementCenter(contents, command.target);
+    }
+    if (!found)
+      throw new Error(`target not found for ${command.verb}: ${selectorSummary(command.target)}`);
+    return { cursor: found };
+  }
+  if (["click", "hover", "type", "select", "upload"].includes(command.verb) && !center) {
+    throw new Error(`target not found for ${command.verb}: ${selectorSummary(command.target)}`);
+  }
   if ((command.verb === "click" || command.verb === "hover") && center) {
     contents.sendInputEvent({ type: "mouseMove", x: center.x, y: center.y });
     if (command.verb === "click") {
@@ -4030,6 +4142,9 @@ async function executeParsedCommand(
     }
     return { cursor: center };
   }
+  if (command.verb === "upload") {
+    throw new Error("upload command is not supported by the Electron browser runner yet");
+  }
   if (command.verb === "screenshot") {
     const image = await contents.capturePage();
     const exportsDir = path.join(projectFolder, EXPORTS_DIRNAME);
@@ -4043,91 +4158,259 @@ async function executeParsedCommand(
   return { cursor: center };
 }
 
+async function hostLog(
+  level: "info" | "warn",
+  message: string,
+  fields: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await logFromFrontend({
+      level,
+      source: "electron-host",
+      message,
+      fields: Object.entries(fields).map(([key, value]) => [key, String(value)]),
+    });
+  } catch {
+    // Host diagnostics must never fail the browser run they describe.
+  }
+}
+
+async function ensureStoryInitialUrl(contents: WebContents, storySource: string): Promise<void> {
+  const appUrl = storyAppUrl(storySource);
+  if (!appUrl || !/^https?:\/\//i.test(appUrl)) return;
+  const currentUrl = contents.getURL();
+  const shouldNavigate = (() => {
+    if (!currentUrl || currentUrl === "about:blank") return true;
+    try {
+      return new URL(currentUrl).origin !== new URL(appUrl).origin;
+    } catch {
+      return true;
+    }
+  })();
+  if (shouldNavigate) {
+    await contents.loadURL(appUrl);
+  }
+}
+
+async function writePngAtomic(filePath: string, bytes: Buffer): Promise<void> {
+  const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  await fs.writeFile(tempPath, bytes);
+  await fs.rename(tempPath, filePath);
+}
+
+async function captureStoryFrame(
+  contents: WebContents,
+  frameDir: string,
+  ordinal: number,
+  existingPath?: string | null,
+): Promise<string> {
+  if (existingPath) return existingPath;
+  const framePath = path.join(frameDir, `step-${String(ordinal).padStart(4, "0")}.png`);
+  const image = await contents.capturePage();
+  if (image.isEmpty()) throw new Error(`captured empty browser frame for step ${ordinal}`);
+  await writePngAtomic(framePath, image.toPNG());
+  return framePath;
+}
+
+function simulatorFrameFromResult(
+  ordinal: number,
+  command: ParsedCommand | undefined,
+  targets: { version: number; steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }> },
+  result: ParsedCommandResult,
+  screenshotPath: string | null,
+  durationMs: number,
+): SimulatorStepFrame {
+  const stepTargets = command?.step_id ? targets.steps[command.step_id] : null;
+  const fallback = Array.isArray(stepTargets?.fallbacks) ? stepTargets.fallbacks[0] : null;
+  const primary = stepTargets?.primary ?? command?.target ?? null;
+  const matchKind = commandSupportsFallback(command)
+    ? fallback
+      ? "fuzzy"
+      : result.cursor || primary
+        ? "primary"
+        : "none"
+    : "none";
+  return {
+    ordinal,
+    screenshot_path: screenshotPath,
+    cursor_xy: [result.cursor?.x ?? 0, result.cursor?.y ?? 0],
+    matched_selector: matchKind === "fuzzy" ? selectorSummary(fallback) : selectorSummary(primary),
+    matched_bbox: null,
+    match_kind: matchKind,
+    duration_ms: durationMs,
+  };
+}
+
+async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions): Promise<{
+  succeeded: number;
+  failed: number;
+  pausedOrdinal: number | null;
+  exitReason: StoryBrowserRunExitReason;
+  durationMs: number;
+}> {
+  const startedAt = Date.now();
+  const limit =
+    options.stopAfter && options.stopAfter > 0
+      ? Math.min(options.stopAfter, options.commands.length)
+      : options.commands.length;
+  let succeeded = 0;
+  let failed = 0;
+  let lastOrdinal = 0;
+  let exitReason: StoryBrowserRunExitReason = "completed";
+  await ensureStoryInitialUrl(options.contents, options.storySource);
+
+  for (let index = 0; index < limit; index += 1) {
+    const ordinal = index + 1;
+    if (options.shouldCancel?.()) {
+      exitReason = "cancelled";
+      break;
+    }
+    const command = options.commands[index];
+    lastOrdinal = ordinal;
+    options.hooks?.onStepStarted?.(ordinal, command);
+    const stepStartedAt = Date.now();
+    try {
+      const result = await executeParsedCommand(options.contents, command, options.projectFolder);
+      const durationMs = Date.now() - stepStartedAt;
+      succeeded += 1;
+      options.hooks?.onStepSucceeded?.(ordinal, command, result, durationMs);
+      if (options.frameDir) {
+        const screenshotPath = await captureStoryFrame(
+          options.contents,
+          options.frameDir,
+          ordinal,
+          result.screenshotPath,
+        );
+        const frame = simulatorFrameFromResult(
+          ordinal,
+          command,
+          options.targets,
+          result,
+          screenshotPath,
+          durationMs,
+        );
+        options.hooks?.onFrameCaptured?.(ordinal, frame);
+      }
+    } catch (error) {
+      failed += 1;
+      exitReason = "failed";
+      options.hooks?.onStepFailed?.(ordinal, error);
+      break;
+    }
+  }
+  if (exitReason === "completed" && limit < options.commands.length) {
+    exitReason = "paused";
+  }
+
+  return {
+    succeeded,
+    failed,
+    pausedOrdinal: exitReason === "paused" ? lastOrdinal || limit : null,
+    exitReason,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
 async function launchAutomationCommand(args: Record<string, unknown>, sender: WebContents) {
   const onEvent = channelIdFrom(args.onEvent);
   const source = String(args.storySource ?? "");
   const projectFolder = String(args.projectFolder ?? app.getPath("userData"));
   const commands = parsedCommands(source);
+  const streamId = typeof args.streamId === "string" ? args.streamId : null;
   sendChannel(sender, onEvent, {
     json: JSON.stringify({ type: "story_started", story_hash: storyHash(source) }),
   });
   sendChannel(sender, onEvent, {
     json: JSON.stringify({ type: "scene_entered", name: "Electron preview", ordinal: 1 }),
   });
-  const window = new BrowserWindow({
-    show: false,
-    width: 1280,
-    height: 800,
-    webPreferences: {
-      offscreen: true,
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      backgroundThrottling: false,
-    },
-  });
-  let succeeded = 0;
-  let failed = 0;
-  for (const [index, command] of commands.entries()) {
-    const ordinal = index + 1;
-    sendChannel(sender, onEvent, {
-      json: JSON.stringify({ type: "step_started", ordinal, command, driver_used: "electron" }),
-    });
-    const started = Date.now();
-    try {
-      const result = await executeParsedCommand(window.webContents, command, projectFolder);
-      succeeded += 1;
-      sendChannel(sender, onEvent, {
-        json: JSON.stringify({
-          type: "step_succeeded",
-          ordinal,
-          step_id: command.step_id ?? null,
-          duration_ms: Date.now() - started,
-          cursor_x: result.cursor?.x ?? 0,
-          cursor_y: result.cursor?.y ?? 0,
-          matched_selector: targetSelector(command.target),
-          matched_bbox: null,
-          match_kind: result.cursor ? "primary" : "none",
-        }),
-      });
-      if (result.screenshotPath) {
-        sendChannel(sender, onEvent, {
-          json: JSON.stringify({
-            type: "step_frame_captured",
-            ordinal,
-            frame: {
+  const ownedWindow =
+    streamId == null
+      ? new BrowserWindow({
+          show: false,
+          width: 1280,
+          height: 800,
+          webPreferences: {
+            offscreen: true,
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: true,
+            backgroundThrottling: false,
+          },
+        })
+      : null;
+  const contents = streamId ? authorSession(streamId).window.webContents : ownedWindow?.webContents;
+  if (!contents) throw new Error("browser session unavailable for automation");
+  const targets = { version: 1, steps: {} };
+  let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
+  try {
+    result = await runStoryCommandsInBrowser({
+      contents,
+      commands,
+      projectFolder,
+      storySource: source,
+      targets,
+      hooks: {
+        onStepStarted: (ordinal, command) => {
+          sendChannel(sender, onEvent, {
+            json: JSON.stringify({
+              type: "step_started",
               ordinal,
-              screenshot_path: result.screenshotPath,
-              cursor_xy: [result.cursor?.x ?? 0, result.cursor?.y ?? 0],
+              command,
+              driver_used: "electron",
+            }),
+          });
+        },
+        onStepSucceeded: (ordinal, command, stepResult, durationMs) => {
+          sendChannel(sender, onEvent, {
+            json: JSON.stringify({
+              type: "step_succeeded",
+              ordinal,
+              step_id: command.step_id ?? null,
+              duration_ms: durationMs,
+              cursor_x: stepResult.cursor?.x ?? 0,
+              cursor_y: stepResult.cursor?.y ?? 0,
               matched_selector: targetSelector(command.target),
               matched_bbox: null,
-              match_kind: result.cursor ? "primary" : "none",
-              duration_ms: Date.now() - started,
-            },
-          }),
-        });
-      }
-    } catch (error) {
-      failed += 1;
-      sendChannel(sender, onEvent, {
-        json: JSON.stringify({
-          type: "step_failed",
-          ordinal,
-          attempts: [],
-          error_message: error instanceof Error ? error.message : String(error),
-        }),
-      });
-    }
+              match_kind: stepResult.cursor ? "primary" : "none",
+            }),
+          });
+          if (stepResult.screenshotPath) {
+            const frame = simulatorFrameFromResult(
+              ordinal,
+              command,
+              targets,
+              stepResult,
+              stepResult.screenshotPath,
+              durationMs,
+            );
+            sendChannel(sender, onEvent, {
+              json: JSON.stringify({ type: "step_frame_captured", ordinal, frame }),
+            });
+          }
+        },
+        onStepFailed: (ordinal, error) => {
+          sendChannel(sender, onEvent, {
+            json: JSON.stringify({
+              type: "step_failed",
+              ordinal,
+              attempts: [],
+              error_message: error instanceof Error ? error.message : String(error),
+            }),
+          });
+        },
+      },
+    });
+  } finally {
+    if (ownedWindow && !ownedWindow.isDestroyed()) ownedWindow.destroy();
   }
-  if (!window.isDestroyed()) window.destroy();
   sendChannel(sender, onEvent, {
     json: JSON.stringify({
       type: "story_ended",
       status: {
         total_steps: commands.length,
-        succeeded,
-        failed,
-        duration_ms: commands.length * 50,
+        succeeded: result.succeeded,
+        failed: result.failed,
+        duration_ms: result.durationMs,
       },
     }),
   });
@@ -4178,32 +4461,6 @@ async function writeTargetsForStory(
   await fs.rename(tempPath, targetsPath);
 }
 
-async function simulatorFrame(
-  ordinal: number,
-  command: ParsedCommand | undefined,
-  targets: { version: number; steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }> },
-): Promise<SimulatorStepFrame> {
-  const stepTargets = command?.step_id ? targets.steps[command.step_id] : null;
-  const fallback = Array.isArray(stepTargets?.fallbacks) ? stepTargets.fallbacks[0] : null;
-  const primary = stepTargets?.primary ?? command?.target ?? null;
-  const matchKind = commandSupportsFallback(command)
-    ? fallback
-      ? "fuzzy"
-      : primary
-        ? "primary"
-        : "none"
-    : "none";
-  return {
-    ordinal,
-    screenshot_path: null,
-    cursor_xy: [0, 0],
-    matched_selector: matchKind === "fuzzy" ? selectorSummary(fallback) : selectorSummary(primary),
-    matched_bbox: null,
-    match_kind: matchKind,
-    duration_ms: 50,
-  };
-}
-
 async function simulatorStartCommand(
   args: Record<string, unknown>,
   sender: WebContents,
@@ -4212,7 +4469,9 @@ async function simulatorStartCommand(
   const runId = randomUUID();
   const channelId = channelIdFrom(args.channel);
   const storyPath = String(args.storyPath ?? "");
-  const commands = parsedCommands(String(args.storySource ?? ""));
+  const storySource = String(args.storySource ?? "");
+  const streamId = String(args.streamId ?? "");
+  const commands = parsedCommands(storySource);
   const totalSteps = commands.length;
   const frames = new Map<number, SimulatorStepFrame>();
   simulatorSessions.set(id, {
@@ -4232,20 +4491,83 @@ async function simulatorStartCommand(
     total_steps: totalSteps,
   });
   const stopAfter = Number(args.stopAfterOrdinal ?? 0);
-  const limit = stopAfter > 0 ? Math.min(stopAfter, totalSteps) : totalSteps;
   const targets = storyPath ? await readTargetsForStory(storyPath) : { version: 1, steps: {} };
-  for (let ordinal = 1; ordinal <= limit; ordinal += 1) {
-    const session = simulatorSessions.get(id);
-    if (!session || session.cancelled) break;
-    const frame = await simulatorFrame(ordinal, commands[ordinal - 1], targets);
-    session.frames.set(ordinal, frame);
-    sendChannel(sender, channelId, { type: "step_started", ordinal });
-    sendChannel(sender, channelId, { type: "frame_captured", ordinal, frame });
+  const session = simulatorSessions.get(id);
+  const preview = streamId ? authorPreviewSessions.get(streamId) : null;
+  if (!session || !preview || preview.window.isDestroyed()) {
+    const message = streamId
+      ? `author preview ${streamId} not found for simulator run`
+      : "author preview stream id is required for simulator run";
+    void hostLog("warn", "simulator_start failed", {
+      stream_id: streamId || "missing",
+      story_path: storyPath,
+      command_count: totalSteps,
+      reason: message,
+    });
+    sendChannel(sender, channelId, { type: "failed", ordinal: 1, error_message: message });
+    return id;
   }
-  if (stopAfter > 0 && stopAfter < totalSteps) {
-    sendChannel(sender, channelId, { type: "paused", ordinal: stopAfter });
+
+  const frameDir = path.join(userDataPath("simulator-runs"), runId, "frames");
+  await fs.mkdir(frameDir, { recursive: true });
+  void hostLog("info", "simulator_start", {
+    stream_id: streamId,
+    story_path: storyPath,
+    command_count: totalSteps,
+    app_url: storyAppUrl(storySource) ?? "",
+    browser_window_id: preview.window.id,
+    frame_dir: frameDir,
+  });
+  const result = await runStoryCommandsInBrowser({
+    contents: preview.window.webContents,
+    commands,
+    projectFolder: String(args.projectFolder ?? app.getPath("userData")),
+    storySource,
+    targets,
+    stopAfter,
+    frameDir,
+    shouldCancel: () => !simulatorSessions.has(id) || Boolean(simulatorSessions.get(id)?.cancelled),
+    hooks: {
+      onStepStarted: (ordinal) => {
+        sendChannel(sender, channelId, { type: "step_started", ordinal });
+      },
+      onFrameCaptured: (ordinal, frame) => {
+        const current = simulatorSessions.get(id);
+        if (current) current.frames.set(ordinal, frame);
+        sendChannel(sender, channelId, { type: "frame_captured", ordinal, frame });
+        void hostLog("info", "frame_captured", {
+          run_id: runId,
+          ordinal,
+          screenshot_path: frame.screenshot_path ?? "",
+        });
+      },
+      onStepFailed: (ordinal, error) => {
+        sendChannel(sender, channelId, {
+          type: "failed",
+          ordinal,
+          error_message: error instanceof Error ? error.message : String(error),
+        });
+      },
+    },
+  });
+  if (result.exitReason === "cancelled") {
+    return id;
+  }
+  if (result.pausedOrdinal != null && result.failed === 0) {
+    sendChannel(sender, channelId, { type: "paused", ordinal: result.pausedOrdinal });
+  } else if (result.failed === 0) {
+    sendChannel(sender, channelId, {
+      type: "completed",
+      succeeded: result.succeeded,
+      failed: result.failed,
+    });
   } else {
-    sendChannel(sender, channelId, { type: "completed", succeeded: totalSteps, failed: 0 });
+    void hostLog("warn", "simulator_start failed during command execution", {
+      stream_id: streamId,
+      story_path: storyPath,
+      succeeded: result.succeeded,
+      failed: result.failed,
+    });
   }
   return id;
 }
@@ -4854,7 +5176,10 @@ export async function handleLegacyInvoke(
       }
       return null;
     case "resolve_playwright_target":
-      return resolveActiveAuthorPreviewTarget();
+      return resolveActiveAuthorPreviewTarget(
+        String((args as { streamId?: string } | undefined)?.streamId ?? ""),
+        Boolean((args as { ensureVisible?: boolean } | undefined)?.ensureVisible),
+      );
     case "is_stage_manager_enabled":
       return false;
     case "start_capture":

@@ -1,7 +1,7 @@
 /** Capture IPC wrappers. */
 
-import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ScreenCapturePermissionReportDto } from "@shared-types";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 // Host DTO values arrive as lowercase over IPC. Keep TS in lockstep.
 export type PermissionState = "granted" | "denied" | "undetermined";
@@ -164,10 +164,16 @@ export interface ResolvedPlaywrightTarget {
   content_crop: ResolvedFrameCrop | null;
 }
 
-/** Ask the host to resolve the current Playwright window. Returns `null`
- *  when no Playwright is running or the window isn't on-screen. */
-export function resolvePlaywrightTarget(): Promise<ResolvedPlaywrightTarget | null> {
-  return invoke<ResolvedPlaywrightTarget | null>("resolve_playwright_target");
+/** Ask the host to resolve the current browser window. Returns `null`
+ *  when no browser session is running or the window isn't on-screen. */
+export function resolvePlaywrightTarget(args?: {
+  streamId?: string | null;
+  ensureVisible?: boolean;
+}): Promise<ResolvedPlaywrightTarget | null> {
+  return invoke<ResolvedPlaywrightTarget | null>("resolve_playwright_target", {
+    streamId: args?.streamId ?? null,
+    ensureVisible: args?.ensureVisible ?? false,
+  });
 }
 
 /** Read macOS Stage Manager's global-enable flag. Returns `false` on

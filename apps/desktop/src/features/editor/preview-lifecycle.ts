@@ -28,10 +28,7 @@ import {
   stopAuthorPreview,
 } from "@/ipc/preview";
 import { frontendLog } from "@/lib/log";
-import {
-  VIEWPORT_SIZES,
-  type PreviewViewport,
-} from "@/state/editor";
+import { type PreviewViewport, VIEWPORT_SIZES } from "@/state/editor";
 
 const STOP_GRACE_MS = 60_000;
 
@@ -44,6 +41,18 @@ export interface PreviewNavState {
   canGoForward: boolean;
 }
 
+export interface PreviewRecordingLease {
+  streamId: string;
+  release: () => void;
+}
+
+export interface AcquirePreviewForRecordingArgs {
+  appUrl: string;
+  viewport: PreviewViewport;
+  reason: string;
+  timeoutMs?: number;
+}
+
 export const INITIAL_NAV: PreviewNavState = {
   url: null,
   canGoBack: false,
@@ -51,11 +60,7 @@ export const INITIAL_NAV: PreviewNavState = {
 };
 
 function navEqual(a: PreviewNavState, b: PreviewNavState): boolean {
-  return (
-    a.url === b.url &&
-    a.canGoBack === b.canGoBack &&
-    a.canGoForward === b.canGoForward
-  );
+  return a.url === b.url && a.canGoBack === b.canGoBack && a.canGoForward === b.canGoForward;
 }
 
 type NavListener = (s: PreviewNavState) => void;
@@ -136,16 +141,13 @@ async function launch(appUrl: string, viewport: PreviewViewport) {
     // the first framenavigated event arrives from the sidecar.
     setNav({ ...INITIAL_NAV, url: appUrl });
     try {
-      const unlisten = await listen<AuthorPreviewNavPayload>(
-        `preview://nav/${id}`,
-        (ev) => {
-          setNav({
-            url: ev.payload.url || null,
-            canGoBack: ev.payload.canGoBack,
-            canGoForward: ev.payload.canGoForward,
-          });
-        },
-      );
+      const unlisten = await listen<AuthorPreviewNavPayload>(`preview://nav/${id}`, (ev) => {
+        setNav({
+          url: ev.payload.url || null,
+          canGoBack: ev.payload.canGoBack,
+          canGoForward: ev.payload.canGoForward,
+        });
+      });
       state.navUnlisten = unlisten;
     } catch (err) {
       frontendLog.warn("previewLifecycle", "preview://nav listen failed", {
@@ -173,7 +175,11 @@ async function teardown() {
   state.paused = false;
   setStatus("idle");
   if (state.navUnlisten) {
-    try { state.navUnlisten(); } catch { /* unlisten is best-effort */ }
+    try {
+      state.navUnlisten();
+    } catch {
+      /* unlisten is best-effort */
+    }
     state.navUnlisten = null;
   }
   setNav(INITIAL_NAV);
@@ -251,6 +257,84 @@ export async function stopPreviewNow(reason: string) {
     fields: { reason },
   });
   await teardown();
+}
+
+export function retainPreviewForRecording(reason: string): PreviewRecordingLease | null {
+  cancelPendingStop();
+  if (state.streamId == null) return null;
+  state.refcount += 1;
+  const streamId = state.streamId;
+  frontendLog.info("previewLifecycle", "retaining preview for recording", {
+    fields: { reason, stream_id: streamId, refcount: state.refcount },
+  });
+  let released = false;
+  return {
+    streamId,
+    release: () => {
+      if (released) return;
+      released = true;
+      state.refcount = Math.max(0, state.refcount - 1);
+      frontendLog.info("previewLifecycle", "released recording preview lease", {
+        fields: { reason, stream_id: streamId, refcount: state.refcount },
+      });
+      if (state.refcount === 0) scheduleStop();
+    },
+  };
+}
+
+export async function acquirePreviewForRecording({
+  appUrl,
+  viewport,
+  reason,
+  timeoutMs = 8_000,
+}: AcquirePreviewForRecordingArgs): Promise<PreviewRecordingLease> {
+  const retained = retainPreviewForRecording(reason);
+  if (retained) {
+    updateAppUrl(appUrl);
+    updateViewport(viewport);
+    return retained;
+  }
+
+  let release: (() => void) | null = null;
+  let pendingStreamId: string | null = null;
+  let settled = false;
+  const lease = await new Promise<PreviewRecordingLease>((resolve, reject) => {
+    const finish = (streamId: string) => {
+      if (settled) return;
+      if (!release) {
+        pendingStreamId = streamId;
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timer);
+      frontendLog.info("previewLifecycle", "acquired preview for recording", {
+        fields: { reason, stream_id: streamId, refcount: state.refcount },
+      });
+      resolve({
+        streamId,
+        release: () => {
+          if (!release) return;
+          release();
+          release = null;
+          frontendLog.info("previewLifecycle", "released recording preview lease", {
+            fields: { reason, stream_id: streamId, refcount: state.refcount },
+          });
+        },
+      });
+    };
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      release?.();
+      release = null;
+      reject(new Error("Timed out waiting for browser preview"));
+    }, timeoutMs);
+    release = acquirePreview(appUrl, viewport, (streamId) => {
+      if (streamId) finish(streamId);
+    });
+    if (pendingStreamId) finish(pendingStreamId);
+  });
+  return lease;
 }
 
 function scheduleStop() {
