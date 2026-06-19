@@ -315,6 +315,7 @@ type CaptureTarget =
   | { kind: "display"; display_id: number | string }
   | { kind: "window"; window_id: number | string }
   | { kind: "window_by_pid"; pid: number; title_hint: string | null }
+  | { kind: "author_preview"; stream_id: string }
   | {
       kind: "display_region";
       display_id: number | string;
@@ -350,6 +351,7 @@ interface RecordingSession {
   captureInFlight: Promise<void> | null;
   audioPath: string | null;
   frameCrop: FrameCropRect | null;
+  loggedAuthorPreviewFrame: boolean;
 }
 
 interface CaptureStreamSession {
@@ -2138,7 +2140,11 @@ async function windowInfo() {
   }));
 }
 
-async function captureTargetThumbnail(target: CaptureTarget, maxWidth: number, maxHeight: number) {
+async function captureTargetNativeImage(
+  target: Exclude<CaptureTarget, { kind: "author_preview" }>,
+  maxWidth: number,
+  maxHeight: number,
+): Promise<NativeImage> {
   const display = target.kind === "display_region" ? displayById(target.display_id) : null;
   const thumbnailSize = display
     ? {
@@ -2169,6 +2175,15 @@ async function captureTargetThumbnail(target: CaptureTarget, maxWidth: number, m
     target.kind === "display_region"
       ? resizeToFit(cropDisplayRegionThumbnail(source.thumbnail, target), maxWidth, maxHeight)
       : source.thumbnail;
+  return image;
+}
+
+async function captureTargetThumbnail(target: CaptureTarget, maxWidth: number, maxHeight: number) {
+  if (target.kind === "author_preview") {
+    const image = await captureAuthorPreviewNativeImage(target.stream_id, maxWidth, maxHeight);
+    return Array.from(image.toPNG());
+  }
+  const image = await captureTargetNativeImage(target, maxWidth, maxHeight);
   return Array.from(image.toPNG());
 }
 
@@ -2346,6 +2361,13 @@ function defaultCaptureTarget(): CaptureTarget {
   return { kind: "display", display_id: screen.getPrimaryDisplay().id };
 }
 
+function isAuthorPreviewTarget(target: CaptureTarget | null | undefined): target is Extract<
+  CaptureTarget,
+  { kind: "author_preview" }
+> {
+  return target?.kind === "author_preview";
+}
+
 function displayForTarget(target: CaptureTarget) {
   const displays = displayInfo();
   if (target.kind === "display" || target.kind === "display_region") {
@@ -2357,6 +2379,9 @@ function displayForTarget(target: CaptureTarget) {
 }
 
 function dimensionsForTarget(target: CaptureTarget, fallbackWidth = 1280, fallbackHeight = 720) {
+  if (target.kind === "author_preview") {
+    return { width: fallbackWidth, height: fallbackHeight };
+  }
   const display = displayForTarget(target);
   if (target.kind === "display_region") {
     const scale = display?.scale_factor ?? 1;
@@ -2432,6 +2457,9 @@ async function startCaptureStream(
     (args?.display_id != null
       ? ({ kind: "display", display_id: args.display_id } as CaptureTarget)
       : defaultCaptureTarget());
+  if (isAuthorPreviewTarget(target)) {
+    throw new Error("author_preview is only supported by start_recording");
+  }
   const fps = clampFps(args?.fps_target);
   const { width, height } = dimensionsForTarget(target);
   const id = randomUUID();
@@ -2498,6 +2526,9 @@ function resolveActiveAuthorPreviewTarget(streamId?: string | null, ensureVisibl
       : [...authorPreviewSessions.values()];
   for (const session of candidates) {
     if (session.window.isDestroyed()) continue;
+    // Offscreen author previews are not valid desktop-capture recording targets.
+    // Browser-story recording must use the author_preview target and capture
+    // webContents pixels directly instead of resolving this window id.
     if (ensureVisible && !session.window.isVisible()) {
       session.window.showInactive();
     }
@@ -2644,8 +2675,8 @@ async function captureRecordingFrame(session: RecordingSession): Promise<void> {
     `frame-${String(frameIndex).padStart(6, "0")}.png`,
   );
   try {
-    const bytes = await captureTargetThumbnail(session.target, session.width, session.height);
-    await fs.writeFile(framePath, Buffer.from(bytes));
+    const image = await captureRecordingNativeImage(session);
+    await fs.writeFile(framePath, image.toPNG());
     session.frameSeq = frameIndex;
   } catch {
     session.framesDropped += 1;
@@ -2655,6 +2686,48 @@ async function captureRecordingFrame(session: RecordingSession): Promise<void> {
       delta: 1,
     });
   }
+}
+
+async function captureAuthorPreviewNativeImage(
+  streamId: string,
+  width: number,
+  height: number,
+): Promise<NativeImage> {
+  const preview = authorSession(streamId);
+  const image = await preview.window.webContents.capturePage();
+  if (image.isEmpty()) {
+    throw new Error(`author preview ${streamId} captured empty frame`);
+  }
+  const size = image.getSize();
+  if (size.width === width && size.height === height) return image;
+  return image.resize({
+    width: Math.max(1, width),
+    height: Math.max(1, height),
+    quality: "best",
+  });
+}
+
+async function captureRecordingNativeImage(session: RecordingSession): Promise<NativeImage> {
+  if (session.target.kind === "author_preview") {
+    const image = await captureAuthorPreviewNativeImage(
+      session.target.stream_id,
+      session.width,
+      session.height,
+    );
+    if (!session.loggedAuthorPreviewFrame) {
+      const size = image.getSize();
+      session.loggedAuthorPreviewFrame = true;
+      void hostLog("info", "author_preview_recording_frame", {
+        stream_id: session.target.stream_id,
+        frame_width: size.width,
+        frame_height: size.height,
+        session_width: session.width,
+        session_height: session.height,
+      });
+    }
+    return image;
+  }
+  return captureTargetNativeImage(session.target, session.width, session.height);
 }
 
 function clampDimension(value: unknown, fallback: number): number {
@@ -3204,6 +3277,7 @@ async function startRecording(raw: unknown, onEvent: unknown, sender: WebContent
     captureInFlight: null,
     audioPath: null,
     frameCrop: args.frame_crop ?? null,
+    loggedAuthorPreviewFrame: false,
   };
   session.captureTimer.unref?.();
   recordingSessions.set(id, session);
@@ -5025,6 +5099,9 @@ export async function handleLegacyInvoke(
     case "get_capture_target":
       return readJson<CaptureTarget | null>(captureTargetPath(), null);
     case "set_capture_target":
+      if (isAuthorPreviewTarget((args as { target?: CaptureTarget } | undefined)?.target)) {
+        throw new Error("author_preview cannot be persisted as a capture target");
+      }
       await writeJson(
         captureTargetPath(),
         (args as { target?: CaptureTarget } | undefined)?.target ?? null,

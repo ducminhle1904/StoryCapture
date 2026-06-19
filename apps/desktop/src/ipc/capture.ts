@@ -81,6 +81,7 @@ export type CaptureTarget =
   | { kind: "display"; display_id: bigint | number }
   | { kind: "window"; window_id: bigint | number }
   | { kind: "window_by_pid"; pid: number; title_hint: string | null }
+  | { kind: "author_preview"; stream_id: string }
   | {
       kind: "display_region";
       display_id: bigint | number;
@@ -145,6 +146,8 @@ export function captureTargetKey(t: CaptureTarget): string {
       return `window:${t.window_id}`;
     case "window_by_pid":
       return `pid:${t.pid}:${t.title_hint ?? ""}`;
+    case "author_preview":
+      return `author-preview:${t.stream_id}`;
     case "display_region":
       return `region:${t.display_id}:${t.rect.x},${t.rect.y},${t.rect.w}x${t.rect.h}`;
   }

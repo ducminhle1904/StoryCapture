@@ -1480,7 +1480,7 @@ export type CaptureStatsDto = { frames_delivered: bigint; frames_dropped: bigint
 /**
  * Tagged `CaptureTarget` DTO.
  */
-export type CaptureTargetDto = { kind: "display"; display_id: bigint } | { kind: "window"; window_id: bigint } | { kind: "window_by_pid"; pid: number; title_hint: string | null } | { kind: "display_region"; display_id: bigint; rect: RegionRectDto }
+export type CaptureTargetDto = { kind: "display"; display_id: bigint } | { kind: "window"; window_id: bigint } | { kind: "window_by_pid"; pid: number; title_hint: string | null } | { kind: "author_preview"; stream_id: string } | { kind: "display_region"; display_id: bigint; rect: RegionRectDto }
 export type CaptureTargetsDto = { displays: DisplayInfoDto[]; windows: WindowInfoDto[]; playwright_auto_available: boolean }
 export type ClockSourceDto = "host-time" | "qpc" | "synthetic"
 export type CodecDto = "h264"
