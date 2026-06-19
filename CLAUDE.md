@@ -1,18 +1,35 @@
 # StoryCapture Agent Guide
 
-Lean entrypoint for coding agents. Keep this file short and push detail into
-read-on-demand docs.
+Lean entrypoint for coding agents. `AGENTS.md` and `GEMINI.md` are symlinks to
+this file, so edit `CLAUDE.md` when updating agent guidance.
+
+## Start Here
+
+- Use `docs/agent/project-map.md` for the repo map, generated-file guardrails,
+  and first files to read by area.
+- Use `docs/agent/module-index.md` for detailed frontend, Electron, web,
+  package, and asset routing.
+- Use `docs/agent/workflows.md` for install, dev, build, typecheck, Prisma,
+  CI, and release commands.
+- Use `docs/agent/testing.md` for focused Vitest commands and test coverage
+  expectations.
+- Use `docs/agent/operations.md` for CI, deploy, signing, env, cron, Prisma
+  migrations, and generated files.
+- Keep command output token-efficient: use `context-mode` for broad output and
+  `rtk` for real shell commands.
 
 ## Project
 
 StoryCapture turns a written `.story` script into a polished, shareable demo
 video.
 
-- Desktop app: Electron + React 19 + Vite 8 on macOS and Windows.
+- Desktop app: Electron + React + Vite on macOS and Windows.
 - Core loop: author DSL -> automate a browser -> capture pixels -> encode ->
   post-produce -> optionally upload/share through the web companion.
-- Web companion: Next.js 16 + tRPC 11 + Prisma 6 + R2/S3 for sharing,
-  workspaces, analytics, templates, and desktop sync.
+- Web companion: Next.js + tRPC + Prisma + R2/S3 for sharing, workspaces,
+  analytics, templates, and desktop sync.
+- Check package manifests for current dependency pins; do not duplicate version
+  inventories in this guide.
 
 ## Current Repo Reality
 
@@ -26,20 +43,18 @@ video.
   packages as a compatibility API surface. Electron preload/IPC shims implement
   those calls.
 - Electron IPC is modular: `apps/desktop/electron/ipc.ts` registers the
-  `tauri-invoke` bridge, `ipc/handlers.ts` is the registry, grouped modules live
-  in `ipc/*`, and `ipc/legacy.ts` still owns many host operations.
+  `tauri-invoke` bridge, `apps/desktop/electron/ipc/handlers.ts` is the
+  registry, grouped modules live in `apps/desktop/electron/ipc/*`, and
+  `apps/desktop/electron/ipc/legacy.ts` still owns many host operations.
 - `packages/story-dsl` is AST/vocabulary plus CodeMirror support. Runtime parse
   and simulator behavior is desktop IPC/host code, not a shared parser package.
-- `packages/shared-types` publicly exports browser presets and the checked-in
-  IPC compatibility surface. `src/generated/effects.ts` is a checked-in
-  generated file in the package tree, but it is not currently exported through
-  the package export map.
+- `packages/shared-types` publicly exports browser presets, web account types,
+  and the checked-in IPC compatibility surface.
+  `packages/shared-types/src/generated/effects.ts` is checked-in generated
+  source, but is not currently exported through the package export map.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
   `Sc*` primitive families.
-- Current manifest pins: desktop Electron `^42.4.1`, Electron Builder
-  `^26.15.3`, React `^19.2.5`, Vite `^8.0.9`, Tailwind `^4.2.4`; web Next
-  `^16.2.4`, tRPC `^11.16.0`, Prisma `^6.0.0`, NextAuth
-  `5.0.0-beta.31`.
+- `packages/config` owns the shared TypeScript base config.
 
 ## Source Of Truth
 
@@ -56,34 +71,69 @@ Read only what the task needs.
    format, and agent workflow.
 4. `docs/CREDENTIALS.md`
    Signing, auth, R2, email, cron, desktop runtime env, and service secrets.
+
 There is no `.planning/` directory in the current checkout. If planning
 artifacts are restored later, treat them as historical unless a current state
 file explicitly says otherwise.
 
-## Load-On-Demand Map
+## Task Routing
 
-- Changing structure, IPC, routing, CI, release, or package boundaries:
-  read `docs/ARCHITECTURE.md`.
-- Changing DSL, automation behavior, capture/render/export, post-production,
-  AI/NL/TTS, templates, or web sync behavior:
-  read `docs/DOMAIN.md`.
-- Changing code style, tests, state patterns, UI, IPC implementation patterns,
-  or workflow rules:
-  read `docs/CONVENTIONS.md`.
-- Changing signing, auth, R2, email, cron, desktop-web token exchange, provider
-  keys, or runtime env:
-  read `docs/CREDENTIALS.md`.
-- Reading restored planning artifacts:
-  treat old roadmap/research/phase docs as historical unless a current state
-  file explicitly names them as live.
+- Desktop renderer/routes: read `apps/desktop/src/routes/index.tsx`, then the
+  matching route in `apps/desktop/src/routes/` and feature folder under
+  `apps/desktop/src/features/`.
+- Desktop IPC/host: read `docs/ARCHITECTURE.md`,
+  `apps/desktop/electron/ipc/handlers.ts`, the matching
+  `apps/desktop/electron/ipc/*.ts` module, and the renderer facade in
+  `apps/desktop/src/ipc/*`.
+- DSL/editor/simulator: read `docs/DOMAIN.md`,
+  `packages/story-dsl/src/ast.ts`, `packages/story-dsl/src/codemirror-lang.ts`,
+  `apps/desktop/electron/ipc/story-parser.ts`, and
+  `apps/desktop/src/features/editor/`.
+- Post-production/export: read `docs/DOMAIN.md` and
+  `apps/desktop/src/features/post-production/`, especially
+  `apps/desktop/src/features/post-production/state/store.ts`,
+  `apps/desktop/src/features/post-production/state/compute-graph.ts`,
+  `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
+  `apps/desktop/src/features/post-production/preview/preview-engine.ts`,
+  `apps/desktop/src/features/post-production/export-modal/`, and
+  `apps/desktop/src/features/post-production/render-queue/`.
+- Web routes/API/data: read `apps/web/src/app`, `apps/web/src/app/api`,
+  `apps/web/src/trpc/routers/_app.ts`, `apps/web/src/trpc/routers/*`,
+  `apps/web/src/lib/*`, and `apps/web/prisma/schema.prisma`.
+- Desktop-web sync/upload/auth: read `apps/web/src/trpc/routers/sync.ts`,
+  `apps/web/src/app/api/auth/*`, `apps/desktop/electron/ipc/legacy.ts`, and
+  `apps/desktop/src/stores/*web*`.
+- Shared UI/design system: read `docs/CONVENTIONS.md`,
+  `packages/ui/src/claude-design/README.md`,
+  `packages/ui/src/claude-design/tokens.css`,
+  `packages/ui/src/claude-design/primitives/`, and
+  `apps/desktop/src/components/ui/`.
+- CI, release, signing, env, cron, Prisma migrations, and generated files:
+  read `docs/agent/operations.md` and `docs/CREDENTIALS.md`.
 
-## Working Rules
+## Common Workflows
+
+- Package manager: `pnpm@9.15.0`; Node is `>=20` locally and `20.x` in CI.
+- Root commands: `pnpm dev`, `pnpm build`, `pnpm typecheck`, `pnpm lint`,
+  `pnpm format`.
+- There is no root `pnpm test`; run package-scoped Vitest commands from
+  `docs/agent/testing.md`.
+- Web Prisma commands live in `apps/web/package.json`: `db:generate`,
+  `db:migrate`, `db:push`, and `db:seed`.
+- CI is `.github/workflows/ci.yml` and runs typecheck, desktop tests, UI tests,
+  web tests, then the desktop Electron build on macOS.
+
+## Guardrails
 
 - No workarounds. Fix root cause or stop with evidence.
 - Plan first for breaking or big changes: public API, IPC, DSL, schema,
   security, build/release, or broad cross-cutting refactors.
-- Keep docs token-efficient: put detail in `docs/*.md` or package READMEs and
-  keep this file as the routing layer.
 - Never revive removed Tauri/Rust assumptions from historical planning docs.
-- When code changes invalidate agent guidance, update this file only at the
-  headline level and put the full refresh in the relevant read-on-demand doc.
+- Do not hand-edit generated output:
+  `apps/web/src/generated/prisma/**` or
+  `packages/shared-types/src/generated/effects.ts`.
+- Avoid generated/build/cache/artifact directories unless the task is
+  specifically about them: `node_modules/`, `.turbo/`, `.next/`, `dist/`,
+  `release-electron/`, `output/`, `tmp/`, and generated Prisma output.
+- Keep agent docs token-efficient: update this file only at the routing level
+  and put detail in `docs/agent/` or the existing `docs/*.md` source docs.
