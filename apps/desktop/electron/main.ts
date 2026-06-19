@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import identity from "./identity.json";
 import { registerIpcHandlers } from "./ipc";
+import { registerLocalAssetProtocol, registerLocalAssetScheme } from "./local-assets";
 import { isDevRuntime } from "./runtime";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,8 @@ const titleBarOverlayHeight = 48;
 const shouldUseDevServer = isDevRuntime(app);
 
 let mainWindow: BrowserWindow | null = null;
+
+registerLocalAssetScheme();
 
 function createMainWindow(): void {
   const titleBarOptions =
@@ -71,6 +74,7 @@ function createMainWindow(): void {
 registerIpcHandlers();
 
 void app.whenReady().then(() => {
+  registerLocalAssetProtocol();
   createMainWindow();
 
   app.on("activate", () => {

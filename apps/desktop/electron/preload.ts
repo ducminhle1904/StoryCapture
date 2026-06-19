@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { pathToFileURL } from "node:url";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { convertLocalAssetPath, LOCAL_ASSET_PROTOCOL } from "./local-asset-url";
 
 type Callback = (...args: unknown[]) => void;
 
@@ -144,6 +146,24 @@ function handleInvoke(cmd: string, args?: unknown, options?: unknown): Promise<u
   return invokeMain(cmd, args, options);
 }
 
+function isAbsoluteLocalPath(value: string): boolean {
+  return value.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("\\\\");
+}
+
+function convertFileSrc(filePath: string): string {
+  const value = String(filePath);
+  if (/^(?:https?:|data:|blob:|asset:)/i.test(value) || value.startsWith(LOCAL_ASSET_PROTOCOL)) {
+    return value;
+  }
+  if (value.startsWith("file:")) {
+    return convertLocalAssetPath(fileURLToPath(value));
+  }
+  if (isAbsoluteLocalPath(value)) {
+    return convertLocalAssetPath(value);
+  }
+  return convertLocalAssetPath(path.resolve(value));
+}
+
 const tauriInternals = {
   invoke: handleInvoke,
   transformCallback: (callback?: Callback, once = false) => {
@@ -154,7 +174,7 @@ const tauriInternals = {
   unregisterCallback: (id: number) => {
     callbacks.delete(id);
   },
-  convertFileSrc: (filePath: string) => pathToFileURL(filePath).toString(),
+  convertFileSrc,
 };
 
 const eventInternals = {
