@@ -546,7 +546,7 @@ async listCaptureTargets() : Promise<Result<CaptureTargetsDto, AppError>> {
     else return { status: "error", error: e  as any };
 }
 },
-async checkScreenCapturePermission() : Promise<Result<PermissionState, AppError>> {
+async checkScreenCapturePermission() : Promise<Result<ScreenCapturePermissionReportDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("check_screen_capture_permission") };
 } catch (e) {
@@ -563,9 +563,9 @@ async openScreenCapturePrefs() : Promise<Result<null, AppError>> {
 }
 },
 /**
- * Request macOS screen-capture access and return the resulting state.
+ * Request macOS screen-capture access and return the resulting permission report.
  */
-async requestScreenCaptureAccess() : Promise<Result<PermissionState, AppError>> {
+async requestScreenCaptureAccess() : Promise<Result<ScreenCapturePermissionReportDto, AppError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("request_screen_capture_access") };
 } catch (e) {
@@ -1641,6 +1641,7 @@ export type ParseResultDto = { ast: StoryDto | null; diagnostics: DiagnosticDto[
  * macOS-only permission state.
  */
 export type PermissionState = "granted" | "denied" | "undetermined"
+export type ScreenCapturePermissionReportDto = { state: PermissionState; rawStatus: string; platform: string; appName: string; bundleId: string | null; executablePath: string; isPackaged: boolean; devIdentityOk: boolean | null; canEnumerateSources: boolean; sourceCount: number; reason?: string; debugBypassAllowed: boolean }
 /**
  * DTO wrapping a pick-element response as a JSON string. The TS wrapper
  * (`apps/desktop/src/ipc/picker.ts`) parses the typed union.

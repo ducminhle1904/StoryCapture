@@ -29,9 +29,9 @@ import {
   type DisplayInfo,
   isStageManagerEnabled,
   openScreenCapturePrefs,
-  type PermissionState,
   relaunchApp,
   requestScreenCaptureAccess,
+  type ScreenCapturePermissionReport,
 } from "@/ipc/capture";
 import {
   pauseRecording,
@@ -71,6 +71,20 @@ interface RecordingViewProps {
   storySource: string;
   autoOpenPostProduction?: boolean;
 }
+
+const initialPermissionReport: ScreenCapturePermissionReport = {
+  state: "undetermined",
+  rawStatus: "unknown",
+  platform: "darwin",
+  appName: "StoryCapture",
+  bundleId: null,
+  executablePath: "",
+  isPackaged: false,
+  devIdentityOk: null,
+  canEnumerateSources: false,
+  sourceCount: 0,
+  debugBypassAllowed: false,
+};
 
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -318,7 +332,9 @@ export function RecordingView({
   }, [appSettings?.capture]);
 
   const reduceMotion = useReducedMotion();
-  const [permission, setPermission] = useState<PermissionState>("undetermined");
+  const [permissionReport, setPermissionReport] =
+    useState<ScreenCapturePermissionReport>(initialPermissionReport);
+  const permission = permissionReport.state;
   const [tccOpen, setTccOpen] = useState(false);
   // Local state only drives the countdown affordance.
   const [useCountdown, setUseCountdown] = useState(true);
@@ -359,14 +375,12 @@ export function RecordingView({
   useEffect(() => {
     (async () => {
       try {
-        let perm = await checkScreenCapturePermission();
-        // Register the app in Screen Recording settings if needed.
-        if (perm !== "granted") {
-          perm = await requestScreenCaptureAccess();
+        let report = await checkScreenCapturePermission();
+        if (report.state !== "granted") {
+          report = await requestScreenCaptureAccess();
         }
-        setPermission(perm);
-        // Don't auto-open the prompt on Sequoia false-negatives.
-        if (perm === "granted") {
+        setPermissionReport(report);
+        if (report.state === "granted") {
           try {
             await loadCaptureTargets();
           } catch (e) {
@@ -1008,11 +1022,18 @@ export function RecordingView({
       {/* ─── Permission banner (inline, not modal) ─── */}
       {permissionDenied || permissionPending ? (
         <PermissionBanner
-          state={permission}
+          report={permissionReport}
           onOpenSettings={async () => {
-            // Register the app in TCC first.
             try {
-              await requestScreenCaptureAccess();
+              const report = await requestScreenCaptureAccess();
+              setPermissionReport(report);
+              if (report.state === "granted") {
+                try {
+                  await loadCaptureTargets();
+                } catch (e) {
+                  toast.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
+                }
+              }
             } catch {
               /* non-fatal; still open Settings */
             }
@@ -1025,8 +1046,8 @@ export function RecordingView({
           }}
           onRecheck={async () => {
             const next = await checkScreenCapturePermission();
-            setPermission(next);
-            if (next === "granted") {
+            setPermissionReport(next);
+            if (next.state === "granted") {
               try {
                 await loadCaptureTargets();
               } catch (e) {
@@ -1035,22 +1056,28 @@ export function RecordingView({
               toast.success("Screen recording permission granted");
             } else {
               toast.message("Permission still needed", {
-                description:
-                  "After granting in System Settings, relaunch StoryCapture so macOS picks up the change.",
+                description: `After granting in System Settings, relaunch ${next.appName} so macOS picks up the change.`,
               });
             }
           }}
-          onBypass={async () => {
-            // Let the user override Sequoia false-negatives.
-            setPermission("granted");
-            setTccOpen(false);
-            try {
-              await loadCaptureTargets();
-              toast.success("Permission check bypassed");
-            } catch (e) {
-              toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
-            }
-          }}
+          onBypass={
+            permissionReport.debugBypassAllowed
+              ? async () => {
+                  setPermissionReport({
+                    ...permissionReport,
+                    state: "granted",
+                    reason: "Debug TCC bypass enabled",
+                  });
+                  setTccOpen(false);
+                  try {
+                    await loadCaptureTargets();
+                    toast.success("Debug permission bypassed");
+                  } catch (e) {
+                    toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
+                  }
+                }
+              : undefined
+          }
         />
       ) : null}
 
@@ -1296,7 +1323,12 @@ export function RecordingView({
       </div>
 
       {/* Fallback modal for first-time permission grant (macOS requires app restart) */}
-      <TccPrompt open={tccOpen} permission={permission} onDismiss={() => setTccOpen(false)} />
+      <TccPrompt
+        open={tccOpen}
+        permission={permission}
+        appName={permissionReport.appName}
+        onDismiss={() => setTccOpen(false)}
+      />
     </main>
   );
 }
@@ -1329,39 +1361,47 @@ function LiveRecordingBadge({ paused, reduceMotion }: { paused: boolean; reduceM
 }
 
 function PermissionBanner({
-  state,
+  report,
   onOpenSettings,
   onRelaunch,
   onRecheck,
   onBypass,
 }: {
-  state: PermissionState;
+  report: ScreenCapturePermissionReport;
   onOpenSettings: () => void;
   onRelaunch: () => void;
   onRecheck: () => void;
-  onBypass: () => void;
+  onBypass?: () => void;
 }) {
-  const isDenied = state === "denied";
+  const isDenied = report.state === "denied";
+  const identityError = report.devIdentityOk === false;
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs">
       <div className="flex min-w-0 items-center gap-2 text-[var(--color-warning)]">
         <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
         <span className="font-medium text-[var(--color-fg-primary)]">
-          {isDenied ? "Screen recording permission denied." : "Screen recording permission needed."}
+          {identityError
+            ? "Dev app identity is not configured."
+            : isDenied
+              ? "Screen recording permission denied."
+              : "Screen recording permission needed."}
         </span>
         <span className="text-[var(--color-fg-secondary)]">
-          macOS Sequoia sometimes reports stale state. If you've already granted, click "Already
-          granted".
+          {identityError
+            ? `macOS sees ${report.bundleId ?? report.appName}; dev should appear as StoryCapture Dev.`
+            : `Grant Screen Recording access to ${report.appName} in System Settings, then relaunch.`}
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          onClick={onBypass}
-          title="Skip the permission check and try to record anyway"
-          className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
-        >
-          Already granted
-        </button>
+        {onBypass ? (
+          <button
+            onClick={onBypass}
+            title="Debug-only: skip the permission check and try to record anyway"
+            className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
+          >
+            Debug bypass
+          </button>
+        ) : null}
         <button
           onClick={onRecheck}
           className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"

@@ -2,11 +2,14 @@ import { app, BrowserWindow, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import identity from "./identity.json";
 import { registerIpcHandlers } from "./ipc";
+import { isDevRuntime } from "./runtime";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:1420";
+const devServerUrl = process.env[identity.devServerUrlEnv] ?? identity.defaultDevServerUrl;
 const titleBarOverlayHeight = 48;
+const shouldUseDevServer = isDevRuntime(app);
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -57,11 +60,11 @@ function createMainWindow(): void {
     return { action: "deny" };
   });
 
-  if (app.isPackaged) {
-    void mainWindow.loadFile(path.join(here, "..", "dist", "index.html"));
-  } else {
+  if (shouldUseDevServer) {
     void mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools({ mode: "detach" });
+  } else {
+    void mainWindow.loadFile(path.join(here, "..", "dist", "index.html"));
   }
 }
 

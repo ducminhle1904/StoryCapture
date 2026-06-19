@@ -1,9 +1,12 @@
 /** Capture IPC wrappers. */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import type { ScreenCapturePermissionReportDto } from "@shared-types";
 
 // Host DTO values arrive as lowercase over IPC. Keep TS in lockstep.
 export type PermissionState = "granted" | "denied" | "undetermined";
+
+export type ScreenCapturePermissionReport = ScreenCapturePermissionReportDto;
 
 export interface DisplayInfo {
   id: bigint | number; // specta emits bigint for u64
@@ -20,8 +23,8 @@ export function listDisplays(): Promise<DisplayInfo[]> {
   return invoke<DisplayInfo[]>("list_displays");
 }
 
-export function checkScreenCapturePermission(): Promise<PermissionState> {
-  return invoke<PermissionState>("check_screen_capture_permission");
+export function checkScreenCapturePermission(): Promise<ScreenCapturePermissionReport> {
+  return invoke<ScreenCapturePermissionReport>("check_screen_capture_permission");
 }
 
 export function openScreenCapturePrefs(): Promise<void> {
@@ -29,13 +32,12 @@ export function openScreenCapturePrefs(): Promise<void> {
 }
 
 /**
- * Triggers macOS `CGRequestScreenCaptureAccess()`. Registers the app in
- * System Settings → Privacy & Security → Screen Recording so the user
- * can toggle it. Without this call, the app doesn't appear in the list.
- * Call this BEFORE opening Settings.
+ * Probes macOS Screen Recording with a minimal desktopCapturer request.
+ * This registers the current app identity in System Settings so the user
+ * can grant access before relaunching.
  */
-export function requestScreenCaptureAccess(): Promise<PermissionState> {
-  return invoke<PermissionState>("request_screen_capture_access");
+export function requestScreenCaptureAccess(): Promise<ScreenCapturePermissionReport> {
+  return invoke<ScreenCapturePermissionReport>("request_screen_capture_access");
 }
 
 export function relaunchApp(): Promise<void> {

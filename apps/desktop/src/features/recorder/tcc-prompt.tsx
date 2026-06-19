@@ -27,10 +27,11 @@ import {
 interface TccPromptProps {
   open: boolean;
   permission: PermissionState;
+  appName: string;
   onDismiss: () => void;
 }
 
-export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
+export function TccPrompt({ open, permission, appName, onDismiss }: TccPromptProps) {
   if (permission === "granted") return null;
 
   return (
@@ -55,7 +56,7 @@ export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
                 Screen Recording permission needed
               </Dialog.Title>
               <Dialog.Description className="font-serif mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
-                StoryCapture needs macOS Screen Recording access to record your
+                {appName} needs macOS Screen Recording access to record your
                 browser demos. You only have to grant it once — the app will
                 relaunch so the new permission takes effect.
               </Dialog.Description>
@@ -67,7 +68,7 @@ export function TccPrompt({ open, permission, onDismiss }: TccPromptProps) {
               1. Open <strong>System Settings → Privacy & Security → Screen Recording</strong>.
             </li>
             <li className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
-              2. Enable <strong>StoryCapture</strong>.
+              2. Enable <strong>{appName}</strong>.
             </li>
             <li className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-4 py-3">
               3. Relaunch the app.

@@ -1,0 +1,11 @@
+{
+  "productAppName": "StoryCapture",
+  "devAppName": "StoryCapture Dev",
+  "prodBundleId": "com.storycapture.desktop",
+  "devBundleId": "com.storycapture.desktop.dev",
+  "devAppEnv": "STORYCAPTURE_DEV_APP",
+  "debugTccBypassEnv": "STORYCAPTURE_DEBUG_TCC_BYPASS",
+  "devServerUrlEnv": "VITE_DEV_SERVER_URL",
+  "defaultDevServerUrl": "http://127.0.0.1:1420",
+  "devRelaunchExitCode": 187
+}

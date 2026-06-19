@@ -28,6 +28,7 @@ apps/desktop/src-tauri/gen/
 
 # Electron build artifacts
 apps/desktop/dist-electron/
+apps/desktop/.electron-dev/
 
 # OS
 .DS_Store

@@ -33,6 +33,9 @@ import electronUpdater, {
   type UpdateCheckResult,
 } from "electron-updater";
 import ffmpegPath from "ffmpeg-static";
+import identity from "../identity.json";
+import { screenCapturePermissionReport } from "../permissions/screen-capture";
+import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime, isPackagedRuntime } from "../runtime";
 import type { InvokeArgs, InvokeEnvelope } from "./types";
 
 const { autoUpdater } = electronUpdater;
@@ -3252,15 +3255,35 @@ async function stopRecording(raw: unknown) {
   return result;
 }
 
-function screenPermissionState(): "granted" | "denied" | "undetermined" {
-  if (process.platform !== "darwin") return "granted";
-  try {
-    const status = systemPreferences.getMediaAccessStatus("screen");
-    if (status === "granted" || status === "denied") return status;
-  } catch {
-    return "undetermined";
-  }
-  return "undetermined";
+let screenSourceProbe: Promise<number> | null = null;
+
+function enumerateScreenSourcesForPermission(): Promise<number> {
+  screenSourceProbe ??= desktopCapturer
+    .getSources({
+      types: ["screen"],
+      thumbnailSize: { width: 1, height: 1 },
+      fetchWindowIcons: false,
+    })
+    .then((sources) => sources.length)
+    .finally(() => {
+      screenSourceProbe = null;
+    });
+  return screenSourceProbe;
+}
+
+function screenPermissionReport(probe: boolean) {
+  return screenCapturePermissionReport(
+    {
+      platform: process.platform,
+      isPackaged: isPackagedRuntime(app),
+      executablePath: process.execPath,
+      fallbackAppName: app.getName(),
+      debugBypassAllowed: process.env[identity.debugTccBypassEnv] === "1",
+      getMediaAccessStatus: () => systemPreferences.getMediaAccessStatus("screen"),
+      enumerateScreenSources: enumerateScreenSourcesForPermission,
+    },
+    { probe },
+  );
 }
 
 async function getSettings() {
@@ -4812,8 +4835,9 @@ export async function handleLegacyInvoke(
       );
     }
     case "check_screen_capture_permission":
+      return screenPermissionReport(false);
     case "request_screen_capture_access":
-      return screenPermissionState();
+      return screenPermissionReport(true);
     case "open_screen_capture_prefs":
       if (process.platform === "darwin") {
         await shell.openExternal(
@@ -4822,8 +4846,12 @@ export async function handleLegacyInvoke(
       }
       return null;
     case "relaunch_app":
-      app.relaunch();
-      app.exit(0);
+      if (isDevRuntime(app)) {
+        app.exit(DEV_RELAUNCH_EXIT_CODE);
+      } else {
+        app.relaunch();
+        app.exit(0);
+      }
       return null;
     case "resolve_playwright_target":
       return resolveActiveAuthorPreviewTarget();
