@@ -45,6 +45,7 @@ video.
 - Electron IPC is modular: `apps/desktop/electron/ipc.ts` registers the
   `tauri-invoke` bridge, `apps/desktop/electron/ipc/handlers.ts` is the
   registry, grouped modules live in `apps/desktop/electron/ipc/*`, and
+  Tauri-compatible plugin shims live in `apps/desktop/electron/ipc/plugin/*`.
   `apps/desktop/electron/ipc/legacy.ts` still owns many host operations.
 - `packages/story-dsl` is AST/vocabulary plus CodeMirror support. Runtime parse
   and simulator behavior is desktop IPC/host code, not a shared parser package.
@@ -134,7 +135,8 @@ file explicitly says otherwise.
   `packages/shared-types/src/generated/effects.ts`.
 - Avoid generated/build/cache/artifact directories unless the task is
   specifically about them: `node_modules/`, `.turbo/`, `.next/`, `dist/`,
-  `release-electron/`, `output/`, `tmp/`, and generated Prisma output.
+  `release-electron/`, `output/`, `tmp/`, `scripts/build-ffmpeg/build/`, and
+  generated Prisma output.
 - After code changes, update agent docs when the change affects future agent
   routing, workflows, commands, architecture, generated-file rules, or module
   ownership; keep `CLAUDE.md` concise and put detail in `docs/agent/` or the

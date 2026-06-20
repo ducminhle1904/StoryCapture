@@ -49,6 +49,7 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/app.ts`, `apps/desktop/electron/ipc/capture.ts`,
   `apps/desktop/electron/ipc/context.ts`,
   `apps/desktop/electron/ipc/export.ts`, `apps/desktop/electron/ipc/picker.ts`,
+  `apps/desktop/electron/ipc/logs.ts`,
   `apps/desktop/electron/ipc/post-production.ts`,
   `apps/desktop/electron/ipc/preview.ts`,
   `apps/desktop/electron/ipc/projects.ts`,
@@ -58,6 +59,8 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/simulator.ts`,
   `apps/desktop/electron/ipc/updates.ts`,
   `apps/desktop/electron/ipc/web-sync.ts`.
+- Tauri-compatible plugin shims: `apps/desktop/electron/ipc/plugin/index.ts`
+  plus `apps/desktop/electron/ipc/plugin/*.ts`.
 - Legacy host operations: `apps/desktop/electron/ipc/legacy.ts` and
   `apps/desktop/electron/ipc/legacy-command.ts`.
 - Renderer IPC facades: `apps/desktop/src/ipc/*.ts`.

@@ -20,7 +20,8 @@ is the root agent guide; `AGENTS.md` and `GEMINI.md` symlink to it.
     `apps/desktop/electron/preload.ts`, `apps/desktop/electron/runtime.ts`.
   - IPC bridge/registry: `apps/desktop/electron/ipc.ts`,
     `apps/desktop/electron/ipc/handlers.ts`,
-    `apps/desktop/electron/ipc/*.ts`.
+    `apps/desktop/electron/ipc/*.ts`,
+    `apps/desktop/electron/ipc/plugin/*.ts`.
 - `apps/web`: Next.js web companion with App Router, tRPC, Prisma, auth, R2,
   analytics, templates, and desktop sync.
   - Routes/pages: `apps/web/src/app`.
@@ -52,7 +53,8 @@ is the root agent guide; `AGENTS.md` and `GEMINI.md` symlink to it.
 ## Avoid By Default
 
 - Generated/build/cache/artifacts: `node_modules/`, `.turbo/`, `.next/`,
-  `dist/`, `release-electron/`, `output/`, `tmp/`.
+  `dist/`, `release-electron/`, `output/`, `tmp/`,
+  `scripts/build-ffmpeg/build/`.
 - Generated Prisma client: `apps/web/src/generated/prisma/**`.
 - Checked-in generated effect types:
   `packages/shared-types/src/generated/effects.ts`.
