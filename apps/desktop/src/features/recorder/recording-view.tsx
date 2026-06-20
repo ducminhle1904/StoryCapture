@@ -18,10 +18,6 @@ import { toast } from "sonner";
 
 import { TargetPicker } from "@/features/capture/TargetPicker";
 import {
-  acquirePreviewForRecording,
-  type PreviewRecordingLease,
-} from "@/features/editor/preview-lifecycle";
-import {
   type AutomationChannelHandle,
   type ExecutorEvent,
   launchAutomation,
@@ -62,6 +58,7 @@ import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
+import { acquireRecordingPreview, type RecordingPreviewLease } from "./recording-preview";
 import { authorPreviewRecordingPlan } from "./recording-target";
 import { storyAppUrlForRecording, storyViewportSize } from "./recording-viewport";
 import { TccPrompt } from "./tcc-prompt";
@@ -212,7 +209,7 @@ export function RecordingView({
   const [stageManagerWarning, setStageManagerWarning] = useState(false);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
-  const previewLeaseRef = useRef<PreviewRecordingLease | null>(null);
+  const previewLeaseRef = useRef<RecordingPreviewLease | null>(null);
   const startInFlightRef = useRef(false);
   const startedAtRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
@@ -445,6 +442,8 @@ export function RecordingView({
       const pacingProfile = DEFAULT_RECORDING_PACING;
       const recordingDisplay = display ? { x: display.x, y: display.y } : null;
       const recordingViewport = storyHasBrowser ? storyViewport : null;
+      // Output knobs from useOutputPrefsStore (one-shot read).
+      const { activePreset, recordingKnobs: prefs } = useOutputPrefsStore.getState();
       if (storyHasBrowser) {
         frontendLog.info("RecordingView", "browser recording viewport plan", {
           fields: {
@@ -478,9 +477,10 @@ export function RecordingView({
         const appUrl = storyAppUrlForRecording(storySource);
         if (!appUrl) throw new Error("Browser story is missing a valid meta.app URL");
         releasePreviewLease();
-        const lease = await acquirePreviewForRecording({
+        const lease = await acquireRecordingPreview({
           appUrl,
           viewport: recordingViewport ?? storyViewport,
+          fps: prefs.fps,
           reason: "recording-start",
         });
         previewLeaseRef.current = lease;
@@ -501,8 +501,6 @@ export function RecordingView({
         });
         toast.info("Recording browser preview content");
       }
-      // Output knobs from useOutputPrefsStore (one-shot read).
-      const { activePreset, recordingKnobs: prefs } = useOutputPrefsStore.getState();
       const id = await startRecording(
         {
           project_folder: projectFolder,

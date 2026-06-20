@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   findSimulatorTarget,
   setActiveElementValueScript,
+  setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
   simulatorTargetCenterScript,
 } from "./simulator-dom";
@@ -88,6 +89,56 @@ describe("simulator DOM helpers", () => {
     expect(didWrite).toBe(true);
     expect(input.value).toBe("debug");
     expect(events).toEqual(["input", "change"]);
+  });
+
+  it("builds an incremental value script that emits input per typed character", async () => {
+    document.body.innerHTML = `
+      <label for="email">Email Address</label>
+      <input id="email" type="email" value="old" />
+    `;
+    document.querySelectorAll("*").forEach(makeVisible);
+    const input = document.getElementById("email") as HTMLInputElement;
+    const events: string[] = [];
+    input.addEventListener("input", () => events.push(`input:${input.value}`));
+    input.addEventListener("change", () => events.push(`change:${input.value}`));
+
+    const didWrite = await window.eval(
+      setSimulatorTargetValueIncrementalScript(
+        { kind: "label", value: "EMAIL ADDRESS" },
+        "abc",
+        undefined,
+        null,
+        0,
+      ),
+    );
+
+    expect(didWrite).toBe(true);
+    expect(input.value).toBe("abc");
+    expect(events).toEqual(["input:", "input:a", "input:ab", "input:abc", "change:abc"]);
+  });
+
+  it("caps incremental typing for long values", async () => {
+    document.body.innerHTML = `<textarea id="notes"></textarea>`;
+    document.querySelectorAll("*").forEach(makeVisible);
+    const textarea = document.getElementById("notes") as HTMLTextAreaElement;
+    const events: string[] = [];
+    const value = "x".repeat(201);
+    textarea.addEventListener("input", () => events.push(`input:${textarea.value.length}`));
+    textarea.addEventListener("change", () => events.push(`change:${textarea.value.length}`));
+
+    const didWrite = await window.eval(
+      setSimulatorTargetValueIncrementalScript(
+        { kind: "selector", value: "#notes" },
+        value,
+        undefined,
+        "#notes",
+        0,
+      ),
+    );
+
+    expect(didWrite).toBe(true);
+    expect(textarea.value).toBe(value);
+    expect(events).toEqual(["input:201", "change:201"]);
   });
 
   it("does not report success when the resolved target is not editable", () => {

@@ -1,7 +1,7 @@
 /** Automation IPC wrappers. */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { DEFAULT_RECORDING_PACING } from "@/state/output-prefs";
+import { DEFAULT_RECORDING_PACING, type RecordingPacingProfile } from "@/state/output-prefs";
 
 /**
  * Bounding box carried on StepFrame.
@@ -89,7 +89,7 @@ export interface LaunchAutomationArgs {
    * recorder resets the backing toggle each run.
    */
   chromeHiding?: boolean;
-  pacingProfile?: typeof DEFAULT_RECORDING_PACING;
+  pacingProfile?: RecordingPacingProfile;
   /**
    * Attach an active recording session to the DSL run. When set, the host
    * auto-stops the matching recording at story end (normal, error, or
@@ -131,7 +131,7 @@ export async function launchAutomation(
     streamId: args.streamId ?? null,
     onEvent: channel,
     chromeHiding: args.chromeHiding ?? false,
-    pacingProfile: DEFAULT_RECORDING_PACING,
+    pacingProfile: args.pacingProfile ?? DEFAULT_RECORDING_PACING,
     recordingSessionId: args.recordingSessionId ?? null,
     recordingDisplay: args.recordingDisplay ?? null,
     recordingViewport: args.recordingViewport ?? null,

@@ -187,12 +187,18 @@ export function parseTarget(raw: string): unknown {
   return parseTargetFragment(raw).target;
 }
 
-function parseTargetOnlyCommand(verb: string, rest: string, base: object): ParsedCommand {
+type ParsedCommandBase = Pick<ParsedCommand, "span" | "step_id">;
+
+function parseTargetOnlyCommand(
+  verb: string,
+  rest: string,
+  base: ParsedCommandBase,
+): ParsedCommand {
   const parsed = parseTargetFragment(rest);
   return { verb, target: parsed.target, target_nth: parsed.target_nth, ...base };
 }
 
-function parseValueCommand(verb: string, rest: string, base: object): ParsedCommand {
+function parseValueCommand(verb: string, rest: string, base: ParsedCommandBase): ParsedCommand {
   const parsed = parseTargetFragment(rest);
   const valueRest = parsed.rest.replace(/^with\s+/, "");
   const value = stripQuotes(valueRest);
@@ -205,7 +211,7 @@ function parseValueCommand(verb: string, rest: string, base: object): ParsedComm
   };
 }
 
-function parseWaitForCommand(rest: string, base: object): ParsedCommand {
+function parseWaitForCommand(rest: string, base: ParsedCommandBase): ParsedCommand {
   const parsed = parseTargetFragment(rest);
   const timeout = parsed.rest.match(/^timeout\s+(\S+)$/);
   return {

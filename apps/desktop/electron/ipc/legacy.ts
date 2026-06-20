@@ -37,7 +37,11 @@ import identity from "../identity.json";
 import { screenCapturePermissionReport } from "../permissions/screen-capture";
 import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime, isPackagedRuntime } from "../runtime";
 import { recordingTailFrameDelaysMs } from "./recording-tail";
-import { setSimulatorTargetValueScript, simulatorTargetCenterScript } from "./simulator-dom";
+import {
+  setSimulatorTargetValueIncrementalScript,
+  setSimulatorTargetValueScript,
+  simulatorTargetCenterScript,
+} from "./simulator-dom";
 import { parseStorySource, parsedCommands, type ParsedCommand } from "./story-parser";
 import type { InvokeArgs, InvokeEnvelope } from "./types";
 
@@ -354,6 +358,10 @@ interface RecordingSession {
   audioPath: string | null;
   frameCrop: FrameCropRect | null;
   loggedAuthorPreviewFrame: boolean;
+  requestedFps: number;
+  effectiveFps: number;
+  lateFrames: number;
+  captureDurationMs: number[];
 }
 
 interface CaptureStreamSession {
@@ -418,6 +426,10 @@ interface AuthorPreviewSession {
   frameEvent: string;
   navEvent: string;
   paused: boolean;
+  latestPaintImage: NativeImage | null;
+  latestPaintAt: number | null;
+  frameRate: number;
+  purpose: "editor" | "recording";
 }
 
 interface StoryBrowserRunHooks {
@@ -440,6 +452,7 @@ interface StoryBrowserRunOptions {
   targets: { version: number; steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }> };
   stopAfter?: number;
   frameDir?: string | null;
+  recordingMode?: boolean;
   shouldCancel?: () => boolean;
   hooks?: StoryBrowserRunHooks;
 }
@@ -2671,6 +2684,7 @@ function electronDialogFilters(filters: DialogFilterSpec[] | undefined) {
 
 async function captureRecordingFrame(session: RecordingSession): Promise<void> {
   if (session.paused) return;
+  const startedAt = Date.now();
   const frameIndex = session.frameSeq + 1;
   const framePath = path.join(
     session.framesDir,
@@ -2687,6 +2701,11 @@ async function captureRecordingFrame(session: RecordingSession): Promise<void> {
       total: session.framesDropped,
       delta: 1,
     });
+  } finally {
+    const durationMs = Date.now() - startedAt;
+    session.captureDurationMs.push(durationMs);
+    if (session.captureDurationMs.length > 300) session.captureDurationMs.shift();
+    if (durationMs > 1000 / session.effectiveFps) session.lateFrames += 1;
   }
 }
 
@@ -2719,7 +2738,7 @@ async function captureAuthorPreviewNativeImage(
   height: number,
 ): Promise<NativeImage> {
   const preview = authorSession(streamId);
-  const image = await preview.window.webContents.capturePage();
+  const image = preview.latestPaintImage ?? (await preview.window.webContents.capturePage());
   if (image.isEmpty()) {
     throw new Error(`author preview ${streamId} captured empty frame`);
   }
@@ -2734,6 +2753,7 @@ async function captureAuthorPreviewNativeImage(
 
 async function captureRecordingNativeImage(session: RecordingSession): Promise<NativeImage> {
   if (session.target.kind === "author_preview") {
+    const preview = authorSession(session.target.stream_id);
     const image = await captureAuthorPreviewNativeImage(
       session.target.stream_id,
       session.width,
@@ -2748,6 +2768,8 @@ async function captureRecordingNativeImage(session: RecordingSession): Promise<N
         frame_height: size.height,
         session_width: session.width,
         session_height: session.height,
+        latest_paint_age_ms:
+          preview.latestPaintAt == null ? "none" : String(Math.max(0, Date.now() - preview.latestPaintAt)),
       });
     }
     return image;
@@ -2766,6 +2788,41 @@ function clampFps(value: unknown): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return 30;
   return Math.min(120, Math.max(1, Math.round(numeric)));
+}
+
+function positiveNumber(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
+}
+
+function effectivePreviewFps(value: unknown): number {
+  return Math.min(60, clampFps(value));
+}
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index] ?? 0;
+}
+
+function recordingSettleDelayMs(command: ParsedCommand): number {
+  switch (command.verb) {
+    case "navigate":
+      return 250;
+    case "click":
+    case "select":
+    case "upload":
+      return 120;
+    case "type":
+      return 180;
+    case "scroll":
+      return 160;
+    case "hover":
+      return 80;
+    default:
+      return 0;
+  }
 }
 
 function ffmpegCropPlan(
@@ -2849,6 +2906,19 @@ function emitAuthorNav(session: AuthorPreviewSession): void {
   emitEvent(session.navEvent, navPayload(session));
 }
 
+function invalidateAuthorPreviewPaint(session: AuthorPreviewSession): void {
+  session.latestPaintImage = null;
+  session.latestPaintAt = null;
+}
+
+function invalidateAuthorPreviewPaintForContents(contents: WebContents): void {
+  for (const session of authorPreviewSessions.values()) {
+    if (!session.window.isDestroyed() && session.window.webContents.id === contents.id) {
+      invalidateAuthorPreviewPaint(session);
+    }
+  }
+}
+
 function previewFramePayload(session: AuthorPreviewSession, image: NativeImage) {
   const { width: frameWidth, height: frameHeight } = image.getSize();
   return {
@@ -2891,23 +2961,41 @@ async function stopAuthorPreviewSession(streamId: string): Promise<void> {
   if (!session.window.isDestroyed()) session.window.destroy();
 }
 
-async function stopAllAuthorPreviews(): Promise<void> {
-  await Promise.all([...authorPreviewSessions.keys()].map((id) => stopAuthorPreviewSession(id)));
+async function stopAuthorPreviewsByPurpose(purpose: AuthorPreviewSession["purpose"]): Promise<void> {
+  const ids = [...authorPreviewSessions.values()]
+    .filter((session) => session.purpose === purpose)
+    .map((session) => session.id);
+  await Promise.all(ids.map((id) => stopAuthorPreviewSession(id)));
 }
 
 async function startAuthorPreviewSession(
   args: Record<string, unknown>,
   sender: WebContents,
 ): Promise<string> {
-  await stopAllAuthorPreviews();
   const id = `author-${randomUUID()}`;
   const width = clampDimension(args.viewportWidth, 1280);
   const height = clampDimension(args.viewportHeight, 800);
+  const purpose = args.purpose === "recording" ? "recording" : "editor";
+  const frameRate = purpose === "recording" ? effectivePreviewFps(args.fps) : 30;
+  const rawPartition = typeof args.partition === "string" ? args.partition.trim() : "";
+  if (rawPartition.startsWith("persist:")) {
+    throw new Error("Author preview partition must be non-persistent");
+  }
+  const partition = rawPartition.length > 0 ? rawPartition : undefined;
+  if (purpose === "recording" && !partition) {
+    throw new Error("Recording author preview requires an isolated non-persistent partition");
+  }
+  if (purpose === "editor" && partition) {
+    throw new Error("Editor author preview cannot use a recording partition");
+  }
+  const replaceExisting = purpose === "editor" ? args.replaceExisting !== false : false;
+  if (replaceExisting) await stopAuthorPreviewsByPurpose("editor");
   const preview = new BrowserWindow({
     show: false,
     width,
     height,
     webPreferences: {
+      ...(partition ? { partition } : {}),
       offscreen: true,
       nodeIntegration: false,
       contextIsolation: true,
@@ -2922,15 +3010,26 @@ async function startAuthorPreviewSession(
     frameEvent: `preview://frame/${id}`,
     navEvent: `preview://nav/${id}`,
     paused: false,
+    latestPaintImage: null,
+    latestPaintAt: null,
+    frameRate,
+    purpose,
   };
   authorPreviewSessions.set(id, session);
 
-  preview.webContents.setFrameRate(30);
+  preview.webContents.setFrameRate(frameRate);
   preview.webContents.on("paint", (_event, _dirty, image) => {
     if (session.paused || preview.isDestroyed()) return;
-    emitPreviewFrame(session, image);
+    session.latestPaintImage = image;
+    session.latestPaintAt = Date.now();
+    if (session.purpose !== "recording") {
+      emitPreviewFrame(session, image);
+    }
   });
   const emitNav = () => emitAuthorNav(session);
+  preview.webContents.on("did-start-navigation", () => {
+    invalidateAuthorPreviewPaint(session);
+  });
   preview.webContents.on("did-navigate", emitNav);
   preview.webContents.on("did-navigate-in-page", emitNav);
   preview.webContents.on("did-finish-load", emitNav);
@@ -2942,7 +3041,13 @@ async function startAuthorPreviewSession(
     typeof args.initialUrl === "string" && args.initialUrl.length > 0
       ? args.initialUrl
       : "about:blank";
-  await preview.loadURL(initialUrl);
+  try {
+    await loadAuthorPreviewUrl(preview, initialUrl, purpose === "recording" ? 8_000 : 30_000);
+  } catch (error) {
+    authorPreviewSessions.delete(id);
+    if (!preview.isDestroyed()) preview.destroy();
+    throw error;
+  }
   emitAuthorNav(session);
   void hostLog("info", "start_author_preview", {
     stream_id: id,
@@ -2951,15 +3056,40 @@ async function startAuthorPreviewSession(
     viewport_height: height,
     show: preview.isVisible(),
     offscreen: true,
+    requested_fps: purpose === "recording" ? positiveNumber(args.fps, frameRate) : null,
+    effective_fps: frameRate,
+    replace_existing: replaceExisting,
+    purpose,
+    partition: partition ?? null,
     browser_window_id: preview.id,
     media_source_id: preview.getMediaSourceId(),
   });
   return id;
 }
 
+async function loadAuthorPreviewUrl(
+  preview: BrowserWindow,
+  initialUrl: string,
+  timeoutMs: number,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    await Promise.race([
+      preview.loadURL(initialUrl),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error("Timed out loading author preview URL"));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function startPreviewStream(): Promise<null> {
   const session = [...authorPreviewSessions.values()].find(
-    (candidate) => !candidate.window.isDestroyed(),
+    (candidate) => candidate.purpose === "editor" && !candidate.window.isDestroyed(),
   );
   if (!session) {
     throw new Error("UnavailableOnBackend: no active Electron author preview session");
@@ -3267,6 +3397,7 @@ async function startRecording(raw: unknown, onEvent: unknown, sender: WebContent
   const id = randomUUID();
   const eventChannelId = channelIdFrom(onEvent);
   const fps = clampFps(args.fps);
+  const requestedFps = positiveNumber(args.fps, fps);
   const framesDir = path.join(os.tmpdir(), "storycapture-electron-recordings", id);
   await fs.mkdir(framesDir, { recursive: true });
   let heartbeatSeq = 0;
@@ -3300,6 +3431,10 @@ async function startRecording(raw: unknown, onEvent: unknown, sender: WebContent
     audioPath: null,
     frameCrop: args.frame_crop ?? null,
     loggedAuthorPreviewFrame: false,
+    requestedFps,
+    effectiveFps: fps,
+    lateFrames: 0,
+    captureDurationMs: [],
   };
   session.captureTimer.unref?.();
   recordingSessions.set(id, session);
@@ -3399,12 +3534,31 @@ async function stopRecording(raw: unknown) {
   await runFfmpeg(ffmpegArgs);
   await fs.rm(session.framesDir, { recursive: true, force: true });
   const stat = await fs.stat(outputPath);
+  const actualCaptureFps = session.frameSeq / durationSec;
+  if (actualCaptureFps < session.effectiveFps * 0.8) {
+    void hostLog("warn", "recording_capture_cadence_below_target", {
+      session_id: session.id,
+      target_kind: session.target.kind,
+      requested_fps: session.requestedFps,
+      effective_fps: session.effectiveFps,
+      actual_capture_fps: actualCaptureFps.toFixed(2),
+      frames_written: session.frameSeq,
+      frames_dropped: session.framesDropped,
+      late_frames: session.lateFrames,
+    });
+  }
   const result = {
     output_path: outputPath,
     duration_ms: Math.round(durationSec * 1000),
     bytes: stat.size,
     frames_written: session.frameSeq,
     frames_dropped: session.framesDropped,
+    requested_fps: session.requestedFps,
+    effective_fps: session.effectiveFps,
+    actual_capture_fps: Number(actualCaptureFps.toFixed(2)),
+    late_frames: session.lateFrames,
+    capture_duration_ms_p50: percentile(session.captureDurationMs, 50),
+    capture_duration_ms_p95: percentile(session.captureDurationMs, 95),
   };
   sendChannel(session.eventTarget, session.eventChannelId, { type: "completed", result });
   return result;
@@ -3939,6 +4093,7 @@ async function executeParsedCommand(
   contents: WebContents,
   command: ParsedCommand,
   projectFolder: string,
+  options: { recordingMode?: boolean } = {},
 ): Promise<ParsedCommandResult> {
   if (command.verb === "navigate" && command.url) {
     await contents.loadURL(command.url);
@@ -4022,14 +4177,22 @@ async function executeParsedCommand(
       clickCount: 1,
     });
     const value = command.verb === "type" ? (command.text ?? "") : (command.value ?? "");
-    const didWrite = await contents.executeJavaScript(
-      setSimulatorTargetValueScript(
-        command.target,
-        value,
-        command.target_nth,
-        targetSelector(command.target),
-      ),
-    );
+    const valueScript =
+      command.verb === "type" && options.recordingMode
+        ? setSimulatorTargetValueIncrementalScript(
+            command.target,
+            value,
+            command.target_nth,
+            targetSelector(command.target),
+            35,
+          )
+        : setSimulatorTargetValueScript(
+            command.target,
+            value,
+            command.target_nth,
+            targetSelector(command.target),
+          );
+    const didWrite = await contents.executeJavaScript(valueScript);
     if (!didWrite) {
       throw new Error(`target is not editable for ${command.verb}: ${selectorSummary(command.target)}`);
     }
@@ -4163,7 +4326,16 @@ async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions): Promi
     options.hooks?.onStepStarted?.(ordinal, command);
     const stepStartedAt = Date.now();
     try {
-      const result = await executeParsedCommand(options.contents, command, options.projectFolder);
+      if (options.recordingMode) {
+        invalidateAuthorPreviewPaintForContents(options.contents);
+      }
+      const result = await executeParsedCommand(options.contents, command, options.projectFolder, {
+        recordingMode: options.recordingMode,
+      });
+      if (options.recordingMode) {
+        const settleDelayMs = recordingSettleDelayMs(command);
+        if (settleDelayMs > 0) await waitMs(settleDelayMs);
+      }
       const durationMs = Date.now() - stepStartedAt;
       succeeded += 1;
       options.hooks?.onStepSucceeded?.(ordinal, command, result, durationMs);
@@ -4210,6 +4382,8 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
   const projectFolder = String(args.projectFolder ?? app.getPath("userData"));
   const commands = parsedCommands(source);
   const streamId = typeof args.streamId === "string" ? args.streamId : null;
+  const recordingSessionId =
+    typeof args.recordingSessionId === "string" ? args.recordingSessionId : null;
   sendChannel(sender, onEvent, {
     json: JSON.stringify({ type: "story_started", story_hash: storyHash(source) }),
   });
@@ -4242,6 +4416,7 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
       projectFolder,
       storySource: source,
       targets,
+      recordingMode: Boolean(recordingSessionId),
       hooks: {
         onStepStarted: (ordinal, command) => {
           sendChannel(sender, onEvent, {
@@ -4307,8 +4482,6 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
       },
     }),
   });
-  const recordingSessionId =
-    typeof args.recordingSessionId === "string" ? args.recordingSessionId : null;
   const recordingSession = recordingSessionId ? recordingSessions.get(recordingSessionId) : null;
   if (recordingSession) {
     clearInterval(recordingSession.captureTimer);

@@ -208,7 +208,7 @@ export async function screenCapturePermissionReport(
   }
 
   try {
-    const sourceCount = await probePromise;
+    const sourceCount = (await probePromise) ?? 0;
     return {
       ...baseReport,
       state: sourceCount > 0 ? "granted" : baseReport.state,

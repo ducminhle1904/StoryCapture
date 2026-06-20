@@ -80,6 +80,17 @@ function isEditableElement(el: Element): boolean {
   return ["textbox", "combobox", "searchbox", "spinbutton"].includes(roleOf(el));
 }
 
+function isWritableElement(el: HTMLElement): boolean {
+  return (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement ||
+    el.isContentEditable ||
+    el.getAttribute("contenteditable") === "true" ||
+    "value" in el
+  );
+}
+
 function labelMatches(el: Element, needle: string): boolean {
   return formLabelOf(el).toLowerCase().includes(needle) || nameOf(el).toLowerCase().includes(needle);
 }
@@ -169,7 +180,7 @@ function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectE
   }
 }
 
-function writeElementValue(el: HTMLElement, value: string): boolean {
+function assignElementValue(el: HTMLElement, value: string): boolean {
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
     setNativeValue(el, value);
   } else if (el.isContentEditable || el.getAttribute("contenteditable") === "true") {
@@ -179,6 +190,11 @@ function writeElementValue(el: HTMLElement, value: string): boolean {
   } else {
     return false;
   }
+  return true;
+}
+
+function writeElementValue(el: HTMLElement, value: string): boolean {
+  if (!assignElementValue(el, value)) return false;
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
@@ -190,23 +206,8 @@ export function setSimulatorTargetValue(el: Element | null, value: string): bool
 }
 
 function setResolvedTargetValue(el: Element | null, value: string): boolean {
-  if (setSimulatorTargetValue(el, value)) return true;
-  if (!(el instanceof HTMLElement)) return false;
-  const active = document.activeElement;
-  if (active instanceof HTMLElement && (el === active || el.contains(active))) {
-    if (writeElementValue(active, value)) return true;
-  }
-  const candidates = [...el.querySelectorAll("*")];
-  for (const candidate of candidates) {
-    if (
-      candidate instanceof HTMLElement &&
-      isEditableElement(candidate) &&
-      writeElementValue(candidate, value)
-    ) {
-      return true;
-    }
-  }
-  return false;
+  const target = resolvedEditableElement(el);
+  return target ? writeElementValue(target, value) : false;
 }
 
 export function setActiveElementValue(value: string): boolean {
@@ -215,10 +216,68 @@ export function setActiveElementValue(value: string): boolean {
   return writeElementValue(active, value);
 }
 
+function resolvedEditableElement(el: Element | null): HTMLElement | null {
+  if (el instanceof HTMLElement && isEditableElement(el) && isWritableElement(el)) return el;
+  if (!(el instanceof HTMLElement)) return null;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && (el === active || el.contains(active))) {
+    if (isEditableElement(active) && isWritableElement(active)) return active;
+  }
+  const candidates = [...el.querySelectorAll("*")];
+  for (const candidate of candidates) {
+    if (
+      candidate instanceof HTMLElement &&
+      isEditableElement(candidate) &&
+      isWritableElement(candidate)
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function writeElementValueIncrementally(
+  el: Element | null,
+  value: string,
+  delayMs: number,
+): Promise<boolean> {
+  const target = resolvedEditableElement(el);
+  if (!target) return false;
+  target.focus();
+  const normalizedDelay = Math.max(0, Math.min(Number(delayMs) || 0, 250));
+  const characters = Array.from(value);
+  if (characters.length > 200) {
+    if (!assignElementValue(target, value)) return false;
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+  if (target instanceof HTMLSelectElement) {
+    if (!assignElementValue(target, value)) return false;
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+  if (!assignElementValue(target, "")) return false;
+  target.dispatchEvent(new Event("input", { bubbles: true }));
+  let nextValue = "";
+  for (const char of characters) {
+    nextValue += char;
+    if (!assignElementValue(target, nextValue)) return false;
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    if (normalizedDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, normalizedDelay));
+    }
+  }
+  target.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+}
+
 export function setActiveElementValueScript(value: string): string {
   return `
     (() => {
       ${setNativeValue.toString()}
+      ${assignElementValue.toString()}
       ${writeElementValue.toString()}
       return (${setActiveElementValue.toString()})(${JSON.stringify(value)});
     })()
@@ -240,10 +299,13 @@ export function setSimulatorTargetValueScript(
       ${roleOf.toString()}
       ${isVisible.toString()}
       ${isEditableElement.toString()}
+      ${isWritableElement.toString()}
       ${labelMatches.toString()}
       ${setNativeValue.toString()}
+      ${assignElementValue.toString()}
       ${writeElementValue.toString()}
       ${setSimulatorTargetValue.toString()}
+      ${resolvedEditableElement.toString()}
       ${setResolvedTargetValue.toString()}
       const el = (${findSimulatorTarget.toString()})(
         ${JSON.stringify(target)},
@@ -251,6 +313,45 @@ export function setSimulatorTargetValueScript(
         ${JSON.stringify(selector ?? null)}
       );
       return setResolvedTargetValue(el, ${JSON.stringify(value)});
+    })()
+  `;
+}
+
+export function setSimulatorTargetValueIncrementalScript(
+  target: unknown,
+  value: string,
+  targetNth?: number,
+  selector?: string | null,
+  delayMs = 35,
+): string {
+  return `
+    (() => {
+      ${textOf.toString()}
+      ${cssEscape.toString()}
+      ${formLabelOf.toString()}
+      ${nameOf.toString()}
+      ${roleOf.toString()}
+      ${isVisible.toString()}
+      ${isEditableElement.toString()}
+      ${isWritableElement.toString()}
+      ${labelMatches.toString()}
+      ${setNativeValue.toString()}
+      ${assignElementValue.toString()}
+      ${writeElementValue.toString()}
+      ${setSimulatorTargetValue.toString()}
+      ${resolvedEditableElement.toString()}
+      ${setResolvedTargetValue.toString()}
+      ${writeElementValueIncrementally.toString()}
+      const el = (${findSimulatorTarget.toString()})(
+        ${JSON.stringify(target)},
+        ${JSON.stringify(targetNth ?? null)},
+        ${JSON.stringify(selector ?? null)}
+      );
+      return writeElementValueIncrementally(
+        el,
+        ${JSON.stringify(value)},
+        ${JSON.stringify(delayMs)}
+      );
     })()
   `;
 }
