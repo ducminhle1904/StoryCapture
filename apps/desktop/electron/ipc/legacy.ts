@@ -30,20 +30,42 @@ import {
 } from "electron";
 import electronUpdater, {
   type UpdateInfo as ElectronUpdateInfo,
-  type UpdateCheckResult,
 } from "electron-updater";
 import ffmpegPath from "ffmpeg-static";
 import identity from "../identity.json";
 import { screenCapturePermissionReport } from "../permissions/screen-capture";
-import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime, isPackagedRuntime } from "../runtime";
+import {
+  DEV_RELAUNCH_EXIT_CODE,
+  isDevRuntime,
+  isPackagedRuntime,
+} from "../runtime";
+import {
+  deleteGenericSecret,
+  loadOptionalGenericSecret,
+  storeGenericSecret,
+} from "./generic-secret-store";
+import { readJson, writeJson } from "./json-store";
+import { logFromFrontend, type FrontendLogPayload } from "./log-store";
+import { userDataPath } from "./paths";
 import { recordingTailFrameDelaysMs } from "./recording-tail";
+import { sessionId } from "./session";
 import {
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
   simulatorTargetCenterScript,
 } from "./simulator-dom";
-import { parseStorySource, parsedCommands, type ParsedCommand } from "./story-parser";
+import {
+  parseStorySource,
+  parsedCommands,
+  type ParsedCommand,
+} from "./story-parser";
 import type { InvokeArgs, InvokeEnvelope } from "./types";
+import {
+  checkElectronUpdate,
+  getPendingUpdateInfo,
+  installElectronUpdate,
+  releaseNotesText,
+} from "./update-store";
 
 const { autoUpdater } = electronUpdater;
 
@@ -181,21 +203,6 @@ type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts";
 interface SecretStore {
   version: number;
   keys: Record<string, string>;
-}
-
-interface LogConfigUpdate {
-  log_dir?: string | null;
-  max_file_size_bytes?: number | null;
-  max_files?: number | null;
-}
-
-interface FrontendLogPayload {
-  level?: string;
-  source?: string;
-  message?: string;
-  fields?: Array<[string, string]>;
-  stack?: string | null;
-  url?: string | null;
 }
 
 interface AudioInputInfo {
@@ -449,7 +456,10 @@ interface StoryBrowserRunOptions {
   commands: ParsedCommand[];
   projectFolder: string;
   storySource: string;
-  targets: { version: number; steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }> };
+  targets: {
+    version: number;
+    steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }>;
+  };
   stopAfter?: number;
   frameDir?: string | null;
   recordingMode?: boolean;
@@ -457,7 +467,11 @@ interface StoryBrowserRunOptions {
   hooks?: StoryBrowserRunHooks;
 }
 
-type StoryBrowserRunExitReason = "completed" | "paused" | "cancelled" | "failed";
+type StoryBrowserRunExitReason =
+  | "completed"
+  | "paused"
+  | "cancelled"
+  | "failed";
 
 interface ParsedCommandResult {
   screenshotPath?: string | null;
@@ -479,7 +493,6 @@ type PickResult =
     }
   | { cancelled: true; reason: string };
 
-const sessionId = randomUUID();
 const stores = new Map<number, StoreRecord>();
 const fsResources = new Map<number, FsResource>();
 const shellProcesses = new Map<number, ShellProcessResource>();
@@ -504,7 +517,6 @@ let uploadStatus: UploadStatusDto = {
   videoSlug: null,
   error: null,
 };
-let pendingUpdateCheck: UpdateCheckResult | null = null;
 let nextRid = 1;
 let nextEventId = 1;
 
@@ -520,14 +532,6 @@ const WEB_TOKEN_ACCOUNT = "web_api_token";
 const WEB_INFO_ACCOUNT = "web_account_info";
 const UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024;
 const UPLOAD_MIN_MULTIPART_SIZE = 5 * 1024 * 1024;
-
-function userDataPath(...parts: string[]): string {
-  return path.join(app.getPath("userData"), ...parts);
-}
-
-function defaultProjectsFolder(): string {
-  return path.join(os.homedir(), "StoryCapture");
-}
 
 function projectsRegistryPath(): string {
   return userDataPath("projects.json");
@@ -558,237 +562,6 @@ function webBaseUrl(): string {
     process.env.STORYCAPTURE_WEB_URL ??
     (app.isPackaged ? "https://storycapture.app" : "http://localhost:3000")
   ).replace(/\/+$/, "");
-}
-
-function defaultSettings() {
-  return {
-    browser_executable: null,
-    browser_language: "system",
-    general: {
-      projects_folder: null,
-      startup_behavior: "last_project",
-      autosave_enabled: true,
-      autosave_interval_sec: 5,
-      dock_progress_badge: process.platform === "darwin",
-    },
-    capture: {
-      capture_fps: 60,
-      include_cursor_default: false,
-      audio_input_default: "none",
-      color_profile: "srgb_rec709",
-    },
-    render: {
-      parallel_renders: 2,
-    },
-    privacy: {
-      crash_reports_enabled: false,
-      usage_analytics_enabled: false,
-      prompt_redaction_enabled: true,
-      diagnostic_bundle_enabled: true,
-    },
-    updates: {
-      check_updates_on_launch: false,
-    },
-    default_projects_folder: defaultProjectsFolder(),
-    dock_progress_badge_supported: process.platform === "darwin",
-  };
-}
-
-async function readJson<T>(file: string, fallback: T): Promise<T> {
-  try {
-    return JSON.parse(await fs.readFile(file, "utf8")) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJson(file: string, value: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify(value, null, 2), "utf8");
-}
-
-const LOG_MIN_FILE_SIZE_BYTES = 1024 * 1024;
-const LOG_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
-const LOG_MIN_FILES = 1;
-const LOG_MAX_FILES = 50;
-
-function defaultLogDir(): string {
-  return userDataPath("logs");
-}
-
-function logConfigPath(): string {
-  return userDataPath("log-config.json");
-}
-
-function normalizeLogConfig(update: LogConfigUpdate = {}): Required<LogConfigUpdate> {
-  const maxFileSize = Number(update.max_file_size_bytes ?? 10 * 1024 * 1024);
-  const maxFiles = Number(update.max_files ?? 10);
-  return {
-    log_dir: update.log_dir?.trim() ? update.log_dir.trim() : null,
-    max_file_size_bytes: Math.min(
-      LOG_MAX_FILE_SIZE_BYTES,
-      Math.max(LOG_MIN_FILE_SIZE_BYTES, Math.round(maxFileSize)),
-    ),
-    max_files: Math.min(LOG_MAX_FILES, Math.max(LOG_MIN_FILES, Math.round(maxFiles))),
-  };
-}
-
-async function readLogConfig(): Promise<Required<LogConfigUpdate>> {
-  return normalizeLogConfig(await readJson<LogConfigUpdate>(logConfigPath(), {}));
-}
-
-async function writeLogConfig(update: LogConfigUpdate): Promise<unknown> {
-  const current = await readLogConfig();
-  const next = normalizeLogConfig({ ...current, ...update });
-  await writeJson(logConfigPath(), next);
-  return buildLogConfigDto(next);
-}
-
-function buildLogConfigDto(config: Required<LogConfigUpdate>) {
-  const defaultDir = defaultLogDir();
-  return {
-    effective_log_dir: config.log_dir ?? defaultDir,
-    log_dir_override: config.log_dir,
-    default_log_dir: defaultDir,
-    max_file_size_bytes: config.max_file_size_bytes,
-    max_files: config.max_files,
-    min_file_size_bytes: LOG_MIN_FILE_SIZE_BYTES,
-    max_allowed_file_size_bytes: LOG_MAX_FILE_SIZE_BYTES,
-    min_files: LOG_MIN_FILES,
-    max_allowed_files: LOG_MAX_FILES,
-  };
-}
-
-async function getLogConfig() {
-  return buildLogConfigDto(await readLogConfig());
-}
-
-function logFileName(): string {
-  return `storycapture-${sessionId}.log`;
-}
-
-function sanitizeLogField(value: unknown): string {
-  const text = typeof value === "string" ? value : JSON.stringify(value);
-  return (text ?? "").replaceAll(/\s+/g, " ").slice(0, 2000);
-}
-
-async function logFromFrontend(payload: FrontendLogPayload): Promise<null> {
-  const config = await readLogConfig();
-  const logDir = config.log_dir ?? defaultLogDir();
-  await fs.mkdir(logDir, { recursive: true });
-  const level = String(payload.level ?? "info").toUpperCase();
-  const source = sanitizeLogField(payload.source ?? "frontend");
-  const message = sanitizeLogField(payload.message ?? "");
-  const fields = Array.isArray(payload.fields)
-    ? payload.fields
-        .map(
-          ([key, value]) => `${sanitizeLogField(key)}=${JSON.stringify(sanitizeLogField(value))}`,
-        )
-        .join(" ")
-    : "";
-  const url = payload.url ? ` url=${JSON.stringify(sanitizeLogField(payload.url))}` : "";
-  const stack = payload.stack ? ` stack=${JSON.stringify(sanitizeLogField(payload.stack))}` : "";
-  const line = `${new Date().toISOString()} ${level} storycapture::frontend source=${JSON.stringify(source)} ${message}${fields ? ` ${fields}` : ""}${url}${stack}\n`;
-  await fs.appendFile(path.join(logDir, logFileName()), line, "utf8");
-  return null;
-}
-
-async function exportDiagnosticBundle(parentDir: string) {
-  const config = await readLogConfig();
-  const effectiveLogDir = config.log_dir ?? defaultLogDir();
-  const stamp = Math.floor(Date.now() / 1000);
-  const outDir = path.join(parentDir, `storycapture-diagnostics-${stamp}`);
-  const logsOut = path.join(outDir, "logs");
-  await fs.mkdir(logsOut, { recursive: true });
-  try {
-    const entries = await fs.readdir(effectiveLogDir, { withFileTypes: true });
-    await Promise.all(
-      entries
-        .filter((entry) => entry.isFile())
-        .map((entry) =>
-          fs.copyFile(path.join(effectiveLogDir, entry.name), path.join(logsOut, entry.name)),
-        ),
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-  await fs.writeFile(
-    path.join(outDir, "manifest.json"),
-    JSON.stringify(
-      {
-        app: { name: app.getName(), version: app.getVersion(), platform: process.platform },
-        privacy: {
-          crash_reports_enabled: false,
-          usage_analytics_enabled: false,
-          prompt_redaction_enabled: true,
-        },
-        logs: { source: effectiveLogDir },
-        contents: ["logs", "manifest.json"],
-        excluded: ["story source", "recordings", "project databases", "api keys"],
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
-  return { path: outDir };
-}
-
-function releaseNotesText(notes: ElectronUpdateInfo["releaseNotes"]): string | null {
-  if (typeof notes === "string") return notes;
-  if (Array.isArray(notes)) {
-    const text = notes
-      .map((entry) => {
-        if (typeof entry === "string") return entry;
-        if (entry && typeof entry === "object" && "note" in entry) return String(entry.note ?? "");
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n\n");
-    return text || null;
-  }
-  return null;
-}
-
-function updateInfoDto(info: ElectronUpdateInfo) {
-  return {
-    version: info.version,
-    date: info.releaseDate ?? null,
-    body: releaseNotesText(info.releaseNotes),
-    current_version: app.getVersion(),
-  };
-}
-
-async function checkElectronUpdate() {
-  if (!app.isPackaged && !process.env.STORYCAPTURE_DEBUG_UPDATER) {
-    pendingUpdateCheck = null;
-    return null;
-  }
-
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  const result = await autoUpdater.checkForUpdates();
-  pendingUpdateCheck = result;
-  if (!result?.updateInfo) return null;
-  if (result.updateInfo.version === app.getVersion()) return null;
-  return updateInfoDto(result.updateInfo);
-}
-
-async function installElectronUpdate(): Promise<null> {
-  if (!app.isPackaged && !process.env.STORYCAPTURE_DEBUG_UPDATER) {
-    throw new Error("updater install is unavailable in development builds");
-  }
-
-  if (!pendingUpdateCheck) {
-    pendingUpdateCheck = await autoUpdater.checkForUpdates();
-  }
-  if (!pendingUpdateCheck?.updateInfo) {
-    throw new Error("no update available");
-  }
-
-  await autoUpdater.downloadUpdate();
-  autoUpdater.quitAndInstall(false, true);
-  return null;
 }
 
 function pluginLogLevel(level: unknown): FrontendLogPayload["level"] {
@@ -834,8 +607,14 @@ function shellOptions(value: unknown): {
   env?: NodeJS.ProcessEnv;
   encoding: BufferEncoding;
 } {
-  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const encoding = typeof raw.encoding === "string" ? (raw.encoding as BufferEncoding) : "utf8";
+  const raw =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const encoding =
+    typeof raw.encoding === "string"
+      ? (raw.encoding as BufferEncoding)
+      : "utf8";
   return {
     cwd: typeof raw.cwd === "string" ? raw.cwd : undefined,
     env: shellEnv(raw.env),
@@ -845,7 +624,8 @@ function shellOptions(value: unknown): {
 
 function shellSignal(signal: NodeJS.Signals | null): number | null {
   if (!signal) return null;
-  const signalNumber = os.constants.signals[signal as keyof typeof os.constants.signals];
+  const signalNumber =
+    os.constants.signals[signal as keyof typeof os.constants.signals];
   return typeof signalNumber === "number" ? signalNumber : null;
 }
 
@@ -876,15 +656,25 @@ async function saveElectronWindowState(): Promise<void> {
       fullscreen: window.isFullScreen(),
       visible: window.isVisible(),
     }));
-  await writeJson(windowStatePath(), { version: 1, windows, saved_at: Date.now() });
+  await writeJson(windowStatePath(), {
+    version: 1,
+    windows,
+    saved_at: Date.now(),
+  });
 }
 
 async function restoreElectronWindowState(): Promise<void> {
   const state = await readJson<{
-    windows?: Array<{ bounds?: Rectangle; maximized?: boolean; fullscreen?: boolean }>;
+    windows?: Array<{
+      bounds?: Rectangle;
+      maximized?: boolean;
+      fullscreen?: boolean;
+    }>;
   }>(windowStatePath(), {});
   const saved = state.windows?.[0];
-  const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed());
+  const window = BrowserWindow.getAllWindows().find(
+    (candidate) => !candidate.isDestroyed(),
+  );
   if (!window || !saved?.bounds) return;
   window.setBounds(saved.bounds);
   if (saved.maximized) window.maximize();
@@ -924,14 +714,18 @@ async function listAudioInputs(sender: WebContents): Promise<AudioInputInfo[]> {
     .filter((device): device is AudioInputInfo => {
       if (!device || typeof device !== "object") return false;
       const candidate = device as Partial<AudioInputInfo>;
-      return typeof candidate.id === "string" && typeof candidate.name === "string";
+      return (
+        typeof candidate.id === "string" && typeof candidate.name === "string"
+      );
     })
     .map((device, index) => ({
       id: device.id,
       name: device.name || `Microphone ${index + 1}`,
       is_default: Boolean(device.is_default),
       channels: Number.isFinite(device.channels) ? Number(device.channels) : 0,
-      sample_rate_hz: Number.isFinite(device.sample_rate_hz) ? Number(device.sample_rate_hz) : 0,
+      sample_rate_hz: Number.isFinite(device.sample_rate_hz)
+        ? Number(device.sample_rate_hz)
+        : 0,
     }));
 }
 
@@ -939,74 +733,15 @@ function secretStorePath(): string {
   return userDataPath("secrets.v1.json");
 }
 
-function genericSecretStorePath(): string {
-  return userDataPath("generic-secrets.v1.json");
-}
-
-function genericSecretKey(service: unknown, account: unknown): string {
-  const serviceName = String(service ?? "").trim();
-  const accountName = String(account ?? "").trim();
-  if (!serviceName) throw new Error("secret service required");
-  if (!accountName) throw new Error("secret account required");
-  return `${Buffer.from(serviceName, "utf8").toString("base64url")}.${Buffer.from(accountName, "utf8").toString("base64url")}`;
-}
-
-async function readGenericSecretStore(): Promise<SecretStore> {
-  return readJson<SecretStore>(genericSecretStorePath(), { version: 1, keys: {} });
-}
-
-async function writeGenericSecretStore(store: SecretStore): Promise<void> {
-  await writeJson(genericSecretStorePath(), { version: 1, keys: store.keys ?? {} });
-}
-
-async function storeGenericSecret(
-  service: unknown,
-  account: unknown,
-  value: unknown,
-): Promise<null> {
-  assertSafeStorage();
-  const secretValue = String(value ?? "");
-  if (!secretValue) throw new Error("secret value required");
-  const store = await readGenericSecretStore();
-  store.keys[genericSecretKey(service, account)] = safeStorage
-    .encryptString(secretValue)
-    .toString("base64");
-  await writeGenericSecretStore(store);
-  return null;
-}
-
-async function loadGenericSecret(service: unknown, account: unknown): Promise<string> {
-  assertSafeStorage();
-  const encrypted = (await readGenericSecretStore()).keys[genericSecretKey(service, account)];
-  if (!encrypted) throw new Error("secret not found");
-  return safeStorage.decryptString(Buffer.from(encrypted, "base64"));
-}
-
-async function deleteGenericSecret(service: unknown, account: unknown): Promise<null> {
-  const store = await readGenericSecretStore();
-  const key = genericSecretKey(service, account);
-  delete store.keys[key];
-  await writeGenericSecretStore(store);
-  return null;
-}
-
-async function loadOptionalGenericSecret(
-  service: unknown,
-  account: unknown,
-): Promise<string | null> {
-  try {
-    return await loadGenericSecret(service, account);
-  } catch {
-    return null;
-  }
-}
-
 async function getWebApiToken(): Promise<string | null> {
   return loadOptionalGenericSecret(WEB_SECRET_SERVICE, WEB_TOKEN_ACCOUNT);
 }
 
 async function getWebAccount(): Promise<WebAccountInfo | null> {
-  const json = await loadOptionalGenericSecret(WEB_SECRET_SERVICE, WEB_INFO_ACCOUNT);
+  const json = await loadOptionalGenericSecret(
+    WEB_SECRET_SERVICE,
+    WEB_INFO_ACCOUNT,
+  );
   if (!json) return null;
   const parsed = JSON.parse(json) as Partial<WebAccountInfo>;
   if (typeof parsed.email !== "string") return null;
@@ -1039,13 +774,19 @@ async function startWebOauth(): Promise<number> {
     const requestUrl = new URL(request.url ?? "/", "http://localhost");
     const token = requestUrl.searchParams.get("token");
     if (token) {
-      response.writeHead(200, { "content-type": "text/html", connection: "close" });
+      response.writeHead(200, {
+        "content-type": "text/html",
+        connection: "close",
+      });
       response.end(
         "<html><body><h1>Authentication successful</h1><p>You can close this window and return to StoryCapture.</p></body></html>",
       );
       resolveToken(token);
     } else {
-      response.writeHead(400, { "content-type": "text/html", connection: "close" });
+      response.writeHead(400, {
+        "content-type": "text/html",
+        connection: "close",
+      });
       response.end(
         "<html><body><h1>Authentication failed</h1><p>No token received. Please try again.</p></body></html>",
       );
@@ -1070,7 +811,14 @@ async function startWebOauth(): Promise<number> {
     closePendingOAuthFlow();
   }, 30_000);
   timer.unref?.();
-  pendingOAuthFlow = { port, server, tokenPromise, resolveToken, rejectToken, timer };
+  pendingOAuthFlow = {
+    port,
+    server,
+    tokenPromise,
+    resolveToken,
+    rejectToken,
+    timer,
+  };
 
   try {
     await shell.openExternal(
@@ -1090,7 +838,8 @@ function stringOrNull(value: unknown): string | null {
 
 async function completeWebOauth(): Promise<WebAccountInfo> {
   const flow = pendingOAuthFlow;
-  if (!flow) throw new Error("no pending OAuth flow - call start_web_oauth first");
+  if (!flow)
+    throw new Error("no pending OAuth flow - call start_web_oauth first");
 
   let sessionToken: string;
   try {
@@ -1104,12 +853,15 @@ async function completeWebOauth(): Promise<WebAccountInfo> {
     headers: { Authorization: `Bearer ${sessionToken}` },
   });
   if (!response.ok) {
-    throw new Error(`failed to exchange token: server returned ${response.status}`);
+    throw new Error(
+      `failed to exchange token: server returned ${response.status}`,
+    );
   }
   const body = (await response.json()) as Record<string, unknown>;
   const token = stringOrNull(body.token);
   const email = stringOrNull(body.email);
-  if (!token || !email) throw new Error("failed to exchange token: invalid server response");
+  if (!token || !email)
+    throw new Error("failed to exchange token: invalid server response");
 
   const account: WebAccountInfo = {
     email,
@@ -1118,7 +870,11 @@ async function completeWebOauth(): Promise<WebAccountInfo> {
     connectedAt: new Date().toISOString(),
   };
   await storeGenericSecret(WEB_SECRET_SERVICE, WEB_TOKEN_ACCOUNT, token);
-  await storeGenericSecret(WEB_SECRET_SERVICE, WEB_INFO_ACCOUNT, JSON.stringify(account));
+  await storeGenericSecret(
+    WEB_SECRET_SERVICE,
+    WEB_INFO_ACCOUNT,
+    JSON.stringify(account),
+  );
   return account;
 }
 
@@ -1139,10 +895,15 @@ async function writeWebSyncQueue(queue: WebSyncQueueItem[]): Promise<void> {
 }
 
 async function readWebSyncState(): Promise<WebSyncStateFile> {
-  return readJson<WebSyncStateFile>(webSyncStatePath(), { version: 1, lastSync: null });
+  return readJson<WebSyncStateFile>(webSyncStatePath(), {
+    version: 1,
+    lastSync: null,
+  });
 }
 
-async function writeWebSyncState(update: Partial<WebSyncStateFile>): Promise<void> {
+async function writeWebSyncState(
+  update: Partial<WebSyncStateFile>,
+): Promise<void> {
   const current = await readWebSyncState();
   await writeJson(webSyncStatePath(), { ...current, ...update, version: 1 });
 }
@@ -1184,8 +945,12 @@ async function postTrpcMutation(
 }
 
 function trpcLastSyncedAt(response: Record<string, unknown>): string {
-  const result = response.result as { data?: { json?: { lastSyncedAt?: unknown } } } | undefined;
-  return stringOrNull(result?.data?.json?.lastSyncedAt) ?? new Date().toISOString();
+  const result = response.result as
+    | { data?: { json?: { lastSyncedAt?: unknown } } }
+    | undefined;
+  return (
+    stringOrNull(result?.data?.json?.lastSyncedAt) ?? new Date().toISOString()
+  );
 }
 
 function workflowStateFromJson(value: unknown): unknown {
@@ -1193,7 +958,9 @@ function workflowStateFromJson(value: unknown): unknown {
   return JSON.parse(value);
 }
 
-function buildWebSyncPayload(args: Record<string, unknown>): Record<string, unknown> {
+function buildWebSyncPayload(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
   return {
     desktopId: String(args.desktopId ?? ""),
     workspaceId: String(args.workspaceId ?? ""),
@@ -1211,7 +978,11 @@ async function syncProjectMetadata(args: Record<string, unknown>) {
   const workspaceId = String(args.workspaceId ?? "");
   const payload = buildWebSyncPayload(args);
   try {
-    const response = await postTrpcMutation(token, "sync.pushMetadata", payload);
+    const response = await postTrpcMutation(
+      token,
+      "sync.pushMetadata",
+      payload,
+    );
     const lastSyncedAt = trpcLastSyncedAt(response);
     await writeWebSyncState({ lastSync: lastSyncedAt });
     return { synced: true, lastSyncedAt };
@@ -1239,7 +1010,8 @@ async function flushSyncQueue() {
     }
   }
   await writeWebSyncQueue(remaining);
-  if (flushed > 0) await writeWebSyncState({ lastSync: new Date().toISOString() });
+  if (flushed > 0)
+    await writeWebSyncState({ lastSync: new Date().toISOString() });
   return { flushed, failed, remaining: remaining.length };
 }
 
@@ -1256,7 +1028,9 @@ async function getSyncStatus() {
   };
 }
 
-async function updateRecordingStatus(args: Record<string, unknown>): Promise<null> {
+async function updateRecordingStatus(
+  args: Record<string, unknown>,
+): Promise<null> {
   const token = await getWebApiToken();
   if (!token) throw new Error("no web account connected");
   await postTrpcMutation(token, "sync.updateRecordingStatus", {
@@ -1276,7 +1050,9 @@ function updateUploadStatus(
   if (progress && sender) sendChannel(sender, channelId ?? null, progress);
 }
 
-async function parseJsonResponse(response: Response): Promise<Record<string, unknown>> {
+async function parseJsonResponse(
+  response: Response,
+): Promise<Record<string, unknown>> {
   const text = await response.text();
   if (!text.trim()) return {};
   return JSON.parse(text) as Record<string, unknown>;
@@ -1296,10 +1072,21 @@ async function uploadVideo(args: Record<string, unknown>, sender: WebContents) {
   if (stat.size <= 0) throw new Error("file is empty");
 
   uploadCancelRequested = false;
-  uploadStatus = { status: "uploading", progress: null, videoSlug: null, error: null };
+  uploadStatus = {
+    status: "uploading",
+    progress: null,
+    videoSlug: null,
+    error: null,
+  };
   const totalBytes = stat.size;
   updateUploadStatus(
-    { phase: "thumbnail", partNumber: 0, totalParts: 0, bytesUploaded: 0, totalBytes },
+    {
+      phase: "thumbnail",
+      partNumber: 0,
+      totalParts: 0,
+      bytesUploaded: 0,
+      totalBytes,
+    },
     sender,
     onProgress,
   );
@@ -1317,11 +1104,16 @@ async function uploadVideo(args: Record<string, unknown>, sender: WebContents) {
 
   const initiate = await fetch(`${webBaseUrl()}/api/upload/initiate`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   if (!initiate.ok)
-    throw new Error(`initiate failed: ${initiate.status} - ${await initiate.text()}`);
+    throw new Error(
+      `initiate failed: ${initiate.status} - ${await initiate.text()}`,
+    );
   const init = await parseJsonResponse(initiate);
   const videoId = stringOrNull(init.videoId);
   const uploadId = stringOrNull(init.uploadId);
@@ -1331,7 +1123,9 @@ async function uploadVideo(args: Record<string, unknown>, sender: WebContents) {
     throw new Error("initiate failed: invalid server response");
 
   const totalParts =
-    totalBytes < UPLOAD_MIN_MULTIPART_SIZE ? 1 : Math.ceil(totalBytes / UPLOAD_CHUNK_SIZE);
+    totalBytes < UPLOAD_MIN_MULTIPART_SIZE
+      ? 1
+      : Math.ceil(totalBytes / UPLOAD_CHUNK_SIZE);
   const parts: Array<{ PartNumber: number; ETag: string }> = [];
   let bytesUploaded = 0;
   const file = await fs.open(videoPath, "r");
@@ -1341,29 +1135,52 @@ async function uploadVideo(args: Record<string, unknown>, sender: WebContents) {
       const remaining = totalBytes - bytesUploaded;
       const chunkLength = Math.min(UPLOAD_CHUNK_SIZE, remaining);
       const chunk = Buffer.alloc(chunkLength);
-      const { bytesRead } = await file.read(chunk, 0, chunkLength, bytesUploaded);
+      const { bytesRead } = await file.read(
+        chunk,
+        0,
+        chunkLength,
+        bytesUploaded,
+      );
       const payload = chunk.subarray(0, bytesRead);
 
       const presign = await fetch(`${webBaseUrl()}/api/upload/presign`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ r2Key, uploadId, partNumber }),
       });
       if (!presign.ok)
-        throw new Error(`presign failed for part ${partNumber}: ${await presign.text()}`);
+        throw new Error(
+          `presign failed for part ${partNumber}: ${await presign.text()}`,
+        );
       const presignBody = await parseJsonResponse(presign);
-      const presignedUrl = stringOrNull(presignBody.presignedUrl ?? presignBody.presigned_url);
-      if (!presignedUrl) throw new Error(`presign failed for part ${partNumber}: missing URL`);
+      const presignedUrl = stringOrNull(
+        presignBody.presignedUrl ?? presignBody.presigned_url,
+      );
+      if (!presignedUrl)
+        throw new Error(`presign failed for part ${partNumber}: missing URL`);
 
       const put = await fetch(presignedUrl, {
         method: "PUT",
         body: payload as unknown as BodyInit,
       });
-      if (!put.ok) throw new Error(`PUT part ${partNumber} failed: ${await put.text()}`);
-      parts.push({ PartNumber: partNumber, ETag: put.headers.get("etag") ?? "" });
+      if (!put.ok)
+        throw new Error(`PUT part ${partNumber} failed: ${await put.text()}`);
+      parts.push({
+        PartNumber: partNumber,
+        ETag: put.headers.get("etag") ?? "",
+      });
       bytesUploaded += bytesRead;
       updateUploadStatus(
-        { phase: "uploading", partNumber, totalParts, bytesUploaded, totalBytes },
+        {
+          phase: "uploading",
+          partNumber,
+          totalParts,
+          bytesUploaded,
+          totalBytes,
+        },
         sender,
         onProgress,
       );
@@ -1387,7 +1204,10 @@ async function uploadVideo(args: Record<string, unknown>, sender: WebContents) {
 
   const complete = await fetch(`${webBaseUrl()}/api/upload/complete`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
     body: JSON.stringify({
       videoId,
       r2Key,
@@ -1396,18 +1216,27 @@ async function uploadVideo(args: Record<string, unknown>, sender: WebContents) {
       thumbnailR2Key: r2Key.replace(/\.[^.]+$/, "-thumb.jpg"),
     }),
   });
-  if (!complete.ok) throw new Error(`complete failed: ${await complete.text()}`);
+  if (!complete.ok)
+    throw new Error(`complete failed: ${await complete.text()}`);
   const result = await parseJsonResponse(complete);
   const uploadResult = {
     videoId: stringOrNull(result.videoId) ?? videoId,
     slug: stringOrNull(result.slug) ?? slug,
     status: stringOrNull(result.status) ?? "ready",
   };
-  uploadStatus = { status: "complete", progress: null, videoSlug: uploadResult.slug, error: null };
+  uploadStatus = {
+    status: "complete",
+    progress: null,
+    videoSlug: uploadResult.slug,
+    error: null,
+  };
   return uploadResult;
 }
 
-async function uploadVideoWithStatus(args: Record<string, unknown>, sender: WebContents) {
+async function uploadVideoWithStatus(
+  args: Record<string, unknown>,
+  sender: WebContents,
+) {
   try {
     return await uploadVideo(args, sender);
   } catch (error) {
@@ -1530,7 +1359,8 @@ async function keyTest(provider: ProviderId) {
       detail,
     };
   } catch (error) {
-    if (error instanceof Error && error.message === "provider rejected the key") throw error;
+    if (error instanceof Error && error.message === "provider rejected the key")
+      throw error;
     throw new Error(
       `network error contacting provider: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -1553,7 +1383,9 @@ function providerDisplayName(provider: ProviderId): string {
 async function assertProviderKey(provider: ProviderId): Promise<string> {
   const key = await keyGet(provider);
   if (!key) {
-    throw new Error(`NoApiKey: no API key stored for ${providerDisplayName(provider)}`);
+    throw new Error(
+      `NoApiKey: no API key stored for ${providerDisplayName(provider)}`,
+    );
   }
   return key;
 }
@@ -1585,10 +1417,14 @@ async function listTtsVoices(rawProvider: unknown): Promise<VoiceInfoDto[]> {
     }));
   }
   if (provider !== "elevenlabs") {
-    throw new Error(`Provider: ${providerDisplayName(provider)} is not a TTS provider`);
+    throw new Error(
+      `Provider: ${providerDisplayName(provider)} is not a TTS provider`,
+    );
   }
   await assertProviderKey(provider);
-  throw new Error("Provider: Electron ElevenLabs voice catalog is not implemented yet");
+  throw new Error(
+    "Provider: Electron ElevenLabs voice catalog is not implemented yet",
+  );
 }
 
 function emptySessionRollup() {
@@ -1610,7 +1446,8 @@ function ttsApplySyncWithoutCachedClips(rawTimings: unknown) {
   const stepTimings = Array.isArray(rawTimings) ? rawTimings : [];
   return {
     adjusted_steps: stepTimings.map((raw) => {
-      const timing = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+      const timing =
+        raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
       const duration = numericDuration(timing.original_duration_ms);
       return {
         step_id: String(timing.step_id ?? ""),
@@ -1643,7 +1480,10 @@ async function readProjects(): Promise<ProjectRecord[]> {
   const projects = await readJson<ProjectRecord[]>(projectsRegistryPath(), []);
   return projects
     .filter((project) => project && typeof project.id === "string")
-    .sort((a, b) => (b.last_opened_at ?? b.created_at) - (a.last_opened_at ?? a.created_at));
+    .sort(
+      (a, b) =>
+        (b.last_opened_at ?? b.created_at) - (a.last_opened_at ?? a.created_at),
+    );
 }
 
 async function writeProjects(projects: ProjectRecord[]): Promise<void> {
@@ -1651,7 +1491,9 @@ async function writeProjects(projects: ProjectRecord[]): Promise<void> {
 }
 
 async function findProject(id: string): Promise<ProjectRecord> {
-  const project = (await readProjects()).find((candidate) => candidate.id === id);
+  const project = (await readProjects()).find(
+    (candidate) => candidate.id === id,
+  );
   if (!project) throw new Error(`project ${id} not found`);
   return project;
 }
@@ -1690,9 +1532,11 @@ async function createProject(raw: unknown): Promise<ProjectRecord> {
   }
 
   const slug = slugify(name);
-  if (!slug) throw new Error(`name ${JSON.stringify(name)} slugifies to empty string`);
+  if (!slug)
+    throw new Error(`name ${JSON.stringify(name)} slugifies to empty string`);
   const folder = path.join(args.parent, slug);
-  if (await pathExists(folder)) throw new Error(`project folder already exists: ${folder}`);
+  if (await pathExists(folder))
+    throw new Error(`project folder already exists: ${folder}`);
 
   const paths = projectPaths(folder);
   await fs.mkdir(paths.assetsDir, { recursive: true });
@@ -1750,7 +1594,10 @@ async function removeProject(id: string): Promise<void> {
 
 async function getProjectWorkflow(id: string): Promise<WorkflowState | null> {
   const project = await findProject(id);
-  return readJson<WorkflowState | null>(projectPaths(project.folder_path).workflowPath, null);
+  return readJson<WorkflowState | null>(
+    projectPaths(project.folder_path).workflowPath,
+    null,
+  );
 }
 
 async function updateProjectWorkflow(
@@ -1774,7 +1621,9 @@ async function listProjectRecordings(id: string) {
   }
   const recordings = await Promise.all(
     entries
-      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".mp4"))
+      .filter(
+        (entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".mp4"),
+      )
       .map(async (entry) => {
         const file = path.join(exportsDir, entry.name);
         const stat = await fs.stat(file);
@@ -1794,9 +1643,14 @@ async function timelineLoad(storyId: string): Promise<TimelineState | null> {
   return readJson<TimelineState | null>(timelinePath(storyId), null);
 }
 
-async function timelineSave(storyId: string, layoutJson: string): Promise<void> {
+async function timelineSave(
+  storyId: string,
+  layoutJson: string,
+): Promise<void> {
   if (layoutJson.length > 1024 * 1024) {
-    throw new Error(`layout_json is ${layoutJson.length} bytes; refusing > 1048576`);
+    throw new Error(
+      `layout_json is ${layoutJson.length} bytes; refusing > 1048576`,
+    );
   }
   await writeJson(timelinePath(storyId), {
     story_id: storyId,
@@ -1805,7 +1659,10 @@ async function timelineSave(storyId: string, layoutJson: string): Promise<void> 
   });
 }
 
-function sidecarPath(recordingPath: string, suffix: "actions" | "trajectory" | "steps"): string {
+function sidecarPath(
+  recordingPath: string,
+  suffix: "actions" | "trajectory" | "steps",
+): string {
   const ext = suffix === "steps" ? ".steps.json" : `.${suffix}.json`;
   return recordingPath.replace(/\.[^/.]+$/, ext);
 }
@@ -1827,12 +1684,17 @@ async function readPresets(scope: string): Promise<EffectPreset[]> {
   return readJson<EffectPreset[]>(presetStorePath(scope), []);
 }
 
-async function writePresets(scope: string, presets: EffectPreset[]): Promise<void> {
+async function writePresets(
+  scope: string,
+  presets: EffectPreset[],
+): Promise<void> {
   await writeJson(presetStorePath(scope), presets);
 }
 
 async function presetImport(file: string, scope: string): Promise<string> {
-  const raw = JSON.parse(await fs.readFile(file, "utf8")) as Partial<EffectPreset>;
+  const raw = JSON.parse(
+    await fs.readFile(file, "utf8"),
+  ) as Partial<EffectPreset>;
   const preset: EffectPreset = {
     id: raw.id ?? randomUUID(),
     scope,
@@ -1845,14 +1707,19 @@ async function presetImport(file: string, scope: string): Promise<string> {
     author: raw.author ?? null,
     tags: raw.tags ?? [],
   };
-  const presets = (await readPresets(scope)).filter((candidate) => candidate.id !== preset.id);
+  const presets = (await readPresets(scope)).filter(
+    (candidate) => candidate.id !== preset.id,
+  );
   presets.unshift(preset);
   await writePresets(scope, presets);
   return preset.id;
 }
 
 async function presetExport(id: string, out: string): Promise<void> {
-  const presets = [...(await readPresets("project")), ...(await readPresets("global"))];
+  const presets = [
+    ...(await readPresets("project")),
+    ...(await readPresets("global")),
+  ];
   const preset = presets.find((candidate) => candidate.id === id);
   if (!preset) throw new Error(`preset ${id} not found`);
   await fs.mkdir(path.dirname(out), { recursive: true });
@@ -1872,7 +1739,11 @@ function validateExportOutput(output: ExportOutput): void {
   if (!["mp4", "webm", "gif"].includes(output.format)) {
     throw new Error(`unknown format: ${output.format}`);
   }
-  if (!["match-source", "720p", "1080p", "4k", "custom"].includes(output.resolution)) {
+  if (
+    !["match-source", "720p", "1080p", "4k", "custom"].includes(
+      output.resolution,
+    )
+  ) {
     throw new Error(`unknown resolution: ${output.resolution}`);
   }
   if (!exportPresetsCatalogue().fps.includes(output.fps)) {
@@ -1881,12 +1752,19 @@ function validateExportOutput(output: ExportOutput): void {
   if (!["low", "med", "high"].includes(output.quality)) {
     throw new Error(`unknown quality: ${output.quality}`);
   }
-  if (output.resolution === "custom" && (!output.output_width || !output.output_height)) {
-    throw new Error("custom resolution requires output_width and output_height");
+  if (
+    output.resolution === "custom" &&
+    (!output.output_width || !output.output_height)
+  ) {
+    throw new Error(
+      "custom resolution requires output_width and output_height",
+    );
   }
 }
 
-function resolutionSize(output: ExportOutput): { width: number; height: number } | null {
+function resolutionSize(
+  output: ExportOutput,
+): { width: number; height: number } | null {
   switch (output.resolution) {
     case "720p":
       return { width: 1280, height: 720 };
@@ -1905,21 +1783,31 @@ function resolutionSize(output: ExportOutput): { width: number; height: number }
 }
 
 function firstSourcePath(graphJson: string): string {
-  const graph = JSON.parse(graphJson) as { video?: Array<{ type?: string; path?: string }> };
-  const source = graph.video?.find((node) => node.type === "source" && node.path);
+  const graph = JSON.parse(graphJson) as {
+    video?: Array<{ type?: string; path?: string }>;
+  };
+  const source = graph.video?.find(
+    (node) => node.type === "source" && node.path,
+  );
   if (!source?.path) throw new Error("export graph has no source video");
   return source.path;
 }
 
-function exportOutputPath(args: ExportRunArgs, output: ExportOutput, index: number): string {
+function exportOutputPath(
+  args: ExportRunArgs,
+  output: ExportOutput,
+  index: number,
+): string {
   const ext = output.format.toLowerCase();
   const base = slugify(args.base_name || args.story_id || "export") || "export";
-  const suffix = args.outputs.length > 1 ? `-${index + 1}-${output.resolution}` : "";
+  const suffix =
+    args.outputs.length > 1 ? `-${index + 1}-${output.resolution}` : "";
   return path.join(args.output_folder, `${base}${suffix}.${ext}`);
 }
 
 async function exportRun(args: ExportRunArgs) {
-  if (!args.outputs.length) throw new Error("export requires at least one output");
+  if (!args.outputs.length)
+    throw new Error("export requires at least one output");
   args.outputs.forEach(validateExportOutput);
   await fs.mkdir(args.output_folder, { recursive: true });
   const batchId = randomUUID();
@@ -1954,7 +1842,11 @@ async function exportRun(args: ExportRunArgs) {
         "-c:v",
         "libvpx-vp9",
         "-b:v",
-        output.quality === "high" ? "4M" : output.quality === "med" ? "2M" : "1M",
+        output.quality === "high"
+          ? "4M"
+          : output.quality === "med"
+            ? "2M"
+            : "1M",
         "-an",
       );
     }
@@ -2054,7 +1946,10 @@ function renderListActive(storyId: string): RenderJob[] {
   return [...renderSessions.values()]
     .map((session) => session.job)
     .filter(
-      (job) => job.story_id === storyId && job.status !== "completed" && job.status !== "cancelled",
+      (job) =>
+        job.story_id === storyId &&
+        job.status !== "completed" &&
+        job.status !== "cancelled",
     )
     .sort((a, b) => b.priority - a.priority || a.created_at - b.created_at);
 }
@@ -2062,14 +1957,20 @@ function renderListActive(storyId: string): RenderJob[] {
 function streamRenderProgress(args: unknown, sender: WebContents): null {
   const listener: RenderProgressListener = {
     sender,
-    channelId: channelIdFrom((args as { channel?: unknown } | undefined)?.channel),
+    channelId: channelIdFrom(
+      (args as { channel?: unknown } | undefined)?.channel,
+    ),
   };
   renderProgressListeners.add(listener);
   sender.once("destroyed", () => {
     renderProgressListeners.delete(listener);
   });
   for (const session of renderSessions.values()) {
-    sendChannel(sender, listener.channelId, renderProgress(session.job, session.frame));
+    sendChannel(
+      sender,
+      listener.channelId,
+      renderProgress(session.job, session.frame),
+    );
   }
   return null;
 }
@@ -2095,10 +1996,16 @@ function displayInfo() {
 }
 
 function displayById(displayId: number | string) {
-  return screen.getAllDisplays().find((display) => display.id === Number(displayId));
+  return screen
+    .getAllDisplays()
+    .find((display) => display.id === Number(displayId));
 }
 
-function resizeToFit(image: NativeImage, maxWidth: number, maxHeight: number): NativeImage {
+function resizeToFit(
+  image: NativeImage,
+  maxWidth: number,
+  maxHeight: number,
+): NativeImage {
   const size = image.getSize();
   if (size.width <= 0 || size.height <= 0) return image;
   const scale = Math.min(maxWidth / size.width, maxHeight / size.height, 1);
@@ -2119,13 +2026,27 @@ function cropDisplayRegionThumbnail(
   if (!display || imageSize.width <= 0 || imageSize.height <= 0) return image;
 
   const displayWidthPx = Math.round(display.bounds.width * display.scaleFactor);
-  const displayHeightPx = Math.round(display.bounds.height * display.scaleFactor);
+  const displayHeightPx = Math.round(
+    display.bounds.height * display.scaleFactor,
+  );
   const scaleX = imageSize.width / displayWidthPx;
   const scaleY = imageSize.height / displayHeightPx;
-  const x = Math.max(0, Math.round(target.rect.x * display.scaleFactor * scaleX));
-  const y = Math.max(0, Math.round(target.rect.y * display.scaleFactor * scaleY));
-  const width = Math.max(1, Math.round(target.rect.w * display.scaleFactor * scaleX));
-  const height = Math.max(1, Math.round(target.rect.h * display.scaleFactor * scaleY));
+  const x = Math.max(
+    0,
+    Math.round(target.rect.x * display.scaleFactor * scaleX),
+  );
+  const y = Math.max(
+    0,
+    Math.round(target.rect.y * display.scaleFactor * scaleY),
+  );
+  const width = Math.max(
+    1,
+    Math.round(target.rect.w * display.scaleFactor * scaleX),
+  );
+  const height = Math.max(
+    1,
+    Math.round(target.rect.h * display.scaleFactor * scaleY),
+  );
   const crop = {
     x: Math.min(x, Math.max(0, imageSize.width - 1)),
     y: Math.min(y, Math.max(0, imageSize.height - 1)),
@@ -2160,7 +2081,8 @@ async function captureTargetNativeImage(
   maxWidth: number,
   maxHeight: number,
 ): Promise<NativeImage> {
-  const display = target.kind === "display_region" ? displayById(target.display_id) : null;
+  const display =
+    target.kind === "display_region" ? displayById(target.display_id) : null;
   const thumbnailSize = display
     ? {
         width: Math.round(display.bounds.width * display.scaleFactor),
@@ -2168,7 +2090,9 @@ async function captureTargetNativeImage(
       }
     : { width: maxWidth, height: maxHeight };
   const sourceTypes =
-    target.kind === "window" || target.kind === "window_by_pid" ? ["window"] : ["screen"];
+    target.kind === "window" || target.kind === "window_by_pid"
+      ? ["window"]
+      : ["screen"];
   const sources = await desktopCapturer.getSources({
     types: sourceTypes as Array<"window" | "screen">,
     thumbnailSize,
@@ -2182,20 +2106,35 @@ async function captureTargetNativeImage(
       if (target.kind === "window") {
         return parseSourceNumericId(candidate.id) === Number(target.window_id);
       }
-      return target.title_hint ? candidate.name.includes(target.title_hint) : false;
+      return target.title_hint
+        ? candidate.name.includes(target.title_hint)
+        : false;
     }) ?? sources[0];
   if (!source) throw new Error("capture target unavailable");
-  if (source.thumbnail.isEmpty()) throw new Error("capture target thumbnail is empty");
+  if (source.thumbnail.isEmpty())
+    throw new Error("capture target thumbnail is empty");
   const image =
     target.kind === "display_region"
-      ? resizeToFit(cropDisplayRegionThumbnail(source.thumbnail, target), maxWidth, maxHeight)
+      ? resizeToFit(
+          cropDisplayRegionThumbnail(source.thumbnail, target),
+          maxWidth,
+          maxHeight,
+        )
       : source.thumbnail;
   return image;
 }
 
-async function captureTargetThumbnail(target: CaptureTarget, maxWidth: number, maxHeight: number) {
+async function captureTargetThumbnail(
+  target: CaptureTarget,
+  maxWidth: number,
+  maxHeight: number,
+) {
   if (target.kind === "author_preview") {
-    const image = await captureAuthorPreviewNativeImage(target.stream_id, maxWidth, maxHeight);
+    const image = await captureAuthorPreviewNativeImage(
+      target.stream_id,
+      maxWidth,
+      maxHeight,
+    );
     return Array.from(image.toPNG());
   }
   const image = await captureTargetNativeImage(target, maxWidth, maxHeight);
@@ -2204,8 +2143,10 @@ async function captureTargetThumbnail(target: CaptureTarget, maxWidth: number, m
 
 function snapshotDir(projectDir: string): string {
   const root = path.resolve(projectDir);
-  if (!path.isAbsolute(root)) throw new Error(`projectDir must be absolute: ${projectDir}`);
-  if (root.split(path.sep).includes("..")) throw new Error("path traversal rejected in projectDir");
+  if (!path.isAbsolute(root))
+    throw new Error(`projectDir must be absolute: ${projectDir}`);
+  if (root.split(path.sep).includes(".."))
+    throw new Error("path traversal rejected in projectDir");
   return path.join(root, ".story.snapshots");
 }
 
@@ -2238,16 +2179,23 @@ async function authorSnapshotGet(
   projectDir: string,
   url: string,
 ): Promise<AuthorSnapshotEntry | null> {
-  const manifest = path.join(snapshotDir(projectDir), `${snapshotKey(url)}.json`);
+  const manifest = path.join(
+    snapshotDir(projectDir),
+    `${snapshotKey(url)}.json`,
+  );
   try {
-    return JSON.parse(await fs.readFile(manifest, "utf8")) as AuthorSnapshotEntry;
+    return JSON.parse(
+      await fs.readFile(manifest, "utf8"),
+    ) as AuthorSnapshotEntry;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
 }
 
-async function authorSnapshotList(projectDir: string): Promise<AuthorSnapshotEntry[]> {
+async function authorSnapshotList(
+  projectDir: string,
+): Promise<AuthorSnapshotEntry[]> {
   const dir = snapshotDir(projectDir);
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -2264,7 +2212,9 @@ async function authorSnapshotList(projectDir: string): Promise<AuthorSnapshotEnt
           }
         }),
     );
-    return snapshots.filter((entry): entry is AuthorSnapshotEntry => entry != null);
+    return snapshots.filter(
+      (entry): entry is AuthorSnapshotEntry => entry != null,
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
@@ -2301,7 +2251,12 @@ async function authorSnapshotCapture(
     const manifestPath = path.join(dir, `${key}.json`);
     await fs.writeFile(htmlPath, html, "utf8");
     await fs.writeFile(screenshotPath, image.toPNG());
-    const entry = snapshotEntry(win.webContents.getURL() || url, html, htmlPath, screenshotPath);
+    const entry = snapshotEntry(
+      win.webContents.getURL() || url,
+      html,
+      htmlPath,
+      screenshotPath,
+    );
     await fs.writeFile(manifestPath, JSON.stringify(entry, null, 2), "utf8");
     return entry;
   } finally {
@@ -2309,7 +2264,11 @@ async function authorSnapshotCapture(
   }
 }
 
-async function authorSnapshotValidate(projectDir: string, url: string, target: unknown) {
+async function authorSnapshotValidate(
+  projectDir: string,
+  url: string,
+  target: unknown,
+) {
   const entry = await authorSnapshotGet(projectDir, url);
   if (!entry) return { status: "no_snapshot" };
   const html = await fs.readFile(entry.html_path ?? entry.htmlPath, "utf8");
@@ -2324,7 +2283,9 @@ async function authorSnapshotValidate(projectDir: string, url: string, target: u
     },
   });
   try {
-    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    await win.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+    );
     const result = await win.webContents.executeJavaScript(
       `((target) => {
         const textOf = (el) => (el.innerText || el.textContent || "").trim();
@@ -2376,10 +2337,9 @@ function defaultCaptureTarget(): CaptureTarget {
   return { kind: "display", display_id: screen.getPrimaryDisplay().id };
 }
 
-function isAuthorPreviewTarget(target: CaptureTarget | null | undefined): target is Extract<
-  CaptureTarget,
-  { kind: "author_preview" }
-> {
+function isAuthorPreviewTarget(
+  target: CaptureTarget | null | undefined,
+): target is Extract<CaptureTarget, { kind: "author_preview" }> {
   return target?.kind === "author_preview";
 }
 
@@ -2387,13 +2347,19 @@ function displayForTarget(target: CaptureTarget) {
   const displays = displayInfo();
   if (target.kind === "display" || target.kind === "display_region") {
     return (
-      displays.find((display) => Number(display.id) === Number(target.display_id)) ?? displays[0]
+      displays.find(
+        (display) => Number(display.id) === Number(target.display_id),
+      ) ?? displays[0]
     );
   }
   return displays[0];
 }
 
-function dimensionsForTarget(target: CaptureTarget, fallbackWidth = 1280, fallbackHeight = 720) {
+function dimensionsForTarget(
+  target: CaptureTarget,
+  fallbackWidth = 1280,
+  fallbackHeight = 720,
+) {
   if (target.kind === "author_preview") {
     return { width: fallbackWidth, height: fallbackHeight };
   }
@@ -2418,10 +2384,16 @@ function captureEventJson(kind: string, payload: Record<string, unknown> = {}) {
   return { json: JSON.stringify({ kind, ...payload }) };
 }
 
-async function pumpCaptureStreamFrame(session: CaptureStreamSession): Promise<void> {
+async function pumpCaptureStreamFrame(
+  session: CaptureStreamSession,
+): Promise<void> {
   const frameSequence = session.sequence + 1;
   try {
-    const bytes = await captureTargetThumbnail(session.target, session.width, session.height);
+    const bytes = await captureTargetThumbnail(
+      session.target,
+      session.width,
+      session.height,
+    );
     session.sequence = frameSequence;
     session.bytesPeak = Math.max(session.bytesPeak, bytes.length);
     sendChannel(session.sender, session.frameChannelId, {
@@ -2437,7 +2409,10 @@ async function pumpCaptureStreamFrame(session: CaptureStreamSession): Promise<vo
       session.eventChannelId,
       captureEventJson("frame-delivered", {
         sequence: frameSequence,
-        pts: { ns: Math.round((Date.now() - session.startedAt) * 1_000_000), source: "synthetic" },
+        pts: {
+          ns: Math.round((Date.now() - session.startedAt) * 1_000_000),
+          source: "synthetic",
+        },
         bytes: bytes.length,
       }),
     );
@@ -2491,9 +2466,11 @@ async function startCaptureStream(
     timer: setInterval(
       () => {
         if (session.captureInFlight) return;
-        session.captureInFlight = pumpCaptureStreamFrame(session).finally(() => {
-          session.captureInFlight = null;
-        });
+        session.captureInFlight = pumpCaptureStreamFrame(session).finally(
+          () => {
+            session.captureInFlight = null;
+          },
+        );
       },
       Math.max(1000 / fps, 16),
     ),
@@ -2506,7 +2483,11 @@ async function startCaptureStream(
   captureStreamSessions.set(id, session);
   const display = displayForTarget(target);
   if (display) {
-    sendChannel(sender, session.eventChannelId, captureEventJson("started", { display }));
+    sendChannel(
+      sender,
+      session.eventChannelId,
+      captureEventJson("started", { display }),
+    );
   }
   await pumpCaptureStreamFrame(session);
   return { id };
@@ -2514,10 +2495,17 @@ async function startCaptureStream(
 
 async function stopCaptureStream(raw: unknown) {
   const id =
-    typeof raw === "string" ? raw : String((raw as { id?: unknown } | undefined)?.id ?? "");
+    typeof raw === "string"
+      ? raw
+      : String((raw as { id?: unknown } | undefined)?.id ?? "");
   const session = captureStreamSessions.get(id);
   if (!session) {
-    return { frames_delivered: 0, frames_dropped: 0, bytes_peak: 0, duration_ms: 0 };
+    return {
+      frames_delivered: 0,
+      frames_dropped: 0,
+      bytes_peak: 0,
+      duration_ms: 0,
+    };
   }
   captureStreamSessions.delete(id);
   clearInterval(session.timer);
@@ -2528,15 +2516,22 @@ async function stopCaptureStream(raw: unknown) {
     bytes_peak: session.bytesPeak,
     duration_ms: Math.max(0, Date.now() - session.startedAt),
   };
-  sendChannel(session.sender, session.eventChannelId, captureEventJson("stopped", { stats }));
+  sendChannel(
+    session.sender,
+    session.eventChannelId,
+    captureEventJson("stopped", { stats }),
+  );
   return stats;
 }
 
-function resolveActiveAuthorPreviewTarget(streamId?: string | null, ensureVisible = false) {
+function resolveActiveAuthorPreviewTarget(
+  streamId?: string | null,
+  ensureVisible = false,
+) {
   const candidates =
     streamId && streamId.length > 0
-      ? [authorPreviewSessions.get(streamId)].filter((session): session is AuthorPreviewSession =>
-          Boolean(session),
+      ? [authorPreviewSessions.get(streamId)].filter(
+          (session): session is AuthorPreviewSession => Boolean(session),
         )
       : [...authorPreviewSessions.values()];
   for (const session of candidates) {
@@ -2585,7 +2580,9 @@ function resolveActiveAuthorPreviewTarget(streamId?: string | null, ensureVisibl
   return null;
 }
 
-function dialogMessageType(kind: unknown): "none" | "info" | "error" | "question" | "warning" {
+function dialogMessageType(
+  kind: unknown,
+): "none" | "info" | "error" | "question" | "warning" {
   if (kind === "error" || kind === "warning" || kind === "info") return kind;
   return "info";
 }
@@ -2613,7 +2610,8 @@ function dialogButtonPlan(spec: DialogButtonSpec | null | undefined): {
     return {
       buttons: ["Yes", "No", "Cancel"],
       cancelId: 2,
-      result: (response) => (response === 0 ? "Yes" : response === 1 ? "No" : "Cancel"),
+      result: (response) =>
+        response === 0 ? "Yes" : response === 1 ? "No" : "Cancel",
     };
   }
   if (
@@ -2639,10 +2637,16 @@ function dialogButtonPlan(spec: DialogButtonSpec | null | undefined): {
     return {
       buttons: labels,
       cancelId: 2,
-      result: (response) => (response === 0 ? "Yes" : response === 1 ? "No" : "Cancel"),
+      result: (response) =>
+        response === 0 ? "Yes" : response === 1 ? "No" : "Cancel",
     };
   }
-  if (spec && typeof spec === "object" && "OkCustom" in spec && typeof spec.OkCustom === "string") {
+  if (
+    spec &&
+    typeof spec === "object" &&
+    "OkCustom" in spec &&
+    typeof spec.OkCustom === "string"
+  ) {
     return { buttons: [spec.OkCustom], result: () => "Ok" };
   }
   return { buttons: ["OK"], result: () => "Ok" };
@@ -2676,7 +2680,9 @@ function electronDialogFilters(filters: DialogFilterSpec[] | undefined) {
     .map((filter) => ({
       name: filter.name || "Files",
       extensions: Array.isArray(filter.extensions)
-        ? filter.extensions.map((extension) => extension.replace(/^\./, "")).filter(Boolean)
+        ? filter.extensions
+            .map((extension) => extension.replace(/^\./, ""))
+            .filter(Boolean)
         : [],
     }))
     .filter((filter) => filter.extensions.length > 0);
@@ -2704,7 +2710,8 @@ async function captureRecordingFrame(session: RecordingSession): Promise<void> {
   } finally {
     const durationMs = Date.now() - startedAt;
     session.captureDurationMs.push(durationMs);
-    if (session.captureDurationMs.length > 300) session.captureDurationMs.shift();
+    if (session.captureDurationMs.length > 300)
+      session.captureDurationMs.shift();
     if (durationMs > 1000 / session.effectiveFps) session.lateFrames += 1;
   }
 }
@@ -2722,7 +2729,9 @@ function queueRecordingFrame(session: RecordingSession): Promise<void> {
   return capture;
 }
 
-async function captureAutomationRecordingTail(session: RecordingSession): Promise<void> {
+async function captureAutomationRecordingTail(
+  session: RecordingSession,
+): Promise<void> {
   for (const delayMs of recordingTailFrameDelaysMs()) {
     if (recordingSessions.get(session.id) !== session) return;
     if (session.captureInFlight) await session.captureInFlight;
@@ -2738,7 +2747,9 @@ async function captureAuthorPreviewNativeImage(
   height: number,
 ): Promise<NativeImage> {
   const preview = authorSession(streamId);
-  const image = preview.latestPaintImage ?? (await preview.window.webContents.capturePage());
+  const image =
+    preview.latestPaintImage ??
+    (await preview.window.webContents.capturePage());
   if (image.isEmpty()) {
     throw new Error(`author preview ${streamId} captured empty frame`);
   }
@@ -2751,7 +2762,9 @@ async function captureAuthorPreviewNativeImage(
   });
 }
 
-async function captureRecordingNativeImage(session: RecordingSession): Promise<NativeImage> {
+async function captureRecordingNativeImage(
+  session: RecordingSession,
+): Promise<NativeImage> {
   if (session.target.kind === "author_preview") {
     const preview = authorSession(session.target.stream_id);
     const image = await captureAuthorPreviewNativeImage(
@@ -2769,12 +2782,18 @@ async function captureRecordingNativeImage(session: RecordingSession): Promise<N
         session_width: session.width,
         session_height: session.height,
         latest_paint_age_ms:
-          preview.latestPaintAt == null ? "none" : String(Math.max(0, Date.now() - preview.latestPaintAt)),
+          preview.latestPaintAt == null
+            ? "none"
+            : String(Math.max(0, Date.now() - preview.latestPaintAt)),
       });
     }
     return image;
   }
-  return captureTargetNativeImage(session.target, session.width, session.height);
+  return captureTargetNativeImage(
+    session.target,
+    session.width,
+    session.height,
+  );
 }
 
 function clampDimension(value: unknown, fallback: number): number {
@@ -2802,7 +2821,10 @@ function effectivePreviewFps(value: unknown): number {
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
+  );
   return sorted[index] ?? 0;
 }
 
@@ -2847,8 +2869,14 @@ function ffmpegCropPlan(
   const availableWidth = frameWidth - x;
   const availableHeight = frameHeight - y;
   if (availableWidth < 2 || availableHeight < 2) return null;
-  const clampedWidth = Math.max(2, Math.floor(Math.min(width, availableWidth) / 2) * 2);
-  const clampedHeight = Math.max(2, Math.floor(Math.min(height, availableHeight) / 2) * 2);
+  const clampedWidth = Math.max(
+    2,
+    Math.floor(Math.min(width, availableWidth) / 2) * 2,
+  );
+  const clampedHeight = Math.max(
+    2,
+    Math.floor(Math.min(height, availableHeight) / 2) * 2,
+  );
   if (clampedWidth <= 0 || clampedHeight <= 0) return null;
   return {
     filter: `crop=${clampedWidth}:${clampedHeight}:${x}:${y}`,
@@ -2869,12 +2897,20 @@ function channelIdFrom(value: unknown): number | null {
   return null;
 }
 
-function sendCallback(webContents: WebContents, id: number, value: unknown): void {
+function sendCallback(
+  webContents: WebContents,
+  id: number,
+  value: unknown,
+): void {
   if (webContents.isDestroyed()) return;
   webContents.send("tauri-callback", { id, value });
 }
 
-function sendChannel(webContents: WebContents, channelId: number | null, message: unknown): void {
+function sendChannel(
+  webContents: WebContents,
+  channelId: number | null,
+  message: unknown,
+): void {
   if (channelId == null || webContents.isDestroyed()) return;
   const index = channelIndexes.get(channelId) ?? 0;
   channelIndexes.set(channelId, index + 1);
@@ -2913,13 +2949,19 @@ function invalidateAuthorPreviewPaint(session: AuthorPreviewSession): void {
 
 function invalidateAuthorPreviewPaintForContents(contents: WebContents): void {
   for (const session of authorPreviewSessions.values()) {
-    if (!session.window.isDestroyed() && session.window.webContents.id === contents.id) {
+    if (
+      !session.window.isDestroyed() &&
+      session.window.webContents.id === contents.id
+    ) {
       invalidateAuthorPreviewPaint(session);
     }
   }
 }
 
-function previewFramePayload(session: AuthorPreviewSession, image: NativeImage) {
+function previewFramePayload(
+  session: AuthorPreviewSession,
+  image: NativeImage,
+) {
   const { width: frameWidth, height: frameHeight } = image.getSize();
   return {
     data: image.toJPEG(75).toString("base64"),
@@ -2933,7 +2975,10 @@ function previewFramePayload(session: AuthorPreviewSession, image: NativeImage) 
   };
 }
 
-function emitPreviewFrame(session: AuthorPreviewSession, image: NativeImage): void {
+function emitPreviewFrame(
+  session: AuthorPreviewSession,
+  image: NativeImage,
+): void {
   const payload = previewFramePayload(session, image);
   emitEvent(session.frameEvent, payload);
   if (globalPreviewStreamSessionId === session.id) {
@@ -2952,7 +2997,8 @@ async function stopAuthorPreviewSession(streamId: string): Promise<void> {
   const session = authorPreviewSessions.get(streamId);
   if (!session) return;
   authorPreviewSessions.delete(streamId);
-  if (globalPreviewStreamSessionId === streamId) globalPreviewStreamSessionId = null;
+  if (globalPreviewStreamSessionId === streamId)
+    globalPreviewStreamSessionId = null;
   void hostLog("info", "stop_author_preview", {
     stream_id: streamId,
     browser_window_id: session.window.id,
@@ -2961,7 +3007,9 @@ async function stopAuthorPreviewSession(streamId: string): Promise<void> {
   if (!session.window.isDestroyed()) session.window.destroy();
 }
 
-async function stopAuthorPreviewsByPurpose(purpose: AuthorPreviewSession["purpose"]): Promise<void> {
+async function stopAuthorPreviewsByPurpose(
+  purpose: AuthorPreviewSession["purpose"],
+): Promise<void> {
   const ids = [...authorPreviewSessions.values()]
     .filter((session) => session.purpose === purpose)
     .map((session) => session.id);
@@ -2976,19 +3024,24 @@ async function startAuthorPreviewSession(
   const width = clampDimension(args.viewportWidth, 1280);
   const height = clampDimension(args.viewportHeight, 800);
   const purpose = args.purpose === "recording" ? "recording" : "editor";
-  const frameRate = purpose === "recording" ? effectivePreviewFps(args.fps) : 30;
-  const rawPartition = typeof args.partition === "string" ? args.partition.trim() : "";
+  const frameRate =
+    purpose === "recording" ? effectivePreviewFps(args.fps) : 30;
+  const rawPartition =
+    typeof args.partition === "string" ? args.partition.trim() : "";
   if (rawPartition.startsWith("persist:")) {
     throw new Error("Author preview partition must be non-persistent");
   }
   const partition = rawPartition.length > 0 ? rawPartition : undefined;
   if (purpose === "recording" && !partition) {
-    throw new Error("Recording author preview requires an isolated non-persistent partition");
+    throw new Error(
+      "Recording author preview requires an isolated non-persistent partition",
+    );
   }
   if (purpose === "editor" && partition) {
     throw new Error("Editor author preview cannot use a recording partition");
   }
-  const replaceExisting = purpose === "editor" ? args.replaceExisting !== false : false;
+  const replaceExisting =
+    purpose === "editor" ? args.replaceExisting !== false : false;
   if (replaceExisting) await stopAuthorPreviewsByPurpose("editor");
   const preview = new BrowserWindow({
     show: false,
@@ -3042,7 +3095,11 @@ async function startAuthorPreviewSession(
       ? args.initialUrl
       : "about:blank";
   try {
-    await loadAuthorPreviewUrl(preview, initialUrl, purpose === "recording" ? 8_000 : 30_000);
+    await loadAuthorPreviewUrl(
+      preview,
+      initialUrl,
+      purpose === "recording" ? 8_000 : 30_000,
+    );
   } catch (error) {
     authorPreviewSessions.delete(id);
     if (!preview.isDestroyed()) preview.destroy();
@@ -3056,7 +3113,8 @@ async function startAuthorPreviewSession(
     viewport_height: height,
     show: preview.isVisible(),
     offscreen: true,
-    requested_fps: purpose === "recording" ? positiveNumber(args.fps, frameRate) : null,
+    requested_fps:
+      purpose === "recording" ? positiveNumber(args.fps, frameRate) : null,
     effective_fps: frameRate,
     replace_existing: replaceExisting,
     purpose,
@@ -3089,10 +3147,13 @@ async function loadAuthorPreviewUrl(
 
 async function startPreviewStream(): Promise<null> {
   const session = [...authorPreviewSessions.values()].find(
-    (candidate) => candidate.purpose === "editor" && !candidate.window.isDestroyed(),
+    (candidate) =>
+      candidate.purpose === "editor" && !candidate.window.isDestroyed(),
   );
   if (!session) {
-    throw new Error("UnavailableOnBackend: no active Electron author preview session");
+    throw new Error(
+      "UnavailableOnBackend: no active Electron author preview session",
+    );
   }
   globalPreviewStreamSessionId = session.id;
   const image = await session.window.webContents.capturePage();
@@ -3111,7 +3172,10 @@ function authorMouseButton(button: unknown): "left" | "right" | "middle" {
   return button === "right" || button === "middle" ? button : "left";
 }
 
-function dispatchAuthorInput(streamId: string, event: Record<string, unknown>): void {
+function dispatchAuthorInput(
+  streamId: string,
+  event: Record<string, unknown>,
+): void {
   const session = authorSession(streamId);
   const contents = session.window.webContents;
   const x = Number(event.x ?? 0);
@@ -3122,7 +3186,13 @@ function dispatchAuthorInput(streamId: string, event: Record<string, unknown>): 
       break;
     case "click": {
       const button = authorMouseButton(event.button);
-      contents.sendInputEvent({ type: "mouseDown", x, y, button, clickCount: 1 });
+      contents.sendInputEvent({
+        type: "mouseDown",
+        x,
+        y,
+        button,
+        clickCount: 1,
+      });
       contents.sendInputEvent({ type: "mouseUp", x, y, button, clickCount: 1 });
       break;
     }
@@ -3136,13 +3206,22 @@ function dispatchAuthorInput(streamId: string, event: Record<string, unknown>): 
       });
       break;
     case "keydown":
-      contents.sendInputEvent({ type: "keyDown", keyCode: String(event.key ?? "") });
+      contents.sendInputEvent({
+        type: "keyDown",
+        keyCode: String(event.key ?? ""),
+      });
       break;
     case "keyup":
-      contents.sendInputEvent({ type: "keyUp", keyCode: String(event.key ?? "") });
+      contents.sendInputEvent({
+        type: "keyUp",
+        keyCode: String(event.key ?? ""),
+      });
       break;
     case "text":
-      contents.sendInputEvent({ type: "char", keyCode: String(event.text ?? "") });
+      contents.sendInputEvent({
+        type: "char",
+        keyCode: String(event.text ?? ""),
+      });
       break;
   }
 }
@@ -3289,7 +3368,9 @@ function pickerScript(timeoutMs: number): string {
   `;
 }
 
-async function pickerStartAuthor(raw: Record<string, unknown>): Promise<{ json: string }> {
+async function pickerStartAuthor(
+  raw: Record<string, unknown>,
+): Promise<{ json: string }> {
   const streamId = String(raw.streamId ?? "");
   const session = authorSession(streamId);
   const timeoutMs = Number(raw.timeoutMs ?? 60_000);
@@ -3347,13 +3428,16 @@ async function pickerStampStepId(raw: Record<string, unknown>) {
   }
   const source = await fs.readFile(storyPath, "utf8");
   const parsed = parseStorySource(source);
-  const ast = parsed.ast as { scenes?: Array<{ commands?: ParsedCommand[] }> } | null;
+  const ast = parsed.ast as {
+    scenes?: Array<{ commands?: ParsedCommand[] }>;
+  } | null;
   const lineHasCommand = Boolean(
     ast?.scenes?.some((scene) =>
       scene.commands?.some((command) => command.span.line === lineOffset),
     ),
   );
-  if (!lineHasCommand) throw new Error(`no command found at line ${lineOffset}`);
+  if (!lineHasCommand)
+    throw new Error(`no command found at line ${lineOffset}`);
 
   const lines = source.split(/\r?\n/);
   const idx = lineOffset - 1;
@@ -3367,7 +3451,10 @@ async function pickerStampStepId(raw: Record<string, unknown>) {
   }
 
   const targetsPath = targetsPathFor(storyPath);
-  const targets = await readJson<{ version: number; steps: Record<string, unknown> }>(targetsPath, {
+  const targets = await readJson<{
+    version: number;
+    steps: Record<string, unknown>;
+  }>(targetsPath, {
     version: 1,
     steps: {},
   });
@@ -3375,7 +3462,9 @@ async function pickerStampStepId(raw: Record<string, unknown>) {
   targets.steps = targets.steps ?? {};
   targets.steps[stepId] = {
     primary: normalizedTargetRecord(raw.primary),
-    fallbacks: Array.isArray(raw.fallbacks) ? raw.fallbacks.map(normalizedTargetRecord) : [],
+    fallbacks: Array.isArray(raw.fallbacks)
+      ? raw.fallbacks.map(normalizedTargetRecord)
+      : [],
   };
   const tempPath = `${targetsPath}.tmp.${process.pid}`;
   await fs.writeFile(tempPath, JSON.stringify(targets, null, 2), "utf8");
@@ -3383,7 +3472,11 @@ async function pickerStampStepId(raw: Record<string, unknown>) {
   return { step_id: stepId, was_freshly_stamped: wasFreshlyStamped };
 }
 
-async function startRecording(raw: unknown, onEvent: unknown, sender: WebContents) {
+async function startRecording(
+  raw: unknown,
+  onEvent: unknown,
+  sender: WebContents,
+) {
   const args = raw as {
     project_folder?: string;
     target?: CaptureTarget;
@@ -3398,12 +3491,19 @@ async function startRecording(raw: unknown, onEvent: unknown, sender: WebContent
   const eventChannelId = channelIdFrom(onEvent);
   const fps = clampFps(args.fps);
   const requestedFps = positiveNumber(args.fps, fps);
-  const framesDir = path.join(os.tmpdir(), "storycapture-electron-recordings", id);
+  const framesDir = path.join(
+    os.tmpdir(),
+    "storycapture-electron-recordings",
+    id,
+  );
   await fs.mkdir(framesDir, { recursive: true });
   let heartbeatSeq = 0;
   const heartbeat = setInterval(() => {
     heartbeatSeq += 1;
-    sendChannel(sender, eventChannelId, { type: "heartbeat", seq: heartbeatSeq });
+    sendChannel(sender, eventChannelId, {
+      type: "heartbeat",
+      seq: heartbeatSeq,
+    });
   }, 2000);
   heartbeat.unref?.();
   const session: RecordingSession = {
@@ -3438,7 +3538,9 @@ async function startRecording(raw: unknown, onEvent: unknown, sender: WebContent
   };
   session.captureTimer.unref?.();
   recordingSessions.set(id, session);
-  await fs.mkdir(path.join(args.project_folder, EXPORTS_DIRNAME), { recursive: true });
+  await fs.mkdir(path.join(args.project_folder, EXPORTS_DIRNAME), {
+    recursive: true,
+  });
   await captureRecordingFrame(session);
   sendChannel(sender, eventChannelId, {
     type: "capture-status",
@@ -3448,7 +3550,9 @@ async function startRecording(raw: unknown, onEvent: unknown, sender: WebContent
 }
 
 async function setRecordingAudio(raw: unknown): Promise<null> {
-  const payload = raw as { session?: { id?: unknown }; id?: unknown; bytes?: unknown } | undefined;
+  const payload = raw as
+    | { session?: { id?: unknown }; id?: unknown; bytes?: unknown }
+    | undefined;
   const id = String(payload?.session?.id ?? payload?.id ?? "");
   const session = recordingSessions.get(id);
   if (!session) return null;
@@ -3470,7 +3574,9 @@ function runFfmpeg(ffmpegArgs: string[]): Promise<void> {
   const binary = ffmpegPath;
   if (!binary) throw new Error("ffmpeg-static binary is unavailable");
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, ffmpegArgs, { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(binary, ffmpegArgs, {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += String(chunk);
@@ -3481,13 +3587,18 @@ function runFfmpeg(ffmpegArgs: string[]): Promise<void> {
         resolve();
         return;
       }
-      reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-2000)}`));
+      reject(
+        new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-2000)}`),
+      );
     });
   });
 }
 
 async function stopRecording(raw: unknown) {
-  const id = typeof raw === "string" ? raw : String((raw as { id?: string } | undefined)?.id ?? "");
+  const id =
+    typeof raw === "string"
+      ? raw
+      : String((raw as { id?: string } | undefined)?.id ?? "");
   const session = recordingSessions.get(id);
   if (!session) throw new Error(`recording session ${id} not found`);
   recordingSessions.delete(id);
@@ -3505,7 +3616,9 @@ async function stopRecording(raw: unknown) {
   const durationSec = Math.max(1, (Date.now() - session.startedAt) / 1000);
   const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
   const outputPath = path.join(exportsDir, `recording-${stamp}.mp4`);
-  const inputFramerate = Math.max(0.2, session.frameSeq / durationSec).toFixed(3);
+  const inputFramerate = Math.max(0.2, session.frameSeq / durationSec).toFixed(
+    3,
+  );
   const ffmpegArgs = [
     "-y",
     "-framerate",
@@ -3516,7 +3629,11 @@ async function stopRecording(raw: unknown) {
   if (session.audioPath) {
     ffmpegArgs.push("-i", session.audioPath);
   }
-  const cropPlan = ffmpegCropPlan(session.frameCrop, session.width, session.height);
+  const cropPlan = ffmpegCropPlan(
+    session.frameCrop,
+    session.width,
+    session.height,
+  );
   const outputWidth = cropPlan?.width ?? session.width;
   const outputHeight = cropPlan?.height ?? session.height;
   const filters = [
@@ -3526,11 +3643,29 @@ async function stopRecording(raw: unknown) {
   ].filter((filter): filter is string => Boolean(filter));
   ffmpegArgs.push("-r", String(session.fps), "-vf", filters.join(","));
   if (session.audioPath) {
-    ffmpegArgs.push("-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "160k", "-shortest");
+    ffmpegArgs.push(
+      "-map",
+      "0:v:0",
+      "-map",
+      "1:a:0",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "160k",
+      "-shortest",
+    );
   } else {
     ffmpegArgs.push("-an");
   }
-  ffmpegArgs.push("-c:v", "libx264", "-preset", "veryfast", "-movflags", "+faststart", outputPath);
+  ffmpegArgs.push(
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-movflags",
+    "+faststart",
+    outputPath,
+  );
   await runFfmpeg(ffmpegArgs);
   await fs.rm(session.framesDir, { recursive: true, force: true });
   const stat = await fs.stat(outputPath);
@@ -3560,7 +3695,10 @@ async function stopRecording(raw: unknown) {
     capture_duration_ms_p50: percentile(session.captureDurationMs, 50),
     capture_duration_ms_p95: percentile(session.captureDurationMs, 95),
   };
-  sendChannel(session.eventTarget, session.eventChannelId, { type: "completed", result });
+  sendChannel(session.eventTarget, session.eventChannelId, {
+    type: "completed",
+    result,
+  });
   return result;
 }
 
@@ -3588,63 +3726,26 @@ function screenPermissionReport(probe: boolean) {
       executablePath: process.execPath,
       fallbackAppName: app.getName(),
       debugBypassAllowed: process.env[identity.debugTccBypassEnv] === "1",
-      getMediaAccessStatus: () => systemPreferences.getMediaAccessStatus("screen"),
+      getMediaAccessStatus: () =>
+        systemPreferences.getMediaAccessStatus("screen"),
       enumerateScreenSources: enumerateScreenSourcesForPermission,
     },
     { probe },
   );
 }
 
-async function getSettings() {
-  const settings = await readJson(userDataPath("app_settings.json"), defaultSettings());
-  return {
-    ...defaultSettings(),
-    ...settings,
-    default_projects_folder: defaultProjectsFolder(),
-    dock_progress_badge_supported: process.platform === "darwin",
-  };
-}
-
-async function setSettings(update: unknown) {
-  const base = await getSettings();
-  const next = { ...base, ...(update as object) };
-  await writeJson(userDataPath("app_settings.json"), next);
-  return next;
-}
-
-async function resetSettingsCategory(category: string) {
-  const base = await getSettings();
-  const defaults = defaultSettings();
-  const next =
-    category === "all"
-      ? defaults
-      : {
-          ...base,
-          [category]: (defaults as Record<string, unknown>)[category],
-        };
-  await writeJson(userDataPath("app_settings.json"), next);
-  return next;
-}
-
-async function updateSettingsField(
-  field: "browser_executable" | "browser_language",
-  value: unknown,
-) {
-  const base = await getSettings();
-  const next = { ...base, [field]: value };
-  await writeJson(userDataPath("app_settings.json"), next);
-  return next;
-}
-
 function getStore(rid: unknown): StoreRecord {
-  if (typeof rid !== "number") throw new Error(`Invalid store rid: ${String(rid)}`);
+  if (typeof rid !== "number")
+    throw new Error(`Invalid store rid: ${String(rid)}`);
   const store = stores.get(rid);
   if (!store) throw new Error(`Unknown store rid: ${rid}`);
   return store;
 }
 
 async function loadStore(storePath: string): Promise<number> {
-  const existing = [...stores.entries()].find(([, store]) => store.path === storePath);
+  const existing = [...stores.entries()].find(
+    ([, store]) => store.path === storePath,
+  );
   if (existing) return existing[0];
   const rid = nextRid++;
   stores.set(rid, {
@@ -3665,8 +3766,12 @@ function normalizeFsPath(value: string): string {
   return decoded.startsWith("file:") ? fileURLToPath(decoded) : decoded;
 }
 
-function pathFromFsArgs(args: InvokeArgs, options?: { headers?: Record<string, string> }): string {
-  if (args && typeof args === "object" && "path" in args) return normalizeFsPath(String(args.path));
+function pathFromFsArgs(
+  args: InvokeArgs,
+  options?: { headers?: Record<string, string> },
+): string {
+  if (args && typeof args === "object" && "path" in args)
+    return normalizeFsPath(String(args.path));
   const headerPath = options?.headers?.path;
   if (headerPath) return normalizeFsPath(headerPath);
   throw new Error("Missing file path");
@@ -3759,7 +3864,8 @@ function bufferFromUnknown(value: unknown): Buffer {
 }
 
 function fsResource(rid: unknown): FsResource {
-  if (typeof rid !== "number") throw new Error(`Invalid filesystem rid: ${String(rid)}`);
+  if (typeof rid !== "number")
+    throw new Error(`Invalid filesystem rid: ${String(rid)}`);
   const resource = fsResources.get(rid);
   if (!resource) throw new Error(`Unknown filesystem rid: ${rid}`);
   return resource;
@@ -3785,7 +3891,11 @@ function fsOpenFlags(options: Record<string, unknown>): {
   const truncate = options.truncate === true;
 
   let flags =
-    read && write ? fsConstants.O_RDWR : write ? fsConstants.O_WRONLY : fsConstants.O_RDONLY;
+    read && write
+      ? fsConstants.O_RDWR
+      : write
+        ? fsConstants.O_WRONLY
+        : fsConstants.O_RDONLY;
   if (append) flags |= fsConstants.O_APPEND;
   if (create) flags |= fsConstants.O_CREAT;
   if (createNew) flags |= fsConstants.O_EXCL;
@@ -3795,7 +3905,10 @@ function fsOpenFlags(options: Record<string, unknown>): {
   return { append, flags, mode };
 }
 
-async function openFsFile(file: string, options: Record<string, unknown>): Promise<number> {
+async function openFsFile(
+  file: string,
+  options: Record<string, unknown>,
+): Promise<number> {
   const { append, flags, mode } = fsOpenFlags(options);
   if ((flags & fsConstants.O_CREAT) === fsConstants.O_CREAT) {
     await fs.mkdir(path.dirname(file), { recursive: true });
@@ -3820,12 +3933,14 @@ function bytesWithReadCount(bytes: Buffer, bytesRead: number): number[] {
 
 function fsLineEncoding(args: InvokeArgs): BufferEncoding {
   const options = fsInvokeOptions(args);
-  const encoding = typeof options.encoding === "string" ? options.encoding : "utf-8";
+  const encoding =
+    typeof options.encoding === "string" ? options.encoding : "utf-8";
   return encoding.toLowerCase() as BufferEncoding;
 }
 
 async function closeFsResource(rid: unknown): Promise<boolean> {
-  if (typeof rid !== "number") throw new Error(`Invalid resource rid: ${String(rid)}`);
+  if (typeof rid !== "number")
+    throw new Error(`Invalid resource rid: ${String(rid)}`);
   const resource = fsResources.get(rid);
   if (!resource) return false;
   fsResources.delete(rid);
@@ -3838,7 +3953,8 @@ async function closeFsResource(rid: unknown): Promise<boolean> {
 }
 
 function closeShellResource(rid: unknown): boolean {
-  if (typeof rid !== "number") throw new Error(`Invalid resource rid: ${String(rid)}`);
+  if (typeof rid !== "number")
+    throw new Error(`Invalid resource rid: ${String(rid)}`);
   const resource = shellProcesses.get(rid);
   if (!resource) return false;
   shellProcesses.delete(rid);
@@ -3848,7 +3964,8 @@ function closeShellResource(rid: unknown): boolean {
 
 const LSP_COMMAND_DOCS: Record<string, string> = {
   navigate: "Open a URL in the recording browser.",
-  click: "Click an element matched by text, role, selector, testid, aria, or label.",
+  click:
+    "Click an element matched by text, role, selector, testid, aria, or label.",
   type: "Type text into a matched input.",
   hover: "Move the cursor over a matched element.",
   assert: "Assert that a matched element is present.",
@@ -3866,11 +3983,16 @@ function lspResponse(id: unknown, result: unknown): string {
 }
 
 function lspError(id: unknown, code: number, message: string): string {
-  return JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
+  return JSON.stringify({
+    jsonrpc: "2.0",
+    id: id ?? null,
+    error: { code, message },
+  });
 }
 
 function lspTextDocumentUri(params: unknown): string | null {
-  const textDocument = (params as { textDocument?: { uri?: unknown } } | null)?.textDocument;
+  const textDocument = (params as { textDocument?: { uri?: unknown } } | null)
+    ?.textDocument;
   return typeof textDocument?.uri === "string" ? textDocument.uri : null;
 }
 
@@ -3887,10 +4009,13 @@ function lspWordAt(text: string, position: LspPosition): string {
 }
 
 function lspPosition(params: unknown): LspPosition {
-  const position = (params as { position?: Partial<LspPosition> } | null)?.position ?? {};
+  const position =
+    (params as { position?: Partial<LspPosition> } | null)?.position ?? {};
   return {
     line: Number.isFinite(position.line) ? Number(position.line) : 0,
-    character: Number.isFinite(position.character) ? Number(position.character) : 0,
+    character: Number.isFinite(position.character)
+      ? Number(position.character)
+      : 0,
   };
 }
 
@@ -3958,13 +4083,23 @@ function lspInitializeResult() {
       textDocumentSync: 1,
       hoverProvider: true,
       completionProvider: { triggerCharacters: [" ", "<", '"', "'"] },
-      diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
+      diagnosticProvider: {
+        interFileDependencies: false,
+        workspaceDiagnostics: false,
+      },
     },
-    serverInfo: { name: "StoryCapture Electron LSP", version: app.getVersion() },
+    serverInfo: {
+      name: "StoryCapture Electron LSP",
+      version: app.getVersion(),
+    },
   };
 }
 
-function lspDidOpen(params: unknown, sender: WebContents, channelId: number | null): void {
+function lspDidOpen(
+  params: unknown,
+  sender: WebContents,
+  channelId: number | null,
+): void {
   const textDocument = (
     params as {
       textDocument?: { uri?: unknown; text?: unknown; version?: unknown };
@@ -3974,23 +4109,31 @@ function lspDidOpen(params: unknown, sender: WebContents, channelId: number | nu
   const doc: LspDocument = {
     uri: textDocument.uri,
     text: typeof textDocument.text === "string" ? textDocument.text : "",
-    version: Number.isFinite(textDocument.version) ? Number(textDocument.version) : 1,
+    version: Number.isFinite(textDocument.version)
+      ? Number(textDocument.version)
+      : 1,
   };
   lspDocuments.set(doc.uri, doc);
   publishLspDiagnostics(sender, channelId, doc.uri, doc.text);
 }
 
-function lspDidChange(params: unknown, sender: WebContents, channelId: number | null): void {
+function lspDidChange(
+  params: unknown,
+  sender: WebContents,
+  channelId: number | null,
+): void {
   const uri = lspTextDocumentUri(params);
   if (!uri) return;
   const changes =
-    (params as { contentChanges?: Array<{ text?: unknown }> } | null)?.contentChanges ?? [];
+    (params as { contentChanges?: Array<{ text?: unknown }> } | null)
+      ?.contentChanges ?? [];
   const text =
     typeof changes.at(-1)?.text === "string"
       ? String(changes.at(-1)?.text)
       : (lspDocuments.get(uri)?.text ?? "");
   const version = Number(
-    (params as { textDocument?: { version?: unknown } } | null)?.textDocument?.version ??
+    (params as { textDocument?: { version?: unknown } } | null)?.textDocument
+      ?.version ??
       lspDocuments.get(uri)?.version ??
       1,
   );
@@ -3999,10 +4142,15 @@ function lspDidChange(params: unknown, sender: WebContents, channelId: number | 
   publishLspDiagnostics(sender, channelId, uri, text);
 }
 
-function handleLspRequest(args: Record<string, unknown>, sender: WebContents): string {
+function handleLspRequest(
+  args: Record<string, unknown>,
+  sender: WebContents,
+): string {
   let envelope: { id?: unknown; method?: unknown; params?: unknown };
   try {
-    envelope = JSON.parse(String(args.jsonrpcRequestJson ?? "null")) as typeof envelope;
+    envelope = JSON.parse(
+      String(args.jsonrpcRequestJson ?? "null"),
+    ) as typeof envelope;
   } catch (error) {
     return lspError(
       null,
@@ -4036,11 +4184,17 @@ function handleLspRequest(args: Record<string, unknown>, sender: WebContents): s
         return "null";
       }
       case "textDocument/completion":
-        return lspResponse(id, { isIncomplete: false, items: lspCompletionItems() });
+        return lspResponse(id, {
+          isIncomplete: false,
+          items: lspCompletionItems(),
+        });
       case "textDocument/hover": {
         const uri = lspTextDocumentUri(params);
         const doc = uri ? lspDocuments.get(uri) : null;
-        return lspResponse(id, doc ? lspHoverFor(doc.text, lspPosition(params)) : null);
+        return lspResponse(
+          id,
+          doc ? lspHoverFor(doc.text, lspPosition(params)) : null,
+        );
       }
       default:
         return id == null
@@ -4050,7 +4204,11 @@ function handleLspRequest(args: Record<string, unknown>, sender: WebContents): s
   } catch (error) {
     return id == null
       ? "null"
-      : lspError(id, -32603, error instanceof Error ? error.message : String(error));
+      : lspError(
+          id,
+          -32603,
+          error instanceof Error ? error.message : String(error),
+        );
   }
 }
 
@@ -4083,7 +4241,9 @@ async function elementCenter(
   targetNth?: number,
 ): Promise<{ x: number; y: number } | null> {
   const selector = targetSelector(target);
-  return contents.executeJavaScript(simulatorTargetCenterScript(target, targetNth, selector)) as Promise<{
+  return contents.executeJavaScript(
+    simulatorTargetCenterScript(target, targetNth, selector),
+  ) as Promise<{
     x: number;
     y: number;
   } | null>;
@@ -4100,7 +4260,9 @@ async function executeParsedCommand(
     return {};
   }
   if (command.verb === "wait") {
-    await new Promise((resolve) => setTimeout(resolve, Math.min(command.duration_ms ?? 0, 30_000)));
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(command.duration_ms ?? 0, 30_000)),
+    );
     return {};
   }
   if (command.verb === "pause") return {};
@@ -4118,8 +4280,10 @@ async function executeParsedCommand(
       type: "mouseWheel",
       x: 10,
       y: 10,
-      deltaX: direction === "left" || direction === "right" ? sign * 500 * amount : 0,
-      deltaY: direction === "up" || direction === "down" ? sign * 500 * amount : 0,
+      deltaX:
+        direction === "left" || direction === "right" ? sign * 500 * amount : 0,
+      deltaY:
+        direction === "up" || direction === "down" ? sign * 500 * amount : 0,
     });
     return {};
   }
@@ -4127,19 +4291,30 @@ async function executeParsedCommand(
   const center = command.target
     ? await elementCenter(contents, command.target, command.target_nth)
     : null;
-  if ((command.verb === "wait-for" || command.verb === "assert") && command.target) {
-    const deadline = Date.now() + Math.min(Number(command.timeout_ms ?? 5_000), 30_000);
+  if (
+    (command.verb === "wait-for" || command.verb === "assert") &&
+    command.target
+  ) {
+    const deadline =
+      Date.now() + Math.min(Number(command.timeout_ms ?? 5_000), 30_000);
     let found = center;
     while (!found && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 100));
       found = await elementCenter(contents, command.target, command.target_nth);
     }
     if (!found)
-      throw new Error(`target not found for ${command.verb}: ${selectorSummary(command.target)}`);
+      throw new Error(
+        `target not found for ${command.verb}: ${selectorSummary(command.target)}`,
+      );
     return { cursor: found };
   }
-  if (["click", "hover", "type", "select", "upload"].includes(command.verb) && !center) {
-    throw new Error(`target not found for ${command.verb}: ${selectorSummary(command.target)}`);
+  if (
+    ["click", "hover", "type", "select", "upload"].includes(command.verb) &&
+    !center
+  ) {
+    throw new Error(
+      `target not found for ${command.verb}: ${selectorSummary(command.target)}`,
+    );
   }
   if ((command.verb === "click" || command.verb === "hover") && center) {
     contents.sendInputEvent({ type: "mouseMove", x: center.x, y: center.y });
@@ -4176,7 +4351,8 @@ async function executeParsedCommand(
       button: "left",
       clickCount: 1,
     });
-    const value = command.verb === "type" ? (command.text ?? "") : (command.value ?? "");
+    const value =
+      command.verb === "type" ? (command.text ?? "") : (command.value ?? "");
     const valueScript =
       command.verb === "type" && options.recordingMode
         ? setSimulatorTargetValueIncrementalScript(
@@ -4194,19 +4370,24 @@ async function executeParsedCommand(
           );
     const didWrite = await contents.executeJavaScript(valueScript);
     if (!didWrite) {
-      throw new Error(`target is not editable for ${command.verb}: ${selectorSummary(command.target)}`);
+      throw new Error(
+        `target is not editable for ${command.verb}: ${selectorSummary(command.target)}`,
+      );
     }
     return { cursor: center };
   }
   if (command.verb === "upload") {
-    throw new Error("upload command is not supported by the Electron browser runner yet");
+    throw new Error(
+      "upload command is not supported by the Electron browser runner yet",
+    );
   }
   if (command.verb === "screenshot") {
     const image = await contents.capturePage();
     const exportsDir = path.join(projectFolder, EXPORTS_DIRNAME);
     await fs.mkdir(exportsDir, { recursive: true });
     const safeName =
-      slugify(command.name ?? `screenshot-${Date.now()}`) || `screenshot-${Date.now()}`;
+      slugify(command.name ?? `screenshot-${Date.now()}`) ||
+      `screenshot-${Date.now()}`;
     const screenshotPath = path.join(exportsDir, `${safeName}.png`);
     await fs.writeFile(screenshotPath, image.toPNG());
     return { screenshotPath };
@@ -4224,14 +4405,20 @@ async function hostLog(
       level,
       source: "electron-host",
       message,
-      fields: Object.entries(fields).map(([key, value]) => [key, String(value)]),
+      fields: Object.entries(fields).map(([key, value]) => [
+        key,
+        String(value),
+      ]),
     });
   } catch {
     // Host diagnostics must never fail the browser run they describe.
   }
 }
 
-async function ensureStoryInitialUrl(contents: WebContents, storySource: string): Promise<void> {
+async function ensureStoryInitialUrl(
+  contents: WebContents,
+  storySource: string,
+): Promise<void> {
   const appUrl = storyAppUrl(storySource);
   if (!appUrl || !/^https?:\/\//i.test(appUrl)) return;
   const currentUrl = contents.getURL();
@@ -4261,9 +4448,13 @@ async function captureStoryFrame(
   existingPath?: string | null,
 ): Promise<string> {
   if (existingPath) return existingPath;
-  const framePath = path.join(frameDir, `step-${String(ordinal).padStart(4, "0")}.png`);
+  const framePath = path.join(
+    frameDir,
+    `step-${String(ordinal).padStart(4, "0")}.png`,
+  );
   const image = await contents.capturePage();
-  if (image.isEmpty()) throw new Error(`captured empty browser frame for step ${ordinal}`);
+  if (image.isEmpty())
+    throw new Error(`captured empty browser frame for step ${ordinal}`);
   await writePngAtomic(framePath, image.toPNG());
   return framePath;
 }
@@ -4271,13 +4462,18 @@ async function captureStoryFrame(
 function simulatorFrameFromResult(
   ordinal: number,
   command: ParsedCommand | undefined,
-  targets: { version: number; steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }> },
+  targets: {
+    version: number;
+    steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }>;
+  },
   result: ParsedCommandResult,
   screenshotPath: string | null,
   durationMs: number,
 ): SimulatorStepFrame {
   const stepTargets = command?.step_id ? targets.steps[command.step_id] : null;
-  const fallback = Array.isArray(stepTargets?.fallbacks) ? stepTargets.fallbacks[0] : null;
+  const fallback = Array.isArray(stepTargets?.fallbacks)
+    ? stepTargets.fallbacks[0]
+    : null;
   const primary = stepTargets?.primary ?? command?.target ?? null;
   const matchKind = commandSupportsFallback(command)
     ? fallback
@@ -4290,14 +4486,19 @@ function simulatorFrameFromResult(
     ordinal,
     screenshot_path: screenshotPath,
     cursor_xy: [result.cursor?.x ?? 0, result.cursor?.y ?? 0],
-    matched_selector: matchKind === "fuzzy" ? selectorSummary(fallback) : selectorSummary(primary),
+    matched_selector:
+      matchKind === "fuzzy"
+        ? selectorSummary(fallback)
+        : selectorSummary(primary),
     matched_bbox: null,
     match_kind: matchKind,
     duration_ms: durationMs,
   };
 }
 
-async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions): Promise<{
+async function runStoryCommandsInBrowser(
+  options: StoryBrowserRunOptions,
+): Promise<{
   succeeded: number;
   failed: number;
   pausedOrdinal: number | null;
@@ -4329,9 +4530,14 @@ async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions): Promi
       if (options.recordingMode) {
         invalidateAuthorPreviewPaintForContents(options.contents);
       }
-      const result = await executeParsedCommand(options.contents, command, options.projectFolder, {
-        recordingMode: options.recordingMode,
-      });
+      const result = await executeParsedCommand(
+        options.contents,
+        command,
+        options.projectFolder,
+        {
+          recordingMode: options.recordingMode,
+        },
+      );
       if (options.recordingMode) {
         const settleDelayMs = recordingSettleDelayMs(command);
         if (settleDelayMs > 0) await waitMs(settleDelayMs);
@@ -4376,19 +4582,31 @@ async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions): Promi
   };
 }
 
-async function launchAutomationCommand(args: Record<string, unknown>, sender: WebContents) {
+async function launchAutomationCommand(
+  args: Record<string, unknown>,
+  sender: WebContents,
+) {
   const onEvent = channelIdFrom(args.onEvent);
   const source = String(args.storySource ?? "");
   const projectFolder = String(args.projectFolder ?? app.getPath("userData"));
   const commands = parsedCommands(source);
   const streamId = typeof args.streamId === "string" ? args.streamId : null;
   const recordingSessionId =
-    typeof args.recordingSessionId === "string" ? args.recordingSessionId : null;
+    typeof args.recordingSessionId === "string"
+      ? args.recordingSessionId
+      : null;
   sendChannel(sender, onEvent, {
-    json: JSON.stringify({ type: "story_started", story_hash: storyHash(source) }),
+    json: JSON.stringify({
+      type: "story_started",
+      story_hash: storyHash(source),
+    }),
   });
   sendChannel(sender, onEvent, {
-    json: JSON.stringify({ type: "scene_entered", name: "Electron preview", ordinal: 1 }),
+    json: JSON.stringify({
+      type: "scene_entered",
+      name: "Electron preview",
+      ordinal: 1,
+    }),
   });
   const ownedWindow =
     streamId == null
@@ -4405,7 +4623,9 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
           },
         })
       : null;
-  const contents = streamId ? authorSession(streamId).window.webContents : ownedWindow?.webContents;
+  const contents = streamId
+    ? authorSession(streamId).window.webContents
+    : ownedWindow?.webContents;
   if (!contents) throw new Error("browser session unavailable for automation");
   const targets = { version: 1, steps: {} };
   let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
@@ -4452,7 +4672,11 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
               durationMs,
             );
             sendChannel(sender, onEvent, {
-              json: JSON.stringify({ type: "step_frame_captured", ordinal, frame }),
+              json: JSON.stringify({
+                type: "step_frame_captured",
+                ordinal,
+                frame,
+              }),
             });
           }
         },
@@ -4462,7 +4686,8 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
               type: "step_failed",
               ordinal,
               attempts: [],
-              error_message: error instanceof Error ? error.message : String(error),
+              error_message:
+                error instanceof Error ? error.message : String(error),
             }),
           });
         },
@@ -4482,7 +4707,9 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
       },
     }),
   });
-  const recordingSession = recordingSessionId ? recordingSessions.get(recordingSessionId) : null;
+  const recordingSession = recordingSessionId
+    ? recordingSessions.get(recordingSessionId)
+    : null;
   if (recordingSession) {
     clearInterval(recordingSession.captureTimer);
     await captureAutomationRecordingTail(recordingSession);
@@ -4494,7 +4721,10 @@ async function launchAutomationCommand(args: Record<string, unknown>, sender: We
 }
 
 function commandSupportsFallback(command: ParsedCommand | undefined): boolean {
-  return Boolean(command && ["click", "type", "hover", "select", "upload"].includes(command.verb));
+  return Boolean(
+    command &&
+    ["click", "type", "hover", "select", "upload"].includes(command.verb),
+  );
 }
 
 function selectorSummary(record: unknown): string | null {
@@ -4528,7 +4758,11 @@ async function writeTargetsForStory(
 ): Promise<void> {
   const targetsPath = targetsPathFor(storyPath);
   const tempPath = `${targetsPath}.tmp.${process.pid}`;
-  await fs.writeFile(tempPath, JSON.stringify({ ...targets, version: 1 }, null, 2), "utf8");
+  await fs.writeFile(
+    tempPath,
+    JSON.stringify({ ...targets, version: 1 }, null, 2),
+    "utf8",
+  );
   await fs.rename(tempPath, targetsPath);
 }
 
@@ -4562,7 +4796,9 @@ async function simulatorStartCommand(
     total_steps: totalSteps,
   });
   const stopAfter = Number(args.stopAfterOrdinal ?? 0);
-  const targets = storyPath ? await readTargetsForStory(storyPath) : { version: 1, steps: {} };
+  const targets = storyPath
+    ? await readTargetsForStory(storyPath)
+    : { version: 1, steps: {} };
   const session = simulatorSessions.get(id);
   const preview = streamId ? authorPreviewSessions.get(streamId) : null;
   if (!session || !preview || preview.window.isDestroyed()) {
@@ -4575,7 +4811,11 @@ async function simulatorStartCommand(
       command_count: totalSteps,
       reason: message,
     });
-    sendChannel(sender, channelId, { type: "failed", ordinal: 1, error_message: message });
+    sendChannel(sender, channelId, {
+      type: "failed",
+      ordinal: 1,
+      error_message: message,
+    });
     return id;
   }
 
@@ -4597,7 +4837,9 @@ async function simulatorStartCommand(
     targets,
     stopAfter,
     frameDir,
-    shouldCancel: () => !simulatorSessions.has(id) || Boolean(simulatorSessions.get(id)?.cancelled),
+    shouldCancel: () =>
+      !simulatorSessions.has(id) ||
+      Boolean(simulatorSessions.get(id)?.cancelled),
     hooks: {
       onStepStarted: (ordinal) => {
         sendChannel(sender, channelId, { type: "step_started", ordinal });
@@ -4605,7 +4847,11 @@ async function simulatorStartCommand(
       onFrameCaptured: (ordinal, frame) => {
         const current = simulatorSessions.get(id);
         if (current) current.frames.set(ordinal, frame);
-        sendChannel(sender, channelId, { type: "frame_captured", ordinal, frame });
+        sendChannel(sender, channelId, {
+          type: "frame_captured",
+          ordinal,
+          frame,
+        });
         void hostLog("info", "frame_captured", {
           run_id: runId,
           ordinal,
@@ -4625,7 +4871,10 @@ async function simulatorStartCommand(
     return id;
   }
   if (result.pausedOrdinal != null && result.failed === 0) {
-    sendChannel(sender, channelId, { type: "paused", ordinal: result.pausedOrdinal });
+    sendChannel(sender, channelId, {
+      type: "paused",
+      ordinal: result.pausedOrdinal,
+    });
   } else if (result.failed === 0) {
     sendChannel(sender, channelId, {
       type: "completed",
@@ -4643,7 +4892,10 @@ async function simulatorStartCommand(
   return id;
 }
 
-async function simulatorPromoteFallback(sessionId: string, ordinal: number): Promise<null> {
+async function simulatorPromoteFallback(
+  sessionId: string,
+  ordinal: number,
+): Promise<null> {
   const session = simulatorSessions.get(sessionId);
   if (!session) throw new Error(`simulator session ${sessionId} not found`);
   const frame = session.frames.get(ordinal);
@@ -4665,7 +4917,9 @@ async function simulatorPromoteFallback(sessionId: string, ordinal: number): Pro
 
   const targets = await readTargetsForStory(session.storyPath);
   const stepTargets = targets.steps[command.step_id];
-  const [promoted, ...remainingFallbacks] = Array.isArray(stepTargets?.fallbacks)
+  const [promoted, ...remainingFallbacks] = Array.isArray(
+    stepTargets?.fallbacks,
+  )
     ? stepTargets.fallbacks
     : [];
   if (!stepTargets?.primary || !promoted) {
@@ -4694,13 +4948,18 @@ function nullableString(value: unknown): string | null {
 }
 
 function dryRunStep(raw: unknown, index: number): DryRunStep {
-  const record = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const record =
+    raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const stepArgs =
-    record.args && typeof record.args === "object" ? (record.args as Record<string, unknown>) : {};
+    record.args && typeof record.args === "object"
+      ? (record.args as Record<string, unknown>)
+      : {};
   return {
     id: String(record.id ?? `step-${index + 1}`),
     verb: String(record.verb ?? "step"),
-    target: nullableString(record.target ?? stepArgs.target ?? stepArgs.selector ?? stepArgs.url),
+    target: nullableString(
+      record.target ?? stepArgs.target ?? stepArgs.selector ?? stepArgs.url,
+    ),
     value: nullableString(record.value ?? stepArgs.value ?? stepArgs.text),
   };
 }
@@ -4734,7 +4993,10 @@ function scheduleDryRunStep(session: DryRunSession): void {
 
   const step = session.steps[session.index];
   const started = Date.now();
-  sendChannel(session.sender, session.channelId, { kind: "Running", step_id: step.id });
+  sendChannel(session.sender, session.channelId, {
+    kind: "Running",
+    step_id: step.id,
+  });
   session.timer = setTimeout(() => {
     const current = dryRunSessions.get(session.id);
     if (!current || current.cancelled) return;
@@ -4753,7 +5015,10 @@ function scheduleDryRunStep(session: DryRunSession): void {
   session.timer.unref?.();
 }
 
-function dryRunStart(args: Record<string, unknown>, sender: WebContents): string {
+function dryRunStart(
+  args: Record<string, unknown>,
+  sender: WebContents,
+): string {
   const rawSteps = Array.isArray(args.steps) ? args.steps : [];
   if (rawSteps.length === 0) {
     throw new Error("dry-run requires at least one step");
@@ -4775,7 +5040,10 @@ function dryRunStart(args: Record<string, unknown>, sender: WebContents): string
   };
   dryRunSessions.set(id, session);
   for (const step of steps) {
-    sendChannel(sender, session.channelId, { kind: "Queued", step_id: step.id });
+    sendChannel(sender, session.channelId, {
+      kind: "Queued",
+      step_id: step.id,
+    });
   }
   scheduleDryRunStep(session);
   return id;
@@ -4802,59 +5070,6 @@ export async function handleLegacyInvoke(
   { cmd, args, options }: InvokeEnvelope,
 ): Promise<unknown> {
   switch (cmd) {
-    case "ping":
-      return "pong from storycapture";
-    case "app_info":
-      return {
-        version: app.getVersion(),
-        platform: process.platform,
-        arch: process.arch,
-        data_dir: app.getPath("userData"),
-        log_dir: userDataPath("logs"),
-        session_id: sessionId,
-        pid: process.pid,
-      };
-    case "get_app_settings":
-      return getSettings();
-    case "parse_story":
-      return parseStorySource(String((args as { source?: string } | undefined)?.source ?? ""));
-    case "trigger_panic":
-      throw new Error("trigger_panic requested");
-    case "set_app_settings":
-      return setSettings((args as { update?: unknown } | undefined)?.update ?? args);
-    case "reset_app_settings_category":
-      return resetSettingsCategory(
-        String((args as { category?: string } | undefined)?.category ?? "all"),
-      );
-    case "get_browser_language_options":
-      return [{ value: "system", label: "System default" }];
-    case "set_browser_executable":
-      return updateSettingsField(
-        "browser_executable",
-        (args as { path?: string | null } | undefined)?.path ?? null,
-      );
-    case "set_browser_language":
-      return updateSettingsField(
-        "browser_language",
-        (args as { language?: string } | undefined)?.language ?? "system",
-      );
-    case "get_log_config":
-      return getLogConfig();
-    case "set_log_config":
-      return writeLogConfig(
-        ((args as { config?: LogConfigUpdate } | undefined)?.config ?? {}) as LogConfigUpdate,
-      );
-    case "open_log_dir":
-      await fs.mkdir((await getLogConfig()).effective_log_dir, { recursive: true });
-      return (await getLogConfig()).effective_log_dir;
-    case "export_diagnostic_bundle":
-      return exportDiagnosticBundle(
-        String((args as { parentDir?: string } | undefined)?.parentDir ?? defaultLogDir()),
-      );
-    case "check_update":
-      return checkElectronUpdate();
-    case "install_update":
-      return installElectronUpdate();
     case "list_audio_inputs":
       return listAudioInputs(event.sender);
     case "probe_hw_encoders":
@@ -4862,7 +5077,9 @@ export async function handleLegacyInvoke(
       return {
         available: ["software"],
         preferred: "software",
-        encoders: [{ encoder: "software", available: true, fallback_reason: null }],
+        encoders: [
+          { encoder: "software", available: true, fallback_reason: null },
+        ],
       };
     case "start_recording":
       return startRecording(
@@ -4874,39 +5091,52 @@ export async function handleLegacyInvoke(
       return setRecordingAudio(args);
     case "stop_recording":
       return stopRecording(
-        (args as { session?: { id?: string } | undefined } | undefined)?.session,
+        (args as { session?: { id?: string } | undefined } | undefined)
+          ?.session,
       );
     case "pause_recording": {
-      const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
+      const id = String(
+        (args as { session?: { id?: string } } | undefined)?.session?.id ?? "",
+      );
       const session = recordingSessions.get(id);
       if (session) session.paused = true;
       return null;
     }
     case "resume_recording": {
-      const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
+      const id = String(
+        (args as { session?: { id?: string } } | undefined)?.session?.id ?? "",
+      );
       const session = recordingSessions.get(id);
       if (session) session.paused = false;
       return null;
     }
     case "launch_automation":
-      return launchAutomationCommand((args ?? {}) as Record<string, unknown>, event.sender);
+      return launchAutomationCommand(
+        (args ?? {}) as Record<string, unknown>,
+        event.sender,
+      );
     case "start_preview_stream":
       return startPreviewStream();
     case "stop_preview_stream":
       return stopPreviewStream();
     case "start_author_preview":
-      return startAuthorPreviewSession((args ?? {}) as Record<string, unknown>, event.sender);
+      return startAuthorPreviewSession(
+        (args ?? {}) as Record<string, unknown>,
+        event.sender,
+      );
     case "stop_author_preview":
       return stopAuthorPreviewSession(
         String((args as { streamId?: string } | undefined)?.streamId ?? ""),
       );
     case "pause_author_preview":
-      authorSession(String((args as { streamId?: string } | undefined)?.streamId ?? "")).paused =
-        true;
+      authorSession(
+        String((args as { streamId?: string } | undefined)?.streamId ?? ""),
+      ).paused = true;
       return null;
     case "resume_author_preview":
-      authorSession(String((args as { streamId?: string } | undefined)?.streamId ?? "")).paused =
-        false;
+      authorSession(
+        String((args as { streamId?: string } | undefined)?.streamId ?? ""),
+      ).paused = false;
       return null;
     case "set_author_preview_viewport": {
       const payload = args as
@@ -4941,22 +5171,30 @@ export async function handleLegacyInvoke(
       ).window.webContents.reload();
       return null;
     case "attach_author_driver":
-      authorSession(String((args as { streamId?: string } | undefined)?.streamId ?? ""));
+      authorSession(
+        String((args as { streamId?: string } | undefined)?.streamId ?? ""),
+      );
       return null;
     case "author_dispatch_input":
       dispatchAuthorInput(
         String((args as { streamId?: string } | undefined)?.streamId ?? ""),
-        ((args as { event?: Record<string, unknown> } | undefined)?.event ?? {}) as Record<
-          string,
-          unknown
-        >,
+        ((args as { event?: Record<string, unknown> } | undefined)?.event ??
+          {}) as Record<string, unknown>,
       );
       return null;
     case "picker_start_author":
       return pickerStartAuthor((args ?? {}) as Record<string, unknown>);
     case "picker_start": {
-      const first = authorPreviewSessions.keys().next().value as string | undefined;
-      if (!first) return { json: JSON.stringify({ cancelled: true, reason: "no-author-preview" }) };
+      const first = authorPreviewSessions.keys().next().value as
+        | string
+        | undefined;
+      if (!first)
+        return {
+          json: JSON.stringify({
+            cancelled: true,
+            reason: "no-author-preview",
+          }),
+        };
       return pickerStartAuthor({
         ...(args as Record<string, unknown> | undefined),
         streamId: first,
@@ -4969,11 +5207,16 @@ export async function handleLegacyInvoke(
     case "picker_stamp_step_id":
       return pickerStampStepId((args ?? {}) as Record<string, unknown>);
     case "simulator_start":
-      return simulatorStartCommand((args ?? {}) as Record<string, unknown>, event.sender);
+      return simulatorStartCommand(
+        (args ?? {}) as Record<string, unknown>,
+        event.sender,
+      );
     case "simulator_step_to":
       return null;
     case "simulator_cancel": {
-      const id = String((args as { sessionId?: string } | undefined)?.sessionId ?? "");
+      const id = String(
+        (args as { sessionId?: string } | undefined)?.sessionId ?? "",
+      );
       const session = simulatorSessions.get(id);
       if (session) {
         session.cancelled = true;
@@ -4990,22 +5233,32 @@ export async function handleLegacyInvoke(
     case "render_enqueue":
       return renderEnqueue((args as { job?: unknown } | undefined)?.job);
     case "render_cancel":
-      return renderCancel(String((args as { jobId?: unknown } | undefined)?.jobId ?? ""));
+      return renderCancel(
+        String((args as { jobId?: unknown } | undefined)?.jobId ?? ""),
+      );
     case "render_list_active":
-      return renderListActive(String((args as { storyId?: unknown } | undefined)?.storyId ?? ""));
+      return renderListActive(
+        String((args as { storyId?: unknown } | undefined)?.storyId ?? ""),
+      );
     case "stream_render_progress":
       return streamRenderProgress(args, event.sender);
     case "key_get_presence":
-      return keyGetPresence(providerId((args as { provider?: unknown } | undefined)?.provider));
+      return keyGetPresence(
+        providerId((args as { provider?: unknown } | undefined)?.provider),
+      );
     case "key_set":
       return keySet(
         providerId((args as { provider?: unknown } | undefined)?.provider),
         String((args as { key?: unknown } | undefined)?.key ?? ""),
       );
     case "key_delete":
-      return keyDelete(providerId((args as { provider?: unknown } | undefined)?.provider));
+      return keyDelete(
+        providerId((args as { provider?: unknown } | undefined)?.provider),
+      );
     case "key_test":
-      return keyTest(providerId((args as { provider?: unknown } | undefined)?.provider));
+      return keyTest(
+        providerId((args as { provider?: unknown } | undefined)?.provider),
+      );
     case "get_web_account":
       return getWebAccount();
     case "get_web_api_token":
@@ -5025,7 +5278,10 @@ export async function handleLegacyInvoke(
     case "flush_sync_queue":
       return flushSyncQueue();
     case "upload_video":
-      return uploadVideoWithStatus((args ?? {}) as Record<string, unknown>, event.sender);
+      return uploadVideoWithStatus(
+        (args ?? {}) as Record<string, unknown>,
+        event.sender,
+      );
     case "cancel_upload":
       return cancelUpload();
     case "update_recording_status":
@@ -5033,16 +5289,26 @@ export async function handleLegacyInvoke(
     case "author_snapshot_list":
       return authorSnapshotList(
         String(
-          (args as { projectDir?: unknown; project_dir?: unknown } | undefined)?.projectDir ??
-            (args as { projectDir?: unknown; project_dir?: unknown } | undefined)?.project_dir ??
+          (args as { projectDir?: unknown; project_dir?: unknown } | undefined)
+            ?.projectDir ??
+            (
+              args as
+                | { projectDir?: unknown; project_dir?: unknown }
+                | undefined
+            )?.project_dir ??
             "",
         ),
       );
     case "author_snapshot_get":
       return authorSnapshotGet(
         String(
-          (args as { projectDir?: unknown; project_dir?: unknown } | undefined)?.projectDir ??
-            (args as { projectDir?: unknown; project_dir?: unknown } | undefined)?.project_dir ??
+          (args as { projectDir?: unknown; project_dir?: unknown } | undefined)
+            ?.projectDir ??
+            (
+              args as
+                | { projectDir?: unknown; project_dir?: unknown }
+                | undefined
+            )?.project_dir ??
             "",
         ),
         String((args as { url?: unknown } | undefined)?.url ?? ""),
@@ -5050,8 +5316,13 @@ export async function handleLegacyInvoke(
     case "author_snapshot_capture":
       return authorSnapshotCapture(
         String(
-          (args as { projectDir?: unknown; project_dir?: unknown } | undefined)?.projectDir ??
-            (args as { projectDir?: unknown; project_dir?: unknown } | undefined)?.project_dir ??
+          (args as { projectDir?: unknown; project_dir?: unknown } | undefined)
+            ?.projectDir ??
+            (
+              args as
+                | { projectDir?: unknown; project_dir?: unknown }
+                | undefined
+            )?.project_dir ??
             "",
         ),
         String((args as { url?: unknown } | undefined)?.url ?? ""),
@@ -5059,8 +5330,13 @@ export async function handleLegacyInvoke(
     case "author_snapshot_validate":
       return authorSnapshotValidate(
         String(
-          (args as { projectDir?: unknown; project_dir?: unknown } | undefined)?.projectDir ??
-            (args as { projectDir?: unknown; project_dir?: unknown } | undefined)?.project_dir ??
+          (args as { projectDir?: unknown; project_dir?: unknown } | undefined)
+            ?.projectDir ??
+            (
+              args as
+                | { projectDir?: unknown; project_dir?: unknown }
+                | undefined
+            )?.project_dir ??
             "",
         ),
         String((args as { url?: unknown } | undefined)?.url ?? ""),
@@ -5069,9 +5345,14 @@ export async function handleLegacyInvoke(
     case "dryrun_start":
       return dryRunStart((args ?? {}) as Record<string, unknown>, event.sender);
     case "dryrun_cancel":
-      return dryRunCancel(String((args as { taskId?: unknown } | undefined)?.taskId ?? ""));
+      return dryRunCancel(
+        String((args as { taskId?: unknown } | undefined)?.taskId ?? ""),
+      );
     case "lsp_request":
-      return handleLspRequest((args ?? {}) as Record<string, unknown>, event.sender);
+      return handleLspRequest(
+        (args ?? {}) as Record<string, unknown>,
+        event.sender,
+      );
     case "nl_get_session_id":
       return sessionId;
     case "nl_load_history":
@@ -5089,92 +5370,102 @@ export async function handleLegacyInvoke(
     case "session_get_rollup":
       return emptySessionRollup();
     case "tts_voice_list":
-      return listTtsVoices((args as { provider?: unknown } | undefined)?.provider);
+      return listTtsVoices(
+        (args as { provider?: unknown } | undefined)?.provider,
+      );
     case "tts_generate":
     case "tts_regenerate_clip":
-      return ttsProviderUnavailable((args as { provider?: unknown } | undefined)?.provider);
+      return ttsProviderUnavailable(
+        (args as { provider?: unknown } | undefined)?.provider,
+      );
     case "tts_apply_sync":
       return ttsApplySyncWithoutCachedClips(
         (args as { stepTimings?: unknown } | undefined)?.stepTimings,
       );
     case "tts_gc_cache":
       return 0;
-    case "log_from_frontend":
-      return logFromFrontend(
-        ((args as { payload?: FrontendLogPayload } | undefined)?.payload ??
-          {}) as FrontendLogPayload,
-      );
-    case "store_secret": {
-      const payload = args as
-        | { service?: unknown; account?: unknown; key?: unknown; value?: unknown }
-        | undefined;
-      return storeGenericSecret(payload?.service, payload?.account ?? payload?.key, payload?.value);
-    }
-    case "delete_secret": {
-      const payload = args as { service?: unknown; account?: unknown; key?: unknown } | undefined;
-      return deleteGenericSecret(payload?.service, payload?.account ?? payload?.key);
-    }
-    case "load_secret":
-      return loadGenericSecret(
-        (args as { service?: unknown } | undefined)?.service,
-        (args as { account?: unknown; key?: unknown } | undefined)?.account ??
-          (args as { account?: unknown; key?: unknown } | undefined)?.key,
-      );
     case "list_projects":
       return readProjects();
     case "create_project":
       return createProject((args as { args?: unknown } | undefined)?.args);
     case "open_project":
-      return openProject(String((args as { args?: { id?: string } } | undefined)?.args?.id ?? ""));
+      return openProject(
+        String(
+          (args as { args?: { id?: string } } | undefined)?.args?.id ?? "",
+        ),
+      );
     case "remove_project":
       return removeProject(
-        String((args as { args?: { id?: string } } | undefined)?.args?.id ?? ""),
+        String(
+          (args as { args?: { id?: string } } | undefined)?.args?.id ?? "",
+        ),
       );
     case "get_project_workflow":
       return getProjectWorkflow(
-        String((args as { args?: { id?: string } } | undefined)?.args?.id ?? ""),
+        String(
+          (args as { args?: { id?: string } } | undefined)?.args?.id ?? "",
+        ),
       );
     case "update_project_workflow": {
       const payload = (
-        args as { args?: { id?: string; workflow_state?: WorkflowState } } | undefined
+        args as
+          | { args?: { id?: string; workflow_state?: WorkflowState } }
+          | undefined
       )?.args;
       if (!payload?.workflow_state) throw new Error("workflow_state required");
-      return updateProjectWorkflow(String(payload.id ?? ""), payload.workflow_state);
+      return updateProjectWorkflow(
+        String(payload.id ?? ""),
+        payload.workflow_state,
+      );
     }
     case "list_project_recordings":
       return listProjectRecordings(
-        String((args as { args?: { id?: string } } | undefined)?.args?.id ?? ""),
+        String(
+          (args as { args?: { id?: string } } | undefined)?.args?.id ?? "",
+        ),
       );
     case "timeline_load":
-      return timelineLoad(String((args as { storyId?: string } | undefined)?.storyId ?? ""));
+      return timelineLoad(
+        String((args as { storyId?: string } | undefined)?.storyId ?? ""),
+      );
     case "timeline_save": {
-      const payload = args as { storyId?: string; layoutJson?: string } | undefined;
-      await timelineSave(String(payload?.storyId ?? ""), String(payload?.layoutJson ?? ""));
+      const payload = args as
+        | { storyId?: string; layoutJson?: string }
+        | undefined;
+      await timelineSave(
+        String(payload?.storyId ?? ""),
+        String(payload?.layoutJson ?? ""),
+      );
       return null;
     }
     case "get_recording_actions":
       return readRecordingSidecar(
         String(
-          (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
+          (args as { args?: { recording_path?: string } } | undefined)?.args
+            ?.recording_path ?? "",
         ),
         "actions",
       );
     case "get_recording_trajectory":
       return readRecordingSidecar(
         String(
-          (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
+          (args as { args?: { recording_path?: string } } | undefined)?.args
+            ?.recording_path ?? "",
         ),
         "trajectory",
       );
     case "get_recording_step_timing":
       return readRecordingSidecar(
         String(
-          (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
+          (args as { args?: { recording_path?: string } } | undefined)?.args
+            ?.recording_path ?? "",
         ),
         "steps",
       );
     case "preset_list":
-      return readPresets(String((args as { scope?: string } | undefined)?.scope ?? "project"));
+      return readPresets(
+        String((args as { scope?: string } | undefined)?.scope ?? "project"),
+      );
     case "preset_import":
       return presetImport(
         String((args as { path?: string } | undefined)?.path ?? ""),
@@ -5191,12 +5482,14 @@ export async function handleLegacyInvoke(
       return exportPresetsCatalogue();
     case "export_validate_config":
       validateExportOutput(
-        (args as { cfg?: ExportOutput } | undefined)?.cfg ?? ({} as ExportOutput),
+        (args as { cfg?: ExportOutput } | undefined)?.cfg ??
+          ({} as ExportOutput),
       );
       return null;
     case "export_run":
       return exportRun(
-        (args as { args?: ExportRunArgs } | undefined)?.args ?? ({} as ExportRunArgs),
+        (args as { args?: ExportRunArgs } | undefined)?.args ??
+          ({} as ExportRunArgs),
       );
     case "list_displays":
       return displayInfo();
@@ -5211,8 +5504,14 @@ export async function handleLegacyInvoke(
     case "get_capture_target":
       return readJson<CaptureTarget | null>(captureTargetPath(), null);
     case "set_capture_target":
-      if (isAuthorPreviewTarget((args as { target?: CaptureTarget } | undefined)?.target)) {
-        throw new Error("author_preview cannot be persisted as a capture target");
+      if (
+        isAuthorPreviewTarget(
+          (args as { target?: CaptureTarget } | undefined)?.target,
+        )
+      ) {
+        throw new Error(
+          "author_preview cannot be persisted as a capture target",
+        );
       }
       await writeJson(
         captureTargetPath(),
@@ -5252,7 +5551,9 @@ export async function handleLegacyInvoke(
     case "resolve_playwright_target":
       return resolveActiveAuthorPreviewTarget(
         String((args as { streamId?: string } | undefined)?.streamId ?? ""),
-        Boolean((args as { ensureVisible?: boolean } | undefined)?.ensureVisible),
+        Boolean(
+          (args as { ensureVisible?: boolean } | undefined)?.ensureVisible,
+        ),
       );
     case "is_stage_manager_enabled":
       return false;
@@ -5271,7 +5572,9 @@ export async function handleLegacyInvoke(
         event.sender,
       );
     case "stop_capture":
-      return stopCaptureStream((args as { session?: unknown } | undefined)?.session);
+      return stopCaptureStream(
+        (args as { session?: unknown } | undefined)?.session,
+      );
     case "plugin:dialog|open": {
       const openOptions = (args as { options?: OpenDialogSpec }).options;
       const result = await dialog.showOpenDialog({
@@ -5285,7 +5588,11 @@ export async function handleLegacyInvoke(
         ].filter(
           (
             property,
-          ): property is "openDirectory" | "openFile" | "multiSelections" | "createDirectory" =>
+          ): property is
+            | "openDirectory"
+            | "openFile"
+            | "multiSelections"
+            | "createDirectory" =>
             property === "openDirectory" ||
             property === "openFile" ||
             property === "multiSelections" ||
@@ -5293,7 +5600,9 @@ export async function handleLegacyInvoke(
         ),
       });
       if (result.canceled) return null;
-      return openOptions?.multiple ? result.filePaths : (result.filePaths[0] ?? null);
+      return openOptions?.multiple
+        ? result.filePaths
+        : (result.filePaths[0] ?? null);
     }
     case "plugin:dialog|save": {
       const saveOptions = (args as { options?: SaveDialogSpec }).options;
@@ -5301,8 +5610,11 @@ export async function handleLegacyInvoke(
         title: saveOptions?.title,
         defaultPath: saveOptions?.defaultPath,
         filters: electronDialogFilters(saveOptions?.filters),
-        properties: [saveOptions?.canCreateDirectories ? "createDirectory" : undefined].filter(
-          (property): property is "createDirectory" => property === "createDirectory",
+        properties: [
+          saveOptions?.canCreateDirectories ? "createDirectory" : undefined,
+        ].filter(
+          (property): property is "createDirectory" =>
+            property === "createDirectory",
         ),
       });
       return result.canceled ? null : (result.filePath ?? null);
@@ -5325,7 +5637,9 @@ export async function handleLegacyInvoke(
       return eventId;
     }
     case "plugin:event|unlisten":
-      eventListeners.delete(Number((args as { eventId?: unknown } | undefined)?.eventId));
+      eventListeners.delete(
+        Number((args as { eventId?: unknown } | undefined)?.eventId),
+      );
       return null;
     case "plugin:event|emit":
       emitEvent(
@@ -5373,7 +5687,11 @@ export async function handleLegacyInvoke(
       });
     }
     case "plugin:os|locale":
-      return app.getLocale() || Intl.DateTimeFormat().resolvedOptions().locale || null;
+      return (
+        app.getLocale() ||
+        Intl.DateTimeFormat().resolvedOptions().locale ||
+        null
+      );
     case "plugin:os|hostname":
       return os.hostname();
     case "plugin:process|restart":
@@ -5385,8 +5703,9 @@ export async function handleLegacyInvoke(
       return null;
     case "plugin:updater|check": {
       const update = await checkElectronUpdate();
-      return pendingUpdateCheck?.updateInfo && update
-        ? updaterMetadata(pendingUpdateCheck.updateInfo)
+      const pendingUpdateInfo = getPendingUpdateInfo();
+      return pendingUpdateInfo && update
+        ? updaterMetadata(pendingUpdateInfo)
         : null;
     }
     case "plugin:updater|download": {
@@ -5396,7 +5715,9 @@ export async function handleLegacyInvoke(
       const bytesRid = nextRid++;
       updaterResources.add(bytesRid);
       if (app.isPackaged || process.env.STORYCAPTURE_DEBUG_UPDATER) {
-        const channelId = channelIdFrom((args as { onEvent?: unknown } | undefined)?.onEvent);
+        const channelId = channelIdFrom(
+          (args as { onEvent?: unknown } | undefined)?.onEvent,
+        );
         sendChannel(event.sender, channelId, { event: "Started" });
         await autoUpdater.downloadUpdate();
         sendChannel(event.sender, channelId, { event: "Finished" });
@@ -5406,7 +5727,9 @@ export async function handleLegacyInvoke(
     case "plugin:updater|install":
       return installElectronUpdate();
     case "plugin:updater|download_and_install": {
-      const channelId = channelIdFrom((args as { onEvent?: unknown } | undefined)?.onEvent);
+      const channelId = channelIdFrom(
+        (args as { onEvent?: unknown } | undefined)?.onEvent,
+      );
       sendChannel(event.sender, channelId, { event: "Started" });
       await installElectronUpdate();
       sendChannel(event.sender, channelId, { event: "Finished" });
@@ -5421,7 +5744,9 @@ export async function handleLegacyInvoke(
       await restoreElectronWindowState();
       return null;
     case "plugin:shell|open": {
-      const target = String((args as { path?: unknown } | undefined)?.path ?? "");
+      const target = String(
+        (args as { path?: unknown } | undefined)?.path ?? "",
+      );
       if (!target) throw new Error("shell.open requires a path");
       const result = /^[a-z][a-z0-9+.-]*:/i.test(target)
         ? await shell.openExternal(target)
@@ -5430,7 +5755,9 @@ export async function handleLegacyInvoke(
       return null;
     }
     case "plugin:shell|execute": {
-      const payload = args as { program?: unknown; args?: unknown; options?: unknown } | undefined;
+      const payload = args as
+        | { program?: unknown; args?: unknown; options?: unknown }
+        | undefined;
       const program = String(payload?.program ?? "");
       if (!program) throw new Error("shell.execute requires a program");
       const options = shellOptions(payload?.options);
@@ -5457,7 +5784,12 @@ export async function handleLegacyInvoke(
     }
     case "plugin:shell|spawn": {
       const payload = args as
-        | { program?: unknown; args?: unknown; options?: unknown; onEvent?: unknown }
+        | {
+            program?: unknown;
+            args?: unknown;
+            options?: unknown;
+            onEvent?: unknown;
+          }
         | undefined;
       const program = String(payload?.program ?? "");
       if (!program) throw new Error("shell.spawn requires a program");
@@ -5483,7 +5815,10 @@ export async function handleLegacyInvoke(
         });
       });
       child.on("error", (error) => {
-        sendChannel(event.sender, channelId, { event: "Error", payload: error.message });
+        sendChannel(event.sender, channelId, {
+          event: "Error",
+          payload: error.message,
+        });
       });
       child.on("close", (code, signal) => {
         shellProcesses.delete(pid);
@@ -5502,7 +5837,9 @@ export async function handleLegacyInvoke(
       return null;
     }
     case "plugin:shell|kill": {
-      const child = shellProcesses.get(Number((args as { pid?: unknown } | undefined)?.pid))?.child;
+      const child = shellProcesses.get(
+        Number((args as { pid?: unknown } | undefined)?.pid),
+      )?.child;
       if (!child) throw new Error("unknown shell process");
       child.kill();
       return null;
@@ -5515,7 +5852,9 @@ export async function handleLegacyInvoke(
     case "plugin:store|get_store": {
       const storePath = (args as { path?: string } | undefined)?.path;
       if (!storePath) return null;
-      const existing = [...stores.entries()].find(([, store]) => store.path === storePath);
+      const existing = [...stores.entries()].find(
+        ([, store]) => store.path === storePath,
+      );
       return existing?.[0] ?? null;
     }
     case "plugin:store|get": {
@@ -5526,13 +5865,16 @@ export async function handleLegacyInvoke(
     }
     case "plugin:store|set": {
       const store = getStore((args as { rid?: unknown }).rid);
-      store.data[String((args as { key?: unknown }).key)] = (args as { value?: unknown }).value;
+      store.data[String((args as { key?: unknown }).key)] = (
+        args as { value?: unknown }
+      ).value;
       store.dirty = true;
       return null;
     }
     case "plugin:store|save": {
       const store = getStore((args as { rid?: unknown }).rid);
-      if (store.dirty) await writeJson(userDataPath("stores", store.path), store.data);
+      if (store.dirty)
+        await writeJson(userDataPath("stores", store.path), store.data);
       store.dirty = false;
       return null;
     }
@@ -5585,7 +5927,9 @@ export async function handleLegacyInvoke(
       return null;
     }
     case "plugin:fs|read_dir": {
-      const entries = await fs.readdir(pathFromFsArgs(args, options), { withFileTypes: true });
+      const entries = await fs.readdir(pathFromFsArgs(args, options), {
+        withFileTypes: true,
+      });
       return entries.map((entry) => ({
         name: entry.name,
         isDirectory: entry.isDirectory(),
@@ -5611,20 +5955,35 @@ export async function handleLegacyInvoke(
       const rid = (args as { rid?: unknown } | undefined)?.rid;
       const resource = fsResource(rid);
       if (resource.kind !== "lines") {
-        throw new Error(`Filesystem rid is not a line iterator: ${String(rid)}`);
+        throw new Error(
+          `Filesystem rid is not a line iterator: ${String(rid)}`,
+        );
       }
       if (resource.index >= resource.lines.length) {
         if (typeof rid === "number") fsResources.delete(rid);
         return [1];
       }
-      const encoded = Buffer.from(resource.lines[resource.index++], resource.encoding);
+      const encoded = Buffer.from(
+        resource.lines[resource.index++],
+        resource.encoding,
+      );
       return [...encoded, 0];
     }
     case "plugin:fs|read": {
-      const resource = fsFileResource((args as { rid?: unknown } | undefined)?.rid);
-      const len = Math.max(0, Number((args as { len?: unknown } | undefined)?.len ?? 0));
+      const resource = fsFileResource(
+        (args as { rid?: unknown } | undefined)?.rid,
+      );
+      const len = Math.max(
+        0,
+        Number((args as { len?: unknown } | undefined)?.len ?? 0),
+      );
       const buffer = Buffer.alloc(len);
-      const { bytesRead } = await resource.handle.read(buffer, 0, len, resource.position);
+      const { bytesRead } = await resource.handle.read(
+        buffer,
+        0,
+        len,
+        resource.position,
+      );
       resource.position += bytesRead;
       return bytesWithReadCount(buffer, bytesRead);
     }
@@ -5637,7 +5996,10 @@ export async function handleLegacyInvoke(
       return null;
     }
     case "plugin:fs|rename": {
-      await fs.rename(fsPathField(args, "oldPath"), fsPathField(args, "newPath"));
+      await fs.rename(
+        fsPathField(args, "oldPath"),
+        fsPathField(args, "newPath"),
+      );
       return null;
     }
     case "plugin:fs|stat":
@@ -5645,26 +6007,45 @@ export async function handleLegacyInvoke(
     case "plugin:fs|lstat":
       return fileInfoFromStats(await fs.lstat(pathFromFsArgs(args, options)));
     case "plugin:fs|fstat": {
-      const resource = fsFileResource((args as { rid?: unknown } | undefined)?.rid);
+      const resource = fsFileResource(
+        (args as { rid?: unknown } | undefined)?.rid,
+      );
       return fileInfoFromStats(await resource.handle.stat());
     }
     case "plugin:fs|truncate": {
-      const len = Number(args && typeof args === "object" && "len" in args ? args.len : 0);
-      await fs.truncate(pathFromFsArgs(args, options), Number.isFinite(len) ? len : 0);
+      const len = Number(
+        args && typeof args === "object" && "len" in args ? args.len : 0,
+      );
+      await fs.truncate(
+        pathFromFsArgs(args, options),
+        Number.isFinite(len) ? len : 0,
+      );
       return null;
     }
     case "plugin:fs|ftruncate": {
-      const resource = fsFileResource((args as { rid?: unknown } | undefined)?.rid);
+      const resource = fsFileResource(
+        (args as { rid?: unknown } | undefined)?.rid,
+      );
       const len = Number((args as { len?: unknown } | undefined)?.len ?? 0);
       await resource.handle.truncate(Number.isFinite(len) ? len : 0);
       return null;
     }
     case "plugin:fs|seek": {
-      const resource = fsFileResource((args as { rid?: unknown } | undefined)?.rid);
-      const offset = Number((args as { offset?: unknown } | undefined)?.offset ?? 0);
-      const whence = Number((args as { whence?: unknown } | undefined)?.whence ?? 0);
+      const resource = fsFileResource(
+        (args as { rid?: unknown } | undefined)?.rid,
+      );
+      const offset = Number(
+        (args as { offset?: unknown } | undefined)?.offset ?? 0,
+      );
+      const whence = Number(
+        (args as { whence?: unknown } | undefined)?.whence ?? 0,
+      );
       const base =
-        whence === 1 ? resource.position : whence === 2 ? (await resource.handle.stat()).size : 0;
+        whence === 1
+          ? resource.position
+          : whence === 2
+            ? (await resource.handle.stat()).size
+            : 0;
       const nextPosition = base + offset;
       if (!Number.isFinite(nextPosition) || nextPosition < 0) {
         throw new Error("Invalid seek offset");
@@ -5676,7 +6057,9 @@ export async function handleLegacyInvoke(
       const file = pathFromFsArgs(args, options);
       await fs.mkdir(path.dirname(file), { recursive: true });
       const bytes =
-        args instanceof ArrayBuffer ? Buffer.from(args) : Buffer.from(args as Uint8Array);
+        args instanceof ArrayBuffer
+          ? Buffer.from(args)
+          : Buffer.from(args as Uint8Array);
       await fs.writeFile(file, bytes);
       return null;
     }
@@ -5684,13 +6067,19 @@ export async function handleLegacyInvoke(
       const file = pathFromFsArgs(args, options);
       await fs.mkdir(path.dirname(file), { recursive: true });
       const bytes =
-        args instanceof ArrayBuffer ? Buffer.from(args) : Buffer.from(args as Uint8Array);
+        args instanceof ArrayBuffer
+          ? Buffer.from(args)
+          : Buffer.from(args as Uint8Array);
       await fs.writeFile(file, bytes);
       return null;
     }
     case "plugin:fs|write": {
-      const resource = fsFileResource((args as { rid?: unknown } | undefined)?.rid);
-      const data = bufferFromUnknown((args as { data?: unknown } | undefined)?.data);
+      const resource = fsFileResource(
+        (args as { rid?: unknown } | undefined)?.rid,
+      );
+      const data = bufferFromUnknown(
+        (args as { data?: unknown } | undefined)?.data,
+      );
       const { bytesWritten } = await resource.handle.write(
         data,
         0,
@@ -5706,16 +6095,28 @@ export async function handleLegacyInvoke(
       return pathExists(pathFromFsArgs(args, options));
     case "plugin:fs|watch": {
       const payload = args as
-        | { paths?: unknown; onEvent?: unknown; options?: { recursive?: boolean } }
+        | {
+            paths?: unknown;
+            onEvent?: unknown;
+            options?: { recursive?: boolean };
+          }
         | undefined;
-      const watchPaths = (Array.isArray(payload?.paths) ? payload.paths : [payload?.paths])
+      const watchPaths = (
+        Array.isArray(payload?.paths) ? payload.paths : [payload?.paths]
+      )
         .filter((entry): entry is string => typeof entry === "string")
         .map(normalizeFsPath);
       const channelId = channelIdFrom(payload?.onEvent);
       const watchers = watchPaths.map((watchPath) => {
         const sendWatchEvent = (changedPath?: string | Buffer | null) => {
-          const fullPath = changedPath ? path.join(watchPath, String(changedPath)) : watchPath;
-          sendChannel(event.sender, channelId, { type: "any", paths: [fullPath], attrs: null });
+          const fullPath = changedPath
+            ? path.join(watchPath, String(changedPath))
+            : watchPath;
+          sendChannel(event.sender, channelId, {
+            type: "any",
+            paths: [fullPath],
+            attrs: null,
+          });
         };
         try {
           return watchFs(
