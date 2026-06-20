@@ -372,9 +372,26 @@ export function RecordingView({
         setSession(null);
         setStatus("completed");
         setOutputPath(event.result.output_path);
-        toast.success("Recording complete", {
-          description: event.result.output_path,
-        });
+        if (event.result.cadence_warning) {
+          const cadence =
+            typeof event.result.actual_capture_fps === "number" &&
+            typeof event.result.requested_fps === "number"
+              ? `${event.result.actual_capture_fps} / ${event.result.requested_fps} fps`
+              : null;
+          toast.warning("Recording complete with low cadence", {
+            description: [
+              event.result.cadence_warning_message,
+              cadence,
+              event.result.output_path,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          });
+        } else {
+          toast.success("Recording complete", {
+            description: event.result.output_path,
+          });
+        }
         if (autoOpenPostProduction && projectId) {
           navigate(`/post-production/${projectId}`, { replace: true });
         }

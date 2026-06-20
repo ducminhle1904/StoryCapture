@@ -1,4 +1,8 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import {
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+  spawn,
+} from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   type Dirent,
@@ -48,6 +52,18 @@ import { readJson, writeJson } from "./json-store";
 import { logFromFrontend, type FrontendLogPayload } from "./log-store";
 import { sameNavigationUrl } from "./navigation-url";
 import { userDataPath } from "./paths";
+import {
+  cadenceWarning,
+  recordingQualityArgs,
+  recordingRawVideoInputArgs,
+  recordingVideoFilters,
+  resolveRecordingOutput,
+  type RecordingFitMode,
+  type RecordingOutputResolution,
+  type RecordingPadColor,
+  type RecordingQualityPreset,
+  type RecordingScaleAlgo,
+} from "./recording-pipeline";
 import { recordingTailFrameDelaysMs } from "./recording-tail";
 import { sessionId } from "./session";
 import {
@@ -349,19 +365,25 @@ interface FrameCropRect {
 interface RecordingSession {
   id: string;
   projectFolder: string;
+  outputPath: string;
   target: CaptureTarget;
   width: number;
   height: number;
+  outputWidth: number;
+  outputHeight: number;
   fps: number;
   startedAt: number;
   paused: boolean;
   eventTarget: WebContents;
   eventChannelId: number | null;
   heartbeat: ReturnType<typeof setInterval>;
-  captureTimer: ReturnType<typeof setInterval>;
+  captureTimer: ReturnType<typeof setInterval> | null;
   framesDir: string;
   frameSeq: number;
   framesDropped: number;
+  skippedTicks: number;
+  encoderBackpressureEvents: number;
+  sourceFramesReceived: number;
   captureInFlight: Promise<void> | null;
   audioPath: string | null;
   frameCrop: FrameCropRect | null;
@@ -370,6 +392,19 @@ interface RecordingSession {
   effectiveFps: number;
   lateFrames: number;
   captureDurationMs: number[];
+  streaming: boolean;
+  ffmpegProcess: ChildProcess | null;
+  ffmpegDone: Promise<void> | null;
+  encoderBackpressured: boolean;
+  encoderError: Error | null;
+  latestAuthorPreviewImage: NativeImage | null;
+  authorPaintHandler:
+    | ((event: unknown, dirty: Rectangle, image: NativeImage) => void)
+    | null;
+  fitMode: RecordingFitMode;
+  padColor: RecordingPadColor;
+  qualityPreset: RecordingQualityPreset;
+  scaleAlgo: RecordingScaleAlgo;
 }
 
 interface CaptureStreamSession {
@@ -2717,13 +2752,232 @@ async function captureRecordingFrame(session: RecordingSession): Promise<void> {
   }
 }
 
+function startRecordingFfmpegPipe(ffmpegArgs: string[]): {
+  child: ChildProcess;
+  done: Promise<void>;
+} {
+  const binary = ffmpegPath;
+  if (!binary) throw new Error("ffmpeg-static binary is unavailable");
+  const child = spawn(binary, ffmpegArgs, {
+    stdio: ["pipe", "ignore", "pipe"],
+  });
+  let stderr = "";
+  const appendStderr = (chunk: Buffer) => {
+    stderr = `${stderr}${String(chunk)}`.slice(-2000);
+  };
+  const done = new Promise<void>((resolve, reject) => {
+    child.stderr.on("data", appendStderr);
+    child.on("error", reject);
+    child.on("close", (code: number | null) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`ffmpeg exited with code ${code}: ${stderr}`));
+    });
+  });
+  return { child, done };
+}
+
+function authorPreviewStreamFfmpegArgs(session: RecordingSession): string[] {
+  const filters = recordingVideoFilters({
+    sourceWidth: session.width,
+    sourceHeight: session.height,
+    outputWidth: session.outputWidth,
+    outputHeight: session.outputHeight,
+    fitMode: session.fitMode,
+    padColor: session.padColor,
+    scaleAlgo: session.scaleAlgo,
+  });
+  const args = [
+    "-y",
+    ...recordingRawVideoInputArgs({
+      width: session.width,
+      height: session.height,
+      fps: session.effectiveFps,
+      pixelFormat: "bgra",
+    }),
+  ];
+  if (session.audioPath) {
+    args.push("-i", session.audioPath);
+  }
+  args.push("-vf", filters.join(","));
+  if (session.audioPath) {
+    args.push(
+      "-map",
+      "0:v:0",
+      "-map",
+      "1:a:0",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "160k",
+      "-shortest",
+    );
+  } else {
+    args.push("-an");
+  }
+  args.push(
+    "-c:v",
+    "libx264",
+    ...recordingQualityArgs(session.qualityPreset),
+    "-movflags",
+    "+faststart",
+    session.outputPath,
+  );
+  return args;
+}
+
+async function startAuthorPreviewRecordingStream(
+  session: RecordingSession,
+): Promise<void> {
+  if (session.target.kind !== "author_preview") {
+    throw new Error(
+      "author preview recording stream requires author_preview target",
+    );
+  }
+  const preview = authorSession(session.target.stream_id);
+  const { child, done } = startRecordingFfmpegPipe(
+    authorPreviewStreamFfmpegArgs(session),
+  );
+  session.ffmpegProcess = child;
+  session.ffmpegDone = done;
+  if (!child.stdin) {
+    throw new Error("ffmpeg stdin pipe was not created");
+  }
+  child.stdin.on("error", (error: Error) => {
+    session.encoderError = error;
+  });
+
+  session.authorPaintHandler = (_event, _dirty, image) => {
+    recordAuthorPreviewPaint(session, image);
+  };
+  preview.window.webContents.on("paint", session.authorPaintHandler);
+  if (preview.latestPaintImage) {
+    recordAuthorPreviewPaint(session, preview.latestPaintImage);
+  } else {
+    try {
+      recordAuthorPreviewPaint(
+        session,
+        await captureAuthorPreviewNativeImage(
+          session.target.stream_id,
+          session.width,
+          session.height,
+        ),
+      );
+    } catch {
+      // A first paint event may still arrive after start. Stop will fail if none do.
+    }
+  }
+  await queueRecordingFrame(session);
+}
+
+function recordAuthorPreviewPaint(
+  session: RecordingSession,
+  image: NativeImage,
+): void {
+  if (session.paused) return;
+  session.sourceFramesReceived += 1;
+  session.latestAuthorPreviewImage = image;
+}
+
+async function submitAuthorPreviewFrame(
+  session: RecordingSession,
+  image: NativeImage,
+): Promise<void> {
+  if (session.paused) return;
+  if (session.encoderError) {
+    session.framesDropped += 1;
+    return;
+  }
+  const child = session.ffmpegProcess;
+  if (!child || child.killed || !child.stdin || child.stdin.destroyed) {
+    session.framesDropped += 1;
+    return;
+  }
+  if (session.encoderBackpressured) {
+    session.skippedTicks += 1;
+    return;
+  }
+  const startedAt = Date.now();
+  try {
+    const size = image.getSize();
+    const frame =
+      size.width === session.width && size.height === session.height
+        ? image
+        : image.resize({
+            width: session.width,
+            height: session.height,
+            quality: "best",
+          });
+    const bitmap = frame.toBitmap({ scaleFactor: 1 });
+    const expectedBytes = session.width * session.height * 4;
+    if (bitmap.byteLength !== expectedBytes) {
+      throw new Error(
+        `author preview bitmap size ${bitmap.byteLength} did not match ${expectedBytes}`,
+      );
+    }
+    const accepted = child.stdin.write(bitmap);
+    session.frameSeq += 1;
+    if (!accepted) {
+      session.encoderBackpressureEvents += 1;
+      session.encoderBackpressured = true;
+      child.stdin.once("drain", () => {
+        session.encoderBackpressured = false;
+      });
+    }
+  } catch (error) {
+    session.framesDropped += 1;
+    if (error instanceof Error) session.encoderError = error;
+    sendChannel(session.eventTarget, session.eventChannelId, {
+      type: "frames-dropped",
+      total: session.framesDropped,
+      delta: 1,
+    });
+  } finally {
+    const durationMs = Date.now() - startedAt;
+    session.captureDurationMs.push(durationMs);
+    if (session.captureDurationMs.length > 300)
+      session.captureDurationMs.shift();
+    if (durationMs > 1000 / session.effectiveFps) session.lateFrames += 1;
+  }
+}
+
 function waitMs(durationMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
+async function submitLatestAuthorPreviewFrame(
+  session: RecordingSession,
+): Promise<void> {
+  if (session.target.kind !== "author_preview") {
+    throw new Error(
+      "author preview frame submission requires author_preview target",
+    );
+  }
+  const image =
+    session.latestAuthorPreviewImage ??
+    (await captureAuthorPreviewNativeImage(
+      session.target.stream_id,
+      session.width,
+      session.height,
+    ));
+  if (!session.latestAuthorPreviewImage) {
+    recordAuthorPreviewPaint(session, image);
+  }
+  await submitAuthorPreviewFrame(session, image);
+}
+
 function queueRecordingFrame(session: RecordingSession): Promise<void> {
-  if (session.captureInFlight) return session.captureInFlight;
-  const capture = captureRecordingFrame(session).finally(() => {
+  if (session.captureInFlight) {
+    session.skippedTicks += 1;
+    return session.captureInFlight;
+  }
+  const capture = (
+    session.streaming
+      ? submitLatestAuthorPreviewFrame(session)
+      : captureRecordingFrame(session)
+  ).finally(() => {
     if (session.captureInFlight === capture) session.captureInFlight = null;
   });
   session.captureInFlight = capture;
@@ -3486,18 +3740,39 @@ async function startRecording(
     fps?: number;
     audio_device_id?: string | null;
     frame_crop?: FrameCropRect | null;
+    output_resolution?: RecordingOutputResolution | null;
+    fit_mode?: RecordingFitMode | null;
+    pad_color?: RecordingPadColor | null;
+    quality_preset?: RecordingQualityPreset | null;
+    scale_algo?: RecordingScaleAlgo | null;
   };
   if (!args.project_folder) throw new Error("project_folder required");
   const id = randomUUID();
   const eventChannelId = channelIdFrom(onEvent);
   const fps = clampFps(args.fps);
   const requestedFps = positiveNumber(args.fps, fps);
+  const target = args.target ?? defaultCaptureTarget();
+  const width = clampDimension(args.width, 1280);
+  const height = clampDimension(args.height, 720);
+  const output = resolveRecordingOutput(width, height, {
+    outputResolution: args.output_resolution,
+    fitMode: args.fit_mode,
+    padColor: args.pad_color,
+    qualityPreset: args.quality_preset,
+    scaleAlgo: args.scale_algo,
+  });
   const framesDir = path.join(
     os.tmpdir(),
     "storycapture-electron-recordings",
     id,
   );
   await fs.mkdir(framesDir, { recursive: true });
+  const exportsDir = path.join(args.project_folder, EXPORTS_DIRNAME);
+  await fs.mkdir(exportsDir, {
+    recursive: true,
+  });
+  const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
+  const outputPath = path.join(exportsDir, `recording-${stamp}.mp4`);
   let heartbeatSeq = 0;
   const heartbeat = setInterval(() => {
     heartbeatSeq += 1;
@@ -3510,24 +3785,25 @@ async function startRecording(
   const session: RecordingSession = {
     id,
     projectFolder: args.project_folder,
-    target: args.target ?? defaultCaptureTarget(),
-    width: clampDimension(args.width, 1280),
-    height: clampDimension(args.height, 720),
+    outputPath,
+    target,
+    width,
+    height,
+    outputWidth: output.outputWidth,
+    outputHeight: output.outputHeight,
     fps,
     startedAt: Date.now(),
     paused: false,
     eventTarget: sender,
     eventChannelId,
     heartbeat,
-    captureTimer: setInterval(
-      () => {
-        void queueRecordingFrame(session);
-      },
-      Math.max(1000 / fps, 16),
-    ),
+    captureTimer: null,
     framesDir,
     frameSeq: 0,
     framesDropped: 0,
+    skippedTicks: 0,
+    encoderBackpressureEvents: 0,
+    sourceFramesReceived: 0,
     captureInFlight: null,
     audioPath: null,
     frameCrop: args.frame_crop ?? null,
@@ -3536,13 +3812,45 @@ async function startRecording(
     effectiveFps: fps,
     lateFrames: 0,
     captureDurationMs: [],
+    streaming: target.kind === "author_preview" && !args.audio_device_id,
+    ffmpegProcess: null,
+    ffmpegDone: null,
+    encoderBackpressured: false,
+    encoderError: null,
+    latestAuthorPreviewImage: null,
+    authorPaintHandler: null,
+    fitMode: output.fitMode,
+    padColor: output.padColor,
+    qualityPreset: output.qualityPreset,
+    scaleAlgo: output.scaleAlgo,
   };
-  session.captureTimer.unref?.();
+  if (session.streaming) {
+    try {
+      await startAuthorPreviewRecordingStream(session);
+      session.captureTimer = setInterval(
+        () => {
+          void queueRecordingFrame(session);
+        },
+        Math.max(1000 / fps, 16),
+      );
+      session.captureTimer.unref?.();
+    } catch (error) {
+      clearInterval(heartbeat);
+      session.ffmpegProcess?.kill("SIGKILL");
+      await fs.rm(framesDir, { recursive: true, force: true });
+      throw error;
+    }
+  } else {
+    session.captureTimer = setInterval(
+      () => {
+        void queueRecordingFrame(session);
+      },
+      Math.max(1000 / fps, 16),
+    );
+    session.captureTimer.unref?.();
+    await captureRecordingFrame(session);
+  }
   recordingSessions.set(id, session);
-  await fs.mkdir(path.join(args.project_folder, EXPORTS_DIRNAME), {
-    recursive: true,
-  });
-  await captureRecordingFrame(session);
   sendChannel(sender, eventChannelId, {
     type: "capture-status",
     json: JSON.stringify({ type: "started", session_id: id }),
@@ -3604,74 +3912,114 @@ async function stopRecording(raw: unknown) {
   if (!session) throw new Error(`recording session ${id} not found`);
   recordingSessions.delete(id);
   clearInterval(session.heartbeat);
-  clearInterval(session.captureTimer);
+  if (session.captureTimer) clearInterval(session.captureTimer);
+  if (session.authorPaintHandler && session.target.kind === "author_preview") {
+    try {
+      authorSession(session.target.stream_id).window.webContents.off(
+        "paint",
+        session.authorPaintHandler,
+      );
+    } catch {
+      // The preview may already be gone during teardown.
+    }
+  }
   if (session.captureInFlight) await session.captureInFlight;
-  if (session.frameSeq === 0) await captureRecordingFrame(session);
+  if (session.frameSeq === 0) {
+    try {
+      await queueRecordingFrame(session);
+    } catch {
+      // The common no-frame error below is clearer for callers.
+    }
+  }
   if (session.frameSeq === 0) {
     await fs.rm(session.framesDir, { recursive: true, force: true });
+    session.ffmpegProcess?.kill("SIGKILL");
     throw new Error("recording stopped before any capture frames were written");
   }
 
-  const exportsDir = path.join(session.projectFolder, EXPORTS_DIRNAME);
-  await fs.mkdir(exportsDir, { recursive: true });
   const durationSec = Math.max(1, (Date.now() - session.startedAt) / 1000);
-  const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
-  const outputPath = path.join(exportsDir, `recording-${stamp}.mp4`);
-  const inputFramerate = Math.max(0.2, session.frameSeq / durationSec).toFixed(
-    3,
-  );
-  const ffmpegArgs = [
-    "-y",
-    "-framerate",
-    inputFramerate,
-    "-i",
-    path.join(session.framesDir, "frame-%06d.png"),
-  ];
-  if (session.audioPath) {
-    ffmpegArgs.push("-i", session.audioPath);
-  }
-  const cropPlan = ffmpegCropPlan(
-    session.frameCrop,
-    session.width,
-    session.height,
-  );
-  const outputWidth = cropPlan?.width ?? session.width;
-  const outputHeight = cropPlan?.height ?? session.height;
-  const filters = [
-    cropPlan?.filter,
-    `scale=${outputWidth}:${outputHeight}:flags=lanczos`,
-    "format=yuv420p",
-  ].filter((filter): filter is string => Boolean(filter));
-  ffmpegArgs.push("-r", String(session.fps), "-vf", filters.join(","));
-  if (session.audioPath) {
-    ffmpegArgs.push(
-      "-map",
-      "0:v:0",
-      "-map",
-      "1:a:0",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "160k",
-      "-shortest",
-    );
+  if (session.streaming) {
+    if (
+      session.ffmpegProcess?.stdin &&
+      !session.ffmpegProcess.stdin.destroyed
+    ) {
+      session.ffmpegProcess.stdin.end();
+    }
+    if (session.ffmpegDone) await session.ffmpegDone;
+    if (session.encoderError) throw session.encoderError;
   } else {
-    ffmpegArgs.push("-an");
+    const inputFramerate = Math.max(
+      0.2,
+      session.frameSeq / durationSec,
+    ).toFixed(3);
+    const ffmpegArgs = [
+      "-y",
+      "-framerate",
+      inputFramerate,
+      "-i",
+      path.join(session.framesDir, "frame-%06d.png"),
+    ];
+    if (session.audioPath) {
+      ffmpegArgs.push("-i", session.audioPath);
+    }
+    const cropPlan = ffmpegCropPlan(
+      session.frameCrop,
+      session.width,
+      session.height,
+    );
+    const sourceWidth = cropPlan?.width ?? session.width;
+    const sourceHeight = cropPlan?.height ?? session.height;
+    const filters = [
+      cropPlan?.filter,
+      ...recordingVideoFilters({
+        sourceWidth,
+        sourceHeight,
+        outputWidth: session.outputWidth,
+        outputHeight: session.outputHeight,
+        fitMode: session.fitMode,
+        padColor: session.padColor,
+        scaleAlgo: session.scaleAlgo,
+      }),
+    ].filter((filter): filter is string => Boolean(filter));
+    ffmpegArgs.push("-r", String(session.fps), "-vf", filters.join(","));
+    if (session.audioPath) {
+      ffmpegArgs.push(
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-shortest",
+      );
+    } else {
+      ffmpegArgs.push("-an");
+    }
+    ffmpegArgs.push(
+      "-c:v",
+      "libx264",
+      ...recordingQualityArgs(session.qualityPreset),
+      "-movflags",
+      "+faststart",
+      session.outputPath,
+    );
+    await runFfmpeg(ffmpegArgs);
   }
-  ffmpegArgs.push(
-    "-c:v",
-    "libx264",
-    "-preset",
-    "veryfast",
-    "-movflags",
-    "+faststart",
-    outputPath,
-  );
-  await runFfmpeg(ffmpegArgs);
   await fs.rm(session.framesDir, { recursive: true, force: true });
-  const stat = await fs.stat(outputPath);
-  const actualCaptureFps = session.frameSeq / durationSec;
-  if (actualCaptureFps < session.effectiveFps * 0.8) {
+  const stat = await fs.stat(session.outputPath);
+  const encodedFps = session.frameSeq / durationSec;
+  const sourceFramesReceived = session.streaming
+    ? session.sourceFramesReceived
+    : session.frameSeq;
+  const sourceFps = sourceFramesReceived / durationSec;
+  const actualCaptureFps = session.streaming ? sourceFps : encodedFps;
+  const warning = cadenceWarning({
+    actualFps: actualCaptureFps,
+    requestedFps: session.effectiveFps,
+  });
+  if (warning) {
     void hostLog("warn", "recording_capture_cadence_below_target", {
       session_id: session.id,
       target_kind: session.target.kind,
@@ -3681,20 +4029,38 @@ async function stopRecording(raw: unknown) {
       frames_written: session.frameSeq,
       frames_dropped: session.framesDropped,
       late_frames: session.lateFrames,
+      skipped_ticks: session.skippedTicks,
+      encoder_backpressure_events: session.encoderBackpressureEvents,
+      cadence_warning: warning.code,
     });
   }
   const result = {
-    output_path: outputPath,
+    output_path: session.outputPath,
     duration_ms: Math.round(durationSec * 1000),
     bytes: stat.size,
     frames_written: session.frameSeq,
+    frames_encoded: session.frameSeq,
     frames_dropped: session.framesDropped,
     requested_fps: session.requestedFps,
     effective_fps: session.effectiveFps,
     actual_capture_fps: Number(actualCaptureFps.toFixed(2)),
+    encoded_fps: Number(encodedFps.toFixed(2)),
+    source_capture_fps: Number(sourceFps.toFixed(2)),
+    source_frames_received: sourceFramesReceived,
+    skipped_ticks: session.skippedTicks,
+    encoder_backpressure_events: session.encoderBackpressureEvents,
     late_frames: session.lateFrames,
     capture_duration_ms_p50: percentile(session.captureDurationMs, 50),
     capture_duration_ms_p95: percentile(session.captureDurationMs, 95),
+    cadence_warning: warning?.code ?? null,
+    cadence_warning_message: warning?.message ?? null,
+    output_width: session.outputWidth,
+    output_height: session.outputHeight,
+    fit_mode: session.fitMode,
+    quality_preset: session.qualityPreset,
+    encoder_input: session.streaming
+      ? "author_preview_raw_bgra_pipe"
+      : "png_sequence",
   };
   sendChannel(session.eventTarget, session.eventChannelId, {
     type: "completed",
@@ -4712,7 +5078,7 @@ async function launchAutomationCommand(
   const recordingSession = recordingSessionId
     ? recordingSessions.get(recordingSessionId)
     : null;
-  if (recordingSession) {
+  if (recordingSession?.captureTimer) {
     clearInterval(recordingSession.captureTimer);
     await captureAutomationRecordingTail(recordingSession);
   }
