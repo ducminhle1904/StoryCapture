@@ -46,6 +46,7 @@ import {
 } from "./generic-secret-store";
 import { readJson, writeJson } from "./json-store";
 import { logFromFrontend, type FrontendLogPayload } from "./log-store";
+import { sameNavigationUrl } from "./navigation-url";
 import { userDataPath } from "./paths";
 import { recordingTailFrameDelaysMs } from "./recording-tail";
 import { sessionId } from "./session";
@@ -4256,6 +4257,7 @@ async function executeParsedCommand(
   options: { recordingMode?: boolean } = {},
 ): Promise<ParsedCommandResult> {
   if (command.verb === "navigate" && command.url) {
+    if (sameNavigationUrl(contents.getURL(), command.url)) return {};
     await contents.loadURL(command.url);
     return {};
   }

@@ -1,11 +1,15 @@
 import { VIEWPORT_SIZES } from "@/state/editor";
+import { parsedCommands } from "../../../electron/ipc/story-parser";
 
 export interface BrowserViewportSize {
   width: number;
   height: number;
 }
 
-export const DEFAULT_BROWSER_VIEWPORT: BrowserViewportSize = { width: 1280, height: 800 };
+export const DEFAULT_BROWSER_VIEWPORT: BrowserViewportSize = {
+  width: 1280,
+  height: 800,
+};
 
 export function storyViewportSize(source: string): BrowserViewportSize {
   const pair = source.match(/\bviewport\s*:\s*(\d{2,5})\s*x\s*(\d{2,5})\b/i);
@@ -13,7 +17,9 @@ export function storyViewportSize(source: string): BrowserViewportSize {
     return { width: Number(pair[1]), height: Number(pair[2]) };
   }
 
-  const named = source.match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]?.toLowerCase();
+  const named = source
+    .match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]
+    ?.toLowerCase();
   if (named === "desktop" || named === "tablet" || named === "mobile") {
     const preset = VIEWPORT_SIZES[named];
     return { width: preset.w, height: preset.h };
@@ -23,4 +29,32 @@ export function storyViewportSize(source: string): BrowserViewportSize {
 
 export function storyAppUrlForRecording(source: string): string | null {
   return source.match(/\bapp\s*:\s*["'](https?:\/\/[^"']+)["']/i)?.[1] ?? null;
+}
+
+function normalizedHttpUrl(rawUrl: string | null | undefined): string | null {
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+export function storyFirstNavigateUrlForRecording(
+  source: string,
+): string | null {
+  for (const command of parsedCommands(source)) {
+    if (command.verb !== "navigate") continue;
+    const url = normalizedHttpUrl(command.url);
+    if (url) return url;
+  }
+  return null;
+}
+
+export function storyInitialUrlForRecording(source: string): string | null {
+  return (
+    storyFirstNavigateUrlForRecording(source) ?? storyAppUrlForRecording(source)
+  );
 }

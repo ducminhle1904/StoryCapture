@@ -60,7 +60,7 @@ import { CursorToggle } from "./CursorToggle";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 import { acquireRecordingPreview, type RecordingPreviewLease } from "./recording-preview";
 import { authorPreviewRecordingPlan } from "./recording-target";
-import { storyAppUrlForRecording, storyViewportSize } from "./recording-viewport";
+import { storyInitialUrlForRecording, storyViewportSize } from "./recording-viewport";
 import { TccPrompt } from "./tcc-prompt";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
 import { useIsRecordingBlocked, VideoOutputSection } from "./video-output/video-output-section";
@@ -474,7 +474,7 @@ export function RecordingView({
       } | null = null;
       let browserStreamId: string | null = null;
       if (shouldAutoFollow) {
-        const appUrl = storyAppUrlForRecording(storySource);
+        const appUrl = storyInitialUrlForRecording(storySource);
         if (!appUrl) throw new Error("Browser story is missing a valid meta.app URL");
         releasePreviewLease();
         const lease = await acquireRecordingPreview({
