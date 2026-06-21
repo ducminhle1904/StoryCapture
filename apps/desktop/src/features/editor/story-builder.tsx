@@ -13,7 +13,6 @@ import {
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { SelectField } from "@/components/ui/select-field";
-import { WorkflowRoadmapPanel } from "@/features/workflows/workflow-roadmap-panel";
 import type { Command, Story } from "@/ipc/parse";
 import {
   isPicked,
@@ -23,7 +22,6 @@ import {
   pickerStampStepId,
   type TargetRecordDto,
 } from "@/ipc/picker";
-import type { WorkflowState } from "@/ipc/projects";
 import {
   calloutText,
   highlightEnabled,
@@ -66,8 +64,6 @@ interface StoryBuilderProps {
   onSourceCommit: (source: string) => Promise<void>;
   onFlushSource?: () => void;
   onPolishChange: (doc: StoryPolishDoc) => void;
-  workflowState: WorkflowState | null;
-  onWorkflowChange: (workflow: WorkflowState) => void;
   onJumpToOffset: (offset: number) => void;
 }
 
@@ -326,8 +322,6 @@ export function StoryBuilder({
   onSourceCommit,
   onFlushSource,
   onPolishChange,
-  workflowState,
-  onWorkflowChange,
   onJumpToOffset,
 }: StoryBuilderProps) {
   const [pickingKey, setPickingKey] = useState<string | null>(null);
@@ -487,13 +481,6 @@ export function StoryBuilder({
         }
       }}
     >
-      {workflowState ? (
-        <WorkflowRoadmapPanel
-          workflow={workflowState}
-          disabled={simulatorActive}
-          onChange={onWorkflowChange}
-        />
-      ) : null}
       <div className="shrink-0 border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome)]">
         <div className="flex h-10 items-center gap-2 px-3">
           <Sparkles size={14} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
