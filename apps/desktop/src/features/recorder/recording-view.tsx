@@ -12,7 +12,7 @@ import {
   Square as StopIcon,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -224,6 +224,32 @@ export function RecordingView({
         ? Number(captureTarget.display_id)
         : captureTarget.display_id
       : null;
+  const selectedDisplayInfo = useMemo(
+    () => (selectedDisplay == null ? undefined : displays.find((display) => displayId(display) === selectedDisplay)),
+    [displays, selectedDisplay],
+  );
+  const storyRecordingInfo = useMemo(() => {
+    const initialUrl = storyInitialUrlForRecording(storySource);
+    return {
+      initialUrl,
+      hasBrowser: initialUrl != null || /\bapp\s*:\s*["']https?:\/\//i.test(storySource),
+      viewport: storyViewportSize(storySource),
+    };
+  }, [storySource]);
+  const storyHasBrowser = storyRecordingInfo.hasBrowser;
+  const storyViewport = storyRecordingInfo.viewport;
+  const storyInitialUrl = storyRecordingInfo.initialUrl;
+  const selectedCaptureDims = useMemo(() => {
+    const dims = storyHasBrowser
+      ? { w: storyViewport.width, h: storyViewport.height }
+      : selectedDisplayInfo
+        ? { w: selectedDisplayInfo.width_px, h: selectedDisplayInfo.height_px }
+        : null;
+    if (!dims || !Number.isFinite(dims.w) || !Number.isFinite(dims.h) || dims.w <= 0 || dims.h <= 0) {
+      return undefined;
+    }
+    return dims;
+  }, [selectedDisplayInfo, storyHasBrowser, storyViewport.height, storyViewport.width]);
 
   const currentStepEntry = steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
   const completedSteps = steps.filter((s) => s.status === "succeeded").length;
@@ -446,16 +472,12 @@ export function RecordingView({
     startedAtRef.current = Date.now();
     pausedAtRef.current = null;
     automationOwnsStopRef.current = false;
-    const display = displays.find((d) => {
-      return displayId(d) === selectedDisplay;
-    });
+    const display = selectedDisplayInfo;
     // Seed with display dims; browser stories overwrite this with the
     // author-preview webContents viewport.
     let width = display?.width_px ?? 1920;
     let height = display?.height_px ?? 1080;
     try {
-      const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
-      const storyViewport = storyViewportSize(storySource);
       const pacingProfile = DEFAULT_RECORDING_PACING;
       const recordingDisplay = display ? { x: display.x, y: display.y } : null;
       const recordingViewport = storyHasBrowser ? storyViewport : null;
@@ -491,7 +513,7 @@ export function RecordingView({
       } | null = null;
       let browserStreamId: string | null = null;
       if (shouldAutoFollow) {
-        const appUrl = storyInitialUrlForRecording(storySource);
+        const appUrl = storyInitialUrl;
         if (!appUrl) throw new Error("Browser story is missing a valid meta.app URL");
         releasePreviewLease();
         const lease = await acquireRecordingPreview({
@@ -1095,6 +1117,7 @@ export function RecordingView({
           <VideoOutputSection
             ref={videoOutputSectionRef}
             disabled={status === "recording" || status === "paused" || status === "stopping"}
+            captureDims={selectedCaptureDims}
           />
 
           <div className="mt-auto rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-2.5">

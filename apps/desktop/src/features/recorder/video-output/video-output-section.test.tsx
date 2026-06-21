@@ -31,6 +31,13 @@ describe("VideoOutputSection", () => {
     expect(screen.getByLabelText("Quality")).toBeInTheDocument();
   });
 
+  it("estimates non-zero output for Match source with capture dimensions", () => {
+    render(<VideoOutputSection captureDims={{ w: 3600, h: 2338 }} />);
+    expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent(
+      "~31.6 Mbps • ~231 MB/min",
+    );
+  });
+
   it("typing 1281 into Custom W flags the hard error + aria-invalid", async () => {
     const user = userEvent.setup();
     useOutputPrefsStore.setState({
@@ -79,10 +86,16 @@ describe("VideoOutputSection", () => {
 
   it("changing FPS 60 → 30 from Standard flips activePreset to Custom", async () => {
     const user = userEvent.setup();
-    render(<VideoOutputSection />);
+    render(<VideoOutputSection captureDims={{ w: 1920, h: 1080 }} />);
+    expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent(
+      "~7.8 Mbps • ~57 MB/min",
+    );
     const thirty = screen.getByLabelText("30");
     await user.click(thirty);
     expect(useOutputPrefsStore.getState().activePreset).toBe("Custom");
+    expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent(
+      "~3.9 Mbps • ~28 MB/min",
+    );
   });
 
   it("Quality Standard → Lossless flips activePreset to Lossless", async () => {
