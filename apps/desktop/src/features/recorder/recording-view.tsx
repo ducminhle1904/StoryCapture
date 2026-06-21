@@ -498,6 +498,7 @@ export function RecordingView({
           appUrl,
           viewport: recordingViewport ?? storyViewport,
           fps: prefs.fps,
+          placement: recordingDisplay,
           reason: "recording-start",
         });
         previewLeaseRef.current = lease;

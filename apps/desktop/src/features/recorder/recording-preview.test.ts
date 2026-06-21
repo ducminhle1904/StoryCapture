@@ -49,6 +49,9 @@ describe("recording preview lease", () => {
       viewportWidth: 1440,
       viewportHeight: 900,
       fps: 60,
+      visible: true,
+      previewX: null,
+      previewY: null,
       replaceExisting: false,
       partition: "recording-uuid-1",
       purpose: "recording",
@@ -82,6 +85,24 @@ describe("recording preview lease", () => {
     expect(startAuthorPreviewMock).toHaveBeenCalledTimes(2);
     expect(startAuthorPreviewMock.mock.calls[0]?.[0].partition).not.toBe(
       startAuthorPreviewMock.mock.calls[1]?.[0].partition,
+    );
+  });
+
+  it("passes requested placement for the visible recording preview", async () => {
+    await acquireRecordingPreview({
+      appUrl: "https://app.example.test",
+      viewport: { width: 1280, height: 720 },
+      fps: 30,
+      placement: { x: 200, y: 120 },
+      reason: "placed",
+    });
+
+    expect(startAuthorPreviewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        visible: true,
+        previewX: 200,
+        previewY: 120,
+      }),
     );
   });
 

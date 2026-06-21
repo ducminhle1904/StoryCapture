@@ -498,9 +498,17 @@ interface StoryBrowserRunOptions {
   };
   stopAfter?: number;
   frameDir?: string | null;
-  recordingMode?: boolean;
+  executionProfile?: StoryBrowserExecutionProfile;
   shouldCancel?: () => boolean;
   hooks?: StoryBrowserRunHooks;
+}
+
+type StoryBrowserTypingMode = "incremental" | "instant";
+
+interface StoryBrowserExecutionProfile {
+  typingMode: StoryBrowserTypingMode;
+  captureRecordingFrames: boolean;
+  settleDelayForCommand: (command: ParsedCommand) => number;
 }
 
 type StoryBrowserRunExitReason =
@@ -2955,17 +2963,20 @@ async function submitLatestAuthorPreviewFrame(
       "author preview frame submission requires author_preview target",
     );
   }
-  const image =
-    session.latestAuthorPreviewImage ??
-    (await captureAuthorPreviewNativeImage(
+  const preview = authorSession(session.target.stream_id);
+  const latestImage = session.latestAuthorPreviewImage;
+  const needsFreshCapture = !latestImage || preview.latestPaintImage == null;
+  if (needsFreshCapture) {
+    const image = await captureAuthorPreviewNativeImage(
       session.target.stream_id,
       session.width,
       session.height,
-    ));
-  if (!session.latestAuthorPreviewImage) {
+    );
     recordAuthorPreviewPaint(session, image);
+    await submitAuthorPreviewFrame(session, image);
+    return;
   }
-  await submitAuthorPreviewFrame(session, image);
+  await submitAuthorPreviewFrame(session, latestImage);
 }
 
 function queueRecordingFrame(session: RecordingSession): Promise<void> {
@@ -3100,6 +3111,16 @@ function recordingSettleDelayMs(command: ParsedCommand): number {
     default:
       return 0;
   }
+}
+
+function storyBrowserExecutionProfile(options?: {
+  captureRecordingFrames?: boolean;
+}): StoryBrowserExecutionProfile {
+  return {
+    typingMode: "incremental",
+    captureRecordingFrames: options?.captureRecordingFrames ?? false,
+    settleDelayForCommand: recordingSettleDelayMs,
+  };
 }
 
 function ffmpegCropPlan(
@@ -3298,13 +3319,27 @@ async function startAuthorPreviewSession(
   const replaceExisting =
     purpose === "editor" ? args.replaceExisting !== false : false;
   if (replaceExisting) await stopAuthorPreviewsByPurpose("editor");
+  const visible =
+    purpose === "recording" ? args.visible !== false : args.visible === true;
+  const previewX = args.previewX;
+  const previewY = args.previewY;
+  const previewBounds =
+    visible &&
+    typeof previewX === "number" &&
+    typeof previewY === "number" &&
+    Number.isFinite(previewX) &&
+    Number.isFinite(previewY)
+      ? { x: Math.round(previewX), y: Math.round(previewY) }
+      : {};
+  const offscreen = !visible;
   const preview = new BrowserWindow({
-    show: false,
+    show: visible,
     width,
     height,
+    ...previewBounds,
     webPreferences: {
       ...(partition ? { partition } : {}),
-      offscreen: true,
+      offscreen,
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -3367,13 +3402,15 @@ async function startAuthorPreviewSession(
     viewport_width: width,
     viewport_height: height,
     show: preview.isVisible(),
-    offscreen: true,
+    offscreen,
     requested_fps:
       purpose === "recording" ? positiveNumber(args.fps, frameRate) : null,
     effective_fps: frameRate,
     replace_existing: replaceExisting,
     purpose,
     partition: partition ?? null,
+    preview_x: "x" in previewBounds ? previewBounds.x : null,
+    preview_y: "y" in previewBounds ? previewBounds.y : null,
     browser_window_id: preview.id,
     media_source_id: preview.getMediaSourceId(),
   });
@@ -4620,8 +4657,10 @@ async function executeParsedCommand(
   contents: WebContents,
   command: ParsedCommand,
   projectFolder: string,
-  options: { recordingMode?: boolean } = {},
+  options: { executionProfile?: StoryBrowserExecutionProfile } = {},
 ): Promise<ParsedCommandResult> {
+  const executionProfile =
+    options.executionProfile ?? storyBrowserExecutionProfile();
   if (command.verb === "navigate" && command.url) {
     if (sameNavigationUrl(contents.getURL(), command.url)) return {};
     await contents.loadURL(command.url);
@@ -4722,7 +4761,7 @@ async function executeParsedCommand(
     const value =
       command.verb === "type" ? (command.text ?? "") : (command.value ?? "");
     const valueScript =
-      command.verb === "type" && options.recordingMode
+      command.verb === "type" && executionProfile.typingMode === "incremental"
         ? setSimulatorTargetValueIncrementalScript(
             command.target,
             value,
@@ -4793,7 +4832,7 @@ async function ensureStoryInitialUrl(
   const shouldNavigate = (() => {
     if (!currentUrl || currentUrl === "about:blank") return true;
     try {
-      return new URL(currentUrl).origin !== new URL(appUrl).origin;
+      return !sameNavigationUrl(currentUrl, appUrl);
     } catch {
       return true;
     }
@@ -4874,6 +4913,8 @@ async function runStoryCommandsInBrowser(
   durationMs: number;
 }> {
   const startedAt = Date.now();
+  const executionProfile =
+    options.executionProfile ?? storyBrowserExecutionProfile();
   const limit =
     options.stopAfter && options.stopAfter > 0
       ? Math.min(options.stopAfter, options.commands.length)
@@ -4895,7 +4936,7 @@ async function runStoryCommandsInBrowser(
     options.hooks?.onStepStarted?.(ordinal, command);
     const stepStartedAt = Date.now();
     try {
-      if (options.recordingMode) {
+      if (executionProfile.captureRecordingFrames) {
         invalidateAuthorPreviewPaintForContents(options.contents);
       }
       const result = await executeParsedCommand(
@@ -4903,13 +4944,11 @@ async function runStoryCommandsInBrowser(
         command,
         options.projectFolder,
         {
-          recordingMode: options.recordingMode,
+          executionProfile,
         },
       );
-      if (options.recordingMode) {
-        const settleDelayMs = recordingSettleDelayMs(command);
-        if (settleDelayMs > 0) await waitMs(settleDelayMs);
-      }
+      const settleDelayMs = executionProfile.settleDelayForCommand(command);
+      if (settleDelayMs > 0) await waitMs(settleDelayMs);
       const durationMs = Date.now() - stepStartedAt;
       succeeded += 1;
       options.hooks?.onStepSucceeded?.(ordinal, command, result, durationMs);
@@ -5004,7 +5043,9 @@ async function launchAutomationCommand(
       projectFolder,
       storySource: source,
       targets,
-      recordingMode: Boolean(recordingSessionId),
+      executionProfile: storyBrowserExecutionProfile({
+        captureRecordingFrames: Boolean(recordingSessionId),
+      }),
       hooks: {
         onStepStarted: (ordinal, command) => {
           sendChannel(sender, onEvent, {
@@ -5205,6 +5246,7 @@ async function simulatorStartCommand(
     targets,
     stopAfter,
     frameDir,
+    executionProfile: storyBrowserExecutionProfile(),
     shouldCancel: () =>
       !simulatorSessions.has(id) ||
       Boolean(simulatorSessions.get(id)?.cancelled),

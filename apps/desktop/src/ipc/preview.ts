@@ -38,6 +38,9 @@ interface RecordingStartAuthorPreviewParams extends BaseStartAuthorPreviewParams
   purpose: "recording";
   replaceExisting: false;
   partition: string;
+  visible: true;
+  previewX?: number | null;
+  previewY?: number | null;
 }
 
 export type StartAuthorPreviewParams =
@@ -45,6 +48,14 @@ export type StartAuthorPreviewParams =
   | RecordingStartAuthorPreviewParams;
 
 export async function startAuthorPreview(params: StartAuthorPreviewParams): Promise<string> {
+  const recordingOptions =
+    params.purpose === "recording"
+      ? {
+          visible: params.visible,
+          previewX: params.previewX ?? null,
+          previewY: params.previewY ?? null,
+        }
+      : {};
   return await invoke<string>("start_author_preview", {
     initialUrl: params.initialUrl,
     viewportWidth: params.viewportWidth,
@@ -53,6 +64,7 @@ export async function startAuthorPreview(params: StartAuthorPreviewParams): Prom
     replaceExisting: params.replaceExisting,
     partition: params.partition,
     purpose: params.purpose,
+    ...recordingOptions,
   });
 }
 

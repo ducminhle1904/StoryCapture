@@ -19,7 +19,23 @@ describe("recording viewport helpers", () => {
     `;
 
     expect(storyViewportSize(source)).toEqual({ width: 1920, height: 1080 });
-    expect(storyAppUrlForRecording(source)).toBe("https://app.example.test");
+    expect(storyAppUrlForRecording(source)).toBe("https://app.example.test/");
+  });
+
+  it("reads meta.app through the story parser", () => {
+    const source = `
+      # app: "https://commented.example.test"
+      story "Demo" {
+        scene "Setup" {
+          type field "App" "https://body.example.test"
+        }
+        meta {
+          app: "https://app.example.test"
+        }
+      }
+    `;
+
+    expect(storyAppUrlForRecording(source)).toBe("https://app.example.test/");
   });
 
   it("uses existing named editor viewport presets", () => {
@@ -29,7 +45,7 @@ describe("recording viewport helpers", () => {
     });
   });
 
-  it("prefers the first valid navigate URL for recording startup", () => {
+  it("starts recording from meta.app while preserving the first navigate URL", () => {
     const source = `
       story "Demo" {
         meta {
@@ -46,11 +62,11 @@ describe("recording viewport helpers", () => {
       "https://app.example.test/auth/login?redirect=/app/bots",
     );
     expect(storyInitialUrlForRecording(source)).toBe(
-      "https://app.example.test/auth/login?redirect=/app/bots",
+      "https://app.example.test/auth/login",
     );
   });
 
-  it("falls back to meta.app when there is no valid browser navigate", () => {
+  it("uses meta.app when there is no valid browser navigate", () => {
     const source = `
       story "Demo" {
         meta {

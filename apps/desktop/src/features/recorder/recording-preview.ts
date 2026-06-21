@@ -1,10 +1,13 @@
 import { startAuthorPreview, stopAuthorPreview } from "@/ipc/preview";
+import type { LaunchAutomationArgs } from "@/ipc/automation";
 import { frontendLog } from "@/lib/log";
 
 export interface RecordingPreviewViewport {
   width: number;
   height: number;
 }
+
+export type RecordingPreviewPlacement = NonNullable<LaunchAutomationArgs["recordingDisplay"]>;
 
 export interface RecordingPreviewLease {
   streamId: string;
@@ -16,6 +19,7 @@ export interface AcquireRecordingPreviewArgs {
   viewport: RecordingPreviewViewport;
   reason: string;
   fps: number;
+  placement?: RecordingPreviewPlacement | null;
   timeoutMs?: number;
 }
 
@@ -30,6 +34,7 @@ export async function acquireRecordingPreview({
   viewport,
   reason,
   fps,
+  placement = null,
   timeoutMs = 8_000,
 }: AcquireRecordingPreviewArgs): Promise<RecordingPreviewLease> {
   const partition = recordingPartition();
@@ -39,6 +44,9 @@ export async function acquireRecordingPreview({
     viewportWidth: viewport.width,
     viewportHeight: viewport.height,
     fps,
+    visible: true,
+    previewX: placement?.x ?? null,
+    previewY: placement?.y ?? null,
     replaceExisting: false,
     partition,
     purpose: "recording",
@@ -77,7 +85,14 @@ export async function acquireRecordingPreview({
   });
   if (!streamId) throw new Error("Timed out waiting for recording browser preview");
   frontendLog.info("RecordingView", "acquired isolated recording preview", {
-    fields: { reason, stream_id: streamId, partition },
+    fields: {
+      reason,
+      stream_id: streamId,
+      partition,
+      visible: true,
+      preview_x: placement?.x ?? null,
+      preview_y: placement?.y ?? null,
+    },
   });
 
   let released = false;
