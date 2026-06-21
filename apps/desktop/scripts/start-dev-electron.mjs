@@ -8,7 +8,9 @@ import { prepareDevElectronApp } from "./prepare-dev-electron-app.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(here, "..");
-const identity = JSON.parse(await readFile(path.join(desktopRoot, "electron", "identity.json"), "utf8"));
+const identity = JSON.parse(
+  await readFile(path.join(desktopRoot, "electron", "identity.json"), "utf8"),
+);
 const { executablePath } = await prepareDevElectronApp();
 let child = null;
 let stoppingSignal = null;
@@ -26,7 +28,7 @@ function startChild() {
 
   child.on("exit", (code, signal) => {
     if (stoppingSignal) {
-      process.exit(128 + (stoppingSignal === "SIGINT" ? 2 : 15));
+      process.exit(0);
     }
     if (code === identity.devRelaunchExitCode) {
       startChild();

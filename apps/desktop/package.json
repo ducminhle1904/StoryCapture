@@ -13,7 +13,7 @@
     "renderer:build": "tsc -b && vite build",
     "electron:build": "pnpm electron:build-main && pnpm renderer:build && electron-builder",
     "electron:build-main": "node scripts/build-electron.mjs",
-    "electron:dev": "pnpm electron:build-main && concurrently -k -s first -n vite,electron \"vite --host 127.0.0.1 --strictPort\" \"wait-on http://127.0.0.1:1420 && pnpm electron:start\"",
+    "electron:dev": "node scripts/dev-electron.mjs",
     "electron:start": "node scripts/start-dev-electron.mjs",
     "electron:prepare-dev-app": "node scripts/prepare-dev-electron-app.mjs",
     "preview": "vite preview",
