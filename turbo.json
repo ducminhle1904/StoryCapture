@@ -12,7 +12,9 @@
       "outputs": ["dist/**", "dist-electron/**", "release-electron/**", ".next/**", "!.next/cache/**"],
       "inputs": [
         "src/**",
+        "!src/generated/**",
         "electron/**",
+        "prisma/schema.prisma",
         "scripts/**",
         "package.json",
         "tsconfig.json",
@@ -21,7 +23,15 @@
     },
     "typecheck": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "electron/**", "scripts/**", "tsconfig.json", "package.json"]
+      "inputs": [
+        "src/**",
+        "!src/generated/**",
+        "electron/**",
+        "prisma/schema.prisma",
+        "scripts/**",
+        "tsconfig.json",
+        "package.json"
+      ]
     },
     "lint": {
       "inputs": ["src/**", "biome.json", "package.json"]

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "pnpm run db:generate && tsc --noEmit",
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
