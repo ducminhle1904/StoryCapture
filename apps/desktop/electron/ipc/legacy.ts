@@ -177,6 +177,20 @@ interface ExportRunArgs {
   outputs: ExportOutput[];
   output_folder: string;
   base_name: string;
+  preset_id?: string | null;
+  priority?: number;
+}
+
+interface SoundLibraryEntry {
+  id: string;
+  name: string;
+  category: string;
+  duration_ms: number;
+  file_path: string;
+  license: string;
+  source_url?: string;
+  author?: string;
+  bundled: boolean;
 }
 
 interface NewRenderJob {
@@ -211,8 +225,10 @@ interface RenderProgressListener {
 
 interface RenderSession {
   job: RenderJob;
-  timer: ReturnType<typeof setInterval>;
+  timer: ReturnType<typeof setInterval> | null;
   frame: number;
+  ffmpegProcess: ChildProcess | null;
+  cancelRequested: boolean;
 }
 
 type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts";
@@ -1779,6 +1795,67 @@ function exportPresetsCatalogue() {
   };
 }
 
+async function soundLibraryRoot(): Promise<string> {
+  const candidates = [
+    path.join(app.getAppPath(), "assets", "sound-library"),
+    path.join(process.resourcesPath, "assets", "sound-library"),
+    path.join(process.cwd(), "assets", "sound-library"),
+    path.resolve(app.getAppPath(), "..", "..", "assets", "sound-library"),
+  ];
+  for (const candidate of candidates) {
+    if (await pathExists(path.join(candidate, "manifest.json"))) return candidate;
+  }
+  return candidates[0] ?? path.join(app.getAppPath(), "assets", "sound-library");
+}
+
+async function soundLibraryList(category: string): Promise<SoundLibraryEntry[]> {
+  const root = await soundLibraryRoot();
+  const manifestPath = path.join(root, "manifest.json");
+  if (!(await pathExists(manifestPath))) return [];
+  const raw = await fs.readFile(manifestPath, "utf8");
+  const manifest = JSON.parse(raw) as {
+    entries?: Array<{
+      id?: unknown;
+      category?: unknown;
+      file?: unknown;
+      duration_ms?: unknown;
+      license?: unknown;
+      source_url?: unknown;
+      author?: unknown;
+    }>;
+  };
+  const entries = await Promise.all(
+    (manifest.entries ?? [])
+      .filter((entry) => entry.category === category)
+      .map(async (entry): Promise<SoundLibraryEntry | null> => {
+        if (typeof entry.id !== "string" || typeof entry.file !== "string") return null;
+        const filePath = path.join(root, entry.file);
+        const relative = path.relative(root, filePath);
+        if (relative.startsWith("..") || path.isAbsolute(relative) || !(await pathExists(filePath))) {
+          return null;
+        }
+        return {
+          id: entry.id,
+          name: entry.id
+            .split("-")
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" "),
+          category,
+          duration_ms:
+            typeof entry.duration_ms === "number" && Number.isFinite(entry.duration_ms)
+              ? entry.duration_ms
+              : 0,
+          file_path: filePath,
+          license: typeof entry.license === "string" ? entry.license : "Unknown",
+          source_url: typeof entry.source_url === "string" ? entry.source_url : undefined,
+          author: typeof entry.author === "string" ? entry.author : undefined,
+          bundled: true,
+        };
+      }),
+  );
+  return entries.filter((entry): entry is SoundLibraryEntry => Boolean(entry));
+}
+
 function validateExportOutput(output: ExportOutput): void {
   if (!["mp4", "webm", "gif"].includes(output.format)) {
     throw new Error(`unknown format: ${output.format}`);
@@ -1837,6 +1914,19 @@ function firstSourcePath(graphJson: string): string {
   return source.path;
 }
 
+function unsupportedExportGraphNodes(graphJson: string): string[] {
+  const graph = JSON.parse(graphJson) as {
+    video?: Array<{ type?: string }>;
+    audio?: unknown[];
+  };
+  const unsupported = new Set<string>();
+  for (const node of graph.video ?? []) {
+    if (node.type !== "source") unsupported.add(String(node.type ?? "unknown-video"));
+  }
+  if ((graph.audio ?? []).length > 0) unsupported.add("audio");
+  return [...unsupported].sort();
+}
+
 function exportOutputPath(
   args: ExportRunArgs,
   output: ExportOutput,
@@ -1847,6 +1937,155 @@ function exportOutputPath(
   const suffix =
     args.outputs.length > 1 ? `-${index + 1}-${output.resolution}` : "";
   return path.join(args.output_folder, `${base}${suffix}.${ext}`);
+}
+
+function ffmpegArgsForExportOutput(
+  input: string,
+  output: ExportOutput,
+  out: string,
+): string[] {
+  const size = resolutionSize(output);
+  const vf = [`fps=${output.fps}`];
+  if (size) vf.push(`scale=${size.width}:${size.height}:flags=lanczos`);
+  const ffmpegArgs = ["-y", "-i", input, "-vf", vf.join(",")];
+  if (output.format === "mp4") {
+    ffmpegArgs.push(
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-an",
+    );
+  } else if (output.format === "webm") {
+    ffmpegArgs.push(
+      "-c:v",
+      "libvpx-vp9",
+      "-b:v",
+      output.quality === "high" ? "4M" : output.quality === "med" ? "2M" : "1M",
+      "-an",
+    );
+  } else {
+    ffmpegArgs.push("-an");
+  }
+  ffmpegArgs.push(out);
+  return ffmpegArgs;
+}
+
+function runFfmpegForRenderSession(
+  session: RenderSession,
+  ffmpegArgs: string[],
+): Promise<void> {
+  const binary = ffmpegPath;
+  if (!binary) throw new Error("ffmpeg-static binary is unavailable");
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, ffmpegArgs, {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    session.ffmpegProcess = child;
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      const text = String(chunk);
+      stderr += text;
+      const frame = text.match(/frame=\s*(\d+)/);
+      if (frame?.[1]) {
+        session.frame = Number(frame[1]);
+        session.job.progress_pct = Math.max(session.job.progress_pct, 5);
+        broadcastRenderProgress(session.job, session.frame);
+      }
+    });
+    child.on("error", reject);
+    child.on("close", (code: number | null) => {
+      session.ffmpegProcess = null;
+      if (session.cancelRequested) {
+        reject(new Error("render cancelled"));
+        return;
+      }
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-2000)}`));
+    });
+  });
+}
+
+function scheduleRenderSessionRemoval(id: string): void {
+  setTimeout(() => renderSessions.delete(id), 5000).unref?.();
+}
+
+function enqueueExportRenderJob(args: {
+  batchId: string;
+  storyId: string;
+  graphJson: string;
+  output: ExportOutput;
+  outputPath: string;
+  presetId?: string | null;
+  priority?: number;
+}): string {
+  const id = randomUUID();
+  const now = Date.now();
+  const renderJob: RenderJob = {
+    id,
+    story_id: args.storyId,
+    preset_id: args.presetId ?? null,
+    format: args.output.format,
+    resolution: args.output.resolution,
+    fps: clampFps(args.output.fps),
+    quality: args.output.quality,
+    priority: Number.isFinite(Number(args.priority)) ? Number(args.priority) : 0,
+    batch_id: args.batchId,
+    output_width: args.output.output_width ?? null,
+    output_height: args.output.output_height ?? null,
+    encoder_options_json: JSON.stringify((args.output as { encoder_options?: unknown }).encoder_options ?? null),
+    status: "running",
+    progress_pct: 0,
+    started_at: now,
+    completed_at: null,
+    error: null,
+    output_path: args.outputPath,
+    created_at: now,
+  };
+  const session: RenderSession = {
+    job: renderJob,
+    timer: null,
+    frame: 0,
+    ffmpegProcess: null,
+    cancelRequested: false,
+  };
+  renderSessions.set(id, session);
+  broadcastRenderProgress(renderJob, 0);
+
+  void (async () => {
+    try {
+      const unsupported = unsupportedExportGraphNodes(args.graphJson);
+      if (unsupported.length > 0) {
+        throw new Error(
+          `export compositor does not yet support graph nodes: ${unsupported.join(", ")}`,
+        );
+      }
+      const input = firstSourcePath(args.graphJson);
+      renderJob.progress_pct = 5;
+      broadcastRenderProgress(renderJob, session.frame);
+      await runFfmpegForRenderSession(
+        session,
+        ffmpegArgsForExportOutput(input, args.output, args.outputPath),
+      );
+      renderJob.status = "completed";
+      renderJob.progress_pct = 100;
+    } catch (error) {
+      renderJob.status = session.cancelRequested ? "cancelled" : "failed";
+      renderJob.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      renderJob.completed_at = Date.now();
+      broadcastRenderProgress(renderJob, session.frame);
+      scheduleRenderSessionRemoval(id);
+    }
+  })();
+  return id;
 }
 
 async function exportRun(args: ExportRunArgs) {
@@ -1860,43 +2099,21 @@ async function exportRun(args: ExportRunArgs) {
     `${slugify(args.base_name || args.story_id || "export") || "export"}.graph.json`,
   );
   await fs.writeFile(snapshotPath, args.graph_json, "utf8");
-  const input = firstSourcePath(args.graph_json);
   const jobIds: string[] = [];
 
   for (const [index, output] of args.outputs.entries()) {
     const out = exportOutputPath(args, output, index);
-    const size = resolutionSize(output);
-    const vf = [`fps=${output.fps}`];
-    if (size) vf.push(`scale=${size.width}:${size.height}:flags=lanczos`);
-    const ffmpegArgs = ["-y", "-i", input, "-vf", vf.join(",")];
-    if (output.format === "mp4") {
-      ffmpegArgs.push(
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        "-an",
-      );
-    } else if (output.format === "webm") {
-      ffmpegArgs.push(
-        "-c:v",
-        "libvpx-vp9",
-        "-b:v",
-        output.quality === "high"
-          ? "4M"
-          : output.quality === "med"
-            ? "2M"
-            : "1M",
-        "-an",
-      );
-    }
-    ffmpegArgs.push(out);
-    await runFfmpeg(ffmpegArgs);
-    jobIds.push(randomUUID());
+    jobIds.push(
+      enqueueExportRenderJob({
+        batchId,
+        storyId: args.story_id,
+        graphJson: args.graph_json,
+        output,
+        outputPath: out,
+        presetId: args.preset_id,
+        priority: args.priority,
+      }),
+    );
   }
 
   return {
@@ -1929,55 +2146,16 @@ function broadcastRenderProgress(job: RenderJob, frame: number): void {
 }
 
 function renderEnqueue(rawJob: unknown): string {
-  const job = rawJob as Partial<NewRenderJob>;
-  const id = randomUUID();
-  const now = Date.now();
-  const renderJob: RenderJob = {
-    id,
-    story_id: String(job.story_id ?? ""),
-    preset_id: job.preset_id ?? null,
-    format: String(job.format ?? "mp4"),
-    resolution: String(job.resolution ?? "1080p"),
-    fps: clampFps(job.fps),
-    quality: String(job.quality ?? "high"),
-    priority: Number.isFinite(Number(job.priority)) ? Number(job.priority) : 0,
-    batch_id: job.batch_id ?? null,
-    output_width: null,
-    output_height: null,
-    encoder_options_json: null,
-    status: "running",
-    progress_pct: 0,
-    started_at: now,
-    completed_at: null,
-    error: null,
-    output_path: null,
-    created_at: now,
-  };
-  const session: RenderSession = {
-    job: renderJob,
-    frame: 0,
-    timer: setInterval(() => {
-      session.frame += Math.max(1, Math.round(renderJob.fps / 2));
-      renderJob.progress_pct = Math.min(100, renderJob.progress_pct + 10);
-      broadcastRenderProgress(renderJob, session.frame);
-      if (renderJob.progress_pct >= 100) {
-        renderJob.status = "completed";
-        renderJob.completed_at = Date.now();
-        clearInterval(session.timer);
-        setTimeout(() => renderSessions.delete(id), 5000).unref?.();
-      }
-    }, 500),
-  };
-  session.timer.unref?.();
-  renderSessions.set(id, session);
-  broadcastRenderProgress(renderJob, 0);
-  return id;
+  void rawJob;
+  throw new Error("render_enqueue is no longer a fake timer queue; call export_run with graph_json");
 }
 
 function renderCancel(jobId: string): null {
   const session = renderSessions.get(jobId);
   if (session) {
-    clearInterval(session.timer);
+    if (session.timer) clearInterval(session.timer);
+    session.cancelRequested = true;
+    session.ffmpegProcess?.kill("SIGKILL");
     session.job.status = "cancelled";
     session.job.completed_at = Date.now();
     broadcastRenderProgress(session.job, session.frame);
@@ -5887,7 +6065,9 @@ export async function handleLegacyInvoke(
         String((args as { out?: string } | undefined)?.out ?? ""),
       );
     case "sound_library_list":
-      return [];
+      return soundLibraryList(
+        String((args as { category?: string } | undefined)?.category ?? "sfx"),
+      );
     case "export_get_presets":
       return exportPresetsCatalogue();
     case "export_validate_config":

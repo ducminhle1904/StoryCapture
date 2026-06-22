@@ -24,7 +24,7 @@ import {
 
 import previewBackdrop from "@/assets/gradients/forest-emerald.png";
 import type { RecordingActions } from "@/ipc/actions";
-import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/trajectory";
+import type { CaptureRect, RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
 import { frontendLog } from "@/lib/log";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
 import {
@@ -43,7 +43,7 @@ import {
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
-import { sampleVirtualCursor } from "./virtual-cursor-path";
+import { sampleVirtualCursor, type VirtualCursorSample } from "./virtual-cursor-path";
 
 type PreviewOutputMode = "native-video" | "composited-canvas";
 
@@ -98,6 +98,7 @@ export interface PreviewPlayerProps {
   height?: number;
   outputMode?: PreviewOutputMode;
   actions?: RecordingActions | null;
+  trajectory?: RecordingTrajectory | null;
   stepTiming?: RecordingStepTimingSidecar | null;
   captureRect?: CaptureRect | null;
 }
@@ -336,6 +337,34 @@ function setStyleValue(style: CSSStyleDeclaration, key: CursorStyleKey, value: s
   }
 }
 
+function sampleTrajectoryCursor(
+  trajectory: RecordingTrajectory | null,
+  relativeMs: number,
+): VirtualCursorSample | null {
+  const frames = trajectory?.frames ?? [];
+  if (frames.length === 0) return null;
+  let best = frames[0];
+  let bestDistance = Math.abs(best.t_ms - relativeMs);
+  for (const frame of frames) {
+    const distance = Math.abs(frame.t_ms - relativeMs);
+    if (distance > bestDistance) continue;
+    best = frame;
+    bestDistance = distance;
+  }
+  return {
+    x: best.x,
+    y: best.y,
+    ripple: best.click
+      ? {
+          x: best.x,
+          y: best.y,
+          progress: 0,
+          opacity: 1,
+        }
+      : null,
+  };
+}
+
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0.5;
   return Math.max(0, Math.min(1, value));
@@ -429,6 +458,7 @@ export function PreviewPlayer({
   height = 1080,
   outputMode = DEFAULT_PREVIEW_OUTPUT_MODE,
   actions = null,
+  trajectory = null,
   stepTiming = null,
   captureRect = null,
 }: PreviewPlayerProps) {
@@ -459,6 +489,7 @@ export function PreviewPlayer({
   const cursorClipsRef = useRef<CursorClip[]>([]);
   const zoomClipsRef = useRef<ZoomClip[]>([]);
   const actionsRef = useRef<RecordingActions | null>(actions);
+  const trajectoryRef = useRef<RecordingTrajectory | null>(trajectory);
 
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const pushAction = useEditorStore((s) => s.pushAction);
@@ -547,22 +578,24 @@ export function PreviewPlayer({
       const cursor = cursorRef.current;
       const ripple = cursorRippleRef.current;
       const currentActions = actionsRef.current;
-      if (!cursor || !currentActions) {
+      const currentTrajectory = trajectoryRef.current;
+      if (!cursor) {
         hideCursorOverlay();
         return;
       }
 
       const clip = activeCursorClip(cursorClipsRef.current, playheadMs);
-      if (!clip || !isActionsCursorClip(clip)) {
+      if (!clip) {
         hideCursorOverlay();
         return;
       }
 
-      const sample = sampleVirtualCursor(
-        currentActions,
-        playheadMs - clip.startMs,
-        clip.motionPreset,
-      );
+      const relativeMs = playheadMs - clip.startMs;
+      const sample = isActionsCursorClip(clip)
+        ? sampleVirtualCursor(currentActions, relativeMs, clip.motionPreset)
+        : clip.trajectoryKind === "trajectory"
+          ? sampleTrajectoryCursor(currentTrajectory, relativeMs)
+          : null;
       const src = cursorSkinSrc(clip.skin);
       if (!sample || !src) {
         hideCursorOverlay();
@@ -737,10 +770,11 @@ export function PreviewPlayer({
   useEffect(() => {
     cursorClipsRef.current = cursorClips;
     actionsRef.current = actions;
+    trajectoryRef.current = trajectory;
     const playheadMs = useEditorStore.getState().playheadMs;
     applyPreviewZoom(playheadMs);
     renderCursorOverlay(playheadMs);
-  }, [actions, applyPreviewZoom, cursorClips, renderCursorOverlay]);
+  }, [actions, applyPreviewZoom, cursorClips, renderCursorOverlay, trajectory]);
 
   useEffect(() => {
     zoomClipsRef.current = zoomClips;

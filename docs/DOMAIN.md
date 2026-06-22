@@ -122,12 +122,15 @@ probing, but that does not replace operating-system permission testing.
 
 Main files live under `apps/desktop/src/features/post-production`.
 
-The editor loads story source, the latest recording where applicable, action
-events, cursor trajectory, step timing, and optional polish data before building
-timeline tracks. The editor owns:
+The editor loads story source, the latest recording where applicable, saved
+timeline layout JSON, action events, cursor trajectory, step timing, and
+optional polish data before building timeline tracks. Saved layout wins over
+generated bootstrap data; corrupt or unsupported layout falls back to bootstrap
+without crashing. The editor owns:
 
 - `editor-shell.tsx`: primary route surface.
 - Timeline and track state: video, cursor, zoom, sound, annotation/highlight.
+- `state/timeline-layout.ts`: versioned timeline layout persistence schema.
 - `state/build-timeline-from-story.ts`: Story plus sidecars to initial timeline.
 - `state/compute-graph.ts`: timeline to render/export graph.
 - Inspector panels for output, background, effects, sound, and export settings.
@@ -135,10 +138,12 @@ timeline tracks. The editor owns:
 - Export modal, render queue/progress UI, undo/history, sound drawer, and
   voiceover compact UI.
 
-Current host export caveat: UI exposes advanced export concepts, but the
-Electron host `export_run` path currently shells out to FFmpeg with hardcoded
-codec choices for MP4/WebM in the legacy host path. Verify backend support
-before assuming every UI option affects final encoding.
+Current host export caveat: `export_run` writes a graph snapshot and creates
+real render queue jobs. The legacy host path can encode source-only graphs with
+FFmpeg. Graph nodes that require compositor support, including overlays,
+background framing, zoom, cursor, transitions, or audio, fail clearly instead of
+being silently dropped. Verify backend compositor support before assuming every
+UI option affects final encoding.
 
 ## Render And Export
 

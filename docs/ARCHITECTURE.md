@@ -150,8 +150,8 @@ Current non-plugin command ownership:
 | `ipc/recording.ts` | start/stop/pause/resume recording and host audio handoff |
 | `ipc/capture.ts` | capture target get/set/thumbnail and capture start/stop |
 | `ipc/post-production.ts` | workflow state, timeline load/save, recording actions/trajectory/step timing, presets, sound library |
-| `ipc/render.ts` | render enqueue/cancel/list active/progress stream |
-| `ipc/export.ts` | export presets, validation, run |
+| `ipc/render.ts` | render cancel/list active/progress stream; direct enqueue is not a fake timer path |
+| `ipc/export.ts` | export presets, validation, run; `export_run` creates real render jobs |
 | `ipc/ai.ts` | LSP requests, NL sessions/chat/diffs/regeneration, session rollup, TTS voices/generation/sync/cache |
 | `ipc/web-sync.ts` | web account/token, sync/upload status, OAuth, metadata sync queue, upload/cancel, recording status |
 | `ipc/updates.ts` | update check/install |

@@ -9,6 +9,8 @@ import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
 
 const ipcMocks = vi.hoisted(() => ({
   fetchProjectFolder: vi.fn(),
+  timelineLoad: vi.fn(),
+  timelineSave: vi.fn(),
   useProjectRecordings: vi.fn(),
   useRecordingActions: vi.fn(),
   useRecordingStepTiming: vi.fn(),
@@ -22,6 +24,11 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
 vi.mock("@/ipc/projects", () => ({
   fetchProjectFolder: ipcMocks.fetchProjectFolder,
   useProjectRecordings: ipcMocks.useProjectRecordings,
+}));
+
+vi.mock("@/ipc/timeline", () => ({
+  timelineLoad: ipcMocks.timelineLoad,
+  timelineSave: ipcMocks.timelineSave,
 }));
 
 vi.mock("@/ipc/parse", () => ({
@@ -84,6 +91,8 @@ function resetStore() {
 beforeEach(() => {
   resetStore();
   ipcMocks.fetchProjectFolder.mockRejectedValue(new Error("not loaded"));
+  ipcMocks.timelineLoad.mockResolvedValue(null);
+  ipcMocks.timelineSave.mockResolvedValue(undefined);
   ipcMocks.useProjectRecordings.mockReturnValue({
     data: [],
     isSuccess: true,
@@ -105,6 +114,7 @@ describe("EditorShell toolbar actions", () => {
         <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
       </MemoryRouter>,
     );
+    useEditorStore.getState().setPlayhead(2_500);
 
     fireEvent.click(screen.getByRole("button", { name: "Add zoom clip" }));
 
@@ -134,6 +144,7 @@ describe("EditorShell toolbar actions", () => {
         <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
       </MemoryRouter>,
     );
+    useEditorStore.getState().setPlayhead(2_500);
 
     fireEvent.click(screen.getByRole("button", { name: "Add text clip" }));
 
@@ -161,7 +172,7 @@ describe("EditorShell toolbar actions", () => {
     expect(useEditorStore.getState().tracks.annotations).toHaveLength(0);
   });
 
-  it("opens fine tune and selects the target clip from a review fix item", () => {
+  it("opens fine tune and selects the target clip from a review fix item", async () => {
     useEditorStore.setState((state) => ({
       tracks: {
         ...state.tracks,
@@ -184,8 +195,24 @@ describe("EditorShell toolbar actions", () => {
         <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
       </MemoryRouter>,
     );
+    useEditorStore.setState((state) => ({
+      tracks: {
+        ...state.tracks,
+        zoom: Array.from({ length: 11 }, (_, index) => ({
+          id: `zoom-${index}`,
+          trackId: "zoom" as const,
+          startMs: 1_000 + index * 100,
+          durationMs: 900,
+          label: "Script zoom",
+          target: { kind: "cursor" as const },
+          scale: 1.5,
+          center: { x: 0.5, y: 0.5 },
+          preset: "DYNAMIC" as const,
+        })),
+      },
+    }));
 
-    fireEvent.click(screen.getByText("Dense zoom pacing"));
+    fireEvent.click(await screen.findByText("Dense zoom pacing"));
 
     const state = useEditorStore.getState();
     expect(state.selectedClipId).toBe("zoom-0");

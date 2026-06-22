@@ -663,7 +663,9 @@ export function computeGraph(state: ComputeGraphInput): Graph {
 
 /** True when the graph has at least one renderable video node. */
 export function graphIsRenderable(graph: Graph): boolean {
-  return graph.video.length > 0;
+  return graph.video.some(
+    (node) => node.type === "source" && typeof node.path === "string" && node.path.length > 0,
+  );
 }
 
 /** Track ids consumed by `computeGraph`. Exported for documentation/tests. */

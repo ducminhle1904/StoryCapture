@@ -57,6 +57,39 @@ describe("computeGraph", () => {
     expect(graphIsRenderable(g)).toBe(false);
   });
 
+  it("requires a source video node before a graph is renderable", () => {
+    useEditorStore.setState({
+      exportForm: { ...DEFAULT_EXPORT_FORM, frameMode: "framed" },
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "gradient", preset_id: "runway-dark" },
+      },
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "text-only",
+            trackId: "annotations",
+            startMs: 0,
+            durationMs: 1000,
+            text: "Title only",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 32,
+          },
+        ],
+      },
+    });
+
+    const graph = computeGraph(useEditorStore.getState());
+
+    expect(graph.video.map((node) => node.type)).toEqual(["background", "text-overlay"]);
+    expect(graphIsRenderable(graph)).toBe(false);
+  });
+
   it("emits Source → ZoomPan → Background → CursorOverlay → TextOverlay → Transition in canonical order", () => {
     useEditorStore.setState({
       _undoExtras: {

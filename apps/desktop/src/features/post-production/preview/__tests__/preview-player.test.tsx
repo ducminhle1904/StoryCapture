@@ -179,6 +179,62 @@ describe("PreviewPlayer", () => {
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
 
+  it("shows the virtual cursor overlay from trajectory-only sidecars", async () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-trajectory",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 10_000,
+            trajectoryDir: "/tmp/demo.trajectory.json",
+            trajectoryKind: "trajectory",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 2,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        trajectory={{
+          recording_path: "/tmp/demo.mp4",
+          capture_rect: { x: 0, y: 0, width: 1920, height: 1080 },
+          fps: 60,
+          frame_count: 2,
+          frames: [
+            { t_ms: 0, x: 0.2, y: 0.3, click: false },
+            { t_ms: 2000, x: 0.4, y: 0.7, click: true },
+          ],
+        }}
+      />,
+    );
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(2000);
+    });
+
+    const overlay = screen.getByTestId("virtual-cursor-overlay");
+    const cursor = overlay.querySelector("img");
+    const ripple = overlay.querySelector("div");
+
+    await waitFor(() => expect(cursor?.style.opacity).toBe("1"));
+    expect(cursor?.style.left).toBe("40%");
+    expect(cursor?.style.top).toBe("70%");
+    expect(ripple?.style.opacity).toBe("0.72");
+    expect(PreviewEngine).not.toHaveBeenCalled();
+  });
+
   it("keeps cursor screen-sized while positioning it through active zoom", async () => {
     useEditorStore.setState({
       tracks: {

@@ -24,6 +24,7 @@ Use this for task routing after reading the short root guide.
 - Post-production: `apps/desktop/src/routes/post-production.tsx`,
   `apps/desktop/src/features/post-production/editor-shell.tsx`,
   `apps/desktop/src/features/post-production/state/store.ts`,
+  `apps/desktop/src/features/post-production/state/timeline-layout.ts`,
   `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
   `apps/desktop/src/features/post-production/state/compute-graph.ts`, plus
   `apps/desktop/src/features/post-production/timeline/`,

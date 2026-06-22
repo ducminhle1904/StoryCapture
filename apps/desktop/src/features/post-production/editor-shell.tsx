@@ -26,7 +26,7 @@ import {
   Wand2,
   ZoomIn,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
@@ -39,6 +39,7 @@ import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
 import { useRecordingActions } from "@/ipc/actions";
 import { type ParseResult, parseStory } from "@/ipc/parse";
 import { fetchProjectFolder, useProjectRecordings } from "@/ipc/projects";
+import { timelineLoad, timelineSave } from "@/ipc/timeline";
 import { useRecordingStepTiming, useRecordingTrajectory } from "@/ipc/trajectory";
 import { ExportModal } from "./export-modal/export-modal";
 import { useEditorHotkeys } from "./hooks/use-hotkeys";
@@ -47,9 +48,15 @@ import { QueueWidget } from "./render-queue/queue-widget";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
 import { buildTimelineFromStory } from "./state/build-timeline-from-story";
 import { createClipId } from "./state/clip-id";
-import { useEditorStore } from "./state/store";
+import { DEFAULT_BACKGROUND, readEditorBackground, useEditorStore } from "./state/store";
 import { styleDefaults } from "./state/text-style";
-import type { AnnotationClip, TimelineSlice, ZoomClip } from "./state/timeline-slice";
+import {
+  cloneTimelineTracks,
+  type AnnotationClip,
+  type TimelineSlice,
+  type ZoomClip,
+} from "./state/timeline-slice";
+import { parseTimelineLayoutJson, serializeTimelineLayout } from "./state/timeline-layout";
 import { Timeline } from "./timeline/timeline";
 
 export interface EditorShellProps {
@@ -65,6 +72,32 @@ function maxTrackEndMs(tracks: TimelineSlice["tracks"]): number {
     }
   }
   return maxEndMs;
+}
+
+function resetTransientTimelineState() {
+  useEditorStore.setState({
+    tracks: cloneTimelineTracks(),
+    durationMs: 0,
+    playheadMs: 0,
+    selectedClipId: null,
+    selectedPresetId: null,
+    selectedTab: "presets",
+    _undoExtras: {
+      graphSnapshot: {},
+      textOverlays: {},
+      background: DEFAULT_BACKGROUND,
+    },
+  });
+  useEditorStore.getState().clearHistory();
+}
+
+function serializeCurrentTimelineLayout(): string {
+  const state = useEditorStore.getState();
+  return serializeTimelineLayout({
+    tracks: state.tracks,
+    durationMs: state.durationMs,
+    background: readEditorBackground(state),
+  });
 }
 
 type ReviewFixTone = "info" | "warn" | "critical";
@@ -280,7 +313,11 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const [polishDoc, setPolishDoc] = useState<StoryPolishDoc | null>(null);
   const [projectOpenReady, setProjectOpenReady] = useState(Boolean(videoSrc));
   const [timelineBootstrapReady, setTimelineBootstrapReady] = useState(Boolean(videoSrc));
+  const [timelineHydrated, setTimelineHydrated] = useState(Boolean(videoSrc));
+  const [timelineNeedsBootstrap, setTimelineNeedsBootstrap] = useState(Boolean(videoSrc));
   const [workspaceMode, setWorkspaceMode] = useState<"review" | "fine-tune">("review");
+  const timelineLoadTokenRef = useRef(0);
+  const lastSavedTimelineRef = useRef("");
   useEffect(() => {
     let cancelled = false;
     setStoryParsed(null);
@@ -315,6 +352,60 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     return () => {
       cancelled = true;
     };
+  }, [storyId, videoSrc]);
+
+  useEffect(() => {
+    const token = ++timelineLoadTokenRef.current;
+    setTimelineHydrated(false);
+    setTimelineNeedsBootstrap(false);
+    lastSavedTimelineRef.current = "";
+    resetTransientTimelineState();
+
+    if (videoSrc) {
+      setTimelineHydrated(true);
+      setTimelineNeedsBootstrap(true);
+      return;
+    }
+
+    (async () => {
+      try {
+        const saved = await timelineLoad(storyId);
+        if (timelineLoadTokenRef.current !== token) return;
+        if (saved?.layout_json) {
+          const parsed = parseTimelineLayoutJson(saved.layout_json);
+          if (parsed.ok) {
+            useEditorStore.setState((state) => ({
+              tracks: cloneTimelineTracks(parsed.layout.tracks),
+              durationMs: parsed.layout.durationMs,
+              playheadMs: 0,
+              selectedClipId: null,
+              selectedPresetId: null,
+              selectedTab: "presets",
+              _undoExtras: {
+                ...(state._undoExtras ?? {
+                  graphSnapshot: {},
+                  textOverlays: {},
+                  background: DEFAULT_BACKGROUND,
+                }),
+                background: parsed.layout.background,
+              },
+            }));
+            useEditorStore.getState().clearHistory();
+            lastSavedTimelineRef.current = serializeCurrentTimelineLayout();
+            setTimelineNeedsBootstrap(false);
+            setTimelineHydrated(true);
+            return;
+          }
+          console.warn(`Saved timeline for story ${storyId} was ignored: ${parsed.reason}`);
+        }
+      } catch (error) {
+        if (timelineLoadTokenRef.current !== token) return;
+        console.warn(`Failed to load timeline for story ${storyId}`, error);
+      }
+      if (timelineLoadTokenRef.current !== token) return;
+      setTimelineNeedsBootstrap(true);
+      setTimelineHydrated(true);
+    })();
   }, [storyId, videoSrc]);
 
   const actionsQuery = useRecordingActions(latestRecording?.path);
@@ -446,6 +537,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   ]);
   useEffect(() => {
     if (!latestRecording) return;
+    if (!timelineHydrated || !timelineNeedsBootstrap) return;
     if (!timelineBootstrapReady) return;
     if (actionsQuery.isLoading || trajectoryQuery.isLoading || stepTimingQuery.isLoading) return;
     if (tracksVideoLen > 0) return;
@@ -470,7 +562,19 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         background,
       },
     }));
+    const layoutJson = serializeCurrentTimelineLayout();
+    const saveToken = timelineLoadTokenRef.current;
+    void timelineSave(storyId, layoutJson)
+      .then(() => {
+        if (timelineLoadTokenRef.current !== saveToken) return;
+        lastSavedTimelineRef.current = layoutJson;
+      })
+      .catch((error) => {
+        console.warn(`Failed to autosave bootstrapped timeline for story ${storyId}`, error);
+      });
+    setTimelineNeedsBootstrap(false);
   }, [
+    storyId,
     latestRecording,
     polishDoc,
     storyParsed,
@@ -478,7 +582,9 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     recordingActions,
     stepTimingQuery.data,
     stepTimingQuery.isLoading,
+    timelineHydrated,
     timelineBootstrapReady,
+    timelineNeedsBootstrap,
     trajectoryQuery.data,
     trajectoryQuery.isLoading,
     tracksVideoLen,
@@ -489,6 +595,35 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     setTracks,
     setDuration,
   ]);
+
+  useEffect(() => {
+    if (!timelineHydrated || timelineNeedsBootstrap) return;
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    const saveToken = timelineLoadTokenRef.current;
+    const unsubscribe = useEditorStore.subscribe((state) => {
+      const layoutJson = serializeTimelineLayout({
+        tracks: state.tracks,
+        durationMs: state.durationMs,
+        background: readEditorBackground(state),
+      });
+      if (layoutJson === lastSavedTimelineRef.current) return;
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        void timelineSave(storyId, layoutJson)
+          .then(() => {
+            if (timelineLoadTokenRef.current !== saveToken) return;
+            lastSavedTimelineRef.current = layoutJson;
+          })
+          .catch((error) => {
+            console.warn(`Failed to autosave timeline for story ${storyId}`, error);
+          });
+      }, 750);
+    });
+    return () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      unsubscribe();
+    };
+  }, [storyId, timelineHydrated, timelineNeedsBootstrap]);
 
   const handleReviewFixItem = useCallback(
     (item: ReviewFixItem) => {
@@ -703,6 +838,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 storyId={storyId}
                 videoSrc={resolvedVideoSrc}
                 actions={recordingActions}
+                trajectory={trajectoryQuery.data ?? null}
                 stepTiming={stepTimingQuery.data ?? null}
                 captureRect={resolvedCaptureRect}
               />
