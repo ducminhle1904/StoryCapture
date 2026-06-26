@@ -28,8 +28,8 @@ video.
   post-produce -> optionally upload/share through the web companion.
 - Web companion: Next.js + tRPC + Prisma + R2/S3 for sharing, workspaces,
   analytics, templates, and desktop sync.
-- Check package manifests for current dependency pins; do not duplicate version
-  inventories in this guide.
+- Check package manifests and `pnpm-lock.yaml` for current dependency pins; do
+  not duplicate version inventories in this guide.
 
 ## Current Repo Reality
 
@@ -114,7 +114,9 @@ file explicitly says otherwise.
 
 ## Common Workflows
 
-- Package manager: `pnpm@9.15.0`; Node is `>=20` locally and `20.x` in CI.
+- Package manager and Node versions: read root `package.json` (`packageManager`,
+  `engines`) and `.github/actions/setup-toolchain/action.yml`; do not rely on
+  this guide for version pins.
 - Root commands: `pnpm dev`, `pnpm build`, `pnpm typecheck`, `pnpm lint`,
   `pnpm format`.
 - There is no root `pnpm test`; run package-scoped Vitest commands from

@@ -14,7 +14,9 @@ migrations, generated files, or release tooling.
   - `pnpm --dir packages/ui test`
   - `pnpm --dir apps/web test`
   - `pnpm --dir apps/desktop run build`
-- Package manager is pnpm `9.15.0`; Node is `20.x` in CI.
+- CI package manager and Node versions are configured in
+  `.github/actions/setup-toolchain/action.yml`; dependency pins live in package
+  manifests and `pnpm-lock.yaml`, not agent docs.
 
 ## Desktop Packaging And Release
 

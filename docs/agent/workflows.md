@@ -2,7 +2,9 @@
 
 ## Package Manager And Workspace
 
-- Use `pnpm@9.15.0`; Node is `>=20` locally and `20.x` in CI.
+- Package manager and Node versions are defined in root `package.json`
+  (`packageManager`, `engines`) and `.github/actions/setup-toolchain/action.yml`.
+  Read those files for exact versions instead of copying pins into agent docs.
 - Workspaces are declared in `pnpm-workspace.yaml`: `apps/*`, `packages/*`.
 - Prefer package-scoped commands for dev servers and focused checks.
 
