@@ -18,6 +18,7 @@ const ipcMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
+  exists: vi.fn(() => Promise.resolve(false)),
   readTextFile: vi.fn(() => Promise.reject(new Error("not loaded in toolbar tests"))),
 }));
 
