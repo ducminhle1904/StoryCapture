@@ -58,6 +58,7 @@ const AMBIENT_SAMPLE_INTERVAL_MS = 90;
 const AMBIENT_FRAME_SMOOTHING = 0.13;
 const CURSOR_BASE_SIZE_PX = 32;
 const CURSOR_RIPPLE_MAX_PX = 96;
+const SOURCE_HOLD_EPSILON_SECONDS = 0.001;
 const TEXT_DRAG_OVERSCAN = 0.25;
 
 const cursorSkinAssets = import.meta.glob("../../../../../../assets/cursor-skins/*.png", {
@@ -122,6 +123,27 @@ function safeAspect(width: number, height: number): number {
     return 16 / 9;
   }
   return width / height;
+}
+
+function mediaDurationMs(video: HTMLVideoElement): number {
+  return Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 : 0;
+}
+
+function mediaSecondsForPlayhead(video: HTMLVideoElement, playheadMs: number): number {
+  const requestedSeconds = Math.max(0, playheadMs) / 1000;
+  if (!Number.isFinite(video.duration) || video.duration <= 0) return requestedSeconds;
+  return Math.min(
+    requestedSeconds,
+    Math.max(0, video.duration - SOURCE_HOLD_EPSILON_SECONDS),
+  );
+}
+
+function timelinePlaybackDurationMs(video: HTMLVideoElement, timelineDurationMs: number): number {
+  if (Number.isFinite(timelineDurationMs) && timelineDurationMs > 0) {
+    return timelineDurationMs;
+  }
+  const sourceDurationMs = mediaDurationMs(video);
+  return sourceDurationMs > 0 ? sourceDurationMs : Number.POSITIVE_INFINITY;
 }
 
 function clamp255(n: number): number {
@@ -490,6 +512,7 @@ export function PreviewPlayer({
   const zoomClipsRef = useRef<ZoomClip[]>([]);
   const actionsRef = useRef<RecordingActions | null>(actions);
   const trajectoryRef = useRef<RecordingTrajectory | null>(trajectory);
+  const durationMsRef = useRef(0);
 
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
   const pushAction = useEditorStore((s) => s.pushAction);
@@ -500,6 +523,7 @@ export function PreviewPlayer({
   const zoomClips = useEditorStore((s) => s.tracks.zoom);
   const annotationClips = useEditorStore((s) => s.tracks.annotations);
   const playheadMs = useEditorStore((s) => s.playheadMs);
+  const durationMs = useEditorStore((s) => s.durationMs);
   const useCompositedCanvas = outputMode === "composited-canvas";
   const displayReady = !useCompositedCanvas || engineReady;
   const renderPlan = useMemo(() => buildPlan(width, height), [width, height]);
@@ -686,7 +710,7 @@ export function PreviewPlayer({
       const video = videoRef.current;
       if (!video) return;
       const nextMs = Math.max(0, targetMs);
-      const nextSeconds = nextMs / 1000;
+      const nextSeconds = mediaSecondsForPlayhead(video, nextMs);
 
       video.currentTime = nextSeconds;
       syncAmbientVideo(nextSeconds);
@@ -766,6 +790,10 @@ export function PreviewPlayer({
   useEffect(() => {
     playingRef.current = playing;
   }, [playing]);
+
+  useEffect(() => {
+    durationMsRef.current = durationMs;
+  }, [durationMs]);
 
   useEffect(() => {
     cursorClipsRef.current = cursorClips;
@@ -892,23 +920,41 @@ export function PreviewPlayer({
     const video = videoRef.current;
     if (!video || !resolvedSrc) return;
     let disposed = false;
+    let holdingSourceFrame = false;
+    const playbackStartMs = Math.max(0, useEditorStore.getState().playheadMs);
+    const playbackStartedAt = performance.now();
 
-    const commitCurrentTime = () => {
-      const nextPlayheadMs = video.currentTime * 1000;
+    const playbackDurationMs = () => timelinePlaybackDurationMs(video, durationMsRef.current);
+
+    const commitPlayhead = (nextPlayheadMs: number) => {
       setPlayhead(nextPlayheadMs);
       lastPlayheadCommitRef.current = nextPlayheadMs;
     };
 
-    const tick = () => {
-      if (disposed) return;
-      if (video.ended || video.paused) {
-        commitCurrentTime();
-        setPlaying(false);
-        return;
-      }
+    const commitCurrentMediaTime = () => {
+      commitPlayhead(video.currentTime * 1000);
+    };
 
-      const nextPlayheadMs = video.currentTime * 1000;
-      syncAmbientPlayback(video);
+    const tick = (now: number) => {
+      if (disposed) return;
+      const durationMs = playbackDurationMs();
+      const elapsedMs = Math.max(0, now - playbackStartedAt);
+      const nextPlayheadMs = Math.min(durationMs, playbackStartMs + elapsedMs);
+      const sourceDurationMs = mediaDurationMs(video);
+      const mediaSeconds = mediaSecondsForPlayhead(video, nextPlayheadMs);
+
+      if (sourceDurationMs > 0 && nextPlayheadMs >= sourceDurationMs) {
+        holdingSourceFrame = true;
+        if (Math.abs(video.currentTime - mediaSeconds) > MEDIA_SYNC_EPSILON_MS / 1000) {
+          video.currentTime = mediaSeconds;
+        }
+        if (!video.paused) video.pause();
+        ambientVideoRef.current?.pause();
+        syncAmbientVideo(mediaSeconds);
+      } else {
+        holdingSourceFrame = false;
+        syncAmbientPlayback(video);
+      }
       applyPreviewZoom(nextPlayheadMs);
       renderCursorOverlay(nextPlayheadMs);
       if (
@@ -918,30 +964,52 @@ export function PreviewPlayer({
         setPlayhead(nextPlayheadMs);
         lastPlayheadCommitRef.current = nextPlayheadMs;
       }
+      if (Number.isFinite(durationMs) && nextPlayheadMs >= durationMs) {
+        commitPlayhead(durationMs);
+        setPlaying(false);
+        return;
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
 
     const stopPlayback = () => {
       if (disposed) return;
-      commitCurrentTime();
+      if (holdingSourceFrame) return;
+      const sourceDurationMs = mediaDurationMs(video);
+      if (
+        sourceDurationMs > 0 &&
+        playbackDurationMs() > sourceDurationMs + MEDIA_SYNC_EPSILON_MS &&
+        (video.ended || video.currentTime * 1000 >= sourceDurationMs - MEDIA_SYNC_EPSILON_MS)
+      ) {
+        holdingSourceFrame = true;
+        return;
+      }
+      commitCurrentMediaTime();
       setPlaying(false);
     };
 
     video.addEventListener("pause", stopPlayback);
     video.addEventListener("ended", stopPlayback);
 
-    void video
-      .play()
-      .then(() => {
-        if (!disposed) {
-          syncAmbientPlayback(video);
-          void ambientVideoRef.current?.play().catch(() => undefined);
-          rafRef.current = requestAnimationFrame(tick);
-        }
-      })
-      .catch(() => {
-        if (!disposed) setPlaying(false);
-      });
+    seekPreviewToPlayhead(playbackStartMs);
+    const sourceDurationMs = mediaDurationMs(video);
+    if (sourceDurationMs > 0 && playbackStartMs >= sourceDurationMs) {
+      holdingSourceFrame = true;
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      void video
+        .play()
+        .then(() => {
+          if (!disposed) {
+            syncAmbientPlayback(video);
+            void ambientVideoRef.current?.play().catch(() => undefined);
+            rafRef.current = requestAnimationFrame(tick);
+          }
+        })
+        .catch(() => {
+          if (!disposed) setPlaying(false);
+        });
+    }
 
     return () => {
       disposed = true;
@@ -951,15 +1019,16 @@ export function PreviewPlayer({
       rafRef.current = null;
       video.pause();
       ambientVideoRef.current?.pause();
-      commitCurrentTime();
     };
   }, [
     playing,
     applyPreviewZoom,
     renderCursorOverlay,
     resolvedSrc,
+    seekPreviewToPlayhead,
     setPlayhead,
     syncAmbientPlayback,
+    syncAmbientVideo,
     useCompositedCanvas,
   ]);
 
@@ -971,43 +1040,82 @@ export function PreviewPlayer({
     if (!video || !resolvedSrc) return;
     if (!eng) return;
     let disposed = false;
+    let holdingSourceFrame = false;
+    let lastRenderedPlayheadMs = Math.max(0, useEditorStore.getState().playheadMs);
+    const playbackStartMs = lastRenderedPlayheadMs;
+    const playbackStartedAt = performance.now();
 
-    const tick = () => {
+    const playbackDurationMs = () => timelinePlaybackDurationMs(video, durationMsRef.current);
+
+    const commitPlayhead = (nextPlayheadMs: number) => {
+      setPlayhead(nextPlayheadMs);
+      lastPlayheadCommitRef.current = nextPlayheadMs;
+    };
+
+    const tick = (now: number) => {
       if (disposed) return;
-      if (video.ended || video.paused) {
+      const durationMs = playbackDurationMs();
+      const elapsedMs = Math.max(0, now - playbackStartedAt);
+      const nextPlayheadMs = Math.min(durationMs, playbackStartMs + elapsedMs);
+      const sourceDurationMs = mediaDurationMs(video);
+      const mediaSeconds = mediaSecondsForPlayhead(video, nextPlayheadMs);
+      const shouldHoldSource = sourceDurationMs > 0 && nextPlayheadMs >= sourceDurationMs;
+
+      if (shouldHoldSource) {
+        holdingSourceFrame = true;
+        if (Math.abs(video.currentTime - mediaSeconds) > MEDIA_SYNC_EPSILON_MS / 1000) {
+          video.currentTime = mediaSeconds;
+        }
+        if (!video.paused) video.pause();
+        ambientVideoRef.current?.pause();
+        syncAmbientVideo(mediaSeconds);
+      } else if (video.ended || video.paused) {
         const finalPlayheadMs = video.currentTime * 1000;
-        setPlayhead(finalPlayheadMs);
-        lastPlayheadCommitRef.current = finalPlayheadMs;
+        commitPlayhead(finalPlayheadMs);
+        setPlaying(false);
+        return;
+      } else {
+        holdingSourceFrame = false;
+        syncAmbientPlayback(video);
+      }
+
+      lastRenderedPlayheadMs = nextPlayheadMs;
+      applyPreviewZoom(nextPlayheadMs);
+      renderCursorOverlay(nextPlayheadMs);
+      if (
+        Math.abs(nextPlayheadMs - lastPlayheadCommitRef.current) >=
+        COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS
+      ) {
+        commitPlayhead(nextPlayheadMs);
+      }
+      void eng.renderFrame(nextPlayheadMs, renderPlan);
+      if (Number.isFinite(durationMs) && nextPlayheadMs >= durationMs) {
+        commitPlayhead(durationMs);
         setPlaying(false);
         return;
       }
-
-      const t_ms = video.currentTime * 1000;
-      syncAmbientPlayback(video);
-      applyPreviewZoom(t_ms);
-      renderCursorOverlay(t_ms);
-      if (
-        Math.abs(t_ms - lastPlayheadCommitRef.current) >= COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS
-      ) {
-        setPlayhead(t_ms);
-        lastPlayheadCommitRef.current = t_ms;
-      }
-      void eng.renderFrame(t_ms, renderPlan);
       rafRef.current = requestAnimationFrame(tick);
     };
 
-    void video
-      .play()
-      .then(() => {
-        if (!disposed) {
-          syncAmbientPlayback(video);
-          void ambientVideoRef.current?.play().catch(() => undefined);
-          rafRef.current = requestAnimationFrame(tick);
-        }
-      })
-      .catch(() => {
-        if (!disposed) setPlaying(false);
-      });
+    seekPreviewToPlayhead(playbackStartMs);
+    const sourceDurationMs = mediaDurationMs(video);
+    if (sourceDurationMs > 0 && playbackStartMs >= sourceDurationMs) {
+      holdingSourceFrame = true;
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      void video
+        .play()
+        .then(() => {
+          if (!disposed) {
+            syncAmbientPlayback(video);
+            void ambientVideoRef.current?.play().catch(() => undefined);
+            rafRef.current = requestAnimationFrame(tick);
+          }
+        })
+        .catch(() => {
+          if (!disposed) setPlaying(false);
+        });
+    }
 
     return () => {
       disposed = true;
@@ -1015,9 +1123,14 @@ export function PreviewPlayer({
       rafRef.current = null;
       video.pause();
       ambientVideoRef.current?.pause();
-      const finalPlayheadMs = video.currentTime * 1000;
-      setPlayhead(finalPlayheadMs);
-      lastPlayheadCommitRef.current = finalPlayheadMs;
+      if (holdingSourceFrame) {
+        setPlayhead(lastRenderedPlayheadMs);
+        lastPlayheadCommitRef.current = lastRenderedPlayheadMs;
+      } else {
+        const finalPlayheadMs = video.currentTime * 1000;
+        setPlayhead(finalPlayheadMs);
+        lastPlayheadCommitRef.current = finalPlayheadMs;
+      }
     };
   }, [
     playing,
@@ -1025,8 +1138,10 @@ export function PreviewPlayer({
     renderCursorOverlay,
     renderPlan,
     resolvedSrc,
+    seekPreviewToPlayhead,
     setPlayhead,
     syncAmbientPlayback,
+    syncAmbientVideo,
     useCompositedCanvas,
   ]);
 

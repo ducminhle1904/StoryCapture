@@ -56,7 +56,11 @@ import {
   type TimelineSlice,
   type ZoomClip,
 } from "./state/timeline-slice";
-import { parseTimelineLayoutJson, serializeTimelineLayout } from "./state/timeline-layout";
+import {
+  parseTimelineLayoutJson,
+  serializeTimelineLayout,
+  type TimelineLayoutV1,
+} from "./state/timeline-layout";
 import { Timeline } from "./timeline/timeline";
 
 export interface EditorShellProps {
@@ -98,6 +102,13 @@ function serializeCurrentTimelineLayout(): string {
     durationMs: state.durationMs,
     background: readEditorBackground(state),
   });
+}
+
+function timelineLayoutMatchesRecording(
+  layout: TimelineLayoutV1,
+  recordingPath: string,
+): boolean {
+  return layout.tracks.video.some((clip) => clip.sourcePath === recordingPath);
 }
 
 type ReviewFixTone = "info" | "warn" | "critical";
@@ -301,6 +312,8 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   // `videoSrc` prop (used by tests/storybook) wins over the IPC-loaded path.
   const recordingsQuery = useProjectRecordings(storyId);
   const latestRecording = recordingsQuery.data?.[0] ?? null;
+  const latestRecordingPath = latestRecording?.path ?? null;
+  const recordingsReady = Boolean(videoSrc) || recordingsQuery.isSuccess || recordingsQuery.isError;
   const resolvedVideoSrc = videoSrc ?? latestRecording?.path;
   const showEmptyOverlay = !videoSrc && recordingsQuery.isSuccess && !latestRecording;
   const showErrorOverlay = !videoSrc && recordingsQuery.isError;
@@ -366,6 +379,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       setTimelineNeedsBootstrap(true);
       return;
     }
+    if (!recordingsReady) return;
 
     (async () => {
       try {
@@ -374,29 +388,39 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         if (saved?.layout_json) {
           const parsed = parseTimelineLayoutJson(saved.layout_json);
           if (parsed.ok) {
-            useEditorStore.setState((state) => ({
-              tracks: cloneTimelineTracks(parsed.layout.tracks),
-              durationMs: parsed.layout.durationMs,
-              playheadMs: 0,
-              selectedClipId: null,
-              selectedPresetId: null,
-              selectedTab: "presets",
-              _undoExtras: {
-                ...(state._undoExtras ?? {
-                  graphSnapshot: {},
-                  textOverlays: {},
-                  background: DEFAULT_BACKGROUND,
-                }),
-                background: parsed.layout.background,
-              },
-            }));
-            useEditorStore.getState().clearHistory();
-            lastSavedTimelineRef.current = serializeCurrentTimelineLayout();
-            setTimelineNeedsBootstrap(false);
-            setTimelineHydrated(true);
-            return;
+            const staleForLatestRecording = latestRecordingPath
+              ? !timelineLayoutMatchesRecording(parsed.layout, latestRecordingPath)
+              : recordingsQuery.isSuccess;
+            if (staleForLatestRecording) {
+              console.info(
+                `Saved timeline for story ${storyId} was ignored because its recording is stale.`,
+              );
+            } else {
+              useEditorStore.setState((state) => ({
+                tracks: cloneTimelineTracks(parsed.layout.tracks),
+                durationMs: parsed.layout.durationMs,
+                playheadMs: 0,
+                selectedClipId: null,
+                selectedPresetId: null,
+                selectedTab: "presets",
+                _undoExtras: {
+                  ...(state._undoExtras ?? {
+                    graphSnapshot: {},
+                    textOverlays: {},
+                    background: DEFAULT_BACKGROUND,
+                  }),
+                  background: parsed.layout.background,
+                },
+              }));
+              useEditorStore.getState().clearHistory();
+              lastSavedTimelineRef.current = serializeCurrentTimelineLayout();
+              setTimelineNeedsBootstrap(false);
+              setTimelineHydrated(true);
+              return;
+            }
+          } else {
+            console.warn(`Saved timeline for story ${storyId} was ignored: ${parsed.reason}`);
           }
-          console.warn(`Saved timeline for story ${storyId} was ignored: ${parsed.reason}`);
         }
       } catch (error) {
         if (timelineLoadTokenRef.current !== token) return;
@@ -406,7 +430,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       setTimelineNeedsBootstrap(true);
       setTimelineHydrated(true);
     })();
-  }, [storyId, videoSrc]);
+  }, [storyId, videoSrc, latestRecordingPath, recordingsQuery.isSuccess, recordingsReady]);
 
   const actionsQuery = useRecordingActions(latestRecording?.path);
   const recordingActions = actionsQuery.data ?? null;

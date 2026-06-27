@@ -251,6 +251,61 @@ describe("EditorShell toolbar actions", () => {
     });
   });
 
+  it("rebuilds the timeline when the saved layout points at an older recording", async () => {
+    resetStore();
+    useEditorStore.setState({ durationMs: 0 });
+    ipcMocks.timelineLoad.mockResolvedValue({
+      story_id: "story-1",
+      layout_json: JSON.stringify({
+        version: 1,
+        tracks: {
+          video: [
+            {
+              id: "video-old",
+              trackId: "video",
+              startMs: 0,
+              durationMs: 1_000,
+              sourcePath: "/recordings/old.mp4",
+            },
+          ],
+          cursor: [],
+          zoom: [],
+          sound: [],
+          annotations: [],
+        },
+        durationMs: 1_000,
+        background: { kind: "transparent" },
+      }),
+      last_modified: 1,
+    });
+    ipcMocks.useProjectRecordings.mockReturnValue({
+      data: [
+        {
+          path: "/recordings/new.mp4",
+          captured_at: 2,
+          duration_ms: 2_500,
+          width: 1280,
+          height: 720,
+        },
+      ],
+      isSuccess: true,
+      isError: false,
+    });
+
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      const state = useEditorStore.getState();
+      expect(state.tracks.video[0]?.sourcePath).toBe("/recordings/new.mp4");
+      expect(state.tracks.video[0]?.durationMs).toBe(2_500);
+      expect(state.durationMs).toBe(2_500);
+    });
+  });
+
   it("treats an actions sidecar as review timing data", () => {
     ipcMocks.useProjectRecordings.mockReturnValue({
       data: [

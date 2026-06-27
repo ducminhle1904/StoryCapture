@@ -90,6 +90,85 @@ describe("PreviewPlayer", () => {
     await waitFor(() => expect(requestAnimationFrameSpy).toHaveBeenCalled());
   });
 
+  it("continues the native preview playhead after the source video ends", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(window.performance, "now").mockReturnValue(0);
+    let rafCallback: FrameRequestCallback | null = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      rafCallback = callback;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    useEditorStore.setState({ durationMs: 2000 });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    const video = screen.getByLabelText("Source video preview") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 1.2, configurable: true });
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(rafCallback).toBeTruthy());
+
+    act(() => {
+      rafCallback?.(1500);
+    });
+    expect(useEditorStore.getState().playheadMs).toBe(1500);
+    expect(video.currentTime).toBeCloseTo(1.199);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+
+    act(() => {
+      rafCallback?.(2100);
+    });
+    expect(useEditorStore.getState().playheadMs).toBe(2000);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument());
+  });
+
+  it("continues the composited preview playhead after the source video ends", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(window.performance, "now").mockReturnValue(0);
+    let rafCallback: FrameRequestCallback | null = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      rafCallback = callback;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    useEditorStore.setState({ durationMs: 2000 });
+
+    const { container } = render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        outputMode="composited-canvas"
+      />,
+    );
+    await waitFor(() => expect(PreviewEngine).toHaveBeenCalled());
+    const video = container.querySelector("video[hidden]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 1.2, configurable: true });
+    const engine = vi.mocked(PreviewEngine).mock.results[0]?.value as {
+      renderFrame: ReturnType<typeof vi.fn>;
+    };
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(rafCallback).toBeTruthy());
+
+    act(() => {
+      rafCallback?.(1500);
+    });
+    expect(useEditorStore.getState().playheadMs).toBe(1500);
+    expect(video.currentTime).toBeCloseTo(1.199);
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(1500, expect.anything());
+
+    act(() => {
+      rafCallback?.(2100);
+    });
+    expect(useEditorStore.getState().playheadMs).toBe(2000);
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(2000, expect.anything());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument());
+  });
+
   it("commits native playback time when media pauses", async () => {
     const user = userEvent.setup();
     mockNativePlayback();

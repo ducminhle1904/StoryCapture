@@ -1,5 +1,10 @@
 import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
 import { type CursorMotionProfile, cursorMotionProfile } from "../state/cursor-motion";
+import {
+  buildVirtualCursorSchedule,
+  VIRTUAL_CURSOR_CLICK_RIPPLE_MS,
+  type VirtualCursorSchedule,
+} from "../state/virtual-cursor-scheduler";
 import type { CursorMotionPreset } from "../state/timeline-slice";
 
 export interface VirtualCursorSample {
@@ -13,9 +18,6 @@ export interface VirtualCursorSample {
   } | null;
 }
 
-const CLICK_RIPPLE_MS = 520;
-const QUICK_SUCCESSION_MS = 180;
-const MIN_TARGET_WIDTH_PX = 12;
 const SETTLE_START = 0.86;
 
 function clamp01(value: number): number {
@@ -35,64 +37,6 @@ function smootherstep(value: number): number {
 
 function distance(a: ActionPoint, b: ActionPoint): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
-}
-
-function targetWidth(event: ActionTimelineEvent): number {
-  const bounds = event.target?.bounds;
-  if (!bounds) return MIN_TARGET_WIDTH_PX;
-  return Math.max(MIN_TARGET_WIDTH_PX, Math.min(Math.abs(bounds.w), Math.abs(bounds.h)));
-}
-
-function travelDurationMs(
-  from: ActionPoint,
-  to: ActionPoint,
-  event: ActionTimelineEvent,
-  profile: CursorMotionProfile,
-): number {
-  const d = distance(from, to);
-  const ballistic = d / profile.travelPxPerMs;
-  const indexOfDifficulty = Math.log2(d / targetWidth(event) + 1);
-  const aimed = profile.fittsInterceptMs + profile.fittsSlopeMs * indexOfDifficulty;
-  return Math.round(clamp(Math.max(ballistic, aimed), profile.minTravelMs, profile.maxTravelMs));
-}
-
-function movementStartMs(
-  previousT: number,
-  event: ActionTimelineEvent,
-  from: ActionPoint,
-  to: ActionPoint,
-  profile: CursorMotionProfile,
-) {
-  const actionT = Math.max(0, event.t_action_ms);
-  const declaredWindow = actionT - event.t_start_ms;
-  if (declaredWindow >= profile.minTravelMs / 2) {
-    return Math.min(actionT, Math.max(previousT, event.t_start_ms));
-  }
-  if (actionT === 0) return 0;
-  return Math.min(
-    actionT,
-    Math.max(previousT, actionT - travelDurationMs(from, to, event, profile)),
-  );
-}
-
-function canvasSize(actions: RecordingActions): { width: number; height: number } {
-  const width = Math.max(1, actions.capture_rect.width || actions.viewport.width || 1);
-  const height = Math.max(1, actions.capture_rect.height || actions.viewport.height || 1);
-  return { width, height };
-}
-
-function eventPoint(
-  actions: RecordingActions,
-  event: ActionTimelineEvent,
-  fallback: { x: number; y: number },
-  size: { width: number; height: number },
-): { x: number; y: number } {
-  const center = event.target?.center;
-  if (!center) return fallback;
-  return {
-    x: clamp(center.x - actions.capture_rect.x, 0, size.width),
-    y: clamp(center.y - actions.capture_rect.y, 0, size.height),
-  };
 }
 
 function isClickEvent(event: ActionTimelineEvent): boolean {
@@ -160,79 +104,69 @@ function curvedCursorPoint(
   };
 }
 
-function nextPreviousT(
-  event: ActionTimelineEvent,
-  actionT: number,
-  next: ActionTimelineEvent | undefined,
-): number {
-  const eventEnd = Math.max(actionT, event.t_end_ms);
-  if (!next) return eventEnd;
-  const nextStart = Math.max(0, Math.min(next.t_start_ms, next.t_action_ms));
-  return nextStart - eventEnd < QUICK_SUCCESSION_MS ? actionT : eventEnd;
-}
-
 export function sampleVirtualCursor(
   actions: RecordingActions | null | undefined,
   tMs: number,
   motionPreset?: CursorMotionPreset,
 ): VirtualCursorSample | null {
-  if (!actions || actions.events.length === 0) return null;
-
+  const schedule = buildVirtualCursorSchedule(actions, motionPreset);
+  if (!schedule) return null;
   const profile = cursorMotionProfile(motionPreset);
-  const size = canvasSize(actions);
-  let previous: ActionPoint = { x: size.width / 2, y: size.height / 2 };
-  let previousT = 0;
 
-  for (let i = 0; i < actions.events.length; i += 1) {
-    const event = actions.events[i];
-    if (!event) continue;
-    const target = eventPoint(actions, event, previous, size);
-    const startT = movementStartMs(previousT, event, previous, target, profile);
-    const actionT = Math.max(startT, event.t_action_ms);
+  for (const segment of schedule.segments) {
+    const { event, from, to, startMs, arrivalMs } = segment;
 
-    if (tMs < startT) {
-      return withRipple(actions, { x: previous.x / size.width, y: previous.y / size.height }, tMs);
+    if (tMs < startMs) {
+      return withRipple(
+        schedule,
+        { x: from.x / schedule.size.width, y: from.y / schedule.size.height },
+        tMs,
+      );
     }
 
-    if (tMs <= actionT) {
-      const span = Math.max(1, actionT - startT);
-      const pos = curvedCursorPoint(previous, target, event, (tMs - startT) / span, profile);
-      return withRipple(actions, { x: pos.x / size.width, y: pos.y / size.height }, tMs);
+    if (tMs <= arrivalMs) {
+      const span = Math.max(1, arrivalMs - startMs);
+      const pos = curvedCursorPoint(from, to, event, (tMs - startMs) / span, profile);
+      return withRipple(
+        schedule,
+        { x: pos.x / schedule.size.width, y: pos.y / schedule.size.height },
+        tMs,
+      );
     }
-
-    previous = target;
-    previousT = nextPreviousT(event, actionT, actions.events[i + 1]);
   }
 
-  return withRipple(actions, { x: previous.x / size.width, y: previous.y / size.height }, tMs);
+  const final = schedule.segments.at(-1);
+  if (!final) return null;
+  return withRipple(
+    schedule,
+    { x: final.to.x / schedule.size.width, y: final.to.y / schedule.size.height },
+    tMs,
+  );
 }
 
 function withRipple(
-  actions: RecordingActions,
+  schedule: VirtualCursorSchedule,
   sample: { x: number; y: number },
   tMs: number,
 ): VirtualCursorSample {
-  const size = canvasSize(actions);
-  let active: { event: ActionTimelineEvent; elapsed: number } | null = null;
-  for (let i = actions.events.length - 1; i >= 0; i -= 1) {
-    const event = actions.events[i];
-    if (!event) continue;
+  const size = schedule.size;
+  let active: { segment: VirtualCursorSchedule["segments"][number]; elapsed: number } | null =
+    null;
+  for (let i = schedule.segments.length - 1; i >= 0; i -= 1) {
+    const segment = schedule.segments[i];
+    if (!segment) continue;
+    const event = segment.event;
     if (!isClickEvent(event) || !event.target) continue;
-    const elapsed = tMs - event.t_action_ms;
+    const elapsed = tMs - segment.arrivalMs;
     if (elapsed < 0) continue;
-    if (elapsed > CLICK_RIPPLE_MS) break;
-    if (!active || elapsed < active.elapsed) active = { event, elapsed };
+    if (elapsed > VIRTUAL_CURSOR_CLICK_RIPPLE_MS) break;
+    if (!active || elapsed < active.elapsed) active = { segment, elapsed };
   }
 
   if (!active) return { ...sample, ripple: null };
 
-  const point = eventPoint(
-    actions,
-    active.event,
-    { x: sample.x * size.width, y: sample.y * size.height },
-    size,
-  );
-  const progress = clamp01(active.elapsed / CLICK_RIPPLE_MS);
+  const point = active.segment.to;
+  const progress = clamp01(active.elapsed / VIRTUAL_CURSOR_CLICK_RIPPLE_MS);
   return {
     ...sample,
     ripple: {

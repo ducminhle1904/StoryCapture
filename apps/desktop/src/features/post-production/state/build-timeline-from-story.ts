@@ -26,6 +26,7 @@ import type {
 import { XFADE_KINDS } from "../state/timeline-slice";
 import type { EditorBackgroundKind, Rgba } from "./store";
 import { styleDefaults } from "./text-style";
+import { virtualCursorVisualDurationMs } from "./virtual-cursor-scheduler";
 
 export interface BuildTimelineInput {
   story: ParseResult | null;
@@ -656,7 +657,12 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const actions = input.actions ?? null;
   const idBase = hashPath(recording.path);
 
-  const durationMs = mediaDurationMs(recording, trajectory, actions);
+  const cursorMotionPreset = "natural";
+  const cursorVisible = polish?.global.cursor !== "hidden";
+  const durationMs = Math.max(
+    mediaDurationMs(recording, trajectory, actions),
+    cursorVisible ? virtualCursorVisualDurationMs(actions, cursorMotionPreset) : 0,
+  );
   const source = sourceSize(input);
 
   const baseVideo: VideoClip[] = [
@@ -685,7 +691,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       trajectoryFps: cursorSidecar.fps,
       trajectoryFrameCount: cursorSidecar.frameCount,
       skin: polish?.global.cursorSkin ?? "mac-default",
-      motionPreset: "natural",
+      motionPreset: cursorMotionPreset,
       sizeScale: polish?.global.cursorSizeScale ?? 1.0,
     });
   }
