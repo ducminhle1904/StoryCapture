@@ -46,7 +46,9 @@ video.
   `tauri-invoke` bridge, `apps/desktop/electron/ipc/handlers.ts` is the
   registry, grouped modules live in `apps/desktop/electron/ipc/*`, and
   Tauri-compatible plugin shims live in `apps/desktop/electron/ipc/plugin/*`.
-  `apps/desktop/electron/ipc/legacy.ts` still owns many host operations.
+  Remaining legacy host operations live under
+  `apps/desktop/electron/ipc/legacy/`; `ipc/legacy.ts` is the compatibility
+  dispatcher entrypoint.
 - `packages/story-dsl` is AST/vocabulary plus CodeMirror support. Runtime parse
   and simulator behavior is desktop IPC/host code, not a shared parser package.
 - `packages/shared-types` publicly exports browser presets, web account types,
@@ -102,7 +104,8 @@ file explicitly says otherwise.
   `apps/web/src/trpc/routers/_app.ts`, `apps/web/src/trpc/routers/*`,
   `apps/web/src/lib/*`, and `apps/web/prisma/schema.prisma`.
 - Desktop-web sync/upload/auth: read `apps/web/src/trpc/routers/sync.ts`,
-  `apps/web/src/app/api/auth/*`, `apps/desktop/electron/ipc/legacy.ts`, and
+  `apps/web/src/app/api/auth/*`,
+  `apps/desktop/electron/ipc/legacy/web.ts`, and
   `apps/desktop/src/stores/*web*`.
 - Shared UI/design system: read `docs/CONVENTIONS.md`,
   `packages/ui/src/claude-design/README.md`,

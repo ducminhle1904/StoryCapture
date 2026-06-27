@@ -34,8 +34,8 @@ Concrete patterns used in the current Electron/TypeScript codebase.
 - `apps/desktop/electron/ipc.ts` is the bridge entrypoint, not the place to
   concentrate new host logic.
 - Most current grouped modules are command ownership registries around
-  `legacyHandlers([...])`; inspect the module and `ipc/legacy.ts` before
-  assuming implementation is local to the grouped file.
+  `legacyHandlers([...])`; inspect the module and the matching `ipc/legacy/*`
+  implementation before assuming logic is local to the grouped file.
 - Prefer splitting new host commands into a focused grouped module with real
   implementation instead of expanding `ipc/legacy.ts`, unless the touched
   behavior is already tightly coupled to legacy state.

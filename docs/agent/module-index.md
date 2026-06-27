@@ -62,7 +62,8 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/web-sync.ts`.
 - Tauri-compatible plugin shims: `apps/desktop/electron/ipc/plugin/index.ts`
   plus `apps/desktop/electron/ipc/plugin/*.ts`.
-- Legacy host operations: `apps/desktop/electron/ipc/legacy.ts` and
+- Legacy host operations: `apps/desktop/electron/ipc/legacy.ts`,
+  `apps/desktop/electron/ipc/legacy/*.ts`, and
   `apps/desktop/electron/ipc/legacy-command.ts`.
 - Renderer IPC facades: `apps/desktop/src/ipc/*.ts`.
 
@@ -117,7 +118,7 @@ Use this for task routing after reading the short root guide.
 - Sync router: `apps/web/src/trpc/routers/sync.ts`.
 - Desktop auth routes: `apps/web/src/app/api/auth/desktop-token/route.ts`,
   `apps/web/src/app/api/auth/mint-sse-jwt/route.ts`.
-- Desktop host bridge: mostly `apps/desktop/electron/ipc/legacy.ts`; 
+- Desktop host bridge: `apps/desktop/electron/ipc/legacy/web.ts`;
   `apps/desktop/electron/ipc/web-sync.ts` registers legacy command slices.
 - Renderer stores calling web/sync/upload invokes:
   `apps/desktop/src/stores/web-account-store.ts`,

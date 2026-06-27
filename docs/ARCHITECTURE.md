@@ -13,8 +13,9 @@ apps/
       ipc.ts            registers the tauri-invoke bridge
       ipc/handlers.ts   grouped handler registry
       ipc/*.ts          grouped command registries, many delegating to legacy
+      ipc/legacy/*.ts   remaining legacy host implementation split by domain
       ipc/plugin/*.ts   Tauri-compatible plugin shims
-      ipc/legacy.ts     large remaining host implementation/fallback
+      ipc/legacy.ts     legacy dispatcher compatibility entrypoint
     icons/              desktop app icons used by electron-builder
     scripts/            desktop build helpers
     src/                renderer UI, feature modules, stores, IPC facades
@@ -126,7 +127,7 @@ React Router v7 lives in `apps/desktop/src/routes`.
    `ipc/handlers.ts`.
 4. `ipc/handlers.ts` groups modular handlers. Most grouped modules currently
    call `legacyHandlers([...])`, so they are command ownership registries while
-   `ipc/legacy.ts` still owns much of the implementation.
+   `ipc/legacy/*.ts` owns the remaining legacy implementation.
 5. Long-running operations use the existing Tauri-compatible channel/event shim
    rather than a second streaming abstraction.
 
