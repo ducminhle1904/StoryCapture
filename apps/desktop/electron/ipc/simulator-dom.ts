@@ -91,6 +91,13 @@ function isWritableElement(el: HTMLElement): boolean {
   );
 }
 
+export interface SimulatorResolvedTarget {
+  kind: string;
+  label: string | null;
+  center: { x: number; y: number };
+  bounds: { x: number; y: number; w: number; h: number };
+}
+
 function labelMatches(el: Element, needle: string): boolean {
   return formLabelOf(el).toLowerCase().includes(needle) || nameOf(el).toLowerCase().includes(needle);
 }
@@ -151,6 +158,30 @@ export function simulatorTargetCenterScript(
 ): string {
   return `
     (() => {
+      const target = (${simulatorTargetGeometryScript(target, targetNth, selector)});
+      return target ? target.center : null;
+    })()
+  `;
+}
+
+function resolvedTargetGeometry(el: Element): SimulatorResolvedTarget {
+  const rect = el.getBoundingClientRect();
+  const label = nameOf(el);
+  return {
+    kind: "element",
+    label: label || null,
+    center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    bounds: { x: rect.left, y: rect.top, w: rect.width, h: rect.height },
+  };
+}
+
+export function simulatorTargetGeometryScript(
+  target: unknown,
+  targetNth?: number,
+  selector?: string | null,
+): string {
+  return `
+    (() => {
       ${textOf.toString()}
       ${cssEscape.toString()}
       ${formLabelOf.toString()}
@@ -159,14 +190,13 @@ export function simulatorTargetCenterScript(
       ${isVisible.toString()}
       ${isEditableElement.toString()}
       ${labelMatches.toString()}
+      ${resolvedTargetGeometry.toString()}
       const el = (${findSimulatorTarget.toString()})(
         ${JSON.stringify(target)},
         ${JSON.stringify(targetNth ?? null)},
         ${JSON.stringify(selector ?? null)}
       );
-      if (!el) return null;
-      const rect = el.getBoundingClientRect();
-      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      return el ? resolvedTargetGeometry(el) : null;
     })()
   `;
 }

@@ -249,4 +249,59 @@ describe("EditorShell toolbar actions", () => {
       expect(state.durationMs).toBe(40_064);
     });
   });
+
+  it("treats an actions sidecar as review timing data", () => {
+    ipcMocks.useProjectRecordings.mockReturnValue({
+      data: [
+        {
+          path: "/recordings/action-timed.mp4",
+          captured_at: 1,
+          duration_ms: 1_233,
+          width: 1280,
+          height: 720,
+        },
+      ],
+      isSuccess: true,
+      isError: false,
+    });
+    ipcMocks.useRecordingActions.mockReturnValue({
+      data: {
+        version: 1,
+        recording_path: "/recordings/action-timed.mp4",
+        viewport: { width: 1280, height: 720 },
+        capture_rect: { x: 0, y: 0, width: 1280, height: 720 },
+        fps: 60,
+        frame_count: 74,
+        events: [
+          {
+            step_id: "step-1",
+            ordinal: 1,
+            verb: "click",
+            t_start_ms: 100,
+            t_action_ms: 120,
+            t_end_ms: 240,
+            target: {
+              kind: "element",
+              label: "Start",
+              center: { x: 100, y: 120 },
+              bounds: { x: 80, y: 100, w: 40, h: 40 },
+            },
+            secondary_target: null,
+            pointer: { button: "left", effect: "click" },
+          },
+        ],
+      },
+      isLoading: false,
+      isSuccess: true,
+    });
+
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" videoSrc="/recordings/action-timed.mp4" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Timed")).toBeInTheDocument();
+    expect(screen.queryByText("Step timing missing")).not.toBeInTheDocument();
+  });
 });

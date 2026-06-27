@@ -199,6 +199,21 @@ describe("buildTimelineFromStory", () => {
     expect(c.sizeScale).toBe(1.0);
   });
 
+  it("falls back to trajectory when actions are explicitly missing", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      actions: null,
+      trajectory: TRAJECTORY,
+    });
+
+    expect(out.cursor).toHaveLength(1);
+    expect(out.cursor[0]?.trajectoryKind).toBe("trajectory");
+    expect(out.cursor[0]?.trajectoryDir).toBe(
+      "/tmp/projects/p1/recordings/recording-123.trajectory.json",
+    );
+  });
+
   it("prefers actions sidecar over trajectory for cursor and zoom clips", () => {
     const out = buildTimelineFromStory({
       story: null,

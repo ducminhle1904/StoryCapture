@@ -418,6 +418,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const resolvedCaptureRect =
     recordingActions?.capture_rect ?? trajectoryQuery.data?.capture_rect ?? null;
   const hasCursorData = Boolean(recordingActions || trajectoryQuery.data);
+  const hasStepTimingData = Boolean(stepTimingQuery.data || recordingActions);
 
   useEffect(() => {
     useEditorStore.setState((state) => ({
@@ -446,7 +447,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const reviewFixItems = useMemo(() => {
     const fixes: ReviewFixItem[] = [];
     const timing = stepTimingQuery.data;
-    if (!timing) {
+    if (!hasStepTimingData) {
       fixes.push({
         id: "missing-step-timing",
         tone: "warn",
@@ -454,7 +455,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         detail:
           "No steps sidecar was found; polish highlights and callouts are limited to verified action targets.",
       });
-    } else if (timing.status !== "completed") {
+    } else if (timing && timing.status !== "completed") {
       fixes.push({
         id: `timing-status-${timing.status}`,
         tone: timing.status === "failed" ? "critical" : "warn",
@@ -533,6 +534,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     tracksAnnotationLen,
     tracksZoomLen,
     hasCursorData,
+    hasStepTimingData,
     zoomClips,
   ]);
   useEffect(() => {
@@ -699,7 +701,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       soundCount={tracksSoundLen}
       videoCount={tracksVideoLen}
       hasTrajectory={hasCursorData}
-      hasStepTiming={Boolean(stepTimingQuery.data)}
+      hasStepTiming={hasStepTimingData}
       fixItems={reviewFixItems}
       recipe={polishDoc?.global.recipe ?? "dynamic"}
       onExport={() => setExportModalOpen(true)}

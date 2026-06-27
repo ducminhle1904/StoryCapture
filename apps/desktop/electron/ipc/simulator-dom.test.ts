@@ -6,6 +6,7 @@ import {
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
   simulatorTargetCenterScript,
+  simulatorTargetGeometryScript,
 } from "./simulator-dom";
 
 function makeVisible(el: Element): void {
@@ -54,6 +55,44 @@ describe("simulator DOM helpers", () => {
     const center = window.eval(simulatorTargetCenterScript({ kind: "label", value: "EMAIL ADDRESS" }));
 
     expect(center).toEqual({ x: 100, y: 10 });
+  });
+
+  it("builds a geometry script with label, center, and bounds", () => {
+    document.body.innerHTML = `
+      <button aria-label="Save draft">Save</button>
+    `;
+    const button = document.querySelector("button");
+    if (!button) throw new Error("button fixture missing");
+    Object.defineProperty(button, "getBoundingClientRect", {
+      configurable: true,
+      value: () =>
+        ({
+          bottom: 90,
+          height: 40,
+          left: 120,
+          right: 320,
+          top: 50,
+          width: 200,
+          x: 120,
+          y: 50,
+          toJSON: () => ({}),
+        }) as DOMRect,
+    });
+
+    const target = window.eval(
+      simulatorTargetGeometryScript(
+        { kind: "role", value: { role: "button", name: "Save draft" } },
+        undefined,
+        null,
+      ),
+    );
+
+    expect(target).toEqual({
+      kind: "element",
+      label: "Save draft",
+      center: { x: 220, y: 70 },
+      bounds: { x: 120, y: 50, w: 200, h: 40 },
+    });
   });
 
   it("builds a value script that writes full text into the active input and emits events", () => {

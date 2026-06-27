@@ -44,6 +44,15 @@ import {
   isPackagedRuntime,
 } from "../runtime";
 import {
+  actionsSidecarPath,
+  actionTimelineEventFromStep,
+  recordingActionsFromSession,
+  writeActionsSidecarAtomic,
+  type ActionPointer,
+  type ActionTarget,
+  type ActionTimelineEvent,
+} from "./action-timeline";
+import {
   deleteGenericSecret,
   loadOptionalGenericSecret,
   storeGenericSecret,
@@ -69,7 +78,7 @@ import { sessionId } from "./session";
 import {
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
-  simulatorTargetCenterScript,
+  simulatorTargetGeometryScript,
 } from "./simulator-dom";
 import {
   parseStorySource,
@@ -493,12 +502,13 @@ interface AuthorPreviewSession {
 
 interface StoryBrowserRunHooks {
   onStepStarted?: (ordinal: number, command: ParsedCommand) => void;
-  onStepSucceeded?: (
-    ordinal: number,
-    command: ParsedCommand,
-    result: ParsedCommandResult,
-    durationMs: number,
-  ) => void;
+  onStepSucceeded?: (step: {
+    ordinal: number;
+    command: ParsedCommand;
+    result: ParsedCommandResult;
+    durationMs: number;
+    actionDurationMs: number;
+  }) => void;
   onFrameCaptured?: (ordinal: number, frame: SimulatorStepFrame) => void;
   onStepFailed?: (ordinal: number, error: unknown) => void;
 }
@@ -536,6 +546,8 @@ type StoryBrowserRunExitReason =
 interface ParsedCommandResult {
   screenshotPath?: string | null;
   cursor?: { x: number; y: number } | null;
+  target?: ActionTarget | null;
+  pointer?: ActionPointer | null;
 }
 
 type PickResult =
@@ -1637,14 +1649,27 @@ async function openProject(id: string) {
   await writeProjects(projects);
   const paths = projectPaths(project.folder_path);
   await fs.mkdir(paths.exportsDir, { recursive: true });
+  const sessionCount = await countRecordingFiles(paths.exportsDir);
   return {
     id: project.id,
     name: project.name,
     folder_path: project.folder_path,
     story_path: paths.storyPath,
     exports_dir: paths.exportsDir,
-    session_count: 0,
+    session_count: sessionCount,
   };
+}
+
+async function countRecordingFiles(exportsDir: string): Promise<number> {
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(exportsDir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  return entries.filter(
+    (entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".mp4"),
+  ).length;
 }
 
 async function removeProject(id: string): Promise<void> {
@@ -1723,6 +1748,7 @@ function sidecarPath(
   recordingPath: string,
   suffix: "actions" | "trajectory" | "steps",
 ): string {
+  if (suffix === "actions") return actionsSidecarPath(recordingPath);
   const ext = suffix === "steps" ? ".steps.json" : `.${suffix}.json`;
   return recordingPath.replace(/\.[^/.]+$/, ext);
 }
@@ -4817,18 +4843,17 @@ function targetSelector(target: unknown): string | null {
   return null;
 }
 
-async function elementCenter(
+async function resolveElementTarget(
   contents: WebContents,
   target: unknown,
   targetNth?: number,
-): Promise<{ x: number; y: number } | null> {
+): Promise<ActionTarget | null> {
   const selector = targetSelector(target);
-  return contents.executeJavaScript(
-    simulatorTargetCenterScript(target, targetNth, selector),
-  ) as Promise<{
-    x: number;
-    y: number;
-  } | null>;
+  const resolved = (await contents.executeJavaScript(
+    simulatorTargetGeometryScript(target, targetNth, selector),
+  )) as ActionTarget | null;
+  const label = targetLabel(target) ?? resolved?.label ?? null;
+  return resolved ? { ...resolved, label } : null;
 }
 
 async function executeParsedCommand(
@@ -4873,25 +4898,30 @@ async function executeParsedCommand(
     return {};
   }
 
-  const center = command.target
-    ? await elementCenter(contents, command.target, command.target_nth)
+  const target = command.target
+    ? await resolveElementTarget(contents, command.target, command.target_nth)
     : null;
+  const center = target?.center ?? null;
   if (
     (command.verb === "wait-for" || command.verb === "assert") &&
     command.target
   ) {
     const deadline =
       Date.now() + Math.min(Number(command.timeout_ms ?? 5_000), 30_000);
-    let found = center;
+    let found = target;
     while (!found && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      found = await elementCenter(contents, command.target, command.target_nth);
+      found = await resolveElementTarget(
+        contents,
+        command.target,
+        command.target_nth,
+      );
     }
     if (!found)
       throw new Error(
         `target not found for ${command.verb}: ${selectorSummary(command.target)}`,
       );
-    return { cursor: found };
+    return { cursor: found.center, target: found };
   }
   if (
     ["click", "hover", "type", "select", "upload"].includes(command.verb) &&
@@ -4919,7 +4949,12 @@ async function executeParsedCommand(
         clickCount: 1,
       });
     }
-    return { cursor: center };
+    return {
+      cursor: center,
+      target,
+      pointer:
+        command.verb === "click" ? { button: "left", effect: "click" } : null,
+    };
   }
   if ((command.verb === "type" || command.verb === "select") && center) {
     contents.sendInputEvent({
@@ -4959,7 +4994,7 @@ async function executeParsedCommand(
         `target is not editable for ${command.verb}: ${selectorSummary(command.target)}`,
       );
     }
-    return { cursor: center };
+    return { cursor: center, target };
   }
   if (command.verb === "upload") {
     throw new Error(
@@ -4977,7 +5012,7 @@ async function executeParsedCommand(
     await fs.writeFile(screenshotPath, image.toPNG());
     return { screenshotPath };
   }
-  return { cursor: center };
+  return { cursor: center, target };
 }
 
 async function hostLog(
@@ -5075,7 +5110,7 @@ function simulatorFrameFromResult(
       matchKind === "fuzzy"
         ? selectorSummary(fallback)
         : selectorSummary(primary),
-    matched_bbox: null,
+    matched_bbox: matchKind === "none" ? null : (result.target?.bounds ?? null),
     match_kind: matchKind,
     duration_ms: durationMs,
   };
@@ -5125,11 +5160,18 @@ async function runStoryCommandsInBrowser(
           executionProfile,
         },
       );
+      const actionDurationMs = Date.now() - stepStartedAt;
       const settleDelayMs = executionProfile.settleDelayForCommand(command);
       if (settleDelayMs > 0) await waitMs(settleDelayMs);
       const durationMs = Date.now() - stepStartedAt;
       succeeded += 1;
-      options.hooks?.onStepSucceeded?.(ordinal, command, result, durationMs);
+      options.hooks?.onStepSucceeded?.({
+        ordinal,
+        command,
+        result,
+        durationMs,
+        actionDurationMs,
+      });
       if (options.frameDir) {
         const screenshotPath = await captureStoryFrame(
           options.contents,
@@ -5165,6 +5207,27 @@ async function runStoryCommandsInBrowser(
     exitReason,
     durationMs: Date.now() - startedAt,
   };
+}
+
+async function writeRecordingActionsSidecarBestEffort(
+  session: RecordingSession,
+  events: ActionTimelineEvent[],
+): Promise<void> {
+  if (events.length === 0) return;
+  const file = actionsSidecarPath(session.outputPath);
+  try {
+    await writeActionsSidecarAtomic(
+      file,
+      recordingActionsFromSession(session, events),
+    );
+  } catch (error) {
+    void hostLog("warn", "recording_actions_sidecar_write_failed", {
+      session_id: session.id,
+      recording_path: session.outputPath,
+      sidecar_path: file,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function launchAutomationCommand(
@@ -5213,6 +5276,12 @@ async function launchAutomationCommand(
     : ownedWindow?.webContents;
   if (!contents) throw new Error("browser session unavailable for automation");
   const targets = { version: 1, steps: {} };
+  const recordingSessionAtLaunch = recordingSessionId
+    ? recordingSessions.get(recordingSessionId)
+    : null;
+  const actionEvents: ActionTimelineEvent[] = [];
+  const actionStepStartMs = new Map<number, number>();
+  const actionRunStartedAt = recordingSessionAtLaunch?.startedAt ?? Date.now();
   let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
   try {
     result = await runStoryCommandsInBrowser({
@@ -5226,6 +5295,12 @@ async function launchAutomationCommand(
       }),
       hooks: {
         onStepStarted: (ordinal, command) => {
+          if (recordingSessionId) {
+            actionStepStartMs.set(
+              ordinal,
+              Math.max(0, Date.now() - actionRunStartedAt),
+            );
+          }
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
               type: "step_started",
@@ -5235,7 +5310,35 @@ async function launchAutomationCommand(
             }),
           });
         },
-        onStepSucceeded: (ordinal, command, stepResult, durationMs) => {
+        onStepSucceeded: ({
+          ordinal,
+          command,
+          result: stepResult,
+          durationMs,
+          actionDurationMs,
+        }) => {
+          const stepEndedAtMs = Math.max(0, Date.now() - actionRunStartedAt);
+          const stepStartedAtMs =
+            actionStepStartMs.get(ordinal) ??
+            Math.max(0, stepEndedAtMs - durationMs);
+          actionStepStartMs.delete(ordinal);
+          const actionAtMs = Math.min(
+            stepEndedAtMs,
+            stepStartedAtMs + Math.max(0, actionDurationMs),
+          );
+          if (recordingSessionId && stepResult.target) {
+            actionEvents.push(
+              actionTimelineEventFromStep({
+                ordinal,
+                command,
+                stepStartedAtMs,
+                actionAtMs,
+                stepEndedAtMs,
+                target: stepResult.target,
+                pointer: stepResult.pointer ?? undefined,
+              }),
+            );
+          }
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
               type: "step_succeeded",
@@ -5245,7 +5348,7 @@ async function launchAutomationCommand(
               cursor_x: stepResult.cursor?.x ?? 0,
               cursor_y: stepResult.cursor?.y ?? 0,
               matched_selector: targetSelector(command.target),
-              matched_bbox: null,
+              matched_bbox: stepResult.target?.bounds ?? null,
               match_kind: stepResult.cursor ? "primary" : "none",
             }),
           });
@@ -5268,6 +5371,7 @@ async function launchAutomationCommand(
           }
         },
         onStepFailed: (ordinal, error) => {
+          actionStepStartMs.delete(ordinal);
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
               type: "step_failed",
@@ -5303,6 +5407,12 @@ async function launchAutomationCommand(
   }
   if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
     await stopRecording({ id: recordingSessionId });
+    if (recordingSession) {
+      await writeRecordingActionsSidecarBestEffort(
+        recordingSession,
+        actionEvents,
+      );
+    }
   }
   return null;
 }
@@ -5310,8 +5420,22 @@ async function launchAutomationCommand(
 function commandSupportsFallback(command: ParsedCommand | undefined): boolean {
   return Boolean(
     command &&
-    ["click", "type", "hover", "select", "upload"].includes(command.verb),
+      ["click", "type", "hover", "select", "upload"].includes(command.verb),
   );
+}
+
+function targetLabel(record: unknown): string | null {
+  if (!record || typeof record !== "object") return null;
+  const target = record as { kind?: unknown; value?: unknown };
+  if (target.value && typeof target.value === "object") {
+    const value = target.value as { name?: unknown };
+    if (typeof value.name === "string" && value.name.length > 0) {
+      return value.name;
+    }
+  }
+  return typeof target.value === "string" && target.value.length > 0
+    ? target.value
+    : null;
 }
 
 function selectorSummary(record: unknown): string | null {
