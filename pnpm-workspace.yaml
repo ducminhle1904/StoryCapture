@@ -1,3 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  electron-winstaller: true
+  esbuild: true
+  ffmpeg-static: true
+  prisma: true
+  sharp: true
