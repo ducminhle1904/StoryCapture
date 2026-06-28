@@ -90,7 +90,7 @@ describe("VideoOutputSection", () => {
     expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent(
       "~7.8 Mbps • ~57 MB/min",
     );
-    const thirty = screen.getByLabelText("30");
+    const thirty = screen.getByRole("radio", { name: "30" });
     await user.click(thirty);
     expect(useOutputPrefsStore.getState().activePreset).toBe("Custom");
     expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent(
@@ -101,7 +101,7 @@ describe("VideoOutputSection", () => {
   it("Quality Standard → Lossless flips activePreset to Lossless", async () => {
     const user = userEvent.setup();
     render(<VideoOutputSection />);
-    await user.click(screen.getByLabelText("Lossless"));
+    await user.click(screen.getByRole("radio", { name: "Lossless" }));
     expect(useOutputPrefsStore.getState().activePreset).toBe("Lossless");
   });
 });
