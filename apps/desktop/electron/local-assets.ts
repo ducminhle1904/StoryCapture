@@ -65,6 +65,7 @@ export function registerLocalAssetScheme(): void {
       privileges: {
         standard: true,
         secure: true,
+        corsEnabled: true,
         supportFetchAPI: true,
       },
     },
@@ -91,6 +92,7 @@ export function registerLocalAssetProtocol(): void {
         return new Response(bytes, {
           headers: {
             "content-type": contentTypeFor(realFilePath),
+            "access-control-allow-origin": "*",
           },
         });
       } finally {

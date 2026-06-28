@@ -171,10 +171,85 @@ describe("post-production export planning", () => {
     if (plan.kind === "unsupported") expect(plan.reason).toMatch(/simple concat/);
   });
 
-  it("fails fast for composited graph nodes and audio graph nodes", () => {
+  it("classifies cursor overlays as composited exports", () => {
+    const plan = analyzeExportPlan(
+      graph([
+        source({ source_width: 1920, source_height: 1080 }),
+        {
+          type: "cursor-overlay",
+          id: "cursor",
+          skin: "mac-default",
+          size_scale: 1,
+          motion_preset: "natural",
+          color_tint: null,
+          trajectory: {
+            png_sequence_dir: "/tmp/in.actions.json",
+            fps: 60,
+            frame_count: 60,
+          },
+        },
+      ]),
+      output(),
+    );
+
+    expect(plan).toMatchObject({
+      kind: "composited",
+      outputWidth: 1920,
+      outputHeight: 1080,
+      fps: 60,
+      durationMs: 1_000,
+      frameCount: 60,
+    });
+  });
+
+  it("classifies zoom and highlight overlays as composited exports", () => {
+    const plan = analyzeExportPlan(
+      graph([
+        source(),
+        {
+          type: "zoom-pan",
+          id: "zoom",
+          target: { kind: "cursor" },
+          keyframes: [
+            { t_ms: 0, center: { x: 960, y: 540 }, scale: 1 },
+            { t_ms: 200, center: { x: 960, y: 540 }, scale: 1.5 },
+          ],
+        },
+        {
+          type: "highlight-overlay",
+          id: "highlight",
+          highlights: [
+            {
+              t_start_ms: 100,
+              duration_ms: 500,
+              shape: "ring",
+              center: { x: 960, y: 540 },
+              max_radius_px: 56,
+              padding_px: 8,
+              radius_px: 56,
+              stroke_px: 2,
+              glow_px: 16,
+              color: { r: 255, g: 255, b: 255, a: 229 },
+              opacity: 0.72,
+            },
+          ],
+        },
+      ]),
+      output(),
+    );
+
+    expect(plan).toMatchObject({
+      kind: "composited",
+      outputWidth: 1920,
+      outputHeight: 1080,
+      fps: 60,
+    });
+  });
+
+  it("fails fast for unsupported compositor graph nodes and audio graph nodes", () => {
     const plan = analyzeExportPlan(
       graph(
-        [source(), { type: "text-overlay", id: "text", boxes: [] }],
+        [source(), { type: "transition", id: "transition", kind: "fade", duration_ms: 250 }],
         [{ type: "audio-source", path: "/tmp/audio.m4a", pts_offset_ms: 0 }],
       ),
       output(),
@@ -183,7 +258,35 @@ describe("post-production export planning", () => {
     expect(plan).toMatchObject({
       kind: "unsupported",
       requiredPlan: "composited",
-      unsupportedNodes: ["audio", "text-overlay"],
+      unsupportedNodes: ["audio", "transition"],
+    });
+  });
+
+  it("fails fast for composited source offsets until audio alignment is implemented", () => {
+    const plan = analyzeExportPlan(
+      graph([
+        source({ pts_offset_ms: 2_000 }),
+        {
+          type: "cursor-overlay",
+          id: "cursor",
+          skin: "mac-default",
+          size_scale: 1,
+          motion_preset: "natural",
+          color_tint: null,
+          trajectory: {
+            png_sequence_dir: "/tmp/in.actions.json",
+            fps: 60,
+            frame_count: 60,
+          },
+        },
+      ]),
+      output(),
+    );
+
+    expect(plan).toMatchObject({
+      kind: "unsupported",
+      requiredPlan: "composited",
+      unsupportedNodes: ["pts_offset_ms"],
     });
   });
 
@@ -256,6 +359,107 @@ describe("post-production export planning", () => {
     expect(args).toContain("-crf");
     expect(args).toContain("0");
     expect(args).toContain("veryfast");
+  });
+
+  it("maps composited MP4 exports to raw-video stdin with source audio", () => {
+    const plan = runnablePlan(
+      graph([
+        source({ source_width: 1920, source_height: 1080 }),
+        {
+          type: "text-overlay",
+          id: "text",
+          boxes: [
+            {
+              t_start_ms: 0,
+              t_end_ms: 1_000,
+              text: "Hello",
+              pos: { x: 0.5, y: 0.5 },
+              font: { family: "Inter", weight: 700 },
+              size_pt: 32,
+              color: { r: 255, g: 255, b: 255, a: 255 },
+              box_style: null,
+              anim_in: "none",
+              anim_out: "none",
+            },
+          ],
+        },
+      ]),
+      output(),
+    );
+
+    expect(plan.kind).toBe("composited");
+    expect(ffmpegArgsForExportPlan(plan, "/tmp/out.mp4")).toEqual([
+      "-y",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "bgra",
+      "-s",
+      "1920x1080",
+      "-framerate",
+      "60",
+      "-i",
+      "pipe:0",
+      "-i",
+      "/tmp/in.mp4",
+      "-map",
+      "0:v:0",
+      "-map",
+      "1:a?",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "18",
+      "-g",
+      "120",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "160k",
+      "-ac",
+      "2",
+      "-ar",
+      "48000",
+      "-shortest",
+      "/tmp/out.mp4",
+    ]);
+  });
+
+  it("uses the requested resolution for composited exports", () => {
+    const plan = runnablePlan(
+      graph([
+        source({ source_width: 1920, source_height: 1080 }),
+        {
+          type: "text-overlay",
+          id: "text",
+          boxes: [
+            {
+              t_start_ms: 0,
+              t_end_ms: 1_000,
+              text: "Hello",
+              pos: { x: 0.5, y: 0.5 },
+              size_pt: 32,
+              color: { r: 255, g: 255, b: 255, a: 255 },
+              box_style: null,
+            },
+          ],
+        },
+      ]),
+      output({ resolution: "720p" }),
+    );
+
+    expect(plan).toMatchObject({
+      kind: "composited",
+      outputWidth: 1280,
+      outputHeight: 720,
+    });
+    expect(ffmpegArgsForExportPlan(plan, "/tmp/out.mp4")).toContain("1280x720");
   });
 
   it("validates container and audio combinations before queueing", () => {

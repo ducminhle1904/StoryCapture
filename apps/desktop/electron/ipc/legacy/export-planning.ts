@@ -56,20 +56,31 @@ interface RunnableExportPlanBase {
   encoderOptions: NormalizedExportEncoderOptions;
 }
 
+export interface CompositedExportPlan extends RunnableExportPlanBase {
+  kind: "composited";
+  outputWidth: number;
+  outputHeight: number;
+  fps: number;
+  durationMs: number;
+  frameCount: number;
+  pixelFormat: "bgra";
+}
+
 export type RunnableExportPlan =
   | (RunnableExportPlanBase & { kind: "source-copy" })
-  | (RunnableExportPlanBase & { kind: "simple-reencode" });
+  | (RunnableExportPlanBase & { kind: "simple-reencode" })
+  | CompositedExportPlan;
 
-export type ExportPlan =
-  | RunnableExportPlan
-  | {
-      kind: "unsupported";
-      output: ExportOutput;
-      graph: ExportGraph | null;
-      reason: string;
-      requiredPlan?: "simple-concat" | "composited";
-      unsupportedNodes?: string[];
-    };
+export interface UnsupportedExportPlan {
+  kind: "unsupported";
+  output: ExportOutput;
+  graph: ExportGraph | null;
+  reason: string;
+  requiredPlan?: "simple-concat" | "composited";
+  unsupportedNodes?: string[];
+}
+
+export type ExportPlan = RunnableExportPlan | UnsupportedExportPlan;
 
 const FORMATS = ["mp4", "webm", "gif"] as const;
 const RESOLUTIONS = ["match-source", "720p", "1080p", "4k", "custom"] as const;
@@ -105,6 +116,15 @@ const DEFAULT_MAX_DIMENSION = 7680;
 const DEFAULT_AUDIO_BITRATE_KBPS = 160;
 const DEFAULT_AUDIO_CHANNELS = 2;
 const DEFAULT_AUDIO_SAMPLE_RATE_HZ = 48_000;
+const SUPPORTED_COMPOSITOR_VIDEO_NODES = new Set([
+  "source",
+  "zoom-pan",
+  "background",
+  "cursor-overlay",
+  "ripple-overlay",
+  "highlight-overlay",
+  "text-overlay",
+]);
 
 function enumValue<T extends readonly string[]>(value: unknown, allowed: T): T[number] | null {
   return typeof value === "string" && (allowed as readonly string[]).includes(value)
@@ -123,6 +143,7 @@ function assertEnum<T extends readonly string[]>(
 }
 
 function finiteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -300,12 +321,7 @@ export function firstSourcePath(graphJson: string): string {
 
 export function unsupportedExportGraphNodes(graphJson: string): string[] {
   const graph = parseExportGraph(graphJson);
-  const unsupported = new Set<string>();
-  for (const node of Array.isArray(graph.video) ? graph.video : []) {
-    if (node.type !== "source") unsupported.add(String(node.type ?? "unknown-video"));
-  }
-  if ((Array.isArray(graph.audio) ? graph.audio : []).length > 0) unsupported.add("audio");
-  return [...unsupported].sort();
+  return unsupportedGraphNodes(graph);
 }
 
 export function analyzeExportPlan(graphJson: string, output: ExportOutput): ExportPlan {
@@ -357,6 +373,11 @@ export function analyzeExportPlan(graphJson: string, output: ExportOutput): Expo
 
   const encoderOptions = normalizeExportEncoderOptions(output);
   const base = { output, graph, source, encoderOptions };
+  if (requiresComposition(graph)) {
+    const composited = compositedPlan(base);
+    if (composited.kind === "unsupported") return composited;
+    return composited;
+  }
   if (isSourceCopyEligible(source, output, encoderOptions)) {
     return { ...base, kind: "source-copy" };
   }
@@ -366,10 +387,92 @@ export function analyzeExportPlan(graphJson: string, output: ExportOutput): Expo
 function unsupportedGraphNodes(graph: ExportGraph): string[] {
   const unsupported = new Set<string>();
   for (const node of Array.isArray(graph.video) ? graph.video : []) {
-    if (node.type !== "source") unsupported.add(String(node.type ?? "unknown-video"));
+    const type = String(node.type ?? "unknown-video");
+    if (!SUPPORTED_COMPOSITOR_VIDEO_NODES.has(type)) unsupported.add(type);
   }
   if ((Array.isArray(graph.audio) ? graph.audio : []).length > 0) unsupported.add("audio");
   return [...unsupported].sort();
+}
+
+function requiresComposition(graph: ExportGraph): boolean {
+  return (Array.isArray(graph.video) ? graph.video : []).some((node) => node.type !== "source");
+}
+
+function compositedPlan(
+  base: RunnableExportPlanBase,
+): CompositedExportPlan | UnsupportedExportPlan {
+  const format = enumValue(base.output.format, FORMATS);
+  if (format === "gif") {
+    return unsupportedPlan(
+      base.output,
+      base.graph,
+      "GIF composited export is not implemented yet",
+      "composited",
+      ["gif"],
+    );
+  }
+  const sourceOffsetMs = Math.max(0, finiteNumber(base.source.pts_offset_ms) ?? 0);
+  if (sourceOffsetMs > 0) {
+    return unsupportedPlan(
+      base.output,
+      base.graph,
+      "composited export does not support source pts_offset_ms yet",
+      "composited",
+      ["pts_offset_ms"],
+    );
+  }
+  const durationMs = compositedDurationMs(base.source);
+  if (!durationMs) {
+    return unsupportedPlan(
+      base.output,
+      base.graph,
+      "composited export requires source duration_ms",
+      "composited",
+      ["duration_ms"],
+    );
+  }
+  const size = compositedOutputSize(base.graph, base.output, base.source);
+  const fps = clampFpsValue(base.output.fps ?? base.graph.output_fps);
+  return {
+    ...base,
+    kind: "composited",
+    outputWidth: size.width,
+    outputHeight: size.height,
+    fps,
+    durationMs,
+    frameCount: Math.max(1, Math.ceil((durationMs / 1000) * fps)),
+    pixelFormat: "bgra",
+  };
+}
+
+function compositedDurationMs(source: ExportSourceNode): number | null {
+  const duration = finiteNumber(source.duration_ms);
+  if (duration === null || duration <= 0) return null;
+  return Math.max(1, Math.round(duration));
+}
+
+function compositedOutputSize(
+  graph: ExportGraph,
+  output: ExportOutput,
+  source: ExportSourceNode,
+): { width: number; height: number } {
+  const outputSize = resolutionSize(output);
+  if (outputSize) return outputSize;
+  const graphWidth = finiteNumber(graph.output_width);
+  const graphHeight = finiteNumber(graph.output_height);
+  if (graphWidth && graphHeight && graphWidth > 0 && graphHeight > 0) {
+    return {
+      width: clampDimensionValue(graphWidth, 1920),
+      height: clampDimensionValue(graphHeight, 1080),
+    };
+  }
+  if (source.source_width && source.source_height) {
+    return {
+      width: clampDimensionValue(source.source_width, 1920),
+      height: clampDimensionValue(source.source_height, 1080),
+    };
+  }
+  return { width: 1920, height: 1080 };
 }
 
 function unsupportedPlan(
@@ -378,7 +481,7 @@ function unsupportedPlan(
   reason: string,
   requiredPlan?: "simple-concat" | "composited",
   unsupportedNodes?: string[],
-): ExportPlan {
+): UnsupportedExportPlan {
   return {
     kind: "unsupported",
     output,
@@ -474,6 +577,9 @@ export function ffmpegArgsForExportPlan(plan: RunnableExportPlan, out: string): 
     args.push(out);
     return args;
   }
+  if (plan.kind === "composited") {
+    return ffmpegArgsForCompositedExportPlan(plan, out);
+  }
 
   const format = enumValue(plan.output.format, FORMATS);
   const args = ["-y", "-i", plan.source.path];
@@ -492,6 +598,44 @@ export function ffmpegArgsForExportPlan(plan: RunnableExportPlan, out: string): 
     args.push(...mp4VideoArgs(plan.output, plan.encoderOptions));
   }
   args.push(...audioArgs(plan.encoderOptions, format ?? "mp4"));
+  args.push(out);
+  return args;
+}
+
+function ffmpegArgsForCompositedExportPlan(plan: CompositedExportPlan, out: string): string[] {
+  const format = enumValue(plan.output.format, FORMATS) ?? "mp4";
+  const args = [
+    "-y",
+    "-f",
+    "rawvideo",
+    "-pix_fmt",
+    plan.pixelFormat,
+    "-s",
+    `${plan.outputWidth}x${plan.outputHeight}`,
+    "-framerate",
+    String(plan.fps),
+    "-i",
+    "pipe:0",
+  ];
+  const includeSourceAudio = format !== "gif";
+  if (includeSourceAudio) {
+    args.push("-i", plan.source.path);
+  }
+  args.push("-map", "0:v:0");
+  if (includeSourceAudio) {
+    args.push("-map", "1:a?");
+  }
+  if (format === "webm") {
+    args.push(...webmVideoArgs(plan.output, plan.encoderOptions));
+  } else {
+    args.push(...mp4VideoArgs(plan.output, plan.encoderOptions));
+  }
+  if (includeSourceAudio) {
+    args.push(...audioArgs(plan.encoderOptions, format));
+    args.push("-shortest");
+  } else {
+    args.push("-an");
+  }
   args.push(out);
   return args;
 }

@@ -138,15 +138,17 @@ without crashing. The editor owns:
 - Export modal, render queue/progress UI, undo/history, sound drawer, and
   voiceover compact UI.
 
-Current host export caveat: `export_run` writes a graph snapshot and creates
-real render queue jobs. The legacy host path now plans each output before
-queueing: eligible one-source, match-source, high-quality MP4/WebM exports use
-stream copy; source-only re-encodes apply encoder quality, keyframe, scale, and
-audio settings through FFmpeg. Graph nodes that require compositor support,
-including multiple sources, overlays, background framing, zoom, cursor,
-transitions, or separate audio graph nodes, fail clearly before queueing instead
-of being silently dropped. Verify backend compositor support before assuming
-every UI effect affects final encoding.
+Current host export behavior: `export_run` writes a graph snapshot and creates
+real render queue jobs. The legacy host path plans each output before queueing:
+eligible one-source, match-source, high-quality MP4/WebM exports use stream
+copy; source-only re-encodes apply encoder quality, keyframe, scale, and audio
+settings through FFmpeg; supported one-source composited MP4/WebM graphs render
+through a hidden renderer canvas and stream raw BGRA frames into FFmpeg.
+Supported compositor nodes include background, zoom, cursor, ripple, highlight,
+and text overlays with source audio mapped from the source video when the source
+starts at `pts_offset_ms: 0`. Multiple sources, non-zero source offsets,
+transitions, GIF compositing, and separate audio graph nodes still fail clearly
+before queueing instead of being silently dropped.
 
 ## Render And Export
 
@@ -160,9 +162,10 @@ Renderer-side boundaries:
 Host-side boundaries:
 
 - Modular handlers under `apps/desktop/electron/ipc/*`.
-- Remaining render/export implementation in `ipc/legacy.ts`; source-only export
-  planning and FFmpeg argument mapping live in
-  `ipc/legacy/export-planning.ts`.
+- Remaining render/export implementation in `ipc/legacy.ts`; export planning and
+  FFmpeg argument mapping live in `ipc/legacy/export-planning.ts`; hidden
+  renderer orchestration for composited exports lives in
+  `ipc/legacy/export-compositor.ts`.
 - FFmpeg comes from `ffmpeg-static`.
 
 Export graph changes should include targeted tests around graph generation and

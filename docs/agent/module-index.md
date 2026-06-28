@@ -30,6 +30,7 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/src/features/post-production/timeline/`,
   `apps/desktop/src/features/post-production/inspector/`,
   `apps/desktop/src/features/post-production/preview/`,
+  `apps/desktop/src/features/post-production/export-compositor/`,
   `apps/desktop/src/features/post-production/export-modal/`, and
   `apps/desktop/src/features/post-production/render-queue/`.
 - Settings/onboarding: `apps/desktop/src/routes/settings.tsx`,
@@ -79,8 +80,10 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/capture.ts`,
   `apps/desktop/electron/ipc/recording.ts`,
   `apps/desktop/electron/ipc/render.ts`,
-  `apps/desktop/electron/ipc/export.ts`, and corresponding renderer facades
-  under `apps/desktop/src/ipc/`.
+  `apps/desktop/electron/ipc/export.ts`,
+  `apps/desktop/electron/ipc/legacy/export-planning.ts`,
+  `apps/desktop/electron/ipc/legacy/export-compositor.ts`, and corresponding
+  renderer facades under `apps/desktop/src/ipc/`.
 
 ## Web Companion
 

@@ -43,7 +43,10 @@ import {
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
-import { sampleVirtualCursor, type VirtualCursorSample } from "./virtual-cursor-path";
+import {
+  sampleTrajectoryCursor,
+  sampleVirtualCursor,
+} from "./virtual-cursor-path";
 
 type PreviewOutputMode = "native-video" | "composited-canvas";
 
@@ -357,34 +360,6 @@ function setStyleValue(style: CSSStyleDeclaration, key: CursorStyleKey, value: s
   if (style[key] !== value) {
     style[key] = value;
   }
-}
-
-function sampleTrajectoryCursor(
-  trajectory: RecordingTrajectory | null,
-  relativeMs: number,
-): VirtualCursorSample | null {
-  const frames = trajectory?.frames ?? [];
-  if (frames.length === 0) return null;
-  let best = frames[0];
-  let bestDistance = Math.abs(best.t_ms - relativeMs);
-  for (const frame of frames) {
-    const distance = Math.abs(frame.t_ms - relativeMs);
-    if (distance > bestDistance) continue;
-    best = frame;
-    bestDistance = distance;
-  }
-  return {
-    x: best.x,
-    y: best.y,
-    ripple: best.click
-      ? {
-          x: best.x,
-          y: best.y,
-          progress: 0,
-          opacity: 1,
-        }
-      : null,
-  };
 }
 
 function clamp01(value: number): number {

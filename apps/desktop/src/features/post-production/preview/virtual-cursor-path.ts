@@ -1,4 +1,5 @@
 import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
+import type { RecordingTrajectory } from "@/ipc/trajectory";
 import { type CursorMotionProfile, cursorMotionProfile } from "../state/cursor-motion";
 import {
   buildVirtualCursorSchedule,
@@ -175,5 +176,33 @@ function withRipple(
       progress,
       opacity: 1 - progress,
     },
+  };
+}
+
+export function sampleTrajectoryCursor(
+  trajectory: RecordingTrajectory | null,
+  relativeMs: number,
+): VirtualCursorSample | null {
+  const frames = trajectory?.frames ?? [];
+  if (frames.length === 0) return null;
+  let best = frames[0];
+  let bestDistance = Math.abs(best.t_ms - relativeMs);
+  for (const frame of frames) {
+    const distance = Math.abs(frame.t_ms - relativeMs);
+    if (distance > bestDistance) continue;
+    best = frame;
+    bestDistance = distance;
+  }
+  return {
+    x: best.x,
+    y: best.y,
+    ripple: best.click
+      ? {
+          x: best.x,
+          y: best.y,
+          progress: 0,
+          opacity: 1,
+        }
+      : null,
   };
 }

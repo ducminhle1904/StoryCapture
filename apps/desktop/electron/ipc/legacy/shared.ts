@@ -209,6 +209,7 @@ export interface RenderSession {
   timer: ReturnType<typeof setInterval> | null;
   frame: number;
   ffmpegProcess: ChildProcess | null;
+  cancelCompositedExport: (() => void) | null;
   cancelRequested: boolean;
 }
 

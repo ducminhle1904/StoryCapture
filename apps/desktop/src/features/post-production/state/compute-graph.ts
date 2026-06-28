@@ -130,6 +130,7 @@ export interface TextBox {
   box_style: BoxStyle | null;
   anim_in: TextAnim;
   anim_out: Extract<TextAnim, "none" | "fade">;
+  anim_duration_ms: number;
 }
 
 export interface RippleEvent {
@@ -187,6 +188,8 @@ export type VideoNode =
       size_scale: number;
       motion_preset: CursorMotionPreset;
       color_tint: Rgba | null;
+      t_start_ms: number;
+      duration_ms: number;
       trajectory: TrajectoryRef;
     }
   | { type: "ripple-overlay"; id: string; events: RippleEvent[] }
@@ -413,6 +416,8 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
     size_scale: clip.sizeScale,
     motion_preset: normalizeCursorMotionPreset(clip.motionPreset),
     color_tint: null,
+    t_start_ms: clip.startMs,
+    duration_ms: Math.max(0, Math.round(clip.durationMs)),
     trajectory: {
       png_sequence_dir: clip.trajectoryDir,
       fps: clip.trajectoryFps,
@@ -444,6 +449,7 @@ function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
       : null,
     anim_in: style.animation.in,
     anim_out: style.animation.out,
+    anim_duration_ms: Math.max(0, Math.round(style.animation.durationMs)),
   };
 }
 

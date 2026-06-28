@@ -6,6 +6,7 @@ import slugify from "@sindresorhus/slugify";
 import type { WebContents } from "electron";
 import ffmpegPath from "ffmpeg-static";
 import { clampFps } from "./capture-preview";
+import { runCompositedExportForRenderSession } from "./export-compositor";
 import {
   analyzeExportPlan,
   ffmpegArgsForExportPlan,
@@ -104,8 +105,8 @@ export function enqueueExportRenderJob(args: {
     quality: args.output.quality,
     priority: Number.isFinite(Number(args.priority)) ? Number(args.priority) : 0,
     batch_id: args.batchId,
-    output_width: args.output.output_width ?? null,
-    output_height: args.output.output_height ?? null,
+    output_width: args.output.output_width ?? (args.plan.kind === "composited" ? args.plan.outputWidth : null),
+    output_height: args.output.output_height ?? (args.plan.kind === "composited" ? args.plan.outputHeight : null),
     encoder_options_json: JSON.stringify(
       (args.output as { encoder_options?: unknown }).encoder_options ?? null,
     ),
@@ -122,6 +123,7 @@ export function enqueueExportRenderJob(args: {
     timer: null,
     frame: 0,
     ffmpegProcess: null,
+    cancelCompositedExport: null,
     cancelRequested: false,
   };
   renderSessions.set(id, session);
@@ -131,15 +133,31 @@ export function enqueueExportRenderJob(args: {
     try {
       renderJob.progress_pct = 5;
       broadcastRenderProgress(renderJob, session.frame);
-      await runFfmpegForRenderSession(
-        session,
-        ffmpegArgsForExportPlan(args.plan, args.outputPath),
-      );
+      if (args.plan.kind === "composited") {
+        await runCompositedExportForRenderSession(
+          session,
+          args.plan,
+          args.outputPath,
+          (frame) => broadcastRenderProgress(renderJob, frame),
+        );
+      } else {
+        await runFfmpegForRenderSession(
+          session,
+          ffmpegArgsForExportPlan(args.plan, args.outputPath),
+        );
+      }
       renderJob.status = "completed";
       renderJob.progress_pct = 100;
     } catch (error) {
       renderJob.status = session.cancelRequested ? "cancelled" : "failed";
       renderJob.error = error instanceof Error ? error.message : String(error);
+      if (renderJob.status === "failed") {
+        console.error("[export-render] render job failed", {
+          jobId: renderJob.id,
+          outputPath: renderJob.output_path,
+          error: renderJob.error,
+        });
+      }
     } finally {
       renderJob.completed_at = Date.now();
       broadcastRenderProgress(renderJob, session.frame);
@@ -224,6 +242,7 @@ export function renderCancel(jobId: string): null {
     if (session.timer) clearInterval(session.timer);
     session.cancelRequested = true;
     session.ffmpegProcess?.kill("SIGKILL");
+    session.cancelCompositedExport?.();
     session.job.status = "cancelled";
     session.job.completed_at = Date.now();
     broadcastRenderProgress(session.job, session.frame);
