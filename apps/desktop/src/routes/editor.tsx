@@ -32,14 +32,11 @@ import { StoryBuilder } from "@/features/editor/story-builder";
 import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-editor";
 import { ensureAllStepIds, formatEditableStory } from "@/features/editor/story-ui-model";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
-import { parseStory } from "@/ipc/parse";
+import { parseStory, type Story } from "@/ipc/parse";
 import {
   fetchProjectFolder,
-  fetchProjectWorkflow,
   type ProjectFolderInfo,
-  updateProjectWorkflow,
   useProjectRecordings,
-  type WorkflowState,
 } from "@/ipc/projects";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import { useAppSettingsStore } from "@/state/app-settings";
@@ -67,7 +64,6 @@ export default function EditorRoute() {
   const [cursor, setCursor] = useState<{ line: number; col: number } | null>(null);
   const [editorMode, setEditorMode] = useState<"ui" | "code">("ui");
   const [polish, setPolish] = useState<StoryPolishDoc>(DEFAULT_POLISH_DOC);
-  const [workflowState, setWorkflowState] = useState<WorkflowState | null>(null);
   const [polishReady, setPolishReady] = useState(false);
   const [polishDirty, setPolishDirty] = useState(false);
   const [recordPolishStarting, setRecordPolishStarting] = useState(false);
@@ -78,7 +74,6 @@ export default function EditorRoute() {
   // skip (so external edits aren't clobbered by a clean buffer) and the
   // focus-time divergence check.
   const lastDiskSourceRef = useRef<string | null>(null);
-  const workflowSaveSeqRef = useRef(0);
   const setSource = useEditorStore((s) => s.setSource);
   const setLastParse = useEditorStore((s) => s.setLastParse);
   const resetProjectState = useEditorStore((s) => s.resetProjectState);
@@ -136,7 +131,6 @@ export default function EditorRoute() {
     setLoadError(null);
     setLoadedProjectId(null);
     setPolish(DEFAULT_POLISH_DOC);
-    setWorkflowState(null);
     setPolishReady(false);
     setPolishDirty(false);
     lastDiskSourceRef.current = null;
@@ -148,10 +142,9 @@ export default function EditorRoute() {
         if (cancelled) return;
         const text = await readTextFile(info.story_path);
         if (cancelled) return;
-        const [parsed, polishDoc, workflow] = await Promise.all([
+        const [parsed, polishDoc] = await Promise.all([
           parseStory(text).catch(() => null),
           loadPolishDoc(info.story_path),
-          fetchProjectWorkflow(projectId),
         ]);
         if (cancelled) return;
         // Commit folder, source, parse result, and ready flag together.
@@ -160,7 +153,6 @@ export default function EditorRoute() {
         lastDiskSourceRef.current = text;
         if (parsed) setLastParse(parsed);
         setPolish(polishDoc);
-        setWorkflowState(workflow);
         setPolishReady(true);
         setPolishDirty(false);
         setLoadedProjectId(projectId);
@@ -254,22 +246,6 @@ export default function EditorRoute() {
     setPolishDirty(true);
   }, []);
 
-  const updateWorkflow = useCallback(
-    (next: WorkflowState) => {
-      if (!projectId) return;
-      if (workflowState === next) return;
-      const saveSeq = workflowSaveSeqRef.current + 1;
-      workflowSaveSeqRef.current = saveSeq;
-      setWorkflowState(next);
-      updateProjectWorkflow(projectId, next)
-        .then((saved) => {
-          if (workflowSaveSeqRef.current === saveSeq) setWorkflowState(saved);
-        })
-        .catch(() => toast.error("Failed to save workflow roadmap"));
-    },
-    [projectId, workflowState],
-  );
-
   useEffect(() => {
     if (!polishReady || !story) return;
     const pruned = prunePolishDocForStory(polish, story);
@@ -285,17 +261,19 @@ export default function EditorRoute() {
   }, autosaveDelayMs);
 
   const handleUiSourceChange = useCallback(
-    (nextSource: string) => {
+    (nextSource: string, optimisticStory?: Story) => {
       setSource(nextSource);
+      if (optimisticStory) setLastParse({ ast: optimisticStory, diagnostics: [...diagnostics] });
       if (autosaveEnabled) uiAutosave.run(nextSource);
     },
-    [autosaveEnabled, setSource, uiAutosave],
+    [autosaveEnabled, diagnostics, setLastParse, setSource, uiAutosave],
   );
 
   const commitUiSourceChange = useCallback(
-    async (nextSource: string) => {
+    async (nextSource: string, optimisticStory?: Story) => {
       uiAutosave.cancel();
       setSource(nextSource);
+      if (optimisticStory) setLastParse({ ast: optimisticStory, diagnostics: [...diagnostics] });
       await autosave(nextSource);
       try {
         const parsed = await parseStory(nextSource);
@@ -304,7 +282,7 @@ export default function EditorRoute() {
         /* Diagnostics will refresh through the regular parse effect. */
       }
     },
-    [autosave, setLastParse, setSource, uiAutosave],
+    [autosave, diagnostics, setLastParse, setSource, uiAutosave],
   );
 
   const flushUiSourceChange = useCallback(() => {
@@ -376,8 +354,8 @@ export default function EditorRoute() {
 
   if (loadError) {
     return (
-      <main id="main-content" className="mx-auto max-w-2xl p-8" role="alert">
-        <div className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[var(--sc-record)]/40 bg-[var(--sc-record)]/8 p-4 text-sm text-[var(--sc-record)]">
+      <main id="main-content" className="sc-window-chrome h-full p-8" role="alert">
+        <div className="mx-auto flex max-w-2xl items-start gap-3 rounded-[var(--radius-md)] border border-[var(--sc-record)]/40 bg-[var(--sc-record)]/8 p-4 text-sm text-[var(--sc-record)]">
           <AlertTriangle size={16} aria-hidden="true" className="mt-0.5" />
           <div>
             <p className="font-medium">Failed to open project</p>
@@ -407,7 +385,7 @@ export default function EditorRoute() {
         }}
       />
       {/* ─── Toolbar ─── */}
-      <div className="sc-toolbar">
+      <div className="sc-toolbar sc-window-chrome">
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Link
             to="/"
@@ -594,8 +572,6 @@ export default function EditorRoute() {
                         onSourceCommit={commitUiSourceChange}
                         onFlushSource={flushUiSourceChange}
                         onPolishChange={updatePolish}
-                        workflowState={workflowState}
-                        onWorkflowChange={updateWorkflow}
                         onJumpToOffset={queueEditorJump}
                       />
                     ) : (

@@ -1,11 +1,11 @@
 // @storycapture/shared-types
 // Shared TS exports for desktop IPC and companion types.
-// `ipc.ts` is generated from `ipc_spec.rs`; do not edit it by hand.
+// `ipc.ts` is the checked-in host IPC compatibility surface.
 
 export * from "./ipc";
 export * from "./browser-presets";
 
-// WebAccountInfo stays in web-account.ts to avoid colliding with generated types.
+// WebAccountInfo stays in web-account.ts to avoid colliding with IPC types.
 
-// Keep event names in sync with Rust `EventChannels`.
+// Keep event names in sync with the Electron host event bridge.
 export const APP_PANIC_EVENT = "app:panic" as const;

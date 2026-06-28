@@ -1,7 +1,7 @@
 /**
- * Hook wiring NL chat UI to Tauri IPC commands.
+ * Hook wiring NL chat UI to host IPC commands.
  *
- * Uses Channel<NlChatEvent> for streaming events from the Rust backend.
+ * Uses Channel<NlChatEvent> for streaming events from the host.
  */
 
 import { useCallback, useRef } from "react";

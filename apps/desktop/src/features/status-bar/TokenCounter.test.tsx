@@ -105,19 +105,10 @@ describe("CostWarningModal", () => {
       />,
     );
 
-    // Vietnamese copy
-    expect(
-      screen.getByText(/Prompt n\u00e0y d\u00f9ng nhi\u1ec1u token/),
-    ).toBeTruthy();
-
-    // Checkbox
-    expect(
-      screen.getByText(/\u0110\u1eebng h\u1ecfi l\u1ea1i cho session n\u00e0y/),
-    ).toBeTruthy();
-
-    // Buttons
-    expect(screen.getByText(/Ti\u1ebfp t\u1ee5c/)).toBeTruthy();
-    expect(screen.getByText(/Hu\u1ef7/)).toBeTruthy();
+    expect(screen.getByText(/This prompt uses a lot of tokens/)).toBeTruthy();
+    expect(screen.getByText(/Don't ask again for this session/)).toBeTruthy();
+    expect(screen.getByText(/Continue/)).toBeTruthy();
+    expect(screen.getByText(/Cancel/)).toBeTruthy();
   });
 
   it("skips display when suppressForSession was previously checked", async () => {
@@ -135,7 +126,7 @@ describe("CostWarningModal", () => {
     );
 
     // Should not render modal content when suppressed
-    expect(screen.queryByText(/Prompt n\u00e0y d\u00f9ng nhi\u1ec1u token/)).toBeNull();
+    expect(screen.queryByText(/This prompt uses a lot of tokens/)).toBeNull();
   });
 });
 

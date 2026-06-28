@@ -2,14 +2,13 @@
  * Web Account connection panel for Settings > Accounts.
  *
  * Shows web account connection status with connect/disconnect flow.
- * OAuth flow opens the system browser and captures the callback
- * via a localhost server managed by the Rust backend.
+ * OAuth flow opens the system browser and captures the callback via the host.
  *
  * data-testid="web-account-panel"
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { Dialog } from "@base-ui-components/react/dialog";
+import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {

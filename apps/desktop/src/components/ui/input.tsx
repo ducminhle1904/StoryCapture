@@ -4,7 +4,7 @@
  * aria-invalid styling is wired through tokens.
  */
 
-import { Input as BaseInput } from "@base-ui-components/react/input";
+import { Input as BaseInput } from "@base-ui/react/input";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

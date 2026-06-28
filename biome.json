@@ -15,7 +15,6 @@
       "!**/.next",
       "!**/dist",
       "!**/.turbo",
-      "!**/src-tauri/target",
       "!**/binaries",
       "!**/.planning"
     ]

@@ -57,10 +57,7 @@ describe("ChatPanel", () => {
       screen.getByText(/Vi\u1ebft story b\u1eb1ng l\u1eddi/),
     ).toBeTruthy();
     expect(screen.getByTestId("nl-chat-panel")).toBeTruthy();
-    // CTA: "Thu vi du mau"
-    expect(
-      screen.getByText(/Th\u1eed v\u00ed d\u1ee5 m\u1eabu/),
-    ).toBeTruthy();
+    expect(screen.getByText(/Make the onboarding story shorter/)).toBeTruthy();
   });
 
   it("renders streaming dot when streaming is active", () => {

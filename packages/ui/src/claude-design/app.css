@@ -1,6 +1,21 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 
+:root {
+  --sc-window-chrome-height: 48px;
+  --sc-window-control-left-inset: 0px;
+  --sc-window-control-right-inset: 0px;
+}
+
+[data-platform="darwin"] {
+  --sc-window-control-left-inset: 82px;
+}
+
+[data-platform="win"],
+[data-platform="linux"] {
+  --sc-window-control-right-inset: 138px;
+}
+
 body {
   font-family: var(--sc-font-ui);
   font-size: 13px;
@@ -141,6 +156,12 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+.sc-window-sidebar {
+  -webkit-app-region: drag;
+}
+[data-platform="darwin"] .sc-window-sidebar {
+  padding-top: var(--sc-window-chrome-height);
+}
 .sc-main {
   background: var(--sc-bg);
   display: flex;
@@ -249,7 +270,7 @@ body {
   border-bottom: 1px solid var(--sc-border);
   background: var(--sc-bg);
   flex-shrink: 0;
-  height: 48px;
+  height: var(--sc-window-chrome-height);
 }
 .sc-toolbar-title {
   font-size: 14px;
@@ -257,6 +278,33 @@ body {
   letter-spacing: -0.01em;
 }
 .sc-spacer { flex: 1; }
+
+.sc-window-chrome {
+  -webkit-app-region: drag;
+  min-height: var(--sc-window-chrome-height);
+  padding-left: max(var(--sc-window-control-left-inset), 16px);
+  padding-right: max(var(--sc-window-control-right-inset), 16px);
+  user-select: none;
+}
+
+:is(.sc-window-chrome, .sc-window-sidebar)
+  :is(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    [role="button"],
+    [role="tab"],
+    [role="switch"],
+    [contenteditable="true"],
+    .cm-editor,
+    .sc-scroll,
+    .no-window-drag
+  ),
+.no-window-drag {
+  -webkit-app-region: no-drag;
+}
 
 /* Button */
 .sc-btn {

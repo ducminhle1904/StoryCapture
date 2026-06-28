@@ -1,7 +1,6 @@
 /**
  * Web account types for desktop-to-web linking.
  *
- * Mirrors `WebAccountInfo` from `apps/desktop/src-tauri/src/commands/web_account.rs`.
  * Used by the Accounts settings panel and upload/sync features.
  */
 

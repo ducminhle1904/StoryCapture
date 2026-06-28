@@ -1,13 +1,12 @@
-/**
- * Capture IPC wrappers. See
- * `apps/desktop/src-tauri/src/commands/capture.rs`.
- */
+/** Capture IPC wrappers. */
 
+import type { ScreenCapturePermissionReportDto } from "@shared-types";
 import { Channel, invoke } from "@tauri-apps/api/core";
 
-// Rust-side DTO uses `#[serde(rename_all = "kebab-case")]`, so values
-// arrive as lowercase over IPC. Keep TS in lockstep.
+// Host DTO values arrive as lowercase over IPC. Keep TS in lockstep.
 export type PermissionState = "granted" | "denied" | "undetermined";
+
+export type ScreenCapturePermissionReport = ScreenCapturePermissionReportDto;
 
 export interface DisplayInfo {
   id: bigint | number; // specta emits bigint for u64
@@ -24,8 +23,8 @@ export function listDisplays(): Promise<DisplayInfo[]> {
   return invoke<DisplayInfo[]>("list_displays");
 }
 
-export function checkScreenCapturePermission(): Promise<PermissionState> {
-  return invoke<PermissionState>("check_screen_capture_permission");
+export function checkScreenCapturePermission(): Promise<ScreenCapturePermissionReport> {
+  return invoke<ScreenCapturePermissionReport>("check_screen_capture_permission");
 }
 
 export function openScreenCapturePrefs(): Promise<void> {
@@ -33,13 +32,12 @@ export function openScreenCapturePrefs(): Promise<void> {
 }
 
 /**
- * Triggers macOS `CGRequestScreenCaptureAccess()`. Registers the app in
- * System Settings → Privacy & Security → Screen Recording so the user
- * can toggle it. Without this call, the app doesn't appear in the list.
- * Call this BEFORE opening Settings.
+ * Probes macOS Screen Recording with a minimal desktopCapturer request.
+ * This registers the current app identity in System Settings so the user
+ * can grant access before relaunching.
  */
-export function requestScreenCaptureAccess(): Promise<PermissionState> {
-  return invoke<PermissionState>("request_screen_capture_access");
+export function requestScreenCaptureAccess(): Promise<ScreenCapturePermissionReport> {
+  return invoke<ScreenCapturePermissionReport>("request_screen_capture_access");
 }
 
 export function relaunchApp(): Promise<void> {
@@ -83,6 +81,7 @@ export type CaptureTarget =
   | { kind: "display"; display_id: bigint | number }
   | { kind: "window"; window_id: bigint | number }
   | { kind: "window_by_pid"; pid: number; title_hint: string | null }
+  | { kind: "author_preview"; stream_id: string }
   | {
       kind: "display_region";
       display_id: bigint | number;
@@ -147,6 +146,8 @@ export function captureTargetKey(t: CaptureTarget): string {
       return `window:${t.window_id}`;
     case "window_by_pid":
       return `pid:${t.pid}:${t.title_hint ?? ""}`;
+    case "author_preview":
+      return `author-preview:${t.stream_id}`;
     case "display_region":
       return `region:${t.display_id}:${t.rect.x},${t.rect.y},${t.rect.w}x${t.rect.h}`;
   }
@@ -166,10 +167,16 @@ export interface ResolvedPlaywrightTarget {
   content_crop: ResolvedFrameCrop | null;
 }
 
-/** Ask the host to resolve the current Playwright window. Returns `null`
- *  when no Playwright is running or the window isn't on-screen. */
-export function resolvePlaywrightTarget(): Promise<ResolvedPlaywrightTarget | null> {
-  return invoke<ResolvedPlaywrightTarget | null>("resolve_playwright_target");
+/** Ask the host to resolve the current browser window. Returns `null`
+ *  when no browser session is running or the window isn't on-screen. */
+export function resolvePlaywrightTarget(args?: {
+  streamId?: string | null;
+  ensureVisible?: boolean;
+}): Promise<ResolvedPlaywrightTarget | null> {
+  return invoke<ResolvedPlaywrightTarget | null>("resolve_playwright_target", {
+    streamId: args?.streamId ?? null,
+    ensureVisible: args?.ensureVisible ?? false,
+  });
 }
 
 /** Read macOS Stage Manager's global-enable flag. Returns `false` on

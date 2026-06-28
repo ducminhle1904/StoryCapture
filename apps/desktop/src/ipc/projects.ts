@@ -2,8 +2,7 @@
  * Dashboard / project IPC hooks.
  *
  * Typed wrappers around the `list_projects` / `create_project` /
- * `open_project` / `remove_project` Tauri commands (Rust:
- * `apps/desktop/src-tauri/src/commands/projects.rs`).
+ * `open_project` / `remove_project` host commands.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

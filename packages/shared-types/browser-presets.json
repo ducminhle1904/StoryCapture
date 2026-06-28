@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical single source of truth for browser presets. Consumed by TS (apps/desktop/src) and Rust (apps/desktop/src-tauri via build.rs codegen). Order MATTERS: entries are iterated in order for basename path-fragment matching, so more-specific variants (canary/beta/dev) MUST appear before their generic parent (chrome/msedge). Do not reorder without updating callers.",
+  "_comment": "Canonical single source of truth for browser presets. Consumed by the desktop renderer and Electron host. Order MATTERS: entries are iterated in order for basename path-fragment matching, so more-specific variants (canary/beta/dev) MUST appear before their generic parent (chrome/msedge). Do not reorder without updating callers.",
   "presets": [
     {
       "id": "chromium",

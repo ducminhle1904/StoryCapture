@@ -34,9 +34,8 @@ export type TrackId = (typeof TRACK_IDS)[number];
 export const SNAP_THRESHOLD_PX = 10;
 
 // ---------------------------------------------------------------------------
-// Shared shapes used by clip variants. Mirrors of the Rust-side AST shapes
-// in `crates/effects/src/ast/`. Defined here (not in `compute-graph.ts`) so
-// `timeline-slice.ts` is the single source of truth for editor state.
+// Shared shapes used by clip variants. Defined here (not in `compute-graph.ts`)
+// so `timeline-slice.ts` is the single source of truth for editor state.
 // ---------------------------------------------------------------------------
 
 export interface Vec2 {
@@ -288,6 +287,21 @@ const initialTracks: TimelineSlice["tracks"] = {
   annotations: [],
 };
 
+function cloneSerializable<T>(value: T): T {
+  if (typeof structuredClone === "function") return structuredClone(value);
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export function cloneTimelineTracks(tracks: TimelineSlice["tracks"] = initialTracks): TimelineSlice["tracks"] {
+  return {
+    video: tracks.video.map(cloneSerializable),
+    cursor: tracks.cursor.map(cloneSerializable),
+    zoom: tracks.zoom.map(cloneSerializable),
+    sound: tracks.sound.map(cloneSerializable),
+    annotations: tracks.annotations.map(cloneSerializable),
+  };
+}
+
 /**
  * Patches a clip (matched by id) inside one track. The patch callback
  * receives the narrowed variant and must return the same variant; we
@@ -308,7 +322,7 @@ export const createTimelineSlice: StateCreator<TimelineSlice, [], [], TimelineSl
   set,
   get,
 ) => ({
-  tracks: initialTracks,
+  tracks: cloneTimelineTracks(),
   playheadMs: 0,
   snapEnabled: true,
   durationMs: 0,
@@ -328,7 +342,10 @@ export const createTimelineSlice: StateCreator<TimelineSlice, [], [], TimelineSl
     if (get().snapEnabled === on) return;
     set({ snapEnabled: on });
   },
-  setTracks: (patch) => set((s) => ({ tracks: { ...s.tracks, ...patch } })),
+  setTracks: (patch) =>
+    set((s) => ({
+      tracks: cloneTimelineTracks({ ...s.tracks, ...patch }),
+    })),
 
   addVideoClip: (clip) =>
     set((s) => ({

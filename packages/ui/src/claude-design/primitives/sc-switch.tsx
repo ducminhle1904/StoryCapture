@@ -1,4 +1,4 @@
-import { Switch } from "@base-ui-components/react/switch";
+import { Switch } from "@base-ui/react/switch";
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
 
 import { cn } from "../../lib/cn";

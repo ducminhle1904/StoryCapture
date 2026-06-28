@@ -36,14 +36,16 @@ export function resolveDims(res: OutputResolutionDto, capture?: Dims): Dims {
 export function computeBitratePreview({
   w,
   h,
+  fps,
   quality,
 }: {
   w: number;
   h: number;
+  fps: number;
   quality: RecordingQualityPreset;
 }): { mbps: number; mbPerMin: number } {
-  if (w <= 0 || h <= 0) return { mbps: 0, mbPerMin: 0 };
-  const kbps = ((w * h * 3) / 1000) * Q_MUL[quality];
+  if (w <= 0 || h <= 0 || fps <= 0 || !Number.isFinite(fps)) return { mbps: 0, mbPerMin: 0 };
+  const kbps = ((w * h * 3) / 1000) * Q_MUL[quality] * (fps / 60);
   const mbps = kbps / 1000;
   const mbPerMin = (kbps * 60) / 8 / 1024;
   return { mbps, mbPerMin };

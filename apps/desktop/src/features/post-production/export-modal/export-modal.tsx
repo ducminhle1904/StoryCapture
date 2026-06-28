@@ -12,7 +12,7 @@
  * yet been invoked (initial state).
  */
 
-import { Dialog } from "@base-ui-components/react/dialog";
+import { Dialog } from "@base-ui/react/dialog";
 import type { HardwareEncoderDto } from "@storycapture/shared-types";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight, FolderOpen, Sparkles, TriangleAlert, X } from "lucide-react";
@@ -79,6 +79,21 @@ function buildEncoderOptions(knobs: ExportKnobs): ExportEncoderOptions {
   };
 }
 
+function encoderOptionsForOutput(
+  options: ExportEncoderOptions,
+  format: ExportOutput["format"],
+): ExportEncoderOptions {
+  if (format === "webm") {
+    return {
+      ...options,
+      container: "webm",
+      audio: options.audio ? { ...options.audio, codec: "opus" } : null,
+    };
+  }
+  if (format === "mp4") return { ...options, container: "mp4" };
+  return { ...options, container: null, audio: null };
+}
+
 export interface ExportModalProps {
   storyId: string;
 }
@@ -138,7 +153,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
       output_height: graph.output_height,
       fps: form.fps,
       quality: form.quality,
-      encoder_options: encoderOptions,
+      encoder_options: encoderOptionsForOutput(encoderOptions, f),
     }));
   }, [
     form.formats,
@@ -198,7 +213,9 @@ export function ExportModal({ storyId }: ExportModalProps) {
       toast.success(`Export queued: ${res.job_ids.length} jobs`);
       setOpen(false);
     } catch (err) {
-      toast.error(`Export failed: ${String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setWarnings([message]);
+      toast.error(`Export failed: ${message}`);
     } finally {
       setSubmitting(false);
     }

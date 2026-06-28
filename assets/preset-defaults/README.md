@@ -1,10 +1,7 @@
 # Bundled effect presets
 
-Five default `.scpreset` JSON files shipped with StoryCapture (D-20). Each
-file has a stable UUID so `preset_repo::install_bundled` is idempotent across
-app restarts — re-running `INSERT OR IGNORE` on the same id is a no-op.
-
-Schema: `.scpreset` v2 (see `crates/storage/src/preset_io.rs`).
+Five default `.scpreset` JSON files shipped with StoryCapture. Each file has a
+stable UUID so installation can be idempotent across app restarts.
 
 | File               | Name              | Auto-zoom       | Max zoom | Dwell  | Background           | Cursor ripple | BGM                |
 |--------------------|-------------------|-----------------|----------|--------|----------------------|---------------|--------------------|
@@ -16,19 +13,9 @@ Schema: `.scpreset` v2 (see `crates/storage/src/preset_io.rs`).
 
 ## Installation
 
-On first app launch (and on every subsequent launch for idempotence), the
-Tauri host calls:
-
-```rust
-storage::repos::preset_repo::install_bundled(
-    project_db.connection(),
-    PresetTier::Project,
-    &asset_path("preset-defaults"),
-)?;
-```
-
-Because each file embeds a stable `id`, subsequent installs are no-ops even
-if the user has edited the bundled row (we never overwrite on conflict).
+On first app launch, the Electron host can install these files into a project
+preset store. Because each file embeds a stable `id`, subsequent installs can
+be no-ops even if the user has edited the bundled row.
 
 ## Adding a new bundled preset
 

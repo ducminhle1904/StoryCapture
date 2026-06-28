@@ -1,9 +1,8 @@
 /**
- * authorDriverStore — Zustand projection of the host's AuthorDriverState
- * (see `apps/desktop/src-tauri/src/author_driver.rs`).
+ * authorDriverStore — Zustand projection of the Electron host author state.
  *
- * Read-only projection: the host FSM in the AuthorDriverRegistry is the
- * single source of truth for admission control. This store is a UI
+ * Read-only projection: the host FSM is the single source of truth for
+ * admission control. This store is a UI
  * enablement hint — it disables the Pick button during simulator-running,
  * flips the tooltip string per state, and supplies the paused ordinal +
  * streamId the button uses to dispatch `pickElementAuthor`.

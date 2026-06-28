@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 import App from "./App";
 import { ErrorBoundary } from "./components/error-boundary";
+import { ExportCompositorApp } from "./features/post-production/export-compositor/export-compositor-app";
 import { queryClient } from "./ipc/query-client";
 import { frontendLog, installGlobalErrorHandlers } from "./lib/log";
 import { initOutputPrefs } from "./lib/output-prefs-persist";
@@ -20,6 +21,9 @@ if (!container) {
   throw new Error("Root container #root not found");
 }
 const root = createRoot(container);
+const isExportCompositor = new URLSearchParams(window.location.search).get(
+  "storycaptureExportCompositor",
+) === "1";
 
 async function bootstrap() {
   const [settingsResult, outputPrefsResult] = await Promise.allSettled([
@@ -54,4 +58,8 @@ async function bootstrap() {
   );
 }
 
-void bootstrap();
+if (isExportCompositor) {
+  root.render(<ExportCompositorApp />);
+} else {
+  void bootstrap();
+}

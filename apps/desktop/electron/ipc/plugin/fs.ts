@@ -1,0 +1,31 @@
+import { legacyHandlers } from "../legacy-command";
+import type { InvokeHandlers } from "../types";
+
+export const fsHandlers = legacyHandlers([
+  "plugin:fs|create",
+  "plugin:fs|open",
+  "plugin:fs|mkdir",
+  "plugin:fs|copy_file",
+  "plugin:fs|read_dir",
+  "plugin:fs|read_text_file",
+  "plugin:fs|read_file",
+  "plugin:fs|read_text_file_lines",
+  "plugin:fs|read_text_file_lines_next",
+  "plugin:fs|read",
+  "plugin:fs|remove",
+  "plugin:fs|rename",
+  "plugin:fs|stat",
+  "plugin:fs|lstat",
+  "plugin:fs|fstat",
+  "plugin:fs|truncate",
+  "plugin:fs|ftruncate",
+  "plugin:fs|seek",
+  "plugin:fs|write_text_file",
+  "plugin:fs|write_file",
+  "plugin:fs|write",
+  "plugin:fs|exists",
+  "plugin:fs|watch",
+  "plugin:fs|size",
+  "plugin:fs|start_accessing_security_scoped_resource",
+  "plugin:fs|stop_accessing_security_scoped_resource",
+]) satisfies InvokeHandlers;

@@ -33,8 +33,8 @@ export default function RecorderRoute() {
 
   if (error) {
     return (
-      <main id="main-content" className="mx-auto max-w-2xl p-8" role="alert">
-        <div className="flex items-start gap-3 rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]">
+      <main id="main-content" className="sc-window-chrome h-full p-8" role="alert">
+        <div className="mx-auto flex max-w-2xl items-start gap-3 rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-4 text-sm text-[var(--color-danger)]">
           <AlertTriangle size={16} aria-hidden="true" className="mt-0.5" />
           <div>
             <p className="font-medium">Failed to open project</p>
@@ -55,9 +55,9 @@ export default function RecorderRoute() {
     return (
       <main
         id="main-content"
-        className="mx-auto max-w-2xl p-8 text-sm text-[var(--color-fg-muted)]"
+        className="sc-window-chrome h-full p-8 text-sm text-[var(--color-fg-muted)]"
       >
-        Loading project…
+        <div className="mx-auto max-w-2xl">Loading project…</div>
       </main>
     );
   }

@@ -1,5 +1,5 @@
 // StoryCapture Web Companion — Prisma Schema
-// 12 models, 3 enums covering auth, workspaces, video, analytics, templates, sync
+// 12 models, 4 enums covering auth, workspaces, video, analytics, templates, sync
 
 generator client {
   provider = "prisma-client-js"

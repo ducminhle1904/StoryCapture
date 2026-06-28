@@ -1,4 +1,4 @@
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { exists, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Story } from "@/ipc/parse";
 
 export type PolishRecipe = "dynamic" | "calm" | "minimal" | "dramatic";
@@ -330,7 +330,9 @@ export function normalizePolishDoc(value: unknown): StoryPolishDoc {
 export async function loadPolishDoc(storyPath: string | null | undefined): Promise<StoryPolishDoc> {
   if (!storyPath) return DEFAULT_POLISH_DOC;
   try {
-    const text = await readTextFile(polishPathForStory(storyPath));
+    const polishPath = polishPathForStory(storyPath);
+    if (!(await exists(polishPath))) return DEFAULT_POLISH_DOC;
+    const text = await readTextFile(polishPath);
     return normalizePolishDoc(JSON.parse(text));
   } catch {
     return DEFAULT_POLISH_DOC;

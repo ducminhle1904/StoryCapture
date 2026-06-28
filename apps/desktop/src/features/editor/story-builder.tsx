@@ -13,7 +13,6 @@ import {
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { SelectField } from "@/components/ui/select-field";
-import { WorkflowRoadmapPanel } from "@/features/workflows/workflow-roadmap-panel";
 import type { Command, Story } from "@/ipc/parse";
 import {
   isPicked,
@@ -23,7 +22,6 @@ import {
   pickerStampStepId,
   type TargetRecordDto,
 } from "@/ipc/picker";
-import type { WorkflowState } from "@/ipc/projects";
 import {
   calloutText,
   highlightEnabled,
@@ -62,12 +60,10 @@ interface StoryBuilderProps {
   storySource: string;
   storyPath: string | null;
   streamId: string | null;
-  onSourceChange: (source: string) => void;
-  onSourceCommit: (source: string) => Promise<void>;
+  onSourceChange: (source: string, optimisticStory?: Story) => void;
+  onSourceCommit: (source: string, optimisticStory?: Story) => Promise<void>;
   onFlushSource?: () => void;
   onPolishChange: (doc: StoryPolishDoc) => void;
-  workflowState: WorkflowState | null;
-  onWorkflowChange: (workflow: WorkflowState) => void;
   onJumpToOffset: (offset: number) => void;
 }
 
@@ -326,8 +322,6 @@ export function StoryBuilder({
   onSourceCommit,
   onFlushSource,
   onPolishChange,
-  workflowState,
-  onWorkflowChange,
   onJumpToOffset,
 }: StoryBuilderProps) {
   const [pickingKey, setPickingKey] = useState<string | null>(null);
@@ -398,7 +392,8 @@ export function StoryBuilder({
       case "pause":
         return;
     }
-    onSourceChange(formatEditableStory(patchCommand(story, sceneIndex, commandIndex, patch)));
+    const nextStory = patchCommand(story, sceneIndex, commandIndex, patch);
+    onSourceChange(formatEditableStory(nextStory), nextStory);
   };
 
   const updateStepPolish = (
@@ -416,7 +411,7 @@ export function StoryBuilder({
   ) => {
     const { story: nextStory, stepId } = cloneStoryWithStepId(story, sceneIndex, commandIndex);
     if (!story.scenes[sceneIndex]?.commands[commandIndex]?.step_id) {
-      onSourceChange(formatEditableStory(nextStory));
+      onSourceChange(formatEditableStory(nextStory), nextStory);
     }
     onPolishChange(setStepPolish(polish, stepId, patch));
   };
@@ -433,7 +428,7 @@ export function StoryBuilder({
       const { story: storyWithId } = cloneStoryWithStepId(story, sceneIndex, commandIndex);
       const commandWithId = storyWithId.scenes[sceneIndex]?.commands[commandIndex] ?? command;
       if (!command.step_id) {
-        await onSourceCommit(formatEditableStory(storyWithId));
+        await onSourceCommit(formatEditableStory(storyWithId), storyWithId);
       }
       const result = await pickElementAuthor({
         streamId,
@@ -452,7 +447,7 @@ export function StoryBuilder({
         commandIndex,
         updateCommandTargetFromPick(commandWithId, result.locator),
       );
-      await onSourceCommit(formatEditableStory(patched));
+      await onSourceCommit(formatEditableStory(patched), patched);
 
       if (storyPath) {
         const primary = targetRecordFromLocator(result.locator);
@@ -487,13 +482,6 @@ export function StoryBuilder({
         }
       }}
     >
-      {workflowState ? (
-        <WorkflowRoadmapPanel
-          workflow={workflowState}
-          disabled={simulatorActive}
-          onChange={onWorkflowChange}
-        />
-      ) : null}
       <div className="shrink-0 border-b border-[var(--sc-border-2)] bg-[var(--sc-chrome)]">
         <div className="flex h-10 items-center gap-2 px-3">
           <Sparkles size={14} aria-hidden="true" className="text-[var(--sc-accent-400)]" />
@@ -654,11 +642,10 @@ export function StoryBuilder({
                   className="min-w-0 flex-1 bg-transparent text-base font-semibold text-[var(--sc-text)] outline-none"
                   value={scene.name}
                   disabled={simulatorActive}
-                  onChange={(event) =>
-                    onSourceChange(
-                      formatEditableStory(patchSceneName(story, sceneIndex, event.target.value)),
-                    )
-                  }
+                  onChange={(event) => {
+                    const nextStory = patchSceneName(story, sceneIndex, event.target.value);
+                    onSourceChange(formatEditableStory(nextStory), nextStory);
+                  }}
                   aria-label={`Scene ${sceneIndex + 1} name`}
                 />
                 <LabeledControl label="Transition" className="w-40">

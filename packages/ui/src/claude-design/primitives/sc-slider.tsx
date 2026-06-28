@@ -1,4 +1,4 @@
-import { Slider } from "@base-ui-components/react/slider";
+import { Slider } from "@base-ui/react/slider";
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
 
 import { cn } from "../../lib/cn";

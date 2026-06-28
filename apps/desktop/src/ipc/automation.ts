@@ -1,13 +1,10 @@
-/**
- * Automation IPC wrappers. Thin typed facade for the commands defined in
- * `apps/desktop/src-tauri/src/commands/automation.rs`.
- */
+/** Automation IPC wrappers. */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { DEFAULT_RECORDING_PACING } from "@/state/output-prefs";
+import { DEFAULT_RECORDING_PACING, type RecordingPacingProfile } from "@/state/output-prefs";
 
 /**
- * Mirror of `automation::BoundingBox`. Carried on StepFrame.
+ * Bounding box carried on StepFrame.
  */
 export interface BoundingBox {
   x: number;
@@ -74,6 +71,8 @@ export type ExecutorEvent =
 export interface LaunchAutomationArgs {
   storySource: string;
   projectFolder: string;
+  /** Existing author-preview stream to execute against instead of spawning a throwaway browser. */
+  streamId?: string | null;
   /**
    * Logical desktop origin for the selected recording display. macOS uses it
    * to place Chromium on the intended monitor before DPR detection.
@@ -90,7 +89,7 @@ export interface LaunchAutomationArgs {
    * recorder resets the backing toggle each run.
    */
   chromeHiding?: boolean;
-  pacingProfile?: typeof DEFAULT_RECORDING_PACING;
+  pacingProfile?: RecordingPacingProfile;
   /**
    * Attach an active recording session to the DSL run. When set, the host
    * auto-stops the matching recording at story end (normal, error, or
@@ -129,9 +128,10 @@ export async function launchAutomation(
   await invoke("launch_automation", {
     storySource: args.storySource,
     projectFolder: args.projectFolder,
+    streamId: args.streamId ?? null,
     onEvent: channel,
     chromeHiding: args.chromeHiding ?? false,
-    pacingProfile: DEFAULT_RECORDING_PACING,
+    pacingProfile: args.pacingProfile ?? DEFAULT_RECORDING_PACING,
     recordingSessionId: args.recordingSessionId ?? null,
     recordingDisplay: args.recordingDisplay ?? null,
     recordingViewport: args.recordingViewport ?? null,

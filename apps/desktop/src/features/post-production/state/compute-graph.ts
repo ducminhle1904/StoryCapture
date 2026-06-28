@@ -1,14 +1,11 @@
 /**
  * computeGraph — pure projection from the timeline editor store into the
- * effects-crate `Graph` AST that the export pipeline consumes.
+ * export graph shape that the Electron export pipeline consumes.
  *
- * The Rust shape is the source of truth (see `crates/effects/src/ast/`).
  * The TS reference lives in `packages/shared-types/src/generated/effects.ts`,
  * but that file uses `bigint` for u64 fields which JSON.stringify cannot
- * encode. We instead emit plain numbers (JSON numbers deserialize into
- * Rust u64 via serde with no precision loss for ms-scale timestamps), and
- * narrow our own structurally-identical local types so the boundary stays
- * type-checked.
+ * encode. We instead emit plain numbers for ms-scale timestamps and narrow our
+ * own structurally-identical local types so the boundary stays type-checked.
  *
  * Determinism: NodeId UUIDs are derived from a stable hash of the clip id,
  * so calling `computeGraph` twice with the same store produces JSON.stringify
@@ -71,9 +68,9 @@ export interface ComputeGraphInput {
 }
 
 // ---------------------------------------------------------------------------
-// Local Graph types — mirror Rust shape, but use `number` instead of `bigint`
-// for u64 fields so JSON.stringify works. Drift guard: any change here MUST
-// match a corresponding change in `crates/effects/src/ast/`.
+// Local Graph types use `number` instead of `bigint` for timestamp fields so
+// JSON.stringify works. Keep this in sync with the shared generated effects
+// types where those are still consumed.
 //
 // Vec2, ZoomTarget, CursorSkin are re-exported from timeline-slice so the
 // editor's store shape and the wire format share a single definition.
@@ -133,6 +130,7 @@ export interface TextBox {
   box_style: BoxStyle | null;
   anim_in: TextAnim;
   anim_out: Extract<TextAnim, "none" | "fade">;
+  anim_duration_ms: number;
 }
 
 export interface RippleEvent {
@@ -165,7 +163,15 @@ export interface HighlightOverlaySpec {
 }
 
 export type VideoNode =
-  | { type: "source"; id: string; path: string; pts_offset_ms: number }
+  | {
+      type: "source";
+      id: string;
+      path: string;
+      pts_offset_ms: number;
+      duration_ms: number;
+      source_width?: number;
+      source_height?: number;
+    }
   | { type: "zoom-pan"; id: string; target: ZoomTarget; keyframes: ZoomKeyframe[] }
   | {
       type: "background";
@@ -182,6 +188,8 @@ export type VideoNode =
       size_scale: number;
       motion_preset: CursorMotionPreset;
       color_tint: Rgba | null;
+      t_start_ms: number;
+      duration_ms: number;
       trajectory: TrajectoryRef;
     }
   | { type: "ripple-overlay"; id: string; events: RippleEvent[] }
@@ -273,6 +281,9 @@ function videoSource(clip: VideoClip): VideoNode | null {
     id: deterministicNodeId(clip.id, "source"),
     path: clip.sourcePath,
     pts_offset_ms: clip.startMs,
+    duration_ms: Math.max(0, Math.round(clip.durationMs)),
+    source_width: clip.sourceSize?.width,
+    source_height: clip.sourceSize?.height,
   };
 }
 
@@ -405,6 +416,8 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
     size_scale: clip.sizeScale,
     motion_preset: normalizeCursorMotionPreset(clip.motionPreset),
     color_tint: null,
+    t_start_ms: clip.startMs,
+    duration_ms: Math.max(0, Math.round(clip.durationMs)),
     trajectory: {
       png_sequence_dir: clip.trajectoryDir,
       fps: clip.trajectoryFps,
@@ -436,6 +449,7 @@ function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
       : null,
     anim_in: style.animation.in,
     anim_out: style.animation.out,
+    anim_duration_ms: Math.max(0, Math.round(style.animation.durationMs)),
   };
 }
 
@@ -666,7 +680,9 @@ export function computeGraph(state: ComputeGraphInput): Graph {
 
 /** True when the graph has at least one renderable video node. */
 export function graphIsRenderable(graph: Graph): boolean {
-  return graph.video.length > 0;
+  return graph.video.some(
+    (node) => node.type === "source" && typeof node.path === "string" && node.path.length > 0,
+  );
 }
 
 /** Track ids consumed by `computeGraph`. Exported for documentation/tests. */

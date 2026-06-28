@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # scripts/release/verify-installer-size.sh
 #
-# Enforce the DIST-04 installer-size budget of 50 MB, **excluding** the
-# FFmpeg and Playwright sidecars — those are platform-native runtimes we
-# bundle but don't count against the application's own footprint (per D-44
-# the bundled sidecars may add ~150-230 MB total, which is acceptable, but
-# the residual app must stay lean).
+# Enforce the installer-size budget of 50 MB, excluding the bundled FFmpeg
+# runtime. The residual app must stay lean.
 #
 # Supported formats: macOS .dmg, Windows NSIS .exe and .msi.
 #
@@ -84,7 +81,6 @@ case "$INSTALLER" in
     fi
     total_bytes=$(tree_size "$APP_DIR")
     ffmpeg_bytes=$(sum_sizes "$APP_DIR" "ffmpeg" "ffmpeg-*" "ffprobe" "ffprobe-*")
-    sidecar_bytes=$(sum_sizes "$APP_DIR" "playwright-sidecar" "playwright-sidecar-*")
     hdiutil detach "$TMP/mnt" >/dev/null 2>&1 || true
     ;;
   *.exe|*.msi)
@@ -96,7 +92,6 @@ case "$INSTALLER" in
     7z x -y "-o$TMP/ex" "$INSTALLER" >/dev/null
     total_bytes=$(tree_size "$TMP/ex")
     ffmpeg_bytes=$(sum_sizes "$TMP/ex" "ffmpeg.exe" "ffmpeg-*.exe" "ffmpeg" "ffmpeg-*" "ffprobe.exe" "ffprobe-*.exe")
-    sidecar_bytes=$(sum_sizes "$TMP/ex" "playwright-sidecar.exe" "playwright-sidecar-*.exe" "playwright-sidecar" "playwright-sidecar-*")
     ;;
   *)
     echo "error: unsupported installer format: $INSTALLER" >&2
@@ -105,17 +100,14 @@ case "$INSTALLER" in
 esac
 
 ffmpeg_bytes=${ffmpeg_bytes:-0}
-sidecar_bytes=${sidecar_bytes:-0}
-residual=$(( total_bytes - ffmpeg_bytes - sidecar_bytes ))
+residual=$(( total_bytes - ffmpeg_bytes ))
 residual_mb=$(( residual / 1024 / 1024 ))
 total_mb=$(( total_bytes / 1024 / 1024 ))
 ffmpeg_mb=$(( ffmpeg_bytes / 1024 / 1024 ))
-sidecar_mb=$(( sidecar_bytes / 1024 / 1024 ))
 
 echo "Installer:    $INSTALLER"
 echo "Total:        ${total_mb} MB"
 echo "FFmpeg:       ${ffmpeg_mb} MB (excluded from budget)"
-echo "Playwright:   ${sidecar_mb} MB (excluded from budget)"
 echo "App residual: ${residual_mb} MB  (budget ${BUDGET_MB} MB, hard-fail ${HARD_FAIL_MB} MB)"
 
 if (( residual_mb > HARD_FAIL_MB )); then

@@ -19,15 +19,52 @@ export async function stopPreviewStream(): Promise<void> {
   await invoke("stop_preview_stream");
 }
 
-export async function startAuthorPreview(params: {
+export type AuthorPreviewPurpose = "editor" | "recording";
+
+interface BaseStartAuthorPreviewParams {
   initialUrl: string | null;
   viewportWidth: number;
   viewportHeight: number;
-}): Promise<string> {
+  fps?: number | null;
+}
+
+interface EditorStartAuthorPreviewParams extends BaseStartAuthorPreviewParams {
+  purpose?: "editor";
+  replaceExisting?: true;
+  partition?: null;
+}
+
+interface RecordingStartAuthorPreviewParams extends BaseStartAuthorPreviewParams {
+  purpose: "recording";
+  replaceExisting: false;
+  partition: string;
+  visible: true;
+  previewX?: number | null;
+  previewY?: number | null;
+}
+
+export type StartAuthorPreviewParams =
+  | EditorStartAuthorPreviewParams
+  | RecordingStartAuthorPreviewParams;
+
+export async function startAuthorPreview(params: StartAuthorPreviewParams): Promise<string> {
+  const recordingOptions =
+    params.purpose === "recording"
+      ? {
+          visible: params.visible,
+          previewX: params.previewX ?? null,
+          previewY: params.previewY ?? null,
+        }
+      : {};
   return await invoke<string>("start_author_preview", {
     initialUrl: params.initialUrl,
     viewportWidth: params.viewportWidth,
     viewportHeight: params.viewportHeight,
+    fps: params.fps ?? null,
+    replaceExisting: params.replaceExisting,
+    partition: params.partition,
+    purpose: params.purpose,
+    ...recordingOptions,
   });
 }
 

@@ -1,120 +1,150 @@
 # StoryCapture Agent Guide
 
-Lean entrypoint for coding agents. Keep this file short and push detail into
-read-on-demand docs.
+Lean entrypoint for coding agents. `AGENTS.md` and `GEMINI.md` are symlinks to
+this file, so edit `CLAUDE.md` when updating agent guidance.
+
+## Start Here
+
+- Use `docs/agent/project-map.md` for the repo map, generated-file guardrails,
+  and first files to read by area.
+- Use `docs/agent/module-index.md` for detailed frontend, Electron, web,
+  package, and asset routing.
+- Use `docs/agent/workflows.md` for install, dev, build, typecheck, Prisma,
+  CI, and release commands.
+- Use `docs/agent/testing.md` for focused Vitest commands and test coverage
+  expectations.
+- Use `docs/agent/operations.md` for CI, deploy, signing, env, cron, Prisma
+  migrations, and generated files.
+- Keep command output token-efficient: use `context-mode` for broad output and
+  `rtk` for real shell commands.
 
 ## Project
 
-StoryCapture turns a written `.story` script into a polished demo video.
+StoryCapture turns a written `.story` script into a polished, shareable demo
+video.
 
-- Desktop app: Tauri v2 + React 19 + Vite 8 on macOS and Windows.
-- Core loop: author DSL → automate a real browser → capture native pixels →
-  encode → apply cinematic post-production → optionally upload/share via the
-  web companion.
-- Web companion: Next.js 16 + tRPC 11 + Prisma 6 + R2/S3 for sharing,
-  workspaces, analytics, and desktop sync.
+- Desktop app: Electron + React + Vite on macOS and Windows.
+- Core loop: author DSL -> automate a browser -> capture pixels -> encode ->
+  post-produce -> optionally upload/share through the web companion.
+- Web companion: Next.js + tRPC + Prisma + R2/S3 for sharing, workspaces,
+  analytics, templates, and desktop sync.
+- Check package manifests and `pnpm-lock.yaml` for current dependency pins; do
+  not duplicate version inventories in this guide.
 
-## Current Repo Reality (refreshed 2026-05-06)
+## Current Repo Reality
 
 - Desktop routes: `/`, `/onboarding`, `/settings`, `/editor/:projectId`,
-  `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`.
-- Tauri IPC surface is large and actively evolving: 28 exported IPC modules,
-  124 registered commands, and 150 Specta `.typ::<T>()` registrations as of
-  this refresh. Generated TS currently emits 124 async wrappers and 161
-  exported type aliases in `packages/shared-types/src/ipc.ts` (never
-  hand-edited).
-- Domain crates active and non-trivial: `story-parser`, `automation`,
-  `capture`, `encoder`, `effects`, `storage`, `intelligence`, `util`.
-  No `crates/gpu_scale/` yet (Phase 8 still planned).
-- Picker has been relocated to the Preview panel (Phase 11 code-complete,
-  flipped 2026-04-23): drives author-session via `picker_start_author`,
-  reads `.story` + `.story.targets.json` only, FSM-routed cancel and
-  one-click re-pick from a failed simulator step.
-- Author-time simulator (Phase 10) ships with filmstrip scrubber, step
-  decoration, pause/step events, Promote-to-fallback gate, and editor
-  read-only lock during runs.
-- Post-production is now real-recording backed: latest recording preview,
-  typed 5-track Clip union, computeGraph → Effects AST JSON, Story → Timeline
-  auto-population, and recording sidecars (`.actions.json`, `.trajectory.json`,
-  `.steps.json`) feed cursor/zoom/callout/highlight defaults.
-- Export reality: post-production MP4 auto export prefers `libx264` on macOS
-  for screen-content quality and NVENC → QSV → AMF on Windows when available;
-  explicit hardware choices still exist. FFmpeg effects filters remain
-  CPU-bound; rounded-frame masking is intentionally a fast export no-op for
-  now. The GPU compositor boundary exists but is not the production backend.
-  Details live in `docs/DOMAIN.md`.
-- Editor has hybrid UI / Code modes. UI mode edits canonical DSL blocks and
-  optional `<story>.polish.json`; `Record & Polish` records, then opens
-  post-production in Review & Export mode.
-- Logging was overhauled (commit `a8e78b6`): `tracing` + size-rolling files,
-  per-run session UUID prefix, `log_from_frontend` IPC bridge, ~95
-  `#[tracing::instrument(err)]` wrappers, configurable from Settings →
-  Logs. All local-only — no telemetry.
+  `/recorder/:projectId`, `/post-production`, `/post-production/:storyId`,
+  plus wildcard redirect to `/`.
+- Electron owns the desktop host in `apps/desktop/electron`. There is no
+  packaged Rust/Tauri runtime, no `src-tauri`, and no Rust crate workspace in
+  the current source tree.
+- The renderer still imports `@tauri-apps/api` and selected Tauri plugin
+  packages as a compatibility API surface. Electron preload/IPC shims implement
+  those calls.
+- Electron IPC is modular: `apps/desktop/electron/ipc.ts` registers the
+  `tauri-invoke` bridge, `apps/desktop/electron/ipc/handlers.ts` is the
+  registry, grouped modules live in `apps/desktop/electron/ipc/*`, and
+  Tauri-compatible plugin shims live in `apps/desktop/electron/ipc/plugin/*`.
+  Remaining legacy host operations live under
+  `apps/desktop/electron/ipc/legacy/`; `ipc/legacy.ts` is the compatibility
+  dispatcher entrypoint.
+- `packages/story-dsl` is AST/vocabulary plus CodeMirror support. Runtime parse
+  and simulator behavior is desktop IPC/host code, not a shared parser package.
+- `packages/shared-types` publicly exports browser presets, web account types,
+  and the checked-in IPC compatibility surface.
+  `packages/shared-types/src/generated/effects.ts` is checked-in generated
+  source, but is not currently exported through the package export map.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
-  15 `Sc*` primitive families. Tailwind v4 `@theme` block is canonical; inspect
-  `packages/ui/src/claude-design/primitives/` instead of trusting stale counts.
-- Current manifest pins: desktop Tauri CLI `^2.10.1`, React `^19.2.5`, Vite
-  `^8.0.9`, Tailwind `^4.2.4`; web Next `^16.2.4`, tRPC `^11.16.0`, Prisma
-  `^6.0.0`, NextAuth `5.0.0-beta.31`.
-- Web companion has public/watch/embed/invite pages, dashboard workspace/video
-  surfaces, tRPC routers, NextAuth v5 GitHub + Google OAuth, R2 multipart
-  upload, Resend invites, Vercel cron analytics aggregation, and desktop sync.
-- Live project status is `.planning/STATE.md` plus
-  `.planning/POST-PROD-ROADMAP.md` for the current post-production push. Treat
-  `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and old roadmap tables
-  as historical planning artifacts unless explicitly refreshed.
+  `Sc*` primitive families.
+- `packages/config` owns the shared TypeScript base config.
 
 ## Source Of Truth
 
 Read only what the task needs.
 
 1. `docs/ARCHITECTURE.md`
-   Use for repo layout, crate ownership, IPC, route surfaces, web APIs, CI and
-   release topology.
+   Repo layout, Electron host ownership, IPC registry, routes, web APIs,
+   package boundaries, CI, and release topology.
 2. `docs/DOMAIN.md`
-   Use for DSL semantics, pipeline behavior, self-healing targets, recording
-   sidecars, post-prod graph model, and intelligence layer.
+   DSL semantics, sidecars, authoring/recording/export flows, post-production
+   graph model, AI/NL/TTS boundaries, and web business flows.
 3. `docs/CONVENTIONS.md`
-   Use for code style, testing, state management, file layout, commit format,
-   and workflow conventions.
+   Code style, state patterns, IPC patterns, test commands, UI rules, commit
+   format, and agent workflow.
 4. `docs/CREDENTIALS.md`
-   Use for signing, notarization, updater, OAuth, R2, JWT, cron, and email
-   secrets.
-5. `.planning/STATE.md`
-   Use for current milestone snapshot, operator-gated blockers, and latest
-   shipped highlights. For post-production follow-ups also read
-   `.planning/POST-PROD-ROADMAP.md`.
+   Signing, auth, R2, email, cron, desktop runtime env, and service secrets.
 
-## Load-On-Demand Map
+There is no `.planning/` directory in the current checkout. If planning
+artifacts are restored later, treat them as historical unless a current state
+file explicitly says otherwise.
 
-- Changing structure, IPC, crates, routing, release flows:
-  read `docs/ARCHITECTURE.md`
-- Changing DSL, automation behavior, capture/render pipeline, roadmap-facing
-  capability notes:
-  read `docs/DOMAIN.md`
-- Changing code style, tests, state patterns, workflow rules:
-  read `docs/CONVENTIONS.md`
-- Changing signing, auth, R2, email, cron, or release secrets:
-  read `docs/CREDENTIALS.md`
+## Task Routing
 
-## Working Rules
+- Desktop renderer/routes: read `apps/desktop/src/routes/index.tsx`, then the
+  matching route in `apps/desktop/src/routes/` and feature folder under
+  `apps/desktop/src/features/`.
+- Desktop IPC/host: read `docs/ARCHITECTURE.md`,
+  `apps/desktop/electron/ipc/handlers.ts`, the matching
+  `apps/desktop/electron/ipc/*.ts` module, and the renderer facade in
+  `apps/desktop/src/ipc/*`.
+- DSL/editor/simulator: read `docs/DOMAIN.md`,
+  `packages/story-dsl/src/ast.ts`, `packages/story-dsl/src/codemirror-lang.ts`,
+  `apps/desktop/electron/ipc/story-parser.ts`, and
+  `apps/desktop/src/features/editor/`.
+- Post-production/export: read `docs/DOMAIN.md` and
+  `apps/desktop/src/features/post-production/`, especially
+  `apps/desktop/src/features/post-production/state/store.ts`,
+  `apps/desktop/src/features/post-production/state/compute-graph.ts`,
+  `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
+  `apps/desktop/src/features/post-production/preview/preview-engine.ts`,
+  `apps/desktop/src/features/post-production/export-modal/`, and
+  `apps/desktop/src/features/post-production/render-queue/`.
+- Web routes/API/data: read `apps/web/src/app`, `apps/web/src/app/api`,
+  `apps/web/src/trpc/routers/_app.ts`, `apps/web/src/trpc/routers/*`,
+  `apps/web/src/lib/*`, and `apps/web/prisma/schema.prisma`.
+- Desktop-web sync/upload/auth: read `apps/web/src/trpc/routers/sync.ts`,
+  `apps/web/src/app/api/auth/*`,
+  `apps/desktop/electron/ipc/legacy/web.ts`, and
+  `apps/desktop/src/stores/*web*`.
+- Shared UI/design system: read `docs/CONVENTIONS.md`,
+  `packages/ui/src/claude-design/README.md`,
+  `packages/ui/src/claude-design/tokens.css`,
+  `packages/ui/src/claude-design/primitives/`, and
+  `apps/desktop/src/components/ui/`.
+- CI, release, signing, env, cron, Prisma migrations, and generated files:
+  read `docs/agent/operations.md` and `docs/CREDENTIALS.md`.
+
+## Common Workflows
+
+- Package manager and Node versions: read root `package.json` (`packageManager`,
+  `engines`) and `.github/actions/setup-toolchain/action.yml`; do not rely on
+  this guide for version pins.
+- Root commands: `pnpm dev`, `pnpm build`, `pnpm typecheck`, `pnpm lint`,
+  `pnpm format`.
+- There is no root `pnpm test`; run package-scoped Vitest commands from
+  `docs/agent/testing.md`.
+- Web Prisma commands live in `apps/web/package.json`: `db:generate`,
+  `db:migrate`, `db:push`, and `db:seed`.
+- CI is `.github/workflows/ci.yml` and runs typecheck, desktop tests, UI tests,
+  web tests, then the desktop Electron build on macOS.
+
+## Guardrails
 
 - No workarounds. Fix root cause or stop with evidence.
 - Plan first for breaking or big changes: public API, IPC, DSL, schema,
   security, build/release, or broad cross-cutting refactors.
-- Use GSD workflow entrypoints before repo edits unless the user explicitly
-  asks to bypass.
-- Keep docs token-efficient: put detail in `docs/*.md`, keep this file lean,
-  and add read-on-demand pointers instead of duplicating long explanations.
-- When code changes invalidate agent guidance, update this file only at the
-  headline level and put the full refresh in the relevant doc.
-- **Sidecar placeholder gotcha**: if you run
-  `bash scripts/dev/install-sidecar-placeholders.sh` to unblock
-  `cargo check`, the stubs left in `apps/desktop/src-tauri/binaries/` will
-  hang Live Preview / author preview at runtime ("Starting preview…")
-  unless the SEA build replaces them. `pnpm tauri:dev` and `pnpm tauri:build`
-  now auto-rebuild the SEA (commit `69eb3a3`), and `build-sea.mjs`
-  treats ≤ 10 KB outputs as stubs and forces rebuild. If you ever bypass
-  both guards, `rm` the `playwright-sidecar-<triple>` placeholder before
-  running `pnpm tauri:dev`. Full context: `docs/CONVENTIONS.md` → "Local
-  sidecar binaries".
+- Never revive removed Tauri/Rust assumptions from historical planning docs.
+- Do not hand-edit generated output:
+  `apps/web/src/generated/prisma/**` or
+  `packages/shared-types/src/generated/effects.ts`.
+- Avoid generated/build/cache/artifact directories unless the task is
+  specifically about them: `node_modules/`, `.turbo/`, `.next/`, `dist/`,
+  `release-electron/`, `output/`, `tmp/`, `scripts/build-ffmpeg/build/`, and
+  generated Prisma output.
+- After code changes, update agent docs when the change affects future agent
+  routing, workflows, commands, architecture, generated-file rules, or module
+  ownership; keep `CLAUDE.md` concise and put detail in `docs/agent/` or the
+  relevant source doc as read-on-demand context.
+- Keep agent docs token-efficient: update this file only at the routing level
+  and put detail in `docs/agent/` or the existing `docs/*.md` source docs.

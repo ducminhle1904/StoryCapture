@@ -261,7 +261,7 @@ export default function OnboardingRoute() {
       id="main-content"
       className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--sc-bg)] text-[var(--sc-text)]"
     >
-      <header className="grid h-[68px] shrink-0 grid-cols-[220px_1fr_160px] items-center border-b border-[var(--sc-border)] bg-[var(--sc-chrome)] px-7">
+      <header className="sc-window-chrome grid h-[68px] shrink-0 grid-cols-[220px_1fr_160px] items-center border-b border-[var(--sc-border)] bg-[var(--sc-chrome)] px-7">
         <div className="flex items-center gap-3">
           <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--sc-text)] text-[var(--sc-text-inverse)]">
             <Film size={17} aria-hidden="true" />

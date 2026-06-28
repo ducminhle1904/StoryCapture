@@ -199,6 +199,21 @@ describe("buildTimelineFromStory", () => {
     expect(c.sizeScale).toBe(1.0);
   });
 
+  it("falls back to trajectory when actions are explicitly missing", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      actions: null,
+      trajectory: TRAJECTORY,
+    });
+
+    expect(out.cursor).toHaveLength(1);
+    expect(out.cursor[0]?.trajectoryKind).toBe("trajectory");
+    expect(out.cursor[0]?.trajectoryDir).toBe(
+      "/tmp/projects/p1/recordings/recording-123.trajectory.json",
+    );
+  });
+
   it("prefers actions sidecar over trajectory for cursor and zoom clips", () => {
     const out = buildTimelineFromStory({
       story: null,
@@ -241,6 +256,73 @@ describe("buildTimelineFromStory", () => {
     expect(bounds?.y).toBeCloseTo(500 / 1080);
     expect(bounds?.w).toBeCloseTo(120 / 1920);
     expect(bounds?.h).toBeCloseTo(80 / 1080);
+  });
+
+  it("extends action-based cursor clips for natural visual travel and click feedback", () => {
+    const baseEvent = ACTIONS.events[0];
+    const baseTarget = baseEvent?.target;
+    if (!baseEvent || !baseTarget) throw new Error("expected action fixture");
+    const target = (label: string, center: { x: number; y: number }) => ({
+      ...baseTarget,
+      label,
+      center,
+      bounds: { x: center.x - 40, y: center.y - 20, w: 80, h: 40 },
+    });
+    const actions: RecordingActions = {
+      ...ACTIONS,
+      viewport: { width: 1280, height: 720 },
+      capture_rect: { x: 0, y: 0, width: 1280, height: 720 },
+      frame_count: 22,
+      events: [
+        {
+          ...baseEvent,
+          step_id: "start",
+          ordinal: 2,
+          verb: "click",
+          t_start_ms: 289,
+          t_action_ms: 290,
+          t_end_ms: 416,
+          target: target("Start", { x: 293.1875, y: 376.59375 }),
+          pointer: { button: "left", effect: "click" },
+        },
+        {
+          ...baseEvent,
+          step_id: "email",
+          ordinal: 3,
+          verb: "type",
+          t_start_ms: 416,
+          t_action_ms: 927,
+          t_end_ms: 1108,
+          target: target("Email", { x: 491.375, y: 376.59375 }),
+          pointer: null,
+        },
+        {
+          ...baseEvent,
+          step_id: "submit",
+          ordinal: 4,
+          verb: "click",
+          t_start_ms: 1108,
+          t_action_ms: 1108,
+          t_end_ms: 1233,
+          target: target("Submit", { x: 696.9609375, y: 376.59375 }),
+          pointer: { button: "left", effect: "click" },
+        },
+      ],
+    };
+
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: { ...RECORDING, duration_ms: 0, width: 1280, height: 720 },
+      actions,
+      trajectory: null,
+    });
+    const cursor = out.cursor[0];
+    expect(cursor).toBeDefined();
+    if (!cursor) return;
+    expect(cursor.durationMs).toBeGreaterThan(1233);
+    expect(cursor.durationMs).toBeGreaterThan(1600);
+    expect(out.video[0]?.durationMs).toBe(cursor.durationMs);
+    expect(cursor.trajectoryFrameCount).toBe(Math.ceil((cursor.durationMs / 1000) * 60));
   });
 
   it("lets action focus be disabled independently from auto zoom", () => {

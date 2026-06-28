@@ -6,7 +6,7 @@
  * `data-[ending-style]` attributes (same pattern as `dialog-motion.ts`).
  */
 
-import { Select as BaseSelect } from "@base-ui-components/react/select";
+import { Select as BaseSelect } from "@base-ui/react/select";
 import { Check } from "lucide-react";
 import * as React from "react";
 

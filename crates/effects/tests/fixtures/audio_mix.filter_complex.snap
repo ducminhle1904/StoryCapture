@@ -1,5 +1,0 @@
----
-source: crates/effects/tests/audio_mix.rs
-expression: out
----
-[0:a]asetpts=PTS-STARTPTS+0.000000/TB[a_a1a1];[1:a]asetpts=PTS-STARTPTS+0.500000/TB[a_a2a2];[a_a1a1]volume=0.400[a_a3a3];[a_a3a3][a_a2a2]sidechaincompress=threshold=0.080:ratio=8.00:attack=80:release=400[a_a4a4];[a_a4a4][a_a2a2]amix=inputs=2:normalize=0[a_a5a5];[a_a5a5]alimiter=limit=0.970[a_a6a6];[a_a6a6]anull[out_a]

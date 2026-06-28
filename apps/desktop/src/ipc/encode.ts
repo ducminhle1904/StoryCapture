@@ -1,7 +1,4 @@
-/**
- * Encoder / recording IPC wrappers. See
- * `apps/desktop/src-tauri/src/commands/encode.rs`.
- */
+/** Encoder / recording IPC wrappers. */
 
 import type {
   FitModeDto,
@@ -39,7 +36,7 @@ export interface StartRecordingArgs {
    * on mount and on recording-complete.
    */
   include_cursor?: boolean | null;
-  /** Output resolution. undefined → backend default (1080p). */
+  /** Output resolution. undefined → backend default (match source). */
   output_resolution?: OutputResolutionDto | null;
   /** Fit mode. undefined → backend default (letterbox). */
   fit_mode?: FitModeDto | null;
@@ -70,7 +67,26 @@ export interface EncodeResultDto {
   duration_ms: number;
   bytes?: number;
   frames_written?: number;
+  frames_encoded?: number;
   frames_dropped?: number;
+  requested_fps?: number;
+  effective_fps?: number;
+  actual_capture_fps?: number;
+  encoded_fps?: number;
+  source_capture_fps?: number;
+  source_frames_received?: number;
+  skipped_ticks?: number;
+  encoder_backpressure_events?: number;
+  late_frames?: number;
+  capture_duration_ms_p50?: number | null;
+  capture_duration_ms_p95?: number | null;
+  cadence_warning?: string | null;
+  cadence_warning_message?: string | null;
+  output_width?: number;
+  output_height?: number;
+  fit_mode?: FitModeDto;
+  quality_preset?: QualityPresetDto;
+  encoder_input?: "author_preview_raw_bgra_pipe" | "png_sequence";
   [k: string]: unknown;
 }
 
@@ -113,13 +129,20 @@ export async function stopRecording(
 ): Promise<EncodeResultDto> {
   const channel = new Channel<RecordingEvent>();
   channel.onmessage = (evt) => onEvent(evt);
-  return invoke<EncodeResultDto>("stop_recording", { session, onEvent: channel });
+  return invoke<EncodeResultDto>("stop_recording", {
+    session,
+    onEvent: channel,
+  });
 }
 
-export async function pauseRecording(session: RecordingSessionId): Promise<void> {
+export async function pauseRecording(
+  session: RecordingSessionId,
+): Promise<void> {
   return invoke("pause_recording", { session });
 }
 
-export async function resumeRecording(session: RecordingSessionId): Promise<void> {
+export async function resumeRecording(
+  session: RecordingSessionId,
+): Promise<void> {
   return invoke("resume_recording", { session });
 }

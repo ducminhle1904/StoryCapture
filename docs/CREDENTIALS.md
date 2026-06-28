@@ -1,19 +1,18 @@
 # Credentials & Signing Secrets
 
-Single source of truth for external credentials used by release, notarization,
-desktop auth, web uploads, and transactional email.
+Single source of truth for external credentials used by desktop signing,
+desktop provider keys, web auth/uploads, transactional email, analytics, and
+desktop-web token exchange.
 
 When you provision a credential, add it to GitHub Actions secrets and the
-matching local environment if the flow is run outside CI.
+matching local environment if the flow runs outside CI. Never commit plaintext
+secrets.
 
-## macOS signing and notarization
+## macOS Signing And Notarization
 
 Used by:
 
 - `scripts/notarize/notarize-mac.sh`
-- `scripts/notarize/notarize-smoke.sh`
-- `.github/workflows/notarize-smoke.yml`
-- `.github/workflows/release.yml`
 
 Required secrets:
 
@@ -28,24 +27,20 @@ Required secrets:
 
 Notes:
 
-- The smoke path intentionally stays green when these secrets are absent.
+- Local Electron package builds skip signing when no Developer ID certificate is
+  installed.
 - `scripts/notarize/adhoc-sign.sh` does not use paid credentials.
-- `scripts/notarize/smoke-app/` is a standalone Tauri fixture used to prove the
-  notarization pipeline before shipping the real app.
 
-## Windows signing
+## Windows Signing
 
 Used by:
 
 - `scripts/release/sign-windows.ps1`
-- `.github/workflows/release.yml`
 
 Supported modes:
 
-- `TrustedSigning`
-  Microsoft Trusted Signing via AzureSignTool
-- `EvCert`
-  EV certificate stored in Azure Key Vault, also via AzureSignTool
+- `TrustedSigning`: Microsoft Trusted Signing via AzureSignTool.
+- `EvCert`: EV certificate stored in Azure Key Vault, also via AzureSignTool.
 
 Required secrets:
 
@@ -58,33 +53,10 @@ Required secrets:
 | `WINDOWS_SIGNING_CERT_NAME` | `WINDOWS_SIGNING_CERT_NAME` | Trusted Signing cert/profile name |
 | `EV_CERT_AZURE_KV_NAME` | `EV_CERT_AZURE_KV_NAME` | EV cert name for fallback mode |
 
-Notes:
+There is no current GitHub release workflow. Signing scripts are standalone
+unless a future workflow wires them into CI/release.
 
-- This is no longer a deferred placeholder; the release workflow already calls
-  `sign-windows.ps1`.
-- Provisioning details belong in `scripts/release/WINDOWS-SIGNING.md`.
-
-## Tauri updater signing
-
-Used by:
-
-- `scripts/release/generate-updater-signing-key.sh`
-- `.github/workflows/release.yml`
-- `apps/desktop/src-tauri/tauri.conf.json`
-
-Required secrets:
-
-| CI secret | Purpose |
-|---|---|
-| `TAURI_UPDATER_PRIVATE_KEY` | Private key used to sign updater artifacts |
-| `TAURI_UPDATER_KEY_PASSWORD` | Password chosen during key generation |
-
-Notes:
-
-- Generate once, never commit the private key.
-- Copy the public key into `tauri.conf.json`.
-
-## Desktop AI and TTS keys
+## Desktop AI And TTS Keys
 
 Stored in the OS keychain at runtime, not in repo secrets.
 
@@ -94,41 +66,62 @@ Stored in the OS keychain at runtime, not in repo secrets.
 | `storycapture.openai` | OpenAI |
 | `storycapture.elevenlabs` | ElevenLabs |
 
-## Web companion secrets
+Provider-key UI and IPC should keep using the desktop secret storage surface.
+Do not route these keys through web env vars.
 
-Required by the deployed Next.js app:
+## Desktop Runtime Env
+
+Non-secret runtime toggles/URLs used by the Electron host:
+
+| Env var | Purpose |
+|---|---|
+| `STORYCAPTURE_WEB_URL` | Overrides the web companion base URL used by desktop web-sync/upload flows |
+| `STORYCAPTURE_DEBUG_UPDATER` | Enables updater debug behavior/logging in development diagnostics |
+
+Document any new desktop runtime env here even when it is not secret.
+
+## Web Companion Secrets
+
+Use `apps/web/.env.example` as the local template.
 
 | Env var | Purpose |
 |---|---|
 | `DATABASE_URL` | PostgreSQL for Prisma |
+| `AUTH_SECRET` | NextAuth/Auth.js secret |
 | `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` | GitHub OAuth |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth |
-| `NEXTAUTH_URL` | Base URL used in invite and auth flows |
+| `NEXTAUTH_URL` | Public base URL for auth/invite links; optional local default, required/explicit in production |
 | `JWT_SECRET` | Signs desktop tokens and short-lived SSE JWTs |
 | `R2_ACCOUNT_ID` | Cloudflare R2 account |
 | `R2_ACCESS_KEY_ID` | R2 access key |
 | `R2_SECRET_ACCESS_KEY` | R2 secret |
 | `R2_BUCKET` | Bucket name, defaults to `storycapture-media` |
-| `RESEND_API_KEY` | Invite emails (graceful skip when unset — operator shares invite link manually) |
-| `CRON_SECRET` | Guards `/api/cron/aggregate-analytics` |
-| `MAXMIND_LICENSE_KEY` | Optional. GeoLite2 download key used by `apps/web/scripts/download-geolite2.sh`; analytics still work without it but country breakdown is empty |
-| `NEXT_PUBLIC_*` (build-time) | Public env routed into the client bundle — see `apps/web/.env.example` |
+| `RESEND_API_KEY` | Invite emails |
+| `CRON_SECRET` | Bearer secret for `/api/cron/aggregate-analytics` |
+| `MAXMIND_LICENSE_KEY` | Optional GeoLite2 download key |
+| `NEXT_PUBLIC_*` | Public env routed into the client bundle |
 
-Notes:
+Production must set `CRON_SECRET`. Current code enforces the cron bearer check
+only when `CRON_SECRET` is set; leaving it empty disables that protection.
 
-- Analytics GeoIP uses `@maxmind/geoip2-node` plus the local database at
-  `apps/web/public/geolite2/GeoLite2-Country.mmdb`.
-- Vercel cron runs `/api/cron/aggregate-analytics` daily at 00:00 UTC via
-  `apps/web/vercel.json`.
+## Desktop-Web Token Exchange
 
-## Missing-secret behavior
+- Desktop token exchange and SSE JWT minting live under `apps/web/src/app/api/auth`.
+- `JWT_SECRET` signs desktop tokens and short-lived subscription tokens.
+- Current desktop tokens are 30-day JWTs; current SSE subscription tokens are
+  15-minute JWTs.
+- Sync subscriptions verify JWT plus workspace membership before streaming
+  project or recording-status updates.
+- `apps/web/vercel.json` wires `/api/cron/aggregate-analytics` to run daily at
+  midnight; production must set `CRON_SECRET` for that endpoint.
 
-| Script / workflow | Behavior when secret is missing |
+## Missing-Secret Behavior
+
+| Script / flow | Behavior when secret is missing |
 |---|---|
 | `scripts/notarize/notarize-mac.sh` | Prints skip message and exits 0 |
-| `scripts/notarize/notarize-smoke.sh` | Prints skip message and exits 0 |
-| `.github/workflows/notarize-smoke.yml` | Verifies gating path still works |
-| `.github/workflows/ffmpeg-build.yml` | Unaffected |
-| `.github/workflows/release.yml` | Requires release secrets to complete successfully |
+| Local Electron package build | Skips signing when no Developer ID certificate exists |
+| Web cron without `CRON_SECRET` | Bearer check is disabled; not acceptable for production |
+| Desktop provider key missing | Provider-specific AI/TTS features should fail gated or prompt for setup |
 
-Last updated: 2026-04-25
+Last updated: 2026-06-19

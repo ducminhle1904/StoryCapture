@@ -1,4 +1,4 @@
-import { Dialog } from "@base-ui-components/react/dialog";
+import { Dialog } from "@base-ui/react/dialog";
 import { ScBadge, ScButton, ScCard } from "@storycapture/ui";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Clock, MoreHorizontal, Play, Trash2 } from "lucide-react";

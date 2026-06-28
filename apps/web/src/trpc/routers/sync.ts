@@ -8,15 +8,15 @@
  *   onProjectUpdates (subscription) — SSE stream of project metadata changes
  *   listProjects (query) — list all synced projects for a workspace
  *
- * Auth: mutations use protectedProcedure (session or JWT via Authorization
- * header). Subscriptions use publicProcedure with JWT verified from input
- * token, because EventSource can't send custom headers, so the JWT must travel
- * in the input. JWT carries 15-min expiry; a 30s keepalive ping keeps the SSE
- * channel alive within Vercel's 60s timeout.
+ * Auth: mutations use protectedProcedure through the Auth.js session in tRPC
+ * context. Subscriptions use publicProcedure with JWT verified from input token,
+ * because EventSource can't send custom headers, so the JWT must travel in the
+ * input. JWT carries 15-min expiry; a 30s keepalive ping keeps the SSE channel
+ * alive within Vercel's 60s timeout.
  */
 
 import { EventEmitter, on } from "node:events";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/generated/prisma";
 import { TRPCError, tracked } from "@trpc/server";
 import { z } from "zod";
 import { Prisma, WorkflowType } from "@/generated/prisma";

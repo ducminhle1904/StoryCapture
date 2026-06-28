@@ -1,16 +1,12 @@
 /**
  * Single source of truth for the record-path PrimaryMissNoHeal error copy.
- * The Rust variant's thiserror Display string in
- * `crates/automation/src/error.rs` MUST stay in lock-step with the
- * constants below. `RECORD_PATH_MISS_BODY` is duplicated into the HUD
- * block and the Sonner toast so they never drift.
+ * `RECORD_PATH_MISS_BODY` is duplicated into the HUD block and the Sonner
+ * toast so they never drift.
  */
 
 /**
  * Phrase used to discriminate a `PrimaryMissNoHeal` StepFailed event
- * from generic selector failures. Substring-matching `error_message`
- * against this constant is sufficient because the Rust Display string
- * embeds it verbatim (checked by `crates/automation` tests).
+ * from generic selector failures.
  */
 export const RECORD_PATH_MISS_MARKER = "Self-healing is disabled during recording";
 

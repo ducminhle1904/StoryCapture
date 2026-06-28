@@ -9,6 +9,8 @@ import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
 
 const ipcMocks = vi.hoisted(() => ({
   fetchProjectFolder: vi.fn(),
+  timelineLoad: vi.fn(),
+  timelineSave: vi.fn(),
   useProjectRecordings: vi.fn(),
   useRecordingActions: vi.fn(),
   useRecordingStepTiming: vi.fn(),
@@ -16,12 +18,18 @@ const ipcMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
+  exists: vi.fn(() => Promise.resolve(false)),
   readTextFile: vi.fn(() => Promise.reject(new Error("not loaded in toolbar tests"))),
 }));
 
 vi.mock("@/ipc/projects", () => ({
   fetchProjectFolder: ipcMocks.fetchProjectFolder,
   useProjectRecordings: ipcMocks.useProjectRecordings,
+}));
+
+vi.mock("@/ipc/timeline", () => ({
+  timelineLoad: ipcMocks.timelineLoad,
+  timelineSave: ipcMocks.timelineSave,
 }));
 
 vi.mock("@/ipc/parse", () => ({
@@ -84,6 +92,8 @@ function resetStore() {
 beforeEach(() => {
   resetStore();
   ipcMocks.fetchProjectFolder.mockRejectedValue(new Error("not loaded"));
+  ipcMocks.timelineLoad.mockResolvedValue(null);
+  ipcMocks.timelineSave.mockResolvedValue(undefined);
   ipcMocks.useProjectRecordings.mockReturnValue({
     data: [],
     isSuccess: true,
@@ -105,6 +115,7 @@ describe("EditorShell toolbar actions", () => {
         <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
       </MemoryRouter>,
     );
+    useEditorStore.getState().setPlayhead(2_500);
 
     fireEvent.click(screen.getByRole("button", { name: "Add zoom clip" }));
 
@@ -134,6 +145,7 @@ describe("EditorShell toolbar actions", () => {
         <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
       </MemoryRouter>,
     );
+    useEditorStore.getState().setPlayhead(2_500);
 
     fireEvent.click(screen.getByRole("button", { name: "Add text clip" }));
 
@@ -161,7 +173,7 @@ describe("EditorShell toolbar actions", () => {
     expect(useEditorStore.getState().tracks.annotations).toHaveLength(0);
   });
 
-  it("opens fine tune and selects the target clip from a review fix item", () => {
+  it("opens fine tune and selects the target clip from a review fix item", async () => {
     useEditorStore.setState((state) => ({
       tracks: {
         ...state.tracks,
@@ -184,8 +196,24 @@ describe("EditorShell toolbar actions", () => {
         <EditorShell storyId="story-1" videoSrc="/recording.mp4" />
       </MemoryRouter>,
     );
+    useEditorStore.setState((state) => ({
+      tracks: {
+        ...state.tracks,
+        zoom: Array.from({ length: 11 }, (_, index) => ({
+          id: `zoom-${index}`,
+          trackId: "zoom" as const,
+          startMs: 1_000 + index * 100,
+          durationMs: 900,
+          label: "Script zoom",
+          target: { kind: "cursor" as const },
+          scale: 1.5,
+          center: { x: 0.5, y: 0.5 },
+          preset: "DYNAMIC" as const,
+        })),
+      },
+    }));
 
-    fireEvent.click(screen.getByText("Dense zoom pacing"));
+    fireEvent.click(await screen.findByText("Dense zoom pacing"));
 
     const state = useEditorStore.getState();
     expect(state.selectedClipId).toBe("zoom-0");
@@ -221,5 +249,115 @@ describe("EditorShell toolbar actions", () => {
       expect(state.tracks.video[0]?.durationMs).toBe(40_064);
       expect(state.durationMs).toBe(40_064);
     });
+  });
+
+  it("rebuilds the timeline when the saved layout points at an older recording", async () => {
+    resetStore();
+    useEditorStore.setState({ durationMs: 0 });
+    ipcMocks.timelineLoad.mockResolvedValue({
+      story_id: "story-1",
+      layout_json: JSON.stringify({
+        version: 1,
+        tracks: {
+          video: [
+            {
+              id: "video-old",
+              trackId: "video",
+              startMs: 0,
+              durationMs: 1_000,
+              sourcePath: "/recordings/old.mp4",
+            },
+          ],
+          cursor: [],
+          zoom: [],
+          sound: [],
+          annotations: [],
+        },
+        durationMs: 1_000,
+        background: { kind: "transparent" },
+      }),
+      last_modified: 1,
+    });
+    ipcMocks.useProjectRecordings.mockReturnValue({
+      data: [
+        {
+          path: "/recordings/new.mp4",
+          captured_at: 2,
+          duration_ms: 2_500,
+          width: 1280,
+          height: 720,
+        },
+      ],
+      isSuccess: true,
+      isError: false,
+    });
+
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      const state = useEditorStore.getState();
+      expect(state.tracks.video[0]?.sourcePath).toBe("/recordings/new.mp4");
+      expect(state.tracks.video[0]?.durationMs).toBe(2_500);
+      expect(state.durationMs).toBe(2_500);
+    });
+  });
+
+  it("treats an actions sidecar as review timing data", () => {
+    ipcMocks.useProjectRecordings.mockReturnValue({
+      data: [
+        {
+          path: "/recordings/action-timed.mp4",
+          captured_at: 1,
+          duration_ms: 1_233,
+          width: 1280,
+          height: 720,
+        },
+      ],
+      isSuccess: true,
+      isError: false,
+    });
+    ipcMocks.useRecordingActions.mockReturnValue({
+      data: {
+        version: 1,
+        recording_path: "/recordings/action-timed.mp4",
+        viewport: { width: 1280, height: 720 },
+        capture_rect: { x: 0, y: 0, width: 1280, height: 720 },
+        fps: 60,
+        frame_count: 74,
+        events: [
+          {
+            step_id: "step-1",
+            ordinal: 1,
+            verb: "click",
+            t_start_ms: 100,
+            t_action_ms: 120,
+            t_end_ms: 240,
+            target: {
+              kind: "element",
+              label: "Start",
+              center: { x: 100, y: 120 },
+              bounds: { x: 80, y: 100, w: 40, h: 40 },
+            },
+            secondary_target: null,
+            pointer: { button: "left", effect: "click" },
+          },
+        ],
+      },
+      isLoading: false,
+      isSuccess: true,
+    });
+
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" videoSrc="/recordings/action-timed.mp4" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Timed")).toBeInTheDocument();
+    expect(screen.queryByText("Step timing missing")).not.toBeInTheDocument();
   });
 });

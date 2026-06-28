@@ -1,4 +1,4 @@
-import { Dialog } from "@base-ui-components/react/dialog";
+import { Dialog } from "@base-ui/react/dialog";
 import { ScButton, ScSegmented } from "@storycapture/ui";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {

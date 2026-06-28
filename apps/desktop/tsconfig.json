@@ -25,5 +25,5 @@
       "@shared-types/*": ["../../packages/shared-types/src/*"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "electron", "vite.config.ts"]
 }

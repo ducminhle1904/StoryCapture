@@ -4,8 +4,8 @@
  * Each item is a Base UI Radio.Root with an Indicator dot.
  */
 
-import { Radio as BaseRadio } from "@base-ui-components/react/radio";
-import { RadioGroup as BaseRadioGroup } from "@base-ui-components/react/radio-group";
+import { Radio as BaseRadio } from "@base-ui/react/radio";
+import { RadioGroup as BaseRadioGroup } from "@base-ui/react/radio-group";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

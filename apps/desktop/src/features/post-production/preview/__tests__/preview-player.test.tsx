@@ -90,6 +90,85 @@ describe("PreviewPlayer", () => {
     await waitFor(() => expect(requestAnimationFrameSpy).toHaveBeenCalled());
   });
 
+  it("continues the native preview playhead after the source video ends", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(window.performance, "now").mockReturnValue(0);
+    let rafCallback: FrameRequestCallback | null = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      rafCallback = callback;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    useEditorStore.setState({ durationMs: 2000 });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    const video = screen.getByLabelText("Source video preview") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 1.2, configurable: true });
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(rafCallback).toBeTruthy());
+
+    act(() => {
+      rafCallback?.(1500);
+    });
+    expect(useEditorStore.getState().playheadMs).toBe(1500);
+    expect(video.currentTime).toBeCloseTo(1.199);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+
+    act(() => {
+      rafCallback?.(2100);
+    });
+    expect(useEditorStore.getState().playheadMs).toBe(2000);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument());
+  });
+
+  it("continues the composited preview playhead after the source video ends", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(window.performance, "now").mockReturnValue(0);
+    let rafCallback: FrameRequestCallback | null = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      rafCallback = callback;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    useEditorStore.setState({ durationMs: 2000 });
+
+    const { container } = render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        outputMode="composited-canvas"
+      />,
+    );
+    await waitFor(() => expect(PreviewEngine).toHaveBeenCalled());
+    const video = container.querySelector("video[hidden]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 1.2, configurable: true });
+    const engine = vi.mocked(PreviewEngine).mock.results[0]?.value as {
+      renderFrame: ReturnType<typeof vi.fn>;
+    };
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(rafCallback).toBeTruthy());
+
+    act(() => {
+      rafCallback?.(1500);
+    });
+    expect(useEditorStore.getState().playheadMs).toBe(1500);
+    expect(video.currentTime).toBeCloseTo(1.199);
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(1500, expect.anything());
+
+    act(() => {
+      rafCallback?.(2100);
+    });
+    expect(useEditorStore.getState().playheadMs).toBe(2000);
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(2000, expect.anything());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument());
+  });
+
   it("commits native playback time when media pauses", async () => {
     const user = userEvent.setup();
     mockNativePlayback();
@@ -176,6 +255,62 @@ describe("PreviewPlayer", () => {
     expect(cursor?.style.left).toBe("80%");
     expect(cursor?.style.top).toBe("60%");
     expect(cursor?.style.width).toBe("40px");
+    expect(PreviewEngine).not.toHaveBeenCalled();
+  });
+
+  it("shows the virtual cursor overlay from trajectory-only sidecars", async () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-trajectory",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 10_000,
+            trajectoryDir: "/tmp/demo.trajectory.json",
+            trajectoryKind: "trajectory",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 2,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        trajectory={{
+          recording_path: "/tmp/demo.mp4",
+          capture_rect: { x: 0, y: 0, width: 1920, height: 1080 },
+          fps: 60,
+          frame_count: 2,
+          frames: [
+            { t_ms: 0, x: 0.2, y: 0.3, click: false },
+            { t_ms: 2000, x: 0.4, y: 0.7, click: true },
+          ],
+        }}
+      />,
+    );
+
+    act(() => {
+      useEditorStore.getState().setPlayhead(2000);
+    });
+
+    const overlay = screen.getByTestId("virtual-cursor-overlay");
+    const cursor = overlay.querySelector("img");
+    const ripple = overlay.querySelector("div");
+
+    await waitFor(() => expect(cursor?.style.opacity).toBe("1"));
+    expect(cursor?.style.left).toBe("40%");
+    expect(cursor?.style.top).toBe("70%");
+    expect(ripple?.style.opacity).toBe("0.72");
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
 

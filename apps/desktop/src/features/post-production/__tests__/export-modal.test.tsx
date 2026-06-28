@@ -30,6 +30,7 @@ vi.mock("sonner", () => ({
 
 // Re-import AFTER the mock is in place.
 import { ExportModal } from "../export-modal/export-modal";
+import { DEFAULT_EXPORT_KNOBS, useOutputPrefsStore } from "@/state/output-prefs";
 import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
 
@@ -41,6 +42,7 @@ function Wrapped({ children }: { children: ReactNode }) {
 }
 
 function resetStore() {
+  useOutputPrefsStore.setState({ exportKnobs: { ...DEFAULT_EXPORT_KNOBS } });
   useEditorStore.setState({
     tracks: { video: [], cursor: [], zoom: [], sound: [], annotations: [] },
     playheadMs: 0,
@@ -229,6 +231,151 @@ describe("ExportModal", () => {
         }),
       ]),
     );
+  });
+
+  it("passes advanced encoder options through export_run per output format", async () => {
+    useOutputPrefsStore.setState({
+      exportKnobs: {
+        ...DEFAULT_EXPORT_KNOBS,
+        hwEncoder: "software",
+        rateControl: "crf",
+        qualityValue: 14,
+        x264Preset: "slow",
+        keyframeSec: 4,
+        downscaleAlgo: "bicubic",
+        audio: { codec: "aac", bitrateKbps: 192, channels: 1, sampleRateHz: 44_100 },
+      },
+    });
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/in.mp4",
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        formats: ["mp4", "webm"],
+        resolution: "1080p",
+        fps: 60,
+        quality: "high",
+        outFolder: "/tmp/out",
+        baseName: "demo",
+      },
+    });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "export_validate_config") return Promise.resolve(null);
+      if (cmd === "export_run") {
+        return Promise.resolve({
+          batch_id: "b1",
+          job_ids: ["j1", "j2"],
+          graph_snapshot_path: "/tmp/graph.json",
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    render(
+      <Wrapped>
+        <ExportModal storyId="s1" />
+      </Wrapped>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /start export/i }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "export_run",
+        expect.objectContaining({ args: expect.any(Object) }),
+      );
+    });
+    const exportCall = mockInvoke.mock.calls.find(([cmd]) => cmd === "export_run");
+    const args = exportCall?.[1] as {
+      args: { outputs: Array<{ format: string; encoder_options: Record<string, unknown> }> };
+    };
+
+    expect(args.args.outputs[0]).toMatchObject({
+      format: "mp4",
+      encoder_options: {
+        container: "mp4",
+        rate_control: "crf",
+        hw_encoder: "libx264-software",
+        quality_value: 14,
+        x264_preset: "slow",
+        keyframe_interval_sec: 4,
+        downscale_algo: "bicubic",
+        audio: {
+          codec: "aac",
+          bitrate_kbps: 192,
+          channels: 1,
+          sample_rate_hz: 44_100,
+        },
+      },
+    });
+    expect(args.args.outputs[1]).toMatchObject({
+      format: "webm",
+      encoder_options: {
+        container: "webm",
+        audio: { codec: "opus" },
+      },
+    });
+  });
+
+  it("surfaces export_run fail-fast errors in the warning panel", async () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/in.mp4",
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        formats: ["mp4"],
+        resolution: "1080p",
+        fps: 60,
+        quality: "high",
+        outFolder: "/tmp/out",
+        baseName: "demo",
+      },
+    });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "export_validate_config") return Promise.resolve(null);
+      if (cmd === "export_run") {
+        return Promise.reject(new Error("mp4 export is unsupported: text-overlay"));
+      }
+      return Promise.resolve(null);
+    });
+
+    render(
+      <Wrapped>
+        <ExportModal storyId="s1" />
+      </Wrapped>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /start export/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/mp4 export is unsupported: text-overlay/i)).toBeInTheDocument();
+    });
   });
 
   it("surfaces validation failures as warning text and keeps submit disabled", async () => {

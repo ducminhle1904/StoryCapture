@@ -143,4 +143,34 @@ describe("sampleVirtualCursor", () => {
     expect(moving?.x).toBeLessThan(0.9);
     expect(moving?.y).not.toBeCloseTo(0.5, 4);
   });
+
+  it("does not compress quick natural motion into the next semantic action time", () => {
+    const start = eventWithTarget(
+      { x: 293.1875, y: 376.59375 },
+      { start: 289, action: 290, end: 416 },
+    );
+    const email = {
+      ...eventWithTarget(
+        { x: 491.375, y: 376.59375 },
+        { start: 416, action: 927, end: 1108 },
+      ),
+      verb: "type",
+      pointer: null,
+    };
+    const submit = eventWithTarget(
+      { x: 696.9609375, y: 376.59375 },
+      { start: 1108, action: 1108, end: 1233 },
+    );
+    const actions = actionsWithEvents([start, email, submit], { width: 1280, height: 720 });
+
+    const atSemanticClick = sampleVirtualCursor(actions, 1108, "natural");
+    expect(atSemanticClick?.x).toBeGreaterThan(491.375 / 1280);
+    expect(atSemanticClick?.x).toBeLessThan(0.52);
+    expect(atSemanticClick?.ripple).toBeNull();
+
+    const stillMoving = sampleVirtualCursor(actions, 1300, "natural");
+    expect(stillMoving?.x).toBeGreaterThan(491.375 / 1280);
+    expect(stillMoving?.x).toBeLessThan(696.9609375 / 1280);
+    expect(stillMoving?.ripple).toBeNull();
+  });
 });

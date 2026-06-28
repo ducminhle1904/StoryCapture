@@ -26,6 +26,10 @@ apps/desktop/src-tauri/binaries/ffprobe-*
 apps/desktop/src-tauri/binaries/playwright-sidecar-*
 apps/desktop/src-tauri/gen/
 
+# Electron build artifacts
+apps/desktop/dist-electron/
+apps/desktop/.electron-dev/
+
 # OS
 .DS_Store
 Thumbs.db

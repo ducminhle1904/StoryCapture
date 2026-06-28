@@ -57,6 +57,39 @@ describe("computeGraph", () => {
     expect(graphIsRenderable(g)).toBe(false);
   });
 
+  it("requires a source video node before a graph is renderable", () => {
+    useEditorStore.setState({
+      exportForm: { ...DEFAULT_EXPORT_FORM, frameMode: "framed" },
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: { kind: "gradient", preset_id: "runway-dark" },
+      },
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "text-only",
+            trackId: "annotations",
+            startMs: 0,
+            durationMs: 1000,
+            text: "Title only",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 32,
+          },
+        ],
+      },
+    });
+
+    const graph = computeGraph(useEditorStore.getState());
+
+    expect(graph.video.map((node) => node.type)).toEqual(["background", "text-overlay"]);
+    expect(graphIsRenderable(graph)).toBe(false);
+  });
+
   it("emits Source → ZoomPan → Background → CursorOverlay → TextOverlay → Transition in canonical order", () => {
     useEditorStore.setState({
       _undoExtras: {
@@ -83,6 +116,7 @@ describe("computeGraph", () => {
             startMs: 0,
             durationMs: 4000,
             sourcePath: "/tmp/in.mp4",
+            sourceSize: { width: 1440, height: 900 },
             outgoingTransition: { kind: "fade", durationMs: 500 },
           },
           {
@@ -160,6 +194,9 @@ describe("computeGraph", () => {
     if (src.type !== "source") throw new Error("expected source");
     expect(src.path).toBe("/tmp/in.mp4");
     expect(src.pts_offset_ms).toBe(0);
+    expect(src.duration_ms).toBe(4000);
+    expect(src.source_width).toBe(1440);
+    expect(src.source_height).toBe(900);
 
     const zoom = videoNodeAt(g, 2);
     if (zoom.type !== "zoom-pan") throw new Error("expected zoom-pan");
@@ -184,10 +221,13 @@ describe("computeGraph", () => {
     const cursor = videoNodeAt(g, 4);
     if (cursor.type !== "cursor-overlay") throw new Error("expected cursor-overlay");
     expect(cursor.motion_preset).toBe("cinematic");
+    expect(cursor.t_start_ms).toBe(0);
+    expect(cursor.duration_ms).toBe(4000);
 
     const text = videoNodeAt(g, 5);
     if (text.type !== "text-overlay") throw new Error("expected text-overlay");
     expect(text.boxes[0]?.text).toBe("Hello");
+    expect(text.boxes[0]?.anim_duration_ms).toBe(180);
 
     const transition = videoNodeAt(g, 6);
     if (transition.type !== "transition") throw new Error("expected transition");
@@ -604,6 +644,7 @@ describe("computeGraph", () => {
       },
       anim_in: "fade",
       anim_out: "fade",
+      anim_duration_ms: 180,
     });
   });
 

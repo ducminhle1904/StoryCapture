@@ -103,7 +103,7 @@ export default function SettingsRoute() {
       id="main-content"
       style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
     >
-      <div className="sc-toolbar">
+      <div className="sc-toolbar sc-window-chrome">
         <div className="sc-toolbar-title">Settings</div>
         <ScBadge tone="muted">Workspace · Local</ScBadge>
         <span className="sc-spacer" />

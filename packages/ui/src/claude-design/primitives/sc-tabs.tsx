@@ -1,4 +1,4 @@
-import { Tabs } from "@base-ui-components/react/tabs";
+import { Tabs } from "@base-ui/react/tabs";
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
 
 import { cn } from "../../lib/cn";

@@ -7,8 +7,8 @@
  * across apps/desktop/src onto their --sc-* equivalents so the migration
  * ships incrementally instead of as one 88-file rewrite.
  *
- * TRANSITIONAL — delete in Phase 14 Wave 5 after every route has been
- * ported to --sc-* directly. See CONTEXT.md "Deferred Ideas".
+ * TRANSITIONAL — delete after every route has been ported to --sc-* directly.
+ * See docs/CONVENTIONS.md for the current UI token guidance.
  *
  * Import order in apps/desktop/src/styles.css:
  *   1. @fontsource-variable/inter

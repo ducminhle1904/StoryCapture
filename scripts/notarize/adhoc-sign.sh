@@ -7,9 +7,9 @@
 # WHY THIS MATTERS (PITFALLS.md §1)
 # ---------------------------------
 # macOS TCC keys Screen Recording grants on bundle-id + code-signing identity.
-# An unsigned dev build re-signs (with a new, transient identity) on every
-# `cargo run`, producing "ghost granted" entries: Settings shows the app as
-# allowed, but the live process is still denied. An ad-hoc signature is
+# An unsigned dev build can be re-signed with a new transient identity on each
+# local package run, producing "ghost granted" entries: Settings shows the app
+# as allowed, but the live process is still denied. An ad-hoc signature is
 # stable enough to keep the same TCC entry between rebuilds.
 #
 # This is NOT a substitute for Developer ID notarization (Gatekeeper will

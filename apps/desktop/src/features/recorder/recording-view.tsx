@@ -12,26 +12,25 @@ import {
   Square as StopIcon,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { TargetPicker } from "@/features/capture/TargetPicker";
-import { stopPreviewNow } from "@/features/editor/preview-lifecycle";
 import {
   type AutomationChannelHandle,
   type ExecutorEvent,
   launchAutomation,
 } from "@/ipc/automation";
 import {
-  checkScreenCapturePermission,
   type CaptureTarget,
+  checkScreenCapturePermission,
   type DisplayInfo,
   isStageManagerEnabled,
   openScreenCapturePrefs,
-  type PermissionState,
   relaunchApp,
   requestScreenCaptureAccess,
+  type ScreenCapturePermissionReport,
 } from "@/ipc/capture";
 import {
   pauseRecording,
@@ -58,8 +57,10 @@ import { type RecorderStatus, type StepProgress, useRecorderStore } from "@/stat
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
-import { CursorTrail } from "./cursor-trail";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
+import { acquireRecordingPreview, type RecordingPreviewLease } from "./recording-preview";
+import { authorPreviewRecordingPlan } from "./recording-target";
+import { storyInitialUrlForRecording, storyViewportSize } from "./recording-viewport";
 import { TccPrompt } from "./tcc-prompt";
 import { OutputSummaryBadge } from "./video-output/output-summary-badge";
 import { useIsRecordingBlocked, VideoOutputSection } from "./video-output/video-output-section";
@@ -71,6 +72,20 @@ interface RecordingViewProps {
   storySource: string;
   autoOpenPostProduction?: boolean;
 }
+
+const initialPermissionReport: ScreenCapturePermissionReport = {
+  state: "undetermined",
+  rawStatus: "unknown",
+  platform: "darwin",
+  appName: "StoryCapture",
+  bundleId: null,
+  executablePath: "",
+  isPackaged: false,
+  devIdentityOk: null,
+  canEnumerateSources: false,
+  sourceCount: 0,
+  debugBypassAllowed: false,
+};
 
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -107,142 +122,6 @@ function formatIpcError(e: unknown): string {
 
 function displayId(display: DisplayInfo): number {
   return typeof display.id === "bigint" ? Number(display.id) : display.id;
-}
-
-interface BrowserViewportSize {
-  width: number;
-  height: number;
-}
-
-const DEFAULT_BROWSER_VIEWPORT: BrowserViewportSize = { width: 1280, height: 800 };
-const RECORDING_BROWSER_CHROME_VERTICAL_BUDGET = 120;
-
-function storyViewportSize(source: string): BrowserViewportSize {
-  const pair = source.match(/\bviewport\s*:\s*(\d{2,5})\s*x\s*(\d{2,5})\b/i);
-  if (pair) {
-    return { width: Number(pair[1]), height: Number(pair[2]) };
-  }
-
-  const named = source.match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]?.toLowerCase();
-  switch (named) {
-    case "desktop":
-      return { width: 1280, height: 800 };
-    case "tablet":
-      return { width: 1024, height: 768 };
-    case "mobile":
-      return { width: 375, height: 667 };
-    default:
-      return DEFAULT_BROWSER_VIEWPORT;
-  }
-}
-
-function preferDisplay(a: DisplayInfo, b: DisplayInfo): DisplayInfo {
-  if (a.scale_factor !== b.scale_factor) {
-    return a.scale_factor > b.scale_factor ? a : b;
-  }
-  if (a.is_primary !== b.is_primary) {
-    return a.is_primary ? a : b;
-  }
-  return a;
-}
-
-function displayLogicalSize(display: DisplayInfo): BrowserViewportSize {
-  const scale =
-    Number.isFinite(display.scale_factor) && display.scale_factor > 0 ? display.scale_factor : 1;
-  return {
-    width: Math.max(1, Math.floor(display.width_px / scale)),
-    height: Math.max(1, Math.floor(display.height_px / scale)),
-  };
-}
-
-function displayArea(display: DisplayInfo): number {
-  const logical = displayLogicalSize(display);
-  return logical.width * logical.height;
-}
-
-function preferDisplayArea(a: DisplayInfo, b: DisplayInfo): DisplayInfo {
-  if (displayArea(a) !== displayArea(b)) {
-    return displayArea(a) > displayArea(b) ? a : b;
-  }
-  return preferDisplay(a, b);
-}
-
-function browserChromeBudget(chromeHiding: boolean): number {
-  return chromeHiding ? 0 : RECORDING_BROWSER_CHROME_VERTICAL_BUDGET;
-}
-
-function browserWindowFitsDisplay(
-  display: DisplayInfo,
-  viewport: BrowserViewportSize,
-  chromeHiding: boolean,
-): boolean {
-  // App-mode can fall back to a normal Chromium window, so fit against a
-  // conservative browser-chrome budget in logical pixels only when chrome
-  // hiding is off. In app-mode we crop to browser content; shrinking a
-  // 1920x1080 viewport to 1706x960 on a 1080p external display destroys
-  // detail before the encoder ever sees the frame.
-  const verticalChromeBudget = browserChromeBudget(chromeHiding);
-  const logical = displayLogicalSize(display);
-  return (
-    logical.width >= viewport.width && logical.height >= viewport.height + verticalChromeBudget
-  );
-}
-
-function fitBrowserViewportToDisplay(
-  viewport: BrowserViewportSize,
-  display: DisplayInfo | undefined,
-  chromeHiding: boolean,
-): {
-  viewport: BrowserViewportSize;
-  displayLogical: BrowserViewportSize | null;
-  scale: number;
-  scaled: boolean;
-} {
-  if (!display) {
-    return { viewport, displayLogical: null, scale: 1, scaled: false };
-  }
-
-  const verticalChromeBudget = browserChromeBudget(chromeHiding);
-  const displayLogical = displayLogicalSize(display);
-  const maxWidth = Math.max(1, displayLogical.width);
-  const maxHeight = Math.max(1, displayLogical.height - verticalChromeBudget);
-  const scale = Math.min(1, maxWidth / viewport.width, maxHeight / viewport.height);
-  const fitted = {
-    width: Math.max(1, Math.min(maxWidth, Math.floor(viewport.width * scale))),
-    height: Math.max(1, Math.min(maxHeight, Math.floor(viewport.height * scale))),
-  };
-
-  return {
-    viewport: fitted,
-    displayLogical,
-    scale,
-    scaled: fitted.width !== viewport.width || fitted.height !== viewport.height,
-  };
-}
-
-function chooseBrowserLaunchDisplay(
-  displays: DisplayInfo[],
-  selected: DisplayInfo | undefined,
-  viewport: BrowserViewportSize,
-  chromeHiding: boolean,
-): DisplayInfo | undefined {
-  if (selected) return selected;
-
-  const fitting = displays.filter((candidate) =>
-    browserWindowFitsDisplay(candidate, viewport, chromeHiding),
-  );
-  if (fitting.length > 0) {
-    const bestFit = fitting.reduce<DisplayInfo | undefined>(
-      (acc, candidate) => (acc ? preferDisplay(acc, candidate) : candidate),
-      undefined,
-    );
-    return bestFit;
-  }
-
-  return displays.reduce<DisplayInfo | undefined>(
-    (acc, candidate) => (acc ? preferDisplayArea(acc, candidate) : candidate),
-    selected,
-  );
 }
 
 export function RecordingView({
@@ -318,7 +197,9 @@ export function RecordingView({
   }, [appSettings?.capture]);
 
   const reduceMotion = useReducedMotion();
-  const [permission, setPermission] = useState<PermissionState>("undetermined");
+  const [permissionReport, setPermissionReport] =
+    useState<ScreenCapturePermissionReport>(initialPermissionReport);
+  const permission = permissionReport.state;
   const [tccOpen, setTccOpen] = useState(false);
   // Local state only drives the countdown affordance.
   const [useCountdown, setUseCountdown] = useState(true);
@@ -328,6 +209,8 @@ export function RecordingView({
   const [stageManagerWarning, setStageManagerWarning] = useState(false);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
+  const previewLeaseRef = useRef<RecordingPreviewLease | null>(null);
+  const startInFlightRef = useRef(false);
   const startedAtRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
   const automationOwnsStopRef = useRef(false);
@@ -341,9 +224,40 @@ export function RecordingView({
         ? Number(captureTarget.display_id)
         : captureTarget.display_id
       : null;
+  const selectedDisplayInfo = useMemo(
+    () => (selectedDisplay == null ? undefined : displays.find((display) => displayId(display) === selectedDisplay)),
+    [displays, selectedDisplay],
+  );
+  const storyRecordingInfo = useMemo(() => {
+    const initialUrl = storyInitialUrlForRecording(storySource);
+    return {
+      initialUrl,
+      hasBrowser: initialUrl != null || /\bapp\s*:\s*["']https?:\/\//i.test(storySource),
+      viewport: storyViewportSize(storySource),
+    };
+  }, [storySource]);
+  const storyHasBrowser = storyRecordingInfo.hasBrowser;
+  const storyViewport = storyRecordingInfo.viewport;
+  const storyInitialUrl = storyRecordingInfo.initialUrl;
+  const selectedCaptureDims = useMemo(() => {
+    const dims = storyHasBrowser
+      ? { w: storyViewport.width, h: storyViewport.height }
+      : selectedDisplayInfo
+        ? { w: selectedDisplayInfo.width_px, h: selectedDisplayInfo.height_px }
+        : null;
+    if (!dims || !Number.isFinite(dims.w) || !Number.isFinite(dims.h) || dims.w <= 0 || dims.h <= 0) {
+      return undefined;
+    }
+    return dims;
+  }, [selectedDisplayInfo, storyHasBrowser, storyViewport.height, storyViewport.width]);
 
   const currentStepEntry = steps.length > 0 ? steps[Math.min(currentStep, steps.length - 1)] : null;
   const completedSteps = steps.filter((s) => s.status === "succeeded").length;
+
+  const releasePreviewLease = () => {
+    previewLeaseRef.current?.release();
+    previewLeaseRef.current = null;
+  };
 
   // Detect Stage Manager once on mount (user can toggle it at any time
   // but the cost of not re-polling is a stale banner — acceptable).
@@ -359,14 +273,12 @@ export function RecordingView({
   useEffect(() => {
     (async () => {
       try {
-        let perm = await checkScreenCapturePermission();
-        // Register the app in Screen Recording settings if needed.
-        if (perm !== "granted") {
-          perm = await requestScreenCaptureAccess();
+        let report = await checkScreenCapturePermission();
+        if (report.state !== "granted") {
+          report = await requestScreenCaptureAccess();
         }
-        setPermission(perm);
-        // Don't auto-open the prompt on Sequoia false-negatives.
-        if (perm === "granted") {
+        setPermissionReport(report);
+        if (report.state === "granted") {
           try {
             await loadCaptureTargets();
           } catch (e) {
@@ -398,6 +310,8 @@ export function RecordingView({
           });
         });
       }
+      previewLeaseRef.current?.release();
+      previewLeaseRef.current = null;
       reset();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -480,12 +394,30 @@ export function RecordingView({
         startedAtRef.current = null;
         pausedAtRef.current = null;
         automationOwnsStopRef.current = false;
+        releasePreviewLease();
         setSession(null);
         setStatus("completed");
         setOutputPath(event.result.output_path);
-        toast.success("Recording complete", {
-          description: event.result.output_path,
-        });
+        if (event.result.cadence_warning) {
+          const cadence =
+            typeof event.result.actual_capture_fps === "number" &&
+            typeof event.result.requested_fps === "number"
+              ? `${event.result.actual_capture_fps} / ${event.result.requested_fps} fps`
+              : null;
+          toast.warning("Recording complete with low cadence", {
+            description: [
+              event.result.cadence_warning_message,
+              cadence,
+              event.result.output_path,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          });
+        } else {
+          toast.success("Recording complete", {
+            description: event.result.output_path,
+          });
+        }
         if (autoOpenPostProduction && projectId) {
           navigate(`/post-production/${projectId}`, { replace: true });
         }
@@ -495,6 +427,7 @@ export function RecordingView({
         startedAtRef.current = null;
         pausedAtRef.current = null;
         automationOwnsStopRef.current = false;
+        releasePreviewLease();
         setSession(null);
         setStatus("failed");
         setError(event.message);
@@ -518,7 +451,8 @@ export function RecordingView({
   const handleRecord = async () => {
     // Double-start guard. Synchronous status flip before any await so a
     // 10 ms double-click cannot enter this function twice.
-    if (status !== "idle") return;
+    if (startInFlightRef.current || useRecorderStore.getState().status !== "idle") return;
+    startInFlightRef.current = true;
     setStatus("starting");
     // Fresh per-session UX state for the audio/heartbeat badges.
     setAudioUnavailable(false);
@@ -526,103 +460,40 @@ export function RecordingView({
     lastHeartbeatRef.current = null;
     if (permission !== "granted") {
       setStatus("idle");
+      startInFlightRef.current = false;
       return;
     }
     if (selectedDisplay == null) {
       toast.error("Pick a Target before recording.");
       setStatus("idle");
+      startInFlightRef.current = false;
       return;
     }
     startedAtRef.current = Date.now();
     pausedAtRef.current = null;
     automationOwnsStopRef.current = false;
-    const display = displays.find((d) => {
-      return displayId(d) === selectedDisplay;
-    });
-    // Seed with display dims; auto-follow may overwrite with the
-    // resolved Playwright window's dims so the encoder canvas matches
-    // the actual SCK stream output.
+    const display = selectedDisplayInfo;
+    // Seed with display dims; browser stories overwrite this with the
+    // author-preview webContents viewport.
     let width = display?.width_px ?? 1920;
     let height = display?.height_px ?? 1080;
     try {
-      const storyHasBrowser = /\bapp\s*:\s*["']https?:\/\//i.test(storySource);
-      const storyViewport = storyViewportSize(storySource);
       const pacingProfile = DEFAULT_RECORDING_PACING;
+      const recordingDisplay = display ? { x: display.x, y: display.y } : null;
+      const recordingViewport = storyHasBrowser ? storyViewport : null;
+      // Output knobs from useOutputPrefsStore (one-shot read).
+      const { activePreset, recordingKnobs: prefs } = useOutputPrefsStore.getState();
       if (storyHasBrowser) {
-        await stopPreviewNow("recording-start");
-      }
-      const launchDisplay = storyHasBrowser
-        ? chooseBrowserLaunchDisplay(displays, display, storyViewport, chromeHiding)
-        : display;
-      const recordingDisplay = launchDisplay ? { x: launchDisplay.x, y: launchDisplay.y } : null;
-      const viewportFit = storyHasBrowser
-        ? fitBrowserViewportToDisplay(storyViewport, launchDisplay, chromeHiding)
-        : { viewport: storyViewport, displayLogical: null, scale: 1, scaled: false };
-      const recordingViewport = storyHasBrowser ? viewportFit.viewport : null;
-      const recordingFullscreen =
-        storyHasBrowser &&
-        chromeHiding &&
-        viewportFit.displayLogical != null &&
-        viewportFit.viewport.width === viewportFit.displayLogical.width &&
-        viewportFit.viewport.height === viewportFit.displayLogical.height;
-      if (storyHasBrowser && launchDisplay) {
         frontendLog.info("RecordingView", "browser recording viewport plan", {
           fields: {
             selected_display_id: display ? displayId(display) : null,
             selected_display_name: display?.name ?? null,
             selected_display_scale: display?.scale_factor ?? null,
-            launch_display_id: displayId(launchDisplay),
-            launch_display_name: launchDisplay.name,
-            launch_display_scale: launchDisplay.scale_factor,
-            launch_display_physical_width: launchDisplay.width_px,
-            launch_display_physical_height: launchDisplay.height_px,
-            launch_display_logical_width: viewportFit.displayLogical?.width ?? null,
-            launch_display_logical_height: viewportFit.displayLogical?.height ?? null,
             requested_viewport_width: storyViewport.width,
             requested_viewport_height: storyViewport.height,
-            effective_viewport_width: viewportFit.viewport.width,
-            effective_viewport_height: viewportFit.viewport.height,
-            viewport_fit_scale: viewportFit.scale,
-            viewport_was_scaled: viewportFit.scaled,
-            recording_fullscreen: recordingFullscreen,
-            launch_display_fits_requested_viewport: browserWindowFitsDisplay(
-              launchDisplay,
-              storyViewport,
-              chromeHiding,
-            ),
-          },
-        });
-        if (viewportFit.scaled) {
-          toast.info(
-            `Browser viewport scaled to ${viewportFit.viewport.width}x${viewportFit.viewport.height} to fit the recording display`,
-          );
-        }
-      }
-      if (
-        storyHasBrowser &&
-        display &&
-        launchDisplay &&
-        displayId(display) !== displayId(launchDisplay)
-      ) {
-        frontendLog.info("RecordingView", "using HiDPI display for browser recording launch", {
-          fields: {
-            selected_display_id: displayId(display),
-            selected_display_name: display.name,
-            selected_display_scale: display.scale_factor,
-            launch_display_id: displayId(launchDisplay),
-            launch_display_name: launchDisplay.name,
-            launch_display_scale: launchDisplay.scale_factor,
-            launch_display_x: launchDisplay.x,
-            launch_display_y: launchDisplay.y,
-            story_viewport_width: storyViewport.width,
-            story_viewport_height: storyViewport.height,
-            effective_viewport_width: viewportFit.viewport.width,
-            effective_viewport_height: viewportFit.viewport.height,
-            launch_display_fits_viewport: browserWindowFitsDisplay(
-              launchDisplay,
-              storyViewport,
-              chromeHiding,
-            ),
+            effective_viewport_width: storyViewport.width,
+            effective_viewport_height: storyViewport.height,
+            target_kind: "author_preview",
           },
         });
       }
@@ -640,87 +511,36 @@ export function RecordingView({
         basis_h?: number | null;
         scale_hint?: number | null;
       } | null = null;
+      let browserStreamId: string | null = null;
       if (shouldAutoFollow) {
-        // Launch Playwright *before* capture so the window exists.
-        launchAutomation(
-          {
-            storySource,
-            projectFolder,
-            chromeHiding,
-            pacingProfile,
-            recordingDisplay,
-            recordingViewport,
-          },
-          (evt) => dispatchAutomation(evt),
-          (ch) => {
-            automationChannelRef.current = ch;
-          },
-        ).catch((e) => {
-          const msg = formatIpcError(e);
-          toast.error(`Automation failed: ${msg}`);
-          setError(msg);
+        const appUrl = storyInitialUrl;
+        if (!appUrl) throw new Error("Browser story is missing a valid meta.app URL");
+        releasePreviewLease();
+        const lease = await acquireRecordingPreview({
+          appUrl,
+          viewport: recordingViewport ?? storyViewport,
+          fps: prefs.fps,
+          placement: recordingDisplay,
+          reason: "recording-start",
         });
-        // Poll the HOST directly for the Chromium pid (bypassing the
-        // store's 1s-debounced refresher). Up to 8s; return as soon as
-        // resolvePlaywrightTarget returns non-null.
-        const { resolvePlaywrightTarget } = await import("@/ipc/capture");
-        const deadline = Date.now() + 8_000;
-        let resolved: Awaited<ReturnType<typeof resolvePlaywrightTarget>> = null;
-        while (Date.now() < deadline) {
-          try {
-            const hit = await resolvePlaywrightTarget();
-            if (hit && hit.window_id != null) {
-              resolved = hit;
-              break;
-            }
-          } catch {
-            /* keep polling */
-          }
-          await new Promise((r) => setTimeout(r, 150));
-        }
-        if (resolved) {
-          recordingTarget = {
-            kind: "window" as const,
-            window_id: resolved.window_id,
-          };
-          // Use the resolved window's pixel dimensions for the encoder
-          // canvas. Without this the encoder inherits display dims while
-          // SCK streams at window dims, producing black padding around
-          // the browser content (or buffer-size mismatch drops at
-          // FFmpeg). `0` signals "unknown" (Windows path) — fall back.
-          if (resolved.width_px > 0 && resolved.height_px > 0) {
-            width = resolved.width_px;
-            height = resolved.height_px;
-          }
-          if (
-            chromeHiding &&
-            resolved.content_crop &&
-            resolved.content_crop.w > 0 &&
-            resolved.content_crop.h > 0
-          ) {
-            frameCrop = resolved.content_crop;
-            toast.info("Recording just the browser content");
-          } else {
-            toast.info("Recording just the browser window");
-          }
-        } else {
-          const msg =
-            "Browser target is not available. Restore the browser window and try recording again.";
-          frontendLog.warn("RecordingView", "browser auto-target unavailable; refusing display fallback", {
-            fields: {
-              deadline_ms: 8000,
-              recording_target_kind: recordingTarget.kind,
-              story_has_browser: storyHasBrowser,
-            },
-          });
-          toast.error(msg);
-          setError(msg);
-          setStatus("idle");
-          return;
-        }
+        previewLeaseRef.current = lease;
+        browserStreamId = lease.streamId;
+        const authorViewport = recordingViewport ?? storyViewport;
+        const targetPlan = authorPreviewRecordingPlan(browserStreamId, authorViewport);
+        recordingTarget = targetPlan.target;
+        width = targetPlan.width;
+        height = targetPlan.height;
+        frameCrop = targetPlan.frameCrop;
+        frontendLog.info("RecordingView", "browser author-preview recording target", {
+          fields: {
+            stream_id: browserStreamId,
+            viewport_width: targetPlan.width,
+            viewport_height: targetPlan.height,
+            target_kind: recordingTarget.kind,
+          },
+        });
+        toast.info("Recording browser preview content");
       }
-      // Output knobs from useOutputPrefsStore (one-shot read).
-      const { activePreset, recordingKnobs: prefs } = useOutputPrefsStore.getState();
       const id = await startRecording(
         {
           project_folder: projectFolder,
@@ -745,40 +565,40 @@ export function RecordingView({
       // confirmed the session. If we error out above, the catch arm
       // resets to "idle" so the Start button re-enables.
       setStatus("recording");
+      startInFlightRef.current = false;
 
-      // Launch DSL automation here ONLY if we didn't already launch it
-      // for auto-follow (`shouldAutoFollow` fires launchAutomation BEFORE
-      // capture starts so the Chromium pid is resolvable). Otherwise, we'd
-      // spawn two Playwright sessions.
-      if (!shouldAutoFollow) {
-        automationOwnsStopRef.current = true;
-        launchAutomation(
-          {
-            storySource,
-            projectFolder,
-            chromeHiding,
-            recordingDisplay,
-            recordingViewport,
-            pacingProfile,
-            recordingSessionId:
-              typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
-          },
-          (evt) => dispatchAutomation(evt),
-          (ch) => {
-            automationChannelRef.current = ch;
-          },
-        ).catch((e) => {
-          automationOwnsStopRef.current = false;
-          const msg = formatIpcError(e);
-          toast.error(`Automation failed: ${msg}`);
-          setError(msg);
-        });
-      }
+      automationOwnsStopRef.current = true;
+      launchAutomation(
+        {
+          storySource,
+          projectFolder,
+          streamId: browserStreamId,
+          chromeHiding,
+          recordingDisplay,
+          recordingViewport,
+          pacingProfile,
+          recordingSessionId:
+            typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
+        },
+        (evt) => dispatchAutomation(evt),
+        (ch) => {
+          automationChannelRef.current = ch;
+        },
+      ).catch((e) => {
+        automationOwnsStopRef.current = false;
+        releasePreviewLease();
+        const msg = formatIpcError(e);
+        toast.error(`Automation failed: ${msg}`);
+        setError(msg);
+        if (sessionRef.current) void handleStop();
+      });
     } catch (e) {
+      releasePreviewLease();
       setError(formatIpcError(e));
       // Error path resets to idle so the Start button re-enables; the
       // toast + error banner still surface the failure to the user.
       setStatus("idle");
+      startInFlightRef.current = false;
       toast.error(`Recording failed to start: ${formatIpcError(e)}`);
     }
   };
@@ -860,6 +680,7 @@ export function RecordingView({
     } catch (e) {
       sessionRef.current = null;
       startedAtRef.current = null;
+      releasePreviewLease();
       setSession(null);
       const message = formatIpcError(e);
       setStatus("failed");
@@ -891,6 +712,7 @@ export function RecordingView({
     startedAtRef.current = null;
     pausedAtRef.current = null;
     automationOwnsStopRef.current = false;
+    releasePreviewLease();
     setStatus("idle");
     setElapsed(0);
   };
@@ -946,11 +768,9 @@ export function RecordingView({
 
   return (
     <main id="main-content" className="relative flex h-full flex-col bg-[var(--color-bg-primary)]">
-      <CursorTrail />
-
       {/* ─── Header ─── */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
-        <div className="flex items-center gap-3">
+      <header className="sc-window-chrome flex shrink-0 items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-1.5">
+        <div className="flex min-w-0 items-center gap-3">
           {/* Back to editor (falls back to dashboard). Blocked while recording. */}
           {status === "recording" || status === "paused" || status === "stopping" ? (
             <span
@@ -970,7 +790,7 @@ export function RecordingView({
             </Link>
           )}
 
-          <div className="flex items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
             {projectId ? (
               <Link
                 to={`/editor/${projectId}`}
@@ -982,7 +802,9 @@ export function RecordingView({
               <span>Record</span>
             )}
             <span>/</span>
-            <span className="font-medium text-[var(--color-fg-primary)]">{projectName}</span>
+            <span className="truncate font-medium text-[var(--color-fg-primary)]">
+              {projectName}
+            </span>
             <span>/</span>
             <span>Record</span>
           </div>
@@ -1000,7 +822,7 @@ export function RecordingView({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
+        <div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
           {sessionId ? <span className="font-mono">session · {sessionId.slice(0, 8)}</span> : null}
         </div>
       </header>
@@ -1008,11 +830,18 @@ export function RecordingView({
       {/* ─── Permission banner (inline, not modal) ─── */}
       {permissionDenied || permissionPending ? (
         <PermissionBanner
-          state={permission}
+          report={permissionReport}
           onOpenSettings={async () => {
-            // Register the app in TCC first.
             try {
-              await requestScreenCaptureAccess();
+              const report = await requestScreenCaptureAccess();
+              setPermissionReport(report);
+              if (report.state === "granted") {
+                try {
+                  await loadCaptureTargets();
+                } catch (e) {
+                  toast.error(`loadCaptureTargets failed: ${formatIpcError(e)}`);
+                }
+              }
             } catch {
               /* non-fatal; still open Settings */
             }
@@ -1025,8 +854,8 @@ export function RecordingView({
           }}
           onRecheck={async () => {
             const next = await checkScreenCapturePermission();
-            setPermission(next);
-            if (next === "granted") {
+            setPermissionReport(next);
+            if (next.state === "granted") {
               try {
                 await loadCaptureTargets();
               } catch (e) {
@@ -1035,22 +864,28 @@ export function RecordingView({
               toast.success("Screen recording permission granted");
             } else {
               toast.message("Permission still needed", {
-                description:
-                  "After granting in System Settings, relaunch StoryCapture so macOS picks up the change.",
+                description: `After granting in System Settings, relaunch ${next.appName} so macOS picks up the change.`,
               });
             }
           }}
-          onBypass={async () => {
-            // Let the user override Sequoia false-negatives.
-            setPermission("granted");
-            setTccOpen(false);
-            try {
-              await loadCaptureTargets();
-              toast.success("Permission check bypassed");
-            } catch (e) {
-              toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
-            }
-          }}
+          onBypass={
+            permissionReport.debugBypassAllowed
+              ? async () => {
+                  setPermissionReport({
+                    ...permissionReport,
+                    state: "granted",
+                    reason: "Debug TCC bypass enabled",
+                  });
+                  setTccOpen(false);
+                  try {
+                    await loadCaptureTargets();
+                    toast.success("Debug permission bypassed");
+                  } catch (e) {
+                    toast.error(`Could not load capture targets: ${formatIpcError(e)}`);
+                  }
+                }
+              : undefined
+          }
         />
       ) : null}
 
@@ -1282,6 +1117,7 @@ export function RecordingView({
           <VideoOutputSection
             ref={videoOutputSectionRef}
             disabled={status === "recording" || status === "paused" || status === "stopping"}
+            captureDims={selectedCaptureDims}
           />
 
           <div className="mt-auto rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-2.5">
@@ -1296,7 +1132,12 @@ export function RecordingView({
       </div>
 
       {/* Fallback modal for first-time permission grant (macOS requires app restart) */}
-      <TccPrompt open={tccOpen} permission={permission} onDismiss={() => setTccOpen(false)} />
+      <TccPrompt
+        open={tccOpen}
+        permission={permission}
+        appName={permissionReport.appName}
+        onDismiss={() => setTccOpen(false)}
+      />
     </main>
   );
 }
@@ -1329,39 +1170,47 @@ function LiveRecordingBadge({ paused, reduceMotion }: { paused: boolean; reduceM
 }
 
 function PermissionBanner({
-  state,
+  report,
   onOpenSettings,
   onRelaunch,
   onRecheck,
   onBypass,
 }: {
-  state: PermissionState;
+  report: ScreenCapturePermissionReport;
   onOpenSettings: () => void;
   onRelaunch: () => void;
   onRecheck: () => void;
-  onBypass: () => void;
+  onBypass?: () => void;
 }) {
-  const isDenied = state === "denied";
+  const isDenied = report.state === "denied";
+  const identityError = report.devIdentityOk === false;
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs">
       <div className="flex min-w-0 items-center gap-2 text-[var(--color-warning)]">
         <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
         <span className="font-medium text-[var(--color-fg-primary)]">
-          {isDenied ? "Screen recording permission denied." : "Screen recording permission needed."}
+          {identityError
+            ? "Dev app identity is not configured."
+            : isDenied
+              ? "Screen recording permission denied."
+              : "Screen recording permission needed."}
         </span>
         <span className="text-[var(--color-fg-secondary)]">
-          macOS Sequoia sometimes reports stale state. If you've already granted, click "Already
-          granted".
+          {identityError
+            ? `macOS sees ${report.bundleId ?? report.appName}; dev should appear as StoryCapture Dev.`
+            : `Grant Screen Recording access to ${report.appName} in System Settings, then relaunch.`}
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          onClick={onBypass}
-          title="Skip the permission check and try to record anyway"
-          className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
-        >
-          Already granted
-        </button>
+        {onBypass ? (
+          <button
+            onClick={onBypass}
+            title="Debug-only: skip the permission check and try to record anyway"
+            className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
+          >
+            Debug bypass
+          </button>
+        ) : null}
         <button
           onClick={onRecheck}
           className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"

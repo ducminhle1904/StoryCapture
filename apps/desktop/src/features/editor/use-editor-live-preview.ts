@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 import {
   acquirePreview,
@@ -13,7 +12,6 @@ import {
   updateAppUrl,
   updateViewport,
 } from "@/features/editor/preview-lifecycle";
-import { frontendLog } from "@/lib/log";
 import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
@@ -64,27 +62,14 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
   const [windowFocused, setWindowFocused] = useState(true);
 
   useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    let cancelled = false;
-    (async () => {
-      try {
-        const win = getCurrentWebviewWindow();
-        const fn = await win.onFocusChanged(({ payload }) => {
-          setWindowFocused(Boolean(payload));
-        });
-        if (cancelled) fn();
-        else unlisten = fn;
-      } catch (err) {
-        frontendLog.warn(
-          "useEditorLivePreview",
-          "webview onFocusChanged listener registration failed",
-          { error: err },
-        );
-      }
-    })();
+    const onFocus = () => setWindowFocused(true);
+    const onBlur = () => setWindowFocused(false);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    setWindowFocused(document.hasFocus());
     return () => {
-      cancelled = true;
-      if (unlisten) unlisten();
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
     };
   }, []);
 

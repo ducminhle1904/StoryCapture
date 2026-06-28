@@ -28,10 +28,7 @@ import {
   stopAuthorPreview,
 } from "@/ipc/preview";
 import { frontendLog } from "@/lib/log";
-import {
-  VIEWPORT_SIZES,
-  type PreviewViewport,
-} from "@/state/editor";
+import { type PreviewViewport, VIEWPORT_SIZES } from "@/state/editor";
 
 const STOP_GRACE_MS = 60_000;
 
@@ -44,6 +41,25 @@ export interface PreviewNavState {
   canGoForward: boolean;
 }
 
+export interface PreviewRecordingLease {
+  streamId: string;
+  release: () => void;
+}
+
+export interface PreviewViewportSize {
+  width: number;
+  height: number;
+}
+
+type PreviewViewportRequest = PreviewViewport | PreviewViewportSize;
+
+export interface AcquirePreviewForRecordingArgs {
+  appUrl: string;
+  viewport: PreviewViewportRequest;
+  reason: string;
+  timeoutMs?: number;
+}
+
 export const INITIAL_NAV: PreviewNavState = {
   url: null,
   canGoBack: false,
@@ -51,11 +67,7 @@ export const INITIAL_NAV: PreviewNavState = {
 };
 
 function navEqual(a: PreviewNavState, b: PreviewNavState): boolean {
-  return (
-    a.url === b.url &&
-    a.canGoBack === b.canGoBack &&
-    a.canGoForward === b.canGoForward
-  );
+  return a.url === b.url && a.canGoBack === b.canGoBack && a.canGoForward === b.canGoForward;
 }
 
 type NavListener = (s: PreviewNavState) => void;
@@ -64,7 +76,7 @@ type StatusListener = (status: PreviewLifecycleStatus) => void;
 interface State {
   streamId: string | null;
   appUrl: string | null;
-  viewport: PreviewViewport;
+  viewportKey: string;
   status: PreviewLifecycleStatus;
   starting: boolean;
   paused: boolean;
@@ -80,7 +92,7 @@ interface State {
 const state: State = {
   streamId: null,
   appUrl: null,
-  viewport: "desktop",
+  viewportKey: "preset:desktop",
   status: "idle",
   starting: false,
   paused: false,
@@ -116,36 +128,47 @@ function cancelPendingStop() {
   }
 }
 
-async function launch(appUrl: string, viewport: PreviewViewport) {
+function viewportDimensions(viewport: PreviewViewportRequest): PreviewViewportSize {
+  if (typeof viewport === "string") {
+    const { w, h } = VIEWPORT_SIZES[viewport];
+    return { width: w, height: h };
+  }
+  return viewport;
+}
+
+function viewportKey(viewport: PreviewViewportRequest): string {
+  return typeof viewport === "string"
+    ? `preset:${viewport}`
+    : `size:${viewport.width}x${viewport.height}`;
+}
+
+async function launch(appUrl: string, viewport: PreviewViewportRequest) {
   if (state.starting || state.streamId != null) return;
   state.starting = true;
   setStatus("starting");
   try {
-    const { w, h } = VIEWPORT_SIZES[viewport];
+    const { width, height } = viewportDimensions(viewport);
     const id = await startAuthorPreview({
       initialUrl: appUrl,
-      viewportWidth: w,
-      viewportHeight: h,
+      viewportWidth: width,
+      viewportHeight: height,
     });
     state.streamId = id;
     state.appUrl = appUrl;
-    state.viewport = viewport;
+    state.viewportKey = viewportKey(viewport);
     state.paused = false;
     setStatus("live");
     // Seed the nav URL so the URL bar can render the initial value before
     // the first framenavigated event arrives from the sidecar.
     setNav({ ...INITIAL_NAV, url: appUrl });
     try {
-      const unlisten = await listen<AuthorPreviewNavPayload>(
-        `preview://nav/${id}`,
-        (ev) => {
-          setNav({
-            url: ev.payload.url || null,
-            canGoBack: ev.payload.canGoBack,
-            canGoForward: ev.payload.canGoForward,
-          });
-        },
-      );
+      const unlisten = await listen<AuthorPreviewNavPayload>(`preview://nav/${id}`, (ev) => {
+        setNav({
+          url: ev.payload.url || null,
+          canGoBack: ev.payload.canGoBack,
+          canGoForward: ev.payload.canGoForward,
+        });
+      });
       state.navUnlisten = unlisten;
     } catch (err) {
       frontendLog.warn("previewLifecycle", "preview://nav listen failed", {
@@ -158,7 +181,7 @@ async function launch(appUrl: string, viewport: PreviewViewport) {
     setStatus("error");
     frontendLog.warn("previewLifecycle", "start_author_preview failed", {
       error: err,
-      fields: { app_url: appUrl, viewport },
+      fields: { app_url: appUrl, viewport: viewportKey(viewport) },
     });
   } finally {
     state.starting = false;
@@ -173,7 +196,11 @@ async function teardown() {
   state.paused = false;
   setStatus("idle");
   if (state.navUnlisten) {
-    try { state.navUnlisten(); } catch { /* unlisten is best-effort */ }
+    try {
+      state.navUnlisten();
+    } catch {
+      /* unlisten is best-effort */
+    }
     state.navUnlisten = null;
   }
   setNav(INITIAL_NAV);
@@ -200,7 +227,7 @@ async function teardown() {
  */
 export function acquirePreview(
   appUrl: string,
-  viewport: PreviewViewport,
+  viewport: PreviewViewportRequest,
   listener: Listener,
 ): () => void {
   cancelPendingStop();
@@ -209,25 +236,8 @@ export function acquirePreview(
 
   if (state.streamId != null) {
     listener(state.streamId);
-    if (state.appUrl !== appUrl) {
-      state.appUrl = appUrl;
-      setAuthorPreviewUrl(state.streamId, appUrl).catch((err) => {
-        frontendLog.warn("previewLifecycle", "set_author_preview_url failed", {
-          error: err,
-          fields: { stream_id: state.streamId, app_url: appUrl },
-        });
-      });
-    }
-    if (state.viewport !== viewport) {
-      state.viewport = viewport;
-      const { w, h } = VIEWPORT_SIZES[viewport];
-      setAuthorPreviewViewport(state.streamId, w, h).catch((err) => {
-        frontendLog.warn("previewLifecycle", "set_author_preview_viewport failed", {
-          error: err,
-          fields: { stream_id: state.streamId, w, h, viewport },
-        });
-      });
-    }
+    updateAppUrl(appUrl);
+    updateViewport(viewport);
   } else {
     listener(null);
     void launch(appUrl, viewport);
@@ -253,6 +263,89 @@ export async function stopPreviewNow(reason: string) {
   await teardown();
 }
 
+export function retainPreviewForRecording(reason: string): PreviewRecordingLease | null {
+  cancelPendingStop();
+  if (state.streamId == null) return null;
+  state.refcount += 1;
+  const streamId = state.streamId;
+  frontendLog.info("previewLifecycle", "retaining preview for recording", {
+    fields: { reason, stream_id: streamId, refcount: state.refcount },
+  });
+  let released = false;
+  return {
+    streamId,
+    release: () => {
+      if (released) return;
+      released = true;
+      state.refcount = Math.max(0, state.refcount - 1);
+      frontendLog.info("previewLifecycle", "released recording preview lease", {
+        fields: { reason, stream_id: streamId, refcount: state.refcount },
+      });
+      if (state.refcount === 0) scheduleStop();
+    },
+  };
+}
+
+export async function acquirePreviewForRecording({
+  appUrl,
+  viewport,
+  reason,
+  timeoutMs = 8_000,
+}: AcquirePreviewForRecordingArgs): Promise<PreviewRecordingLease> {
+  const retained = retainPreviewForRecording(reason);
+  if (retained) {
+    try {
+      await updateAppUrlForRecording(appUrl);
+      await updateViewportForRecording(viewport);
+      return retained;
+    } catch (err) {
+      retained.release();
+      throw err;
+    }
+  }
+
+  let release: (() => void) | null = null;
+  let pendingStreamId: string | null = null;
+  let settled = false;
+  const lease = await new Promise<PreviewRecordingLease>((resolve, reject) => {
+    const finish = (streamId: string) => {
+      if (settled) return;
+      if (!release) {
+        pendingStreamId = streamId;
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timer);
+      frontendLog.info("previewLifecycle", "acquired preview for recording", {
+        fields: { reason, stream_id: streamId, refcount: state.refcount },
+      });
+      resolve({
+        streamId,
+        release: () => {
+          if (!release) return;
+          release();
+          release = null;
+          frontendLog.info("previewLifecycle", "released recording preview lease", {
+            fields: { reason, stream_id: streamId, refcount: state.refcount },
+          });
+        },
+      });
+    };
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      release?.();
+      release = null;
+      reject(new Error("Timed out waiting for browser preview"));
+    }, timeoutMs);
+    release = acquirePreview(appUrl, viewport, (streamId) => {
+      if (streamId) finish(streamId);
+    });
+    if (pendingStreamId) finish(pendingStreamId);
+  });
+  return lease;
+}
+
 function scheduleStop() {
   cancelPendingStop();
   if (state.streamId == null) return;
@@ -268,10 +361,7 @@ function scheduleStop() {
  * instead of restarting Chromium.
  */
 export function updateAppUrl(appUrl: string) {
-  if (state.streamId == null) return;
-  if (state.appUrl === appUrl) return;
-  state.appUrl = appUrl;
-  setAuthorPreviewUrl(state.streamId, appUrl).catch((err) => {
+  updateAppUrlForRecording(appUrl).catch((err) => {
     frontendLog.warn("previewLifecycle", "set_author_preview_url failed", {
       error: err,
       fields: { stream_id: state.streamId, app_url: appUrl },
@@ -279,17 +369,36 @@ export function updateAppUrl(appUrl: string) {
   });
 }
 
-export function updateViewport(viewport: PreviewViewport) {
+async function updateAppUrlForRecording(appUrl: string): Promise<void> {
   if (state.streamId == null) return;
-  if (state.viewport === viewport) return;
-  state.viewport = viewport;
-  const { w, h } = VIEWPORT_SIZES[viewport];
-  setAuthorPreviewViewport(state.streamId, w, h).catch((err) => {
+  if (state.appUrl === appUrl) return;
+  const streamId = state.streamId;
+  await setAuthorPreviewUrl(streamId, appUrl);
+  if (state.streamId === streamId) {
+    state.appUrl = appUrl;
+  }
+}
+
+export function updateViewport(viewport: PreviewViewportRequest) {
+  updateViewportForRecording(viewport).catch((err) => {
+    const { width, height } = viewportDimensions(viewport);
     frontendLog.warn("previewLifecycle", "set_author_preview_viewport failed", {
       error: err,
-      fields: { stream_id: state.streamId, w, h, viewport },
+      fields: { stream_id: state.streamId, width, height, viewport: viewportKey(viewport) },
     });
   });
+}
+
+async function updateViewportForRecording(viewport: PreviewViewportRequest): Promise<void> {
+  if (state.streamId == null) return;
+  const nextKey = viewportKey(viewport);
+  if (state.viewportKey === nextKey) return;
+  const { width, height } = viewportDimensions(viewport);
+  const streamId = state.streamId;
+  await setAuthorPreviewViewport(streamId, width, height);
+  if (state.streamId === streamId) {
+    state.viewportKey = nextKey;
+  }
 }
 
 /**

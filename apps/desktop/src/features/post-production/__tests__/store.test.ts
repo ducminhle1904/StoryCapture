@@ -10,6 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useEditorStore } from "../state/store";
+import { parseTimelineLayoutJson, serializeTimelineLayout } from "../state/timeline-layout";
 import { SNAP_THRESHOLD_PX, snapToNearest } from "../state/timeline-slice";
 
 function resetStore() {
@@ -39,6 +40,43 @@ beforeEach(() => {
 });
 
 describe("timeline-slice", () => {
+  it("serializes and parses versioned timeline layouts", () => {
+    const tracks = {
+      video: [
+        {
+          id: "video-1",
+          trackId: "video" as const,
+          startMs: 0,
+          durationMs: 1000,
+          sourcePath: "/tmp/source.mp4",
+        },
+      ],
+      cursor: [],
+      zoom: [],
+      sound: [],
+      annotations: [],
+    };
+
+    const layoutJson = serializeTimelineLayout({
+      tracks,
+      durationMs: 1000,
+      background: { kind: "solid", color: { r: 1, g: 2, b: 3, a: 1 } },
+    });
+    const parsed = parseTimelineLayoutJson(layoutJson);
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.layout.version).toBe(1);
+    expect(parsed.layout.tracks.video[0]).toMatchObject({ id: "video-1", trackId: "video" });
+    expect(parsed.layout.durationMs).toBe(1000);
+    expect(parsed.layout.background).toEqual({ kind: "solid", color: { r: 1, g: 2, b: 3, a: 1 } });
+  });
+
+  it("rejects corrupt timeline layouts without throwing", () => {
+    expect(parseTimelineLayoutJson("{nope").ok).toBe(false);
+    expect(parseTimelineLayoutJson(JSON.stringify({ version: 999, tracks: {} })).ok).toBe(false);
+  });
+
   it("selecting a clip opens the effects inspector tab", () => {
     useEditorStore.setState({ selectedTab: "presets" });
 

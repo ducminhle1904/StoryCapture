@@ -15,24 +15,19 @@ video automatically.
 
 ## Stack
 
-- Desktop: Tauri v2, React 19, Vite 8, Tailwind v4, Base UI, Zustand,
-  TanStack Query, Motion
-- Rust workspace: story parser, automation, capture, encoder, effects,
-  storage, intelligence
+- Desktop: Electron, React 19, Vite 8, Tailwind v4, Base UI, Zustand, TanStack
+  Query, Motion
 - Web: Next.js 16, tRPC 11, Prisma 6, NextAuth v5 beta, Cloudflare R2
 
 ## Repo Layout
 
 ```text
 apps/
-  desktop/   Tauri desktop app
+  desktop/   Electron desktop app
   web/       Next.js web companion
-crates/      Pure Rust domain crates
 packages/    Shared TS packages
-scripts/     Build, release, notarize, sidecar, CI helpers
-tools/       Utility binaries and smoke tools
+scripts/     Build, release, notarize, and CI helpers
 docs/        Read-on-demand technical docs
-.planning/   GSD roadmap, phase artifacts, live state
 ```
 
 ## Read First
@@ -44,10 +39,10 @@ docs/        Read-on-demand technical docs
   intelligence, roadmap summary
 - [`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md): patterns, testing, workflow
 - [`docs/CREDENTIALS.md`](./docs/CREDENTIALS.md): signing and service secrets
-- [`.planning/STATE.md`](./.planning/STATE.md): live project status
 
 ## Status
 
 This repo moves quickly. Do not treat `README.md` as the live project tracker.
-For current milestone, completed phases, and operator-gated blockers, read
-[`./.planning/STATE.md`](./.planning/STATE.md).
+There is no `.planning/` directory in the current checkout. Treat `docs/*.md`
+and the live source tree as the current references unless a future planning
+state file is restored.

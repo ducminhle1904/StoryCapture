@@ -4,7 +4,7 @@
  * Token-only styling; animation rides `data-[starting-style]`.
  */
 
-import { Accordion as BaseAccordion } from "@base-ui-components/react/accordion";
+import { Accordion as BaseAccordion } from "@base-ui/react/accordion";
 import { ChevronDown } from "lucide-react";
 import * as React from "react";
 
