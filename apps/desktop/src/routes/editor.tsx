@@ -32,7 +32,7 @@ import { StoryBuilder } from "@/features/editor/story-builder";
 import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-editor";
 import { ensureAllStepIds, formatEditableStory } from "@/features/editor/story-ui-model";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
-import { parseStory } from "@/ipc/parse";
+import { parseStory, type Story } from "@/ipc/parse";
 import {
   fetchProjectFolder,
   type ProjectFolderInfo,
@@ -261,17 +261,19 @@ export default function EditorRoute() {
   }, autosaveDelayMs);
 
   const handleUiSourceChange = useCallback(
-    (nextSource: string) => {
+    (nextSource: string, optimisticStory?: Story) => {
       setSource(nextSource);
+      if (optimisticStory) setLastParse({ ast: optimisticStory, diagnostics: [...diagnostics] });
       if (autosaveEnabled) uiAutosave.run(nextSource);
     },
-    [autosaveEnabled, setSource, uiAutosave],
+    [autosaveEnabled, diagnostics, setLastParse, setSource, uiAutosave],
   );
 
   const commitUiSourceChange = useCallback(
-    async (nextSource: string) => {
+    async (nextSource: string, optimisticStory?: Story) => {
       uiAutosave.cancel();
       setSource(nextSource);
+      if (optimisticStory) setLastParse({ ast: optimisticStory, diagnostics: [...diagnostics] });
       await autosave(nextSource);
       try {
         const parsed = await parseStory(nextSource);
@@ -280,7 +282,7 @@ export default function EditorRoute() {
         /* Diagnostics will refresh through the regular parse effect. */
       }
     },
-    [autosave, setLastParse, setSource, uiAutosave],
+    [autosave, diagnostics, setLastParse, setSource, uiAutosave],
   );
 
   const flushUiSourceChange = useCallback(() => {
