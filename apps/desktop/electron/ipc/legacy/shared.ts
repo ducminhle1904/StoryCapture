@@ -112,6 +112,44 @@ export interface ExportOutput {
   output_height?: number | null;
   fps: number;
   quality: string;
+  encoder_options?: ExportEncoderOptions | null;
+}
+
+export interface ExportAudioOptions {
+  codec?: "aac" | "opus" | null;
+  bitrate_kbps?: number | null;
+  channels?: number | null;
+  sample_rate_hz?: number | null;
+}
+
+export interface ExportEncoderOptions {
+  container?: "mp4" | "mov" | "webm" | null;
+  codec?: "h264" | null;
+  rate_control?: "auto" | "cbr" | "vbr" | "crf" | "cq" | null;
+  hw_encoder?:
+    | "video-toolbox-h264"
+    | "video-toolbox-hevc"
+    | "nvenc-h264"
+    | "qsv-h264"
+    | "amf-h264"
+    | "libx264-software"
+    | "openh-264-software"
+    | null;
+  quality_value?: number | null;
+  x264_preset?:
+    | "ultrafast"
+    | "superfast"
+    | "veryfast"
+    | "faster"
+    | "fast"
+    | "medium"
+    | "slow"
+    | "slower"
+    | "veryslow"
+    | null;
+  keyframe_interval_sec?: number | null;
+  downscale_algo?: "lanczos" | "bicubic" | "bilinear" | "area" | null;
+  audio?: ExportAudioOptions | null;
 }
 
 export interface ExportRunArgs {

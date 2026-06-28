@@ -5,8 +5,12 @@ import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import type { WebContents } from "electron";
 import ffmpegPath from "ffmpeg-static";
-import { clampDimension, clampFps } from "./capture-preview";
-import { exportPresetsCatalogue } from "./post-production";
+import { clampFps } from "./capture-preview";
+import {
+  analyzeExportPlan,
+  ffmpegArgsForExportPlan,
+  type RunnableExportPlan,
+} from "./export-planning";
 import {
   channelIdFrom,
   type ExportOutput,
@@ -19,105 +23,22 @@ import {
   sendChannel,
 } from "./shared";
 
-export function validateExportOutput(output: ExportOutput): void {
-  if (!["mp4", "webm", "gif"].includes(output.format)) {
-    throw new Error(`unknown format: ${output.format}`);
-  }
-  if (!["match-source", "720p", "1080p", "4k", "custom"].includes(output.resolution)) {
-    throw new Error(`unknown resolution: ${output.resolution}`);
-  }
-  if (!exportPresetsCatalogue().fps.includes(output.fps)) {
-    throw new Error(`unsupported fps: ${output.fps}`);
-  }
-  if (!["low", "med", "high"].includes(output.quality)) {
-    throw new Error(`unknown quality: ${output.quality}`);
-  }
-  if (output.resolution === "custom" && (!output.output_width || !output.output_height)) {
-    throw new Error("custom resolution requires output_width and output_height");
-  }
-}
-
-export function resolutionSize(output: ExportOutput): { width: number; height: number } | null {
-  switch (output.resolution) {
-    case "720p":
-      return { width: 1280, height: 720 };
-    case "1080p":
-      return { width: 1920, height: 1080 };
-    case "4k":
-      return { width: 3840, height: 2160 };
-    case "custom":
-      return {
-        width: clampDimension(output.output_width, 1920),
-        height: clampDimension(output.output_height, 1080),
-      };
-    default:
-      return null;
-  }
-}
-
-export function firstSourcePath(graphJson: string): string {
-  const graph = JSON.parse(graphJson) as {
-    video?: Array<{ type?: string; path?: string }>;
-  };
-  const source = graph.video?.find((node) => node.type === "source" && node.path);
-  if (!source?.path) throw new Error("export graph has no source video");
-  return source.path;
-}
-
-export function unsupportedExportGraphNodes(graphJson: string): string[] {
-  const graph = JSON.parse(graphJson) as {
-    video?: Array<{ type?: string }>;
-    audio?: unknown[];
-  };
-  const unsupported = new Set<string>();
-  for (const node of graph.video ?? []) {
-    if (node.type !== "source") unsupported.add(String(node.type ?? "unknown-video"));
-  }
-  if ((graph.audio ?? []).length > 0) unsupported.add("audio");
-  return [...unsupported].sort();
-}
+export {
+  analyzeExportPlan,
+  ffmpegArgsForExportOutput,
+  ffmpegArgsForExportPlan,
+  firstSourcePath,
+  normalizeExportEncoderOptions,
+  resolutionSize,
+  unsupportedExportGraphNodes,
+  validateExportOutput,
+} from "./export-planning";
 
 export function exportOutputPath(args: ExportRunArgs, output: ExportOutput, index: number): string {
   const ext = output.format.toLowerCase();
   const base = slugify(args.base_name || args.story_id || "export") || "export";
   const suffix = args.outputs.length > 1 ? `-${index + 1}-${output.resolution}` : "";
   return path.join(args.output_folder, `${base}${suffix}.${ext}`);
-}
-
-export function ffmpegArgsForExportOutput(
-  input: string,
-  output: ExportOutput,
-  out: string,
-): string[] {
-  const size = resolutionSize(output);
-  const vf = [`fps=${output.fps}`];
-  if (size) vf.push(`scale=${size.width}:${size.height}:flags=lanczos`);
-  const ffmpegArgs = ["-y", "-i", input, "-vf", vf.join(",")];
-  if (output.format === "mp4") {
-    ffmpegArgs.push(
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      "-an",
-    );
-  } else if (output.format === "webm") {
-    ffmpegArgs.push(
-      "-c:v",
-      "libvpx-vp9",
-      "-b:v",
-      output.quality === "high" ? "4M" : output.quality === "med" ? "2M" : "1M",
-      "-an",
-    );
-  } else {
-    ffmpegArgs.push("-an");
-  }
-  ffmpegArgs.push(out);
-  return ffmpegArgs;
 }
 
 export function runFfmpegForRenderSession(
@@ -165,8 +86,8 @@ export function scheduleRenderSessionRemoval(id: string): void {
 export function enqueueExportRenderJob(args: {
   batchId: string;
   storyId: string;
-  graphJson: string;
   output: ExportOutput;
+  plan: RunnableExportPlan;
   outputPath: string;
   presetId?: string | null;
   priority?: number;
@@ -208,18 +129,11 @@ export function enqueueExportRenderJob(args: {
 
   void (async () => {
     try {
-      const unsupported = unsupportedExportGraphNodes(args.graphJson);
-      if (unsupported.length > 0) {
-        throw new Error(
-          `export compositor does not yet support graph nodes: ${unsupported.join(", ")}`,
-        );
-      }
-      const input = firstSourcePath(args.graphJson);
       renderJob.progress_pct = 5;
       broadcastRenderProgress(renderJob, session.frame);
       await runFfmpegForRenderSession(
         session,
-        ffmpegArgsForExportOutput(input, args.output, args.outputPath),
+        ffmpegArgsForExportPlan(args.plan, args.outputPath),
       );
       renderJob.status = "completed";
       renderJob.progress_pct = 100;
@@ -237,7 +151,13 @@ export function enqueueExportRenderJob(args: {
 
 export async function exportRun(args: ExportRunArgs) {
   if (!args.outputs.length) throw new Error("export requires at least one output");
-  args.outputs.forEach(validateExportOutput);
+  const plannedOutputs = args.outputs.map((output) => {
+    const plan = analyzeExportPlan(args.graph_json, output);
+    if (plan.kind === "unsupported") {
+      throw new Error(`${output.format} export is unsupported: ${plan.reason}`);
+    }
+    return { output, plan };
+  });
   await fs.mkdir(args.output_folder, { recursive: true });
   const batchId = randomUUID();
   const snapshotPath = path.join(
@@ -247,14 +167,14 @@ export async function exportRun(args: ExportRunArgs) {
   await fs.writeFile(snapshotPath, args.graph_json, "utf8");
   const jobIds: string[] = [];
 
-  for (const [index, output] of args.outputs.entries()) {
+  for (const [index, { output, plan }] of plannedOutputs.entries()) {
     const out = exportOutputPath(args, output, index);
     jobIds.push(
       enqueueExportRenderJob({
         batchId,
         storyId: args.story_id,
-        graphJson: args.graph_json,
         output,
+        plan,
         outputPath: out,
         presetId: args.preset_id,
         priority: args.priority,

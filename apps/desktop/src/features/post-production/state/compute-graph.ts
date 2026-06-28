@@ -162,7 +162,15 @@ export interface HighlightOverlaySpec {
 }
 
 export type VideoNode =
-  | { type: "source"; id: string; path: string; pts_offset_ms: number }
+  | {
+      type: "source";
+      id: string;
+      path: string;
+      pts_offset_ms: number;
+      duration_ms: number;
+      source_width?: number;
+      source_height?: number;
+    }
   | { type: "zoom-pan"; id: string; target: ZoomTarget; keyframes: ZoomKeyframe[] }
   | {
       type: "background";
@@ -270,6 +278,9 @@ function videoSource(clip: VideoClip): VideoNode | null {
     id: deterministicNodeId(clip.id, "source"),
     path: clip.sourcePath,
     pts_offset_ms: clip.startMs,
+    duration_ms: Math.max(0, Math.round(clip.durationMs)),
+    source_width: clip.sourceSize?.width,
+    source_height: clip.sourceSize?.height,
   };
 }
 

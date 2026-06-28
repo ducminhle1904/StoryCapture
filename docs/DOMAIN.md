@@ -139,11 +139,14 @@ without crashing. The editor owns:
   voiceover compact UI.
 
 Current host export caveat: `export_run` writes a graph snapshot and creates
-real render queue jobs. The legacy host path can encode source-only graphs with
-FFmpeg. Graph nodes that require compositor support, including overlays,
-background framing, zoom, cursor, transitions, or audio, fail clearly instead of
-being silently dropped. Verify backend compositor support before assuming every
-UI option affects final encoding.
+real render queue jobs. The legacy host path now plans each output before
+queueing: eligible one-source, match-source, high-quality MP4/WebM exports use
+stream copy; source-only re-encodes apply encoder quality, keyframe, scale, and
+audio settings through FFmpeg. Graph nodes that require compositor support,
+including multiple sources, overlays, background framing, zoom, cursor,
+transitions, or separate audio graph nodes, fail clearly before queueing instead
+of being silently dropped. Verify backend compositor support before assuming
+every UI effect affects final encoding.
 
 ## Render And Export
 
@@ -157,7 +160,9 @@ Renderer-side boundaries:
 Host-side boundaries:
 
 - Modular handlers under `apps/desktop/electron/ipc/*`.
-- Remaining render/export implementation in `ipc/legacy.ts`.
+- Remaining render/export implementation in `ipc/legacy.ts`; source-only export
+  planning and FFmpeg argument mapping live in
+  `ipc/legacy/export-planning.ts`.
 - FFmpeg comes from `ffmpeg-static`.
 
 Export graph changes should include targeted tests around graph generation and

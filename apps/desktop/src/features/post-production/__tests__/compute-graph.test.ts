@@ -116,6 +116,7 @@ describe("computeGraph", () => {
             startMs: 0,
             durationMs: 4000,
             sourcePath: "/tmp/in.mp4",
+            sourceSize: { width: 1440, height: 900 },
             outgoingTransition: { kind: "fade", durationMs: 500 },
           },
           {
@@ -193,6 +194,9 @@ describe("computeGraph", () => {
     if (src.type !== "source") throw new Error("expected source");
     expect(src.path).toBe("/tmp/in.mp4");
     expect(src.pts_offset_ms).toBe(0);
+    expect(src.duration_ms).toBe(4000);
+    expect(src.source_width).toBe(1440);
+    expect(src.source_height).toBe(900);
 
     const zoom = videoNodeAt(g, 2);
     if (zoom.type !== "zoom-pan") throw new Error("expected zoom-pan");
