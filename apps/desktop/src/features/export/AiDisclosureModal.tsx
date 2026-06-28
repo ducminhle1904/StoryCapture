@@ -12,7 +12,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { Dialog } from "@base-ui-components/react/dialog";
+import { Dialog } from "@base-ui/react/dialog";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import {

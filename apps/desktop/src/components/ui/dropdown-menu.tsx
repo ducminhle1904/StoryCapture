@@ -2,7 +2,7 @@
  * DropdownMenu primitive — shadcn-style API on top of Base UI Menu.
  */
 
-import { Menu as BaseMenu } from "@base-ui-components/react/menu";
+import { Menu as BaseMenu } from "@base-ui/react/menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 import * as React from "react";
 

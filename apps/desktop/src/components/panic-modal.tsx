@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Dialog } from "@base-ui-components/react/dialog";
+import { Dialog } from "@base-ui/react/dialog";
 import { Copy, RotateCw, X } from "lucide-react";
 
 import { onPanic, type PanicPayload } from "@/ipc";

@@ -4,7 +4,7 @@
  * Supports single-thumb value; multi-thumb can be extended from Base UI parts.
  */
 
-import { Slider as BaseSlider } from "@base-ui-components/react/slider";
+import { Slider as BaseSlider } from "@base-ui/react/slider";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

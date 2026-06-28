@@ -12,7 +12,7 @@
  * affordances are scoped to the three layers the user requested.
  */
 
-import { Menu } from "@base-ui-components/react/menu";
+import { Menu } from "@base-ui/react/menu";
 import { useCallback, useMemo, useState } from "react";
 
 import { useEditorStore } from "../state/store";
