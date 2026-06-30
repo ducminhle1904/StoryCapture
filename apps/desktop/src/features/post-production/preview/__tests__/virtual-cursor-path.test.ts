@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { RecordingActions } from "@/ipc/actions";
+import {
+  buildVirtualCursorSchedule,
+  virtualCursorVisualDurationMs,
+} from "../../state/virtual-cursor-scheduler";
 import { sampleVirtualCursor } from "../virtual-cursor-path";
 import { ACTIONS } from "./fixtures";
 
@@ -172,5 +176,52 @@ describe("sampleVirtualCursor", () => {
     expect(stillMoving?.x).toBeGreaterThan(491.375 / 1280);
     expect(stillMoving?.x).toBeLessThan(696.9609375 / 1280);
     expect(stillMoving?.ripple).toBeNull();
+  });
+
+  it("ignores non-interaction sidecar events when scheduling cursor movement", () => {
+    const waitFor = {
+      ...eventWithTarget({ x: 640, y: 170 }, { start: 1015, action: 1127, end: 12_000 }),
+      verb: "wait-for",
+      pointer: null,
+    };
+    const email = {
+      ...eventWithTarget({ x: 460, y: 320 }, { start: 1127, action: 1604, end: 2415 }),
+      verb: "type",
+      pointer: null,
+    };
+    const password = {
+      ...eventWithTarget({ x: 460, y: 390 }, { start: 2415, action: 2758, end: 3272 }),
+      verb: "type",
+      pointer: null,
+    };
+    const signIn = eventWithTarget({ x: 460, y: 470 }, { start: 3272, action: 3593, end: 3715 });
+    const actions = actionsWithEvents([waitFor, email, password, signIn], {
+      width: 1280,
+      height: 720,
+    });
+
+    const schedule = buildVirtualCursorSchedule(actions, "natural");
+
+    expect(schedule?.segments.map((segment) => segment.event.verb)).toEqual([
+      "type",
+      "type",
+      "click",
+    ]);
+    expect(schedule?.segments[0]?.from).toEqual({ x: 640, y: 360 });
+    expect(sampleVirtualCursor(actions, 1100, "natural")).toMatchObject({ x: 0.5, y: 0.5 });
+    expect(virtualCursorVisualDurationMs(actions, "natural")).toBeLessThan(waitFor.t_end_ms);
+  });
+
+  it("returns no virtual cursor schedule for sidecars with only non-interaction events", () => {
+    const waitFor = {
+      ...eventWithTarget({ x: 640, y: 170 }, { start: 1015, action: 1127, end: 12_000 }),
+      verb: "wait-for",
+      pointer: null,
+    };
+    const actions = actionsWithEvents([waitFor], { width: 1280, height: 720 });
+
+    expect(buildVirtualCursorSchedule(actions, "natural")).toBeNull();
+    expect(virtualCursorVisualDurationMs(actions, "natural")).toBe(0);
+    expect(sampleVirtualCursor(actions, 1127, "natural")).toBeNull();
   });
 });

@@ -480,6 +480,11 @@ export interface StoryBrowserRunHooks {
     result: ParsedCommandResult;
     durationMs: number;
     actionDurationMs: number;
+    timing?: {
+      stepStartedAtMs: number;
+      actionAtMs: number;
+      stepEndedAtMs: number;
+    };
   }) => void;
   onFrameCaptured?: (ordinal: number, frame: SimulatorStepFrame) => void;
   onStepFailed?: (ordinal: number, error: unknown) => void;
@@ -497,6 +502,7 @@ export interface StoryBrowserRunOptions {
   stopAfter?: number;
   frameDir?: string | null;
   executionProfile?: StoryBrowserExecutionProfile;
+  recordingClockMs?: () => number;
   shouldCancel?: () => boolean;
   hooks?: StoryBrowserRunHooks;
 }

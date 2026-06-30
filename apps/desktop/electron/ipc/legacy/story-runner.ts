@@ -60,6 +60,15 @@ import {
   waitMs,
 } from "./shared";
 
+const FALLBACK_TARGET_VERBS = ["click", "type", "hover", "select", "upload"];
+const CURSOR_INTERACTION_VERBS = ["click", "type", "hover", "select", "upload"];
+
+function recordingFrameClockMs(session: RecordingSession): number {
+  const fps = session.effectiveFps || session.fps;
+  if (!Number.isFinite(fps) || fps <= 0) return 0;
+  return Math.max(0, Math.round((session.frameSeq / fps) * 1000));
+}
+
 export async function executeParsedCommand(
   contents: WebContents,
   command: ParsedCommand,
@@ -271,7 +280,7 @@ export function simulatorFrameFromResult(
 }
 
 export function commandGetsPreActionPacing(command: ParsedCommand): boolean {
-  return commandSupportsFallback(command);
+  return commandContributesCursorEvent(command);
 }
 
 async function resolveCommandTarget(
@@ -312,6 +321,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
   durationMs: number;
 }> {
   const startedAt = Date.now();
+  const recordingClockMs = options.recordingClockMs ?? (() => Math.max(0, Date.now() - startedAt));
   const executionProfile = options.executionProfile ?? storyBrowserExecutionProfile();
   const pacingSize = executionProfile.captureRecordingFrames
     ? cursorPacingSizeForRun(options.contents, executionProfile.captureSize)
@@ -337,6 +347,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
     lastOrdinal = ordinal;
     options.hooks?.onStepStarted?.(ordinal, command);
     const stepStartedAt = Date.now();
+    const stepStartedClockMs = recordingClockMs();
     try {
       if (executionProfile.captureRecordingFrames) {
         invalidateAuthorPreviewPaintForContents(options.contents);
@@ -355,6 +366,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
         }
       }
       const actionStartedAt = Date.now();
+      const actionStartedClockMs = recordingClockMs();
       const result = await executeParsedCommand(options.contents, command, options.projectFolder, {
         executionProfile,
         resolvedTarget,
@@ -365,7 +377,8 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       const settleDelayMs = executionProfile.settleDelayForCommand(command);
       if (settleDelayMs > 0) await waitMs(settleDelayMs);
       const durationMs = Date.now() - stepStartedAt;
-      if (pacingSize && result.target) {
+      const stepEndedClockMs = recordingClockMs();
+      if (pacingSize && result.target && commandContributesCursorEvent(command)) {
         previousCursor = cursorPointForTarget(result.target, pacingSize);
       }
       succeeded += 1;
@@ -375,6 +388,11 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
         result,
         durationMs,
         actionDurationMs,
+        timing: {
+          stepStartedAtMs: stepStartedClockMs,
+          actionAtMs: actionStartedClockMs,
+          stepEndedAtMs: stepEndedClockMs,
+        },
       });
       if (options.frameDir) {
         const screenshotPath = await captureStoryFrame(
@@ -429,6 +447,21 @@ export async function writeRecordingActionsSidecarBestEffort(
       reason: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+export function rebaseActionEventsToFirstCursorInteraction(
+  events: ActionTimelineEvent[],
+): ActionTimelineEvent[] {
+  const first = events[0];
+  if (!first) return events;
+  const offsetMs = Math.max(0, Math.min(first.t_start_ms, first.t_action_ms));
+  if (offsetMs <= 0) return events;
+  return events.map((event) => ({
+    ...event,
+    t_start_ms: Math.max(0, event.t_start_ms - offsetMs),
+    t_action_ms: Math.max(0, event.t_action_ms - offsetMs),
+    t_end_ms: Math.max(0, event.t_end_ms - offsetMs),
+  }));
 }
 
 export async function launchAutomationCommand(args: Record<string, unknown>, sender: WebContents) {
@@ -493,6 +526,9 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             }
           : undefined,
       }),
+      recordingClockMs: recordingSessionAtLaunch
+        ? () => recordingFrameClockMs(recordingSessionAtLaunch)
+        : undefined,
       hooks: {
         onStepStarted: (ordinal, command) => {
           if (recordingSessionId) {
@@ -513,22 +549,29 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           result: stepResult,
           durationMs,
           actionDurationMs,
+          timing,
         }) => {
-          const stepEndedAtMs = Math.max(0, Date.now() - actionRunStartedAt);
+          const fallbackStepEndedAtMs = Math.max(0, Date.now() - actionRunStartedAt);
+          const stepEndedAtMs = timing?.stepEndedAtMs ?? fallbackStepEndedAtMs;
           const stepStartedAtMs =
-            actionStepStartMs.get(ordinal) ?? Math.max(0, stepEndedAtMs - durationMs);
+            timing?.stepStartedAtMs ??
+            actionStepStartMs.get(ordinal) ??
+            Math.max(0, stepEndedAtMs - durationMs);
           actionStepStartMs.delete(ordinal);
           const actionAtMs = Math.min(
             stepEndedAtMs,
-            stepStartedAtMs + Math.max(0, actionDurationMs),
+            timing?.actionAtMs ?? stepStartedAtMs + Math.max(0, actionDurationMs),
           );
-          if (recordingSessionId && stepResult.target) {
+          if (recordingSessionId && stepResult.target && commandContributesCursorEvent(command)) {
+            const cursorActionAtMs = commandGetsPreActionPacing(command)
+              ? stepStartedAtMs
+              : actionAtMs;
             actionEvents.push(
               actionTimelineEventFromStep({
                 ordinal,
                 command,
                 stepStartedAtMs,
-                actionAtMs,
+                actionAtMs: cursorActionAtMs,
                 stepEndedAtMs,
                 target: stepResult.target,
                 pointer: stepResult.pointer ?? undefined,
@@ -602,14 +645,21 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
     await stopRecording({ id: recordingSessionId });
     if (recordingSession) {
-      await writeRecordingActionsSidecarBestEffort(recordingSession, actionEvents);
+      await writeRecordingActionsSidecarBestEffort(
+        recordingSession,
+        rebaseActionEventsToFirstCursorInteraction(actionEvents),
+      );
     }
   }
   return null;
 }
 
 export function commandSupportsFallback(command: ParsedCommand | undefined): boolean {
-  return Boolean(command && ["click", "type", "hover", "select", "upload"].includes(command.verb));
+  return Boolean(command && FALLBACK_TARGET_VERBS.includes(command.verb));
+}
+
+export function commandContributesCursorEvent(command: ParsedCommand | undefined): boolean {
+  return Boolean(command && CURSOR_INTERACTION_VERBS.includes(command.verb));
 }
 
 export function selectorSummary(record: unknown): string | null {

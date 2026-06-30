@@ -21,6 +21,7 @@ export const VIRTUAL_CURSOR_CLICK_RIPPLE_MS = 520;
 
 const QUICK_SUCCESSION_MS = 180;
 const MIN_TARGET_WIDTH_PX = 12;
+const CURSOR_INTERACTION_VERBS = new Set(["click", "type", "hover", "select", "upload"]);
 
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
@@ -82,13 +83,17 @@ function nextReadyMs(
   return nextStart - eventEnd < QUICK_SUCCESSION_MS ? arrivalMs : eventEnd;
 }
 
-function actionsDurationMs(actions: RecordingActions): number {
+function actionsDurationMs(events: ActionTimelineEvent[], actions: RecordingActions): number {
   let eventMaxEndMs = 0;
-  for (const event of actions.events) {
+  for (const event of events) {
     eventMaxEndMs = Math.max(eventMaxEndMs, event.t_end_ms);
   }
   if (eventMaxEndMs > 0) return eventMaxEndMs;
   return actions.fps > 0 ? Math.round((actions.frame_count / actions.fps) * 1000) : 0;
+}
+
+export function isCursorInteractionVerb(verb: string | null | undefined): boolean {
+  return Boolean(verb && CURSOR_INTERACTION_VERBS.has(verb));
 }
 
 function isClickEvent(event: ActionTimelineEvent): boolean {
@@ -100,16 +105,18 @@ export function buildVirtualCursorSchedule(
   motionPreset?: CursorMotionPreset,
 ): VirtualCursorSchedule | null {
   if (!actions || actions.events.length === 0) return null;
+  const events = actions.events.filter((event) => isCursorInteractionVerb(event.verb));
+  if (events.length === 0) return null;
 
   const profile = cursorMotionProfile(motionPreset);
   const size = canvasSize(actions);
   const segments: VirtualCursorSegment[] = [];
   let previous: ActionPoint = { x: size.width / 2, y: size.height / 2 };
   let readyMs = 0;
-  let durationMs = actionsDurationMs(actions);
+  let durationMs = actionsDurationMs(events, actions);
 
-  for (let i = 0; i < actions.events.length; i += 1) {
-    const event = actions.events[i];
+  for (let i = 0; i < events.length; i += 1) {
+    const event = events[i];
     if (!event) continue;
 
     const target = eventPoint(actions, event, previous, size);
@@ -140,7 +147,7 @@ export function buildVirtualCursorSchedule(
         : arrivalMs,
     );
     previous = target;
-    readyMs = nextReadyMs(event, arrivalMs, actions.events[i + 1]);
+    readyMs = nextReadyMs(event, arrivalMs, events[i + 1]);
     durationMs = Math.max(durationMs, readyMs);
   }
 
