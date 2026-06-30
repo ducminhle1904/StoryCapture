@@ -1,0 +1,7 @@
+{
+  "name": "rimraf",
+  "version": "6.1.3-storycapture.0",
+  "private": true,
+  "description": "StoryCapture compatibility shim for legacy rimraf callback consumers.",
+  "main": "index.js"
+}

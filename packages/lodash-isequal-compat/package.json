@@ -1,0 +1,10 @@
+{
+  "name": "lodash.isequal",
+  "version": "4.5.0-storycapture.0",
+  "private": true,
+  "description": "StoryCapture compatibility shim for lodash.isequal consumers.",
+  "main": "index.js",
+  "dependencies": {
+    "fast-deep-equal": "3.1.3"
+  }
+}

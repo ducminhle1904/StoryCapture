@@ -1,0 +1,10 @@
+{
+  "name": "glob",
+  "version": "13.0.2-storycapture.0",
+  "private": true,
+  "description": "StoryCapture compatibility shim for legacy glob callback consumers.",
+  "main": "index.js",
+  "dependencies": {
+    "glob-modern": "npm:glob@13.0.2"
+  }
+}
