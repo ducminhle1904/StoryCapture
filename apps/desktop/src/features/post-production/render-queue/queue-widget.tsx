@@ -8,7 +8,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useId, useState } from "react";
 
 import { RENDER_KEYS, renderCancel, renderListActive } from "@/ipc/render";
 import { useRenderProgress } from "../hooks/use-render-progress";
@@ -20,38 +20,54 @@ export interface QueueWidgetProps {
 
 export function QueueWidget({ storyId }: QueueWidgetProps) {
   const [open, setOpen] = useState(false);
+  const headingId = useId();
   const { data: jobs = [] } = useQuery({
     queryKey: RENDER_KEYS.listActive(storyId),
     queryFn: () => renderListActive(storyId),
     refetchInterval: 3000,
   });
   const progressMap = useRenderProgress();
+  const handleCancel = useCallback((jobId: string) => {
+    void renderCancel(jobId);
+  }, []);
 
   const activeCount = jobs.length;
+  const queueLabel =
+    activeCount === 0
+      ? "Queue"
+      : activeCount === 1
+        ? "1 export active"
+        : `${activeCount} exports active`;
 
   return (
     <div className="relative">
       <button
         type="button"
-        aria-label={`${activeCount} active render${activeCount === 1 ? "" : "s"}`}
+        aria-label={queueLabel}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-xs text-[var(--color-fg)] hover:bg-[var(--color-surface-300)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
       >
         {activeCount > 0 ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-        <span className="tabular-nums">{activeCount}</span>
-        <span className="text-[var(--color-fg-muted)]">Queue</span>
+        {activeCount === 0 ? <span className="tabular-nums">{activeCount}</span> : null}
+        <span className="text-[var(--color-fg-muted)]">{queueLabel}</span>
       </button>
 
       {open ? (
         <div
           role="dialog"
-          aria-label="Render queue"
+          aria-labelledby={headingId}
           className="absolute right-0 top-full z-50 mt-2 w-80 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3 shadow-[var(--shadow-card)]"
         >
+          <h2
+            id={headingId}
+            className="mb-2 px-1 text-[11px] font-semibold uppercase text-[var(--color-fg-muted)]"
+          >
+            Render queue
+          </h2>
           {jobs.length === 0 ? (
-            <div className="p-2 text-xs text-[var(--color-fg-muted)]">No Active Renders.</div>
+            <div className="p-2 text-xs text-[var(--color-fg-muted)]">No active exports.</div>
           ) : (
             <ul aria-label="Active Render Jobs" className="space-y-2">
               {jobs.map((j) => (
@@ -59,9 +75,7 @@ export function QueueWidget({ storyId }: QueueWidgetProps) {
                   key={j.id}
                   job={j}
                   progress={progressMap[j.id]}
-                  onCancel={() => {
-                    void renderCancel(j.id);
-                  }}
+                  onCancel={handleCancel}
                 />
               ))}
             </ul>
