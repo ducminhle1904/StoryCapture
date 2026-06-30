@@ -14,6 +14,7 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import type { HardwareEncoderDto } from "@storycapture/shared-types";
+import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight, FolderOpen, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -40,6 +41,7 @@ import {
   exportRun,
   exportValidateConfig,
 } from "@/ipc/export";
+import { RENDER_KEYS } from "@/ipc/render";
 import { type ExportKnobs, useOutputPrefsStore } from "@/state/output-prefs";
 
 import { computeGraph, graphIsRenderable } from "../state/compute-graph";
@@ -101,6 +103,7 @@ export interface ExportModalProps {
 const FPS_CHOICES = [24, 30, 60];
 
 export function ExportModal({ storyId }: ExportModalProps) {
+  const queryClient = useQueryClient();
   const open = useEditorStore((s) => s.exportModalOpen);
   const setOpen = useEditorStore((s) => s.setExportModalOpen);
   const form = useEditorStore((s) => s.exportForm);
@@ -210,7 +213,8 @@ export function ExportModal({ storyId }: ExportModalProps) {
         base_name: form.baseName,
         preset_id: null,
       });
-      toast.success(`Export queued: ${res.job_ids.length} jobs`);
+      void queryClient.invalidateQueries({ queryKey: RENDER_KEYS.listActive(storyId) });
+      toast.success(`Export started: ${res.job_ids.length} job${res.job_ids.length === 1 ? "" : "s"} queued`);
       setOpen(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -219,7 +223,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [form.outFolder, form.baseName, outputs, runValidate, storyId, setOpen, graph, graphAvailable]);
+  }, [
+    form.outFolder,
+    form.baseName,
+    outputs,
+    runValidate,
+    storyId,
+    setOpen,
+    graph,
+    graphAvailable,
+    queryClient,
+  ]);
 
   const onSubmit = useCallback(async () => {
     if (ttsClipCount > 0) {
@@ -512,7 +526,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
                   aria-label="Start export"
                   title={!graphAvailable ? "Add a video clip with a sourcePath to the timeline" : undefined}
                 >
-                  {submitting ? "Submitting…" : "Export"}
+                  {submitting ? "Queueing…" : "Export"}
                 </ScButton>
               </footer>
             </Dialog.Popup>

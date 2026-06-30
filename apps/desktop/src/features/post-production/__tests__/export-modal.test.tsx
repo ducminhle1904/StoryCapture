@@ -6,10 +6,11 @@
  *   - `export_validate_config` failures surface as warnings
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 
 // Tauri invoke mock — must be declared via vi.mock BEFORE importing modules
 // that read from @tauri-apps/api/core.
@@ -31,6 +32,7 @@ vi.mock("sonner", () => ({
 // Re-import AFTER the mock is in place.
 import { ExportModal } from "../export-modal/export-modal";
 import { DEFAULT_EXPORT_KNOBS, useOutputPrefsStore } from "@/state/output-prefs";
+import { RENDER_KEYS } from "@/ipc/render";
 import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
 
@@ -68,8 +70,13 @@ function resetStore() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   mockInvoke.mockReset();
   resetStore();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("ExportModal", () => {
@@ -203,7 +210,6 @@ describe("ExportModal", () => {
       }
       return Promise.resolve(null);
     });
-
     render(
       <Wrapped>
         <ExportModal storyId="s1" />
@@ -283,6 +289,7 @@ describe("ExportModal", () => {
       }
       return Promise.resolve(null);
     });
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
 
     render(
       <Wrapped>
@@ -328,6 +335,8 @@ describe("ExportModal", () => {
         audio: { codec: "opus" },
       },
     });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: RENDER_KEYS.listActive("s1") });
+    expect(toast.success).toHaveBeenCalledWith("Export started: 2 jobs queued");
   });
 
   it("surfaces export_run fail-fast errors in the warning panel", async () => {
