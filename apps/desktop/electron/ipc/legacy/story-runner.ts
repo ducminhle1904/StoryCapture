@@ -4,12 +4,20 @@ import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import { app, BrowserWindow, type WebContents } from "electron";
 import {
+  type ActionTarget,
   type ActionTimelineEvent,
   actionsSidecarPath,
   actionTimelineEventFromStep,
   recordingActionsFromSession,
   writeActionsSidecarAtomic,
 } from "../action-timeline";
+import {
+  type CursorTimingSize,
+  cursorPointForTarget,
+  estimateCursorTravelDelayMs,
+  initialCursorPoint,
+  normalizeCursorTimingSize,
+} from "../cursor-timing";
 import { readJson } from "../json-store";
 import { sameNavigationUrl } from "../navigation-url";
 import { userDataPath } from "../paths";
@@ -21,6 +29,7 @@ import { type ParsedCommand, parsedCommands } from "../story-parser";
 import {
   authorSession,
   captureAutomationRecordingTail,
+  ensureRecordingFramesCoverElapsedTime,
   invalidateAuthorPreviewPaintForContents,
   normalizedTargetRecord,
   storyBrowserExecutionProfile,
@@ -55,7 +64,10 @@ export async function executeParsedCommand(
   contents: WebContents,
   command: ParsedCommand,
   projectFolder: string,
-  options: { executionProfile?: StoryBrowserExecutionProfile } = {},
+  options: {
+    executionProfile?: StoryBrowserExecutionProfile;
+    resolvedTarget?: ActionTarget | null;
+  } = {},
 ): Promise<ParsedCommandResult> {
   const executionProfile = options.executionProfile ?? storyBrowserExecutionProfile();
   if (command.verb === "navigate" && command.url) {
@@ -89,7 +101,8 @@ export async function executeParsedCommand(
   }
 
   const target = command.target
-    ? await resolveElementTarget(contents, command.target, command.target_nth)
+    ? (options.resolvedTarget ??
+      (await resolveElementTarget(contents, command.target, command.target_nth)))
     : null;
   const center = target?.center ?? null;
   if ((command.verb === "wait-for" || command.verb === "assert") && command.target) {
@@ -103,7 +116,7 @@ export async function executeParsedCommand(
       throw new Error(`target not found for ${command.verb}: ${selectorSummary(command.target)}`);
     return { cursor: found.center, target: found };
   }
-  if (["click", "hover", "type", "select", "upload"].includes(command.verb) && !center) {
+  if (commandSupportsFallback(command) && !center) {
     throw new Error(`target not found for ${command.verb}: ${selectorSummary(command.target)}`);
   }
   if ((command.verb === "click" || command.verb === "hover") && center) {
@@ -257,6 +270,40 @@ export function simulatorFrameFromResult(
   };
 }
 
+export function commandGetsPreActionPacing(command: ParsedCommand): boolean {
+  return commandSupportsFallback(command);
+}
+
+async function resolveCommandTarget(
+  contents: WebContents,
+  command: ParsedCommand,
+): Promise<ActionTarget | null> {
+  if (!command.target) return null;
+  return resolveElementTarget(contents, command.target, command.target_nth);
+}
+
+function cursorPacingSizeForRun(
+  contents: WebContents,
+  fallback: CursorTimingSize | null | undefined,
+): CursorTimingSize {
+  if (fallback) return normalizeCursorTimingSize(fallback);
+  try {
+    const ownerWindow = (
+      contents as WebContents & {
+        getOwnerBrowserWindow?: () => {
+          getContentBounds?: () => { width: number; height: number };
+        } | null;
+      }
+    ).getOwnerBrowserWindow?.();
+    const bounds = ownerWindow?.getContentBounds?.();
+    return normalizeCursorTimingSize(
+      bounds ? { width: bounds.width, height: bounds.height } : null,
+    );
+  } catch {
+    return normalizeCursorTimingSize(null);
+  }
+}
+
 export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions): Promise<{
   succeeded: number;
   failed: number;
@@ -266,6 +313,10 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
 }> {
   const startedAt = Date.now();
   const executionProfile = options.executionProfile ?? storyBrowserExecutionProfile();
+  const pacingSize = executionProfile.captureRecordingFrames
+    ? cursorPacingSizeForRun(options.contents, executionProfile.captureSize)
+    : null;
+  let previousCursor = pacingSize ? initialCursorPoint(pacingSize) : null;
   const limit =
     options.stopAfter && options.stopAfter > 0
       ? Math.min(options.stopAfter, options.commands.length)
@@ -290,13 +341,33 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       if (executionProfile.captureRecordingFrames) {
         invalidateAuthorPreviewPaintForContents(options.contents);
       }
+      const isPacedCommand = commandGetsPreActionPacing(command);
+      let resolvedTarget = await resolveCommandTarget(options.contents, command);
+      if (pacingSize && previousCursor && resolvedTarget && isPacedCommand) {
+        const travelDelayMs = estimateCursorTravelDelayMs({
+          from: previousCursor,
+          target: resolvedTarget,
+          size: pacingSize,
+        });
+        if (travelDelayMs > 0) {
+          await waitMs(travelDelayMs);
+          resolvedTarget = await resolveCommandTarget(options.contents, command);
+        }
+      }
+      const actionStartedAt = Date.now();
       const result = await executeParsedCommand(options.contents, command, options.projectFolder, {
         executionProfile,
+        resolvedTarget,
       });
-      const actionDurationMs = Date.now() - stepStartedAt;
+      const actionDurationMs = isPacedCommand
+        ? actionStartedAt - stepStartedAt
+        : Date.now() - stepStartedAt;
       const settleDelayMs = executionProfile.settleDelayForCommand(command);
       if (settleDelayMs > 0) await waitMs(settleDelayMs);
       const durationMs = Date.now() - stepStartedAt;
+      if (pacingSize && result.target) {
+        previousCursor = cursorPointForTarget(result.target, pacingSize);
+      }
       succeeded += 1;
       options.hooks?.onStepSucceeded?.({
         ordinal,
@@ -415,6 +486,12 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       targets,
       executionProfile: storyBrowserExecutionProfile({
         captureRecordingFrames: Boolean(recordingSessionId),
+        captureSize: recordingSessionAtLaunch
+          ? {
+              width: recordingSessionAtLaunch.width,
+              height: recordingSessionAtLaunch.height,
+            }
+          : undefined,
       }),
       hooks: {
         onStepStarted: (ordinal, command) => {
@@ -520,6 +597,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   if (recordingSession?.captureTimer) {
     clearInterval(recordingSession.captureTimer);
     await captureAutomationRecordingTail(recordingSession);
+    await ensureRecordingFramesCoverElapsedTime(recordingSession);
   }
   if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
     await stopRecording({ id: recordingSessionId });

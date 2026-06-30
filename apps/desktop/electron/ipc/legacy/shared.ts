@@ -14,6 +14,7 @@ import {
 } from "electron";
 import electronUpdater, { type UpdateInfo as ElectronUpdateInfo } from "electron-updater";
 import type { ActionPointer, ActionTarget } from "../action-timeline";
+import type { CursorTimingSize } from "../cursor-timing";
 import { readJson, writeJson } from "../json-store";
 import { type FrontendLogPayload, logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
@@ -505,6 +506,7 @@ export type StoryBrowserTypingMode = "incremental" | "instant";
 export interface StoryBrowserExecutionProfile {
   typingMode: StoryBrowserTypingMode;
   captureRecordingFrames: boolean;
+  captureSize?: CursorTimingSize;
   settleDelayForCommand: (command: ParsedCommand) => number;
 }
 

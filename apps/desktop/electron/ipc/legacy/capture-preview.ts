@@ -13,6 +13,7 @@ import {
   type WebContents,
 } from "electron";
 import ffmpegPath from "ffmpeg-static";
+import type { CursorTimingSize } from "../cursor-timing";
 import { readJson } from "../json-store";
 import {
   type RecordingFitMode,
@@ -25,7 +26,11 @@ import {
   recordingVideoFilters,
   resolveRecordingOutput,
 } from "../recording-pipeline";
-import { recordingTailFrameDelaysMs } from "../recording-tail";
+import {
+  AUTOMATION_RECORDING_MAX_PADDING_MS,
+  recordingFrameCountForElapsedMs,
+  recordingTailFrameDelaysMs,
+} from "../recording-tail";
 import { type ParsedCommand, parseStorySource } from "../story-parser";
 import {
   type AuthorPreviewSession,
@@ -899,6 +904,38 @@ export async function captureAutomationRecordingTail(session: RecordingSession):
   }
 }
 
+export async function ensureRecordingFramesCoverElapsedTime(
+  session: RecordingSession,
+  elapsedMs = Date.now() - session.startedAt,
+): Promise<void> {
+  const elapsedFrameCount = recordingFrameCountForElapsedMs(elapsedMs, session.effectiveFps);
+  const maxPaddingFrameCount = recordingFrameCountForElapsedMs(
+    AUTOMATION_RECORDING_MAX_PADDING_MS,
+    session.effectiveFps,
+  );
+  const targetFrameCount = Math.min(elapsedFrameCount, session.frameSeq + maxPaddingFrameCount);
+  const maxAttempts = Math.max(0, targetFrameCount - session.frameSeq) + 3;
+  let attempts = 0;
+  let stalledAttempts = 0;
+  while (
+    recordingSessions.get(session.id) === session &&
+    session.frameSeq < targetFrameCount &&
+    attempts < maxAttempts &&
+    stalledAttempts < 3
+  ) {
+    attempts += 1;
+    if (session.captureInFlight) await session.captureInFlight;
+    if (recordingSessions.get(session.id) !== session) return;
+    const frameCountBefore = session.frameSeq;
+    await queueRecordingFrame(session);
+    if (session.frameSeq <= frameCountBefore) {
+      stalledAttempts += 1;
+    } else {
+      stalledAttempts = 0;
+    }
+  }
+}
+
 export async function captureAuthorPreviewNativeImage(
   streamId: string,
   width: number,
@@ -996,10 +1033,12 @@ export function recordingSettleDelayMs(command: ParsedCommand): number {
 
 export function storyBrowserExecutionProfile(options?: {
   captureRecordingFrames?: boolean;
+  captureSize?: CursorTimingSize;
 }): StoryBrowserExecutionProfile {
   return {
     typingMode: "incremental",
     captureRecordingFrames: options?.captureRecordingFrames ?? false,
+    captureSize: options?.captureSize,
     settleDelayForCommand: recordingSettleDelayMs,
   };
 }
