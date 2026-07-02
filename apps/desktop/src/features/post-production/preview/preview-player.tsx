@@ -54,6 +54,7 @@ const DEFAULT_PREVIEW_OUTPUT_MODE: PreviewOutputMode = "native-video";
 const NATIVE_PLAYHEAD_COMMIT_INTERVAL_MS = 16;
 const COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS = 100;
 const MEDIA_SYNC_EPSILON_MS = 80;
+const TIMELINE_END_EPSILON_MS = 16;
 const PREVIEW_FRAME_SCALE = 0.86;
 const AMBIENT_SAMPLE_WIDTH = 40;
 const AMBIENT_SAMPLE_HEIGHT = 22;
@@ -130,6 +131,14 @@ function safeAspect(width: number, height: number): number {
 
 function mediaDurationMs(video: HTMLVideoElement): number {
   return Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 : 0;
+}
+
+function isAtTimelineEnd(playheadMs: number, durationMs: number): boolean {
+  return (
+    Number.isFinite(durationMs) &&
+    durationMs > 0 &&
+    playheadMs >= durationMs - TIMELINE_END_EPSILON_MS
+  );
 }
 
 function mediaSecondsForPlayhead(video: HTMLVideoElement, playheadMs: number): number {
@@ -1120,7 +1129,28 @@ export function PreviewPlayer({
     useCompositedCanvas,
   ]);
 
-  const togglePlay = useCallback(() => setPlaying((p) => !p), []);
+  const resetPreviewToStart = useCallback(() => {
+    setPlayhead(0);
+    lastPlayheadCommitRef.current = 0;
+    seekPreviewToPlayhead(0);
+    applyPreviewZoom(0);
+    renderCursorOverlay(0);
+  }, [applyPreviewZoom, renderCursorOverlay, seekPreviewToPlayhead, setPlayhead]);
+
+  const togglePlay = useCallback(() => {
+    if (playingRef.current) {
+      playingRef.current = false;
+      setPlaying(false);
+      return;
+    }
+
+    const { durationMs, playheadMs } = useEditorStore.getState();
+    if (isAtTimelineEnd(playheadMs, durationMs)) {
+      resetPreviewToStart();
+    }
+    playingRef.current = true;
+    setPlaying(true);
+  }, [resetPreviewToStart]);
 
   // Space-bar custom event from useEditorHotkeys triggers the same toggle.
   useEffect(() => {
