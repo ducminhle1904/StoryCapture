@@ -4,6 +4,8 @@ import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import { app, BrowserWindow, type WebContents } from "electron";
 import {
+  type ActionCursorTiming,
+  type ActionInputTiming,
   type ActionTarget,
   type ActionTimelineEvent,
   actionsSidecarPath,
@@ -12,11 +14,15 @@ import {
   writeActionsSidecarAtomic,
 } from "../action-timeline";
 import {
+  type CursorActionTimingPlan,
   type CursorTimingSize,
   cursorPointForTarget,
-  estimateCursorTravelDelayMs,
+  cursorTimelineTimingFromPlan,
   initialCursorPoint,
   normalizeCursorTimingSize,
+  planCursorActionTiming,
+  sampleCursorMotionPath,
+  targetCenterDeltaPx,
 } from "../cursor-timing";
 import { readJson } from "../json-store";
 import { sameNavigationUrl } from "../navigation-url";
@@ -61,7 +67,7 @@ import {
 } from "./shared";
 
 const FALLBACK_TARGET_VERBS = ["click", "type", "hover", "select", "upload"];
-const CURSOR_INTERACTION_VERBS = ["click", "type", "hover", "select", "upload"];
+const CURSOR_INTERACTION_VERBS = ["click", "type", "hover", "select"];
 
 function recordingFrameClockMs(session: RecordingSession): number {
   const fps = session.effectiveFps || session.fps;
@@ -291,6 +297,76 @@ async function resolveCommandTarget(
   return resolveElementTarget(contents, command.target, command.target_nth);
 }
 
+function commandUsesBrowserCursorPath(command: ParsedCommand): boolean {
+  return command.verb === "click" || command.verb === "hover";
+}
+
+function cursorPathEventKey(
+  command: ParsedCommand,
+  ordinal: number,
+  plan: CursorActionTimingPlan,
+): string {
+  return `${command.step_id ?? ""}:${ordinal}:${plan.preActionDelayMs}`;
+}
+
+async function performCursorPreActionPacing(input: {
+  contents: WebContents;
+  command: ParsedCommand;
+  ordinal: number;
+  plan: CursorActionTimingPlan;
+  executionProfile: StoryBrowserExecutionProfile;
+}): Promise<void> {
+  const { contents, command, ordinal, plan, executionProfile } = input;
+  const shouldInjectPath =
+    executionProfile.injectCursorPath !== false && commandUsesBrowserCursorPath(command);
+  if (!shouldInjectPath) {
+    if (plan.preActionDelayMs > 0) await waitMs(plan.preActionDelayMs);
+    return;
+  }
+
+  const samples = sampleCursorMotionPath({
+    from: plan.from,
+    to: plan.to,
+    travelMs: plan.requiredTravelMs,
+    motionPreset: plan.motionPreset,
+    eventKey: cursorPathEventKey(command, ordinal, plan),
+  });
+  let elapsedMs = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    if (!sample) continue;
+    const targetElapsedMs = Math.round(((index + 1) / samples.length) * plan.requiredTravelMs);
+    const sampleDelayMs = Math.max(0, targetElapsedMs - elapsedMs);
+    if (sampleDelayMs > 0) await waitMs(sampleDelayMs);
+    elapsedMs += sampleDelayMs;
+    contents.sendInputEvent({
+      type: "mouseMove",
+      x: Math.round(sample.x),
+      y: Math.round(sample.y),
+    });
+  }
+  if (plan.dwellMs > 0) await waitMs(plan.dwellMs);
+}
+
+function cursorTargetShiftWarning(input: {
+  command: ParsedCommand;
+  ordinal: number;
+  before: ActionTarget;
+  after: ActionTarget;
+  thresholdPx: number;
+}): void {
+  const deltaPx = targetCenterDeltaPx(input.before, input.after);
+  if (deltaPx <= input.thresholdPx) return;
+  void hostLog("warn", "cursor_target_shifted_before_input", {
+    ordinal: input.ordinal,
+    step_id: input.command.step_id ?? null,
+    verb: input.command.verb,
+    delta_px: Math.round(deltaPx * 100) / 100,
+    threshold_px: input.thresholdPx,
+    target_label: input.after.label,
+  });
+}
+
 function cursorPacingSizeForRun(
   contents: WebContents,
   fallback: CursorTimingSize | null | undefined,
@@ -354,15 +430,32 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       }
       const isPacedCommand = commandGetsPreActionPacing(command);
       let resolvedTarget = await resolveCommandTarget(options.contents, command);
+      let cursorPlan: CursorActionTimingPlan | null = null;
       if (pacingSize && previousCursor && resolvedTarget && isPacedCommand) {
-        const travelDelayMs = estimateCursorTravelDelayMs({
+        cursorPlan = planCursorActionTiming({
           from: previousCursor,
           target: resolvedTarget,
           size: pacingSize,
+          motionPreset: executionProfile.cursorMotionPreset,
+          minLeadMs: executionProfile.minCursorLeadMs,
         });
-        if (travelDelayMs > 0) {
-          await waitMs(travelDelayMs);
-          resolvedTarget = await resolveCommandTarget(options.contents, command);
+        await performCursorPreActionPacing({
+          contents: options.contents,
+          command,
+          ordinal,
+          plan: cursorPlan,
+          executionProfile,
+        });
+        const targetAfterPacing = await resolveCommandTarget(options.contents, command);
+        if (targetAfterPacing) {
+          cursorTargetShiftWarning({
+            command,
+            ordinal,
+            before: resolvedTarget,
+            after: targetAfterPacing,
+            thresholdPx: executionProfile.targetStabilityThresholdPx ?? 8,
+          });
+          resolvedTarget = targetAfterPacing;
         }
       }
       const actionStartedAt = Date.now();
@@ -378,6 +471,15 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       if (settleDelayMs > 0) await waitMs(settleDelayMs);
       const durationMs = Date.now() - stepStartedAt;
       const stepEndedClockMs = recordingClockMs();
+      const explicitTiming =
+        cursorPlan && isPacedCommand
+          ? cursorTimelineTimingFromPlan({
+              plan: cursorPlan,
+              verb: command.verb,
+              stepStartedAtMs: stepStartedClockMs,
+              actionAtMs: actionStartedClockMs,
+            })
+          : null;
       if (pacingSize && result.target && commandContributesCursorEvent(command)) {
         previousCursor = cursorPointForTarget(result.target, pacingSize);
       }
@@ -392,6 +494,8 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
           stepStartedAtMs: stepStartedClockMs,
           actionAtMs: actionStartedClockMs,
           stepEndedAtMs: stepEndedClockMs,
+          cursorTiming: explicitTiming?.cursorTiming ?? null,
+          inputTiming: explicitTiming?.inputTiming ?? null,
         },
       });
       if (options.frameDir) {
@@ -434,11 +538,17 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
 export async function writeRecordingActionsSidecarBestEffort(
   session: RecordingSession,
   events: ActionTimelineEvent[],
+  options: { cursorMotionPreset?: ActionCursorTiming["motion_preset"] } = {},
 ): Promise<void> {
   if (events.length === 0) return;
   const file = actionsSidecarPath(session.outputPath);
   try {
-    await writeActionsSidecarAtomic(file, recordingActionsFromSession(session, events));
+    await writeActionsSidecarAtomic(
+      file,
+      recordingActionsFromSession(session, events, {
+        cursorMotionPreset: options.cursorMotionPreset,
+      }),
+    );
   } catch (error) {
     void hostLog("warn", "recording_actions_sidecar_write_failed", {
       session_id: session.id,
@@ -461,7 +571,39 @@ export function rebaseActionEventsToFirstCursorInteraction(
     t_start_ms: Math.max(0, event.t_start_ms - offsetMs),
     t_action_ms: Math.max(0, event.t_action_ms - offsetMs),
     t_end_ms: Math.max(0, event.t_end_ms - offsetMs),
+    ...(event.cursor_timing
+      ? { cursor_timing: rebaseCursorTiming(event.cursor_timing, offsetMs) }
+      : {}),
+    ...(event.input_timing
+      ? { input_timing: rebaseInputTiming(event.input_timing, offsetMs) }
+      : {}),
   }));
+}
+
+function rebaseCursorTiming(timing: ActionCursorTiming, offsetMs: number): ActionCursorTiming {
+  const startMs = Math.max(0, timing.start_ms - offsetMs);
+  const arrivalMs = Math.max(0, timing.arrival_ms - offsetMs);
+  return {
+    ...timing,
+    start_ms: startMs,
+    arrival_ms: arrivalMs,
+    travel_ms: Math.max(0, arrivalMs - startMs),
+  };
+}
+
+function rebaseInputTiming(timing: ActionInputTiming, offsetMs: number): ActionInputTiming {
+  return {
+    ...timing,
+    action_ms: Math.max(0, timing.action_ms - offsetMs),
+    ...(timing.down_ms != null ? { down_ms: Math.max(0, timing.down_ms - offsetMs) } : {}),
+    ...(timing.up_ms != null ? { up_ms: Math.max(0, timing.up_ms - offsetMs) } : {}),
+    ...(timing.text_start_ms != null
+      ? { text_start_ms: Math.max(0, timing.text_start_ms - offsetMs) }
+      : {}),
+    ...(timing.text_end_ms != null
+      ? { text_end_ms: Math.max(0, timing.text_end_ms - offsetMs) }
+      : {}),
+  };
 }
 
 export async function launchAutomationCommand(args: Record<string, unknown>, sender: WebContents) {
@@ -509,6 +651,15 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   const actionEvents: ActionTimelineEvent[] = [];
   const actionStepStartMs = new Map<number, number>();
   const actionRunStartedAt = recordingSessionAtLaunch?.startedAt ?? Date.now();
+  const executionProfile = storyBrowserExecutionProfile({
+    captureRecordingFrames: Boolean(recordingSessionId),
+    captureSize: recordingSessionAtLaunch
+      ? {
+          width: recordingSessionAtLaunch.width,
+          height: recordingSessionAtLaunch.height,
+        }
+      : undefined,
+  });
   let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
   try {
     result = await runStoryCommandsInBrowser({
@@ -517,15 +668,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       projectFolder,
       storySource: source,
       targets,
-      executionProfile: storyBrowserExecutionProfile({
-        captureRecordingFrames: Boolean(recordingSessionId),
-        captureSize: recordingSessionAtLaunch
-          ? {
-              width: recordingSessionAtLaunch.width,
-              height: recordingSessionAtLaunch.height,
-            }
-          : undefined,
-      }),
+      executionProfile,
       recordingClockMs: recordingSessionAtLaunch
         ? () => recordingFrameClockMs(recordingSessionAtLaunch)
         : undefined,
@@ -563,18 +706,17 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             timing?.actionAtMs ?? stepStartedAtMs + Math.max(0, actionDurationMs),
           );
           if (recordingSessionId && stepResult.target && commandContributesCursorEvent(command)) {
-            const cursorActionAtMs = commandGetsPreActionPacing(command)
-              ? stepStartedAtMs
-              : actionAtMs;
             actionEvents.push(
               actionTimelineEventFromStep({
                 ordinal,
                 command,
                 stepStartedAtMs,
-                actionAtMs: cursorActionAtMs,
+                actionAtMs,
                 stepEndedAtMs,
                 target: stepResult.target,
                 pointer: stepResult.pointer ?? undefined,
+                cursorTiming: timing?.cursorTiming ?? null,
+                inputTiming: timing?.inputTiming ?? null,
               }),
             );
           }
@@ -648,6 +790,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       await writeRecordingActionsSidecarBestEffort(
         recordingSession,
         rebaseActionEventsToFirstCursorInteraction(actionEvents),
+        { cursorMotionPreset: executionProfile.cursorMotionPreset },
       );
     }
   }

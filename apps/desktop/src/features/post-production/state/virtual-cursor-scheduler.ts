@@ -9,6 +9,7 @@ export interface VirtualCursorSegment {
   startMs: number;
   arrivalMs: number;
   travelMs: number;
+  effectMs: number;
 }
 
 export interface VirtualCursorSchedule {
@@ -21,7 +22,7 @@ export const VIRTUAL_CURSOR_CLICK_RIPPLE_MS = 520;
 
 const QUICK_SUCCESSION_MS = 180;
 const MIN_TARGET_WIDTH_PX = 12;
-const CURSOR_INTERACTION_VERBS = new Set(["click", "type", "hover", "select", "upload"]);
+const CURSOR_INTERACTION_VERBS = new Set(["click", "type", "hover", "select"]);
 
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
@@ -79,7 +80,10 @@ function nextReadyMs(
 ): number {
   const eventEnd = Math.max(arrivalMs, event.t_end_ms);
   if (!next) return eventEnd;
-  const nextStart = Math.max(0, Math.min(next.t_start_ms, next.t_action_ms));
+  const nextStart = Math.max(
+    0,
+    next.cursor_timing?.start_ms ?? Math.min(next.t_start_ms, next.t_action_ms),
+  );
   return nextStart - eventEnd < QUICK_SUCCESSION_MS ? arrivalMs : eventEnd;
 }
 
@@ -98,6 +102,26 @@ export function isCursorInteractionVerb(verb: string | null | undefined): boolea
 
 function isClickEvent(event: ActionTimelineEvent): boolean {
   return event.verb === "click" || event.pointer?.effect === "click";
+}
+
+function explicitCursorTiming(event: ActionTimelineEvent): {
+  startMs: number;
+  arrivalMs: number;
+  travelMs: number;
+} | null {
+  const timing = event.cursor_timing;
+  if (!timing) return null;
+  const startMs = Math.max(0, timing.start_ms);
+  const arrivalMs = Math.max(startMs, timing.arrival_ms);
+  const travelMs = Math.max(0, Math.min(timing.travel_ms, arrivalMs - startMs));
+  return { startMs, arrivalMs, travelMs };
+}
+
+function inputEffectMs(event: ActionTimelineEvent, fallbackMs: number): number {
+  const actionMs = event.input_timing?.action_ms;
+  return typeof actionMs === "number" && Number.isFinite(actionMs)
+    ? Math.max(0, actionMs)
+    : fallbackMs;
 }
 
 export function buildVirtualCursorSchedule(
@@ -120,14 +144,17 @@ export function buildVirtualCursorSchedule(
     if (!event) continue;
 
     const target = eventPoint(actions, event, previous, size);
+    const explicitTiming = explicitCursorTiming(event);
     const actionMs = Math.max(0, event.t_action_ms);
     const eventStartMs = Math.max(0, Math.min(event.t_start_ms, actionMs));
-    const travelMs = travelDurationMs(previous, target, event, profile);
+    const syntheticTravelMs = travelDurationMs(previous, target, event, profile);
     const declaredWindowMs = actionMs - eventStartMs;
     const preferredStartMs =
-      declaredWindowMs >= travelMs ? eventStartMs : actionMs - travelMs;
-    const startMs = Math.max(0, readyMs, preferredStartMs);
-    const arrivalMs = Math.max(actionMs, startMs + travelMs);
+      declaredWindowMs >= syntheticTravelMs ? eventStartMs : actionMs - syntheticTravelMs;
+    const startMs = explicitTiming?.startMs ?? Math.max(0, readyMs, preferredStartMs);
+    const arrivalMs = explicitTiming?.arrivalMs ?? Math.max(actionMs, startMs + syntheticTravelMs);
+    const travelMs = explicitTiming?.travelMs ?? syntheticTravelMs;
+    const effectMs = inputEffectMs(event, arrivalMs);
 
     const segment = {
       event,
@@ -136,6 +163,7 @@ export function buildVirtualCursorSchedule(
       startMs,
       arrivalMs,
       travelMs,
+      effectMs,
     };
     segments.push(segment);
 
@@ -143,8 +171,8 @@ export function buildVirtualCursorSchedule(
       durationMs,
       arrivalMs,
       isClickEvent(event) && event.target
-        ? arrivalMs + VIRTUAL_CURSOR_CLICK_RIPPLE_MS
-        : arrivalMs,
+        ? effectMs + VIRTUAL_CURSOR_CLICK_RIPPLE_MS
+        : Math.max(arrivalMs, effectMs),
     );
     previous = target;
     readyMs = nextReadyMs(event, arrivalMs, events[i + 1]);

@@ -13,7 +13,12 @@ import {
   type WebContents,
 } from "electron";
 import ffmpegPath from "ffmpeg-static";
-import type { CursorTimingSize } from "../cursor-timing";
+import {
+  HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
+  HOST_CURSOR_DEFAULT_MOTION_PRESET,
+  HOST_CURSOR_TARGET_STABILITY_THRESHOLD_PX,
+  type CursorTimingSize,
+} from "../cursor-timing";
 import { readJson } from "../json-store";
 import {
   type RecordingFitMode,
@@ -1039,6 +1044,10 @@ export function storyBrowserExecutionProfile(options?: {
     typingMode: "incremental",
     captureRecordingFrames: options?.captureRecordingFrames ?? false,
     captureSize: options?.captureSize,
+    cursorMotionPreset: HOST_CURSOR_DEFAULT_MOTION_PRESET,
+    minCursorLeadMs: HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
+    injectCursorPath: true,
+    targetStabilityThresholdPx: HOST_CURSOR_TARGET_STABILITY_THRESHOLD_PX,
     settleDelayForCommand: recordingSettleDelayMs,
   };
 }

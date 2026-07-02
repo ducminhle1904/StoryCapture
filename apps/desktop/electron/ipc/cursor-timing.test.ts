@@ -5,6 +5,8 @@ import {
   estimateCursorTravelDelayMs,
   initialCursorPoint,
   normalizeCursorTimingSize,
+  planCursorActionTiming,
+  sampleCursorMotionPath,
 } from "./cursor-timing";
 
 function target(center: { x: number; y: number }, size = 44): ActionTarget {
@@ -45,5 +47,50 @@ describe("host cursor timing", () => {
       x: 1280,
       y: 0,
     });
+  });
+
+  it("enforces the motion profile floor for configured minimum lead", () => {
+    const size = { width: 1280, height: 800 };
+    const plan = planCursorActionTiming({
+      from: initialCursorPoint(size),
+      target: target({ x: 646, y: 402 }),
+      size,
+      minLeadMs: 25,
+    });
+
+    expect(plan.systemFloorMs).toBe(320);
+    expect(plan.configuredMinLeadMs).toBe(320);
+    expect(plan.preActionDelayMs).toBeGreaterThanOrEqual(320);
+  });
+
+  it("turns configured lead beyond travel into dwell at the target", () => {
+    const size = { width: 1280, height: 800 };
+    const plan = planCursorActionTiming({
+      from: initialCursorPoint(size),
+      target: target({ x: 460, y: 320 }),
+      size,
+      minLeadMs: 900,
+    });
+
+    expect(plan.preActionDelayMs).toBe(900);
+    expect(plan.dwellMs).toBe(900 - plan.requiredTravelMs);
+  });
+
+  it("samples an injected cursor path ending at the planned target", () => {
+    const size = { width: 1280, height: 800 };
+    const plan = planCursorActionTiming({
+      from: initialCursorPoint(size),
+      target: target({ x: 460, y: 320 }),
+      size,
+    });
+    const samples = sampleCursorMotionPath({
+      from: plan.from,
+      to: plan.to,
+      travelMs: plan.requiredTravelMs,
+      eventKey: "step-1",
+    });
+
+    expect(samples.length).toBeGreaterThan(1);
+    expect(samples.at(-1)).toEqual(plan.to);
   });
 });

@@ -32,47 +32,34 @@ function recordingSession(
 }
 
 afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
 describe("action timeline sidecar helpers", () => {
   it("derives the actions sidecar path next to the recording", () => {
-    expect(actionsSidecarPath("/tmp/demo/recording.mp4")).toBe(
-      "/tmp/demo/recording.actions.json",
-    );
-    expect(actionsSidecarPath("/tmp/demo/recording")).toBe(
-      "/tmp/demo/recording.actions.json",
-    );
+    expect(actionsSidecarPath("/tmp/demo/recording.mp4")).toBe("/tmp/demo/recording.actions.json");
+    expect(actionsSidecarPath("/tmp/demo/recording")).toBe("/tmp/demo/recording.actions.json");
   });
 
   it("writes the actions sidecar atomically", async () => {
-    const dir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "storycapture-actions-"),
-    );
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-actions-"));
     tempDirs.push(dir);
     const file = path.join(dir, "recording.actions.json");
-    const dto = recordingActionsFromSession(
-      recordingSession({ outputPath: file }),
-      [
-        actionTimelineEventFromStep({
-          ordinal: 1,
-          command: { verb: "click", step_id: "step-1" },
-          stepStartedAtMs: 100,
-          actionAtMs: 220,
-          stepEndedAtMs: 300,
-          target: {
-            kind: "element",
-            label: "Save",
-            center: { x: 640, y: 360 },
-            bounds: { x: 600, y: 340, w: 80, h: 40 },
-          },
-        }),
-      ],
-    );
+    const dto = recordingActionsFromSession(recordingSession({ outputPath: file }), [
+      actionTimelineEventFromStep({
+        ordinal: 1,
+        command: { verb: "click", step_id: "step-1" },
+        stepStartedAtMs: 100,
+        actionAtMs: 220,
+        stepEndedAtMs: 300,
+        target: {
+          kind: "element",
+          label: "Save",
+          center: { x: 640, y: 360 },
+          bounds: { x: 600, y: 340, w: 80, h: 40 },
+        },
+      }),
+    ]);
 
     await writeActionsSidecarAtomic(file, dto);
 
@@ -138,6 +125,58 @@ describe("action timeline sidecar helpers", () => {
       },
       secondary_target: null,
       pointer: null,
+    });
+  });
+
+  it("writes explicit cursor timing fields for v2 action sidecars", () => {
+    const event = actionTimelineEventFromStep({
+      ordinal: 1,
+      command: { verb: "click", step_id: "step-click" },
+      stepStartedAtMs: 100,
+      actionAtMs: 500,
+      stepEndedAtMs: 620,
+      target: {
+        kind: "element",
+        label: "Submit",
+        center: { x: 640, y: 360 },
+        bounds: { x: 600, y: 340, w: 80, h: 40 },
+      },
+      cursorTiming: {
+        motion_preset: "natural",
+        start_ms: 100,
+        arrival_ms: 420,
+        travel_ms: 320,
+        dwell_ms: 80,
+      },
+      inputTiming: {
+        kind: "click",
+        down_ms: 500,
+        up_ms: 500,
+        action_ms: 500,
+      },
+    });
+    const dto = recordingActionsFromSession(recordingSession(), [event], {
+      cursorMotionPreset: "natural",
+    });
+
+    expect(dto.version).toBe(2);
+    expect(dto.cursor_motion_preset).toBe("natural");
+    expect(dto.events[0]).toMatchObject({
+      t_start_ms: 100,
+      t_action_ms: 500,
+      cursor_timing: {
+        motion_preset: "natural",
+        start_ms: 100,
+        arrival_ms: 420,
+        travel_ms: 320,
+        dwell_ms: 80,
+      },
+      input_timing: {
+        kind: "click",
+        down_ms: 500,
+        up_ms: 500,
+        action_ms: 500,
+      },
     });
   });
 });

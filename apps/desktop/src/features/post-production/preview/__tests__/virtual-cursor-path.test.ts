@@ -154,10 +154,7 @@ describe("sampleVirtualCursor", () => {
       { start: 289, action: 290, end: 416 },
     );
     const email = {
-      ...eventWithTarget(
-        { x: 491.375, y: 376.59375 },
-        { start: 416, action: 927, end: 1108 },
-      ),
+      ...eventWithTarget({ x: 491.375, y: 376.59375 }, { start: 416, action: 927, end: 1108 }),
       verb: "type",
       pointer: null,
     };
@@ -176,6 +173,40 @@ describe("sampleVirtualCursor", () => {
     expect(stillMoving?.x).toBeGreaterThan(491.375 / 1280);
     expect(stillMoving?.x).toBeLessThan(696.9609375 / 1280);
     expect(stillMoving?.ripple).toBeNull();
+  });
+
+  it("prefers explicit sidecar cursor timing and delays click ripple until input time", () => {
+    const event = {
+      ...eventWithTarget({ x: 800, y: 300 }, { start: 0, action: 2_000, end: 2_100 }),
+      cursor_timing: {
+        motion_preset: "natural" as const,
+        start_ms: 1_000,
+        arrival_ms: 1_320,
+        travel_ms: 320,
+        dwell_ms: 180,
+      },
+      input_timing: {
+        kind: "click" as const,
+        down_ms: 1_500,
+        up_ms: 1_500,
+        action_ms: 1_500,
+      },
+    };
+    const actions = actionsWithEvents([event]);
+
+    const schedule = buildVirtualCursorSchedule(actions, "natural");
+
+    expect(schedule?.segments[0]).toMatchObject({
+      startMs: 1_000,
+      arrivalMs: 1_320,
+      travelMs: 320,
+      effectMs: 1_500,
+    });
+    expect(sampleVirtualCursor(actions, 1_400, "natural")?.ripple).toBeNull();
+    expect(sampleVirtualCursor(actions, 1_520, "natural")?.ripple).toMatchObject({
+      x: 0.8,
+      y: 0.6,
+    });
   });
 
   it("ignores non-interaction sidecar events when scheduling cursor movement", () => {
@@ -223,5 +254,19 @@ describe("sampleVirtualCursor", () => {
     expect(buildVirtualCursorSchedule(actions, "natural")).toBeNull();
     expect(virtualCursorVisualDurationMs(actions, "natural")).toBe(0);
     expect(sampleVirtualCursor(actions, 1127, "natural")).toBeNull();
+  });
+
+  it("does not treat unsupported upload sidecar events as cursor interactions", () => {
+    const upload = {
+      ...eventWithTarget({ x: 640, y: 170 }, { start: 1015, action: 1127, end: 1200 }),
+      verb: "upload",
+      pointer: null,
+    };
+    const click = eventWithTarget({ x: 460, y: 470 }, { start: 1500, action: 1900, end: 2000 });
+    const actions = actionsWithEvents([upload, click], { width: 1280, height: 720 });
+
+    expect(
+      buildVirtualCursorSchedule(actions, "natural")?.segments.map((segment) => segment.event.verb),
+    ).toEqual(["click"]);
   });
 });

@@ -65,6 +65,11 @@ StoryCapture stores source plus JSON sidecars near projects and recordings.
 - `<story>.polish.json`: optional post-production intent edited in UI mode.
 - `.storycapture/output.json`: per-project output preferences.
 - `<recording>.actions.json`: action/timing events from a recording.
+  Version 2 action sidecars may include `cursor_timing`, `input_timing`, and
+  `cursor_motion_preset` so post-production can distinguish cursor travel,
+  target arrival, dwell, and semantic browser input. Consumers must keep v1
+  fallback behavior for sidecars that only have `t_start_ms`, `t_action_ms`,
+  and `t_end_ms`.
 - `<recording>.trajectory.json`: cursor movement data.
 - `<recording>.steps.json`: step timing summaries.
 - Post-production graph snapshots: export/render graph JSON written before host
@@ -112,6 +117,10 @@ Rust/native capture crates.
 - Recording lifecycle supports start/stop and pause/resume surfaces.
 - Recording sidecars feed post-production cursor, zoom, callout, highlight, and
   sound defaults.
+- Recorded automation treats `click`, `hover`, `type`, and `select` as
+  cursor-visible interaction events. `wait-for` and `assert` never create
+  cursor movement; `drag` and `upload` remain outside synced cursor recording
+  until the Electron runner implements those commands end to end.
 
 Operator-gated capture work still requires real macOS Screen Recording/TCC
 verification; do not treat simulated tests as equivalent to OS-level UAT.

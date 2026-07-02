@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  type ActionCursorTiming,
+  type ActionInputTiming,
   actionsSidecarPath,
   type ActionTarget,
   type ActionTimelineEvent,
@@ -32,6 +34,10 @@ vi.mock("./capture-preview", () => ({
   storyBrowserExecutionProfile: (options?: { captureRecordingFrames?: boolean }) => ({
     typingMode: "incremental",
     captureRecordingFrames: options?.captureRecordingFrames ?? false,
+    cursorMotionPreset: "natural",
+    minCursorLeadMs: 320,
+    injectCursorPath: true,
+    targetStabilityThresholdPx: 8,
     settleDelayForCommand: () => 0,
   }),
   targetsPathFor: (storyPath: string) => `${storyPath}.targets.json`,
@@ -138,6 +144,8 @@ describe("story browser cursor pacing", () => {
     expect(commandContributesCursorEvent(command("type", "Email"))).toBe(true);
     expect(commandContributesCursorEvent(command("hover", "Menu"))).toBe(true);
     expect(commandContributesCursorEvent(command("select", "Plan"))).toBe(true);
+    expect(commandContributesCursorEvent(command("upload", "Avatar"))).toBe(false);
+    expect(commandContributesCursorEvent(command("drag", "Card"))).toBe(false);
     expect(commandContributesCursorEvent(command("wait-for", "Heading"))).toBe(false);
     expect(commandContributesCursorEvent(command("assert", "Heading"))).toBe(false);
     expect(commandGetsPreActionPacing(command("wait-for", "Heading"))).toBe(false);
@@ -155,6 +163,21 @@ describe("story browser cursor pacing", () => {
         target: target("Email", { x: 460, y: 320 }),
         secondary_target: null,
         pointer: null,
+        cursor_timing: {
+          motion_preset: "natural",
+          start_ms: 900,
+          arrival_ms: 1220,
+          travel_ms: 320,
+          dwell_ms: 0,
+        },
+        input_timing: {
+          kind: "type",
+          down_ms: 1400,
+          up_ms: 1400,
+          action_ms: 1400,
+          text_start_ms: 1400,
+          text_end_ms: 1400,
+        },
       },
       {
         step_id: null,
@@ -175,23 +198,38 @@ describe("story browser cursor pacing", () => {
       [0, 0, 500],
       [1200, 1200, 1350],
     ]);
+    expect(events[0]?.cursor_timing).toMatchObject({
+      start_ms: 0,
+      arrival_ms: 320,
+      travel_ms: 320,
+    });
+    expect(events[0]?.input_timing).toMatchObject({
+      action_ms: 500,
+      text_start_ms: 500,
+      text_end_ms: 500,
+    });
   });
 
   it("waits for cursor travel before sending recorded click input", async () => {
     const size = { width: 1280, height: 800 };
     const clickTarget = target("Sign in", { x: 460, y: 320 });
     const contents = fakeContents([clickTarget]);
-    const expectedDelayMs = estimateCursorTravelDelayMs({
-      from: initialCursorPoint(size),
-      target: clickTarget,
-      size,
-    });
+    const expectedDelayMs = Math.max(
+      320,
+      estimateCursorTravelDelayMs({
+        from: initialCursorPoint(size),
+        target: clickTarget,
+        size,
+      }),
+    );
     const successes: Array<{
       actionDurationMs: number;
       timing?: {
         stepStartedAtMs: number;
         actionAtMs: number;
         stepEndedAtMs: number;
+        cursorTiming?: ActionCursorTiming | null;
+        inputTiming?: ActionInputTiming | null;
       };
     }> = [];
 
@@ -216,21 +254,72 @@ describe("story browser cursor pacing", () => {
     });
 
     await vi.advanceTimersByTimeAsync(expectedDelayMs - 1);
-    expect(contents.sendInputEvent).not.toHaveBeenCalled();
+    expect(contents.sendInputEvent.mock.calls.some(([event]) => event.type === "mouseDown")).toBe(
+      false,
+    );
 
     await vi.advanceTimersByTimeAsync(1);
     await run;
 
-    expect(contents.sendInputEvent).toHaveBeenCalledWith({
+    const events = contents.sendInputEvent.mock.calls.map(([event]) => event);
+    expect(events.filter((event) => event.type === "mouseMove").length).toBeGreaterThan(1);
+    expect(events).toContainEqual({
       type: "mouseMove",
       x: clickTarget.center.x,
       y: clickTarget.center.y,
     });
+    expect(events.findIndex((event) => event.type === "mouseDown")).toBeGreaterThan(
+      events.findIndex((event) => event.type === "mouseMove"),
+    );
     expect(successes).toHaveLength(1);
     expect(successes[0]?.actionDurationMs).toBe(expectedDelayMs);
     expect(successes[0]?.timing?.stepStartedAtMs).toBe(0);
     expect(successes[0]?.timing?.actionAtMs).toBeCloseTo(expectedDelayMs / 2);
     expect(successes[0]?.timing?.stepEndedAtMs).toBeCloseTo(expectedDelayMs / 2);
+    expect(successes[0]?.timing?.cursorTiming).toMatchObject({
+      motion_preset: "natural",
+      start_ms: 0,
+    });
+    expect(successes[0]?.timing?.inputTiming).toMatchObject({
+      kind: "click",
+    });
+    expect(successes[0]?.timing?.inputTiming?.action_ms).toBe(Math.round(expectedDelayMs / 2));
+  });
+
+  it("uses the final resolved target for input after a large layout shift", async () => {
+    const size = { width: 1280, height: 800 };
+    const initialTarget = target("Sign in", { x: 460, y: 320 });
+    const shiftedTarget = target("Sign in", { x: 760, y: 520 });
+    const contents = fakeContents([initialTarget, shiftedTarget]);
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [command("click", "Sign in")],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "incremental",
+        captureRecordingFrames: true,
+        captureSize: size,
+        cursorMotionPreset: "natural",
+        minCursorLeadMs: 320,
+        injectCursorPath: true,
+        targetStabilityThresholdPx: 8,
+        settleDelayForCommand: () => 0,
+      },
+    });
+
+    await vi.runAllTimersAsync();
+    await run;
+
+    expect(contents.sendInputEvent).toHaveBeenCalledWith({
+      type: "mouseDown",
+      x: shiftedTarget.center.x,
+      y: shiftedTarget.center.y,
+      button: "left",
+      clickCount: 1,
+    });
   });
 
   it("keeps demo-like recorded actions within the planned capture duration", async () => {
@@ -347,13 +436,23 @@ scene "Login" {
     await run;
 
     const sidecar = JSON.parse(await fs.readFile(actionsSidecarPath(outputPath), "utf8"));
-    expect(sidecar.events.map((event: { verb: string; target: { label: string } | null }) => ({
-      verb: event.verb,
-      label: event.target?.label,
-    }))).toEqual([
+    expect(sidecar.version).toBe(2);
+    expect(sidecar.cursor_motion_preset).toBe("natural");
+    expect(
+      sidecar.events.map((event: { verb: string; target: { label: string } | null }) => ({
+        verb: event.verb,
+        label: event.target?.label,
+      })),
+    ).toEqual([
       { verb: "type", label: "EMAIL ADDRESS" },
       { verb: "type", label: "PASSWORD" },
       { verb: "click", label: "SIGN IN" },
     ]);
+    expect(
+      sidecar.events.every(
+        (event: { cursor_timing?: unknown; input_timing?: unknown }) =>
+          event.cursor_timing && event.input_timing,
+      ),
+    ).toBe(true);
   });
 });

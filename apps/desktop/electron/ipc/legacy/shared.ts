@@ -13,7 +13,13 @@ import {
   type WebContents,
 } from "electron";
 import electronUpdater, { type UpdateInfo as ElectronUpdateInfo } from "electron-updater";
-import type { ActionPointer, ActionTarget } from "../action-timeline";
+import type {
+  ActionCursorMotionPreset,
+  ActionCursorTiming,
+  ActionInputTiming,
+  ActionPointer,
+  ActionTarget,
+} from "../action-timeline";
 import type { CursorTimingSize } from "../cursor-timing";
 import { readJson, writeJson } from "../json-store";
 import { type FrontendLogPayload, logFromFrontend } from "../log-store";
@@ -484,6 +490,8 @@ export interface StoryBrowserRunHooks {
       stepStartedAtMs: number;
       actionAtMs: number;
       stepEndedAtMs: number;
+      cursorTiming?: ActionCursorTiming | null;
+      inputTiming?: ActionInputTiming | null;
     };
   }) => void;
   onFrameCaptured?: (ordinal: number, frame: SimulatorStepFrame) => void;
@@ -513,6 +521,10 @@ export interface StoryBrowserExecutionProfile {
   typingMode: StoryBrowserTypingMode;
   captureRecordingFrames: boolean;
   captureSize?: CursorTimingSize;
+  cursorMotionPreset?: ActionCursorMotionPreset;
+  minCursorLeadMs?: number;
+  injectCursorPath?: boolean;
+  targetStabilityThresholdPx?: number;
   settleDelayForCommand: (command: ParsedCommand) => number;
 }
 

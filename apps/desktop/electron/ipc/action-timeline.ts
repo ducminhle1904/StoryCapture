@@ -25,6 +25,35 @@ export interface ActionPointer {
   effect: string;
 }
 
+export type ActionCursorMotionPreset = "natural" | "snappy" | "cinematic";
+
+export interface ActionCursorTiming {
+  motion_preset: ActionCursorMotionPreset;
+  start_ms: number;
+  arrival_ms: number;
+  travel_ms: number;
+  dwell_ms: number;
+}
+
+export type ActionInputKind =
+  | "click"
+  | "focus"
+  | "hover"
+  | "type"
+  | "select"
+  | "scroll"
+  | "drag"
+  | "upload";
+
+export interface ActionInputTiming {
+  kind: ActionInputKind;
+  down_ms?: number;
+  up_ms?: number;
+  action_ms: number;
+  text_start_ms?: number;
+  text_end_ms?: number;
+}
+
 export interface ActionTimelineEvent {
   step_id: string | null;
   ordinal: number;
@@ -35,6 +64,8 @@ export interface ActionTimelineEvent {
   target: ActionTarget | null;
   secondary_target: ActionTarget | null;
   pointer: ActionPointer | null;
+  cursor_timing?: ActionCursorTiming | null;
+  input_timing?: ActionInputTiming | null;
 }
 
 export interface ActionCaptureRect {
@@ -47,6 +78,7 @@ export interface ActionCaptureRect {
 export interface RecordingActions {
   version: number;
   recording_path: string;
+  cursor_motion_preset?: ActionCursorMotionPreset;
   viewport: { width: number; height: number };
   capture_rect: ActionCaptureRect;
   fps: number;
@@ -80,6 +112,12 @@ export interface ActionTimelineEventInput {
   target?: ActionTarget | null;
   secondaryTarget?: ActionTarget | null;
   pointer?: ActionPointer | null;
+  cursorTiming?: ActionCursorTiming | null;
+  inputTiming?: ActionInputTiming | null;
+}
+
+export interface RecordingActionsOptions {
+  cursorMotionPreset?: ActionCursorMotionPreset;
 }
 
 export function actionsSidecarPath(recordingPath: string): string {
@@ -94,10 +132,7 @@ export async function writeActionsSidecarAtomic(
 ): Promise<void> {
   const dir = path.dirname(file);
   await fs.mkdir(dir, { recursive: true });
-  const tempPath = path.join(
-    dir,
-    `.${path.basename(file)}.tmp.${process.pid}.${Date.now()}`,
-  );
+  const tempPath = path.join(dir, `.${path.basename(file)}.tmp.${process.pid}.${Date.now()}`);
   try {
     await fs.writeFile(tempPath, JSON.stringify(dto, null, 2), "utf8");
     await fs.rename(tempPath, file);
@@ -134,18 +169,18 @@ export function actionPointerForVerb(verb: string): ActionPointer | null {
   return verb === "click" ? { button: "left", effect: "click" } : null;
 }
 
-export function actionTimelineEventFromStep(
-  input: ActionTimelineEventInput,
-): ActionTimelineEvent {
+export function actionTimelineEventFromStep(input: ActionTimelineEventInput): ActionTimelineEvent {
   const tStart = nonNegativeMs(input.stepStartedAtMs);
   const tEnd = Math.max(tStart, nonNegativeMs(input.stepEndedAtMs));
   const tAction = clampMs(nonNegativeMs(input.actionAtMs), tStart, tEnd);
   const verb = String(input.command.verb || "unknown");
 
+  const cursorTiming = sanitizeCursorTiming(input.cursorTiming ?? null);
+  const inputTiming = sanitizeInputTiming(input.inputTiming ?? null);
+
   return {
     step_id:
-      typeof input.command.step_id === "string" &&
-      input.command.step_id.length > 0
+      typeof input.command.step_id === "string" && input.command.step_id.length > 0
         ? input.command.step_id
         : null,
     ordinal: Math.max(1, Math.round(input.ordinal)),
@@ -156,16 +191,21 @@ export function actionTimelineEventFromStep(
     target: sanitizeActionTarget(input.target ?? null),
     secondary_target: sanitizeActionTarget(input.secondaryTarget ?? null),
     pointer: input.pointer ?? actionPointerForVerb(verb),
+    ...(cursorTiming ? { cursor_timing: cursorTiming } : {}),
+    ...(inputTiming ? { input_timing: inputTiming } : {}),
   };
 }
 
 export function recordingActionsFromSession(
   session: ActionTimelineRecordingSession,
   events: ActionTimelineEvent[],
+  options: RecordingActionsOptions = {},
 ): RecordingActions {
+  const cursorMotionPreset = normalizeMotionPreset(options.cursorMotionPreset);
   return {
-    version: 1,
+    version: cursorMotionPreset ? 2 : 1,
     recording_path: session.outputPath,
+    ...(cursorMotionPreset ? { cursor_motion_preset: cursorMotionPreset } : {}),
     viewport: {
       width: positiveDimension(session.width, session.outputWidth),
       height: positiveDimension(session.height, session.outputHeight),
@@ -177,9 +217,16 @@ export function recordingActionsFromSession(
   };
 }
 
-function sanitizeActionTarget(
-  target: ActionTarget | null,
-): ActionTarget | null {
+function normalizeMotionPreset(
+  preset: ActionCursorMotionPreset | undefined,
+): ActionCursorMotionPreset | null {
+  if (preset === "natural" || preset === "snappy" || preset === "cinematic") {
+    return preset;
+  }
+  return null;
+}
+
+function sanitizeActionTarget(target: ActionTarget | null): ActionTarget | null {
   if (!target) return null;
   const center = {
     x: finiteNumber(target.center?.x, Number.NaN),
@@ -207,6 +254,55 @@ function sanitizeActionTarget(
     center,
     bounds,
   };
+}
+
+function sanitizeCursorTiming(timing: ActionCursorTiming | null): ActionCursorTiming | null {
+  if (!timing) return null;
+  const startMs = nonNegativeMs(timing.start_ms);
+  const arrivalMs = Math.max(startMs, nonNegativeMs(timing.arrival_ms));
+  const travelMs = Math.max(0, Math.min(nonNegativeMs(timing.travel_ms), arrivalMs - startMs));
+  return {
+    motion_preset: normalizeMotionPreset(timing.motion_preset) ?? "natural",
+    start_ms: startMs,
+    arrival_ms: arrivalMs,
+    travel_ms: travelMs,
+    dwell_ms: nonNegativeMs(timing.dwell_ms),
+  };
+}
+
+function sanitizeInputTiming(timing: ActionInputTiming | null): ActionInputTiming | null {
+  if (!timing) return null;
+  const kind = normalizeInputKind(timing.kind);
+  if (!kind) return null;
+  const sanitized: ActionInputTiming = {
+    kind,
+    action_ms: nonNegativeMs(timing.action_ms),
+  };
+  if (timing.down_ms != null) sanitized.down_ms = nonNegativeMs(timing.down_ms);
+  if (timing.up_ms != null) sanitized.up_ms = nonNegativeMs(timing.up_ms);
+  if (timing.text_start_ms != null) {
+    sanitized.text_start_ms = nonNegativeMs(timing.text_start_ms);
+  }
+  if (timing.text_end_ms != null) {
+    sanitized.text_end_ms = nonNegativeMs(timing.text_end_ms);
+  }
+  return sanitized;
+}
+
+function normalizeInputKind(kind: string): ActionInputKind | null {
+  switch (kind) {
+    case "click":
+    case "focus":
+    case "hover":
+    case "type":
+    case "select":
+    case "scroll":
+    case "drag":
+    case "upload":
+      return kind;
+    default:
+      return null;
+  }
 }
 
 function nonNegativeMs(value: number): number {

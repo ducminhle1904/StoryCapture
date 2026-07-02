@@ -23,7 +23,7 @@ import type {
   XfadeKind,
   ZoomClip,
 } from "../state/timeline-slice";
-import { XFADE_KINDS } from "../state/timeline-slice";
+import { normalizeCursorMotionPreset, XFADE_KINDS } from "../state/timeline-slice";
 import type { EditorBackgroundKind, Rgba } from "./store";
 import { styleDefaults } from "./text-style";
 import { virtualCursorVisualDurationMs } from "./virtual-cursor-scheduler";
@@ -407,9 +407,7 @@ function actionEventForStep(
   if (!actions) return null;
   return (
     actions.events.find(
-      (item) =>
-        (stepId && item.step_id === stepId) ||
-        (!item.step_id && item.ordinal === ordinal),
+      (item) => (stepId && item.step_id === stepId) || (!item.step_id && item.ordinal === ordinal),
     ) ?? null
   );
 }
@@ -430,7 +428,10 @@ function boundsFromActionTarget(
   ordinal: number,
 ): NormalizedBounds | undefined {
   if (!actions) return undefined;
-  return normalizeBounds(actions.capture_rect, actionTargetForStep(actions, stepId, ordinal)?.bounds);
+  return normalizeBounds(
+    actions.capture_rect,
+    actionTargetForStep(actions, stepId, ordinal)?.bounds,
+  );
 }
 
 function stepTimingLookup(sidecar: RecordingStepTimingSidecar | null | undefined): {
@@ -458,7 +459,11 @@ function stepSceneEndMs(
   return Math.min(durationMs, nextSceneStep?.startMs ?? durationMs);
 }
 
-function clampClipDuration(startMs: number, requestedDurationMs: number, endBoundaryMs: number): number {
+function clampClipDuration(
+  startMs: number,
+  requestedDurationMs: number,
+  endBoundaryMs: number,
+): number {
   return Math.max(1, Math.min(requestedDurationMs, Math.max(1, endBoundaryMs - startMs)));
 }
 
@@ -471,7 +476,9 @@ function fallbackPolishStepTimeMs(
   if (index < 0 || polishedSteps.length === 0) return null;
   const safeStartMs = Math.min(300, Math.max(0, durationMs - 1));
   const safeEndMs = Math.max(safeStartMs + 1, durationMs - 500);
-  return Math.round(safeStartMs + ((index + 0.5) / polishedSteps.length) * (safeEndMs - safeStartMs));
+  return Math.round(
+    safeStartMs + ((index + 0.5) / polishedSteps.length) * (safeEndMs - safeStartMs),
+  );
 }
 
 function isInteractionVerb(verb: string | null | undefined): boolean {
@@ -551,8 +558,12 @@ function buildPolishClips({
     const actionEvent = actionEventForStep(actions, step.stepId, step.ordinal);
     const interactionStep = isInteractionVerb(stepTime?.verb ?? actionEvent?.verb ?? step.verb);
     const actionTimeMs =
-      interactionStep && actionEvent ? Math.min(durationMs, Math.max(0, actionEvent.t_action_ms)) : null;
-    const fallbackTimeMs = callout ? fallbackPolishStepTimeMs(polishedSteps, step.stepId, durationMs) : null;
+      interactionStep && actionEvent
+        ? Math.min(durationMs, Math.max(0, actionEvent.t_action_ms))
+        : null;
+    const fallbackTimeMs = callout
+      ? fallbackPolishStepTimeMs(polishedSteps, step.stepId, durationMs)
+      : null;
     const tMs = stepTime
       ? Math.min(durationMs, Math.max(0, stepTime.startMs + Math.round(stepTime.durationMs * 0.45)))
       : (actionTimeMs ?? fallbackTimeMs);
@@ -560,10 +571,14 @@ function buildPolishClips({
     const sceneEndMs = stepSceneEndMs(stepTiming, stepTime, durationMs);
     const zoomLevel = stepPolish.zoom && stepPolish.zoom !== "off" ? stepPolish.zoom : null;
     const highlight = highlightEnabled(stepPolish.highlight);
-    const actionCenter = interactionStep ? centerFromActionTarget(actions, step.stepId, step.ordinal) : null;
+    const actionCenter = interactionStep
+      ? centerFromActionTarget(actions, step.stepId, step.ordinal)
+      : null;
     const timingCenter = centerFromTimingTarget(stepTime, stepRect);
     const center = actionCenter ?? timingCenter;
-    const actionBounds = interactionStep ? boundsFromActionTarget(actions, step.stepId, step.ordinal) : undefined;
+    const actionBounds = interactionStep
+      ? boundsFromActionTarget(actions, step.stepId, step.ordinal)
+      : undefined;
     const targetBounds = highlight
       ? (actionBounds ?? boundsFromTimingTarget(stepTime, stepRect))
       : undefined;
@@ -657,7 +672,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const actions = input.actions ?? null;
   const idBase = hashPath(recording.path);
 
-  const cursorMotionPreset = "natural";
+  const cursorMotionPreset = normalizeCursorMotionPreset(actions?.cursor_motion_preset);
   const cursorVisible = polish?.global.cursor !== "hidden";
   const durationMs = Math.max(
     mediaDurationMs(recording, trajectory, actions),

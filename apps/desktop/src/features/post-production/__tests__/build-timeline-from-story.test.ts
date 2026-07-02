@@ -5,10 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
-import type {
-  RecordingStepTimingSidecar,
-  RecordingTrajectory,
-} from "@/ipc/trajectory";
+import type { RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
 
 import { buildTimelineFromStory } from "../state/build-timeline-from-story";
 
@@ -118,9 +115,7 @@ const STORY: ParseResult = {
 };
 const STORY_AST = STORY.ast!;
 
-function trajectoryWithFrames(
-  frames: RecordingTrajectory["frames"],
-): RecordingTrajectory {
+function trajectoryWithFrames(frames: RecordingTrajectory["frames"]): RecordingTrajectory {
   return {
     ...TRAJECTORY,
     frame_count: frames.length,
@@ -189,9 +184,7 @@ describe("buildTimelineFromStory", () => {
     expect(c.trackId).toBe("cursor");
     expect(c.startMs).toBe(0);
     expect(c.durationMs).toBe(12_345);
-    expect(c.trajectoryDir).toBe(
-      "/tmp/projects/p1/recordings/recording-123.trajectory.json",
-    );
+    expect(c.trajectoryDir).toBe("/tmp/projects/p1/recordings/recording-123.trajectory.json");
     expect(c.trajectoryFps).toBe(60);
     expect(c.trajectoryFrameCount).toBe(720);
     expect(c.skin).toBe("mac-default");
@@ -219,9 +212,7 @@ describe("buildTimelineFromStory", () => {
       story: null,
       recording: RECORDING,
       actions: ACTIONS,
-      trajectory: trajectoryWithFrames([
-        { t_ms: 5_000, x: 1_920, y: 1_080, click: true },
-      ]),
+      trajectory: trajectoryWithFrames([{ t_ms: 5_000, x: 1_920, y: 1_080, click: true }]),
     });
 
     expect(out.cursor).toHaveLength(1);
@@ -325,6 +316,61 @@ describe("buildTimelineFromStory", () => {
     expect(cursor.trajectoryFrameCount).toBe(Math.ceil((cursor.durationMs / 1000) * 60));
   });
 
+  it("uses the recorded motion preset from action sidecars", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      actions: { ...ACTIONS, cursor_motion_preset: "cinematic" },
+      trajectory: null,
+    });
+
+    expect(out.cursor[0]?.motionPreset).toBe("cinematic");
+  });
+
+  it("extends action cursor media coverage for explicit input timing and click feedback", () => {
+    const baseEvent = ACTIONS.events[0];
+    if (!baseEvent) throw new Error("expected action fixture");
+    const actions: RecordingActions = {
+      ...ACTIONS,
+      frame_count: 1,
+      events: [
+        {
+          ...baseEvent,
+          t_start_ms: 0,
+          t_action_ms: 2_000,
+          t_end_ms: 2_100,
+          cursor_timing: {
+            motion_preset: "natural",
+            start_ms: 1_000,
+            arrival_ms: 1_320,
+            travel_ms: 320,
+            dwell_ms: 680,
+          },
+          input_timing: {
+            kind: "click",
+            down_ms: 2_000,
+            up_ms: 2_000,
+            action_ms: 2_000,
+          },
+        },
+      ],
+    };
+
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: { ...RECORDING, duration_ms: 0 },
+      actions,
+      trajectory: null,
+    });
+
+    const cursor = out.cursor[0];
+    expect(cursor?.durationMs).toBeGreaterThanOrEqual(2_520);
+    expect(cursor?.trajectoryFrameCount).toBe(
+      Math.ceil(((cursor?.durationMs ?? 0) / 1000) * ACTIONS.fps),
+    );
+    expect(out.video[0]?.durationMs).toBe(cursor?.durationMs);
+  });
+
   it("lets action focus be disabled independently from auto zoom", () => {
     const out = buildTimelineFromStory({
       story: null,
@@ -398,9 +444,7 @@ describe("buildTimelineFromStory", () => {
       story: null,
       recording: { ...RECORDING, duration_ms: 40_064 },
       actions: actionsEndingAt(17_142),
-      trajectory: trajectoryWithFrames([
-        { t_ms: 40_887, x: 960, y: 540, click: false },
-      ]),
+      trajectory: trajectoryWithFrames([{ t_ms: 40_887, x: 960, y: 540, click: false }]),
     });
 
     expect(out.video[0]?.durationMs).toBe(40_064);
@@ -413,9 +457,7 @@ describe("buildTimelineFromStory", () => {
       story: null,
       recording: noDuration,
       actions: actionsEndingAt(17_142),
-      trajectory: trajectoryWithFrames([
-        { t_ms: 40_887, x: 960, y: 540, click: false },
-      ]),
+      trajectory: trajectoryWithFrames([{ t_ms: 40_887, x: 960, y: 540, click: false }]),
     });
 
     expect(out.video[0]?.durationMs).toBe(40_887);
@@ -486,11 +528,7 @@ describe("buildTimelineFromStory", () => {
     expect(out.zoom.map((clip) => clip.startMs)).toEqual([800, 4_800, 9_800]);
     expect(out.zoom.map((clip) => clip.durationMs)).toEqual([800, 800, 800]);
     expect(out.zoom.map((clip) => clip.scale)).toEqual([1.35, 1.35, 1.35]);
-    expect(out.zoom.map((clip) => clip.preset)).toEqual([
-      "CALM",
-      "CALM",
-      "CALM",
-    ]);
+    expect(out.zoom.map((clip) => clip.preset)).toEqual(["CALM", "CALM", "CALM"]);
     expect(out.zoom.map((clip) => clip.target)).toEqual([
       { kind: "cursor" },
       { kind: "cursor" },
@@ -507,9 +545,7 @@ describe("buildTimelineFromStory", () => {
     const out = buildTimelineFromStory({
       story: null,
       recording: RECORDING,
-      trajectory: trajectoryWithFrames([
-        { t_ms: 100, x: 960, y: 540, click: true },
-      ]),
+      trajectory: trajectoryWithFrames([{ t_ms: 100, x: 960, y: 540, click: true }]),
     });
 
     expect(out.zoom[0]?.startMs).toBe(0);
@@ -549,9 +585,7 @@ describe("buildTimelineFromStory", () => {
       trajectory,
     });
 
-    expect(a.zoom.map((clip) => clip.id)).toEqual(
-      b.zoom.map((clip) => clip.id),
-    );
+    expect(a.zoom.map((clip) => clip.id)).toEqual(b.zoom.map((clip) => clip.id));
     expect(a.zoom.map((clip) => clip.id)).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/^zoom-[a-f0-9]{8}-1000$/),
@@ -630,9 +664,7 @@ describe("buildTimelineFromStory", () => {
     const out = buildTimelineFromStory({
       story,
       recording: RECORDING,
-      trajectory: trajectoryWithFrames([
-        { t_ms: 3_000, x: 400, y: 400, click: false },
-      ]),
+      trajectory: trajectoryWithFrames([{ t_ms: 3_000, x: 400, y: 400, click: false }]),
       polish: {
         version: 2,
         global: {
@@ -1055,9 +1087,7 @@ describe("buildTimelineFromStory", () => {
 
     const annotation = out.annotations[0];
     expect(annotation?.startMs).toBe(2_125);
-    expect(
-      annotation ? annotation.startMs + annotation.durationMs : 0,
-    ).toBeLessThanOrEqual(2_700);
+    expect(annotation ? annotation.startMs + annotation.durationMs : 0).toBeLessThanOrEqual(2_700);
   });
 
   it("normalizes action targets from the actions capture rect when trajectory is physical scale", () => {

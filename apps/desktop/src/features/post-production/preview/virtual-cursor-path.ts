@@ -151,14 +151,13 @@ function withRipple(
   tMs: number,
 ): VirtualCursorSample {
   const size = schedule.size;
-  let active: { segment: VirtualCursorSchedule["segments"][number]; elapsed: number } | null =
-    null;
+  let active: { segment: VirtualCursorSchedule["segments"][number]; elapsed: number } | null = null;
   for (let i = schedule.segments.length - 1; i >= 0; i -= 1) {
     const segment = schedule.segments[i];
     if (!segment) continue;
     const event = segment.event;
     if (!isClickEvent(event) || !event.target) continue;
-    const elapsed = tMs - segment.arrivalMs;
+    const elapsed = tMs - segment.effectMs;
     if (elapsed < 0) continue;
     if (elapsed > VIRTUAL_CURSOR_CLICK_RIPPLE_MS) break;
     if (!active || elapsed < active.elapsed) active = { segment, elapsed };
