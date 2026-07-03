@@ -64,6 +64,7 @@ const CURSOR_BASE_SIZE_PX = 32;
 const CURSOR_RIPPLE_MAX_PX = 96;
 const SOURCE_HOLD_EPSILON_SECONDS = 0.001;
 const TEXT_DRAG_OVERSCAN = 0.25;
+const MIN_HIGHLIGHT_BOUNDS_SIZE = 0.0001;
 
 const cursorSkinAssets = import.meta.glob("../../../../../../assets/cursor-skins/*.png", {
   eager: true,
@@ -88,6 +89,9 @@ interface WeightedRgbAccumulator {
   b: number;
   weight: number;
 }
+
+type HighlightSpec = NonNullable<AnnotationClip["highlight"]>;
+type HighlightBounds = NonNullable<HighlightSpec["bounds"]>;
 
 const DEFAULT_AMBIENT_PALETTE: AmbientPalette = {
   left: { r: 32, g: 38, b: 48 },
@@ -361,6 +365,32 @@ function activeHighlightClips(
 function percent(value: number): string {
   if (!Number.isFinite(value)) return "50%";
   return `${Math.round(value * 10_000) / 100}%`;
+}
+
+function hasReliableHighlightBounds(
+  bounds: HighlightBounds | null | undefined,
+): bounds is HighlightBounds {
+  if (!bounds) return false;
+  const { x, y, w, h } = bounds;
+  if (![x, y, w, h].every(Number.isFinite)) return false;
+  if (w <= MIN_HIGHLIGHT_BOUNDS_SIZE || h <= MIN_HIGHLIGHT_BOUNDS_SIZE) return false;
+  return x < 1 && y < 1 && x + w > 0 && y + h > 0;
+}
+
+function boundedHighlightStyle(
+  bounds: HighlightBounds | null,
+  paddingPx: number,
+): CSSProperties | null {
+  if (!hasReliableHighlightBounds(bounds)) return null;
+  const safePaddingPx = Number.isFinite(paddingPx) ? Math.max(0, paddingPx) : 0;
+  return {
+    left: `calc(${percent(bounds.x)} - ${safePaddingPx}px)`,
+    top: `calc(${percent(bounds.y)} - ${safePaddingPx}px)`,
+    width: `calc(${percent(bounds.w)} + ${safePaddingPx * 2}px)`,
+    height: `calc(${percent(bounds.h)} + ${safePaddingPx * 2}px)`,
+    transform: "translate3d(0, 0, 0)",
+    boxSizing: "border-box",
+  };
 }
 
 type CursorStyleKey = "height" | "left" | "opacity" | "top" | "transform" | "width";
@@ -1413,8 +1443,9 @@ export function PreviewPlayer({
                 {activeHighlights.map((clip) => {
                   const highlight = clip.highlight;
                   if (!highlight) return null;
+                  if (highlight.bounds && !hasReliableHighlightBounds(highlight.bounds)) return null;
                   const center = applyZoomToPoint(highlight.center, previewZoom);
-                  const bounds = highlight.bounds
+                  const zoomedBounds = highlight.bounds
                     ? applyZoomToBounds(highlight.bounds, previewZoom)
                     : null;
                   const progress = Math.max(
@@ -1428,22 +1459,32 @@ export function PreviewPlayer({
                   const baseOpacity = highlight.opacity ?? 0.72;
                   const effectiveOpacity = Math.max(0, 1 - progress) * baseOpacity;
                   const radius = Math.max(8, highlight.radiusPx * Math.max(1, previewZoom.scale));
-                  const borderRadius = bounds ? Math.min(12, Math.max(4, radius * 0.18)) : radius;
-                  const paddingPx = bounds
+                  const borderRadius = highlight.bounds
+                    ? Math.min(12, Math.max(4, highlight.radiusPx * 0.18))
+                    : radius;
+                  const paddingPx = zoomedBounds
                     ? (highlight.paddingPx ?? Math.min(12, Math.max(6, radius * 0.14)))
                     : 0;
                   const strokePx = highlight.strokePx ?? 2;
                   const glowPx = highlight.glowPx ?? 16;
                   const isSpotlight = highlight.shape === "spotlight";
+                  const highlightBoundsStyle = highlight.bounds
+                    ? boundedHighlightStyle(zoomedBounds, paddingPx)
+                    : null;
+                  if (highlight.bounds && !highlightBoundsStyle) return null;
                   return (
                     <div
                       key={clip.id}
                       className="absolute border-solid"
+                      data-testid="highlight-frame"
                       style={{
-                        left: bounds ? percent(bounds.x) : percent(center.x),
-                        top: bounds ? percent(bounds.y) : percent(center.y),
-                        width: bounds ? percent(bounds.w) : `${radius * 2}px`,
-                        height: bounds ? percent(bounds.h) : `${radius * 2}px`,
+                        ...(highlightBoundsStyle ?? {
+                          left: percent(center.x),
+                          top: percent(center.y),
+                          width: `${radius * 2}px`,
+                          height: `${radius * 2}px`,
+                          transform: "translate3d(-50%, -50%, 0)",
+                        }),
                         borderColor: highlight.color,
                         borderWidth: `${strokePx}px`,
                         borderRadius: `${borderRadius}px`,
@@ -1451,10 +1492,6 @@ export function PreviewPlayer({
                         boxShadow: isSpotlight
                           ? `0 0 0 9999px rgba(0,0,0,0.46), 0 0 ${glowPx}px ${highlight.color ?? "#ffffff"}`
                           : `0 0 ${glowPx}px rgba(255,255,255,0.28)`,
-                        transform: bounds
-                          ? `translate3d(${-paddingPx}px, ${-paddingPx}px, 0)`
-                          : "translate3d(-50%, -50%, 0)",
-                        padding: bounds ? `${paddingPx}px` : undefined,
                       }}
                     />
                   );

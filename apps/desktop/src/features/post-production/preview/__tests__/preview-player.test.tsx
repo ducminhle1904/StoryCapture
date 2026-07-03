@@ -441,6 +441,96 @@ describe("PreviewPlayer", () => {
     expect(cursor?.style.width).toBe("40px");
   });
 
+  it("expands bounded action highlights symmetrically after preview zoom", () => {
+    useEditorStore.setState({
+      playheadMs: 500,
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [
+          {
+            id: "zoom-1",
+            trackId: "zoom",
+            startMs: 0,
+            durationMs: 1000,
+            target: { kind: "cursor" },
+            scale: 2,
+            center: { x: 0.5, y: 0.5 },
+          },
+        ],
+        sound: [],
+        annotations: [
+          {
+            id: "highlight-1",
+            trackId: "annotations",
+            startMs: 0,
+            durationMs: 1000,
+            text: "",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 24,
+            highlight: {
+              center: { x: 0.45, y: 0.55 },
+              bounds: { x: 0.4, y: 0.5, w: 0.1, h: 0.1 },
+              radiusPx: 48,
+              paddingPx: 12,
+              strokePx: 3,
+              glowPx: 10,
+              opacity: 0.8,
+              color: "#ffffff",
+            },
+          },
+        ],
+      },
+    });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    const highlight = screen.getByTestId("highlight-frame");
+    expect(highlight.style.left).toBe("calc(30% - 12px)");
+    expect(highlight.style.top).toBe("calc(50% - 12px)");
+    expect(highlight.style.width).toBe("calc(20% + 24px)");
+    expect(highlight.style.height).toBe("calc(20% + 24px)");
+    expect(highlight.style.transform).toBe("translate3d(0, 0, 0)");
+    expect(highlight.style.boxSizing).toBe("border-box");
+    expect(highlight.style.borderRadius).toBe("8.64px");
+    expect(highlight.style.padding).toBe("");
+  });
+
+  it("does not render bounded action highlights with unreliable bounds", () => {
+    useEditorStore.setState({
+      playheadMs: 500,
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "highlight-invalid",
+            trackId: "annotations",
+            startMs: 0,
+            durationMs: 1000,
+            text: "",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 24,
+            highlight: {
+              center: { x: 0.5, y: 0.5 },
+              bounds: { x: 0.2, y: 0.2, w: Number.POSITIVE_INFINITY, h: 0.12 },
+              radiusPx: 48,
+              paddingPx: 12,
+              color: "#ffffff",
+            },
+          },
+        ],
+      },
+    });
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    expect(screen.getByTestId("highlight-overlay")).toBeInTheDocument();
+    expect(screen.queryByTestId("highlight-frame")).not.toBeInTheDocument();
+  });
+
   it("applies timeline zoom clips in the native preview path", async () => {
     useEditorStore.setState({
       tracks: {
