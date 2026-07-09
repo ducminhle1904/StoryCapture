@@ -38,8 +38,13 @@ migrations, generated files, or release tooling.
 
 - Vercel config: `apps/web/vercel.json`.
 - Web build command is `pnpm run build` from `apps/web/package.json`, which runs
-  `prisma generate && next build`.
+  `pnpm run typecheck && next build`; the typecheck runs
+  `pnpm run db:generate && tsc --noEmit`.
 - Next production config is `apps/web/next.config.ts`.
+- GeoLite provisioning is manual: `apps/web/scripts/download-geolite2.sh` is
+  not called by package scripts, CI, or Vercel config. Runtime lookup expects
+  gitignored `apps/web/public/geolite2/GeoLite2-Country.mmdb` and returns `XX`
+  when the database is absent.
 - Scheduled analytics job:
   - Config: `apps/web/vercel.json`.
   - Route: `apps/web/src/app/api/cron/aggregate-analytics/route.ts`.

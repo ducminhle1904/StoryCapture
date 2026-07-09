@@ -46,6 +46,12 @@
   package test command when risk warrants.
 - IPC/host changes: run focused desktop Electron tests plus
   `pnpm --dir apps/desktop exec vitest run` when touching shared behavior.
+- Cursor timing/synchronization changes: focus
+  `apps/desktop/electron/ipc/cursor-timing.test.ts`,
+  `apps/desktop/electron/ipc/legacy/story-runner.test.ts`,
+  `apps/desktop/src/features/post-production/preview/__tests__/virtual-cursor-path.test.ts`,
+  and
+  `apps/desktop/src/features/post-production/__tests__/build-timeline-from-story.test.ts`.
 - Prisma/schema/web router changes: run `pnpm --dir apps/web db:generate`,
   focused web tests, and `pnpm --dir apps/web typecheck`.
 - Cross-package contract changes: run focused package tests, consumer tests, and

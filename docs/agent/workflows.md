@@ -6,6 +6,10 @@
   (`packageManager`, `engines`) and `.github/actions/setup-toolchain/action.yml`.
   Read those files for exact versions instead of copying pins into agent docs.
 - Workspaces are declared in `pnpm-workspace.yaml`: `apps/*`, `packages/*`.
+- Transitive dependency overrides also live in `pnpm-workspace.yaml`. The local
+  `packages/glob-compat`, `packages/lodash-isequal-compat`, and
+  `packages/rimraf-compat` shims must be reviewed with Electron packaging
+  dependency upgrades.
 - Prefer package-scoped commands for dev servers and focused checks.
 
 ## Install And Dev
@@ -22,8 +26,9 @@
 - Root lint: `pnpm lint`.
 - Format: `pnpm format`.
 - TypeScript is pinned directly to TypeScript 7. The web app disables Next's
-  built-in build-time type validation, so run `pnpm --dir apps/web typecheck`
-  or root `pnpm typecheck` before `pnpm --dir apps/web build`.
+  built-in build-time type validation, but `pnpm --dir apps/web build` runs the
+  web typecheck before `next build`. Run `pnpm --dir apps/web typecheck` first
+  only when invoking `next build` directly.
   `@typescript/native-preview` is kept in the web dev dependencies so Next's
   TypeScript setup check does not fail in CI while built-in validation is off.
 - Desktop Electron build: `pnpm --dir apps/desktop run build`.
@@ -41,7 +46,8 @@
 - Create dev migration: `pnpm --dir apps/web db:migrate`.
 - Push schema: `pnpm --dir apps/web db:push`.
 - Seed database: `pnpm --dir apps/web db:seed`.
-- Web build runs `prisma generate && next build`.
+- Web build runs `pnpm run typecheck && next build`; the typecheck runs
+  `pnpm run db:generate && tsc --noEmit`.
 
 ## CI Mapping
 

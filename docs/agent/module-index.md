@@ -5,9 +5,13 @@ Use this for task routing after reading the short root guide.
 ## Desktop Renderer
 
 - Route table: `apps/desktop/src/routes/index.tsx`.
+- Bootstrap: `apps/desktop/src/main.tsx` initializes settings/output preferences
+  and the export-compositor entry; `apps/desktop/src/App.tsx` owns startup
+  effects, routing, and global overlays.
 - Dashboard/projects: `apps/desktop/src/routes/dashboard.tsx`,
   `apps/desktop/src/features/dashboard/`, `apps/desktop/src/state/projects.ts`,
-  `apps/desktop/src/ipc/projects.ts`.
+  `apps/desktop/src/ipc/projects.ts`, and new-project workflow definitions in
+  `apps/desktop/src/features/workflows/workflow-catalog.ts`.
 - Editor/authoring: `apps/desktop/src/routes/editor.tsx`,
   `apps/desktop/src/features/editor/story-editor.tsx`,
   `apps/desktop/src/features/editor/story-builder.tsx`,
@@ -18,6 +22,7 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/src/state/simulator-store.ts`.
 - Recorder: `apps/desktop/src/routes/recorder.tsx`,
   `apps/desktop/src/features/recorder/recording-view.tsx`,
+  `apps/desktop/src/features/capture/TargetPicker.tsx`,
   `apps/desktop/src/state/recorder.ts`, and IPC facades in
   `apps/desktop/src/ipc/capture.ts`, `apps/desktop/src/ipc/audio.ts`,
   `apps/desktop/src/ipc/automation.ts`, `apps/desktop/src/ipc/encode.ts`.
@@ -26,19 +31,22 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/src/features/post-production/state/store.ts`,
   `apps/desktop/src/features/post-production/state/timeline-layout.ts`,
   `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
+  `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`,
   `apps/desktop/src/features/post-production/state/compute-graph.ts`, plus
   `apps/desktop/src/features/post-production/timeline/`,
   `apps/desktop/src/features/post-production/inspector/`,
   `apps/desktop/src/features/post-production/preview/`,
   `apps/desktop/src/features/post-production/export-compositor/`,
   `apps/desktop/src/features/post-production/export-modal/`, and
-  `apps/desktop/src/features/post-production/render-queue/`.
+  `apps/desktop/src/features/post-production/render-queue/`. Export disclosure
+  UI lives in `apps/desktop/src/features/export/AiDisclosureModal.tsx`.
 - Settings/onboarding: `apps/desktop/src/routes/settings.tsx`,
   `apps/desktop/src/features/settings/categories/`,
   `apps/desktop/src/routes/onboarding.tsx`,
   `apps/desktop/src/assets/onboarding/`.
 - NL/AI/TTS UI: `apps/desktop/src/features/nl-mode/`,
   `apps/desktop/src/features/voiceover/`,
+  `apps/desktop/src/features/status-bar/`,
   `apps/desktop/electron/ipc/ai.ts`.
 
 ## Electron Host And IPC
@@ -73,6 +81,13 @@ Use this for task routing after reading the short root guide.
 - DSL vocabulary and CodeMirror: `packages/story-dsl/src/ast.ts`,
   `packages/story-dsl/src/codemirror-lang.ts`.
 - Runtime parser: `apps/desktop/electron/ipc/story-parser.ts`.
+- Recorded action/cursor timing crosses host and renderer:
+  `apps/desktop/electron/ipc/action-timeline.ts`,
+  `apps/desktop/electron/ipc/cursor-timing.ts`,
+  `apps/desktop/electron/ipc/legacy/story-runner.ts`,
+  `apps/desktop/src/ipc/actions.ts`,
+  `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`,
+  and `apps/desktop/src/features/post-production/preview/virtual-cursor-path.ts`.
 - Browser picker and authoring sidecars:
   `apps/desktop/src/features/editor/`, `apps/desktop/src/ipc/picker.ts`,
   `apps/desktop/electron/ipc/picker.ts`.
@@ -131,7 +146,8 @@ Use this for task routing after reading the short root guide.
 ## Shared UI And Styling
 
 - Desktop styling entry: `apps/desktop/src/styles.css`.
-- Shared package entry: `packages/ui/src/index.ts`.
+- Shared package entry and base tokens: `packages/ui/src/index.ts`,
+  `packages/ui/src/tokens.css`.
 - Claude design docs/tokens: `packages/ui/src/claude-design/README.md`,
   `packages/ui/src/claude-design/tokens.css`,
   `packages/ui/src/claude-design/app.css`.
@@ -143,7 +159,9 @@ Use this for task routing after reading the short root guide.
 
 - Shared package exports: `packages/shared-types/src/index.ts`.
 - IPC compatibility surface: `packages/shared-types/src/ipc.ts`.
-- Web account contracts: `packages/shared-types/src/web-account.ts`.
+- Public `WebAccountInfo` is defined by `packages/shared-types/src/ipc.ts` and
+  re-exported from `packages/shared-types/src/index.ts`;
+  `packages/shared-types/src/web-account.ts` is currently not exported.
 - Browser presets: `packages/shared-types/browser-presets.json`,
   `packages/shared-types/src/browser-presets.ts`.
 - Generated effect types:

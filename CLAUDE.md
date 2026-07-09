@@ -58,6 +58,9 @@ video.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
   `Sc*` primitive families.
 - `packages/config` owns the shared TypeScript base config.
+- `packages/glob-compat`, `packages/lodash-isequal-compat`, and
+  `packages/rimraf-compat` are private CommonJS shims selected by
+  `pnpm-workspace.yaml` overrides for legacy Electron packaging consumers.
 
 ## Source Of Truth
 
@@ -100,6 +103,12 @@ file explicitly says otherwise.
   `apps/desktop/src/features/post-production/preview/preview-engine.ts`,
   `apps/desktop/src/features/post-production/export-modal/`, and
   `apps/desktop/src/features/post-production/render-queue/`.
+- Recorded action/cursor timing: read `docs/DOMAIN.md`,
+  `apps/desktop/electron/ipc/action-timeline.ts`,
+  `apps/desktop/electron/ipc/cursor-timing.ts`,
+  `apps/desktop/electron/ipc/legacy/story-runner.ts`,
+  `apps/desktop/src/ipc/actions.ts`, and
+  `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`.
 - Web routes/API/data: read `apps/web/src/app`, `apps/web/src/app/api`,
   `apps/web/src/trpc/routers/_app.ts`, `apps/web/src/trpc/routers/*`,
   `apps/web/src/lib/*`, and `apps/web/prisma/schema.prisma`.
@@ -140,6 +149,7 @@ file explicitly says otherwise.
   `packages/shared-types/src/generated/effects.ts`.
 - Avoid generated/build/cache/artifact directories unless the task is
   specifically about them: `node_modules/`, `.turbo/`, `.next/`, `dist/`,
+  `apps/desktop/dist-electron/`, `apps/desktop/.electron-dev/`,
   `release-electron/`, `output/`, `tmp/`, `scripts/build-ffmpeg/build/`, and
   generated Prisma output.
 - After code changes, update agent docs when the change affects future agent
