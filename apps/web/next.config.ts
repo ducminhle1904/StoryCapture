@@ -9,6 +9,9 @@ import type { NextConfig } from "next";
  * - Image domain for R2 public URL
  */
 const nextConfig: NextConfig = {
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   output: "standalone",
   transpilePackages: ["@storycapture/shared-types", "@storycapture/ui"],
   serverExternalPackages: ["@maxmind/geoip2-node"],

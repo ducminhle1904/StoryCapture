@@ -21,6 +21,11 @@
 - Root typecheck: `pnpm typecheck`.
 - Root lint: `pnpm lint`.
 - Format: `pnpm format`.
+- TypeScript is pinned directly to TypeScript 7. The web app disables Next's
+  built-in build-time type validation, so run `pnpm --dir apps/web typecheck`
+  or root `pnpm typecheck` before `pnpm --dir apps/web build`.
+  `@typescript/native-preview` is kept in the web dev dependencies so Next's
+  TypeScript setup check does not fail in CI while built-in validation is off.
 - Desktop Electron build: `pnpm --dir apps/desktop run build`.
 - Desktop renderer build: `pnpm --dir apps/desktop renderer:build`.
 - Web build: `pnpm --dir apps/web build`.
