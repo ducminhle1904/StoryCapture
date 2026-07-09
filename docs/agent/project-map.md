@@ -1,7 +1,8 @@
 # Project Map
 
-Use this as the first repo map before opening broad source files. `CLAUDE.md`
-is the root agent guide; `AGENTS.md` and `GEMINI.md` symlink to it.
+Use this as the first repo map before opening broad source files. `AGENTS.md`
+is the root agent guide; `CLAUDE.md` symlinks to it, and `GEMINI.md` resolves
+through `CLAUDE.md`.
 
 ## Workspace
 
