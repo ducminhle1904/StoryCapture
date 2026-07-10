@@ -8,12 +8,12 @@
  * - distinct loading / missing-provider / empty-library / no-match states
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { Dialog } from "@base-ui/react/dialog";
-import { useNavigate } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
 import { AudioLines, RefreshCw, Sparkles, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,8 +21,8 @@ import {
   dialogCenteredPopupMotionClassName,
   dialogViewportClassName,
 } from "@/components/ui/dialog-motion";
-import { useVoiceoverStore, type VoicePreset } from "./voiceoverStore";
 import { VoicePresetCard } from "./VoicePresetCard";
+import { useVoiceoverStore, type VoicePreset } from "./voiceoverStore";
 
 interface VoiceInfo {
   id: string;
@@ -40,14 +40,8 @@ const MAX_FEATURED = 2;
 export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
   const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
-  const {
-    catalogOpen,
-    filter,
-    selectedPreset,
-    setCatalogOpen,
-    setFilter,
-    setSelectedPreset,
-  } = useVoiceoverStore();
+  const { catalogOpen, filter, selectedPreset, setCatalogOpen, setFilter, setSelectedPreset } =
+    useVoiceoverStore();
 
   const [voices, setVoices] = useState<VoiceInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,10 +122,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
           scriptText: "This is a sample narration.",
           provider: preset.provider,
           voiceId: preset.id,
-          model:
-            preset.provider === "elevenlabs"
-              ? "eleven_multilingual_v2"
-              : "tts-1",
+          model: preset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
         });
 
         const audio = new Audio(result.file_path);
@@ -190,12 +181,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
                   </p>
                 </div>
                 <Dialog.Close
-                  render={
-                    <button
-                      type="button"
-                      aria-label="Close"
-                    />
-                  }
+                  render={<button type="button" aria-label="Close" />}
                   className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-2 text-[var(--color-fg-muted)] transition hover:bg-[var(--color-surface-300)] hover:text-[var(--color-fg-primary)]"
                 >
                   <X className="h-4 w-4" />
@@ -211,8 +197,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
                     {selectedPreset ? selectedPreset.name : "No voice selected"}
                   </div>
                   <div className="mt-1 text-xs text-[var(--color-fg-secondary)]">
-                    {selectedPreset?.locale ??
-                      "Choose one to start rendering takes."}
+                    {selectedPreset?.locale ?? "Choose one to start rendering takes."}
                   </div>
                 </div>
 
@@ -223,9 +208,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
                   <div className="mt-2 text-sm font-medium text-[var(--color-fg-primary)]">
                     {loading ? "Loading..." : `${voices.length} available`}
                   </div>
-                  <div className="mt-1 text-xs text-[var(--color-fg-secondary)]">
-                    Full library
-                  </div>
+                  <div className="mt-1 text-xs text-[var(--color-fg-secondary)]">Full library</div>
                 </div>
               </div>
             </motion.div>
@@ -236,11 +219,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reduceMotion ? 0.12 : 0.18, delay: reduceMotion ? 0 : 0.06 }}
             >
-              <div
-                role="radiogroup"
-                aria-label="Locale filter"
-                className="flex flex-wrap gap-2"
-              >
+              <div role="radiogroup" aria-label="Locale filter" className="flex flex-wrap gap-2">
                 <motion.label
                   layout
                   className={`relative cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors ${
@@ -325,9 +304,9 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
             >
               {loading ? (
                 <div className="space-y-3">
-                  {Array.from({ length: 4 }).map((_, index) => (
+                  {[0, 1, 2, 3].map((slot) => (
                     <div
-                      key={`voice-skeleton-${index}`}
+                      key={`voice-skeleton-${slot}`}
                       className="animate-pulse rounded-[var(--radius-xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-4 py-4"
                     >
                       <div className="h-4 w-32 rounded bg-[var(--color-surface-300)]" />
@@ -347,8 +326,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
                       Connect a provider first
                     </h3>
                     <p className="font-serif mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
-                      Add an ElevenLabs or OpenAI API key in Settings to browse
-                      and preview voices.
+                      Add an ElevenLabs or OpenAI API key in Settings to browse and preview voices.
                     </p>
                     <div className="mt-5 flex items-center justify-center gap-2">
                       <Button
@@ -376,8 +354,8 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
                       No voices yet
                     </h3>
                     <p className="font-serif mt-2 text-sm leading-6 text-[var(--color-fg-secondary)]">
-                      This account does not have any available voices right now.
-                      Try refreshing, or check the provider configuration.
+                      This account does not have any available voices right now. Try refreshing, or
+                      check the provider configuration.
                     </p>
                     <div className="mt-5 flex items-center justify-center gap-2">
                       <Button variant="outline" size="sm" onClick={loadVoices}>
@@ -409,11 +387,7 @@ export function VoiceCatalogDialog({ projectId }: VoiceCatalogDialogProps) {
                       Try another locale or clear the current filter set.
                     </p>
                     <div className="mt-5 flex items-center justify-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setFilter({})}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => setFilter({})}>
                         Clear filters
                       </Button>
                     </div>

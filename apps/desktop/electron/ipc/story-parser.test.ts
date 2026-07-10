@@ -57,7 +57,9 @@ describe("story parser host command targets", () => {
       target_nth: 2,
     });
     expect(
-      commandFor('assert selector "div:nth-of-type(12) > .group > .flex > div > .text-muted-foreground"'),
+      commandFor(
+        'assert selector "div:nth-of-type(12) > .group > .flex > div > .text-muted-foreground"',
+      ),
     ).toMatchObject({
       verb: "assert",
       target: {

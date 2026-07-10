@@ -1,15 +1,14 @@
 import type { CSSProperties } from "react";
 import { useEffect, useRef } from "react";
 import { RouterProvider } from "react-router-dom";
-import { Toaster } from "sonner";
-import { toast } from "sonner";
+import { Toaster, toast } from "sonner";
 
 import { PanicModal } from "@/components/panic-modal";
 import { RecordingIndicator } from "@/components/recording-indicator";
-import { router } from "@/routes";
-import { checkUpdate } from "@/ipc/updater";
-import { fetchProjects } from "@/ipc/projects";
 import { filterAndSort } from "@/features/dashboard/project-utils";
+import { fetchProjects } from "@/ipc/projects";
+import { checkUpdate } from "@/ipc/updater";
+import { router } from "@/routes";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { useDashboardStore } from "@/state/projects";
 

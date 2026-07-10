@@ -33,11 +33,7 @@ import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-edit
 import { ensureAllStepIds, formatEditableStory } from "@/features/editor/story-ui-model";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
 import { parseStory, type Story } from "@/ipc/parse";
-import {
-  fetchProjectFolder,
-  type ProjectFolderInfo,
-  useProjectRecordings,
-} from "@/ipc/projects";
+import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";

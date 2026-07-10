@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { WatchViewer } from "@/components/watch-viewer";
 import { prisma } from "@/lib/prisma";
 import { createPresignedGetUrl, R2_BUCKET } from "@/lib/r2";
-import { WatchViewer } from "@/components/watch-viewer";
 
 interface WatchPageProps {
   params: Promise<{ slug: string }>;
@@ -41,9 +41,7 @@ async function getVideo(slug: string) {
  * Generate metadata for the watch page.
  * Private videos get noindex/nofollow; public videos get full SEO tags.
  */
-export async function generateMetadata({
-  params,
-}: WatchPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: WatchPageProps): Promise<Metadata> {
   const { slug } = await params;
   const video = await getVideo(slug);
 

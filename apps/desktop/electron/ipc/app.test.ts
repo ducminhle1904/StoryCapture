@@ -44,8 +44,6 @@ describe("app IPC handlers", () => {
   });
 
   it("throws the existing panic error", () => {
-    expect(() => appHandlers.trigger_panic()).toThrow(
-      "trigger_panic requested",
-    );
+    expect(() => appHandlers.trigger_panic()).toThrow("trigger_panic requested");
   });
 });

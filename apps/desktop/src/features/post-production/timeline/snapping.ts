@@ -21,11 +21,7 @@ export const SNAP_THRESHOLD_PX = 10;
  * within 10 px (converted to ms via `pxPerMs`). Returns the (possibly
  * snapped) value in milliseconds.
  */
-export function snapX(
-  candidateMs: number,
-  targets: readonly number[],
-  pxPerMs: number,
-): number {
+export function snapX(candidateMs: number, targets: readonly number[], pxPerMs: number): number {
   const thresholdMs = SNAP_THRESHOLD_PX / Math.max(pxPerMs, Number.EPSILON);
   return snapToNearest(candidateMs, targets, thresholdMs);
 }

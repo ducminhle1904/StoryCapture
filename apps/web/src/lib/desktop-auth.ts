@@ -1,9 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { verifyDesktopToken } from "@/lib/jwt";
 
-type AuthResult =
-  | { ok: true; userId: string }
-  | { ok: false; response: NextResponse };
+type AuthResult = { ok: true; userId: string } | { ok: false; response: NextResponse };
 
 /**
  * Validate desktop JWT from the Authorization header.

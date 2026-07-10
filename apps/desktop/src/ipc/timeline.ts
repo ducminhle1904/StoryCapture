@@ -19,15 +19,10 @@ export const TIMELINE_KEYS = {
   load: (storyId: string) => ["timeline", storyId] as const,
 };
 
-export async function timelineLoad(
-  storyId: string,
-): Promise<TimelineState | null> {
+export async function timelineLoad(storyId: string): Promise<TimelineState | null> {
   return invoke<TimelineState | null>("timeline_load", { storyId });
 }
 
-export async function timelineSave(
-  storyId: string,
-  layoutJson: string,
-): Promise<void> {
+export async function timelineSave(storyId: string, layoutJson: string): Promise<void> {
   await invoke<void>("timeline_save", { storyId, layoutJson });
 }

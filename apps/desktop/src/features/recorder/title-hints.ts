@@ -4,13 +4,12 @@
 import { BROWSER_PRESETS } from "@storycapture/shared-types";
 
 /** Canonical preset-key to title-hint map. */
-export const BROWSER_TITLE_HINTS: Readonly<Record<string, string>> =
-  Object.fromEntries(BROWSER_PRESETS.map((p) => [p.id, p.title]));
+export const BROWSER_TITLE_HINTS: Readonly<Record<string, string>> = Object.fromEntries(
+  BROWSER_PRESETS.map((p) => [p.id, p.title]),
+);
 
 /** Safe lookup for raw preset keys or exec paths. */
-export function titleHintFor(
-  preset: string | null | undefined,
-): string | undefined {
+export function titleHintFor(preset: string | null | undefined): string | undefined {
   if (!preset) return undefined;
   const lower = preset.toLowerCase();
 
@@ -19,7 +18,7 @@ export function titleHintFor(
   if (direct) return direct.title;
 
   // Exec-path basename heuristic.
-  const basename = lower.split(/[\/\\]/).pop() ?? "";
+  const basename = lower.split(/[/\\]/).pop() ?? "";
   if (!basename) return undefined;
   for (const p of BROWSER_PRESETS) {
     if (p.basenames.some((b) => basename.includes(b))) return p.title;

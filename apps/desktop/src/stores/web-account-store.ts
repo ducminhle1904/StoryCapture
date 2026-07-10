@@ -5,9 +5,9 @@
  * retrieved from the OS keychain via Tauri commands.
  */
 
-import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
 import type { WebAccountInfo } from "@storycapture/shared-types";
+import { invoke } from "@tauri-apps/api/core";
+import { create } from "zustand";
 
 export interface WebAccountStore {
   account: WebAccountInfo | null;

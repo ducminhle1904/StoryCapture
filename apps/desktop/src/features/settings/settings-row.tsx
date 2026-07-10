@@ -23,9 +23,7 @@ export function SettingsRow({ label, hint, control, last }: SettingsRowProps) {
       <div>
         <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
         {hint && (
-          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 2 }}>
-            {hint}
-          </div>
+          <div style={{ fontSize: 11, color: "var(--sc-text-4)", marginTop: 2 }}>{hint}</div>
         )}
       </div>
       <div>{control}</div>

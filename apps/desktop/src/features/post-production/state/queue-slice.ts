@@ -21,9 +21,7 @@ export interface QueueSlice {
   clearQueue: () => void;
 }
 
-export const createQueueSlice: StateCreator<QueueSlice, [], [], QueueSlice> = (
-  set,
-) => ({
+export const createQueueSlice: StateCreator<QueueSlice, [], [], QueueSlice> = (set) => ({
   activeJobs: {},
   progressByJobId: {},
 
@@ -32,15 +30,13 @@ export const createQueueSlice: StateCreator<QueueSlice, [], [], QueueSlice> = (
     for (const j of jobs) next[j.id] = j;
     set({ activeJobs: next });
   },
-  upsertJob: (job) =>
-    set((s) => ({ activeJobs: { ...s.activeJobs, [job.id]: job } })),
+  upsertJob: (job) => set((s) => ({ activeJobs: { ...s.activeJobs, [job.id]: job } })),
   removeJob: (jobId) =>
     set((s) => {
       const { [jobId]: _, ...rest } = s.activeJobs;
       const { [jobId]: __, ...restProg } = s.progressByJobId;
       return { activeJobs: rest, progressByJobId: restProg };
     }),
-  applyProgress: (p) =>
-    set((s) => ({ progressByJobId: { ...s.progressByJobId, [p.job_id]: p } })),
+  applyProgress: (p) => set((s) => ({ progressByJobId: { ...s.progressByJobId, [p.job_id]: p } })),
   clearQueue: () => set({ activeJobs: {}, progressByJobId: {} }),
 });

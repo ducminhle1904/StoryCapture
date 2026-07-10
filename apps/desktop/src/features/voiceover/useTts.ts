@@ -66,9 +66,7 @@ export function useTts(projectId: string) {
       "preview",
       "This is a sample narration.",
       preset,
-      preset.provider === "elevenlabs"
-        ? "eleven_multilingual_v2"
-        : "tts-1",
+      preset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
     );
     const audio = new Audio(result.file_path);
     audio.onerror = () => {

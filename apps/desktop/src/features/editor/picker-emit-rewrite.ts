@@ -35,13 +35,11 @@ const NTH_RE = /^nth\s+(\d+)\b\s*/;
 
 export function parseLine(text: string): ParsedLine {
   const m = LINE_RE.exec(text);
-  if (!m || !m.groups) {
+  if (!m?.groups) {
     return { indent: "", verb: null, trailing: "", hasTargetShape: false };
   }
   const verb = m.groups.verb as string;
-  const known = (TARGET_VERBS as readonly string[]).includes(verb)
-    ? (verb as TargetVerb)
-    : null;
+  const known = (TARGET_VERBS as readonly string[]).includes(verb) ? (verb as TargetVerb) : null;
   // `nth N` always sits BEFORE any other tail modifier — peel it off the
   // trailing slice so callers see a clean modifier ("timeout 5s", `with "x"`,
   // etc.) and surface the integer separately.

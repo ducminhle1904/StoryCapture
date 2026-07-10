@@ -1,8 +1,7 @@
 import { forwardRef, useCallback, useEffect } from "react";
 import { create } from "zustand";
-
-import { BitratePreview } from "./bitrate-preview";
 import type { ValidationResult } from "./bitrate";
+import { BitratePreview } from "./bitrate-preview";
 import {
   LABEL_FIT,
   LABEL_FPS,

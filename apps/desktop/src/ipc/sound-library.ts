@@ -26,8 +26,6 @@ export const SOUND_LIBRARY_KEYS = {
   list: (category: SoundCategory) => ["sound-library", category] as const,
 };
 
-export async function soundLibraryList(
-  category: SoundCategory,
-): Promise<SoundLibraryEntry[]> {
+export async function soundLibraryList(category: SoundCategory): Promise<SoundLibraryEntry[]> {
   return invoke<SoundLibraryEntry[]>("sound_library_list", { category });
 }

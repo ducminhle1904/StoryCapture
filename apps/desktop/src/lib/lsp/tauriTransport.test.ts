@@ -4,7 +4,7 @@
  * Mocks `@tauri-apps/api/core` to simulate the Tauri IPC layer.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock the Tauri API
@@ -118,7 +118,7 @@ describe("TauriLspTransport", () => {
     // Simulate a server notification via the captured channel handler
     expect(capturedChannelOnMessage).not.toBeNull();
 
-    capturedChannelOnMessage!({
+    capturedChannelOnMessage?.({
       method: "textDocument/publishDiagnostics",
       params_json: JSON.stringify({
         uri: "file:///test.story",
@@ -136,9 +136,7 @@ describe("TauriLspTransport", () => {
     });
 
     expect(receivedNotifications).toHaveLength(1);
-    expect(receivedNotifications[0].method).toBe(
-      "textDocument/publishDiagnostics",
-    );
+    expect(receivedNotifications[0].method).toBe("textDocument/publishDiagnostics");
     const params = receivedNotifications[0].params as {
       uri: string;
       diagnostics: Array<{ message: string }>;
@@ -162,9 +160,7 @@ describe("TauriLspTransport", () => {
 
     const transport = createTauriLspTransport("file:///test.story");
 
-    await expect(
-      transport.sendRequest("badMethod", {}),
-    ).rejects.toThrow("Invalid Request");
+    await expect(transport.sendRequest("badMethod", {})).rejects.toThrow("Invalid Request");
 
     transport.dispose();
   });
@@ -209,14 +205,14 @@ describe("TauriLspTransport", () => {
     // Trigger to set up channel
     await transport.sendRequest("initialize", { capabilities: {} });
 
-    capturedChannelOnMessage!({
+    capturedChannelOnMessage?.({
       method: "first",
       params_json: "{}",
     });
 
     unsub();
 
-    capturedChannelOnMessage!({
+    capturedChannelOnMessage?.({
       method: "second",
       params_json: "{}",
     });
@@ -231,8 +227,6 @@ describe("TauriLspTransport", () => {
     const transport = createTauriLspTransport("file:///test.story");
     transport.dispose();
 
-    await expect(
-      transport.sendRequest("initialize", {}),
-    ).rejects.toThrow("Transport disposed");
+    await expect(transport.sendRequest("initialize", {})).rejects.toThrow("Transport disposed");
   });
 });

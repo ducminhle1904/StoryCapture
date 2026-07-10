@@ -40,10 +40,7 @@ export interface NlStore {
   endStream: () => void;
   setCards: (cards: DiffCard[]) => void;
   clearCardsForTask: (taskId: string) => void;
-  updateCardStatus: (
-    stepId: string,
-    status: DiffCard["status"],
-  ) => void;
+  updateCardStatus: (stepId: string, status: DiffCard["status"]) => void;
   setError: (e: NlStore["error"]) => void;
   addMessage: (msg: ChatMessage) => void;
 }
@@ -56,12 +53,8 @@ function loadPersistedPanel(): { panelWidth: number; panelCollapsed: boolean } {
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        panelWidth:
-          typeof parsed.panelWidth === "number" ? parsed.panelWidth : 420,
-        panelCollapsed:
-          typeof parsed.panelCollapsed === "boolean"
-            ? parsed.panelCollapsed
-            : false,
+        panelWidth: typeof parsed.panelWidth === "number" ? parsed.panelWidth : 420,
+        panelCollapsed: typeof parsed.panelCollapsed === "boolean" ? parsed.panelCollapsed : false,
       };
     }
   } catch {
@@ -115,7 +108,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
 
   endStream: () => {
     const s = get().streaming;
-    if (s && s.text) {
+    if (s?.text) {
       const msg: ChatMessage = {
         id: s.taskId,
         role: "assistant",
@@ -141,9 +134,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
 
   updateCardStatus: (stepId: string, status: DiffCard["status"]) => {
     set((state) => ({
-      pendingCards: state.pendingCards.map((c) =>
-        c.stepId === stepId ? { ...c, status } : c,
-      ),
+      pendingCards: state.pendingCards.map((c) => (c.stepId === stepId ? { ...c, status } : c)),
     }));
   },
 
@@ -158,9 +149,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
       const MAX_MESSAGES = 200;
       return {
         messages:
-          updated.length > MAX_MESSAGES
-            ? updated.slice(updated.length - MAX_MESSAGES)
-            : updated,
+          updated.length > MAX_MESSAGES ? updated.slice(updated.length - MAX_MESSAGES) : updated,
       };
     });
   },

@@ -150,7 +150,7 @@ describe("<LivePreview />", () => {
 
     // Feed a synthetic preview frame.
     await act(async () => {
-      await capturedHandler!({
+      await capturedHandler?.({
         payload: {
           data: "AAAA",
           width: 1,
@@ -406,7 +406,7 @@ describe("<LivePreview />", () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "start_preview_stream") {
         startCalls++;
-        throw { kind: "Automation", message: "blip " + startCalls };
+        throw { kind: "Automation", message: `blip ${startCalls}` };
       }
       if (cmd === "stop_preview_stream") return null;
       throw new Error(`unexpected invoke ${cmd}`);
@@ -467,7 +467,7 @@ describe("<LivePreview />", () => {
     expect(capturedHandler).not.toBeNull();
 
     await act(async () => {
-      await capturedHandler!({
+      await capturedHandler?.({
         payload: { data: "AAAA", width: 1, height: 1, timestamp: 1 },
       });
     });
@@ -475,7 +475,7 @@ describe("<LivePreview />", () => {
 
     if (pendingRaf) {
       await act(async () => {
-        pendingRaf!(0);
+        pendingRaf?.(0);
       });
     }
     rafSpy.mockRestore();
@@ -623,12 +623,12 @@ describe("<LivePreview />", () => {
     expect(capturedHandler).not.toBeNull();
 
     await act(async () => {
-      await capturedHandler!({
+      await capturedHandler?.({
         payload: { data: "AAAA", width: 1, height: 1, timestamp: 1 },
       });
     });
     await act(async () => {
-      await capturedHandler!({
+      await capturedHandler?.({
         payload: { data: "BBBB", width: 1, height: 1, timestamp: 2 },
       });
     });

@@ -5,15 +5,10 @@
  * current project happens via the undo-able dispatch path.
  */
 
-import { memo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { memo } from "react";
 
-import {
-  presetList,
-  PRESET_KEYS,
-  type EffectPreset,
-  type PresetScope,
-} from "@/ipc/presets";
+import { type EffectPreset, PRESET_KEYS, type PresetScope, presetList } from "@/ipc/presets";
 import { useEditorStore } from "../state/store";
 
 export interface PresetPickerProps {
@@ -80,17 +75,13 @@ function PresetPickerBase({ scope = "project" }: PresetPickerProps) {
     );
   }
   return (
-    <div
-      role="list"
-      aria-label={`Effect presets (${scope})`}
-      className="grid grid-cols-2 gap-2 p-3"
-    >
+    <ul aria-label={`Effect presets (${scope})`} className="grid grid-cols-2 gap-2 p-3">
       {items.map((p) => (
-        <div role="listitem" key={p.id}>
+        <li key={p.id}>
           <PresetCard preset={p} />
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 

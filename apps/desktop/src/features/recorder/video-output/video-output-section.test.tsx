@@ -3,9 +3,9 @@
  * Resets the shared output-prefs store before each test.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_EXPORT_KNOBS, PRESET_BUNDLES, useOutputPrefsStore } from "@/state/output-prefs";
 
@@ -87,15 +87,11 @@ describe("VideoOutputSection", () => {
   it("changing FPS 60 → 30 from Standard flips activePreset to Custom", async () => {
     const user = userEvent.setup();
     render(<VideoOutputSection captureDims={{ w: 1920, h: 1080 }} />);
-    expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent(
-      "~7.8 Mbps • ~57 MB/min",
-    );
+    expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent("~7.8 Mbps • ~57 MB/min");
     const thirty = screen.getByRole("radio", { name: "30" });
     await user.click(thirty);
     expect(useOutputPrefsStore.getState().activePreset).toBe("Custom");
-    expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent(
-      "~3.9 Mbps • ~28 MB/min",
-    );
+    expect(screen.getByLabelText("Estimated bitrate")).toHaveTextContent("~3.9 Mbps • ~28 MB/min");
   });
 
   it("Quality Standard → Lossless flips activePreset to Lossless", async () => {

@@ -5,23 +5,16 @@
  */
 
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { Globe, Monitor, Smartphone, Tablet } from "lucide-react";
 import { motion } from "motion/react";
-import { Globe, Monitor, Tablet, Smartphone } from "lucide-react";
 import { useState } from "react";
-
-import { useEditorStore, type PreviewViewport } from "@/state/editor";
-import { useSelectorValidation } from "@/features/editor/SelectorValidatorOverlay";
-import { useSimulatorStore } from "@/state/simulator-store";
-import {
-  PickingBanner,
-  PreviewPickerButton,
-} from "@/features/editor/PreviewPickerButton";
 import { useAuthorDriverStore } from "@/features/editor/authorDriverStore";
+import { PickingBanner, PreviewPickerButton } from "@/features/editor/PreviewPickerButton";
+import { useSelectorValidation } from "@/features/editor/SelectorValidatorOverlay";
+import { type PreviewViewport, useEditorStore } from "@/state/editor";
+import { useSimulatorStore } from "@/state/simulator-store";
 
-const VIEWPORT_SIZES: Record<
-  PreviewViewport,
-  { label: string; w: number; h: number }
-> = {
+const VIEWPORT_SIZES: Record<PreviewViewport, { label: string; w: number; h: number }> = {
   desktop: { label: "Desktop", w: 1280, h: 800 },
   tablet: { label: "Tablet", w: 768, h: 1024 },
   mobile: { label: "Mobile", w: 375, h: 667 },
@@ -46,7 +39,7 @@ export function PreviewPanel({
   const currentOrd = useSimulatorStore((s) => s.currentFrameOrdinal);
   const frames = useSimulatorStore((s) => s.frames);
   const activeFrame =
-    runState !== "idle" && currentOrd != null ? frames[currentOrd - 1] ?? null : null;
+    runState !== "idle" && currentOrd != null ? (frames[currentOrd - 1] ?? null) : null;
 
   // Aggregate validator chip counts for the footer's "2G / 1Y / 0R"
   // summary, sourced from the SelectorValidatorOverlay's store.
@@ -101,6 +94,7 @@ export function PreviewPanel({
 
       <div className="flex min-h-0 flex-1 items-center justify-center bg-[var(--color-surface-200)] p-4">
         <div
+          role="img"
           className="relative w-full overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-fg-primary)] shadow-[0_12px_30px_rgba(0,0,0,0.10)]"
           style={{
             aspectRatio: `${size.w} / ${size.h}`,
@@ -134,9 +128,7 @@ export function PreviewPanel({
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-white/40">
               <Globe size={36} aria-hidden="true" />
-              <span className="text-[10px] tracking-wide">
-                Preview will render here
-              </span>
+              <span className="text-[10px] tracking-wide">Preview will render here</span>
             </div>
           )}
         </div>
@@ -152,6 +144,7 @@ export function PreviewPanel({
             <>
               <span className="text-[var(--color-border-default)]">/</span>
               <span
+                role="status"
                 aria-label="Selector validator summary"
                 data-testid="validator-summary"
                 className="flex items-center gap-2"
@@ -184,9 +177,14 @@ export function PreviewPanel({
  * Aggregate the chip-state counts for the preview footer.
  * `total === 0` means the validator hasn't run; the caller hides the chunk.
  */
-function summarizeValidation(entries: Map<number, {
-  status: { status: string } | null;
-}>): { green: number; yellow: number; red: number; grey: number; total: number } {
+function summarizeValidation(
+  entries: Map<
+    number,
+    {
+      status: { status: string } | null;
+    }
+  >,
+): { green: number; yellow: number; red: number; grey: number; total: number } {
   let green = 0;
   let yellow = 0;
   let red = 0;
@@ -275,8 +273,7 @@ export function SimulatorFrameView({
             width: 10,
             height: 10,
             borderRadius: 5,
-            border:
-              "2px solid color-mix(in oklch, var(--color-warning) 70%, transparent)",
+            border: "2px solid color-mix(in oklch, var(--color-warning) 70%, transparent)",
             background: "transparent",
             transform: "translate(-50%, -50%)",
             pointerEvents: "none",
@@ -313,19 +310,17 @@ function ViewportButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      role="radio"
-      aria-checked={active}
+    <label
       aria-label={`Preview as ${label}`}
-      onClick={onClick}
       className={`inline-flex items-center rounded-[var(--radius-xs)] px-1.5 py-1 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-focus-ring)] ${
         active
           ? "bg-[var(--color-surface-100)] text-[var(--color-fg-primary)] shadow-sm"
           : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)]"
       }`}
     >
+      <input type="radio" checked={active} onChange={onClick} className="sr-only" />
       {icon}
       <span className="sr-only">{label}</span>
-    </button>
+    </label>
   );
 }

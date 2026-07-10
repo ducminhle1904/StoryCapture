@@ -12,11 +12,11 @@
  *     cycle (minimize in-memory image residency).
  */
 
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
+import { useEffect, useState } from "react";
 
-import { captureTargetKey, captureTargetThumbnail, type CaptureTarget } from "@/ipc/capture";
+import { type CaptureTarget, captureTargetKey, captureTargetThumbnail } from "@/ipc/capture";
 
 export interface TargetThumbnailProps {
   target: CaptureTarget | null;
@@ -80,6 +80,7 @@ export function TargetThumbnail({
 
   return (
     <div
+      role="img"
       data-testid="target-thumbnail"
       className={
         className ??

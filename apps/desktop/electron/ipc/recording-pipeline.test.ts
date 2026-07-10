@@ -32,9 +32,7 @@ describe("recording pipeline helpers", () => {
   });
 
   it("builds raw-video stdin args for the streaming author preview path", () => {
-    expect(
-      recordingRawVideoInputArgs({ width: 1920, height: 1080, fps: 60 }),
-    ).toEqual([
+    expect(recordingRawVideoInputArgs({ width: 1920, height: 1080, fps: 60 })).toEqual([
       "-f",
       "rawvideo",
       "-pix_fmt",
@@ -101,18 +99,8 @@ describe("recording pipeline helpers", () => {
   });
 
   it("maps quality presets to explicit x264 settings", () => {
-    expect(recordingQualityArgs("high")).toEqual([
-      "-preset",
-      "veryfast",
-      "-crf",
-      "18",
-    ]);
-    expect(recordingQualityArgs("lossless")).toEqual([
-      "-preset",
-      "veryfast",
-      "-crf",
-      "0",
-    ]);
+    expect(recordingQualityArgs("high")).toEqual(["-preset", "veryfast", "-crf", "18"]);
+    expect(recordingQualityArgs("lossless")).toEqual(["-preset", "veryfast", "-crf", "0"]);
   });
 
   it("reports low capture cadence without failing healthy cadence", () => {

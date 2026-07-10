@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { type NextRequest, NextResponse } from "next/server";
 import { mintDesktopToken } from "@/lib/jwt";
+import { prisma } from "@/lib/prisma";
 
 /**
  * Desktop token exchange endpoint.
@@ -25,10 +25,7 @@ export async function POST(request: NextRequest) {
     const { sessionToken } = body;
 
     if (!sessionToken || typeof sessionToken !== "string") {
-      return NextResponse.json(
-        { error: "Missing or invalid sessionToken" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing or invalid sessionToken" }, { status: 400 });
     }
 
     // Validate session exists in database and hasn't expired
@@ -38,17 +35,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (!session) {
-      return NextResponse.json(
-        { error: "Invalid session token" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid session token" }, { status: 401 });
     }
 
     if (session.expires < new Date()) {
-      return NextResponse.json(
-        { error: "Session has expired" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Session has expired" }, { status: 401 });
     }
 
     // Mint a long-lived desktop API token
@@ -61,9 +52,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Desktop token exchange error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

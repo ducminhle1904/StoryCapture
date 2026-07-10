@@ -2,12 +2,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  createTRPCClient,
-  httpBatchLink,
-  splitLink,
-  httpSubscriptionLink,
-} from "@trpc/client";
+import { createTRPCClient, httpBatchLink, httpSubscriptionLink, splitLink } from "@trpc/client";
 import { createTRPCContext } from "@trpc/tanstack-react-query";
 import { useState } from "react";
 import superjson from "superjson";

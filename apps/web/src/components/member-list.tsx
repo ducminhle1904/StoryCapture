@@ -1,8 +1,9 @@
 "use client";
 
-import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import { useState } from "react";
+import { useTRPC } from "@/trpc/client";
 
 type Member = {
   id: string;
@@ -72,9 +73,12 @@ export function MemberList({
         >
           <div className="flex items-center gap-3">
             {member.user.image ? (
-              <img
+              <Image
                 src={member.user.image}
                 alt={member.user.name ?? "Member avatar"}
+                width={36}
+                height={36}
+                unoptimized
                 className="h-9 w-9 rounded-full"
               />
             ) : (
@@ -118,43 +122,38 @@ export function MemberList({
               </span>
             )}
 
-            {currentUserRole === "OWNER" &&
-              member.userId !== currentUserId && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditingUserId(
-                        editingUserId === member.userId
-                          ? null
-                          : member.userId,
+            {currentUserRole === "OWNER" && member.userId !== currentUserId && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingUserId(editingUserId === member.userId ? null : member.userId)
+                  }
+                  className="rounded-lg px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+                >
+                  {editingUserId === member.userId ? "Done" : "Edit"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Remove ${member.user.name ?? member.user.email} from this workspace?`,
                       )
+                    ) {
+                      removeMemberMutation.mutate({
+                        workspaceId,
+                        userId: member.userId,
+                      });
                     }
-                    className="rounded-lg px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-                  >
-                    {editingUserId === member.userId ? "Done" : "Edit"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Remove ${member.user.name ?? member.user.email} from this workspace?`,
-                        )
-                      ) {
-                        removeMemberMutation.mutate({
-                          workspaceId,
-                          userId: member.userId,
-                        });
-                      }
-                    }}
-                    disabled={removeMemberMutation.isPending}
-                    className="rounded-lg px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-950 hover:text-red-300"
-                  >
-                    Remove
-                  </button>
-                </>
-              )}
+                  }}
+                  disabled={removeMemberMutation.isPending}
+                  className="rounded-lg px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-950 hover:text-red-300"
+                >
+                  Remove
+                </button>
+              </>
+            )}
           </div>
         </div>
       ))}

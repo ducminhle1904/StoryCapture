@@ -139,19 +139,41 @@ describe("timeline-slice", () => {
       background: { kind: "transparent" },
       tracks: {
         video: [
-          { id: "video-a", trackId: "video", startMs: 0, durationMs: 900, sourcePath: "/tmp/a.mp4" },
+          {
+            id: "video-a",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 900,
+            sourcePath: "/tmp/a.mp4",
+          },
         ],
         cursor: [],
         zoom: [],
         sound: [],
         annotations: [
-          { id: "note", trackId: "annotations", startMs: 50, durationMs: 100, text: "keep", pos: { x: 0.5, y: 0.5 }, sizePt: 16 },
+          {
+            id: "note",
+            trackId: "annotations",
+            startMs: 50,
+            durationMs: 100,
+            text: "keep",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 16,
+          },
         ],
       },
     });
     const current = {
       video: [
-        { id: "video-a", trackId: "video" as const, startMs: 0, durationMs: 1_000, sourcePath: "/tmp/a.mp4", syncGroupId: "g", sourceRevision: "new" },
+        {
+          id: "video-a",
+          trackId: "video" as const,
+          startMs: 0,
+          durationMs: 1_000,
+          sourcePath: "/tmp/a.mp4",
+          syncGroupId: "g",
+          sourceRevision: "new",
+        },
       ],
       cursor: [],
       zoom: [],

@@ -17,9 +17,7 @@ export const appHandlers = {
     pid: process.pid,
   }),
   parse_story: (args) =>
-    parseStorySource(
-      String((args as { source?: string } | undefined)?.source ?? ""),
-    ),
+    parseStorySource(String((args as { source?: string } | undefined)?.source ?? "")),
   trigger_panic: () => {
     throw new Error("trigger_panic requested");
   },

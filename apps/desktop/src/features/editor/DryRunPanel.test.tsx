@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DryRunPanel } from "./DryRunPanel";
+import { useDryRunStore } from "./dryRunStore";
 import { SelectorFallbackPopover } from "./SelectorFallbackPopover";
 import type { StoryStep } from "./useDryRun";
-import { useDryRunStore } from "./dryRunStore";
 
 const { mockInvoke, MockChannel } = vi.hoisted(() => {
   const mockInvoke = vi.fn().mockResolvedValue("task-1");
@@ -27,7 +27,13 @@ vi.mock("@tauri-apps/api/core", () => ({
 const sampleSteps: StoryStep[] = [
   { id: "s1", verb: "navigate", args: { url: "https://example.com" }, label: "Open page", line: 1 },
   { id: "s2", verb: "click", args: { selector: "#btn" }, label: "Click button", line: 2 },
-  { id: "s3", verb: "type", args: { selector: "#input", text: "hello" }, label: "Type text", line: 3 },
+  {
+    id: "s3",
+    verb: "type",
+    args: { selector: "#input", text: "hello" },
+    label: "Type text",
+    line: 3,
+  },
 ];
 
 describe("DryRunPanel", () => {
@@ -45,14 +51,10 @@ describe("DryRunPanel", () => {
   it("renders empty state copy when summary === null and panelOpen", () => {
     const onStart = vi.fn();
     const onCancel = vi.fn();
-    render(
-      <DryRunPanel steps={sampleSteps} onStart={onStart} onCancel={onCancel} />,
-    );
+    render(<DryRunPanel steps={sampleSteps} onStart={onStart} onCancel={onCancel} />);
 
     expect(screen.getByTestId("dryrun-panel")).toBeTruthy();
-    expect(
-      screen.getByText(/Ch\u01b0a c\u00f3 l\u1ea7n ch\u1ea1y th\u1eed n\u00e0o/),
-    ).toBeTruthy();
+    expect(screen.getByText(/Ch\u01b0a c\u00f3 l\u1ea7n ch\u1ea1y th\u1eed n\u00e0o/)).toBeTruthy();
   });
 
   it("renders step rows with status badges during running state", () => {
@@ -64,9 +66,7 @@ describe("DryRunPanel", () => {
 
     const onStart = vi.fn();
     const onCancel = vi.fn();
-    render(
-      <DryRunPanel steps={sampleSteps} onStart={onStart} onCancel={onCancel} />,
-    );
+    render(<DryRunPanel steps={sampleSteps} onStart={onStart} onCancel={onCancel} />);
 
     expect(screen.getByTestId("status-badge-s1")).toHaveTextContent("Pass");
     expect(screen.getByTestId("status-badge-s2")).toHaveTextContent("Running");
@@ -76,9 +76,7 @@ describe("DryRunPanel", () => {
   it("clicking 'Chay thu' button calls onStart(steps)", async () => {
     const onStart = vi.fn();
     const onCancel = vi.fn();
-    render(
-      <DryRunPanel steps={sampleSteps} onStart={onStart} onCancel={onCancel} />,
-    );
+    render(<DryRunPanel steps={sampleSteps} onStart={onStart} onCancel={onCancel} />);
 
     const startBtn = screen.getByTestId("dryrun-start-btn");
     expect(startBtn.textContent).toMatch(/Ch\u1ea1y th\u1eed/);
@@ -156,20 +154,11 @@ describe("SelectorFallbackPopover", () => {
       { strategy: "xpath", selector: "//button", succeeded: true, durationMs: 120 },
     ];
     const onUpdate = vi.fn();
-    render(
-      <SelectorFallbackPopover
-        fallbackChain={chain}
-        onUpdateSelector={onUpdate}
-      />,
-    );
+    render(<SelectorFallbackPopover fallbackChain={chain} onUpdateSelector={onUpdate} />);
 
-    expect(
-      screen.getByText(/Selector qu\u00e1 chung/),
-    ).toBeTruthy();
+    expect(screen.getByText(/Selector qu\u00e1 chung/)).toBeTruthy();
 
-    expect(
-      screen.getByText(/strategy 2 th\u1eafng trong 120ms/),
-    ).toBeTruthy();
+    expect(screen.getByText(/strategy 2 th\u1eafng trong 120ms/)).toBeTruthy();
 
     const ctaBtn = screen.getByText(/C\u1eadp nh\u1eadt selector/);
     expect(ctaBtn).toBeTruthy();

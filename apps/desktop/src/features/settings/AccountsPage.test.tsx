@@ -10,9 +10,9 @@
  * 6. Password input type prevents plain-text display.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountsPage } from "./AccountsPage";
 
 // Mock Tauri invoke
@@ -147,9 +147,7 @@ describe("AccountsPage", () => {
     render(<AccountsPage />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Stored in OS keychain/)
-      ).toBeTruthy();
+      expect(screen.getByText(/Stored in OS keychain/)).toBeTruthy();
     });
 
     // aria-describedby should link to docs

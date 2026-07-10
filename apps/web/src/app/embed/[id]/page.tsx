@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
+import { EmbedPlayer } from "@/components/embed-player";
 import { prisma } from "@/lib/prisma";
 import { createPresignedGetUrl, R2_BUCKET } from "@/lib/r2";
-import { EmbedPlayer } from "@/components/embed-player";
 
 interface EmbedPageProps {
   params: Promise<{ id: string }>;

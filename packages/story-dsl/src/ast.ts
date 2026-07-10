@@ -6,11 +6,86 @@
  *
  * Serializes to kebab-case (e.g. `Button` → `"button"`).
  */
-export type AriaRole = "button" | "link" | "heading" | "image" | "checkbox" | "radio" | "tab" | "menuitem" | "menu" | "option" | "combobox" | "listbox" | "dialog" | "alert" | "tooltip" | "switch" | "slider" | "row" | "cell" | "navigation" | "main";
+export type AriaRole =
+  | "button"
+  | "link"
+  | "heading"
+  | "image"
+  | "checkbox"
+  | "radio"
+  | "tab"
+  | "menuitem"
+  | "menu"
+  | "option"
+  | "combobox"
+  | "listbox"
+  | "dialog"
+  | "alert"
+  | "tooltip"
+  | "switch"
+  | "slider"
+  | "row"
+  | "cell"
+  | "navigation"
+  | "main";
 
-export type Command = { "verb": "navigate", url: string, span: Span, step_id?: string, } | { "verb": "click", target: SelectorOrText, target_nth?: number, span: Span, step_id?: string, } | { "verb": "type", target: SelectorOrText, target_nth?: number, text: string, span: Span, step_id?: string, } | { "verb": "scroll", direction: ScrollDir, amount: number | null, span: Span, step_id?: string, } | { "verb": "hover", target: SelectorOrText, target_nth?: number, span: Span, step_id?: string, } | { "verb": "drag", from: SelectorOrText, from_nth?: number, to: SelectorOrText, to_nth?: number, span: Span, step_id?: string, } | { "verb": "select", target: SelectorOrText, target_nth?: number, value: string, span: Span, step_id?: string, } | { "verb": "upload", target: SelectorOrText, target_nth?: number, path: string, span: Span, step_id?: string, } | { "verb": "wait", duration_ms: bigint, span: Span, step_id?: string, } | { "verb": "wait-for", target: SelectorOrText, target_nth?: number, timeout_ms: bigint | null, span: Span, step_id?: string, } | { "verb": "assert", target: SelectorOrText, target_nth?: number, span: Span, step_id?: string, } | { "verb": "screenshot", name: string, span: Span, step_id?: string, } | { "verb": "pause", span: Span, step_id?: string, };
+export type Command =
+  | { verb: "navigate"; url: string; span: Span; step_id?: string }
+  | { verb: "click"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string }
+  | {
+      verb: "type";
+      target: SelectorOrText;
+      target_nth?: number;
+      text: string;
+      span: Span;
+      step_id?: string;
+    }
+  | { verb: "scroll"; direction: ScrollDir; amount: number | null; span: Span; step_id?: string }
+  | { verb: "hover"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string }
+  | {
+      verb: "drag";
+      from: SelectorOrText;
+      from_nth?: number;
+      to: SelectorOrText;
+      to_nth?: number;
+      span: Span;
+      step_id?: string;
+    }
+  | {
+      verb: "select";
+      target: SelectorOrText;
+      target_nth?: number;
+      value: string;
+      span: Span;
+      step_id?: string;
+    }
+  | {
+      verb: "upload";
+      target: SelectorOrText;
+      target_nth?: number;
+      path: string;
+      span: Span;
+      step_id?: string;
+    }
+  | { verb: "wait"; duration_ms: bigint; span: Span; step_id?: string }
+  | {
+      verb: "wait-for";
+      target: SelectorOrText;
+      target_nth?: number;
+      timeout_ms: bigint | null;
+      span: Span;
+      step_id?: string;
+    }
+  | { verb: "assert"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string }
+  | { verb: "screenshot"; name: string; span: Span; step_id?: string }
+  | { verb: "pause"; span: Span; step_id?: string };
 
-export type Diagnostic = { severity: Severity, message: string, span: Span, suggestion: string | null, };
+export type Diagnostic = {
+  severity: Severity;
+  message: string;
+  span: Span;
+  suggestion: string | null;
+};
 
 /**
  * Per-command line metadata — originally just source line/column.
@@ -19,32 +94,45 @@ export type Diagnostic = { severity: Severity, message: string, span: Span, sugg
  * comment. Grammar extension is ADDITIVE; legacy lines parse with
  * `step_id == None`.
  */
-export type LineMeta = { line: number, column: number, step_id?: string, };
+export type LineMeta = { line: number; column: number; step_id?: string };
 
-export type Meta = { app: string | null, viewport: Viewport | null, theme: Theme | null, speed: number | null, span: Span, };
+export type Meta = {
+  app: string | null;
+  viewport: Viewport | null;
+  theme: Theme | null;
+  speed: number | null;
+  span: Span;
+};
 
 /**
  * Result of parsing `.story` source.
  *
  * `ast` may still be present when diagnostics were recovered.
  */
-export type ParseResult = { ast: Story | null, diagnostics: Array<Diagnostic>, };
+export type ParseResult = { ast: Story | null; diagnostics: Array<Diagnostic> };
 
-export type Scene = { name: string, commands: Array<Command>, span: Span, };
+export type Scene = { name: string; commands: Array<Command>; span: Span };
 
 export type ScrollDir = "up" | "down" | "left" | "right";
 
-export type SelectorOrText = { "kind": "text", "value": string } | { "kind": "selector", "value": string } | { "kind": "test_id", "value": string } | { "kind": "aria", "value": string } | { "kind": "role", "value": { role: AriaRole, name: string, } } | { "kind": "label", "value": string } | { "kind": "text_exact", "value": string };
+export type SelectorOrText =
+  | { kind: "text"; value: string }
+  | { kind: "selector"; value: string }
+  | { kind: "test_id"; value: string }
+  | { kind: "aria"; value: string }
+  | { kind: "role"; value: { role: AriaRole; name: string } }
+  | { kind: "label"; value: string }
+  | { kind: "text_exact"; value: string };
 
 export type Severity = "error" | "warning" | "info";
 
 /**
  * Source span with byte offsets and the 1-indexed start position.
  */
-export type Span = { start: number, end: number, line: number, col: number, };
+export type Span = { start: number; end: number; line: number; col: number };
 
-export type Story = { name: string | null, meta: Meta, scenes: Array<Scene>, span: Span, };
+export type Story = { name: string | null; meta: Meta; scenes: Array<Scene>; span: Span };
 
 export type Theme = "light" | "dark" | "auto";
 
-export type Viewport = { width: number, height: number, };
+export type Viewport = { width: number; height: number };

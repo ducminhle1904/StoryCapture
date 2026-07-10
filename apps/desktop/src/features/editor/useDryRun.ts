@@ -6,9 +6,9 @@
  * Tauri Channel into the Zustand dryRunStore.
  */
 
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
-import { invoke, Channel } from "@tauri-apps/api/core";
-import { useDryRunStore, type DryRunEvent } from "./dryRunStore";
+import { type DryRunEvent, useDryRunStore } from "./dryRunStore";
 
 export interface StoryStep {
   id: string;

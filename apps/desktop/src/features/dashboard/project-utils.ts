@@ -8,16 +8,11 @@ export function filterAndSort(
   sortMode: SortMode = "recent",
 ): Project[] {
   const q = query.trim().toLowerCase();
-  const out = q
-    ? projects.filter((p) => p.name.toLowerCase().includes(q))
-    : [...projects];
+  const out = q ? projects.filter((p) => p.name.toLowerCase().includes(q)) : [...projects];
   if (sortMode === "name") {
     out.sort((a, b) => a.name.localeCompare(b.name));
   } else {
-    out.sort(
-      (a, b) =>
-        (b.last_opened_at ?? b.created_at) - (a.last_opened_at ?? a.created_at),
-    );
+    out.sort((a, b) => (b.last_opened_at ?? b.created_at) - (a.last_opened_at ?? a.created_at));
   }
   return out;
 }

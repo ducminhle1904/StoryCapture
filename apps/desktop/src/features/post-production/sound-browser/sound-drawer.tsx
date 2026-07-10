@@ -4,15 +4,11 @@
  * renders two category tabs and a scrollable list of `SoundRow`s.
  */
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
+import { useState } from "react";
 
-import {
-  soundLibraryList,
-  SOUND_LIBRARY_KEYS,
-  type SoundCategory,
-} from "@/ipc/sound-library";
+import { SOUND_LIBRARY_KEYS, type SoundCategory, soundLibraryList } from "@/ipc/sound-library";
 import { useEditorStore } from "../state/store";
 import { SoundRow } from "./sound-row";
 
@@ -49,9 +45,7 @@ export function SoundDrawer() {
         className="fixed inset-y-0 left-0 z-40 flex w-96 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg)] shadow-2xl"
       >
         <header className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-          <h2 className="text-sm font-semibold text-[var(--color-fg)]">
-            Sound library
-          </h2>
+          <h2 className="text-sm font-semibold text-[var(--color-fg)]">Sound library</h2>
           <button
             type="button"
             aria-label="Close sound library"
@@ -86,8 +80,7 @@ export function SoundDrawer() {
             );
           })}
         </div>
-        <div
-          role="list"
+        <ul
           aria-label={`${cat.toUpperCase()} entries`}
           className="flex-1 space-y-2 overflow-auto p-3"
         >
@@ -104,11 +97,9 @@ export function SoundDrawer() {
               No entries in this category yet.
             </div>
           ) : (
-            (query.data ?? []).map((entry) => (
-              <SoundRow key={entry.id} entry={entry} />
-            ))
+            (query.data ?? []).map((entry) => <SoundRow key={entry.id} entry={entry} />)
           )}
-        </div>
+        </ul>
       </aside>
     </>
   );

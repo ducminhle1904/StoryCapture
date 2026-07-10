@@ -20,10 +20,7 @@ export interface TokenBreakdownPopoverProps {
   className?: string;
 }
 
-export function TokenBreakdownPopover({
-  onClose,
-  className,
-}: TokenBreakdownPopoverProps) {
+export function TokenBreakdownPopover({ onClose, className }: TokenBreakdownPopoverProps) {
   // TODO: Wire this to the session metrics command.
 
   return (
@@ -59,10 +56,7 @@ export function TokenBreakdownPopover({
           </thead>
           <tbody>
             <tr>
-              <td
-                colSpan={5}
-                className="py-4 text-center text-[var(--color-fg-muted)]"
-              >
+              <td colSpan={5} className="py-4 text-center text-[var(--color-fg-muted)]">
                 {"Ch\u01b0a c\u00f3 d\u1eef li\u1ec7u"}
               </td>
             </tr>

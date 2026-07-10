@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
@@ -38,7 +38,7 @@ describe("<PreviewLocationBar />", () => {
     const display = screen.getByTestId("preview-url-display");
     expect(display).toHaveTextContent("https://example.com/path");
     expect(display.getAttribute("title")).toBe("https://example.com/path");
-    expect(display.getAttribute("aria-readonly")).toBe("true");
+    expect(display.tagName).toBe("OUTPUT");
   });
 
   it("placeholder when url is null", () => {
@@ -49,13 +49,7 @@ describe("<PreviewLocationBar />", () => {
   });
 
   it("disables Back/Forward when canGo* is false", () => {
-    render(
-      <PreviewLocationBar
-        {...baseProps}
-        canGoBack={false}
-        canGoForward={false}
-      />,
-    );
+    render(<PreviewLocationBar {...baseProps} canGoBack={false} canGoForward={false} />);
     expect(screen.getByLabelText("Back")).toBeDisabled();
     expect(screen.getByLabelText("Forward")).toBeDisabled();
     expect(screen.getByLabelText("Reload")).not.toBeDisabled();
@@ -101,12 +95,8 @@ describe("<PreviewLocationBar />", () => {
 
   it("URL display reflects prop changes", () => {
     const { rerender } = render(<PreviewLocationBar {...baseProps} />);
-    expect(screen.getByTestId("preview-url-display")).toHaveTextContent(
-      "https://example.com/path",
-    );
-    rerender(
-      <PreviewLocationBar {...baseProps} url="https://other.example.org/" />,
-    );
+    expect(screen.getByTestId("preview-url-display")).toHaveTextContent("https://example.com/path");
+    rerender(<PreviewLocationBar {...baseProps} url="https://other.example.org/" />);
     expect(screen.getByTestId("preview-url-display")).toHaveTextContent(
       "https://other.example.org/",
     );

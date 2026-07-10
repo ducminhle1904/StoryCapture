@@ -1,7 +1,7 @@
+import { PrismaAdapter } from "@auth/prisma-adapter";
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -17,10 +17,7 @@ import { prisma } from "@/lib/prisma";
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma) as ReturnType<typeof PrismaAdapter>,
-  providers: [
-    GitHub,
-    Google,
-  ],
+  providers: [GitHub, Google],
   session: {
     strategy: "database",
   },
@@ -33,6 +30,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   events: {
     createUser: async ({ user }) => {
+      if (!user.id) {
+        throw new Error("Cannot create a personal workspace without a user ID.");
+      }
       // Auto-create a personal workspace for every new user
       await prisma.workspace.create({
         data: {
@@ -41,7 +41,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           isPersonal: true,
           members: {
             create: {
-              userId: user.id!,
+              userId: user.id,
               role: "OWNER",
             },
           },

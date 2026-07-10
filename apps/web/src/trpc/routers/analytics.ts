@@ -1,8 +1,8 @@
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 import type { PrismaClient } from "@/generated/prisma";
-import { router, protectedProcedure } from "../init";
-import { DASHBOARD_DAYS, MAX_RETENTION_DAYS } from "@/lib/constants";
+import { DASHBOARD_DAYS } from "@/lib/constants";
+import { protectedProcedure, router } from "../init";
 import { requireWorkspaceMember } from "../lib/guards";
 
 /**
@@ -15,11 +15,7 @@ import { requireWorkspaceMember } from "../lib/guards";
  * Verify that the authenticated user has at least VIEWER role
  * in the workspace that owns the video.
  */
-async function verifyVideoAccess(
-  prisma: PrismaClient,
-  userId: string,
-  videoId: string,
-) {
+async function verifyVideoAccess(prisma: PrismaClient, userId: string, videoId: string) {
   const video = await prisma.video.findUnique({
     where: { id: videoId },
     select: { workspaceId: true },
@@ -37,22 +33,26 @@ async function verifyVideoAccess(
 /**
  * Compute average and median duration from a sorted list of ended events.
  */
-function computeDurationStats(
-  endedEvents: { watchDurationSec: number | null }[],
-): { avgDurationSec: number; medianDurationSec: number } {
+function computeDurationStats(endedEvents: { watchDurationSec: number | null }[]): {
+  avgDurationSec: number;
+  medianDurationSec: number;
+} {
   if (endedEvents.length === 0) {
     return { avgDurationSec: 0, medianDurationSec: 0 };
   }
 
-  const durations = endedEvents.map((e) => e.watchDurationSec!);
-  const avgDurationSec =
-    durations.reduce((sum, d) => sum + d, 0) / durations.length;
+  const durations = endedEvents.flatMap((event) =>
+    event.watchDurationSec === null ? [] : [event.watchDurationSec],
+  );
+  if (durations.length === 0) {
+    return { avgDurationSec: 0, medianDurationSec: 0 };
+  }
+  const avgDurationSec = durations.reduce((sum, d) => sum + d, 0) / durations.length;
 
   const mid = Math.floor(durations.length / 2);
-  const medianDurationSec =
-    durations.length % 2 !== 0
-      ? durations[mid]!
-      : (durations[mid - 1]! + durations[mid]!) / 2;
+  const upper = durations[mid] ?? 0;
+  const lower = durations[mid - 1] ?? upper;
+  const medianDurationSec = durations.length % 2 !== 0 ? upper : (lower + upper) / 2;
 
   return { avgDurationSec, medianDurationSec };
 }
@@ -71,7 +71,7 @@ export const analyticsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      await verifyVideoAccess(ctx.prisma, ctx.user.id!, input.videoId);
+      await verifyVideoAccess(ctx.prisma, ctx.user.id, input.videoId);
 
       const since = new Date();
       since.setDate(since.getDate() - input.days);
@@ -108,8 +108,7 @@ export const analyticsRouter = router({
         orderBy: { watchDurationSec: "asc" },
       });
 
-      const { avgDurationSec, medianDurationSec } =
-        computeDurationStats(endedEvents);
+      const { avgDurationSec, medianDurationSec } = computeDurationStats(endedEvents);
 
       // Scene drop-offs: count scene_enter per scene
       const sceneEnters = await ctx.prisma.viewEvent.groupBy({
@@ -124,14 +123,16 @@ export const analyticsRouter = router({
         orderBy: { currentScene: "asc" },
       });
 
-      const sceneDropoffs = sceneEnters.map((row, idx) => {
-        const nextCount =
-          idx < sceneEnters.length - 1 ? sceneEnters[idx + 1]!._count.id : 0;
-        return {
-          sceneIndex: row.currentScene!,
-          viewers: row._count.id,
-          dropoff: row._count.id - nextCount,
-        };
+      const sceneDropoffs = sceneEnters.flatMap((row, idx) => {
+        if (row.currentScene === null) return [];
+        const nextCount = idx < sceneEnters.length - 1 ? (sceneEnters[idx + 1]?._count.id ?? 0) : 0;
+        return [
+          {
+            sceneIndex: row.currentScene,
+            viewers: row._count.id,
+            dropoff: row._count.id - nextCount,
+          },
+        ];
       });
 
       // Country breakdown
@@ -174,7 +175,7 @@ export const analyticsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      await verifyVideoAccess(ctx.prisma, ctx.user.id!, input.videoId);
+      await verifyVideoAccess(ctx.prisma, ctx.user.id, input.videoId);
 
       const since = new Date();
       since.setDate(since.getDate() - input.days);
@@ -236,10 +237,10 @@ export const analyticsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await verifyVideoAccess(ctx.prisma, ctx.user.id!, input.videoId);
+      await verifyVideoAccess(ctx.prisma, ctx.user.id, input.videoId);
 
-      const dayStart = new Date(input.date + "T00:00:00.000Z");
-      const dayEnd = new Date(input.date + "T23:59:59.999Z");
+      const dayStart = new Date(`${input.date}T00:00:00.000Z`);
+      const dayEnd = new Date(`${input.date}T23:59:59.999Z`);
 
       const where = {
         videoId: input.videoId,
@@ -265,8 +266,7 @@ export const analyticsRouter = router({
         orderBy: { watchDurationSec: "asc" },
       });
 
-      const { avgDurationSec, medianDurationSec } =
-        computeDurationStats(endedEvents);
+      const { avgDurationSec, medianDurationSec } = computeDurationStats(endedEvents);
 
       // Country breakdown
       const countryRows = await ctx.prisma.viewEvent.groupBy({
@@ -286,13 +286,15 @@ export const analyticsRouter = router({
         _count: { id: true },
         orderBy: { currentScene: "asc" },
       });
-      const sceneDropoffs = sceneEnters.map((row, idx) => {
-        const nextCount =
-          idx < sceneEnters.length - 1 ? sceneEnters[idx + 1]!._count.id : 0;
-        return {
-          sceneIndex: row.currentScene!,
-          dropoffCount: row._count.id - nextCount,
-        };
+      const sceneDropoffs = sceneEnters.flatMap((row, idx) => {
+        if (row.currentScene === null) return [];
+        const nextCount = idx < sceneEnters.length - 1 ? (sceneEnters[idx + 1]?._count.id ?? 0) : 0;
+        return [
+          {
+            sceneIndex: row.currentScene,
+            dropoffCount: row._count.id - nextCount,
+          },
+        ];
       });
 
       // Upsert

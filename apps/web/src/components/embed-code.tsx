@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 
 interface EmbedCodeProps {
   videoId: string;
@@ -22,7 +22,7 @@ export function EmbedCode({ videoId, baseUrl }: EmbedCodeProps) {
   const [sizeIndex, setSizeIndex] = useState(1); // Default to medium
   const [copied, setCopied] = useState(false);
 
-  const preset = SIZE_PRESETS[sizeIndex]!;
+  const preset = SIZE_PRESETS[sizeIndex] ?? SIZE_PRESETS[1];
   const embedUrl = `${baseUrl}/embed/${videoId}`;
   const iframeCode = `<iframe src="${embedUrl}" width="${preset.width}" height="${preset.height}" frameborder="0" allowfullscreen></iframe>`;
 
@@ -52,6 +52,7 @@ export function EmbedCode({ videoId, baseUrl }: EmbedCodeProps) {
       <div className="flex gap-2">
         {SIZE_PRESETS.map((p, i) => (
           <button
+            type="button"
             key={p.label}
             onClick={() => setSizeIndex(i)}
             className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -71,6 +72,7 @@ export function EmbedCode({ videoId, baseUrl }: EmbedCodeProps) {
           <code>{iframeCode}</code>
         </pre>
         <button
+          type="button"
           onClick={handleCopy}
           className="absolute right-2 top-2 rounded-md bg-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
         >

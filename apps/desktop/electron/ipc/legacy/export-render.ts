@@ -105,8 +105,11 @@ export function enqueueExportRenderJob(args: {
     quality: args.output.quality,
     priority: Number.isFinite(Number(args.priority)) ? Number(args.priority) : 0,
     batch_id: args.batchId,
-    output_width: args.output.output_width ?? (args.plan.kind === "composited" ? args.plan.outputWidth : null),
-    output_height: args.output.output_height ?? (args.plan.kind === "composited" ? args.plan.outputHeight : null),
+    output_width:
+      args.output.output_width ?? (args.plan.kind === "composited" ? args.plan.outputWidth : null),
+    output_height:
+      args.output.output_height ??
+      (args.plan.kind === "composited" ? args.plan.outputHeight : null),
     encoder_options_json: JSON.stringify(
       (args.output as { encoder_options?: unknown }).encoder_options ?? null,
     ),
@@ -134,11 +137,8 @@ export function enqueueExportRenderJob(args: {
       renderJob.progress_pct = 5;
       broadcastRenderProgress(renderJob, session.frame);
       if (args.plan.kind === "composited") {
-        await runCompositedExportForRenderSession(
-          session,
-          args.plan,
-          args.outputPath,
-          (frame) => broadcastRenderProgress(renderJob, frame),
+        await runCompositedExportForRenderSession(session, args.plan, args.outputPath, (frame) =>
+          broadcastRenderProgress(renderJob, frame),
         );
       } else {
         await runFfmpegForRenderSession(

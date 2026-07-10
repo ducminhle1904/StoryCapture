@@ -28,11 +28,10 @@ export class ErrorBoundary extends Component<Props, State> {
   override componentDidCatch(error: Error, info: ErrorInfo) {
     const fields: Record<string, unknown> = {};
     if (info.componentStack) fields.component_stack = info.componentStack;
-    frontendLog.error(
-      this.props.source ?? "ErrorBoundary",
-      "react render crashed",
-      { error, fields },
-    );
+    frontendLog.error(this.props.source ?? "ErrorBoundary", "react render crashed", {
+      error,
+      fields,
+    });
   }
 
   reset = () => this.setState({ error: null });
@@ -55,12 +54,10 @@ export class ErrorBoundary extends Component<Props, State> {
           borderRadius: "var(--sc-r-md)",
         }}
       >
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>
-          Something broke in the UI
-        </div>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Something broke in the UI</div>
         <div style={{ color: "var(--sc-text-3)", marginBottom: 12 }}>
-          The error has been written to the log file. You can keep using
-          the app or reload the window.
+          The error has been written to the log file. You can keep using the app or reload the
+          window.
         </div>
         <code
           style={{

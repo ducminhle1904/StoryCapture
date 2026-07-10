@@ -5,14 +5,14 @@
  * Discard confirm: AlertDialog if >= 3 pending cards on panel close.
  */
 
-import * as React from "react";
-import { useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Check, ChevronDown, Pencil, RotateCcw, X } from "lucide-react";
 import { motion } from "motion/react";
-import { Check, Pencil, RotateCcw, X, ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import * as React from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useNlStore, type DiffCard as DiffCardType } from "./nlStore";
+import { cn } from "@/lib/utils";
+import { type DiffCard as DiffCardType, useNlStore } from "./nlStore";
 
 // Lazy load CodeMirror to avoid heavy import at render time
 const CodeMirrorLazy = React.lazy(() => import("@uiw/react-codemirror"));
@@ -27,14 +27,12 @@ export interface DiffCardProps {
 }
 
 interface DiffLine {
+  id: string;
   type: "add" | "remove" | "context";
   text: string;
 }
 
-function computeDiffLines(
-  oldText?: string,
-  newText?: string,
-): DiffLine[] {
+function computeDiffLines(oldText?: string, newText?: string): DiffLine[] {
   const lines: DiffLine[] = [];
   const oldLines = (oldText ?? "").split("\n");
   const newLines = (newText ?? "").split("\n");
@@ -45,25 +43,20 @@ function computeDiffLines(
     const ol = oldLines[i];
     const nl = newLines[i];
     if (ol === nl) {
-      if (ol !== undefined) lines.push({ type: "context", text: ol });
+      if (ol !== undefined) lines.push({ id: `context-${i}`, type: "context", text: ol });
     } else {
       if (ol !== undefined && ol !== "") {
-        lines.push({ type: "remove", text: ol });
+        lines.push({ id: `remove-${i}`, type: "remove", text: ol });
       }
       if (nl !== undefined && nl !== "") {
-        lines.push({ type: "add", text: nl });
+        lines.push({ id: `add-${i}`, type: "add", text: nl });
       }
     }
   }
   return lines;
 }
 
-export function DiffCard({
-  card,
-  stepIndex,
-  projectId,
-  className,
-}: DiffCardProps) {
+export function DiffCard({ card, stepIndex, projectId, className }: DiffCardProps) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(card.newText ?? "");
   const [approveSuccess, setApproveSuccess] = useState(false);
@@ -113,9 +106,7 @@ export function DiffCard({
   }, [card.stepId, store]);
 
   const handleBulkApprove = useCallback(async () => {
-    const pending = store.pendingCards.filter(
-      (c) => c.status === "pending",
-    );
+    const pending = store.pendingCards.filter((c) => c.status === "pending");
     for (const c of pending) {
       store.updateCardStatus(c.stepId, "approved");
       try {
@@ -135,11 +126,7 @@ export function DiffCard({
       if (editing) return; // Don't capture keys in edit mode
 
       // Bulk approve: Cmd+Shift+A
-      if (
-        e.key.toLowerCase() === "a" &&
-        (e.metaKey || e.ctrlKey) &&
-        e.shiftKey
-      ) {
+      if (e.key.toLowerCase() === "a" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
         e.preventDefault();
         handleBulkApprove();
         return;
@@ -164,14 +151,7 @@ export function DiffCard({
           break;
       }
     },
-    [
-      editing,
-      handleApprove,
-      handleEdit,
-      handleRegen,
-      handleReject,
-      handleBulkApprove,
-    ],
+    [editing, handleApprove, handleEdit, handleRegen, handleReject, handleBulkApprove],
   );
 
   // Don't render rejected cards
@@ -213,9 +193,7 @@ export function DiffCard({
               }
             : { opacity: 1, y: 0 }
       }
-      transition={
-        reducedMotion ? undefined : { duration: 0.22, ease: "easeInOut" }
-      }
+      transition={reducedMotion ? undefined : { duration: 0.22, ease: "easeInOut" }}
     >
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -228,16 +206,12 @@ export function DiffCard({
           </span>
         </div>
         <button
+          type="button"
           onClick={() => setCollapsed(!collapsed)}
           className="p-1 text-[var(--color-muted-foreground,#8A90A2)]"
           aria-label={collapsed ? "Expand" : "Collapse"}
         >
-          <ChevronDown
-            className={cn(
-              "h-4 w-4 transition-transform",
-              collapsed && "-rotate-90",
-            )}
-          />
+          <ChevronDown className={cn("h-4 w-4 transition-transform", collapsed && "-rotate-90")} />
         </button>
       </div>
 
@@ -274,36 +248,25 @@ export function DiffCard({
                 >
                   {"L\u01b0u"}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setEditing(false)}
-                >
+                <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
                   {"Hu\u1ef7"}
                 </Button>
               </div>
             </React.Suspense>
           ) : (
             <div className="space-y-0.5 font-mono text-[13px] leading-[1.45]">
-              {diffLines.map((line, i) => (
+              {diffLines.map((line) => (
                 <div
-                  key={`${line.type}-${i}`}
+                  key={line.id}
                   className={cn(
                     "rounded px-2 py-0.5",
-                    line.type === "remove" &&
-                      "bg-[#5C1D1F] text-[#FF8A8F]",
-                    line.type === "add" &&
-                      "bg-[#0E3A22] text-[#78DDA4]",
-                    line.type === "context" &&
-                      "text-[var(--color-muted-foreground,#8A90A2)]",
+                    line.type === "remove" && "bg-[#5C1D1F] text-[#FF8A8F]",
+                    line.type === "add" && "bg-[#0E3A22] text-[#78DDA4]",
+                    line.type === "context" && "text-[var(--color-muted-foreground,#8A90A2)]",
                   )}
                 >
                   <span className="mr-2 select-none">
-                    {line.type === "remove"
-                      ? "-"
-                      : line.type === "add"
-                        ? "+"
-                        : " "}
+                    {line.type === "remove" ? "-" : line.type === "add" ? "+" : " "}
                   </span>
                   {line.text}
                 </div>

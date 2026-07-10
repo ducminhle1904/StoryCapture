@@ -120,7 +120,7 @@ const STORY: ParseResult = {
     ],
   },
 };
-const STORY_AST = STORY.ast!;
+const STORY_AST = must(STORY.ast);
 
 function trajectoryWithFrames(frames: RecordingTrajectory["frames"]): RecordingTrajectory {
   return {
@@ -657,7 +657,7 @@ describe("buildTimelineFromStory", () => {
         ...STORY_AST,
         scenes: [
           {
-            ...STORY_AST.scenes[0]!,
+            ...must(STORY_AST.scenes[0]),
             commands: [
               {
                 verb: "wait-for",
@@ -764,7 +764,7 @@ describe("buildTimelineFromStory", () => {
         ...STORY_AST,
         scenes: [
           {
-            ...STORY_AST.scenes[0]!,
+            ...must(STORY_AST.scenes[0]),
             commands: [
               {
                 verb: "assert",
@@ -1014,7 +1014,7 @@ describe("buildTimelineFromStory", () => {
       ast: {
         ...STORY_AST,
         scenes: [
-          STORY_AST.scenes[0]!,
+          must(STORY_AST.scenes[0]),
           {
             name: "Summary",
             span: { start: 0, end: 0, line: 6, col: 1 },
@@ -1035,7 +1035,7 @@ describe("buildTimelineFromStory", () => {
       ...STEP_TIMING,
       steps: [
         {
-          ...STEP_TIMING.steps[0]!,
+          ...must(STEP_TIMING.steps[0]),
           stepId: "step-buy",
           sceneName: "Checkout",
           startMs: 2_000,
@@ -1161,7 +1161,7 @@ describe("buildTimelineFromStory", () => {
       captureRect: { x: 0, y: 0, width: 1800, height: 1012 },
       steps: [
         {
-          ...STEP_TIMING.steps[0]!,
+          ...must(STEP_TIMING.steps[0]),
           target: {
             selector: "button[name='Buy']",
             bbox: { x: 810, y: 456, w: 180, h: 100 },
@@ -1205,3 +1205,8 @@ describe("buildTimelineFromStory", () => {
     expect(bounds?.h).toBeCloseTo(100 / 1012);
   });
 });
+
+function must<T>(value: T | null | undefined): T {
+  expect(value).toBeDefined();
+  return value as T;
+}

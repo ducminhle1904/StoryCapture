@@ -18,5 +18,4 @@ export interface UpdateInfo {
 export const checkUpdate = (): Promise<UpdateInfo | null> =>
   invoke<UpdateInfo | null>("check_update");
 
-export const installUpdate = (): Promise<void> =>
-  invoke<void>("install_update");
+export const installUpdate = (): Promise<void> => invoke<void>("install_update");

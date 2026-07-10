@@ -587,7 +587,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
           <SectionTitle>Text</SectionTitle>
           <SectionCopy>Preset, copy, and fast placement for the selected callout.</SectionCopy>
         </div>
-        <label className={FIELD_ROW_CLASS}>
+        <div className={FIELD_ROW_CLASS}>
           <FieldLabel>Style</FieldLabel>
           <SelectField
             aria-label="Text style preset"
@@ -604,7 +604,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
             }}
             options={textStyleSelectOptions}
           />
-        </label>
+        </div>
         <label className={FIELD_ROW_CLASS}>
           <FieldLabel>Content</FieldLabel>
           <textarea
@@ -662,7 +662,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
           />
         </label>
         <div className="grid grid-cols-2 gap-2">
-          <label className={FIELD_ROW_CLASS}>
+          <div className={FIELD_ROW_CLASS}>
             <FieldLabel>Align</FieldLabel>
             <SelectField
               aria-label="Text alignment"
@@ -670,7 +670,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
               onValueChange={(value) => onSetParam(nodePath, "align", clip.align, value)}
               options={textAlignSelectOptions}
             />
-          </label>
+          </div>
           <label className={FIELD_ROW_CLASS}>
             <FieldLabel>Color</FieldLabel>
             <input
@@ -712,7 +712,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
           Advanced position and motion
         </summary>
         <div className="mt-3 flex flex-col gap-3">
-          <label className={FIELD_ROW_CLASS}>
+          <div className={FIELD_ROW_CLASS}>
             <FieldLabel>Anchor</FieldLabel>
             <SelectField
               aria-label="Text anchor"
@@ -737,7 +737,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
               }}
               options={textAnchorKindSelectOptions}
             />
-          </label>
+          </div>
           {anchor.kind === "target" ? (
             <div
               className={`rounded-[8px] border px-3 py-2 text-xs ${
@@ -777,7 +777,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
             </button>
           </div>
           {anchor.kind === "target" ? (
-            <label className={FIELD_ROW_CLASS}>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Target placement</FieldLabel>
               <SelectField
                 aria-label="Text target placement"
@@ -798,10 +798,10 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
                 }}
                 options={textTargetPlacementSelectOptions}
               />
-            </label>
+            </div>
           ) : null}
           {anchor.kind === "safe-area" ? (
-            <label className={FIELD_ROW_CLASS}>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Safe placement</FieldLabel>
               <SelectField
                 aria-label="Text safe-area placement"
@@ -817,7 +817,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
                 }}
                 options={textSafeAreaSelectOptions}
               />
-            </label>
+            </div>
           ) : null}
           {anchor.kind === "cursor" ? (
             <div className="grid grid-cols-2 gap-2">
@@ -886,7 +886,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
             </label>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <label className={FIELD_ROW_CLASS}>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>In</FieldLabel>
               <SelectField
                 aria-label="Text animation in"
@@ -899,8 +899,8 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
                 }
                 options={textAnimInSelectOptions}
               />
-            </label>
-            <label className={FIELD_ROW_CLASS}>
+            </div>
+            <div className={FIELD_ROW_CLASS}>
               <FieldLabel>Out</FieldLabel>
               <SelectField
                 aria-label="Text animation out"
@@ -913,7 +913,7 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
                 }
                 options={textAnimOutSelectOptions}
               />
-            </label>
+            </div>
           </div>
         </div>
       </details>

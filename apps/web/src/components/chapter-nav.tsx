@@ -19,21 +19,20 @@ export function ChapterNav({ chapters, currentTime, onSeek }: ChapterNavProps) {
   // Determine active chapter: the last chapter whose startTimeSec <= currentTime
   let activeIndex = 0;
   for (let i = chapters.length - 1; i >= 0; i--) {
-    if (currentTime >= chapters[i]!.startTimeSec) {
+    const chapter = chapters[i];
+    if (chapter && currentTime >= chapter.startTimeSec) {
       activeIndex = i;
       break;
     }
   }
 
   return (
-    <nav
-      className="flex gap-2 overflow-x-auto py-3 scrollbar-thin"
-      aria-label="Video chapters"
-    >
+    <nav className="flex gap-2 overflow-x-auto py-3 scrollbar-thin" aria-label="Video chapters">
       {chapters.map((chapter, index) => {
         const isActive = index === activeIndex;
         return (
           <button
+            type="button"
             key={`${chapter.label}-${chapter.startTimeSec}`}
             onClick={() => onSeek(chapter.startTimeSec)}
             className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${

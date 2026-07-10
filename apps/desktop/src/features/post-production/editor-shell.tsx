@@ -46,24 +46,21 @@ import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { InspectorPanel } from "./inspector/inspector-panel";
 import { QueueWidget } from "./render-queue/queue-widget";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
-import {
-  buildTimelineFromStory,
-  recordingSourceRevision,
-} from "./state/build-timeline-from-story";
+import { buildTimelineFromStory, recordingSourceRevision } from "./state/build-timeline-from-story";
 import { createClipId } from "./state/clip-id";
 import { DEFAULT_BACKGROUND, readEditorBackground, useEditorStore } from "./state/store";
 import { styleDefaults } from "./state/text-style";
-import {
-  cloneTimelineTracks,
-  type AnnotationClip,
-  type TimelineSlice,
-  type ZoomClip,
-} from "./state/timeline-slice";
 import {
   parseTimelineLayoutJson,
   serializeTimelineLayout,
   type TimelineLayoutV2,
 } from "./state/timeline-layout";
+import {
+  type AnnotationClip,
+  cloneTimelineTracks,
+  type TimelineSlice,
+  type ZoomClip,
+} from "./state/timeline-slice";
 import { Timeline } from "./timeline/timeline";
 
 export interface EditorShellProps {
@@ -591,10 +588,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     const { background, ...generatedTracks } = built;
     const builtTracks = {
       ...generatedTracks,
-      annotations: [
-        ...generatedTracks.annotations,
-        ...staleIndependentAnnotationsRef.current,
-      ],
+      annotations: [...generatedTracks.annotations, ...staleIndependentAnnotationsRef.current],
     };
     staleIndependentAnnotationsRef.current = [];
     setTracks(builtTracks);

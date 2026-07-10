@@ -1,8 +1,8 @@
 /** CodeMirror 6 linter backed by the host `parse_story` IPC command. */
 
-import { linter, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
+import { type Diagnostic as CmDiagnostic, linter } from "@codemirror/lint";
 
-import { parseStory, type Diagnostic as HostDiagnostic } from "@/ipc/parse";
+import { type Diagnostic as HostDiagnostic, parseStory } from "@/ipc/parse";
 
 type ByteOffsetMapper = (byteOffset: number) => number;
 
@@ -68,14 +68,8 @@ function toCm(
   docLength: number,
 ): CmDiagnostic {
   const severity: CmDiagnostic["severity"] =
-    d.severity === "error"
-      ? "error"
-      : d.severity === "warning"
-        ? "warning"
-        : "info";
-  const message = d.suggestion
-    ? `${d.message} (did you mean "${d.suggestion}"?)`
-    : d.message;
+    d.severity === "error" ? "error" : d.severity === "warning" ? "warning" : "info";
+  const message = d.suggestion ? `${d.message} (did you mean "${d.suggestion}"?)` : d.message;
   let from = byteOffsetToStringOffset(d.span.start);
   let to = byteOffsetToStringOffset(d.span.end);
   if (docLength > 0 && to <= from) {
@@ -89,14 +83,9 @@ function toCm(
   return { from, to, severity, message };
 }
 
-export function hostDiagnosticsToCm(
-  source: string,
-  diagnostics: HostDiagnostic[],
-): CmDiagnostic[] {
+export function hostDiagnosticsToCm(source: string, diagnostics: HostDiagnostic[]): CmDiagnostic[] {
   const byteOffsetToStringOffset = createUtf8ByteOffsetMapper(source);
-  return diagnostics.map((d) =>
-    toCm(d, byteOffsetToStringOffset, source.length),
-  );
+  return diagnostics.map((d) => toCm(d, byteOffsetToStringOffset, source.length));
 }
 
 export const storyDiagnosticsLinter = linter(

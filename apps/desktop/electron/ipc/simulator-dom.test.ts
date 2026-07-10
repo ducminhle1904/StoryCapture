@@ -10,6 +10,10 @@ import {
   simulatorTargetReadinessScript,
 } from "./simulator-dom";
 
+function executeScript<T>(script: string): T {
+  return window.Function(`return (${script})`)() as T;
+}
+
 function makeVisible(el: Element): void {
   Object.defineProperty(el, "getBoundingClientRect", {
     configurable: true,
@@ -53,7 +57,7 @@ describe("simulator DOM helpers", () => {
     `;
     document.querySelectorAll("*").forEach(makeVisible);
 
-    const center = window.eval(
+    const center = executeScript(
       simulatorTargetCenterScript({ kind: "label", value: "EMAIL ADDRESS" }),
     );
 
@@ -82,7 +86,7 @@ describe("simulator DOM helpers", () => {
         }) as DOMRect,
     });
 
-    const target = window.eval(
+    const target = executeScript(
       simulatorTargetGeometryScript(
         { kind: "role", value: { role: "button", name: "Save draft" } },
         undefined,
@@ -111,7 +115,7 @@ describe("simulator DOM helpers", () => {
     });
 
     expect(
-      window.eval(
+      executeScript(
         simulatorTargetReadinessScript(
           { kind: "role", value: { role: "button", name: "Save" } },
           undefined,
@@ -123,7 +127,7 @@ describe("simulator DOM helpers", () => {
 
     button.removeAttribute("disabled");
     expect(
-      window.eval(
+      executeScript(
         simulatorTargetReadinessScript(
           { kind: "role", value: { role: "button", name: "Save" } },
           undefined,
@@ -142,7 +146,7 @@ describe("simulator DOM helpers", () => {
     input.addEventListener("change", () => events.push("change"));
 
     input.focus();
-    const didWrite = window.eval(setActiveElementValueScript("debug"));
+    const didWrite = executeScript(setActiveElementValueScript("debug"));
 
     expect(didWrite).toBe(true);
     expect(input.value).toBe("debug");
@@ -160,7 +164,7 @@ describe("simulator DOM helpers", () => {
     input.addEventListener("input", () => events.push("input"));
     input.addEventListener("change", () => events.push("change"));
 
-    const didWrite = window.eval(
+    const didWrite = executeScript(
       setSimulatorTargetValueScript({ kind: "label", value: "EMAIL ADDRESS" }, "debug"),
     );
 
@@ -180,7 +184,7 @@ describe("simulator DOM helpers", () => {
     input.addEventListener("input", () => events.push(`input:${input.value}`));
     input.addEventListener("change", () => events.push(`change:${input.value}`));
 
-    const didWrite = await window.eval(
+    const didWrite = await executeScript<Promise<boolean>>(
       setSimulatorTargetValueIncrementalScript(
         { kind: "label", value: "EMAIL ADDRESS" },
         "abc",
@@ -204,7 +208,7 @@ describe("simulator DOM helpers", () => {
     textarea.addEventListener("input", () => events.push(`input:${textarea.value.length}`));
     textarea.addEventListener("change", () => events.push(`change:${textarea.value.length}`));
 
-    const didWrite = await window.eval(
+    const didWrite = await executeScript<Promise<boolean>>(
       setSimulatorTargetValueIncrementalScript(
         { kind: "selector", value: "#notes" },
         value,
@@ -223,7 +227,7 @@ describe("simulator DOM helpers", () => {
     document.body.innerHTML = `<div>Email Address</div>`;
     document.querySelectorAll("*").forEach(makeVisible);
 
-    const didWrite = window.eval(
+    const didWrite = executeScript(
       setSimulatorTargetValueScript({ kind: "text", value: "Email Address" }, "debug"),
     );
 
@@ -243,7 +247,7 @@ describe("simulator DOM helpers", () => {
     input.addEventListener("change", () => events.push("change"));
     input.focus();
 
-    const didWrite = window.eval(
+    const didWrite = executeScript(
       setSimulatorTargetValueScript(
         { kind: "role", value: { role: "combobox", name: "Country" } },
         "France",

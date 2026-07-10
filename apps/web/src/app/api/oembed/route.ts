@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createPresignedGetUrl, R2_BUCKET } from "@/lib/r2";
 
@@ -19,17 +19,11 @@ export async function GET(request: NextRequest) {
 
   // Only JSON format supported in v1
   if (format !== "json") {
-    return NextResponse.json(
-      { error: "Only JSON format is supported." },
-      { status: 501 },
-    );
+    return NextResponse.json({ error: "Only JSON format is supported." }, { status: 501 });
   }
 
   if (!url) {
-    return NextResponse.json(
-      { error: "Missing required 'url' parameter." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Missing required 'url' parameter." }, { status: 400 });
   }
 
   // Extract slug from URL pattern: .../watch/<slug>
@@ -41,7 +35,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const slug = slugMatch[1]!;
+  const slug = slugMatch[1];
+  if (!slug) {
+    return NextResponse.json({ error: "Video slug is missing." }, { status: 404 });
+  }
 
   const video = await prisma.video.findUnique({
     where: { slug },
@@ -57,21 +54,12 @@ export async function GET(request: NextRequest) {
 
   // Only return oEmbed for public, ready videos
   if (!video || video.status !== "READY" || !video.isPublic) {
-    return NextResponse.json(
-      { error: "Video not found." },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Video not found." }, { status: 404 });
   }
 
   // Parse maxwidth/maxheight with 16:9 defaults
-  const maxwidth = Math.min(
-    parseInt(searchParams.get("maxwidth") ?? "1280", 10) || 1280,
-    1920,
-  );
-  const maxheight = Math.min(
-    parseInt(searchParams.get("maxheight") ?? "720", 10) || 720,
-    1080,
-  );
+  const maxwidth = Math.min(parseInt(searchParams.get("maxwidth") ?? "1280", 10) || 1280, 1920);
+  const maxheight = Math.min(parseInt(searchParams.get("maxheight") ?? "720", 10) || 720, 1080);
 
   // Maintain 16:9 aspect ratio within constraints
   let width = maxwidth;

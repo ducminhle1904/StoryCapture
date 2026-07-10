@@ -59,6 +59,7 @@ export function ExportCompleteToast({
       <div className="flex items-center gap-2">
         <div className="relative">
           <button
+            type="button"
             onClick={handleUpload}
             disabled={!isConnected || isUploading}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-[var(--color-fg-primary)] transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
@@ -82,6 +83,7 @@ export function ExportCompleteToast({
 
         {onDismiss && (
           <button
+            type="button"
             onClick={onDismiss}
             className="ml-auto rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
           >

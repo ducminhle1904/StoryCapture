@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { history, historyKeymap, undo } from "@codemirror/commands";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { history, historyKeymap, undo } from "@codemirror/commands";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { editorController } from "./controller";
 
@@ -35,7 +35,7 @@ describe("editorController", () => {
   });
 
   it("insertAtCursor returns no-view without throwing when not ready", () => {
-    const r = editorController.insertAtCursor("click testid \"x\"\n");
+    const r = editorController.insertAtCursor('click testid "x"\n');
     expect(r).toEqual({ ok: false, reason: "no-view" });
   });
 

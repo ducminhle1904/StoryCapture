@@ -11,22 +11,14 @@
  * - Completion: `@codemirror/autocomplete` backed by `textDocument/completion`
  */
 
-import { linter, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
-import {
-  hoverTooltip,
-  type EditorView,
-  type Tooltip,
-} from "@codemirror/view";
 import {
   autocompletion,
   type CompletionContext,
   type CompletionResult,
 } from "@codemirror/autocomplete";
-import {
-  StateEffect,
-  StateField,
-  type Extension,
-} from "@codemirror/state";
+import { type Diagnostic as CmDiagnostic, linter } from "@codemirror/lint";
+import { type Extension, StateEffect, StateField } from "@codemirror/state";
+import { type EditorView, hoverTooltip, type Tooltip } from "@codemirror/view";
 
 import type { TauriLspTransport } from "./tauriTransport";
 
@@ -49,9 +41,7 @@ interface PublishDiagnosticsParams {
 }
 
 /** Convert LSP severity (1=Error,2=Warning,3=Info,4=Hint) to CM severity. */
-function lspSeverityToCm(
-  severity: number | undefined,
-): CmDiagnostic["severity"] {
+function lspSeverityToCm(severity: number | undefined): CmDiagnostic["severity"] {
   switch (severity) {
     case 1:
       return "error";
@@ -63,11 +53,7 @@ function lspSeverityToCm(
 }
 
 /** Convert an LSP position {line,character} to a document offset. */
-function posToOffset(
-  view: EditorView,
-  line: number,
-  character: number,
-): number {
+function posToOffset(view: EditorView, line: number, character: number): number {
   const docLine = view.state.doc.line(Math.min(line + 1, view.state.doc.lines));
   return Math.min(docLine.from + character, docLine.to);
 }
@@ -113,9 +99,7 @@ interface LspCompletionItem {
   kind?: number;
   detail?: string;
   insertText?: string;
-  documentation?:
-    | string
-    | { kind: string; value: string };
+  documentation?: string | { kind: string; value: string };
 }
 
 interface LspCompletionResult {
@@ -151,10 +135,7 @@ function lspCompletionKindToCm(kind: number | undefined): string {
  * @param transport - The Tauri IPC transport to the LSP server.
  * @param docUri - The document URI (e.g. "file:///path/to/file.story").
  */
-export function storyLanguageExtension(
-  transport: TauriLspTransport,
-  docUri: string,
-): Extension {
+export function storyLanguageExtension(transport: TauriLspTransport, docUri: string): Extension {
   // -- Diagnostics: subscribe to publishDiagnostics notifications ----------
   const diagnosticsLinter = linter(
     (view) => {
@@ -183,9 +164,7 @@ export function storyLanguageExtension(
         if (typeof contents === "string") {
           text = contents;
         } else if (Array.isArray(contents)) {
-          text = contents
-            .map((c) => (typeof c === "string" ? c : c.value))
-            .join("\n\n");
+          text = contents.map((c) => (typeof c === "string" ? c : c.value)).join("\n\n");
         } else if (contents && typeof contents === "object") {
           text = contents.value;
         }
@@ -223,19 +202,14 @@ export function storyLanguageExtension(
         const character = pos - line.from;
 
         try {
-          const result = (await transport.sendRequest(
-            "textDocument/completion",
-            {
-              textDocument: { uri: docUri },
-              position: { line: lineNumber, character },
-            },
-          )) as LspCompletionResult | LspCompletionItem[] | null;
+          const result = (await transport.sendRequest("textDocument/completion", {
+            textDocument: { uri: docUri },
+            position: { line: lineNumber, character },
+          })) as LspCompletionResult | LspCompletionItem[] | null;
 
           if (!result) return null;
 
-          const items: LspCompletionItem[] = Array.isArray(result)
-            ? result
-            : result.items ?? [];
+          const items: LspCompletionItem[] = Array.isArray(result) ? result : (result.items ?? []);
 
           if (items.length === 0) return null;
 
@@ -268,16 +242,9 @@ export function storyLanguageExtension(
  * Called by the notification handler when `publishDiagnostics` arrives.
  * Exposed for use by `useStoryLsp` hook.
  */
-export function pushLspDiagnostics(
-  view: EditorView,
-  params: PublishDiagnosticsParams,
-): void {
+export function pushLspDiagnostics(view: EditorView, params: PublishDiagnosticsParams): void {
   const cmDiags: CmDiagnostic[] = params.diagnostics.map((d) => {
-    const from = posToOffset(
-      view,
-      d.range.start.line,
-      d.range.start.character,
-    );
+    const from = posToOffset(view, d.range.start.line, d.range.start.character);
     const to = posToOffset(view, d.range.end.line, d.range.end.character);
     return {
       from: Math.max(0, from),

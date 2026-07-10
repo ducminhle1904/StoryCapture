@@ -1,18 +1,18 @@
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, publicProcedure } from "../init";
-import { requireWorkspaceMember } from "../lib/guards";
-import { slugify } from "@/lib/slugify";
+import { z } from "zod";
 import {
-  r2Client,
-  R2_BUCKET,
-  createPresignedPartUrl,
-  createPresignedGetUrl,
-  createPresignedPutUrl,
-  CreateMultipartUploadCommand,
-  CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  createPresignedGetUrl,
+  createPresignedPartUrl,
+  createPresignedPutUrl,
+  R2_BUCKET,
+  r2Client,
 } from "@/lib/r2";
+import { slugify } from "@/lib/slugify";
+import { protectedProcedure, publicProcedure, router } from "../init";
+import { requireWorkspaceMember } from "../lib/guards";
 
 /**
  * Video CRUD + upload orchestration tRPC procedures.
@@ -52,7 +52,7 @@ export const videoRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // Verify user has EDITOR or OWNER role in workspace
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId, "EDITOR");
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id, input.workspaceId, "EDITOR");
 
       // Generate R2 key: {workspaceId}/{uuid}/{fileName}
       const videoUuid = crypto.randomUUID();
@@ -101,7 +101,7 @@ export const videoRouter = router({
           status: "UPLOADING",
           projectName: input.projectName,
           workspaceId: input.workspaceId,
-          uploaderId: ctx.user.id!,
+          uploaderId: ctx.user.id,
           storySource: input.storySource,
           sceneBoundaries: input.sceneBoundaries ?? [],
         },
@@ -128,7 +128,7 @@ export const videoRouter = router({
         where: {
           r2Key: input.r2Key,
           uploadId: input.uploadId,
-          uploaderId: ctx.user.id!,
+          uploaderId: ctx.user.id,
           status: "UPLOADING",
         },
         select: { id: true },
@@ -175,7 +175,7 @@ export const videoRouter = router({
       const video = await ctx.prisma.video.findFirst({
         where: {
           id: input.videoId,
-          uploaderId: ctx.user.id!,
+          uploaderId: ctx.user.id,
           status: "UPLOADING",
         },
         select: { id: true, slug: true },
@@ -251,11 +251,7 @@ export const videoRouter = router({
     )
     .mutation(async ({ input }) => {
       const thumbnailKey = input.r2Key.replace(/\.[^.]+$/, "-thumb.jpg");
-      const presignedUrl = await createPresignedPutUrl(
-        R2_BUCKET,
-        thumbnailKey,
-        "image/jpeg",
-      );
+      const presignedUrl = await createPresignedPutUrl(R2_BUCKET, thumbnailKey, "image/jpeg");
       return { presignedUrl, thumbnailR2Key: thumbnailKey };
     }),
 
@@ -266,7 +262,7 @@ export const videoRouter = router({
     .input(z.object({ workspaceId: z.string() }))
     .query(async ({ ctx, input }) => {
       // Verify membership
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, input.workspaceId);
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id, input.workspaceId);
 
       const videos = await ctx.prisma.video.findMany({
         where: { workspaceId: input.workspaceId },
@@ -303,50 +299,48 @@ export const videoRouter = router({
    * Get a video by slug (public query for viewer pages).
    * Private by default; public data only for READY videos.
    */
-  getBySlug: publicProcedure
-    .input(z.object({ slug: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const video = await ctx.prisma.video.findUnique({
-        where: { slug: input.slug },
-        select: {
-          id: true,
-          slug: true,
-          projectName: true,
-          status: true,
-          isPublic: true,
-          storySource: true,
-          sceneBoundaries: true,
-          r2Key: true,
-          thumbnailR2Key: true,
-          createdAt: true,
-        },
+  getBySlug: publicProcedure.input(z.object({ slug: z.string() })).query(async ({ ctx, input }) => {
+    const video = await ctx.prisma.video.findUnique({
+      where: { slug: input.slug },
+      select: {
+        id: true,
+        slug: true,
+        projectName: true,
+        status: true,
+        isPublic: true,
+        storySource: true,
+        sceneBoundaries: true,
+        r2Key: true,
+        thumbnailR2Key: true,
+        createdAt: true,
+      },
+    });
+
+    if (!video || video.status !== "READY") {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Video not found.",
       });
+    }
 
-      if (!video || video.status !== "READY") {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Video not found.",
-        });
-      }
+    // Generate presigned GET URLs (works for both public + private/unlisted)
+    const videoUrl = await createPresignedGetUrl(R2_BUCKET, video.r2Key);
+    const thumbnailUrl = video.thumbnailR2Key
+      ? await createPresignedGetUrl(R2_BUCKET, video.thumbnailR2Key)
+      : null;
 
-      // Generate presigned GET URLs (works for both public + private/unlisted)
-      const videoUrl = await createPresignedGetUrl(R2_BUCKET, video.r2Key);
-      const thumbnailUrl = video.thumbnailR2Key
-        ? await createPresignedGetUrl(R2_BUCKET, video.thumbnailR2Key)
-        : null;
-
-      return {
-        id: video.id,
-        slug: video.slug,
-        projectName: video.projectName,
-        isPublic: video.isPublic,
-        storySource: video.storySource,
-        sceneBoundaries: video.sceneBoundaries,
-        videoUrl,
-        thumbnailUrl,
-        createdAt: video.createdAt,
-      };
-    }),
+    return {
+      id: video.id,
+      slug: video.slug,
+      projectName: video.projectName,
+      isPublic: video.isPublic,
+      storySource: video.storySource,
+      sceneBoundaries: video.sceneBoundaries,
+      videoUrl,
+      thumbnailUrl,
+      createdAt: video.createdAt,
+    };
+  }),
 
   /**
    * Toggle video privacy between private (unlisted, noindex) and public (indexed).
@@ -370,7 +364,7 @@ export const videoRouter = router({
       }
 
       // Check workspace membership + role
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId, "EDITOR");
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id, video.workspaceId, "EDITOR");
 
       const updated = await ctx.prisma.video.update({
         where: { id: input.videoId },
@@ -411,7 +405,7 @@ export const videoRouter = router({
       }
 
       // Check workspace membership + role
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId, "EDITOR");
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id, video.workspaceId, "EDITOR");
 
       // Check uniqueness (skip if slug unchanged)
       if (input.newSlug !== video.slug) {
@@ -468,7 +462,7 @@ export const videoRouter = router({
       }
 
       // Check workspace membership
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId);
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id, video.workspaceId);
 
       const videoUrl = await createPresignedGetUrl(R2_BUCKET, video.r2Key);
       const thumbnailUrl = video.thumbnailR2Key
@@ -507,7 +501,7 @@ export const videoRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Video not found." });
       }
 
-      await requireWorkspaceMember(ctx.prisma, ctx.user.id!, video.workspaceId, "EDITOR");
+      await requireWorkspaceMember(ctx.prisma, ctx.user.id, video.workspaceId, "EDITOR");
 
       // Delete from DB (R2 cleanup can be handled by a background job later)
       await ctx.prisma.video.delete({ where: { id: input.videoId } });

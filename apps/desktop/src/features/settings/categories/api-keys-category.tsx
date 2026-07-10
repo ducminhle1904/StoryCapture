@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Info } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ApiKeyRow } from "../ApiKeyRow";
 import { SettingsPanel } from "../settings-row";
@@ -45,15 +45,12 @@ export function ApiKeysCategory() {
     checkAll();
   }, []);
 
-  const handlePresenceChange = useCallback(
-    (providerId: string, present: boolean) => {
-      setProviders((prev) => ({
-        ...prev,
-        [providerId]: { ...prev[providerId], present },
-      }));
-    },
-    [],
-  );
+  const handlePresenceChange = useCallback((providerId: string, present: boolean) => {
+    setProviders((prev) => ({
+      ...prev,
+      [providerId]: { ...prev[providerId], present },
+    }));
+  }, []);
 
   const handleTestStatusChange = useCallback(
     (providerId: string, status: ProviderState["testStatus"]) => {
@@ -100,9 +97,9 @@ export function ApiKeysCategory() {
       >
         <Info size={14} style={{ color: "var(--sc-accent-400)", marginTop: 1 }} />
         <div>
-          <b style={{ color: "var(--sc-accent-300)" }}>Team BYOK</b> &mdash; workspace
-          admins can share keys scoped by scene type. Keys stay on this device;
-          team-wide sharing arrives with the web companion workspace plan.
+          <b style={{ color: "var(--sc-accent-300)" }}>Team BYOK</b> &mdash; workspace admins can
+          share keys scoped by scene type. Keys stay on this device; team-wide sharing arrives with
+          the web companion workspace plan.
         </div>
       </div>
     </SettingsPanel>

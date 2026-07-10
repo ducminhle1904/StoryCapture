@@ -12,15 +12,14 @@
  */
 
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-
+import { createJSONStorage, persist } from "zustand/middleware";
+import type { UndoExtras } from "../undo/actions";
 import { createExportSlice, DEFAULT_EXPORT_FORM, type ExportSlice } from "./export-slice";
 import { createPanelsSlice, PANELS_STORAGE_KEY, type PanelsSlice } from "./panels-slice";
 import { createQueueSlice, type QueueSlice } from "./queue-slice";
 import { createSelectionSlice, type SelectionSlice } from "./selection-slice";
 import { createTimelineSlice, type TimelineSlice } from "./timeline-slice";
 import { createUndoSlice, type UndoSlice } from "./undo-slice";
-import type { UndoExtras } from "../undo/actions";
 
 export interface Rgba {
   r: number;
@@ -57,10 +56,7 @@ export function readEditorBackground(state: {
  * exclude `soundDrawerOpen` / `exportModalOpen` — those are transient
  * UI states that shouldn't pop open on reload.
  */
-const PERSISTED_PANEL_KEYS = [
-  "timelineHeightPct",
-  "previewWidthPct",
-] as const;
+const PERSISTED_PANEL_KEYS = ["timelineHeightPct", "previewWidthPct"] as const;
 
 /**
  * Persist the export form so user choices (formats, resolution, fps,

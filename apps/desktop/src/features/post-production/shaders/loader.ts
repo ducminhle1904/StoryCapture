@@ -6,9 +6,10 @@
  * the shader source as files (not string literals) preserves editor
  * syntax highlighting and makes shader linting tools work.
  */
-import compositorWgsl from "./compositor.wgsl?raw";
-import compositorVert from "./compositor.vert.glsl?raw";
+
 import compositorFrag from "./compositor.frag.glsl?raw";
+import compositorVert from "./compositor.vert.glsl?raw";
+import compositorWgsl from "./compositor.wgsl?raw";
 
 export function loadWgsl(): string {
   return compositorWgsl;

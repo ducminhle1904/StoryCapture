@@ -148,7 +148,7 @@ describe("post-production export planning", () => {
   });
 
   it("does not source-copy when audio encoding settings change", () => {
-    const baseOptions = output().encoder_options!;
+    const baseOptions = must(output().encoder_options);
     const cfg = output({
       encoder_options: {
         ...baseOptions,
@@ -170,7 +170,7 @@ describe("post-production export planning", () => {
   });
 
   it("source-copies WebM when default Opus audio options are present", () => {
-    const baseOptions = output().encoder_options!;
+    const baseOptions = must(output().encoder_options);
     const cfg = output({
       format: "webm",
       encoder_options: {
@@ -540,3 +540,8 @@ describe("post-production export planning", () => {
     ).toThrow(/Opus audio/);
   });
 });
+
+function must<T>(value: T | null | undefined): T {
+  expect(value).toBeDefined();
+  return value as T;
+}

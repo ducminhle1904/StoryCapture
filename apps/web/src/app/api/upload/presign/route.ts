@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { requireDesktopAuth } from "@/lib/desktop-auth";
 import { prisma } from "@/lib/prisma";
-import { R2_BUCKET, createPresignedPartUrl, createPresignedPutUrl } from "@/lib/r2";
+import { createPresignedPartUrl, createPresignedPutUrl, R2_BUCKET } from "@/lib/r2";
 
 /**
  * POST /api/upload/presign
@@ -30,27 +30,17 @@ export async function POST(req: NextRequest) {
   // Thumbnail presign request
   if (type === "thumbnail") {
     const thumbnailKey = r2Key.replace(/\.[^.]+$/, "-thumb.jpg");
-    const presignedUrl = await createPresignedPutUrl(
-      R2_BUCKET,
-      thumbnailKey,
-      "image/jpeg",
-    );
+    const presignedUrl = await createPresignedPutUrl(R2_BUCKET, thumbnailKey, "image/jpeg");
     return NextResponse.json({ presignedUrl, thumbnailR2Key: thumbnailKey });
   }
 
   // Multipart part presign request
   if (!uploadId || partNumber == null) {
-    return NextResponse.json(
-      { error: "Missing uploadId or partNumber" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Missing uploadId or partNumber" }, { status: 400 });
   }
 
   if (partNumber < 1 || partNumber > 10000) {
-    return NextResponse.json(
-      { error: "partNumber must be between 1 and 10000" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "partNumber must be between 1 and 10000" }, { status: 400 });
   }
 
   // Verify user owns the in-progress upload
@@ -71,12 +61,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const presignedUrl = await createPresignedPartUrl(
-    R2_BUCKET,
-    r2Key,
-    uploadId,
-    partNumber,
-  );
+  const presignedUrl = await createPresignedPartUrl(R2_BUCKET, r2Key, uploadId, partNumber);
 
   return NextResponse.json({ presignedUrl, partNumber });
 }

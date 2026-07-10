@@ -1,13 +1,13 @@
 import { create } from "zustand";
+import type { AudioPickerValue } from "@/ipc/audio";
 import {
-  getCaptureTarget,
-  listCaptureTargets,
-  setCaptureTarget as ipcSetCaptureTarget,
-  captureTargetKey,
   type CaptureTarget,
   type CaptureTargets,
+  captureTargetKey,
+  getCaptureTarget,
+  setCaptureTarget as ipcSetCaptureTarget,
+  listCaptureTargets,
 } from "@/ipc/capture";
-import type { AudioPickerValue } from "@/ipc/audio";
 import { frontendLog } from "@/lib/log";
 
 export type RecorderStatus =

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { ScBadge, ScButton } from "@storycapture/ui";
 import {
   Download,
   FileText,
@@ -7,24 +7,24 @@ import {
   Keyboard,
   Lock,
   Monitor,
-  User,
   Settings as SettingsIcon,
+  User,
 } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { ScBadge, ScButton } from "@storycapture/ui";
 
 import { PageContentTransition } from "@/components/page-content-transition";
-import { GeneralCategory } from "@/features/settings/categories/general-category";
-import { ApiKeysCategory } from "@/features/settings/categories/api-keys-category";
-import { CaptureCategory } from "@/features/settings/categories/capture-category";
-import { RenderCategory } from "@/features/settings/categories/render-category";
-import { KeyboardCategory } from "@/features/settings/categories/keyboard-category";
-import { PrivacyCategory } from "@/features/settings/categories/privacy-category";
-import { LogsCategory } from "@/features/settings/categories/logs-category";
 import { AboutCategory } from "@/features/settings/categories/about-category";
 import { AccountCategory } from "@/features/settings/categories/account-category";
-import { useAppSettingsStore } from "@/state/app-settings";
+import { ApiKeysCategory } from "@/features/settings/categories/api-keys-category";
+import { CaptureCategory } from "@/features/settings/categories/capture-category";
+import { GeneralCategory } from "@/features/settings/categories/general-category";
+import { KeyboardCategory } from "@/features/settings/categories/keyboard-category";
+import { LogsCategory } from "@/features/settings/categories/logs-category";
+import { PrivacyCategory } from "@/features/settings/categories/privacy-category";
+import { RenderCategory } from "@/features/settings/categories/render-category";
 import type { SettingsCategory } from "@/ipc/settings";
+import { useAppSettingsStore } from "@/state/app-settings";
 import {
   applyCaptureFpsDefault,
   DEFAULT_EXPORT_KNOBS,
@@ -156,10 +156,7 @@ export default function SettingsRoute() {
           ))}
         </nav>
 
-        <PageContentTransition
-          className="sc-scroll"
-          style={{ flex: 1, padding: "24px 32px" }}
-        >
+        <PageContentTransition className="sc-scroll" style={{ flex: 1, padding: "24px 32px" }}>
           {section === "general" && <GeneralCategory />}
           {section === "keys" && <ApiKeysCategory />}
           {section === "capture" && <CaptureCategory />}

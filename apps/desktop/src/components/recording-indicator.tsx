@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
-
-import { useRecorderStore } from "@/state/recorder";
 import { useAppSettingsStore } from "@/state/app-settings";
+import { useRecorderStore } from "@/state/recorder";
 
 function formatClock(ms: number): string {
   const total = Math.floor(ms / 1000);

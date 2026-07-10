@@ -1,11 +1,7 @@
-import { ScButton, cn } from "@storycapture/ui";
+import { cn, ScButton } from "@storycapture/ui";
 import { ArrowLeft, ArrowRight, Globe, RotateCcw } from "lucide-react";
 
-import {
-  authorPreviewBack,
-  authorPreviewForward,
-  authorPreviewReload,
-} from "@/ipc/preview";
+import { authorPreviewBack, authorPreviewForward, authorPreviewReload } from "@/ipc/preview";
 import { frontendLog } from "@/lib/log";
 
 export interface PreviewLocationBarProps {
@@ -72,10 +68,8 @@ export function PreviewLocationBar({
           authorPreviewReload(streamId).catch(logFailure("reload"));
         }}
       />
-      <div
+      <output
         data-testid="preview-url-display"
-        role="textbox"
-        aria-readonly="true"
         aria-label="Current preview URL"
         title={url ?? ""}
         className={cn(
@@ -91,7 +85,7 @@ export function PreviewLocationBar({
         ) : (
           <span className="truncate text-[var(--sc-text-4)]">—</span>
         )}
-      </div>
+      </output>
     </div>
   );
 }

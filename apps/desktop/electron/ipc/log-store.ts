@@ -33,9 +33,7 @@ function logConfigPath(): string {
   return userDataPath("log-config.json");
 }
 
-function normalizeLogConfig(
-  update: LogConfigUpdate = {},
-): Required<LogConfigUpdate> {
+function normalizeLogConfig(update: LogConfigUpdate = {}): Required<LogConfigUpdate> {
   const maxFileSize = Number(update.max_file_size_bytes ?? 10 * 1024 * 1024);
   const maxFiles = Number(update.max_files ?? 10);
   return {
@@ -44,22 +42,15 @@ function normalizeLogConfig(
       LOG_MAX_FILE_SIZE_BYTES,
       Math.max(LOG_MIN_FILE_SIZE_BYTES, Math.round(maxFileSize)),
     ),
-    max_files: Math.min(
-      LOG_MAX_FILES,
-      Math.max(LOG_MIN_FILES, Math.round(maxFiles)),
-    ),
+    max_files: Math.min(LOG_MAX_FILES, Math.max(LOG_MIN_FILES, Math.round(maxFiles))),
   };
 }
 
 async function readLogConfig(): Promise<Required<LogConfigUpdate>> {
-  return normalizeLogConfig(
-    await readJson<LogConfigUpdate>(logConfigPath(), {}),
-  );
+  return normalizeLogConfig(await readJson<LogConfigUpdate>(logConfigPath(), {}));
 }
 
-export async function writeLogConfig(
-  update: LogConfigUpdate,
-): Promise<unknown> {
+export async function writeLogConfig(update: LogConfigUpdate): Promise<unknown> {
   const current = await readLogConfig();
   const next = normalizeLogConfig({ ...current, ...update });
   await writeJson(logConfigPath(), next);
@@ -94,9 +85,7 @@ function sanitizeLogField(value: unknown): string {
   return (text ?? "").replaceAll(/\s+/g, " ").slice(0, 2000);
 }
 
-export async function logFromFrontend(
-  payload: FrontendLogPayload,
-): Promise<null> {
+export async function logFromFrontend(payload: FrontendLogPayload): Promise<null> {
   const config = await readLogConfig();
   const logDir = config.log_dir ?? defaultLogDir();
   await fs.mkdir(logDir, { recursive: true });
@@ -106,17 +95,12 @@ export async function logFromFrontend(
   const fields = Array.isArray(payload.fields)
     ? payload.fields
         .map(
-          ([key, value]) =>
-            `${sanitizeLogField(key)}=${JSON.stringify(sanitizeLogField(value))}`,
+          ([key, value]) => `${sanitizeLogField(key)}=${JSON.stringify(sanitizeLogField(value))}`,
         )
         .join(" ")
     : "";
-  const url = payload.url
-    ? ` url=${JSON.stringify(sanitizeLogField(payload.url))}`
-    : "";
-  const stack = payload.stack
-    ? ` stack=${JSON.stringify(sanitizeLogField(payload.stack))}`
-    : "";
+  const url = payload.url ? ` url=${JSON.stringify(sanitizeLogField(payload.url))}` : "";
+  const stack = payload.stack ? ` stack=${JSON.stringify(sanitizeLogField(payload.stack))}` : "";
   const line = `${new Date().toISOString()} ${level} storycapture::frontend source=${JSON.stringify(source)} ${message}${fields ? ` ${fields}` : ""}${url}${stack}\n`;
   await fs.appendFile(path.join(logDir, logFileName()), line, "utf8");
   return null;
@@ -135,10 +119,7 @@ export async function exportDiagnosticBundle(parentDir: string) {
       entries
         .filter((entry) => entry.isFile())
         .map((entry) =>
-          fs.copyFile(
-            path.join(effectiveLogDir, entry.name),
-            path.join(logsOut, entry.name),
-          ),
+          fs.copyFile(path.join(effectiveLogDir, entry.name), path.join(logsOut, entry.name)),
         ),
     );
   } catch (error) {
@@ -160,12 +141,7 @@ export async function exportDiagnosticBundle(parentDir: string) {
         },
         logs: { source: effectiveLogDir },
         contents: ["logs", "manifest.json"],
-        excluded: [
-          "story source",
-          "recordings",
-          "project databases",
-          "api keys",
-        ],
+        excluded: ["story source", "recordings", "project databases", "api keys"],
       },
       null,
       2,

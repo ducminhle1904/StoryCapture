@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useDryRunStore, type DryRunEvent } from "./dryRunStore";
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type DryRunEvent, useDryRunStore } from "./dryRunStore";
 import { useDryRun } from "./useDryRun";
 
 const { mockInvoke, MockChannel } = vi.hoisted(() => {
@@ -35,9 +35,7 @@ describe("dryRunStore", () => {
   });
 
   it("Pass event updates status + timing + fallbackChain", () => {
-    const chain = [
-      { strategy: "css", selector: "#btn", succeeded: true, durationMs: 50 },
-    ];
+    const chain = [{ strategy: "css", selector: "#btn", succeeded: true, durationMs: 50 }];
     const event: DryRunEvent = {
       kind: "Pass",
       step_id: "step-2",

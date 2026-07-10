@@ -58,9 +58,7 @@ describe("logs IPC handlers", () => {
   });
 
   it("creates the effective log directory", async () => {
-    await expect(logsHandlers.open_log_dir()).resolves.toBe(
-      path.join(tempDir, "logs"),
-    );
+    await expect(logsHandlers.open_log_dir()).resolves.toBe(path.join(tempDir, "logs"));
     await expect(fs.stat(path.join(tempDir, "logs"))).resolves.toMatchObject({
       isDirectory: expect.any(Function),
     });
@@ -79,9 +77,7 @@ describe("logs IPC handlers", () => {
 
     const entries = await fs.readdir(path.join(tempDir, "logs"));
     expect(entries).toHaveLength(1);
-    await expect(
-      fs.readFile(path.join(tempDir, "logs", entries[0]), "utf8"),
-    ).resolves.toContain(
+    await expect(fs.readFile(path.join(tempDir, "logs", entries[0]), "utf8")).resolves.toContain(
       'WARN storycapture::frontend source="renderer" hello world key="value with whitespace"',
     );
   });
@@ -93,11 +89,9 @@ describe("logs IPC handlers", () => {
     const result = await logsHandlers.export_diagnostic_bundle({ parentDir });
 
     expect(result).toMatchObject({ path: expect.stringContaining(parentDir) });
-    await expect(
-      fs.readdir(path.join(result.path, "logs")),
-    ).resolves.toHaveLength(1);
-    await expect(
-      fs.readFile(path.join(result.path, "manifest.json"), "utf8"),
-    ).resolves.toContain('"version": "0.0.0-test"');
+    await expect(fs.readdir(path.join(result.path, "logs"))).resolves.toHaveLength(1);
+    await expect(fs.readFile(path.join(result.path, "manifest.json"), "utf8")).resolves.toContain(
+      '"version": "0.0.0-test"',
+    );
   });
 });

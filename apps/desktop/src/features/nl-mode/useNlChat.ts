@@ -4,19 +4,21 @@
  * Uses Channel<NlChatEvent> for streaming events from the host.
  */
 
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef } from "react";
-import { invoke, Channel } from "@tauri-apps/api/core";
-import { useNlStore, type ChatMessage } from "./nlStore";
+import { type ChatMessage, useNlStore } from "./nlStore";
 
 export interface NlChatEvent {
   kind: "text" | "story_doc_ready" | "usage" | "error" | "done";
   delta?: string;
   message?: string;
   task_id?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  doc?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  diff?: any[];
+  doc?: unknown;
+  diff?: Array<{
+    step_id?: string;
+    old_text?: string;
+    new_text?: string;
+  }>;
   input?: number;
   output?: number;
   cache_read?: number;
@@ -71,20 +73,20 @@ export function useNlChat(projectId: string) {
           case "story_doc_ready":
             if (ev.diff && ev.task_id) {
               useNlStore.getState().setCards(
-                ev.diff.map(
-                  (d: { step_id?: string; old_text?: string; new_text?: string }) => ({
-                    stepId: d.step_id ?? "unknown",
-                    status: "pending" as const,
-                    oldText: d.old_text,
-                    newText: d.new_text,
-                  }),
-                ),
+                ev.diff.map((d) => ({
+                  stepId: d.step_id ?? "unknown",
+                  status: "pending" as const,
+                  oldText: d.old_text,
+                  newText: d.new_text,
+                })),
               );
             }
             break;
           case "error":
             // Flush any buffered text before reporting error
-            if (rafId !== null) { cancelAnimationFrame(rafId); }
+            if (rafId !== null) {
+              cancelAnimationFrame(rafId);
+            }
             flushDelta();
             useNlStore.getState().setError({
               kind: "network",
@@ -94,7 +96,9 @@ export function useNlChat(projectId: string) {
             break;
           case "done":
             // Flush remaining buffered text before ending stream
-            if (rafId !== null) { cancelAnimationFrame(rafId); }
+            if (rafId !== null) {
+              cancelAnimationFrame(rafId);
+            }
             flushDelta();
             useNlStore.getState().endStream();
             break;
@@ -110,8 +114,7 @@ export function useNlChat(projectId: string) {
         });
         taskIdRef.current = taskId;
       } catch (err) {
-        const errMsg =
-          err instanceof Error ? err.message : String(err);
+        const errMsg = err instanceof Error ? err.message : String(err);
 
         // Detect rate limit vs auth vs network errors
         if (errMsg.includes("rate") || errMsg.includes("429")) {

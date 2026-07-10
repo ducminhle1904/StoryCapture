@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { SESSION_COOKIE_NAME, SESSION_COOKIE_MAX_AGE } from "@/lib/constants";
+import { NextResponse } from "next/server";
+import { SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME } from "@/lib/constants";
 
 /**
  * GET /api/analytics/session

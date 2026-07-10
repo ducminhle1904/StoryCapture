@@ -1,16 +1,14 @@
 import { app } from "electron";
 import electronUpdater, {
-  type UpdateCheckResult,
   type UpdateInfo as ElectronUpdateInfo,
+  type UpdateCheckResult,
 } from "electron-updater";
 
 const { autoUpdater } = electronUpdater;
 
 let pendingUpdateCheck: UpdateCheckResult | null = null;
 
-export function releaseNotesText(
-  notes: ElectronUpdateInfo["releaseNotes"],
-): string | null {
+export function releaseNotesText(notes: ElectronUpdateInfo["releaseNotes"]): string | null {
   if (typeof notes === "string") return notes;
   if (Array.isArray(notes)) {
     const text = notes

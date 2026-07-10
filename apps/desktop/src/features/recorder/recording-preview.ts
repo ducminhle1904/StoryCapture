@@ -1,5 +1,5 @@
-import { startAuthorPreview, stopAuthorPreview } from "@/ipc/preview";
 import type { LaunchAutomationArgs } from "@/ipc/automation";
+import { startAuthorPreview, stopAuthorPreview } from "@/ipc/preview";
 import { frontendLog } from "@/lib/log";
 
 export interface RecordingPreviewViewport {

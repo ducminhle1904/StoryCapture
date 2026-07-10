@@ -23,13 +23,12 @@ export {
   ScSelectTrigger,
   ScSelectValue,
 } from "./sc-select";
-export { ScTabs, ScTabsContent, ScTabsList, ScTabsTrigger } from "./sc-tabs";
 export type { ScSkeletonProps, ScSkeletonVariant } from "./sc-skeleton";
 export { ScSkeleton } from "./sc-skeleton";
 export type { ScSliderProps } from "./sc-slider";
-
 export { ScSlider } from "./sc-slider";
 export type { ScSwitchProps } from "./sc-switch";
 export { ScSwitch } from "./sc-switch";
+export { ScTabs, ScTabsContent, ScTabsList, ScTabsTrigger } from "./sc-tabs";
 export type { ScTextareaProps } from "./sc-textarea";
 export { ScTextarea } from "./sc-textarea";

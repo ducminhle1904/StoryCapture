@@ -191,10 +191,11 @@ export function RecordingView({
   }, [appSettings?.browser_executable]);
 
   useEffect(() => {
-    applyRecorderDefaults();
-    // Run when persisted defaults hydrate/change; setter identities are stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appSettings?.capture]);
+    const capture = appSettings?.capture;
+    setAudioDeviceId(capture?.audio_input_default === "system_default" ? "default" : null);
+    setIncludeCursor(capture?.include_cursor_default ?? false);
+    if (capture) applyCaptureFpsDefault(capture);
+  }, [appSettings?.capture, setAudioDeviceId, setIncludeCursor]);
 
   const reduceMotion = useReducedMotion();
   const [permissionReport, setPermissionReport] =
@@ -225,7 +226,10 @@ export function RecordingView({
         : captureTarget.display_id
       : null;
   const selectedDisplayInfo = useMemo(
-    () => (selectedDisplay == null ? undefined : displays.find((display) => displayId(display) === selectedDisplay)),
+    () =>
+      selectedDisplay == null
+        ? undefined
+        : displays.find((display) => displayId(display) === selectedDisplay),
     [displays, selectedDisplay],
   );
   const storyRecordingInfo = useMemo(() => {
@@ -245,7 +249,13 @@ export function RecordingView({
       : selectedDisplayInfo
         ? { w: selectedDisplayInfo.width_px, h: selectedDisplayInfo.height_px }
         : null;
-    if (!dims || !Number.isFinite(dims.w) || !Number.isFinite(dims.h) || dims.w <= 0 || dims.h <= 0) {
+    if (
+      !dims ||
+      !Number.isFinite(dims.w) ||
+      !Number.isFinite(dims.h) ||
+      dims.w <= 0 ||
+      dims.h <= 0
+    ) {
       return undefined;
     }
     return dims;
@@ -315,7 +325,7 @@ export function RecordingView({
       reset();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reset, loadCaptureTargets, setError]);
 
   // Derive steps before capture starts.
   useEffect(() => {
@@ -405,11 +415,7 @@ export function RecordingView({
               ? `${event.result.actual_capture_fps} / ${event.result.requested_fps} fps`
               : null;
           toast.warning("Recording complete with low cadence", {
-            description: [
-              event.result.cadence_warning_message,
-              cadence,
-              event.result.output_path,
-            ]
+            description: [event.result.cadence_warning_message, cadence, event.result.output_path]
               .filter(Boolean)
               .join(" · "),
           });
@@ -748,19 +754,23 @@ export function RecordingView({
     }
   };
 
+  const handleRecordRef = useRef(handleRecord);
+  const handleStopRef = useRef(handleStop);
+  handleRecordRef.current = handleRecord;
+  handleStopRef.current = handleStop;
+
   // ⌘R / Ctrl+R toggles recording.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "r") {
         e.preventDefault();
-        if (status === "idle") void handleRecord();
-        else if (status === "recording" || status === "paused") void handleStop();
+        if (status === "idle") void handleRecordRef.current();
+        else if (status === "recording" || status === "paused") void handleStopRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, permission, selectedDisplay]);
+  }, [status]);
 
   const canRecord = permission === "granted" && captureTarget != null;
   // Display-only code path for `handleRecord`.
@@ -776,7 +786,6 @@ export function RecordingView({
           {/* Back to editor (falls back to dashboard). Blocked while recording. */}
           {status === "recording" || status === "paused" || status === "stopping" ? (
             <span
-              aria-label="Back button disabled during recording"
               className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-1 text-[var(--color-fg-muted)] opacity-50"
               title="Stop recording to go back"
             >
@@ -904,6 +913,7 @@ export function RecordingView({
             </span>
           </div>
           <button
+            type="button"
             onClick={() => setStageManagerWarning(false)}
             className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
           >
@@ -926,6 +936,7 @@ export function RecordingView({
             </span>
           </div>
           <button
+            type="button"
             onClick={() => void forceStop()}
             className="rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2.5 py-1 text-[11px] font-medium text-white transition-[filter] duration-150 hover:brightness-110"
           >
@@ -997,6 +1008,7 @@ export function RecordingView({
                       exclusively author-side via PreviewPickerButton in
                       the Preview panel. */}
                   <button
+                    type="button"
                     onClick={handlePause}
                     aria-label="Pause recording"
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,background-color] duration-150 hover:bg-[var(--color-surface-300)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
@@ -1005,6 +1017,7 @@ export function RecordingView({
                     Pause
                   </button>
                   <button
+                    type="button"
                     onClick={handleStop}
                     aria-label="Stop recording"
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
@@ -1017,6 +1030,7 @@ export function RecordingView({
               {status === "paused" && (
                 <>
                   <button
+                    type="button"
                     onClick={handleResume}
                     aria-label="Resume recording"
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-warning)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[transform,filter] duration-150 hover:brightness-105 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
@@ -1025,6 +1039,7 @@ export function RecordingView({
                     Resume
                   </button>
                   <button
+                    type="button"
                     onClick={handleStop}
                     aria-label="Stop recording"
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
@@ -1036,6 +1051,7 @@ export function RecordingView({
               )}
               {status === "completed" && (
                 <button
+                  type="button"
                   onClick={() => {
                     reset();
                     setStatus("idle");
@@ -1206,6 +1222,7 @@ function PermissionBanner({
       <div className="flex shrink-0 items-center gap-1.5">
         {onBypass ? (
           <button
+            type="button"
             onClick={onBypass}
             title="Debug-only: skip the permission check and try to record anyway"
             className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
@@ -1214,18 +1231,21 @@ function PermissionBanner({
           </button>
         ) : null}
         <button
+          type="button"
           onClick={onRecheck}
           className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
         >
           Recheck
         </button>
         <button
+          type="button"
           onClick={onRelaunch}
           className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1 text-[11px] text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-300)]"
         >
           Relaunch
         </button>
         <button
+          type="button"
           onClick={onOpenSettings}
           className="rounded-[var(--radius-sm)] bg-[var(--color-accent-primary)] px-2.5 py-1 text-[11px] font-medium text-white transition-[filter] duration-150 hover:brightness-110"
         >
@@ -1444,7 +1464,7 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
                 : "bg-[var(--color-surface-300)]";
           return (
             <motion.div
-              key={i}
+              key={step.index}
               layout
               title={`${i + 1}. ${step.verb}${
                 failed ? " — failed" : done ? " — done" : running ? " — running" : ""
@@ -1475,6 +1495,7 @@ function StepRail({ steps, currentStep, completedSteps }: StepRailProps) {
 function RecordButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       aria-label="Start recording"

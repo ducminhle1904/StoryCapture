@@ -24,7 +24,8 @@ export function QualityPresetControl({ disabled }: Props) {
       value={quality}
       onValueChange={(raw) => {
         if (typeof raw !== "string") return;
-        if ((ORDER as readonly string[]).includes(raw)) setKnob("quality", raw as RecordingQualityPreset);
+        if ((ORDER as readonly string[]).includes(raw))
+          setKnob("quality", raw as RecordingQualityPreset);
       }}
       disabled={disabled}
       className="flex flex-row flex-wrap items-center gap-3"

@@ -10,8 +10,7 @@ import { useUploadStore } from "@/stores/upload-store";
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
@@ -29,8 +28,7 @@ function phaseLabel(phase: string): string {
 }
 
 export function UploadProgress() {
-  const { status, progress, videoSlug, error, cancelUpload, reset } =
-    useUploadStore();
+  const { status, progress, videoSlug, error, cancelUpload, reset } = useUploadStore();
 
   if (status === "idle") return null;
 
@@ -60,14 +58,11 @@ export function UploadProgress() {
 
             <div className="flex items-center justify-between text-xs text-neutral-500">
               <span>
-                {formatBytes(progress.bytesUploaded)} /{" "}
-                {formatBytes(progress.totalBytes)}
+                {formatBytes(progress.bytesUploaded)} / {formatBytes(progress.totalBytes)}
               </span>
               <span>
                 {progress.totalBytes > 0
-                  ? Math.round(
-                      (progress.bytesUploaded / progress.totalBytes) * 100,
-                    )
+                  ? Math.round((progress.bytesUploaded / progress.totalBytes) * 100)
                   : 0}
                 %
               </span>
@@ -75,6 +70,7 @@ export function UploadProgress() {
           </div>
 
           <button
+            type="button"
             onClick={cancelUpload}
             className="shrink-0 rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
             title="Cancel upload"
@@ -100,6 +96,7 @@ export function UploadProgress() {
             View at storycapture.app/watch/{videoSlug}
           </a>
           <button
+            type="button"
             onClick={reset}
             className="shrink-0 rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
           >
@@ -112,6 +109,7 @@ export function UploadProgress() {
         <div className="flex flex-1 items-center justify-between">
           <span className="text-red-400">Upload failed: {error}</span>
           <button
+            type="button"
             onClick={reset}
             className="shrink-0 rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
           >

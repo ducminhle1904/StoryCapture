@@ -1,5 +1,5 @@
 import { Select } from "@base-ui/react/select";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import { type ComponentPropsWithoutRef, type ElementRef, forwardRef } from "react";
 
 import { cn } from "../../lib/cn";
 

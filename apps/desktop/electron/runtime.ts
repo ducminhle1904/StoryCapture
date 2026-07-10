@@ -1,5 +1,5 @@
-import type { App } from "electron";
 import path from "node:path";
+import type { App } from "electron";
 
 import identity from "./identity.json";
 
@@ -15,9 +15,15 @@ export function isDevRuntime(
   env: NodeJS.ProcessEnv = process.env,
   executablePath = process.execPath,
 ) {
-  return !app.isPackaged || (env[identity.devAppEnv] === "1" && isGeneratedDevAppExecutable(executablePath));
+  return (
+    !app.isPackaged ||
+    (env[identity.devAppEnv] === "1" && isGeneratedDevAppExecutable(executablePath))
+  );
 }
 
-export function isPackagedRuntime(app: Pick<App, "isPackaged">, env: NodeJS.ProcessEnv = process.env) {
+export function isPackagedRuntime(
+  app: Pick<App, "isPackaged">,
+  env: NodeJS.ProcessEnv = process.env,
+) {
   return !isDevRuntime(app, env);
 }

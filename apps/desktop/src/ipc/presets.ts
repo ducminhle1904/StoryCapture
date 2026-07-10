@@ -31,10 +31,7 @@ export async function presetList(scope: PresetScope): Promise<EffectPreset[]> {
   return invoke<EffectPreset[]>("preset_list", { scope });
 }
 
-export async function presetImport(
-  path: string,
-  scope: PresetScope,
-): Promise<string> {
+export async function presetImport(path: string, scope: PresetScope): Promise<string> {
   return invoke<string>("preset_import", { path, scope });
 }
 

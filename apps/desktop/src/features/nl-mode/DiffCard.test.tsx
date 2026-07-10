@@ -12,11 +12,11 @@
  * 8. Discard confirm when >= 3 pending cards and panel closed
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DiffCard } from "./DiffCard";
-import { useNlStore, type DiffCard as DiffCardType } from "./nlStore";
+import { type DiffCard as DiffCardType, useNlStore } from "./nlStore";
 
 // Mock Tauri invoke
 const { mockInvoke } = vi.hoisted(() => {
@@ -39,9 +39,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 // Mock CodeMirror to avoid DOM issues in test env
 vi.mock("@uiw/react-codemirror", () => ({
   __esModule: true,
-  default: ({ value }: { value: string }) => (
-    <div data-testid="codemirror-mock">{value}</div>
-  ),
+  default: ({ value }: { value: string }) => <div data-testid="codemirror-mock">{value}</div>,
 }));
 
 const baseDiffCard: DiffCardType = {
@@ -65,17 +63,13 @@ describe("DiffCard", () => {
   });
 
   it("renders card with step title, inline diff, and 4 action buttons with aria-labels", () => {
-    render(
-      <DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />,
-    );
+    render(<DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />);
 
     const card = screen.getByTestId("diff-card");
     expect(card).toBeTruthy();
 
     // 4 action buttons with Vietnamese aria-labels
-    expect(
-      screen.getByLabelText(/Ch\u1ea5p nh\u1eadn b\u01b0\u1edbc 1/),
-    ).toBeTruthy();
+    expect(screen.getByLabelText(/Ch\u1ea5p nh\u1eadn b\u01b0\u1edbc 1/)).toBeTruthy();
     expect(screen.getByLabelText(/S\u1eeda/)).toBeTruthy();
     expect(screen.getByLabelText(/T\u1ea1o l\u1ea1i/)).toBeTruthy();
     expect(screen.getByLabelText(/B\u1ecf/)).toBeTruthy();
@@ -85,9 +79,7 @@ describe("DiffCard", () => {
   });
 
   it("pressing A while card focused calls nl_diff_apply", async () => {
-    render(
-      <DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />,
-    );
+    render(<DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />);
 
     const card = screen.getByTestId("diff-card");
     fireEvent.keyDown(card, { key: "a" });
@@ -101,9 +93,7 @@ describe("DiffCard", () => {
   });
 
   it("pressing E switches card into edit mode", async () => {
-    render(
-      <DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />,
-    );
+    render(<DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />);
 
     const card = screen.getByTestId("diff-card");
     fireEvent.keyDown(card, { key: "e" });
@@ -115,9 +105,7 @@ describe("DiffCard", () => {
   });
 
   it("pressing R calls nl_regen_step", async () => {
-    render(
-      <DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />,
-    );
+    render(<DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />);
 
     const card = screen.getByTestId("diff-card");
     fireEvent.keyDown(card, { key: "r" });
@@ -131,9 +119,7 @@ describe("DiffCard", () => {
   });
 
   it("pressing Backspace rejects without confirm", async () => {
-    render(
-      <DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />,
-    );
+    render(<DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />);
 
     const card = screen.getByTestId("diff-card");
     fireEvent.keyDown(card, { key: "Backspace" });
@@ -141,9 +127,7 @@ describe("DiffCard", () => {
     // Card should be marked rejected in store
     await vi.waitFor(() => {
       const cards = useNlStore.getState().pendingCards;
-      expect(
-        cards.find((c) => c.stepId === "step-1")?.status,
-      ).toBe("rejected");
+      expect(cards.find((c) => c.stepId === "step-1")?.status).toBe("rejected");
     });
   });
 
@@ -157,13 +141,7 @@ describe("DiffCard", () => {
     render(
       <div>
         {cards.map((c, i) => (
-          <DiffCard
-            key={c.stepId}
-            card={c}
-            stepIndex={i}
-            projectId="proj-1"
-            enableBulkApprove
-          />
+          <DiffCard key={c.stepId} card={c} stepIndex={i} projectId="proj-1" enableBulkApprove />
         ))}
       </div>,
     );
@@ -190,14 +168,10 @@ describe("DiffCard", () => {
   });
 
   it("approve success: card gets success border class", async () => {
-    render(
-      <DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />,
-    );
+    render(<DiffCard card={baseDiffCard} stepIndex={0} projectId="proj-1" />);
 
     // Trigger approve
-    const approveBtn = screen.getByLabelText(
-      /Ch\u1ea5p nh\u1eadn b\u01b0\u1edbc 1/,
-    );
+    const approveBtn = screen.getByLabelText(/Ch\u1ea5p nh\u1eadn b\u01b0\u1edbc 1/);
     await userEvent.click(approveBtn);
 
     await vi.waitFor(() => {
@@ -215,14 +189,7 @@ describe("DiffCard", () => {
     ];
     useNlStore.setState({ pendingCards: threeCards });
 
-    render(
-      <DiffCard
-        card={threeCards[0]}
-        stepIndex={0}
-        projectId="proj-1"
-        showDiscardConfirm
-      />,
-    );
+    render(<DiffCard card={threeCards[0]} stepIndex={0} projectId="proj-1" showDiscardConfirm />);
 
     // When showDiscardConfirm is true and >= 3 pending,
     // confirm dialog text should be present

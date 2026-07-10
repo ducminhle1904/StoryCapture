@@ -56,46 +56,51 @@ export const useDryRunStore = create<DryRunStore>((set) => ({
     switch (ev.kind) {
       case "Queued":
         if (ev.step_id) {
+          const stepId = ev.step_id;
           set((s) => ({
-            statusByStep: { ...s.statusByStep, [ev.step_id!]: "queued" },
+            statusByStep: { ...s.statusByStep, [stepId]: "queued" },
           }));
         }
         break;
       case "Running":
         if (ev.step_id) {
+          const stepId = ev.step_id;
           set((s) => ({
-            statusByStep: { ...s.statusByStep, [ev.step_id!]: "running" },
+            statusByStep: { ...s.statusByStep, [stepId]: "running" },
           }));
         }
         break;
       case "Pass":
         if (ev.step_id) {
+          const stepId = ev.step_id;
           set((s) => ({
-            statusByStep: { ...s.statusByStep, [ev.step_id!]: "pass" },
-            timingByStep: { ...s.timingByStep, [ev.step_id!]: ev.duration_ms ?? 0 },
+            statusByStep: { ...s.statusByStep, [stepId]: "pass" },
+            timingByStep: { ...s.timingByStep, [stepId]: ev.duration_ms ?? 0 },
             fallbackChainByStep: {
               ...s.fallbackChainByStep,
-              [ev.step_id!]: ev.fallback_chain ?? [],
+              [stepId]: ev.fallback_chain ?? [],
             },
           }));
         }
         break;
       case "Fail":
         if (ev.step_id) {
+          const stepId = ev.step_id;
           set((s) => ({
-            statusByStep: { ...s.statusByStep, [ev.step_id!]: "fail" },
-            timingByStep: { ...s.timingByStep, [ev.step_id!]: ev.duration_ms ?? 0 },
+            statusByStep: { ...s.statusByStep, [stepId]: "fail" },
+            timingByStep: { ...s.timingByStep, [stepId]: ev.duration_ms ?? 0 },
             fallbackChainByStep: {
               ...s.fallbackChainByStep,
-              [ev.step_id!]: ev.fallback_chain ?? [],
+              [stepId]: ev.fallback_chain ?? [],
             },
           }));
         }
         break;
       case "Skipped":
         if (ev.step_id) {
+          const stepId = ev.step_id;
           set((s) => ({
-            statusByStep: { ...s.statusByStep, [ev.step_id!]: "skipped" },
+            statusByStep: { ...s.statusByStep, [stepId]: "skipped" },
           }));
         }
         break;

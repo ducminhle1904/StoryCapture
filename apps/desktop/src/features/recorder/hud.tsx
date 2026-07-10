@@ -1,5 +1,5 @@
-import { motion } from "motion/react";
 import { AlertTriangle } from "lucide-react";
+import { motion } from "motion/react";
 import { Link } from "react-router-dom";
 
 import { useRecorderStore } from "@/state/recorder";
@@ -49,17 +49,13 @@ export function RecordingHud({
     ? RECORD_PATH_MISS_BODY.replace("{N}", String(clampedOrdinal))
     : RECORD_PATH_MISS_BODY;
   const simulatorHref =
-    clampedOrdinal && projectId
-      ? `/editor/${projectId}?step=${clampedOrdinal}`
-      : null;
+    clampedOrdinal && projectId ? `/editor/${projectId}?step=${clampedOrdinal}` : null;
 
   return (
     <div className="pointer-events-none absolute left-1/2 top-6 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
       {primaryMiss ? (
-        <div
-          role="region"
+        <section
           aria-labelledby="record-path-miss-heading"
-          tabIndex={0}
           className="pointer-events-auto flex min-w-[340px] max-w-[520px] gap-3 rounded-[var(--radius-md)] border-l-4 border-[var(--color-danger)] bg-[var(--color-surface-200)] px-3 py-2 shadow-xl"
         >
           <AlertTriangle
@@ -91,7 +87,7 @@ export function RecordingHud({
               Open in Simulator →
             </Link>
           ) : null}
-        </div>
+        </section>
       ) : null}
 
       {active ? (
@@ -104,7 +100,9 @@ export function RecordingHud({
           <motion.span
             aria-hidden="true"
             className={`inline-block size-2.5 rounded-full ${status === "paused" ? "bg-[var(--color-warning)]" : "bg-[var(--color-danger)]"}`}
-            animate={status === "recording" ? { scale: [1, 1.15, 1], opacity: [1, 0.7, 1] } : undefined}
+            animate={
+              status === "recording" ? { scale: [1, 1.15, 1], opacity: [1, 0.7, 1] } : undefined
+            }
             transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
           />
           <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">

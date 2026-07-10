@@ -1,8 +1,8 @@
 import "server-only";
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Reader, type ReaderModel } from "@maxmind/geoip2-node";
-import { existsSync } from "fs";
-import { join } from "path";
 
 /**
  * MaxMind GeoLite2 country-level IP lookup.
@@ -23,7 +23,9 @@ async function getReader(): Promise<ReaderModel | null> {
   if (readerFailed) return null;
 
   if (!existsSync(MMDB_PATH)) {
-    console.warn(`[geo] GeoLite2 database not found at ${MMDB_PATH}. Country lookups will return 'XX'.`);
+    console.warn(
+      `[geo] GeoLite2 database not found at ${MMDB_PATH}. Country lookups will return 'XX'.`,
+    );
     readerFailed = true;
     return null;
   }

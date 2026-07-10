@@ -13,15 +13,27 @@ export interface DryRunStepRowProps {
   focused?: boolean;
 }
 
-const statusConfig: Record<
-  DryRunStepStatus,
-  { label: string; className: string }
-> = {
-  queued: { label: "Queued", className: "bg-[var(--color-info,#4493F8)] text-[var(--color-fg-primary)]" },
-  running: { label: "Running", className: "bg-[var(--color-info,#4493F8)] text-[var(--color-fg-primary)]" },
-  pass: { label: "Pass", className: "bg-[var(--color-success,#30A46C)] text-[var(--color-fg-primary)]" },
-  fail: { label: "Fail", className: "bg-[var(--color-destructive,#E5484D)] text-[var(--color-fg-primary)]" },
-  skipped: { label: "Skipped", className: "bg-[var(--color-muted-foreground,#8A90A2)] text-[var(--color-fg-primary)]" },
+const statusConfig: Record<DryRunStepStatus, { label: string; className: string }> = {
+  queued: {
+    label: "Queued",
+    className: "bg-[var(--color-info,#4493F8)] text-[var(--color-fg-primary)]",
+  },
+  running: {
+    label: "Running",
+    className: "bg-[var(--color-info,#4493F8)] text-[var(--color-fg-primary)]",
+  },
+  pass: {
+    label: "Pass",
+    className: "bg-[var(--color-success,#30A46C)] text-[var(--color-fg-primary)]",
+  },
+  fail: {
+    label: "Fail",
+    className: "bg-[var(--color-destructive,#E5484D)] text-[var(--color-fg-primary)]",
+  },
+  skipped: {
+    label: "Skipped",
+    className: "bg-[var(--color-muted-foreground,#8A90A2)] text-[var(--color-fg-primary)]",
+  },
 };
 
 export function DryRunStepRow({
@@ -82,9 +94,9 @@ export function DryRunStepRow({
 
       {fallbackChain && fallbackChain.length > 0 && (
         <div className="flex gap-1">
-          {fallbackChain.map((attempt, idx) => (
+          {fallbackChain.map((attempt) => (
             <span
-              key={`${attempt.strategy}-${idx}`}
+              key={`${attempt.strategy}-${attempt.durationMs}-${attempt.succeeded}`}
               title={`${attempt.strategy}: ${attempt.durationMs}ms`}
               className={cn(
                 "inline-flex items-center rounded px-1 py-0.5 text-[10px] font-semibold leading-3",

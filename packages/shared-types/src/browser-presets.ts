@@ -25,9 +25,7 @@ export const BROWSER_PRESETS: readonly BrowserPreset[] =
  * Replaces the hand-maintained `CHROMIUM_PRESETS` set in
  * features/settings/browser-presets.ts.
  */
-export const CHROMIUM_PRESET_IDS: ReadonlySet<string> = new Set(
-  BROWSER_PRESETS.map((p) => p.id),
-);
+export const CHROMIUM_PRESET_IDS: ReadonlySet<string> = new Set(BROWSER_PRESETS.map((p) => p.id));
 
 /**
  * Window-title substring for a preset id. Returns null for unknown ids;

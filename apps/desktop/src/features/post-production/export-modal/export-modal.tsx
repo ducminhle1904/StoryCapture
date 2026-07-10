@@ -14,26 +14,25 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import type { HardwareEncoderDto } from "@storycapture/shared-types";
+import { ScButton } from "@storycapture/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight, FolderOpen, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { SelectField } from "@/components/ui/select-field";
 import {
   dialogBackdropMotionClassName,
   dialogSideSheetPopupMotionClassName,
   dialogSideSheetViewportClassName,
 } from "@/components/ui/dialog-motion";
+import { SelectField } from "@/components/ui/select-field";
 import { AiDisclosureModal } from "@/features/export/AiDisclosureModal";
-import { ScButton } from "@storycapture/ui";
 import { useVoiceoverStore } from "@/features/voiceover/voiceoverStore";
 import {
   type ExportEncoderOptions,
@@ -214,7 +213,9 @@ export function ExportModal({ storyId }: ExportModalProps) {
         preset_id: null,
       });
       void queryClient.invalidateQueries({ queryKey: RENDER_KEYS.listActive(storyId) });
-      toast.success(`Export started: ${res.job_ids.length} job${res.job_ids.length === 1 ? "" : "s"} queued`);
+      toast.success(
+        `Export started: ${res.job_ids.length} job${res.job_ids.length === 1 ? "" : "s"} queued`,
+      );
       setOpen(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -487,8 +488,8 @@ export function ExportModal({ storyId }: ExportModalProps) {
                           Nothing to export yet
                         </div>
                         <p className="font-serif mt-1 text-sm leading-6 text-[var(--sc-text-3)]">
-                          Add a video clip with a source path to the timeline, then this
-                          drawer will assemble the render graph automatically.
+                          Add a video clip with a source path to the timeline, then this drawer will
+                          assemble the render graph automatically.
                         </p>
                       </div>
                     </div>
@@ -524,7 +525,11 @@ export function ExportModal({ storyId }: ExportModalProps) {
                   aria-disabled={!canSubmit}
                   onClick={onSubmit}
                   aria-label="Start export"
-                  title={!graphAvailable ? "Add a video clip with a sourcePath to the timeline" : undefined}
+                  title={
+                    !graphAvailable
+                      ? "Add a video clip with a sourcePath to the timeline"
+                      : undefined
+                  }
                 >
                   {submitting ? "Queueing…" : "Export"}
                 </ScButton>

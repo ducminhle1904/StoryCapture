@@ -1,10 +1,10 @@
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
-import { createPresignedGetUrl } from "@/lib/r2";
-import { R2_BUCKET } from "@/lib/r2";
+import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { createPresignedGetUrl, R2_BUCKET } from "@/lib/r2";
 
 /**
  * Workspace home page. Shows workspace header, video grid, quick links.
@@ -83,9 +83,7 @@ export default async function WorkspacePage({
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-zinc-50">
-              {workspace.name}
-            </h1>
+            <h1 className="text-2xl font-bold text-zinc-50">{workspace.name}</h1>
             {workspace.isPersonal && (
               <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
                 Personal
@@ -94,8 +92,8 @@ export default async function WorkspacePage({
           </div>
           <p className="mt-1 text-sm text-zinc-500">
             {workspace._count.members} member
-            {workspace._count.members !== 1 ? "s" : ""} &middot;{" "}
-            {videos.length} video{videos.length !== 1 ? "s" : ""}
+            {workspace._count.members !== 1 ? "s" : ""} &middot; {videos.length} video
+            {videos.length !== 1 ? "s" : ""}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -134,16 +132,18 @@ export default async function WorkspacePage({
               className="group overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700"
             >
               {/* Thumbnail */}
-              <div className="aspect-video bg-zinc-800">
+              <div className="relative aspect-video bg-zinc-800">
                 {video.thumbnailUrl ? (
-                  <img
+                  <Image
                     src={video.thumbnailUrl}
                     alt={video.projectName}
+                    fill
                     className="h-full w-full object-cover"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-zinc-700">
                     <svg
+                      aria-hidden="true"
                       className="h-10 w-10"
                       fill="none"
                       viewBox="0 0 24 24"

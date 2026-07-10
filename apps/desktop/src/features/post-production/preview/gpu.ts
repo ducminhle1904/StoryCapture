@@ -27,17 +27,13 @@ export type PreviewCtx =
       gl: WebGL2RenderingContext;
     };
 
-export async function initPreviewContext(
-  canvas: HTMLCanvasElement,
-): Promise<PreviewCtx> {
+export async function initPreviewContext(canvas: HTMLCanvasElement): Promise<PreviewCtx> {
   if (typeof navigator !== "undefined" && "gpu" in navigator && navigator.gpu) {
     try {
       const adapter = await navigator.gpu.requestAdapter();
       if (adapter) {
         const device = await adapter.requestDevice();
-        const context = canvas.getContext(
-          "webgpu",
-        ) as GPUCanvasContext | null;
+        const context = canvas.getContext("webgpu") as GPUCanvasContext | null;
         if (context) {
           const format = navigator.gpu.getPreferredCanvasFormat();
           context.configure({ device, format, alphaMode: "premultiplied" });
@@ -52,11 +48,7 @@ export async function initPreviewContext(
       }
     } catch (err) {
       // WebGPU present but adapter/device request failed — fall through to WebGL2.
-      frontendLog.warn(
-        "preview/gpu",
-        "WebGPU init failed; falling back to WebGL2",
-        { error: err },
-      );
+      frontendLog.warn("preview/gpu", "WebGPU init failed; falling back to WebGL2", { error: err });
     }
   }
 
@@ -66,7 +58,5 @@ export async function initPreviewContext(
     return { kind: "webgl2", gl };
   }
 
-  throw new Error(
-    "Neither WebGPU nor WebGL2 available — preview unsupported",
-  );
+  throw new Error("Neither WebGPU nor WebGL2 available — preview unsupported");
 }

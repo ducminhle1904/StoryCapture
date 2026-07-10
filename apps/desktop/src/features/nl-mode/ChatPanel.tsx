@@ -4,24 +4,24 @@
  * Resizable right panel (min 320, max 560, default 420px); collapsible to 40px rail.
  */
 
-import * as React from "react";
-import { useCallback, useRef } from "react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import {
-  MessageCircle,
   History,
-  Settings,
+  MessageCircle,
   PanelRightClose,
   PanelRightOpen,
   Send,
+  Settings,
 } from "lucide-react";
-import { useNlStore } from "./nlStore";
+import * as React from "react";
+import { useCallback, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { TokenCounter } from "@/features/status-bar/TokenCounter";
+import { cn } from "@/lib/utils";
 import { ChatBubble } from "./ChatBubble";
 import { CostWarningModal } from "./CostWarningModal";
+import { useNlStore } from "./nlStore";
 import { RateLimitBanner } from "./RateLimitBanner";
 import { useNlChat } from "./useNlChat";
-import { TokenCounter } from "@/features/status-bar/TokenCounter";
 
 export interface ChatPanelProps {
   projectId: string;
@@ -32,21 +32,9 @@ export interface ChatPanelProps {
 
 const COST_WARNING_THRESHOLD = 50_000;
 
-export function ChatPanel({
-  projectId,
-  currentStory,
-  sessionId,
-  className,
-}: ChatPanelProps) {
-  const {
-    panelWidth,
-    panelCollapsed,
-    streaming,
-    pendingCards,
-    error,
-    messages,
-    togglePanel,
-  } = useNlStore();
+export function ChatPanel({ projectId, currentStory, sessionId, className }: ChatPanelProps) {
+  const { panelWidth, panelCollapsed, streaming, pendingCards, error, messages, togglePanel } =
+    useNlStore();
 
   const { send } = useNlChat(projectId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -56,8 +44,7 @@ export function ChatPanel({
   const pendingWarningTokensRef = useRef(0);
   const [warningOpen, setWarningOpen] = React.useState(false);
 
-  const isEmpty =
-    pendingCards.length === 0 && streaming === null && messages.length === 0;
+  const isEmpty = pendingCards.length === 0 && streaming === null && messages.length === 0;
 
   const sendMessage = useCallback(
     async (message: string) => {
@@ -74,10 +61,7 @@ export function ChatPanel({
     if (!text) return;
 
     const estimatedTokens = Math.ceil((text.length + currentStory.length) / 4);
-    if (
-      estimatedTokens > COST_WARNING_THRESHOLD &&
-      !costWarningSuppressedRef.current
-    ) {
+    if (estimatedTokens > COST_WARNING_THRESHOLD && !costWarningSuppressedRef.current) {
       pendingWarningRef.current = text;
       pendingWarningTokensRef.current = estimatedTokens;
       setWarningOpen(true);
@@ -88,13 +72,7 @@ export function ChatPanel({
   }, [currentStory.length, sendMessage]);
 
   const handleWarningResult = useCallback(
-    async ({
-      proceed,
-      suppressForSession,
-    }: {
-      proceed: boolean;
-      suppressForSession: boolean;
-    }) => {
+    async ({ proceed, suppressForSession }: { proceed: boolean; suppressForSession: boolean }) => {
       setWarningOpen(false);
       if (suppressForSession) {
         costWarningSuppressedRef.current = true;
@@ -135,6 +113,7 @@ export function ChatPanel({
         style={{ width: 40 }}
       >
         <button
+          type="button"
           onClick={togglePanel}
           aria-label={"M\u1edf r\u1ed9ng panel"}
           className="p-1 text-[var(--color-muted-foreground,#8A90A2)] hover:text-[var(--color-foreground,#E6E8EE)]"
@@ -142,18 +121,21 @@ export function ChatPanel({
           <PanelRightOpen className="h-4 w-4" />
         </button>
         <button
+          type="button"
           aria-label="Chat"
           className="p-1 text-[var(--color-muted-foreground,#8A90A2)] hover:text-[var(--color-foreground,#E6E8EE)]"
         >
           <MessageCircle className="h-4 w-4" />
         </button>
         <button
+          type="button"
           aria-label={"L\u1ecbch s\u1eed"}
           className="p-1 text-[var(--color-muted-foreground,#8A90A2)] hover:text-[var(--color-foreground,#E6E8EE)]"
         >
           <History className="h-4 w-4" />
         </button>
         <button
+          type="button"
           aria-label={"C\u00e0i \u0111\u1eb7t"}
           className="p-1 text-[var(--color-muted-foreground,#8A90A2)] hover:text-[var(--color-foreground,#E6E8EE)]"
         >
@@ -183,10 +165,9 @@ export function ChatPanel({
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          {sessionId ? (
-            <TokenCounter projectId={projectId} sessionId={sessionId} />
-          ) : null}
+          {sessionId ? <TokenCounter projectId={projectId} sessionId={sessionId} /> : null}
           <button
+            type="button"
             onClick={togglePanel}
             aria-label={"Thu g\u1ecdn panel"}
             className="p-1 text-[var(--color-muted-foreground,#8A90A2)] hover:text-[var(--color-foreground,#E6E8EE)]"
@@ -197,25 +178,17 @@ export function ChatPanel({
       </div>
 
       {/* Messages area */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-5"
-      >
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5">
         {/* Error banners */}
         {error?.kind === "rate_limit" && (
-          <RateLimitBanner
-            message={error.message}
-            retryAfterS={error.retryAfterS}
-          />
+          <RateLimitBanner message={error.message} retryAfterS={error.retryAfterS} />
         )}
         {error?.kind === "auth" && (
           <div
             role="alert"
             className="mb-3 rounded-md border border-[var(--color-destructive,#E5484D)]/30 bg-[var(--color-destructive,#E5484D)]/10 p-3 text-sm"
           >
-            <p>
-              {"API key kh\u00f4ng h\u1ee3p l\u1ec7. C\u1eadp nh\u1eadt trong Settings."}
-            </p>
+            <p>{"API key kh\u00f4ng h\u1ee3p l\u1ec7. C\u1eadp nh\u1eadt trong Settings."}</p>
           </div>
         )}
         {error?.kind === "network" && (
@@ -224,7 +197,9 @@ export function ChatPanel({
             className="mb-3 rounded-md border border-[var(--color-destructive,#E5484D)]/30 bg-[var(--color-destructive,#E5484D)]/10 p-3 text-sm"
           >
             <p>
-              {"Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c. Ki\u1ec3m tra m\u1ea1ng v\u00e0 th\u1eed l\u1ea1i."}
+              {
+                "Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c. Ki\u1ec3m tra m\u1ea1ng v\u00e0 th\u1eed l\u1ea1i."
+              }
             </p>
           </div>
         )}
@@ -240,7 +215,9 @@ export function ChatPanel({
               {"Vi\u1ebft story b\u1eb1ng l\u1eddi"}
             </h3>
             <p className="font-serif mt-2 max-w-xs text-sm leading-6 text-[var(--color-muted-foreground,#8A90A2)]">
-              {"M\u00f4 t\u1ea3 lu\u1ed3ng b\u1ea1n mu\u1ed1n demo \u2014 v\u00ed d\u1ee5 \u201c\u0110\u0103ng nh\u1eadp v\u00e0o app, t\u1ea1o project m\u1edbi, share link\u201d. StoryCapture s\u1ebd sinh t\u1eebng b\u01b0\u1edbc DSL \u0111\u1ec3 b\u1ea1n duy\u1ec7t."}
+              {
+                "M\u00f4 t\u1ea3 lu\u1ed3ng b\u1ea1n mu\u1ed1n demo \u2014 v\u00ed d\u1ee5 \u201c\u0110\u0103ng nh\u1eadp v\u00e0o app, t\u1ea1o project m\u1edbi, share link\u201d. StoryCapture s\u1ebd sinh t\u1eebng b\u01b0\u1edbc DSL \u0111\u1ec3 b\u1ea1n duy\u1ec7t."
+              }
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <button
@@ -274,18 +251,14 @@ export function ChatPanel({
         {/* Message list */}
         {messages.map((msg) => (
           <div key={msg.id} className="mb-3">
-            <ChatBubble role={msg.role} text={msg.text} />
+            <ChatBubble speaker={msg.role} text={msg.text} />
           </div>
         ))}
 
         {/* Streaming bubble */}
         {streaming && (
           <div className="mb-3">
-            <ChatBubble
-              role="assistant"
-              text={streaming.text}
-              isStreaming
-            />
+            <ChatBubble speaker="assistant" text={streaming.text} isStreaming />
             <div role="status" aria-live="polite" className="sr-only">
               {"\u0110ang sinh b\u01b0\u1edbc\u2026"}
             </div>

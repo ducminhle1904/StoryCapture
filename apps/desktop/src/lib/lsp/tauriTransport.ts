@@ -6,7 +6,7 @@
  * No stdio — all LSP communication flows through Tauri IPC exclusively.
  */
 
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 /**
  * Transport interface for communicating with the in-process LSP server.
@@ -17,9 +17,7 @@ export interface TauriLspTransport {
   /** Send a JSON-RPC notification (no response expected). */
   sendNotification(method: string, params: unknown): void;
   /** Register a handler for server-initiated notifications. Returns unsubscribe function. */
-  onNotification(
-    handler: (n: { method: string; params: unknown }) => void,
-  ): () => void;
+  onNotification(handler: (n: { method: string; params: unknown }) => void): () => void;
   /** Clean up resources (channel, handlers). */
   dispose(): void;
 }
@@ -31,9 +29,7 @@ export interface TauriLspTransport {
  * server-initiated notifications (e.g. publishDiagnostics).
  */
 export function createTauriLspTransport(_docUri: string): TauriLspTransport {
-  const handlers = new Set<
-    (n: { method: string; params: unknown }) => void
-  >();
+  const handlers = new Set<(n: { method: string; params: unknown }) => void>();
   let disposed = false;
 
   // Create a Tauri Channel for receiving server notifications.
@@ -42,7 +38,9 @@ export function createTauriLspTransport(_docUri: string): TauriLspTransport {
     if (disposed) return;
     const params = JSON.parse(msg.params_json) as unknown;
     const notification = { method: msg.method, params };
-    handlers.forEach((h) => h(notification));
+    handlers.forEach((handler) => {
+      handler(notification);
+    });
   };
 
   let nextId = 1;
@@ -91,9 +89,7 @@ export function createTauriLspTransport(_docUri: string): TauriLspTransport {
       });
     },
 
-    onNotification(
-      handler: (n: { method: string; params: unknown }) => void,
-    ): () => void {
+    onNotification(handler: (n: { method: string; params: unknown }) => void): () => void {
       handlers.add(handler);
       return () => {
         handlers.delete(handler);

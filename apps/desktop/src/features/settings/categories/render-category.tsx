@@ -1,15 +1,10 @@
-import { useEffect, useState } from "react";
-import { ScSegmented, ScSlider, ScSwitch } from "@storycapture/ui";
 import type { OutputResolutionDto } from "@storycapture/shared-types";
+import { ScSegmented, ScSlider, ScSwitch } from "@storycapture/ui";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
-import { useOutputPrefsStore } from "@/state/output-prefs";
 import { useAppSettingsStore } from "@/state/app-settings";
-import {
-  SettingsCard,
-  SettingsPanel,
-  SettingsRow,
-} from "../settings-row";
+import { useOutputPrefsStore } from "@/state/output-prefs";
+import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
 
 type ResoKey = "p720" | "p1080" | "p1440" | "p2160";
 

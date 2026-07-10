@@ -1,7 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
-
-import { useSimulatorStore } from "@/state/simulator-store";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { SimulatorEvent, SimulatorStepFrame } from "@/ipc/simulator";
+import { useSimulatorStore } from "@/state/simulator-store";
 
 function mkFrame(
   ordinal: number,
@@ -75,9 +74,7 @@ describe("simulatorStore", () => {
     useSimulatorStore
       .getState()
       .handleEvent({ type: "started", session_id: "s", run_id: "r", total_steps: 2 });
-    useSimulatorStore
-      .getState()
-      .handleEvent({ type: "completed", succeeded: 2, failed: 0 });
+    useSimulatorStore.getState().handleEvent({ type: "completed", succeeded: 2, failed: 0 });
     expect(useSimulatorStore.getState().runState).toBe("complete");
 
     useSimulatorStore
@@ -128,8 +125,13 @@ describe("simulatorStore", () => {
     expect(useSimulatorStore.getState().dismissedCoexistenceHint).toBe(true);
     const raw = localStorage.getItem("simulator:hintDismissed");
     expect(raw).not.toBeNull();
-    expect(JSON.parse(raw!)).toMatchObject({
+    expect(JSON.parse(must(raw))).toMatchObject({
       state: { dismissedCoexistenceHint: true },
     });
   });
 });
+
+function must<T>(value: T | null | undefined): T {
+  expect(value).toBeDefined();
+  return value as T;
+}

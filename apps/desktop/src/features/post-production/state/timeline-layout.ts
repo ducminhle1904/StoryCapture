@@ -48,13 +48,22 @@ function parseTracks(value: unknown): TimelineSlice["tracks"] | null {
     return null;
   }
   return cloneTimelineTracks({
-    video: video.filter(isRecord).map((clip) => ({ ...clip, trackId: "video" })) as TimelineSlice["tracks"]["video"],
-    cursor: cursor.filter(isRecord).map((clip) => ({ ...clip, trackId: "cursor" })) as TimelineSlice["tracks"]["cursor"],
-    zoom: zoom.filter(isRecord).map((clip) => ({ ...clip, trackId: "zoom" })) as TimelineSlice["tracks"]["zoom"],
-    sound: sound.filter(isRecord).map((clip) => ({ ...clip, trackId: "sound" })) as TimelineSlice["tracks"]["sound"],
-    annotations: annotations
+    video: video
       .filter(isRecord)
-      .map((clip) => ({ ...clip, trackId: "annotations" })) as TimelineSlice["tracks"]["annotations"],
+      .map((clip) => ({ ...clip, trackId: "video" })) as TimelineSlice["tracks"]["video"],
+    cursor: cursor
+      .filter(isRecord)
+      .map((clip) => ({ ...clip, trackId: "cursor" })) as TimelineSlice["tracks"]["cursor"],
+    zoom: zoom
+      .filter(isRecord)
+      .map((clip) => ({ ...clip, trackId: "zoom" })) as TimelineSlice["tracks"]["zoom"],
+    sound: sound
+      .filter(isRecord)
+      .map((clip) => ({ ...clip, trackId: "sound" })) as TimelineSlice["tracks"]["sound"],
+    annotations: annotations.filter(isRecord).map((clip) => ({
+      ...clip,
+      trackId: "annotations",
+    })) as TimelineSlice["tracks"]["annotations"],
   });
 }
 
@@ -81,7 +90,8 @@ export function serializeTimelineLayout(input: {
   durationMs: number;
   background: EditorBackgroundKind;
 }): string {
-  const sourceRevision = input.tracks.video.find((clip) => clip.sourceRevision)?.sourceRevision ?? null;
+  const sourceRevision =
+    input.tracks.video.find((clip) => clip.sourceRevision)?.sourceRevision ?? null;
   const layout: TimelineLayoutV2 = {
     version: TIMELINE_LAYOUT_VERSION,
     timingModelVersion: TIMELINE_TIMING_MODEL_VERSION,
@@ -127,10 +137,13 @@ export function parseTimelineLayoutJson(
     ? generatedTimingMatches(tracks, currentGenerated, toleranceMs)
     : true;
   const sourceMatches = !currentRevision || storedRevision === currentRevision;
-  const shouldRebuild = Boolean(currentGenerated && (!timingMatches || (!isLegacy && !sourceMatches)));
-  const migratedTracks = shouldRebuild && currentGenerated
-    ? preserveIndependentOverlays(currentGenerated, tracks)
-    : tracks;
+  const shouldRebuild = Boolean(
+    currentGenerated && (!timingMatches || (!isLegacy && !sourceMatches)),
+  );
+  const migratedTracks =
+    shouldRebuild && currentGenerated
+      ? preserveIndependentOverlays(currentGenerated, tracks)
+      : tracks;
   return {
     ok: true,
     layout: {

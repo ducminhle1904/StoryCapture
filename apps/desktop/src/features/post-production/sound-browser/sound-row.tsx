@@ -9,8 +9,8 @@
  * drops.
  */
 
-import { memo, useEffect, useRef } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { memo, useEffect, useRef } from "react";
 import WaveSurfer from "wavesurfer.js";
 
 import type { SoundLibraryEntry } from "@/ipc/sound-library";
@@ -54,8 +54,7 @@ function SoundRowBase({ entry }: SoundRowProps) {
   }, [entry.file_path]);
 
   return (
-    <div
-      role="listitem"
+    <li
       aria-label={`${entry.name}, ${Math.round(entry.duration_ms)} ms, ${entry.license}`}
       draggable
       onDragStart={(e) => {
@@ -71,7 +70,7 @@ function SoundRowBase({ entry }: SoundRowProps) {
           {entry.license} • {(entry.duration_ms / 1000).toFixed(1)}s
         </span>
       </div>
-    </div>
+    </li>
   );
 }
 

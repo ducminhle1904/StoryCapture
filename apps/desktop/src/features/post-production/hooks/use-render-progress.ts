@@ -2,8 +2,8 @@
  * Subscribe to render-progress ticks and mirror them into local state.
  */
 
-import { useEffect } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { useEffect } from "react";
 
 import type { RenderProgress } from "@/ipc/render";
 import { frontendLog } from "@/lib/log";

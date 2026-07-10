@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { exists } from "@tauri-apps/plugin-fs";
-import { toast } from "sonner";
 import { AlertTriangle, FolderSearch, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { setBrowserExecutable } from "@/ipc/settings";
 import { useAppSettingsStore } from "@/state/app-settings";
@@ -71,9 +71,7 @@ export function BrowserRow() {
         useAppSettingsStore.setState({ settings: next });
         setPath(next.browser_executable);
         await checkPath(next.browser_executable);
-        toast.success(
-          value ? `Using ${value.split("/").pop()}` : "Reverted to bundled Chromium",
-        );
+        toast.success(value ? `Using ${value.split("/").pop()}` : "Reverted to bundled Chromium");
       } finally {
         setBusy(false);
       }
@@ -110,9 +108,7 @@ export function BrowserRow() {
           </div>
           <div
             className={`mt-0.5 truncate text-[11px] ${
-              pathMissing
-                ? "text-[var(--color-danger)]"
-                : "text-[var(--color-fg-muted)]"
+              pathMissing ? "text-[var(--color-danger)]" : "text-[var(--color-fg-muted)]"
             }`}
           >
             {path ?? "Using Playwright's bundled Chromium"}

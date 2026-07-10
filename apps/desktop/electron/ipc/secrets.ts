@@ -1,15 +1,9 @@
-import {
-  deleteGenericSecret,
-  loadGenericSecret,
-  storeGenericSecret,
-} from "./generic-secret-store";
+import { deleteGenericSecret, loadGenericSecret, storeGenericSecret } from "./generic-secret-store";
 import { legacyHandlers } from "./legacy-command";
 import type { InvokeArgs, InvokeHandlers } from "./types";
 
 function genericSecretAddress(args: InvokeArgs) {
-  const payload = args as
-    | { service?: unknown; account?: unknown; key?: unknown }
-    | undefined;
+  const payload = args as { service?: unknown; account?: unknown; key?: unknown } | undefined;
   return {
     service: payload?.service,
     account: payload?.account ?? payload?.key,

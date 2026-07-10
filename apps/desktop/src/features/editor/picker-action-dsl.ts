@@ -3,11 +3,7 @@
 // any other supported verb against the picked locator.
 
 import type { PickElementMeta, PickLocator, PickPicked } from "@/ipc/picker";
-import {
-  parseLine,
-  TARGET_VERBS,
-  type ParsedLine,
-} from "./picker-emit-rewrite";
+import { type ParsedLine, parseLine, TARGET_VERBS } from "./picker-emit-rewrite";
 
 export { parseLine as parsePickerLine };
 
@@ -111,9 +107,7 @@ function formatTargetBase(locator: PickLocator): string {
         const { role, name } = locator.value;
         return `${role} "${escapeDslString(name)}"`;
       }
-      throw new Error(
-        `picker-action-dsl: role locator missing { role, name } shape`,
-      );
+      throw new Error(`picker-action-dsl: role locator missing { role, name } shape`);
     }
     case "label":
       return `field "${escapeDslString(stringValue(locator))}"`;
@@ -128,9 +122,7 @@ function formatTargetBase(locator: PickLocator): string {
       if (typeof locator.value === "string") {
         return `${locator.kind} "${escapeDslString(locator.value)}"`;
       }
-      throw new Error(
-        `picker-action-dsl: unsupported locator kind "${locator.kind}"`,
-      );
+      throw new Error(`picker-action-dsl: unsupported locator kind "${locator.kind}"`);
   }
 }
 
@@ -143,9 +135,7 @@ function formatTargetBase(locator: PickLocator): string {
 function appendNth(target: string, nth: number | undefined): string {
   if (nth === undefined || nth === null) return target;
   if (!Number.isInteger(nth) || nth < 1) {
-    throw new Error(
-      `picker-action-dsl: nth must be a positive integer (got ${nth})`,
-    );
+    throw new Error(`picker-action-dsl: nth must be a positive integer (got ${nth})`);
   }
   return `${target} nth ${nth}`;
 }
@@ -165,9 +155,7 @@ export function pickedTargetLabel(r: PickPicked): string {
 
 function stringValue(locator: PickLocator): string {
   if (typeof locator.value !== "string") {
-    throw new Error(
-      `picker-action-dsl: locator kind "${locator.kind}" expects string value`,
-    );
+    throw new Error(`picker-action-dsl: locator kind "${locator.kind}" expects string value`);
   }
   return locator.value;
 }
@@ -235,9 +223,7 @@ export function buildPickerActionLine(
     }
     case "drag": {
       if (!options?.toLocator) {
-        throw new Error(
-          `picker-action-dsl: drag action requires options.toLocator`,
-        );
+        throw new Error(`picker-action-dsl: drag action requires options.toLocator`);
       }
       const toTarget = formatPickedTarget(options.toLocator);
       body = `drag ${target} to ${toTarget}`;
@@ -257,15 +243,9 @@ export function buildPickerActionLine(
   return parsed?.indent ? `${parsed.indent}${body}` : body;
 }
 
-function requireString(
-  value: string | undefined,
-  action: string,
-  field: string,
-): string {
+function requireString(value: string | undefined, action: string, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(
-      `picker-action-dsl: ${action} action requires options.${field}`,
-    );
+    throw new Error(`picker-action-dsl: ${action} action requires options.${field}`);
   }
   return value;
 }
@@ -282,11 +262,9 @@ function extractTimeout(trailing: string | undefined): string | null {
  * top so the right action lands under the default focus ring without
  * hiding the rest of the menu (reordering is safer than hiding).
  */
-export function getPickerActionItems(
-  meta?: PickElementMeta,
-): PickerActionItem[] {
+export function getPickerActionItems(meta?: PickElementMeta): PickerActionItem[] {
   const base: PickerAction[] = [...TARGET_VERBS];
-  let promoted: PickerAction[] = [];
+  const promoted: PickerAction[] = [];
 
   if (meta?.isTextInput) promoted.push("fill", "type");
   else if (meta?.isSelect) promoted.push("select");

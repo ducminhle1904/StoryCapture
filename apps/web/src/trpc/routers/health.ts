@@ -1,4 +1,4 @@
-import { router, publicProcedure } from "../init";
+import { publicProcedure, router } from "../init";
 
 export const healthRouter = router({
   ping: publicProcedure.query(() => {

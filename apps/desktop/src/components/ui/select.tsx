@@ -136,15 +136,13 @@ export const SelectGroupLabel = React.forwardRef<
 ));
 SelectGroupLabel.displayName = "SelectGroupLabel";
 
-export const SelectSeparator = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    role="separator"
-    className={cn("my-1 h-px bg-[var(--color-border-subtle)]", className)}
-    {...props}
-  />
-));
+export const SelectSeparator = React.forwardRef<HTMLHRElement, React.HTMLAttributes<HTMLHRElement>>(
+  ({ className, ...props }, ref) => (
+    <hr
+      ref={ref}
+      className={cn("my-1 h-px bg-[var(--color-border-subtle)]", className)}
+      {...props}
+    />
+  ),
+);
 SelectSeparator.displayName = "SelectSeparator";

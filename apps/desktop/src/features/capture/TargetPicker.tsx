@@ -2,14 +2,8 @@
  * TargetPicker for capture targets.
  */
 
-import { useCallback, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
-
-import {
-  captureTargetKey,
-  type CaptureTarget,
-  type CaptureTargets,
-} from "@/ipc/capture";
+import { useCallback, useMemo, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -19,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { type CaptureTarget, type CaptureTargets, captureTargetKey } from "@/ipc/capture";
 
 interface TargetPickerProps {
   availableTargets: CaptureTargets | null;
@@ -103,11 +98,7 @@ export function TargetPicker({
             onOpenChange={handleOpen}
             disabled={disabled || !availableTargets}
           >
-            <SelectTrigger
-              id="target-select"
-              aria-label="Capture target"
-              className="min-w-0"
-            >
+            <SelectTrigger id="target-select" aria-label="Capture target" className="min-w-0">
               <SelectValue>
                 {() =>
                   value?.kind === "display" ? (
@@ -115,9 +106,7 @@ export function TargetPicker({
                       {labelForTarget(value, availableTargets)}
                     </span>
                   ) : (
-                    <span className="text-[var(--color-fg-muted)]">
-                      Select display
-                    </span>
+                    <span className="text-[var(--color-fg-muted)]">Select display</span>
                   )
                 }
               </SelectValue>
@@ -133,18 +122,14 @@ export function TargetPicker({
                   };
                   const label = `Display ${id} — ${d.name} (${d.width_px}×${d.height_px})`;
                   return (
-                    <SelectItem
-                      key={`display:${id}`}
-                      value={captureTargetKey(target)}
-                    >
+                    <SelectItem key={`display:${id}`} value={captureTargetKey(target)}>
                       <span className="block truncate" title={label}>
                         {label}
                       </span>
                     </SelectItem>
                   );
                 })}
-                {(!availableTargets ||
-                  availableTargets.displays.length === 0) && (
+                {(!availableTargets || availableTargets.displays.length === 0) && (
                   <div className="px-2 py-1 text-[11px] text-[var(--color-fg-muted)]">
                     No displays detected
                   </div>

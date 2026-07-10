@@ -7,9 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 
 describe("D-14 unmount cleanup", () => {
   it("nulls automation channel handler and calls stopRecording", () => {
-    const stopRecording = vi.fn<(id: string) => Promise<{ output_path: string }>>(
-      async () => ({ output_path: "/tmp/x.mp4" }),
-    );
+    const stopRecording = vi.fn<(id: string) => Promise<{ output_path: string }>>(async () => ({
+      output_path: "/tmp/x.mp4",
+    }));
     const automationChannel = { onmessage: vi.fn() as ((e: unknown) => void) | null };
 
     const refs = {

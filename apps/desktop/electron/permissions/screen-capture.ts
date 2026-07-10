@@ -43,8 +43,6 @@ export function mapScreenCaptureStatus(rawStatus: string): ScreenCapturePermissi
     case "denied":
     case "restricted":
       return "denied";
-    case "not-determined":
-    case "unknown":
     default:
       return "undetermined";
   }

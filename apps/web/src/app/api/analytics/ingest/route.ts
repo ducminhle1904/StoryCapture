@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { getCountry } from "@/lib/geo";
+import { type NextRequest, NextResponse } from "next/server";
 import { ANALYTICS_EVENTS, type AnalyticsEventType } from "@/lib/constants";
+import { getCountry } from "@/lib/geo";
+import { prisma } from "@/lib/prisma";
 
 /**
  * POST /api/analytics/ingest
@@ -92,10 +92,7 @@ export async function POST(req: NextRequest) {
       );
     }
   } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON" },
-      { status: 400, headers: rateLimitHeaders },
-    );
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: rateLimitHeaders });
   }
 
   if (body.events.length === 0 || body.events.length > 50) {

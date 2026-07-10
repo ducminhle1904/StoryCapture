@@ -28,7 +28,7 @@ import {
 } from "@/state/output-prefs";
 
 import * as copy from "./advanced-copy";
-import { type QualityControlSpec, deriveQualityControls } from "./encoder-options-table";
+import { deriveQualityControls, type QualityControlSpec } from "./encoder-options-table";
 
 type HwEncoderKind =
   | "auto"

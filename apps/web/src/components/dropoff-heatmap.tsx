@@ -32,9 +32,7 @@ export function DropoffHeatmap({ data, sceneLabels }: DropoffHeatmapProps) {
   if (data.length === 0) {
     return (
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-        <h3 className="mb-4 text-sm font-medium text-zinc-400">
-          Scene Drop-off
-        </h3>
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">Scene Drop-off</h3>
         <p className="text-sm text-zinc-500">No scene data yet.</p>
       </div>
     );
@@ -44,17 +42,13 @@ export function DropoffHeatmap({ data, sceneLabels }: DropoffHeatmapProps) {
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-      <h3 className="mb-4 text-sm font-medium text-zinc-400">
-        Scene Drop-off
-      </h3>
+      <h3 className="mb-4 text-sm font-medium text-zinc-400">Scene Drop-off</h3>
 
       <div className="space-y-3">
         {data.map((scene) => {
           const widthPct = (scene.viewers / maxViewers) * 100;
           const retentionRatio = scene.viewers / maxViewers;
-          const label =
-            sceneLabels?.[scene.sceneIndex] ??
-            `Scene ${scene.sceneIndex + 1}`;
+          const label = sceneLabels?.[scene.sceneIndex] ?? `Scene ${scene.sceneIndex + 1}`;
 
           return (
             <div key={scene.sceneIndex}>
@@ -63,9 +57,7 @@ export function DropoffHeatmap({ data, sceneLabels }: DropoffHeatmapProps) {
                 <span className="text-zinc-500">
                   {scene.viewers.toLocaleString()} viewers
                   {scene.dropoff > 0 && (
-                    <span className="ml-1 text-red-400">
-                      (-{scene.dropoff})
-                    </span>
+                    <span className="ml-1 text-red-400">(-{scene.dropoff})</span>
                   )}
                 </span>
               </div>

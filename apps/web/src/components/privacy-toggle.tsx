@@ -14,11 +14,7 @@ interface PrivacyToggleProps {
  * Public = searchable (indexed by search engines, oEmbed available).
  * No password protection or link expiry in v1.
  */
-export function PrivacyToggle({
-  videoId,
-  initialIsPublic,
-  onToggle,
-}: PrivacyToggleProps) {
+export function PrivacyToggle({ videoId, initialIsPublic, onToggle }: PrivacyToggleProps) {
   const [isPublic, setIsPublic] = useState(initialIsPublic);
   const [loading, setLoading] = useState(false);
 

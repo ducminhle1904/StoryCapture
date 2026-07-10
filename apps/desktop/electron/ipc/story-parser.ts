@@ -128,7 +128,10 @@ function stripLineComment(line: string): string {
   return line;
 }
 
-function targetWithNth(target: unknown, rest: string): { target: unknown; target_nth?: number; rest: string } {
+function targetWithNth(
+  target: unknown,
+  rest: string,
+): { target: unknown; target_nth?: number; rest: string } {
   const nth = rest.match(/^nth\s+(\d+)(?:\s+([\s\S]*))?$/);
   if (!nth) return { target, rest };
   return {

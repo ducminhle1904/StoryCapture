@@ -3,9 +3,9 @@
  * the component can run under happy-dom without a real recorder process.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the Tauri invoke call BEFORE importing the component.
 const invokeMock = vi.fn();
@@ -16,8 +16,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-import { TargetThumbnail } from "./TargetThumbnail";
 import type { CaptureTarget } from "@/ipc/capture";
+import { TargetThumbnail } from "./TargetThumbnail";
 
 // ─── test-scoped URL shim ──────────────────────────────────────────────
 // happy-dom provides URL.createObjectURL in newer builds, but we stub

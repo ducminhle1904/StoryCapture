@@ -40,17 +40,20 @@ function makeProgress(overrides: Partial<RenderProgress> = {}): RenderProgress {
 
 describe("JobRow", () => {
   it("renders visible percent from live progress", () => {
-    render(<JobRow job={makeJob({ progress_pct: 12 })} progress={makeProgress()} onCancel={vi.fn()} />);
+    render(
+      <JobRow job={makeJob({ progress_pct: 12 })} progress={makeProgress()} onCancel={vi.fn()} />,
+    );
 
     expect(screen.getByText("43% complete")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: /mp4 1080p @ 60fps progress/i })).toHaveAttribute(
-      "aria-valuenow",
-      "43",
-    );
+    expect(
+      screen.getByRole("progressbar", { name: /mp4 1080p @ 60fps progress/i }),
+    ).toHaveAttribute("aria-valuenow", "43");
   });
 
   it("renders formatted ETA from eta_ms", () => {
-    render(<JobRow job={makeJob()} progress={makeProgress({ eta_ms: 65_000 })} onCancel={vi.fn()} />);
+    render(
+      <JobRow job={makeJob()} progress={makeProgress({ eta_ms: 65_000 })} onCancel={vi.fn()} />,
+    );
 
     expect(screen.getByText("ETA 1m 05s")).toBeInTheDocument();
   });
@@ -87,7 +90,9 @@ describe("JobRow", () => {
     );
 
     expect(screen.getByText("Failed")).toBeInTheDocument();
-    expect(screen.queryByText("ffmpeg failed for /Users/demo/private/source.mp4")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("ffmpeg failed for /Users/demo/private/source.mp4"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Failed")).toHaveAttribute("title", "Failed");
   });
 });

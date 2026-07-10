@@ -1405,7 +1405,7 @@ export function PreviewPlayer({
   );
 
   const onTextPointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>, clip: AnnotationClip) => {
+    (e: ReactPointerEvent<HTMLButtonElement>, clip: AnnotationClip) => {
       if (editingTextClipId === clip.id) return;
       e.preventDefault();
       e.stopPropagation();
@@ -1691,10 +1691,9 @@ export function PreviewPlayer({
                   const font = textFontCss(style.font);
                   const hasBox = Boolean(style.boxStyle);
                   return (
-                    <div
+                    <button
                       key={clip.id}
-                      role="button"
-                      tabIndex={0}
+                      type="button"
                       aria-label={`Text overlay ${clip.text}`}
                       data-text-clip-id={clip.id}
                       className={`pointer-events-auto absolute max-w-[78%] whitespace-pre-wrap transition-[box-shadow,outline-color,transform,opacity] ${
@@ -1732,13 +1731,9 @@ export function PreviewPlayer({
                         e.stopPropagation();
                         beginTextEdit(clip);
                       }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") beginTextEdit(clip);
-                      }}
                     >
                       {editing ? (
                         <textarea
-                          autoFocus
                           aria-label="Edit text overlay"
                           value={textDraft}
                           className="min-h-[2.4em] w-[min(420px,62vw)] resize-none rounded-md border border-white/18 bg-zinc-950/82 px-2 py-1 text-inherit outline-none"
@@ -1767,7 +1762,7 @@ export function PreviewPlayer({
                           onPointerDown={(e) => onTextResizePointerDown(e, clip)}
                         />
                       ) : null}
-                    </div>
+                    </button>
                   );
                 })}
               </div>

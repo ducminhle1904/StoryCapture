@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { parseLine, rewriteEmitted } from "./picker-emit-rewrite";
 
@@ -13,9 +13,7 @@ describe("parseLine", () => {
   });
 
   it("captures trailing modifier (timeout)", () => {
-    expect(
-      parseLine('    wait-for link "Rust (programming language)" timeout 5s'),
-    ).toEqual({
+    expect(parseLine('    wait-for link "Rust (programming language)" timeout 5s')).toEqual({
       indent: "    ",
       verb: "wait-for",
       trailing: "timeout 5s",
@@ -38,10 +36,7 @@ describe("parseLine", () => {
 
 describe("rewriteEmitted", () => {
   it("keeps `click` when existing line has unknown verb", () => {
-    const out = rewriteEmitted(
-      'click link "Rust"',
-      parseLine('    type field "Search" with "x"'),
-    );
+    const out = rewriteEmitted('click link "Rust"', parseLine('    type field "Search" with "x"'));
     expect(out).toBe('    click link "Rust"');
   });
 
@@ -62,7 +57,7 @@ describe("rewriteEmitted", () => {
   });
 
   it("falls back cleanly when existing line has no shape", () => {
-    const out = rewriteEmitted("click link \"Rust\"", parseLine(""));
+    const out = rewriteEmitted('click link "Rust"', parseLine(""));
     expect(out).toBe('click link "Rust"');
   });
 });

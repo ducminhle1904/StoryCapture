@@ -16,9 +16,7 @@ import { settingsHandlers } from "./settings";
 let tempDir: string;
 
 beforeEach(async () => {
-  tempDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "storycapture-settings-test-"),
-  );
+  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-settings-test-"));
   electronMock.getPath.mockImplementation((name: string) => {
     if (name !== "userData") throw new Error(`Unexpected app path: ${name}`);
     return tempDir;
@@ -31,9 +29,10 @@ afterEach(async () => {
 });
 
 async function readStoredSettings() {
-  return JSON.parse(
-    await fs.readFile(path.join(tempDir, "app_settings.json"), "utf8"),
-  ) as Record<string, unknown>;
+  return JSON.parse(await fs.readFile(path.join(tempDir, "app_settings.json"), "utf8")) as Record<
+    string,
+    unknown
+  >;
 }
 
 describe("settings IPC handlers", () => {
@@ -101,14 +100,10 @@ describe("settings IPC handlers", () => {
     ).resolves.toMatchObject({
       browser_executable: "/Applications/Browser.app",
     });
-    await expect(
-      settingsHandlers.set_browser_executable({}),
-    ).resolves.toMatchObject({
+    await expect(settingsHandlers.set_browser_executable({})).resolves.toMatchObject({
       browser_executable: null,
     });
-    await expect(
-      settingsHandlers.set_browser_language({}),
-    ).resolves.toMatchObject({
+    await expect(settingsHandlers.set_browser_language({})).resolves.toMatchObject({
       browser_language: "system",
     });
     expect(settingsHandlers.get_browser_language_options()).toEqual([

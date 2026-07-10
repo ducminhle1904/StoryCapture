@@ -1,11 +1,10 @@
-import { describe, expect, it } from "vitest";
-
 import {
   KNOWN_BLOCKS,
   KNOWN_META_KEYS,
   KNOWN_TARGET_PREFIXES,
   KNOWN_VERBS,
 } from "@storycapture/story-dsl";
+import { describe, expect, it } from "vitest";
 
 import { VERB_DOCS } from "./dsl-docs";
 

@@ -3,5 +3,5 @@
  * `state/store.ts`.
  */
 
-export { useEditorStore } from "../state/store";
 export type { EditorStore } from "../state/store";
+export { useEditorStore } from "../state/store";

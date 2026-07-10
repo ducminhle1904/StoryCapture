@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
+import { AnalyticsDashboard } from "@/components/analytics-dashboard";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { AnalyticsDashboard } from "@/components/analytics-dashboard";
 
 interface AnalyticsPageProps {
   params: Promise<{ videoId: string }>;
@@ -64,12 +64,8 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-100">
-            Analytics: {video.projectName}
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            View performance metrics for this video
-          </p>
+          <h1 className="text-2xl font-semibold text-zinc-100">Analytics: {video.projectName}</h1>
+          <p className="mt-1 text-sm text-zinc-500">View performance metrics for this video</p>
         </div>
         <a
           href={`/watch/${video.slug}`}

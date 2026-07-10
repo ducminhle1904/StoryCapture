@@ -97,7 +97,9 @@ export function resolveOverride(
   project: PartialPersist | null,
 ): PersistShape {
   if (!project) return global;
-  const activePreset = isPresetName(project.activePreset) ? project.activePreset : global.activePreset;
+  const activePreset = isPresetName(project.activePreset)
+    ? project.activePreset
+    : global.activePreset;
   const hasExplicitPreset = isPresetName(project.activePreset);
   const recordingKnobs =
     hasExplicitPreset && activePreset !== "Custom"

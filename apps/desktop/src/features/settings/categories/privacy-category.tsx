@@ -1,7 +1,7 @@
+import { ScBadge, ScButton, ScSwitch } from "@storycapture/ui";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderArchive } from "lucide-react";
 import { toast } from "sonner";
-import { ScBadge, ScButton, ScSwitch } from "@storycapture/ui";
 
 import { exportDiagnosticBundle, type PrivacySettings } from "@/ipc/settings";
 import { useAppSettingsStore } from "@/state/app-settings";
@@ -67,9 +67,7 @@ export function PrivacyCategory() {
           control={
             <ScSwitch
               checked={settings.privacy.prompt_redaction_enabled}
-              onCheckedChange={(checked) =>
-                void savePrivacy({ prompt_redaction_enabled: checked })
-              }
+              onCheckedChange={(checked) => void savePrivacy({ prompt_redaction_enabled: checked })}
             />
           }
         />

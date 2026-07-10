@@ -12,13 +12,7 @@ function stripAnsi(s: string): string {
   return s.replace(ANSI_SGR_RE, "");
 }
 
-export type RunState =
-  | "idle"
-  | "running"
-  | "paused"
-  | "complete"
-  | "failed"
-  | "cancelled";
+export type RunState = "idle" | "running" | "paused" | "complete" | "failed" | "cancelled";
 
 interface SimulatorState {
   frames: SimulatorStepFrame[];
@@ -98,10 +92,8 @@ export const useSimulatorStore = create<SimulatorState>()(
             set((s) => ({
               frames: [...s.frames, e.frame],
               currentFrameOrdinal: e.frame.ordinal,
-              inFlightOrdinal:
-                s.inFlightOrdinal === e.frame.ordinal ? null : s.inFlightOrdinal,
-              inFlightStartedAt:
-                s.inFlightOrdinal === e.frame.ordinal ? null : s.inFlightStartedAt,
+              inFlightOrdinal: s.inFlightOrdinal === e.frame.ordinal ? null : s.inFlightOrdinal,
+              inFlightStartedAt: s.inFlightOrdinal === e.frame.ordinal ? null : s.inFlightStartedAt,
             }));
             break;
           case "paused":

@@ -6,19 +6,12 @@
  * edits. Cleans up on unmount.
  */
 
-import { useEffect, useMemo, useRef } from "react";
 import type { Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-
-import {
-  createTauriLspTransport,
-  type TauriLspTransport,
-} from "@/lib/lsp/tauriTransport";
-import {
-  storyLanguageExtension,
-  pushLspDiagnostics,
-} from "@/lib/lsp/storyLanguage";
+import { useEffect, useMemo, useRef } from "react";
 import { frontendLog } from "@/lib/log";
+import { pushLspDiagnostics, storyLanguageExtension } from "@/lib/lsp/storyLanguage";
+import { createTauriLspTransport, type TauriLspTransport } from "@/lib/lsp/tauriTransport";
 
 interface UseStoryLspOptions {
   /** Document URI for this editor instance. */
@@ -95,10 +88,7 @@ export function useStoryLsp({
         // Subscribe to publishDiagnostics to push into CM.
         transport.onNotification((n) => {
           if (disposed) return;
-          if (
-            n.method === "textDocument/publishDiagnostics" &&
-            viewRef.current
-          ) {
+          if (n.method === "textDocument/publishDiagnostics" && viewRef.current) {
             pushLspDiagnostics(
               viewRef.current,
               n.params as {
@@ -117,11 +107,10 @@ export function useStoryLsp({
         });
       } catch (e) {
         // LSP initialization failure is non-fatal -- editor works without LSP.
-        frontendLog.warn(
-          "useStoryLsp",
-          "LSP init failed (editor falling back to no-LSP mode)",
-          { error: e, fields: { doc_uri: docUri } },
-        );
+        frontendLog.warn("useStoryLsp", "LSP init failed (editor falling back to no-LSP mode)", {
+          error: e,
+          fields: { doc_uri: docUri },
+        });
       }
     };
 

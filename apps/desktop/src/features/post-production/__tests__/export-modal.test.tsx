@@ -6,11 +6,11 @@
  *   - `export_validate_config` failures surface as warnings
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Tauri invoke mock — must be declared via vi.mock BEFORE importing modules
 // that read from @tauri-apps/api/core.
@@ -29,10 +29,10 @@ vi.mock("sonner", () => ({
   },
 }));
 
+import { RENDER_KEYS } from "@/ipc/render";
+import { DEFAULT_EXPORT_KNOBS, useOutputPrefsStore } from "@/state/output-prefs";
 // Re-import AFTER the mock is in place.
 import { ExportModal } from "../export-modal/export-modal";
-import { DEFAULT_EXPORT_KNOBS, useOutputPrefsStore } from "@/state/output-prefs";
-import { RENDER_KEYS } from "@/ipc/render";
 import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
 
@@ -416,9 +416,7 @@ describe("ExportModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /validate/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/GIF does not support 4K/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/GIF does not support 4K/i)).toBeInTheDocument();
     });
 
     const btn = screen.getByRole("button", { name: /start export/i });

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { useTRPC } from "@/trpc/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import type { Role } from "@/generated/prisma";
+import { useTRPC } from "@/trpc/client";
 
 /**
  * Workspace switcher dropdown.
@@ -59,10 +59,7 @@ export function WorkspaceSwitcher({
   // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setOpen(false);
         setShowCreate(false);
       }
@@ -72,9 +69,7 @@ export function WorkspaceSwitcher({
   }, [open]);
 
   const workspaces = workspacesQuery.data ?? [];
-  const currentWorkspace = workspaces.find(
-    (w) => w.workspaceId === currentWorkspaceId,
-  );
+  const currentWorkspace = workspaces.find((w) => w.workspaceId === currentWorkspaceId);
 
   const roleBadgeColor: Record<string, string> = {
     OWNER: "bg-amber-900/50 text-amber-300",
@@ -93,17 +88,13 @@ export function WorkspaceSwitcher({
           {currentWorkspace?.name ?? "Select workspace"}
         </span>
         <svg
+          aria-hidden="true"
           className={`h-4 w-4 text-zinc-500 transition-transform ${open ? "rotate-180" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
@@ -158,7 +149,6 @@ export function WorkspaceSwitcher({
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Workspace name"
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none"
-                  autoFocus
                 />
                 <div className="mt-2 flex gap-2">
                   <button
@@ -187,6 +177,7 @@ export function WorkspaceSwitcher({
                 className="flex w-full items-center gap-2 px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
               >
                 <svg
+                  aria-hidden="true"
                   className="h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"

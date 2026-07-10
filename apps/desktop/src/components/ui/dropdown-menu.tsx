@@ -104,7 +104,11 @@ export const DropdownMenuRadioItem = React.forwardRef<
   >
     <span className="absolute left-2.5 flex h-3.5 w-3.5 items-center justify-center">
       <BaseMenu.RadioItemIndicator>
-        <Circle size={7} aria-hidden="true" className="fill-[var(--color-accent-primary)] text-[var(--color-accent-primary)]" />
+        <Circle
+          size={7}
+          aria-hidden="true"
+          className="fill-[var(--color-accent-primary)] text-[var(--color-accent-primary)]"
+        />
       </BaseMenu.RadioItemIndicator>
     </span>
     {children}

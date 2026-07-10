@@ -6,8 +6,8 @@
  * controllable mock rather than the real Tauri bridge.
  */
 
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, act, cleanup } from "@testing-library/react";
 
 import type { Command, ParseResult, Story } from "@/ipc/parse";
 
@@ -18,9 +18,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { useEditorStore } from "@/state/editor";
 import {
-  SelectorValidatorOverlay,
   chipStateChar,
   collectValidatableSteps,
+  SelectorValidatorOverlay,
   useSelectorValidation,
 } from "./SelectorValidatorOverlay";
 
@@ -104,10 +104,12 @@ describe("chipStateChar", () => {
 });
 
 describe("SelectorValidatorOverlay", () => {
+  const invokeMock = vi.mocked(invoke);
+
   beforeEach(() => {
     vi.useFakeTimers();
-    (invoke as any).mockReset();
-    useEditorStore.setState({ source: "", lastParse: null } as any);
+    invokeMock.mockReset();
+    useEditorStore.setState({ source: "", lastParse: null });
     useSelectorValidation.getState().clear();
   });
 
@@ -117,92 +119,74 @@ describe("SelectorValidatorOverlay", () => {
   });
 
   it("returns null when no project dir is set", () => {
-    const { container } = render(
-      <SelectorValidatorOverlay projectDir={null} />,
-    );
+    const { container } = render(<SelectorValidatorOverlay projectDir={null} />);
     expect(container.firstChild).toBeNull();
   });
 
-  it(
-    "debounces validate IPC and writes into the store",
-    async () => {
-      (invoke as any).mockResolvedValue({
-        status: "unique",
-        strategy: "testid",
-      });
-      useEditorStore.setState({
-        lastParse: parseResult(
-          storyWith(
-            [navigate(1, "https://x.test/"), clickCmd(2, "save")],
-          ),
-        ),
-      } as any);
-      render(<SelectorValidatorOverlay projectDir="/fake/proj" debounceMs={250} />);
+  it("debounces validate IPC and writes into the store", async () => {
+    invokeMock.mockResolvedValue({
+      status: "unique",
+      strategy: "testid",
+    });
+    useEditorStore.setState({
+      lastParse: parseResult(storyWith([navigate(1, "https://x.test/"), clickCmd(2, "save")])),
+    });
+    render(<SelectorValidatorOverlay projectDir="/fake/proj" debounceMs={250} />);
 
-      // Before the debounce elapses the entry is "pending" (null status).
-      // Flush React effect microtasks.
-      await act(async () => {
-        await Promise.resolve();
-      });
-      expect(
-        useSelectorValidation.getState().entries.get(2)?.status,
-      ).toBeNull();
-      expect((invoke as any)).not.toHaveBeenCalled();
+    // Before the debounce elapses the entry is "pending" (null status).
+    // Flush React effect microtasks.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(useSelectorValidation.getState().entries.get(2)?.status).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalled();
 
-      await act(async () => {
-        vi.advanceTimersByTime(260);
-      });
+    await act(async () => {
+      vi.advanceTimersByTime(260);
+    });
 
-      // Let the resolved microtask flush.
-      await act(async () => {
-        await Promise.resolve();
-      });
+    // Let the resolved microtask flush.
+    await act(async () => {
+      await Promise.resolve();
+    });
 
-      expect((invoke as any)).toHaveBeenCalledWith(
-        "author_snapshot_validate",
-        expect.objectContaining({
-          projectDir: "/fake/proj",
-          url: "https://x.test/",
-          target: expect.objectContaining({ kind: "test_id" }),
-        }),
-      );
-      const entry = useSelectorValidation.getState().entries.get(2);
-      expect(entry?.status).toEqual({ status: "unique", strategy: "testid" });
-    },
-  );
+    expect(invokeMock).toHaveBeenCalledWith(
+      "author_snapshot_validate",
+      expect.objectContaining({
+        projectDir: "/fake/proj",
+        url: "https://x.test/",
+        target: expect.objectContaining({ kind: "test_id" }),
+      }),
+    );
+    const entry = useSelectorValidation.getState().entries.get(2);
+    expect(entry?.status).toEqual({ status: "unique", strategy: "testid" });
+  });
 
-  it(
-    "drops stale lines when a command is removed",
-    async () => {
-      (invoke as any).mockResolvedValue({ status: "none" });
-      useEditorStore.setState({
-        lastParse: parseResult(
-          storyWith([navigate(1, "https://x/"), clickCmd(2, "save")]),
-        ),
-      } as any);
-      const { rerender } = render(
-        <SelectorValidatorOverlay projectDir="/p" debounceMs={50} />,
-      );
-      await act(async () => {
-        vi.advanceTimersByTime(100);
-        await Promise.resolve();
-      });
-      expect(useSelectorValidation.getState().entries.has(2)).toBe(true);
+  it("drops stale lines when a command is removed", async () => {
+    invokeMock.mockResolvedValue({ status: "none" });
+    useEditorStore.setState({
+      lastParse: parseResult(storyWith([navigate(1, "https://x/"), clickCmd(2, "save")])),
+    });
+    const { rerender } = render(<SelectorValidatorOverlay projectDir="/p" debounceMs={50} />);
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
+    });
+    expect(useSelectorValidation.getState().entries.has(2)).toBe(true);
 
-      // Re-parse without the click step.
-      useEditorStore.setState({
-        lastParse: parseResult(storyWith([navigate(1, "https://x/")])),
-      } as any);
-      rerender(<SelectorValidatorOverlay projectDir="/p" debounceMs={50} />);
-      await act(async () => {
-        vi.advanceTimersByTime(100);
-        await Promise.resolve();
-      });
-      // The stale entry for line 2 should have been dropped from tracking
-      // (no new IPC calls; the store may retain the last value but the
-      // pending/key maps are cleared).
-      // We assert the IPC wasn't called a 2nd time for line 2.
-      expect((invoke as any).mock.calls.length).toBe(1);
-    },
-  );
+    // Re-parse without the click step.
+    useEditorStore.setState({
+      lastParse: parseResult(storyWith([navigate(1, "https://x/")])),
+    });
+    rerender(<SelectorValidatorOverlay projectDir="/p" debounceMs={50} />);
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
+    });
+    // The stale entry for line 2 should have been dropped from tracking
+    // (no new IPC calls; the store may retain the last value but the
+    // pending/key maps are cleared).
+    // We assert the IPC wasn't called a 2nd time for line 2.
+    expect(invokeMock.mock.calls.length).toBe(1);
+  });
 });

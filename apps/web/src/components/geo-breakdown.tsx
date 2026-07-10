@@ -9,9 +9,7 @@
 /** ISO 3166-1 alpha-2 to flag emoji */
 function countryFlag(code: string): string {
   if (code === "XX" || code.length !== 2) return "\u{1F310}"; // globe
-  const codePoints = [...code.toUpperCase()].map(
-    (c) => 0x1f1e6 - 65 + c.charCodeAt(0),
-  );
+  const codePoints = [...code.toUpperCase()].map((c) => 0x1f1e6 - 65 + c.charCodeAt(0));
   return String.fromCodePoint(...codePoints);
 }
 
@@ -39,9 +37,7 @@ export function GeoBreakdown({ data }: GeoBreakdownProps) {
   if (data.length === 0) {
     return (
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-        <h3 className="mb-4 text-sm font-medium text-zinc-400">
-          Geographic Breakdown
-        </h3>
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">Geographic Breakdown</h3>
         <p className="text-sm text-zinc-500">No geographic data yet.</p>
       </div>
     );
@@ -55,23 +51,16 @@ export function GeoBreakdown({ data }: GeoBreakdownProps) {
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-      <h3 className="mb-4 text-sm font-medium text-zinc-400">
-        Geographic Breakdown
-      </h3>
+      <h3 className="mb-4 text-sm font-medium text-zinc-400">Geographic Breakdown</h3>
 
       <div className="space-y-2">
         {top10.map((item) => {
           const pct = total > 0 ? ((item.count / total) * 100).toFixed(1) : "0";
           return (
-            <div
-              key={item.country}
-              className="flex items-center justify-between text-sm"
-            >
+            <div key={item.country} className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-base">{countryFlag(item.country)}</span>
-                <span className="text-zinc-200">
-                  {countryName(item.country)}
-                </span>
+                <span className="text-zinc-200">{countryName(item.country)}</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-zinc-400">{item.count.toLocaleString()}</span>

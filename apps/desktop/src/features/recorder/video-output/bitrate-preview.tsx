@@ -12,11 +12,11 @@ export function BitratePreview({ captureDims }: Props) {
   const dims = resolveDims(resolution, captureDims);
   const { mbps, mbPerMin } = computeBitratePreview({ w: dims.w, h: dims.h, fps, quality });
   return (
-    <div
+    <figure
       className="min-h-[40px] rounded-[var(--radius-sm)] border-l-2 border-[var(--color-accent-primary)] bg-[var(--color-surface-200)] px-3 py-2 font-mono text-[11px] text-[var(--color-fg-secondary)]"
       aria-label="Estimated bitrate"
     >
       {formatBitratePreview(mbps, mbPerMin)}
-    </div>
+    </figure>
   );
 }

@@ -12,10 +12,7 @@ export function CursorTrail() {
   const ring = useRecorderStore((s) => s.cursorPositions);
   const points = useMemo(() => getCursorPositions(ring), [ring]);
 
-  const polylinePoints = useMemo(
-    () => points.map((p) => `${p.x},${p.y}`).join(" "),
-    [points],
-  );
+  const polylinePoints = useMemo(() => points.map((p) => `${p.x},${p.y}`).join(" "), [points]);
 
   if (points.length < 2) return null;
 

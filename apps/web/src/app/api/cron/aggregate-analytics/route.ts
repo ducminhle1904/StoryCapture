@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { type NextRequest, NextResponse } from "next/server";
 import { MAX_RETENTION_DAYS } from "@/lib/constants";
+import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/cron/aggregate-analytics
@@ -45,41 +45,40 @@ export async function GET(req: NextRequest) {
 
     // Run all 5 independent read queries concurrently to reduce wall-clock time
     // from 5N sequential round-trips to ~N parallel round-trips.
-    const [totalPlays, uniqueRows, endedEvents, countryRows, sceneEnters] =
-      await Promise.all([
-        // Total plays
-        prisma.viewEvent.count({
-          where: { ...where, event: "play" },
-        }),
+    const [totalPlays, uniqueRows, endedEvents, countryRows, sceneEnters] = await Promise.all([
+      // Total plays
+      prisma.viewEvent.count({
+        where: { ...where, event: "play" },
+      }),
 
-        // Unique plays (by session)
-        prisma.viewEvent.groupBy({
-          by: ["sessionId"],
-          where: { ...where, event: "play" },
-        }),
+      // Unique plays (by session)
+      prisma.viewEvent.groupBy({
+        by: ["sessionId"],
+        where: { ...where, event: "play" },
+      }),
 
-        // Durations (ended events with watch duration)
-        prisma.viewEvent.findMany({
-          where: { ...where, event: "ended", watchDurationSec: { not: null } },
-          select: { watchDurationSec: true },
-          orderBy: { watchDurationSec: "asc" },
-        }),
+      // Durations (ended events with watch duration)
+      prisma.viewEvent.findMany({
+        where: { ...where, event: "ended", watchDurationSec: { not: null } },
+        select: { watchDurationSec: true },
+        orderBy: { watchDurationSec: "asc" },
+      }),
 
-        // Country breakdown
-        prisma.viewEvent.groupBy({
-          by: ["country"],
-          where: { ...where, event: "play" },
-          _count: { id: true },
-        }),
+      // Country breakdown
+      prisma.viewEvent.groupBy({
+        by: ["country"],
+        where: { ...where, event: "play" },
+        _count: { id: true },
+      }),
 
-        // Scene dropoffs
-        prisma.viewEvent.groupBy({
-          by: ["currentScene"],
-          where: { ...where, event: "scene_enter", currentScene: { not: null } },
-          _count: { id: true },
-          orderBy: { currentScene: "asc" },
-        }),
-      ]);
+      // Scene dropoffs
+      prisma.viewEvent.groupBy({
+        by: ["currentScene"],
+        where: { ...where, event: "scene_enter", currentScene: { not: null } },
+        _count: { id: true },
+        orderBy: { currentScene: "asc" },
+      }),
+    ]);
 
     const uniquePlays = uniqueRows.length;
 
@@ -87,13 +86,14 @@ export async function GET(req: NextRequest) {
     let medianDurationSec = 0;
 
     if (endedEvents.length > 0) {
-      const durations = endedEvents.map((e) => e.watchDurationSec!);
+      const durations = endedEvents.flatMap((event) =>
+        event.watchDurationSec === null ? [] : [event.watchDurationSec],
+      );
       avgDurationSec = durations.reduce((s, d) => s + d, 0) / durations.length;
       const mid = Math.floor(durations.length / 2);
-      medianDurationSec =
-        durations.length % 2 !== 0
-          ? durations[mid]!
-          : (durations[mid - 1]! + durations[mid]!) / 2;
+      const upper = durations[mid] ?? 0;
+      const lower = durations[mid - 1] ?? upper;
+      medianDurationSec = durations.length % 2 !== 0 ? upper : (lower + upper) / 2;
     }
 
     const countryBreakdown: Record<string, number> = {};
@@ -101,13 +101,15 @@ export async function GET(req: NextRequest) {
       countryBreakdown[row.country] = row._count.id;
     }
 
-    const sceneDropoffs = sceneEnters.map((row, idx) => {
-      const nextCount =
-        idx < sceneEnters.length - 1 ? sceneEnters[idx + 1]!._count.id : 0;
-      return {
-        sceneIndex: row.currentScene!,
-        dropoffCount: row._count.id - nextCount,
-      };
+    const sceneDropoffs = sceneEnters.flatMap((row, idx) => {
+      if (row.currentScene === null) return [];
+      const nextCount = idx < sceneEnters.length - 1 ? (sceneEnters[idx + 1]?._count.id ?? 0) : 0;
+      return [
+        {
+          sceneIndex: row.currentScene,
+          dropoffCount: row._count.id - nextCount,
+        },
+      ];
     });
 
     // Upsert DailyVideoStats

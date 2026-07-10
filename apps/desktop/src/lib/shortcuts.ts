@@ -21,8 +21,4 @@ export const EDITOR_SHORTCUTS: ShortcutDefinition[] = [
   { id: "toggle-preview", label: "Toggle preview", keys: "⌘ ." },
 ];
 
-export const SETTINGS_SHORTCUTS: ShortcutDefinition[] = [
-  ...GLOBAL_SHORTCUTS,
-  ...EDITOR_SHORTCUTS,
-];
-
+export const SETTINGS_SHORTCUTS: ShortcutDefinition[] = [...GLOBAL_SHORTCUTS, ...EDITOR_SHORTCUTS];

@@ -7,8 +7,8 @@
  * modifying the shared Track code. For now they are thin wrappers.
  */
 
-import { Track } from "../timeline/track";
 import { useEditorStore } from "../state/store";
+import { Track } from "../timeline/track";
 
 export interface VideoTrackProps {
   pxPerMs: number;

@@ -15,7 +15,7 @@ export const RECORD_PATH_MISS_MARKER = "Self-healing is disabled during recordin
  * destructive toast — a single constant prevents drift.
  */
 export const RECORD_PATH_MISS_BODY =
-  "Self-healing is disabled during recording. Open this story in Simulator, use \"Promote to fallback\" on step {N}, then try again.";
+  'Self-healing is disabled during recording. Open this story in Simulator, use "Promote to fallback" on step {N}, then try again.';
 
 /**
  * Parse a `StepFailed.error_message` that matches `PrimaryMissNoHeal`.
@@ -25,9 +25,7 @@ export const RECORD_PATH_MISS_BODY =
  * Returns `null` when the message is NOT a PrimaryMissNoHeal error —
  * callers should fall back to their existing generic StepFailed path.
  */
-export function parsePrimaryMiss(
-  errorMessage: string,
-): { verbExcerpt: string } | null {
+export function parsePrimaryMiss(errorMessage: string): { verbExcerpt: string } | null {
   if (!errorMessage.includes(RECORD_PATH_MISS_MARKER)) return null;
   // Display string starts with `Step {N}: "{verb}" could not ...`
   // Extract the quoted verb excerpt for the heading mono pill.

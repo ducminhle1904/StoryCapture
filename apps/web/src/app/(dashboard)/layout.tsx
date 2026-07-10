@@ -1,15 +1,12 @@
-import { auth, signOut } from "@/lib/auth";
+import Image from "next/image";
 import { redirect } from "next/navigation";
+import { auth, signOut } from "@/lib/auth";
 
 /**
  * Auth-gated dashboard layout.
  * Server component that checks session and redirects unauthenticated users to /sign-in.
  */
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
 
   if (!session?.user) {
@@ -23,9 +20,7 @@ export default async function DashboardLayout({
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-zinc-800 bg-zinc-900">
         <div className="flex h-14 items-center border-b border-zinc-800 px-4">
-          <span className="text-lg font-semibold text-zinc-50">
-            StoryCapture
-          </span>
+          <span className="text-lg font-semibold text-zinc-50">StoryCapture</span>
         </div>
 
         <nav className="flex-1 space-y-1 p-3">
@@ -53,9 +48,12 @@ export default async function DashboardLayout({
         <div className="border-t border-zinc-800 p-3">
           <div className="flex items-center gap-3 rounded-lg px-3 py-2">
             {user.image ? (
-              <img
+              <Image
                 src={user.image}
                 alt={user.name ?? "User avatar"}
+                width={32}
+                height={32}
+                unoptimized
                 className="h-8 w-8 rounded-full"
               />
             ) : (
@@ -64,12 +62,8 @@ export default async function DashboardLayout({
               </div>
             )}
             <div className="flex-1 truncate">
-              <p className="truncate text-sm font-medium text-zinc-200">
-                {user.name ?? "User"}
-              </p>
-              <p className="truncate text-xs text-zinc-500">
-                {user.email}
-              </p>
+              <p className="truncate text-sm font-medium text-zinc-200">{user.name ?? "User"}</p>
+              <p className="truncate text-xs text-zinc-500">{user.email}</p>
             </div>
           </div>
           <form

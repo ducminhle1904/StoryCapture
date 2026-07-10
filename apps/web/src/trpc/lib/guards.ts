@@ -34,10 +34,7 @@ export async function requireWorkspaceMember(
     });
   }
 
-  if (
-    minRole &&
-    ROLE_HIERARCHY[membership.role as Role] < ROLE_HIERARCHY[minRole]
-  ) {
+  if (minRole && ROLE_HIERARCHY[membership.role as Role] < ROLE_HIERARCHY[minRole]) {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: `You need ${minRole} or higher role for this action.`,

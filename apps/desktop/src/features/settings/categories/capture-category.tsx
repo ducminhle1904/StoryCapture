@@ -1,5 +1,5 @@
-import { toast } from "sonner";
 import { ScBadge, ScSegmented, ScSwitch } from "@storycapture/ui";
+import { toast } from "sonner";
 
 import type { AudioInputDefault, CaptureDefaults } from "@/ipc/settings";
 import { useAppSettingsStore } from "@/state/app-settings";
@@ -56,9 +56,7 @@ export function CaptureCategory() {
           control={
             <ScSwitch
               checked={settings.capture.include_cursor_default}
-              onCheckedChange={(checked) =>
-                void saveCapture({ include_cursor_default: checked })
-              }
+              onCheckedChange={(checked) => void saveCapture({ include_cursor_default: checked })}
             />
           }
         />

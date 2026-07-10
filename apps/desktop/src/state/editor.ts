@@ -7,10 +7,7 @@ export const EMPTY_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
 
 export type PreviewViewport = "desktop" | "tablet" | "mobile";
 
-export const VIEWPORT_SIZES: Record<
-  PreviewViewport,
-  { w: number; h: number }
-> = {
+export const VIEWPORT_SIZES: Record<PreviewViewport, { w: number; h: number }> = {
   desktop: { w: 1280, h: 800 },
   tablet: { w: 768, h: 1024 },
   mobile: { w: 375, h: 667 },

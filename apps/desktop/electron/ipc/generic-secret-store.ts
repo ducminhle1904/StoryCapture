@@ -33,9 +33,7 @@ async function readGenericSecretStore(): Promise<GenericSecretStore> {
   });
 }
 
-async function writeGenericSecretStore(
-  store: GenericSecretStore,
-): Promise<void> {
+async function writeGenericSecretStore(store: GenericSecretStore): Promise<void> {
   await writeJson(genericSecretStorePath(), {
     version: 1,
     keys: store.keys ?? {},
@@ -58,22 +56,14 @@ export async function storeGenericSecret(
   return null;
 }
 
-export async function loadGenericSecret(
-  service: unknown,
-  account: unknown,
-): Promise<string> {
+export async function loadGenericSecret(service: unknown, account: unknown): Promise<string> {
   assertSafeStorage();
-  const encrypted = (await readGenericSecretStore()).keys[
-    genericSecretKey(service, account)
-  ];
+  const encrypted = (await readGenericSecretStore()).keys[genericSecretKey(service, account)];
   if (!encrypted) throw new Error("secret not found");
   return safeStorage.decryptString(Buffer.from(encrypted, "base64"));
 }
 
-export async function deleteGenericSecret(
-  service: unknown,
-  account: unknown,
-): Promise<null> {
+export async function deleteGenericSecret(service: unknown, account: unknown): Promise<null> {
   const store = await readGenericSecretStore();
   const key = genericSecretKey(service, account);
   delete store.keys[key];

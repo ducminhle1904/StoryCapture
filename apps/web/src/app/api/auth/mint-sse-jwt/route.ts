@@ -1,6 +1,6 @@
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { mintJwt } from "@/lib/jwt";
-import { NextResponse } from "next/server";
 
 /**
  * Mint a short-lived SSE JWT (15 min) for authenticated web users.
@@ -12,10 +12,7 @@ export async function GET() {
   const session = await auth();
 
   if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: "Authentication required" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
   const token = await mintJwt(session.user.id);

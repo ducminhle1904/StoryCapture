@@ -69,9 +69,7 @@ describe("useOutputPrefsStore", () => {
 
   it("re-applying the same value keeps the named preset", () => {
     useOutputPrefsStore.getState().applyPreset("Lossless");
-    useOutputPrefsStore
-      .getState()
-      .setRecordingKnob("quality", "lossless");
+    useOutputPrefsStore.getState().setRecordingKnob("quality", "lossless");
     const s = useOutputPrefsStore.getState();
     expect(s.activePreset).toBe("Lossless");
   });
@@ -103,20 +101,16 @@ describe("matchPreset", () => {
 
 describe("recordingOutputResolutionForStart", () => {
   it("keeps Standard and Lossless source-sized explicitly", () => {
-    expect(
-      recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Standard"),
-    ).toEqual({
+    expect(recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Standard")).toEqual({
       kind: "match-source",
     });
-    expect(
-      recordingOutputResolutionForStart(PRESET_BUNDLES.Lossless, "Lossless"),
-    ).toEqual({ kind: "match-source" });
+    expect(recordingOutputResolutionForStart(PRESET_BUNDLES.Lossless, "Lossless")).toEqual({
+      kind: "match-source",
+    });
   });
 
   it("keeps Custom resolution explicit", () => {
-    expect(
-      recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Custom"),
-    ).toEqual({
+    expect(recordingOutputResolutionForStart(PRESET_BUNDLES.Standard, "Custom")).toEqual({
       kind: "match-source",
     });
   });

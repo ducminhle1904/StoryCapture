@@ -1,8 +1,4 @@
-import type {
-  FitModeDto,
-  OutputResolutionDto,
-  PadColorDto,
-} from "@storycapture/shared-types";
+import type { FitModeDto, OutputResolutionDto, PadColorDto } from "@storycapture/shared-types";
 import type { PresetName, RecordingQualityPreset } from "@/state/output-prefs";
 
 /* Section */

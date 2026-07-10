@@ -1,16 +1,16 @@
 import { create } from "zustand";
 
 import {
-  getAppSettings,
-  resetAppSettingsCategory,
-  setAppSettings,
   type AppSettings,
   type AppSettingsUpdate,
   type CaptureDefaults,
   type GeneralSettings,
+  getAppSettings,
   type PrivacySettings,
   type RenderDefaults,
+  resetAppSettingsCategory,
   type SettingsCategory,
+  setAppSettings,
   type UpdateSettings,
 } from "@/ipc/settings";
 

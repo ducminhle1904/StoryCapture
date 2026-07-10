@@ -35,9 +35,7 @@ export function CursorToggle({ checked, onChange, disabled }: CursorToggleProps)
           if (!disabled) onChange(!checked);
         }}
         className={`relative h-4 w-7 rounded-full transition-colors duration-150 ${
-          checked
-            ? "bg-[var(--color-accent-primary)]"
-            : "bg-[var(--color-surface-400)]"
+          checked ? "bg-[var(--color-accent-primary)]" : "bg-[var(--color-surface-400)]"
         }`}
       >
         <span

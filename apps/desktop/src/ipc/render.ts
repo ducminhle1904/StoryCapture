@@ -7,7 +7,7 @@
  * cache namespace.
  */
 
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type RenderStatus =
   | "pending"

@@ -1,7 +1,7 @@
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { WorkspaceSwitcherServer } from "./workspace-switcher-server";
 
 /**
@@ -60,37 +60,25 @@ export default async function DashboardPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-zinc-50">Dashboard</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Your recordings and demo videos
-          </p>
+          <p className="mt-1 text-sm text-zinc-400">Your recordings and demo videos</p>
         </div>
-        <WorkspaceSwitcherServer
-          currentWorkspaceId={defaultWorkspaceId}
-        />
+        <WorkspaceSwitcherServer currentWorkspaceId={defaultWorkspaceId} />
       </div>
 
       {/* Quick stats */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Total Videos
-          </p>
-          <p className="mt-1 text-2xl font-bold text-zinc-100">
-            {videos.length}
-          </p>
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Total Videos</p>
+          <p className="mt-1 text-2xl font-bold text-zinc-100">{videos.length}</p>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Published
-          </p>
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Published</p>
           <p className="mt-1 text-2xl font-bold text-zinc-100">
             {videos.filter((v) => v.isPublic).length}
           </p>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Ready
-          </p>
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Ready</p>
           <p className="mt-1 text-2xl font-bold text-zinc-100">
             {videos.filter((v) => v.status === "READY").length}
           </p>
@@ -99,13 +87,12 @@ export default async function DashboardPage() {
 
       {/* Video grid */}
       <section>
-        <h2 className="mb-4 text-lg font-semibold text-zinc-200">
-          Recent Videos
-        </h2>
+        <h2 className="mb-4 text-lg font-semibold text-zinc-200">Recent Videos</h2>
 
         {videos.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900/50 py-16">
             <svg
+              aria-hidden="true"
               className="h-12 w-12 text-zinc-700"
               fill="none"
               viewBox="0 0 24 24"
@@ -133,6 +120,7 @@ export default async function DashboardPage() {
                 {/* Video thumbnail placeholder */}
                 <div className="flex h-32 items-center justify-center rounded-lg bg-zinc-800">
                   <svg
+                    aria-hidden="true"
                     className="h-8 w-8 text-zinc-600"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -155,9 +143,7 @@ export default async function DashboardPage() {
 
                 {/* Video info */}
                 <div className="mt-3">
-                  <h3 className="truncate font-medium text-zinc-100">
-                    {video.projectName}
-                  </h3>
+                  <h3 className="truncate font-medium text-zinc-100">{video.projectName}</h3>
                   <div className="mt-1 flex items-center gap-2">
                     <span
                       className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${

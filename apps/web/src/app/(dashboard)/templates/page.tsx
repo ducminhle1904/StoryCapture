@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
 import { TemplateGrid } from "@/components/template-grid";
+import { useTRPC } from "@/trpc/client";
 
 /**
  * Template Marketplace page.
@@ -77,9 +77,7 @@ export default function TemplatesPage() {
     <div className="space-y-8">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-zinc-50">
-          Template Marketplace
-        </h1>
+        <h1 className="text-2xl font-bold text-zinc-50">Template Marketplace</h1>
         <p className="mt-1 text-sm text-zinc-400">
           Start with a proven demo pattern. Fork any template into your project.
         </p>
@@ -95,30 +93,24 @@ export default function TemplatesPage() {
             {/* Header */}
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-zinc-100">
-                  Template Forked
-                </h2>
-                <p className="mt-0.5 text-sm text-zinc-400">
-                  {forkResult.templateName}
-                </p>
+                <h2 className="text-lg font-semibold text-zinc-100">Template Forked</h2>
+                <p className="mt-0.5 text-sm text-zinc-400">{forkResult.templateName}</p>
               </div>
               <button
+                type="button"
                 onClick={() => setForkResult(null)}
                 className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
                 aria-label="Close dialog"
               >
                 <svg
+                  aria-hidden="true"
                   className="h-5 w-5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                   strokeWidth={2}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
@@ -130,17 +122,18 @@ export default function TemplatesPage() {
 
             {/* Instructions */}
             <p className="mt-3 text-xs text-zinc-500">
-              Open this file in your StoryCapture desktop app to start
-              customizing.
+              Open this file in your StoryCapture desktop app to start customizing.
             </p>
 
             {/* Actions */}
             <div className="mt-4 flex gap-3">
               <button
+                type="button"
                 onClick={handleDownload}
                 className="flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-white"
               >
                 <svg
+                  aria-hidden="true"
                   className="h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -156,10 +149,12 @@ export default function TemplatesPage() {
                 Download .story file
               </button>
               <button
+                type="button"
                 onClick={handleCopyToClipboard}
                 className="flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
               >
                 <svg
+                  aria-hidden="true"
                   className="h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"

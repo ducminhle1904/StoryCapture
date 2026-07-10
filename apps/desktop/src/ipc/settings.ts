@@ -5,7 +5,6 @@
  * place so UI components don't re-describe the IPC shape inline.
  */
 
-import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettingsDto,
   AppSettingsUpdate,
@@ -23,6 +22,7 @@ import type {
   StartupBehavior,
   UpdateSettings,
 } from "@storycapture/shared-types";
+import { invoke } from "@tauri-apps/api/core";
 
 export type AppSettings = AppSettingsDto;
 export type BrowserLanguageOption = BrowserLanguageOptionDto;
@@ -58,9 +58,7 @@ export function getBrowserLanguageOptions(): Promise<BrowserLanguageOption[]> {
   return invoke<BrowserLanguageOption[]>("get_browser_language_options");
 }
 
-export function setBrowserExecutable(
-  path: string | null,
-): Promise<AppSettings> {
+export function setBrowserExecutable(path: string | null): Promise<AppSettings> {
   return invoke<AppSettings>("set_browser_executable", { path });
 }
 

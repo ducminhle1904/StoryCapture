@@ -46,9 +46,7 @@ interface FailedStepState {
 const failedLineMark = (errorMessage: string | null) =>
   Decoration.line({
     class: "cm-simulator-failed-step",
-    attributes: errorMessage
-      ? { "data-sim-error": errorMessage, title: errorMessage }
-      : undefined,
+    attributes: errorMessage ? { "data-sim-error": errorMessage, title: errorMessage } : undefined,
   });
 
 export const simulatorFailedStepField = StateField.define<FailedStepState>({

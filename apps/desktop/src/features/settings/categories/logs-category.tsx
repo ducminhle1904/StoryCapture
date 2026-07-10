@@ -1,21 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
-import { FolderOpen, FolderSearch, RotateCcw, X } from "lucide-react";
 import { ScButton, ScInput } from "@storycapture/ui";
+import { open } from "@tauri-apps/plugin-dialog";
+import { FolderOpen, FolderSearch, RotateCcw, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
-import {
-  getLogConfig,
-  openLogDir,
-  setLogConfig,
-  type LogConfig,
-} from "@/ipc/settings";
+import { getLogConfig, type LogConfig, openLogDir, setLogConfig } from "@/ipc/settings";
 
-import {
-  SettingsCard,
-  SettingsPanel,
-  SettingsRow,
-} from "../settings-row";
+import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
 
 const BYTES_PER_MIB = 1024 * 1024;
 
@@ -289,8 +280,7 @@ export function LogsCategory() {
               color: "var(--sc-text-4)",
             }}
           >
-            Currently writing to{" "}
-            <code style={{ fontSize: 11 }}>{config.effective_log_dir}</code>.
+            Currently writing to <code style={{ fontSize: 11 }}>{config.effective_log_dir}</code>.
           </div>
         )}
       </div>
@@ -324,12 +314,7 @@ export function LogsCategory() {
         >
           Save
         </ScButton>
-        <ScButton
-          size="sm"
-          variant="ghost"
-          onClick={resetForm}
-          disabled={!dirty || busy}
-        >
+        <ScButton size="sm" variant="ghost" onClick={resetForm} disabled={!dirty || busy}>
           Cancel
         </ScButton>
         <ScButton
@@ -365,8 +350,7 @@ export function LogsCategory() {
           lineHeight: 1.5,
         }}
       >
-        Changes apply on the next launch of StoryCapture. Logs are local-only
-        — nothing is uploaded.
+        Changes apply on the next launch of StoryCapture. Logs are local-only — nothing is uploaded.
       </div>
     </SettingsPanel>
   );

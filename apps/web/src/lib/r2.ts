@@ -1,13 +1,13 @@
 import "server-only";
 
 import {
-  S3Client,
-  CreateMultipartUploadCommand,
-  CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
-  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   GetObjectCommand,
   PutObjectCommand,
+  S3Client,
+  UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -23,13 +23,16 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export const R2_BUCKET = process.env.R2_BUCKET ?? "storycapture-media";
 
+const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID;
+const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+
 export const r2Client = new S3Client({
   region: "auto",
   endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-  },
+  credentials:
+    r2AccessKeyId && r2SecretAccessKey
+      ? { accessKeyId: r2AccessKeyId, secretAccessKey: r2SecretAccessKey }
+      : undefined,
 });
 
 /**
@@ -60,10 +63,7 @@ const GET_URL_TTL_MS = 55 * 60 * 1000; // 55 minutes
  * Create a presigned GET URL for reading an object (thumbnails, private videos).
  * Expires in 1 hour. Cached for 55 minutes to avoid re-signing on every request.
  */
-export async function createPresignedGetUrl(
-  bucket: string,
-  key: string,
-): Promise<string> {
+export async function createPresignedGetUrl(bucket: string, key: string): Promise<string> {
   const cacheKey = `${bucket}:${key}`;
   const cached = GET_URL_CACHE.get(cacheKey);
   const now = Date.now();
@@ -102,7 +102,7 @@ export async function createPresignedPutUrl(
 }
 
 export {
-  CreateMultipartUploadCommand,
-  CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
 };

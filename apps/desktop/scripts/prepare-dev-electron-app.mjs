@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { cp, rename as fsRename, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { cp, mkdir, readFile, rename as fsRename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(here, "..");
-const identity = JSON.parse(await readFile(path.join(desktopRoot, "electron", "identity.json"), "utf8"));
+const identity = JSON.parse(
+  await readFile(path.join(desktopRoot, "electron", "identity.json"), "utf8"),
+);
 
 const scriptVersion = 4;
 const devAppName = identity.devAppName;
@@ -47,7 +49,9 @@ async function readJson(pathname) {
 }
 
 async function fileHash(pathname) {
-  return createHash("sha256").update(await readFile(pathname)).digest("hex");
+  return createHash("sha256")
+    .update(await readFile(pathname))
+    .digest("hex");
 }
 
 export async function prepareDevElectronApp() {
@@ -118,7 +122,8 @@ export async function prepareDevElectronApp() {
   };
 }
 
-const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isDirectRun =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isDirectRun) {
   const result = await prepareDevElectronApp();

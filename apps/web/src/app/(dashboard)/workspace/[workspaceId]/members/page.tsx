@@ -1,11 +1,11 @@
 "use client";
 
-import { useTRPC } from "@/trpc/client";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { InviteForm } from "@/components/invite-form";
 import { MemberList } from "@/components/member-list";
+import { useTRPC } from "@/trpc/client";
 
 /**
  * Workspace members page.
@@ -16,9 +16,7 @@ export default function WorkspaceMembersPage() {
   const { data: session } = useSession();
   const trpc = useTRPC();
 
-  const workspaceQuery = useQuery(
-    trpc.workspace.getById.queryOptions({ workspaceId }),
-  );
+  const workspaceQuery = useQuery(trpc.workspace.getById.queryOptions({ workspaceId }));
 
   const workspace = workspaceQuery.data;
 
@@ -49,10 +47,7 @@ export default function WorkspaceMembersPage() {
       </div>
 
       {/* Invite form (editor+ only) */}
-      <InviteForm
-        workspaceId={workspaceId}
-        currentUserRole={workspace.currentUserRole}
-      />
+      <InviteForm workspaceId={workspaceId} currentUserRole={workspace.currentUserRole} />
 
       {/* Member list */}
       <MemberList

@@ -19,11 +19,7 @@
 
 import type { StateCreator } from "zustand";
 
-import {
-  applyAction,
-  invertAction,
-  type UndoableAction,
-} from "../undo/actions";
+import { applyAction, invertAction, type UndoableAction } from "../undo/actions";
 import { Coalescer } from "../undo/coalesce";
 import { HistoryBuffer } from "../undo/history-buffer";
 
@@ -57,10 +53,7 @@ function applyInverse(action: UndoableAction): void {
   applyAction(invertAction(action));
 }
 
-export const createUndoSlice: StateCreator<UndoSlice, [], [], UndoSlice> = (
-  set,
-  get,
-) => ({
+export const createUndoSlice: StateCreator<UndoSlice, [], [], UndoSlice> = (set, get) => ({
   history: new HistoryBuffer(50),
   coalescer: new Coalescer(500),
   canUndo: false,

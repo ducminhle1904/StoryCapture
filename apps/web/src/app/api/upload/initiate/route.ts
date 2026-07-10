@@ -1,12 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { requireDesktopAuth } from "@/lib/desktop-auth";
 import { prisma } from "@/lib/prisma";
+import { CreateMultipartUploadCommand, R2_BUCKET, r2Client } from "@/lib/r2";
 import { slugify } from "@/lib/slugify";
-import {
-  r2Client,
-  R2_BUCKET,
-  CreateMultipartUploadCommand,
-} from "@/lib/r2";
 
 /**
  * POST /api/upload/initiate
@@ -47,10 +43,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!membership || membership.role === "VIEWER") {
-    return NextResponse.json(
-      { error: "You need EDITOR or OWNER role to upload" },
-      { status: 403 },
-    );
+    return NextResponse.json({ error: "You need EDITOR or OWNER role to upload" }, { status: 403 });
   }
 
   // Generate R2 key
@@ -68,10 +61,7 @@ export async function POST(req: NextRequest) {
   );
 
   if (!UploadId) {
-    return NextResponse.json(
-      { error: "Failed to initiate multipart upload" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to initiate multipart upload" }, { status: 500 });
   }
 
   // Generate unique slug

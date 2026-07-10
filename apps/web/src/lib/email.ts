@@ -6,9 +6,7 @@ import { Resend } from "resend";
  * Gracefully degrades if RESEND_API_KEY is not configured.
  */
 
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 /**
  * Send a workspace invite email.

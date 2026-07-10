@@ -1,6 +1,6 @@
-import { contextBridge, ipcRenderer } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { contextBridge, ipcRenderer } from "electron";
 import { convertLocalAssetPath, LOCAL_ASSET_PROTOCOL } from "./local-asset-url";
 
 type Callback = (...args: unknown[]) => void;
@@ -49,12 +49,7 @@ function sendLocalChannel(channel: unknown, message: unknown): void {
 }
 
 function recorderMimeType(): string | undefined {
-  const candidates = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/ogg;codecs=opus",
-    "audio/mp4",
-  ];
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
   return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
 }
 
@@ -62,10 +57,7 @@ async function startMicCapture(deviceId: string): Promise<MicSession> {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("Microphone capture is unavailable in this Electron renderer");
   }
-  const audio =
-    deviceId && deviceId !== "default"
-      ? { deviceId: { exact: deviceId } }
-      : true;
+  const audio = deviceId && deviceId !== "default" ? { deviceId: { exact: deviceId } } : true;
   const stream = await navigator.mediaDevices.getUserMedia({ audio });
   const chunks: Blob[] = [];
   let resolveDone: (bytes: Uint8Array | null) => void = () => {};
@@ -78,13 +70,20 @@ async function startMicCapture(deviceId: string): Promise<MicSession> {
     if (event.data.size > 0) chunks.push(event.data);
   };
   recorder.onerror = () => {
-    stream.getTracks().forEach((track) => track.stop());
+    stream.getTracks().forEach((track) => {
+      track.stop();
+    });
     resolveDone(null);
   };
   recorder.onstop = () => {
-    stream.getTracks().forEach((track) => track.stop());
+    stream.getTracks().forEach((track) => {
+      track.stop();
+    });
     const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-    void blob.arrayBuffer().then((buffer) => resolveDone(new Uint8Array(buffer)), () => resolveDone(null));
+    void blob.arrayBuffer().then(
+      (buffer) => resolveDone(new Uint8Array(buffer)),
+      () => resolveDone(null),
+    );
   };
   recorder.start(250);
   return { recorder, stream, chunks, done, resolve: resolveDone };
@@ -97,15 +96,19 @@ async function stopMicCapture(sessionId: string): Promise<Uint8Array | null> {
   if (session.recorder.state !== "inactive") {
     session.recorder.stop();
   } else {
-    session.stream.getTracks().forEach((track) => track.stop());
+    session.stream.getTracks().forEach((track) => {
+      track.stop();
+    });
     session.resolve(null);
   }
   return session.done;
 }
 
 async function handleStartRecording(args?: unknown, options?: unknown): Promise<unknown> {
-  const result = await invokeMain("start_recording", args, options) as RecordingSessionId;
-  const payload = args as { args?: { audio_device_id?: string | null }; onEvent?: unknown } | undefined;
+  const result = (await invokeMain("start_recording", args, options)) as RecordingSessionId;
+  const payload = args as
+    | { args?: { audio_device_id?: string | null }; onEvent?: unknown }
+    | undefined;
   const audioDeviceId = payload?.args?.audio_device_id;
   if (audioDeviceId && result.id) {
     try {
@@ -128,7 +131,11 @@ async function handleStopRecording(args?: unknown, options?: unknown): Promise<u
     const bytes = await stopMicCapture(sessionId);
     if (bytes?.byteLength) {
       try {
-        await invokeMain("electron_recording_set_audio", { session: payload.session, bytes }, options);
+        await invokeMain(
+          "electron_recording_set_audio",
+          { session: payload.session, bytes },
+          options,
+        );
       } catch (error) {
         sendLocalChannel(payload?.onEvent, {
           type: "audio-unavailable",
@@ -220,15 +227,12 @@ function applyDesktopPlatformDataset(): void {
 applyDesktopPlatformDataset();
 window.addEventListener("DOMContentLoaded", applyDesktopPlatformDataset, { once: true });
 
-ipcRenderer.on(
-  "tauri-callback",
-  (_event, payload: { id: number; value: unknown }) => {
-    const entry = callbacks.get(payload.id);
-    if (!entry?.callback) return;
-    entry.callback(payload.value);
-    if (entry.once) callbacks.delete(payload.id);
-  },
-);
+ipcRenderer.on("tauri-callback", (_event, payload: { id: number; value: unknown }) => {
+  const entry = callbacks.get(payload.id);
+  if (!entry?.callback) return;
+  entry.callback(payload.value);
+  if (entry.once) callbacks.delete(payload.id);
+});
 
 contextBridge.exposeInMainWorld("__TAURI_INTERNALS__", tauriInternals);
 contextBridge.exposeInMainWorld("__TAURI_EVENT_PLUGIN_INTERNALS__", eventInternals);

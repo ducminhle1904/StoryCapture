@@ -3,8 +3,8 @@
  */
 import { initPreviewContext, type PreviewBackend, type PreviewCtx } from "./gpu";
 import type { PreviewRenderPlan } from "./types";
-import { WebGPUBackend } from "./webgpu-context";
 import { WebGL2Backend } from "./webgl2-context";
+import { WebGPUBackend } from "./webgpu-context";
 
 export interface PreviewEngineConfig {
   canvas: HTMLCanvasElement;

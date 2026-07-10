@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 import {
   ScSelect,
   ScSelectContent,
@@ -7,6 +5,8 @@ import {
   ScSelectTrigger,
   ScSelectValue,
 } from "@storycapture/ui";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import {
   type BrowserLanguageOption,
@@ -63,16 +63,12 @@ export function BrowserLanguageRow() {
             Browser language
           </div>
           <div className="mt-0.5 max-w-[480px] text-[11px] leading-4 text-[var(--color-fg-muted)]">
-            Requests this language for Live Preview, Simulator, and Record. Sites
-            that do not support it may use their own default language.
+            Requests this language for Live Preview, Simulator, and Record. Sites that do not
+            support it may use their own default language.
           </div>
         </div>
         <ScSelect value={language} onValueChange={(value) => save(String(value))}>
-          <ScSelectTrigger
-            disabled={busy}
-            aria-label="Browser language"
-            style={{ width: 220 }}
-          >
+          <ScSelectTrigger disabled={busy} aria-label="Browser language" style={{ width: 220 }}>
             <ScSelectValue />
           </ScSelectTrigger>
           <ScSelectContent>

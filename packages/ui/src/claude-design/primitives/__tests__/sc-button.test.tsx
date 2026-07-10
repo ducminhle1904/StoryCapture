@@ -13,10 +13,14 @@ describe("ScButton", () => {
   });
 
   it("applies variant + size classes", () => {
-    const { container } = render(<ScButton variant="primary" size="lg">Go</ScButton>);
-    const btn = container.querySelector("button")!;
-    expect(btn.className).toMatch(/primary/);
-    expect(btn.className).toMatch(/lg/);
+    const { container } = render(
+      <ScButton variant="primary" size="lg">
+        Go
+      </ScButton>,
+    );
+    const btn = container.querySelector("button");
+    expect(btn?.className).toMatch(/primary/);
+    expect(btn?.className).toMatch(/lg/);
   });
 
   it("forwards ref to underlying button element", () => {

@@ -2,28 +2,23 @@
 // chooses what to do; only then does the desktop UI insert/replace the
 // `.story` line and stamp the targets sidecar.
 
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   CheckCircle,
   Clock,
   Hand,
+  type LucideIcon,
   MousePointer,
   MousePointerClick,
   Move,
   Pencil,
   Type,
   Upload,
-  type LucideIcon,
 } from "lucide-react";
-
-import type { PickElementMeta } from "@/ipc/picker";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { SelectField } from "@/components/ui/select-field";
-import type {
-  PickerAction,
-  PickerActionItem,
-  PickerActionOptions,
-} from "./picker-action-dsl";
+import type { PickElementMeta } from "@/ipc/picker";
+import type { PickerAction, PickerActionItem, PickerActionOptions } from "./picker-action-dsl";
 
 interface PickerActionMenuProps {
   targetLabel: string;
@@ -50,11 +45,7 @@ const ACTION_ICONS: Record<PickerAction, LucideIcon> = {
 type FormAction = "fill" | "type" | "select";
 type ViewState = { kind: "list" } | { kind: "form"; action: FormAction };
 
-const FORM_ACTIONS: ReadonlySet<PickerAction> = new Set<PickerAction>([
-  "fill",
-  "type",
-  "select",
-]);
+const FORM_ACTIONS: ReadonlySet<PickerAction> = new Set<PickerAction>(["fill", "type", "select"]);
 
 export function PickerActionMenu({
   targetLabel,
@@ -71,11 +62,7 @@ export function PickerActionMenu({
   useEffect(() => {
     if (view.kind !== "list") return;
     const root = containerRef.current;
-    root
-      ?.querySelector<HTMLButtonElement>(
-        `button[data-action="${defaultAction}"]`,
-      )
-      ?.focus();
+    root?.querySelector<HTMLButtonElement>(`button[data-action="${defaultAction}"]`)?.focus();
   }, [view, defaultAction]);
 
   useEffect(() => {
@@ -89,18 +76,13 @@ export function PickerActionMenu({
         }
         return;
       }
-      if (
-        view.kind === "list" &&
-        (e.key === "ArrowDown" || e.key === "ArrowUp")
-      ) {
+      if (view.kind === "list" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
         const root = containerRef.current;
         if (!root) return;
-        const buttons = Array.from(
-          root.querySelectorAll<HTMLButtonElement>("button[data-action]"),
-        );
+        const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>("button[data-action]"));
         if (buttons.length === 0) return;
-        const active = document.activeElement as HTMLElement | null;
-        const idx = buttons.findIndex((b) => b === active);
+        const active = document.activeElement;
+        const idx = active instanceof HTMLButtonElement ? buttons.indexOf(active) : -1;
         const delta = e.key === "ArrowDown" ? 1 : -1;
         const next = buttons[(idx + delta + buttons.length) % buttons.length];
         e.preventDefault();
@@ -135,8 +117,7 @@ export function PickerActionMenu({
 
   const formAction = view.kind === "form" ? view.action : null;
   const formLabel = formAction ? FORM_LABELS[formAction] : "";
-  const optionLabels =
-    formAction === "select" ? meta?.optionLabels ?? [] : [];
+  const optionLabels = formAction === "select" ? (meta?.optionLabels ?? []) : [];
 
   return createPortal(
     <div
@@ -161,7 +142,7 @@ export function PickerActionMenu({
         {targetLabel}
       </div>
       {view.kind === "list" ? (
-        <ul className="flex flex-col py-1" role="menu">
+        <ul className="flex flex-col py-1">
           {items.map(({ action, label }) => {
             const Icon = ACTION_ICONS[action];
             return (
@@ -177,11 +158,7 @@ export function PickerActionMenu({
                     "focus-visible:bg-[var(--color-surface-200)] focus-visible:outline-none",
                   ].join(" ")}
                 >
-                  <Icon
-                    size={14}
-                    aria-hidden="true"
-                    className="text-[var(--color-fg-muted)]"
-                  />
+                  <Icon size={14} aria-hidden="true" className="text-[var(--color-fg-muted)]" />
                   <span>{label}</span>
                 </button>
               </li>
@@ -243,9 +220,9 @@ function FormBody({
       }}
       className="flex flex-col gap-2 px-3 py-2"
     >
-      <label className="text-[11px] font-mono uppercase tracking-wide text-[var(--color-fg-muted)]">
+      <div className="text-[11px] font-mono uppercase tracking-wide text-[var(--color-fg-muted)]">
         {label}
-      </label>
+      </div>
       {useDropdown ? (
         <SelectField
           value={draft}

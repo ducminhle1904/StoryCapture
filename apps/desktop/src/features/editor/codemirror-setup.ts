@@ -49,9 +49,7 @@ const pickKeymap = Prec.high(
   ]),
 );
 
-const commentKeymap = keymap.of([
-  { key: "Mod-/", run: toggleLineComment, preventDefault: true },
-]);
+const commentKeymap = keymap.of([{ key: "Mod-/", run: toggleLineComment, preventDefault: true }]);
 
 export function storyEditorExtensions(simulatorCtx?: SimulatorKeymapContext): Extension[] {
   return [

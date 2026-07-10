@@ -443,17 +443,17 @@ describe("EffectParams", () => {
     expect(useEditorStore.getState().selectedClipId).toBe("text-2");
     expect(useEditorStore.getState().playheadMs).toBe(3000);
 
-    await user.click(screen.getAllByRole("button", { name: "Duplicate" })[0]!);
+    await user.click(must(screen.getAllByRole("button", { name: "Duplicate" })[0]));
     expect(pushAction).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "add-clip", trackId: "annotations" }),
     );
 
-    await user.click(screen.getAllByRole("button", { name: "Dupe style" })[0]!);
+    await user.click(must(screen.getAllByRole("button", { name: "Dupe style" })[0]));
     expect(pushAction).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "add-clip", trackId: "annotations" }),
     );
 
-    await user.click(screen.getAllByRole("button", { name: "Style all" })[0]!);
+    await user.click(must(screen.getAllByRole("button", { name: "Style all" })[0]));
     expect(pushAction).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "set-effect-param",
@@ -463,7 +463,7 @@ describe("EffectParams", () => {
       }),
     );
 
-    await user.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    await user.click(must(screen.getAllByRole("button", { name: "Delete" })[0]));
     expect(pushAction).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "delete-clip",
@@ -526,7 +526,7 @@ describe("EffectParams", () => {
 
     render(<EffectParams />);
 
-    await user.click(screen.getAllByRole("button", { name: "Style all" })[0]!);
+    await user.click(must(screen.getAllByRole("button", { name: "Style all" })[0]));
 
     const fields = pushAction.mock.calls.map(([action]) => action.field);
     expect(fields).toEqual(["styleId", "sizePt", "color", "align", "boxStyle", "animation"]);
@@ -635,3 +635,8 @@ describe("EffectParams", () => {
     });
   });
 });
+
+function must<T>(value: T | null | undefined): T {
+  expect(value).toBeDefined();
+  return value as T;
+}

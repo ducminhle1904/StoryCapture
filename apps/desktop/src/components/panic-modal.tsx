@@ -3,18 +3,17 @@
  * recoverable error dialog. Uses Base UI's Dialog primitive (NOT Radix).
  */
 
-import { useEffect, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Copy, RotateCw, X } from "lucide-react";
-
-import { onPanic, type PanicPayload } from "@/ipc";
-import { frontendLog } from "@/lib/log";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   dialogBackdropMotionClassName,
   dialogCenteredPopupMotionClassName,
   dialogViewportClassName,
 } from "@/components/ui/dialog-motion";
+import { onPanic, type PanicPayload } from "@/ipc";
+import { frontendLog } from "@/lib/log";
 
 // Cap displayed panic message at 4 KB to keep modal responsive even if
 // the host emits an oversized payload.
@@ -97,36 +96,36 @@ export function PanicModal() {
             className={`w-full max-w-md rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-xl ${dialogCenteredPopupMotionClassName}`}
           >
             <div className="flex items-start justify-between">
-            <Dialog.Title className="text-lg font-semibold text-[var(--color-fg)]">
-              Unexpected error
-            </Dialog.Title>
-            <Dialog.Close
-              aria-label="Dismiss"
-              className="rounded p-1 text-[var(--color-muted)] hover:bg-[var(--color-bg)] hover:text-[var(--color-fg)]"
-            >
-              <X size={16} />
-            </Dialog.Close>
-          </div>
-          <Dialog.Description className="mt-2 text-sm text-[var(--color-muted)]">
-            StoryCapture hit an unexpected error and may be in an inconsistent state.
-            Restarting is recommended.
-          </Dialog.Description>
-          <pre className="font-mono mt-4 max-h-48 overflow-auto rounded bg-[var(--color-bg)] p-3 text-xs text-[var(--color-fg)]">
-{`Thread: ${payload.thread}
+              <Dialog.Title className="text-lg font-semibold text-[var(--color-fg)]">
+                Unexpected error
+              </Dialog.Title>
+              <Dialog.Close
+                aria-label="Dismiss"
+                className="rounded p-1 text-[var(--color-muted)] hover:bg-[var(--color-bg)] hover:text-[var(--color-fg)]"
+              >
+                <X size={16} />
+              </Dialog.Close>
+            </div>
+            <Dialog.Description className="mt-2 text-sm text-[var(--color-muted)]">
+              StoryCapture hit an unexpected error and may be in an inconsistent state. Restarting
+              is recommended.
+            </Dialog.Description>
+            <pre className="font-mono mt-4 max-h-48 overflow-auto rounded bg-[var(--color-bg)] p-3 text-xs text-[var(--color-fg)]">
+              {`Thread: ${payload.thread}
 ${payload.message}
 
 Log: ${logPath}`}
-          </pre>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={handleCopy}>
-              <Copy size={14} />
-              {copied ? "Copied" : "Copy"}
-            </Button>
-            <Button size="sm" onClick={handleRestart}>
-              <RotateCw size={14} />
-              Restart
-            </Button>
-          </div>
+            </pre>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={handleCopy}>
+                <Copy size={14} />
+                {copied ? "Copied" : "Copy"}
+              </Button>
+              <Button size="sm" onClick={handleRestart}>
+                <RotateCw size={14} />
+                Restart
+              </Button>
+            </div>
           </Dialog.Popup>
         </Dialog.Viewport>
       </Dialog.Portal>

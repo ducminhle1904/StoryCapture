@@ -8,8 +8,8 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { afterEach } from "vitest";
 
 // Ensure DOM is torn down between tests so queries don't see leftover nodes.
 afterEach(() => {

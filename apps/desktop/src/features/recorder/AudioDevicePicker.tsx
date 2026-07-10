@@ -5,9 +5,9 @@
  * every render so "No audio" is always the default.
  */
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Mic } from "lucide-react";
+import { useState } from "react";
 
 import {
   Select,
@@ -19,11 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  listAudioInputs,
-  type AudioInputInfo,
-  type AudioPickerValue,
-} from "@/ipc/audio";
+import { type AudioInputInfo, type AudioPickerValue, listAudioInputs } from "@/ipc/audio";
 
 interface AudioDevicePickerProps {
   /** Current selection. `null` = no audio. */
@@ -105,19 +101,12 @@ function choiceToValue(c: AudioPickerChoice): AudioPickerValue {
   }
 }
 
-export function AudioDevicePicker({
-  value,
-  onValueChange,
-  disabled,
-}: AudioDevicePickerProps) {
+export function AudioDevicePicker({ value, onValueChange, disabled }: AudioDevicePickerProps) {
   const [hasOpened, setHasOpened] = useState(false);
 
   // Query fires ONLY once the picker opens. staleTime: 0 + never refetch
   // so we don't spam CoreAudio while the picker is held open.
-  const {
-    data: devices = [],
-    isLoading,
-  } = useQuery<AudioInputInfo[]>({
+  const { data: devices = [], isLoading } = useQuery<AudioInputInfo[]>({
     queryKey: ["audio-inputs"],
     queryFn: listAudioInputs,
     enabled: hasOpened,
@@ -142,21 +131,13 @@ export function AudioDevicePicker({
         aria-label="Microphone input device"
         className="flex w-full items-center gap-2"
       >
-        <Mic
-          size={13}
-          className="shrink-0 text-[var(--color-fg-muted)]"
-          aria-hidden="true"
-        />
+        <Mic size={13} className="shrink-0 text-[var(--color-fg-muted)]" aria-hidden="true" />
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectItem value={choiceToSelectValue({ kind: "none" })}>
-            No audio
-          </SelectItem>
-          <SelectItem value={choiceToSelectValue({ kind: "default" })}>
-            System default
-          </SelectItem>
+          <SelectItem value={choiceToSelectValue({ kind: "none" })}>No audio</SelectItem>
+          <SelectItem value={choiceToSelectValue({ kind: "default" })}>System default</SelectItem>
         </SelectGroup>
         {hasOpened && (
           <>
@@ -164,26 +145,17 @@ export function AudioDevicePicker({
             <SelectGroup>
               <SelectGroupLabel>Input devices</SelectGroupLabel>
               {isLoading && (
-                <SelectItem
-                  value={choiceToSelectValue({ kind: "loading" })}
-                  disabled
-                >
+                <SelectItem value={choiceToSelectValue({ kind: "loading" })} disabled>
                   Loading…
                 </SelectItem>
               )}
               {!isLoading && devices.length === 0 && (
-                <SelectItem
-                  value={choiceToSelectValue({ kind: "empty" })}
-                  disabled
-                >
+                <SelectItem value={choiceToSelectValue({ kind: "empty" })} disabled>
                   No microphones detected
                 </SelectItem>
               )}
               {devices.map((d) => (
-                <SelectItem
-                  key={d.id}
-                  value={choiceToSelectValue({ kind: "device", id: d.id })}
-                >
+                <SelectItem key={d.id} value={choiceToSelectValue({ kind: "device", id: d.id })}>
                   {d.name}
                   {d.is_default ? " (default)" : ""}
                 </SelectItem>

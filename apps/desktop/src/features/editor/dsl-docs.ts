@@ -33,7 +33,7 @@ export const VERB_DOCS: Record<string, KeywordDoc> = {
     example: 'select selector "#country" "USA"',
   },
   upload: {
-    description: "Attach a local file to an <input type=\"file\">.",
+    description: 'Attach a local file to an <input type="file">.',
     example: 'upload selector "input[type=file]" "/tmp/photo.png"',
   },
   wait: {
@@ -66,7 +66,7 @@ export const VERB_DOCS: Record<string, KeywordDoc> = {
   },
   meta: {
     description: "Meta block — declares app URL, viewport, theme, speed.",
-    example: "meta { app: \"https://x\" viewport: 1280x800 }",
+    example: 'meta { app: "https://x" viewport: 1280x800 }',
   },
   app: {
     description: "Meta key: live preview URL for the simulator.",

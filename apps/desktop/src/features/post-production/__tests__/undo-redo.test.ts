@@ -17,13 +17,13 @@
  * tests.
  */
 
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHook, act } from "@testing-library/react";
 
 import { useEditorStore } from "../state/store";
 import type { UndoableAction } from "../undo/actions";
-import { HistoryBuffer, HISTORY_CAP } from "../undo/history-buffer";
-import { Coalescer, COALESCE_IDLE_MS } from "../undo/coalesce";
+import { COALESCE_IDLE_MS, Coalescer } from "../undo/coalesce";
+import { HISTORY_CAP, HistoryBuffer } from "../undo/history-buffer";
 import { useUndoRedo } from "../undo/use-undo-redo";
 
 function resetStore() {
@@ -67,12 +67,12 @@ describe("undo slice", () => {
       toMs: 900,
     };
     useEditorStore.getState().pushAction(action);
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(900);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(900);
     expect(useEditorStore.getState().canUndo).toBe(true);
     expect(useEditorStore.getState().canRedo).toBe(false);
 
     useEditorStore.getState().undo();
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(100);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(100);
     expect(useEditorStore.getState().canUndo).toBe(false);
     expect(useEditorStore.getState().canRedo).toBe(true);
   });
@@ -87,7 +87,7 @@ describe("undo slice", () => {
     });
     useEditorStore.getState().undo();
     useEditorStore.getState().redo();
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(900);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(900);
     expect(useEditorStore.getState().canRedo).toBe(false);
   });
 
@@ -143,13 +143,13 @@ describe("undo slice", () => {
       });
     }
     // Final position = 100 + 10*50 = 600.
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(600);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(600);
     // History should be exactly one entry.
     expect(useEditorStore.getState().history.length).toBe(1);
 
     // Single undo reverts the WHOLE drag to original.
     useEditorStore.getState().undo();
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(100);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(100);
     nowSpy.mockRestore();
   });
 
@@ -158,7 +158,18 @@ describe("undo slice", () => {
       tracks: {
         video: [],
         cursor: [
-          { id: "c1", trackId: "cursor", startMs: 0, durationMs: 100, label: "", trajectoryDir: "/c", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default", sizeScale: 1 },
+          {
+            id: "c1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 100,
+            label: "",
+            trajectoryDir: "/c",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 0,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
         ],
         zoom: [],
         sound: [],
@@ -175,7 +186,7 @@ describe("undo slice", () => {
         nodePath: "tracks.cursor[0]",
         field: "label",
         prev: i === 0 ? "" : letters[i - 1],
-        next: letters[i]!,
+        next: must(letters[i]),
       });
     }
     expect(useEditorStore.getState().history.length).toBe(1);
@@ -213,11 +224,37 @@ describe("undo slice", () => {
         case "video":
           return { id, trackId, startMs, durationMs, sourcePath: "/v.mp4" } as const;
         case "cursor":
-          return { id, trackId, startMs, durationMs, trajectoryDir: "/c", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default" as const, sizeScale: 1 };
+          return {
+            id,
+            trackId,
+            startMs,
+            durationMs,
+            trajectoryDir: "/c",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 0,
+            skin: "mac-default" as const,
+            sizeScale: 1,
+          };
         case "zoom":
-          return { id, trackId, startMs, durationMs, target: { kind: "cursor" as const }, scale: 1.5, center: { x: 0.5, y: 0.5 } };
+          return {
+            id,
+            trackId,
+            startMs,
+            durationMs,
+            target: { kind: "cursor" as const },
+            scale: 1.5,
+            center: { x: 0.5, y: 0.5 },
+          };
         case "annotations":
-          return { id, trackId, startMs, durationMs, text: "T", pos: { x: 0.5, y: 0.9 }, sizePt: 24 };
+          return {
+            id,
+            trackId,
+            startMs,
+            durationMs,
+            text: "T",
+            pos: { x: 0.5, y: 0.9 },
+            sizePt: 24,
+          };
       }
     }
 
@@ -283,6 +320,11 @@ describe("undo slice", () => {
   });
 });
 
+function must<T>(value: T | null | undefined): T {
+  expect(value).toBeDefined();
+  return value as T;
+}
+
 describe("useUndoRedo hook", () => {
   it("returns the current canUndo/canRedo from the store", () => {
     const { result } = renderHook(() => useUndoRedo());
@@ -310,7 +352,7 @@ describe("useUndoRedo hook", () => {
       result.current.redo();
     });
     expect(result.current.canRedo).toBe(false);
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(900);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(900);
   });
 
   it("keyboard shortcut mod+z triggers undo", () => {
@@ -324,7 +366,7 @@ describe("useUndoRedo hook", () => {
         toMs: 900,
       });
     });
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(900);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(900);
 
     // Simulate Cmd+Z (meta). react-hotkeys-hook binds on `keydown` at
     // document level.
@@ -338,7 +380,7 @@ describe("useUndoRedo hook", () => {
         }),
       );
     });
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(100);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(100);
   });
 
   it("keyboard shortcut ctrl+y triggers redo (Windows convention)", () => {
@@ -353,7 +395,7 @@ describe("useUndoRedo hook", () => {
       });
       useEditorStore.getState().undo();
     });
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(100);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(100);
 
     act(() => {
       document.dispatchEvent(
@@ -365,6 +407,6 @@ describe("useUndoRedo hook", () => {
         }),
       );
     });
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(900);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(900);
   });
 });

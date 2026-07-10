@@ -7,8 +7,7 @@ export const SimulatorMatchKind = {
   Fuzzy: "fuzzy",
   None: "none",
 } as const;
-export type SimulatorMatchKind =
-  (typeof SimulatorMatchKind)[keyof typeof SimulatorMatchKind];
+export type SimulatorMatchKind = (typeof SimulatorMatchKind)[keyof typeof SimulatorMatchKind];
 
 export interface SimulatorBbox {
   x: number;
@@ -68,10 +67,7 @@ export async function simulatorCancel(sessionId: string): Promise<void> {
   await invoke("simulator_cancel", { sessionId });
 }
 
-export async function simulatorPromoteFallback(
-  sessionId: string,
-  ordinal: number,
-): Promise<void> {
+export async function simulatorPromoteFallback(sessionId: string, ordinal: number): Promise<void> {
   await invoke("simulator_promote_fallback", { sessionId, ordinal });
 }
 

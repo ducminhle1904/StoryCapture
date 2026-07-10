@@ -174,10 +174,11 @@ function writeExtras(patch: Partial<UndoExtras>): void {
 export function parseNodePath(path: string): (string | number)[] {
   const out: (string | number)[] = [];
   const re = /[^.[\]]+|\[(\d+)\]/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(path)) !== null) {
+  let m = re.exec(path);
+  while (m !== null) {
     if (m[1] !== undefined) out.push(Number(m[1]));
     else out.push(m[0]);
+    m = re.exec(path);
   }
   return out;
 }

@@ -3,8 +3,8 @@
  * format + resolution + live progress + a cancel button.
  */
 
-import { memo } from "react";
 import { X } from "lucide-react";
+import { memo } from "react";
 
 import type { RenderJob, RenderProgress } from "@/ipc/render";
 import { ProgressBar } from "./progress-bar";
@@ -53,8 +53,7 @@ function JobRowBase({ job, progress, onCancel }: JobRowProps) {
   const statusLabel = getStatusLabel(job, progress);
 
   return (
-    <div
-      role="listitem"
+    <li
       aria-label={`Render job ${label} — ${roundedPct} percent complete`}
       className="flex flex-col gap-1 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-3 text-xs"
     >
@@ -79,11 +78,11 @@ function JobRowBase({ job, progress, onCancel }: JobRowProps) {
       {progress ? (
         <div className="flex justify-end text-[10px] text-[var(--color-fg-muted)]">
           <span>
-            {progress.fps.toFixed(1)} fps • {(progress.speed).toFixed(2)}×
+            {progress.fps.toFixed(1)} fps • {progress.speed.toFixed(2)}×
           </span>
         </div>
       ) : null}
-    </div>
+    </li>
   );
 }
 

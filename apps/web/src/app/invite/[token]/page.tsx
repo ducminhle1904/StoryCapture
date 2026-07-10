@@ -1,10 +1,10 @@
 "use client";
 
-import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
+import { useTRPC } from "@/trpc/client";
 
 /**
  * Invite acceptance page.
@@ -46,9 +46,7 @@ export default function InviteAcceptPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950">
         <div className="w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <h1 className="text-xl font-bold text-zinc-50">
-            Workspace Invitation
-          </h1>
+          <h1 className="text-xl font-bold text-zinc-50">Workspace Invitation</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Sign in to accept this invitation and join the workspace.
           </p>
@@ -67,9 +65,7 @@ export default function InviteAcceptPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950">
       <div className="w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-        <h1 className="text-xl font-bold text-zinc-50">
-          Workspace Invitation
-        </h1>
+        <h1 className="text-xl font-bold text-zinc-50">Workspace Invitation</h1>
 
         {error ? (
           <>
@@ -84,8 +80,7 @@ export default function InviteAcceptPage() {
         ) : acceptMutation.isSuccess ? (
           <>
             <p className="mt-3 text-sm text-green-400">
-              You have joined{" "}
-              <strong>{acceptMutation.data.workspaceName}</strong> as{" "}
+              You have joined <strong>{acceptMutation.data.workspaceName}</strong> as{" "}
               {acceptMutation.data.role.toLowerCase()}.
             </p>
             <p className="mt-1 text-xs text-zinc-500">Redirecting...</p>

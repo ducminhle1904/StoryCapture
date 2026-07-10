@@ -13,7 +13,7 @@ describe("ScBadge", () => {
 
   it("applies tone class", () => {
     const { container } = render(<ScBadge tone="success">Done</ScBadge>);
-    expect(container.querySelector("span")!.className).toMatch(/success/);
+    expect(container.querySelector("span")?.className).toMatch(/success/);
   });
 
   it("forwards ref", () => {

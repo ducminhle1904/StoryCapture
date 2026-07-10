@@ -9,7 +9,13 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "dist-electron/**", "release-electron/**", ".next/**", "!.next/cache/**"],
+      "outputs": [
+        "dist/**",
+        "dist-electron/**",
+        "release-electron/**",
+        ".next/**",
+        "!.next/cache/**"
+      ],
       "inputs": [
         "src/**",
         "!src/generated/**",

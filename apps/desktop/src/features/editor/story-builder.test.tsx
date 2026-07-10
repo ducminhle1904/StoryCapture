@@ -23,7 +23,12 @@ const SOURCE_WITH_TWO_COMMANDS = `story "Manual QA" {
 function parseStory(source: string): Story {
   const ast = parseStorySource(source).ast as Story | null;
   expect(ast).toBeTruthy();
-  return ast!;
+  return must(ast);
+}
+
+function must<T>(value: T | null | undefined): T {
+  expect(value).toBeDefined();
+  return value as T;
 }
 
 interface HarnessProps {

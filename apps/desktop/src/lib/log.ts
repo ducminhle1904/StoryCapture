@@ -114,8 +114,7 @@ async function emit(
 ): Promise<void> {
   const err = opts.error !== undefined ? serializeError(opts.error) : null;
   const fields = flattenFields(opts.fields, err);
-  const url =
-    opts.url ?? (typeof window !== "undefined" ? window.location.pathname : undefined);
+  const url = opts.url ?? (typeof window !== "undefined" ? window.location.pathname : undefined);
 
   // Mirror to console first so DevTools shows the event even if the IPC
   // call below fails (offline, host crashed, etc.).

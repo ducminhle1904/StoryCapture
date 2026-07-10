@@ -13,9 +13,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useNavigate } from "react-router-dom";
-
-import { useDashboardStore } from "@/state/projects";
 import { GLOBAL_SHORTCUTS } from "@/lib/shortcuts";
+import { useDashboardStore } from "@/state/projects";
 
 type NavigateFn = ReturnType<typeof useNavigate>;
 
@@ -34,13 +33,62 @@ interface PaletteItem {
 }
 
 const ITEMS: PaletteItem[] = [
-  { id: "dashboard", label: "Go to Projects", group: "Navigate", icon: <Home size={13} />, run: ({ navigate }) => navigate("/") },
-  { id: "editor", label: "Go to Story Editor", group: "Navigate", icon: <Code size={13} />, run: ({ navigate }) => navigate("/") },
-  { id: "post", label: "Go to Post-Production", group: "Navigate", icon: <Scissors size={13} />, run: ({ navigate }) => navigate("/") },
-  { id: "export", label: "Render & Export…", group: "Navigate", icon: <Download size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "export")?.keys, run: ({ navigate }) => navigate("/post-production") },
-  { id: "settings", label: "Open Settings", group: "Navigate", icon: <SettingsIcon size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "settings")?.keys, run: ({ navigate }) => navigate("/settings") },
-  { id: "new", label: "New Story…", group: "Actions", icon: <Plus size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "new-story")?.keys, run: ({ navigate, requestNewProject }) => { navigate("/"); requestNewProject(); } },
-  { id: "record", label: "Start Recording", group: "Actions", icon: <Circle size={13} />, kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "record")?.keys, run: ({ navigate }) => navigate("/recorder") },
+  {
+    id: "dashboard",
+    label: "Go to Projects",
+    group: "Navigate",
+    icon: <Home size={13} />,
+    run: ({ navigate }) => navigate("/"),
+  },
+  {
+    id: "editor",
+    label: "Go to Story Editor",
+    group: "Navigate",
+    icon: <Code size={13} />,
+    run: ({ navigate }) => navigate("/"),
+  },
+  {
+    id: "post",
+    label: "Go to Post-Production",
+    group: "Navigate",
+    icon: <Scissors size={13} />,
+    run: ({ navigate }) => navigate("/"),
+  },
+  {
+    id: "export",
+    label: "Render & Export…",
+    group: "Navigate",
+    icon: <Download size={13} />,
+    kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "export")?.keys,
+    run: ({ navigate }) => navigate("/post-production"),
+  },
+  {
+    id: "settings",
+    label: "Open Settings",
+    group: "Navigate",
+    icon: <SettingsIcon size={13} />,
+    kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "settings")?.keys,
+    run: ({ navigate }) => navigate("/settings"),
+  },
+  {
+    id: "new",
+    label: "New Story…",
+    group: "Actions",
+    icon: <Plus size={13} />,
+    kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "new-story")?.keys,
+    run: ({ navigate, requestNewProject }) => {
+      navigate("/");
+      requestNewProject();
+    },
+  },
+  {
+    id: "record",
+    label: "Start Recording",
+    group: "Actions",
+    icon: <Circle size={13} />,
+    kbd: GLOBAL_SHORTCUTS.find((s) => s.id === "record")?.keys,
+    run: ({ navigate }) => navigate("/recorder"),
+  },
 ];
 
 export function CommandPalette() {
@@ -68,20 +116,49 @@ export function CommandPalette() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [open]);
+  }, [open, setOpen]);
 
   const runItem = useCallback(
     (item: PaletteItem) => {
       item.run({ navigate, requestNewProject });
       setOpen(false);
     },
-    [navigate, requestNewProject],
+    [navigate, requestNewProject, setOpen],
   );
 
-  useHotkeys("mod+n", (e) => { e.preventDefault(); navigate("/"); requestNewProject(); }, { enableOnFormTags: true });
-  useHotkeys("mod+e", (e) => { e.preventDefault(); navigate("/post-production"); }, { enableOnFormTags: true });
-  useHotkeys("mod+comma", (e) => { e.preventDefault(); navigate("/settings"); }, { enableOnFormTags: true });
-  useHotkeys("mod+shift+r", (e) => { e.preventDefault(); navigate("/recorder"); }, { enableOnFormTags: true });
+  useHotkeys(
+    "mod+n",
+    (e) => {
+      e.preventDefault();
+      navigate("/");
+      requestNewProject();
+    },
+    { enableOnFormTags: true },
+  );
+  useHotkeys(
+    "mod+e",
+    (e) => {
+      e.preventDefault();
+      navigate("/post-production");
+    },
+    { enableOnFormTags: true },
+  );
+  useHotkeys(
+    "mod+comma",
+    (e) => {
+      e.preventDefault();
+      navigate("/settings");
+    },
+    { enableOnFormTags: true },
+  );
+  useHotkeys(
+    "mod+shift+r",
+    (e) => {
+      e.preventDefault();
+      navigate("/recorder");
+    },
+    { enableOnFormTags: true },
+  );
 
   const groups = useMemo(() => {
     const map = new Map<string, PaletteItem[]>();
@@ -144,7 +221,10 @@ export function CommandPalette() {
                 <span className="sc-kbd">esc</span>
               </div>
               <Command.List className="max-h-[480px] overflow-y-auto p-1.5">
-                <Command.Empty className="px-4 py-8 text-center text-xs" style={{ color: "var(--sc-text-4)" }}>
+                <Command.Empty
+                  className="px-4 py-8 text-center text-xs"
+                  style={{ color: "var(--sc-text-4)" }}
+                >
                   No commands found.
                 </Command.Empty>
                 {groups.map(([group, items]) => (

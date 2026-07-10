@@ -183,7 +183,7 @@ function PaletteBody({
         label: "Go to Step…",
         group: "Navigate",
         icon: <ListOrdered size={13} />,
-        when: () => Boolean(story && story.scenes.some((s) => s.commands.length > 0)),
+        when: () => Boolean(story?.scenes.some((s) => s.commands.length > 0)),
         run: () => setMode("step"),
       },
       {
@@ -377,7 +377,6 @@ function PaletteBody({
               <Search size={15} style={{ color: "var(--sc-text-4)" }} />
               {mode === "line" ? (
                 <input
-                  autoFocus
                   type="number"
                   min={1}
                   value={lineInput}
@@ -451,7 +450,7 @@ function PaletteBody({
                     const label = scene.name?.trim().length ? scene.name : `Scene ${i + 1}`;
                     return (
                       <Command.Item
-                        key={`scene-${i}`}
+                        key={`${scene.span.start}-${scene.span.end}`}
                         value={`${label} scene ${i + 1}`}
                         onSelect={() => {
                           onJumpToOffset(scene.span.start);
@@ -500,10 +499,7 @@ function PaletteBody({
               )}
 
               {mode === "line" && (
-                <div
-                  className="px-4 py-3 text-xs"
-                  style={{ color: "var(--sc-text-3)" }}
-                >
+                <div className="px-4 py-3 text-xs" style={{ color: "var(--sc-text-3)" }}>
                   Press ↩ to jump to that line.
                 </div>
               )}
@@ -519,7 +515,9 @@ function PaletteBody({
               <span>
                 <span className="sc-kbd">↵</span> select
               </span>
-              <span className="ml-auto">{mode === "root" ? "Editor commands" : `Mode: ${mode}`}</span>
+              <span className="ml-auto">
+                {mode === "root" ? "Editor commands" : `Mode: ${mode}`}
+              </span>
             </div>
           </Command>
         </motion.div>

@@ -5,7 +5,7 @@
  * `render(t_ms)` callback the player loop uses to drive frames.
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { frontendLog } from "@/lib/log";
 
@@ -107,7 +107,7 @@ export function usePreview({
     // are captured at mount; canvas pixel size is handled by the
     // ResizeObserver above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [videoRef.current, outputWidth, outputHeight, canvasRef.current]);
 
   const render = useCallback((t_ms: number, plan: PreviewRenderPlan) => {
     const eng = engineRef.current;

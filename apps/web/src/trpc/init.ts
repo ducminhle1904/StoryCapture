@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
-import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 /**
  * tRPC context — available to all procedures.
@@ -32,7 +32,9 @@ export const publicProcedure = t.procedure;
  * Protected procedure — checks auth session and throws UNAUTHORIZED if absent.
  */
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user) {
+  const session = ctx.session;
+  const userId = session?.user?.id;
+  if (!userId) {
     throw new TRPCError({
       code: "UNAUTHORIZED",
       message: "Authentication required.",
@@ -42,8 +44,8 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   return next({
     ctx: {
       ...ctx,
-      session: ctx.session,
-      user: ctx.session.user,
+      session,
+      user: { ...session.user, id: userId },
     },
   });
 });

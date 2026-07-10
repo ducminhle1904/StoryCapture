@@ -21,9 +21,8 @@ if (!container) {
   throw new Error("Root container #root not found");
 }
 const root = createRoot(container);
-const isExportCompositor = new URLSearchParams(window.location.search).get(
-  "storycaptureExportCompositor",
-) === "1";
+const isExportCompositor =
+  new URLSearchParams(window.location.search).get("storycaptureExportCompositor") === "1";
 
 async function bootstrap() {
   const [settingsResult, outputPrefsResult] = await Promise.allSettled([

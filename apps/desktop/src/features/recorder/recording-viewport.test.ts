@@ -61,9 +61,7 @@ describe("recording viewport helpers", () => {
     expect(storyFirstNavigateUrlForRecording(source)).toBe(
       "https://app.example.test/auth/login?redirect=/app/bots",
     );
-    expect(storyInitialUrlForRecording(source)).toBe(
-      "https://app.example.test/auth/login",
-    );
+    expect(storyInitialUrlForRecording(source)).toBe("https://app.example.test/auth/login");
   });
 
   it("uses meta.app when there is no valid browser navigate", () => {
@@ -80,8 +78,6 @@ describe("recording viewport helpers", () => {
     `;
 
     expect(storyFirstNavigateUrlForRecording(source)).toBeNull();
-    expect(storyInitialUrlForRecording(source)).toBe(
-      "https://app.example.test/auth/login",
-    );
+    expect(storyInitialUrlForRecording(source)).toBe("https://app.example.test/auth/login");
   });
 });

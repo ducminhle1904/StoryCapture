@@ -12,9 +12,9 @@ import {
 } from "@codemirror/autocomplete";
 
 import {
-  KNOWN_VERBS,
   KNOWN_META_KEYS,
   KNOWN_TARGET_PREFIXES,
+  KNOWN_VERBS,
 } from "@/features/editor/dsl-language";
 
 const VERB_OPTIONS = KNOWN_VERBS.map((v) => ({ label: v, type: "keyword" }));
@@ -32,9 +32,7 @@ const BLOCK_OPTIONS = [
   { label: "meta", type: "keyword" },
 ];
 
-function dslCompletionSource(
-  ctx: CompletionContext,
-): CompletionResult | null {
+function dslCompletionSource(ctx: CompletionContext): CompletionResult | null {
   const word = ctx.matchBefore(/[a-zA-Z_][a-zA-Z0-9_-]*/);
   if (!word || (word.from === word.to && !ctx.explicit)) return null;
 

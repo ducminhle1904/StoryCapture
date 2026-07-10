@@ -1,14 +1,14 @@
-import { useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { Dialog } from "@base-ui/react/dialog";
-import { cn } from "@/lib/utils";
+import { invoke } from "@tauri-apps/api/core";
+import { Loader2 } from "lucide-react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   dialogBackdropMotionClassName,
   dialogCenteredPopupMotionClassName,
   dialogViewportClassName,
 } from "@/components/ui/dialog-motion";
-import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface ApiKeyRowProps {
   providerId: string;
@@ -16,9 +16,7 @@ export interface ApiKeyRowProps {
   present: boolean;
   testStatus?: "valid" | "invalid" | "rate_limited" | "untested";
   onPresenceChange: (present: boolean) => void;
-  onTestStatusChange: (
-    status: "valid" | "invalid" | "rate_limited" | "untested",
-  ) => void;
+  onTestStatusChange: (status: "valid" | "invalid" | "rate_limited" | "untested") => void;
 }
 
 export function ApiKeyRow({
@@ -95,9 +93,7 @@ export function ApiKeyRow({
       {/* Provider name + status */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[var(--color-fg-primary)]">
-            {displayName}
-          </span>
+          <span className="text-sm font-medium text-[var(--color-fg-primary)]">{displayName}</span>
           {testStatus === "valid" && (
             <span className="rounded-full bg-[var(--color-success)]/12 px-2 py-0.5 text-[10px] font-medium text-[var(--color-success)]">
               connected
@@ -174,11 +170,7 @@ export function ApiKeyRow({
                 disabled={testing}
                 className="text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg-primary)] disabled:opacity-50"
               >
-                {testing ? (
-                  <Loader2 className="inline h-3 w-3 animate-spin" />
-                ) : (
-                  "Test"
-                )}
+                {testing ? <Loader2 className="inline h-3 w-3 animate-spin" /> : "Test"}
               </button>
               <span className="text-[var(--color-border-default)]">|</span>
               <button
@@ -213,24 +205,19 @@ export function ApiKeyRow({
               className={`w-full max-w-sm rounded-[var(--radius-xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)] ${dialogCenteredPopupMotionClassName}`}
             >
               <Dialog.Title className="text-base font-semibold text-[var(--color-fg-primary)]">
-              Remove {displayName} key?
-            </Dialog.Title>
-            <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
-              This deletes the key from the OS keychain. You can add it again
-              later.
-            </Dialog.Description>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowConfirm(false)}
-              >
-                Cancel
-              </Button>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
-                Remove
-              </Button>
-            </div>
+                Remove {displayName} key?
+              </Dialog.Title>
+              <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
+                This deletes the key from the OS keychain. You can add it again later.
+              </Dialog.Description>
+              <div className="mt-5 flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowConfirm(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" size="sm" onClick={handleDelete}>
+                  Remove
+                </Button>
+              </div>
             </Dialog.Popup>
           </Dialog.Viewport>
         </Dialog.Portal>

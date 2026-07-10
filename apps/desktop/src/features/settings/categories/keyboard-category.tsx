@@ -1,5 +1,5 @@
-import { SettingsPanel } from "../settings-row";
 import { SETTINGS_SHORTCUTS } from "@/lib/shortcuts";
+import { SettingsPanel } from "../settings-row";
 
 export function KeyboardCategory() {
   return (

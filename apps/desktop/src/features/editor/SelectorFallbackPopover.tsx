@@ -38,9 +38,9 @@ export function SelectorFallbackPopover({
 
       {fallbackChain.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
-          {fallbackChain.map((attempt, idx) => (
+          {fallbackChain.map((attempt) => (
             <span
-              key={`${attempt.strategy}-${idx}`}
+              key={`${attempt.strategy}-${attempt.durationMs}-${attempt.succeeded}`}
               className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                 attempt.succeeded
                   ? "bg-[var(--color-success,#30A46C)]/20 text-[var(--color-success,#30A46C)]"
@@ -53,12 +53,7 @@ export function SelectorFallbackPopover({
         </div>
       )}
 
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={onUpdateSelector}
-        className="w-full"
-      >
+      <Button size="sm" variant="outline" onClick={onUpdateSelector} className="w-full">
         {`C\u1eadp nh\u1eadt selector`}
       </Button>
     </div>

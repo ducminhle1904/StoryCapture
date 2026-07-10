@@ -56,9 +56,7 @@ export async function authorSnapshotGet(
   return r;
 }
 
-export function authorSnapshotList(
-  projectDir: string,
-): Promise<AuthorSnapshotEntry[]> {
+export function authorSnapshotList(projectDir: string): Promise<AuthorSnapshotEntry[]> {
   return invoke<AuthorSnapshotEntry[]>("author_snapshot_list", { projectDir });
 }
 

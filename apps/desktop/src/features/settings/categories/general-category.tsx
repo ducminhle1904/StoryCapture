@@ -1,16 +1,11 @@
-import { FolderOpen } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { toast } from "sonner";
 import { ScButton, ScInput, ScSegmented, ScSwitch } from "@storycapture/ui";
-
-import { BrowserLanguageRow } from "../BrowserLanguageRow";
-import {
-  SettingsCard,
-  SettingsPanel,
-  SettingsRow,
-} from "../settings-row";
-import { useAppSettingsStore } from "@/state/app-settings";
+import { open } from "@tauri-apps/plugin-dialog";
+import { FolderOpen } from "lucide-react";
+import { toast } from "sonner";
 import type { GeneralSettings, StartupBehavior } from "@/ipc/settings";
+import { useAppSettingsStore } from "@/state/app-settings";
+import { BrowserLanguageRow } from "../BrowserLanguageRow";
+import { SettingsCard, SettingsPanel, SettingsRow } from "../settings-row";
 
 export function GeneralCategory() {
   const settings = useAppSettingsStore((s) => s.settings);

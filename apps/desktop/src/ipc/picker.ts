@@ -83,9 +83,7 @@ interface PickerStartDto {
  * Start an element-picker session. Resolves on the first user click,
  * Esc, mid-pick navigation, unsupported-URL, or timeout.
  */
-export async function pickElement(
-  opts: { timeoutMs?: number } = {},
-): Promise<PickResult> {
+export async function pickElement(opts: { timeoutMs?: number } = {}): Promise<PickResult> {
   const dto = await invoke<PickerStartDto>("picker_start", {
     timeoutMs: opts.timeoutMs ?? 60000,
   });
@@ -129,9 +127,7 @@ export interface PickHoverPayload {
 export async function listenPickerHoverPreview(
   cb: (p: PickHoverPayload) => void,
 ): Promise<UnlistenFn> {
-  return await listen<PickHoverPayload>("picker_hover_preview", (evt) =>
-    cb(evt.payload),
-  );
+  return await listen<PickHoverPayload>("picker_hover_preview", (evt) => cb(evt.payload));
 }
 
 /**
@@ -193,9 +189,7 @@ interface PickerStampResultDto {
   was_freshly_stamped: boolean;
 }
 
-export async function pickerStampStepId(
-  args: PickerStampStepIdArgs,
-): Promise<PickerStampResult> {
+export async function pickerStampStepId(args: PickerStampStepIdArgs): Promise<PickerStampResult> {
   const dto = await invoke<PickerStampResultDto>("picker_stamp_step_id", {
     storyPath: args.storyPath,
     lineOffset: args.lineOffset,

@@ -39,30 +39,17 @@ function formatDuration(seconds: number): string {
   return `${mins}m ${secs}s`;
 }
 
-function StatCard({
-  label,
-  value,
-  subtext,
-}: {
-  label: string;
-  value: string;
-  subtext?: string;
-}) {
+function StatCard({ label, value, subtext }: { label: string; value: string; subtext?: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
       <p className="text-xs font-medium text-zinc-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-zinc-100">{value}</p>
-      {subtext && (
-        <p className="mt-1 text-xs text-zinc-500">{subtext}</p>
-      )}
+      {subtext && <p className="mt-1 text-xs text-zinc-500">{subtext}</p>}
     </div>
   );
 }
 
-export function AnalyticsDashboard({
-  videoId,
-  sceneLabels,
-}: AnalyticsDashboardProps) {
+export function AnalyticsDashboard({ videoId, sceneLabels }: AnalyticsDashboardProps) {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +58,10 @@ export function AnalyticsDashboard({
   // Fetch dashboard data via tRPC
   // Using useEffect + fetch instead of tRPC hooks to avoid needing provider at this level
   useState(() => {
-    fetchDashboard(videoId, days).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    fetchDashboard(videoId, days)
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   });
 
   const handleDaysChange = (newDays: number) => {
@@ -114,6 +104,7 @@ export function AnalyticsDashboard({
         <span className="text-sm text-zinc-400">Time range:</span>
         {[7, 30].map((d) => (
           <button
+            type="button"
             key={d}
             onClick={() => handleDaysChange(d)}
             className={`rounded-md px-3 py-1 text-sm transition-colors ${
@@ -129,22 +120,10 @@ export function AnalyticsDashboard({
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard
-          label="Total Plays"
-          value={data.totalPlays.toLocaleString()}
-        />
-        <StatCard
-          label="Unique Plays"
-          value={data.uniquePlays.toLocaleString()}
-        />
-        <StatCard
-          label="Avg Duration"
-          value={formatDuration(data.avgDurationSec)}
-        />
-        <StatCard
-          label="Median Duration"
-          value={formatDuration(data.medianDurationSec)}
-        />
+        <StatCard label="Total Plays" value={data.totalPlays.toLocaleString()} />
+        <StatCard label="Unique Plays" value={data.uniquePlays.toLocaleString()} />
+        <StatCard label="Avg Duration" value={formatDuration(data.avgDurationSec)} />
+        <StatCard label="Median Duration" value={formatDuration(data.medianDurationSec)} />
       </div>
 
       {/* Drop-off heatmap */}
@@ -160,19 +139,11 @@ export function AnalyticsDashboard({
  * Fetch analytics dashboard data.
  * Uses the Next.js tRPC API endpoint directly.
  */
-async function fetchDashboard(
-  videoId: string,
-  days: number,
-): Promise<DashboardData> {
+async function fetchDashboard(videoId: string, days: number): Promise<DashboardData> {
   const params = new URLSearchParams();
-  params.set(
-    "input",
-    JSON.stringify({ "0": { json: { videoId, days } } }),
-  );
+  params.set("input", JSON.stringify({ "0": { json: { videoId, days } } }));
 
-  const res = await fetch(
-    `/api/trpc/analytics.dashboard?${params.toString()}`,
-  );
+  const res = await fetch(`/api/trpc/analytics.dashboard?${params.toString()}`);
 
   if (!res.ok) {
     const text = await res.text();

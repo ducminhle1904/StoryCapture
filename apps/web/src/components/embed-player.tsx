@@ -4,13 +4,7 @@
  * Minimal video player for the /embed/[id] iframe page.
  * No chrome, no chapter nav -- just the video element filling the viewport.
  */
-export function EmbedPlayer({
-  src,
-  poster,
-}: {
-  src: string;
-  poster: string | null;
-}) {
+export function EmbedPlayer({ src, poster }: { src: string; poster: string | null }) {
   return (
     <video
       src={src}

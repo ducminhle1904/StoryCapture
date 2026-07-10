@@ -1,5 +1,5 @@
-import { startAuthorPreview, stopAuthorPreview } from "@/ipc/preview";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { startAuthorPreview, stopAuthorPreview } from "@/ipc/preview";
 
 import { acquireRecordingPreview } from "./recording-preview";
 

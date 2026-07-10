@@ -8,12 +8,8 @@ const electronMock = vi.hoisted(() => ({
     getPath: vi.fn(),
   },
   safeStorage: {
-    decryptString: vi.fn((value: Buffer) =>
-      value.toString("utf8").replace(/^encrypted:/, ""),
-    ),
-    encryptString: vi.fn((value: string) =>
-      Buffer.from(`encrypted:${value}`, "utf8"),
-    ),
+    decryptString: vi.fn((value: Buffer) => value.toString("utf8").replace(/^encrypted:/, "")),
+    encryptString: vi.fn((value: string) => Buffer.from(`encrypted:${value}`, "utf8")),
     isEncryptionAvailable: vi.fn(() => true),
   },
 }));
@@ -25,9 +21,7 @@ import { secretsHandlers } from "./secrets";
 let tempDir: string;
 
 beforeEach(async () => {
-  tempDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "storycapture-secrets-test-"),
-  );
+  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-secrets-test-"));
   electronMock.app.getPath.mockImplementation((name: string) => {
     if (name !== "userData") throw new Error(`Unexpected app path: ${name}`);
     return tempDir;

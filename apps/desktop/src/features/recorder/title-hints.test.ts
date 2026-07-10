@@ -1,22 +1,18 @@
 /**
  * Unit tests for the browser title-hint map.
  */
-import { describe, it, expect } from "vitest";
-import {
-  BROWSER_TITLE_HINTS,
-  redactTitleHint,
-  titleHintFor,
-} from "./title-hints";
+import { describe, expect, it } from "vitest";
+import { BROWSER_TITLE_HINTS, redactTitleHint, titleHintFor } from "./title-hints";
 
 describe("BROWSER_TITLE_HINTS", () => {
   it("contains the canonical preset tokens", () => {
-    expect(BROWSER_TITLE_HINTS["chromium"]).toBe("Chromium");
-    expect(BROWSER_TITLE_HINTS["chrome"]).toBe("Google Chrome");
+    expect(BROWSER_TITLE_HINTS.chromium).toBe("Chromium");
+    expect(BROWSER_TITLE_HINTS.chrome).toBe("Google Chrome");
     expect(BROWSER_TITLE_HINTS["chrome-canary"]).toBe("Google Chrome Canary");
-    expect(BROWSER_TITLE_HINTS["msedge"]).toBe("Microsoft Edge");
+    expect(BROWSER_TITLE_HINTS.msedge).toBe("Microsoft Edge");
     expect(BROWSER_TITLE_HINTS["msedge-canary"]).toBe("Microsoft Edge Canary");
-    expect(BROWSER_TITLE_HINTS["brave"]).toBe("Brave Browser");
-    expect(BROWSER_TITLE_HINTS["arc"]).toBe("Arc");
+    expect(BROWSER_TITLE_HINTS.brave).toBe("Brave Browser");
+    expect(BROWSER_TITLE_HINTS.arc).toBe("Arc");
   });
 });
 
@@ -29,9 +25,7 @@ describe("backlog #9 regression — msedge-canary parity", () => {
 
   it("resolves Microsoft Edge Canary path before generic Edge", () => {
     expect(
-      titleHintFor(
-        "/Applications/Microsoft Edge Canary.app/Contents/MacOS/Microsoft Edge Canary",
-      ),
+      titleHintFor("/Applications/Microsoft Edge Canary.app/Contents/MacOS/Microsoft Edge Canary"),
     ).toBe("Microsoft Edge Canary");
   });
 });
@@ -83,49 +77,37 @@ describe("titleHintFor — graceful failure", () => {
 
 describe("titleHintFor — exec path heuristics", () => {
   it("resolves macOS Chrome app wrapper path", () => {
-    expect(
-      titleHintFor(
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      ),
-    ).toBe("Google Chrome");
+    expect(titleHintFor("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")).toBe(
+      "Google Chrome",
+    );
   });
 
   it("resolves macOS Edge app wrapper path", () => {
-    expect(
-      titleHintFor(
-        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-      ),
-    ).toBe("Microsoft Edge");
+    expect(titleHintFor("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge")).toBe(
+      "Microsoft Edge",
+    );
   });
 
   it("resolves Chrome Canary path before Chrome", () => {
     expect(
-      titleHintFor(
-        "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
-      ),
+      titleHintFor("/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary"),
     ).toBe("Google Chrome Canary");
   });
 
   it("resolves Edge Beta path before Edge", () => {
     expect(
-      titleHintFor(
-        "/Applications/Microsoft Edge Beta.app/Contents/MacOS/Microsoft Edge Beta",
-      ),
+      titleHintFor("/Applications/Microsoft Edge Beta.app/Contents/MacOS/Microsoft Edge Beta"),
     ).toBe("Microsoft Edge Beta");
   });
 
   it("resolves Brave app wrapper path", () => {
-    expect(
-      titleHintFor(
-        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-      ),
-    ).toBe("Brave Browser");
+    expect(titleHintFor("/Applications/Brave Browser.app/Contents/MacOS/Brave Browser")).toBe(
+      "Brave Browser",
+    );
   });
 
   it("resolves Arc app wrapper path", () => {
-    expect(titleHintFor("/Applications/Arc.app/Contents/MacOS/Arc")).toBe(
-      "Arc",
-    );
+    expect(titleHintFor("/Applications/Arc.app/Contents/MacOS/Arc")).toBe("Arc");
   });
 });
 

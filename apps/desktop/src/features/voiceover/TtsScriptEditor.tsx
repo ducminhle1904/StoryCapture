@@ -5,8 +5,8 @@
  * Keeps the writing surface spare and focused on the line itself.
  */
 
-import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback } from "react";
 
 import { frontendLog } from "@/lib/log";
 
@@ -66,10 +66,7 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
         scriptText: script,
         provider: selectedPreset.provider,
         voiceId: selectedPreset.id,
-        model:
-          selectedPreset.provider === "elevenlabs"
-            ? "eleven_multilingual_v2"
-            : "tts-1",
+        model: selectedPreset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
       });
       setClip(stepId, {
         filePath: result.file_path,
@@ -107,10 +104,7 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
         scriptText: script,
         provider: selectedPreset.provider,
         voiceId: selectedPreset.id,
-        model:
-          selectedPreset.provider === "elevenlabs"
-            ? "eleven_multilingual_v2"
-            : "tts-1",
+        model: selectedPreset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
       });
       setClip(stepId, {
         filePath: result.file_path,
@@ -165,14 +159,11 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
         onChange={handleTextChange}
         placeholder="Write the narration for this step..."
         rows={6}
-        role="textbox"
       />
 
       {/* Stale warning chip */}
       {isEditedAfterGen && clip && (
-        <div className="text-xs text-[var(--warning)]">
-          The script changed since the last take.
-        </div>
+        <div className="text-xs text-[var(--warning)]">The script changed since the last take.</div>
       )}
 
       {/* Footer row */}

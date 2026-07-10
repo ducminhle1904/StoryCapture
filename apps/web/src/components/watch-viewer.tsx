@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import type { Chapter, AnalyticsEvent } from "./video-player";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChapterNav } from "./chapter-nav";
+import type { AnalyticsEvent, Chapter } from "./video-player";
 
 interface WatchViewerProps {
   videoUrl: string;
@@ -83,7 +83,8 @@ export function WatchViewer({
 
       let currentSceneIdx = 0;
       for (let i = chapters.length - 1; i >= 0; i--) {
-        if (time >= chapters[i]!.startTimeSec) {
+        const chapter = chapters[i];
+        if (chapter && time >= chapter.startTimeSec) {
           currentSceneIdx = i;
           break;
         }
@@ -137,14 +138,11 @@ export function WatchViewer({
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      <h1 className="mb-4 text-xl font-semibold text-zinc-100">
-        {projectName}
-      </h1>
+      <h1 className="mb-4 text-xl font-semibold text-zinc-100">{projectName}</h1>
 
       <VideoPlayerWithSeek
         src={videoUrl}
         poster={thumbnailUrl}
-        chapters={chapters}
         onAnalyticsEvent={handleAnalyticsEvent}
         onTimeUpdate={handleTimeUpdate}
         onSeekRef={(fn) => {
@@ -153,11 +151,7 @@ export function WatchViewer({
       />
 
       {chapters.length > 0 && (
-        <ChapterNav
-          chapters={chapters}
-          currentTime={currentTime}
-          onSeek={handleSeek}
-        />
+        <ChapterNav chapters={chapters} currentTime={currentTime} onSeek={handleSeek} />
       )}
 
       <footer className="mt-8 border-t border-zinc-800 pt-4 text-center text-xs text-zinc-500">
@@ -181,14 +175,12 @@ export function WatchViewer({
 function VideoPlayerWithSeek({
   src,
   poster,
-  chapters,
   onAnalyticsEvent,
   onTimeUpdate,
   onSeekRef,
 }: {
   src: string;
   poster: string | null;
-  chapters: Chapter[];
   onAnalyticsEvent: (event: AnalyticsEvent) => void;
   onTimeUpdate: (currentTime: number) => void;
   onSeekRef: (seekFn: (timeSec: number) => void) => void;

@@ -3,13 +3,7 @@
  */
 
 /** Valid analytics event types for video view tracking. */
-export const ANALYTICS_EVENTS = [
-  "play",
-  "pause",
-  "seek",
-  "scene_enter",
-  "ended",
-] as const;
+export const ANALYTICS_EVENTS = ["play", "pause", "seek", "scene_enter", "ended"] as const;
 
 export type AnalyticsEventType = (typeof ANALYTICS_EVENTS)[number];
 

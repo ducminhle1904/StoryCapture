@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import {
   acquirePreview,
   INITIAL_NAV,
-  pausePreview,
   type PreviewLifecycleStatus,
   type PreviewNavState,
+  pausePreview,
   resumePreview,
   subscribeNav,
   subscribeStatus,
@@ -46,7 +46,7 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
       if (release) release();
       setStreamId(null);
     };
-  }, [sanitized]);
+  }, [sanitized, viewport]);
 
   useEffect(() => {
     if (streamId == null) return;
@@ -83,8 +83,7 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
   const [nav, setNav] = useState<PreviewNavState>(INITIAL_NAV);
   useEffect(() => subscribeNav(setNav), []);
 
-  const [lifecycleStatus, setLifecycleStatus] =
-    useState<PreviewLifecycleStatus>("idle");
+  const [lifecycleStatus, setLifecycleStatus] = useState<PreviewLifecycleStatus>("idle");
   useEffect(() => subscribeStatus(setLifecycleStatus), []);
 
   return {

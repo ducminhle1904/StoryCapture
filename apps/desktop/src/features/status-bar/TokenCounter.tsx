@@ -10,9 +10,9 @@
  * data-testid="token-counter"
  */
 
-import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import { TokenBreakdownPopover } from "./TokenBreakdownPopover";
 
@@ -29,11 +29,7 @@ export interface TokenCounterProps {
   className?: string;
 }
 
-export function TokenCounter({
-  sessionId,
-  projectId,
-  className,
-}: TokenCounterProps) {
+export function TokenCounter({ sessionId, projectId, className }: TokenCounterProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   const { data, isError } = useQuery<SessionRollup>({

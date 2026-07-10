@@ -43,10 +43,7 @@ function defaultSettings() {
 }
 
 async function getSettings() {
-  const settings = await readJson(
-    userDataPath("app_settings.json"),
-    defaultSettings(),
-  );
+  const settings = await readJson(userDataPath("app_settings.json"), defaultSettings());
   return {
     ...defaultSettings(),
     ...settings,
@@ -91,12 +88,8 @@ export const settingsHandlers = {
   set_app_settings: (args) =>
     setSettings((args as { update?: unknown } | undefined)?.update ?? args),
   reset_app_settings_category: (args) =>
-    resetSettingsCategory(
-      String((args as { category?: string } | undefined)?.category ?? "all"),
-    ),
-  get_browser_language_options: () => [
-    { value: "system", label: "System default" },
-  ],
+    resetSettingsCategory(String((args as { category?: string } | undefined)?.category ?? "all")),
+  get_browser_language_options: () => [{ value: "system", label: "System default" }],
   set_browser_executable: (args) =>
     updateSettingsField(
       "browser_executable",

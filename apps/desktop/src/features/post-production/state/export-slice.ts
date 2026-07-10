@@ -50,9 +50,7 @@ export const DEFAULT_EXPORT_FORM: ExportFormState = {
   baseName: "export",
 };
 
-export const createExportSlice: StateCreator<ExportSlice, [], [], ExportSlice> = (
-  set,
-) => ({
+export const createExportSlice: StateCreator<ExportSlice, [], [], ExportSlice> = (set) => ({
   exportForm: { ...DEFAULT_EXPORT_FORM },
   setExportFormats: (formats) =>
     set((s) =>

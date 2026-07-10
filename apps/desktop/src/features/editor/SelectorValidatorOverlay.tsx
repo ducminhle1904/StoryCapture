@@ -19,14 +19,10 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { create } from "zustand";
-
-import { useEditorStore } from "@/state/editor";
-import {
-  authorSnapshotValidate,
-  type AuthorValidation,
-} from "@/ipc/author_snapshot";
+import { type AuthorValidation, authorSnapshotValidate } from "@/ipc/author_snapshot";
 import type { SelectorOrText, Story } from "@/ipc/parse";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
+import { useEditorStore } from "@/state/editor";
 
 export interface ValidatorEntry {
   /** 1-indexed line number from the parse span. */
@@ -145,13 +141,7 @@ export function SelectorValidatorOverlay({
   );
 
   const validate = useDebouncedCallback(
-    (
-      line: number,
-      targetKey: string,
-      url: string,
-      target: SelectorOrText,
-      dir: string,
-    ) => {
+    (line: number, targetKey: string, url: string, target: SelectorOrText, dir: string) => {
       authorSnapshotValidate(dir, url, target)
         .then((status) => {
           setEntry(line, { line, url, targetKey, status });
@@ -190,14 +180,7 @@ export function SelectorValidatorOverlay({
         targetKey,
         status: null,
       });
-      validate.runKeyed(
-        step.line,
-        step.line,
-        targetKey,
-        step.url,
-        step.target,
-        projectDir,
-      );
+      validate.runKeyed(step.line, step.line, targetKey, step.url, step.target, projectDir);
     }
 
     // Drop stale lines that no longer have a step.

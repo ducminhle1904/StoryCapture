@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { requireDesktopAuth } from "@/lib/desktop-auth";
 import { prisma } from "@/lib/prisma";
 import {
-  r2Client,
-  R2_BUCKET,
-  CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  R2_BUCKET,
+  r2Client,
 } from "@/lib/r2";
 
 /**
@@ -67,10 +67,7 @@ export async function POST(req: NextRequest) {
   const { parts, thumbnailR2Key } = body;
 
   if (!parts || !Array.isArray(parts) || !thumbnailR2Key) {
-    return NextResponse.json(
-      { error: "Missing parts array or thumbnailR2Key" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Missing parts array or thumbnailR2Key" }, { status: 400 });
   }
 
   // Verify ownership
@@ -84,10 +81,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!video) {
-    return NextResponse.json(
-      { error: "No in-progress upload found" },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "No in-progress upload found" }, { status: 404 });
   }
 
   // Complete S3 multipart upload

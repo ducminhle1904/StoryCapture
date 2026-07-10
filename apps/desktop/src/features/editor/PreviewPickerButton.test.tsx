@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock sonner BEFORE importing the button.
 vi.mock("sonner", () => ({
@@ -21,9 +21,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 import { toast } from "sonner";
-
-import { editorController } from "@/features/editor/controller";
 import { useAuthorDriverStore } from "@/features/editor/authorDriverStore";
+import { editorController } from "@/features/editor/controller";
 import { useEditorStore } from "@/state/editor";
 
 import { PreviewPickerButton } from "./PreviewPickerButton";
@@ -85,18 +84,10 @@ describe("PreviewPickerButton", () => {
     replaceSpy = vi
       .spyOn(editorController, "replaceCursorLine")
       .mockReturnValue({ ok: true, lineNumber: 12 });
-    getCursorSpy = vi
-      .spyOn(editorController, "getCursorLine")
-      .mockReturnValue(12);
-    getCursorLineTextSpy = vi
-      .spyOn(editorController, "getCursorLineText")
-      .mockReturnValue("");
-    getStoryPathSpy = vi
-      .spyOn(editorController, "getStoryPath")
-      .mockReturnValue("/tmp/demo.story");
-    getStepOrdinalSpy = vi
-      .spyOn(editorController, "getStepOrdinalForLine")
-      .mockReturnValue(3);
+    getCursorSpy = vi.spyOn(editorController, "getCursorLine").mockReturnValue(12);
+    getCursorLineTextSpy = vi.spyOn(editorController, "getCursorLineText").mockReturnValue("");
+    getStoryPathSpy = vi.spyOn(editorController, "getStoryPath").mockReturnValue("/tmp/demo.story");
+    getStepOrdinalSpy = vi.spyOn(editorController, "getStepOrdinalForLine").mockReturnValue(3);
     isDirtySpy = vi.spyOn(editorController, "isDirty").mockReturnValue(false);
     dialogOpenMock.mockReset();
     useEditorStore.setState({ source: 'story "demo"\nscene "x"\n' });
@@ -130,10 +121,7 @@ describe("PreviewPickerButton", () => {
     render(<PreviewPickerButton />);
     const button = screen.getByRole("button", { name: /pick element/i });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute(
-      "title",
-      "Simulator running — cancel to pick",
-    );
+    expect(button).toHaveAttribute("title", "Simulator running — cancel to pick");
   });
 
   it("D-14: is enabled when AuthorDriverState=simulator-paused; click dispatches picker_start_author with streamId", async () => {
@@ -170,7 +158,7 @@ describe("PreviewPickerButton", () => {
 
     const startInvoke = invokeLog.find((e) => e.cmd === "picker_start_author");
     expect(startInvoke).toBeDefined();
-    expect(startInvoke!.args).toMatchObject({
+    expect(startInvoke?.args).toMatchObject({
       streamId: "author-stream-1",
       cursorLine: 12,
     });
@@ -216,7 +204,7 @@ describe("PreviewPickerButton", () => {
 
     expect(toast.success).toHaveBeenCalled();
     const msg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(msg).toContain("Added `click button \"Save\"`");
+    expect(msg).toContain('Added `click button "Save"`');
     expect(msg).toContain("line 12");
     expect(msg).not.toContain("Updated fallback");
   });
@@ -251,7 +239,7 @@ describe("PreviewPickerButton", () => {
     expect(msg).toBe("Updated fallback for step 3");
   });
 
-  it("choosing Hover inserts `hover button \"Save\"`", async () => {
+  it('choosing Hover inserts `hover button "Save"`', async () => {
     mockPickButtonSave({ wasFreshlyStamped: true });
 
     const user = userEvent.setup();
@@ -288,12 +276,10 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("menuitem", { name: /wait for element/i }));
     await flushAsync();
 
-    expect(replaceSpy).toHaveBeenCalledWith(
-      '    wait-for button "Save" timeout 10s',
-    );
+    expect(replaceSpy).toHaveBeenCalledWith('    wait-for button "Save" timeout 10s');
   });
 
-  it("choosing Assert inserts `assert button \"Save\"`", async () => {
+  it('choosing Assert inserts `assert button "Save"`', async () => {
     mockPickButtonSave({ wasFreshlyStamped: true });
 
     const user = userEvent.setup();
@@ -348,9 +334,7 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("button", { name: /pick element/i }));
     await flushAsync();
 
-    expect(
-      screen.getByRole("menuitem", { name: /hover element/i }),
-    ).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: /hover element/i })).toHaveFocus();
   });
 
   it("user-cancel from sidecar: no menu, no insert, no toast", async () => {
@@ -466,9 +450,7 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("button", { name: /^insert$/i }));
     await flushAsync();
 
-    expect(insertSpy).toHaveBeenCalledWith(
-      'fill field "Email" with "alice@example.com"\n',
-    );
+    expect(insertSpy).toHaveBeenCalledWith('fill field "Email" with "alice@example.com"\n');
   });
 
   it("choosing Upload file… opens the file dialog and inserts an upload line", async () => {
@@ -502,9 +484,7 @@ describe("PreviewPickerButton", () => {
     await flushAsync();
 
     expect(dialogOpenMock).toHaveBeenCalled();
-    expect(insertSpy).toHaveBeenCalledWith(
-      'upload selector "input[type=file]" "/tmp/photo.png"\n',
-    );
+    expect(insertSpy).toHaveBeenCalledWith('upload selector "input[type=file]" "/tmp/photo.png"\n');
   });
 
   it("cancelling the upload file dialog does not insert", async () => {
@@ -575,8 +555,7 @@ describe("PreviewPickerButton", () => {
     expect(pickCount).toBe(2);
     expect(insertSpy).toHaveBeenCalledWith('drag testid "src" to testid "dst"\n');
     expect(invokeLog).not.toContain("picker_stamp_step_id");
-    const successMsg = (toast.success as ReturnType<typeof vi.fn>).mock
-      .calls[0][0];
+    const successMsg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(successMsg).toMatch(/selector healing for drag targets/i);
   });
 
@@ -622,10 +601,10 @@ describe("PreviewPickerButton", () => {
 
     const stampInvoke = invokeLog.find((e) => e.cmd === "picker_stamp_step_id");
     expect(stampInvoke).toBeDefined();
-    expect(stampInvoke!.args).toMatchObject({
+    expect(stampInvoke?.args).toMatchObject({
       primary: { kind: "testid", value: "row", nth: 2 },
     });
-    const fallbacks = (stampInvoke!.args as { fallbacks: unknown[] }).fallbacks;
+    const fallbacks = (stampInvoke?.args as { fallbacks: unknown[] }).fallbacks;
     expect(fallbacks[0]).toMatchObject({
       kind: "testid",
       value: "row",
@@ -636,21 +615,24 @@ describe("PreviewPickerButton", () => {
   it("renders UI-SPEC tooltip copy per variant", () => {
     seedAuthorDriver({ variant: "idle", streamId: null });
     const { rerender } = render(<PreviewPickerButton />);
-    expect(
-      screen.getByRole("button", { name: /pick element/i }),
-    ).toHaveAttribute("title", "Pick element · starts Preview");
+    expect(screen.getByRole("button", { name: /pick element/i })).toHaveAttribute(
+      "title",
+      "Pick element · starts Preview",
+    );
 
     seedAuthorDriver({ variant: "live-preview", streamId: "s1" });
     rerender(<PreviewPickerButton />);
-    expect(
-      screen.getByRole("button", { name: /pick element/i }),
-    ).toHaveAttribute("title", "Pick element · ⌘⇧P");
+    expect(screen.getByRole("button", { name: /pick element/i })).toHaveAttribute(
+      "title",
+      "Pick element · ⌘⇧P",
+    );
 
     seedAuthorDriver({ variant: "simulator-running", streamId: "s1" });
     rerender(<PreviewPickerButton />);
-    expect(
-      screen.getByRole("button", { name: /pick element/i }),
-    ).toHaveAttribute("title", "Simulator running — cancel to pick");
+    expect(screen.getByRole("button", { name: /pick element/i })).toHaveAttribute(
+      "title",
+      "Simulator running — cancel to pick",
+    );
 
     seedAuthorDriver({
       variant: "simulator-paused",
@@ -658,9 +640,7 @@ describe("PreviewPickerButton", () => {
       simulatorOrdinal: 7,
     });
     rerender(<PreviewPickerButton />);
-    expect(
-      screen.getByRole("button", { name: /pick element/i }),
-    ).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /pick element/i })).toHaveAttribute(
       "title",
       "Paused at step 7 — Pick will resume Preview after",
     );

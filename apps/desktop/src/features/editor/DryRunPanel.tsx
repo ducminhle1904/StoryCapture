@@ -3,13 +3,13 @@
  * Cmd+Shift+D starts; Esc (hold 400ms) cancels.
  */
 
-import * as React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Play, X } from "lucide-react";
-import { useDryRunStore } from "./dryRunStore";
+import type * as React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { DryRunStepRow } from "./DryRunStepRow";
+import { useDryRunStore } from "./dryRunStore";
 import type { StoryStep } from "./useDryRun";
 
 export interface DryRunPanelProps {
@@ -27,23 +27,15 @@ export function DryRunPanel({
   onStepClick,
   className,
 }: DryRunPanelProps) {
-  const {
-    statusByStep,
-    timingByStep,
-    fallbackChainByStep,
-    summary,
-    panelOpen,
-    togglePanel,
-  } = useDryRunStore();
+  const { statusByStep, timingByStep, fallbackChainByStep, summary, panelOpen, togglePanel } =
+    useDryRunStore();
 
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [cancelHoldProgress, setCancelHoldProgress] = useState(false);
   const cancelTimerRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const isRunning = Object.values(statusByStep).some(
-    (s) => s === "running" || s === "queued",
-  );
+  const isRunning = Object.values(statusByStep).some((s) => s === "running" || s === "queued");
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -114,10 +106,9 @@ export function DryRunPanel({
   const hasResults = summary !== null || Object.keys(statusByStep).length > 0;
 
   return (
-    <div
+    <section
       ref={panelRef}
       data-testid="dryrun-panel"
-      role="region"
       aria-labelledby="dryrun-panel-title"
       className={cn(
         "border-t border-[var(--color-border,#242733)] bg-[var(--color-card,#13151C)]",
@@ -155,25 +146,22 @@ export function DryRunPanel({
               {"Ch\u1ea1y th\u1eed"}
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={togglePanel}
-            aria-label="Thu g\u1ecdn panel"
-          >
+          <Button size="sm" variant="ghost" onClick={togglePanel} aria-label="Thu g\u1ecdn panel">
             <X className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 py-1" role="grid">
+      <div className="flex-1 overflow-y-auto px-2 py-1">
         {!hasResults ? (
           <div className="flex flex-col items-center justify-center h-full py-8 text-center">
             <p className="text-sm text-[var(--color-muted-foreground,#8A90A2)]">
               {"Ch\u01b0a c\u00f3 l\u1ea7n ch\u1ea1y th\u1eed n\u00e0o"}
             </p>
             <p className="text-xs text-[var(--color-muted-foreground,#8A90A2)] mt-1">
-              {"Nh\u1ea5n \"Ch\u1ea1y th\u1eed\" \u0111\u1ec3 chromiumoxide th\u1ef1c thi story m\u00e0 kh\u00f4ng quay m\u00e0n h\u00ecnh \u2014 h\u1eefu \u00edch \u0111\u1ec3 debug selector nhanh."}
+              {
+                'Nh\u1ea5n "Ch\u1ea1y th\u1eed" \u0111\u1ec3 chromiumoxide th\u1ef1c thi story m\u00e0 kh\u00f4ng quay m\u00e0n h\u00ecnh \u2014 h\u1eefu \u00edch \u0111\u1ec3 debug selector nhanh.'
+              }
             </p>
           </div>
         ) : (
@@ -209,6 +197,6 @@ export function DryRunPanel({
           </span>
         </div>
       )}
-    </div>
+    </section>
   );
 }

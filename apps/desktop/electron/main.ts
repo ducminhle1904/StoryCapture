@@ -1,6 +1,6 @@
-import { app, BrowserWindow, nativeImage, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { app, BrowserWindow, nativeImage, shell } from "electron";
 
 import identity from "./identity.json";
 import { registerIpcHandlers } from "./ipc";

@@ -5,8 +5,8 @@
  * No auto-retry — user manually triggers upload.
  */
 
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
-import { invoke, Channel } from "@tauri-apps/api/core";
 
 export interface UploadProgress {
   phase: string; // "thumbnail" | "uploading" | "completing"
@@ -64,9 +64,7 @@ export const useUploadStore = create<UploadStore>((set) => ({
         projectName,
         workspaceId: workspaceId ?? null,
         storySource: storySource ?? null,
-        sceneBoundaries: sceneBoundaries
-          ? JSON.stringify(sceneBoundaries)
-          : null,
+        sceneBoundaries: sceneBoundaries ? JSON.stringify(sceneBoundaries) : null,
         onProgress,
       });
 

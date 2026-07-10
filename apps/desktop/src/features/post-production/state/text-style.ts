@@ -1,5 +1,11 @@
-import type { AnnotationClip, TextAnimation, TextBoxStyle, TextStyleId, Vec2 } from "./timeline-slice";
 import type { FontChoice, Rgba } from "./compute-graph";
+import type {
+  AnnotationClip,
+  TextAnimation,
+  TextBoxStyle,
+  TextStyleId,
+  Vec2,
+} from "./timeline-slice";
 
 export interface TextStylePreset {
   id: TextStyleId;
@@ -108,7 +114,9 @@ export function textPresetFor(clip: Pick<AnnotationClip, "styleId">): TextStyleP
   return TEXT_STYLE_PRESETS[clip.styleId ?? "callout"];
 }
 
-export function styleDefaults(styleId: TextStyleId): Pick<
+export function styleDefaults(
+  styleId: TextStyleId,
+): Pick<
   AnnotationClip,
   "styleId" | "text" | "pos" | "sizePt" | "color" | "align" | "boxStyle" | "animation" | "anchor"
 > {

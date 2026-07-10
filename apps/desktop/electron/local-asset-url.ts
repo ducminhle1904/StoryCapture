@@ -27,7 +27,9 @@ export function isPathUnderRoot(filePath: string, rootPath: string): boolean {
   const file = normalizedPath(filePath);
   const root = normalizedPath(rootPath);
   const relative = path.relative(root, file);
-  return relative === "" || Boolean(relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    relative === "" || Boolean(relative && !relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 export function isAllowedLocalAssetPath(filePath: string, roots: string[]): boolean {

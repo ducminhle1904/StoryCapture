@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { PickElementMeta, PickLocator } from "@/ipc/picker";
-
-import { parseLine } from "./picker-emit-rewrite";
 import {
   buildPickerActionLine,
   escapeDslString,
@@ -10,6 +8,7 @@ import {
   getPickerActionItems,
   inferDefaultAction,
 } from "./picker-action-dsl";
+import { parseLine } from "./picker-emit-rewrite";
 
 const roleSave: PickLocator = {
   kind: "role",
@@ -31,35 +30,23 @@ describe("formatPickedTarget", () => {
     expect(formatPickedTarget(roleSave)).toBe('button "Save"');
   });
   it("formats label as field", () => {
-    expect(formatPickedTarget({ kind: "label", value: "Email" })).toBe(
-      'field "Email"',
-    );
+    expect(formatPickedTarget({ kind: "label", value: "Email" })).toBe('field "Email"');
   });
   it("formats text_exact and text identically", () => {
-    expect(formatPickedTarget({ kind: "text_exact", value: "Docs" })).toBe(
-      'text "Docs"',
-    );
-    expect(formatPickedTarget({ kind: "text", value: "Docs" })).toBe(
-      'text "Docs"',
-    );
+    expect(formatPickedTarget({ kind: "text_exact", value: "Docs" })).toBe('text "Docs"');
+    expect(formatPickedTarget({ kind: "text", value: "Docs" })).toBe('text "Docs"');
   });
   it("formats selector and aria", () => {
-    expect(formatPickedTarget({ kind: "selector", value: "#save" })).toBe(
-      'selector "#save"',
-    );
-    expect(formatPickedTarget({ kind: "aria", value: "Save" })).toBe(
-      'aria "Save"',
-    );
+    expect(formatPickedTarget({ kind: "selector", value: "#save" })).toBe('selector "#save"');
+    expect(formatPickedTarget({ kind: "aria", value: "Save" })).toBe('aria "Save"');
   });
   it("escapes embedded quotes in value", () => {
-    expect(
-      formatPickedTarget({ kind: "testid", value: 'a"b' }),
-    ).toBe('testid "a\\"b"');
+    expect(formatPickedTarget({ kind: "testid", value: 'a"b' })).toBe('testid "a\\"b"');
   });
   it("throws when role locator is malformed", () => {
-    expect(() =>
-      formatPickedTarget({ kind: "role", value: "not-a-shape" } as PickLocator),
-    ).toThrow(/role locator/);
+    expect(() => formatPickedTarget({ kind: "role", value: "not-a-shape" } as PickLocator)).toThrow(
+      /role locator/,
+    );
   });
 });
 
@@ -71,41 +58,25 @@ describe("buildPickerActionLine", () => {
     expect(buildPickerActionLine("hover", roleSave)).toBe('hover button "Save"');
   });
   it("builds assert", () => {
-    expect(buildPickerActionLine("assert", roleSave)).toBe(
-      'assert button "Save"',
-    );
+    expect(buildPickerActionLine("assert", roleSave)).toBe('assert button "Save"');
   });
   it("builds wait-for with default 5s timeout", () => {
-    expect(buildPickerActionLine("wait-for", roleSave)).toBe(
-      'wait-for button "Save" timeout 5s',
-    );
+    expect(buildPickerActionLine("wait-for", roleSave)).toBe('wait-for button "Save" timeout 5s');
   });
   it("preserves indent from parsed line", () => {
-    expect(
-      buildPickerActionLine(
-        "click",
-        roleSave,
-        parseLine('    hover field "Old"'),
-      ),
-    ).toBe('    click button "Save"');
+    expect(buildPickerActionLine("click", roleSave, parseLine('    hover field "Old"'))).toBe(
+      '    click button "Save"',
+    );
   });
   it("preserves existing wait-for timeout when action is wait-for", () => {
     expect(
-      buildPickerActionLine(
-        "wait-for",
-        roleSave,
-        parseLine('    wait-for text "Old" timeout 10s'),
-      ),
+      buildPickerActionLine("wait-for", roleSave, parseLine('    wait-for text "Old" timeout 10s')),
     ).toBe('    wait-for button "Save" timeout 10s');
   });
   it("falls back to default timeout when parsed line is not wait-for", () => {
-    expect(
-      buildPickerActionLine(
-        "wait-for",
-        roleSave,
-        parseLine('    click text "Old"'),
-      ),
-    ).toBe('    wait-for button "Save" timeout 5s');
+    expect(buildPickerActionLine("wait-for", roleSave, parseLine('    click text "Old"'))).toBe(
+      '    wait-for button "Save" timeout 5s',
+    );
   });
 });
 
@@ -143,19 +114,16 @@ describe("buildPickerActionLine — input actions", () => {
   });
 
   it("builds type with text", () => {
-    expect(
-      buildPickerActionLine("type", fieldEmail, undefined, { text: "alice" }),
-    ).toBe('type field "Email" "alice"');
+    expect(buildPickerActionLine("type", fieldEmail, undefined, { text: "alice" })).toBe(
+      'type field "Email" "alice"',
+    );
   });
 
   it("builds select with value", () => {
     expect(
-      buildPickerActionLine(
-        "select",
-        { kind: "label", value: "Country" },
-        undefined,
-        { value: "USA" },
-      ),
+      buildPickerActionLine("select", { kind: "label", value: "Country" }, undefined, {
+        value: "USA",
+      }),
     ).toBe('select field "Country" "USA"');
   });
 
@@ -185,12 +153,7 @@ describe("buildPickerActionLine — input actions", () => {
 
   it("preserves indent for input actions", () => {
     expect(
-      buildPickerActionLine(
-        "fill",
-        fieldEmail,
-        parseLine('    click field "Old"'),
-        { text: "x" },
-      ),
+      buildPickerActionLine("fill", fieldEmail, parseLine('    click field "Old"'), { text: "x" }),
     ).toBe('    fill field "Email" with "x"');
   });
 
@@ -201,17 +164,15 @@ describe("buildPickerActionLine — input actions", () => {
     ["upload", { text: "x" }, /upload action requires options.path/],
     ["drag", {}, /drag action requires options.toLocator/],
   ] as const)("throws when %s missing required option", (action, opts, re) => {
-    expect(() =>
-      buildPickerActionLine(action, fieldEmail, undefined, opts),
-    ).toThrow(re);
+    expect(() => buildPickerActionLine(action, fieldEmail, undefined, opts)).toThrow(re);
   });
 });
 
 describe("buildPickerActionLine — nth postfix", () => {
   it("builds click+testid with nth=2", () => {
-    expect(
-      buildPickerActionLine("click", { kind: "testid", value: "row", nth: 2 }),
-    ).toBe('click testid "row" nth 2');
+    expect(buildPickerActionLine("click", { kind: "testid", value: "row", nth: 2 })).toBe(
+      'click testid "row" nth 2',
+    );
   });
 
   it("builds click+role with nth=1", () => {
@@ -225,9 +186,9 @@ describe("buildPickerActionLine — nth postfix", () => {
   });
 
   it("builds hover+label with nth=3", () => {
-    expect(
-      buildPickerActionLine("hover", { kind: "label", value: "Email", nth: 3 }),
-    ).toBe('hover field "Email" nth 3');
+    expect(buildPickerActionLine("hover", { kind: "label", value: "Email", nth: 3 })).toBe(
+      'hover field "Email" nth 3',
+    );
   });
 
   it("builds wait-for+text_exact with nth=2 (nth before timeout)", () => {
@@ -241,19 +202,16 @@ describe("buildPickerActionLine — nth postfix", () => {
   });
 
   it("builds assert+testid with nth=1", () => {
-    expect(
-      buildPickerActionLine("assert", { kind: "testid", value: "row", nth: 1 }),
-    ).toBe('assert testid "row" nth 1');
+    expect(buildPickerActionLine("assert", { kind: "testid", value: "row", nth: 1 })).toBe(
+      'assert testid "row" nth 1',
+    );
   });
 
   it("builds fill+testid with nth=1 + text option", () => {
     expect(
-      buildPickerActionLine(
-        "fill",
-        { kind: "testid", value: "email", nth: 1 },
-        undefined,
-        { text: "alice@x" },
-      ),
+      buildPickerActionLine("fill", { kind: "testid", value: "email", nth: 1 }, undefined, {
+        text: "alice@x",
+      }),
     ).toBe('fill testid "email" nth 1 with "alice@x"');
   });
 
@@ -264,9 +222,9 @@ describe("buildPickerActionLine — nth postfix", () => {
   });
 
   it("rejects nth < 1", () => {
-    expect(() =>
-      buildPickerActionLine("click", { kind: "testid", value: "row", nth: 0 }),
-    ).toThrow(/positive integer/);
+    expect(() => buildPickerActionLine("click", { kind: "testid", value: "row", nth: 0 })).toThrow(
+      /positive integer/,
+    );
   });
 });
 

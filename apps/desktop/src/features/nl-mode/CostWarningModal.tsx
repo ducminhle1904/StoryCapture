@@ -6,8 +6,8 @@
  * The suppressForSession flag is held in a Zustand session-scoped store.
  */
 
-import { useState, useCallback, useEffect } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   dialogBackdropMotionClassName,
@@ -66,30 +66,28 @@ export function CostWarningModal({
             className={`w-full max-w-md rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-6 shadow-2xl ${dialogCenteredPopupMotionClassName}`}
           >
             <Dialog.Title className="text-lg font-semibold text-[var(--color-fg-primary)]">
-            {"This prompt uses a lot of tokens"}
-          </Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
-            {`This prompt is estimated to use about ${estimatedTokens.toLocaleString()} tokens. Cost may be higher than usual.`}
-          </Dialog.Description>
+              {"This prompt uses a lot of tokens"}
+            </Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm text-[var(--color-fg-muted)]">
+              {`This prompt is estimated to use about ${estimatedTokens.toLocaleString()} tokens. Cost may be higher than usual.`}
+            </Dialog.Description>
 
-          <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-primary)]/60 px-3 py-2 text-sm">
-            <input
-              type="checkbox"
-              checked={dontAskAgain}
-              onChange={(e) => setDontAskAgain(e.target.checked)}
-              className="rounded border-[var(--color-border-subtle)]"
-            />
-            <span>{"Don't ask again for this session"}</span>
-          </label>
+            <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-primary)]/60 px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                checked={dontAskAgain}
+                onChange={(e) => setDontAskAgain(e.target.checked)}
+                className="rounded border-[var(--color-border-subtle)]"
+              />
+              <span>{"Don't ask again for this session"}</span>
+            </label>
 
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="ghost" onClick={handleCancel}>
-              {"Cancel"}
-            </Button>
-            <Button onClick={handleProceed}>
-              {"Continue"}
-            </Button>
-          </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="ghost" onClick={handleCancel}>
+                {"Cancel"}
+              </Button>
+              <Button onClick={handleProceed}>{"Continue"}</Button>
+            </div>
           </Dialog.Popup>
         </Dialog.Viewport>
       </Dialog.Portal>

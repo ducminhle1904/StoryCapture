@@ -54,8 +54,7 @@ export function ProblemsPanel({ onJumpToOffset }: ProblemsPanelProps) {
   const { sorted, errorCount, warningCount } = useMemo(() => {
     const next = [...diagnostics].sort(
       (a, b) =>
-        SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
-        a.span.start - b.span.start,
+        SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || a.span.start - b.span.start,
     );
     let errors = 0;
     let warnings = 0;
@@ -69,7 +68,6 @@ export function ProblemsPanel({ onJumpToOffset }: ProblemsPanelProps) {
 
   return (
     <section
-      role="region"
       aria-label="Problems"
       style={{
         display: "flex",
@@ -164,8 +162,8 @@ export function ProblemsPanel({ onJumpToOffset }: ProblemsPanelProps) {
                 </div>
               ) : (
                 <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                  {sorted.map((d, i) => (
-                    <li key={`${d.span.start}-${i}`}>
+                  {sorted.map((d) => (
+                    <li key={`${d.span.start}-${d.span.end}-${d.severity}-${d.message}`}>
                       <button
                         type="button"
                         onClick={() => onJumpToOffset(d.span.start)}

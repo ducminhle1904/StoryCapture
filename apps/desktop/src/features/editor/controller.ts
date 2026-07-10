@@ -129,9 +129,7 @@ export const editorController = {
    */
   replaceCursorLine(
     text: string,
-  ):
-    | { ok: true; lineNumber: number }
-    | { ok: false; reason: "no-view" } {
+  ): { ok: true; lineNumber: number } | { ok: false; reason: "no-view" } {
     const v = currentView;
     if (!v) return { ok: false, reason: "no-view" };
     const line = v.state.doc.lineAt(v.state.selection.main.head);
@@ -151,9 +149,7 @@ export const editorController = {
    */
   insertAtCursor(
     text: string,
-  ):
-    | { ok: true; lineNumber: number }
-    | { ok: false; reason: "no-view" } {
+  ): { ok: true; lineNumber: number } | { ok: false; reason: "no-view" } {
     const v = currentView;
     if (!v) return { ok: false, reason: "no-view" };
 

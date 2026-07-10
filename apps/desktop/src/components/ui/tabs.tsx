@@ -13,11 +13,7 @@ export const TabsList = React.forwardRef<
   React.ElementRef<typeof BaseTabs.List>,
   React.ComponentPropsWithoutRef<typeof BaseTabs.List>
 >(({ className, children, ...props }, ref) => (
-  <BaseTabs.List
-    ref={ref}
-    className={cn("sc-tabs-list", className)}
-    {...props}
-  >
+  <BaseTabs.List ref={ref} className={cn("sc-tabs-list", className)} {...props}>
     {children}
     <BaseTabs.Indicator className="sc-tabs-indicator" />
   </BaseTabs.List>
@@ -28,11 +24,7 @@ export const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof BaseTabs.Tab>,
   React.ComponentPropsWithoutRef<typeof BaseTabs.Tab>
 >(({ className, ...props }, ref) => (
-  <BaseTabs.Tab
-    ref={ref}
-    className={cn("sc-tabs-trigger", className)}
-    {...props}
-  />
+  <BaseTabs.Tab ref={ref} className={cn("sc-tabs-trigger", className)} {...props} />
 ));
 TabsTrigger.displayName = "TabsTrigger";
 
@@ -40,10 +32,6 @@ export const TabsContent = React.forwardRef<
   React.ElementRef<typeof BaseTabs.Panel>,
   React.ComponentPropsWithoutRef<typeof BaseTabs.Panel>
 >(({ className, ...props }, ref) => (
-  <BaseTabs.Panel
-    ref={ref}
-    className={cn("sc-tabs-content", className)}
-    {...props}
-  />
+  <BaseTabs.Panel ref={ref} className={cn("sc-tabs-content", className)} {...props} />
 ));
 TabsContent.displayName = "TabsContent";

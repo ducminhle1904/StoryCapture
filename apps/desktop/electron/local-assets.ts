@@ -1,6 +1,6 @@
-import { app, protocol } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { app, protocol } from "electron";
 import { assetPathFromUrl, isPathUnderRoot, LOCAL_ASSET_SCHEME } from "./local-asset-url";
 
 const PROJECTS_REGISTRY_FILENAME = "projects.json";

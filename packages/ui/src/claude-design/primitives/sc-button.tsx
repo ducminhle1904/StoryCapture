@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { type ButtonHTMLAttributes, forwardRef, type ReactNode } from "react";
 
 import { cn } from "../../lib/cn";
 
@@ -21,18 +21,17 @@ export const ScButton = forwardRef<HTMLButtonElement, ScButtonProps>(
     <button
       ref={ref}
       type={type ?? "button"}
-      className={cn(
-        "sc-btn",
-        variant !== "default" && variant,
-        size !== "md" && size,
-        className,
-      )}
+      className={cn("sc-btn", variant !== "default" && variant, size !== "md" && size, className)}
       {...rest}
     >
       {icon}
       {size !== "icon" && children}
       {iconRight}
-      {kbd && <span className="sc-kbd" style={{ marginLeft: 4 }}>{kbd}</span>}
+      {kbd && (
+        <span className="sc-kbd" style={{ marginLeft: 4 }}>
+          {kbd}
+        </span>
+      )}
     </button>
   ),
 );

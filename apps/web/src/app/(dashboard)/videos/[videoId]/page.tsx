@@ -1,21 +1,17 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useTRPC } from "@/trpc/client";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { VideoPlayer } from "@/components/video-player";
-import { PrivacyToggle } from "@/components/privacy-toggle";
+import { useCallback, useState } from "react";
 import { EmbedCode } from "@/components/embed-code";
+import { PrivacyToggle } from "@/components/privacy-toggle";
+import { VideoPlayer } from "@/components/video-player";
+import { useTRPC } from "@/trpc/client";
 
 /**
  * Video detail/management page (auth-gated via dashboard layout).
  * Shows video preview, privacy toggle, slug editor, embed code, delete button.
  */
-export default function VideoDetailPage({
-  params,
-}: {
-  params: Promise<{ videoId: string }>;
-}) {
+export default function VideoDetailPage({ params }: { params: Promise<{ videoId: string }> }) {
   // Unwrap params via use() for Next.js 15 async params
   const { videoId } = use(params);
 
@@ -27,9 +23,7 @@ import { use } from "react";
 function VideoDetailContent({ videoId }: { videoId: string }) {
   const trpc = useTRPC();
 
-  const { data: video, refetch } = useSuspenseQuery(
-    trpc.video.getById.queryOptions({ videoId }),
-  );
+  const { data: video, refetch } = useSuspenseQuery(trpc.video.getById.queryOptions({ videoId }));
 
   return (
     <div className="space-y-8">
@@ -37,8 +31,7 @@ function VideoDetailContent({ videoId }: { videoId: string }) {
       <div>
         <h1 className="text-2xl font-bold text-zinc-50">{video.projectName}</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          {video.fileName} &middot;{" "}
-          {(video.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
+          {video.fileName} &middot; {(video.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
         </p>
       </div>
 
@@ -46,11 +39,7 @@ function VideoDetailContent({ videoId }: { videoId: string }) {
       <section>
         <h2 className="mb-3 text-sm font-medium text-zinc-300">Preview</h2>
         <div className="max-w-2xl">
-          <VideoPlayer
-            src={video.videoUrl}
-            poster={video.thumbnailUrl}
-            className="rounded-lg"
-          />
+          <VideoPlayer src={video.videoUrl} poster={video.thumbnailUrl} className="rounded-lg" />
         </div>
       </section>
 
@@ -67,11 +56,7 @@ function VideoDetailContent({ videoId }: { videoId: string }) {
       {/* Slug editor */}
       <section>
         <h2 className="mb-3 text-sm font-medium text-zinc-300">Share URL</h2>
-        <SlugEditor
-          videoId={video.id}
-          currentSlug={video.slug}
-          onChanged={refetch}
-        />
+        <SlugEditor videoId={video.id} currentSlug={video.slug} onChanged={refetch} />
       </section>
 
       {/* Embed code */}
@@ -79,9 +64,7 @@ function VideoDetailContent({ videoId }: { videoId: string }) {
         <EmbedCode
           videoId={video.id}
           baseUrl={
-            typeof window !== "undefined"
-              ? window.location.origin
-              : "https://storycapture.app"
+            typeof window !== "undefined" ? window.location.origin : "https://storycapture.app"
           }
         />
       </section>
@@ -128,11 +111,7 @@ function PrivacyToggleSection({
   );
 
   return (
-    <PrivacyToggle
-      videoId={videoId}
-      initialIsPublic={initialIsPublic}
-      onToggle={handleToggle}
-    />
+    <PrivacyToggle videoId={videoId} initialIsPublic={initialIsPublic} onToggle={handleToggle} />
   );
 }
 
@@ -161,16 +140,13 @@ function SlugEditor({
       await mutation.mutateAsync({ videoId, newSlug: slug });
       onChanged();
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to update slug.";
+      const message = err instanceof Error ? err.message : "Failed to update slug.";
       setError(message);
     }
   }, [slug, currentSlug, videoId, mutation, onChanged]);
 
   const baseUrl =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : "https://storycapture.app";
+    typeof window !== "undefined" ? window.location.origin : "https://storycapture.app";
 
   return (
     <div className="space-y-2">
@@ -184,6 +160,7 @@ function SlugEditor({
           placeholder="my-video-slug"
         />
         <button
+          type="button"
           onClick={handleSave}
           disabled={slug === currentSlug || mutation.isPending}
           className="rounded-md bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
@@ -219,11 +196,11 @@ function DeleteVideoSection({ videoId }: { videoId: string }) {
     return (
       <div className="space-y-3">
         <p className="text-sm font-medium text-red-400">
-          Are you sure you want to delete this video? This action cannot be
-          undone.
+          Are you sure you want to delete this video? This action cannot be undone.
         </p>
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={handleDelete}
             disabled={mutation.isPending}
             className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
@@ -231,6 +208,7 @@ function DeleteVideoSection({ videoId }: { videoId: string }) {
             {mutation.isPending ? "Deleting..." : "Yes, delete"}
           </button>
           <button
+            type="button"
             onClick={() => setConfirming(false)}
             className="rounded-md bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
           >
@@ -245,6 +223,7 @@ function DeleteVideoSection({ videoId }: { videoId: string }) {
     <div>
       <h2 className="mb-2 text-sm font-medium text-zinc-300">Danger Zone</h2>
       <button
+        type="button"
         onClick={() => setConfirming(true)}
         className="rounded-md border border-red-800 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-950"
       >

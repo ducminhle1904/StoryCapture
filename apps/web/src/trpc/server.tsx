@@ -3,10 +3,9 @@ import "server-only";
 import { createTRPCOptionsProxy } from "@trpc/tanstack-react-query";
 import { headers } from "next/headers";
 import { cache } from "react";
-import { createTRPCContext } from "./init";
+import { createCallerFactory, createTRPCContext } from "./init";
 import { makeQueryClient } from "./query-client";
 import { appRouter } from "./routers/_app";
-import { createCallerFactory } from "./init";
 
 /**
  * Server-side tRPC caller for React Server Components.

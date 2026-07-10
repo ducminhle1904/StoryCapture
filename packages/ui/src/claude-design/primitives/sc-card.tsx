@@ -11,7 +11,15 @@ export const ScCard = forwardRef<HTMLDivElement, ScCardProps>(
   ({ title, action, className, children, ...rest }, ref) => (
     <div ref={ref} className={cn("sc-card", className)} {...rest}>
       {(title || action) && (
-        <div className="sc-card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div
+          className="sc-card-header"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 10,
+          }}
+        >
           {title && <div className="sc-h">{title}</div>}
           {action}
         </div>

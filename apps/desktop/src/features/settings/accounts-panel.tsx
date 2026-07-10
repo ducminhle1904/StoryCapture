@@ -7,17 +7,17 @@
  * data-testid="web-account-panel"
  */
 
-import { useEffect, useState, useCallback } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { cn } from "@/lib/utils";
+import { AlertCircle, CheckCircle2, Globe, Loader2, LogOut, User } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   dialogBackdropMotionClassName,
   dialogCenteredPopupMotionClassName,
   dialogViewportClassName,
 } from "@/components/ui/dialog-motion";
+import { cn } from "@/lib/utils";
 import { useWebAccountStore } from "@/stores/web-account-store";
-import { Globe, LogOut, Loader2, AlertCircle, CheckCircle2, User } from "lucide-react";
 
 export function WebAccountPanel() {
   const { account, isConnecting, error, fetchAccount, connect, disconnect, clearError } =
@@ -47,7 +47,7 @@ export function WebAccountPanel() {
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : account?.email?.[0]?.toUpperCase() ?? "?";
+    : (account?.email?.[0]?.toUpperCase() ?? "?");
 
   const connectedDate = account?.connectedAt
     ? new Date(account.connectedAt).toLocaleDateString(undefined, {
@@ -60,10 +60,7 @@ export function WebAccountPanel() {
   return (
     <div data-testid="web-account-panel" className="space-y-4">
       <div className="flex items-center gap-2">
-        <Globe
-          className="h-4 w-4 text-[var(--color-fg-muted)]"
-          aria-hidden="true"
-        />
+        <Globe className="h-4 w-4 text-[var(--color-fg-muted)]" aria-hidden="true" />
         <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-fg-muted)]">
           Web account
         </h2>
@@ -117,8 +114,8 @@ export function WebAccountPanel() {
                 Connect your web account
               </p>
               <p className="font-serif mt-2 max-w-sm text-sm leading-6 text-[var(--color-fg-muted)]">
-                Sign in when you want uploads, team sharing, and cross-device project
-                sync. Local desktop work stays available without this connection.
+                Sign in when you want uploads, team sharing, and cross-device project sync. Local
+                desktop work stays available without this connection.
               </p>
             </div>
             <Button
@@ -152,49 +149,49 @@ export function WebAccountPanel() {
         {account && !isConnecting && (
           <div className="rounded-[var(--radius-2xl)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            {account.avatarUrl ? (
-              <img
-                src={account.avatarUrl}
-                alt={`${account.name ?? account.email} avatar`}
-                className="h-14 w-14 rounded-2xl border border-[var(--color-border-default)] object-cover"
-              />
-            ) : (
-              <div
-                className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-accent)]/15 text-sm font-semibold text-[var(--color-accent)]"
-                aria-hidden="true"
-              >
-                {initials}
+              {account.avatarUrl ? (
+                <img
+                  src={account.avatarUrl}
+                  alt={`${account.name ?? account.email} avatar`}
+                  className="h-14 w-14 rounded-2xl border border-[var(--color-border-default)] object-cover"
+                />
+              ) : (
+                <div
+                  className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-accent)]/15 text-sm font-semibold text-[var(--color-accent)]"
+                  aria-hidden="true"
+                >
+                  {initials}
+                </div>
+              )}
+
+              <div className="min-w-0 flex-1">
+                {account.name && (
+                  <p className="truncate text-sm font-medium text-[var(--color-fg-primary)]">
+                    {account.name}
+                  </p>
+                )}
+                <p className="truncate text-sm text-[var(--color-fg-muted)]">{account.email}</p>
+                {connectedDate && (
+                  <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
+                    Connected since {connectedDate}
+                  </p>
+                )}
               </div>
-            )}
 
-            <div className="min-w-0 flex-1">
-              {account.name && (
-                <p className="truncate text-sm font-medium text-[var(--color-fg-primary)]">
-                  {account.name}
-                </p>
-              )}
-              <p className="truncate text-sm text-[var(--color-fg-muted)]">{account.email}</p>
-              {connectedDate && (
-                <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
-                  Connected since {connectedDate}
-                </p>
-              )}
-            </div>
+              <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-success)]/25 bg-[var(--color-success)]/12 px-2.5 py-0.5 text-xs font-medium text-[var(--color-success)]">
+                <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                Connected
+              </span>
 
-            <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-success)]/25 bg-[var(--color-success)]/12 px-2.5 py-0.5 text-xs font-medium text-[var(--color-success)]">
-              <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-              Connected
-            </span>
-
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowDisconnectConfirm(true)}
-              aria-label="Disconnect web account"
-              className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-danger)]"
-            >
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-            </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowDisconnectConfirm(true)}
+                aria-label="Disconnect web account"
+                className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-300)] hover:text-[var(--color-danger)]"
+              >
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+              </Button>
             </div>
           </div>
         )}
@@ -239,20 +236,20 @@ export function WebAccountPanel() {
               className={`w-full max-w-sm rounded-[var(--radius-2xl)] border border-[var(--color-border-default)] bg-[var(--color-surface-100)] p-6 shadow-[var(--shadow-card)] ${dialogCenteredPopupMotionClassName}`}
             >
               <Dialog.Title className="mb-2 text-lg font-semibold text-[var(--color-fg-primary)]">
-              Disconnect web account?
-            </Dialog.Title>
-            <Dialog.Description className="mb-4 text-sm text-[var(--color-fg-muted)]">
-              Your API token will be removed from the OS keychain. You will need to sign in again to
-              upload videos or sync projects.
-            </Dialog.Description>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowDisconnectConfirm(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleDisconnect}>
-                Disconnect
-              </Button>
-            </div>
+                Disconnect web account?
+              </Dialog.Title>
+              <Dialog.Description className="mb-4 text-sm text-[var(--color-fg-muted)]">
+                Your API token will be removed from the OS keychain. You will need to sign in again
+                to upload videos or sync projects.
+              </Dialog.Description>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setShowDisconnectConfirm(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDisconnect}>
+                  Disconnect
+                </Button>
+              </div>
             </Dialog.Popup>
           </Dialog.Viewport>
         </Dialog.Portal>

@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { Download, RefreshCcw, CheckCircle2, AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, RefreshCcw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { checkUpdate, installUpdate, type UpdateInfo } from "@/ipc/updater";
 import { useAppSettingsStore } from "@/state/app-settings";
@@ -63,7 +63,7 @@ export function AutoUpdaterSettings() {
   }, []);
 
   return (
-    <div aria-labelledby="auto-updater-heading" className="space-y-4">
+    <section aria-labelledby="auto-updater-heading" className="space-y-4">
       {/* Toggle */}
       <label
         htmlFor="check-on-launch"
@@ -77,9 +77,7 @@ export function AutoUpdaterSettings() {
           className="h-4 w-4 rounded accent-[var(--color-accent-primary)]"
         />
         <div>
-          <div className="text-sm font-medium text-[var(--color-fg-primary)]">
-            Check on launch
-          </div>
+          <div className="text-sm font-medium text-[var(--color-fg-primary)]">Check on launch</div>
           <div className="text-xs text-[var(--color-fg-muted)]">
             {checkOnLaunch
               ? "The app will check when it starts."
@@ -93,18 +91,13 @@ export function AutoUpdaterSettings() {
         <button
           type="button"
           onClick={() => void runCheck()}
-          disabled={
-            checkState.kind === "checking" ||
-            checkState.kind === "installing"
-          }
+          disabled={checkState.kind === "checking" || checkState.kind === "installing"}
           className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 py-2 text-sm text-[var(--color-fg-primary)] transition-colors hover:bg-[var(--color-surface-200)] disabled:opacity-50"
         >
           <RefreshCcw
             size={13}
             aria-hidden="true"
-            className={
-              checkState.kind === "checking" ? "animate-spin" : undefined
-            }
+            className={checkState.kind === "checking" ? "animate-spin" : undefined}
           />
           Check now
         </button>
@@ -116,10 +109,7 @@ export function AutoUpdaterSettings() {
           </span>
         )}
         {checkState.kind === "error" && (
-          <span
-            role="alert"
-            className="flex items-center gap-1 text-xs text-[var(--color-danger)]"
-          >
+          <span role="alert" className="flex items-center gap-1 text-xs text-[var(--color-danger)]">
             <AlertTriangle size={13} aria-hidden="true" />
             {checkState.message}
           </span>
@@ -130,8 +120,7 @@ export function AutoUpdaterSettings() {
       {checkState.kind === "available" && (
         <div className="rounded-[var(--radius-lg)] border border-[var(--color-accent-primary)]/30 bg-[var(--color-accent-primary)]/6 p-4">
           <div className="text-sm font-medium text-[var(--color-fg-primary)]">
-            {checkState.update.current_version} &rarr;{" "}
-            {checkState.update.version}
+            {checkState.update.current_version} &rarr; {checkState.update.version}
           </div>
           {checkState.update.date && (
             <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
@@ -159,7 +148,7 @@ export function AutoUpdaterSettings() {
           Downloading — the app will relaunch when ready.
         </div>
       )}
-    </div>
+    </section>
   );
 }
 

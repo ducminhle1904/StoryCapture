@@ -40,9 +40,7 @@ function FormatCheckboxesBase({ value, onChange }: FormatCheckboxesProps) {
             >
               <div>
                 <div className="font-medium">{opt.id.toUpperCase()}</div>
-                <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
-                  {opt.label}
-                </div>
+                <div className="mt-1 text-xs text-[var(--color-fg-muted)]">{opt.label}</div>
               </div>
               <input
                 type="checkbox"

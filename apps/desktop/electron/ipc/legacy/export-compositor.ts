@@ -6,10 +6,7 @@ import { app, BrowserWindow, type Rectangle } from "electron";
 import ffmpegPath from "ffmpeg-static";
 import identity from "../../identity.json";
 import { isDevRuntime } from "../../runtime";
-import {
-  ffmpegArgsForExportPlan,
-  type CompositedExportPlan,
-} from "./export-planning";
+import { type CompositedExportPlan, ffmpegArgsForExportPlan } from "./export-planning";
 import type { RenderSession } from "./shared";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -20,10 +17,7 @@ export function compositedFrameTimeMs(frameIndex: number, fps: number): number {
   return (Math.max(0, frameIndex) / Math.max(1, fps)) * 1000;
 }
 
-export async function writeFrameWithBackpressure(
-  stream: Writable,
-  frame: Buffer,
-): Promise<void> {
+export async function writeFrameWithBackpressure(stream: Writable, frame: Buffer): Promise<void> {
   if (stream.destroyed || stream.writableEnded) {
     throw new Error("ffmpeg stdin is closed");
   }
@@ -203,10 +197,7 @@ export async function runCompositedExportForRenderSession(
 
     for (let frameIndex = 0; frameIndex < plan.frameCount; frameIndex += 1) {
       if (session.cancelRequested) throw new Error("render cancelled");
-      const timeMs = Math.min(
-        plan.durationMs,
-        compositedFrameTimeMs(frameIndex, plan.fps),
-      );
+      const timeMs = Math.min(plan.durationMs, compositedFrameTimeMs(frameIndex, plan.fps));
       const frame = await renderCompositorFrame(win, plan, timeMs);
       await writeFrameWithBackpressure(child.stdin, frame);
       session.frame = frameIndex + 1;

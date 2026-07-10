@@ -4,7 +4,7 @@ import { VERB_DOCS } from "./dsl-docs";
 
 const WORD_RE = /[\w-]/;
 
-function escape(s: string): string {
+function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -29,7 +29,7 @@ export const dslHoverTooltip = hoverTooltip((view, pos, side) => {
     create: () => {
       const dom = document.createElement("div");
       dom.className = "cm-tooltip-keyword";
-      dom.innerHTML = `<div class="kw">${escape(word)}</div><div class="desc">${escape(doc.description)}</div><pre class="ex">${escape(doc.example)}</pre>`;
+      dom.innerHTML = `<div class="kw">${escapeHtml(word)}</div><div class="desc">${escapeHtml(doc.description)}</div><pre class="ex">${escapeHtml(doc.example)}</pre>`;
       return { dom };
     },
   };

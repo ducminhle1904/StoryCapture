@@ -1,11 +1,7 @@
-import { EditorView, keymap, type KeyBinding } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
+import { EditorView, type KeyBinding, keymap } from "@codemirror/view";
 
-import {
-  simulatorCancel,
-  simulatorStart,
-  simulatorStepTo,
-} from "@/ipc/simulator";
+import { simulatorCancel, simulatorStart, simulatorStepTo } from "@/ipc/simulator";
 import { useEditorStore } from "@/state/editor";
 import { useSimulatorStore } from "@/state/simulator-store";
 
@@ -122,13 +118,10 @@ function createContextMenu(ctx: SimulatorKeymapContext) {
   });
 }
 
-function showPreviewToHereMenu(
-  x: number,
-  y: number,
-  ord: number,
-  ctx: SimulatorKeymapContext,
-) {
-  document.querySelectorAll("[data-simulator-ctxmenu]").forEach((n) => n.remove());
+function showPreviewToHereMenu(x: number, y: number, ord: number, ctx: SimulatorKeymapContext) {
+  document.querySelectorAll("[data-simulator-ctxmenu]").forEach((node) => {
+    node.remove();
+  });
 
   const { runState } = useSimulatorStore.getState();
   const disabled = runState === "running";
@@ -170,9 +163,7 @@ function showPreviewToHereMenu(
     borderRadius: "4px",
   } as Partial<CSSStyleDeclaration>);
   const label = document.createElement("span");
-  label.textContent = disabled
-    ? "Preview to here — run in progress"
-    : "Preview to here";
+  label.textContent = disabled ? "Preview to here — run in progress" : "Preview to here";
   const hint = document.createElement("kbd");
   hint.textContent = "⌘.";
   Object.assign(hint.style, {

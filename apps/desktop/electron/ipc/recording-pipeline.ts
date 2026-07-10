@@ -7,10 +7,7 @@ import type {
 } from "@storycapture/shared-types";
 
 export type RecordingFitMode = FitModeDto;
-export type RecordingQualityPreset = Extract<
-  QualityPresetDto,
-  "high" | "lossless"
->;
+export type RecordingQualityPreset = Extract<QualityPresetDto, "high" | "lossless">;
 export type RecordingScaleAlgo = ScaleAlgoDto;
 export type RecordingOutputResolution = OutputResolutionDto;
 export type RecordingPadColor = PadColorDto;
@@ -40,10 +37,7 @@ export interface CadenceWarningInput {
 
 const DEFAULT_MAX_DIMENSION = 7680;
 
-export function clampRecordingDimension(
-  value: unknown,
-  fallback: number,
-): number {
+export function clampRecordingDimension(value: unknown, fallback: number): number {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
   return Math.max(1, Math.min(DEFAULT_MAX_DIMENSION, Math.round(numeric)));
@@ -74,7 +68,6 @@ export function resolveRecordingOutput(
           outputWidth: clampRecordingDimension(resolution.w, source.width),
           outputHeight: clampRecordingDimension(resolution.h, source.height),
         };
-      case "match-source":
       default:
         return { outputWidth: source.width, outputHeight: source.height };
     }

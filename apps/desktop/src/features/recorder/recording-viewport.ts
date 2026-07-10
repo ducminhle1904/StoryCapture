@@ -17,9 +17,7 @@ export function storyViewportSize(source: string): BrowserViewportSize {
     return { width: Number(pair[1]), height: Number(pair[2]) };
   }
 
-  const named = source
-    .match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]
-    ?.toLowerCase();
+  const named = source.match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]?.toLowerCase();
   if (named === "desktop" || named === "tablet" || named === "mobile") {
     const preset = VIEWPORT_SIZES[named];
     return { width: preset.w, height: preset.h };
@@ -47,9 +45,7 @@ function normalizedHttpUrl(rawUrl: string | null | undefined): string | null {
   }
 }
 
-export function storyFirstNavigateUrlForRecording(
-  source: string,
-): string | null {
+export function storyFirstNavigateUrlForRecording(source: string): string | null {
   for (const command of parsedCommands(source)) {
     if (command.verb !== "navigate") continue;
     const url = normalizedHttpUrl(command.url);

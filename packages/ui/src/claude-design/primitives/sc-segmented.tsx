@@ -1,6 +1,6 @@
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef, type ReactNode } from "react";
+import { type ComponentPropsWithoutRef, type ElementRef, forwardRef, type ReactNode } from "react";
 
 import { cn } from "../../lib/cn";
 
@@ -10,7 +10,10 @@ export interface ScSegmentedOption {
 }
 
 export interface ScSegmentedProps
-  extends Omit<ComponentPropsWithoutRef<typeof ToggleGroup>, "value" | "defaultValue" | "onValueChange"> {
+  extends Omit<
+    ComponentPropsWithoutRef<typeof ToggleGroup>,
+    "value" | "defaultValue" | "onValueChange"
+  > {
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;

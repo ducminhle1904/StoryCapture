@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export interface Chapter {
   label: string;
@@ -67,7 +67,7 @@ export function VideoPlayer({
   }, [emit, onTimeUpdate]);
 
   /** Seek to a specific time (called by ChapterNav). */
-  const seekTo = useCallback((timeSec: number) => {
+  const _seekTo = useCallback((timeSec: number) => {
     const video = videoRef.current;
     if (video) {
       video.currentTime = timeSec;

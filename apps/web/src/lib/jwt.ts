@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify } from "jose";
+import { jwtVerify, SignJWT } from "jose";
 
 /**
  * JWT utilities for desktop auth tokens and SSE subscription auth.
@@ -34,9 +34,7 @@ export async function mintDesktopToken(userId: string): Promise<string> {
 /**
  * Verify a desktop API token. Returns the userId.
  */
-export async function verifyDesktopToken(
-  token: string,
-): Promise<{ userId: string }> {
+export async function verifyDesktopToken(token: string): Promise<{ userId: string }> {
   const { payload } = await jwtVerify(token, getSecret(), {
     issuer: "storycapture-web",
     audience: "storycapture-desktop",
@@ -66,9 +64,7 @@ export async function mintJwt(userId: string): Promise<string> {
 /**
  * Verify a short-lived SSE JWT. Returns the userId.
  */
-export async function verifyJwt(
-  token: string,
-): Promise<{ userId: string }> {
+export async function verifyJwt(token: string): Promise<{ userId: string }> {
   const { payload } = await jwtVerify(token, getSecret(), {
     issuer: "storycapture-web",
     audience: "storycapture-sse",

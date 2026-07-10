@@ -13,19 +13,18 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-
-import { HistoryBuffer, type HistoryEntry } from "../undo/history-buffer";
-import { Coalescer, COALESCE_IDLE_MS, coalesceKey, mergeActions } from "../undo/coalesce";
+import { useEditorStore } from "../state/store";
+import type { Clip } from "../state/timeline-slice";
 import {
   applyAction,
   invertAction,
-  restoreDeletedClip,
   parseNodePath,
+  restoreDeletedClip,
   setAtPath,
   type UndoableAction,
 } from "../undo/actions";
-import { useEditorStore } from "../state/store";
-import type { Clip } from "../state/timeline-slice";
+import { COALESCE_IDLE_MS, Coalescer, coalesceKey, mergeActions } from "../undo/coalesce";
+import { HistoryBuffer, type HistoryEntry } from "../undo/history-buffer";
 
 function resetStore() {
   useEditorStore.setState({
@@ -68,7 +67,7 @@ describe("HistoryBuffer", () => {
     expect(buf.length).toBe(50);
     expect(buf.cursorPosition).toBe(49);
     // Oldest entry (c0) is gone; c1 is now the first.
-    const first = buf.snapshot()[0]!.action;
+    const first = buf.snapshot()[0]?.action;
     expect(first.kind).toBe("move-clip");
     expect((first as { clipId: string }).clipId).toBe("c1");
   });
@@ -88,8 +87,8 @@ describe("HistoryBuffer", () => {
     expect(buf.length).toBe(2);
     expect(buf.canRedo()).toBe(false);
     const snap = buf.snapshot();
-    expect((snap[0]!.action as { clipId: string }).clipId).toBe("A");
-    expect((snap[1]!.action as { clipId: string }).clipId).toBe("D");
+    expect((snap[0]?.action as { clipId: string }).clipId).toBe("A");
+    expect((snap[1]?.action as { clipId: string }).clipId).toBe("D");
   });
 
   it("popUndo/popRedo navigate the cursor correctly", () => {
@@ -204,7 +203,13 @@ describe("Coalescer", () => {
   });
 
   it("discrete actions never coalesce: delete-clip gets null key", () => {
-    const clip: Clip = { id: "c", trackId: "video", startMs: 0, durationMs: 1000, sourcePath: "/v.mp4" };
+    const clip: Clip = {
+      id: "c",
+      trackId: "video",
+      startMs: 0,
+      durationMs: 1000,
+      sourcePath: "/v.mp4",
+    };
     expect(
       coalesceKey({ kind: "delete-clip", trackId: "video", clipId: "c", snapshot: clip }),
     ).toBeNull();
@@ -215,9 +220,7 @@ describe("Coalescer", () => {
         nextPresetId: "p1",
       }),
     ).toBeNull();
-    expect(
-      coalesceKey({ kind: "change-background", prev: {}, next: {} }),
-    ).toBeNull();
+    expect(coalesceKey({ kind: "change-background", prev: {}, next: {} })).toBeNull();
   });
 
   it("COALESCE_IDLE_MS constant is 500 (D-15)", () => {
@@ -264,12 +267,7 @@ describe("mergeActions", () => {
 
 describe("parseNodePath + setAtPath", () => {
   it("parses bracket indexes and dot segments", () => {
-    expect(parseNodePath("tracks.cursor[0].metadata")).toEqual([
-      "tracks",
-      "cursor",
-      0,
-      "metadata",
-    ]);
+    expect(parseNodePath("tracks.cursor[0].metadata")).toEqual(["tracks", "cursor", 0, "metadata"]);
   });
 
   it("setAtPath creates a new record with the field updated", () => {
@@ -277,32 +275,66 @@ describe("parseNodePath + setAtPath", () => {
     const out = setAtPath(root, ["tracks", "cursor", 0, "metadata"], "scale", 2) as {
       tracks: { cursor: { metadata: { scale: number } }[] };
     };
-    expect(out.tracks.cursor[0]!.metadata.scale).toBe(2);
+    expect(out.tracks.cursor[0]?.metadata.scale).toBe(2);
     // Original untouched.
-    expect(root.tracks.cursor[0]!.metadata.scale).toBe(1);
+    expect(root.tracks.cursor[0]?.metadata.scale).toBe(1);
   });
 });
 
 describe("applyAction + invertAction", () => {
   it("applies and inverts a sync-group edit atomically", () => {
-    const video = { id: "v", trackId: "video" as const, startMs: 0, durationMs: 100, sourcePath: "/tmp/a.mp4", syncGroupId: "g" };
-    const cursor = { id: "c", trackId: "cursor" as const, startMs: 0, durationMs: 100, trajectoryDir: "/tmp/a.json", trajectoryFps: 60, trajectoryFrameCount: 6, skin: "mac-default" as const, sizeScale: 1, syncGroupId: "g" };
+    const video = {
+      id: "v",
+      trackId: "video" as const,
+      startMs: 0,
+      durationMs: 100,
+      sourcePath: "/tmp/a.mp4",
+      syncGroupId: "g",
+    };
+    const cursor = {
+      id: "c",
+      trackId: "cursor" as const,
+      startMs: 0,
+      durationMs: 100,
+      trajectoryDir: "/tmp/a.json",
+      trajectoryFps: 60,
+      trajectoryFrameCount: 6,
+      skin: "mac-default" as const,
+      sizeScale: 1,
+      syncGroupId: "g",
+    };
     const before: Clip[] = [video, cursor];
     const after: Clip[] = before.map((clip) => ({ ...clip, startMs: 25, durationMs: 125 }));
-    useEditorStore.setState({ tracks: { video: [video], cursor: [cursor], zoom: [], sound: [], annotations: [] } });
+    useEditorStore.setState({
+      tracks: { video: [video], cursor: [cursor], zoom: [], sound: [], annotations: [] },
+    });
     const action: UndoableAction = { kind: "edit-sync-group", syncGroupId: "g", before, after };
     applyAction(action);
-    expect(useEditorStore.getState().tracks.video[0]).toMatchObject({ startMs: 25, durationMs: 125 });
-    expect(useEditorStore.getState().tracks.cursor[0]).toMatchObject({ startMs: 25, durationMs: 125 });
+    expect(useEditorStore.getState().tracks.video[0]).toMatchObject({
+      startMs: 25,
+      durationMs: 125,
+    });
+    expect(useEditorStore.getState().tracks.cursor[0]).toMatchObject({
+      startMs: 25,
+      durationMs: 125,
+    });
     applyAction(invertAction(action));
-    expect(useEditorStore.getState().tracks.video[0]).toMatchObject({ startMs: 0, durationMs: 100 });
-    expect(useEditorStore.getState().tracks.cursor[0]).toMatchObject({ startMs: 0, durationMs: 100 });
+    expect(useEditorStore.getState().tracks.video[0]).toMatchObject({
+      startMs: 0,
+      durationMs: 100,
+    });
+    expect(useEditorStore.getState().tracks.cursor[0]).toMatchObject({
+      startMs: 0,
+      durationMs: 100,
+    });
   });
 
   it("apply_invert_move_clip: applies to.Ms then undoes back to from.Ms", () => {
     useEditorStore.setState({
       tracks: {
-        video: [{ id: "c1", trackId: "video", startMs: 100, durationMs: 500, sourcePath: "/v.mp4" }],
+        video: [
+          { id: "c1", trackId: "video", startMs: 100, durationMs: 500, sourcePath: "/v.mp4" },
+        ],
         cursor: [],
         zoom: [],
         sound: [],
@@ -317,13 +349,13 @@ describe("applyAction + invertAction", () => {
       toMs: 900,
     };
     applyAction(action);
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(900);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(900);
 
     const inv = invertAction(action) as Extract<UndoableAction, { kind: "move-clip" }>;
     expect(inv.fromMs).toBe(900);
     expect(inv.toMs).toBe(100);
     applyAction(inv);
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(100);
+    expect(useEditorStore.getState().tracks.video[0]?.startMs).toBe(100);
   });
 
   it("apply_invert_delete_clip: delete then restoreDeletedClip puts the clip back", () => {
@@ -353,14 +385,21 @@ describe("applyAction + invertAction", () => {
 
     // Restore via the dedicated helper (handles non-sound tracks).
     restoreDeletedClip(del as Extract<UndoableAction, { kind: "delete-clip" }>);
-    const restored = useEditorStore.getState().tracks.cursor[0]!;
+    const restored = must(useEditorStore.getState().tracks.cursor[0]);
     expect(restored.id).toBe("c1");
     expect(restored.startMs).toBe(500);
     expect(restored.label).toBe("Click");
   });
 
   it("apply_invert_add_sound_clip: add then invert (delete) removes it", () => {
-    const clip = { id: "sfx", trackId: "sound" as const, startMs: 0, durationMs: 1000, path: "/s.mp3", kind: "sfx" as const };
+    const clip = {
+      id: "sfx",
+      trackId: "sound" as const,
+      startMs: 0,
+      durationMs: 1000,
+      path: "/s.mp3",
+      kind: "sfx" as const,
+    };
     const add: UndoableAction = { kind: "add-sound-clip", trackId: "sound", clip };
     applyAction(add);
     expect(useEditorStore.getState().tracks.sound).toHaveLength(1);
@@ -374,7 +413,19 @@ describe("applyAction + invertAction", () => {
     useEditorStore.setState({
       tracks: {
         video: [],
-        cursor: [{ id: "c", trackId: "cursor", startMs: 0, durationMs: 100, trajectoryDir: "/c", trajectoryFps: 60, trajectoryFrameCount: 0, skin: "mac-default", sizeScale: 1 }],
+        cursor: [
+          {
+            id: "c",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 100,
+            trajectoryDir: "/c",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 0,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
         zoom: [],
         sound: [],
         annotations: [],
@@ -388,9 +439,9 @@ describe("applyAction + invertAction", () => {
       next: 2.5,
     };
     applyAction(action);
-    expect(useEditorStore.getState().tracks.cursor[0]!.sizeScale).toBe(2.5);
+    expect(useEditorStore.getState().tracks.cursor[0]?.sizeScale).toBe(2.5);
     applyAction(invertAction(action));
-    expect(useEditorStore.getState().tracks.cursor[0]!.sizeScale).toBe(1);
+    expect(useEditorStore.getState().tracks.cursor[0]?.sizeScale).toBe(1);
   });
 
   it("apply_invert_change_background: writes to _undoExtras", () => {
@@ -400,14 +451,18 @@ describe("applyAction + invertAction", () => {
       next: { kind: "gradient", from: "#000", to: "#fff" },
     };
     applyAction(action);
-    const extras = (useEditorStore.getState() as unknown as {
-      _undoExtras?: { background: Record<string, unknown> };
-    })._undoExtras;
+    const extras = (
+      useEditorStore.getState() as unknown as {
+        _undoExtras?: { background: Record<string, unknown> };
+      }
+    )._undoExtras;
     expect(extras?.background).toEqual({ kind: "gradient", from: "#000", to: "#fff" });
     applyAction(invertAction(action));
-    const after = (useEditorStore.getState() as unknown as {
-      _undoExtras?: { background: Record<string, unknown> };
-    })._undoExtras;
+    const after = (
+      useEditorStore.getState() as unknown as {
+        _undoExtras?: { background: Record<string, unknown> };
+      }
+    )._undoExtras;
     expect(after?.background).toEqual({ kind: "transparent" });
   });
 
@@ -419,14 +474,23 @@ describe("applyAction + invertAction", () => {
       next: { text: "World" },
     };
     applyAction(action);
-    const extras = (useEditorStore.getState() as unknown as {
-      _undoExtras?: { textOverlays: Record<string, { text: string }> };
-    })._undoExtras;
+    const extras = (
+      useEditorStore.getState() as unknown as {
+        _undoExtras?: { textOverlays: Record<string, { text: string }> };
+      }
+    )._undoExtras;
     expect(extras?.textOverlays.t1?.text).toBe("World");
     applyAction(invertAction(action));
-    const after = (useEditorStore.getState() as unknown as {
-      _undoExtras?: { textOverlays: Record<string, { text: string }> };
-    })._undoExtras;
+    const after = (
+      useEditorStore.getState() as unknown as {
+        _undoExtras?: { textOverlays: Record<string, { text: string }> };
+      }
+    )._undoExtras;
     expect(after?.textOverlays.t1?.text).toBe("Hello");
   });
 });
+
+function must<T>(value: T | null | undefined): T {
+  expect(value).toBeDefined();
+  return value as T;
+}

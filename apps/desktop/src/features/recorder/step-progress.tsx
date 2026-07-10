@@ -29,17 +29,15 @@ export function StepProgress() {
             </span>
           </div>
           <div className="mt-3 flex gap-1 overflow-hidden rounded-full bg-[var(--color-surface-100)] p-[3px]">
-            {steps.map((step, i) => {
+            {steps.map((step) => {
               let cls = "bg-[var(--color-surface-300)]";
               if (step.status === "running")
                 cls = "bg-[var(--color-accent-primary)]/70 animate-pulse";
-              else if (step.status === "succeeded")
-                cls = "bg-[var(--color-success)]";
-              else if (step.status === "failed")
-                cls = "bg-[var(--color-danger)]";
+              else if (step.status === "succeeded") cls = "bg-[var(--color-success)]";
+              else if (step.status === "failed") cls = "bg-[var(--color-danger)]";
               return (
                 <div
-                  key={i}
+                  key={step.index}
                   className={`h-2 flex-1 min-w-[4px] rounded-full transition-colors ${cls}`}
                   title={`${step.verb} — ${step.status}`}
                   aria-hidden="true"
@@ -50,9 +48,9 @@ export function StepProgress() {
         </div>
 
         <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-          {steps.slice(Math.max(0, currentStep - 1), currentStep + 2).map((step, index) => (
+          {steps.slice(Math.max(0, currentStep - 1), currentStep + 2).map((step) => (
             <span
-              key={`${step.verb}-${index}`}
+              key={step.index}
               className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-400)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--color-fg-secondary)]"
             >
               {step.verb}

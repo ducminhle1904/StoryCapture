@@ -13,10 +13,7 @@
  * `CHROMIUM_PRESETS` callers (e.g. ChromeHidingToggle.tsx) do not need
  * to change their imports.
  */
-import {
-  BROWSER_PRESETS,
-  CHROMIUM_PRESET_IDS,
-} from "@storycapture/shared-types";
+import { BROWSER_PRESETS, CHROMIUM_PRESET_IDS } from "@storycapture/shared-types";
 
 /**
  * Set of Chromium-family preset tokens (lowercase). Anything outside
@@ -45,9 +42,7 @@ export function isChromiumFamily(label: string | null | undefined): boolean {
   // wrapper pattern: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`).
   // All shipped presets today are Chromium-family, so any basename-fragment
   // match is a Chromium-family match.
-  const basename = lower.split(/[\/\\]/).pop() ?? "";
+  const basename = lower.split(/[/\\]/).pop() ?? "";
   if (!basename) return false;
-  return BROWSER_PRESETS.some((p) =>
-    p.basenames.some((b) => basename.includes(b)),
-  );
+  return BROWSER_PRESETS.some((p) => p.basenames.some((b) => basename.includes(b)));
 }

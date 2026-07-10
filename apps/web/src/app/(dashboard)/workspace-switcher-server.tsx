@@ -1,6 +1,6 @@
+import { type WorkspaceListItem, WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { WorkspaceSwitcher, type WorkspaceListItem } from "@/components/workspace-switcher";
 
 /**
  * Server component that fetches workspace list and passes it as initialData
@@ -45,10 +45,5 @@ export async function WorkspaceSwitcherServer({
     memberCount: m.workspace._count.members,
   }));
 
-  return (
-    <WorkspaceSwitcher
-      currentWorkspaceId={currentWorkspaceId}
-      initialData={initialData}
-    />
-  );
+  return <WorkspaceSwitcher currentWorkspaceId={currentWorkspaceId} initialData={initialData} />;
 }

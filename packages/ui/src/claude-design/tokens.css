@@ -6,9 +6,9 @@
 
 :root {
   /* Neutrals — cool-leaning grays with a subtle warm bias */
-  --sc-n-0:   oklch(0.99 0.002 80);
-  --sc-n-25:  oklch(0.975 0.003 80);
-  --sc-n-50:  oklch(0.96 0.004 80);
+  --sc-n-0: oklch(0.99 0.002 80);
+  --sc-n-25: oklch(0.975 0.003 80);
+  --sc-n-50: oklch(0.96 0.004 80);
   --sc-n-100: oklch(0.93 0.005 80);
   --sc-n-200: oklch(0.88 0.005 80);
   --sc-n-300: oklch(0.78 0.006 80);
@@ -20,26 +20,26 @@
   --sc-n-850: oklch(0.195 0.008 80);
   --sc-n-900: oklch(0.16 0.008 80);
   --sc-n-925: oklch(0.13 0.008 80);
-  --sc-n-950: oklch(0.10 0.008 80);
+  --sc-n-950: oklch(0.1 0.008 80);
   --sc-n-975: oklch(0.07 0.008 80);
 
   /* Accent — warm amber, hue configurable at runtime */
   --sc-accent-h: 78;
-  --sc-accent-100: oklch(0.95 0.05  var(--sc-accent-h));
-  --sc-accent-200: oklch(0.88 0.09  var(--sc-accent-h));
-  --sc-accent-300: oklch(0.82 0.12  var(--sc-accent-h));
-  --sc-accent-400: oklch(0.78 0.14  var(--sc-accent-h));
-  --sc-accent-500: oklch(0.72 0.15  var(--sc-accent-h));
-  --sc-accent-600: oklch(0.62 0.14  var(--sc-accent-h));
-  --sc-accent-700: oklch(0.50 0.12  var(--sc-accent-h));
+  --sc-accent-100: oklch(0.95 0.05 var(--sc-accent-h));
+  --sc-accent-200: oklch(0.88 0.09 var(--sc-accent-h));
+  --sc-accent-300: oklch(0.82 0.12 var(--sc-accent-h));
+  --sc-accent-400: oklch(0.78 0.14 var(--sc-accent-h));
+  --sc-accent-500: oklch(0.72 0.15 var(--sc-accent-h));
+  --sc-accent-600: oklch(0.62 0.14 var(--sc-accent-h));
+  --sc-accent-700: oklch(0.5 0.12 var(--sc-accent-h));
 
   /* Semantic */
-  --sc-record:   oklch(0.65 0.20 22);   /* red */
+  --sc-record: oklch(0.65 0.2 22); /* red */
   --sc-record-2: oklch(0.55 0.22 22);
-  --sc-success:  oklch(0.72 0.14 170);  /* teal/green */
-  --sc-success-2:oklch(0.60 0.14 170);
-  --sc-warn:     oklch(0.78 0.14 60);
-  --sc-info:     oklch(0.72 0.10 230);
+  --sc-success: oklch(0.72 0.14 170); /* teal/green */
+  --sc-success-2: oklch(0.6 0.14 170);
+  --sc-warn: oklch(0.78 0.14 60);
+  --sc-info: oklch(0.72 0.1 230);
 
   /* Radii */
   --sc-r-xs: 3px;
@@ -47,13 +47,13 @@
   --sc-r-md: 7px;
   --sc-r-lg: 10px;
   --sc-r-xl: 14px;
-  --sc-r-2xl:20px;
+  --sc-r-2xl: 20px;
 
   /* Density — adjusted via [data-density] on root */
   --sc-row-h: 32px;
   --sc-pad-x: 12px;
   --sc-pad-y: 8px;
-  --sc-gap:   8px;
+  --sc-gap: 8px;
 
   /* Motion */
   --sc-motion-fast: 120ms;
@@ -63,58 +63,59 @@
   --sc-ease-spring: cubic-bezier(0.2, 0.9, 0.2, 1);
 
   /* Shadows (dark-first; light overrides below) */
-  --sc-sh-1: 0 1px 0 rgba(255,255,255,0.03) inset, 0 1px 2px rgba(0,0,0,0.4);
-  --sc-sh-2: 0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.45);
-  --sc-sh-3: 0 1px 0 rgba(255,255,255,0.05) inset, 0 12px 40px rgba(0,0,0,0.55);
-  --sc-sh-pop: 0 24px 64px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
+  --sc-sh-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sc-sh-2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 4px 12px rgba(0, 0, 0, 0.45);
+  --sc-sh-3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 40px rgba(0, 0, 0, 0.55);
+  --sc-sh-pop: 0 24px 64px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
 
   /* Typography — Geist Sans (UI) + Geist Mono (code/numerics). */
-  --sc-font-ui: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sc-font-ui:
+    "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --sc-font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* ---- Dark mode surface assignments (default) ---- */
-  --sc-bg:        var(--sc-n-975);
-  --sc-surface:   var(--sc-n-950);
+  --sc-bg: var(--sc-n-975);
+  --sc-surface: var(--sc-n-950);
   --sc-surface-2: var(--sc-n-925);
   --sc-surface-3: var(--sc-n-900);
   --sc-surface-4: var(--sc-n-850);
-  --sc-hover:     oklch(0.22 0.01 80 / 0.5);
-  --sc-border:    oklch(1 0 0 / 0.06);
-  --sc-border-2:  oklch(1 0 0 / 0.10);
+  --sc-hover: oklch(0.22 0.01 80 / 0.5);
+  --sc-border: oklch(1 0 0 / 0.06);
+  --sc-border-2: oklch(1 0 0 / 0.1);
   --sc-border-strong: oklch(1 0 0 / 0.18);
-  --sc-text:      var(--sc-n-50);
-  --sc-text-2:    var(--sc-n-200);
-  --sc-text-3:    var(--sc-n-400);
-  --sc-text-4:    var(--sc-n-500);
+  --sc-text: var(--sc-n-50);
+  --sc-text-2: var(--sc-n-200);
+  --sc-text-3: var(--sc-n-400);
+  --sc-text-4: var(--sc-n-500);
   --sc-text-inverse: var(--sc-n-975);
-  --sc-chrome:    oklch(0.11 0.008 80);
-  --sc-chrome-2:  oklch(0.14 0.008 80);
-  --sc-focus:     var(--sc-accent-400);
+  --sc-chrome: oklch(0.11 0.008 80);
+  --sc-chrome-2: oklch(0.14 0.008 80);
+  --sc-focus: var(--sc-accent-400);
   --sc-focus-ring: oklch(0.78 0.14 var(--sc-accent-h) / 0.35);
 }
 
 /* ---- Light mode ---- */
 [data-theme="light"] {
-  --sc-bg:        var(--sc-n-25);
-  --sc-surface:   var(--sc-n-0);
+  --sc-bg: var(--sc-n-25);
+  --sc-surface: var(--sc-n-0);
   --sc-surface-2: var(--sc-n-50);
   --sc-surface-3: var(--sc-n-100);
   --sc-surface-4: var(--sc-n-200);
-  --sc-hover:     oklch(0.5 0.008 80 / 0.08);
-  --sc-border:    oklch(0 0 0 / 0.08);
-  --sc-border-2:  oklch(0 0 0 / 0.12);
-  --sc-border-strong: oklch(0 0 0 / 0.20);
-  --sc-text:      var(--sc-n-950);
-  --sc-text-2:    var(--sc-n-800);
-  --sc-text-3:    var(--sc-n-600);
-  --sc-text-4:    var(--sc-n-500);
+  --sc-hover: oklch(0.5 0.008 80 / 0.08);
+  --sc-border: oklch(0 0 0 / 0.08);
+  --sc-border-2: oklch(0 0 0 / 0.12);
+  --sc-border-strong: oklch(0 0 0 / 0.2);
+  --sc-text: var(--sc-n-950);
+  --sc-text-2: var(--sc-n-800);
+  --sc-text-3: var(--sc-n-600);
+  --sc-text-4: var(--sc-n-500);
   --sc-text-inverse: var(--sc-n-0);
-  --sc-chrome:    oklch(0.93 0.004 80);
-  --sc-chrome-2:  oklch(0.96 0.004 80);
-  --sc-sh-1: 0 1px 0 rgba(255,255,255,0.8) inset, 0 1px 2px rgba(16,12,8,0.06);
-  --sc-sh-2: 0 1px 0 rgba(255,255,255,0.8) inset, 0 4px 12px rgba(16,12,8,0.08);
-  --sc-sh-3: 0 1px 0 rgba(255,255,255,0.8) inset, 0 12px 40px rgba(16,12,8,0.12);
-  --sc-sh-pop: 0 24px 64px rgba(16,12,8,0.18), 0 2px 8px rgba(16,12,8,0.08);
+  --sc-chrome: oklch(0.93 0.004 80);
+  --sc-chrome-2: oklch(0.96 0.004 80);
+  --sc-sh-1: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 1px 2px rgba(16, 12, 8, 0.06);
+  --sc-sh-2: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 4px 12px rgba(16, 12, 8, 0.08);
+  --sc-sh-3: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 12px 40px rgba(16, 12, 8, 0.12);
+  --sc-sh-pop: 0 24px 64px rgba(16, 12, 8, 0.18), 0 2px 8px rgba(16, 12, 8, 0.08);
 }
 
 /* ---- Density ---- */
@@ -127,10 +128,18 @@
 
 /* ---- Radius scale ---- */
 [data-radius="sharp"] {
-  --sc-r-xs: 0px; --sc-r-sm: 1px; --sc-r-md: 2px;
-  --sc-r-lg: 3px; --sc-r-xl: 4px; --sc-r-2xl: 6px;
+  --sc-r-xs: 0px;
+  --sc-r-sm: 1px;
+  --sc-r-md: 2px;
+  --sc-r-lg: 3px;
+  --sc-r-xl: 4px;
+  --sc-r-2xl: 6px;
 }
 [data-radius="lg"] {
-  --sc-r-xs: 4px; --sc-r-sm: 7px; --sc-r-md: 10px;
-  --sc-r-lg: 14px; --sc-r-xl: 18px; --sc-r-2xl: 26px;
+  --sc-r-xs: 4px;
+  --sc-r-sm: 7px;
+  --sc-r-md: 10px;
+  --sc-r-lg: 14px;
+  --sc-r-xl: 18px;
+  --sc-r-2xl: 26px;
 }

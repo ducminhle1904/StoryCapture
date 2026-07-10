@@ -71,12 +71,7 @@ export function QueueWidget({ storyId }: QueueWidgetProps) {
           ) : (
             <ul aria-label="Active Render Jobs" className="space-y-2">
               {jobs.map((j) => (
-                <JobRow
-                  key={j.id}
-                  job={j}
-                  progress={progressMap[j.id]}
-                  onCancel={handleCancel}
-                />
+                <JobRow key={j.id} job={j} progress={progressMap[j.id]} onCancel={handleCancel} />
               ))}
             </ul>
           )}

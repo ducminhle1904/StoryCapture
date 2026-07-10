@@ -1,7 +1,7 @@
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "../init";
+import { z } from "zod";
 import type { Context } from "../init";
+import { protectedProcedure, router } from "../init";
 
 /**
  * Workspace CRUD + RBAC middleware + invite procedures.
@@ -42,7 +42,7 @@ const workspaceMemberProcedure = protectedProcedure
     const membership = await ctx.prisma.workspaceMember.findUnique({
       where: {
         userId_workspaceId: {
-          userId: ctx.user.id!,
+          userId: ctx.user.id,
           workspaceId: input.workspaceId,
         },
       },
@@ -66,32 +66,28 @@ const workspaceMemberProcedure = protectedProcedure
 /**
  * workspaceEditorProcedure: member + role must be EDITOR or OWNER.
  */
-const workspaceEditorProcedure = workspaceMemberProcedure.use(
-  async ({ ctx, next }) => {
-    if (ctx.membership.role === "VIEWER") {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Editor or owner access required.",
-      });
-    }
-    return next({ ctx });
-  },
-);
+const workspaceEditorProcedure = workspaceMemberProcedure.use(async ({ ctx, next }) => {
+  if (ctx.membership.role === "VIEWER") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Editor or owner access required.",
+    });
+  }
+  return next({ ctx });
+});
 
 /**
  * workspaceOwnerProcedure: member + role must be OWNER.
  */
-const workspaceOwnerProcedure = workspaceMemberProcedure.use(
-  async ({ ctx, next }) => {
-    if (ctx.membership.role !== "OWNER") {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Owner access required.",
-      });
-    }
-    return next({ ctx });
-  },
-);
+const workspaceOwnerProcedure = workspaceMemberProcedure.use(async ({ ctx, next }) => {
+  if (ctx.membership.role !== "OWNER") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Owner access required.",
+    });
+  }
+  return next({ ctx });
+});
 
 // ─── Router ───
 
@@ -135,7 +131,7 @@ export const workspaceRouter = router({
           isPersonal: false,
           members: {
             create: {
-              userId: ctx.user.id!,
+              userId: ctx.user.id,
               role: "OWNER",
             },
           },
@@ -155,7 +151,7 @@ export const workspaceRouter = router({
    */
   list: protectedProcedure.query(async ({ ctx }) => {
     const memberships = await ctx.prisma.workspaceMember.findMany({
-      where: { userId: ctx.user.id! },
+      where: { userId: ctx.user.id },
       include: {
         workspace: {
           select: {
@@ -427,7 +423,7 @@ export const workspaceRouter = router({
       const existingMembership = await ctx.prisma.workspaceMember.findUnique({
         where: {
           userId_workspaceId: {
-            userId: ctx.user.id!,
+            userId: ctx.user.id,
             workspaceId: invite.workspaceId,
           },
         },
@@ -446,7 +442,7 @@ export const workspaceRouter = router({
       const membership = await ctx.prisma.$transaction(async (tx) => {
         const member = await tx.workspaceMember.create({
           data: {
-            userId: ctx.user.id!,
+            userId: ctx.user.id,
             workspaceId: invite.workspaceId,
             role: invite.role,
           },
@@ -484,8 +480,7 @@ export const workspaceRouter = router({
         if (ownerCount <= 1) {
           throw new TRPCError({
             code: "FORBIDDEN",
-            message:
-              "Cannot remove yourself as the sole owner. Transfer ownership first.",
+            message: "Cannot remove yourself as the sole owner. Transfer ownership first.",
           });
         }
       }
@@ -564,8 +559,7 @@ export const workspaceRouter = router({
       if (ownerCount <= 1) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message:
-            "Cannot leave as the sole owner. Transfer ownership to another member first.",
+          message: "Cannot leave as the sole owner. Transfer ownership to another member first.",
         });
       }
     }

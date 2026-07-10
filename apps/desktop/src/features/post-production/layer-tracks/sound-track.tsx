@@ -1,5 +1,5 @@
-import { Track } from "../timeline/track";
 import { useEditorStore } from "../state/store";
+import { Track } from "../timeline/track";
 
 export interface SoundTrackProps {
   pxPerMs: number;

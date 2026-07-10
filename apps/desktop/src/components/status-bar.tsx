@@ -10,10 +10,7 @@ import { UploadProgress } from "@/components/upload-progress";
  */
 export function StatusBar() {
   return (
-    <footer
-      className="flex h-7 shrink-0 items-center border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 text-[11px] text-[var(--color-fg-muted)]"
-      aria-label="Status bar"
-    >
+    <footer className="flex h-7 shrink-0 items-center border-t border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-3 text-[11px] text-[var(--color-fg-muted)]">
       {/* Left slot — upload progress */}
       <div className="flex min-w-0 flex-1 items-center">
         <UploadProgress />
