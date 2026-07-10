@@ -70,6 +70,9 @@ StoryCapture stores source plus JSON sidecars near projects and recordings.
   target arrival, dwell, and semantic browser input. Consumers must keep v1
   fallback behavior for sidecars that only have `t_start_ms`, `t_action_ms`,
   and `t_end_ms`.
+  Version 3 adds encoded-video media-clock metadata, committed cursor paths,
+  input landmarks, and explicit presented/timeout/not-applicable outcomes.
+  The v1/v2 reader remains part of the compatibility contract.
 - `<recording>.trajectory.json`: cursor movement data.
 - `<recording>.steps.json`: step timing summaries.
 - Post-production graph snapshots: export/render graph JSON written before host
@@ -121,6 +124,11 @@ Rust/native capture crates.
   cursor-visible interaction events. `wait-for` and `assert` never create
   cursor movement; `drag` and `upload` remain outside synced cursor recording
   until the Electron runner implements those commands end to end.
+- Recording cursor synchronization is anchored to committed encoded frames,
+  not wall-clock callbacks. `recording-media-clock.ts` owns frame-to-PTS
+  conversion; `action-landmarks.ts` owns arrival/input/presentation landmarks;
+  `cursor-sync-mode.ts` owns rollout. The required ordering is cursor arrival
+  <= input action <= first post-input frame when presentation is applicable.
 
 Operator-gated capture work still requires real macOS Screen Recording/TCC
 verification; do not treat simulated tests as equivalent to OS-level UAT.
@@ -243,3 +251,14 @@ required inputs, and optional polish preset. The fork flow returns downloadable
 Desktop sync metadata lives in `SyncedProject`; it mirrors project identity,
 story source/status, workflow metadata, recording status, and timestamps. It is
 not a full project-file sync system.
+- Generated video, cursor, zoom, and action layers share a sync group, stable
+  source revision, and source-to-timeline map. Group move/trim/delete and preset
+  reflow are atomic; independent user overlays are not attached to the group.
+- Source-bound preview overlays advance from presented video frames, not RAF
+  wall time. Non-identity maps and holds are shared with export; preserve-full-
+  motion is opt-in and inserts only the exact cursor deficit.
+- Graph schema v3 carries `source_time_map` on source nodes. Preview and the
+  hidden export compositor share timeline-to-source mapping; non-identity maps
+  require composition, and capture-bound audio is trimmed, silenced across
+  holds, then concatenated through the same map. Identity maps retain the
+  direct optimization.

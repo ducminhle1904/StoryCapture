@@ -3,17 +3,20 @@ import { DEFAULT_BACKGROUND } from "./store";
 import type { TimelineSlice } from "./timeline-slice";
 import { cloneTimelineTracks } from "./timeline-slice";
 
-export const TIMELINE_LAYOUT_VERSION = 1;
+export const TIMELINE_LAYOUT_VERSION = 2;
+export const TIMELINE_TIMING_MODEL_VERSION = 1;
 
-export interface TimelineLayoutV1 {
+export interface TimelineLayoutV2 {
   version: typeof TIMELINE_LAYOUT_VERSION;
+  timingModelVersion: typeof TIMELINE_TIMING_MODEL_VERSION;
+  sourceRevision: string | null;
   tracks: TimelineSlice["tracks"];
   durationMs: number;
   background: EditorBackgroundKind;
 }
 
 export type TimelineLayoutParseResult =
-  | { ok: true; layout: TimelineLayoutV1 }
+  | { ok: true; layout: TimelineLayoutV2; migrated: boolean; rebuiltGeneratedLayers: boolean }
   | { ok: false; reason: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,8 +81,11 @@ export function serializeTimelineLayout(input: {
   durationMs: number;
   background: EditorBackgroundKind;
 }): string {
-  const layout: TimelineLayoutV1 = {
+  const sourceRevision = input.tracks.video.find((clip) => clip.sourceRevision)?.sourceRevision ?? null;
+  const layout: TimelineLayoutV2 = {
     version: TIMELINE_LAYOUT_VERSION,
+    timingModelVersion: TIMELINE_TIMING_MODEL_VERSION,
+    sourceRevision,
     tracks: cloneTimelineTracks(input.tracks),
     durationMs: Math.max(0, input.durationMs),
     background: input.background,
@@ -87,7 +93,14 @@ export function serializeTimelineLayout(input: {
   return JSON.stringify(layout);
 }
 
-export function parseTimelineLayoutJson(layoutJson: string | null | undefined): TimelineLayoutParseResult {
+export function parseTimelineLayoutJson(
+  layoutJson: string | null | undefined,
+  options: {
+    currentGeneratedTracks?: TimelineSlice["tracks"];
+    currentSourceRevision?: string;
+    timingToleranceMs?: number;
+  } = {},
+): TimelineLayoutParseResult {
   if (!layoutJson) return { ok: false, reason: "empty layout" };
   let parsed: unknown;
   try {
@@ -96,7 +109,7 @@ export function parseTimelineLayoutJson(layoutJson: string | null | undefined): 
     return { ok: false, reason: "invalid JSON" };
   }
   if (!isRecord(parsed)) return { ok: false, reason: "layout root is not an object" };
-  if (parsed.version !== TIMELINE_LAYOUT_VERSION) {
+  if (parsed.version !== 1 && parsed.version !== TIMELINE_LAYOUT_VERSION) {
     return { ok: false, reason: `unsupported layout version ${String(parsed.version)}` };
   }
   const tracks = parseTracks(parsed.tracks);
@@ -105,13 +118,75 @@ export function parseTimelineLayoutJson(layoutJson: string | null | undefined): 
     typeof parsed.durationMs === "number" && Number.isFinite(parsed.durationMs)
       ? Math.max(0, parsed.durationMs)
       : 0;
+  const isLegacy = parsed.version === 1;
+  const currentGenerated = options.currentGeneratedTracks;
+  const currentRevision = options.currentSourceRevision;
+  const storedRevision = typeof parsed.sourceRevision === "string" ? parsed.sourceRevision : null;
+  const toleranceMs = Math.max(0, options.timingToleranceMs ?? 1);
+  const timingMatches = currentGenerated
+    ? generatedTimingMatches(tracks, currentGenerated, toleranceMs)
+    : true;
+  const sourceMatches = !currentRevision || storedRevision === currentRevision;
+  const shouldRebuild = Boolean(currentGenerated && (!timingMatches || (!isLegacy && !sourceMatches)));
+  const migratedTracks = shouldRebuild && currentGenerated
+    ? preserveIndependentOverlays(currentGenerated, tracks)
+    : tracks;
   return {
     ok: true,
     layout: {
       version: TIMELINE_LAYOUT_VERSION,
-      tracks,
+      timingModelVersion: TIMELINE_TIMING_MODEL_VERSION,
+      sourceRevision: currentRevision ?? storedRevision,
+      tracks: migratedTracks,
       durationMs,
       background: parseBackground(parsed.background),
     },
+    migrated: isLegacy,
+    rebuiltGeneratedLayers: shouldRebuild,
   };
+}
+
+function generatedClips(tracks: TimelineSlice["tracks"]) {
+  return [
+    ...tracks.video,
+    ...tracks.cursor,
+    ...tracks.zoom,
+    ...tracks.sound,
+    ...tracks.annotations,
+  ].filter((clip) => clip.syncGroupId);
+}
+
+function generatedTimingMatches(
+  stored: TimelineSlice["tracks"],
+  current: TimelineSlice["tracks"],
+  toleranceMs: number,
+): boolean {
+  const currentById = new Map(generatedClips(current).map((clip) => [clip.id, clip]));
+  const storedGenerated = generatedClips(stored);
+  if (storedGenerated.length !== currentById.size) return false;
+  return storedGenerated.every((clip) => {
+    const expected = currentById.get(clip.id);
+    return Boolean(
+      expected &&
+        Math.abs(expected.startMs - clip.startMs) <= toleranceMs &&
+        Math.abs(expected.durationMs - clip.durationMs) <= toleranceMs,
+    );
+  });
+}
+
+function preserveIndependentOverlays(
+  current: TimelineSlice["tracks"],
+  stored: TimelineSlice["tracks"],
+): TimelineSlice["tracks"] {
+  return cloneTimelineTracks({
+    ...current,
+    sound: [
+      ...current.sound.filter((clip) => clip.syncGroupId),
+      ...stored.sound.filter((clip) => !clip.syncGroupId),
+    ],
+    annotations: [
+      ...current.annotations.filter((clip) => clip.syncGroupId),
+      ...stored.annotations.filter((clip) => !clip.syncGroupId),
+    ],
+  });
 }

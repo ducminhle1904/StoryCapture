@@ -23,6 +23,9 @@ apps/
 
 packages/
   config/               shared TypeScript config package
+  glob-compat/           CommonJS shim for legacy glob callback consumers
+  lodash-isequal-compat/ CommonJS equality shim for Electron updater consumers
+  rimraf-compat/         CommonJS shim for legacy rimraf callback consumers
   shared-types/         browser presets, IPC surface, checked-in generated files
   story-dsl/            Story AST/vocabulary and CodeMirror language support
   ui/                   shared tokens and claude-design primitives
@@ -34,8 +37,11 @@ docs/                   current read-on-demand technical docs
 .github/workflows/      current CI
 ```
 
-Workspace globs are only `apps/*` and `packages/*`. Package manager is
-`pnpm@9.15.0`; Node is `>=20` locally and `20.x` in CI.
+Workspace globs are only `apps/*` and `packages/*`. Exact package-manager and
+Node requirements live in root `package.json` (`packageManager`, `engines`) and
+`.github/actions/setup-toolchain/action.yml`; do not duplicate the pins here.
+Transitive dependency overrides in `pnpm-workspace.yaml` route selected legacy
+Electron packaging consumers through the local compatibility packages.
 
 ## Workspace Scripts
 
@@ -252,7 +258,7 @@ Current CI is `.github/workflows/ci.yml` on `macos-14`. It runs on pull
 requests and pushes to `main`, uses `contents: read`, and cancels older runs on
 the same ref through workflow concurrency.
 
-1. setup pnpm `9.15.0` and Node `20.x`;
+1. setup pnpm and Node through `.github/actions/setup-toolchain/action.yml`;
 2. `pnpm install --frozen-lockfile`;
 3. `pnpm typecheck`;
 4. desktop Vitest;
@@ -283,3 +289,12 @@ Relevant scripts:
 Local macOS package builds skip signing when no Developer ID certificate is
 installed. Production signing/notarization credentials are documented in
 `docs/CREDENTIALS.md`.
+- Recording synchronization is split between the committed-frame media clock,
+  `ipc/action-landmarks.ts`, and the centralized `ipc/cursor-sync-mode.ts`
+  rollout resolver. The action sidecar writer stays compatible in shadow mode
+  and emits v3 only in unified mode.
+- Post-production source timing is centralized in
+  `state/source-timeline-map.ts`; preview presented-frame scheduling and export
+  compositor seeking consume that mapper rather than maintaining separate
+  clocks. Timeline layout v2 persists maps, sync groups, source revisions, and
+  timing-model metadata.

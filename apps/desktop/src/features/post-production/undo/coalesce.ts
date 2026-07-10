@@ -15,8 +15,8 @@
  * push a new one.
  */
 
-import type { HistoryEntry } from "./history-buffer";
 import type { UndoableAction } from "./actions";
+import type { HistoryEntry } from "./history-buffer";
 
 export const COALESCE_IDLE_MS = 500;
 
@@ -36,6 +36,7 @@ export function coalesceKey(a: UndoableAction): CoalesceKey | null {
       return `set-effect-param:${a.nodePath}:${a.field}`;
     case "edit-text-overlay":
       return `edit-text-overlay:${a.overlayId}`;
+    case "edit-sync-group":
     case "delete-clip":
     case "add-clip":
     case "add-sound-clip":

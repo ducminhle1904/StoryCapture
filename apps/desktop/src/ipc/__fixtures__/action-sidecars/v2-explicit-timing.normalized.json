@@ -1,0 +1,69 @@
+{
+  "source_version": 2,
+  "confidence": "mixed",
+  "recording_path": "/fixtures/cursor-sync/v2-explicit-timing.mp4",
+  "cursor_motion_preset": "natural",
+  "viewport": { "width": 1280, "height": 720 },
+  "capture_rect": { "x": 0, "y": 0, "width": 1280, "height": 720 },
+  "fps_num": 60,
+  "fps_den": 1,
+  "frame_count": 240,
+  "events": [
+    {
+      "source_index": 0,
+      "confidence": "validated",
+      "step_id": "save",
+      "ordinal": 1,
+      "verb": "click",
+      "t_start_ms": 1000,
+      "t_action_ms": 1500,
+      "t_end_ms": 1700,
+      "target": {
+        "kind": "element",
+        "label": "Save",
+        "center": { "x": 800, "y": 300 },
+        "bounds": { "x": 760, "y": 280, "w": 80, "h": 40 }
+      },
+      "secondary_target": null,
+      "pointer": { "button": "left", "effect": "click" },
+      "cursor_timing": {
+        "motion_preset": "natural",
+        "start_ms": 1000,
+        "arrival_ms": 1320,
+        "travel_ms": 320,
+        "dwell_ms": 180
+      },
+      "input_timing": {
+        "kind": "click",
+        "down_ms": 1500,
+        "up_ms": 1500,
+        "action_ms": 1500
+      }
+    },
+    {
+      "source_index": 1,
+      "confidence": "legacy-approximate",
+      "step_id": "next",
+      "ordinal": 2,
+      "verb": "click",
+      "t_start_ms": 1700,
+      "t_action_ms": 1800,
+      "t_end_ms": 1950,
+      "target": {
+        "kind": "element",
+        "label": "Next",
+        "center": { "x": 1080, "y": 620 },
+        "bounds": { "x": 1040, "y": 600, "w": 80, "h": 40 }
+      },
+      "secondary_target": null,
+      "pointer": { "button": "left", "effect": "click" },
+      "cursor_timing": null,
+      "input_timing": {
+        "kind": "click",
+        "down_ms": 1800,
+        "up_ms": 1800,
+        "action_ms": 1800
+      }
+    }
+  ]
+}

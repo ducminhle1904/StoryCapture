@@ -35,6 +35,10 @@ jobs:
         shell: bash
         run: pnpm --dir apps/desktop exec vitest run
 
+      - name: Cursor synchronization Electron smoke
+        shell: bash
+        run: pnpm --dir apps/desktop run test:e2e:cursor-sync
+
       - name: UI tests
         shell: bash
         run: pnpm --dir packages/ui test

@@ -28,14 +28,15 @@
 
 import type { RecordingActions } from "@/ipc/actions";
 import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/trajectory";
-import type { Clip, SoundClip, TrackId } from "../state/timeline-slice";
 import { useEditorStore } from "../state/store";
+import type { Clip, SoundClip, TrackId } from "../state/timeline-slice";
 
 export type GraphSnapshot = Record<string, unknown>;
 export type TextOverlay = Record<string, unknown>;
 export type BackgroundKind = Record<string, unknown>;
 
 export type ActionKind =
+  | "edit-sync-group"
   | "move-clip"
   | "trim-clip"
   | "delete-clip"
@@ -48,6 +49,12 @@ export type ActionKind =
   | "change-background";
 
 export type UndoableAction =
+  | {
+      kind: "edit-sync-group";
+      syncGroupId: string;
+      before: Clip[];
+      after: Clip[];
+    }
   | {
       kind: "move-clip";
       trackId: TrackId;
@@ -216,6 +223,33 @@ export function setAtPath(
  */
 export function applyAction(action: UndoableAction): void {
   switch (action.kind) {
+    case "edit-sync-group": {
+      useEditorStore.setState((state) => {
+        const replacements = new Map(action.after.map((clip) => [clip.id, clip]));
+        const nextTracks = Object.fromEntries(
+          Object.entries(state.tracks).map(([trackId, clips]) => {
+            const existingIds = new Set((clips as Clip[]).map((clip) => clip.id));
+            return [
+              trackId,
+              (clips as Clip[])
+                .map((clip) =>
+                  clip.syncGroupId === action.syncGroupId
+                    ? (replacements.get(clip.id) ?? null)
+                    : clip,
+                )
+                .filter((clip): clip is Clip => clip !== null)
+                .concat(
+                  action.after.filter(
+                    (clip) => clip.trackId === trackId && !existingIds.has(clip.id),
+                  ),
+                ),
+            ];
+          }),
+        ) as typeof state.tracks;
+        return { tracks: nextTracks };
+      });
+      return;
+    }
     case "move-clip": {
       useEditorStore.setState((s) => ({
         tracks: {
@@ -244,8 +278,9 @@ export function applyAction(action: UndoableAction): void {
       // Capture the original index before splicing so the inverse
       // `add-clip` restores the clip at its exact prior position.
       if (action.atIndex === undefined) {
-        const idx = (useEditorStore.getState().tracks[action.trackId] as Clip[])
-          .findIndex((c) => c.id === action.clipId);
+        const idx = (useEditorStore.getState().tracks[action.trackId] as Clip[]).findIndex(
+          (c) => c.id === action.clipId,
+        );
         if (idx >= 0) action.atIndex = idx;
       }
       useEditorStore.setState((s) => ({
@@ -297,14 +332,9 @@ export function applyAction(action: UndoableAction): void {
           ) as typeof s.tracks;
           return { tracks: nextTracks };
         }
-        const extras = (s as unknown as { _undoExtras?: UndoExtras })
-          ._undoExtras ?? DEFAULT_UNDO_EXTRAS;
-        const nextExtras = setAtPath(
-          extras,
-          path,
-          action.field,
-          action.next,
-        ) as UndoExtras;
+        const extras =
+          (s as unknown as { _undoExtras?: UndoExtras })._undoExtras ?? DEFAULT_UNDO_EXTRAS;
+        const nextExtras = setAtPath(extras, path, action.field, action.next) as UndoExtras;
         return {
           _undoExtras: nextExtras,
         } as unknown as Partial<ReturnType<typeof useEditorStore.getState>>;
@@ -317,26 +347,32 @@ export function applyAction(action: UndoableAction): void {
       // the preset id as active. The graph snapshot follows via the
       // next action on the ring (the inspector pairs a
       // `set-effect-param` or direct graph mutation).
-      useEditorStore.setState((s) => ({
-        selectedPresetId: action.nextPresetId,
-        _undoExtras: {
-          ...((s as unknown as { _undoExtras?: UndoExtras })._undoExtras ??
-            DEFAULT_UNDO_EXTRAS),
-          // Keep prev graph — caller will replace via a separate action
-          // if the preset changes graph contents.
-        },
-      }) as unknown as Partial<ReturnType<typeof useEditorStore.getState>>);
+      useEditorStore.setState(
+        (s) =>
+          ({
+            selectedPresetId: action.nextPresetId,
+            _undoExtras: {
+              ...((s as unknown as { _undoExtras?: UndoExtras })._undoExtras ??
+                DEFAULT_UNDO_EXTRAS),
+              // Keep prev graph — caller will replace via a separate action
+              // if the preset changes graph contents.
+            },
+          }) as unknown as Partial<ReturnType<typeof useEditorStore.getState>>,
+      );
       return;
     }
     case "revert-preset": {
-      useEditorStore.setState((s) => ({
-        selectedPresetId: action.prevPresetId,
-        _undoExtras: {
-          ...((s as unknown as { _undoExtras?: UndoExtras })._undoExtras ??
-            DEFAULT_UNDO_EXTRAS),
-          graphSnapshot: action.nextGraphSnapshot,
-        },
-      }) as unknown as Partial<ReturnType<typeof useEditorStore.getState>>);
+      useEditorStore.setState(
+        (s) =>
+          ({
+            selectedPresetId: action.prevPresetId,
+            _undoExtras: {
+              ...((s as unknown as { _undoExtras?: UndoExtras })._undoExtras ??
+                DEFAULT_UNDO_EXTRAS),
+              graphSnapshot: action.nextGraphSnapshot,
+            },
+          }) as unknown as Partial<ReturnType<typeof useEditorStore.getState>>,
+      );
       return;
     }
     case "edit-text-overlay": {
@@ -358,6 +394,13 @@ export function applyAction(action: UndoableAction): void {
  */
 export function invertAction(action: UndoableAction): UndoableAction {
   switch (action.kind) {
+    case "edit-sync-group":
+      return {
+        kind: "edit-sync-group",
+        syncGroupId: action.syncGroupId,
+        before: action.after,
+        after: action.before,
+      };
     case "move-clip":
       return {
         kind: "move-clip",
@@ -446,10 +489,7 @@ export function restoreDeletedClip(action: Extract<UndoableAction, { kind: "dele
   useEditorStore.setState((s) => ({
     tracks: {
       ...s.tracks,
-      [action.trackId]: [
-        ...(s.tracks[action.trackId] as Clip[]),
-        action.snapshot,
-      ],
+      [action.trackId]: [...(s.tracks[action.trackId] as Clip[]), action.snapshot],
     } as typeof s.tracks,
   }));
 }

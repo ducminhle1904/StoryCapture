@@ -13,13 +13,16 @@ import {
   type WebContents,
 } from "electron";
 import ffmpegPath from "ffmpeg-static";
+import { RecordingActionLandmarkRecorder } from "../action-landmarks";
 import {
+  type CursorTimingSize,
   HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
   HOST_CURSOR_DEFAULT_MOTION_PRESET,
   HOST_CURSOR_TARGET_STABILITY_THRESHOLD_PX,
-  type CursorTimingSize,
 } from "../cursor-timing";
 import { readJson } from "../json-store";
+import { RecordingMediaClock } from "../recording-media-clock";
+import { RecordingPauseGate } from "../recording-pause-gate";
 import {
   type RecordingFitMode,
   type RecordingOutputResolution,
@@ -678,7 +681,9 @@ export async function captureRecordingFrame(session: RecordingSession): Promise<
   try {
     const image = await captureRecordingNativeImage(session);
     await fs.writeFile(framePath, image.toPNG());
-    session.frameSeq = frameIndex;
+    const landmark = session.mediaClock.commitFrame(true);
+    if (landmark) session.actionLandmarks.commitFrame(landmark);
+    session.frameSeq = session.mediaClock.snapshot().frameCount;
   } catch {
     session.framesDropped += 1;
     sendChannel(session.eventTarget, session.eventChannelId, {
@@ -801,6 +806,8 @@ export async function startAuthorPreviewRecordingStream(session: RecordingSessio
 export function recordAuthorPreviewPaint(session: RecordingSession, image: NativeImage): void {
   if (session.paused) return;
   session.sourceFramesReceived += 1;
+  session.paintSequence += 1;
+  session.actionLandmarks.notePaint();
   session.latestAuthorPreviewImage = image;
 }
 
@@ -841,7 +848,9 @@ export async function submitAuthorPreviewFrame(
       );
     }
     const accepted = child.stdin.write(bitmap);
-    session.frameSeq += 1;
+    const landmark = session.mediaClock.commitFrame(true);
+    if (landmark) session.actionLandmarks.commitFrame(landmark);
+    session.frameSeq = session.mediaClock.snapshot().frameCount;
     if (!accepted) {
       session.encoderBackpressureEvents += 1;
       session.encoderBackpressured = true;
@@ -1682,6 +1691,11 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     fps,
     startedAt: Date.now(),
     paused: false,
+    lifecycle: "recording",
+    mediaClock: new RecordingMediaClock({ fpsNum: fps, fpsDen: 1 }),
+    actionLandmarks: new RecordingActionLandmarkRecorder(),
+    paintSequence: 0,
+    pauseGate: new RecordingPauseGate(),
     eventTarget: sender,
     eventChannelId,
     heartbeat,

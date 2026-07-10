@@ -1,7 +1,12 @@
 import type { RecordingActions } from "@/ipc/actions";
-import type { CaptureRect, RecordingStepTiming, RecordingStepTimingSidecar } from "@/ipc/trajectory";
-import { sampleVirtualCursor } from "../preview/virtual-cursor-path";
+import type {
+  CaptureRect,
+  RecordingStepTiming,
+  RecordingStepTimingSidecar,
+} from "@/ipc/trajectory";
+import { samplePreparedVirtualCursor, sampleVirtualCursor } from "../preview/virtual-cursor-path";
 import type { AnnotationClip, CursorClip, TextAnchor, Vec2 } from "./timeline-slice";
+import type { VirtualCursorSchedule } from "./virtual-cursor-scheduler";
 
 const TARGET_MARGIN = 0.06;
 
@@ -10,7 +15,10 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-export function activeCursorClip(clips: readonly CursorClip[], playheadMs: number): CursorClip | null {
+export function activeCursorClip(
+  clips: readonly CursorClip[],
+  playheadMs: number,
+): CursorClip | null {
   let active: CursorClip | null = null;
   for (const clip of clips) {
     const endMs = clip.startMs + clip.durationMs;
@@ -24,7 +32,9 @@ export function isActionsCursorClip(clip: CursorClip): boolean {
   return clip.trajectoryKind === "actions" || clip.trajectoryDir.endsWith(".actions.json");
 }
 
-export function safeAreaPosition(placement: Extract<TextAnchor, { kind: "safe-area" }>["placement"]): Vec2 {
+export function safeAreaPosition(
+  placement: Extract<TextAnchor, { kind: "safe-area" }>["placement"],
+): Vec2 {
   if (placement === "top") return { x: 0.5, y: 0.14 };
   if (placement === "bottom") return { x: 0.5, y: 0.86 };
   return { x: 0.5, y: 0.5 };
@@ -89,7 +99,9 @@ export function targetAnchorPosition(
   stepTiming?: RecordingStepTimingSidecar | null,
   captureRect?: CaptureRect | null,
 ): Vec2 | null {
-  const event = actions?.events.find((item) => item.step_id === anchor.stepId && item.target?.bounds);
+  const event = actions?.events.find(
+    (item) => item.step_id === anchor.stepId && item.target?.bounds,
+  );
   if (event?.target?.bounds && actions) {
     return positionAroundBounds(event.target.bounds, actions.capture_rect, anchor.placement);
   }
@@ -118,6 +130,7 @@ export function resolveTextAnchorPosition(
   cursorClips: readonly CursorClip[],
   stepTiming?: RecordingStepTimingSidecar | null,
   captureRect?: CaptureRect | null,
+  preparedSchedules?: ReadonlyMap<string, VirtualCursorSchedule | null>,
 ): Vec2 {
   const anchor = clip.anchor;
   if (!anchor || anchor.kind === "screen") return clip.pos;
@@ -128,7 +141,15 @@ export function resolveTextAnchorPosition(
 
   const cursorClip = activeCursorClip(cursorClips, playheadMs);
   if (!actions || !cursorClip || !isActionsCursorClip(cursorClip)) return clip.pos;
-  const sample = sampleVirtualCursor(actions, playheadMs - cursorClip.startMs, cursorClip.motionPreset);
+  const motionPreset = cursorClip.motionPreset ?? "natural";
+  const sample = preparedSchedules
+    ? samplePreparedVirtualCursor(
+        preparedSchedules.get(
+          `${motionPreset}:${cursorClip.preserveFullMotion ? "preserve" : "compress"}`,
+        ) ?? preparedSchedules.get(motionPreset),
+        playheadMs - cursorClip.startMs,
+      )
+    : sampleVirtualCursor(actions, playheadMs - cursorClip.startMs, motionPreset);
   if (!sample) return clip.pos;
   return {
     x: clamp01(sample.x + anchor.offset.x),

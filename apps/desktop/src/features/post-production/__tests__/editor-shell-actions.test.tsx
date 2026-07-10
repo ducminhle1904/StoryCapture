@@ -37,6 +37,8 @@ vi.mock("@/ipc/parse", () => ({
 }));
 
 vi.mock("@/ipc/actions", () => ({
+  actionSidecarFps: (actions: { fps_num: number; fps_den: number }) =>
+    actions.fps_num / actions.fps_den,
   useRecordingActions: ipcMocks.useRecordingActions,
 }));
 
@@ -322,14 +324,19 @@ describe("EditorShell toolbar actions", () => {
     });
     ipcMocks.useRecordingActions.mockReturnValue({
       data: {
-        version: 1,
+        source_version: 1,
+        confidence: "legacy-approximate",
         recording_path: "/recordings/action-timed.mp4",
+        cursor_motion_preset: "natural",
         viewport: { width: 1280, height: 720 },
         capture_rect: { x: 0, y: 0, width: 1280, height: 720 },
-        fps: 60,
+        fps_num: 60,
+        fps_den: 1,
         frame_count: 74,
         events: [
           {
+            source_index: 0,
+            confidence: "legacy-approximate",
             step_id: "step-1",
             ordinal: 1,
             verb: "click",
@@ -344,6 +351,8 @@ describe("EditorShell toolbar actions", () => {
             },
             secondary_target: null,
             pointer: { button: "left", effect: "click" },
+            cursor_timing: null,
+            input_timing: { kind: "click", action_ms: 120 },
           },
         ],
       },

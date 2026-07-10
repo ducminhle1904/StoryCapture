@@ -720,7 +720,8 @@ export function RecordingView({
   const handlePause = async () => {
     if (!sessionRef.current || status !== "recording") return;
     try {
-      await pauseRecording(sessionRef.current);
+      const acknowledgement = await pauseRecording(sessionRef.current);
+      if (acknowledgement.status !== "paused") throw new Error("recording session not found");
       pausedAtRef.current = Date.now();
       setStatus("paused");
     } catch (e) {
@@ -733,7 +734,8 @@ export function RecordingView({
   const handleResume = async () => {
     if (!sessionRef.current || status !== "paused") return;
     try {
-      await resumeRecording(sessionRef.current);
+      const acknowledgement = await resumeRecording(sessionRef.current);
+      if (acknowledgement.status !== "recording") throw new Error("recording session not found");
       if (startedAtRef.current && pausedAtRef.current) {
         startedAtRef.current += Date.now() - pausedAtRef.current;
       }

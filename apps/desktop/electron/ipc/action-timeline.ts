@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { RecordedActionLandmarks } from "./action-landmarks";
+import type { RecordingMediaClockSnapshot } from "./recording-media-clock";
 
 export interface ActionPoint {
   x: number;
@@ -66,6 +68,24 @@ export interface ActionTimelineEvent {
   pointer: ActionPointer | null;
   cursor_timing?: ActionCursorTiming | null;
   input_timing?: ActionInputTiming | null;
+  input_delivery?: "browser_injected" | "virtual_only";
+  cursor_path?: {
+    interpolation: "media-frame-linear-v1";
+    samples: Array<{ frame_index: number; pts_us: number; x: number; y: number }>;
+    arrival: { frame_index: number; pts_us: number };
+  };
+  input_landmarks?: Partial<
+    Record<
+      "action" | "down" | "up" | "text_start" | "text_end",
+      { frame_index: number; pts_us: number }
+    >
+  >;
+  presentation?: {
+    status: "presented" | "timeout" | "not_applicable";
+    first_post_input_frame?: { frame_index: number; pts_us: number };
+    first_post_input_paint?: { frame_index: number; pts_us: number };
+    diagnostic_reason?: string;
+  };
 }
 
 export interface ActionCaptureRect {
@@ -83,6 +103,15 @@ export interface RecordingActions {
   capture_rect: ActionCaptureRect;
   fps: number;
   frame_count: number;
+  media_clock?: {
+    clock: "encoded_video_pts";
+    unit: "us";
+    fps_num: number;
+    fps_den: number;
+    origin_frame: 0;
+    frame_count: number;
+    duration_us: number;
+  };
   events: ActionTimelineEvent[];
 }
 
@@ -96,6 +125,7 @@ export interface ActionTimelineRecordingSession {
   frameSeq: number;
   target: { kind: string };
   frameCrop: { x: number; y: number; w: number; h: number } | null;
+  mediaClock?: { snapshot(): RecordingMediaClockSnapshot };
 }
 
 export interface ActionTimelineCommand {
@@ -114,10 +144,12 @@ export interface ActionTimelineEventInput {
   pointer?: ActionPointer | null;
   cursorTiming?: ActionCursorTiming | null;
   inputTiming?: ActionInputTiming | null;
+  landmarks?: RecordedActionLandmarks | null;
 }
 
 export interface RecordingActionsOptions {
   cursorMotionPreset?: ActionCursorMotionPreset;
+  version?: 1 | 2 | 3;
 }
 
 export function actionsSidecarPath(recordingPath: string): string {
@@ -177,6 +209,7 @@ export function actionTimelineEventFromStep(input: ActionTimelineEventInput): Ac
 
   const cursorTiming = sanitizeCursorTiming(input.cursorTiming ?? null);
   const inputTiming = sanitizeInputTiming(input.inputTiming ?? null);
+  const landmarks = input.landmarks ? serializeActionLandmarks(input.landmarks) : null;
 
   return {
     step_id:
@@ -193,6 +226,7 @@ export function actionTimelineEventFromStep(input: ActionTimelineEventInput): Ac
     pointer: input.pointer ?? actionPointerForVerb(verb),
     ...(cursorTiming ? { cursor_timing: cursorTiming } : {}),
     ...(inputTiming ? { input_timing: inputTiming } : {}),
+    ...(landmarks ?? {}),
   };
 }
 
@@ -202,8 +236,10 @@ export function recordingActionsFromSession(
   options: RecordingActionsOptions = {},
 ): RecordingActions {
   const cursorMotionPreset = normalizeMotionPreset(options.cursorMotionPreset);
+  const clock = session.mediaClock?.snapshot();
+  const version = options.version ?? (cursorMotionPreset ? 2 : 1);
   return {
-    version: cursorMotionPreset ? 2 : 1,
+    version,
     recording_path: session.outputPath,
     ...(cursorMotionPreset ? { cursor_motion_preset: cursorMotionPreset } : {}),
     viewport: {
@@ -213,7 +249,107 @@ export function recordingActionsFromSession(
     capture_rect: deriveActionCaptureRect(session),
     fps: positiveDimension(session.fps, 30),
     frame_count: Math.max(0, Math.round(finiteNumber(session.frameSeq, 0))),
-    events,
+    ...(version === 3 && clock
+      ? {
+          media_clock: {
+            clock: "encoded_video_pts" as const,
+            unit: "us" as const,
+            fps_num: clock.fpsNum,
+            fps_den: clock.fpsDen,
+            origin_frame: 0 as const,
+            frame_count: clock.frameCount,
+            duration_us: clock.durationUs,
+          },
+        }
+      : {}),
+    events: events.map((event) => projectActionEvent(event, version)),
+  };
+}
+
+function projectActionEvent(event: ActionTimelineEvent, version: 1 | 2 | 3): ActionTimelineEvent {
+  if (version === 3 || !event.input_landmarks?.action) return event;
+  const {
+    cursor_path: cursorPath,
+    input_landmarks: inputLandmarks,
+    input_delivery: _inputDelivery,
+    presentation,
+    ...compatible
+  } = event;
+  const toMs = (value: { pts_us: number } | undefined, fallback: number) =>
+    value ? Math.round(value.pts_us / 1000) : fallback;
+  const actionMs = toMs(inputLandmarks.action, compatible.t_action_ms);
+  const startMs = toMs(cursorPath?.samples[0], compatible.t_start_ms);
+  const arrivalMs = toMs(cursorPath?.arrival, actionMs);
+  const endMs = Math.max(actionMs, toMs(presentation?.first_post_input_frame, compatible.t_end_ms));
+  return {
+    ...compatible,
+    t_start_ms: startMs,
+    t_action_ms: actionMs,
+    t_end_ms: endMs,
+    ...(compatible.cursor_timing
+      ? {
+          cursor_timing: {
+            ...compatible.cursor_timing,
+            start_ms: startMs,
+            arrival_ms: arrivalMs,
+            travel_ms: Math.max(0, arrivalMs - startMs),
+            dwell_ms: Math.max(0, actionMs - arrivalMs),
+          },
+        }
+      : {}),
+    ...(compatible.input_timing
+      ? {
+          input_timing: {
+            ...compatible.input_timing,
+            action_ms: actionMs,
+            ...(inputLandmarks.down ? { down_ms: toMs(inputLandmarks.down, actionMs) } : {}),
+            ...(inputLandmarks.up ? { up_ms: toMs(inputLandmarks.up, actionMs) } : {}),
+            ...(inputLandmarks.text_start
+              ? { text_start_ms: toMs(inputLandmarks.text_start, actionMs) }
+              : {}),
+            ...(inputLandmarks.text_end
+              ? { text_end_ms: toMs(inputLandmarks.text_end, actionMs) }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function serializeActionLandmarks(landmarks: RecordedActionLandmarks) {
+  const media = (value: { frameIndex: number; ptsUs: number }) => ({
+    frame_index: value.frameIndex,
+    pts_us: value.ptsUs,
+  });
+  return {
+    input_delivery: landmarks.delivery,
+    cursor_path: {
+      interpolation: landmarks.cursorPath.interpolation,
+      samples: landmarks.cursorPath.samples.map((sample) => ({
+        ...media(sample),
+        x: sample.x,
+        y: sample.y,
+      })),
+      arrival: media(landmarks.cursorPath.arrival),
+    },
+    input_landmarks: Object.fromEntries(
+      Object.entries(landmarks.input).map(([key, value]) => [key, media(value)]),
+    ) as ActionTimelineEvent["input_landmarks"],
+    presentation:
+      landmarks.presentation.status === "presented"
+        ? {
+            status: "presented" as const,
+            first_post_input_frame: media(landmarks.presentation.firstPostInputFrame),
+            ...(landmarks.presentation.firstPostInputPaint
+              ? { first_post_input_paint: media(landmarks.presentation.firstPostInputPaint) }
+              : {}),
+          }
+        : landmarks.presentation.status === "timeout"
+          ? {
+              status: "timeout" as const,
+              diagnostic_reason: landmarks.presentation.diagnosticReason,
+            }
+          : { status: "not_applicable" as const },
   };
 }
 

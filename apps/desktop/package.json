@@ -16,6 +16,7 @@
     "electron:dev": "node scripts/dev-electron.mjs",
     "electron:start": "node scripts/start-dev-electron.mjs",
     "electron:prepare-dev-app": "node scripts/prepare-dev-electron-app.mjs",
+    "test:e2e:cursor-sync": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/cursor-sync.spec.ts",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
@@ -68,6 +69,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.2.4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -84,7 +86,7 @@
     "esbuild": "^0.28.1",
     "happy-dom": "^20.9.0",
     "tailwindcss": "^4.2.4",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.0.9",
     "vitest": "^4.1.5",
     "wait-on": "^9.0.10"

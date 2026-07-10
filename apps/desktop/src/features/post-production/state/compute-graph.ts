@@ -23,6 +23,7 @@ import type { RecordingActions } from "../../../ipc/actions";
 import type { ExportResolution } from "../../../ipc/export";
 import type { CaptureRect, RecordingStepTimingSidecar } from "../../../ipc/trajectory";
 import type { ExportFormState } from "./export-slice";
+import type { SourceTimelineMap } from "./source-timeline-map";
 import { type EditorBackgroundKind, readEditorBackground } from "./store";
 import { resolveTextAnchorPosition } from "./text-anchor";
 import { hexToRgbaWithAlpha, resolvedTextStyle } from "./text-style";
@@ -171,6 +172,7 @@ export type VideoNode =
       duration_ms: number;
       source_width?: number;
       source_height?: number;
+      source_time_map?: SourceTimelineMap;
     }
   | { type: "zoom-pan"; id: string; target: ZoomTarget; keyframes: ZoomKeyframe[] }
   | {
@@ -187,6 +189,7 @@ export type VideoNode =
       skin: CursorSkin;
       size_scale: number;
       motion_preset: CursorMotionPreset;
+      preserve_full_motion: boolean;
       color_tint: Rgba | null;
       t_start_ms: number;
       duration_ms: number;
@@ -221,7 +224,7 @@ export interface Graph {
 // ---------------------------------------------------------------------------
 
 /** Mirrors the Rust schema_version constant. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const RESOLUTION_PX: Record<ExportResolution, { w: number; h: number }> = {
   "match-source": { w: 1920, h: 1080 },
@@ -284,6 +287,7 @@ function videoSource(clip: VideoClip): VideoNode | null {
     duration_ms: Math.max(0, Math.round(clip.durationMs)),
     source_width: clip.sourceSize?.width,
     source_height: clip.sourceSize?.height,
+    source_time_map: clip.sourceTimeMap,
   };
 }
 
@@ -355,7 +359,9 @@ function firstSourceDimensions(tracks: TimelineSlice["tracks"]): { w: number; h:
     .filter((clip) => clip.sourcePath)
     .reduce<VideoClip | null>(
       (earliest, clip) =>
-        !earliest || clip.startMs < earliest.startMs || (clip.startMs === earliest.startMs && clip.id < earliest.id)
+        !earliest ||
+        clip.startMs < earliest.startMs ||
+        (clip.startMs === earliest.startMs && clip.id < earliest.id)
           ? clip
           : earliest,
       null,
@@ -415,6 +421,7 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
     skin: clip.skin,
     size_scale: clip.sizeScale,
     motion_preset: normalizeCursorMotionPreset(clip.motionPreset),
+    preserve_full_motion: clip.preserveFullMotion ?? false,
     color_tint: null,
     t_start_ms: clip.startMs,
     duration_ms: Math.max(0, Math.round(clip.durationMs)),
@@ -479,7 +486,9 @@ function highlightOverlaySpec(
         }
       : undefined,
     padding_px: highlight.paddingPx ?? 8,
-    radius_px: highlight.bounds ? Math.min(12, Math.max(4, highlight.radiusPx * 0.18)) : highlight.radiusPx,
+    radius_px: highlight.bounds
+      ? Math.min(12, Math.max(4, highlight.radiusPx * 0.18))
+      : highlight.radiusPx,
     stroke_px: highlight.strokePx ?? 2,
     glow_px: highlight.glowPx ?? 16,
     color: hexToRgba(highlight.color, { r: 255, g: 255, b: 255, a: 229 }),

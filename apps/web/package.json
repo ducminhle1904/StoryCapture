@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "pnpm run typecheck && next build",
     "start": "next start",
     "typecheck": "pnpm run db:generate && tsc --noEmit",
     "test": "vitest run",
@@ -48,7 +48,8 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "typescript": "^6.0.3",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "typescript": "^7.0.2",
     "tsx": "^4.21.0",
     "vitest": "^4.1.5"
   }

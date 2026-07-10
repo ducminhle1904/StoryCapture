@@ -2,7 +2,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import ffmpegPath from "ffmpeg-static";
-import { cadenceWarning, recordingQualityArgs, recordingVideoFilters } from "../recording-pipeline";
+import {
+  cadenceWarning,
+  recordingPngSequenceInputArgs,
+  recordingQualityArgs,
+  recordingVideoFilters,
+} from "../recording-pipeline";
 import { authorSession, ffmpegCropPlan, percentile, queueRecordingFrame } from "./capture-preview";
 import { hostLog, recordingSessions, sendChannel } from "./shared";
 
@@ -52,6 +57,7 @@ export async function stopRecording(raw: unknown) {
   const session = recordingSessions.get(id);
   if (!session) throw new Error(`recording session ${id} not found`);
   recordingSessions.delete(id);
+  session.pauseGate.cancel();
   clearInterval(session.heartbeat);
   if (session.captureTimer) clearInterval(session.captureTimer);
   if (session.authorPaintHandler && session.target.kind === "author_preview") {
@@ -78,7 +84,9 @@ export async function stopRecording(raw: unknown) {
     throw new Error("recording stopped before any capture frames were written");
   }
 
-  const durationSec = Math.max(1, (Date.now() - session.startedAt) / 1000);
+  session.lifecycle = "stopping";
+  const mediaClock = session.mediaClock.freeze();
+  const wallDurationSec = Math.max(1, (Date.now() - session.startedAt) / 1000);
   if (session.streaming) {
     if (session.ffmpegProcess?.stdin && !session.ffmpegProcess.stdin.destroyed) {
       session.ffmpegProcess.stdin.end();
@@ -86,11 +94,9 @@ export async function stopRecording(raw: unknown) {
     if (session.ffmpegDone) await session.ffmpegDone;
     if (session.encoderError) throw session.encoderError;
   } else {
-    const inputFramerate = Math.max(0.2, session.frameSeq / durationSec).toFixed(3);
     const ffmpegArgs = [
       "-y",
-      "-framerate",
-      inputFramerate,
+      ...recordingPngSequenceInputArgs(session.effectiveFps),
       "-i",
       path.join(session.framesDir, "frame-%06d.png"),
     ];
@@ -130,9 +136,9 @@ export async function stopRecording(raw: unknown) {
   }
   await fs.rm(session.framesDir, { recursive: true, force: true });
   const stat = await fs.stat(session.outputPath);
-  const encodedFps = session.frameSeq / durationSec;
+  const encodedFps = mediaClock.fpsNum / mediaClock.fpsDen;
   const sourceFramesReceived = session.streaming ? session.sourceFramesReceived : session.frameSeq;
-  const sourceFps = sourceFramesReceived / durationSec;
+  const sourceFps = sourceFramesReceived / wallDurationSec;
   const actualCaptureFps = session.streaming ? sourceFps : encodedFps;
   const warning = cadenceWarning({
     actualFps: actualCaptureFps,
@@ -155,7 +161,18 @@ export async function stopRecording(raw: unknown) {
   }
   const result = {
     output_path: session.outputPath,
-    duration_ms: Math.round(durationSec * 1000),
+    duration_ms: Math.round(mediaClock.durationUs / 1000),
+    frame_count: mediaClock.frameCount,
+    duration_us: mediaClock.durationUs,
+    media_clock: {
+      clock: mediaClock.clock,
+      unit: mediaClock.unit,
+      fps_num: mediaClock.fpsNum,
+      fps_den: mediaClock.fpsDen,
+      origin_frame: mediaClock.originFrame,
+      frame_count: mediaClock.frameCount,
+      duration_us: mediaClock.durationUs,
+    },
     bytes: stat.size,
     frames_written: session.frameSeq,
     frames_encoded: session.frameSeq,
@@ -179,6 +196,7 @@ export async function stopRecording(raw: unknown) {
     quality_preset: session.qualityPreset,
     encoder_input: session.streaming ? "author_preview_raw_bgra_pipe" : "png_sequence",
   };
+  session.lifecycle = "finalized";
   sendChannel(session.eventTarget, session.eventChannelId, {
     type: "completed",
     result,

@@ -1,7 +1,8 @@
 # Project Map
 
-Use this as the first repo map before opening broad source files. `CLAUDE.md`
-is the root agent guide; `AGENTS.md` and `GEMINI.md` symlink to it.
+Use this as the first repo map before opening broad source files. `AGENTS.md`
+is the root agent guide; `CLAUDE.md` symlinks to it, and `GEMINI.md` resolves
+through `CLAUDE.md`.
 
 ## Workspace
 
@@ -38,6 +39,9 @@ is the root agent guide; `AGENTS.md` and `GEMINI.md` symlink to it.
   types, and checked-in generated effect types.
 - `packages/ui`: shared tokens, `claude-design` CSS, and `Sc*` primitives.
 - `packages/config`: shared TypeScript base config.
+- `packages/glob-compat`, `packages/lodash-isequal-compat`, and
+  `packages/rimraf-compat`: private CommonJS shims used by transitive dependency
+  overrides in `pnpm-workspace.yaml`.
 
 ## Source Docs
 
@@ -53,8 +57,8 @@ is the root agent guide; `AGENTS.md` and `GEMINI.md` symlink to it.
 ## Avoid By Default
 
 - Generated/build/cache/artifacts: `node_modules/`, `.turbo/`, `.next/`,
-  `dist/`, `release-electron/`, `output/`, `tmp/`,
-  `scripts/build-ffmpeg/build/`.
+  `dist/`, `apps/desktop/dist-electron/`, `apps/desktop/.electron-dev/`,
+  `release-electron/`, `output/`, `tmp/`, `scripts/build-ffmpeg/build/`.
 - Generated Prisma client: `apps/web/src/generated/prisma/**`.
 - Checked-in generated effect types:
   `packages/shared-types/src/generated/effects.ts`.

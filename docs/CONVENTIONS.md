@@ -112,14 +112,12 @@ test wiring.
 Coverage shape:
 
 - Desktop has many Vitest tests around editor, recorder, post-production UI and
-  state, plus limited Electron permission/IPC tests. Current inventory is about
-  61 desktop test files.
+  state, plus Electron permission and IPC helpers.
 - Web tests currently cover workflow helpers, sync metadata, and template
   metadata. Auth, upload APIs, invite/RBAC, analytics cron, watch/embed/oEmbed,
-  and route availability are not broadly covered. Current inventory is 3 web
-  test files.
-- UI primitive tests currently cover 14 primitive files; `ScTabs` is the known
-  primitive without a matching test file.
+  and route availability are not broadly covered.
+- UI primitive tests live under
+  `packages/ui/src/claude-design/primitives/__tests__/`.
 - `packages/story-dsl` currently has no test files; use package typecheck plus
   consuming desktop tests for DSL/editor behavior.
 

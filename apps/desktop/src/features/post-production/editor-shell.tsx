@@ -38,7 +38,7 @@ import {
 import { VoiceCatalogDialog } from "@/features/voiceover/VoiceCatalogDialog";
 import { useRecordingActions } from "@/ipc/actions";
 import { type ParseResult, parseStory } from "@/ipc/parse";
-import { fetchProjectFolder, useProjectRecordings } from "@/ipc/projects";
+import { fetchProjectFolder, type RecordingInfo, useProjectRecordings } from "@/ipc/projects";
 import { timelineLoad, timelineSave } from "@/ipc/timeline";
 import { useRecordingStepTiming, useRecordingTrajectory } from "@/ipc/trajectory";
 import { ExportModal } from "./export-modal/export-modal";
@@ -46,7 +46,10 @@ import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { InspectorPanel } from "./inspector/inspector-panel";
 import { QueueWidget } from "./render-queue/queue-widget";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
-import { buildTimelineFromStory } from "./state/build-timeline-from-story";
+import {
+  buildTimelineFromStory,
+  recordingSourceRevision,
+} from "./state/build-timeline-from-story";
 import { createClipId } from "./state/clip-id";
 import { DEFAULT_BACKGROUND, readEditorBackground, useEditorStore } from "./state/store";
 import { styleDefaults } from "./state/text-style";
@@ -59,7 +62,7 @@ import {
 import {
   parseTimelineLayoutJson,
   serializeTimelineLayout,
-  type TimelineLayoutV1,
+  type TimelineLayoutV2,
 } from "./state/timeline-layout";
 import { Timeline } from "./timeline/timeline";
 
@@ -105,10 +108,13 @@ function serializeCurrentTimelineLayout(): string {
 }
 
 function timelineLayoutMatchesRecording(
-  layout: TimelineLayoutV1,
-  recordingPath: string,
+  layout: TimelineLayoutV2,
+  recording: RecordingInfo,
 ): boolean {
-  return layout.tracks.video.some((clip) => clip.sourcePath === recordingPath);
+  return (
+    layout.sourceRevision === recordingSourceRevision(recording) &&
+    layout.tracks.video.some((clip) => clip.sourcePath === recording.path)
+  );
 }
 
 type ReviewFixTone = "info" | "warn" | "critical";
@@ -312,7 +318,6 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   // `videoSrc` prop (used by tests/storybook) wins over the IPC-loaded path.
   const recordingsQuery = useProjectRecordings(storyId);
   const latestRecording = recordingsQuery.data?.[0] ?? null;
-  const latestRecordingPath = latestRecording?.path ?? null;
   const recordingsReady = Boolean(videoSrc) || recordingsQuery.isSuccess || recordingsQuery.isError;
   const resolvedVideoSrc = videoSrc ?? latestRecording?.path;
   const showEmptyOverlay = !videoSrc && recordingsQuery.isSuccess && !latestRecording;
@@ -331,6 +336,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const [workspaceMode, setWorkspaceMode] = useState<"review" | "fine-tune">("review");
   const timelineLoadTokenRef = useRef(0);
   const lastSavedTimelineRef = useRef("");
+  const staleIndependentAnnotationsRef = useRef<AnnotationClip[]>([]);
   useEffect(() => {
     let cancelled = false;
     setStoryParsed(null);
@@ -372,6 +378,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     setTimelineHydrated(false);
     setTimelineNeedsBootstrap(false);
     lastSavedTimelineRef.current = "";
+    staleIndependentAnnotationsRef.current = [];
     resetTransientTimelineState();
 
     if (videoSrc) {
@@ -388,10 +395,13 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         if (saved?.layout_json) {
           const parsed = parseTimelineLayoutJson(saved.layout_json);
           if (parsed.ok) {
-            const staleForLatestRecording = latestRecordingPath
-              ? !timelineLayoutMatchesRecording(parsed.layout, latestRecordingPath)
+            const staleForLatestRecording = latestRecording
+              ? !timelineLayoutMatchesRecording(parsed.layout, latestRecording)
               : recordingsQuery.isSuccess;
             if (staleForLatestRecording) {
+              staleIndependentAnnotationsRef.current = parsed.layout.tracks.annotations.filter(
+                (clip) => !clip.syncGroupId,
+              );
               console.info(
                 `Saved timeline for story ${storyId} was ignored because its recording is stale.`,
               );
@@ -430,7 +440,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       setTimelineNeedsBootstrap(true);
       setTimelineHydrated(true);
     })();
-  }, [storyId, videoSrc, latestRecordingPath, recordingsQuery.isSuccess, recordingsReady]);
+  }, [storyId, videoSrc, latestRecording, recordingsQuery.isSuccess, recordingsReady]);
 
   const actionsQuery = useRecordingActions(latestRecording?.path);
   const recordingActions = actionsQuery.data ?? null;
@@ -578,7 +588,15 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       polish: polishDoc,
       stepTiming: stepTimingQuery.data ?? null,
     });
-    const { background, ...builtTracks } = built;
+    const { background, ...generatedTracks } = built;
+    const builtTracks = {
+      ...generatedTracks,
+      annotations: [
+        ...generatedTracks.annotations,
+        ...staleIndependentAnnotationsRef.current,
+      ],
+    };
+    staleIndependentAnnotationsRef.current = [];
     setTracks(builtTracks);
     setDuration(maxTrackEndMs(builtTracks));
     useEditorStore.setState((state) => ({

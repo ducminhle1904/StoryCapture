@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { app, dialog, type IpcMainInvokeEvent, shell } from "electron";
 import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime } from "../../runtime";
+import { readRecordingActionsSidecar } from "../action-sidecar-reader";
 import { readJson, writeJson } from "../json-store";
 import { logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
@@ -182,14 +183,22 @@ export async function handleLegacyInvoke(
     case "pause_recording": {
       const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
       const session = recordingSessions.get(id);
-      if (session) session.paused = true;
-      return null;
+      if (!session) throw new Error(`recording session ${id} not found`);
+      session.paused = true;
+      session.lifecycle = "paused";
+      session.mediaClock.pause();
+      session.pauseGate.pause();
+      return { status: session.lifecycle };
     }
     case "resume_recording": {
       const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
       const session = recordingSessions.get(id);
-      if (session) session.paused = false;
-      return null;
+      if (!session) throw new Error(`recording session ${id} not found`);
+      session.paused = false;
+      session.lifecycle = "recording";
+      session.mediaClock.resume();
+      session.pauseGate.resume();
+      return { status: session.lifecycle };
     }
     case "launch_automation":
       return launchAutomationCommand((args ?? {}) as Record<string, unknown>, event.sender);
@@ -441,11 +450,10 @@ export async function handleLegacyInvoke(
       return null;
     }
     case "get_recording_actions":
-      return readRecordingSidecar(
+      return readRecordingActionsSidecar(
         String(
           (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
         ),
-        "actions",
       );
     case "get_recording_trajectory":
       return readRecordingSidecar(

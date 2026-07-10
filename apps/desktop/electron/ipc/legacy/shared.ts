@@ -13,6 +13,7 @@ import {
   type WebContents,
 } from "electron";
 import electronUpdater, { type UpdateInfo as ElectronUpdateInfo } from "electron-updater";
+import type { RecordedActionLandmarks, RecordingActionLandmarkRecorder } from "../action-landmarks";
 import type {
   ActionCursorMotionPreset,
   ActionCursorTiming,
@@ -24,6 +25,8 @@ import type { CursorTimingSize } from "../cursor-timing";
 import { readJson, writeJson } from "../json-store";
 import { type FrontendLogPayload, logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
+import type { RecordingMediaClock } from "../recording-media-clock";
+import type { RecordingPauseGate } from "../recording-pause-gate";
 import type {
   RecordingFitMode,
   RecordingPadColor,
@@ -379,6 +382,11 @@ export interface RecordingSession {
   fps: number;
   startedAt: number;
   paused: boolean;
+  lifecycle: "recording" | "paused" | "stopping" | "finalized";
+  mediaClock: RecordingMediaClock;
+  actionLandmarks: RecordingActionLandmarkRecorder;
+  paintSequence: number;
+  pauseGate: RecordingPauseGate;
   eventTarget: WebContents;
   eventChannelId: number | null;
   heartbeat: ReturnType<typeof setInterval>;
@@ -492,6 +500,7 @@ export interface StoryBrowserRunHooks {
       stepEndedAtMs: number;
       cursorTiming?: ActionCursorTiming | null;
       inputTiming?: ActionInputTiming | null;
+      landmarks?: RecordedActionLandmarks | null;
     };
   }) => void;
   onFrameCaptured?: (ordinal: number, frame: SimulatorStepFrame) => void;
@@ -511,6 +520,8 @@ export interface StoryBrowserRunOptions {
   frameDir?: string | null;
   executionProfile?: StoryBrowserExecutionProfile;
   recordingClockMs?: () => number;
+  actionLandmarks?: RecordingActionLandmarkRecorder;
+  pauseGate?: RecordingPauseGate;
   shouldCancel?: () => boolean;
   hooks?: StoryBrowserRunHooks;
 }

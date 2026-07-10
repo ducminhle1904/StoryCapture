@@ -68,7 +68,9 @@ function roleOf(el: Element): string {
 function isVisible(el: Element): boolean {
   const rect = el.getBoundingClientRect();
   const style = window.getComputedStyle(el);
-  return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+  return (
+    rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none"
+  );
 }
 
 function isEditableElement(el: Element): boolean {
@@ -76,7 +78,8 @@ function isEditableElement(el: Element): boolean {
   const type = (el.getAttribute("type") || "").toLowerCase();
   if (tag === "input") return type !== "hidden";
   if (tag === "textarea" || tag === "select") return true;
-  if ((el as HTMLElement).isContentEditable || el.getAttribute("contenteditable") === "true") return true;
+  if ((el as HTMLElement).isContentEditable || el.getAttribute("contenteditable") === "true")
+    return true;
   return ["textbox", "combobox", "searchbox", "spinbutton"].includes(roleOf(el));
 }
 
@@ -98,8 +101,24 @@ export interface SimulatorResolvedTarget {
   bounds: { x: number; y: number; w: number; h: number };
 }
 
+export type SimulatorTargetReadiness =
+  | { status: "ready"; target: SimulatorResolvedTarget }
+  | {
+      status: "not_ready";
+      reason:
+        | "not_found"
+        | "detached"
+        | "hidden"
+        | "disabled"
+        | "invalid_bounds"
+        | "outside_viewport"
+        | "covered";
+    };
+
 function labelMatches(el: Element, needle: string): boolean {
-  return formLabelOf(el).toLowerCase().includes(needle) || nameOf(el).toLowerCase().includes(needle);
+  return (
+    formLabelOf(el).toLowerCase().includes(needle) || nameOf(el).toLowerCase().includes(needle)
+  );
 }
 
 export function findSimulatorTarget(
@@ -132,11 +151,13 @@ export function findSimulatorTarget(
       const needle = String(value).toLowerCase();
       matches = all.filter((candidate) => textOf(candidate).toLowerCase().includes(needle));
     } else if (kind === "role") {
-      const roleTarget = value && typeof value === "object" ? (value as { role?: unknown; name?: unknown }) : null;
+      const roleTarget =
+        value && typeof value === "object" ? (value as { role?: unknown; name?: unknown }) : null;
       const role = roleTarget ? String(roleTarget.role || "") : "";
       const name = roleTarget ? String(roleTarget.name || "").toLowerCase() : "";
       matches = all.filter(
-        (candidate) => roleOf(candidate) === role && (!name || nameOf(candidate).toLowerCase().includes(name)),
+        (candidate) =>
+          roleOf(candidate) === role && (!name || nameOf(candidate).toLowerCase().includes(name)),
       );
     } else if (typeof value === "string") {
       const needle = value.toLowerCase();
@@ -175,6 +196,81 @@ function resolvedTargetGeometry(el: Element): SimulatorResolvedTarget {
   };
 }
 
+function resolvedTargetReadiness(
+  el: Element | null,
+  requireEnabled: boolean,
+): SimulatorTargetReadiness {
+  if (!el) return { status: "not_ready", reason: "not_found" };
+  if (!el.isConnected) return { status: "not_ready", reason: "detached" };
+  if (!isVisible(el)) return { status: "not_ready", reason: "hidden" };
+  if (
+    requireEnabled &&
+    (("disabled" in el && Boolean((el as HTMLButtonElement).disabled)) ||
+      el.getAttribute("aria-disabled") === "true")
+  ) {
+    return { status: "not_ready", reason: "disabled" };
+  }
+  let rect = el.getBoundingClientRect();
+  if (
+    ![rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) ||
+    rect.width <= 0 ||
+    rect.height <= 0
+  ) {
+    return { status: "not_ready", reason: "invalid_bounds" };
+  }
+  const inViewport =
+    rect.right > 0 &&
+    rect.bottom > 0 &&
+    rect.left < window.innerWidth &&
+    rect.top < window.innerHeight;
+  if (!inViewport) {
+    el.scrollIntoView({ block: "center", inline: "center" });
+    rect = el.getBoundingClientRect();
+  }
+  const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  if (
+    center.x < 0 ||
+    center.y < 0 ||
+    center.x >= window.innerWidth ||
+    center.y >= window.innerHeight
+  ) {
+    return { status: "not_ready", reason: "outside_viewport" };
+  }
+  const hit = document.elementFromPoint(center.x, center.y);
+  if (!hit || (hit !== el && !el.contains(hit))) {
+    return { status: "not_ready", reason: "covered" };
+  }
+  return { status: "ready", target: resolvedTargetGeometry(el) };
+}
+
+export function simulatorTargetReadinessScript(
+  target: unknown,
+  targetNth?: number,
+  selector?: string | null,
+  requireEnabled = true,
+): string {
+  return `
+    (() => {
+      ${textOf.toString()}
+      ${cssEscape.toString()}
+      ${formLabelOf.toString()}
+      ${nameOf.toString()}
+      ${roleOf.toString()}
+      ${isVisible.toString()}
+      ${isEditableElement.toString()}
+      ${labelMatches.toString()}
+      ${resolvedTargetGeometry.toString()}
+      ${resolvedTargetReadiness.toString()}
+      const el = (${findSimulatorTarget.toString()})(
+        ${JSON.stringify(target)},
+        ${JSON.stringify(targetNth ?? null)},
+        ${JSON.stringify(selector ?? null)}
+      );
+      return resolvedTargetReadiness(el, ${JSON.stringify(requireEnabled)});
+    })()
+  `;
+}
+
 export function simulatorTargetGeometryScript(
   target: unknown,
   targetNth?: number,
@@ -201,7 +297,10 @@ export function simulatorTargetGeometryScript(
   `;
 }
 
-function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string): void {
+function setNativeValue(
+  el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  value: string,
+): void {
   const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")?.set;
   if (setter) {
     setter.call(el, value);
@@ -211,7 +310,11 @@ function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectE
 }
 
 function assignElementValue(el: HTMLElement, value: string): boolean {
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+  if (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement
+  ) {
     setNativeValue(el, value);
   } else if (el.isContentEditable || el.getAttribute("contenteditable") === "true") {
     el.textContent = value;

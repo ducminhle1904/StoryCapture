@@ -1,0 +1,57 @@
+{
+  "fixture_version": 1,
+  "short_event_gap": {
+    "sidecar": "v1-short-gap.actions.json",
+    "input_action_ms": 1108,
+    "legacy_expected_arrival_after_input": true
+  },
+  "slow_target": {
+    "timeout_ms": 7000,
+    "observations": [
+      { "at_ms": 0, "connected": false, "visible": false, "enabled": false },
+      {
+        "at_ms": 5400,
+        "connected": true,
+        "visible": true,
+        "enabled": true,
+        "center": { "x": 640, "y": 360 }
+      },
+      {
+        "at_ms": 5500,
+        "connected": true,
+        "visible": true,
+        "enabled": true,
+        "center": { "x": 640, "y": 360 }
+      }
+    ]
+  },
+  "layout_shift": {
+    "observations": [
+      { "at_ms": 0, "center": { "x": 320, "y": 240 } },
+      { "at_ms": 160, "center": { "x": 760, "y": 420 } },
+      { "at_ms": 180, "center": { "x": 760, "y": 420 } }
+    ],
+    "expected_input_center": { "x": 760, "y": 420 }
+  },
+  "pause": {
+    "fps_num": 60,
+    "fps_den": 1,
+    "events": [
+      { "kind": "commit", "wall_ms": 0, "frame_index": 0 },
+      { "kind": "pause", "wall_ms": 100 },
+      { "kind": "resume", "wall_ms": 5100 },
+      { "kind": "commit", "wall_ms": 5116.666667, "frame_index": 1 }
+    ],
+    "expected_pts_us": [0, 16667]
+  },
+  "decoder_stall": {
+    "presentations": [
+      { "wall_us": 0, "media_us": 0, "presented_frames": 0 },
+      { "wall_us": 16667, "media_us": 16667, "presented_frames": 1 },
+      { "wall_us": 50000, "media_us": 16667, "presented_frames": 1 },
+      { "wall_us": 83333, "media_us": 16667, "presented_frames": 1 },
+      { "wall_us": 100000, "media_us": 33333, "presented_frames": 2 }
+    ],
+    "expected_overlay_media_us": [0, 16667, 16667, 16667, 33333]
+  }
+}

@@ -7,7 +7,7 @@ import {
   highlightEnabled,
   type StoryPolishDoc,
 } from "@/features/editor/polish-sidecar";
-import type { ActionTarget, RecordingActions } from "@/ipc/actions";
+import { type ActionTarget, actionSidecarFps, type RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
 import type {
@@ -24,9 +24,10 @@ import type {
   ZoomClip,
 } from "../state/timeline-slice";
 import { normalizeCursorMotionPreset, XFADE_KINDS } from "../state/timeline-slice";
+import { identitySourceTimelineMap } from "./source-timeline-map";
 import type { EditorBackgroundKind, Rgba } from "./store";
 import { styleDefaults } from "./text-style";
-import { virtualCursorVisualDurationMs } from "./virtual-cursor-scheduler";
+import { buildVirtualCursorSchedule } from "./virtual-cursor-scheduler";
 
 export interface BuildTimelineInput {
   story: ParseResult | null;
@@ -126,6 +127,12 @@ function hashPath(path: string): string {
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+export function recordingSourceRevision(recording: RecordingInfo): string {
+  return hashPath(
+    `${recording.path}\0${recording.captured_at}\0${recording.duration_ms ?? ""}\0${recording.width ?? ""}x${recording.height ?? ""}`,
+  );
 }
 
 function basename(path: string): string {
@@ -305,7 +312,7 @@ function cursorSidecarFor(
   durationMs: number,
 ): { path: string; kind: "actions" | "trajectory"; fps: number; frameCount: number } | null {
   if (actions) {
-    const fps = actions.fps > 0 ? actions.fps : 60;
+    const fps = actionSidecarFps(actions);
     const durationFrameCount = Math.ceil((Math.max(0, durationMs) / 1000) * fps);
     return {
       path: deriveActionsPath(recordingPath),
@@ -337,7 +344,8 @@ function actionsDurationMs(actions: RecordingActions | null): number {
     eventMaxEndMs = Math.max(eventMaxEndMs, event.t_end_ms);
   }
   if (eventMaxEndMs > 0) return eventMaxEndMs;
-  return actions.fps > 0 ? Math.round((actions.frame_count / actions.fps) * 1000) : 0;
+  const fps = actionSidecarFps(actions);
+  return fps > 0 ? Math.round((actions.frame_count / fps) * 1000) : 0;
 }
 
 function mediaDurationMs(
@@ -671,14 +679,20 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const { recording, trajectory, polish, stepTiming } = input;
   const actions = input.actions ?? null;
   const idBase = hashPath(recording.path);
+  const syncGroupId = `recording-${idBase}`;
+  const sourceRevision = recordingSourceRevision(recording);
 
   const cursorMotionPreset = normalizeCursorMotionPreset(actions?.cursor_motion_preset);
   const cursorVisible = polish?.global.cursor !== "hidden";
+  const cursorSchedule = cursorVisible
+    ? buildVirtualCursorSchedule(actions, cursorMotionPreset)
+    : null;
   const durationMs = Math.max(
     mediaDurationMs(recording, trajectory, actions),
-    cursorVisible ? virtualCursorVisualDurationMs(actions, cursorMotionPreset) : 0,
+    cursorSchedule?.durationMs ?? 0,
   );
   const source = sourceSize(input);
+  const sourceTimeMap = identitySourceTimelineMap(durationMs);
 
   const baseVideo: VideoClip[] = [
     {
@@ -689,6 +703,9 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       sourcePath: recording.path,
       sourceSize: source,
       label: basename(recording.path),
+      syncGroupId,
+      sourceRevision,
+      sourceTimeMap,
     },
   ];
   const video = applySceneTransitionIntent(baseVideo, input.story, polish);
@@ -707,7 +724,11 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       trajectoryFrameCount: cursorSidecar.frameCount,
       skin: polish?.global.cursorSkin ?? "mac-default",
       motionPreset: cursorMotionPreset,
+      preserveFullMotion: false,
       sizeScale: polish?.global.cursorSizeScale ?? 1.0,
+      syncGroupId,
+      sourceRevision,
+      sourceTimeMap,
     });
   }
 
@@ -730,7 +751,10 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     durationMs,
     idBase,
   });
-  const zoom = [...autoZoom, ...polishClips.zoom];
+  const zoom = [
+    ...autoZoom.map((clip) => ({ ...clip, syncGroupId, sourceRevision, sourceTimeMap })),
+    ...polishClips.zoom,
+  ];
   const actionFocusMode = polish?.global.actionFocus ?? "standard";
   const actionFocusAnnotations =
     actionFocusMode === "off"
@@ -765,7 +789,15 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     cursor,
     zoom,
     sound,
-    annotations: [...actionFocusAnnotations, ...polishClips.annotations],
+    annotations: [
+      ...actionFocusAnnotations.map((clip) => ({
+        ...clip,
+        syncGroupId,
+        sourceRevision,
+        sourceTimeMap,
+      })),
+      ...polishClips.annotations,
+    ],
     background: backgroundFromPolish(polish),
   };
 }

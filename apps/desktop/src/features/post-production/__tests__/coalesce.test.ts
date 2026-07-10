@@ -284,6 +284,21 @@ describe("parseNodePath + setAtPath", () => {
 });
 
 describe("applyAction + invertAction", () => {
+  it("applies and inverts a sync-group edit atomically", () => {
+    const video = { id: "v", trackId: "video" as const, startMs: 0, durationMs: 100, sourcePath: "/tmp/a.mp4", syncGroupId: "g" };
+    const cursor = { id: "c", trackId: "cursor" as const, startMs: 0, durationMs: 100, trajectoryDir: "/tmp/a.json", trajectoryFps: 60, trajectoryFrameCount: 6, skin: "mac-default" as const, sizeScale: 1, syncGroupId: "g" };
+    const before: Clip[] = [video, cursor];
+    const after: Clip[] = before.map((clip) => ({ ...clip, startMs: 25, durationMs: 125 }));
+    useEditorStore.setState({ tracks: { video: [video], cursor: [cursor], zoom: [], sound: [], annotations: [] } });
+    const action: UndoableAction = { kind: "edit-sync-group", syncGroupId: "g", before, after };
+    applyAction(action);
+    expect(useEditorStore.getState().tracks.video[0]).toMatchObject({ startMs: 25, durationMs: 125 });
+    expect(useEditorStore.getState().tracks.cursor[0]).toMatchObject({ startMs: 25, durationMs: 125 });
+    applyAction(invertAction(action));
+    expect(useEditorStore.getState().tracks.video[0]).toMatchObject({ startMs: 0, durationMs: 100 });
+    expect(useEditorStore.getState().tracks.cursor[0]).toMatchObject({ startMs: 0, durationMs: 100 });
+  });
+
   it("apply_invert_move_clip: applies to.Ms then undoes back to from.Ms", () => {
     useEditorStore.setState({
       tracks: {

@@ -11,6 +11,7 @@ migrations, generated files, or release tooling.
   runs:
   - `pnpm typecheck`
   - `pnpm --dir apps/desktop exec vitest run`
+  - `pnpm --dir apps/desktop run test:e2e:cursor-sync`
   - `pnpm --dir packages/ui test`
   - `pnpm --dir apps/web test`
   - `pnpm --dir apps/desktop run build`
@@ -38,8 +39,13 @@ migrations, generated files, or release tooling.
 
 - Vercel config: `apps/web/vercel.json`.
 - Web build command is `pnpm run build` from `apps/web/package.json`, which runs
-  `prisma generate && next build`.
+  `pnpm run typecheck && next build`; the typecheck runs
+  `pnpm run db:generate && tsc --noEmit`.
 - Next production config is `apps/web/next.config.ts`.
+- GeoLite provisioning is manual: `apps/web/scripts/download-geolite2.sh` is
+  not called by package scripts, CI, or Vercel config. Runtime lookup expects
+  gitignored `apps/web/public/geolite2/GeoLite2-Country.mmdb` and returns `XX`
+  when the database is absent.
 - Scheduled analytics job:
   - Config: `apps/web/vercel.json`.
   - Route: `apps/web/src/app/api/cron/aggregate-analytics/route.ts`.
@@ -80,3 +86,20 @@ migrations, generated files, or release tooling.
   `packages/shared-types/package.json`.
 - Treat `scripts/build-ffmpeg/build/` as helper-script build output unless the
   task is directly about FFmpeg dependency builds.
+- `STORYCAPTURE_CURSOR_SYNC_MODE=legacy|shadow|unified` is an internal rollout
+  control, not a public setting or secret. Invalid/unset values resolve to
+  `shadow`; promote cohorts only after local invariant counters and encoded
+  parity gates pass. Roll back by selecting `legacy`; compatibility readers
+  remain available indefinitely.
+
+### Cursor Synchronization Diagnostics
+
+- `scripts/ci/analyze-cursor-sync-roi.mjs` decodes a grayscale ROI against the
+  first-frame baseline and reports `first_changed_frame`, `expected_frame`,
+  `delta_frames`, and `decoded_frames`. Defaults are one-frame tolerance and
+  mean-pixel threshold 8; use `FFMPEG_PATH` to override the FFmpeg binary.
+- Promotion order is `legacy` -> `shadow` -> `unified` internal -> beta -> GA.
+  Shadow writes the compatible v2 projection and logs only local event/count
+  invariants. Require focused/backpressure tests, Electron smoke, encoded ROI
+  parity, and the render benchmark before promotion. Roll back immediately by
+  setting `STORYCAPTURE_CURSOR_SYNC_MODE=legacy`; keep v1/v2 readers enabled.
