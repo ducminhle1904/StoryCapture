@@ -30,6 +30,11 @@ import type {
   RecordingTrajectory,
 } from "@/ipc/trajectory";
 import { frontendLog } from "@/lib/log";
+import {
+  identitySourceTimelineMap,
+  type SourceTimelineMap,
+  timelineMsToSourcePtsUs,
+} from "../state/source-timeline-map";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
 import {
   activeCursorClip,
@@ -54,6 +59,7 @@ import {
   normalizedZoomCropTopLeft,
   sampleZoom,
 } from "../state/zoom-motion";
+import { PresentedMediaClock } from "./presented-media-clock";
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
@@ -76,6 +82,10 @@ const CURSOR_RIPPLE_MAX_PX = 96;
 const SOURCE_HOLD_EPSILON_SECONDS = 0.001;
 const TEXT_DRAG_OVERSCAN = 0.25;
 const MIN_HIGHLIGHT_BOUNDS_SIZE = 0.0001;
+
+function cursorScheduleKey(preset: CursorMotionPreset, preserveFullMotion: boolean): string {
+  return `${preset}:${preserveFullMotion ? "preserve" : "compress"}`;
+}
 
 const cursorSkinAssets = import.meta.glob("../../../../../../assets/cursor-skins/*.png", {
   eager: true,
@@ -156,10 +166,32 @@ function isAtTimelineEnd(playheadMs: number, durationMs: number): boolean {
   );
 }
 
-function mediaSecondsForPlayhead(video: HTMLVideoElement, playheadMs: number): number {
-  const requestedSeconds = Math.max(0, playheadMs) / 1000;
+function mediaSecondsForPlayhead(
+  video: HTMLVideoElement,
+  playheadMs: number,
+  sourceTimeMap: SourceTimelineMap,
+): number {
+  const requestedSeconds =
+    (timelineMsToSourcePtsUs(sourceTimeMap, Math.max(0, playheadMs)) ??
+      Math.max(0, playheadMs) * 1000) / 1_000_000;
   if (!Number.isFinite(video.duration) || video.duration <= 0) return requestedSeconds;
   return Math.min(requestedSeconds, Math.max(0, video.duration - SOURCE_HOLD_EPSILON_SECONDS));
+}
+
+function sourcePtsUsForPlayhead(playheadMs: number, sourceTimeMap: SourceTimelineMap): number {
+  return (
+    timelineMsToSourcePtsUs(sourceTimeMap, Math.max(0, playheadMs)) ??
+    Math.max(0, playheadMs) * 1000
+  );
+}
+
+function isSourceHoldAt(sourceTimeMap: SourceTimelineMap, playheadMs: number): boolean {
+  return sourceTimeMap.segments.some(
+    (segment) =>
+      segment.kind === "hold" &&
+      playheadMs >= segment.timelineStartMs &&
+      playheadMs < segment.timelineEndMs,
+  );
 }
 
 function timelinePlaybackDurationMs(video: HTMLVideoElement, timelineDurationMs: number): number {
@@ -522,6 +554,9 @@ export function PreviewPlayer({
   const ambientRafRef = useRef<number | null>(null);
   const ambientLastSampleTimeRef = useRef(0);
   const lastPlayheadCommitRef = useRef(0);
+  const presentedPlayheadRef = useRef(0);
+  const presentedClockRef = useRef<PresentedMediaClock | null>(null);
+  const sourceTimeMapRef = useRef<SourceTimelineMap>(identitySourceTimelineMap(0));
   const [playing, setPlaying] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
   const [ambientSamplingReady, setAmbientSamplingReady] = useState(false);
@@ -531,7 +566,7 @@ export function PreviewPlayer({
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const playingRef = useRef(false);
   const cursorClipsRef = useRef<CursorClip[]>([]);
-  const cursorSchedulesRef = useRef(new Map<CursorMotionPreset, VirtualCursorSchedule | null>());
+  const cursorSchedulesRef = useRef(new Map<string, VirtualCursorSchedule | null>());
   const zoomClipsRef = useRef<ZoomClip[]>([]);
   const trajectoryRef = useRef<RecordingTrajectory | null>(trajectory);
   const durationMsRef = useRef(0);
@@ -542,20 +577,35 @@ export function PreviewPlayer({
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
   const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
   const cursorClips = useEditorStore((s) => s.tracks.cursor);
+  const videoClips = useEditorStore((s) => s.tracks.video);
   const zoomClips = useEditorStore((s) => s.tracks.zoom);
   const annotationClips = useEditorStore((s) => s.tracks.annotations);
   const cursorSchedules = useMemo(() => {
-    const schedules = new Map<CursorMotionPreset, VirtualCursorSchedule | null>();
+    const schedules = new Map<string, VirtualCursorSchedule | null>();
     if (!actions) return schedules;
     for (const clip of cursorClips) {
       const motionPreset = clip.motionPreset ?? "natural";
-      if (!isActionsCursorClip(clip) || schedules.has(motionPreset)) continue;
-      schedules.set(motionPreset, buildVirtualCursorSchedule(actions, motionPreset));
+      const key = cursorScheduleKey(motionPreset, clip.preserveFullMotion ?? false);
+      if (!isActionsCursorClip(clip) || schedules.has(key)) continue;
+      schedules.set(
+        key,
+        buildVirtualCursorSchedule(actions, motionPreset, {
+          preserveFullMotion: clip.preserveFullMotion,
+        }),
+      );
     }
     return schedules;
   }, [actions, cursorClips]);
   const playheadMs = useEditorStore((s) => s.playheadMs);
   const durationMs = useEditorStore((s) => s.durationMs);
+  const sourceTimeMap = useMemo(
+    () => videoClips[0]?.sourceTimeMap ?? identitySourceTimelineMap(Math.max(0, durationMs)),
+    [durationMs, videoClips],
+  );
+  useEffect(() => {
+    sourceTimeMapRef.current = sourceTimeMap;
+    presentedClockRef.current = new PresentedMediaClock(sourceTimeMap);
+  }, [sourceTimeMap]);
   const useCompositedCanvas = outputMode === "composited-canvas";
   const displayReady = !useCompositedCanvas || engineReady;
   const renderPlan = useMemo(() => buildPlan(width, height), [width, height]);
@@ -645,10 +695,18 @@ export function PreviewPlayer({
         return;
       }
 
-      const relativeMs = playheadMs - clip.startMs;
+      const relativeTimelineMs = Math.max(0, playheadMs - clip.startMs);
+      const relativeMs =
+        (timelineMsToSourcePtsUs(sourceTimeMapRef.current, relativeTimelineMs) ??
+          relativeTimelineMs * 1000) / 1000;
       const motionPreset = clip.motionPreset ?? "natural";
       const sample = isActionsCursorClip(clip)
-        ? samplePreparedVirtualCursor(cursorSchedulesRef.current.get(motionPreset), relativeMs)
+        ? samplePreparedVirtualCursor(
+            cursorSchedulesRef.current.get(
+              cursorScheduleKey(motionPreset, clip.preserveFullMotion ?? false),
+            ),
+            clip.preserveFullMotion ? relativeTimelineMs : relativeMs,
+          )
         : clip.trajectoryKind === "trajectory"
           ? sampleTrajectoryCursor(currentTrajectory, relativeMs)
           : null;
@@ -742,7 +800,7 @@ export function PreviewPlayer({
       const video = videoRef.current;
       if (!video) return;
       const nextMs = Math.max(0, targetMs);
-      const nextSeconds = mediaSecondsForPlayhead(video, nextMs);
+      const nextSeconds = mediaSecondsForPlayhead(video, nextMs, sourceTimeMapRef.current);
 
       video.currentTime = nextSeconds;
       syncAmbientVideo(nextSeconds);
@@ -755,19 +813,25 @@ export function PreviewPlayer({
         applyAmbientPalette(ambientDisplayedPaletteRef.current);
       }
       lastPlayheadCommitRef.current = nextMs;
-      applyPreviewZoom(nextMs);
-      renderCursorOverlay(nextMs);
-
-      if (useCompositedCanvas) {
-        const eng = engineRef.current;
-        if (eng) void eng.renderFrame(nextMs, renderPlan);
+      if (typeof video.requestVideoFrameCallback !== "function") {
+        const fallback = presentedClockRef.current?.commitPresentedFrame(
+          Math.max(0, Math.round(video.currentTime * 1_000_000)),
+        );
+        const fallbackTimelineMs = fallback?.timelineMs ?? nextMs;
+        presentedPlayheadRef.current = fallbackTimelineMs;
+        applyPreviewZoom(fallbackTimelineMs);
+        renderCursorOverlay(fallbackTimelineMs);
+        if (useCompositedCanvas) {
+          const engine = engineRef.current;
+          if (engine) void engine.renderFrame(fallbackTimelineMs, renderPlan);
+        }
       }
     },
     [
       applyAmbientPalette,
       applyPreviewZoom,
-      renderPlan,
       renderCursorOverlay,
+      renderPlan,
       sampleAmbientPalette,
       syncAmbientVideo,
       useCompositedCanvas,
@@ -916,8 +980,12 @@ export function PreviewPlayer({
       if (!video) return;
 
       if (playingRef.current) {
-        const currentVideoMs = video.currentTime * 1000;
-        if (Math.abs(state.playheadMs - currentVideoMs) <= MEDIA_SYNC_EPSILON_MS) return;
+        const expectedSeconds = mediaSecondsForPlayhead(
+          video,
+          state.playheadMs,
+          sourceTimeMapRef.current,
+        );
+        if (Math.abs(expectedSeconds - video.currentTime) <= MEDIA_SYNC_EPSILON_MS / 1000) return;
       }
 
       seekPreviewToPlayhead(state.playheadMs);
@@ -948,6 +1016,54 @@ export function PreviewPlayer({
   }, [displayReady, playing, resolvedSrc, seekPreviewToPlayhead, useCompositedCanvas]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !resolvedSrc) return;
+    let disposed = false;
+    let callbackId: number | null = null;
+    let generation = 0;
+
+    const commitPresented = (mediaTimeSeconds: number) => {
+      const state = presentedClockRef.current?.commitPresentedFrame(
+        Math.max(0, Math.round(mediaTimeSeconds * 1_000_000)),
+        generation,
+      );
+      if (!state) return;
+      presentedPlayheadRef.current = state.timelineMs;
+      applyPreviewZoom(state.timelineMs);
+      renderCursorOverlay(state.timelineMs);
+      if (useCompositedCanvas) {
+        const engine = engineRef.current;
+        if (engine) void engine.renderFrame(state.timelineMs, renderPlan);
+      }
+    };
+
+    const onVideoFrame = (_now: number, metadata: VideoFrameCallbackMetadata) => {
+      if (disposed) return;
+      commitPresented(metadata.mediaTime);
+      callbackId = video.requestVideoFrameCallback(onVideoFrame);
+    };
+    const onTimeUpdate = () => commitPresented(video.currentTime);
+    const onSeeking = () => {
+      generation = presentedClockRef.current?.beginDiscontinuity() ?? generation + 1;
+    };
+
+    video.addEventListener("seeking", onSeeking);
+    if (typeof video.requestVideoFrameCallback === "function") {
+      callbackId = video.requestVideoFrameCallback(onVideoFrame);
+    } else {
+      video.addEventListener("timeupdate", onTimeUpdate);
+    }
+    return () => {
+      disposed = true;
+      video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      if (callbackId !== null && typeof video.cancelVideoFrameCallback === "function") {
+        video.cancelVideoFrameCallback(callbackId);
+      }
+    };
+  }, [applyPreviewZoom, renderCursorOverlay, renderPlan, resolvedSrc, useCompositedCanvas]);
+
+  useEffect(() => {
     if (!playing || useCompositedCanvas) return;
     const video = videoRef.current;
     if (!video || !resolvedSrc) return;
@@ -973,9 +1089,14 @@ export function PreviewPlayer({
       const elapsedMs = Math.max(0, now - playbackStartedAt);
       const nextPlayheadMs = Math.min(durationMs, playbackStartMs + elapsedMs);
       const sourceDurationMs = mediaDurationMs(video);
-      const mediaSeconds = mediaSecondsForPlayhead(video, nextPlayheadMs);
+      const mediaSeconds = mediaSecondsForPlayhead(video, nextPlayheadMs, sourceTimeMapRef.current);
 
-      if (sourceDurationMs > 0 && nextPlayheadMs >= sourceDurationMs) {
+      if (
+        isSourceHoldAt(sourceTimeMapRef.current, nextPlayheadMs) ||
+        (sourceDurationMs > 0 &&
+          sourcePtsUsForPlayhead(nextPlayheadMs, sourceTimeMapRef.current) >=
+            sourceDurationMs * 1000)
+      ) {
         holdingSourceFrame = true;
         if (Math.abs(video.currentTime - mediaSeconds) > MEDIA_SYNC_EPSILON_MS / 1000) {
           video.currentTime = mediaSeconds;
@@ -987,8 +1108,11 @@ export function PreviewPlayer({
         holdingSourceFrame = false;
         syncAmbientPlayback(video);
       }
-      applyPreviewZoom(nextPlayheadMs);
-      renderCursorOverlay(nextPlayheadMs);
+      const renderedTimelineMs = holdingSourceFrame
+        ? (presentedClockRef.current?.commitHold(nextPlayheadMs)?.timelineMs ?? nextPlayheadMs)
+        : presentedPlayheadRef.current;
+      applyPreviewZoom(renderedTimelineMs);
+      renderCursorOverlay(renderedTimelineMs);
       if (
         Math.abs(nextPlayheadMs - lastPlayheadCommitRef.current) >=
         NATIVE_PLAYHEAD_COMMIT_INTERVAL_MS
@@ -1090,8 +1214,12 @@ export function PreviewPlayer({
       const elapsedMs = Math.max(0, now - playbackStartedAt);
       const nextPlayheadMs = Math.min(durationMs, playbackStartMs + elapsedMs);
       const sourceDurationMs = mediaDurationMs(video);
-      const mediaSeconds = mediaSecondsForPlayhead(video, nextPlayheadMs);
-      const shouldHoldSource = sourceDurationMs > 0 && nextPlayheadMs >= sourceDurationMs;
+      const mediaSeconds = mediaSecondsForPlayhead(video, nextPlayheadMs, sourceTimeMapRef.current);
+      const shouldHoldSource =
+        isSourceHoldAt(sourceTimeMapRef.current, nextPlayheadMs) ||
+        (sourceDurationMs > 0 &&
+          sourcePtsUsForPlayhead(nextPlayheadMs, sourceTimeMapRef.current) >=
+            sourceDurationMs * 1000);
 
       if (shouldHoldSource) {
         holdingSourceFrame = true;
@@ -1111,16 +1239,19 @@ export function PreviewPlayer({
         syncAmbientPlayback(video);
       }
 
-      lastRenderedPlayheadMs = nextPlayheadMs;
-      applyPreviewZoom(nextPlayheadMs);
-      renderCursorOverlay(nextPlayheadMs);
+      const renderedTimelineMs = holdingSourceFrame
+        ? (presentedClockRef.current?.commitHold(nextPlayheadMs)?.timelineMs ?? nextPlayheadMs)
+        : presentedPlayheadRef.current;
+      lastRenderedPlayheadMs = renderedTimelineMs;
+      applyPreviewZoom(renderedTimelineMs);
+      renderCursorOverlay(renderedTimelineMs);
       if (
         Math.abs(nextPlayheadMs - lastPlayheadCommitRef.current) >=
         COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS
       ) {
         commitPlayhead(nextPlayheadMs);
       }
-      void eng.renderFrame(nextPlayheadMs, renderPlan);
+      void eng.renderFrame(renderedTimelineMs, renderPlan);
       if (Number.isFinite(durationMs) && nextPlayheadMs >= durationMs) {
         commitPlayhead(durationMs);
         setPlaying(false);

@@ -9,8 +9,9 @@ import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SelectField } from "@/components/ui/select-field";
-import { CURSOR_MOTION_LABELS } from "../state/cursor-motion";
 import { createClipId } from "../state/clip-id";
+import { CURSOR_MOTION_LABELS } from "../state/cursor-motion";
+import { buildCursorPresetReflow } from "../state/cursor-preset-reflow";
 import { useEditorStore } from "../state/store";
 import {
   avoidAnchorPosition,
@@ -20,7 +21,7 @@ import {
   targetAnchorHasGeometry,
   targetAnchorPosition,
 } from "../state/text-anchor";
-import { TEXT_STYLE_IDS, TEXT_STYLE_PRESETS, styleDefaults } from "../state/text-style";
+import { styleDefaults, TEXT_STYLE_IDS, TEXT_STYLE_PRESETS } from "../state/text-style";
 import type {
   AnnotationClip,
   Clip,
@@ -111,7 +112,10 @@ const textStyleSelectOptions = TEXT_STYLE_IDS.map((id) => ({
 }));
 const textAlignSelectOptions = TEXT_ALIGN_OPTIONS.map((align) => ({ value: align, label: align }));
 const textAnimInSelectOptions = TEXT_ANIM_IN_OPTIONS.map((anim) => ({ value: anim, label: anim }));
-const textAnimOutSelectOptions = TEXT_ANIM_OUT_OPTIONS.map((anim) => ({ value: anim, label: anim }));
+const textAnimOutSelectOptions = TEXT_ANIM_OUT_OPTIONS.map((anim) => ({
+  value: anim,
+  label: anim,
+}));
 const textAnchorKindSelectOptions = TEXT_ANCHOR_KIND_OPTIONS.map((kind) => ({
   value: kind,
   label: kind,
@@ -555,15 +559,14 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
   };
 
   const avoidCurrentTargetOrCursor = () => {
-    const targetPoint =
-      currentStep?.stepId
-        ? targetAnchorPosition(
-            { kind: "target", stepId: currentStep.stepId, placement: "top" },
-            actions,
-            stepTiming,
-            captureRect,
-          )
-        : null;
+    const targetPoint = currentStep?.stepId
+      ? targetAnchorPosition(
+          { kind: "target", stepId: currentStep.stepId, placement: "top" },
+          actions,
+          stepTiming,
+          captureRect,
+        )
+      : null;
     const cursorPoint =
       targetPoint ??
       resolveTextAnchorPosition(
@@ -749,28 +752,28 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
             </div>
           ) : null}
           <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                className={SECONDARY_BUTTON_CLASS}
-                onClick={fitToCurrentStep}
-                disabled={!currentStep}
-              >
+            <button
+              type="button"
+              className={SECONDARY_BUTTON_CLASS}
+              onClick={fitToCurrentStep}
+              disabled={!currentStep}
+            >
               Fit step
             </button>
-              <button
-                type="button"
-                className={SECONDARY_BUTTON_CLASS}
-                onClick={attachToCurrentTarget}
-                disabled={!currentStep?.stepId}
-              >
+            <button
+              type="button"
+              className={SECONDARY_BUTTON_CLASS}
+              onClick={attachToCurrentTarget}
+              disabled={!currentStep?.stepId}
+            >
               Attach target
             </button>
-              <button
-                type="button"
-                className={SECONDARY_BUTTON_CLASS}
-                onClick={avoidCurrentTargetOrCursor}
-              >
-                Avoid
+            <button
+              type="button"
+              className={SECONDARY_BUTTON_CLASS}
+              onClick={avoidCurrentTargetOrCursor}
+            >
+              Avoid
             </button>
           </div>
           {anchor.kind === "target" ? (
@@ -785,7 +788,12 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
                     placement: value as Extract<TextAnchor, { kind: "target" }>["placement"],
                   };
                   onSetParam(nodePath, "anchor", clip.anchor, nextAnchor);
-                  const nextPos = targetAnchorPosition(nextAnchor, actions, stepTiming, captureRect);
+                  const nextPos = targetAnchorPosition(
+                    nextAnchor,
+                    actions,
+                    stepTiming,
+                    captureRect,
+                  );
                   if (nextPos) onSetParam(nodePath, "pos", clip.pos, nextPos);
                 }}
                 options={textTargetPlacementSelectOptions}
@@ -799,7 +807,10 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
                 aria-label="Text safe-area placement"
                 value={anchor.placement}
                 onValueChange={(value) => {
-                  const placement = value as Extract<TextAnchor, { kind: "safe-area" }>["placement"];
+                  const placement = value as Extract<
+                    TextAnchor,
+                    { kind: "safe-area" }
+                  >["placement"];
                   const nextAnchor: TextAnchor = { kind: "safe-area", placement };
                   onSetParam(nodePath, "anchor", clip.anchor, nextAnchor);
                   onSetParam(nodePath, "pos", clip.pos, safeAreaPosition(placement));
@@ -914,10 +925,14 @@ function CursorParams({
   clip,
   nodePath,
   onSetParam,
+  onReflow,
+  compressedSegments,
 }: {
   clip: CursorClip;
   nodePath: string;
   onSetParam: (nodePath: string, field: string, prev: unknown, next: unknown) => void;
+  onReflow?: (motionPreset: CursorMotionPreset, preserveFullMotion: boolean) => void;
+  compressedSegments?: number;
 }) {
   return (
     <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
@@ -936,17 +951,42 @@ function CursorParams({
         <SelectField
           aria-label="Cursor motion"
           value={normalizeCursorMotionPreset(clip.motionPreset)}
-          onValueChange={(value) =>
-            onSetParam(
-              nodePath,
-              "motionPreset",
-              normalizeCursorMotionPreset(clip.motionPreset),
-              value as CursorMotionPreset,
-            )
-          }
+          onValueChange={(value) => {
+            const preset = value as CursorMotionPreset;
+            if (onReflow) onReflow(preset, clip.preserveFullMotion ?? false);
+            else
+              onSetParam(
+                nodePath,
+                "motionPreset",
+                normalizeCursorMotionPreset(clip.motionPreset),
+                preset,
+              );
+          }}
           options={cursorMotionSelectOptions}
         />
       </div>
+      <label className={FIELD_ROW_CLASS}>
+        <span>
+          <FieldLabel>Preserve full motion</FieldLabel>
+          <span className="mt-1 block text-[10px] leading-4 text-[var(--color-fg-muted)]">
+            Off by default. Adds an exact source hold only when motion cannot fit before input.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          aria-label="Preserve full cursor motion"
+          checked={clip.preserveFullMotion ?? false}
+          onChange={(event) =>
+            onReflow?.(normalizeCursorMotionPreset(clip.motionPreset), event.target.checked)
+          }
+        />
+      </label>
+      {!clip.preserveFullMotion && (compressedSegments ?? 0) > 0 ? (
+        <p className="text-[10px] leading-4 text-[var(--color-warning,var(--color-fg-muted))]">
+          {compressedSegments} movement{compressedSegments === 1 ? "" : "s"} compressed to keep
+          input synchronized.
+        </p>
+      ) : null}
       <label className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
           <FieldLabel>Size</FieldLabel>
@@ -1150,10 +1190,7 @@ function LayerClipList({
   onSelectClip,
   pushAction,
 }: LayerClipListProps) {
-  const sortedClips = useMemo(
-    () => [...clips].sort((a, b) => a.startMs - b.startMs),
-    [clips],
-  );
+  const sortedClips = useMemo(() => [...clips].sort((a, b) => a.startMs - b.startMs), [clips]);
   const annotationClips = allAnnotations.filter((clip) => clip.text.trim());
 
   const duplicateClip = (clip: AnnotationClip) => {
@@ -1315,6 +1352,7 @@ function EffectParamsBase() {
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const pushAction = useEditorStore((s) => s.pushAction);
   const tracks = useEditorStore((s) => s.tracks);
+  const recordingActions = useEditorStore((s) => s._undoExtras?.actions ?? null);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
   const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
   const setPlayhead = useEditorStore((s) => s.setPlayhead);
@@ -1380,6 +1418,21 @@ function EffectParamsBase() {
       });
     },
     [pushAction],
+  );
+
+  const cursorReflow = useCallback(
+    (cursor: CursorClip, motionPreset: CursorMotionPreset, preserveFullMotion: boolean) => {
+      if (!recordingActions) return;
+      const result = buildCursorPresetReflow({
+        tracks,
+        cursorClipId: cursor.id,
+        actions: recordingActions,
+        motionPreset,
+        preserveFullMotion,
+      });
+      if (result) pushAction(result.action);
+    },
+    [pushAction, recordingActions, tracks],
   );
 
   if (!selectedClipId || !activeHit) {
@@ -1490,13 +1543,49 @@ function EffectParamsBase() {
         <AnnotationParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
       ) : null}
       {clip.trackId === "cursor" ? (
-        <CursorParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
+        <CursorParams
+          clip={clip}
+          nodePath={nodePath}
+          onSetParam={onSetParam}
+          onReflow={
+            recordingActions
+              ? (preset, preserve) => cursorReflow(clip, preset, preserve)
+              : undefined
+          }
+          compressedSegments={
+            recordingActions
+              ? (buildCursorPresetReflow({
+                  tracks,
+                  cursorClipId: clip.id,
+                  actions: recordingActions,
+                  motionPreset: normalizeCursorMotionPreset(clip.motionPreset),
+                  preserveFullMotion: false,
+                })?.compressedSegments ?? 0)
+              : 0
+          }
+        />
       ) : null}
       {clip.trackId !== "cursor" && companionCursor ? (
         <CursorParams
           clip={companionCursor.clip}
           nodePath={`tracks.cursor[${companionCursor.index}]`}
           onSetParam={onSetParam}
+          onReflow={
+            recordingActions
+              ? (preset, preserve) => cursorReflow(companionCursor.clip, preset, preserve)
+              : undefined
+          }
+          compressedSegments={
+            recordingActions
+              ? (buildCursorPresetReflow({
+                  tracks,
+                  cursorClipId: companionCursor.clip.id,
+                  actions: recordingActions,
+                  motionPreset: normalizeCursorMotionPreset(companionCursor.clip.motionPreset),
+                  preserveFullMotion: false,
+                })?.compressedSegments ?? 0)
+              : 0
+          }
         />
       ) : null}
       {clip.trackId === "sound" ? (

@@ -166,3 +166,17 @@ Use this for task routing after reading the short root guide.
   `packages/shared-types/src/browser-presets.ts`.
 - Generated effect types:
   `packages/shared-types/src/generated/effects.ts`.
+- Authoritative recording synchronization: `apps/desktop/electron/ipc/action-landmarks.ts`
+  samples cursor/input/presentation state only at committed media frames;
+  `cursor-sync-mode.ts` resolves the internal `legacy`, `shadow`, and `unified`
+  rollout modes.
+  Frame/PTS arithmetic remains owned by
+  `apps/desktop/electron/ipc/recording-media-clock.ts`.
+- Source-bound post-production timing: `state/source-timeline-map.ts` is the
+  shared mapper for video, cursor, audio, preview, and export;
+  `state/cursor-preset-reflow.ts` owns optional exact-deficit holds and atomic
+  sync-group reflow.
+- Presented preview state: `preview/presented-media-clock.ts` and
+  `preview/preview-player.tsx` use decoded/presented frames for source-bound
+  overlays. Export parity lives in
+  `export-compositor/export-compositor-app.tsx` and the Electron export planner.

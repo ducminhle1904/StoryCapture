@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEditorStore } from "../../state/store";
+import type { SourceTimelineMap } from "../../state/source-timeline-map";
 import { PreviewEngine } from "../preview-engine";
 import { PreviewPlayer } from "../preview-player";
 import { ACTIONS } from "./fixtures";
@@ -272,6 +273,55 @@ describe("PreviewPlayer", () => {
 
     await waitFor(() => expect(video.currentTime).toBe(2.5));
     expect(PreviewEngine).not.toHaveBeenCalled();
+  });
+
+  it("maps a scrub inside a source hold to the held media frame", async () => {
+    useEditorStore.setState((state) => ({
+      tracks: {
+        ...state.tracks,
+        video: [
+          {
+            id: "video-1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 3000,
+            sourcePath: "/tmp/video.mp4",
+            sourceTimeMap: {
+              version: 1,
+              segments: [
+                {
+                  kind: "media",
+                  sourceStartUs: 0,
+                  sourceEndUs: 1_000_000,
+                  timelineStartMs: 0,
+                  timelineEndMs: 1000,
+                },
+                {
+                  kind: "hold",
+                  sourcePtsUs: 1_000_000,
+                  timelineStartMs: 1000,
+                  timelineEndMs: 2000,
+                  reason: "cursor-motion",
+                },
+                {
+                  kind: "media",
+                  sourceStartUs: 1_000_000,
+                  sourceEndUs: 2_000_000,
+                  timelineStartMs: 2000,
+                  timelineEndMs: 3000,
+                },
+              ],
+            } satisfies SourceTimelineMap,
+          },
+        ],
+      },
+    }));
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    const video = screen.getByLabelText("Source video preview") as HTMLVideoElement;
+
+    act(() => useEditorStore.getState().setPlayhead(1500));
+
+    await waitFor(() => expect(video.currentTime).toBe(1));
   });
 
   it("seeks native video when playhead changes while playing", async () => {

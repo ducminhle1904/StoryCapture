@@ -13,6 +13,7 @@ import {
   type WebContents,
 } from "electron";
 import ffmpegPath from "ffmpeg-static";
+import { RecordingActionLandmarkRecorder } from "../action-landmarks";
 import {
   type CursorTimingSize,
   HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
@@ -680,7 +681,8 @@ export async function captureRecordingFrame(session: RecordingSession): Promise<
   try {
     const image = await captureRecordingNativeImage(session);
     await fs.writeFile(framePath, image.toPNG());
-    session.mediaClock.commitFrame(true);
+    const landmark = session.mediaClock.commitFrame(true);
+    if (landmark) session.actionLandmarks.commitFrame(landmark);
     session.frameSeq = session.mediaClock.snapshot().frameCount;
   } catch {
     session.framesDropped += 1;
@@ -804,6 +806,8 @@ export async function startAuthorPreviewRecordingStream(session: RecordingSessio
 export function recordAuthorPreviewPaint(session: RecordingSession, image: NativeImage): void {
   if (session.paused) return;
   session.sourceFramesReceived += 1;
+  session.paintSequence += 1;
+  session.actionLandmarks.notePaint();
   session.latestAuthorPreviewImage = image;
 }
 
@@ -844,7 +848,8 @@ export async function submitAuthorPreviewFrame(
       );
     }
     const accepted = child.stdin.write(bitmap);
-    session.mediaClock.commitFrame(true);
+    const landmark = session.mediaClock.commitFrame(true);
+    if (landmark) session.actionLandmarks.commitFrame(landmark);
     session.frameSeq = session.mediaClock.snapshot().frameCount;
     if (!accepted) {
       session.encoderBackpressureEvents += 1;
@@ -1688,6 +1693,8 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     paused: false,
     lifecycle: "recording",
     mediaClock: new RecordingMediaClock({ fpsNum: fps, fpsDen: 1 }),
+    actionLandmarks: new RecordingActionLandmarkRecorder(),
+    paintSequence: 0,
     pauseGate: new RecordingPauseGate(),
     eventTarget: sender,
     eventChannelId,

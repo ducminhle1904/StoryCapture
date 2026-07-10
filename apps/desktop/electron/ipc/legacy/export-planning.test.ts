@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ExportOutput } from "./shared";
 import {
   analyzeExportPlan,
   ffmpegArgsForExportPlan,
+  mappedAudioFilter,
   validateExportOutput,
 } from "./export-planning";
+import type { ExportOutput } from "./shared";
 
 function graph(video: unknown[], audio: unknown[] = []): string {
   return JSON.stringify({
@@ -61,6 +62,56 @@ function runnablePlan(graphJson: string, cfg: ExportOutput) {
 }
 
 describe("post-production export planning", () => {
+  it("forces compositor export for a non-identity source time map", () => {
+    const plan = analyzeExportPlan(
+      graph([
+        source({
+          source_time_map: {
+            version: 1,
+            segments: [
+              {
+                kind: "media",
+                sourceStartUs: 0,
+                sourceEndUs: 500_000,
+                timelineStartMs: 0,
+                timelineEndMs: 500,
+              },
+              { kind: "hold", sourcePtsUs: 500_000, timelineStartMs: 500, timelineEndMs: 750 },
+            ],
+          },
+        }),
+      ]),
+      output(),
+    );
+    expect(plan.kind).toBe("composited");
+  });
+
+  it("maps capture-bound audio through media and exact silence hold segments", () => {
+    const filter = mappedAudioFilter({
+      version: 1,
+      segments: [
+        {
+          kind: "media",
+          sourceStartUs: 0,
+          sourceEndUs: 500_000,
+          timelineStartMs: 0,
+          timelineEndMs: 500,
+        },
+        { kind: "hold", sourcePtsUs: 500_000, timelineStartMs: 500, timelineEndMs: 750 },
+        {
+          kind: "media",
+          sourceStartUs: 500_000,
+          sourceEndUs: 1_000_000,
+          timelineStartMs: 750,
+          timelineEndMs: 1_250,
+        },
+      ],
+    });
+    expect(filter).toContain("atrim=start=0:end=0.5");
+    expect(filter).toContain("anullsrc=r=48000:cl=stereo,atrim=duration=0.25");
+    expect(filter).toContain("concat=n=3:v=0:a=1[mapped_audio]");
+  });
+
   it("classifies a one-source match-source high-quality MP4 as source-copy eligible", () => {
     const plan = analyzeExportPlan(graph([source()]), output());
 
@@ -81,10 +132,7 @@ describe("post-production export planning", () => {
   });
 
   it("re-encodes one source when resolution or fps changes", () => {
-    const plan = analyzeExportPlan(
-      graph([source()]),
-      output({ resolution: "1080p", fps: 30 }),
-    );
+    const plan = analyzeExportPlan(graph([source()]), output({ resolution: "1080p", fps: 30 }));
 
     expect(plan.kind).toBe("simple-reencode");
     if (plan.kind === "unsupported") throw new Error(plan.reason);
@@ -94,10 +142,7 @@ describe("post-production export planning", () => {
   });
 
   it("does not source-copy when source fps metadata is missing", () => {
-    const plan = analyzeExportPlan(
-      graph([source({ source_fps: undefined })]),
-      output(),
-    );
+    const plan = analyzeExportPlan(graph([source({ source_fps: undefined })]), output());
 
     expect(plan.kind).toBe("simple-reencode");
   });
@@ -157,10 +202,7 @@ describe("post-production export planning", () => {
 
   it("fails fast for multiple sources until simple concat is implemented", () => {
     const plan = analyzeExportPlan(
-      graph([
-        source({ path: "/tmp/a.mp4" }),
-        source({ path: "/tmp/b.mp4", pts_offset_ms: 1_000 }),
-      ]),
+      graph([source({ path: "/tmp/a.mp4" }), source({ path: "/tmp/b.mp4", pts_offset_ms: 1_000 })]),
       output(),
     );
 

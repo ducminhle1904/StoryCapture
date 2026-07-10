@@ -5,13 +5,7 @@ import type {
   RecordingStepTimingSidecar,
 } from "@/ipc/trajectory";
 import { samplePreparedVirtualCursor, sampleVirtualCursor } from "../preview/virtual-cursor-path";
-import type {
-  AnnotationClip,
-  CursorClip,
-  CursorMotionPreset,
-  TextAnchor,
-  Vec2,
-} from "./timeline-slice";
+import type { AnnotationClip, CursorClip, TextAnchor, Vec2 } from "./timeline-slice";
 import type { VirtualCursorSchedule } from "./virtual-cursor-scheduler";
 
 const TARGET_MARGIN = 0.06;
@@ -136,7 +130,7 @@ export function resolveTextAnchorPosition(
   cursorClips: readonly CursorClip[],
   stepTiming?: RecordingStepTimingSidecar | null,
   captureRect?: CaptureRect | null,
-  preparedSchedules?: ReadonlyMap<CursorMotionPreset, VirtualCursorSchedule | null>,
+  preparedSchedules?: ReadonlyMap<string, VirtualCursorSchedule | null>,
 ): Vec2 {
   const anchor = clip.anchor;
   if (!anchor || anchor.kind === "screen") return clip.pos;
@@ -150,7 +144,9 @@ export function resolveTextAnchorPosition(
   const motionPreset = cursorClip.motionPreset ?? "natural";
   const sample = preparedSchedules
     ? samplePreparedVirtualCursor(
-        preparedSchedules.get(motionPreset),
+        preparedSchedules.get(
+          `${motionPreset}:${cursorClip.preserveFullMotion ? "preserve" : "compress"}`,
+        ) ?? preparedSchedules.get(motionPreset),
         playheadMs - cursorClip.startMs,
       )
     : sampleVirtualCursor(actions, playheadMs - cursorClip.startMs, motionPreset);

@@ -54,6 +54,7 @@ import { recordingSessions } from "./shared";
 import {
   commandContributesCursorEvent,
   commandGetsPreActionPacing,
+  executeParsedCommand,
   launchAutomationCommand,
   rebaseActionEventsToFirstCursorInteraction,
   runStoryCommandsInBrowser,
@@ -138,6 +139,35 @@ function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
 }
 
 describe("story browser cursor pacing", () => {
+  it.each([
+    ["click", ["down", "up", "action"]],
+    ["type", ["down", "up", "text_start", "text_end", "action"]],
+    ["select", ["down", "up", "text_start", "text_end", "action"]],
+  ] as const)("records %s landmarks at the browser side effects", async (verb, expected) => {
+    const actionTarget = target("Control", { x: 240, y: 180 });
+    const contents = fakeContents([actionTarget]);
+    const landmarks: string[] = [];
+
+    await executeParsedCommand(contents as never, command(verb, "Control"), "/tmp", {
+      resolvedTarget: actionTarget,
+      beforeInputSideEffect: () => landmarks.push("armed"),
+      onInputSideEffect: (kind) => landmarks.push(kind),
+    });
+
+    expect(landmarks).toEqual(["armed", ...expected]);
+  });
+
+  it("does not invent input landmarks for hover", async () => {
+    const actionTarget = target("Menu", { x: 240, y: 180 });
+    const contents = fakeContents([actionTarget]);
+    const landmarks: string[] = [];
+    await executeParsedCommand(contents as never, command("hover", "Menu"), "/tmp", {
+      resolvedTarget: actionTarget,
+      onInputSideEffect: (kind) => landmarks.push(kind),
+    });
+    expect(landmarks).toEqual([]);
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

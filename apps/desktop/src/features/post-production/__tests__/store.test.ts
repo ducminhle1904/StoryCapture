@@ -40,6 +40,60 @@ beforeEach(() => {
 });
 
 describe("timeline-slice", () => {
+  it("moves, trims, and deletes generated sync groups atomically", () => {
+    const group = "recording-a";
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "video-a",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1_000,
+            sourcePath: "/tmp/a.mp4",
+            syncGroupId: group,
+          },
+        ],
+        cursor: [
+          {
+            id: "cursor-a",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 1_000,
+            trajectoryDir: "/tmp/a.actions.json",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 60,
+            skin: "mac-default",
+            sizeScale: 1,
+            syncGroupId: group,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "independent",
+            trackId: "annotations",
+            startMs: 10,
+            durationMs: 100,
+            text: "Keep me",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 16,
+          },
+        ],
+      },
+    });
+
+    useEditorStore.getState().moveClip("video", "video-a", 200, { altHeld: true });
+    expect(useEditorStore.getState().tracks.cursor[0]?.startMs).toBe(200);
+    useEditorStore.getState().trimClip("cursor", "cursor-a", { durationMs: 800 });
+    expect(useEditorStore.getState().tracks.video[0]?.durationMs).toBe(800);
+    useEditorStore.getState().deleteClip("video", "video-a");
+    expect(useEditorStore.getState().tracks.video).toEqual([]);
+    expect(useEditorStore.getState().tracks.cursor).toEqual([]);
+    expect(useEditorStore.getState().tracks.annotations).toHaveLength(1);
+  });
+
   it("serializes and parses versioned timeline layouts", () => {
     const tracks = {
       video: [
@@ -66,7 +120,8 @@ describe("timeline-slice", () => {
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.layout.version).toBe(1);
+    expect(parsed.layout.version).toBe(2);
+    expect(parsed.layout.timingModelVersion).toBe(1);
     expect(parsed.layout.tracks.video[0]).toMatchObject({ id: "video-1", trackId: "video" });
     expect(parsed.layout.durationMs).toBe(1000);
     expect(parsed.layout.background).toEqual({ kind: "solid", color: { r: 1, g: 2, b: 3, a: 1 } });
@@ -75,6 +130,44 @@ describe("timeline-slice", () => {
   it("rejects corrupt timeline layouts without throwing", () => {
     expect(parseTimelineLayoutJson("{nope").ok).toBe(false);
     expect(parseTimelineLayoutJson(JSON.stringify({ version: 999, tracks: {} })).ok).toBe(false);
+  });
+
+  it("rebuilds stale generated layers when source revision changes at the same path", () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      durationMs: 1_000,
+      background: { kind: "transparent" },
+      tracks: {
+        video: [
+          { id: "video-a", trackId: "video", startMs: 0, durationMs: 900, sourcePath: "/tmp/a.mp4" },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          { id: "note", trackId: "annotations", startMs: 50, durationMs: 100, text: "keep", pos: { x: 0.5, y: 0.5 }, sizePt: 16 },
+        ],
+      },
+    });
+    const current = {
+      video: [
+        { id: "video-a", trackId: "video" as const, startMs: 0, durationMs: 1_000, sourcePath: "/tmp/a.mp4", syncGroupId: "g", sourceRevision: "new" },
+      ],
+      cursor: [],
+      zoom: [],
+      sound: [],
+      annotations: [],
+    };
+    const parsed = parseTimelineLayoutJson(legacy, {
+      currentGeneratedTracks: current,
+      currentSourceRevision: "new",
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.migrated).toBe(true);
+    expect(parsed.rebuiltGeneratedLayers).toBe(true);
+    expect(parsed.layout.tracks.video[0]?.durationMs).toBe(1_000);
+    expect(parsed.layout.tracks.annotations[0]?.id).toBe("note");
   });
 
   it("selecting a clip opens the effects inspector tab", () => {

@@ -38,6 +38,7 @@ interface ExportSourceNode {
   source_width?: number;
   source_height?: number;
   source_fps?: number;
+  source_time_map?: unknown;
 }
 
 interface ExportGraph {
@@ -232,9 +233,7 @@ export function validateExportOutput(output: ExportOutput): void {
     throw new Error(`unsupported encoder container: ${String(raw.container)}`);
   }
   if (raw?.container && normalized.container !== format) {
-    throw new Error(
-      `encoder container ${raw.container} does not match export format ${format}`,
-    );
+    throw new Error(`encoder container ${raw.container} does not match export format ${format}`);
   }
   if (raw?.codec && !enumValue(raw.codec, CODECS)) {
     throw new Error(`unsupported video codec: ${String(raw.codec)}`);
@@ -310,6 +309,7 @@ function sourceNodes(graph: ExportGraph): ExportSourceNode[] {
       source_width: finiteNumber(node.source_width) ?? undefined,
       source_height: finiteNumber(node.source_height) ?? undefined,
       source_fps: finiteNumber(node.source_fps) ?? undefined,
+      source_time_map: node.source_time_map,
     }));
 }
 
@@ -395,7 +395,25 @@ function unsupportedGraphNodes(graph: ExportGraph): string[] {
 }
 
 function requiresComposition(graph: ExportGraph): boolean {
-  return (Array.isArray(graph.video) ? graph.video : []).some((node) => node.type !== "source");
+  return (Array.isArray(graph.video) ? graph.video : []).some(
+    (node) => node.type !== "source" || !isIdentitySourceTimeMap(node.source_time_map),
+  );
+}
+
+function isIdentitySourceTimeMap(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value !== "object" || value === null) return false;
+  const segments = (value as { segments?: unknown }).segments;
+  if (!Array.isArray(segments) || segments.length !== 1) return false;
+  const segment = segments[0] as Record<string, unknown>;
+  return (
+    segment.kind === "media" &&
+    segment.sourceStartUs === 0 &&
+    segment.timelineStartMs === 0 &&
+    typeof segment.sourceEndUs === "number" &&
+    typeof segment.timelineEndMs === "number" &&
+    segment.sourceEndUs === Math.round(segment.timelineEndMs * 1000)
+  );
 }
 
 function compositedPlan(
@@ -623,7 +641,12 @@ function ffmpegArgsForCompositedExportPlan(plan: CompositedExportPlan, out: stri
   }
   args.push("-map", "0:v:0");
   if (includeSourceAudio) {
-    args.push("-map", "1:a?");
+    const mappedAudio = mappedAudioFilter(plan.source.source_time_map);
+    if (mappedAudio) {
+      args.push("-filter_complex", mappedAudio, "-map", "[mapped_audio]");
+    } else {
+      args.push("-map", "1:a?");
+    }
   }
   if (format === "webm") {
     args.push(...webmVideoArgs(plan.output, plan.encoderOptions));
@@ -638,6 +661,38 @@ function ffmpegArgsForCompositedExportPlan(plan: CompositedExportPlan, out: stri
   }
   args.push(out);
   return args;
+}
+
+export function mappedAudioFilter(value: unknown): string | null {
+  if (isIdentitySourceTimeMap(value) || typeof value !== "object" || value === null) return null;
+  const segments = (value as { segments?: unknown }).segments;
+  if (!Array.isArray(segments) || segments.length === 0) return null;
+  const chains: string[] = [];
+  const labels: string[] = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index] as Record<string, unknown>;
+    const label = `mapped_audio_${index}`;
+    if (
+      segment.kind === "media" &&
+      typeof segment.sourceStartUs === "number" &&
+      typeof segment.sourceEndUs === "number"
+    ) {
+      const start = Math.max(0, segment.sourceStartUs) / 1_000_000;
+      const end = Math.max(segment.sourceStartUs, segment.sourceEndUs) / 1_000_000;
+      chains.push(`[1:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[${label}]`);
+    } else if (
+      segment.kind === "hold" &&
+      typeof segment.timelineStartMs === "number" &&
+      typeof segment.timelineEndMs === "number"
+    ) {
+      const duration = Math.max(0, segment.timelineEndMs - segment.timelineStartMs) / 1000;
+      chains.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[${label}]`);
+    } else {
+      return null;
+    }
+    labels.push(`[${label}]`);
+  }
+  return `${chains.join(";")};${labels.join("")}concat=n=${labels.length}:v=0:a=1[mapped_audio]`;
 }
 
 export function ffmpegArgsForExportOutput(
@@ -766,20 +821,14 @@ function bitrateValue(
   return `${Math.max(1, Math.round(mbps))}M`;
 }
 
-function crfValue(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): number {
+function crfValue(output: ExportOutput, encoderOptions: NormalizedExportEncoderOptions): number {
   if (encoderOptions.qualityValue !== null) return Math.round(encoderOptions.qualityValue);
   if (output.quality === "high") return 18;
   if (output.quality === "med") return 23;
   return 28;
 }
 
-function cqValue(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): number {
+function cqValue(output: ExportOutput, encoderOptions: NormalizedExportEncoderOptions): number {
   if (encoderOptions.qualityValue !== null) return Math.round(encoderOptions.qualityValue);
   return output.quality === "high" ? 19 : output.quality === "med" ? 24 : 30;
 }
@@ -789,14 +838,14 @@ function keyframeArgs(
   encoderOptions: NormalizedExportEncoderOptions,
 ): string[] {
   if (!encoderOptions.keyframeIntervalSec) return [];
-  const interval = Math.max(1, Math.round(clampFpsValue(output.fps) * encoderOptions.keyframeIntervalSec));
+  const interval = Math.max(
+    1,
+    Math.round(clampFpsValue(output.fps) * encoderOptions.keyframeIntervalSec),
+  );
   return ["-g", String(interval)];
 }
 
-function audioArgs(
-  encoderOptions: NormalizedExportEncoderOptions,
-  format: ExportFormat,
-): string[] {
+function audioArgs(encoderOptions: NormalizedExportEncoderOptions, format: ExportFormat): string[] {
   const audio = encoderOptions.audio;
   if (!audio) return [];
   const codec = format === "webm" ? "libopus" : "aac";

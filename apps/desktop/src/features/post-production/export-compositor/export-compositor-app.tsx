@@ -6,6 +6,7 @@ import {
   sampleTrajectoryCursor,
 } from "../preview/virtual-cursor-path";
 import type { Graph as ExportGraph, Rgba, Vec2, VideoNode } from "../state/compute-graph";
+import { timelineMsToSourcePtsUs } from "../state/source-timeline-map";
 import {
   buildVirtualCursorSchedule,
   type VirtualCursorSchedule,
@@ -322,7 +323,9 @@ class CanvasExportCompositor {
           trajectory: parsed.kind === "trajectory" ? parsed.sidecar : null,
           schedule:
             parsed.kind === "actions"
-              ? buildVirtualCursorSchedule(parsed.sidecar, node.motion_preset)
+              ? buildVirtualCursorSchedule(parsed.sidecar, node.motion_preset, {
+                  preserveFullMotion: node.preserve_full_motion,
+                })
               : null,
           sidecarKind: parsed.kind,
         };
@@ -349,7 +352,12 @@ class CanvasExportCompositor {
   async renderFrame(timeMs: number): Promise<{ ok: true }> {
     if (!this.graph || !this.video) throw new Error("export compositor is not configured");
     const source = sourceNode(this.graph);
-    const sourceTime = Math.max(0, (timeMs - (source.pts_offset_ms ?? 0)) / 1000);
+    const relativeTimelineMs = Math.max(0, timeMs - (source.pts_offset_ms ?? 0));
+    const sourcePtsUs = source.source_time_map
+      ? timelineMsToSourcePtsUs(source.source_time_map, relativeTimelineMs)
+      : Math.round(relativeTimelineMs * 1000);
+    if (sourcePtsUs == null) throw new Error("export frame is outside the source time map");
+    const sourceTime = sourcePtsUs / 1_000_000;
     await this.seek(sourceTime);
     this.drawFrame(timeMs);
     return { ok: true };
@@ -536,7 +544,13 @@ class CanvasExportCompositor {
       const startMs = Math.max(0, layer.node.t_start_ms ?? 0);
       const durationMs = Math.max(0, layer.node.duration_ms ?? Number.POSITIVE_INFINITY);
       if (timeMs < startMs || timeMs > startMs + durationMs) continue;
-      const relativeMs = timeMs - startMs;
+      const relativeTimelineMs = timeMs - startMs;
+      const sourceMap = sourceNode(this.graph).source_time_map;
+      const mappedRelativeMs = sourceMap
+        ? (timelineMsToSourcePtsUs(sourceMap, relativeTimelineMs) ?? relativeTimelineMs * 1000) /
+          1000
+        : relativeTimelineMs;
+      const relativeMs = layer.node.preserve_full_motion ? relativeTimelineMs : mappedRelativeMs;
       const sample =
         layer.sidecarKind === "actions"
           ? samplePreparedVirtualCursor(layer.schedule, relativeMs)

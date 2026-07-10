@@ -289,3 +289,12 @@ Relevant scripts:
 Local macOS package builds skip signing when no Developer ID certificate is
 installed. Production signing/notarization credentials are documented in
 `docs/CREDENTIALS.md`.
+- Recording synchronization is split between the committed-frame media clock,
+  `ipc/action-landmarks.ts`, and the centralized `ipc/cursor-sync-mode.ts`
+  rollout resolver. The action sidecar writer stays compatible in shadow mode
+  and emits v3 only in unified mode.
+- Post-production source timing is centralized in
+  `state/source-timeline-map.ts`; preview presented-frame scheduling and export
+  compositor seeking consume that mapper rather than maintaining separate
+  clocks. Timeline layout v2 persists maps, sync groups, source revisions, and
+  timing-model metadata.

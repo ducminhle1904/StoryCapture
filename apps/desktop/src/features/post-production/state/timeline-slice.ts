@@ -22,6 +22,7 @@
  */
 
 import type { StateCreator } from "zustand";
+import type { SourceTimelineMap } from "./source-timeline-map";
 
 /**
  * The 5 fixed track ids. Adding or renaming these is a schema-level
@@ -97,6 +98,12 @@ interface ClipBase {
   durationMs: number;
   /** Optional human-readable name. Falls back to `id` in the UI. */
   label?: string;
+  /** Generated clips sharing source timing are edited atomically. */
+  syncGroupId?: string;
+  /** Stable source identity; path alone is intentionally insufficient. */
+  sourceRevision?: string;
+  /** Canonical source PTS mapping for generated source-bound clips. */
+  sourceTimeMap?: SourceTimelineMap;
 }
 
 export interface VideoClip extends ClipBase {
@@ -117,6 +124,8 @@ export interface CursorClip extends ClipBase {
   trajectoryFrameCount: number;
   skin: CursorSkin;
   motionPreset?: CursorMotionPreset;
+  /** Off by default: when enabled, exact-deficit source holds preserve requested travel. */
+  preserveFullMotion?: boolean;
   /** Multiplier on the cursor's render size. 1.0 = native. */
   sizeScale: number;
   colorTint?: string | null;
@@ -292,7 +301,9 @@ function cloneSerializable<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-export function cloneTimelineTracks(tracks: TimelineSlice["tracks"] = initialTracks): TimelineSlice["tracks"] {
+export function cloneTimelineTracks(
+  tracks: TimelineSlice["tracks"] = initialTracks,
+): TimelineSlice["tracks"] {
   return {
     video: tracks.video.map(cloneSerializable),
     cursor: tracks.cursor.map(cloneSerializable),
@@ -316,6 +327,29 @@ function patchClipInTrack<K extends TrackId>(
 ): TimelineSlice["tracks"] {
   const next = (tracks[trackId] as ClipFor<K>[]).map((c) => (c.id === clipId ? patch(c) : c));
   return { ...tracks, [trackId]: next } as TimelineSlice["tracks"];
+}
+
+function clipSyncGroup(
+  tracks: TimelineSlice["tracks"],
+  trackId: TrackId,
+  clipId: string,
+): string | null {
+  return (tracks[trackId] as Clip[]).find((clip) => clip.id === clipId)?.syncGroupId ?? null;
+}
+
+function patchSyncGroup(
+  tracks: TimelineSlice["tracks"],
+  syncGroupId: string,
+  patch: (clip: Clip) => Clip,
+): TimelineSlice["tracks"] {
+  return Object.fromEntries(
+    TRACK_IDS.map((trackId) => [
+      trackId,
+      (tracks[trackId] as Clip[]).map((clip) =>
+        clip.syncGroupId === syncGroupId ? patch(clip) : clip,
+      ),
+    ]),
+  ) as unknown as TimelineSlice["tracks"];
 }
 
 export const createTimelineSlice: StateCreator<TimelineSlice, [], [], TimelineSlice> = (
@@ -404,28 +438,59 @@ export const createTimelineSlice: StateCreator<TimelineSlice, [], [], TimelineSl
       targetMs = snapToNearest(targetMs, targets, thresholdMs);
     }
 
+    const sourceClip = (track as Clip[]).find((clip) => clip.id === clipId);
+    if (!sourceClip) return;
+    const deltaMs = targetMs - sourceClip.startMs;
+    const syncGroupId = sourceClip.syncGroupId;
     set((s) => ({
-      tracks: patchClipInTrack(s.tracks, trackId, clipId, (c) => ({
-        ...c,
-        startMs: targetMs,
-      })),
+      tracks: syncGroupId
+        ? patchSyncGroup(s.tracks, syncGroupId, (clip) => ({
+            ...clip,
+            startMs: Math.max(0, clip.startMs + deltaMs),
+          }))
+        : patchClipInTrack(s.tracks, trackId, clipId, (c) => ({ ...c, startMs: targetMs })),
     }));
   },
 
-  trimClip: (trackId, clipId, patch) =>
+  trimClip: (trackId, clipId, patch) => {
+    const sourceClip = (get().tracks[trackId] as Clip[]).find((clip) => clip.id === clipId);
+    if (!sourceClip) return;
+    const nextStart = patch.startMs !== undefined ? Math.max(0, patch.startMs) : sourceClip.startMs;
+    const nextDuration =
+      patch.durationMs !== undefined ? Math.max(0, patch.durationMs) : sourceClip.durationMs;
+    const startDelta = nextStart - sourceClip.startMs;
+    const durationDelta = nextDuration - sourceClip.durationMs;
     set((s) => ({
-      tracks: patchClipInTrack(s.tracks, trackId, clipId, (c) => ({
-        ...c,
-        startMs: patch.startMs !== undefined ? Math.max(0, patch.startMs) : c.startMs,
-        durationMs: patch.durationMs !== undefined ? Math.max(0, patch.durationMs) : c.durationMs,
-      })),
-    })),
+      tracks: sourceClip.syncGroupId
+        ? patchSyncGroup(s.tracks, sourceClip.syncGroupId, (clip) => ({
+            ...clip,
+            startMs: Math.max(0, clip.startMs + startDelta),
+            durationMs: Math.max(0, clip.durationMs + durationDelta),
+          }))
+        : patchClipInTrack(s.tracks, trackId, clipId, (c) => ({
+            ...c,
+            startMs: nextStart,
+            durationMs: nextDuration,
+          })),
+    }));
+  },
 
   deleteClip: (trackId, clipId) =>
     set((s) => ({
-      tracks: {
-        ...s.tracks,
-        [trackId]: (s.tracks[trackId] as Clip[]).filter((c) => c.id !== clipId),
-      } as TimelineSlice["tracks"],
+      tracks: (() => {
+        const syncGroupId = clipSyncGroup(s.tracks, trackId, clipId);
+        if (!syncGroupId) {
+          return {
+            ...s.tracks,
+            [trackId]: (s.tracks[trackId] as Clip[]).filter((c) => c.id !== clipId),
+          } as TimelineSlice["tracks"];
+        }
+        return Object.fromEntries(
+          TRACK_IDS.map((id) => [
+            id,
+            (s.tracks[id] as Clip[]).filter((clip) => clip.syncGroupId !== syncGroupId),
+          ]),
+        ) as unknown as TimelineSlice["tracks"];
+      })(),
     })),
 });

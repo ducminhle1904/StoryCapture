@@ -25,6 +25,12 @@ export interface VirtualCursorSchedule {
   segments: VirtualCursorSegment[];
   durationMs: number;
   motionPreset: CursorMotionPreset;
+  holds: Array<{ sourcePtsUs: number; durationUs: number }>;
+  totalInsertedHoldMs: number;
+}
+
+export interface VirtualCursorScheduleOptions {
+  preserveFullMotion?: boolean;
 }
 
 export const VIRTUAL_CURSOR_CLICK_RIPPLE_MS = 520;
@@ -122,6 +128,7 @@ function inputEffectMs(event: ActionTimelineEvent, fallbackMs: number): number {
 export function buildVirtualCursorSchedule(
   actions: RecordingActions | null | undefined,
   motionPreset?: CursorMotionPreset,
+  options: VirtualCursorScheduleOptions = {},
 ): VirtualCursorSchedule | null {
   if (!actions || actions.events.length === 0) return null;
   const events = actions.events.filter((event) => isCursorInteractionVerb(event.verb));
@@ -134,6 +141,8 @@ export function buildVirtualCursorSchedule(
   let previous: ActionPoint = { x: size.width / 2, y: size.height / 2 };
   let previousCursorEndMs = 0;
   let durationMs = actionsDurationMs(events, actions);
+  let timelineShiftMs = 0;
+  const holds: VirtualCursorSchedule["holds"] = [];
 
   for (let i = 0; i < events.length; i += 1) {
     const event = events[i];
@@ -141,21 +150,38 @@ export function buildVirtualCursorSchedule(
 
     const target = eventPoint(actions, event, previous, size);
     const explicitTiming = explicitCursorTiming(event);
-    const inputActionMs = inputEffectMs(event, Math.max(0, event.t_action_ms));
-    const eventStartMs = Math.max(0, Math.min(event.t_start_ms, inputActionMs));
+    const sourceInputActionMs = inputEffectMs(event, Math.max(0, event.t_action_ms));
+    const sourceEventStartMs = Math.max(0, Math.min(event.t_start_ms, sourceInputActionMs));
+    let inputActionMs = sourceInputActionMs + timelineShiftMs;
+    const eventStartMs = sourceEventStartMs + timelineShiftMs;
     const syntheticTravelMs = travelDurationMs(previous, target, event, profile);
     const requestedTravelMs = explicitTiming?.travelMs ?? syntheticTravelMs;
-    const arrivalMs = Math.min(inputActionMs, explicitTiming?.arrivalMs ?? inputActionMs);
+    let arrivalMs = Math.min(
+      inputActionMs,
+      (explicitTiming?.arrivalMs ?? sourceInputActionMs) + timelineShiftMs,
+    );
     const eventWindowStart = Math.min(
       arrivalMs,
-      Math.max(eventStartMs, explicitTiming?.startMs ?? eventStartMs),
+      Math.max(eventStartMs, (explicitTiming?.startMs ?? sourceEventStartMs) + timelineShiftMs),
     );
     const desiredStartMs = arrivalMs - requestedTravelMs;
-    const startMs = Math.min(
+    let startMs = Math.min(
       arrivalMs,
       Math.max(previousCursorEndMs, eventWindowStart, desiredStartMs),
     );
-    const availableTravelMs = Math.max(0, arrivalMs - startMs);
+    let availableTravelMs = Math.max(0, arrivalMs - startMs);
+    if (options.preserveFullMotion && requestedTravelMs > availableTravelMs) {
+      const deficitMs = requestedTravelMs - availableTravelMs;
+      holds.push({
+        sourcePtsUs: Math.round(Math.max(0, startMs - timelineShiftMs) * 1000),
+        durationUs: Math.round(deficitMs * 1000),
+      });
+      timelineShiftMs += deficitMs;
+      arrivalMs += deficitMs;
+      inputActionMs += deficitMs;
+      startMs = arrivalMs - requestedTravelMs;
+      availableTravelMs = requestedTravelMs;
+    }
     const travelMs = Math.min(requestedTravelMs, availableTravelMs);
     const effectMs = inputActionMs;
 
@@ -189,6 +215,8 @@ export function buildVirtualCursorSchedule(
     segments,
     durationMs: Math.ceil(durationMs),
     motionPreset: resolvedPreset,
+    holds,
+    totalInsertedHoldMs: timelineShiftMs,
   };
 }
 

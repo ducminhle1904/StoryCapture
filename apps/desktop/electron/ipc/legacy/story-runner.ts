@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import { app, BrowserWindow, type WebContents } from "electron";
+import type { RecordedInputLandmarkKind } from "../action-landmarks";
 import {
   type ActionCursorTiming,
   type ActionInputTiming,
@@ -13,6 +14,7 @@ import {
   recordingActionsFromSession,
   writeActionsSidecarAtomic,
 } from "../action-timeline";
+import { resolveCursorSyncMode } from "../cursor-sync-mode";
 import {
   type CursorActionTimingPlan,
   type CursorTimingSize,
@@ -97,6 +99,8 @@ export async function executeParsedCommand(
     executionProfile?: StoryBrowserExecutionProfile;
     resolvedTarget?: ActionTarget | null;
     pauseGate?: StoryBrowserRunOptions["pauseGate"];
+    onInputSideEffect?: (kind: RecordedInputLandmarkKind) => void;
+    beforeInputSideEffect?: () => void;
   } = {},
 ): Promise<ParsedCommandResult> {
   const executionProfile = options.executionProfile ?? storyBrowserExecutionProfile();
@@ -154,6 +158,8 @@ export async function executeParsedCommand(
   if ((command.verb === "click" || command.verb === "hover") && center) {
     contents.sendInputEvent({ type: "mouseMove", x: center.x, y: center.y });
     if (command.verb === "click") {
+      options.beforeInputSideEffect?.();
+      options.onInputSideEffect?.("down");
       contents.sendInputEvent({
         type: "mouseDown",
         x: center.x,
@@ -161,6 +167,7 @@ export async function executeParsedCommand(
         button: "left",
         clickCount: 1,
       });
+      options.onInputSideEffect?.("up");
       contents.sendInputEvent({
         type: "mouseUp",
         x: center.x,
@@ -168,6 +175,7 @@ export async function executeParsedCommand(
         button: "left",
         clickCount: 1,
       });
+      options.onInputSideEffect?.("action");
     }
     return {
       cursor: center,
@@ -176,6 +184,8 @@ export async function executeParsedCommand(
     };
   }
   if ((command.verb === "type" || command.verb === "select") && center) {
+    options.beforeInputSideEffect?.();
+    options.onInputSideEffect?.("down");
     contents.sendInputEvent({
       type: "mouseDown",
       x: center.x,
@@ -183,6 +193,7 @@ export async function executeParsedCommand(
       button: "left",
       clickCount: 1,
     });
+    options.onInputSideEffect?.("up");
     contents.sendInputEvent({
       type: "mouseUp",
       x: center.x,
@@ -206,7 +217,10 @@ export async function executeParsedCommand(
             command.target_nth,
             targetSelector(command.target),
           );
+    options.onInputSideEffect?.("text_start");
     const didWrite = await contents.executeJavaScript(valueScript);
+    options.onInputSideEffect?.("text_end");
+    options.onInputSideEffect?.("action");
     if (!didWrite) {
       throw new Error(
         `target is not editable for ${command.verb}: ${selectorSummary(command.target)}`,
@@ -368,6 +382,7 @@ async function performCursorPreActionPacing(input: {
   pauseGate?: StoryBrowserRunOptions["pauseGate"];
   observeTarget?: () => ReturnType<typeof observeReadyCommandTarget>;
   targetShiftThresholdPx?: number;
+  onCursorSample?: (point: { x: number; y: number }) => void;
 }): Promise<{ lastPoint: { x: number; y: number }; shiftedTarget: ActionTarget | null }> {
   const {
     contents,
@@ -378,6 +393,7 @@ async function performCursorPreActionPacing(input: {
     pauseGate,
     observeTarget,
     targetShiftThresholdPx = 8,
+    onCursorSample,
   } = input;
   const shouldInjectPath =
     executionProfile.injectCursorPath !== false && commandUsesBrowserCursorPath(command);
@@ -406,6 +422,7 @@ async function performCursorPreActionPacing(input: {
       x: Math.round(sample.x),
       y: Math.round(sample.y),
     });
+    onCursorSample?.(sample);
     if (
       observeTarget &&
       (index === Math.floor(samples.length / 2) || index === samples.length - 1)
@@ -510,11 +527,22 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
         invalidateAuthorPreviewPaintForContents(options.contents);
       }
       const isPacedCommand = commandGetsPreActionPacing(command);
+      const landmarkEventId = `${ordinal}:${command.step_id ?? command.verb}`;
+      let landmarkStarted = false;
       let resolvedTarget = isPacedCommand
         ? await resolveReadyCommandTarget(options, command)
         : await resolveCommandTarget(options.contents, command);
       let cursorPlan: CursorActionTimingPlan | null = null;
       if (pacingSize && previousCursor && resolvedTarget && isPacedCommand) {
+        options.actionLandmarks?.begin(landmarkEventId, {
+          delivery:
+            command.verb === "type" || command.verb === "select"
+              ? "virtual_only"
+              : "browser_injected",
+          point: previousCursor,
+          expectsPresentation: command.verb !== "hover",
+        });
+        landmarkStarted = Boolean(options.actionLandmarks);
         let cursorFrom = previousCursor;
         const maxReplans = 3;
         for (let replan = 0; replan <= maxReplans; replan += 1) {
@@ -534,6 +562,8 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
             pauseGate: options.pauseGate,
             observeTarget: () => observeReadyCommandTarget(options, command),
             targetShiftThresholdPx: executionProfile.targetStabilityThresholdPx ?? 8,
+            onCursorSample: (point) =>
+              options.actionLandmarks?.updateCursor(landmarkEventId, point),
           });
           const targetAfterPacing =
             pacing.shiftedTarget ?? (await resolveReadyCommandTarget(options, command));
@@ -555,6 +585,13 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
           cursorFrom = pacing.lastPoint;
           resolvedTarget = targetAfterPacing;
         }
+        options.actionLandmarks?.updateCursor(
+          landmarkEventId,
+          cursorPointForTarget(resolvedTarget, pacingSize),
+        );
+        if (options.actionLandmarks) {
+          await options.actionLandmarks.waitForArrival(landmarkEventId, 500);
+        }
       }
       await waitForRecordingDelay(options.pauseGate, 0);
       const actionStartedAt = Date.now();
@@ -563,7 +600,16 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
         executionProfile,
         resolvedTarget,
         pauseGate: options.pauseGate,
+        beforeInputSideEffect: landmarkStarted
+          ? () => options.actionLandmarks?.armPresentation(landmarkEventId)
+          : undefined,
+        onInputSideEffect: landmarkStarted
+          ? (kind) => options.actionLandmarks?.markInput(landmarkEventId, kind)
+          : undefined,
       });
+      if (landmarkStarted && command.verb !== "hover") {
+        await options.actionLandmarks?.waitForPresentation(landmarkEventId, 500);
+      }
       const actionDurationMs = isPacedCommand
         ? actionStartedAt - stepStartedAt
         : Date.now() - stepStartedAt;
@@ -580,6 +626,9 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
               actionAtMs: actionStartedClockMs,
             })
           : null;
+      const landmarks = landmarkStarted
+        ? (options.actionLandmarks?.finish(landmarkEventId) ?? null)
+        : null;
       if (pacingSize && result.target && commandContributesCursorEvent(command)) {
         previousCursor = cursorPointForTarget(result.target, pacingSize);
       }
@@ -596,6 +645,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
           stepEndedAtMs: stepEndedClockMs,
           cursorTiming: explicitTiming?.cursorTiming ?? null,
           inputTiming: explicitTiming?.inputTiming ?? null,
+          landmarks,
         },
       });
       if (options.frameDir) {
@@ -642,15 +692,37 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
 export async function writeRecordingActionsSidecarBestEffort(
   session: RecordingSession,
   events: ActionTimelineEvent[],
-  options: { cursorMotionPreset?: ActionCursorTiming["motion_preset"] } = {},
+  options: {
+    cursorMotionPreset?: ActionCursorTiming["motion_preset"];
+    strict?: boolean;
+  } = {},
 ): Promise<void> {
   if (events.length === 0) return;
   const file = actionsSidecarPath(session.outputPath);
+  const syncMode = resolveCursorSyncMode();
   try {
+    const authoritativeEvents = events.filter((event) => event.input_landmarks?.action).length;
+    const invalidOrderingEvents = events.filter((event) => {
+      const arrival = event.cursor_path?.arrival.pts_us;
+      const action = event.input_landmarks?.action?.pts_us;
+      const frame = event.presentation?.first_post_input_frame?.pts_us;
+      return (
+        arrival != null && action != null && (arrival > action || (frame != null && action > frame))
+      );
+    }).length;
+    if (syncMode === "shadow") {
+      void hostLog("info", "recording_cursor_sync_shadow", {
+        session_id: session.id,
+        event_count: events.length,
+        authoritative_event_count: authoritativeEvents,
+        invalid_ordering_event_count: invalidOrderingEvents,
+      });
+    }
     await writeActionsSidecarAtomic(
       file,
       recordingActionsFromSession(session, events, {
         cursorMotionPreset: options.cursorMotionPreset,
+        version: syncMode === "unified" ? 3 : 2,
       }),
     );
   } catch (error) {
@@ -660,6 +732,7 @@ export async function writeRecordingActionsSidecarBestEffort(
       sidecar_path: file,
       reason: error instanceof Error ? error.message : String(error),
     });
+    if (options.strict || syncMode === "unified") throw error;
   }
 }
 
@@ -776,6 +849,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       recordingClockMs: recordingSessionAtLaunch
         ? () => recordingFrameClockMs(recordingSessionAtLaunch)
         : undefined,
+      actionLandmarks: recordingSessionAtLaunch?.actionLandmarks,
       pauseGate: recordingSessionAtLaunch?.pauseGate,
       shouldCancel: recordingSessionAtLaunch
         ? () => recordingSessions.get(recordingSessionAtLaunch.id) !== recordingSessionAtLaunch
@@ -825,6 +899,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
                 pointer: stepResult.pointer ?? undefined,
                 cursorTiming: timing?.cursorTiming ?? null,
                 inputTiming: timing?.inputTiming ?? null,
+                landmarks: timing?.landmarks ?? null,
               }),
             );
           }
@@ -875,6 +950,20 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   } finally {
     if (ownedWindow && !ownedWindow.isDestroyed()) ownedWindow.destroy();
   }
+  const recordingSession = recordingSessionId ? recordingSessions.get(recordingSessionId) : null;
+  if (recordingSession?.captureTimer) {
+    clearInterval(recordingSession.captureTimer);
+    await captureAutomationRecordingTail(recordingSession);
+    await ensureRecordingFramesCoverElapsedTime(recordingSession);
+  }
+  if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
+    await stopRecording({ id: recordingSessionId });
+    if (recordingSession) {
+      await writeRecordingActionsSidecarBestEffort(recordingSession, actionEvents, {
+        cursorMotionPreset: executionProfile.cursorMotionPreset,
+      });
+    }
+  }
   sendChannel(sender, onEvent, {
     json: JSON.stringify({
       type: "story_ended",
@@ -886,22 +975,6 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       },
     }),
   });
-  const recordingSession = recordingSessionId ? recordingSessions.get(recordingSessionId) : null;
-  if (recordingSession?.captureTimer) {
-    clearInterval(recordingSession.captureTimer);
-    await captureAutomationRecordingTail(recordingSession);
-    await ensureRecordingFramesCoverElapsedTime(recordingSession);
-  }
-  if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
-    await stopRecording({ id: recordingSessionId });
-    if (recordingSession) {
-      await writeRecordingActionsSidecarBestEffort(
-        recordingSession,
-        rebaseActionEventsToFirstCursorInteraction(actionEvents),
-        { cursorMotionPreset: executionProfile.cursorMotionPreset },
-      );
-    }
-  }
   return null;
 }
 

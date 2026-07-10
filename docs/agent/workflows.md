@@ -66,6 +66,10 @@
 - Local/manual CI helpers: `scripts/ci/check-av-drift.sh`,
   `scripts/ci/generate-synthetic-recording.sh`.
 - Benchmark helper: `scripts/benchmark/render-1min.sh`.
+- Encoded cursor/presentation ROI verifier:
+  `node scripts/ci/analyze-cursor-sync-roi.mjs --video=<mp4> --roi=x:y:w:h --expected-frame=N [--tolerance=1]`.
+  Set `FFMPEG_PATH` when `ffmpeg` is not on `PATH`; the command exits nonzero
+  when no ROI change is found or the frame delta exceeds tolerance.
 - Release/signing helpers: `scripts/release/sign-windows.ps1`,
   `scripts/release/verify-installer-size.sh`,
   `scripts/notarize/adhoc-sign.sh`, `scripts/notarize/notarize-mac.sh`.
@@ -77,3 +81,6 @@
 - Keep `AGENTS.md` as the routing index only. Put longer details in
   `docs/agent/` or the relevant `docs/*.md` source doc, then link or summarize
   from `AGENTS.md` only when future sessions need the rule up front.
+- CI also runs the cursor synchronization Playwright Electron smoke before the
+  desktop package build. Run it locally with
+  `pnpm --dir apps/desktop run test:e2e:cursor-sync`.

@@ -48,7 +48,7 @@ beforeEach(resetStore);
 describe("computeGraph", () => {
   it("empty store yields empty video/audio with schema metadata", () => {
     const g = computeGraph(useEditorStore.getState());
-    expect(g.schema_version).toBe(2);
+    expect(g.schema_version).toBe(3);
     expect(g.output_width).toBe(1920);
     expect(g.output_height).toBe(1080);
     expect(g.output_fps).toBe(60);

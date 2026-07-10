@@ -106,10 +106,18 @@ file explicitly says otherwise.
   `apps/desktop/src/features/post-production/render-queue/`.
 - Recorded action/cursor timing: read `docs/DOMAIN.md`,
   `apps/desktop/electron/ipc/action-timeline.ts`,
+  `apps/desktop/electron/ipc/action-landmarks.ts`,
+  `apps/desktop/electron/ipc/cursor-sync-mode.ts`,
   `apps/desktop/electron/ipc/cursor-timing.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
   `apps/desktop/src/ipc/actions.ts`, and
   `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`.
+- Source/timeline synchronization and presented-media playback: read
+  `apps/desktop/src/features/post-production/state/source-timeline-map.ts`,
+  `apps/desktop/src/features/post-production/state/cursor-preset-reflow.ts`,
+  `apps/desktop/src/features/post-production/preview/presented-media-clock.ts`,
+  `apps/desktop/src/features/post-production/preview/preview-player.tsx`, and
+  `apps/desktop/src/features/post-production/export-compositor/export-compositor-app.tsx`.
 - Web routes/API/data: read `apps/web/src/app`, `apps/web/src/app/api`,
   `apps/web/src/trpc/routers/_app.ts`, `apps/web/src/trpc/routers/*`,
   `apps/web/src/lib/*`, and `apps/web/prisma/schema.prisma`.

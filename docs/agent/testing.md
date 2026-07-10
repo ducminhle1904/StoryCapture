@@ -5,6 +5,7 @@
 - There is no root `pnpm test`.
 - Desktop all tests: `pnpm --dir apps/desktop exec vitest run`.
 - Desktop focused test: `pnpm --dir apps/desktop exec vitest run <path>`.
+- Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
 - Web all tests: `pnpm --dir apps/web test`.
 - Web focused test: `pnpm --dir apps/web exec vitest run <path>`.
 - UI all tests: `pnpm --dir packages/ui test`.
@@ -37,8 +38,9 @@
 - UI tests cover `packages/ui/src/claude-design/primitives/__tests__/`.
 - `packages/story-dsl` currently relies on typecheck and consuming desktop
   tests; no package test script is present.
-- No current Playwright/E2E test command or config is present. Runtime
-  Playwright references are app automation concepts, not test wiring.
+- Playwright Electron tests live in `apps/desktop/e2e`; the cursor-sync smoke
+  launches the real Electron host plus a deterministic local paint fixture.
+  It does not replace operator-gated Screen Recording/TCC capture UAT.
 
 ## Focus Guidance
 
@@ -52,9 +54,16 @@
   `apps/desktop/src/features/post-production/preview/__tests__/virtual-cursor-path.test.ts`,
   and
   `apps/desktop/src/features/post-production/__tests__/build-timeline-from-story.test.ts`.
+- Source-map/preview/export changes should also run
+  `state/__tests__/source-timeline-map.test.ts`,
+  `preview/__tests__/source-bound-parity.test.ts`, and the Electron export
+  planning/compositor tests. Use `scripts/ci/analyze-cursor-sync-roi.mjs` for
+  encoded-marker frame correlation.
 - Prisma/schema/web router changes: run `pnpm --dir apps/web db:generate`,
   focused web tests, and `pnpm --dir apps/web typecheck`.
 - Cross-package contract changes: run focused package tests, consumer tests, and
   `pnpm typecheck`.
 - Generated type surfaces: do not edit generated files directly unless the
   generation source and regeneration process are also handled.
+- Electron E2E config: `apps/desktop/playwright.config.ts`; cursor-sync smoke:
+  `apps/desktop/e2e/cursor-sync.spec.ts`.

@@ -48,4 +48,25 @@ describe("virtual cursor scheduler invariants", () => {
       effectMs: 1800,
     });
   });
+
+  it("preserves full requested motion only when explicitly enabled and reports exact holds", () => {
+    const actions = parseActionSidecar(shortGapV1);
+    const defaultSchedule = buildVirtualCursorSchedule(actions, "cinematic");
+    const preserved = buildVirtualCursorSchedule(actions, "cinematic", {
+      preserveFullMotion: true,
+    });
+    const defaultSubmit = defaultSchedule?.segments.find(
+      (segment) => segment.event.step_id === "submit",
+    );
+    const preservedSubmit = preserved?.segments.find(
+      (segment) => segment.event.step_id === "submit",
+    );
+    expect(defaultSubmit?.compressed).toBe(true);
+    expect(defaultSchedule?.holds).toEqual([]);
+    expect(preservedSubmit?.travelMs).toBe(preservedSubmit?.requestedTravelMs);
+    expect(preservedSubmit?.compressed).toBe(false);
+    expect(preserved?.holds.every((hold) => Number.isInteger(hold.durationUs))).toBe(true);
+    expect(preserved?.totalInsertedHoldMs).toBeGreaterThan(0);
+    expect(preservedSubmit?.arrivalMs).toBeLessThanOrEqual(preservedSubmit?.effectMs ?? -1);
+  });
 });

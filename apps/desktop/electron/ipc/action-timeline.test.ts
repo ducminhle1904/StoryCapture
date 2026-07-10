@@ -2,15 +2,16 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-
+import { parseActionSidecar } from "../../src/ipc/action-sidecar";
 import {
+  type ActionTimelineRecordingSession,
   actionsSidecarPath,
   actionTimelineEventFromStep,
   deriveActionCaptureRect,
   recordingActionsFromSession,
   writeActionsSidecarAtomic,
-  type ActionTimelineRecordingSession,
 } from "./action-timeline";
+import { RecordingMediaClock } from "./recording-media-clock";
 
 const tempDirs: string[] = [];
 
@@ -178,5 +179,80 @@ describe("action timeline sidecar helpers", () => {
         action_ms: 500,
       },
     });
+  });
+
+  it("serializes authoritative landmarks as a v3 sidecar that round-trips", () => {
+    const mediaClock = new RecordingMediaClock({ fpsNum: 60, fpsDen: 1 });
+    for (let frame = 0; frame < 3; frame += 1) mediaClock.commitFrame(true);
+    const event = actionTimelineEventFromStep({
+      ordinal: 1,
+      command: { verb: "click", step_id: "step-click" },
+      stepStartedAtMs: 0,
+      actionAtMs: 17,
+      stepEndedAtMs: 34,
+      target: {
+        kind: "element",
+        label: "Submit",
+        center: { x: 40, y: 50 },
+        bounds: { x: 20, y: 30, w: 40, h: 40 },
+      },
+      cursorTiming: {
+        motion_preset: "natural",
+        start_ms: 0,
+        arrival_ms: 17,
+        travel_ms: 17,
+        dwell_ms: 0,
+      },
+      inputTiming: { kind: "click", down_ms: 17, up_ms: 17, action_ms: 17 },
+      landmarks: {
+        delivery: "browser_injected",
+        cursorPath: {
+          interpolation: "media-frame-linear-v1",
+          samples: [
+            { frameIndex: 0, ptsUs: 0, x: 10, y: 20 },
+            { frameIndex: 1, ptsUs: 16_667, x: 40, y: 50 },
+          ],
+          arrival: { frameIndex: 1, ptsUs: 16_667 },
+        },
+        input: {
+          down: { frameIndex: 1, ptsUs: 16_667 },
+          up: { frameIndex: 1, ptsUs: 16_667 },
+          action: { frameIndex: 1, ptsUs: 16_667 },
+        },
+        presentation: {
+          status: "presented",
+          firstPostInputFrame: { frameIndex: 2, ptsUs: 33_333 },
+          firstPostInputPaint: { frameIndex: 2, ptsUs: 33_333 },
+        },
+      },
+    });
+    const dto = recordingActionsFromSession(
+      recordingSession({ frameSeq: 3, mediaClock }),
+      [event],
+      { cursorMotionPreset: "natural", version: 3 },
+    );
+
+    expect(dto.version).toBe(3);
+    expect(dto.media_clock).toMatchObject({ fps_num: 60, fps_den: 1, frame_count: 3 });
+    expect(parseActionSidecar(dto)?.events[0]).toMatchObject({
+      confidence: "authoritative",
+      cursor_path: { arrival: { frame_index: 1, pts_us: 16_667 } },
+      input_landmarks: { action: { frame_index: 1, pts_us: 16_667 } },
+      presentation: { status: "presented" },
+    });
+
+    const compatible = recordingActionsFromSession(
+      recordingSession({ frameSeq: 3, mediaClock }),
+      [event],
+      { cursorMotionPreset: "natural", version: 2 },
+    );
+    expect(compatible.events[0]).toMatchObject({
+      t_start_ms: 0,
+      t_action_ms: 17,
+      t_end_ms: 33,
+      cursor_timing: { arrival_ms: 17 },
+      input_timing: { action_ms: 17, down_ms: 17, up_ms: 17 },
+    });
+    expect(compatible.events[0]).not.toHaveProperty("cursor_path");
   });
 });

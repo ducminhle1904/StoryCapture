@@ -13,6 +13,7 @@ import {
   type WebContents,
 } from "electron";
 import electronUpdater, { type UpdateInfo as ElectronUpdateInfo } from "electron-updater";
+import type { RecordedActionLandmarks, RecordingActionLandmarkRecorder } from "../action-landmarks";
 import type {
   ActionCursorMotionPreset,
   ActionCursorTiming,
@@ -383,6 +384,8 @@ export interface RecordingSession {
   paused: boolean;
   lifecycle: "recording" | "paused" | "stopping" | "finalized";
   mediaClock: RecordingMediaClock;
+  actionLandmarks: RecordingActionLandmarkRecorder;
+  paintSequence: number;
   pauseGate: RecordingPauseGate;
   eventTarget: WebContents;
   eventChannelId: number | null;
@@ -497,6 +500,7 @@ export interface StoryBrowserRunHooks {
       stepEndedAtMs: number;
       cursorTiming?: ActionCursorTiming | null;
       inputTiming?: ActionInputTiming | null;
+      landmarks?: RecordedActionLandmarks | null;
     };
   }) => void;
   onFrameCaptured?: (ordinal: number, frame: SimulatorStepFrame) => void;
@@ -516,6 +520,7 @@ export interface StoryBrowserRunOptions {
   frameDir?: string | null;
   executionProfile?: StoryBrowserExecutionProfile;
   recordingClockMs?: () => number;
+  actionLandmarks?: RecordingActionLandmarkRecorder;
   pauseGate?: RecordingPauseGate;
   shouldCancel?: () => boolean;
   hooks?: StoryBrowserRunHooks;

@@ -107,6 +107,7 @@ export interface ActionTimelineEvent {
   pointer: { button: string; effect: string } | null;
   cursor_timing: ActionCursorTiming | null;
   input_timing: ActionInputTiming | null;
+  input_delivery?: "browser_injected" | "virtual_only";
   cursor_path?: ActionCursorPath;
   input_landmarks?: ActionInputLandmarks;
   presentation?: ActionPresentation;
@@ -567,7 +568,12 @@ function parseEvent(
   let cursorPath: ActionCursorPath | undefined;
   let inputLandmarks: ActionInputLandmarks | undefined;
   let presentation: ActionPresentation | undefined;
+  let inputDelivery: ActionTimelineEvent["input_delivery"];
   if (sourceVersion === 3 && mediaClock) {
+    inputDelivery =
+      record.input_delivery === "browser_injected" || record.input_delivery === "virtual_only"
+        ? record.input_delivery
+        : undefined;
     cursorPath = parseCursorPath(record.cursor_path, mediaClock) ?? undefined;
     inputLandmarks = parseInputLandmarks(record.input_landmarks, mediaClock) ?? undefined;
     presentation = parsePresentation(record.presentation, mediaClock) ?? undefined;
@@ -586,7 +592,9 @@ function parseEvent(
         (!firstFrame || upLandmark.pts_us <= firstFrame.pts_us) &&
         (!firstPaint || upLandmark.pts_us <= firstPaint.pts_us),
     );
-    if (orderingValid && presentation && (!needsCursorPath || cursorPath)) {
+    const deliveryValid =
+      (record.verb !== "type" && record.verb !== "select") || inputDelivery !== undefined;
+    if (orderingValid && presentation && deliveryValid && (!needsCursorPath || cursorPath)) {
       confidence = "authoritative";
     } else {
       cursorPath = undefined;
@@ -609,6 +617,7 @@ function parseEvent(
     pointer: pointer.pointer,
     cursor_timing: cursor.timing,
     input_timing: input.timing,
+    ...(inputDelivery ? { input_delivery: inputDelivery } : {}),
     ...(cursorPath ? { cursor_path: cursorPath } : {}),
     ...(inputLandmarks ? { input_landmarks: inputLandmarks } : {}),
     ...(presentation ? { presentation } : {}),
