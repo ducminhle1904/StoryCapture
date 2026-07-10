@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { app, dialog, type IpcMainInvokeEvent, shell } from "electron";
 import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime } from "../../runtime";
+import { readRecordingActionsSidecar } from "../action-sidecar-reader";
 import { readJson, writeJson } from "../json-store";
 import { logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
@@ -441,11 +442,10 @@ export async function handleLegacyInvoke(
       return null;
     }
     case "get_recording_actions":
-      return readRecordingSidecar(
+      return readRecordingActionsSidecar(
         String(
           (args as { args?: { recording_path?: string } } | undefined)?.args?.recording_path ?? "",
         ),
-        "actions",
       );
     case "get_recording_trajectory":
       return readRecordingSidecar(

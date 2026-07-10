@@ -24,7 +24,11 @@ import {
 
 import previewBackdrop from "@/assets/gradients/forest-emerald.png";
 import type { RecordingActions } from "@/ipc/actions";
-import type { CaptureRect, RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
+import type {
+  CaptureRect,
+  RecordingStepTimingSidecar,
+  RecordingTrajectory,
+} from "@/ipc/trajectory";
 import { frontendLog } from "@/lib/log";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
 import {
@@ -33,7 +37,17 @@ import {
   resolveTextAnchorPosition,
 } from "../state/text-anchor";
 import { resolvedTextStyle, type TextStylePreset, textFontCss } from "../state/text-style";
-import type { AnnotationClip, CursorClip, CursorSkin, ZoomClip } from "../state/timeline-slice";
+import type {
+  AnnotationClip,
+  CursorClip,
+  CursorMotionPreset,
+  CursorSkin,
+  ZoomClip,
+} from "../state/timeline-slice";
+import {
+  buildVirtualCursorSchedule,
+  type VirtualCursorSchedule,
+} from "../state/virtual-cursor-scheduler";
 import {
   applyZoomToBounds,
   applyZoomToPoint,
@@ -43,10 +57,7 @@ import {
 import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
 import type { PreviewRenderPlan } from "./types";
-import {
-  sampleTrajectoryCursor,
-  sampleVirtualCursor,
-} from "./virtual-cursor-path";
+import { samplePreparedVirtualCursor, sampleTrajectoryCursor } from "./virtual-cursor-path";
 
 type PreviewOutputMode = "native-video" | "composited-canvas";
 
@@ -148,10 +159,7 @@ function isAtTimelineEnd(playheadMs: number, durationMs: number): boolean {
 function mediaSecondsForPlayhead(video: HTMLVideoElement, playheadMs: number): number {
   const requestedSeconds = Math.max(0, playheadMs) / 1000;
   if (!Number.isFinite(video.duration) || video.duration <= 0) return requestedSeconds;
-  return Math.min(
-    requestedSeconds,
-    Math.max(0, video.duration - SOURCE_HOLD_EPSILON_SECONDS),
-  );
+  return Math.min(requestedSeconds, Math.max(0, video.duration - SOURCE_HOLD_EPSILON_SECONDS));
 }
 
 function timelinePlaybackDurationMs(video: HTMLVideoElement, timelineDurationMs: number): number {
@@ -523,8 +531,8 @@ export function PreviewPlayer({
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const playingRef = useRef(false);
   const cursorClipsRef = useRef<CursorClip[]>([]);
+  const cursorSchedulesRef = useRef(new Map<CursorMotionPreset, VirtualCursorSchedule | null>());
   const zoomClipsRef = useRef<ZoomClip[]>([]);
-  const actionsRef = useRef<RecordingActions | null>(actions);
   const trajectoryRef = useRef<RecordingTrajectory | null>(trajectory);
   const durationMsRef = useRef(0);
 
@@ -536,6 +544,16 @@ export function PreviewPlayer({
   const cursorClips = useEditorStore((s) => s.tracks.cursor);
   const zoomClips = useEditorStore((s) => s.tracks.zoom);
   const annotationClips = useEditorStore((s) => s.tracks.annotations);
+  const cursorSchedules = useMemo(() => {
+    const schedules = new Map<CursorMotionPreset, VirtualCursorSchedule | null>();
+    if (!actions) return schedules;
+    for (const clip of cursorClips) {
+      const motionPreset = clip.motionPreset ?? "natural";
+      if (!isActionsCursorClip(clip) || schedules.has(motionPreset)) continue;
+      schedules.set(motionPreset, buildVirtualCursorSchedule(actions, motionPreset));
+    }
+    return schedules;
+  }, [actions, cursorClips]);
   const playheadMs = useEditorStore((s) => s.playheadMs);
   const durationMs = useEditorStore((s) => s.durationMs);
   const useCompositedCanvas = outputMode === "composited-canvas";
@@ -615,7 +633,6 @@ export function PreviewPlayer({
     (playheadMs: number) => {
       const cursor = cursorRef.current;
       const ripple = cursorRippleRef.current;
-      const currentActions = actionsRef.current;
       const currentTrajectory = trajectoryRef.current;
       if (!cursor) {
         hideCursorOverlay();
@@ -629,8 +646,9 @@ export function PreviewPlayer({
       }
 
       const relativeMs = playheadMs - clip.startMs;
+      const motionPreset = clip.motionPreset ?? "natural";
       const sample = isActionsCursorClip(clip)
-        ? sampleVirtualCursor(currentActions, relativeMs, clip.motionPreset)
+        ? samplePreparedVirtualCursor(cursorSchedulesRef.current.get(motionPreset), relativeMs)
         : clip.trajectoryKind === "trajectory"
           ? sampleTrajectoryCursor(currentTrajectory, relativeMs)
           : null;
@@ -811,12 +829,12 @@ export function PreviewPlayer({
 
   useEffect(() => {
     cursorClipsRef.current = cursorClips;
-    actionsRef.current = actions;
+    cursorSchedulesRef.current = cursorSchedules;
     trajectoryRef.current = trajectory;
     const playheadMs = useEditorStore.getState().playheadMs;
     applyPreviewZoom(playheadMs);
     renderCursorOverlay(playheadMs);
-  }, [actions, applyPreviewZoom, cursorClips, renderCursorOverlay, trajectory]);
+  }, [applyPreviewZoom, cursorClips, cursorSchedules, renderCursorOverlay, trajectory]);
 
   useEffect(() => {
     zoomClipsRef.current = zoomClips;
@@ -1270,6 +1288,7 @@ export function PreviewPlayer({
         cursorClips,
         stepTiming,
         captureRect,
+        cursorSchedules,
       );
       const startX = e.clientX;
       const startY = e.clientY;
@@ -1299,6 +1318,7 @@ export function PreviewPlayer({
       actions,
       captureRect,
       cursorClips,
+      cursorSchedules,
       editingTextClipId,
       playheadMs,
       pushAnnotationParamChange,
@@ -1443,7 +1463,8 @@ export function PreviewPlayer({
                 {activeHighlights.map((clip) => {
                   const highlight = clip.highlight;
                   if (!highlight) return null;
-                  if (highlight.bounds && !hasReliableHighlightBounds(highlight.bounds)) return null;
+                  if (highlight.bounds && !hasReliableHighlightBounds(highlight.bounds))
+                    return null;
                   const center = applyZoomToPoint(highlight.center, previewZoom);
                   const zoomedBounds = highlight.bounds
                     ? applyZoomToBounds(highlight.bounds, previewZoom)
@@ -1530,6 +1551,7 @@ export function PreviewPlayer({
                     cursorClips,
                     stepTiming,
                     captureRect,
+                    cursorSchedules,
                   );
                   const position =
                     clip.anchor?.kind === "target" || clip.anchor?.kind === "cursor"

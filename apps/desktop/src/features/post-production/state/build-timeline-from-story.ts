@@ -7,7 +7,7 @@ import {
   highlightEnabled,
   type StoryPolishDoc,
 } from "@/features/editor/polish-sidecar";
-import type { ActionTarget, RecordingActions } from "@/ipc/actions";
+import { type ActionTarget, actionSidecarFps, type RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
 import type {
@@ -26,7 +26,7 @@ import type {
 import { normalizeCursorMotionPreset, XFADE_KINDS } from "../state/timeline-slice";
 import type { EditorBackgroundKind, Rgba } from "./store";
 import { styleDefaults } from "./text-style";
-import { virtualCursorVisualDurationMs } from "./virtual-cursor-scheduler";
+import { buildVirtualCursorSchedule } from "./virtual-cursor-scheduler";
 
 export interface BuildTimelineInput {
   story: ParseResult | null;
@@ -305,7 +305,7 @@ function cursorSidecarFor(
   durationMs: number,
 ): { path: string; kind: "actions" | "trajectory"; fps: number; frameCount: number } | null {
   if (actions) {
-    const fps = actions.fps > 0 ? actions.fps : 60;
+    const fps = actionSidecarFps(actions);
     const durationFrameCount = Math.ceil((Math.max(0, durationMs) / 1000) * fps);
     return {
       path: deriveActionsPath(recordingPath),
@@ -337,7 +337,8 @@ function actionsDurationMs(actions: RecordingActions | null): number {
     eventMaxEndMs = Math.max(eventMaxEndMs, event.t_end_ms);
   }
   if (eventMaxEndMs > 0) return eventMaxEndMs;
-  return actions.fps > 0 ? Math.round((actions.frame_count / actions.fps) * 1000) : 0;
+  const fps = actionSidecarFps(actions);
+  return fps > 0 ? Math.round((actions.frame_count / fps) * 1000) : 0;
 }
 
 function mediaDurationMs(
@@ -674,9 +675,12 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
 
   const cursorMotionPreset = normalizeCursorMotionPreset(actions?.cursor_motion_preset);
   const cursorVisible = polish?.global.cursor !== "hidden";
+  const cursorSchedule = cursorVisible
+    ? buildVirtualCursorSchedule(actions, cursorMotionPreset)
+    : null;
   const durationMs = Math.max(
     mediaDurationMs(recording, trajectory, actions),
-    cursorVisible ? virtualCursorVisualDurationMs(actions, cursorMotionPreset) : 0,
+    cursorSchedule?.durationMs ?? 0,
   );
   const source = sourceSize(input);
 

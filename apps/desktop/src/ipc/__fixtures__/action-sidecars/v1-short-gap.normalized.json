@@ -1,0 +1,73 @@
+{
+  "source_version": 1,
+  "confidence": "legacy-approximate",
+  "recording_path": "/fixtures/cursor-sync/v1-short-gap.mp4",
+  "cursor_motion_preset": "natural",
+  "viewport": { "width": 1280, "height": 720 },
+  "capture_rect": { "x": 0, "y": 0, "width": 1280, "height": 720 },
+  "fps_num": 60,
+  "fps_den": 1,
+  "frame_count": 180,
+  "events": [
+    {
+      "source_index": 0,
+      "confidence": "legacy-approximate",
+      "step_id": "start",
+      "ordinal": 1,
+      "verb": "click",
+      "t_start_ms": 289,
+      "t_action_ms": 290,
+      "t_end_ms": 416,
+      "target": {
+        "kind": "element",
+        "label": "Start",
+        "center": { "x": 293.1875, "y": 376.59375 },
+        "bounds": { "x": 253.1875, "y": 356.59375, "w": 80, "h": 40 }
+      },
+      "secondary_target": null,
+      "pointer": { "button": "left", "effect": "click" },
+      "cursor_timing": null,
+      "input_timing": { "kind": "click", "action_ms": 290 }
+    },
+    {
+      "source_index": 1,
+      "confidence": "legacy-approximate",
+      "step_id": "email",
+      "ordinal": 2,
+      "verb": "type",
+      "t_start_ms": 416,
+      "t_action_ms": 927,
+      "t_end_ms": 1108,
+      "target": {
+        "kind": "element",
+        "label": "Email",
+        "center": { "x": 491.375, "y": 376.59375 },
+        "bounds": { "x": 391.375, "y": 356.59375, "w": 200, "h": 40 }
+      },
+      "secondary_target": null,
+      "pointer": null,
+      "cursor_timing": null,
+      "input_timing": { "kind": "type", "action_ms": 927 }
+    },
+    {
+      "source_index": 2,
+      "confidence": "legacy-approximate",
+      "step_id": "submit",
+      "ordinal": 3,
+      "verb": "click",
+      "t_start_ms": 1108,
+      "t_action_ms": 1108,
+      "t_end_ms": 1233,
+      "target": {
+        "kind": "element",
+        "label": "Submit",
+        "center": { "x": 696.9609375, "y": 376.59375 },
+        "bounds": { "x": 656.9609375, "y": 356.59375, "w": 80, "h": 40 }
+      },
+      "secondary_target": null,
+      "pointer": { "button": "left", "effect": "click" },
+      "cursor_timing": null,
+      "input_timing": { "kind": "click", "action_ms": 1108 }
+    }
+  ]
+}

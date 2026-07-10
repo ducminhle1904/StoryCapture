@@ -2,7 +2,7 @@
  * Phase 19-03 — unit tests for the post-production timeline producer.
  */
 import { describe, expect, it } from "vitest";
-import type { RecordingActions } from "@/ipc/actions";
+import { actionSidecarFps, type RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
 import type { RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
@@ -26,14 +26,19 @@ const TRAJECTORY: RecordingTrajectory = {
 };
 
 const ACTIONS: RecordingActions = {
-  version: 1,
+  source_version: 1,
+  confidence: "legacy-approximate",
   recording_path: RECORDING.path,
+  cursor_motion_preset: "natural",
   viewport: { width: 1920, height: 1080 },
   capture_rect: { x: 0, y: 0, width: 1920, height: 1080 },
-  fps: 60,
+  fps_num: 60,
+  fps_den: 1,
   frame_count: 600,
   events: [
     {
+      source_index: 0,
+      confidence: "legacy-approximate",
       step_id: "step-1",
       ordinal: 1,
       verb: "click",
@@ -48,6 +53,8 @@ const ACTIONS: RecordingActions = {
       },
       secondary_target: null,
       pointer: { button: "left", effect: "click" },
+      cursor_timing: null,
+      input_timing: { kind: "click", action_ms: 1_000 },
     },
   ],
 };
@@ -126,7 +133,7 @@ function trajectoryWithFrames(frames: RecordingTrajectory["frames"]): RecordingT
 function actionsEndingAt(tEndMs: number): RecordingActions {
   return {
     ...ACTIONS,
-    frame_count: Math.ceil((tEndMs / 1000) * ACTIONS.fps),
+    frame_count: Math.ceil((tEndMs / 1000) * actionSidecarFps(ACTIONS)),
     events: ACTIONS.events.map((event) => ({
       ...event,
       t_action_ms: Math.min(event.t_action_ms, tEndMs),
@@ -273,6 +280,7 @@ describe("buildTimelineFromStory", () => {
           t_start_ms: 289,
           t_action_ms: 290,
           t_end_ms: 416,
+          input_timing: null,
           target: target("Start", { x: 293.1875, y: 376.59375 }),
           pointer: { button: "left", effect: "click" },
         },
@@ -284,6 +292,7 @@ describe("buildTimelineFromStory", () => {
           t_start_ms: 416,
           t_action_ms: 927,
           t_end_ms: 1108,
+          input_timing: null,
           target: target("Email", { x: 491.375, y: 376.59375 }),
           pointer: null,
         },
@@ -295,6 +304,7 @@ describe("buildTimelineFromStory", () => {
           t_start_ms: 1108,
           t_action_ms: 1108,
           t_end_ms: 1233,
+          input_timing: null,
           target: target("Submit", { x: 696.9609375, y: 376.59375 }),
           pointer: { button: "left", effect: "click" },
         },
@@ -366,7 +376,7 @@ describe("buildTimelineFromStory", () => {
     const cursor = out.cursor[0];
     expect(cursor?.durationMs).toBeGreaterThanOrEqual(2_520);
     expect(cursor?.trajectoryFrameCount).toBe(
-      Math.ceil(((cursor?.durationMs ?? 0) / 1000) * ACTIONS.fps),
+      Math.ceil(((cursor?.durationMs ?? 0) / 1000) * actionSidecarFps(ACTIONS)),
     );
     expect(out.video[0]?.durationMs).toBe(cursor?.durationMs);
   });

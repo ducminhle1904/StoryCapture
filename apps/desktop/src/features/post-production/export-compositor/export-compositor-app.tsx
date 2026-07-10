@@ -1,12 +1,16 @@
 import { useEffect, useRef } from "react";
 
-import type { RecordingActions } from "@/ipc/actions";
 import type { RecordingTrajectory } from "@/ipc/trajectory";
 import {
+  samplePreparedVirtualCursor,
   sampleTrajectoryCursor,
-  sampleVirtualCursor,
 } from "../preview/virtual-cursor-path";
 import type { Graph as ExportGraph, Rgba, Vec2, VideoNode } from "../state/compute-graph";
+import {
+  buildVirtualCursorSchedule,
+  type VirtualCursorSchedule,
+} from "../state/virtual-cursor-scheduler";
+import { parseExportCursorSidecar } from "./cursor-sidecar";
 
 const CURSOR_BASE_SIZE_PX = 32;
 const CURSOR_RIPPLE_MAX_PX = 96;
@@ -44,7 +48,8 @@ declare global {
 interface CursorLayer {
   node: CursorNode;
   image: HTMLImageElement | null;
-  sidecar: RecordingActions | RecordingTrajectory | null;
+  trajectory: RecordingTrajectory | null;
+  schedule: VirtualCursorSchedule | null;
   sidecarKind: "actions" | "trajectory" | "unknown";
 }
 
@@ -141,8 +146,9 @@ function nodeOf<T extends VideoNode["type"]>(
   type: T,
 ): Extract<VideoNode, { type: T }> | null {
   return (
-    (graph.video ?? []).find((node): node is Extract<VideoNode, { type: T }> => node.type === type) ??
-    null
+    (graph.video ?? []).find(
+      (node): node is Extract<VideoNode, { type: T }> => node.type === type,
+    ) ?? null
   );
 }
 
@@ -193,15 +199,11 @@ async function fetchJson(path: string): Promise<unknown | null> {
   if (!path.endsWith(".json")) return null;
   const response = await fetch(assetUrl(path));
   if (!response.ok) throw new Error(`failed to load cursor sidecar: ${path}`);
-  return response.json();
-}
-
-function isRecordingActions(value: unknown): value is RecordingActions {
-  return Boolean(value && typeof value === "object" && Array.isArray((value as RecordingActions).events));
-}
-
-function isRecordingTrajectory(value: unknown): value is RecordingTrajectory {
-  return Boolean(value && typeof value === "object" && Array.isArray((value as RecordingTrajectory).frames));
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 function sampleZoom(graph: ExportGraph, timeMs: number, width: number, height: number) {
@@ -313,16 +315,16 @@ class CanvasExportCompositor {
         const src = cursorSkinSrc(node.skin);
         const image = src ? await loadImage(src) : null;
         const rawSidecar = await fetchJson(node.trajectory.png_sequence_dir);
-        const sidecarKind: CursorLayer["sidecarKind"] = isRecordingActions(rawSidecar)
-          ? "actions"
-          : isRecordingTrajectory(rawSidecar)
-            ? "trajectory"
-            : "unknown";
+        const parsed = parseExportCursorSidecar(rawSidecar);
         return {
           node,
           image,
-          sidecar: isRecordingActions(rawSidecar) || isRecordingTrajectory(rawSidecar) ? rawSidecar : null,
-          sidecarKind,
+          trajectory: parsed.kind === "trajectory" ? parsed.sidecar : null,
+          schedule:
+            parsed.kind === "actions"
+              ? buildVirtualCursorSchedule(parsed.sidecar, node.motion_preset)
+              : null,
+          sidecarKind: parsed.kind,
         };
       }),
     );
@@ -537,9 +539,9 @@ class CanvasExportCompositor {
       const relativeMs = timeMs - startMs;
       const sample =
         layer.sidecarKind === "actions"
-          ? sampleVirtualCursor(layer.sidecar as RecordingActions, relativeMs, layer.node.motion_preset)
+          ? samplePreparedVirtualCursor(layer.schedule, relativeMs)
           : layer.sidecarKind === "trajectory"
-            ? sampleTrajectoryCursor(layer.sidecar as RecordingTrajectory, relativeMs)
+            ? sampleTrajectoryCursor(layer.trajectory, relativeMs)
             : null;
       if (!sample) continue;
       const point = applyZoomToNormalizedPoint(sample, zoom, this.outputWidth, this.outputHeight);
@@ -559,7 +561,13 @@ class CanvasExportCompositor {
         ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(ripplePoint.x * this.outputWidth, ripplePoint.y * this.outputHeight, rippleSize / 2, 0, Math.PI * 2);
+        ctx.arc(
+          ripplePoint.x * this.outputWidth,
+          ripplePoint.y * this.outputHeight,
+          rippleSize / 2,
+          0,
+          Math.PI * 2,
+        );
         ctx.stroke();
         ctx.restore();
       }

@@ -13,28 +13,52 @@
 set -euo pipefail
 
 FIXTURE_DIR="$(cd "$(dirname "$0")/fixtures" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT_DIR="$(mktemp -d)"
 PROGRESS_LOG="$OUT_DIR/ffmpeg-progress.log"
 STRICT_WALL_CLOCK="${STRICT_WALL_CLOCK:-0}"
+trap 'rm -rf "$OUT_DIR"' EXIT
+
+H264_ENCODER="${H264_ENCODER:-libx264}"
+if ! ffmpeg -hide_banner -encoders 2>/dev/null | grep -Eq \
+    "(^|[[:space:]])${H264_ENCODER}([[:space:]]|$)"; then
+    echo "FAIL: requested H.264 encoder '$H264_ENCODER' is unavailable" >&2
+    exit 1
+fi
 
 # ----- Fixture + FFmpeg discovery ------------------------------------------
 
 FIXTURE_JSON="${FIXTURE_JSON:-$FIXTURE_DIR/1min-reference.json}"
-if [ ! -f "$FIXTURE_JSON" ]; then
-    echo "warn: benchmark fixture missing at $FIXTURE_JSON — generating synthetic testsrc2 fallback" >&2
-    # Fall-back: generate a synthetic testsrc2 + sine 1-minute 1080p60 MP4
-    # so the script still exits usefully on a fresh clone / CI cold run.
+generate_synthetic_fixture() {
     FIXTURE_MP4="$OUT_DIR/synthetic-1min.mp4"
     ffmpeg -y -hide_banner -nostdin \
         -f lavfi -i "testsrc2=size=1920x1080:rate=60:duration=60" \
         -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=60" \
-        -c:v libopenh264 -b:v 8M -c:a aac -b:a 128k \
+        -c:v "$H264_ENCODER" -b:v 8M -c:a aac -b:a 128k \
         -movflags +faststart \
         "$FIXTURE_MP4"
     FIXTURE_SOURCE="$FIXTURE_MP4"
+}
+
+if [ ! -f "$FIXTURE_JSON" ]; then
+    echo "warn: benchmark fixture metadata missing at $FIXTURE_JSON — generating synthetic testsrc2 fallback" >&2
+    # Fall-back: generate a synthetic testsrc2 + sine 1-minute 1080p60 MP4
+    # so the script still exits usefully on a fresh clone / CI cold run.
+    generate_synthetic_fixture
 else
-    FIXTURE_SOURCE="$(jq -r .source_mp4 "$FIXTURE_JSON")"
+    FIXTURE_SOURCE="$(jq -r '.source_mp4 // .source_path // empty' "$FIXTURE_JSON")"
+    if [ -n "$FIXTURE_SOURCE" ] && [[ "$FIXTURE_SOURCE" != /* ]]; then
+        FIXTURE_SOURCE="$REPO_ROOT/$FIXTURE_SOURCE"
+    fi
+    if [ -z "$FIXTURE_SOURCE" ] || [ ! -f "$FIXTURE_SOURCE" ]; then
+        echo "warn: benchmark fixture source is unavailable — generating synthetic testsrc2 fallback" >&2
+        generate_synthetic_fixture
+    fi
 fi
+
+SOURCE_FRAME_COUNT="$(ffprobe -v error -select_streams v:0 -count_frames \
+    -show_entries stream=nb_read_frames -of default=nokey=1:noprint_wrappers=1 \
+    "$FIXTURE_SOURCE")"
 
 # ----- Run the benchmark ---------------------------------------------------
 
@@ -58,7 +82,7 @@ ffmpeg -y -hide_banner -nostdin \
 OUT_MP4="$OUT_DIR/out.mp4"
 OUT_WEBM="$OUT_DIR/out.webm"
 ffmpeg -y -hide_banner -nostdin \
-    -i "$INTERM" -c:v libopenh264 -b:v 8M -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart \
+    -i "$INTERM" -c:v "$H264_ENCODER" -b:v 8M -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart \
     -progress "$PROGRESS_LOG" \
     "$OUT_MP4" &
 MP4_PID=$!
@@ -71,6 +95,9 @@ wait $WEBM_PID
 
 END_MS=$(( $(date +%s%N) / 1000000 ))
 ELAPSED=$(( END_MS - START_MS ))
+OUTPUT_FRAME_COUNT="$(ffprobe -v error -select_streams v:0 -count_frames \
+    -show_entries stream=nb_read_frames -of default=nokey=1:noprint_wrappers=1 \
+    "$OUT_MP4")"
 
 # ----- Parse speed factor --------------------------------------------------
 
@@ -79,6 +106,9 @@ if [ -z "$SPEED" ]; then SPEED="0"; fi
 
 echo "render_time_ms=$ELAPSED"
 echo "encode_speed_factor=$SPEED"
+echo "source_frame_count=$SOURCE_FRAME_COUNT"
+echo "output_frame_count=$OUTPUT_FRAME_COUNT"
+echo "h264_encoder=$H264_ENCODER"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     {
@@ -87,6 +117,9 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
         echo "| --- | --- |"
         echo "| Wall clock (ms) | $ELAPSED |"
         echo "| Encode speed factor | ${SPEED}x |"
+        echo "| Source frame count | $SOURCE_FRAME_COUNT |"
+        echo "| Output frame count | $OUTPUT_FRAME_COUNT |"
+        echo "| H.264 encoder | $H264_ENCODER |"
         echo "| Strict wall-clock gate | $STRICT_WALL_CLOCK |"
     } >> "$GITHUB_STEP_SUMMARY"
 fi

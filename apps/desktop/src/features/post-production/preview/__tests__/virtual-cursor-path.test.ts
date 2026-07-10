@@ -4,7 +4,7 @@ import {
   buildVirtualCursorSchedule,
   virtualCursorVisualDurationMs,
 } from "../../state/virtual-cursor-scheduler";
-import { sampleVirtualCursor } from "../virtual-cursor-path";
+import { samplePreparedVirtualCursor, sampleVirtualCursor } from "../virtual-cursor-path";
 import { ACTIONS } from "./fixtures";
 
 function actionsWithEvents(
@@ -31,6 +31,8 @@ function eventWithTarget(
     t_start_ms: timing.start,
     t_action_ms: timing.action,
     t_end_ms: timing.end,
+    cursor_timing: null,
+    input_timing: null,
     target: {
       ...target,
       center,
@@ -63,38 +65,39 @@ describe("sampleVirtualCursor", () => {
     expect(sampleVirtualCursor(null, 1000)).toBeNull();
   });
 
-  it("synthesizes pre-impact travel for zero-window actions", () => {
+  it("samples a prepared schedule with wrapper parity", () => {
+    const schedule = buildVirtualCursorSchedule(ACTIONS, "natural");
+
+    for (const timeMs of [999, 1000, 1500, 2000, 2001, 2520]) {
+      expect(samplePreparedVirtualCursor(schedule, timeMs)).toEqual(
+        sampleVirtualCursor(ACTIONS, timeMs, "natural"),
+      );
+    }
+  });
+
+  it("snaps zero-window actions at the input boundary", () => {
     const actions = actionsWithEvents([
       eventWithTarget({ x: 800, y: 300 }, { start: 2000, action: 2000, end: 2100 }),
     ]);
 
-    const early = sampleVirtualCursor(actions, 1600);
-    expect(early?.x).toBeGreaterThan(0.5);
-    expect(early?.x).toBeLessThan(0.8);
-
-    const moving = sampleVirtualCursor(actions, 1800);
-    expect(moving?.x).toBeGreaterThan(0.5);
-    expect(moving?.x).toBeLessThan(0.8);
-
-    const arrived = sampleVirtualCursor(actions, 1999);
-    expect(arrived?.x).toBeGreaterThan(0.79);
+    expect(sampleVirtualCursor(actions, 1600)).toMatchObject({ x: 0.5, y: 0.5 });
+    expect(sampleVirtualCursor(actions, 1999)).toMatchObject({ x: 0.5, y: 0.5 });
     expect(sampleVirtualCursor(actions, 2000)).toMatchObject({ x: 0.8, y: 0.6 });
   });
 
-  it("uses a longer bounded travel window for long-distance zero-window actions", () => {
+  it("does not move a long-distance zero-window action before input", () => {
     const actions = actionsWithEvents(
       [eventWithTarget({ x: 3000, y: 2000 }, { start: 2000, action: 2000, end: 2100 })],
       { width: 3000, height: 2000 },
     );
 
-    const early = sampleVirtualCursor(actions, 1500);
-    expect(early?.x).toBeGreaterThan(0.5);
-    expect(early?.x).toBeLessThan(1);
+    expect(sampleVirtualCursor(actions, 1999)).toMatchObject({ x: 0.5, y: 0.5 });
+    expect(sampleVirtualCursor(actions, 2000)).toMatchObject({ x: 1, y: 1 });
   });
 
   it("uses the selected motion preset for synthetic travel timing", () => {
     const actions = actionsWithEvents(
-      [eventWithTarget({ x: 3000, y: 2000 }, { start: 2000, action: 2000, end: 2100 })],
+      [eventWithTarget({ x: 3000, y: 2000 }, { start: 0, action: 2000, end: 2100 })],
       { width: 3000, height: 2000 },
     );
 
@@ -105,9 +108,9 @@ describe("sampleVirtualCursor", () => {
     expect(cinematic?.x).toBeGreaterThan(0.5);
   });
 
-  it("keeps a minimum visible travel window for short-distance zero-window actions", () => {
+  it("keeps a minimum requested travel window when the event window allows it", () => {
     const actions = actionsWithEvents([
-      eventWithTarget({ x: 510, y: 250 }, { start: 2000, action: 2000, end: 2100 }),
+      eventWithTarget({ x: 510, y: 250 }, { start: 1500, action: 2000, end: 2100 }),
     ]);
 
     expect(sampleVirtualCursor(actions, 1600)).toMatchObject({ x: 0.5, y: 0.5 });
@@ -117,21 +120,18 @@ describe("sampleVirtualCursor", () => {
     expect(moving?.x).toBeLessThan(0.51);
   });
 
-  it("interpolates deterministically between tightly spaced zero-window actions", () => {
+  it("holds then snaps between tightly spaced zero-window actions", () => {
     const actions = actionsWithEvents([
       eventWithTarget({ x: 800, y: 300 }, { start: 1000, action: 1000, end: 1200 }),
       eventWithTarget({ x: 200, y: 100 }, { start: 1300, action: 1300, end: 1400 }),
     ]);
 
-    const moving = sampleVirtualCursor(actions, 1250);
-    expect(moving?.x).toBeGreaterThan(0.18);
-    expect(moving?.x).toBeLessThan(0.8);
-    expect(moving?.y).toBeGreaterThan(0.18);
-    expect(moving?.y).toBeLessThan(0.6);
+    expect(sampleVirtualCursor(actions, 1250)).toMatchObject({ x: 0.8, y: 0.6 });
+    expect(sampleVirtualCursor(actions, 1300)).toMatchObject({ x: 0.2, y: 0.2 });
   });
 
   it("respects an existing meaningful movement window", () => {
-    const moving = sampleVirtualCursor(ACTIONS, 1200);
+    const moving = sampleVirtualCursor(ACTIONS, 1500);
     expect(moving?.x).toBeGreaterThan(0.5);
     expect(moving?.x).toBeLessThan(0.8);
   });
@@ -148,7 +148,7 @@ describe("sampleVirtualCursor", () => {
     expect(moving?.y).not.toBeCloseTo(0.5, 4);
   });
 
-  it("does not compress quick natural motion into the next semantic action time", () => {
+  it("compresses quick natural motion at the next semantic action time", () => {
     const start = eventWithTarget(
       { x: 293.1875, y: 376.59375 },
       { start: 289, action: 290, end: 416 },
@@ -165,14 +165,12 @@ describe("sampleVirtualCursor", () => {
     const actions = actionsWithEvents([start, email, submit], { width: 1280, height: 720 });
 
     const atSemanticClick = sampleVirtualCursor(actions, 1108, "natural");
-    expect(atSemanticClick?.x).toBeGreaterThan(491.375 / 1280);
-    expect(atSemanticClick?.x).toBeLessThan(0.52);
-    expect(atSemanticClick?.ripple).toBeNull();
+    expect(atSemanticClick?.x).toBeCloseTo(696.9609375 / 1280);
+    expect(atSemanticClick?.ripple).not.toBeNull();
 
-    const stillMoving = sampleVirtualCursor(actions, 1300, "natural");
-    expect(stillMoving?.x).toBeGreaterThan(491.375 / 1280);
-    expect(stillMoving?.x).toBeLessThan(696.9609375 / 1280);
-    expect(stillMoving?.ripple).toBeNull();
+    const afterInput = sampleVirtualCursor(actions, 1300, "natural");
+    expect(afterInput?.x).toBeCloseTo(696.9609375 / 1280);
+    expect(afterInput?.ripple).not.toBeNull();
   });
 
   it("prefers explicit sidecar cursor timing and delays click ripple until input time", () => {

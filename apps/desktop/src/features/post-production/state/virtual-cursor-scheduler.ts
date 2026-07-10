@@ -1,4 +1,9 @@
-import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
+import {
+  type ActionPoint,
+  type ActionTimelineEvent,
+  actionSidecarFps,
+  type RecordingActions,
+} from "@/ipc/action-sidecar";
 import { type CursorMotionProfile, cursorMotionProfile } from "./cursor-motion";
 import type { CursorMotionPreset } from "./timeline-slice";
 
@@ -9,6 +14,9 @@ export interface VirtualCursorSegment {
   startMs: number;
   arrivalMs: number;
   travelMs: number;
+  requestedTravelMs: number;
+  compressed: boolean;
+  snapped: boolean;
   effectMs: number;
 }
 
@@ -16,11 +24,11 @@ export interface VirtualCursorSchedule {
   size: { width: number; height: number };
   segments: VirtualCursorSegment[];
   durationMs: number;
+  motionPreset: CursorMotionPreset;
 }
 
 export const VIRTUAL_CURSOR_CLICK_RIPPLE_MS = 520;
 
-const QUICK_SUCCESSION_MS = 180;
 const MIN_TARGET_WIDTH_PX = 12;
 const CURSOR_INTERACTION_VERBS = new Set(["click", "type", "hover", "select"]);
 
@@ -73,27 +81,14 @@ function eventPoint(
   };
 }
 
-function nextReadyMs(
-  event: ActionTimelineEvent,
-  arrivalMs: number,
-  next: ActionTimelineEvent | undefined,
-): number {
-  const eventEnd = Math.max(arrivalMs, event.t_end_ms);
-  if (!next) return eventEnd;
-  const nextStart = Math.max(
-    0,
-    next.cursor_timing?.start_ms ?? Math.min(next.t_start_ms, next.t_action_ms),
-  );
-  return nextStart - eventEnd < QUICK_SUCCESSION_MS ? arrivalMs : eventEnd;
-}
-
 function actionsDurationMs(events: ActionTimelineEvent[], actions: RecordingActions): number {
   let eventMaxEndMs = 0;
   for (const event of events) {
     eventMaxEndMs = Math.max(eventMaxEndMs, event.t_end_ms);
   }
   if (eventMaxEndMs > 0) return eventMaxEndMs;
-  return actions.fps > 0 ? Math.round((actions.frame_count / actions.fps) * 1000) : 0;
+  const fps = actionSidecarFps(actions);
+  return fps > 0 ? Math.round((actions.frame_count / fps) * 1000) : 0;
 }
 
 export function isCursorInteractionVerb(verb: string | null | undefined): boolean {
@@ -132,11 +127,12 @@ export function buildVirtualCursorSchedule(
   const events = actions.events.filter((event) => isCursorInteractionVerb(event.verb));
   if (events.length === 0) return null;
 
-  const profile = cursorMotionProfile(motionPreset);
+  const resolvedPreset = motionPreset ?? actions.cursor_motion_preset;
+  const profile = cursorMotionProfile(resolvedPreset);
   const size = canvasSize(actions);
   const segments: VirtualCursorSegment[] = [];
   let previous: ActionPoint = { x: size.width / 2, y: size.height / 2 };
-  let readyMs = 0;
+  let previousCursorEndMs = 0;
   let durationMs = actionsDurationMs(events, actions);
 
   for (let i = 0; i < events.length; i += 1) {
@@ -145,16 +141,23 @@ export function buildVirtualCursorSchedule(
 
     const target = eventPoint(actions, event, previous, size);
     const explicitTiming = explicitCursorTiming(event);
-    const actionMs = Math.max(0, event.t_action_ms);
-    const eventStartMs = Math.max(0, Math.min(event.t_start_ms, actionMs));
+    const inputActionMs = inputEffectMs(event, Math.max(0, event.t_action_ms));
+    const eventStartMs = Math.max(0, Math.min(event.t_start_ms, inputActionMs));
     const syntheticTravelMs = travelDurationMs(previous, target, event, profile);
-    const declaredWindowMs = actionMs - eventStartMs;
-    const preferredStartMs =
-      declaredWindowMs >= syntheticTravelMs ? eventStartMs : actionMs - syntheticTravelMs;
-    const startMs = explicitTiming?.startMs ?? Math.max(0, readyMs, preferredStartMs);
-    const arrivalMs = explicitTiming?.arrivalMs ?? Math.max(actionMs, startMs + syntheticTravelMs);
-    const travelMs = explicitTiming?.travelMs ?? syntheticTravelMs;
-    const effectMs = inputEffectMs(event, arrivalMs);
+    const requestedTravelMs = explicitTiming?.travelMs ?? syntheticTravelMs;
+    const arrivalMs = Math.min(inputActionMs, explicitTiming?.arrivalMs ?? inputActionMs);
+    const eventWindowStart = Math.min(
+      arrivalMs,
+      Math.max(eventStartMs, explicitTiming?.startMs ?? eventStartMs),
+    );
+    const desiredStartMs = arrivalMs - requestedTravelMs;
+    const startMs = Math.min(
+      arrivalMs,
+      Math.max(previousCursorEndMs, eventWindowStart, desiredStartMs),
+    );
+    const availableTravelMs = Math.max(0, arrivalMs - startMs);
+    const travelMs = Math.min(requestedTravelMs, availableTravelMs);
+    const effectMs = inputActionMs;
 
     const segment = {
       event,
@@ -163,6 +166,9 @@ export function buildVirtualCursorSchedule(
       startMs,
       arrivalMs,
       travelMs,
+      requestedTravelMs,
+      compressed: travelMs < requestedTravelMs,
+      snapped: requestedTravelMs > 0 && travelMs === 0,
       effectMs,
     };
     segments.push(segment);
@@ -175,11 +181,15 @@ export function buildVirtualCursorSchedule(
         : Math.max(arrivalMs, effectMs),
     );
     previous = target;
-    readyMs = nextReadyMs(event, arrivalMs, events[i + 1]);
-    durationMs = Math.max(durationMs, readyMs);
+    previousCursorEndMs = arrivalMs;
   }
 
-  return { size, segments, durationMs: Math.ceil(durationMs) };
+  return {
+    size,
+    segments,
+    durationMs: Math.ceil(durationMs),
+    motionPreset: resolvedPreset,
+  };
 }
 
 export function virtualCursorVisualDurationMs(

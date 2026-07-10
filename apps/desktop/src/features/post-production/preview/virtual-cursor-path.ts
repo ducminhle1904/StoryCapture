@@ -1,12 +1,12 @@
 import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
 import type { RecordingTrajectory } from "@/ipc/trajectory";
 import { type CursorMotionProfile, cursorMotionProfile } from "../state/cursor-motion";
+import type { CursorMotionPreset } from "../state/timeline-slice";
 import {
   buildVirtualCursorSchedule,
   VIRTUAL_CURSOR_CLICK_RIPPLE_MS,
   type VirtualCursorSchedule,
 } from "../state/virtual-cursor-scheduler";
-import type { CursorMotionPreset } from "../state/timeline-slice";
 
 export interface VirtualCursorSample {
   x: number;
@@ -110,9 +110,15 @@ export function sampleVirtualCursor(
   tMs: number,
   motionPreset?: CursorMotionPreset,
 ): VirtualCursorSample | null {
-  const schedule = buildVirtualCursorSchedule(actions, motionPreset);
+  return samplePreparedVirtualCursor(buildVirtualCursorSchedule(actions, motionPreset), tMs);
+}
+
+export function samplePreparedVirtualCursor(
+  schedule: VirtualCursorSchedule | null | undefined,
+  tMs: number,
+): VirtualCursorSample | null {
   if (!schedule) return null;
-  const profile = cursorMotionProfile(motionPreset);
+  const profile = cursorMotionProfile(schedule.motionPreset);
 
   for (const segment of schedule.segments) {
     const { event, from, to, startMs, arrivalMs } = segment;
@@ -126,8 +132,10 @@ export function sampleVirtualCursor(
     }
 
     if (tMs <= arrivalMs) {
-      const span = Math.max(1, arrivalMs - startMs);
-      const pos = curvedCursorPoint(from, to, event, (tMs - startMs) / span, profile);
+      const pos =
+        arrivalMs === startMs
+          ? to
+          : curvedCursorPoint(from, to, event, (tMs - startMs) / (arrivalMs - startMs), profile);
       return withRipple(
         schedule,
         { x: pos.x / schedule.size.width, y: pos.y / schedule.size.height },

@@ -1,14 +1,19 @@
 import type { RecordingActions } from "@/ipc/actions";
 
 export const ACTIONS: RecordingActions = {
-  version: 1,
+  source_version: 1,
+  confidence: "legacy-approximate",
   recording_path: "/tmp/demo.mp4",
+  cursor_motion_preset: "natural",
   viewport: { width: 1000, height: 500 },
   capture_rect: { x: 0, y: 0, width: 1000, height: 500 },
-  fps: 60,
+  fps_num: 60,
+  fps_den: 1,
   frame_count: 600,
   events: [
     {
+      source_index: 0,
+      confidence: "legacy-approximate",
       step_id: "step-1",
       ordinal: 1,
       verb: "click",
@@ -23,6 +28,8 @@ export const ACTIONS: RecordingActions = {
       },
       secondary_target: null,
       pointer: { button: "left", effect: "click" },
+      cursor_timing: null,
+      input_timing: { kind: "click", action_ms: 2000 },
     },
   ],
 };
