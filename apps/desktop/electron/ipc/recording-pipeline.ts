@@ -109,6 +109,10 @@ export function recordingRawVideoInputArgs(args: {
   ];
 }
 
+export function recordingPngSequenceInputArgs(fps: number): string[] {
+  return ["-framerate", String(fps)];
+}
+
 export function recordingVideoFilters(args: {
   sourceWidth: number;
   sourceHeight: number;

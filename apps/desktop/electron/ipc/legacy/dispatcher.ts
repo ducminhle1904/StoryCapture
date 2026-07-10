@@ -183,14 +183,22 @@ export async function handleLegacyInvoke(
     case "pause_recording": {
       const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
       const session = recordingSessions.get(id);
-      if (session) session.paused = true;
-      return null;
+      if (!session) throw new Error(`recording session ${id} not found`);
+      session.paused = true;
+      session.lifecycle = "paused";
+      session.mediaClock.pause();
+      session.pauseGate.pause();
+      return { status: session.lifecycle };
     }
     case "resume_recording": {
       const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
       const session = recordingSessions.get(id);
-      if (session) session.paused = false;
-      return null;
+      if (!session) throw new Error(`recording session ${id} not found`);
+      session.paused = false;
+      session.lifecycle = "recording";
+      session.mediaClock.resume();
+      session.pauseGate.resume();
+      return { status: session.lifecycle };
     }
     case "launch_automation":
       return launchAutomationCommand((args ?? {}) as Record<string, unknown>, event.sender);

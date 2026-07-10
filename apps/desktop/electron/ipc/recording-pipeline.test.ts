@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   cadenceWarning,
+  recordingPngSequenceInputArgs,
   recordingQualityArgs,
   recordingRawVideoInputArgs,
   recordingVideoFilters,
@@ -45,6 +46,10 @@ describe("recording pipeline helpers", () => {
       "-i",
       "pipe:0",
     ]);
+  });
+
+  it("uses the declared media FPS for PNG sequences", () => {
+    expect(recordingPngSequenceInputArgs(60)).toEqual(["-framerate", "60"]);
   });
 
   it("builds letterbox filters with pad color and scale algorithm", () => {

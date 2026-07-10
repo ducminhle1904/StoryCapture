@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ActionCursorTiming,
   type ActionInputTiming,
-  actionsSidecarPath,
   type ActionTarget,
   type ActionTimelineEvent,
+  actionsSidecarPath,
 } from "../action-timeline";
 import { estimateCursorTravelDelayMs, initialCursorPoint } from "../cursor-timing";
+import { RecordingMediaClock } from "../recording-media-clock";
+import { RecordingPauseGate } from "../recording-pause-gate";
 import { AUTOMATION_RECORDING_TAIL_DURATION_MS } from "../recording-tail";
 import type { ParsedCommand } from "../story-parser";
 
@@ -87,6 +89,11 @@ function fakeContents(targets: ActionTarget[]) {
   const executeJavaScript = vi.fn(async (script: string) => {
     if (script.includes("resolvedTargetGeometry")) {
       latestTarget = pendingTargets.shift() ?? latestTarget;
+      if (script.includes("resolvedTargetReadiness")) {
+        return latestTarget
+          ? { status: "ready", target: latestTarget }
+          : { status: "not_ready", reason: "not_found" };
+      }
       return latestTarget;
     }
     return true;
@@ -107,9 +114,15 @@ function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
   const executeJavaScript = vi.fn(async (script: string) => {
     if (script.includes("resolvedTargetGeometry")) {
       for (const [label, actionTarget] of Object.entries(targets)) {
-        if (script.includes(label)) return actionTarget;
+        if (script.includes(label)) {
+          return script.includes("resolvedTargetReadiness")
+            ? { status: "ready", target: actionTarget }
+            : actionTarget;
+        }
       }
-      return null;
+      return script.includes("resolvedTargetReadiness")
+        ? { status: "not_ready", reason: "not_found" }
+        : null;
     }
     return true;
   });
@@ -222,6 +235,7 @@ describe("story browser cursor pacing", () => {
         size,
       }),
     );
+    const readinessDelayMs = 200;
     const successes: Array<{
       actionDurationMs: number;
       timing?: {
@@ -253,7 +267,7 @@ describe("story browser cursor pacing", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(expectedDelayMs - 1);
+    await vi.advanceTimersByTimeAsync(readinessDelayMs + expectedDelayMs - 1);
     expect(contents.sendInputEvent.mock.calls.some(([event]) => event.type === "mouseDown")).toBe(
       false,
     );
@@ -272,10 +286,12 @@ describe("story browser cursor pacing", () => {
       events.findIndex((event) => event.type === "mouseMove"),
     );
     expect(successes).toHaveLength(1);
-    expect(successes[0]?.actionDurationMs).toBe(expectedDelayMs);
+    expect(successes[0]?.actionDurationMs).toBe(readinessDelayMs + expectedDelayMs);
     expect(successes[0]?.timing?.stepStartedAtMs).toBe(0);
-    expect(successes[0]?.timing?.actionAtMs).toBeCloseTo(expectedDelayMs / 2);
-    expect(successes[0]?.timing?.stepEndedAtMs).toBeCloseTo(expectedDelayMs / 2);
+    expect(successes[0]?.timing?.actionAtMs).toBeCloseTo((readinessDelayMs + expectedDelayMs) / 2);
+    expect(successes[0]?.timing?.stepEndedAtMs).toBeCloseTo(
+      (readinessDelayMs + expectedDelayMs) / 2,
+    );
     expect(successes[0]?.timing?.cursorTiming).toMatchObject({
       motion_preset: "natural",
       start_ms: 0,
@@ -283,14 +299,55 @@ describe("story browser cursor pacing", () => {
     expect(successes[0]?.timing?.inputTiming).toMatchObject({
       kind: "click",
     });
-    expect(successes[0]?.timing?.inputTiming?.action_ms).toBe(Math.round(expectedDelayMs / 2));
+    expect(successes[0]?.timing?.inputTiming?.action_ms).toBe(
+      Math.round((readinessDelayMs + expectedDelayMs) / 2),
+    );
+  });
+
+  it("freezes cursor travel and browser input while recording is paused", async () => {
+    const size = { width: 1280, height: 800 };
+    const clickTarget = target("Sign in", { x: 460, y: 320 });
+    const contents = fakeContents([clickTarget]);
+    const pauseGate = new RecordingPauseGate();
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [command("click", "Sign in")],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "incremental",
+        captureRecordingFrames: true,
+        captureSize: size,
+        settleDelayForCommand: () => 0,
+      },
+      pauseGate,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    pauseGate.pause();
+    const eventCountAtPause = contents.sendInputEvent.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(contents.sendInputEvent).toHaveBeenCalledTimes(eventCountAtPause);
+    expect(contents.sendInputEvent.mock.calls.some(([event]) => event.type === "mouseDown")).toBe(
+      false,
+    );
+
+    pauseGate.resume();
+    await vi.runAllTimersAsync();
+    await run;
+
+    expect(contents.sendInputEvent.mock.calls.some(([event]) => event.type === "mouseDown")).toBe(
+      true,
+    );
   });
 
   it("uses the final resolved target for input after a large layout shift", async () => {
     const size = { width: 1280, height: 800 };
     const initialTarget = target("Sign in", { x: 460, y: 320 });
     const shiftedTarget = target("Sign in", { x: 760, y: 520 });
-    const contents = fakeContents([initialTarget, shiftedTarget]);
+    const contents = fakeContents([initialTarget, initialTarget, shiftedTarget]);
 
     const run = runStoryCommandsInBrowser({
       contents: contents as never,
@@ -386,6 +443,8 @@ describe("story browser cursor pacing", () => {
     vi.mocked(authorSession).mockReturnValue({
       window: { webContents: contents },
     } as never);
+    const mediaClock = new RecordingMediaClock({ fpsNum: 60, fpsDen: 1 });
+    for (let frame = 0; frame < 240; frame += 1) mediaClock.commitFrame(true);
     recordingSessions.set("recording-1", {
       id: "recording-1",
       projectFolder: dir,
@@ -398,6 +457,9 @@ describe("story browser cursor pacing", () => {
       fps: 60,
       startedAt: Date.now(),
       paused: false,
+      lifecycle: "recording",
+      mediaClock,
+      pauseGate: new RecordingPauseGate(),
       eventTarget: contents,
       eventChannelId: null,
       heartbeat: undefined,

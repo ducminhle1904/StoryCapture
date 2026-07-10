@@ -24,6 +24,8 @@ import type { CursorTimingSize } from "../cursor-timing";
 import { readJson, writeJson } from "../json-store";
 import { type FrontendLogPayload, logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
+import type { RecordingMediaClock } from "../recording-media-clock";
+import type { RecordingPauseGate } from "../recording-pause-gate";
 import type {
   RecordingFitMode,
   RecordingPadColor,
@@ -379,6 +381,9 @@ export interface RecordingSession {
   fps: number;
   startedAt: number;
   paused: boolean;
+  lifecycle: "recording" | "paused" | "stopping" | "finalized";
+  mediaClock: RecordingMediaClock;
+  pauseGate: RecordingPauseGate;
   eventTarget: WebContents;
   eventChannelId: number | null;
   heartbeat: ReturnType<typeof setInterval>;
@@ -511,6 +516,7 @@ export interface StoryBrowserRunOptions {
   frameDir?: string | null;
   executionProfile?: StoryBrowserExecutionProfile;
   recordingClockMs?: () => number;
+  pauseGate?: RecordingPauseGate;
   shouldCancel?: () => boolean;
   hooks?: StoryBrowserRunHooks;
 }

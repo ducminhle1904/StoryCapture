@@ -7,6 +7,7 @@ import {
   setSimulatorTargetValueScript,
   simulatorTargetCenterScript,
   simulatorTargetGeometryScript,
+  simulatorTargetReadinessScript,
 } from "./simulator-dom";
 
 function makeVisible(el: Element): void {
@@ -52,7 +53,9 @@ describe("simulator DOM helpers", () => {
     `;
     document.querySelectorAll("*").forEach(makeVisible);
 
-    const center = window.eval(simulatorTargetCenterScript({ kind: "label", value: "EMAIL ADDRESS" }));
+    const center = window.eval(
+      simulatorTargetCenterScript({ kind: "label", value: "EMAIL ADDRESS" }),
+    );
 
     expect(center).toEqual({ x: 100, y: 10 });
   });
@@ -93,6 +96,42 @@ describe("simulator DOM helpers", () => {
       center: { x: 220, y: 70 },
       bounds: { x: 120, y: 50, w: 200, h: 40 },
     });
+  });
+
+  it("reports disabled and covered interaction targets", () => {
+    document.body.innerHTML = `<button aria-label="Save" disabled>Save</button><div id="cover"></div>`;
+    const button = document.querySelector("button");
+    const cover = document.getElementById("cover");
+    if (!button || !cover) throw new Error("readiness fixture missing");
+    makeVisible(button);
+    makeVisible(cover);
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => cover,
+    });
+
+    expect(
+      window.eval(
+        simulatorTargetReadinessScript(
+          { kind: "role", value: { role: "button", name: "Save" } },
+          undefined,
+          null,
+          true,
+        ),
+      ),
+    ).toEqual({ status: "not_ready", reason: "disabled" });
+
+    button.removeAttribute("disabled");
+    expect(
+      window.eval(
+        simulatorTargetReadinessScript(
+          { kind: "role", value: { role: "button", name: "Save" } },
+          undefined,
+          null,
+          true,
+        ),
+      ),
+    ).toEqual({ status: "not_ready", reason: "covered" });
   });
 
   it("builds a value script that writes full text into the active input and emits events", () => {

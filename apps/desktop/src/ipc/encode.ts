@@ -62,9 +62,24 @@ export interface RecordingSessionId {
   id: string;
 }
 
+export interface RecordingLifecycleAck {
+  status: "recording" | "paused";
+}
+
 export interface EncodeResultDto {
   output_path: string;
   duration_ms: number;
+  frame_count?: number;
+  duration_us?: number;
+  media_clock?: {
+    clock: "encoded_video_pts";
+    unit: "us";
+    fps_num: number;
+    fps_den: number;
+    origin_frame: 0;
+    frame_count: number;
+    duration_us: number;
+  };
   bytes?: number;
   frames_written?: number;
   frames_encoded?: number;
@@ -135,14 +150,10 @@ export async function stopRecording(
   });
 }
 
-export async function pauseRecording(
-  session: RecordingSessionId,
-): Promise<void> {
+export async function pauseRecording(session: RecordingSessionId): Promise<RecordingLifecycleAck> {
   return invoke("pause_recording", { session });
 }
 
-export async function resumeRecording(
-  session: RecordingSessionId,
-): Promise<void> {
+export async function resumeRecording(session: RecordingSessionId): Promise<RecordingLifecycleAck> {
   return invoke("resume_recording", { session });
 }

@@ -14,12 +14,14 @@ import {
 } from "electron";
 import ffmpegPath from "ffmpeg-static";
 import {
+  type CursorTimingSize,
   HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
   HOST_CURSOR_DEFAULT_MOTION_PRESET,
   HOST_CURSOR_TARGET_STABILITY_THRESHOLD_PX,
-  type CursorTimingSize,
 } from "../cursor-timing";
 import { readJson } from "../json-store";
+import { RecordingMediaClock } from "../recording-media-clock";
+import { RecordingPauseGate } from "../recording-pause-gate";
 import {
   type RecordingFitMode,
   type RecordingOutputResolution,
@@ -678,7 +680,8 @@ export async function captureRecordingFrame(session: RecordingSession): Promise<
   try {
     const image = await captureRecordingNativeImage(session);
     await fs.writeFile(framePath, image.toPNG());
-    session.frameSeq = frameIndex;
+    session.mediaClock.commitFrame(true);
+    session.frameSeq = session.mediaClock.snapshot().frameCount;
   } catch {
     session.framesDropped += 1;
     sendChannel(session.eventTarget, session.eventChannelId, {
@@ -841,7 +844,8 @@ export async function submitAuthorPreviewFrame(
       );
     }
     const accepted = child.stdin.write(bitmap);
-    session.frameSeq += 1;
+    session.mediaClock.commitFrame(true);
+    session.frameSeq = session.mediaClock.snapshot().frameCount;
     if (!accepted) {
       session.encoderBackpressureEvents += 1;
       session.encoderBackpressured = true;
@@ -1682,6 +1686,9 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     fps,
     startedAt: Date.now(),
     paused: false,
+    lifecycle: "recording",
+    mediaClock: new RecordingMediaClock({ fpsNum: fps, fpsDen: 1 }),
+    pauseGate: new RecordingPauseGate(),
     eventTarget: sender,
     eventChannelId,
     heartbeat,

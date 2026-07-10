@@ -140,9 +140,35 @@ async function handleStopRecording(args?: unknown, options?: unknown): Promise<u
   return invokeMain("stop_recording", args, options);
 }
 
+async function handlePauseRecording(args?: unknown, options?: unknown): Promise<unknown> {
+  const sessionId = (args as { session?: RecordingSessionId } | undefined)?.session?.id;
+  const mic = sessionId ? micSessions.get(sessionId) : null;
+  if (mic?.recorder.state === "recording") mic.recorder.pause();
+  try {
+    return await invokeMain("pause_recording", args, options);
+  } catch (error) {
+    if (mic?.recorder.state === "paused") mic.recorder.resume();
+    throw error;
+  }
+}
+
+async function handleResumeRecording(args?: unknown, options?: unknown): Promise<unknown> {
+  const sessionId = (args as { session?: RecordingSessionId } | undefined)?.session?.id;
+  const mic = sessionId ? micSessions.get(sessionId) : null;
+  if (mic?.recorder.state === "paused") mic.recorder.resume();
+  try {
+    return await invokeMain("resume_recording", args, options);
+  } catch (error) {
+    if (mic?.recorder.state === "recording") mic.recorder.pause();
+    throw error;
+  }
+}
+
 function handleInvoke(cmd: string, args?: unknown, options?: unknown): Promise<unknown> {
   if (cmd === "start_recording") return handleStartRecording(args, options);
   if (cmd === "stop_recording") return handleStopRecording(args, options);
+  if (cmd === "pause_recording") return handlePauseRecording(args, options);
+  if (cmd === "resume_recording") return handleResumeRecording(args, options);
   return invokeMain(cmd, args, options);
 }
 
