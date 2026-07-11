@@ -234,26 +234,7 @@ describe("buildTimelineFromStory", () => {
       startMs: 800,
       center: { x: 0.5, y: 0.5 },
     });
-    expect(out.annotations).toHaveLength(1);
-    expect(out.annotations[0]).toMatchObject({
-      id: expect.stringMatching(/^action-focus-[a-f0-9]{8}-step-1-1000$/),
-      startMs: 940,
-      durationMs: 700,
-      text: "",
-      anchor: { kind: "target", stepId: "step-1", placement: "top" },
-      highlight: {
-        center: { x: 0.5, y: 0.5 },
-        radiusPx: 56,
-        shape: "ring",
-        color: "#ffffff",
-        durationMs: 700,
-      },
-    });
-    const bounds = out.annotations[0]?.highlight?.bounds;
-    expect(bounds?.x).toBeCloseTo(900 / 1920);
-    expect(bounds?.y).toBeCloseTo(500 / 1080);
-    expect(bounds?.w).toBeCloseTo(120 / 1920);
-    expect(bounds?.h).toBeCloseTo(80 / 1080);
+    expect(out.annotations).toHaveLength(0);
   });
 
   it("extends action-based cursor clips for natural visual travel and click feedback", () => {

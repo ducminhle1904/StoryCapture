@@ -178,7 +178,7 @@ describe("story-ui-model", () => {
     expect(doc.version).toBe(2);
     expect(doc.global.background).toEqual({ kind: "solid", color: "#101218" });
     expect(doc.global.cursorSkin).toBe("mac-default");
-    expect(doc.global.actionFocus).toBe("standard");
+    expect(doc.global.actionFocus).toBe("off");
     expect(doc.global.autoZoomDurationMs).toBe(800);
     expect(doc.steps["step-buy"]?.callout).toBe("Buy");
     expect(doc.steps["step-buy"]?.highlight).toBe(true);
@@ -203,7 +203,7 @@ describe("story-ui-model", () => {
 
     expect(doc.global.recipe).toBe("dynamic");
     expect(doc.global.autoZoom).toBe("standard");
-    expect(doc.global.actionFocus).toBe("standard");
+    expect(doc.global.actionFocus).toBe("off");
     expect(doc.global.cursor).toBe("smooth");
     expect(doc.global.cursorSkin).toBe("mac-default");
     expect(doc.scenes.Checkout?.transitionOut).toBe("none");

@@ -102,7 +102,7 @@ export const DEFAULT_POLISH_DOC: StoryPolishDoc = {
   global: {
     recipe: "dynamic",
     autoZoom: "standard",
-    actionFocus: "standard",
+    actionFocus: "off",
     autoZoomDurationMs: 800,
     cursor: "smooth",
     cursorSkin: "mac-default",

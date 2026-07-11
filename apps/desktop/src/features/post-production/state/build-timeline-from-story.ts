@@ -755,7 +755,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     ...autoZoom.map((clip) => ({ ...clip, syncGroupId, sourceRevision, sourceTimeMap })),
     ...polishClips.zoom,
   ];
-  const actionFocusMode = polish?.global.actionFocus ?? "standard";
+  const actionFocusMode = polish?.global.actionFocus ?? "off";
   const actionFocusAnnotations =
     actionFocusMode === "off"
       ? []
