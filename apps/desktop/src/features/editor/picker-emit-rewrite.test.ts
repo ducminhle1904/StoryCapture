@@ -23,6 +23,18 @@ describe("parseLine", () => {
     });
   });
 
+  it("preserves canonical role syntax, nth, indent, and timeout", () => {
+    expect(
+      parseLine('    wait-for <textbox> "Search" nth 2 timeout 10s'),
+    ).toEqual({
+      indent: "    ",
+      verb: "wait-for",
+      trailing: "timeout 10s",
+      hasTargetShape: true,
+      nth: 2,
+    });
+  });
+
   it("returns verb=null for unknown verbs (still has target shape)", () => {
     const r = parseLine('  type field "Search" with "x"');
     expect(r.verb).toBeNull();
@@ -59,6 +71,14 @@ describe("rewriteEmitted", () => {
       parseLine('    wait-for link "Rust (programming language)" timeout 5s'),
     );
     expect(out).toBe('    wait-for link "Rust" timeout 5s');
+  });
+
+  it("rewrites a canonical role target without stripping angle brackets", () => {
+    const out = rewriteEmitted(
+      'click <textbox> "Search"',
+      parseLine('    wait-for <textbox> "Old" timeout 5s'),
+    );
+    expect(out).toBe('    wait-for <textbox> "Search" timeout 5s');
   });
 
   it("falls back cleanly when existing line has no shape", () => {

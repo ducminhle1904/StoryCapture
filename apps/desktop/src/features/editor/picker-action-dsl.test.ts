@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PickElementMeta, PickLocator } from "@/ipc/picker";
+import type { Command } from "@/ipc/parse";
 
 import { parseLine } from "./picker-emit-rewrite";
 import {
@@ -9,6 +10,7 @@ import {
   formatPickedTarget,
   getPickerActionItems,
   inferDefaultAction,
+  validatePickerActionRoundTrip,
 } from "./picker-action-dsl";
 
 const roleSave: PickLocator = {
@@ -27,8 +29,25 @@ describe("formatPickedTarget", () => {
   it("formats testid", () => {
     expect(formatPickedTarget(testidSave)).toBe('testid "save"');
   });
-  it("formats role + accessible name", () => {
-    expect(formatPickedTarget(roleSave)).toBe('button "Save"');
+  it.each([
+    ["button", "Save", '<button> "Save"'],
+    ["textbox", "Search Wikipedia", '<textbox> "Search Wikipedia"'],
+    ["searchbox", "Search", '<searchbox> "Search"'],
+    ["spinbutton", "Quantity", '<spinbutton> "Quantity"'],
+    ["textbox", 'Search "Wikipedia" \\ docs', '<textbox> "Search \\"Wikipedia\\" \\\\ docs"'],
+  ])("formats role %s with canonical angle-bracket syntax", (role, name, expected) => {
+    expect(
+      formatPickedTarget({ kind: "role", value: { role, name } }),
+    ).toBe(expected);
+  });
+  it("appends nth after a canonical role target", () => {
+    expect(
+      formatPickedTarget({
+        kind: "role",
+        value: { role: "textbox", name: "Search Wikipedia" },
+        nth: 2,
+      }),
+    ).toBe('<textbox> "Search Wikipedia" nth 2');
   });
   it("formats label as field", () => {
     expect(formatPickedTarget({ kind: "label", value: "Email" })).toBe(
@@ -61,23 +80,124 @@ describe("formatPickedTarget", () => {
       formatPickedTarget({ kind: "role", value: "not-a-shape" } as PickLocator),
     ).toThrow(/role locator/);
   });
+  it("throws when a role is empty but allows an empty accessible name", () => {
+    expect(() =>
+      formatPickedTarget({ kind: "role", value: { role: "", name: "Name" } }),
+    ).toThrow(/role locator/);
+    expect(
+      formatPickedTarget({ kind: "role", value: { role: "button", name: "" } }),
+    ).toBe('<button> ""');
+  });
+});
+
+describe("validatePickerActionRoundTrip", () => {
+  const span = { start: 0, end: 1, line: 1, col: 1 };
+
+  it("accepts canonical arbitrary roles and preserves input values", () => {
+    expect(() =>
+      validatePickerActionRoundTrip(
+        "type",
+        { kind: "role", value: { role: "textbox", name: "Search" } },
+        { text: "ElectronJS" },
+        {
+          verb: "type",
+          target: { kind: "role", value: { role: "textbox", name: "Search" } },
+          text: "ElectronJS",
+          span,
+        },
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects a semantic target mismatch with a canonical role hint", () => {
+    expect(() =>
+      validatePickerActionRoundTrip(
+        "click",
+        { kind: "role", value: { role: "textbox", name: "Search" } },
+        undefined,
+        {
+          verb: "click",
+          target: { kind: "text", value: 'textbox "Search"' },
+          span,
+        },
+      ),
+    ).toThrow(/canonical <textbox>.*not inserted/);
+  });
+
+  it("does not reject a valid raw text target", () => {
+    expect(() =>
+      validatePickerActionRoundTrip(
+        "click",
+        { kind: "text", value: "Sign In" },
+        undefined,
+        {
+          verb: "click",
+          target: { kind: "text", value: "Sign In" },
+          span,
+        },
+      ),
+    ).not.toThrow();
+  });
+
+  it("preserves nth and validates both drag endpoints", () => {
+    expect(() =>
+      validatePickerActionRoundTrip(
+        "drag",
+        { kind: "testid", value: "source", nth: 2 },
+        { toLocator: { kind: "testid", value: "destination", nth: 3 } },
+        {
+          verb: "drag",
+          from: { kind: "test_id", value: "source" },
+          from_nth: 2,
+          to: { kind: "test_id", value: "destination" },
+          to_nth: 3,
+          span,
+        },
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects changed values and malformed parser payloads", () => {
+    expect(() =>
+      validatePickerActionRoundTrip(
+        "select",
+        { kind: "label", value: "Country" },
+        { value: "USA" },
+        {
+          verb: "select",
+          target: { kind: "label", value: "Country" },
+          value: "Canada",
+          span,
+        },
+      ),
+    ).toThrow(/value changed during parse-back/);
+
+    expect(() =>
+      validatePickerActionRoundTrip(
+        "click",
+        { kind: "text", value: "Sign In" },
+        undefined,
+        { verb: "click", target: null, span } as unknown as Command,
+      ),
+    ).toThrow(/invalid parsed shape.*not inserted/);
+  });
 });
 
 describe("buildPickerActionLine", () => {
   it("builds click", () => {
-    expect(buildPickerActionLine("click", roleSave)).toBe('click button "Save"');
+    expect(buildPickerActionLine("click", roleSave)).toBe('click <button> "Save"');
   });
   it("builds hover", () => {
-    expect(buildPickerActionLine("hover", roleSave)).toBe('hover button "Save"');
+    expect(buildPickerActionLine("hover", roleSave)).toBe('hover <button> "Save"');
   });
   it("builds assert", () => {
     expect(buildPickerActionLine("assert", roleSave)).toBe(
-      'assert button "Save"',
+      'assert <button> "Save"',
     );
   });
   it("builds wait-for with default 5s timeout", () => {
     expect(buildPickerActionLine("wait-for", roleSave)).toBe(
-      'wait-for button "Save" timeout 5s',
+      'wait-for <button> "Save" timeout 5s',
     );
   });
   it("preserves indent from parsed line", () => {
@@ -87,7 +207,7 @@ describe("buildPickerActionLine", () => {
         roleSave,
         parseLine('    hover field "Old"'),
       ),
-    ).toBe('    click button "Save"');
+    ).toBe('    click <button> "Save"');
   });
   it("preserves existing wait-for timeout when action is wait-for", () => {
     expect(
@@ -96,7 +216,7 @@ describe("buildPickerActionLine", () => {
         roleSave,
         parseLine('    wait-for text "Old" timeout 10s'),
       ),
-    ).toBe('    wait-for button "Save" timeout 10s');
+    ).toBe('    wait-for <button> "Save" timeout 10s');
   });
   it("falls back to default timeout when parsed line is not wait-for", () => {
     expect(
@@ -105,7 +225,7 @@ describe("buildPickerActionLine", () => {
         roleSave,
         parseLine('    click text "Old"'),
       ),
-    ).toBe('    wait-for button "Save" timeout 5s');
+    ).toBe('    wait-for <button> "Save" timeout 5s');
   });
 });
 
@@ -221,7 +341,7 @@ describe("buildPickerActionLine — nth postfix", () => {
         value: { role: "button", name: "Save" },
         nth: 1,
       }),
-    ).toBe('click button "Save" nth 1');
+    ).toBe('click <button> "Save" nth 1');
   });
 
   it("builds hover+label with nth=3", () => {

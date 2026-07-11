@@ -3,6 +3,12 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 
+const { parseStoryMock } = vi.hoisted(() => ({ parseStoryMock: vi.fn() }));
+
+vi.mock("@/ipc/parse", () => ({
+  parseStory: (...args: unknown[]) => parseStoryMock(...args),
+}));
+
 // Mock sonner BEFORE importing the button.
 vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), {
@@ -25,6 +31,7 @@ import { toast } from "sonner";
 import { editorController } from "@/features/editor/controller";
 import { useAuthorDriverStore } from "@/features/editor/authorDriverStore";
 import { useEditorStore } from "@/state/editor";
+import { parseStorySource } from "../../../electron/ipc/story-parser";
 
 import { PreviewPickerButton } from "./PreviewPickerButton";
 
@@ -99,6 +106,10 @@ describe("PreviewPickerButton", () => {
       .mockReturnValue(3);
     isDirtySpy = vi.spyOn(editorController, "isDirty").mockReturnValue(false);
     dialogOpenMock.mockReset();
+    parseStoryMock.mockReset();
+    parseStoryMock.mockImplementation(async (source: string) =>
+      parseStorySource(source),
+    );
     useEditorStore.setState({ source: 'story "demo"\nscene "x"\n' });
     // Default to LivePreview with an active streamId so the button is armed.
     seedAuthorDriver({ variant: "live-preview", streamId: "author-stream-1" });
@@ -216,7 +227,7 @@ describe("PreviewPickerButton", () => {
 
     expect(toast.success).toHaveBeenCalled();
     const msg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(msg).toContain("Added `click button \"Save\"`");
+    expect(msg).toContain("Added `click <button> \"Save\"`");
     expect(msg).toContain("line 12");
     expect(msg).not.toContain("Updated fallback");
   });
@@ -261,7 +272,7 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("menuitem", { name: /hover element/i }));
     await flushAsync();
 
-    expect(insertSpy).toHaveBeenCalledWith('hover button "Save"\n');
+    expect(insertSpy).toHaveBeenCalledWith('hover <button> "Save"\n');
   });
 
   it("choosing Wait for inserts `wait-for ... timeout 5s`", async () => {
@@ -274,7 +285,7 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("menuitem", { name: /wait for element/i }));
     await flushAsync();
 
-    expect(insertSpy).toHaveBeenCalledWith('wait-for button "Save" timeout 5s\n');
+    expect(insertSpy).toHaveBeenCalledWith('wait-for <button> "Save" timeout 5s\n');
   });
 
   it("choosing Wait for on existing `wait-for ... timeout 10s` preserves the 10s", async () => {
@@ -289,7 +300,7 @@ describe("PreviewPickerButton", () => {
     await flushAsync();
 
     expect(replaceSpy).toHaveBeenCalledWith(
-      '    wait-for button "Save" timeout 10s',
+      '    wait-for <button> "Save" timeout 10s',
     );
   });
 
@@ -303,7 +314,30 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("menuitem", { name: /assert element/i }));
     await flushAsync();
 
-    expect(insertSpy).toHaveBeenCalledWith('assert button "Save"\n');
+    expect(insertSpy).toHaveBeenCalledWith('assert <button> "Save"\n');
+  });
+
+  it("rejects Picker output when runtime parse-back changes the target", async () => {
+    mockPickButtonSave({ wasFreshlyStamped: true });
+    parseStoryMock.mockImplementationOnce(async () =>
+      parseStorySource(`story "demo" {
+scene "x" {
+  click textbox "Save"
+}
+}`),
+    );
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+    await user.click(screen.getByRole("menuitem", { name: /click element/i }));
+    await flushAsync();
+
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringMatching(/canonical <button>.*not inserted/),
+    );
   });
 
   it("Escape on action menu does not insert and does not stamp", async () => {

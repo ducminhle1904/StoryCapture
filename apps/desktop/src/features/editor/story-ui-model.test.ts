@@ -47,7 +47,34 @@ describe("story-ui-model", () => {
   it("formats editable stories with step ids", () => {
     const text = formatEditableStory(STORY);
     expect(text).toContain('app: "https://example.com"');
-    expect(text).toContain('click button "Buy now"  # @id=step-buy');
+    expect(text).toContain('click <button> "Buy now"  # @id=step-buy');
+  });
+
+  it("preserves nth modifiers for single and drag targets", () => {
+    const story = structuredClone(STORY);
+    story.scenes[0]?.commands.push(
+      {
+        verb: "type",
+        target: { kind: "role", value: { role: "textbox", name: "Email" } },
+        target_nth: 2,
+        text: "hello",
+        span: { start: 0, end: 0, line: 6, col: 5 },
+      },
+      {
+        verb: "drag",
+        from: { kind: "role", value: { role: "row", name: "Source" } },
+        from_nth: 2,
+        to: { kind: "role", value: { role: "row", name: "Destination" } },
+        to_nth: 3,
+        span: { start: 0, end: 0, line: 7, col: 5 },
+      },
+    );
+
+    const text = formatEditableStory(story);
+    expect(text).toContain('type <textbox> "Email" nth 2 "hello"');
+    expect(text).toContain(
+      'drag <row> "Source" nth 2 to <row> "Destination" nth 3',
+    );
   });
 
   it("patches commands without mutating the original story", () => {

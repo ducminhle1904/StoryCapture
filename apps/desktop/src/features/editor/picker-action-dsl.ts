@@ -3,6 +3,7 @@
 // any other supported verb against the picked locator.
 
 import type { PickElementMeta, PickLocator, PickPicked } from "@/ipc/picker";
+import type { Command, SelectorOrText } from "@/ipc/parse";
 import {
   parseLine,
   TARGET_VERBS,
@@ -109,7 +110,12 @@ function formatTargetBase(locator: PickLocator): string {
         "name" in locator.value
       ) {
         const { role, name } = locator.value;
-        return `${role} "${escapeDslString(name)}"`;
+        if (typeof role !== "string" || role.length === 0 || typeof name !== "string") {
+          throw new Error(
+            `picker-action-dsl: role locator missing { role, name } shape`,
+          );
+        }
+        return `<${role}> "${escapeDslString(name)}"`;
       }
       throw new Error(
         `picker-action-dsl: role locator missing { role, name } shape`,
@@ -255,6 +261,160 @@ export function buildPickerActionLine(
   }
 
   return parsed?.indent ? `${parsed.indent}${body}` : body;
+}
+
+/** Reject Picker output that the runtime parser interprets differently. */
+export function validatePickerActionRoundTrip(
+  action: PickerAction,
+  locator: PickLocator,
+  options: PickerActionOptions | undefined,
+  command: Command | undefined,
+): void {
+  const expectedVerb = action === "fill" ? "type" : action;
+  if (!command || command.verb !== expectedVerb) {
+    throw pickerRoundTripError(
+      locator,
+      `runtime parser returned ${command?.verb ?? "no command"}`,
+    );
+  }
+
+  if (action === "drag") {
+    if (command.verb !== "drag") {
+      throw pickerRoundTripError(locator, "runtime parser did not return drag");
+    }
+    assertParsedTarget(locator, command.from, command.from_nth, "source");
+    if (!options?.toLocator) {
+      throw pickerRoundTripError(locator, "drag destination is missing");
+    }
+    assertParsedTarget(options.toLocator, command.to, command.to_nth, "destination");
+    return;
+  }
+
+  if (!("target" in command)) {
+    throw pickerRoundTripError(locator, "runtime parser returned no target");
+  }
+  assertParsedTarget(locator, command.target, command.target_nth, "target");
+
+  if ((action === "fill" || action === "type") && command.verb === "type") {
+    assertParsedValue(locator, "text", options?.text, command.text);
+  } else if (action === "select" && command.verb === "select") {
+    assertParsedValue(locator, "value", options?.value, command.value);
+  } else if (action === "upload" && command.verb === "upload") {
+    assertParsedValue(locator, "path", options?.path, command.path);
+  }
+}
+
+function assertParsedTarget(
+  locator: PickLocator,
+  actual: unknown,
+  actualNth: number | undefined,
+  label: string,
+): void {
+  if (!isSelectorOrText(actual)) {
+    throw pickerRoundTripError(locator, `${label} has an invalid parsed shape`);
+  }
+  const expected = parsedTargetForLocator(locator);
+  if (
+    !parsedTargetsEqual(actual, expected) ||
+    actualNth !== locator.nth
+  ) {
+    throw pickerRoundTripError(locator, `${label} changed during parse-back`);
+  }
+}
+
+function isSelectorOrText(value: unknown): value is SelectorOrText {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("kind" in value) ||
+    !("value" in value)
+  ) {
+    return false;
+  }
+  const target = value as { kind: unknown; value: unknown };
+  if (target.kind === "role") {
+    return (
+      target.value !== null &&
+      typeof target.value === "object" &&
+      "role" in target.value &&
+      typeof target.value.role === "string" &&
+      "name" in target.value &&
+      typeof target.value.name === "string"
+    );
+  }
+  return (
+    typeof target.value === "string" &&
+    ["text", "selector", "test_id", "aria", "label", "text_exact"].includes(
+      String(target.kind),
+    )
+  );
+}
+
+function parsedTargetsEqual(
+  actual: SelectorOrText,
+  expected: SelectorOrText,
+): boolean {
+  if (actual.kind !== expected.kind) return false;
+  if (actual.kind === "role" && expected.kind === "role") {
+    return (
+      actual.value.role === expected.value.role &&
+      actual.value.name === expected.value.name
+    );
+  }
+  return actual.value === expected.value;
+}
+
+function assertParsedValue(
+  locator: PickLocator,
+  label: string,
+  expected: string | undefined,
+  actual: string,
+): void {
+  if (actual !== expected) {
+    throw pickerRoundTripError(locator, `${label} changed during parse-back`);
+  }
+}
+
+function parsedTargetForLocator(locator: PickLocator): SelectorOrText {
+  switch (locator.kind) {
+    case "testid":
+      return { kind: "test_id", value: stringValue(locator) };
+    case "role": {
+      if (
+        locator.value &&
+        typeof locator.value === "object" &&
+        "role" in locator.value &&
+        "name" in locator.value
+      ) {
+        return { kind: "role", value: locator.value };
+      }
+      throw pickerRoundTripError(locator, "role locator shape is malformed");
+    }
+    case "label":
+      return { kind: "label", value: stringValue(locator) };
+    case "text_exact":
+    case "text":
+      return { kind: "text", value: stringValue(locator) };
+    case "selector":
+      return { kind: "selector", value: stringValue(locator) };
+    case "aria":
+      return { kind: "aria", value: stringValue(locator) };
+    default:
+      throw pickerRoundTripError(locator, `locator kind ${locator.kind} is unsupported`);
+  }
+}
+
+function pickerRoundTripError(locator: PickLocator, detail: string): Error {
+  const roleHint =
+    locator.kind === "role" &&
+    locator.value &&
+    typeof locator.value === "object" &&
+    "role" in locator.value
+      ? ` Expected canonical <${locator.value.role}> target.`
+      : "";
+  return new Error(
+    `Picker target validation failed: ${detail}.${roleHint} The action was not inserted.`,
+  );
 }
 
 function requireString(

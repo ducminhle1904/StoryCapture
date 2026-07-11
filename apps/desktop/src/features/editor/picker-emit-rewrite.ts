@@ -29,7 +29,7 @@ export interface ParsedLine {
 }
 
 const LINE_RE =
-  /^(?<indent>\s*)(?<verb>[a-z][a-z-]*)\s+(?<strategy>[a-zA-Z][\w-]*)\s+"(?:\\"|[^"])*"(?<trailing>.*)$/;
+  /^(?<indent>\s*)(?<verb>[a-z][a-z-]*)\s+(?<strategy><[a-zA-Z][\w-]*>|[a-zA-Z][\w-]*)\s+"(?:\\"|[^"])*"(?<trailing>.*)$/;
 
 const NTH_RE = /^nth\s+(\d+)\b\s*/;
 

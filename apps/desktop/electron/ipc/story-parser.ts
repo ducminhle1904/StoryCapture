@@ -5,6 +5,10 @@ export interface ParsedCommand {
   url?: string;
   target?: unknown;
   target_nth?: number;
+  from?: unknown;
+  from_nth?: number;
+  to?: unknown;
+  to_nth?: number;
   text?: string;
   value?: string;
   path?: string;
@@ -37,6 +41,9 @@ const ROLE_KEYWORDS = new Set([
   "cell",
   "navigation",
   "main",
+  // Compatibility input for pre-canonical Picker output. New Picker output
+  // always uses the generic `<role> "name"` form instead of this allowlist.
+  "textbox",
 ]);
 
 const TARGET_PREFIX_KIND: Record<string, string> = {
@@ -56,7 +63,11 @@ function stripQuotes(value: string): string {
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
-    return trimmed.slice(1, -1).replaceAll(/\\"/g, '"').replaceAll(/\\'/g, "'");
+    return trimmed
+      .slice(1, -1)
+      .replaceAll(/\\"/g, '"')
+      .replaceAll(/\\'/g, "'")
+      .replaceAll(/\\\\/g, "\\");
   }
   return trimmed;
 }
@@ -223,6 +234,19 @@ function parseWaitForCommand(rest: string, base: ParsedCommandBase): ParsedComma
   };
 }
 
+function parseDragCommand(rest: string, base: ParsedCommandBase): ParsedCommand {
+  const from = parseTargetFragment(rest);
+  const to = parseTargetFragment(from.rest.replace(/^to\s+/, ""));
+  return {
+    verb: "drag",
+    from: from.target,
+    from_nth: from.target_nth,
+    to: to.target,
+    to_nth: to.target_nth,
+    ...base,
+  };
+}
+
 export function parseStorySource(source: string) {
   const diagnostics: unknown[] = [];
   const story = {
@@ -313,6 +337,8 @@ export function parseStorySource(source: string) {
     if (verb === "type" || verb === "select" || verb === "upload") {
       command = parseValueCommand(verb, rest, base);
     }
+    if (verb === "fill") command = parseValueCommand("type", rest, base);
+    if (verb === "drag") command = parseDragCommand(rest, base);
     if (verb === "scroll") {
       command = {
         verb,

@@ -46,14 +46,20 @@ pause
 Accessibility-first targets remain preferred:
 
 ```text
-click button "Save"
+click <button> "Save"
+type <textbox> "Search" "StoryCapture"
 fill field "Email" with "admin@example.com"
-click link "Dashboard"
+click <link> "Dashboard"
 click testid "btn-save"
 click aria "Close dialog"
 click text "Exactly this text"
-click button "Save" nth 2
+click <button> "Save" nth 2
 ```
+
+Picker and UI-mode serialization use `<role> "accessible name"` for every
+accessibility role so arbitrary roles round-trip without a shared allowlist.
+The runtime parser still accepts established bare-role input such as
+`button "Save"`, `heading "Main Page"`, and legacy `textbox "Search"`.
 
 `nth N` is 1-indexed and disambiguates repeated targets.
 

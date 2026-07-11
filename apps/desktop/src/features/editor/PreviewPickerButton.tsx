@@ -31,9 +31,11 @@ import {
   inferDefaultAction,
   parsePickerLine,
   pickedTargetLabel,
+  validatePickerActionRoundTrip,
   type PickerAction,
   type PickerActionOptions,
 } from "@/features/editor/picker-action-dsl";
+import { parseStory } from "@/ipc/parse";
 import {
   useAuthorDriverStore,
   type AuthorDriverVariant,
@@ -361,6 +363,15 @@ export function PreviewPickerButton() {
     let finalLine: string;
     try {
       finalLine = buildPickerActionLine(action, r.locator, parsed, merged);
+      const parseResult = await parseStory(
+        `story "Picker validation" {\nscene "Picked action" {\n${finalLine}\n}\n}`,
+      );
+      validatePickerActionRoundTrip(
+        action,
+        r.locator,
+        merged,
+        parseResult.ast?.scenes[0]?.commands[0],
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(msg);

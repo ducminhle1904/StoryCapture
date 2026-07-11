@@ -34,8 +34,8 @@ export type ScrollDir = "up" | "down" | "left" | "right";
 
 export type Command =
   | { verb: "navigate"; url: string; span: Span; step_id?: string | null }
-  | { verb: "click"; target: SelectorOrText; span: Span; step_id?: string | null }
-  | { verb: "type"; target: SelectorOrText; text: string; span: Span; step_id?: string | null }
+  | { verb: "click"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string | null }
+  | { verb: "type"; target: SelectorOrText; target_nth?: number; text: string; span: Span; step_id?: string | null }
   | {
       verb: "scroll";
       direction: ScrollDir;
@@ -43,19 +43,20 @@ export type Command =
       span: Span;
       step_id?: string | null;
     }
-  | { verb: "hover"; target: SelectorOrText; span: Span; step_id?: string | null }
-  | { verb: "drag"; from: SelectorOrText; to: SelectorOrText; span: Span; step_id?: string | null }
-  | { verb: "select"; target: SelectorOrText; value: string; span: Span; step_id?: string | null }
-  | { verb: "upload"; target: SelectorOrText; path: string; span: Span; step_id?: string | null }
+  | { verb: "hover"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string | null }
+  | { verb: "drag"; from: SelectorOrText; from_nth?: number; to: SelectorOrText; to_nth?: number; span: Span; step_id?: string | null }
+  | { verb: "select"; target: SelectorOrText; target_nth?: number; value: string; span: Span; step_id?: string | null }
+  | { verb: "upload"; target: SelectorOrText; target_nth?: number; path: string; span: Span; step_id?: string | null }
   | { verb: "wait"; duration_ms: number; span: Span; step_id?: string | null }
   | {
       verb: "wait-for";
       target: SelectorOrText;
+      target_nth?: number;
       timeout_ms: number | null;
       span: Span;
       step_id?: string | null;
     }
-  | { verb: "assert"; target: SelectorOrText; span: Span; step_id?: string | null }
+  | { verb: "assert"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string | null }
   | { verb: "screenshot"; name: string; span: Span; step_id?: string | null }
   | { verb: "pause"; span: Span; step_id?: string | null };
 

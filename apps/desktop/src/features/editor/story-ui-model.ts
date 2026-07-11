@@ -23,7 +23,7 @@ function formatTarget(target: SelectorOrText): string {
     case "aria":
       return `aria ${quote(target.value)}`;
     case "role":
-      return `${target.value.role} ${quote(target.value.name)}`;
+      return `<${target.value.role}> ${quote(target.value.name)}`;
     case "label":
       return `field ${quote(target.value)}`;
     case "text_exact":
@@ -31,6 +31,14 @@ function formatTarget(target: SelectorOrText): string {
     case "text":
       return quote(target.value);
   }
+}
+
+function formatTargetWithNth(
+  target: SelectorOrText,
+  nth: number | undefined,
+): string {
+  const formatted = formatTarget(target);
+  return nth == null ? formatted : `${formatted} nth ${nth}`;
 }
 
 function formatMeta(meta: Meta): string[] {
@@ -52,36 +60,36 @@ function formatCommand(command: EditableCommand): string {
       line = `navigate ${quote(command.url)}`;
       break;
     case "click":
-      line = `click ${formatTarget(command.target)}`;
+      line = `click ${formatTargetWithNth(command.target, command.target_nth)}`;
       break;
     case "type":
-      line = `type ${formatTarget(command.target)} ${quote(command.text)}`;
+      line = `type ${formatTargetWithNth(command.target, command.target_nth)} ${quote(command.text)}`;
       break;
     case "scroll":
       line = `scroll ${command.direction}${command.amount == null ? "" : ` ${command.amount}`}`;
       break;
     case "hover":
-      line = `hover ${formatTarget(command.target)}`;
+      line = `hover ${formatTargetWithNth(command.target, command.target_nth)}`;
       break;
     case "drag":
-      line = `drag ${formatTarget(command.from)} to ${formatTarget(command.to)}`;
+      line = `drag ${formatTargetWithNth(command.from, command.from_nth)} to ${formatTargetWithNth(command.to, command.to_nth)}`;
       break;
     case "select":
-      line = `select ${formatTarget(command.target)} ${quote(command.value)}`;
+      line = `select ${formatTargetWithNth(command.target, command.target_nth)} ${quote(command.value)}`;
       break;
     case "upload":
-      line = `upload ${formatTarget(command.target)} ${quote(command.path)}`;
+      line = `upload ${formatTargetWithNth(command.target, command.target_nth)} ${quote(command.path)}`;
       break;
     case "wait":
       line = `wait ${command.duration_ms}ms`;
       break;
     case "wait-for":
-      line = `wait-for ${formatTarget(command.target)}${
+      line = `wait-for ${formatTargetWithNth(command.target, command.target_nth)}${
         command.timeout_ms == null ? "" : ` timeout ${command.timeout_ms}ms`
       }`;
       break;
     case "assert":
-      line = `assert ${formatTarget(command.target)}`;
+      line = `assert ${formatTargetWithNth(command.target, command.target_nth)}`;
       break;
     case "screenshot":
       line = `screenshot ${quote(command.name)}`;

@@ -82,6 +82,6 @@ describe("StoryBuilder UI/code synchronization", () => {
     await user.type(clickValue, "Continue");
 
     expect(clickValue).toHaveValue("Continue");
-    expect(sourceChanges.at(-1)).toContain('click button "Continue"');
+    expect(sourceChanges.at(-1)).toContain('click <button> "Continue"');
   });
 });

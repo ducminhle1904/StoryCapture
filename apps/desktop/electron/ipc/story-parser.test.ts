@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { parsedCommands } from "./story-parser";
+import { buildPickerActionLine } from "../../src/features/editor/picker-action-dsl";
+import type { PickLocator } from "../../src/ipc/picker";
 
 function commandFor(line: string) {
   return parsedCommands(`story "Demo" {
@@ -16,6 +18,78 @@ describe("story parser host command targets", () => {
       verb: "wait-for",
       target: { kind: "role", value: { role: "heading", name: "Login" } },
       timeout_ms: 15000,
+    });
+  });
+
+  it.each([
+    ['click <textbox> "Search Wikipedia"', "click"],
+    ['hover <searchbox> "Search"', "hover"],
+    ['wait-for <heading> "Main Page" timeout 5s', "wait-for"],
+    ['assert <spinbutton> "Quantity"', "assert"],
+    ['type <textbox> "Search Wikipedia" "ElectronJS"', "type"],
+  ])("parses canonical role target for %s", (line, verb) => {
+    expect(commandFor(line)).toMatchObject({
+      verb,
+      target: expect.objectContaining({ kind: "role" }),
+    });
+  });
+
+  it("parses fill as the runtime type command without losing its value", () => {
+    expect(
+      commandFor('fill <textbox> "Search Wikipedia" with "ElectronJS"'),
+    ).toMatchObject({
+      verb: "type",
+      target: {
+        kind: "role",
+        value: { role: "textbox", name: "Search Wikipedia" },
+      },
+      text: "ElectronJS",
+    });
+  });
+
+  it("parses canonical drag targets and nth modifiers", () => {
+    expect(
+      commandFor('drag <row> "Source" nth 2 to <row> "Destination" nth 3'),
+    ).toMatchObject({
+      verb: "drag",
+      from: { kind: "role", value: { role: "row", name: "Source" } },
+      from_nth: 2,
+      to: { kind: "role", value: { role: "row", name: "Destination" } },
+      to_nth: 3,
+    });
+  });
+
+  it.each(["click", "type"])(
+    "keeps legacy bare textbox working for %s",
+    (verb) => {
+      const suffix = verb === "type" ? ' "ElectronJS"' : "";
+      expect(commandFor(`${verb} textbox "Search Wikipedia"${suffix}`)).toMatchObject({
+        verb,
+        target: {
+          kind: "role",
+          value: { role: "textbox", name: "Search Wikipedia" },
+        },
+        ...(verb === "type" ? { text: "ElectronJS" } : {}),
+      });
+    },
+  );
+
+  it.each([
+    ["button", "Save"],
+    ["textbox", "Search Wikipedia"],
+    ["searchbox", "Search"],
+    ["spinbutton", "Quantity"],
+    ["textbox", 'Search "Wikipedia" \\ docs'],
+  ])("round-trips a Picker-generated %s locator", (role, name) => {
+    const locator: PickLocator = { kind: "role", value: { role, name } };
+    const line = buildPickerActionLine("type", locator, undefined, {
+      text: "value",
+    });
+
+    expect(commandFor(line)).toMatchObject({
+      verb: "type",
+      target: { kind: "role", value: { role, name } },
+      text: "value",
     });
   });
 
