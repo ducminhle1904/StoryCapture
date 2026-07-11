@@ -41,6 +41,8 @@ import {
   stopRecording,
 } from "@/ipc/encode";
 import { parseStory } from "@/ipc/parse";
+import { publishCompletedRecording } from "@/ipc/projects";
+import { queryClient } from "@/ipc/query-client";
 import { frontendLog } from "@/lib/log";
 import { useAppSettingsStore } from "@/state/app-settings";
 import {
@@ -225,7 +227,10 @@ export function RecordingView({
         : captureTarget.display_id
       : null;
   const selectedDisplayInfo = useMemo(
-    () => (selectedDisplay == null ? undefined : displays.find((display) => displayId(display) === selectedDisplay)),
+    () =>
+      selectedDisplay == null
+        ? undefined
+        : displays.find((display) => displayId(display) === selectedDisplay),
     [displays, selectedDisplay],
   );
   const storyRecordingInfo = useMemo(() => {
@@ -245,7 +250,13 @@ export function RecordingView({
       : selectedDisplayInfo
         ? { w: selectedDisplayInfo.width_px, h: selectedDisplayInfo.height_px }
         : null;
-    if (!dims || !Number.isFinite(dims.w) || !Number.isFinite(dims.h) || dims.w <= 0 || dims.h <= 0) {
+    if (
+      !dims ||
+      !Number.isFinite(dims.w) ||
+      !Number.isFinite(dims.h) ||
+      dims.w <= 0 ||
+      dims.h <= 0
+    ) {
       return undefined;
     }
     return dims;
@@ -398,6 +409,15 @@ export function RecordingView({
         setSession(null);
         setStatus("completed");
         setOutputPath(event.result.output_path);
+        if (projectId) {
+          publishCompletedRecording(queryClient, projectId, {
+            path: event.result.output_path,
+            captured_at: Date.now(),
+            duration_ms: event.result.duration_ms,
+            width: event.result.output_width ?? null,
+            height: event.result.output_height ?? null,
+          });
+        }
         if (event.result.cadence_warning) {
           const cadence =
             typeof event.result.actual_capture_fps === "number" &&
@@ -405,11 +425,7 @@ export function RecordingView({
               ? `${event.result.actual_capture_fps} / ${event.result.requested_fps} fps`
               : null;
           toast.warning("Recording complete with low cadence", {
-            description: [
-              event.result.cadence_warning_message,
-              cadence,
-              event.result.output_path,
-            ]
+            description: [event.result.cadence_warning_message, cadence, event.result.output_path]
               .filter(Boolean)
               .join(" · "),
           });

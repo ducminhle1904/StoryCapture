@@ -46,24 +46,21 @@ import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { InspectorPanel } from "./inspector/inspector-panel";
 import { QueueWidget } from "./render-queue/queue-widget";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
-import {
-  buildTimelineFromStory,
-  recordingSourceRevision,
-} from "./state/build-timeline-from-story";
+import { buildTimelineFromStory, recordingSourceRevision } from "./state/build-timeline-from-story";
 import { createClipId } from "./state/clip-id";
 import { DEFAULT_BACKGROUND, readEditorBackground, useEditorStore } from "./state/store";
 import { styleDefaults } from "./state/text-style";
-import {
-  cloneTimelineTracks,
-  type AnnotationClip,
-  type TimelineSlice,
-  type ZoomClip,
-} from "./state/timeline-slice";
 import {
   parseTimelineLayoutJson,
   serializeTimelineLayout,
   type TimelineLayoutV2,
 } from "./state/timeline-layout";
+import {
+  type AnnotationClip,
+  cloneTimelineTracks,
+  type TimelineSlice,
+  type ZoomClip,
+} from "./state/timeline-slice";
 import { Timeline } from "./timeline/timeline";
 
 export interface EditorShellProps {
@@ -318,10 +315,19 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   // `videoSrc` prop (used by tests/storybook) wins over the IPC-loaded path.
   const recordingsQuery = useProjectRecordings(storyId);
   const latestRecording = recordingsQuery.data?.[0] ?? null;
+  const latestRecordingInvalid = latestRecording?.validation?.status === "invalid";
   const recordingsReady = Boolean(videoSrc) || recordingsQuery.isSuccess || recordingsQuery.isError;
-  const resolvedVideoSrc = videoSrc ?? latestRecording?.path;
+  const resolvedVideoSrc = videoSrc ?? (latestRecordingInvalid ? undefined : latestRecording?.path);
   const showEmptyOverlay = !videoSrc && recordingsQuery.isSuccess && !latestRecording;
   const showErrorOverlay = !videoSrc && recordingsQuery.isError;
+  const showInvalidOverlay = !videoSrc && latestRecordingInvalid;
+  const recordingOverlayMessage = showErrorOverlay
+    ? "Couldn't load recordings"
+    : showInvalidOverlay
+      ? "Latest recording is invalid"
+      : showEmptyOverlay
+        ? "No recording yet"
+        : null;
 
   // Phase 19-03: load + parse the project's `.story` source so producer
   // can populate the timeline. We mirror the editor route's load pattern
@@ -591,10 +597,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     const { background, ...generatedTracks } = built;
     const builtTracks = {
       ...generatedTracks,
-      annotations: [
-        ...generatedTracks.annotations,
-        ...staleIndependentAnnotationsRef.current,
-      ],
+      annotations: [...generatedTracks.annotations, ...staleIndependentAnnotationsRef.current],
     };
     staleIndependentAnnotationsRef.current = [];
     setTracks(builtTracks);
@@ -886,14 +889,14 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
                 stepTiming={stepTimingQuery.data ?? null}
                 captureRect={resolvedCaptureRect}
               />
-              {(showEmptyOverlay || showErrorOverlay) && (
+              {recordingOverlayMessage && (
                 <div
                   className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
                   role="status"
                 >
                   <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-2 rounded-[var(--sc-r-xl)] border border-[var(--sc-border)] bg-[var(--sc-surface)]/92 px-4 py-3 text-center shadow-[var(--sc-sh-1)] backdrop-blur">
                     <div className="text-[12px] font-medium text-[var(--sc-text-2)]">
-                      {showErrorOverlay ? "Couldn't load recordings" : "No recording yet"}
+                      {recordingOverlayMessage}
                     </div>
                     <Link to={`/recorder/${storyId}`} className="sc-btn primary sm">
                       Record one first

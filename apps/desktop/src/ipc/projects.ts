@@ -5,7 +5,7 @@
  * `open_project` / `remove_project` host commands.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface Project {
@@ -32,6 +32,15 @@ export interface RecordingInfo {
   duration_ms: number | null;
   width: number | null;
   height: number | null;
+  size?: number;
+  codec?: string | null;
+  container?: string | null;
+  validation?:
+    | { status: "unvalidated" | "valid" }
+    | {
+        status: "invalid";
+        reason: "empty" | "not_file" | "missing" | "timeout" | "unsupported_or_corrupt";
+      };
 }
 
 export type WorkflowType =
@@ -102,6 +111,23 @@ const KEYS = {
   recordings: (id: string) => ["projects", id, "recordings"] as const,
 };
 
+export function projectRecordingsQueryKey(projectId: string) {
+  return KEYS.recordings(projectId);
+}
+
+/** Publish a just-finalized recording before navigating to its consumers. */
+export function publishCompletedRecording(
+  queryClient: QueryClient,
+  projectId: string,
+  recording: RecordingInfo,
+): void {
+  queryClient.setQueryData<RecordingInfo[]>(KEYS.recordings(projectId), (current = []) => [
+    recording,
+    ...current.filter((candidate) => candidate.path !== recording.path),
+  ]);
+  void queryClient.invalidateQueries({ queryKey: KEYS.recordings(projectId) });
+}
+
 export function useProjects() {
   return useQuery({
     queryKey: KEYS.all,
@@ -156,6 +182,7 @@ export function useProjectRecordings(projectId: string | undefined) {
     queryFn: () =>
       invoke<RecordingInfo[]>("list_project_recordings", { args: { id: projectId as string } }),
     enabled: !!projectId,
+    refetchOnMount: "always",
   });
 }
 

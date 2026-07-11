@@ -39,6 +39,10 @@ jobs:
         shell: bash
         run: pnpm --dir apps/desktop run test:e2e:cursor-sync
 
+      - name: Local media playback Electron smoke
+        shell: bash
+        run: pnpm --dir apps/desktop run test:e2e:media
+
       - name: UI tests
         shell: bash
         run: pnpm --dir packages/ui test
@@ -50,3 +54,21 @@ jobs:
       - name: Desktop Electron build
         shell: bash
         run: pnpm --dir apps/desktop run build
+
+  windows-media-smoke:
+    name: windows-media-smoke
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: pnpm install
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Local media playback Electron smoke
+        shell: bash
+        run: pnpm --dir apps/desktop run test:e2e:media

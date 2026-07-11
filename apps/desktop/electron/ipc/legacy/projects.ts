@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import { readJson, writeJson } from "../json-store";
+import { discoverProjectRecordings } from "../recording-discovery";
 import {
   ASSETS_DIRNAME,
   type CreateProjectArgs,
@@ -172,29 +173,7 @@ export async function updateProjectWorkflow(
 
 export async function listProjectRecordings(id: string) {
   const project = await findProject(id);
-  const { exportsDir } = projectPaths(project.folder_path);
-  let entries: Dirent[];
-  try {
-    entries = await fs.readdir(exportsDir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const recordings = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".mp4"))
-      .map(async (entry) => {
-        const file = path.join(exportsDir, entry.name);
-        const stat = await fs.stat(file);
-        return {
-          path: file,
-          captured_at: stat.mtimeMs,
-          duration_ms: null,
-          width: null,
-          height: null,
-        };
-      }),
-  );
-  return recordings.sort((a, b) => b.captured_at - a.captured_at);
+  return discoverProjectRecordings(projectPaths(project.folder_path).exportsDir);
 }
 
 export async function timelineLoad(storyId: string): Promise<TimelineState | null> {

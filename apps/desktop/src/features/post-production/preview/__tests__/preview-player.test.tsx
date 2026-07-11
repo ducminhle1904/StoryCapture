@@ -2,8 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useEditorStore } from "../../state/store";
 import type { SourceTimelineMap } from "../../state/source-timeline-map";
+import { useEditorStore } from "../../state/store";
 import { PreviewEngine } from "../preview-engine";
 import { PreviewPlayer } from "../preview-player";
 import { ACTIONS } from "./fixtures";
@@ -89,6 +89,91 @@ describe("PreviewPlayer", () => {
     await waitFor(() => expect(play).toHaveBeenCalled());
     expect(PreviewEngine).not.toHaveBeenCalled();
     await waitFor(() => expect(requestAnimationFrameSpy).toHaveBeenCalled());
+  });
+
+  it("keeps a successfully loaded source available without retrying", () => {
+    vi.useFakeTimers();
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    const video = screen.getByLabelText("Source video preview");
+
+    fireEvent.loadedData(video);
+    act(() => vi.advanceTimersByTime(1000));
+
+    expect(screen.getByLabelText("Source video preview")).toBe(video);
+    expect(screen.queryByRole("button", { name: "Retry preview" })).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("returns to a stopped state when the browser rejects playback", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("blocked"));
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    await user.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument());
+  });
+
+  it("remounts the source once after a transient media error", () => {
+    vi.useFakeTimers();
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    const failedVideo = screen.getByLabelText("Source video preview");
+
+    fireEvent.error(failedVideo);
+    act(() => vi.advanceTimersByTime(400));
+
+    expect(screen.getByLabelText("Source video preview")).not.toBe(failedVideo);
+    expect(screen.queryByRole("button", { name: "Retry preview" })).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("shows a manual retry after the automatic retry also fails", async () => {
+    vi.useFakeTimers();
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    fireEvent.error(screen.getByLabelText("Source video preview"));
+    act(() => vi.advanceTimersByTime(400));
+    const retriedVideo = screen.getByLabelText("Source video preview");
+
+    fireEvent.error(retriedVideo);
+    const retryButton = screen.getByRole("button", { name: "Retry preview" });
+    fireEvent.click(retryButton);
+
+    expect(screen.getByLabelText("Source video preview")).not.toBe(retriedVideo);
+    expect(screen.queryByRole("button", { name: "Retry preview" })).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("clears media failure state when the source changes", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video-a.mp4" />,
+    );
+    fireEvent.error(screen.getByLabelText("Source video preview"));
+    act(() => vi.advanceTimersByTime(400));
+    fireEvent.error(screen.getByLabelText("Source video preview"));
+    expect(screen.getByRole("button", { name: "Retry preview" })).toBeInTheDocument();
+
+    rerender(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video-b.mp4" />);
+
+    expect(screen.queryByRole("button", { name: "Retry preview" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Source video preview")).toHaveAttribute(
+      "src",
+      "http://localhost/video-b.mp4",
+    );
+    vi.useRealTimers();
+  });
+
+  it("cancels a pending media retry when unmounted", () => {
+    vi.useFakeTimers();
+    const { unmount } = render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />,
+    );
+    fireEvent.error(screen.getByLabelText("Source video preview"));
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 
   it("continues the native preview playhead after the source video ends", async () => {

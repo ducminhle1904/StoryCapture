@@ -17,6 +17,7 @@
     "electron:start": "node scripts/start-dev-electron.mjs",
     "electron:prepare-dev-app": "node scripts/prepare-dev-electron-app.mjs",
     "test:e2e:cursor-sync": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/cursor-sync.spec.ts",
+    "test:e2e:media": "pnpm electron:build-main && playwright test --config playwright.config.ts e2e/media-playback.spec.ts",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },

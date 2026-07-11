@@ -6,6 +6,7 @@
 - Desktop all tests: `pnpm --dir apps/desktop exec vitest run`.
 - Desktop focused test: `pnpm --dir apps/desktop exec vitest run <path>`.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
+- Local media playback Electron E2E: `pnpm --dir apps/desktop run test:e2e:media`.
 - Web all tests: `pnpm --dir apps/web test`.
 - Web focused test: `pnpm --dir apps/web exec vitest run <path>`.
 - UI all tests: `pnpm --dir packages/ui test`.

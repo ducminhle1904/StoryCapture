@@ -82,6 +82,7 @@ const CURSOR_RIPPLE_MAX_PX = 96;
 const SOURCE_HOLD_EPSILON_SECONDS = 0.001;
 const TEXT_DRAG_OVERSCAN = 0.25;
 const MIN_HIGHLIGHT_BOUNDS_SIZE = 0.0001;
+const MEDIA_RETRY_DELAY_MS = 400;
 
 function cursorScheduleKey(preset: CursorMotionPreset, preserveFullMotion: boolean): string {
   return `${preset}:${preserveFullMotion ? "preserve" : "compress"}`;
@@ -557,7 +558,11 @@ export function PreviewPlayer({
   const presentedPlayheadRef = useRef(0);
   const presentedClockRef = useRef<PresentedMediaClock | null>(null);
   const sourceTimeMapRef = useRef<SourceTimelineMap>(identitySourceTimelineMap(0));
+  const mediaRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaRetryCountRef = useRef(0);
   const [playing, setPlaying] = useState(false);
+  const [mediaSourceGeneration, setMediaSourceGeneration] = useState(0);
+  const [mediaError, setMediaError] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
   const [ambientSamplingReady, setAmbientSamplingReady] = useState(false);
   const [editingTextClipId, setEditingTextClipId] = useState<string | null>(null);
@@ -657,6 +662,23 @@ export function PreviewPlayer({
       : convertFileSrc(videoSrc)
     : undefined;
   const useAmbientBackdrop = editorBackground.kind === "transparent" && Boolean(resolvedSrc);
+  const mediaSourceKey = `${resolvedSrc ?? "empty"}:${mediaSourceGeneration}`;
+
+  const clearMediaRetryTimer = useCallback(() => {
+    if (mediaRetryTimerRef.current === null) return;
+    clearTimeout(mediaRetryTimerRef.current);
+    mediaRetryTimerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    clearMediaRetryTimer();
+    mediaRetryCountRef.current = 0;
+    setMediaError(false);
+    playingRef.current = false;
+    setPlaying(false);
+    setMediaSourceGeneration(0);
+    return clearMediaRetryTimer;
+  }, [clearMediaRetryTimer, resolvedSrc]);
 
   const hideCursorOverlay = useCallback(() => {
     const cursor = cursorRef.current;
@@ -1162,8 +1184,15 @@ export function PreviewPlayer({
             rafRef.current = requestAnimationFrame(tick);
           }
         })
-        .catch(() => {
-          if (!disposed) setPlaying(false);
+        .catch((error) => {
+          if (!disposed) {
+            playingRef.current = false;
+            setPlaying(false);
+            frontendLog.warn("post-production/PreviewPlayer", "video play request rejected", {
+              error,
+              fields: { src: resolvedSrc, output_mode: "native-video" },
+            });
+          }
         });
     }
 
@@ -1275,8 +1304,15 @@ export function PreviewPlayer({
             rafRef.current = requestAnimationFrame(tick);
           }
         })
-        .catch(() => {
-          if (!disposed) setPlaying(false);
+        .catch((error) => {
+          if (!disposed) {
+            playingRef.current = false;
+            setPlaying(false);
+            frontendLog.warn("post-production/PreviewPlayer", "video play request rejected", {
+              error,
+              fields: { src: resolvedSrc, output_mode: "composited-canvas" },
+            });
+          }
         });
     }
 
@@ -1338,19 +1374,46 @@ export function PreviewPlayer({
     return () => window.removeEventListener("storycapture:toggle-playback", h);
   }, [togglePlay]);
 
+  const handleVideoLoaded = useCallback(() => {
+    clearMediaRetryTimer();
+    mediaRetryCountRef.current = 0;
+    setMediaError(false);
+  }, [clearMediaRetryTimer]);
+
+  const retryMediaSource = useCallback(() => {
+    clearMediaRetryTimer();
+    mediaRetryCountRef.current = 0;
+    setMediaError(false);
+    setMediaSourceGeneration((generation) => generation + 1);
+  }, [clearMediaRetryTimer]);
+
   const handleVideoError = useCallback(() => {
     const video = videoRef.current;
     const err = video?.error;
+    playingRef.current = false;
+    setPlaying(false);
     frontendLog.warn("post-production/PreviewPlayer", "video element failed", {
       fields: {
         src: resolvedSrc,
+        retry_count: mediaRetryCountRef.current,
         code: err?.code ?? null,
         message: err?.message ?? null,
         network_state: video?.networkState ?? null,
         ready_state: video?.readyState ?? null,
       },
     });
-  }, [resolvedSrc]);
+    if (mediaRetryCountRef.current === 0) {
+      mediaRetryCountRef.current = 1;
+      clearMediaRetryTimer();
+      mediaRetryTimerRef.current = setTimeout(() => {
+        mediaRetryTimerRef.current = null;
+        setMediaSourceGeneration((generation) => generation + 1);
+      }, MEDIA_RETRY_DELAY_MS);
+      return;
+    }
+    clearMediaRetryTimer();
+    setMediaError(true);
+  }, [clearMediaRetryTimer, resolvedSrc]);
 
   const handleVideoMetadata = useCallback(() => {
     const video = videoRef.current;
@@ -1510,6 +1573,7 @@ export function PreviewPlayer({
               />
               {!ambientSamplingReady ? (
                 <video
+                  key={`ambient:${mediaSourceKey}`}
                   ref={ambientVideoRef}
                   aria-hidden="true"
                   tabIndex={-1}
@@ -1564,12 +1628,14 @@ export function PreviewPlayer({
             >
               {resolvedSrc && !useCompositedCanvas ? (
                 <video
+                  key={`source:${mediaSourceKey}`}
                   ref={videoRef}
                   muted
                   playsInline
                   preload="auto"
                   src={resolvedSrc}
                   onError={handleVideoError}
+                  onLoadedData={handleVideoLoaded}
                   onLoadedMetadata={handleVideoMetadata}
                   className="relative h-full w-full object-contain"
                   aria-label="Source video preview"
@@ -1585,6 +1651,22 @@ export function PreviewPlayer({
                 />
               ) : null}
             </div>
+            {mediaError ? (
+              <div className="absolute inset-0 z-30 grid place-items-center bg-zinc-950/72 px-6 text-center">
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-white">
+                    Video preview could not be loaded.
+                  </p>
+                  <button
+                    type="button"
+                    className="rounded-md border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15"
+                    onClick={retryMediaSource}
+                  >
+                    Retry preview
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {activeHighlights.length > 0 ? (
               <div
                 aria-hidden="true"
@@ -1779,6 +1861,7 @@ export function PreviewPlayer({
         </div>
         {resolvedSrc && useCompositedCanvas ? (
           <video
+            key={`source:${mediaSourceKey}`}
             ref={videoRef}
             hidden
             muted
@@ -1786,11 +1869,13 @@ export function PreviewPlayer({
             preload="auto"
             src={resolvedSrc}
             onError={handleVideoError}
+            onLoadedData={handleVideoLoaded}
             onLoadedMetadata={handleVideoMetadata}
           />
         ) : null}
         {!resolvedSrc ? (
           <video
+            key={`source:${mediaSourceKey}`}
             ref={videoRef}
             hidden
             muted
