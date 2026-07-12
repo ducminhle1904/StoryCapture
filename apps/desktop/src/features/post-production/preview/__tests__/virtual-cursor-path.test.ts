@@ -53,12 +53,13 @@ describe("sampleVirtualCursor", () => {
     expect(sampleVirtualCursor(ACTIONS, 8000)).toMatchObject({ x: 0.8, y: 0.6 });
   });
 
-  it("returns click ripple state during the click feedback window", () => {
+  it("returns click feedback during the legacy click window", () => {
     const sample = sampleVirtualCursor(ACTIONS, 2100);
 
-    expect(sample?.ripple).toMatchObject({ x: 0.8, y: 0.6 });
-    expect(sample?.ripple?.progress).toBeGreaterThan(0);
-    expect(sample?.ripple?.opacity).toBeGreaterThan(0);
+    expect(sample?.clickFeedback).toHaveLength(1);
+    expect(sample?.clickFeedback[0]).toMatchObject({ x: 0.8, y: 0.6 });
+    expect(sample?.clickFeedback[0]?.progress).toBeGreaterThan(0);
+    expect(sample?.clickFeedback[0]?.primitives[0]?.opacity).toBeGreaterThan(0);
   });
 
   it("returns null when actions are unavailable", () => {
@@ -166,14 +167,14 @@ describe("sampleVirtualCursor", () => {
 
     const atSemanticClick = sampleVirtualCursor(actions, 1108, "natural");
     expect(atSemanticClick?.x).toBeCloseTo(696.9609375 / 1280);
-    expect(atSemanticClick?.ripple).not.toBeNull();
+    expect(atSemanticClick?.clickFeedback).toHaveLength(1);
 
     const afterInput = sampleVirtualCursor(actions, 1300, "natural");
     expect(afterInput?.x).toBeCloseTo(696.9609375 / 1280);
-    expect(afterInput?.ripple).not.toBeNull();
+    expect(afterInput?.clickFeedback).toHaveLength(1);
   });
 
-  it("prefers explicit sidecar cursor timing and delays click ripple until input time", () => {
+  it("prefers explicit sidecar cursor timing and delays feedback until input time", () => {
     const event = {
       ...eventWithTarget({ x: 800, y: 300 }, { start: 0, action: 2_000, end: 2_100 }),
       cursor_timing: {
@@ -200,11 +201,60 @@ describe("sampleVirtualCursor", () => {
       travelMs: 320,
       effectMs: 1_500,
     });
-    expect(sampleVirtualCursor(actions, 1_400, "natural")?.ripple).toBeNull();
-    expect(sampleVirtualCursor(actions, 1_520, "natural")?.ripple).toMatchObject({
+    expect(sampleVirtualCursor(actions, 1_400, "natural")?.clickFeedback).toEqual([]);
+    expect(sampleVirtualCursor(actions, 1_520, "natural")?.clickFeedback[0]).toMatchObject({
       x: 0.8,
       y: 0.6,
     });
+  });
+
+  it("keeps up to three overlapping feedback frames in oldest-to-newest order", () => {
+    const actions = actionsWithEvents([
+      eventWithTarget({ x: 200, y: 100 }, { start: 0, action: 1_000, end: 1_050 }),
+      eventWithTarget({ x: 400, y: 200 }, { start: 1_050, action: 1_100, end: 1_150 }),
+      eventWithTarget({ x: 600, y: 300 }, { start: 1_150, action: 1_200, end: 1_250 }),
+      eventWithTarget({ x: 800, y: 400 }, { start: 1_250, action: 1_300, end: 1_350 }),
+    ]);
+
+    const sample = sampleVirtualCursor(actions, 1_350, "natural", {
+      style: "ring",
+      color: "brand",
+      intensity: "normal",
+    });
+
+    expect(sample?.clickFeedback).toHaveLength(3);
+    expect(sample?.clickFeedback.map(({ x, y }) => [x, y])).toEqual([
+      [0.4, 0.4],
+      [0.6, 0.6],
+      [0.8, 0.8],
+    ]);
+  });
+
+  it("uses the newest active Press effect for cursor scale", () => {
+    const sample = sampleVirtualCursor(ACTIONS, 2_080, "natural", {
+      style: "press",
+      color: "auto",
+      intensity: "normal",
+    });
+
+    expect(sample?.cursorScale).toBeLessThan(1);
+    expect(
+      sampleVirtualCursor(ACTIONS, 2_221, "natural", {
+        style: "press",
+        color: "auto",
+        intensity: "normal",
+      })?.cursorScale,
+    ).toBe(1);
+  });
+
+  it("does not create feedback for clicks without a target", () => {
+    const event = {
+      ...eventWithTarget({ x: 800, y: 300 }, { start: 0, action: 500, end: 600 }),
+      target: null,
+    };
+    const sample = sampleVirtualCursor(actionsWithEvents([event]), 500);
+
+    expect(sample?.clickFeedback).toEqual([]);
   });
 
   it("ignores non-interaction sidecar events when scheduling cursor movement", () => {

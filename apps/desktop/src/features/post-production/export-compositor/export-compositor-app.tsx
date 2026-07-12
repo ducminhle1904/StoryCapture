@@ -4,8 +4,13 @@ import type { RecordingTrajectory } from "@/ipc/trajectory";
 import {
   samplePreparedVirtualCursor,
   sampleTrajectoryCursor,
+  type VirtualCursorSample,
 } from "../preview/virtual-cursor-path";
 import type { Graph as ExportGraph, Rgba, Vec2, VideoNode } from "../state/compute-graph";
+import {
+  CURSOR_CLICK_EFFECT_CONTRAST_STROKE_PX,
+  cursorClickEffectRenderScale,
+} from "../state/cursor-click-effect";
 import { timelineMsToSourcePtsUs } from "../state/source-timeline-map";
 import {
   buildVirtualCursorSchedule,
@@ -14,7 +19,7 @@ import {
 import { parseExportCursorSidecar } from "./cursor-sidecar";
 
 const CURSOR_BASE_SIZE_PX = 32;
-const CURSOR_RIPPLE_MAX_PX = 96;
+const CURSOR_IMAGE_HOTSPOT_PX = 1;
 
 const cursorSkinAssets = import.meta.glob("../../../../../../assets/cursor-skins/*.png", {
   eager: true,
@@ -48,6 +53,7 @@ declare global {
 
 interface CursorLayer {
   node: CursorNode;
+  clickEffect: CursorNode["click_effect"];
   image: HTMLImageElement | null;
   trajectory: RecordingTrajectory | null;
   schedule: VirtualCursorSchedule | null;
@@ -257,6 +263,89 @@ function applyZoomToNormalizedPoint(
   };
 }
 
+function drawCursorFeedback(
+  ctx: CanvasRenderingContext2D,
+  sample: VirtualCursorSample,
+  zoom: { center: Vec2; scale: number },
+  width: number,
+  height: number,
+  sizeScale: number,
+): void {
+  const outputScale = cursorClickEffectRenderScale(width, height) * sizeScale;
+  for (const feedback of sample.clickFeedback) {
+    const point = applyZoomToNormalizedPoint(feedback, zoom, width, height);
+    const x = point.x * width;
+    const y = point.y * height;
+    for (const primitive of feedback.primitives) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, primitive.radius * outputScale, 0, Math.PI * 2);
+      if (primitive.fillOpacity > 0) {
+        ctx.globalAlpha = primitive.fillOpacity;
+        ctx.fillStyle = primitive.foreground;
+        ctx.shadowColor = primitive.foreground;
+        ctx.shadowBlur = primitive.glowBlur * outputScale;
+        ctx.fill();
+      }
+      if (primitive.opacity > 0 && primitive.strokeWidth > 0) {
+        ctx.globalAlpha = primitive.opacity;
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = primitive.contrast;
+        ctx.lineWidth =
+          (primitive.strokeWidth + CURSOR_CLICK_EFFECT_CONTRAST_STROKE_PX) * outputScale;
+        ctx.stroke();
+
+        ctx.strokeStyle = primitive.foreground;
+        ctx.lineWidth = primitive.strokeWidth * outputScale;
+        ctx.shadowColor = primitive.foreground;
+        ctx.shadowBlur = primitive.glowBlur * outputScale;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+}
+
+export function drawExportCursorSample(
+  ctx: CanvasRenderingContext2D,
+  sample: VirtualCursorSample,
+  image: HTMLImageElement | null,
+  sizeScale: number,
+  zoom: { center: Vec2; scale: number },
+  width: number,
+  height: number,
+): void {
+  const point = applyZoomToNormalizedPoint(sample, zoom, width, height);
+  const x = point.x * width;
+  const y = point.y * height;
+  const outputScale = cursorClickEffectRenderScale(width, height);
+  const normalizedSizeScale = Math.max(0.1, sizeScale || 1);
+  drawCursorFeedback(ctx, sample, zoom, width, height, normalizedSizeScale);
+  const size = CURSOR_BASE_SIZE_PX * normalizedSizeScale * outputScale;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(sample.cursorScale, sample.cursorScale);
+  if (image) {
+    const hotspot = CURSOR_IMAGE_HOTSPOT_PX * normalizedSizeScale * outputScale;
+    ctx.drawImage(image, -hotspot, -hotspot, size, size);
+  } else {
+    ctx.fillStyle = "white";
+    ctx.strokeStyle = "rgba(0,0,0,0.58)";
+    ctx.lineWidth = 2 * outputScale;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, size);
+    ctx.lineTo(size * 0.3, size * 0.7);
+    ctx.lineTo(size * 0.52, size * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function roundedRectPath(ctx: CanvasRenderingContext2D, rect: Rect, radius: number): void {
   const r = Math.max(0, Math.min(radius, rect.w / 2, rect.h / 2));
   ctx.beginPath();
@@ -319,6 +408,7 @@ class CanvasExportCompositor {
         const parsed = parseExportCursorSidecar(rawSidecar);
         return {
           node,
+          clickEffect: node.click_effect,
           image,
           trajectory: parsed.kind === "trajectory" ? parsed.sidecar : null,
           schedule:
@@ -553,55 +643,20 @@ class CanvasExportCompositor {
       const relativeMs = layer.node.preserve_full_motion ? relativeTimelineMs : mappedRelativeMs;
       const sample =
         layer.sidecarKind === "actions"
-          ? samplePreparedVirtualCursor(layer.schedule, relativeMs)
+          ? samplePreparedVirtualCursor(layer.schedule, relativeMs, layer.clickEffect)
           : layer.sidecarKind === "trajectory"
             ? sampleTrajectoryCursor(layer.trajectory, relativeMs)
             : null;
       if (!sample) continue;
-      const point = applyZoomToNormalizedPoint(sample, zoom, this.outputWidth, this.outputHeight);
-      const x = point.x * this.outputWidth;
-      const y = point.y * this.outputHeight;
-      const size = CURSOR_BASE_SIZE_PX * Math.max(0.1, layer.node.size_scale || 1);
-      if (sample.ripple) {
-        const ripplePoint = applyZoomToNormalizedPoint(
-          { x: sample.ripple.x, y: sample.ripple.y },
-          zoom,
-          this.outputWidth,
-          this.outputHeight,
-        );
-        const rippleSize = 18 + sample.ripple.progress * CURSOR_RIPPLE_MAX_PX;
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, sample.ripple.opacity * 0.72);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(
-          ripplePoint.x * this.outputWidth,
-          ripplePoint.y * this.outputHeight,
-          rippleSize / 2,
-          0,
-          Math.PI * 2,
-        );
-        ctx.stroke();
-        ctx.restore();
-      }
-      if (layer.image) {
-        ctx.drawImage(layer.image, x - 1, y - 1, size, size);
-      } else {
-        ctx.save();
-        ctx.fillStyle = "white";
-        ctx.strokeStyle = "rgba(0,0,0,0.58)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x, y + size);
-        ctx.lineTo(x + size * 0.3, y + size * 0.7);
-        ctx.lineTo(x + size * 0.52, y + size * 0.72);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      }
+      drawExportCursorSample(
+        ctx,
+        sample,
+        layer.image,
+        layer.node.size_scale,
+        zoom,
+        this.outputWidth,
+        this.outputHeight,
+      );
     }
   }
 

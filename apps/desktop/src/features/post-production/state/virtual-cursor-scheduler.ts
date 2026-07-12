@@ -4,6 +4,7 @@ import {
   actionSidecarFps,
   type RecordingActions,
 } from "@/ipc/action-sidecar";
+import { CURSOR_CLICK_EFFECT_MAX_DURATION_MS } from "./cursor-click-effect";
 import { type CursorMotionProfile, cursorMotionProfile } from "./cursor-motion";
 import type { CursorMotionPreset } from "./timeline-slice";
 
@@ -33,7 +34,7 @@ export interface VirtualCursorScheduleOptions {
   preserveFullMotion?: boolean;
 }
 
-export const VIRTUAL_CURSOR_CLICK_RIPPLE_MS = 520;
+export const VIRTUAL_CURSOR_CLICK_FEEDBACK_MAX_MS = CURSOR_CLICK_EFFECT_MAX_DURATION_MS;
 
 const MIN_TARGET_WIDTH_PX = 12;
 const CURSOR_INTERACTION_VERBS = new Set(["click", "type", "hover", "select"]);
@@ -203,7 +204,7 @@ export function buildVirtualCursorSchedule(
       durationMs,
       arrivalMs,
       isClickEvent(event) && event.target
-        ? effectMs + VIRTUAL_CURSOR_CLICK_RIPPLE_MS
+        ? effectMs + VIRTUAL_CURSOR_CLICK_FEEDBACK_MAX_MS
         : Math.max(arrivalMs, effectMs),
     );
     previous = target;

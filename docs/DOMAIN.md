@@ -155,11 +155,21 @@ without crashing. The editor owns:
 - Timeline and track state: video, cursor, zoom, sound, annotation/highlight.
 - `state/timeline-layout.ts`: versioned timeline layout persistence schema.
 - `state/build-timeline-from-story.ts`: Story plus sidecars to initial timeline.
+- `state/cursor-click-effect.ts`: normalized cursor click-effect presets and
+  deterministic, playhead-driven primitive sampling shared by preview/export.
 - `state/compute-graph.ts`: timeline to render/export graph.
 - Inspector panels for output, background, effects, sound, and export settings.
 - Preview engine with WebGPU path where available and fallback behavior.
 - Export modal, render queue/progress UI, undo/history, sound drawer, and
   voiceover compact UI.
+
+Action-backed cursor clips support `None`, `Ring`, `Soft Pulse`, `Echo`, and
+`Press` click feedback with color and intensity presets. New generated clips
+use `Soft Pulse + Auto + Normal`; saved clips without the field normalize to
+the legacy `Ring + White + Normal` behavior. Feedback starts at action-sidecar
+input timing, is sampled only from playhead/source time, and uses the same
+bounded primitive contract in DOM preview and Canvas export. Trajectory-only
+and PNG-sequence cursors do not infer clicks and keep the controls disabled.
 
 Current host export behavior: `export_run` writes a graph snapshot and creates
 real render queue jobs. The legacy host path plans each output before queueing:

@@ -31,6 +31,12 @@ import type {
 } from "@/ipc/trajectory";
 import { frontendLog } from "@/lib/log";
 import {
+  CURSOR_CLICK_EFFECT_CONTRAST_STROKE_PX,
+  CURSOR_CLICK_EFFECT_MAX_ACTIVE_FEEDBACK,
+  CURSOR_CLICK_EFFECT_MAX_PRIMITIVES,
+  cursorClickEffectRenderScale,
+} from "../state/cursor-click-effect";
+import {
   identitySourceTimelineMap,
   type SourceTimelineMap,
   timelineMsToSourcePtsUs,
@@ -78,7 +84,12 @@ const AMBIENT_SAMPLE_HEIGHT = 22;
 const AMBIENT_SAMPLE_INTERVAL_MS = 90;
 const AMBIENT_FRAME_SMOOTHING = 0.13;
 const CURSOR_BASE_SIZE_PX = 32;
-const CURSOR_RIPPLE_MAX_PX = 96;
+const CURSOR_CLICK_FEEDBACK_NODE_KEYS = Array.from(
+  { length: CURSOR_CLICK_EFFECT_MAX_ACTIVE_FEEDBACK * CURSOR_CLICK_EFFECT_MAX_PRIMITIVES },
+  (_, index) =>
+    `feedback-${Math.floor(index / CURSOR_CLICK_EFFECT_MAX_PRIMITIVES)}-primitive-${index % CURSOR_CLICK_EFFECT_MAX_PRIMITIVES}`,
+);
+const CURSOR_HOTSPOT_OFFSET_PX = 1;
 const SOURCE_HOLD_EPSILON_SECONDS = 0.001;
 const TEXT_DRAG_OVERSCAN = 0.25;
 const MIN_HIGHLIGHT_BOUNDS_SIZE = 0.0001;
@@ -442,6 +453,29 @@ function setStyleValue(style: CSSStyleDeclaration, key: CursorStyleKey, value: s
   }
 }
 
+function cursorRenderScale(frame: HTMLDivElement | null): number {
+  const rect = frame?.getBoundingClientRect();
+  const renderedWidth = frame?.clientWidth || rect?.width || 0;
+  const renderedHeight = frame?.clientHeight || rect?.height || 0;
+  return cursorClickEffectRenderScale(renderedWidth, renderedHeight);
+}
+
+function colorWithAlpha(hex: string, alpha: number): string {
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
+  if (!match) return hex;
+  const [, red = "00", green = "00", blue = "00"] = match;
+  return `rgba(${Number.parseInt(red, 16)}, ${Number.parseInt(green, 16)}, ${Number.parseInt(
+    blue,
+    16,
+  )}, ${Math.max(0, Math.min(1, alpha))})`;
+}
+
+function hideClickFeedbackNode(node: HTMLDivElement | null) {
+  if (!node) return;
+  node.style.opacity = "0";
+  node.style.visibility = "hidden";
+}
+
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0.5;
   return Math.max(0, Math.min(1, value));
@@ -545,7 +579,7 @@ export function PreviewPlayer({
   const previewFrameContentRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cursorRef = useRef<HTMLImageElement | null>(null);
-  const cursorRippleRef = useRef<HTMLDivElement | null>(null);
+  const cursorClickFeedbackRefs = useRef<Array<HTMLDivElement | null>>([]);
   const ambientVideoRef = useRef<HTMLVideoElement | null>(null);
   const ambientSampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const ambientDisplayedPaletteRef = useRef<AmbientPalette>(DEFAULT_AMBIENT_PALETTE);
@@ -682,9 +716,8 @@ export function PreviewPlayer({
 
   const hideCursorOverlay = useCallback(() => {
     const cursor = cursorRef.current;
-    const ripple = cursorRippleRef.current;
     if (cursor) cursor.style.opacity = "0";
-    if (ripple) ripple.style.opacity = "0";
+    for (const node of cursorClickFeedbackRefs.current) hideClickFeedbackNode(node);
   }, []);
 
   const applyPreviewZoom = useCallback((playheadMs: number) => {
@@ -704,7 +737,6 @@ export function PreviewPlayer({
   const renderCursorOverlay = useCallback(
     (playheadMs: number) => {
       const cursor = cursorRef.current;
-      const ripple = cursorRippleRef.current;
       const currentTrajectory = trajectoryRef.current;
       if (!cursor) {
         hideCursorOverlay();
@@ -728,6 +760,7 @@ export function PreviewPlayer({
               cursorScheduleKey(motionPreset, clip.preserveFullMotion ?? false),
             ),
             clip.preserveFullMotion ? relativeTimelineMs : relativeMs,
+            clip.clickEffect,
           )
         : clip.trajectoryKind === "trajectory"
           ? sampleTrajectoryCursor(currentTrajectory, relativeMs)
@@ -741,28 +774,64 @@ export function PreviewPlayer({
       if (cursor.getAttribute("src") !== src) cursor.setAttribute("src", src);
       const zoom = sampleZoom(zoomClipsRef.current, playheadMs);
       const cursorPoint = applyZoomToPoint(sample, zoom);
-      const size = CURSOR_BASE_SIZE_PX * Math.max(0.1, clip.sizeScale || 1);
+      const renderScale = cursorRenderScale(previewFrameContentRef.current);
+      const clipScale = Math.max(0.1, clip.sizeScale || 1);
+      const size = CURSOR_BASE_SIZE_PX * clipScale * renderScale;
+      const hotspot = CURSOR_HOTSPOT_OFFSET_PX * clipScale * renderScale;
       setStyleValue(cursor.style, "width", `${size}px`);
       setStyleValue(cursor.style, "height", `${size}px`);
       setStyleValue(cursor.style, "left", `${cursorPoint.x * 100}%`);
       setStyleValue(cursor.style, "top", `${cursorPoint.y * 100}%`);
       setStyleValue(cursor.style, "opacity", "1");
-      setStyleValue(cursor.style, "transform", "translate3d(-1px, -1px, 0)");
+      cursor.style.transformOrigin = `${hotspot}px ${hotspot}px`;
+      setStyleValue(
+        cursor.style,
+        "transform",
+        `translate3d(-${hotspot}px, -${hotspot}px, 0) scale(${sample.cursorScale})`,
+      );
 
-      if (!ripple) return;
-      const activeRipple = sample.ripple;
-      if (!activeRipple) {
-        ripple.style.opacity = "0";
-        return;
+      for (const node of cursorClickFeedbackRefs.current) hideClickFeedbackNode(node);
+      const effectScale = renderScale * clipScale;
+      for (
+        let feedbackIndex = 0;
+        feedbackIndex < CURSOR_CLICK_EFFECT_MAX_ACTIVE_FEEDBACK;
+        feedbackIndex += 1
+      ) {
+        const feedback = sample.clickFeedback[feedbackIndex];
+        if (!feedback) continue;
+        const feedbackPoint = applyZoomToPoint({ x: feedback.x, y: feedback.y }, zoom);
+        for (
+          let primitiveIndex = 0;
+          primitiveIndex < CURSOR_CLICK_EFFECT_MAX_PRIMITIVES;
+          primitiveIndex += 1
+        ) {
+          const primitive = feedback.primitives[primitiveIndex];
+          const nodeIndex = feedbackIndex * CURSOR_CLICK_EFFECT_MAX_PRIMITIVES + primitiveIndex;
+          const node = cursorClickFeedbackRefs.current[nodeIndex];
+          if (!primitive || !node) continue;
+          const diameter = primitive.radius * 2 * effectScale;
+          const strokeWidth = primitive.strokeWidth * effectScale;
+          const contrastWidth = (CURSOR_CLICK_EFFECT_CONTRAST_STROKE_PX / 2) * effectScale;
+          node.style.left = `${feedbackPoint.x * 100}%`;
+          node.style.top = `${feedbackPoint.y * 100}%`;
+          node.style.width = `${diameter}px`;
+          node.style.height = `${diameter}px`;
+          node.style.opacity = "1";
+          node.style.visibility = "visible";
+          node.style.transform = "translate3d(-50%, -50%, 0)";
+          node.style.borderRadius = "50%";
+          node.style.borderStyle = "solid";
+          node.style.borderWidth = `${strokeWidth}px`;
+          node.style.borderColor = colorWithAlpha(primitive.foreground, primitive.opacity);
+          node.style.backgroundColor = colorWithAlpha(primitive.foreground, primitive.fillOpacity);
+          node.style.boxShadow = `0 0 0 ${contrastWidth}px ${colorWithAlpha(
+            primitive.contrast,
+            primitive.opacity,
+          )}, 0 0 ${
+            primitive.glowBlur * effectScale
+          }px ${colorWithAlpha(primitive.foreground, primitive.opacity)}`;
+        }
       }
-      const ripplePoint = applyZoomToPoint({ x: activeRipple.x, y: activeRipple.y }, zoom);
-      const rippleSize = 18 + activeRipple.progress * CURSOR_RIPPLE_MAX_PX;
-      setStyleValue(ripple.style, "width", `${rippleSize}px`);
-      setStyleValue(ripple.style, "height", `${rippleSize}px`);
-      setStyleValue(ripple.style, "left", `${ripplePoint.x * 100}%`);
-      setStyleValue(ripple.style, "top", `${ripplePoint.y * 100}%`);
-      setStyleValue(ripple.style, "opacity", String(Math.max(0, activeRipple.opacity * 0.72)));
-      setStyleValue(ripple.style, "transform", "translate3d(-50%, -50%, 0)");
     },
     [hideCursorOverlay],
   );
@@ -932,6 +1001,12 @@ export function PreviewPlayer({
   }, [width, height]);
 
   useEffect(() => {
+    const playheadMs = useEditorStore.getState().playheadMs;
+    applyPreviewZoom(playheadMs);
+    renderCursorOverlay(playheadMs);
+  }, [applyPreviewZoom, renderCursorOverlay, stageSize]);
+
+  useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -946,14 +1021,17 @@ export function PreviewPlayer({
     };
 
     updateStageSize();
+    window.addEventListener("resize", updateStageSize);
     if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateStageSize);
       return () => window.removeEventListener("resize", updateStageSize);
     }
 
     const resizeObserver = new ResizeObserver(updateStageSize);
     resizeObserver.observe(stage);
-    return () => resizeObserver.disconnect();
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateStageSize);
+    };
   }, []);
 
   useEffect(() => {
@@ -1737,10 +1815,18 @@ export function PreviewPlayer({
               className="pointer-events-none absolute inset-0 overflow-hidden"
               data-testid="virtual-cursor-overlay"
             >
-              <div
-                ref={cursorRippleRef}
-                className="absolute rounded-full border-2 border-white/80 bg-white/10 opacity-0 shadow-[0_0_18px_rgba(255,255,255,0.28)]"
-              />
+              {CURSOR_CLICK_FEEDBACK_NODE_KEYS.map((nodeKey, nodeIndex) => (
+                <div
+                  key={nodeKey}
+                  ref={(node) => {
+                    cursorClickFeedbackRefs.current[nodeIndex] = node;
+                  }}
+                  className="absolute box-border opacity-0 invisible"
+                  data-feedback-slot={Math.floor(nodeIndex / CURSOR_CLICK_EFFECT_MAX_PRIMITIVES)}
+                  data-primitive-slot={nodeIndex % CURSOR_CLICK_EFFECT_MAX_PRIMITIVES}
+                  data-testid="cursor-click-feedback-primitive"
+                />
+              ))}
               <img
                 ref={cursorRef}
                 alt=""

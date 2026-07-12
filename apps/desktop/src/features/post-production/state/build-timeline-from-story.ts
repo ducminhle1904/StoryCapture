@@ -24,6 +24,7 @@ import type {
   ZoomClip,
 } from "../state/timeline-slice";
 import { normalizeCursorMotionPreset, XFADE_KINDS } from "../state/timeline-slice";
+import { NEW_CURSOR_CLICK_EFFECT } from "./cursor-click-effect";
 import { identitySourceTimelineMap } from "./source-timeline-map";
 import type { EditorBackgroundKind, Rgba } from "./store";
 import { styleDefaults } from "./text-style";
@@ -724,6 +725,7 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
       trajectoryFrameCount: cursorSidecar.frameCount,
       skin: polish?.global.cursorSkin ?? "mac-default",
       motionPreset: cursorMotionPreset,
+      clickEffect: { ...NEW_CURSOR_CLICK_EFFECT },
       preserveFullMotion: false,
       sizeScale: polish?.global.cursorSizeScale ?? 1.0,
       syncGroupId,

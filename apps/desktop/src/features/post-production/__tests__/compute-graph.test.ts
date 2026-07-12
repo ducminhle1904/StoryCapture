@@ -221,6 +221,11 @@ describe("computeGraph", () => {
     const cursor = videoNodeAt(g, 4);
     if (cursor.type !== "cursor-overlay") throw new Error("expected cursor-overlay");
     expect(cursor.motion_preset).toBe("cinematic");
+    expect(cursor.click_effect).toEqual({
+      style: "ring",
+      color: "white",
+      intensity: "normal",
+    });
     expect(cursor.t_start_ms).toBe(0);
     expect(cursor.duration_ms).toBe(4000);
 

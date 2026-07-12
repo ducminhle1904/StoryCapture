@@ -10,12 +10,23 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SelectField } from "@/components/ui/select-field";
 import { createClipId } from "../state/clip-id";
+import {
+  CURSOR_CLICK_EFFECT_COLORS,
+  CURSOR_CLICK_EFFECT_INTENSITIES,
+  CURSOR_CLICK_EFFECT_STYLES,
+  type CursorClickEffectConfig,
+  type CursorClickEffectColor,
+  type CursorClickEffectIntensity,
+  type CursorClickEffectStyle,
+  normalizeCursorClickEffect,
+} from "../state/cursor-click-effect";
 import { CURSOR_MOTION_LABELS } from "../state/cursor-motion";
 import { buildCursorPresetReflow } from "../state/cursor-preset-reflow";
 import { useEditorStore } from "../state/store";
 import {
   avoidAnchorPosition,
   currentStepForPlayhead,
+  isActionsCursorClip,
   resolveTextAnchorPosition,
   safeAreaPosition,
   targetAnchorHasGeometry,
@@ -100,6 +111,36 @@ const cursorSkinSelectOptions = CURSOR_SKIN_OPTIONS.map((skin) => ({ value: skin
 const cursorMotionSelectOptions = CURSOR_MOTION_PRESETS.map((preset) => ({
   value: preset,
   label: CURSOR_MOTION_LABELS[preset],
+}));
+const cursorClickEffectStyleLabels: Record<CursorClickEffectStyle, string> = {
+  none: "None",
+  ring: "Ring",
+  "soft-pulse": "Soft Pulse",
+  echo: "Echo",
+  press: "Press",
+};
+const cursorClickEffectColorLabels: Record<CursorClickEffectColor, string> = {
+  auto: "Auto",
+  white: "White",
+  black: "Black",
+  brand: "Brand",
+};
+const cursorClickEffectIntensityLabels: Record<CursorClickEffectIntensity, string> = {
+  subtle: "Subtle",
+  normal: "Normal",
+  strong: "Strong",
+};
+const cursorClickEffectStyleOptions = CURSOR_CLICK_EFFECT_STYLES.map((style) => ({
+  value: style,
+  label: cursorClickEffectStyleLabels[style],
+}));
+const cursorClickEffectColorOptions = CURSOR_CLICK_EFFECT_COLORS.map((color) => ({
+  value: color,
+  label: cursorClickEffectColorLabels[color],
+}));
+const cursorClickEffectIntensityOptions = CURSOR_CLICK_EFFECT_INTENSITIES.map((intensity) => ({
+  value: intensity,
+  label: cursorClickEffectIntensityLabels[intensity],
 }));
 const soundKindSelectOptions = SOUND_KIND_OPTIONS.map((kind) => ({ value: kind, label: kind }));
 const transitionKindSelectOptions = TRANSITION_KIND_OPTIONS.map((kind) => ({
@@ -934,6 +975,16 @@ function CursorParams({
   onReflow?: (motionPreset: CursorMotionPreset, preserveFullMotion: boolean) => void;
   compressedSegments?: number;
 }) {
+  const clickEffect = normalizeCursorClickEffect(clip.clickEffect);
+  const supportsClickEffects = isActionsCursorClip(clip);
+  const clickEffectDetailsDisabled = !supportsClickEffects || clickEffect.style === "none";
+  const setClickEffect = <K extends keyof CursorClickEffectConfig>(
+    field: K,
+    value: CursorClickEffectConfig[K],
+  ) => {
+    onSetParam(nodePath, "clickEffect", clip.clickEffect, { ...clickEffect, [field]: value });
+  };
+
   return (
     <fieldset className={`${SECTION_CLASS} flex flex-col gap-3`}>
       <SectionTitle>Cursor style</SectionTitle>
@@ -987,6 +1038,48 @@ function CursorParams({
           input synchronized.
         </p>
       ) : null}
+      <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-2">
+        <div>
+          <FieldLabel>Click effect</FieldLabel>
+          {!supportsClickEffects ? (
+            <p className="mt-1 text-[10px] leading-4 text-[var(--color-fg-muted)]">
+              Click effects require action timing.
+            </p>
+          ) : null}
+        </div>
+        <div className={FIELD_ROW_CLASS}>
+          <FieldLabel>Style</FieldLabel>
+          <SelectField
+            aria-label="Cursor click effect"
+            value={clickEffect.style}
+            onValueChange={(value) => setClickEffect("style", value as CursorClickEffectStyle)}
+            options={cursorClickEffectStyleOptions}
+            disabled={!supportsClickEffects}
+          />
+        </div>
+        <div className={FIELD_ROW_CLASS}>
+          <FieldLabel>Color</FieldLabel>
+          <SelectField
+            aria-label="Cursor click effect color"
+            value={clickEffect.color}
+            onValueChange={(value) => setClickEffect("color", value as CursorClickEffectColor)}
+            options={cursorClickEffectColorOptions}
+            disabled={clickEffectDetailsDisabled}
+          />
+        </div>
+        <div className={FIELD_ROW_CLASS}>
+          <FieldLabel>Intensity</FieldLabel>
+          <SelectField
+            aria-label="Cursor click effect intensity"
+            value={clickEffect.intensity}
+            onValueChange={(value) =>
+              setClickEffect("intensity", value as CursorClickEffectIntensity)
+            }
+            options={cursorClickEffectIntensityOptions}
+            disabled={clickEffectDetailsDisabled}
+          />
+        </div>
+      </div>
       <label className={FIELD_ROW_CLASS}>
         <span className="flex items-center justify-between gap-2">
           <FieldLabel>Size</FieldLabel>

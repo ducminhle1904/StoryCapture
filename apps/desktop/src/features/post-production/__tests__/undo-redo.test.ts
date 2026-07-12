@@ -192,6 +192,47 @@ describe("undo slice", () => {
     nowSpy.mockRestore();
   });
 
+  it("undoes and redoes atomic cursor click-effect replacements", () => {
+    const legacy = { style: "ring", color: "white", intensity: "normal" } as const;
+    const press = { style: "press", color: "brand", intensity: "strong" } as const;
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "c1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 100,
+            trajectoryDir: "/c.actions.json",
+            trajectoryKind: "actions",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 0,
+            skin: "mac-default",
+            sizeScale: 1,
+            clickEffect: legacy,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    useEditorStore.getState().pushAction({
+      kind: "set-effect-param",
+      nodePath: "tracks.cursor[0]",
+      field: "clickEffect",
+      prev: legacy,
+      next: press,
+    });
+    expect(useEditorStore.getState().tracks.cursor[0]?.clickEffect).toEqual(press);
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().tracks.cursor[0]?.clickEffect).toEqual(legacy);
+    useEditorStore.getState().redo();
+    expect(useEditorStore.getState().tracks.cursor[0]?.clickEffect).toEqual(press);
+  });
+
   describe("delete-clip undo/redo across non-sound tracks", () => {
     // Verifies the generic `add-clip` invert restores the deleted clip
     // at its original index for every non-sound track. Regression test

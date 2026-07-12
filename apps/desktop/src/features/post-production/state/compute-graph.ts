@@ -22,6 +22,7 @@
 import type { RecordingActions } from "../../../ipc/actions";
 import type { ExportResolution } from "../../../ipc/export";
 import type { CaptureRect, RecordingStepTimingSidecar } from "../../../ipc/trajectory";
+import { type CursorClickEffectConfig, normalizeCursorClickEffect } from "./cursor-click-effect";
 import type { ExportFormState } from "./export-slice";
 import type { SourceTimelineMap } from "./source-timeline-map";
 import { type EditorBackgroundKind, readEditorBackground } from "./store";
@@ -190,6 +191,7 @@ export type VideoNode =
       size_scale: number;
       motion_preset: CursorMotionPreset;
       preserve_full_motion: boolean;
+      click_effect: CursorClickEffectConfig;
       color_tint: Rgba | null;
       t_start_ms: number;
       duration_ms: number;
@@ -422,6 +424,7 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
     size_scale: clip.sizeScale,
     motion_preset: normalizeCursorMotionPreset(clip.motionPreset),
     preserve_full_motion: clip.preserveFullMotion ?? false,
+    click_effect: normalizeCursorClickEffect(clip.clickEffect),
     color_tint: null,
     t_start_ms: clip.startMs,
     duration_ms: Math.max(0, Math.round(clip.durationMs)),

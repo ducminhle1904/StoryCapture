@@ -194,6 +194,11 @@ describe("buildTimelineFromStory", () => {
     expect(c.trajectoryDir).toBe("/tmp/projects/p1/recordings/recording-123.trajectory.json");
     expect(c.trajectoryFps).toBe(60);
     expect(c.trajectoryFrameCount).toBe(720);
+    expect(c.clickEffect).toEqual({
+      style: "soft-pulse",
+      color: "auto",
+      intensity: "normal",
+    });
     expect(c.skin).toBe("mac-default");
     expect(c.motionPreset).toBe("natural");
     expect(c.sizeScale).toBe(1.0);
@@ -209,6 +214,11 @@ describe("buildTimelineFromStory", () => {
 
     expect(out.cursor).toHaveLength(1);
     expect(out.cursor[0]?.trajectoryKind).toBe("trajectory");
+    expect(out.cursor[0]?.clickEffect).toEqual({
+      style: "soft-pulse",
+      color: "auto",
+      intensity: "normal",
+    });
     expect(out.cursor[0]?.trajectoryDir).toBe(
       "/tmp/projects/p1/recordings/recording-123.trajectory.json",
     );
@@ -228,6 +238,7 @@ describe("buildTimelineFromStory", () => {
     );
     expect(out.cursor[0]?.trajectoryFps).toBe(60);
     expect(out.cursor[0]?.trajectoryFrameCount).toBe(741);
+    expect(out.cursor[0]?.clickEffect?.style).toBe("soft-pulse");
     expect(out.zoom).toHaveLength(1);
     expect(out.zoom[0]).toMatchObject({
       id: expect.stringMatching(/^zoom-[a-f0-9]{8}-1000$/),

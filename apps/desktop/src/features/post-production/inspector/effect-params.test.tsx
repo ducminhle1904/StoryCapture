@@ -582,6 +582,114 @@ describe("EffectParams", () => {
     });
   });
 
+  it("edits normalized click effects as one undoable object", async () => {
+    const pushAction = vi.fn();
+    resetStore(pushAction);
+    useEditorStore.setState({
+      selectedClipId: "cursor-1",
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 1000,
+            trajectoryDir: "/tmp/demo.actions.json",
+            trajectoryKind: "actions",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 60,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(<EffectParams />);
+
+    expect(screen.getByLabelText("Cursor click effect")).toHaveTextContent("Ring");
+    await selectFieldOption("Cursor click effect", "Press");
+    expectSetParam(pushAction, {
+      kind: "set-effect-param",
+      nodePath: "tracks.cursor[0]",
+      field: "clickEffect",
+      prev: undefined,
+      next: { style: "press", color: "white", intensity: "normal" },
+    });
+  });
+
+  it("disables click effect details for None without clearing saved choices", () => {
+    resetStore();
+    useEditorStore.setState({
+      selectedClipId: "cursor-1",
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 1000,
+            trajectoryDir: "/tmp/demo.actions.json",
+            trajectoryKind: "actions",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 60,
+            skin: "mac-default",
+            sizeScale: 1,
+            clickEffect: { style: "none", color: "brand", intensity: "strong" },
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(<EffectParams />);
+
+    expect(screen.getByLabelText("Cursor click effect color")).toBeDisabled();
+    expect(screen.getByLabelText("Cursor click effect color")).toHaveTextContent("Brand");
+    expect(screen.getByLabelText("Cursor click effect intensity")).toBeDisabled();
+    expect(screen.getByLabelText("Cursor click effect intensity")).toHaveTextContent("Strong");
+  });
+
+  it("disables click effects and explains trajectory-only clips", () => {
+    resetStore();
+    useEditorStore.setState({
+      selectedClipId: "cursor-1",
+      tracks: {
+        video: [],
+        cursor: [
+          {
+            id: "cursor-1",
+            trackId: "cursor",
+            startMs: 0,
+            durationMs: 1000,
+            trajectoryDir: "/tmp/demo.trajectory.json",
+            trajectoryKind: "trajectory",
+            trajectoryFps: 60,
+            trajectoryFrameCount: 60,
+            skin: "mac-default",
+            sizeScale: 1,
+          },
+        ],
+        zoom: [],
+        sound: [],
+        annotations: [],
+      },
+    });
+
+    render(<EffectParams />);
+
+    expect(screen.getByText("Click effects require action timing.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cursor click effect")).toBeDisabled();
+    expect(screen.getByLabelText("Cursor skin")).not.toBeDisabled();
+  });
+
   it("exposes active cursor motion while editing an overlapping zoom clip", async () => {
     const pushAction = vi.fn();
     resetStore(pushAction);

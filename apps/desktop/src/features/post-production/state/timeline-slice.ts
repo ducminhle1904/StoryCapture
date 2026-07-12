@@ -22,6 +22,7 @@
  */
 
 import type { StateCreator } from "zustand";
+import type { CursorClickEffectConfig } from "./cursor-click-effect";
 import type { SourceTimelineMap } from "./source-timeline-map";
 
 /**
@@ -124,6 +125,8 @@ export interface CursorClip extends ClipBase {
   trajectoryFrameCount: number;
   skin: CursorSkin;
   motionPreset?: CursorMotionPreset;
+  /** Optional at the serialized boundary; missing values use the legacy Ring preset. */
+  clickEffect?: CursorClickEffectConfig;
   /** Off by default: when enabled, exact-deficit source holds preserve requested travel. */
   preserveFullMotion?: boolean;
   /** Multiplier on the cursor's render size. 1.0 = native. */

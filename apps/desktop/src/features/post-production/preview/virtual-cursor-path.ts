@@ -1,22 +1,33 @@
 import type { ActionPoint, ActionTimelineEvent, RecordingActions } from "@/ipc/actions";
 import type { RecordingTrajectory } from "@/ipc/trajectory";
+import {
+  CURSOR_CLICK_EFFECT_MAX_ACTIVE_FEEDBACK,
+  type CursorClickEffectConfig,
+  type CursorClickEffectPrimitive,
+  normalizeCursorClickEffect,
+  sampleCursorClickEffect,
+} from "../state/cursor-click-effect";
 import { type CursorMotionProfile, cursorMotionProfile } from "../state/cursor-motion";
 import type { CursorMotionPreset } from "../state/timeline-slice";
 import {
   buildVirtualCursorSchedule,
-  VIRTUAL_CURSOR_CLICK_RIPPLE_MS,
+  VIRTUAL_CURSOR_CLICK_FEEDBACK_MAX_MS,
   type VirtualCursorSchedule,
 } from "../state/virtual-cursor-scheduler";
+
+export interface ClickFeedbackFrame {
+  x: number;
+  y: number;
+  elapsedMs: number;
+  progress: number;
+  primitives: CursorClickEffectPrimitive[];
+}
 
 export interface VirtualCursorSample {
   x: number;
   y: number;
-  ripple: {
-    x: number;
-    y: number;
-    progress: number;
-    opacity: number;
-  } | null;
+  clickFeedback: ClickFeedbackFrame[];
+  cursorScale: number;
 }
 
 const SETTLE_START = 0.86;
@@ -109,13 +120,19 @@ export function sampleVirtualCursor(
   actions: RecordingActions | null | undefined,
   tMs: number,
   motionPreset?: CursorMotionPreset,
+  clickEffect?: CursorClickEffectConfig,
 ): VirtualCursorSample | null {
-  return samplePreparedVirtualCursor(buildVirtualCursorSchedule(actions, motionPreset), tMs);
+  return samplePreparedVirtualCursor(
+    buildVirtualCursorSchedule(actions, motionPreset),
+    tMs,
+    clickEffect,
+  );
 }
 
 export function samplePreparedVirtualCursor(
   schedule: VirtualCursorSchedule | null | undefined,
   tMs: number,
+  clickEffect?: CursorClickEffectConfig,
 ): VirtualCursorSample | null {
   if (!schedule) return null;
   const profile = cursorMotionProfile(schedule.motionPreset);
@@ -124,10 +141,11 @@ export function samplePreparedVirtualCursor(
     const { event, from, to, startMs, arrivalMs } = segment;
 
     if (tMs < startMs) {
-      return withRipple(
+      return withClickFeedback(
         schedule,
         { x: from.x / schedule.size.width, y: from.y / schedule.size.height },
         tMs,
+        clickEffect,
       );
     }
 
@@ -136,30 +154,36 @@ export function samplePreparedVirtualCursor(
         arrivalMs === startMs
           ? to
           : curvedCursorPoint(from, to, event, (tMs - startMs) / (arrivalMs - startMs), profile);
-      return withRipple(
+      return withClickFeedback(
         schedule,
         { x: pos.x / schedule.size.width, y: pos.y / schedule.size.height },
         tMs,
+        clickEffect,
       );
     }
   }
 
   const final = schedule.segments.at(-1);
   if (!final) return null;
-  return withRipple(
+  return withClickFeedback(
     schedule,
     { x: final.to.x / schedule.size.width, y: final.to.y / schedule.size.height },
     tMs,
+    clickEffect,
   );
 }
 
-function withRipple(
+function withClickFeedback(
   schedule: VirtualCursorSchedule,
   sample: { x: number; y: number },
   tMs: number,
+  value?: CursorClickEffectConfig,
 ): VirtualCursorSample {
   const size = schedule.size;
-  let active: { segment: VirtualCursorSchedule["segments"][number]; elapsed: number } | null = null;
+  const config = normalizeCursorClickEffect(value);
+  const clickFeedback: ClickFeedbackFrame[] = [];
+  let cursorScale = 1;
+  let foundPress = false;
   for (let i = schedule.segments.length - 1; i >= 0; i -= 1) {
     const segment = schedule.segments[i];
     if (!segment) continue;
@@ -167,23 +191,25 @@ function withRipple(
     if (!isClickEvent(event) || !event.target) continue;
     const elapsed = tMs - segment.effectMs;
     if (elapsed < 0) continue;
-    if (elapsed > VIRTUAL_CURSOR_CLICK_RIPPLE_MS) break;
-    if (!active || elapsed < active.elapsed) active = { segment, elapsed };
-  }
-
-  if (!active) return { ...sample, ripple: null };
-
-  const point = active.segment.to;
-  const progress = clamp01(active.elapsed / VIRTUAL_CURSOR_CLICK_RIPPLE_MS);
-  return {
-    ...sample,
-    ripple: {
+    if (elapsed > VIRTUAL_CURSOR_CLICK_FEEDBACK_MAX_MS) break;
+    const frame = sampleCursorClickEffect(config, elapsed);
+    if (!frame) continue;
+    const point = segment.to;
+    clickFeedback.push({
       x: point.x / size.width,
       y: point.y / size.height,
-      progress,
-      opacity: 1 - progress,
-    },
-  };
+      elapsedMs: elapsed,
+      progress: frame.progress,
+      primitives: frame.primitives,
+    });
+    if (!foundPress && config.style === "press") {
+      cursorScale = frame.cursorScale;
+      foundPress = true;
+    }
+    if (clickFeedback.length === CURSOR_CLICK_EFFECT_MAX_ACTIVE_FEEDBACK) break;
+  }
+  clickFeedback.reverse();
+  return { ...sample, clickFeedback, cursorScale };
 }
 
 export function sampleTrajectoryCursor(
@@ -203,13 +229,7 @@ export function sampleTrajectoryCursor(
   return {
     x: best.x,
     y: best.y,
-    ripple: best.click
-      ? {
-          x: best.x,
-          y: best.y,
-          progress: 0,
-          opacity: 1,
-        }
-      : null,
+    clickFeedback: [],
+    cursorScale: 1,
   };
 }

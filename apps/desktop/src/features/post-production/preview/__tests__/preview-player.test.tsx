@@ -2,8 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sampleCursorClickEffect } from "../../state/cursor-click-effect";
 import type { SourceTimelineMap } from "../../state/source-timeline-map";
 import { useEditorStore } from "../../state/store";
+import type { CursorClip } from "../../state/timeline-slice";
 import { PreviewEngine } from "../preview-engine";
 import { PreviewPlayer } from "../preview-player";
 import { ACTIONS } from "./fixtures";
@@ -54,6 +56,37 @@ function mockNativePlayback() {
   vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
 
   return { play, requestAnimationFrameSpy };
+}
+
+function setActionCursorClip(overrides: Partial<CursorClip> = {}) {
+  useEditorStore.setState({
+    tracks: {
+      video: [],
+      cursor: [
+        {
+          id: "cursor-1",
+          trackId: "cursor",
+          startMs: 0,
+          durationMs: 10_000,
+          trajectoryDir: "/tmp/demo.actions.json",
+          trajectoryFps: 60,
+          trajectoryFrameCount: 600,
+          skin: "mac-default",
+          sizeScale: 1,
+          ...overrides,
+        },
+      ],
+      zoom: [],
+      sound: [],
+      annotations: [],
+    },
+  });
+}
+
+function feedbackPrimitives(overlay: HTMLElement): HTMLDivElement[] {
+  return Array.from(
+    overlay.querySelectorAll<HTMLDivElement>("[data-testid='cursor-click-feedback-primitive']"),
+  );
 }
 
 describe("PreviewPlayer", () => {
@@ -517,13 +550,200 @@ describe("PreviewPlayer", () => {
 
     const overlay = screen.getByTestId("virtual-cursor-overlay");
     const cursor = overlay.querySelector("img");
-    const ripple = overlay.querySelector("div");
+    const feedbackNodes = feedbackPrimitives(overlay);
 
     await waitFor(() => expect(cursor?.style.opacity).toBe("1"));
     expect(cursor?.style.left).toBe("40%");
     expect(cursor?.style.top).toBe("70%");
-    expect(ripple?.style.opacity).toBe("0.72");
+    expect(feedbackNodes).toHaveLength(6);
+    expect(feedbackNodes.every((node) => node.style.visibility === "hidden")).toBe(true);
     expect(PreviewEngine).not.toHaveBeenCalled();
+  });
+
+  it("renders configured click primitives with deterministic dual-tone styles", async () => {
+    const clickEffect = { style: "ring", color: "black", intensity: "strong" } as const;
+    setActionCursorClip({ clickEffect });
+
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+    act(() => useEditorStore.getState().setPlayhead(2100));
+
+    const overlay = screen.getByTestId("virtual-cursor-overlay");
+    const nodes = feedbackPrimitives(overlay);
+    await waitFor(() => expect(nodes[0]?.style.visibility).toBe("visible"));
+    const expected = sampleCursorClickEffect(clickEffect, 100)?.primitives[0];
+
+    expect(nodes).toHaveLength(6);
+    expect(nodes.filter((node) => node.style.visibility === "visible")).toHaveLength(1);
+    expect(nodes[0]?.style.left).toBe("80%");
+    expect(nodes[0]?.style.top).toBe("60%");
+    expect(Number.parseFloat(nodes[0]?.style.width ?? "0")).toBeCloseTo(
+      (expected?.radius ?? 0) * 2,
+      5,
+    );
+    expect(nodes[0]?.style.borderColor).toContain("rgba(17, 24, 39");
+    expect(nodes[0]?.style.backgroundColor).toContain("rgba(17, 24, 39");
+    expect(nodes[0]?.style.boxShadow).toContain("rgba(255, 255, 255");
+    expect(nodes[0]?.style.boxShadow).toContain("rgba(17, 24, 39");
+  });
+
+  it("reuses a bounded node pool for overlapping echo feedback", async () => {
+    setActionCursorClip({
+      clickEffect: { style: "echo", color: "brand", intensity: "normal" },
+    });
+    const first = ACTIONS.events[0];
+    if (!first?.target) throw new Error("Expected click fixture with a target");
+    const rapidActions = {
+      ...ACTIONS,
+      events: [
+        first,
+        {
+          ...first,
+          source_index: 1,
+          ordinal: 2,
+          t_start_ms: 2050,
+          t_action_ms: 2200,
+          t_end_ms: 2400,
+          target: {
+            ...first.target,
+            center: { x: 200, y: 100 },
+          },
+          input_timing: { kind: "click" as const, action_ms: 2200 },
+        },
+      ],
+    };
+
+    render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        actions={rapidActions}
+      />,
+    );
+    act(() => useEditorStore.getState().setPlayhead(2300));
+
+    const nodes = feedbackPrimitives(screen.getByTestId("virtual-cursor-overlay"));
+    await waitFor(() =>
+      expect(nodes.filter((node) => node.style.visibility === "visible")).toHaveLength(4),
+    );
+    expect(nodes).toHaveLength(6);
+    expect(nodes[0]?.style.left).toBe("80%");
+    expect(nodes[0]?.style.top).toBe("60%");
+    expect(nodes[2]?.style.left).toBe("20%");
+    expect(nodes[2]?.style.top).toBe("20%");
+  });
+
+  it("keeps the Press cursor hotspot fixed while applying sampled scale", async () => {
+    const clickEffect = { style: "press", color: "auto", intensity: "normal" } as const;
+    setActionCursorClip({ clickEffect });
+
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+    act(() => useEditorStore.getState().setPlayhead(2100));
+
+    const cursor = screen.getByTestId("virtual-cursor-overlay").querySelector("img");
+    const expectedScale = sampleCursorClickEffect(clickEffect, 100)?.cursorScale;
+    await waitFor(() => expect(cursor?.style.opacity).toBe("1"));
+
+    expect(cursor?.style.left).toBe("80%");
+    expect(cursor?.style.top).toBe("60%");
+    expect(cursor?.style.transformOrigin).toBe("1px 1px");
+    expect(cursor?.style.transform).toBe(`translate3d(-1px, -1px, 0) scale(${expectedScale})`);
+  });
+
+  it("scales cursor and feedback in rendered screen space from a 1080 baseline", async () => {
+    const clickEffect = { style: "soft-pulse", color: "white", intensity: "normal" } as const;
+    setActionCursorClip({ clickEffect });
+
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+    const zoomLayer = screen.getByTestId("preview-zoom-layer");
+    Object.defineProperty(zoomLayer, "clientWidth", { configurable: true, value: 960 });
+    Object.defineProperty(zoomLayer, "clientHeight", { configurable: true, value: 540 });
+    act(() => useEditorStore.getState().setPlayhead(2100));
+
+    const overlay = screen.getByTestId("virtual-cursor-overlay");
+    const cursor = overlay.querySelector("img");
+    const node = feedbackPrimitives(overlay)[0];
+    const expected = sampleCursorClickEffect(clickEffect, 100)?.primitives[0];
+    await waitFor(() => expect(node?.style.visibility).toBe("visible"));
+
+    expect(cursor?.style.width).toBe("16px");
+    expect(Number.parseFloat(node?.style.width ?? "0")).toBeCloseTo(expected?.radius ?? 0, 5);
+  });
+
+  it("recomputes cursor scale when the paused preview is resized", async () => {
+    const clickEffect = { style: "ring", color: "white", intensity: "normal" } as const;
+    setActionCursorClip({ clickEffect });
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+    const zoomLayer = screen.getByTestId("preview-zoom-layer");
+    const stage = zoomLayer.parentElement?.parentElement;
+    if (!stage) throw new Error("expected preview stage");
+    Object.defineProperty(zoomLayer, "clientWidth", { configurable: true, value: 960 });
+    Object.defineProperty(zoomLayer, "clientHeight", { configurable: true, value: 540 });
+    act(() => useEditorStore.getState().setPlayhead(2_100));
+    const cursor = screen.getByTestId("virtual-cursor-overlay").querySelector("img");
+    await waitFor(() => expect(cursor?.style.width).toBe("16px"));
+
+    Object.defineProperty(zoomLayer, "clientWidth", { configurable: true, value: 480 });
+    Object.defineProperty(zoomLayer, "clientHeight", { configurable: true, value: 270 });
+    vi.spyOn(stage, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      right: 480,
+      bottom: 270,
+      left: 0,
+      width: 480,
+      height: 270,
+      toJSON: () => ({}),
+    });
+    fireEvent(window, new Event("resize"));
+
+    await waitFor(() => expect(cursor?.style.width).toBe("8px"));
+  });
+
+  it("keeps feedback hidden when the clip effect is None", async () => {
+    setActionCursorClip({
+      clickEffect: { style: "none", color: "brand", intensity: "strong" },
+    });
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+    act(() => useEditorStore.getState().setPlayhead(2000));
+
+    const overlay = screen.getByTestId("virtual-cursor-overlay");
+    const cursor = overlay.querySelector("img");
+    const nodes = feedbackPrimitives(overlay);
+    await waitFor(() => expect(cursor?.style.opacity).toBe("1"));
+
+    expect(nodes).toHaveLength(6);
+    expect(nodes.every((node) => node.style.visibility === "hidden")).toBe(true);
+    expect(cursor?.style.transform).toBe("translate3d(-1px, -1px, 0) scale(1)");
+  });
+
+  it("hides and resets every feedback node after the sampled effect ends", async () => {
+    setActionCursorClip({
+      clickEffect: { style: "ring", color: "white", intensity: "normal" },
+    });
+    render(
+      <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" actions={ACTIONS} />,
+    );
+    const nodes = feedbackPrimitives(screen.getByTestId("virtual-cursor-overlay"));
+
+    act(() => useEditorStore.getState().setPlayhead(2100));
+    await waitFor(() => expect(nodes[0]?.style.visibility).toBe("visible"));
+    act(() => useEditorStore.getState().setPlayhead(3000));
+
+    await waitFor(() =>
+      expect(nodes.every((node) => node.style.visibility === "hidden")).toBe(true),
+    );
+    expect(nodes.every((node) => node.style.opacity === "0")).toBe(true);
   });
 
   it("keeps cursor screen-sized while positioning it through active zoom", async () => {
@@ -569,11 +789,15 @@ describe("PreviewPlayer", () => {
 
     const overlay = screen.getByTestId("virtual-cursor-overlay");
     const cursor = overlay.querySelector("img");
+    const feedback = feedbackPrimitives(overlay)[0];
 
     await waitFor(() => expect(cursor?.style.opacity).toBe("1"));
     expect(cursor?.style.left).toBe("60.00000000000001%");
     expect(cursor?.style.top).toBe("50%");
     expect(cursor?.style.width).toBe("40px");
+    expect(feedback?.style.visibility).toBe("visible");
+    expect(feedback?.style.left).toBe(cursor?.style.left);
+    expect(feedback?.style.top).toBe(cursor?.style.top);
   });
 
   it("expands bounded action highlights symmetrically after preview zoom", () => {
