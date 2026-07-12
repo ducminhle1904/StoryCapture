@@ -11,6 +11,7 @@ import type {
 import {
   type ActionCursorTiming,
   type ActionInputTiming,
+  type ActionScrollTiming,
   type ActionTarget,
   type ActionTimelineEvent,
   actionsSidecarPath,
@@ -43,6 +44,7 @@ import {
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
 } from "../simulator-dom";
+import { ensureTargetVisible, executeControlledScroll } from "../smooth-scroll";
 import { type ParsedCommand, parsedCommands } from "../story-parser";
 import {
   authorSession,
@@ -97,6 +99,23 @@ async function requestFrameCommitOutcome(
   }
 }
 
+function automationFailureDiagnostics(error: unknown): Record<string, unknown> | null {
+  if (!error || typeof error !== "object") return null;
+  const value = error as {
+    phase?: unknown;
+    reason?: unknown;
+    diagnostics?: unknown;
+  };
+  if (typeof value.reason !== "string" && typeof value.phase !== "string") return null;
+  return {
+    phase: typeof value.phase === "string" ? value.phase : "readiness",
+    reason: typeof value.reason === "string" ? value.reason : "unknown",
+    ...(value.diagnostics && typeof value.diagnostics === "object"
+      ? { context: value.diagnostics }
+      : {}),
+  };
+}
+
 function captureStateSnapshot(
   snapshot: (() => Record<string, unknown>) | undefined,
 ): Record<string, unknown> {
@@ -129,6 +148,7 @@ export async function executeParsedCommand(
     executionProfile?: StoryBrowserExecutionProfile;
     resolvedTarget?: ActionTarget | null;
     pauseGate?: StoryBrowserRunOptions["pauseGate"];
+    shouldCancel?: () => boolean;
     onInputSideEffect?: (kind: RecordedInputLandmarkKind) => void;
     beforeInputSideEffect?: () => void;
   } = {},
@@ -149,17 +169,24 @@ export async function executeParsedCommand(
     if (!["up", "down", "left", "right"].includes(direction)) {
       throw new Error(`unsupported scroll direction: ${direction}`);
     }
-    const amount = Number(command.amount ?? 1);
+    const amount = Number(command.amount ?? 500);
     if (!Number.isFinite(amount) || amount <= 0) {
-      throw new Error(`invalid scroll amount: ${command.amount ?? 1}`);
+      throw new Error(`invalid scroll amount: ${command.amount ?? 500}`);
     }
-    const sign = direction === "up" || direction === "left" ? -1 : 1;
-    contents.sendInputEvent({
-      type: "mouseWheel",
-      x: 10,
-      y: 10,
-      deltaX: direction === "left" || direction === "right" ? sign * 500 * amount : 0,
-      deltaY: direction === "up" || direction === "down" ? sign * 500 * amount : 0,
+    await executeControlledScroll({
+      contents,
+      target: command.target,
+      targetNth: command.target_nth,
+      selector: targetSelector(command.target),
+      direction: direction as "up" | "down" | "left" | "right",
+      amount,
+      unit: command.unit ?? "px",
+      wait: async (durationMs) => {
+        if (options.pauseGate) return options.pauseGate.waitForDelay(durationMs);
+        await waitMs(durationMs);
+        return true;
+      },
+      shouldCancel: options.shouldCancel,
     });
     return {};
   }
@@ -169,6 +196,13 @@ export async function executeParsedCommand(
       (await resolveElementTarget(contents, command.target, command.target_nth)))
     : null;
   const center = target?.center ?? null;
+  if (
+    (command.verb === "wait-for-visible" || command.verb === "assert-visible") &&
+    command.target &&
+    target
+  ) {
+    return { cursor: target.center, target };
+  }
   if ((command.verb === "wait-for" || command.verb === "assert") && command.target) {
     let remainingMs = Math.min(Number(command.timeout_ms ?? 5_000), 30_000);
     let found = target;
@@ -300,6 +334,28 @@ export async function writePngAtomic(filePath: string, bytes: Buffer): Promise<v
   await fs.rename(tempPath, filePath);
 }
 
+async function captureFailureFrameBestEffort(
+  contents: WebContents,
+  frameDir: string | null | undefined,
+  ordinal: number,
+): Promise<string | null> {
+  if (!frameDir) return null;
+  try {
+    await fs.mkdir(frameDir, { recursive: true });
+    const framePath = path.join(frameDir, `failure-step-${String(ordinal).padStart(4, "0")}.png`);
+    const image = await contents.capturePage();
+    if (image.isEmpty()) return null;
+    await writePngAtomic(framePath, image.toPNG());
+    return framePath;
+  } catch (captureError) {
+    void hostLog("warn", "automation_failure_screenshot_failed", {
+      ordinal,
+      error: captureError instanceof Error ? captureError.message : String(captureError),
+    });
+    return null;
+  }
+}
+
 export async function captureStoryFrame(
   contents: WebContents,
   frameDir: string,
@@ -389,6 +445,48 @@ async function resolveReadyCommandTarget(
     stabilityThresholdPx: 1,
   });
   return result.target;
+}
+
+function commandUsesVisibilityPipeline(command: ParsedCommand): boolean {
+  return (
+    commandGetsPreActionPacing(command) ||
+    command.verb === "wait-for-visible" ||
+    command.verb === "assert-visible"
+  );
+}
+
+async function ensureReadyCommandTarget(
+  options: StoryBrowserRunOptions,
+  command: ParsedCommand,
+  recordingClockMs: () => number,
+): Promise<{
+  target: ActionTarget;
+  scrollTiming: ActionScrollTiming | null;
+}> {
+  const result = await ensureTargetVisible({
+    contents: options.contents,
+    target: command.target,
+    targetNth: command.target_nth,
+    selector: targetSelector(command.target),
+    observe: () => observeReadyCommandTarget(options, command),
+    wait: async (durationMs) => {
+      if (options.pauseGate) return options.pauseGate.waitForDelay(durationMs);
+      await waitMs(durationMs);
+      return true;
+    },
+    shouldCancel: options.shouldCancel,
+    now: recordingClockMs,
+  });
+  return {
+    target: result.target,
+    scrollTiming: result.scrollTiming
+      ? {
+          start_ms: result.scrollTiming.startedAtMs,
+          end_ms: result.scrollTiming.endedAtMs,
+          duration_ms: result.scrollTiming.durationMs,
+        }
+      : null,
+  };
 }
 
 function commandUsesBrowserCursorPath(command: ParsedCommand): boolean {
@@ -559,11 +657,17 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       const isPacedCommand = commandGetsPreActionPacing(command);
       const landmarkEventId = `${ordinal}:${command.step_id ?? command.verb}`;
       let landmarkStarted = false;
-      let resolvedTarget = isPacedCommand
-        ? await resolveReadyCommandTarget(options, command)
+      const visibility = commandUsesVisibilityPipeline(command)
+        ? await ensureReadyCommandTarget(options, command, recordingClockMs)
+        : null;
+      let resolvedTarget = visibility
+        ? visibility.target
         : await resolveCommandTarget(options.contents, command);
+      const scrollTiming = visibility?.scrollTiming ?? null;
       let cursorPlan: CursorActionTimingPlan | null = null;
+      let cursorStartedClockMs = recordingClockMs();
       if (pacingSize && previousCursor && resolvedTarget && isPacedCommand) {
+        cursorStartedClockMs = recordingClockMs();
         options.actionLandmarks?.begin(landmarkEventId, {
           delivery:
             command.verb === "type" || command.verb === "select"
@@ -656,6 +760,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
         executionProfile,
         resolvedTarget,
         pauseGate: options.pauseGate,
+        shouldCancel: options.shouldCancel,
         beforeInputSideEffect: landmarkStarted
           ? () => options.actionLandmarks?.armPresentation(landmarkEventId)
           : undefined,
@@ -678,7 +783,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
           ? cursorTimelineTimingFromPlan({
               plan: cursorPlan,
               verb: command.verb,
-              stepStartedAtMs: stepStartedClockMs,
+              stepStartedAtMs: cursorStartedClockMs,
               actionAtMs: actionStartedClockMs,
             })
           : null;
@@ -699,6 +804,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
           stepStartedAtMs: stepStartedClockMs,
           actionAtMs: actionStartedClockMs,
           stepEndedAtMs: stepEndedClockMs,
+          scrollTiming,
           cursorTiming: explicitTiming?.cursorTiming ?? null,
           inputTiming: explicitTiming?.inputTiming ?? null,
           landmarks,
@@ -728,7 +834,12 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       }
       failed += 1;
       exitReason = "failed";
-      options.hooks?.onStepFailed?.(ordinal, error);
+      const screenshotPath = await captureFailureFrameBestEffort(
+        options.contents,
+        options.failureFrameDir,
+        ordinal,
+      );
+      options.hooks?.onStepFailed?.(ordinal, error, screenshotPath);
       break;
     }
   }
@@ -893,6 +1004,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
         }
       : undefined,
   });
+  const failureFrameDir = userDataPath("automation-runs", randomUUID(), "diagnostics");
   let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
   try {
     result = await runStoryCommandsInBrowser({
@@ -902,6 +1014,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       storySource: source,
       targets,
       executionProfile,
+      failureFrameDir,
       recordingClockMs: recordingSessionAtLaunch
         ? () => recordingFrameClockMs(recordingSessionAtLaunch)
         : undefined,
@@ -962,6 +1075,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
                 stepEndedAtMs,
                 target: stepResult.target,
                 pointer: stepResult.pointer ?? undefined,
+                scrollTiming: timing?.scrollTiming ?? null,
                 cursorTiming: timing?.cursorTiming ?? null,
                 inputTiming: timing?.inputTiming ?? null,
                 landmarks: timing?.landmarks ?? null,
@@ -999,14 +1113,16 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             });
           }
         },
-        onStepFailed: (ordinal, error) => {
+        onStepFailed: (ordinal, error, screenshotPath) => {
           actionStepStartMs.delete(ordinal);
+          const diagnostics = automationFailureDiagnostics(error);
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
               type: "step_failed",
               ordinal,
-              attempts: [],
+              attempts: diagnostics ? [diagnostics] : [],
               error_message: error instanceof Error ? error.message : String(error),
+              screenshot_path: screenshotPath ?? undefined,
             }),
           });
         },
@@ -1155,6 +1271,7 @@ export async function simulatorStartCommand(
     targets,
     stopAfter,
     frameDir,
+    failureFrameDir: path.join(frameDir, "diagnostics"),
     executionProfile: storyBrowserExecutionProfile(),
     shouldCancel: () => !simulatorSessions.has(id) || Boolean(simulatorSessions.get(id)?.cancelled),
     hooks: {
@@ -1175,11 +1292,13 @@ export async function simulatorStartCommand(
           screenshot_path: frame.screenshot_path ?? "",
         });
       },
-      onStepFailed: (ordinal, error) => {
+      onStepFailed: (ordinal, error, screenshotPath) => {
         sendChannel(sender, channelId, {
           type: "failed",
           ordinal,
           error_message: error instanceof Error ? error.message : String(error),
+          screenshot_path: screenshotPath ?? undefined,
+          diagnostics: automationFailureDiagnostics(error),
         });
       },
     },

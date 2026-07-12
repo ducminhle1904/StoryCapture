@@ -142,6 +142,11 @@ describe("action timeline sidecar helpers", () => {
         center: { x: 640, y: 360 },
         bounds: { x: 600, y: 340, w: 80, h: 40 },
       },
+      scrollTiming: {
+        start_ms: 100,
+        end_ms: 300,
+        duration_ms: 200,
+      },
       cursorTiming: {
         motion_preset: "natural",
         start_ms: 100,
@@ -165,6 +170,11 @@ describe("action timeline sidecar helpers", () => {
     expect(dto.events[0]).toMatchObject({
       t_start_ms: 100,
       t_action_ms: 500,
+      scroll_timing: {
+        start_ms: 100,
+        end_ms: 300,
+        duration_ms: 200,
+      },
       cursor_timing: {
         motion_preset: "natural",
         start_ms: 100,

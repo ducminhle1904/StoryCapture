@@ -2,6 +2,7 @@ import type { WebContents } from "electron";
 
 import type { ActionTarget } from "./action-timeline";
 import { simulatorTargetReadinessScript } from "./simulator-dom";
+import type { TargetVisibilityDiagnostics } from "./target-visibility";
 
 export type InteractionReadinessReason =
   | "not_found"
@@ -14,22 +15,33 @@ export type InteractionReadinessReason =
   | "unstable_geometry";
 
 export type InteractionObservation =
-  | { status: "ready"; target: ActionTarget }
-  | { status: "not_ready"; reason: InteractionReadinessReason };
+  | {
+      status: "ready";
+      target: ActionTarget;
+      diagnostics?: TargetVisibilityDiagnostics;
+    }
+  | {
+      status: "not_ready";
+      reason: InteractionReadinessReason;
+      diagnostics?: TargetVisibilityDiagnostics;
+    };
 
 export interface InteractionReadinessResult {
   target: ActionTarget;
+  diagnostics?: TargetVisibilityDiagnostics;
   observations: number;
   elapsedActiveMs: number;
 }
 
 export class InteractionReadinessError extends Error {
   readonly reason: InteractionReadinessReason;
+  readonly diagnostics?: TargetVisibilityDiagnostics;
 
-  constructor(reason: InteractionReadinessReason) {
+  constructor(reason: InteractionReadinessReason, diagnostics?: TargetVisibilityDiagnostics) {
     super(`interaction target was not ready: ${reason}`);
     this.name = "InteractionReadinessError";
     this.reason = reason;
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -56,6 +68,7 @@ export async function observeInteractionTarget(input: {
       ...observation.target,
       label: input.label ?? observation.target.label,
     },
+    diagnostics: observation.diagnostics,
   };
 }
 
@@ -80,6 +93,7 @@ export async function waitForInteractionReadiness(input: {
   let stableCount = 0;
   let previousTarget: ActionTarget | null = null;
   let lastReason: InteractionReadinessReason = "not_found";
+  let lastDiagnostics: TargetVisibilityDiagnostics | undefined;
 
   while (elapsedActiveMs <= timeoutMs) {
     const observation = await input.observe();
@@ -90,19 +104,28 @@ export async function waitForInteractionReadiness(input: {
           ? stableCount + 1
           : 1;
       previousTarget = observation.target;
+      lastDiagnostics = observation.diagnostics;
       if (stableCount >= stableObservations) {
-        return { target: observation.target, observations, elapsedActiveMs };
+        return {
+          target: observation.target,
+          diagnostics: observation.diagnostics,
+          observations,
+          elapsedActiveMs,
+        };
       }
     } else {
       lastReason = observation.reason;
+      lastDiagnostics = observation.diagnostics;
       stableCount = 0;
       previousTarget = null;
     }
     if (elapsedActiveMs >= timeoutMs) break;
     const delayMs = Math.min(pollIntervalMs, timeoutMs - elapsedActiveMs);
-    if ((await input.wait(delayMs)) === false) throw new InteractionReadinessError(lastReason);
+    if ((await input.wait(delayMs)) === false) {
+      throw new InteractionReadinessError(lastReason, lastDiagnostics);
+    }
     elapsedActiveMs += delayMs;
   }
 
-  throw new InteractionReadinessError(lastReason);
+  throw new InteractionReadinessError(lastReason, lastDiagnostics);
 }

@@ -33,10 +33,7 @@ function formatTarget(target: SelectorOrText): string {
   }
 }
 
-function formatTargetWithNth(
-  target: SelectorOrText,
-  nth: number | undefined,
-): string {
+function formatTargetWithNth(target: SelectorOrText, nth: number | undefined): string {
   const formatted = formatTarget(target);
   return nth == null ? formatted : `${formatted} nth ${nth}`;
 }
@@ -66,7 +63,7 @@ function formatCommand(command: EditableCommand): string {
       line = `type ${formatTargetWithNth(command.target, command.target_nth)} ${quote(command.text)}`;
       break;
     case "scroll":
-      line = `scroll ${command.direction}${command.amount == null ? "" : ` ${command.amount}`}`;
+      line = `scroll ${command.target ? `${formatTargetWithNth(command.target, command.target_nth)} ` : ""}${command.direction} ${command.amount}${command.unit}`;
       break;
     case "hover":
       line = `hover ${formatTargetWithNth(command.target, command.target_nth)}`;
@@ -84,12 +81,14 @@ function formatCommand(command: EditableCommand): string {
       line = `wait ${command.duration_ms}ms`;
       break;
     case "wait-for":
-      line = `wait-for ${formatTargetWithNth(command.target, command.target_nth)}${
+    case "wait-for-visible":
+      line = `${command.verb} ${formatTargetWithNth(command.target, command.target_nth)}${
         command.timeout_ms == null ? "" : ` timeout ${command.timeout_ms}ms`
       }`;
       break;
     case "assert":
-      line = `assert ${formatTargetWithNth(command.target, command.target_nth)}`;
+    case "assert-visible":
+      line = `${command.verb} ${formatTargetWithNth(command.target, command.target_nth)}`;
       break;
     case "screenshot":
       line = `screenshot ${quote(command.name)}`;
@@ -173,7 +172,7 @@ export function updateCommandTarget(
   command: EditableCommand,
   value: string,
 ): Partial<EditableCommand> {
-  if (!("target" in command)) return {};
+  if (!("target" in command) || !command.target) return {};
   const target = command.target;
   if (target.kind === "role") {
     return {
@@ -220,21 +219,11 @@ export function updateCommandTargetFromPick(
   command: EditableCommand,
   locator: PickLocator,
 ): Partial<EditableCommand> {
+  if (!commandSupportsPick(command)) return {};
   const target = selectorFromPickLocator(locator);
-  switch (command.verb) {
-    case "click":
-    case "hover":
-    case "assert":
-    case "wait-for":
-    case "type":
-    case "select":
-    case "upload":
-      return { target } as Partial<EditableCommand>;
-    case "drag":
-      return { from: target } as Partial<EditableCommand>;
-    default:
-      return {};
-  }
+  return command.verb === "drag"
+    ? ({ from: target } as Partial<EditableCommand>)
+    : ({ target } as Partial<EditableCommand>);
 }
 
 export function commandSupportsPick(command: EditableCommand): boolean {
@@ -242,14 +231,17 @@ export function commandSupportsPick(command: EditableCommand): boolean {
     command.verb === "click" ||
     command.verb === "hover" ||
     command.verb === "assert" ||
+    command.verb === "assert-visible" ||
     command.verb === "wait-for" ||
+    command.verb === "wait-for-visible" ||
     command.verb === "type" ||
     command.verb === "select" ||
     command.verb === "upload" ||
-    command.verb === "drag"
+    command.verb === "drag" ||
+    command.verb === "scroll"
   );
 }
 
 export function commandSupportsVisualFocus(command: EditableCommand): boolean {
-  return commandSupportsPick(command);
+  return command.verb !== "scroll" && commandSupportsPick(command);
 }

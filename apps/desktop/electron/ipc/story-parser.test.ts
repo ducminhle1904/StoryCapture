@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-
-import { parsedCommands } from "./story-parser";
 import { buildPickerActionLine } from "../../src/features/editor/picker-action-dsl";
 import type { PickLocator } from "../../src/ipc/picker";
+import { parsedCommands, parseStorySource } from "./story-parser";
 
 function commandFor(line: string) {
   return parsedCommands(`story "Demo" {
@@ -13,6 +12,55 @@ scene "Main" {
 }
 
 describe("story parser host command targets", () => {
+  it.each([
+    ["scroll down 300px", { direction: "down", amount: 300, unit: "px" }],
+    ["scroll down 50vh", { direction: "down", amount: 50, unit: "vh" }],
+    ["scroll left", { direction: "left", amount: 500, unit: "px" }],
+    ["scroll up 12.5", { direction: "up", amount: 12.5, unit: "px" }],
+  ])("parses canonical and legacy document scroll: %s", (line, expected) => {
+    expect(commandFor(line)).toMatchObject({ verb: "scroll", ...expected });
+  });
+
+  it.each([
+    [
+      'scroll selector ".activity-panel" down 300px',
+      { kind: "selector", value: ".activity-panel" },
+      undefined,
+    ],
+    ['scroll testid "results" nth 2 up 50vh', { kind: "test_id", value: "results" }, 2],
+  ])("parses targeted scroll: %s", (line, target, targetNth) => {
+    expect(commandFor(line)).toMatchObject({
+      verb: "scroll",
+      target,
+      target_nth: targetNth,
+      amount: line.includes("50vh") ? 50 : 300,
+      unit: line.includes("50vh") ? "vh" : "px",
+    });
+  });
+
+  it.each([
+    "scroll down 0px",
+    "scroll down -1px",
+    "scroll down Infinity",
+    "scroll down 3em",
+  ])("diagnoses invalid scroll amount: %s", (line) => {
+    const result = parseStorySource(`story "Demo" {\nscene "Main" {\n${line}\n}\n}`);
+    expect(result.ast?.scenes[0]?.commands).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        message: expect.stringContaining("positive finite"),
+      }),
+    ]);
+  });
+
+  it.each([
+    ['wait-for-visible <heading> "Login" timeout 5s', "wait-for-visible"],
+    ['assert-visible testid "result"', "assert-visible"],
+  ])("parses visible command %s", (line, verb) => {
+    expect(commandFor(line)).toMatchObject({ verb, target: expect.any(Object) });
+  });
+
   it("parses wait-for role targets with timeout modifiers", () => {
     expect(commandFor('wait-for heading "Login" timeout 15000ms')).toMatchObject({
       verb: "wait-for",
@@ -35,9 +83,7 @@ describe("story parser host command targets", () => {
   });
 
   it("parses fill as the runtime type command without losing its value", () => {
-    expect(
-      commandFor('fill <textbox> "Search Wikipedia" with "ElectronJS"'),
-    ).toMatchObject({
+    expect(commandFor('fill <textbox> "Search Wikipedia" with "ElectronJS"')).toMatchObject({
       verb: "type",
       target: {
         kind: "role",
@@ -48,9 +94,7 @@ describe("story parser host command targets", () => {
   });
 
   it("parses canonical drag targets and nth modifiers", () => {
-    expect(
-      commandFor('drag <row> "Source" nth 2 to <row> "Destination" nth 3'),
-    ).toMatchObject({
+    expect(commandFor('drag <row> "Source" nth 2 to <row> "Destination" nth 3')).toMatchObject({
       verb: "drag",
       from: { kind: "role", value: { role: "row", name: "Source" } },
       from_nth: 2,
@@ -59,20 +103,17 @@ describe("story parser host command targets", () => {
     });
   });
 
-  it.each(["click", "type"])(
-    "keeps legacy bare textbox working for %s",
-    (verb) => {
-      const suffix = verb === "type" ? ' "ElectronJS"' : "";
-      expect(commandFor(`${verb} textbox "Search Wikipedia"${suffix}`)).toMatchObject({
-        verb,
-        target: {
-          kind: "role",
-          value: { role: "textbox", name: "Search Wikipedia" },
-        },
-        ...(verb === "type" ? { text: "ElectronJS" } : {}),
-      });
-    },
-  );
+  it.each(["click", "type"])("keeps legacy bare textbox working for %s", (verb) => {
+    const suffix = verb === "type" ? ' "ElectronJS"' : "";
+    expect(commandFor(`${verb} textbox "Search Wikipedia"${suffix}`)).toMatchObject({
+      verb,
+      target: {
+        kind: "role",
+        value: { role: "textbox", name: "Search Wikipedia" },
+      },
+      ...(verb === "type" ? { text: "ElectronJS" } : {}),
+    });
+  });
 
   it.each([
     ["button", "Save"],
@@ -131,7 +172,9 @@ describe("story parser host command targets", () => {
       target_nth: 2,
     });
     expect(
-      commandFor('assert selector "div:nth-of-type(12) > .group > .flex > div > .text-muted-foreground"'),
+      commandFor(
+        'assert selector "div:nth-of-type(12) > .group > .flex > div > .text-muted-foreground"',
+      ),
     ).toMatchObject({
       verb: "assert",
       target: {

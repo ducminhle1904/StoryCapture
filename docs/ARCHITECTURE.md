@@ -62,6 +62,8 @@ Desktop scripts in `apps/desktop/package.json`:
 - `pnpm --dir apps/desktop electron:build-main` builds Electron main/preload.
 - `pnpm --dir apps/desktop renderer:build` runs `tsc -b && vite build`.
 - `pnpm --dir apps/desktop build` packages Electron via `electron-builder`.
+- `pnpm --dir apps/desktop test:e2e:scroll` builds the Electron main process and
+  runs the deterministic document/nested-container smooth-scroll smoke.
 
 Web scripts in `apps/web/package.json`:
 
@@ -140,7 +142,11 @@ React Router v7 lives in `apps/desktop/src/routes`.
 Current grouped handler areas include app/settings/logs/secrets, projects,
 post-production, capture, export, web sync, AI, updates, recording, render,
 picker, preview, simulator, and plugin shims for dialog/events/fs/log/os-process
-/shell/store/updater/window-state.
+/shell/store/updater/window-state. Browser target readiness is split across
+`ipc/target-visibility.ts` (pure clipping/actionable-point observation),
+`ipc/smooth-scroll.ts` (controlled document/nested-container scrolling), and
+`ipc/interaction-readiness.ts` (bounded stability polling); the legacy story
+runner coordinates scroll-before-cursor ordering and failure screenshots.
 
 Current non-plugin command ownership:
 

@@ -1,3 +1,9 @@
+import {
+  type observeTargetVisibility,
+  type TargetVisibilityDiagnostics,
+  targetVisibilityHelpersScript,
+} from "./target-visibility";
+
 function textOf(el: Element): string {
   return ((el as HTMLElement).innerText || el.textContent || "").trim();
 }
@@ -102,7 +108,11 @@ export interface SimulatorResolvedTarget {
 }
 
 export type SimulatorTargetReadiness =
-  | { status: "ready"; target: SimulatorResolvedTarget }
+  | {
+      status: "ready";
+      target: SimulatorResolvedTarget;
+      diagnostics: TargetVisibilityDiagnostics;
+    }
   | {
       status: "not_ready";
       reason:
@@ -113,6 +123,7 @@ export type SimulatorTargetReadiness =
         | "invalid_bounds"
         | "outside_viewport"
         | "covered";
+      diagnostics?: TargetVisibilityDiagnostics;
     };
 
 function labelMatches(el: Element, needle: string): boolean {
@@ -172,6 +183,22 @@ export function findSimulatorTarget(
   return visibleMatches[index] || matches[index] || null;
 }
 
+export function simulatorTargetLookupHelpersScript(): string {
+  return [
+    textOf,
+    cssEscape,
+    formLabelOf,
+    nameOf,
+    roleOf,
+    isVisible,
+    isEditableElement,
+    labelMatches,
+    findSimulatorTarget,
+  ]
+    .map((helper) => helper.toString())
+    .join("\n");
+}
+
 export function simulatorTargetCenterScript(
   target: unknown,
   targetNth?: number,
@@ -199,48 +226,20 @@ function resolvedTargetGeometry(el: Element): SimulatorResolvedTarget {
 function resolvedTargetReadiness(
   el: Element | null,
   requireEnabled: boolean,
+  observeVisibility: typeof observeTargetVisibility,
 ): SimulatorTargetReadiness {
   if (!el) return { status: "not_ready", reason: "not_found" };
-  if (!el.isConnected) return { status: "not_ready", reason: "detached" };
-  if (!isVisible(el)) return { status: "not_ready", reason: "hidden" };
-  if (
-    requireEnabled &&
-    (("disabled" in el && Boolean((el as HTMLButtonElement).disabled)) ||
-      el.getAttribute("aria-disabled") === "true")
-  ) {
-    return { status: "not_ready", reason: "disabled" };
-  }
-  let rect = el.getBoundingClientRect();
-  if (
-    ![rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) ||
-    rect.width <= 0 ||
-    rect.height <= 0
-  ) {
-    return { status: "not_ready", reason: "invalid_bounds" };
-  }
-  const inViewport =
-    rect.right > 0 &&
-    rect.bottom > 0 &&
-    rect.left < window.innerWidth &&
-    rect.top < window.innerHeight;
-  if (!inViewport) {
-    el.scrollIntoView({ block: "center", inline: "center" });
-    rect = el.getBoundingClientRect();
-  }
-  const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  if (
-    center.x < 0 ||
-    center.y < 0 ||
-    center.x >= window.innerWidth ||
-    center.y >= window.innerHeight
-  ) {
-    return { status: "not_ready", reason: "outside_viewport" };
-  }
-  const hit = document.elementFromPoint(center.x, center.y);
-  if (!hit || (hit !== el && !el.contains(hit))) {
-    return { status: "not_ready", reason: "covered" };
-  }
-  return { status: "ready", target: resolvedTargetGeometry(el) };
+  const visibility = observeVisibility(el, requireEnabled);
+  if (visibility.status === "not_ready") return visibility;
+  const target = resolvedTargetGeometry(el);
+  return {
+    status: "ready",
+    target: {
+      ...target,
+      center: visibility.diagnostics.selectedPoint || target.center,
+    },
+    diagnostics: visibility.diagnostics,
+  };
 }
 
 export function simulatorTargetReadinessScript(
@@ -260,13 +259,18 @@ export function simulatorTargetReadinessScript(
       ${isEditableElement.toString()}
       ${labelMatches.toString()}
       ${resolvedTargetGeometry.toString()}
+      ${targetVisibilityHelpersScript()}
       ${resolvedTargetReadiness.toString()}
       const el = (${findSimulatorTarget.toString()})(
         ${JSON.stringify(target)},
         ${JSON.stringify(targetNth ?? null)},
         ${JSON.stringify(selector ?? null)}
       );
-      return resolvedTargetReadiness(el, ${JSON.stringify(requireEnabled)});
+      return resolvedTargetReadiness(
+        el,
+        ${JSON.stringify(requireEnabled)},
+        observeTargetVisibility
+      );
     })()
   `;
 }

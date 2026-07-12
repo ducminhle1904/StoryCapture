@@ -2,28 +2,25 @@
 // chooses what to do; only then does the desktop UI insert/replace the
 // `.story` line and stamp the targets sidecar.
 
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
+  ArrowUpDown,
   CheckCircle,
   Clock,
   Hand,
+  type LucideIcon,
   MousePointer,
   MousePointerClick,
   Move,
   Pencil,
   Type,
   Upload,
-  type LucideIcon,
 } from "lucide-react";
-
-import type { PickElementMeta } from "@/ipc/picker";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { SelectField } from "@/components/ui/select-field";
-import type {
-  PickerAction,
-  PickerActionItem,
-  PickerActionOptions,
-} from "./picker-action-dsl";
+import type { ScrollDir, ScrollUnit } from "@/ipc/parse";
+import type { PickElementMeta } from "@/ipc/picker";
+import type { PickerAction, PickerActionItem, PickerActionOptions } from "./picker-action-dsl";
 
 interface PickerActionMenuProps {
   targetLabel: string;
@@ -45,15 +42,22 @@ const ACTION_ICONS: Record<PickerAction, LucideIcon> = {
   select: Hand,
   upload: Upload,
   drag: Move,
+  scroll: ArrowUpDown,
 };
 
-type FormAction = "fill" | "type" | "select";
+type FormAction = "fill" | "type" | "select" | "scroll";
 type ViewState = { kind: "list" } | { kind: "form"; action: FormAction };
+
+function parsePositiveAmount(value: string): number | null {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
 
 const FORM_ACTIONS: ReadonlySet<PickerAction> = new Set<PickerAction>([
   "fill",
   "type",
   "select",
+  "scroll",
 ]);
 
 export function PickerActionMenu({
@@ -67,15 +71,13 @@ export function PickerActionMenu({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<ViewState>({ kind: "list" });
   const [draft, setDraft] = useState("");
+  const [scrollDirection, setScrollDirection] = useState<ScrollDir>("down");
+  const [scrollUnit, setScrollUnit] = useState<ScrollUnit>("px");
 
   useEffect(() => {
     if (view.kind !== "list") return;
     const root = containerRef.current;
-    root
-      ?.querySelector<HTMLButtonElement>(
-        `button[data-action="${defaultAction}"]`,
-      )
-      ?.focus();
+    root?.querySelector<HTMLButtonElement>(`button[data-action="${defaultAction}"]`)?.focus();
   }, [view, defaultAction]);
 
   useEffect(() => {
@@ -89,18 +91,13 @@ export function PickerActionMenu({
         }
         return;
       }
-      if (
-        view.kind === "list" &&
-        (e.key === "ArrowDown" || e.key === "ArrowUp")
-      ) {
+      if (view.kind === "list" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
         const root = containerRef.current;
         if (!root) return;
-        const buttons = Array.from(
-          root.querySelectorAll<HTMLButtonElement>("button[data-action]"),
-        );
+        const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>("button[data-action]"));
         if (buttons.length === 0) return;
         const active = document.activeElement as HTMLElement | null;
-        const idx = buttons.findIndex((b) => b === active);
+        const idx = buttons.indexOf(active as HTMLButtonElement);
         const delta = e.key === "ArrowDown" ? 1 : -1;
         const next = buttons[(idx + delta + buttons.length) % buttons.length];
         e.preventDefault();
@@ -126,6 +123,14 @@ export function PickerActionMenu({
     if (!value) return;
     if (view.action === "select") {
       onChoose("select", { value });
+    } else if (view.action === "scroll") {
+      const amount = parsePositiveAmount(value);
+      if (amount === null) return;
+      onChoose("scroll", {
+        direction: scrollDirection,
+        amount,
+        unit: scrollUnit,
+      });
     } else {
       onChoose(view.action, { text: value });
     }
@@ -135,8 +140,7 @@ export function PickerActionMenu({
 
   const formAction = view.kind === "form" ? view.action : null;
   const formLabel = formAction ? FORM_LABELS[formAction] : "";
-  const optionLabels =
-    formAction === "select" ? meta?.optionLabels ?? [] : [];
+  const optionLabels = formAction === "select" ? (meta?.optionLabels ?? []) : [];
 
   return createPortal(
     <div
@@ -161,11 +165,11 @@ export function PickerActionMenu({
         {targetLabel}
       </div>
       {view.kind === "list" ? (
-        <ul className="flex flex-col py-1" role="menu">
+        <div className="flex flex-col py-1" role="menu">
           {items.map(({ action, label }) => {
             const Icon = ACTION_ICONS[action];
             return (
-              <li key={action} role="none">
+              <div key={action} role="none">
                 <button
                   type="button"
                   role="menuitem"
@@ -177,25 +181,26 @@ export function PickerActionMenu({
                     "focus-visible:bg-[var(--color-surface-200)] focus-visible:outline-none",
                   ].join(" ")}
                 >
-                  <Icon
-                    size={14}
-                    aria-hidden="true"
-                    className="text-[var(--color-fg-muted)]"
-                  />
+                  <Icon size={14} aria-hidden="true" className="text-[var(--color-fg-muted)]" />
                   <span>{label}</span>
                 </button>
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       ) : (
         <FormBody
+          action={view.action}
           label={formLabel}
           draft={draft}
           onChange={setDraft}
           onSubmit={submitForm}
           onBack={() => setView({ kind: "list" })}
           optionLabels={optionLabels}
+          scrollDirection={scrollDirection}
+          scrollUnit={scrollUnit}
+          onScrollDirectionChange={setScrollDirection}
+          onScrollUnitChange={setScrollUnit}
         />
       )}
     </div>,
@@ -207,29 +212,41 @@ const FORM_LABELS: Record<FormAction, string> = {
   fill: "Text to fill",
   type: "Text to type",
   select: "Option value",
+  scroll: "Scroll amount",
 };
 
 function FormBody({
+  action,
   label,
   draft,
   onChange,
   onSubmit,
   onBack,
   optionLabels,
+  scrollDirection,
+  scrollUnit,
+  onScrollDirectionChange,
+  onScrollUnitChange,
 }: {
+  action: FormAction;
   label: string;
   draft: string;
   onChange: (v: string) => void;
   onSubmit: () => void;
   onBack: () => void;
   optionLabels: string[];
+  scrollDirection: ScrollDir;
+  scrollUnit: ScrollUnit;
+  onScrollDirectionChange: (value: ScrollDir) => void;
+  onScrollUnitChange: (value: ScrollUnit) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-  const canSubmit = draft.trim().length > 0;
-  const useDropdown = optionLabels.length > 0;
+  const canSubmit =
+    action === "scroll" ? parsePositiveAmount(draft) !== null : draft.trim().length > 0;
+  const useDropdown = action === "select" && optionLabels.length > 0;
   const fieldClass = [
     "h-7 rounded-[var(--radius-sm)] border border-[var(--color-border-default)]",
     "bg-[var(--color-surface-100)] px-2 text-[13px]",
@@ -243,10 +260,45 @@ function FormBody({
       }}
       className="flex flex-col gap-2 px-3 py-2"
     >
-      <label className="text-[11px] font-mono uppercase tracking-wide text-[var(--color-fg-muted)]">
+      <div className="text-[11px] font-mono uppercase tracking-wide text-[var(--color-fg-muted)]">
         {label}
-      </label>
-      {useDropdown ? (
+      </div>
+      {action === "scroll" ? (
+        <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+          <select
+            value={scrollDirection}
+            onChange={(event) => onScrollDirectionChange(event.target.value as ScrollDir)}
+            aria-label="Scroll direction"
+            className={fieldClass}
+          >
+            <option value="down">Down</option>
+            <option value="up">Up</option>
+            <option value="right">Right</option>
+            <option value="left">Left</option>
+          </select>
+          <input
+            ref={(el) => {
+              inputRef.current = el;
+            }}
+            type="number"
+            min="0"
+            step="any"
+            value={draft}
+            onChange={(event) => onChange(event.target.value)}
+            aria-label="Scroll amount"
+            className={fieldClass}
+          />
+          <select
+            value={scrollUnit}
+            onChange={(event) => onScrollUnitChange(event.target.value as ScrollUnit)}
+            aria-label="Scroll unit"
+            className={fieldClass}
+          >
+            <option value="px">px</option>
+            <option value="vh">vh</option>
+          </select>
+        </div>
+      ) : useDropdown ? (
         <SelectField
           value={draft}
           onValueChange={onChange}

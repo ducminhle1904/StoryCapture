@@ -96,6 +96,12 @@ file explicitly says otherwise.
   `packages/story-dsl/src/ast.ts`, `packages/story-dsl/src/codemirror-lang.ts`,
   `apps/desktop/electron/ipc/story-parser.ts`, and
   `apps/desktop/src/features/editor/`.
+- Target visibility, smooth scroll, and Picker scrolling: read
+  `apps/desktop/electron/ipc/target-visibility.ts`,
+  `apps/desktop/electron/ipc/smooth-scroll.ts`,
+  `apps/desktop/electron/ipc/interaction-readiness.ts`,
+  `apps/desktop/electron/ipc/legacy/story-runner.ts`, and
+  `apps/desktop/electron/ipc/legacy/capture-preview.ts`.
 - Post-production/export: read `docs/DOMAIN.md` and
   `apps/desktop/src/features/post-production/`, especially
   `apps/desktop/src/features/post-production/state/store.ts`,

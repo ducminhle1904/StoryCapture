@@ -37,6 +37,12 @@ export interface ActionCursorTiming {
   dwell_ms: number;
 }
 
+export interface ActionScrollTiming {
+  start_ms: number;
+  end_ms: number;
+  duration_ms: number;
+}
+
 export type ActionInputKind =
   | "click"
   | "focus"
@@ -66,6 +72,7 @@ export interface ActionTimelineEvent {
   target: ActionTarget | null;
   secondary_target: ActionTarget | null;
   pointer: ActionPointer | null;
+  scroll_timing?: ActionScrollTiming | null;
   cursor_timing?: ActionCursorTiming | null;
   input_timing?: ActionInputTiming | null;
   input_delivery?: "browser_injected" | "virtual_only";
@@ -142,6 +149,7 @@ export interface ActionTimelineEventInput {
   target?: ActionTarget | null;
   secondaryTarget?: ActionTarget | null;
   pointer?: ActionPointer | null;
+  scrollTiming?: ActionScrollTiming | null;
   cursorTiming?: ActionCursorTiming | null;
   inputTiming?: ActionInputTiming | null;
   landmarks?: RecordedActionLandmarks | null;
@@ -207,6 +215,7 @@ export function actionTimelineEventFromStep(input: ActionTimelineEventInput): Ac
   const tAction = clampMs(nonNegativeMs(input.actionAtMs), tStart, tEnd);
   const verb = String(input.command.verb || "unknown");
 
+  const scrollTiming = sanitizeScrollTiming(input.scrollTiming ?? null);
   const cursorTiming = sanitizeCursorTiming(input.cursorTiming ?? null);
   const inputTiming = sanitizeInputTiming(input.inputTiming ?? null);
   const landmarks = input.landmarks ? serializeActionLandmarks(input.landmarks) : null;
@@ -224,6 +233,7 @@ export function actionTimelineEventFromStep(input: ActionTimelineEventInput): Ac
     target: sanitizeActionTarget(input.target ?? null),
     secondary_target: sanitizeActionTarget(input.secondaryTarget ?? null),
     pointer: input.pointer ?? actionPointerForVerb(verb),
+    ...(scrollTiming ? { scroll_timing: scrollTiming } : {}),
     ...(cursorTiming ? { cursor_timing: cursorTiming } : {}),
     ...(inputTiming ? { input_timing: inputTiming } : {}),
     ...(landmarks ?? {}),
@@ -389,6 +399,17 @@ function sanitizeActionTarget(target: ActionTarget | null): ActionTarget | null 
     label: target.label,
     center,
     bounds,
+  };
+}
+
+function sanitizeScrollTiming(timing: ActionScrollTiming | null): ActionScrollTiming | null {
+  if (!timing) return null;
+  const startMs = nonNegativeMs(timing.start_ms);
+  const endMs = Math.max(startMs, nonNegativeMs(timing.end_ms));
+  return {
+    start_ms: startMs,
+    end_ms: endMs,
+    duration_ms: Math.max(0, endMs - startMs),
   };
 }
 

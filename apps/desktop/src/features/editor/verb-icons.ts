@@ -23,6 +23,7 @@ export function verbIcon(verb: Command["verb"] | string | null | undefined): Luc
     case "navigate":
       return ArrowRight;
     case "wait-for":
+    case "wait-for-visible":
       return Hourglass;
     case "wait":
       return Clock;
@@ -37,6 +38,7 @@ export function verbIcon(verb: Command["verb"] | string | null | undefined): Luc
     case "select":
       return ListChecks;
     case "assert":
+    case "assert-visible":
       return CheckCheck;
     case "screenshot":
       return Camera;

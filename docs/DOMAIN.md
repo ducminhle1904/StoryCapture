@@ -63,6 +63,20 @@ The runtime parser still accepts established bare-role input such as
 
 `nth N` is 1-indexed and disambiguates repeated targets.
 
+Explicit scroll accepts `px` and `vh`, with optional targeted containers:
+
+```text
+scroll down 300px
+scroll down 50vh
+scroll selector ".activity-panel" down 300px
+scroll testid "results" nth 2 up 50vh
+```
+
+Unitless legacy amounts normalize to pixels, and an omitted amount defaults to
+`500px`. Targeted scroll moves the picked element's own scrollable box or its
+nearest scrollable ancestor. `wait-for` and `assert` remain DOM-presence checks;
+`wait-for-visible` and `assert-visible` use the actionable visibility pipeline.
+
 ## Project And Sidecars
 
 StoryCapture stores source plus JSON sidecars near projects and recordings.
@@ -99,7 +113,10 @@ Main files live under `apps/desktop/src/features/editor`.
   back into the source buffer.
 - Live preview uses author preview IPC and lifecycle state.
 - Element picking uses `src/ipc/picker.ts`, picker hover events, fallback target
-  sidecars, and picker action rewrite helpers.
+  sidecars, and picker action rewrite helpers. Native scroll/resize while Picker
+  is active refreshes the highlighted element under the stationary pointer and
+  never emits DSL; the deliberate “Scroll this container” action emits canonical
+  targeted scroll syntax with direction, amount, and unit.
 - Dry run and simulator surfaces use dedicated stores, keyboard handling,
   timeline decoration, and host simulator IPC.
 - Polish controls write `<story>.polish.json` only after user edits; opening a
@@ -127,9 +144,15 @@ Rust/native capture crates.
 - Recording sidecars feed post-production cursor, zoom, callout, highlight, and
   sound defaults.
 - Recorded automation treats `click`, `hover`, `type`, and `select` as
-  cursor-visible interaction events. `wait-for` and `assert` never create
-  cursor movement; `drag` and `upload` remain outside synced cursor recording
-  until the Electron runner implements those commands end to end.
+  cursor-visible interaction events. Before these actions, pure target
+  observation computes safe viewport and nested-scroller clips, chooses an
+  unobstructed actionable point, and runs a deterministic distance-scaled
+  300-900 ms scroll when needed. Scroll and geometry stabilize before cursor
+  travel begins; action sidecars store scroll and cursor timing separately.
+  `wait-for` and `assert` never scroll or create cursor movement, while
+  `wait-for-visible` and `assert-visible` use the same visibility pipeline.
+  `drag` and `upload` remain outside synced cursor recording until the Electron
+  runner implements those commands end to end.
 - Recording cursor synchronization is anchored to committed encoded frames,
   not wall-clock callbacks. `recording-media-clock.ts` owns frame-to-PTS
   conversion; `action-landmarks.ts` owns arrival/input/presentation landmarks;

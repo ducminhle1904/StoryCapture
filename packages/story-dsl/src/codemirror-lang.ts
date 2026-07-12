@@ -26,7 +26,9 @@ export const KNOWN_VERBS = [
   "upload",
   "wait",
   "wait-for",
+  "wait-for-visible",
   "assert",
+  "assert-visible",
   "screenshot",
   "pause",
 ] as const;
@@ -73,7 +75,7 @@ export const storyDslStreamLanguage = StreamLanguage.define({
     if (stream.match(/"(?:[^"\\]|\\.)*"/)) return "string";
     if (stream.match(/'(?:[^'\\]|\\.)*'/)) return "string";
     // Numbers with optional units.
-    if (stream.match(/-?\b\d+(?:\.\d+)?(?:ms|s|m|h|px|%)?\b/)) return "number";
+    if (stream.match(/-?\b\d+(?:\.\d+)?(?:ms|s|m|h|px|vh|%)?\b/)) return "number";
     // Braces and punctuation.
     if (stream.match(/[{}(),:]/)) return "punctuation";
     // Identifiers and keywords.

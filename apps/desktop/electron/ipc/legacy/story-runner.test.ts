@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { RecordingActionLandmarkRecorder } from "../action-landmarks";
 import {
   type ActionCursorTiming,
   type ActionInputTiming,
@@ -10,7 +10,6 @@ import {
   type ActionTimelineEvent,
   actionsSidecarPath,
 } from "../action-timeline";
-import { RecordingActionLandmarkRecorder } from "../action-landmarks";
 import { estimateCursorTravelDelayMs, initialCursorPoint } from "../cursor-timing";
 import { RecordingMediaClock } from "../recording-media-clock";
 import { RecordingPauseGate } from "../recording-pause-gate";
@@ -109,6 +108,11 @@ function fakeContents(targets: ActionTarget[]) {
     }),
     sendInputEvent,
     executeJavaScript,
+    capturePage: vi.fn(async () => ({
+      isEmpty: () => false,
+      toPNG: () => Buffer.from("png"),
+    })),
+    isDestroyed: () => false,
   };
 }
 
@@ -137,6 +141,11 @@ function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
     }),
     sendInputEvent,
     executeJavaScript,
+    capturePage: vi.fn(async () => ({
+      isEmpty: () => false,
+      toPNG: () => Buffer.from("png"),
+    })),
+    isDestroyed: () => false,
   };
 }
 
@@ -267,7 +276,9 @@ describe("story browser cursor pacing", () => {
         size,
       }),
     );
-    const readinessDelayMs = 200;
+    const readinessDelayMs = 16;
+    const revalidationDelayMs = 100;
+    const totalDelayMs = readinessDelayMs + expectedDelayMs + revalidationDelayMs;
     const successes: Array<{
       actionDurationMs: number;
       timing?: {
@@ -299,12 +310,13 @@ describe("story browser cursor pacing", () => {
       },
     });
 
-    await vi.advanceTimersByTimeAsync(readinessDelayMs + expectedDelayMs - 1);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(readinessDelayMs);
     expect(contents.sendInputEvent.mock.calls.some(([event]) => event.type === "mouseDown")).toBe(
       false,
     );
 
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.runAllTimersAsync();
     await run;
 
     const events = contents.sendInputEvent.mock.calls.map(([event]) => event);
@@ -318,22 +330,18 @@ describe("story browser cursor pacing", () => {
       events.findIndex((event) => event.type === "mouseMove"),
     );
     expect(successes).toHaveLength(1);
-    expect(successes[0]?.actionDurationMs).toBe(readinessDelayMs + expectedDelayMs);
+    expect(successes[0]?.actionDurationMs).toBe(totalDelayMs);
     expect(successes[0]?.timing?.stepStartedAtMs).toBe(0);
-    expect(successes[0]?.timing?.actionAtMs).toBeCloseTo((readinessDelayMs + expectedDelayMs) / 2);
-    expect(successes[0]?.timing?.stepEndedAtMs).toBeCloseTo(
-      (readinessDelayMs + expectedDelayMs) / 2,
-    );
+    expect(successes[0]?.timing?.actionAtMs).toBeCloseTo(totalDelayMs / 2);
+    expect(successes[0]?.timing?.stepEndedAtMs).toBeCloseTo(totalDelayMs / 2);
     expect(successes[0]?.timing?.cursorTiming).toMatchObject({
       motion_preset: "natural",
-      start_ms: 0,
+      start_ms: readinessDelayMs / 2,
     });
     expect(successes[0]?.timing?.inputTiming).toMatchObject({
       kind: "click",
     });
-    expect(successes[0]?.timing?.inputTiming?.action_ms).toBe(
-      Math.round((readinessDelayMs + expectedDelayMs) / 2),
-    );
+    expect(successes[0]?.timing?.inputTiming?.action_ms).toBe(Math.round(totalDelayMs / 2));
   });
 
   it("continues type input when cursor arrival cannot be committed to a frame", async () => {
@@ -420,42 +428,42 @@ describe("story browser cursor pacing", () => {
     });
   });
 
-  it.each(["click", "select"] as const)(
-    "continues %s input when frame synchronization degrades",
-    async (verb) => {
-      const contents = fakeContents([target("Control", { x: 460, y: 320 })]);
-      const actionLandmarks = new RecordingActionLandmarkRecorder();
-      const parsedCommand = {
-        ...command(verb, "Control"),
-        ...(verb === "select" ? { value: "Option A" } : {}),
-      } as ParsedCommand;
+  it.each([
+    "click",
+    "select",
+  ] as const)("continues %s input when frame synchronization degrades", async (verb) => {
+    const contents = fakeContents([target("Control", { x: 460, y: 320 })]);
+    const actionLandmarks = new RecordingActionLandmarkRecorder();
+    const parsedCommand = {
+      ...command(verb, "Control"),
+      ...(verb === "select" ? { value: "Option A" } : {}),
+    } as ParsedCommand;
 
-      const run = runStoryCommandsInBrowser({
-        contents: contents as never,
-        commands: [parsedCommand],
-        projectFolder: "/tmp/storycapture-test",
-        storySource: "",
-        targets: { version: 1, steps: {} },
-        executionProfile: {
-          typingMode: "incremental",
-          captureRecordingFrames: true,
-          captureSize: { width: 1280, height: 800 },
-          settleDelayForCommand: () => 0,
-        },
-        actionLandmarks,
-        requestFrameCommit: async () => ({
-          status: "degraded",
-          reason: "frame_capture_failed",
-        }),
-      });
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [parsedCommand],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "incremental",
+        captureRecordingFrames: true,
+        captureSize: { width: 1280, height: 800 },
+        settleDelayForCommand: () => 0,
+      },
+      actionLandmarks,
+      requestFrameCommit: async () => ({
+        status: "degraded",
+        reason: "frame_capture_failed",
+      }),
+    });
 
-      await vi.runAllTimersAsync();
-      await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
-      expect(
-        contents.sendInputEvent.mock.calls.filter(([event]) => event.type === "mouseDown"),
-      ).toHaveLength(1);
-    },
-  );
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+    expect(
+      contents.sendInputEvent.mock.calls.filter(([event]) => event.type === "mouseDown"),
+    ).toHaveLength(1);
+  });
 
   it("cancels before input when the recording frame request is cancelled", async () => {
     const contents = fakeContents([target("Search Wikipedia", { x: 460, y: 320 })]);
@@ -617,6 +625,36 @@ describe("story browser cursor pacing", () => {
 
     expect(maxActionEndMs).toBeGreaterThan(1133);
     expect(plannedFrameDurationMs).toBeGreaterThanOrEqual(maxActionEndMs);
+  });
+
+  it("captures one best-effort failure screenshot without replacing the primary error", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-failure-"));
+    tempDirs.push(dir);
+    const contents = fakeContents([]);
+    const failures: Array<{ error: unknown; screenshotPath?: string | null }> = [];
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [command("click", "Missing")],
+      projectFolder: dir,
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      failureFrameDir: path.join(dir, "diagnostics"),
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+      hooks: {
+        onStepFailed: (_ordinal, error, screenshotPath) => failures.push({ error, screenshotPath }),
+      },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ failed: 1, exitReason: "failed" });
+    expect(failures[0]?.error).toBeInstanceOf(Error);
+    expect(failures[0]?.screenshotPath).toMatch(/failure-step-0001\.png$/);
+    await expect(fs.stat(failures[0]?.screenshotPath ?? "")).resolves.toBeDefined();
   });
 
   it("excludes non-interaction targets from recorded action sidecars", async () => {

@@ -23,6 +23,7 @@ import type {
   ActionCursorTiming,
   ActionInputTiming,
   ActionPointer,
+  ActionScrollTiming,
   ActionTarget,
 } from "../action-timeline";
 import type { CursorTimingSize } from "../cursor-timing";
@@ -502,13 +503,14 @@ export interface StoryBrowserRunHooks {
       stepStartedAtMs: number;
       actionAtMs: number;
       stepEndedAtMs: number;
+      scrollTiming?: ActionScrollTiming | null;
       cursorTiming?: ActionCursorTiming | null;
       inputTiming?: ActionInputTiming | null;
       landmarks?: RecordedActionLandmarks | null;
     };
   }) => void;
   onFrameCaptured?: (ordinal: number, frame: SimulatorStepFrame) => void;
-  onStepFailed?: (ordinal: number, error: unknown) => void;
+  onStepFailed?: (ordinal: number, error: unknown, screenshotPath?: string | null) => void;
 }
 
 export interface StoryBrowserRunOptions {
@@ -522,6 +524,7 @@ export interface StoryBrowserRunOptions {
   };
   stopAfter?: number;
   frameDir?: string | null;
+  failureFrameDir?: string | null;
   executionProfile?: StoryBrowserExecutionProfile;
   recordingClockMs?: () => number;
   actionLandmarks?: RecordingActionLandmarkRecorder;

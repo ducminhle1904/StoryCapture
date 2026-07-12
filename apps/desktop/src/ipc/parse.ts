@@ -31,32 +31,83 @@ export type SelectorOrText =
   | { kind: "text_exact"; value: string };
 
 export type ScrollDir = "up" | "down" | "left" | "right";
+export type ScrollUnit = "px" | "vh";
 
 export type Command =
   | { verb: "navigate"; url: string; span: Span; step_id?: string | null }
-  | { verb: "click"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string | null }
-  | { verb: "type"; target: SelectorOrText; target_nth?: number; text: string; span: Span; step_id?: string | null }
   | {
-      verb: "scroll";
-      direction: ScrollDir;
-      amount: number | null;
+      verb: "click";
+      target: SelectorOrText;
+      target_nth?: number;
       span: Span;
       step_id?: string | null;
     }
-  | { verb: "hover"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string | null }
-  | { verb: "drag"; from: SelectorOrText; from_nth?: number; to: SelectorOrText; to_nth?: number; span: Span; step_id?: string | null }
-  | { verb: "select"; target: SelectorOrText; target_nth?: number; value: string; span: Span; step_id?: string | null }
-  | { verb: "upload"; target: SelectorOrText; target_nth?: number; path: string; span: Span; step_id?: string | null }
+  | {
+      verb: "type";
+      target: SelectorOrText;
+      target_nth?: number;
+      text: string;
+      span: Span;
+      step_id?: string | null;
+    }
+  | {
+      verb: "scroll";
+      target?: SelectorOrText;
+      target_nth?: number;
+      direction: ScrollDir;
+      amount: number;
+      unit: ScrollUnit;
+      span: Span;
+      step_id?: string | null;
+    }
+  | {
+      verb: "hover";
+      target: SelectorOrText;
+      target_nth?: number;
+      span: Span;
+      step_id?: string | null;
+    }
+  | {
+      verb: "drag";
+      from: SelectorOrText;
+      from_nth?: number;
+      to: SelectorOrText;
+      to_nth?: number;
+      span: Span;
+      step_id?: string | null;
+    }
+  | {
+      verb: "select";
+      target: SelectorOrText;
+      target_nth?: number;
+      value: string;
+      span: Span;
+      step_id?: string | null;
+    }
+  | {
+      verb: "upload";
+      target: SelectorOrText;
+      target_nth?: number;
+      path: string;
+      span: Span;
+      step_id?: string | null;
+    }
   | { verb: "wait"; duration_ms: number; span: Span; step_id?: string | null }
   | {
-      verb: "wait-for";
+      verb: "wait-for" | "wait-for-visible";
       target: SelectorOrText;
       target_nth?: number;
       timeout_ms: number | null;
       span: Span;
       step_id?: string | null;
     }
-  | { verb: "assert"; target: SelectorOrText; target_nth?: number; span: Span; step_id?: string | null }
+  | {
+      verb: "assert" | "assert-visible";
+      target: SelectorOrText;
+      target_nth?: number;
+      span: Span;
+      step_id?: string | null;
+    }
   | { verb: "screenshot"; name: string; span: Span; step_id?: string | null }
   | { verb: "pause"; span: Span; step_id?: string | null };
 

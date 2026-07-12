@@ -17,8 +17,9 @@ export const VERB_DOCS: Record<string, KeywordDoc> = {
     example: 'type selector "#email" "user@example.com"',
   },
   scroll: {
-    description: "Scroll the viewport in a direction (optional pixel amount).",
-    example: "scroll down 300",
+    description:
+      "Scroll the document or a target container by a positive px/vh amount (default 500px).",
+    example: 'scroll selector ".activity-panel" down 300px',
   },
   hover: {
     description: "Move the cursor over an element.",
@@ -33,7 +34,7 @@ export const VERB_DOCS: Record<string, KeywordDoc> = {
     example: 'select selector "#country" "USA"',
   },
   upload: {
-    description: "Attach a local file to an <input type=\"file\">.",
+    description: 'Attach a local file to an <input type="file">.',
     example: 'upload selector "input[type=file]" "/tmp/photo.png"',
   },
   wait: {
@@ -41,12 +42,20 @@ export const VERB_DOCS: Record<string, KeywordDoc> = {
     example: "wait 500ms",
   },
   "wait-for": {
-    description: "Wait until an element appears (optional timeout).",
+    description: "Wait until an element appears in the DOM (optional timeout).",
     example: 'wait-for "Loaded" timeout 5s',
   },
+  "wait-for-visible": {
+    description: "Wait until an element is visible and actionable (optional timeout).",
+    example: 'wait-for-visible testid "results" timeout 5s',
+  },
   assert: {
-    description: "Fail the run if an element / text is not present.",
+    description: "Fail the run if an element / text is not present in the DOM.",
     example: 'assert "Welcome"',
+  },
+  "assert-visible": {
+    description: "Fail the run unless an element is visible and actionable.",
+    example: 'assert-visible <button> "Save"',
   },
   screenshot: {
     description: "Capture a named PNG of the current viewport.",
@@ -66,7 +75,7 @@ export const VERB_DOCS: Record<string, KeywordDoc> = {
   },
   meta: {
     description: "Meta block — declares app URL, viewport, theme, speed.",
-    example: "meta { app: \"https://x\" viewport: 1280x800 }",
+    example: 'meta { app: "https://x" viewport: 1280x800 }',
   },
   app: {
     description: "Meta key: live preview URL for the simulator.",

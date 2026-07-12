@@ -43,7 +43,9 @@ function stepLabel(cmd: Command): string {
     case "click":
     case "hover":
     case "assert":
+    case "assert-visible":
     case "wait-for":
+    case "wait-for-visible":
       return targetLabel(cmd.target);
     case "type":
       return `${targetLabel(cmd.target)} → "${cmd.text}"`;
@@ -54,7 +56,7 @@ function stepLabel(cmd: Command): string {
     case "drag":
       return `${targetLabel(cmd.from)} → ${targetLabel(cmd.to)}`;
     case "scroll":
-      return `${cmd.direction}${cmd.amount != null ? ` ${cmd.amount}` : ""}`;
+      return `${cmd.target ? `${targetLabel(cmd.target)} ` : ""}${cmd.direction} ${cmd.amount}${cmd.unit}`;
     case "wait":
       return `${cmd.duration_ms}ms`;
     case "screenshot":

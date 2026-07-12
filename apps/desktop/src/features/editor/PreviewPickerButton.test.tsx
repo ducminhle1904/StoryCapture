@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { parseStoryMock } = vi.hoisted(() => ({ parseStoryMock: vi.fn() }));
 
@@ -27,9 +27,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 import { toast } from "sonner";
-
-import { editorController } from "@/features/editor/controller";
 import { useAuthorDriverStore } from "@/features/editor/authorDriverStore";
+import { editorController } from "@/features/editor/controller";
 import { useEditorStore } from "@/state/editor";
 import { parseStorySource } from "../../../electron/ipc/story-parser";
 
@@ -92,24 +91,14 @@ describe("PreviewPickerButton", () => {
     replaceSpy = vi
       .spyOn(editorController, "replaceCursorLine")
       .mockReturnValue({ ok: true, lineNumber: 12 });
-    getCursorSpy = vi
-      .spyOn(editorController, "getCursorLine")
-      .mockReturnValue(12);
-    getCursorLineTextSpy = vi
-      .spyOn(editorController, "getCursorLineText")
-      .mockReturnValue("");
-    getStoryPathSpy = vi
-      .spyOn(editorController, "getStoryPath")
-      .mockReturnValue("/tmp/demo.story");
-    getStepOrdinalSpy = vi
-      .spyOn(editorController, "getStepOrdinalForLine")
-      .mockReturnValue(3);
+    getCursorSpy = vi.spyOn(editorController, "getCursorLine").mockReturnValue(12);
+    getCursorLineTextSpy = vi.spyOn(editorController, "getCursorLineText").mockReturnValue("");
+    getStoryPathSpy = vi.spyOn(editorController, "getStoryPath").mockReturnValue("/tmp/demo.story");
+    getStepOrdinalSpy = vi.spyOn(editorController, "getStepOrdinalForLine").mockReturnValue(3);
     isDirtySpy = vi.spyOn(editorController, "isDirty").mockReturnValue(false);
     dialogOpenMock.mockReset();
     parseStoryMock.mockReset();
-    parseStoryMock.mockImplementation(async (source: string) =>
-      parseStorySource(source),
-    );
+    parseStoryMock.mockImplementation(async (source: string) => parseStorySource(source));
     useEditorStore.setState({ source: 'story "demo"\nscene "x"\n' });
     // Default to LivePreview with an active streamId so the button is armed.
     seedAuthorDriver({ variant: "live-preview", streamId: "author-stream-1" });
@@ -141,10 +130,7 @@ describe("PreviewPickerButton", () => {
     render(<PreviewPickerButton />);
     const button = screen.getByRole("button", { name: /pick element/i });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute(
-      "title",
-      "Simulator running — cancel to pick",
-    );
+    expect(button).toHaveAttribute("title", "Simulator running — cancel to pick");
   });
 
   it("D-14: is enabled when AuthorDriverState=simulator-paused; click dispatches picker_start_author with streamId", async () => {
@@ -227,7 +213,7 @@ describe("PreviewPickerButton", () => {
 
     expect(toast.success).toHaveBeenCalled();
     const msg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(msg).toContain("Added `click <button> \"Save\"`");
+    expect(msg).toContain('Added `click <button> "Save"`');
     expect(msg).toContain("line 12");
     expect(msg).not.toContain("Updated fallback");
   });
@@ -262,7 +248,7 @@ describe("PreviewPickerButton", () => {
     expect(msg).toBe("Updated fallback for step 3");
   });
 
-  it("choosing Hover inserts `hover button \"Save\"`", async () => {
+  it('choosing Hover inserts `hover button "Save"`', async () => {
     mockPickButtonSave({ wasFreshlyStamped: true });
 
     const user = userEvent.setup();
@@ -299,12 +285,10 @@ describe("PreviewPickerButton", () => {
     await user.click(screen.getByRole("menuitem", { name: /wait for element/i }));
     await flushAsync();
 
-    expect(replaceSpy).toHaveBeenCalledWith(
-      '    wait-for <button> "Save" timeout 10s',
-    );
+    expect(replaceSpy).toHaveBeenCalledWith('    wait-for <button> "Save" timeout 10s');
   });
 
-  it("choosing Assert inserts `assert button \"Save\"`", async () => {
+  it('choosing Assert inserts `assert button "Save"`', async () => {
     mockPickButtonSave({ wasFreshlyStamped: true });
 
     const user = userEvent.setup();
@@ -382,9 +366,7 @@ scene "x" {
     await user.click(screen.getByRole("button", { name: /pick element/i }));
     await flushAsync();
 
-    expect(
-      screen.getByRole("menuitem", { name: /hover element/i }),
-    ).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: /hover element/i })).toHaveFocus();
   });
 
   it("user-cancel from sidecar: no menu, no insert, no toast", async () => {
@@ -500,9 +482,55 @@ scene "x" {
     await user.click(screen.getByRole("button", { name: /^insert$/i }));
     await flushAsync();
 
-    expect(insertSpy).toHaveBeenCalledWith(
-      'fill field "Email" with "alice@example.com"\n',
-    );
+    expect(insertSpy).toHaveBeenCalledWith('fill field "Email" with "alice@example.com"\n');
+  });
+
+  it("offers deliberate targeted scroll for a scrollable pick and emits canonical units", async () => {
+    mockIPC((cmd) => {
+      if (cmd === "picker_start_author") {
+        return {
+          json: JSON.stringify({
+            emitted: 'click testid "results"',
+            locator: { kind: "testid", value: "results" },
+            candidates: [],
+            element: { hasScrollableAncestor: true, tagName: "DIV" },
+          }),
+        };
+      }
+      if (cmd === "picker_stamp_step_id") {
+        return {
+          step_id: "01900000-0000-7000-8000-000000000000",
+          was_freshly_stamped: true,
+        };
+      }
+      return undefined;
+    });
+
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+
+    await user.click(screen.getByRole("menuitem", { name: /scroll this container/i }));
+    const insert = screen.getByRole("button", { name: /^insert$/i });
+    expect(insert).toBeDisabled();
+
+    await user.selectOptions(screen.getByLabelText("Scroll direction"), "up");
+    await user.type(screen.getByLabelText("Scroll amount"), "50");
+    await user.selectOptions(screen.getByLabelText("Scroll unit"), "vh");
+    await user.click(insert);
+    await flushAsync();
+
+    expect(insertSpy).toHaveBeenCalledWith('scroll testid "results" up 50vh\n');
+  });
+
+  it("does not offer targeted scroll without scrollability metadata", async () => {
+    mockPickButtonSave({ wasFreshlyStamped: true });
+    const user = userEvent.setup();
+    render(<PreviewPickerButton />);
+    await user.click(screen.getByRole("button", { name: /pick element/i }));
+    await flushAsync();
+    expect(screen.queryByRole("menuitem", { name: /scroll this container/i })).toBeNull();
   });
 
   it("choosing Upload file… opens the file dialog and inserts an upload line", async () => {
@@ -536,9 +564,7 @@ scene "x" {
     await flushAsync();
 
     expect(dialogOpenMock).toHaveBeenCalled();
-    expect(insertSpy).toHaveBeenCalledWith(
-      'upload selector "input[type=file]" "/tmp/photo.png"\n',
-    );
+    expect(insertSpy).toHaveBeenCalledWith('upload selector "input[type=file]" "/tmp/photo.png"\n');
   });
 
   it("cancelling the upload file dialog does not insert", async () => {
@@ -609,8 +635,7 @@ scene "x" {
     expect(pickCount).toBe(2);
     expect(insertSpy).toHaveBeenCalledWith('drag testid "src" to testid "dst"\n');
     expect(invokeLog).not.toContain("picker_stamp_step_id");
-    const successMsg = (toast.success as ReturnType<typeof vi.fn>).mock
-      .calls[0][0];
+    const successMsg = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(successMsg).toMatch(/selector healing for drag targets/i);
   });
 
@@ -670,21 +695,24 @@ scene "x" {
   it("renders UI-SPEC tooltip copy per variant", () => {
     seedAuthorDriver({ variant: "idle", streamId: null });
     const { rerender } = render(<PreviewPickerButton />);
-    expect(
-      screen.getByRole("button", { name: /pick element/i }),
-    ).toHaveAttribute("title", "Pick element · starts Preview");
+    expect(screen.getByRole("button", { name: /pick element/i })).toHaveAttribute(
+      "title",
+      "Pick element · starts Preview",
+    );
 
     seedAuthorDriver({ variant: "live-preview", streamId: "s1" });
     rerender(<PreviewPickerButton />);
-    expect(
-      screen.getByRole("button", { name: /pick element/i }),
-    ).toHaveAttribute("title", "Pick element · ⌘⇧P");
+    expect(screen.getByRole("button", { name: /pick element/i })).toHaveAttribute(
+      "title",
+      "Pick element · ⌘⇧P",
+    );
 
     seedAuthorDriver({ variant: "simulator-running", streamId: "s1" });
     rerender(<PreviewPickerButton />);
-    expect(
-      screen.getByRole("button", { name: /pick element/i }),
-    ).toHaveAttribute("title", "Simulator running — cancel to pick");
+    expect(screen.getByRole("button", { name: /pick element/i })).toHaveAttribute(
+      "title",
+      "Simulator running — cancel to pick",
+    );
 
     seedAuthorDriver({
       variant: "simulator-paused",
@@ -692,9 +720,7 @@ scene "x" {
       simulatorOrdinal: 7,
     });
     rerender(<PreviewPickerButton />);
-    expect(
-      screen.getByRole("button", { name: /pick element/i }),
-    ).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /pick element/i })).toHaveAttribute(
       "title",
       "Paused at step 7 — Pick will resume Preview after",
     );

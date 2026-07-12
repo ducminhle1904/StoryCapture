@@ -13,10 +13,7 @@ import {
   type WebContents,
 } from "electron";
 import ffmpegPath from "ffmpeg-static";
-import {
-  type FrameSyncOutcome,
-  RecordingActionLandmarkRecorder,
-} from "../action-landmarks";
+import { type FrameSyncOutcome, RecordingActionLandmarkRecorder } from "../action-landmarks";
 import {
   type CursorTimingSize,
   HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
@@ -942,7 +939,10 @@ export function recordingFrameCommitBudgetMs(session: RecordingSession): number 
   const frameIntervalMs = 1_000 / Math.max(1, session.effectiveFps);
   return Math.min(
     FRAME_COMMIT_MAX_BUDGET_MS,
-    Math.max(FRAME_COMMIT_MIN_BUDGET_MS, Math.ceil(frameIntervalMs * FRAME_COMMIT_BUDGET_INTERVALS)),
+    Math.max(
+      FRAME_COMMIT_MIN_BUDGET_MS,
+      Math.ceil(frameIntervalMs * FRAME_COMMIT_BUDGET_INTERVALS),
+    ),
   );
 }
 
@@ -999,9 +999,7 @@ export async function requestRecordingFrameCommit(
     }
     const stateAfterDrain = recordingFrameSyncAvailability(session);
     if (stateAfterDrain) return stateAfterDrain;
-    if (
-      (await waitForFrameTaskWithinBudget(queueFrame(session), deadlineMs)) === "timeout"
-    ) {
+    if ((await waitForFrameTaskWithinBudget(queueFrame(session), deadlineMs)) === "timeout") {
       return { status: "degraded", reason: "frame_commit_timeout" };
     }
   } catch {
@@ -1530,11 +1528,17 @@ export function pickerScript(timeoutMs: number): string {
         document.removeEventListener('click', onClick, true);
         document.removeEventListener('keydown', onKeyDown, true);
         document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('scroll', onViewportChange, true);
+        window.removeEventListener('resize', onViewportChange);
+        if (refreshFrame !== null) cancelAnimationFrame(refreshFrame);
         if (hovered) hovered.style.outline = previousOutline || '';
         delete window.__storycaptureCancelPicker;
       };
       let hovered = null;
       let previousOutline = '';
+      let lastPointerX = null;
+      let lastPointerY = null;
+      let refreshFrame = null;
       const cssPath = (el) => {
         if (!el || el.nodeType !== Node.ELEMENT_NODE) return null;
         if (el.id) return '#' + CSS.escape(el.id);
@@ -1588,6 +1592,24 @@ export function pickerScript(timeoutMs: number): string {
         } catch {}
         return false;
       };
+      const scrollabilityFor = (el) => {
+        let node = el;
+        let own = false;
+        let ancestor = false;
+        while (node instanceof Element) {
+          const style = getComputedStyle(node);
+          const scrollable =
+            (["auto", "scroll", "overlay"].includes(style.overflowX) && node.scrollWidth > node.clientWidth) ||
+            (["auto", "scroll", "overlay"].includes(style.overflowY) && node.scrollHeight > node.clientHeight);
+          if (scrollable) {
+            if (node === el) own = true;
+            else ancestor = true;
+            break;
+          }
+          node = node.parentElement;
+        }
+        return { own, ancestor };
+      };
       const candidatesFor = (el) => {
         const out = [];
         const testId = el.getAttribute('data-testid') || el.getAttribute('data-test-id');
@@ -1613,13 +1635,25 @@ export function pickerScript(timeoutMs: number): string {
         cleanup();
         resolve(result);
       };
-      const onMove = (event) => {
-        const el = event.target;
+      const setHovered = (el) => {
         if (hovered === el || !(el instanceof Element)) return;
         if (hovered) hovered.style.outline = previousOutline || '';
         hovered = el;
         previousOutline = hovered.style.outline;
         hovered.style.outline = '2px solid #39ff88';
+      };
+      const refreshHovered = () => {
+        refreshFrame = null;
+        if (lastPointerX === null || lastPointerY === null) return;
+        setHovered(document.elementFromPoint(lastPointerX, lastPointerY));
+      };
+      const onViewportChange = () => {
+        if (refreshFrame === null) refreshFrame = requestAnimationFrame(refreshHovered);
+      };
+      const onMove = (event) => {
+        lastPointerX = event.clientX;
+        lastPointerY = event.clientY;
+        setHovered(event.target);
       };
       const onKeyDown = (event) => {
         if (event.key === 'Escape') {
@@ -1637,6 +1671,7 @@ export function pickerScript(timeoutMs: number): string {
           return;
         }
         const candidates = candidatesFor(el);
+        const scrollability = scrollabilityFor(el);
         const locator = candidates[0] || { kind: 'selector', value: cssPath(el) || 'body', score: 1, unique: false };
         finish({
           emitted: emittedLine(locator),
@@ -1651,6 +1686,8 @@ export function pickerScript(timeoutMs: number): string {
             isTextInput: ['input', 'textarea'].includes(el.localName),
             isSelect: el.localName === 'select',
             isFileInput: el.localName === 'input' && (el.getAttribute('type') || '').toLowerCase() === 'file',
+            isScrollable: scrollability.own,
+            hasScrollableAncestor: scrollability.ancestor,
             optionLabels: el.localName === 'select' ? [...el.options].map((o) => o.label || o.text) : undefined,
           },
         });
@@ -1660,6 +1697,8 @@ export function pickerScript(timeoutMs: number): string {
       document.addEventListener('click', onClick, true);
       document.addEventListener('keydown', onKeyDown, true);
       document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
+      window.addEventListener('resize', onViewportChange, { passive: true });
     })
   `;
 }

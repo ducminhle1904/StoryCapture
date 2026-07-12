@@ -5,6 +5,7 @@ import {
   type InteractionReadinessError,
   waitForInteractionReadiness,
 } from "./interaction-readiness";
+import type { TargetVisibilityDiagnostics } from "./target-visibility";
 
 function ready(x: number, y: number): InteractionObservation {
   return {
@@ -51,16 +52,30 @@ describe("interaction readiness", () => {
     expect(wait).toHaveBeenCalledTimes(2);
   });
 
-  it("returns a typed terminal reason without waiting forever", async () => {
+  it("returns a typed terminal reason and diagnostics without waiting forever", async () => {
+    const diagnostics: TargetVisibilityDiagnostics = {
+      bounds: { x: 100, y: 700, w: 200, h: 40 },
+      viewportBounds: { x: 0, y: 0, w: 800, h: 600 },
+      safeViewportBounds: { x: 24, y: 24, w: 752, h: 552 },
+      clippedBounds: null,
+      candidates: [],
+      selectedPoint: null,
+      cover: null,
+      scrollers: [],
+    };
+
     await expect(
       waitForInteractionReadiness({
-        observe: async () => ({ status: "not_ready", reason: "disabled" }),
+        observe: async () => ({ status: "not_ready", reason: "disabled", diagnostics }),
         wait: async () => true,
         timeoutMs: 250,
         pollIntervalMs: 100,
       }),
     ).rejects.toEqual(
-      expect.objectContaining<Partial<InteractionReadinessError>>({ reason: "disabled" }),
+      expect.objectContaining<Partial<InteractionReadinessError>>({
+        reason: "disabled",
+        diagnostics,
+      }),
     );
   });
 });

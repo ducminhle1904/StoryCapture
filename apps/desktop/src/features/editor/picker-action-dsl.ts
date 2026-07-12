@@ -2,13 +2,9 @@
 // `click ...`; this helper is the single source of truth for synthesising
 // any other supported verb against the picked locator.
 
+import type { Command, ScrollDir, ScrollUnit, SelectorOrText } from "@/ipc/parse";
 import type { PickElementMeta, PickLocator, PickPicked } from "@/ipc/picker";
-import type { Command, SelectorOrText } from "@/ipc/parse";
-import {
-  parseLine,
-  TARGET_VERBS,
-  type ParsedLine,
-} from "./picker-emit-rewrite";
+import { type ParsedLine, parseLine, TARGET_VERBS } from "./picker-emit-rewrite";
 
 export { parseLine as parsePickerLine };
 
@@ -30,6 +26,7 @@ export const PICKER_ACTIONS = [
   "select",
   "upload",
   "drag",
+  "scroll",
 ] as const;
 
 export type PickerAction = (typeof PICKER_ACTIONS)[number];
@@ -50,6 +47,10 @@ export interface PickerActionOptions {
   path?: string;
   /** Required for `drag` — the destination element's locator. */
   toLocator?: PickLocator;
+  /** Required together for deliberate targeted scroll. */
+  direction?: ScrollDir;
+  amount?: number;
+  unit?: ScrollUnit;
 }
 
 const INPUT_ACTION_LABELS: Record<PickerAction, string> = {
@@ -62,6 +63,7 @@ const INPUT_ACTION_LABELS: Record<PickerAction, string> = {
   select: "Select option…",
   upload: "Upload file…",
   drag: "Drag from here…",
+  scroll: "Scroll this container…",
 };
 
 export interface PickerActionItem {
@@ -77,6 +79,7 @@ const REQUIRES_INPUT: ReadonlySet<PickerAction> = new Set([
   "select",
   "upload",
   "drag",
+  "scroll",
 ]);
 
 export function pickerActionLabel(action: PickerAction): string {
@@ -111,15 +114,11 @@ function formatTargetBase(locator: PickLocator): string {
       ) {
         const { role, name } = locator.value;
         if (typeof role !== "string" || role.length === 0 || typeof name !== "string") {
-          throw new Error(
-            `picker-action-dsl: role locator missing { role, name } shape`,
-          );
+          throw new Error(`picker-action-dsl: role locator missing { role, name } shape`);
         }
         return `<${role}> "${escapeDslString(name)}"`;
       }
-      throw new Error(
-        `picker-action-dsl: role locator missing { role, name } shape`,
-      );
+      throw new Error(`picker-action-dsl: role locator missing { role, name } shape`);
     }
     case "label":
       return `field "${escapeDslString(stringValue(locator))}"`;
@@ -134,9 +133,7 @@ function formatTargetBase(locator: PickLocator): string {
       if (typeof locator.value === "string") {
         return `${locator.kind} "${escapeDslString(locator.value)}"`;
       }
-      throw new Error(
-        `picker-action-dsl: unsupported locator kind "${locator.kind}"`,
-      );
+      throw new Error(`picker-action-dsl: unsupported locator kind "${locator.kind}"`);
   }
 }
 
@@ -149,9 +146,7 @@ function formatTargetBase(locator: PickLocator): string {
 function appendNth(target: string, nth: number | undefined): string {
   if (nth === undefined || nth === null) return target;
   if (!Number.isInteger(nth) || nth < 1) {
-    throw new Error(
-      `picker-action-dsl: nth must be a positive integer (got ${nth})`,
-    );
+    throw new Error(`picker-action-dsl: nth must be a positive integer (got ${nth})`);
   }
   return `${target} nth ${nth}`;
 }
@@ -171,9 +166,7 @@ export function pickedTargetLabel(r: PickPicked): string {
 
 function stringValue(locator: PickLocator): string {
   if (typeof locator.value !== "string") {
-    throw new Error(
-      `picker-action-dsl: locator kind "${locator.kind}" expects string value`,
-    );
+    throw new Error(`picker-action-dsl: locator kind "${locator.kind}" expects string value`);
   }
   return locator.value;
 }
@@ -241,12 +234,26 @@ export function buildPickerActionLine(
     }
     case "drag": {
       if (!options?.toLocator) {
-        throw new Error(
-          `picker-action-dsl: drag action requires options.toLocator`,
-        );
+        throw new Error(`picker-action-dsl: drag action requires options.toLocator`);
       }
       const toTarget = formatPickedTarget(options.toLocator);
       body = `drag ${target} to ${toTarget}`;
+      break;
+    }
+    case "scroll": {
+      const direction = options?.direction;
+      const amount = options?.amount;
+      const unit = options?.unit;
+      if (!direction || !["up", "down", "left", "right"].includes(direction)) {
+        throw new Error("picker-action-dsl: scroll action requires options.direction");
+      }
+      if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+        throw new Error("picker-action-dsl: scroll amount must be a positive finite number");
+      }
+      if (unit !== "px" && unit !== "vh") {
+        throw new Error("picker-action-dsl: scroll action requires options.unit");
+      }
+      body = `scroll ${target} ${direction} ${amount}${unit}`;
       break;
     }
     case "click":
@@ -272,10 +279,7 @@ export function validatePickerActionRoundTrip(
 ): void {
   const expectedVerb = action === "fill" ? "type" : action;
   if (!command || command.verb !== expectedVerb) {
-    throw pickerRoundTripError(
-      locator,
-      `runtime parser returned ${command?.verb ?? "no command"}`,
-    );
+    throw pickerRoundTripError(locator, `runtime parser returned ${command?.verb ?? "no command"}`);
   }
 
   if (action === "drag") {
@@ -287,6 +291,21 @@ export function validatePickerActionRoundTrip(
       throw pickerRoundTripError(locator, "drag destination is missing");
     }
     assertParsedTarget(options.toLocator, command.to, command.to_nth, "destination");
+    return;
+  }
+
+  if (action === "scroll") {
+    if (command.verb !== "scroll" || !command.target) {
+      throw pickerRoundTripError(locator, "runtime parser did not return targeted scroll");
+    }
+    assertParsedTarget(locator, command.target, command.target_nth, "target");
+    if (
+      command.direction !== options?.direction ||
+      command.amount !== options?.amount ||
+      command.unit !== options?.unit
+    ) {
+      throw pickerRoundTripError(locator, "scroll options changed during parse-back");
+    }
     return;
   }
 
@@ -314,21 +333,13 @@ function assertParsedTarget(
     throw pickerRoundTripError(locator, `${label} has an invalid parsed shape`);
   }
   const expected = parsedTargetForLocator(locator);
-  if (
-    !parsedTargetsEqual(actual, expected) ||
-    actualNth !== locator.nth
-  ) {
+  if (!parsedTargetsEqual(actual, expected) || actualNth !== locator.nth) {
     throw pickerRoundTripError(locator, `${label} changed during parse-back`);
   }
 }
 
 function isSelectorOrText(value: unknown): value is SelectorOrText {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    !("kind" in value) ||
-    !("value" in value)
-  ) {
+  if (!value || typeof value !== "object" || !("kind" in value) || !("value" in value)) {
     return false;
   }
   const target = value as { kind: unknown; value: unknown };
@@ -344,22 +355,14 @@ function isSelectorOrText(value: unknown): value is SelectorOrText {
   }
   return (
     typeof target.value === "string" &&
-    ["text", "selector", "test_id", "aria", "label", "text_exact"].includes(
-      String(target.kind),
-    )
+    ["text", "selector", "test_id", "aria", "label", "text_exact"].includes(String(target.kind))
   );
 }
 
-function parsedTargetsEqual(
-  actual: SelectorOrText,
-  expected: SelectorOrText,
-): boolean {
+function parsedTargetsEqual(actual: SelectorOrText, expected: SelectorOrText): boolean {
   if (actual.kind !== expected.kind) return false;
   if (actual.kind === "role" && expected.kind === "role") {
-    return (
-      actual.value.role === expected.value.role &&
-      actual.value.name === expected.value.name
-    );
+    return actual.value.role === expected.value.role && actual.value.name === expected.value.name;
   }
   return actual.value === expected.value;
 }
@@ -417,15 +420,9 @@ function pickerRoundTripError(locator: PickLocator, detail: string): Error {
   );
 }
 
-function requireString(
-  value: string | undefined,
-  action: string,
-  field: string,
-): string {
+function requireString(value: string | undefined, action: string, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(
-      `picker-action-dsl: ${action} action requires options.${field}`,
-    );
+    throw new Error(`picker-action-dsl: ${action} action requires options.${field}`);
   }
   return value;
 }
@@ -442,19 +439,20 @@ function extractTimeout(trailing: string | undefined): string | null {
  * top so the right action lands under the default focus ring without
  * hiding the rest of the menu (reordering is safer than hiding).
  */
-export function getPickerActionItems(
-  meta?: PickElementMeta,
-): PickerActionItem[] {
+export function getPickerActionItems(meta?: PickElementMeta): PickerActionItem[] {
   const base: PickerAction[] = [...TARGET_VERBS];
-  let promoted: PickerAction[] = [];
+  const promoted: PickerAction[] = [];
 
   if (meta?.isTextInput) promoted.push("fill", "type");
   else if (meta?.isSelect) promoted.push("select");
   else if (meta?.isFileInput) promoted.push("upload");
 
   // Drag is never promoted — it needs a second pick and only makes sense
-  // when the user explicitly opts in.
-  const ordered: PickerAction[] = [...promoted, ...base, "drag"];
+  // when the user explicitly opts in. Targeted scroll is shown only when
+  // the Picker has confirmed this element or an ancestor can scroll.
+  const scrollActions: PickerAction[] =
+    meta?.isScrollable || meta?.hasScrollableAncestor ? ["scroll"] : [];
+  const ordered: PickerAction[] = [...promoted, ...base, ...scrollActions, "drag"];
 
   return ordered.map((action) => ({
     action,

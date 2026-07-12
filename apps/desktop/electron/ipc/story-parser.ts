@@ -14,6 +14,7 @@ export interface ParsedCommand {
   path?: string;
   direction?: string;
   amount?: number | null;
+  unit?: "px" | "vh";
   duration_ms?: number;
   timeout_ms?: number | null;
   name?: string;
@@ -139,7 +140,10 @@ function stripLineComment(line: string): string {
   return line;
 }
 
-function targetWithNth(target: unknown, rest: string): { target: unknown; target_nth?: number; rest: string } {
+function targetWithNth(
+  target: unknown,
+  rest: string,
+): { target: unknown; target_nth?: number; rest: string } {
   const nth = rest.match(/^nth\s+(\d+)(?:\s+([\s\S]*))?$/);
   if (!nth) return { target, rest };
   return {
@@ -222,15 +226,77 @@ function parseValueCommand(verb: string, rest: string, base: ParsedCommandBase):
   };
 }
 
-function parseWaitForCommand(rest: string, base: ParsedCommandBase): ParsedCommand {
+function parseWaitForCommand(
+  verb: "wait-for" | "wait-for-visible",
+  rest: string,
+  base: ParsedCommandBase,
+): ParsedCommand {
   const parsed = parseTargetFragment(rest);
   const timeout = parsed.rest.match(/^timeout\s+(\S+)$/);
   return {
-    verb: "wait-for",
+    verb,
     target: parsed.target,
     target_nth: parsed.target_nth,
     timeout_ms: timeout ? parseDurationMs(timeout[1]) : null,
     ...base,
+  };
+}
+
+function parseScrollCommand(
+  rest: string,
+  base: ParsedCommandBase,
+): { command: ParsedCommand | null; message?: string } {
+  const direct = rest.match(/^(up|down|left|right)(?:\s+(\S+))?$/);
+  let target: unknown;
+  let targetNth: number | undefined;
+  let direction: "up" | "down" | "left" | "right";
+  let amountRaw: string | undefined;
+
+  if (direct) {
+    direction = direct[1] as typeof direction;
+    amountRaw = direct[2];
+  } else {
+    const targeted = rest.match(/^(.+?)\s+(up|down|left|right)(?:\s+(\S+))?$/);
+    if (!targeted) {
+      return {
+        command: null,
+        message: "scroll expects [target] direction [amount(px|vh)]",
+      };
+    }
+    const parsed = parseTargetFragment(targeted[1]);
+    if (parsed.rest) {
+      return { command: null, message: "scroll target is invalid" };
+    }
+    target = parsed.target;
+    targetNth = parsed.target_nth;
+    direction = targeted[2] as typeof direction;
+    amountRaw = targeted[3];
+  }
+
+  const amountMatch = amountRaw?.match(/^(\d+(?:\.\d+)?|\.\d+)(px|vh)?$/);
+  if (amountRaw && !amountMatch) {
+    return {
+      command: null,
+      message: "scroll amount must be a positive finite number with px or vh units",
+    };
+  }
+  const amount = amountMatch ? Number(amountMatch[1]) : 500;
+  if (amount <= 0) {
+    return {
+      command: null,
+      message: "scroll amount must be a positive finite number",
+    };
+  }
+
+  return {
+    command: {
+      verb: "scroll",
+      ...(target === undefined ? {} : { target, target_nth: targetNth }),
+      direction,
+      amount,
+      unit: (amountMatch?.[2] as "px" | "vh" | undefined) ?? "px",
+      ...base,
+    },
   };
 }
 
@@ -331,7 +397,7 @@ export function parseStorySource(source: string) {
     const base = { span, step_id: stepId };
     let command: unknown | null = null;
     if (verb === "navigate") command = { verb, url: stripQuotes(rest), ...base };
-    if (verb === "click" || verb === "hover" || verb === "assert") {
+    if (verb === "click" || verb === "hover" || verb === "assert" || verb === "assert-visible") {
       command = parseTargetOnlyCommand(verb, rest, base);
     }
     if (verb === "type" || verb === "select" || verb === "upload") {
@@ -340,21 +406,27 @@ export function parseStorySource(source: string) {
     if (verb === "fill") command = parseValueCommand("type", rest, base);
     if (verb === "drag") command = parseDragCommand(rest, base);
     if (verb === "scroll") {
-      command = {
-        verb,
-        direction: parts[1] ?? "down",
-        amount: parts[2] ? Number(parts[2]) : null,
-        ...base,
-      };
+      const parsed = parseScrollCommand(rest, base);
+      command = parsed.command;
+      if (parsed.message) {
+        diagnostics.push({
+          severity: "error",
+          message: parsed.message,
+          span,
+          suggestion: "Use: scroll [target] down 300px",
+        });
+      }
     }
     if (verb === "wait") command = { verb, duration_ms: parseDurationMs(rest), ...base };
-    if (verb === "wait-for") command = parseWaitForCommand(rest, base);
+    if (verb === "wait-for" || verb === "wait-for-visible") {
+      command = parseWaitForCommand(verb, rest, base);
+    }
     if (verb === "screenshot")
       command = { verb, name: stripQuotes(rest || `shot-${lineNo}`), ...base };
     if (verb === "pause") command = { verb, ...base };
     if (command) {
       currentScene.commands.push(command);
-    } else if (!["{", "}"].includes(trimmed)) {
+    } else if (verb !== "scroll" && !["{", "}"].includes(trimmed)) {
       diagnostics.push({
         severity: "error",
         message: `unknown command: ${verb}`,

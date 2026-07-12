@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   findSimulatorTarget,
@@ -31,6 +31,7 @@ function makeVisible(el: Element): void {
 describe("simulator DOM helpers", () => {
   afterEach(() => {
     document.body.replaceChildren();
+    Reflect.deleteProperty(document, "elementsFromPoint");
   });
 
   it("matches field labels case-insensitively and prefers editable controls", () => {
@@ -105,9 +106,23 @@ describe("simulator DOM helpers", () => {
     if (!button || !cover) throw new Error("readiness fixture missing");
     makeVisible(button);
     makeVisible(cover);
-    Object.defineProperty(document, "elementFromPoint", {
+    Object.defineProperty(button, "getBoundingClientRect", {
       configurable: true,
-      value: () => cover,
+      value: () => ({
+        bottom: 140,
+        height: 40,
+        left: 100,
+        right: 300,
+        top: 100,
+        width: 200,
+        x: 100,
+        y: 100,
+        toJSON: () => ({}),
+      }),
+    });
+    Object.defineProperty(document, "elementsFromPoint", {
+      configurable: true,
+      value: () => [cover, button],
     });
 
     expect(
@@ -119,7 +134,7 @@ describe("simulator DOM helpers", () => {
           true,
         ),
       ),
-    ).toEqual({ status: "not_ready", reason: "disabled" });
+    ).toMatchObject({ status: "not_ready", reason: "disabled" });
 
     button.removeAttribute("disabled");
     expect(
@@ -131,7 +146,53 @@ describe("simulator DOM helpers", () => {
           true,
         ),
       ),
-    ).toEqual({ status: "not_ready", reason: "covered" });
+    ).toMatchObject({ status: "not_ready", reason: "covered" });
+  });
+
+  it("observes outside targets without scrolling and returns structured geometry", () => {
+    document.body.innerHTML = `<button aria-label="Below fold">Continue</button>`;
+    const button = document.querySelector("button");
+    if (!button) throw new Error("readiness fixture missing");
+    Object.defineProperty(button, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        bottom: 10_040,
+        height: 40,
+        left: 100,
+        right: 300,
+        top: 10_000,
+        width: 200,
+        x: 100,
+        y: 10_000,
+        toJSON: () => ({}),
+      }),
+    });
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(button, "scrollIntoView", { configurable: true, value: scrollIntoView });
+
+    const observation = window.eval(
+      simulatorTargetReadinessScript(
+        { kind: "role", value: { role: "button", name: "Below fold" } },
+        undefined,
+        null,
+        true,
+      ),
+    );
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(observation).toMatchObject({
+      status: "not_ready",
+      reason: "outside_viewport",
+      diagnostics: {
+        bounds: { x: 100, y: 10_000, w: 200, h: 40 },
+        clippedBounds: null,
+        viewportBounds: { x: 0, y: 0 },
+        safeViewportBounds: { x: 24, y: 24 },
+        candidates: [],
+        selectedPoint: null,
+        scrollers: [expect.objectContaining({ kind: "document" })],
+      },
+    });
   });
 
   it("builds a value script that writes full text into the active input and emits events", () => {

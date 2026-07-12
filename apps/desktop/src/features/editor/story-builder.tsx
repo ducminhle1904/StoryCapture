@@ -13,7 +13,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { SelectField } from "@/components/ui/select-field";
-import type { Command, Story } from "@/ipc/parse";
+import type { Command, ScrollDir, ScrollUnit, Story } from "@/ipc/parse";
 import {
   isPicked,
   type PickCandidate,
@@ -96,6 +96,16 @@ const zoomTargetOptions = [
   { value: "cursor", label: "Cursor" },
   { value: "element", label: "Element" },
   { value: "fixed-region", label: "Region" },
+];
+const scrollDirectionOptions = [
+  { value: "up", label: "Up" },
+  { value: "down", label: "Down" },
+  { value: "left", label: "Left" },
+  { value: "right", label: "Right" },
+];
+const scrollUnitOptions = [
+  { value: "px", label: "px" },
+  { value: "vh", label: "vh" },
 ];
 
 const transitionOptions: Array<{ value: PolishTransition; label: string }> = [
@@ -218,6 +228,10 @@ function commandTitle(command: Command): string {
   switch (command.verb) {
     case "wait-for":
       return "Wait for";
+    case "wait-for-visible":
+      return "Wait for visible";
+    case "assert-visible":
+      return "Assert visible";
     default:
       return command.verb.charAt(0).toUpperCase() + command.verb.slice(1);
   }
@@ -230,6 +244,7 @@ function commandSummary(command: Command): string {
     case "click":
     case "hover":
     case "assert":
+    case "assert-visible":
       return targetLabel(command.target);
     case "type":
       return `${targetLabel(command.target)} -> ${command.text}`;
@@ -242,11 +257,12 @@ function commandSummary(command: Command): string {
     case "wait":
       return `${command.duration_ms}ms`;
     case "wait-for":
+    case "wait-for-visible":
       return `${targetLabel(command.target)}${command.timeout_ms ? ` / ${command.timeout_ms}ms` : ""}`;
     case "screenshot":
       return command.name;
     case "scroll":
-      return `${command.direction}${command.amount == null ? "" : ` ${command.amount}`}`;
+      return `${command.target ? `${targetLabel(command.target)} ` : ""}${command.direction} ${command.amount}${command.unit}`;
     case "pause":
       return "Pause automation";
   }
@@ -267,12 +283,14 @@ function primaryEditableValue(command: Command): string {
     case "click":
     case "hover":
     case "assert":
+    case "assert-visible":
     case "wait-for":
+    case "wait-for-visible":
       return command.target.kind === "role" ? command.target.value.name : command.target.value;
     case "wait":
       return String(command.duration_ms);
     case "scroll":
-      return command.amount == null ? "" : String(command.amount);
+      return String(command.amount);
     case "drag":
     case "pause":
       return "";
@@ -379,13 +397,18 @@ export function StoryBuilder({
       case "wait":
         patch = { duration_ms: Math.max(0, Number(value) || 0) };
         break;
-      case "scroll":
-        patch = { amount: value.trim() ? Number(value) || 0 : null };
+      case "scroll": {
+        const amount = Number(value);
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        patch = { amount };
         break;
+      }
       case "click":
       case "hover":
       case "assert":
+      case "assert-visible":
       case "wait-for":
+      case "wait-for-visible":
         patch = updateCommandTarget(command, value) as Partial<Command>;
         break;
       case "drag":
@@ -753,6 +776,35 @@ export function StoryBuilder({
                           </ScButton>
                         ) : null}
                       </div>
+
+                      {command.verb === "scroll" ? (
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <SelectField
+                            value={command.direction}
+                            disabled={simulatorActive}
+                            options={scrollDirectionOptions}
+                            aria-label="Scroll direction"
+                            onValueChange={(value) => {
+                              const nextStory = patchCommand(story, sceneIndex, commandIndex, {
+                                direction: value as ScrollDir,
+                              } as Partial<Command>);
+                              onSourceChange(formatEditableStory(nextStory), nextStory);
+                            }}
+                          />
+                          <SelectField
+                            value={command.unit}
+                            disabled={simulatorActive}
+                            options={scrollUnitOptions}
+                            aria-label="Scroll unit"
+                            onValueChange={(value) => {
+                              const nextStory = patchCommand(story, sceneIndex, commandIndex, {
+                                unit: value as ScrollUnit,
+                              } as Partial<Command>);
+                              onSourceChange(formatEditableStory(nextStory), nextStory);
+                            }}
+                          />
+                        </div>
+                      ) : null}
 
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         {supportsVisualFocus ? (

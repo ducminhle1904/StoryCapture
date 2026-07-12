@@ -6,6 +6,8 @@
 - Desktop all tests: `pnpm --dir apps/desktop exec vitest run`.
 - Desktop focused test: `pnpm --dir apps/desktop exec vitest run <path>`.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
+- Smooth document/nested-container scroll Electron E2E:
+  `pnpm --dir apps/desktop run test:e2e:scroll`.
 - Local media playback Electron E2E: `pnpm --dir apps/desktop run test:e2e:media`.
 - Web all tests: `pnpm --dir apps/web test`.
 - Web focused test: `pnpm --dir apps/web exec vitest run <path>`.
@@ -69,4 +71,9 @@
 - Generated type surfaces: do not edit generated files directly unless the
   generation source and regeneration process are also handled.
 - Electron E2E config: `apps/desktop/playwright.config.ts`; cursor-sync smoke:
-  `apps/desktop/e2e/cursor-sync.spec.ts`.
+  `apps/desktop/e2e/cursor-sync.spec.ts`; smooth-scroll smoke:
+  `apps/desktop/e2e/smooth-scroll.spec.ts`.
+- Visibility/scroll host changes should focus `target-visibility.test.ts`,
+  `smooth-scroll.test.ts`, `interaction-readiness.test.ts`,
+  `legacy/story-runner.test.ts`, and `legacy/capture-preview-picker.test.ts`
+  before the full desktop suite.

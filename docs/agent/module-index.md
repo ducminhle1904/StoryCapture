@@ -82,6 +82,11 @@ Use this for task routing after reading the short root guide.
 - DSL vocabulary and CodeMirror: `packages/story-dsl/src/ast.ts`,
   `packages/story-dsl/src/codemirror-lang.ts`.
 - Runtime parser: `apps/desktop/electron/ipc/story-parser.ts`.
+- Target visibility and controlled scrolling:
+  `apps/desktop/electron/ipc/target-visibility.ts`,
+  `apps/desktop/electron/ipc/smooth-scroll.ts`,
+  `apps/desktop/electron/ipc/interaction-readiness.ts`, and runner integration in
+  `apps/desktop/electron/ipc/legacy/story-runner.ts`.
 - Recorded action/cursor timing crosses host and renderer:
   `apps/desktop/electron/ipc/action-timeline.ts`,
   `apps/desktop/electron/ipc/cursor-timing.ts`,
