@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import { app, BrowserWindow, type WebContents } from "electron";
-import type { RecordedInputLandmarkKind } from "../action-landmarks";
+import type {
+  FrameSyncDegradedReason,
+  FrameSyncOutcome,
+  RecordedInputLandmarkKind,
+} from "../action-landmarks";
 import {
   type ActionCursorTiming,
   type ActionInputTiming,
@@ -46,6 +50,9 @@ import {
   ensureRecordingFramesCoverElapsedTime,
   invalidateAuthorPreviewPaintForContents,
   normalizedTargetRecord,
+  recordingCaptureStateSnapshot,
+  recordingFrameCommitBudgetMs,
+  requestRecordingFrameCommit,
   storyBrowserExecutionProfile,
   targetsPathFor,
 } from "./capture-preview";
@@ -77,6 +84,29 @@ import {
 
 const FALLBACK_TARGET_VERBS = ["click", "type", "hover", "select", "upload"];
 const CURSOR_INTERACTION_VERBS = ["click", "type", "hover", "select"];
+const FRAME_SYNC_FALLBACK_TIMEOUT_MS = 500;
+
+async function requestFrameCommitOutcome(
+  requestFrameCommit: (() => Promise<FrameSyncOutcome>) | undefined,
+): Promise<FrameSyncOutcome | null> {
+  if (!requestFrameCommit) return null;
+  try {
+    return await requestFrameCommit();
+  } catch {
+    return { status: "degraded", reason: "frame_capture_failed" };
+  }
+}
+
+function captureStateSnapshot(
+  snapshot: (() => Record<string, unknown>) | undefined,
+): Record<string, unknown> {
+  if (!snapshot) return {};
+  try {
+    return snapshot();
+  } catch {
+    return { capture_state: "unavailable" };
+  }
+}
 
 function recordingFrameClockMs(session: RecordingSession): number {
   return Math.max(0, Math.round(session.mediaClock.snapshot().durationUs / 1000));
@@ -590,7 +620,33 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
           cursorPointForTarget(resolvedTarget, pacingSize),
         );
         if (options.actionLandmarks) {
-          await options.actionLandmarks.waitForArrival(landmarkEventId, 500);
+          const arrival = options.actionLandmarks.waitForArrivalOutcome(
+            landmarkEventId,
+            options.frameSyncTimeoutMs ?? FRAME_SYNC_FALLBACK_TIMEOUT_MS,
+          );
+          const requestedOutcome = await requestFrameCommitOutcome(options.requestFrameCommit);
+          if (requestedOutcome?.status === "degraded") {
+            options.actionLandmarks.degradeArrival(
+              landmarkEventId,
+              requestedOutcome.reason as FrameSyncDegradedReason,
+            );
+          } else if (requestedOutcome?.status === "cancelled") {
+            options.actionLandmarks.cancelArrival(landmarkEventId);
+          }
+          const arrivalOutcome = await arrival;
+          if (arrivalOutcome.status === "cancelled") throw new RecordingPauseCancelledError();
+          if (arrivalOutcome.status === "degraded") {
+            void hostLog("warn", "recording_frame_sync_degraded_before_input", {
+              ordinal,
+              step_id: command.step_id ?? null,
+              verb: command.verb,
+              barrier: "cursor_arrival",
+              reason: arrivalOutcome.reason,
+              ...captureStateSnapshot(options.captureStateSnapshot),
+            });
+            options.actionLandmarks.discard(landmarkEventId);
+            landmarkStarted = false;
+          }
         }
       }
       await waitForRecordingDelay(options.pauseGate, 0);
@@ -850,6 +906,15 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
         ? () => recordingFrameClockMs(recordingSessionAtLaunch)
         : undefined,
       actionLandmarks: recordingSessionAtLaunch?.actionLandmarks,
+      requestFrameCommit: recordingSessionAtLaunch
+        ? () => requestRecordingFrameCommit(recordingSessionAtLaunch)
+        : undefined,
+      frameSyncTimeoutMs: recordingSessionAtLaunch
+        ? recordingFrameCommitBudgetMs(recordingSessionAtLaunch)
+        : undefined,
+      captureStateSnapshot: recordingSessionAtLaunch
+        ? () => recordingCaptureStateSnapshot(recordingSessionAtLaunch)
+        : undefined,
       pauseGate: recordingSessionAtLaunch?.pauseGate,
       shouldCancel: recordingSessionAtLaunch
         ? () => recordingSessions.get(recordingSessionAtLaunch.id) !== recordingSessionAtLaunch

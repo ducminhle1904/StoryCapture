@@ -7,6 +7,16 @@ export interface RecordedActionPoint {
 
 export type RecordedInputDelivery = "browser_injected" | "virtual_only";
 export type RecordedInputLandmarkKind = "action" | "down" | "up" | "text_start" | "text_end";
+export type FrameSyncDegradedReason =
+  | "capture_inactive"
+  | "capture_paused"
+  | "encoder_error"
+  | "frame_capture_failed"
+  | "frame_commit_timeout";
+export type FrameSyncOutcome =
+  | { status: "committed"; landmark: RecordingFrameLandmark }
+  | { status: "degraded"; reason: FrameSyncDegradedReason }
+  | { status: "cancelled" };
 
 export interface RecordedCursorSample extends RecordingFrameLandmark, RecordedActionPoint {}
 
@@ -38,7 +48,8 @@ interface PendingEvent {
   paintToken: number;
   expectsPresentation: boolean;
   presentation: RecordedActionLandmarks["presentation"] | null;
-  arrivalWaiters: Array<(landmark: RecordingFrameLandmark) => void>;
+  arrivalOutcome: FrameSyncOutcome | null;
+  arrivalWaiters: Array<(outcome: FrameSyncOutcome) => void>;
   presentationWaiters: Array<(result: RecordedActionLandmarks["presentation"]) => void>;
 }
 
@@ -48,6 +59,18 @@ function samePoint(left: RecordedActionPoint, right: RecordedActionPoint): boole
 
 function copyLandmark(landmark: RecordingFrameLandmark): RecordingFrameLandmark {
   return { frameIndex: landmark.frameIndex, ptsUs: landmark.ptsUs };
+}
+
+function settleArrival(event: PendingEvent, outcome: FrameSyncOutcome): FrameSyncOutcome {
+  if (event.arrivalOutcome) return event.arrivalOutcome;
+  const settled =
+    outcome.status === "committed"
+      ? { status: "committed" as const, landmark: copyLandmark(outcome.landmark) }
+      : outcome;
+  event.arrivalOutcome = settled;
+  if (settled.status === "committed") event.arrival = settled.landmark;
+  for (const resolve of event.arrivalWaiters.splice(0)) resolve(settled);
+  return settled;
 }
 
 export class RecordingActionLandmarkRecorder {
@@ -73,6 +96,7 @@ export class RecordingActionLandmarkRecorder {
       paintToken: this.paintSequence,
       expectsPresentation: input.expectsPresentation,
       presentation: input.expectsPresentation ? null : { status: "not_applicable" },
+      arrivalOutcome: null,
       arrivalWaiters: [],
       presentationWaiters: [],
     });
@@ -88,6 +112,10 @@ export class RecordingActionLandmarkRecorder {
     this.paintSequence += 1;
   }
 
+  latestCommittedFrame(): RecordingFrameLandmark | null {
+    return this.lastCommittedFrame ? copyLandmark(this.lastCommittedFrame) : null;
+  }
+
   commitFrame(landmark: RecordingFrameLandmark): void {
     this.lastCommittedFrame = copyLandmark(landmark);
     for (const event of this.events.values()) {
@@ -96,9 +124,8 @@ export class RecordingActionLandmarkRecorder {
         if (!previous || !samePoint(previous, event.point)) {
           event.samples.push({ ...copyLandmark(landmark), ...event.point });
         }
-        if (event.arrival == null && event.arrivalWaiters.length > 0) {
-          event.arrival = copyLandmark(landmark);
-          for (const resolve of event.arrivalWaiters.splice(0)) resolve(event.arrival);
+        if (!event.arrivalOutcome && event.arrivalWaiters.length > 0) {
+          settleArrival(event, { status: "committed", landmark });
         }
         continue;
       }
@@ -115,13 +142,51 @@ export class RecordingActionLandmarkRecorder {
   }
 
   waitForArrival(id: string, timeoutMs: number): Promise<RecordingFrameLandmark> {
+    return this.waitForArrivalOutcome(id, timeoutMs).then((outcome) => {
+      if (outcome.status === "committed") return outcome.landmark;
+      if (outcome.status === "cancelled") throw new Error("cursor arrival was cancelled");
+      throw new Error(`cursor arrival degraded: ${outcome.reason}`);
+    });
+  }
+
+  waitForArrivalOutcome(id: string, timeoutMs: number): Promise<FrameSyncOutcome> {
     const event = this.requiredEvent(id);
-    if (event.arrival) return Promise.resolve(copyLandmark(event.arrival));
-    return this.waitWithTimeout(
-      event.arrivalWaiters,
-      timeoutMs,
-      () => new Error("cursor arrival was not committed to a media frame"),
-    );
+    if (event.arrivalOutcome) return Promise.resolve(event.arrivalOutcome);
+    return this.waitWithTimeout(event.arrivalWaiters, timeoutMs, () => {
+      return settleArrival(event, {
+        status: "degraded",
+        reason: "frame_commit_timeout",
+      });
+    });
+  }
+
+  degradeArrival(id: string, reason: FrameSyncDegradedReason): FrameSyncOutcome {
+    const event = this.requiredEvent(id);
+    return settleArrival(event, { status: "degraded", reason });
+  }
+
+  cancelArrival(id: string): FrameSyncOutcome {
+    const event = this.requiredEvent(id);
+    return settleArrival(event, { status: "cancelled" });
+  }
+
+  discard(id: string): void {
+    this.events.delete(id);
+  }
+
+  cancelAll(): void {
+    for (const event of this.events.values()) {
+      if (!event.arrivalOutcome) {
+        settleArrival(event, { status: "cancelled" });
+      }
+      if (!event.presentation) {
+        event.presentation = {
+          status: "timeout",
+          diagnosticReason: "post_input_frame_timeout",
+        };
+        for (const resolve of event.presentationWaiters.splice(0)) resolve(event.presentation);
+      }
+    }
   }
 
   markInput(id: string, kind: RecordedInputLandmarkKind): RecordingFrameLandmark {

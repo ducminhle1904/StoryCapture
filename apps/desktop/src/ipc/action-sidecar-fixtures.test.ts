@@ -27,6 +27,28 @@ describe("cursor synchronization sidecar fixtures", () => {
     expect(parseActionSidecar(v2Raw)).toEqual(v2Normalized);
   });
 
+  it("keeps v3 events without committed landmarks on validated timing fallback", () => {
+    const parsed = parseActionSidecar({
+      ...v2Raw,
+      version: 3,
+      media_clock: {
+        clock: "encoded_video_pts",
+        unit: "us",
+        fps_num: 60,
+        fps_den: 1,
+        origin_frame: 0,
+        frame_count: v2Raw.frame_count,
+        duration_us: Math.round((v2Raw.frame_count / 60) * 1_000_000),
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      source_version: 3,
+      confidence: "mixed",
+    });
+    expect(parsed?.events.every((event) => event.input_landmarks == null)).toBe(true);
+  });
+
   it("does not mutate raw sidecars", () => {
     const raw = structuredClone(v2Raw);
     const before = structuredClone(raw);

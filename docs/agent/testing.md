@@ -51,6 +51,8 @@
   `pnpm --dir apps/desktop exec vitest run` when touching shared behavior.
 - Cursor timing/synchronization changes: focus
   `apps/desktop/electron/ipc/cursor-timing.test.ts`,
+  `apps/desktop/electron/ipc/action-landmarks.test.ts`,
+  `apps/desktop/electron/ipc/legacy/capture-preview-frame-sync.test.ts`,
   `apps/desktop/electron/ipc/legacy/story-runner.test.ts`,
   `apps/desktop/src/features/post-production/preview/__tests__/virtual-cursor-path.test.ts`,
   and

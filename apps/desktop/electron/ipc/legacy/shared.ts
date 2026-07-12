@@ -13,7 +13,11 @@ import {
   type WebContents,
 } from "electron";
 import electronUpdater, { type UpdateInfo as ElectronUpdateInfo } from "electron-updater";
-import type { RecordedActionLandmarks, RecordingActionLandmarkRecorder } from "../action-landmarks";
+import type {
+  FrameSyncOutcome,
+  RecordedActionLandmarks,
+  RecordingActionLandmarkRecorder,
+} from "../action-landmarks";
 import type {
   ActionCursorMotionPreset,
   ActionCursorTiming,
@@ -521,6 +525,9 @@ export interface StoryBrowserRunOptions {
   executionProfile?: StoryBrowserExecutionProfile;
   recordingClockMs?: () => number;
   actionLandmarks?: RecordingActionLandmarkRecorder;
+  requestFrameCommit?: () => Promise<FrameSyncOutcome>;
+  frameSyncTimeoutMs?: number;
+  captureStateSnapshot?: () => Record<string, unknown>;
   pauseGate?: RecordingPauseGate;
   shouldCancel?: () => boolean;
   hooks?: StoryBrowserRunHooks;

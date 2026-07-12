@@ -135,6 +135,11 @@ Rust/native capture crates.
   conversion; `action-landmarks.ts` owns arrival/input/presentation landmarks;
   `cursor-sync-mode.ts` owns rollout. The required ordering is cursor arrival
   <= input action <= first post-input frame when presentation is applicable.
+  Before browser input, the runner requests a serialized frame commit from the
+  active capture session. A committed frame produces authoritative landmarks;
+  timeout, backpressure, capture failure, or encoder failure degrades to the
+  existing timing fallback without inventing frame PTS or blocking valid input.
+  Stop/cancel settles pending landmark waiters.
 
 Operator-gated capture work still requires real macOS Screen Recording/TCC
 verification; do not treat simulated tests as equivalent to OS-level UAT.

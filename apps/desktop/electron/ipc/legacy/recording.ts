@@ -58,6 +58,7 @@ export async function stopRecording(raw: unknown) {
   if (!session) throw new Error(`recording session ${id} not found`);
   recordingSessions.delete(id);
   session.pauseGate.cancel();
+  session.actionLandmarks.cancelAll();
   clearInterval(session.heartbeat);
   if (session.captureTimer) clearInterval(session.captureTimer);
   if (session.authorPaintHandler && session.target.kind === "author_preview") {

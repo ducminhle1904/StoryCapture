@@ -10,6 +10,7 @@ import {
   type ActionTimelineEvent,
   actionsSidecarPath,
 } from "../action-timeline";
+import { RecordingActionLandmarkRecorder } from "../action-landmarks";
 import { estimateCursorTravelDelayMs, initialCursorPoint } from "../cursor-timing";
 import { RecordingMediaClock } from "../recording-media-clock";
 import { RecordingPauseGate } from "../recording-pause-gate";
@@ -33,6 +34,7 @@ vi.mock("./capture-preview", () => ({
   ensureRecordingFramesCoverElapsedTime: vi.fn(),
   invalidateAuthorPreviewPaintForContents: vi.fn(),
   normalizedTargetRecord: (value: unknown) => value,
+  recordingFrameCommitBudgetMs: () => 500,
   storyBrowserExecutionProfile: (options?: { captureRecordingFrames?: boolean }) => ({
     typingMode: "incremental",
     captureRecordingFrames: options?.captureRecordingFrames ?? false,
@@ -332,6 +334,163 @@ describe("story browser cursor pacing", () => {
     expect(successes[0]?.timing?.inputTiming?.action_ms).toBe(
       Math.round((readinessDelayMs + expectedDelayMs) / 2),
     );
+  });
+
+  it("continues type input when cursor arrival cannot be committed to a frame", async () => {
+    const inputTarget = target("Search Wikipedia", { x: 460, y: 320 });
+    const contents = fakeContents([inputTarget]);
+    const actionLandmarks = new RecordingActionLandmarkRecorder();
+    const typeCommand = {
+      verb: "type",
+      target: { kind: "role", value: { role: "textbox", name: "Search Wikipedia" } },
+      text: "ElectronJS",
+    } as ParsedCommand;
+    const requestFrameCommit = vi.fn(async () => ({
+      status: "degraded" as const,
+      reason: "frame_commit_timeout" as const,
+    }));
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [typeCommand],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "incremental",
+        captureRecordingFrames: true,
+        captureSize: { width: 1280, height: 800 },
+        settleDelayForCommand: () => 0,
+      },
+      actionLandmarks,
+      requestFrameCommit,
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+    expect(requestFrameCommit).toHaveBeenCalledTimes(1);
+    expect(
+      contents.executeJavaScript.mock.calls.some(([script]) => script.includes("ElectronJS")),
+    ).toBe(true);
+  });
+
+  it("records healthy type landmarks from an explicitly committed frame", async () => {
+    const inputTarget = target("Search Wikipedia", { x: 460, y: 320 });
+    const contents = fakeContents([inputTarget]);
+    const actionLandmarks = new RecordingActionLandmarkRecorder();
+    const committed = { frameIndex: 0, ptsUs: 0 };
+    const successfulSteps: Array<{ timing?: { landmarks?: unknown } }> = [];
+    const requestFrameCommit = vi.fn(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 700));
+      actionLandmarks.commitFrame(committed);
+      setTimeout(() => actionLandmarks.commitFrame({ frameIndex: 1, ptsUs: 16_667 }), 10);
+      return { status: "committed" as const, landmark: committed };
+    });
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [
+        {
+          verb: "type",
+          target: { kind: "role", value: { role: "textbox", name: "Search Wikipedia" } },
+          text: "ElectronJS",
+        } as ParsedCommand,
+      ],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "incremental",
+        captureRecordingFrames: true,
+        captureSize: { width: 1280, height: 800 },
+        settleDelayForCommand: () => 0,
+      },
+      actionLandmarks,
+      requestFrameCommit,
+      frameSyncTimeoutMs: 1_000,
+      hooks: { onStepSucceeded: (step) => successfulSteps.push(step) },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+    expect(successfulSteps[0]?.timing?.landmarks).toMatchObject({
+      cursorPath: { arrival: committed },
+      input: { action: committed, text_start: committed, text_end: committed },
+      presentation: { status: "presented", firstPostInputFrame: { frameIndex: 1 } },
+    });
+  });
+
+  it.each(["click", "select"] as const)(
+    "continues %s input when frame synchronization degrades",
+    async (verb) => {
+      const contents = fakeContents([target("Control", { x: 460, y: 320 })]);
+      const actionLandmarks = new RecordingActionLandmarkRecorder();
+      const parsedCommand = {
+        ...command(verb, "Control"),
+        ...(verb === "select" ? { value: "Option A" } : {}),
+      } as ParsedCommand;
+
+      const run = runStoryCommandsInBrowser({
+        contents: contents as never,
+        commands: [parsedCommand],
+        projectFolder: "/tmp/storycapture-test",
+        storySource: "",
+        targets: { version: 1, steps: {} },
+        executionProfile: {
+          typingMode: "incremental",
+          captureRecordingFrames: true,
+          captureSize: { width: 1280, height: 800 },
+          settleDelayForCommand: () => 0,
+        },
+        actionLandmarks,
+        requestFrameCommit: async () => ({
+          status: "degraded",
+          reason: "frame_capture_failed",
+        }),
+      });
+
+      await vi.runAllTimersAsync();
+      await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+      expect(
+        contents.sendInputEvent.mock.calls.filter(([event]) => event.type === "mouseDown"),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("cancels before input when the recording frame request is cancelled", async () => {
+    const contents = fakeContents([target("Search Wikipedia", { x: 460, y: 320 })]);
+    const actionLandmarks = new RecordingActionLandmarkRecorder();
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [
+        {
+          verb: "type",
+          target: { kind: "role", value: { role: "textbox", name: "Search Wikipedia" } },
+          text: "ElectronJS",
+        } as ParsedCommand,
+      ],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "incremental",
+        captureRecordingFrames: true,
+        captureSize: { width: 1280, height: 800 },
+        settleDelayForCommand: () => 0,
+      },
+      actionLandmarks,
+      requestFrameCommit: async () => ({ status: "cancelled" }),
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({
+      succeeded: 0,
+      failed: 0,
+      exitReason: "cancelled",
+    });
+    expect(
+      contents.executeJavaScript.mock.calls.some(([script]) => script.includes("ElectronJS")),
+    ).toBe(false);
   });
 
   it("freezes cursor travel and browser input while recording is paused", async () => {

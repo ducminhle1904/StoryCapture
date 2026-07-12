@@ -13,7 +13,10 @@ import {
   type WebContents,
 } from "electron";
 import ffmpegPath from "ffmpeg-static";
-import { RecordingActionLandmarkRecorder } from "../action-landmarks";
+import {
+  type FrameSyncOutcome,
+  RecordingActionLandmarkRecorder,
+} from "../action-landmarks";
 import {
   type CursorTimingSize,
   HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
@@ -908,6 +911,134 @@ export function queueRecordingFrame(session: RecordingSession): Promise<void> {
   return capture;
 }
 
+export function scheduleRecordingFrame(
+  session: RecordingSession,
+  queueFrame: (session: RecordingSession) => Promise<void> = queueRecordingFrame,
+): void {
+  if (session.captureInFlight) {
+    session.skippedTicks += 1;
+    return;
+  }
+  void queueFrame(session).catch((error) => {
+    session.framesDropped += 1;
+    sendChannel(session.eventTarget, session.eventChannelId, {
+      type: "frames-dropped",
+      total: session.framesDropped,
+      delta: 1,
+    });
+    void hostLog("warn", "recording_frame_capture_failed", {
+      ...recordingCaptureStateSnapshot(session),
+      reason: "frame_capture_failed",
+      error_name: error instanceof Error ? error.name : "UnknownError",
+    });
+  });
+}
+
+const FRAME_COMMIT_MIN_BUDGET_MS = 500;
+const FRAME_COMMIT_MAX_BUDGET_MS = 2_000;
+const FRAME_COMMIT_BUDGET_INTERVALS = 4;
+
+export function recordingFrameCommitBudgetMs(session: RecordingSession): number {
+  const frameIntervalMs = 1_000 / Math.max(1, session.effectiveFps);
+  return Math.min(
+    FRAME_COMMIT_MAX_BUDGET_MS,
+    Math.max(FRAME_COMMIT_MIN_BUDGET_MS, Math.ceil(frameIntervalMs * FRAME_COMMIT_BUDGET_INTERVALS)),
+  );
+}
+
+export function recordingCaptureStateSnapshot(session: RecordingSession): Record<string, unknown> {
+  return {
+    session_id: session.id,
+    lifecycle: session.lifecycle,
+    paused: session.paused,
+    streaming: session.streaming,
+    frame_count: session.mediaClock.snapshot().frameCount,
+    capture_in_flight: Boolean(session.captureInFlight),
+    encoder_backpressured: session.encoderBackpressured,
+    encoder_error: Boolean(session.encoderError),
+    frames_dropped: session.framesDropped,
+    skipped_ticks: session.skippedTicks,
+  };
+}
+
+async function waitForFrameTaskWithinBudget(
+  task: Promise<void>,
+  deadlineMs: number,
+): Promise<"settled" | "timeout"> {
+  const remainingMs = Math.max(0, deadlineMs - Date.now());
+  if (remainingMs === 0) return "timeout";
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      task.then(() => "settled" as const),
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), remainingMs);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function requestRecordingFrameCommit(
+  session: RecordingSession,
+  queueFrame: (session: RecordingSession) => Promise<void> = queueRecordingFrame,
+): Promise<FrameSyncOutcome> {
+  const initialState = recordingFrameSyncAvailability(session);
+  if (initialState) return initialState;
+
+  const previous = session.actionLandmarks.latestCommittedFrame();
+  const deadlineMs = Date.now() + recordingFrameCommitBudgetMs(session);
+  try {
+    if (
+      session.captureInFlight &&
+      (await waitForFrameTaskWithinBudget(session.captureInFlight, deadlineMs)) === "timeout"
+    ) {
+      return { status: "degraded", reason: "frame_commit_timeout" };
+    }
+    const stateAfterDrain = recordingFrameSyncAvailability(session);
+    if (stateAfterDrain) return stateAfterDrain;
+    if (
+      (await waitForFrameTaskWithinBudget(queueFrame(session), deadlineMs)) === "timeout"
+    ) {
+      return { status: "degraded", reason: "frame_commit_timeout" };
+    }
+  } catch {
+    return {
+      status: "degraded",
+      reason: session.encoderError ? "encoder_error" : "frame_capture_failed",
+    };
+  }
+
+  const committed = session.actionLandmarks.latestCommittedFrame();
+  if (!committed || committed.frameIndex === previous?.frameIndex) {
+    return {
+      status: "degraded",
+      reason: session.encoderError ? "encoder_error" : "frame_capture_failed",
+    };
+  }
+  return { status: "committed", landmark: committed };
+}
+
+function recordingFrameSyncAvailability(session: RecordingSession): FrameSyncOutcome | null {
+  if (
+    recordingSessions.get(session.id) !== session ||
+    session.lifecycle === "stopping" ||
+    session.lifecycle === "finalized"
+  ) {
+    return { status: "cancelled" };
+  }
+  if (session.paused || session.lifecycle === "paused") {
+    return { status: "degraded", reason: "capture_paused" };
+  }
+  if (session.lifecycle !== "recording") {
+    return { status: "degraded", reason: "capture_inactive" };
+  }
+  if (session.encoderError) return { status: "degraded", reason: "encoder_error" };
+  return null;
+}
+
 export async function captureAutomationRecordingTail(session: RecordingSession): Promise<void> {
   for (const delayMs of recordingTailFrameDelaysMs()) {
     if (recordingSessions.get(session.id) !== session) return;
@@ -1731,7 +1862,7 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
       await startAuthorPreviewRecordingStream(session);
       session.captureTimer = setInterval(
         () => {
-          void queueRecordingFrame(session);
+          scheduleRecordingFrame(session);
         },
         Math.max(1000 / fps, 16),
       );
@@ -1745,7 +1876,7 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
   } else {
     session.captureTimer = setInterval(
       () => {
-        void queueRecordingFrame(session);
+        scheduleRecordingFrame(session);
       },
       Math.max(1000 / fps, 16),
     );

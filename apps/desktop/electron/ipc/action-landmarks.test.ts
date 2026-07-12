@@ -90,4 +90,50 @@ describe("RecordingActionLandmarkRecorder", () => {
       vi.useRealTimers();
     }
   });
+
+  it("settles degraded and cancelled arrival waiters without inventing landmarks", async () => {
+    const recorder = new RecordingActionLandmarkRecorder();
+    recorder.begin("degraded", {
+      delivery: "virtual_only",
+      point: { x: 3, y: 4 },
+      expectsPresentation: true,
+    });
+    const degraded = recorder.waitForArrivalOutcome("degraded", 10_000);
+    recorder.degradeArrival("degraded", "encoder_error");
+    await expect(degraded).resolves.toEqual({ status: "degraded", reason: "encoder_error" });
+    recorder.discard("degraded");
+
+    recorder.begin("cancelled", {
+      delivery: "virtual_only",
+      point: { x: 5, y: 6 },
+      expectsPresentation: true,
+    });
+    const cancelled = recorder.waitForArrivalOutcome("cancelled", 10_000);
+    recorder.cancelAll();
+    await expect(cancelled).resolves.toEqual({ status: "cancelled" });
+  });
+
+  it("settles every arrival waiter with the first terminal outcome", async () => {
+    vi.useFakeTimers();
+    try {
+      const recorder = new RecordingActionLandmarkRecorder();
+      recorder.begin("shared-timeout", {
+        delivery: "virtual_only",
+        point: { x: 1, y: 2 },
+        expectsPresentation: true,
+      });
+      const fast = recorder.waitForArrivalOutcome("shared-timeout", 10);
+      const slow = recorder.waitForArrivalOutcome("shared-timeout", 10_000);
+
+      await vi.advanceTimersByTimeAsync(10);
+      const degraded = { status: "degraded", reason: "frame_commit_timeout" } as const;
+      await expect(fast).resolves.toEqual(degraded);
+      await expect(slow).resolves.toEqual(degraded);
+
+      recorder.commitFrame({ frameIndex: 0, ptsUs: 0 });
+      await expect(recorder.waitForArrivalOutcome("shared-timeout", 1)).resolves.toEqual(degraded);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
