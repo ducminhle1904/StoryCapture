@@ -446,7 +446,20 @@ export async function ensureTargetVisible(input: {
       }),
     )) as { distance: number; viewportDiagonal: number; planCount: number } | null;
     if (!prepared) {
-      throw new TargetVisibilityPhaseError("scroll", "detached", observation.diagnostics);
+      try {
+        const stable = await waitForStableObservation(input);
+        return {
+          target: stable.target,
+          diagnostics: stable.diagnostics,
+          scrollTiming,
+          repositionAttempts,
+        };
+      } catch (error) {
+        if (error instanceof TargetVisibilityPhaseError) {
+          throw new TargetVisibilityPhaseError("scroll", "detached", error.diagnostics);
+        }
+        throw error;
+      }
     }
     if (prepared.planCount > 0) {
       scrollTiming = await runPreparedScroll({

@@ -35,6 +35,22 @@ describe("simulator DOM helpers", () => {
     Reflect.deleteProperty(document, "elementsFromPoint");
   });
 
+  it("keeps a textbox locator stable when an input becomes an autocomplete combobox", () => {
+    document.body.innerHTML = `
+      <label for="search">Search Wikipedia</label>
+      <input id="search" type="search" role="combobox" aria-expanded="true" />
+      <select aria-label="Search Wikipedia"><option>Other</option></select>
+    `;
+    document.querySelectorAll("*").forEach(makeVisible);
+
+    const target = findSimulatorTarget({
+      kind: "role",
+      value: { role: "textbox", name: "Search Wikipedia" },
+    });
+
+    expect(target).toBe(document.getElementById("search"));
+  });
+
   it("matches field labels case-insensitively and prefers editable controls", () => {
     document.body.innerHTML = `
       <label for="email">Email Address</label>

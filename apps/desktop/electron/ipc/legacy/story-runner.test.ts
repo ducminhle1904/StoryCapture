@@ -250,11 +250,15 @@ describe("story browser cursor pacing", () => {
 
   it("bounds repeated detach recovery and reports the final attempt", async () => {
     let prepareCalls = 0;
+    let readinessCalls = 0;
     const contents = {
       ...fakeContents([]),
       executeJavaScript: vi.fn(async (script: string) => {
         if (script.includes("resolvedTargetReadiness")) {
-          return { status: "not_ready", reason: "outside_viewport" };
+          readinessCalls += 1;
+          return readinessCalls === 1
+            ? { status: "not_ready", reason: "outside_viewport" }
+            : { status: "not_ready", reason: "detached" };
         }
         if (script.includes("viewportDiagonal")) {
           prepareCalls += 1;
@@ -281,7 +285,7 @@ describe("story browser cursor pacing", () => {
 
     await vi.runAllTimersAsync();
     await expect(run).resolves.toMatchObject({ succeeded: 0, failed: 1 });
-    expect(prepareCalls).toBe(3);
+    expect(prepareCalls).toBe(1);
     expect(failures[0]).toMatchObject({
       message: expect.stringContaining("detached after 3 attempts"),
     });

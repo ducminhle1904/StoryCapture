@@ -166,10 +166,18 @@ export function findSimulatorTarget(
         value && typeof value === "object" ? (value as { role?: unknown; name?: unknown }) : null;
       const role = roleTarget ? String(roleTarget.role || "") : "";
       const name = roleTarget ? String(roleTarget.name || "").toLowerCase() : "";
-      matches = all.filter(
-        (candidate) =>
-          roleOf(candidate) === role && (!name || nameOf(candidate).toLowerCase().includes(name)),
-      );
+      matches = all.filter((candidate) => {
+        const candidateRole = roleOf(candidate);
+        const tag = candidate.tagName.toLowerCase();
+        const textboxCompatibleRole =
+          role === "textbox" &&
+          ["textbox", "combobox", "searchbox"].includes(candidateRole) &&
+          (tag === "input" || tag === "textarea" || (candidate as HTMLElement).isContentEditable);
+        return (
+          (candidateRole === role || textboxCompatibleRole) &&
+          (!name || nameOf(candidate).toLowerCase().includes(name))
+        );
+      });
     } else if (typeof value === "string") {
       const needle = value.toLowerCase();
       matches = all.filter((candidate) => {

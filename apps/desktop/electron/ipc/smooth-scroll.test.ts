@@ -90,6 +90,36 @@ describe("smooth scroll helpers", () => {
     ).toBe(false);
   });
 
+  it("waits for semantic replacement when a prepared scroll target detaches", async () => {
+    const replacement = ready(260, 340);
+    let readinessPolls = 0;
+    const contents = {
+      isDestroyed: () => false,
+      executeJavaScript: vi.fn(async (script: string) => {
+        if (script.includes("viewportDiagonal")) return null;
+        return true;
+      }),
+    };
+
+    const result = await ensureTargetVisible({
+      contents: contents as never,
+      target: { kind: "role", value: { role: "textbox", name: "Search Wikipedia" } },
+      observe: async () => {
+        readinessPolls += 1;
+        if (readinessPolls === 1) {
+          return { status: "not_ready", reason: "outside_viewport" };
+        }
+        if (readinessPolls <= 20) return { status: "not_ready", reason: "detached" };
+        return replacement;
+      },
+      wait: async () => true,
+    });
+
+    expect(readinessPolls).toBe(22);
+    expect(result.target.center).toEqual({ x: 260, y: 340 });
+    expect(result.scrollTiming).toBeNull();
+  });
+
   it("executes explicit targeted vh scroll with clamped applied distance", async () => {
     const contents = {
       isDestroyed: () => false,
