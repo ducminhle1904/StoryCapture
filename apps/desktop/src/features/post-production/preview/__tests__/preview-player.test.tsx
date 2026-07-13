@@ -6,6 +6,7 @@ import { sampleCursorClickEffect } from "../../state/cursor-click-effect";
 import type { SourceTimelineMap } from "../../state/source-timeline-map";
 import { useEditorStore } from "../../state/store";
 import type { CursorClip } from "../../state/timeline-slice";
+import { resolveZoomMotion, sampleResolvedZoom } from "../../state/zoom-motion";
 import { PreviewEngine } from "../preview-engine";
 import { PreviewPlayer } from "../preview-player";
 import { ACTIONS } from "./fixtures";
@@ -920,7 +921,13 @@ describe("PreviewPlayer", () => {
     });
 
     const zoomLayer = screen.getByTestId("preview-zoom-layer");
-    await waitFor(() => expect(zoomLayer.style.transform).toContain("matrix(1.5"));
+    const expectedScale = sampleResolvedZoom(
+      resolveZoomMotion(useEditorStore.getState().tracks.zoom),
+      1110,
+    ).scale;
+    await waitFor(() =>
+      expect(zoomLayer.style.transform).toContain(`matrix(${expectedScale}`),
+    );
     expect(zoomLayer.style.transformOrigin).toBe("0 0");
 
     act(() => {
@@ -932,7 +939,13 @@ describe("PreviewPlayer", () => {
     act(() => {
       useEditorStore.getState().setPlayhead(1890);
     });
-    await waitFor(() => expect(zoomLayer.style.transform).toContain("matrix(1.5"));
+    const expectedExitScale = sampleResolvedZoom(
+      resolveZoomMotion(useEditorStore.getState().tracks.zoom),
+      1890,
+    ).scale;
+    await waitFor(() =>
+      expect(zoomLayer.style.transform).toContain(`matrix(${expectedExitScale}`),
+    );
 
     expect(PreviewEngine).not.toHaveBeenCalled();
   });

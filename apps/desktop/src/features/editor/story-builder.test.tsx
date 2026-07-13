@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
@@ -28,19 +28,26 @@ function parseStory(source: string): Story {
 
 interface HarnessProps {
   initialStory: Story;
+  initialPolish?: StoryPolishDoc;
+  simulatorActive?: boolean;
   onSourceChange?: (source: string, story?: Story) => void;
 }
 
-function StoryBuilderHarness({ initialStory, onSourceChange = () => {} }: HarnessProps) {
+function StoryBuilderHarness({
+  initialStory,
+  initialPolish = DEFAULT_POLISH_DOC,
+  simulatorActive = false,
+  onSourceChange = () => {},
+}: HarnessProps) {
   const [story, setStory] = useState(initialStory);
   const [source, setSource] = useState(formatEditableStory(initialStory));
-  const [polish, setPolish] = useState<StoryPolishDoc>(DEFAULT_POLISH_DOC);
+  const [polish, setPolish] = useState<StoryPolishDoc>(initialPolish);
 
   return (
     <StoryBuilder
       story={story}
       polish={polish}
-      simulatorActive={false}
+      simulatorActive={simulatorActive}
       storySource={source}
       storyPath={null}
       streamId={null}
@@ -83,5 +90,74 @@ describe("StoryBuilder UI/code synchronization", () => {
 
     expect(clickValue).toHaveValue("Continue");
     expect(sourceChanges.at(-1)).toContain('click <button> "Continue"');
+  });
+
+  it("persists Full and Reduced Motion selection in project polish", async () => {
+    const user = userEvent.setup();
+    render(<StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} />);
+
+    const fullMotion = screen.getByRole("button", { name: "Full" });
+    const reducedMotion = screen.getByRole("button", { name: "Reduced" });
+    expect(fullMotion).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(reducedMotion);
+
+    expect(reducedMotion).toHaveAttribute("aria-pressed", "true");
+    expect(fullMotion).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("defaults zoom duration to 1600 ms and clamps manual input to 900 ms", () => {
+    render(<StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} />);
+
+    const duration = screen.getByLabelText("Auto zoom duration");
+    expect(duration).toHaveValue(1_600);
+    expect(duration).toHaveAttribute("min", "900");
+
+    fireEvent.change(duration, { target: { value: "500" } });
+
+    expect(duration).toHaveValue(900);
+  });
+
+  it("does not overwrite a manually edited duration when the auto zoom preset changes", async () => {
+    const user = userEvent.setup();
+    render(<StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} />);
+
+    const duration = screen.getByLabelText("Auto zoom duration");
+    fireEvent.change(duration, { target: { value: "2200" } });
+
+    await user.click(screen.getByLabelText("Auto zoom"));
+    await user.click(screen.getByRole("option", { name: "Strong" }));
+
+    expect(duration).toHaveValue(2_200);
+  });
+
+  it("preserves a persisted custom duration when the preset changes", async () => {
+    const user = userEvent.setup();
+    render(
+      <StoryBuilderHarness
+        initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)}
+        initialPolish={{
+          ...DEFAULT_POLISH_DOC,
+          global: { ...DEFAULT_POLISH_DOC.global, autoZoomDurationMs: 2_400 },
+        }}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Auto zoom"));
+    await user.click(screen.getByRole("option", { name: "Strong" }));
+
+    expect(screen.getByLabelText("Auto zoom duration")).toHaveValue(2_400);
+  });
+
+  it("disables motion controls while the simulator is active", () => {
+    render(
+      <StoryBuilderHarness
+        initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)}
+        simulatorActive
+      />,
+    );
+
+    expect(screen.getByLabelText("Motion mode")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Auto zoom duration")).toBeDisabled();
   });
 });

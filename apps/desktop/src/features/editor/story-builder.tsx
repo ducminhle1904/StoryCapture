@@ -24,6 +24,7 @@ import {
 } from "@/ipc/picker";
 import {
   calloutText,
+  DEFAULT_AUTO_ZOOM_DURATION_MS,
   highlightEnabled,
   type PolishActionFocus,
   type PolishAutoZoom,
@@ -32,6 +33,7 @@ import {
   type PolishCursorMode,
   type PolishCursorSkin,
   type PolishHighlight,
+  type PolishMotionMode,
   type PolishRecipe,
   type PolishSoundCue,
   type PolishTransition,
@@ -41,6 +43,7 @@ import {
   setScenePolish,
   setStepPolish,
 } from "./polish-sidecar";
+import { MIN_RESIZABLE_ZOOM_DURATION_MS } from "../post-production/state/zoom-motion";
 import {
   cloneStoryWithStepId,
   commandSupportsPick,
@@ -87,6 +90,10 @@ const autoZoomOptions = [
   { value: "strong", label: "Strong" },
 ];
 const actionFocusOptions = autoZoomOptions;
+const motionModeOptions = [
+  { value: "full", label: "Full" },
+  { value: "reduced", label: "Reduced" },
+];
 const cursorModeOptions = [
   { value: "raw", label: "Raw" },
   { value: "smooth", label: "Smooth" },
@@ -359,6 +366,7 @@ export function StoryBuilder({
       recipe: PolishRecipe;
       autoZoom: PolishAutoZoom;
       actionFocus: PolishActionFocus;
+      motionMode: PolishMotionMode;
       autoZoomDurationMs: number;
       cursor: PolishCursorMode;
       cursorSkin: PolishCursorSkin;
@@ -539,6 +547,18 @@ export function StoryBuilder({
             </PolishGroup>
 
             <PolishGroup title="Motion">
+              <LabeledControl label="Motion mode" className="min-w-[140px] flex-1">
+                <ScSegmented
+                  size="sm"
+                  value={polish.global.motionMode ?? "full"}
+                  aria-label="Motion mode"
+                  disabled={simulatorActive}
+                  options={motionModeOptions}
+                  onValueChange={(value) =>
+                    updateGlobal({ motionMode: value as PolishMotionMode })
+                  }
+                />
+              </LabeledControl>
               <LabeledControl label="Auto zoom" className="min-w-[140px] flex-1">
                 <SelectField
                   value={polish.global.autoZoom}
@@ -563,16 +583,19 @@ export function StoryBuilder({
                 <input
                   className={fieldClass}
                   type="number"
-                  min={200}
+                  min={MIN_RESIZABLE_ZOOM_DURATION_MS}
                   step={100}
                   value={polish.global.autoZoomDurationMs}
                   disabled={simulatorActive}
                   aria-label="Auto zoom duration"
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateGlobal({
-                      autoZoomDurationMs: Math.max(200, Number(event.target.value) || 800),
-                    })
-                  }
+                      autoZoomDurationMs: Math.max(
+                        MIN_RESIZABLE_ZOOM_DURATION_MS,
+                        Number(event.target.value) || DEFAULT_AUTO_ZOOM_DURATION_MS,
+                      ),
+                    });
+                  }}
                 />
               </LabeledControl>
             </PolishGroup>

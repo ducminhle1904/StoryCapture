@@ -4,6 +4,7 @@
 
 import {
   calloutText,
+  DEFAULT_AUTO_ZOOM_DURATION_MS,
   highlightEnabled,
   type StoryPolishDoc,
 } from "@/features/editor/polish-sidecar";
@@ -52,15 +53,14 @@ type CaptureRect = { x: number; y: number; width: number; height: number };
 type NormalizedBounds = { x: number; y: number; w: number; h: number };
 
 const FALLBACK_DURATION_MS = 60_000;
-const AUTO_ZOOM_PRE_ROLL_MS = 200;
-const AUTO_ZOOM_DURATION_MS = 800;
-const AUTO_ZOOM_DEBOUNCE_MS = 800;
+const AUTO_ZOOM_PRE_ROLL_MS = 300;
+const AUTO_ZOOM_DURATION_MS = DEFAULT_AUTO_ZOOM_DURATION_MS;
 const CALLOUT_DURATION_MS = 1_600;
 
 const ZOOM_SCALE = {
-  subtle: 1.18,
-  standard: 1.35,
-  strong: 1.65,
+  subtle: 1.15,
+  standard: 1.28,
+  strong: 1.5,
 } as const;
 
 const ACTION_FOCUS_HIGHLIGHT = {
@@ -223,6 +223,7 @@ function buildAutoZoomClips(
         durationMs,
         label: "Auto zoom",
         target: { kind: "cursor" as const },
+        origin: "auto" as const,
         scale,
         center: normalizeCenter(
           actions.capture_rect,
@@ -235,11 +236,8 @@ function buildAutoZoomClips(
   if (!trajectory) return [];
 
   const zoom: ZoomClip[] = [];
-  let lastEmittedClickMs = Number.NEGATIVE_INFINITY;
   for (const frame of trajectory.frames) {
     if (!frame.click) continue;
-    if (frame.t_ms - lastEmittedClickMs < AUTO_ZOOM_DEBOUNCE_MS) continue;
-    lastEmittedClickMs = frame.t_ms;
     zoom.push({
       id: `zoom-${idBase}-${frame.t_ms}`,
       trackId: "zoom",
@@ -247,6 +245,7 @@ function buildAutoZoomClips(
       durationMs,
       label: "Auto zoom",
       target: { kind: "cursor" },
+      origin: "auto",
       scale,
       center: normalizeCenter(trajectory.capture_rect, frame.x, frame.y),
       preset: "CALM",
@@ -615,6 +614,7 @@ function buildPolishClips({
           durationMs: clampClipDuration(zoomStartMs, stepPolish.zoomDurationMs ?? 900, sceneEndMs),
           label: "Script zoom",
           target: zoomTarget,
+          origin: "authored",
           scale: stepPolish.zoomScale ?? ZOOM_SCALE[zoomLevel as keyof typeof ZOOM_SCALE],
           center: center ?? { x: 0.5, y: 0.5 },
           preset: polish.global.recipe === "calm" ? "CALM" : "DYNAMIC",
@@ -734,8 +734,9 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     });
   }
 
+  const reducedMotion = polish?.global.motionMode === "reduced";
   const autoZoom =
-    polish?.global.autoZoom === "off"
+    reducedMotion || polish?.global.autoZoom === "off"
       ? []
       : buildAutoZoomClips(
           trajectory,
@@ -757,7 +758,11 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     ...autoZoom.map((clip) => ({ ...clip, syncGroupId, sourceRevision, sourceTimeMap })),
     ...polishClips.zoom,
   ];
-  const actionFocusMode = polish?.global.actionFocus ?? "off";
+  const actionFocusMode = reducedMotion
+    ? polish?.global.actionFocus === "off"
+      ? "standard"
+      : (polish?.global.actionFocus ?? "standard")
+    : (polish?.global.actionFocus ?? "off");
   const actionFocusAnnotations =
     actionFocusMode === "off"
       ? []
@@ -767,7 +772,9 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
           actionFocusMode,
           new Set(
             polishClips.annotations
-              .map((clip) => (clip.anchor?.kind === "target" ? clip.anchor.stepId : null))
+              .map((clip) =>
+                clip.highlight && clip.anchor?.kind === "target" ? clip.anchor.stepId : null,
+              )
               .filter((stepId): stepId is string => Boolean(stepId)),
           ),
         );

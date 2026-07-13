@@ -53,7 +53,6 @@ import type {
   CursorClip,
   CursorMotionPreset,
   CursorSkin,
-  ZoomClip,
 } from "../state/timeline-slice";
 import {
   buildVirtualCursorSchedule,
@@ -63,7 +62,9 @@ import {
   applyZoomToBounds,
   applyZoomToPoint,
   normalizedZoomCropTopLeft,
-  sampleZoom,
+  resolveZoomMotion,
+  sampleResolvedZoom,
+  type ResolvedZoomMotion,
 } from "../state/zoom-motion";
 import { PresentedMediaClock } from "./presented-media-clock";
 import { PreviewEngine } from "./preview-engine";
@@ -606,7 +607,7 @@ export function PreviewPlayer({
   const playingRef = useRef(false);
   const cursorClipsRef = useRef<CursorClip[]>([]);
   const cursorSchedulesRef = useRef(new Map<string, VirtualCursorSchedule | null>());
-  const zoomClipsRef = useRef<ZoomClip[]>([]);
+  const resolvedZoomMotionsRef = useRef<ResolvedZoomMotion[]>([]);
   const trajectoryRef = useRef<RecordingTrajectory | null>(trajectory);
   const durationMsRef = useRef(0);
 
@@ -666,7 +667,11 @@ export function PreviewPlayer({
     () => activeHighlightClips(annotationClips, playheadMs),
     [annotationClips, playheadMs],
   );
-  const previewZoom = useMemo(() => sampleZoom(zoomClips, playheadMs), [playheadMs, zoomClips]);
+  const resolvedZoomMotions = useMemo(() => resolveZoomMotion(zoomClips), [zoomClips]);
+  const previewZoom = useMemo(
+    () => sampleResolvedZoom(resolvedZoomMotions, playheadMs),
+    [playheadMs, resolvedZoomMotions],
+  );
   const editingTextClip = useMemo(
     () => annotationClips.find((clip) => clip.id === editingTextClipId) ?? null,
     [annotationClips, editingTextClipId],
@@ -724,7 +729,7 @@ export function PreviewPlayer({
     const frame = previewFrameContentRef.current;
     if (!frame) return;
 
-    const zoom = sampleZoom(zoomClipsRef.current, playheadMs);
+    const zoom = sampleResolvedZoom(resolvedZoomMotionsRef.current, playheadMs);
     const crop = normalizedZoomCropTopLeft(zoom.center, zoom.scale);
     const width = frame.clientWidth || frame.getBoundingClientRect().width;
     const height = frame.clientHeight || frame.getBoundingClientRect().height;
@@ -772,7 +777,7 @@ export function PreviewPlayer({
       }
 
       if (cursor.getAttribute("src") !== src) cursor.setAttribute("src", src);
-      const zoom = sampleZoom(zoomClipsRef.current, playheadMs);
+      const zoom = sampleResolvedZoom(resolvedZoomMotionsRef.current, playheadMs);
       const cursorPoint = applyZoomToPoint(sample, zoom);
       const renderScale = cursorRenderScale(previewFrameContentRef.current);
       const clipScale = Math.max(0.1, clip.sizeScale || 1);
@@ -992,9 +997,9 @@ export function PreviewPlayer({
   }, [applyPreviewZoom, cursorClips, cursorSchedules, renderCursorOverlay, trajectory]);
 
   useEffect(() => {
-    zoomClipsRef.current = zoomClips;
+    resolvedZoomMotionsRef.current = resolvedZoomMotions;
     applyPreviewZoom(useEditorStore.getState().playheadMs);
-  }, [applyPreviewZoom, zoomClips]);
+  }, [applyPreviewZoom, resolvedZoomMotions]);
 
   useEffect(() => {
     setMediaAspect(safeAspect(width, height));

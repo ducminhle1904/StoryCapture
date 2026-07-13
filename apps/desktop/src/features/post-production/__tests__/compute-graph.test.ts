@@ -14,6 +14,14 @@ import type { Graph, VideoNode } from "../state/compute-graph";
 import { computeGraph, graphIsRenderable } from "../state/compute-graph";
 import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
+import type { ZoomClip } from "../state/timeline-slice";
+import {
+  applyZoomToPoint,
+  normalizedZoomCenterToPixels,
+  resolveZoomMotion,
+  sampleResolvedZoom,
+} from "../state/zoom-motion";
+import { sampleExportZoom } from "../export-compositor/export-compositor-app";
 
 function videoNodeAt(graph: Graph, index: number): VideoNode {
   const node = graph.video[index];
@@ -202,7 +210,13 @@ describe("computeGraph", () => {
     if (zoom.type !== "zoom-pan") throw new Error("expected zoom-pan");
     expect(zoom.target).toEqual({ kind: "cursor" });
     expect(zoom.keyframes).toHaveLength(4);
-    expect(zoom.keyframes.map((k) => k.t_ms)).toEqual([1000, 1220, 2280, 2500]);
+    expect(zoom.keyframes.map((k) => k.t_ms)).toEqual([1000, 1500, 2000, 2500]);
+    expect(zoom.keyframes.map((k) => k.easing)).toEqual([
+      "ease-out-cubic",
+      "linear",
+      "ease-out-cubic",
+      "linear",
+    ]);
     expect(zoom.keyframes.map((k) => k.scale)).toEqual([1.0, 2.0, 2.0, 1.0]);
     expect(zoom.keyframes.map((k) => k.center)).toEqual([
       { x: 960, y: 540 },
@@ -434,6 +448,128 @@ describe("computeGraph", () => {
     ]);
   });
 
+  it.each([
+    {
+      name: "regular motion and boundaries",
+      clips: [
+        {
+          id: "regular",
+          trackId: "zoom",
+          startMs: 1_000,
+          durationMs: 1_500,
+          target: { kind: "cursor" },
+          scale: 2,
+          center: { x: 0.3, y: 0.4 },
+          origin: "authored",
+        },
+      ] satisfies ZoomClip[],
+      times: [999, 1_000, 1_225, 2_049, 2_500],
+    },
+    {
+      name: "auto handoff",
+      clips: [
+        {
+          id: "auto-a",
+          trackId: "zoom",
+          startMs: 500,
+          durationMs: 1_200,
+          target: { kind: "cursor" },
+          scale: 1.8,
+          center: { x: 0.3, y: 0.4 },
+          origin: "auto",
+        },
+        {
+          id: "auto-b",
+          trackId: "zoom",
+          startMs: 1_900,
+          durationMs: 1_200,
+          target: { kind: "cursor" },
+          scale: 2.2,
+          center: { x: 0.7, y: 0.6 },
+          origin: "auto",
+        },
+      ] satisfies ZoomClip[],
+      times: [500, 1_700, 1_900, 2_150, 3_100],
+    },
+    {
+      name: "authored overlap prefers latest motion",
+      clips: [
+        {
+          id: "authored-a",
+          trackId: "zoom",
+          startMs: 0,
+          durationMs: 2_000,
+          target: { kind: "cursor" },
+          scale: 1.7,
+          center: { x: 0.35, y: 0.45 },
+          origin: "authored",
+        },
+        {
+          id: "authored-b",
+          trackId: "zoom",
+          startMs: 1_000,
+          durationMs: 1_500,
+          target: { kind: "cursor" },
+          scale: 2.1,
+          center: { x: 0.65, y: 0.55 },
+          origin: "authored",
+        },
+      ] satisfies ZoomClip[],
+      times: [999, 1_000, 1_250, 1_999, 2_500],
+    },
+  ])("keeps preview-resolution and export sampling in parity for $name", ({ clips, times }) => {
+    useEditorStore.setState({ tracks: { video: [], cursor: [], zoom: clips, sound: [], annotations: [] } });
+    const graph = computeGraph(useEditorStore.getState());
+    const motions = resolveZoomMotion(clips);
+
+    for (const timeMs of times) {
+      const preview = sampleResolvedZoom(motions, timeMs);
+      const exported = sampleExportZoom(graph, timeMs, graph.output_width, graph.output_height);
+      const expectedCenter = normalizedZoomCenterToPixels(
+        preview.center,
+        preview.scale,
+        graph.output_width,
+        graph.output_height,
+      );
+      expect(exported.scale, `scale at ${timeMs}ms`).toBeCloseTo(preview.scale, 8);
+      expect(exported.center.x, `center.x at ${timeMs}ms`).toBeCloseTo(expectedCenter.x, 8);
+      expect(exported.center.y, `center.y at ${timeMs}ms`).toBeCloseTo(expectedCenter.y, 8);
+    }
+  });
+
+  it("preserves distinct graph identity for authored zooms with the same start", () => {
+    const clips: ZoomClip[] = [
+      {
+        id: "same-start-a",
+        trackId: "zoom",
+        startMs: 1_000,
+        durationMs: 1_500,
+        target: { kind: "cursor" },
+        scale: 1.5,
+        center: { x: 0.3, y: 0.4 },
+        origin: "authored",
+      },
+      {
+        id: "same-start-b",
+        trackId: "zoom",
+        startMs: 1_000,
+        durationMs: 1_800,
+        target: { kind: "element", selector: "#checkout" },
+        scale: 2,
+        center: { x: 0.7, y: 0.6 },
+        origin: "authored",
+      },
+    ];
+    useEditorStore.setState({ tracks: { video: [], cursor: [], zoom: clips, sound: [], annotations: [] } });
+
+    const nodes = computeGraph(useEditorStore.getState()).video.filter(
+      (node) => node.type === "zoom-pan",
+    );
+
+    expect(new Set(nodes.map((node) => node.id)).size).toBe(2);
+    expect(nodes.map((node) => node.target)).toEqual(clips.map((clip) => clip.target));
+  });
+
   it("emits transition nodes with deterministic boundary order and Rust-compatible offsets", () => {
     useEditorStore.setState({
       tracks: {
@@ -607,8 +743,12 @@ describe("computeGraph", () => {
 
     const text = g.video.find((node) => node.type === "text-overlay");
     if (!text || text.type !== "text-overlay") throw new Error("expected text-overlay");
-    expect(text.boxes[0]?.pos.x).toBeCloseTo(0.5);
-    expect(text.boxes[0]?.pos.y).toBeCloseTo(0.5);
+    const expectedAnchor = applyZoomToPoint(
+      { x: 0.25, y: 0.35 },
+      sampleResolvedZoom(resolveZoomMotion(useEditorStore.getState().tracks.zoom), 1_500),
+    );
+    expect(text.boxes[0]?.pos.x).toBeCloseTo(expectedAnchor.x);
+    expect(text.boxes[0]?.pos.y).toBeCloseTo(expectedAnchor.y);
   });
 
   it("maps inherited text preset styling, background, font, and animation into text overlay boxes", () => {

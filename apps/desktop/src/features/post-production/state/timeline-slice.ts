@@ -139,6 +139,8 @@ export interface ZoomClip extends ClipBase {
   target: ZoomTarget;
   scale: number;
   center: Vec2;
+  /** Missing on legacy clips and therefore treated as authored motion. */
+  origin?: "auto" | "authored";
   preset?: ZoomPreset;
   easing?: string;
 }

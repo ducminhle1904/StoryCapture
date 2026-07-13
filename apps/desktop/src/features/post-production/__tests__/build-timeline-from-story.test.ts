@@ -6,6 +6,7 @@ import { actionSidecarFps, type RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
 import type { RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
+import { DEFAULT_POLISH_DOC } from "@/features/editor/polish-sidecar";
 
 import { buildTimelineFromStory } from "../state/build-timeline-from-story";
 
@@ -242,7 +243,8 @@ describe("buildTimelineFromStory", () => {
     expect(out.zoom).toHaveLength(1);
     expect(out.zoom[0]).toMatchObject({
       id: expect.stringMatching(/^zoom-[a-f0-9]{8}-1000$/),
-      startMs: 800,
+      startMs: 700,
+      origin: "auto",
       center: { x: 0.5, y: 0.5 },
     });
     expect(out.annotations).toHaveLength(0);
@@ -527,9 +529,10 @@ describe("buildTimelineFromStory", () => {
     });
 
     expect(out.zoom).toHaveLength(3);
-    expect(out.zoom.map((clip) => clip.startMs)).toEqual([800, 4_800, 9_800]);
-    expect(out.zoom.map((clip) => clip.durationMs)).toEqual([800, 800, 800]);
-    expect(out.zoom.map((clip) => clip.scale)).toEqual([1.35, 1.35, 1.35]);
+    expect(out.zoom.map((clip) => clip.startMs)).toEqual([700, 4_700, 9_700]);
+    expect(out.zoom.map((clip) => clip.durationMs)).toEqual([1_600, 1_600, 1_600]);
+    expect(out.zoom.map((clip) => clip.scale)).toEqual([1.28, 1.28, 1.28]);
+    expect(out.zoom.map((clip) => clip.origin)).toEqual(["auto", "auto", "auto"]);
     expect(out.zoom.map((clip) => clip.preset)).toEqual(["CALM", "CALM", "CALM"]);
     expect(out.zoom.map((clip) => clip.target)).toEqual([
       { kind: "cursor" },
@@ -551,10 +554,10 @@ describe("buildTimelineFromStory", () => {
     });
 
     expect(out.zoom[0]?.startMs).toBe(0);
-    expect(out.zoom[0]?.durationMs).toBe(800);
+    expect(out.zoom[0]?.durationMs).toBe(1_600);
   });
 
-  it("debounces clicked frames within 800ms of a prior emitted click", () => {
+  it("preserves dense trajectory clicks for cinematic handoff", () => {
     const out = buildTimelineFromStory({
       story: null,
       recording: RECORDING,
@@ -564,11 +567,50 @@ describe("buildTimelineFromStory", () => {
       ]),
     });
 
-    expect(out.zoom).toHaveLength(1);
+    expect(out.zoom).toHaveLength(2);
     expect(out.zoom[0]).toMatchObject({
-      startMs: 800,
+      startMs: 700,
       center: { x: 0.5, y: 0.5 },
     });
+    expect(out.zoom[1]).toMatchObject({ startMs: 1_200, origin: "auto" });
+  });
+
+  it("replaces automatic camera motion with a non-duplicated focus highlight in Reduced Motion", () => {
+    const out = buildTimelineFromStory({
+      story: null,
+      recording: RECORDING,
+      actions: ACTIONS,
+      trajectory: TRAJECTORY,
+      polish: {
+        version: 2,
+        global: { ...DEFAULT_POLISH_DOC.global, motionMode: "reduced", actionFocus: "off" },
+        scenes: {},
+        steps: {},
+      },
+    });
+
+    expect(out.zoom).toHaveLength(0);
+    expect(out.annotations).toHaveLength(1);
+    expect(out.annotations[0]).toMatchObject({ label: "Action focus", trackId: "annotations" });
+  });
+
+  it("keeps a Reduced Motion focus highlight when the authored annotation is callout-only", () => {
+    const out = buildTimelineFromStory({
+      story: STORY,
+      recording: RECORDING,
+      actions: ACTIONS,
+      trajectory: TRAJECTORY,
+      stepTiming: STEP_TIMING,
+      polish: {
+        version: 2,
+        global: { ...DEFAULT_POLISH_DOC.global, motionMode: "reduced", actionFocus: "off" },
+        scenes: {},
+        steps: { "step-buy": { callout: "Buy now" } },
+      },
+    });
+
+    expect(out.annotations.some((clip) => clip.text === "Buy now")).toBe(true);
+    expect(out.annotations.some((clip) => clip.label === "Action focus")).toBe(true);
   });
 
   it("generates deterministic auto-zoom ids from stable input", () => {
@@ -629,7 +671,8 @@ describe("buildTimelineFromStory", () => {
     expect(out.zoom[0]).toMatchObject({
       id: expect.stringContaining("step-buy"),
       label: "Script zoom",
-      scale: 1.65,
+      scale: 1.5,
+      origin: "authored",
     });
     expect(out.annotations).toHaveLength(1);
     expect(out.annotations[0]).toMatchObject({

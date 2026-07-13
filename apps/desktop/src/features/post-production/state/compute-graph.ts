@@ -48,8 +48,9 @@ import {
   applyZoomToBounds,
   applyZoomToPoint,
   normalizedZoomCenterToPixels,
-  sampleZoom,
-  zoomTiming,
+  resolveZoomMotion,
+  sampleResolvedZoom,
+  type ZoomSample,
 } from "./zoom-motion";
 
 /**
@@ -89,6 +90,8 @@ export interface Rgba {
 
 export type EasingKind =
   | "linear"
+  | "ease-in-cubic"
+  | "ease-out-cubic"
   | "ease-in"
   | "ease-out"
   | "ease-in-out"
@@ -293,47 +296,27 @@ function videoSource(clip: VideoClip): VideoNode | null {
   };
 }
 
-function zoomPan(clip: ZoomClip, outputWidth: number, outputHeight: number): VideoNode {
-  const timing = zoomTiming(clip);
-  const targetScale = Number.isFinite(clip.scale) ? Math.max(1, clip.scale) : 1;
-  const centerAtRest = normalizedZoomCenterToPixels(clip.center, 1, outputWidth, outputHeight);
-  const centerAtScale = normalizedZoomCenterToPixels(
-    clip.center,
-    targetScale,
-    outputWidth,
-    outputHeight,
-  );
-  const keyframes: ZoomKeyframe[] = [
-    {
-      t_ms: clip.startMs,
-      center: centerAtRest,
-      scale: 1.0,
-      easing: "ease-in-out-cubic",
-    },
-    {
-      t_ms: timing.inEndMs,
-      center: centerAtScale,
-      scale: targetScale,
-      easing: "ease-in-out-cubic",
-    },
-    {
-      t_ms: timing.outStartMs,
-      center: centerAtScale,
-      scale: targetScale,
-      easing: "ease-in-out-cubic",
-    },
-    {
-      t_ms: clip.startMs + clip.durationMs,
-      center: centerAtRest,
-      scale: 1.0,
-      easing: "ease-in-out-cubic",
-    },
-  ];
+function zoomPan(
+  clip: ZoomClip,
+  keyframes: ReturnType<typeof resolveZoomMotion>[number]["keyframes"],
+  outputWidth: number,
+  outputHeight: number,
+): VideoNode {
   return {
     type: "zoom-pan",
     id: deterministicNodeId(clip.id, "zoom"),
     target: clip.target,
-    keyframes,
+    keyframes: keyframes.map((keyframe) => ({
+      t_ms: keyframe.timeMs,
+      center: normalizedZoomCenterToPixels(
+        keyframe.center,
+        keyframe.scale,
+        outputWidth,
+        outputHeight,
+      ),
+      scale: keyframe.scale,
+      easing: keyframe.easing,
+    })),
   };
 }
 
@@ -465,7 +448,7 @@ function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
 
 function highlightOverlaySpec(
   clip: AnnotationClip,
-  zoomAt: (playheadMs: number) => ReturnType<typeof sampleZoom>,
+  zoomAt: (playheadMs: number) => ZoomSample,
   output: { w: number; h: number },
 ): HighlightOverlaySpec | null {
   const highlight = clip.highlight;
@@ -615,17 +598,19 @@ export function computeGraph(state: ComputeGraphInput): Graph {
     const n = videoSource(clip);
     if (n) video.push(n);
   }
-  for (const clip of clipsByStart(tracks.zoom)) {
-    video.push(zoomPan(clip, px.w, px.h));
+  const sortedZoomClips = clipsByStart(tracks.zoom);
+  const resolvedZoomMotions = resolveZoomMotion(sortedZoomClips);
+  for (const motion of resolvedZoomMotions) {
+    video.push(zoomPan(motion.sourceClip, motion.keyframes, px.w, px.h));
   }
   const bg = exportForm.frameMode === "framed" ? backgroundNode(readEditorBackground(state)) : null;
   if (bg) video.push(bg);
   const sortedAnnotations = clipsByStart(tracks.annotations);
-  const zoomSampleCache = new Map<number, ReturnType<typeof sampleZoom>>();
-  const zoomAt = (playheadMs: number): ReturnType<typeof sampleZoom> => {
+  const zoomSampleCache = new Map<number, ZoomSample>();
+  const zoomAt = (playheadMs: number): ZoomSample => {
     const cached = zoomSampleCache.get(playheadMs);
     if (cached) return cached;
-    const next = sampleZoom(tracks.zoom, playheadMs);
+    const next = sampleResolvedZoom(resolvedZoomMotions, playheadMs);
     zoomSampleCache.set(playheadMs, next);
     return next;
   };

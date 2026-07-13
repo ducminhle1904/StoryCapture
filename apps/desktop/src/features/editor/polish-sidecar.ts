@@ -5,6 +5,7 @@ export type PolishRecipe = "dynamic" | "calm" | "minimal" | "dramatic";
 export type PolishAutoZoom = "off" | "subtle" | "standard" | "strong";
 export type PolishActionFocus = "off" | "subtle" | "standard" | "strong";
 export type PolishCursorMode = "raw" | "smooth" | "hidden";
+export type PolishMotionMode = "full" | "reduced";
 export type PolishCursorSkin = "mac-default" | "win-default" | "dark" | "light" | "big-arrow";
 export type PolishZoom = "off" | "subtle" | "standard" | "strong";
 export type PolishTransition =
@@ -23,6 +24,8 @@ export type PolishTransition =
   | "slide-down"
   | "circle-open"
   | "circle-close";
+
+export const DEFAULT_AUTO_ZOOM_DURATION_MS = 1_600;
 
 export type PolishBackground =
   | { kind: "transparent" }
@@ -58,6 +61,8 @@ export interface PolishSoundCue {
 
 export interface StoryPolishGlobal {
   recipe: PolishRecipe;
+  /** Optional at the serialized boundary; missing values normalize to Full Motion. */
+  motionMode?: PolishMotionMode;
   autoZoom: PolishAutoZoom;
   actionFocus: PolishActionFocus;
   autoZoomDurationMs: number;
@@ -101,9 +106,10 @@ export const DEFAULT_POLISH_DOC: StoryPolishDoc = {
   version: 2,
   global: {
     recipe: "dynamic",
+    motionMode: "full",
     autoZoom: "standard",
     actionFocus: "off",
-    autoZoomDurationMs: 800,
+    autoZoomDurationMs: DEFAULT_AUTO_ZOOM_DURATION_MS,
     cursor: "smooth",
     cursorSkin: "mac-default",
     cursorSizeScale: 1,
@@ -114,6 +120,7 @@ export const DEFAULT_POLISH_DOC: StoryPolishDoc = {
 };
 
 const POLISH_RECIPES: readonly PolishRecipe[] = ["dynamic", "calm", "minimal", "dramatic"];
+const POLISH_MOTION_MODES: readonly PolishMotionMode[] = ["full", "reduced"];
 const POLISH_AUTO_ZOOMS: readonly PolishAutoZoom[] = ["off", "subtle", "standard", "strong"];
 const POLISH_ACTION_FOCUS: readonly PolishActionFocus[] = ["off", "subtle", "standard", "strong"];
 const POLISH_CURSOR_MODES: readonly PolishCursorMode[] = ["raw", "smooth", "hidden"];
@@ -289,6 +296,11 @@ export function normalizePolishDoc(value: unknown): StoryPolishDoc {
         POLISH_RECIPES,
         DEFAULT_POLISH_DOC.global.recipe,
       ),
+      motionMode: enumOr(
+        (rawGlobal as { motionMode?: unknown }).motionMode,
+        POLISH_MOTION_MODES,
+        "full",
+      ),
       autoZoom: enumOr(
         (rawGlobal as { autoZoom?: unknown }).autoZoom,
         POLISH_AUTO_ZOOMS,
@@ -313,8 +325,8 @@ export function normalizePolishDoc(value: unknown): StoryPolishDoc {
       bgm: normalizeSoundCue((rawGlobal as { bgm?: unknown }).bgm),
       autoZoomDurationMs: numberOr(
         (rawGlobal as { autoZoomDurationMs?: unknown }).autoZoomDurationMs,
-        800,
-        1,
+        DEFAULT_AUTO_ZOOM_DURATION_MS,
+        900,
       ),
       cursorSizeScale: numberOr(
         (rawGlobal as { cursorSizeScale?: unknown }).cursorSizeScale,

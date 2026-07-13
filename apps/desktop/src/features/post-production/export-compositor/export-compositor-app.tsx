@@ -6,12 +6,19 @@ import {
   sampleTrajectoryCursor,
   type VirtualCursorSample,
 } from "../preview/virtual-cursor-path";
-import type { Graph as ExportGraph, Rgba, Vec2, VideoNode } from "../state/compute-graph";
+import type {
+  EasingKind,
+  Graph as ExportGraph,
+  Rgba,
+  Vec2,
+  VideoNode,
+} from "../state/compute-graph";
 import {
   CURSOR_CLICK_EFFECT_CONTRAST_STROKE_PX,
   cursorClickEffectRenderScale,
 } from "../state/cursor-click-effect";
 import { timelineMsToSourcePtsUs } from "../state/source-timeline-map";
+import { zoomEase, type ZoomEasing } from "../state/zoom-motion";
 import {
   buildVirtualCursorSchedule,
   type VirtualCursorSchedule,
@@ -213,7 +220,19 @@ async function fetchJson(path: string): Promise<unknown | null> {
   }
 }
 
-function sampleZoom(graph: ExportGraph, timeMs: number, width: number, height: number) {
+function exportZoomEasing(easing: EasingKind): ZoomEasing {
+  if (
+    easing === "linear" ||
+    easing === "ease-in-cubic" ||
+    easing === "ease-out-cubic" ||
+    easing === "ease-in-out-cubic"
+  ) {
+    return easing;
+  }
+  return "ease-in-out-cubic";
+}
+
+export function sampleExportZoom(graph: ExportGraph, timeMs: number, width: number, height: number) {
   let selected: { center: Vec2; scale: number } | null = null;
   let selectedStart = -Infinity;
   for (const node of nodesOf(graph, "zoom-pan")) {
@@ -231,7 +250,7 @@ function sampleZoom(graph: ExportGraph, timeMs: number, width: number, height: n
       if (!a || !b || timeMs < a.t_ms || timeMs > b.t_ms) continue;
       if (first.t_ms < selectedStart) break;
       const span = Math.max(1, b.t_ms - a.t_ms);
-      const t = easeInOutCubic((timeMs - a.t_ms) / span);
+      const t = zoomEase((timeMs - a.t_ms) / span, exportZoomEasing(a.easing));
       selected = {
         center: {
           x: a.center.x + (b.center.x - a.center.x) * t,
@@ -547,7 +566,7 @@ class CanvasExportCompositor {
   private drawSourceVideo(timeMs: number, contentRect: Rect): void {
     if (!this.graph || !this.video) return;
     const background = nodeOf(this.graph, "background");
-    const zoom = sampleZoom(this.graph, timeMs, this.outputWidth, this.outputHeight);
+    const zoom = sampleExportZoom(this.graph, timeMs, this.outputWidth, this.outputHeight);
     const scale = Math.max(1, zoom.scale);
     const cropX = zoom.center.x / this.outputWidth - 1 / (2 * scale);
     const cropY = zoom.center.y / this.outputHeight - 1 / (2 * scale);
@@ -629,7 +648,7 @@ class CanvasExportCompositor {
   private drawCursorLayers(timeMs: number): void {
     if (!this.graph) return;
     const ctx = this.ctx;
-    const zoom = sampleZoom(this.graph, timeMs, this.outputWidth, this.outputHeight);
+    const zoom = sampleExportZoom(this.graph, timeMs, this.outputWidth, this.outputHeight);
     for (const layer of this.cursorLayers) {
       const startMs = Math.max(0, layer.node.t_start_ms ?? 0);
       const durationMs = Math.max(0, layer.node.duration_ms ?? Number.POSITIVE_INFINITY);
