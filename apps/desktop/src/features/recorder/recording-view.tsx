@@ -34,6 +34,7 @@ import {
 } from "@/ipc/capture";
 import {
   pauseRecording,
+  type EncodeResultDto,
   type RecordingEvent,
   type RecordingSessionId,
   resumeRecording,
@@ -61,6 +62,7 @@ import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 import { acquireRecordingPreview, type RecordingPreviewLease } from "./recording-preview";
+import { canFinalizeOwnedRecording } from "./recording-session-lifecycle";
 import { authorPreviewRecordingPlan } from "./recording-target";
 import { storyInitialUrlForRecording, storyViewportSize } from "./recording-viewport";
 import { TccPrompt } from "./tcc-prompt";
@@ -158,6 +160,7 @@ export function RecordingView({
     setError,
     setOutputPath,
     setElapsed,
+    resetTake,
     reset,
     loadCaptureTargets,
     setCaptureTarget,
@@ -211,11 +214,14 @@ export function RecordingView({
   const [stageManagerWarning, setStageManagerWarning] = useState(false);
 
   const sessionRef = useRef<RecordingSessionId | null>(null);
+  const completedSessionRef = useRef<string | null>(null);
   const previewLeaseRef = useRef<RecordingPreviewLease | null>(null);
+  const previewSessionRef = useRef<string | null>(null);
   const startInFlightRef = useRef(false);
   const startedAtRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
   const automationOwnsStopRef = useRef(false);
+  const automationSessionRef = useRef<string | null>(null);
   const videoOutputSectionRef = useRef<HTMLDivElement | null>(null);
   const isOutputBlocked = useIsRecordingBlocked();
 
@@ -268,6 +274,23 @@ export function RecordingView({
   const releasePreviewLease = () => {
     previewLeaseRef.current?.release();
     previewLeaseRef.current = null;
+    previewSessionRef.current = null;
+  };
+
+  const sessionKey = (session: RecordingSessionId): string =>
+    typeof (session as unknown) === "string" ? (session as unknown as string) : session.id;
+
+  const ownsActiveSession = (ownerSessionId: string): boolean =>
+    sessionRef.current != null && sessionKey(sessionRef.current) === ownerSessionId;
+
+  const cleanupSessionResources = (ownerSessionId: string) => {
+    if (automationSessionRef.current === ownerSessionId) {
+      if (automationChannelRef.current) automationChannelRef.current.onmessage = null;
+      automationChannelRef.current = null;
+      automationSessionRef.current = null;
+      automationOwnsStopRef.current = false;
+    }
+    if (previewSessionRef.current === ownerSessionId) releasePreviewLease();
   };
 
   // Detect Stage Manager once on mount (user can toggle it at any time
@@ -398,56 +421,71 @@ export function RecordingView({
     return () => window.clearInterval(handle);
   }, [status]);
 
-  const dispatch = (event: RecordingEvent) => {
+  const finalizeRecording = (ownerSessionId: string, result: EncodeResultDto) => {
+    if (
+      !canFinalizeOwnedRecording({
+        ownerSessionId,
+        activeSessionId: sessionRef.current ? sessionKey(sessionRef.current) : null,
+        completedSessionId: completedSessionRef.current,
+      })
+    ) {
+      return;
+    }
+    completedSessionRef.current = ownerSessionId;
+    cleanupSessionResources(ownerSessionId);
+    sessionRef.current = null;
+    startedAtRef.current = null;
+    pausedAtRef.current = null;
+    setSession(null);
+    setStatus("completed");
+    setOutputPath(result.output_path);
+    if (projectId) {
+      publishCompletedRecording(queryClient, projectId, {
+        path: result.output_path,
+        captured_at: Date.now(),
+        duration_ms: result.duration_ms,
+        width: result.output_width ?? null,
+        height: result.output_height ?? null,
+      });
+    }
+    if (result.cadence_warning) {
+      const cadence =
+        typeof result.actual_capture_fps === "number" && typeof result.requested_fps === "number"
+          ? `${result.actual_capture_fps} / ${result.requested_fps} fps`
+          : null;
+      toast.warning("Recording complete with low cadence", {
+        description: [result.cadence_warning_message, cadence, result.output_path]
+          .filter(Boolean)
+          .join(" · "),
+      });
+    } else {
+      toast.success("Recording complete", { description: result.output_path });
+    }
+    if (autoOpenPostProduction && projectId) {
+      navigate(`/post-production/${projectId}`, { replace: true });
+    }
+  };
+
+  const failRecording = (ownerSessionId: string, message: string) => {
+    if (!ownsActiveSession(ownerSessionId) || completedSessionRef.current === ownerSessionId) return;
+    cleanupSessionResources(ownerSessionId);
+    sessionRef.current = null;
+    startedAtRef.current = null;
+    pausedAtRef.current = null;
+    setSession(null);
+    setStatus("failed");
+    setError(message);
+    toast.error(`Recording failed: ${message}`);
+  };
+
+  const dispatch = (ownerSessionId: string, event: RecordingEvent) => {
+    if (!ownsActiveSession(ownerSessionId)) return;
     switch (event.type) {
       case "completed":
-        sessionRef.current = null;
-        startedAtRef.current = null;
-        pausedAtRef.current = null;
-        automationOwnsStopRef.current = false;
-        releasePreviewLease();
-        setSession(null);
-        setStatus("completed");
-        setOutputPath(event.result.output_path);
-        if (projectId) {
-          publishCompletedRecording(queryClient, projectId, {
-            path: event.result.output_path,
-            captured_at: Date.now(),
-            duration_ms: event.result.duration_ms,
-            width: event.result.output_width ?? null,
-            height: event.result.output_height ?? null,
-          });
-        }
-        if (event.result.cadence_warning) {
-          const cadence =
-            typeof event.result.actual_capture_fps === "number" &&
-            typeof event.result.requested_fps === "number"
-              ? `${event.result.actual_capture_fps} / ${event.result.requested_fps} fps`
-              : null;
-          toast.warning("Recording complete with low cadence", {
-            description: [event.result.cadence_warning_message, cadence, event.result.output_path]
-              .filter(Boolean)
-              .join(" · "),
-          });
-        } else {
-          toast.success("Recording complete", {
-            description: event.result.output_path,
-          });
-        }
-        if (autoOpenPostProduction && projectId) {
-          navigate(`/post-production/${projectId}`, { replace: true });
-        }
+        finalizeRecording(ownerSessionId, event.result);
         break;
       case "failed":
-        sessionRef.current = null;
-        startedAtRef.current = null;
-        pausedAtRef.current = null;
-        automationOwnsStopRef.current = false;
-        releasePreviewLease();
-        setSession(null);
-        setStatus("failed");
-        setError(event.message);
-        toast.error(`Recording failed: ${event.message}`);
+        failRecording(ownerSessionId, event.message);
         break;
       case "audio-unavailable":
         // Mic negotiation failed; recording continues video-only.
@@ -557,6 +595,8 @@ export function RecordingView({
         });
         toast.info("Recording browser preview content");
       }
+      let ownerSessionId: string | null = null;
+      const pendingRecordingEvents: RecordingEvent[] = [];
       const id = await startRecording(
         {
           project_folder: projectFolder,
@@ -573,10 +613,21 @@ export function RecordingView({
           scale_algo: "lanczos",
           frame_crop: frameCrop,
         },
-        (event) => dispatch(event),
+        (event) => {
+          if (ownerSessionId) dispatch(ownerSessionId, event);
+          else pendingRecordingEvents.push(event);
+        },
       );
+      ownerSessionId = sessionKey(id);
       sessionRef.current = id;
-      setSession(typeof (id as unknown) === "string" ? (id as unknown as string) : id.id);
+      completedSessionRef.current = null;
+      previewSessionRef.current = ownerSessionId;
+      setSession(ownerSessionId);
+      for (const event of pendingRecordingEvents) dispatch(ownerSessionId, event);
+      if (!ownsActiveSession(ownerSessionId)) {
+        startInFlightRef.current = false;
+        return;
+      }
       // Transition starting -> recording only after the host has
       // confirmed the session. If we error out above, the catch arm
       // resets to "idle" so the Start button re-enables.
@@ -584,6 +635,7 @@ export function RecordingView({
       startInFlightRef.current = false;
 
       automationOwnsStopRef.current = true;
+      automationSessionRef.current = ownerSessionId;
       launchAutomation(
         {
           storySource,
@@ -593,20 +645,20 @@ export function RecordingView({
           recordingDisplay,
           recordingViewport,
           pacingProfile,
-          recordingSessionId:
-            typeof (id as unknown) === "string" ? (id as unknown as string) : id.id,
+          recordingSessionId: ownerSessionId,
         },
-        (evt) => dispatchAutomation(evt),
+        (evt) => dispatchAutomation(ownerSessionId, evt),
         (ch) => {
-          automationChannelRef.current = ch;
+          if (ownsActiveSession(ownerSessionId)) automationChannelRef.current = ch;
+          else ch.onmessage = null;
         },
       ).catch((e) => {
+        if (!ownsActiveSession(ownerSessionId)) return;
         automationOwnsStopRef.current = false;
-        releasePreviewLease();
         const msg = formatIpcError(e);
         toast.error(`Automation failed: ${msg}`);
         setError(msg);
-        if (sessionRef.current) void handleStop();
+        void handleStop(ownerSessionId);
       });
     } catch (e) {
       releasePreviewLease();
@@ -620,7 +672,8 @@ export function RecordingView({
   };
 
   // Map automation events onto the step rail.
-  const dispatchAutomation = (evt: ExecutorEvent) => {
+  const dispatchAutomation = (ownerSessionId: string, evt: ExecutorEvent) => {
+    if (!ownsActiveSession(ownerSessionId)) return;
     // Recording path never emits run_paused or step_frame_captured
     // (capture_frames=false, stop_after_ordinal=None). Defaulted cases stay
     // no-op; the simulator consumes those variants via simulatorStore,
@@ -677,7 +730,7 @@ export function RecordingView({
           // Stop capture after the DSL finishes when the host isn't already
           // attached to the recording session.
           window.setTimeout(() => {
-            if (sessionRef.current) void handleStop();
+            void handleStop(ownerSessionId);
           }, 500);
         }
         break;
@@ -686,17 +739,21 @@ export function RecordingView({
     }
   };
 
-  const handleStop = async () => {
+  const handleStop = async (expectedSessionId?: string) => {
     if (!sessionRef.current) return;
     const session = sessionRef.current;
+    const ownerSessionId = sessionKey(session);
+    if (expectedSessionId && expectedSessionId !== ownerSessionId) return;
     setStatus("stopping");
     try {
       const result = await stopRecording(session);
-      dispatch({ type: "completed", result });
+      finalizeRecording(ownerSessionId, result);
     } catch (e) {
+      if (!ownsActiveSession(ownerSessionId)) return;
+      cleanupSessionResources(ownerSessionId);
       sessionRef.current = null;
       startedAtRef.current = null;
-      releasePreviewLease();
+      pausedAtRef.current = null;
       setSession(null);
       const message = formatIpcError(e);
       setStatus("failed");
@@ -710,6 +767,7 @@ export function RecordingView({
   // IPC outcome — NotFound is treated as success (session already gone).
   const forceStop = async () => {
     const sid = sessionRef.current;
+    const ownerSessionId = sid ? sessionKey(sid) : null;
     sessionRef.current = null;
     setSession(null);
     setDesynced(false);
@@ -727,8 +785,8 @@ export function RecordingView({
     }
     startedAtRef.current = null;
     pausedAtRef.current = null;
-    automationOwnsStopRef.current = false;
-    releasePreviewLease();
+    if (ownerSessionId) cleanupSessionResources(ownerSessionId);
+    else releasePreviewLease();
     setStatus("idle");
     setElapsed(0);
   };
@@ -781,6 +839,11 @@ export function RecordingView({
   const canRecord = permission === "granted" && captureTarget != null;
   // Display-only code path for `handleRecord`.
   const canRecordDisplay = canRecord && selectedDisplay != null;
+  const targetControlsLocked =
+    permission !== "granted" ||
+    status === "recording" ||
+    status === "paused" ||
+    status === "stopping";
   const permissionDenied = permission === "denied";
   const permissionPending = permission === "undetermined";
 
@@ -1021,7 +1084,7 @@ export function RecordingView({
                     Pause
                   </button>
                   <button
-                    onClick={handleStop}
+                    onClick={() => void handleStop()}
                     aria-label="Stop recording"
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
                   >
@@ -1041,7 +1104,7 @@ export function RecordingView({
                     Resume
                   </button>
                   <button
-                    onClick={handleStop}
+                    onClick={() => void handleStop()}
                     aria-label="Stop recording"
                     className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-danger)] px-3 py-1.5 text-xs font-medium text-white transition-[transform,filter] duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
                   >
@@ -1053,8 +1116,7 @@ export function RecordingView({
               {status === "completed" && (
                 <button
                   onClick={() => {
-                    reset();
-                    setStatus("idle");
+                    resetTake();
                     applyRecorderDefaults();
                   }}
                   className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-3 py-1.5 text-xs text-[var(--color-fg-primary)] hover:bg-[var(--color-surface-300)]"
@@ -1082,9 +1144,7 @@ export function RecordingView({
                 void setCaptureTarget(t);
               }}
               onRefresh={() => loadCaptureTargets()}
-              disabled={
-                !canRecord || status === "recording" || status === "paused" || status === "stopping"
-              }
+              disabled={targetControlsLocked}
             />
           </SettingsGroup>
 

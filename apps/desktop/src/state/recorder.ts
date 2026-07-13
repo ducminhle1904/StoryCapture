@@ -116,6 +116,7 @@ export interface RecorderActions {
   setError: (e: string | null) => void;
   setOutputPath: (p: string | null) => void;
   setElapsed: (ms: number) => void;
+  resetTake: () => void;
   reset: () => void;
 
   loadCaptureTargets: () => Promise<void>;
@@ -183,6 +184,12 @@ export const useRecorderStore = create<RecorderState>((set) => ({
   setError: (error) => set({ error }),
   setOutputPath: (outputPath) => set({ outputPath }),
   setElapsed: (elapsedMs) => set({ elapsedMs }),
+  resetTake: () =>
+    set((state) => ({
+      ...INITIAL,
+      captureTarget: state.captureTarget,
+      availableTargets: state.availableTargets,
+    })),
   reset: () => set({ ...INITIAL }),
   setAudioDeviceId: (audioDeviceId) => set({ audioDeviceId }),
   setIncludeCursor: (includeCursor) => set({ includeCursor }),
