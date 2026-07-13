@@ -306,6 +306,7 @@ async function waitForStableObservation(input: {
   observe: () => Promise<InteractionObservation>;
   wait: (durationMs: number) => Promise<boolean | undefined>;
   shouldCancel?: () => boolean;
+  timeoutMs?: number;
 }): Promise<Extract<InteractionObservation, { status: "ready" }>> {
   try {
     const result = await waitForInteractionReadiness({
@@ -318,7 +319,7 @@ async function waitForStableObservation(input: {
         });
         return true;
       },
-      timeoutMs: STABILITY_TIMEOUT_MS,
+      timeoutMs: Math.min(STABILITY_TIMEOUT_MS, input.timeoutMs ?? STABILITY_TIMEOUT_MS),
       pollIntervalMs: SCROLL_FRAME_MS,
       stableObservations: 2,
       stabilityThresholdPx: 1,
@@ -405,6 +406,7 @@ export async function ensureTargetVisible(input: {
   wait: (durationMs: number) => Promise<boolean | undefined>;
   shouldCancel?: () => boolean;
   now?: () => number;
+  timeoutMs?: number;
 }): Promise<EnsureTargetVisibleResult> {
   const now = input.now ?? Date.now;
   let observation = await input.observe();
@@ -412,6 +414,16 @@ export async function ensureTargetVisible(input: {
   let repositionAttempts = 0;
 
   if (observation.status === "ready") {
+    const stable = await waitForStableObservation(input);
+    return {
+      target: stable.target,
+      diagnostics: stable.diagnostics,
+      scrollTiming,
+      repositionAttempts,
+    };
+  }
+
+  if (observation.reason === "detached") {
     const stable = await waitForStableObservation(input);
     return {
       target: stable.target,
@@ -446,6 +458,8 @@ export async function ensureTargetVisible(input: {
         shouldCancel: input.shouldCancel,
         now,
       });
+    } else {
+      await input.contents.executeJavaScript(cleanupTargetScrollScript(token)).catch(() => {});
     }
 
     observation = await input.observe();

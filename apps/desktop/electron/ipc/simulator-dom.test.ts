@@ -5,6 +5,7 @@ import {
   setActiveElementValueScript,
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
+  simulatorTypeProbeScript,
   simulatorTargetCenterScript,
   simulatorTargetGeometryScript,
   simulatorTargetReadinessScript,
@@ -254,6 +255,38 @@ describe("simulator DOM helpers", () => {
     expect(didWrite).toBe(true);
     expect(input.value).toBe("abc");
     expect(events).toEqual(["input:", "input:a", "input:ab", "input:abc", "change:abc"]);
+  });
+
+  it("builds a privacy-safe type probe without returning plaintext values", async () => {
+    document.body.innerHTML = `
+      <label for="search">Search Wikipedia</label>
+      <input id="search" type="search" value="ElectronJS" />
+    `;
+    document.querySelectorAll("*").forEach(makeVisible);
+    const input = document.getElementById("search") as HTMLInputElement;
+    input.focus();
+
+    const probe = await window.eval(
+      simulatorTypeProbeScript(
+        { kind: "label", value: "Search Wikipedia" },
+        undefined,
+        undefined,
+        "test-session-salt",
+      ),
+    );
+
+    expect(probe).toMatchObject({
+      found: true,
+      connected: true,
+      active: true,
+      tag: "input",
+      inputType: "search",
+      valueLength: 10,
+      selectionStart: 10,
+      selectionEnd: 10,
+    });
+    expect(probe.valueHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(probe)).not.toContain("ElectronJS");
   });
 
   it("caps incremental typing for long values", async () => {

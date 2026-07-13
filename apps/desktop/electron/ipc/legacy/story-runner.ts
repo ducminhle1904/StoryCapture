@@ -43,8 +43,13 @@ import { RecordingPauseCancelledError } from "../recording-pause-gate";
 import {
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
+  simulatorTypeProbeScript,
 } from "../simulator-dom";
-import { ensureTargetVisible, executeControlledScroll } from "../smooth-scroll";
+import {
+  ensureTargetVisible,
+  executeControlledScroll,
+  TargetVisibilityPhaseError,
+} from "../smooth-scroll";
 import { type ParsedCommand, parsedCommands } from "../story-parser";
 import {
   authorSession,
@@ -87,6 +92,39 @@ import {
 const FALLBACK_TARGET_VERBS = ["click", "type", "hover", "select", "upload"];
 const CURSOR_INTERACTION_VERBS = ["click", "type", "hover", "select"];
 const FRAME_SYNC_FALLBACK_TIMEOUT_MS = 500;
+const MAX_TARGET_DETACH_RETRIES = 2;
+const TARGET_DETACH_RETRY_DELAY_MS = 100;
+const TYPE_PROBE_HASH_SALT = randomUUID();
+
+function typeProbeEnabled(executionProfile: StoryBrowserExecutionProfile): boolean {
+  return (
+    executionProfile.captureRecordingFrames &&
+    process.env.STORYCAPTURE_DEBUG_TYPE_PROBE === "1"
+  );
+}
+
+async function logTypeProbe(
+  contents: WebContents,
+  command: ParsedCommand,
+  phase: "before_write" | "after_write" | "after_render_turn",
+): Promise<void> {
+  try {
+    const probe = await contents.executeJavaScript(
+      simulatorTypeProbeScript(
+        command.target,
+        command.target_nth,
+        targetSelector(command.target),
+        TYPE_PROBE_HASH_SALT,
+      ),
+    );
+    void hostLog("info", "automation_type_probe", { phase, ...probe });
+  } catch (error) {
+    void hostLog("warn", "automation_type_probe_failed", {
+      phase,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 async function requestFrameCommitOutcome(
   requestFrameCommit: (() => Promise<FrameSyncOutcome>) | undefined,
@@ -281,10 +319,17 @@ export async function executeParsedCommand(
             command.target_nth,
             targetSelector(command.target),
           );
+    const shouldProbeType = command.verb === "type" && typeProbeEnabled(executionProfile);
+    if (shouldProbeType) await logTypeProbe(contents, command, "before_write");
     options.onInputSideEffect?.("text_start");
     const didWrite = await contents.executeJavaScript(valueScript);
     options.onInputSideEffect?.("text_end");
     options.onInputSideEffect?.("action");
+    if (shouldProbeType) {
+      await logTypeProbe(contents, command, "after_write");
+      await waitMs(0);
+      await logTypeProbe(contents, command, "after_render_turn");
+    }
     if (!didWrite) {
       throw new Error(
         `target is not editable for ${command.verb}: ${selectorSummary(command.target)}`,
@@ -437,7 +482,12 @@ async function resolveReadyCommandTarget(
   const result = await waitForInteractionReadiness({
     observe: () => observeReadyCommandTarget(options, command),
     wait: async (durationMs) => {
-      if (options.pauseGate) return options.pauseGate.waitForDelay(durationMs);
+      if (options.pauseGate) {
+        if (!(await options.pauseGate.waitForDelay(durationMs))) {
+          throw new RecordingPauseCancelledError();
+        }
+        return true;
+      }
       await waitMs(durationMs);
       return true;
     },
@@ -459,6 +509,7 @@ async function ensureReadyCommandTarget(
   options: StoryBrowserRunOptions,
   command: ParsedCommand,
   recordingClockMs: () => number,
+  timeoutMs = Math.min(Number(command.timeout_ms ?? 30_000), 30_000),
 ): Promise<{
   target: ActionTarget;
   scrollTiming: ActionScrollTiming | null;
@@ -470,12 +521,21 @@ async function ensureReadyCommandTarget(
     selector: targetSelector(command.target),
     observe: () => observeReadyCommandTarget(options, command),
     wait: async (durationMs) => {
-      if (options.pauseGate) return options.pauseGate.waitForDelay(durationMs);
+      if (options.pauseGate) {
+        if (!(await options.pauseGate.waitForDelay(durationMs))) {
+          throw new RecordingPauseCancelledError();
+        }
+        return true;
+      }
       await waitMs(durationMs);
       return true;
     },
-    shouldCancel: options.shouldCancel,
+    shouldCancel: () => {
+      if (options.shouldCancel?.()) throw new RecordingPauseCancelledError();
+      return false;
+    },
     now: recordingClockMs,
+    timeoutMs,
   });
   return {
     target: result.target,
@@ -487,6 +547,63 @@ async function ensureReadyCommandTarget(
         }
       : null,
   };
+}
+
+async function recoverDetachedCommandTarget(
+  options: StoryBrowserRunOptions,
+  command: ParsedCommand,
+  ordinal: number,
+  recordingClockMs: () => number,
+): Promise<{ target: ActionTarget; scrollTiming: ActionScrollTiming | null }> {
+  const budgetMs = Math.min(Number(command.timeout_ms ?? 30_000), 30_000);
+  const startedAtMs = recordingClockMs();
+  let lastError: TargetVisibilityPhaseError | null = null;
+
+  for (let attempt = 1; attempt <= MAX_TARGET_DETACH_RETRIES + 1; attempt += 1) {
+    if (options.shouldCancel?.()) throw new RecordingPauseCancelledError();
+    const elapsedMs = Math.max(0, recordingClockMs() - startedAtMs);
+    const remainingMs = Math.max(0, budgetMs - elapsedMs);
+    if (attempt > 1 && remainingMs <= 0) break;
+    try {
+      return await ensureReadyCommandTarget(options, command, recordingClockMs, remainingMs);
+    } catch (error) {
+      if (!(error instanceof TargetVisibilityPhaseError) || error.reason !== "detached") throw error;
+      lastError = error;
+      void hostLog("warn", "automation_target_recovery", {
+        ordinal,
+        step_id: command.step_id ?? null,
+        verb: command.verb,
+        phase: error.phase,
+        reason: error.reason,
+        attempt,
+        elapsed_ms: elapsedMs,
+        budget_ms: budgetMs,
+        target_label: targetLabel(command.target),
+        target_bounds: error.diagnostics?.bounds ?? null,
+      });
+      if (options.shouldCancel?.()) throw new RecordingPauseCancelledError();
+      if (attempt <= MAX_TARGET_DETACH_RETRIES) {
+        await waitForRecordingDelay(
+          options.pauseGate,
+          Math.min(TARGET_DETACH_RETRY_DELAY_MS, remainingMs),
+        );
+      }
+    }
+  }
+
+  if (lastError) {
+    const elapsedMs = Math.max(0, recordingClockMs() - startedAtMs);
+    const exhausted = new TargetVisibilityPhaseError(
+      lastError.phase,
+      lastError.reason,
+      lastError.diagnostics,
+    );
+    exhausted.message =
+      `interaction target detached after ${MAX_TARGET_DETACH_RETRIES + 1} attempts ` +
+      `(last phase: ${lastError.phase}, elapsed: ${elapsedMs}/${budgetMs}ms)`;
+    throw exhausted;
+  }
+  throw new InteractionReadinessError("detached");
 }
 
 function commandUsesBrowserCursorPath(command: ParsedCommand): boolean {
@@ -658,7 +775,7 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       const landmarkEventId = `${ordinal}:${command.step_id ?? command.verb}`;
       let landmarkStarted = false;
       const visibility = commandUsesVisibilityPipeline(command)
-        ? await ensureReadyCommandTarget(options, command, recordingClockMs)
+        ? await recoverDetachedCommandTarget(options, command, ordinal, recordingClockMs)
         : null;
       let resolvedTarget = visibility
         ? visibility.target

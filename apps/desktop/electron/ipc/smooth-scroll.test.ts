@@ -67,6 +67,29 @@ describe("smooth scroll helpers", () => {
     expect(contents.executeJavaScript).toHaveBeenCalled();
   });
 
+  it("re-resolves a detached target before preparing a scroll plan", async () => {
+    const contents = mockedContents();
+    const observations: InteractionObservation[] = [
+      { status: "not_ready", reason: "detached" },
+      ready(240, 320),
+      ready(240, 320),
+    ];
+
+    const result = await ensureTargetVisible({
+      contents: contents as never,
+      target: { kind: "role", value: { role: "textbox", name: "Search Wikipedia" } },
+      observe: async () => observations.shift() ?? ready(240, 320),
+      wait: async () => true,
+    });
+
+    expect(result.target.center).toEqual({ x: 240, y: 320 });
+    expect(
+      contents.executeJavaScript.mock.calls.some(([script]) =>
+        String(script).includes("viewportDiagonal"),
+      ),
+    ).toBe(false);
+  });
+
   it("executes explicit targeted vh scroll with clamped applied distance", async () => {
     const contents = {
       isDestroyed: () => false,
@@ -119,6 +142,10 @@ describe("smooth scroll helpers", () => {
       String(script).includes("viewportDiagonal"),
     );
     expect(prepareCalls).toHaveLength(4);
+    const cleanupCalls = contents.executeJavaScript.mock.calls.filter(([script]) =>
+      String(script).includes("delete registry"),
+    );
+    expect(cleanupCalls).toHaveLength(4);
   });
 
   it("aborts promptly when cancellation is requested", async () => {

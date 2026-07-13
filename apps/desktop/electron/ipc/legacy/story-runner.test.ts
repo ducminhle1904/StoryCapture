@@ -205,6 +205,126 @@ describe("story browser cursor pacing", () => {
     expect(commandGetsPreActionPacing(command("wait-for", "Heading"))).toBe(false);
   });
 
+  it("re-resolves a semantic target after the prepared target detaches", async () => {
+    const replacement = target("Search Wikipedia", { x: 520, y: 240 });
+    let readinessCalls = 0;
+    let prepareCalls = 0;
+    const contents = {
+      ...fakeContents([]),
+      executeJavaScript: vi.fn(async (script: string) => {
+        if (script.includes("resolvedTargetReadiness")) {
+          readinessCalls += 1;
+          if (readinessCalls === 1) {
+            return { status: "not_ready", reason: "outside_viewport" };
+          }
+          return { status: "ready", target: replacement };
+        }
+        if (script.includes("viewportDiagonal")) {
+          prepareCalls += 1;
+          return null;
+        }
+        return true;
+      }),
+    };
+    const successes: ActionTarget[] = [];
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [{ ...command("type", "Search Wikipedia"), text: "ElectronJS" }],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+      hooks: { onStepSucceeded: ({ result }) => successes.push(result.target as ActionTarget) },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+    expect(prepareCalls).toBe(1);
+    expect(successes).toEqual([replacement]);
+  });
+
+  it("bounds repeated detach recovery and reports the final attempt", async () => {
+    let prepareCalls = 0;
+    const contents = {
+      ...fakeContents([]),
+      executeJavaScript: vi.fn(async (script: string) => {
+        if (script.includes("resolvedTargetReadiness")) {
+          return { status: "not_ready", reason: "outside_viewport" };
+        }
+        if (script.includes("viewportDiagonal")) {
+          prepareCalls += 1;
+          return null;
+        }
+        return true;
+      }),
+    };
+    const failures: unknown[] = [];
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [{ ...command("type", "Search Wikipedia"), text: "ElectronJS" }],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+      hooks: { onStepFailed: (_ordinal, error) => failures.push(error) },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 0, failed: 1 });
+    expect(prepareCalls).toBe(3);
+    expect(failures[0]).toMatchObject({
+      message: expect.stringContaining("detached after 3 attempts"),
+    });
+  });
+
+  it("does not retry a cancelled scroll as a detached target", async () => {
+    let prepareCalls = 0;
+    const contents = {
+      ...fakeContents([]),
+      executeJavaScript: vi.fn(async (script: string) => {
+        if (script.includes("resolvedTargetReadiness")) {
+          return { status: "not_ready", reason: "outside_viewport" };
+        }
+        if (script.includes("viewportDiagonal")) {
+          prepareCalls += 1;
+          return { distance: 1_000, viewportDiagonal: 1_000, planCount: 1 };
+        }
+        return true;
+      }),
+    };
+
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [command("click", "Search Wikipedia")],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      pauseGate: {
+        waitUntilRunning: async () => true,
+        waitForDelay: async () => false,
+      } as never,
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ failed: 0, exitReason: "cancelled" });
+    expect(prepareCalls).toBe(1);
+  });
+
   it("rebases recorded cursor events to the first visible interaction", () => {
     const sourceEvents: ActionTimelineEvent[] = [
       {

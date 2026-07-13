@@ -492,3 +492,63 @@ export function setSimulatorTargetValueIncrementalScript(
     })()
   `;
 }
+
+export function simulatorTypeProbeScript(
+  target: unknown,
+  targetNth?: number,
+  selector?: string | null,
+  hashSalt = "",
+): string {
+  return `
+    (async () => {
+      ${textOf.toString()}
+      ${cssEscape.toString()}
+      ${formLabelOf.toString()}
+      ${nameOf.toString()}
+      ${roleOf.toString()}
+      ${isVisible.toString()}
+      ${isEditableElement.toString()}
+      ${isWritableElement.toString()}
+      ${labelMatches.toString()}
+      ${resolvedEditableElement.toString()}
+      const resolved = (${findSimulatorTarget.toString()})(
+        ${JSON.stringify(target)},
+        ${JSON.stringify(targetNth ?? null)},
+        ${JSON.stringify(selector ?? null)}
+      );
+      const el = resolvedEditableElement(resolved);
+      if (!el) return { found: false };
+      const value = "value" in el ? String(el.value ?? "") : String(el.textContent ?? "");
+      const bytes = new TextEncoder().encode(${JSON.stringify(hashSalt)} + value);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      const valueHash = Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0")
+      ).join("");
+      const path = [];
+      let node = el;
+      while (node && node.nodeType === Node.ELEMENT_NODE && path.length < 8) {
+        let index = 1;
+        let sibling = node.previousElementSibling;
+        while (sibling) {
+          if (sibling.tagName === node.tagName) index += 1;
+          sibling = sibling.previousElementSibling;
+        }
+        path.push(node.tagName.toLowerCase() + ":nth-of-type(" + index + ")");
+        node = node.parentElement;
+      }
+      return {
+        found: true,
+        connected: el.isConnected,
+        active: document.activeElement === el,
+        tag: el.tagName.toLowerCase(),
+        inputType: el instanceof HTMLInputElement ? el.type : null,
+        valueLength: Array.from(value).length,
+        valueHash,
+        selectionStart: "selectionStart" in el ? el.selectionStart : null,
+        selectionEnd: "selectionEnd" in el ? el.selectionEnd : null,
+        targetFingerprint: path.join(" > "),
+        pageOrigin: location.origin,
+      };
+    })()
+  `;
+}
