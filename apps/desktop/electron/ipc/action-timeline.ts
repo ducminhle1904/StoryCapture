@@ -1,6 +1,5 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import type { RecordedActionLandmarks } from "./action-landmarks";
+import { writeJsonAtomic } from "./json-store";
 import type { RecordingMediaClockSnapshot } from "./recording-media-clock";
 
 export interface ActionPoint {
@@ -170,16 +169,7 @@ export async function writeActionsSidecarAtomic(
   file: string,
   dto: RecordingActions,
 ): Promise<void> {
-  const dir = path.dirname(file);
-  await fs.mkdir(dir, { recursive: true });
-  const tempPath = path.join(dir, `.${path.basename(file)}.tmp.${process.pid}.${Date.now()}`);
-  try {
-    await fs.writeFile(tempPath, JSON.stringify(dto, null, 2), "utf8");
-    await fs.rename(tempPath, file);
-  } catch (error) {
-    await fs.rm(tempPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
+  await writeJsonAtomic(file, dto);
 }
 
 export function deriveActionCaptureRect(

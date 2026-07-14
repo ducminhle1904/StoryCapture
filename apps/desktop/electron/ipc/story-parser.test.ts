@@ -203,4 +203,56 @@ describe("story parser host command targets", () => {
       timeout_ms: 5000,
     });
   });
+
+  it("parses text overlays with default and explicit durations", () => {
+    expect(commandFor('text-overlay "Welcome"')).toMatchObject({
+      verb: "text-overlay",
+      text: "Welcome",
+      duration_ms: 2_000,
+    });
+    expect(commandFor('text-overlay "Longer caption" 5000ms')).toMatchObject({
+      verb: "text-overlay",
+      text: "Longer caption",
+      duration_ms: 5_000,
+    });
+    expect(commandFor('text-overlay "Say \\"hello\\"" 100ms')).toMatchObject({
+      text: 'Say "hello"',
+      duration_ms: 100,
+    });
+    expect(commandFor('text-overlay "Longest" 30000ms')).toMatchObject({
+      duration_ms: 30_000,
+    });
+  });
+
+  it("preserves text overlay step metadata", () => {
+    const stepId = "12345678-1234-1234-1234-123456789abc";
+    expect(commandFor(`text-overlay "Welcome" 2000ms  # @id=${stepId}`)).toMatchObject({
+      verb: "text-overlay",
+      step_id: stepId,
+    });
+  });
+
+  it.each([
+    "text-overlay",
+    'text-overlay ""',
+    'text-overlay "   " 2000ms',
+    'text-overlay "Title" 5s',
+    'text-overlay "Title" 5000',
+    'text-overlay "Title" 5.5ms',
+    'text-overlay "Title" -100ms',
+    'text-overlay "Title" 0ms',
+    'text-overlay "Title" 99ms',
+    'text-overlay "Title" 30001ms',
+    'text-overlay "Title" 5000ms trailing',
+    "text-overlay Title 2000ms",
+  ])("diagnoses invalid text overlay syntax: %s", (line) => {
+    const result = parseStorySource(`story "Demo" {\nscene "Main" {\n${line}\n}\n}`);
+    expect(result.ast?.scenes[0]?.commands).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        message: expect.stringContaining("Text overlay"),
+      }),
+    ]);
+  });
 });

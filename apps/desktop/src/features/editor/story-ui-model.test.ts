@@ -72,8 +72,21 @@ describe("story-ui-model", () => {
 
     const text = formatEditableStory(story);
     expect(text).toContain('type <textbox> "Email" nth 2 "hello"');
-    expect(text).toContain(
-      'drag <row> "Source" nth 2 to <row> "Destination" nth 3',
+    expect(text).toContain('drag <row> "Source" nth 2 to <row> "Destination" nth 3');
+  });
+
+  it("serializes text overlays canonically while preserving step metadata", () => {
+    const story = structuredClone(STORY);
+    story.scenes[0]?.commands.push({
+      verb: "text-overlay",
+      text: 'Welcome to "StoryCapture"',
+      duration_ms: 2_000,
+      span: { start: 0, end: 0, line: 6, col: 5 },
+      step_id: "12345678-1234-1234-1234-123456789abc",
+    });
+
+    expect(formatEditableStory(story)).toContain(
+      'text-overlay "Welcome to \\"StoryCapture\\"" 2000ms  # @id=12345678-1234-1234-1234-123456789abc',
     );
   });
 

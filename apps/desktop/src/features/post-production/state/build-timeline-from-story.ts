@@ -47,6 +47,23 @@ export interface BuildTimelineOutput {
   sound: SoundClip[];
   annotations: AnnotationClip[];
   background: EditorBackgroundKind;
+  warnings: BuildTimelineWarning[];
+}
+
+export type BuildTimelineWarningCode = "missing-text-overlay-timing" | "text-overlay-outside-media";
+
+export interface BuildTimelineWarning {
+  code: BuildTimelineWarningCode;
+  stepId: string | null;
+  ordinal: number;
+  message: string;
+}
+
+export function mergeIndependentAnnotations(
+  generated: readonly AnnotationClip[],
+  saved: readonly AnnotationClip[],
+): AnnotationClip[] {
+  return [...generated, ...saved.filter((clip) => !clip.syncGroupId)];
 }
 
 type CaptureRect = { x: number; y: number; width: number; height: number };
@@ -367,6 +384,8 @@ function flattenStorySteps(story: ParseResult | null): Array<{
   stepId: string | null;
   ordinal: number;
   verb: string;
+  text: string | null;
+  durationMs: number | null;
 }> {
   const scenes = story?.ast?.scenes ?? [];
   let ordinal = 0;
@@ -378,6 +397,8 @@ function flattenStorySteps(story: ParseResult | null): Array<{
         stepId: command.step_id ?? null,
         ordinal,
         verb: command.verb,
+        text: command.verb === "text-overlay" ? command.text : null,
+        durationMs: command.verb === "text-overlay" ? command.duration_ms : null,
       };
     }),
   );
@@ -473,6 +494,79 @@ function clampClipDuration(
   endBoundaryMs: number,
 ): number {
   return Math.max(1, Math.min(requestedDurationMs, Math.max(1, endBoundaryMs - startMs)));
+}
+
+interface BuildTextOverlayClipsContext {
+  story: ParseResult | null;
+  stepTiming: RecordingStepTimingSidecar | null | undefined;
+  mediaEndMs: number;
+  idBase: string;
+  syncGroupId: string;
+  sourceRevision: string;
+  sourceTimeMap: AnnotationClip["sourceTimeMap"];
+}
+
+function buildTextOverlayClips({
+  story,
+  stepTiming,
+  mediaEndMs,
+  idBase,
+  syncGroupId,
+  sourceRevision,
+  sourceTimeMap,
+}: BuildTextOverlayClipsContext): {
+  annotations: AnnotationClip[];
+  warnings: BuildTimelineWarning[];
+} {
+  const timing = stepTimingLookup(stepTiming);
+  const annotations: AnnotationClip[] = [];
+  const warnings: BuildTimelineWarning[] = [];
+
+  for (const step of flattenStorySteps(story)) {
+    if (step.verb !== "text-overlay" || step.text == null || step.durationMs == null) continue;
+    const stepTime =
+      (step.stepId ? timing.byStepId.get(step.stepId) : undefined) ??
+      timing.byOrdinal.get(step.ordinal) ??
+      null;
+    const stepLabel = step.stepId ? `step ${step.stepId}` : `step ${step.ordinal}`;
+    if (!stepTime) {
+      warnings.push({
+        code: "missing-text-overlay-timing",
+        stepId: step.stepId,
+        ordinal: step.ordinal,
+        message: `Text overlay at ${stepLabel} has no recorded timing and was skipped.`,
+      });
+      continue;
+    }
+
+    const startMs = stepTime.startMs;
+    const durationMs = Math.min(step.durationMs, mediaEndMs - startMs);
+    if (startMs < 0 || startMs >= mediaEndMs || durationMs <= 0) {
+      warnings.push({
+        code: "text-overlay-outside-media",
+        stepId: step.stepId,
+        ordinal: step.ordinal,
+        message: `Text overlay at ${stepLabel} starts outside the recorded media and was skipped.`,
+      });
+      continue;
+    }
+
+    const defaults = styleDefaults("caption");
+    annotations.push({
+      id: `text-overlay-${idBase}-${step.stepId || `ordinal-${step.ordinal}`}`,
+      trackId: "annotations",
+      startMs,
+      durationMs,
+      label: "Text overlay",
+      ...defaults,
+      text: step.text,
+      syncGroupId,
+      sourceRevision,
+      sourceTimeMap,
+    });
+  }
+
+  return { annotations, warnings };
 }
 
 function fallbackPolishStepTimeMs(
@@ -688,10 +782,8 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
   const cursorSchedule = cursorVisible
     ? buildVirtualCursorSchedule(actions, cursorMotionPreset)
     : null;
-  const durationMs = Math.max(
-    mediaDurationMs(recording, trajectory, actions),
-    cursorSchedule?.durationMs ?? 0,
-  );
+  const mediaEndMs = mediaDurationMs(recording, trajectory, actions);
+  const durationMs = Math.max(mediaEndMs, cursorSchedule?.durationMs ?? 0);
   const source = sourceSize(input);
   const sourceTimeMap = identitySourceTimelineMap(durationMs);
 
@@ -754,6 +846,15 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
     durationMs,
     idBase,
   });
+  const textOverlayClips = buildTextOverlayClips({
+    story: input.story,
+    stepTiming,
+    mediaEndMs,
+    idBase,
+    syncGroupId,
+    sourceRevision,
+    sourceTimeMap,
+  });
   const zoom = [
     ...autoZoom.map((clip) => ({ ...clip, syncGroupId, sourceRevision, sourceTimeMap })),
     ...polishClips.zoom,
@@ -806,7 +907,9 @@ export function buildTimelineFromStory(input: BuildTimelineInput): BuildTimeline
         sourceTimeMap,
       })),
       ...polishClips.annotations,
+      ...textOverlayClips.annotations,
     ],
     background: backgroundFromPolish(polish),
+    warnings: textOverlayClips.warnings,
   };
 }

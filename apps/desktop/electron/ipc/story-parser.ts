@@ -1,3 +1,9 @@
+import {
+  parseTextOverlayDuration,
+  TEXT_OVERLAY_DEFAULT_DURATION_MS,
+  validateTextOverlayText,
+} from "../../src/ipc/text-overlay";
+
 export interface ParsedCommand {
   verb: string;
   span: { start: number; end: number; line: number; col: number };
@@ -114,6 +120,26 @@ function readToken(input: string): { token: string; rest: string } | null {
   return { token: match[1], rest: match[2]?.trimStart() ?? "" };
 }
 
+function parseQuotedTextToken(token: string): string | null {
+  const quote = token[0];
+  if ((quote !== '"' && quote !== "'") || token.length < 2) return null;
+
+  let escaped = false;
+  for (let index = 1; index < token.length; index += 1) {
+    const char = token[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === quote) return index === token.length - 1 ? stripQuotes(token) : null;
+  }
+  return null;
+}
+
 function stripLineComment(line: string): string {
   let quote: string | null = null;
   let escaped = false;
@@ -203,6 +229,44 @@ export function parseTarget(raw: string): unknown {
 }
 
 type ParsedCommandBase = Pick<ParsedCommand, "span" | "step_id">;
+
+function parseTextOverlayCommand(
+  rest: string,
+  base: ParsedCommandBase,
+): { command: ParsedCommand | null; message?: string } {
+  const parsedText = readToken(rest);
+  const text = parsedText ? parseQuotedTextToken(parsedText.token) : null;
+  if (text == null) {
+    return {
+      command: null,
+      message:
+        'Text overlay text must be a quoted string, for example: text-overlay "Title" 2000ms.',
+    };
+  }
+
+  const textError = validateTextOverlayText(text);
+  if (textError) return { command: null, message: textError };
+
+  if (!parsedText?.rest) {
+    return {
+      command: {
+        verb: "text-overlay",
+        text,
+        duration_ms: TEXT_OVERLAY_DEFAULT_DURATION_MS,
+        ...base,
+      },
+    };
+  }
+
+  const duration = parseTextOverlayDuration(parsedText.rest);
+  if (duration.error || duration.durationMs == null) {
+    return { command: null, message: duration.error ?? "Invalid text overlay duration." };
+  }
+
+  return {
+    command: { verb: "text-overlay", text, duration_ms: duration.durationMs, ...base },
+  };
+}
 
 function parseTargetOnlyCommand(
   verb: string,
@@ -418,6 +482,18 @@ export function parseStorySource(source: string) {
       }
     }
     if (verb === "wait") command = { verb, duration_ms: parseDurationMs(rest), ...base };
+    if (verb === "text-overlay") {
+      const parsed = parseTextOverlayCommand(rest, base);
+      command = parsed.command;
+      if (parsed.message) {
+        diagnostics.push({
+          severity: "error",
+          message: parsed.message,
+          span,
+          suggestion: 'Use: text-overlay "Text" 2000ms',
+        });
+      }
+    }
     if (verb === "wait-for" || verb === "wait-for-visible") {
       command = parseWaitForCommand(verb, rest, base);
     }
@@ -426,7 +502,7 @@ export function parseStorySource(source: string) {
     if (verb === "pause") command = { verb, ...base };
     if (command) {
       currentScene.commands.push(command);
-    } else if (verb !== "scroll" && !["{", "}"].includes(trimmed)) {
+    } else if (verb !== "scroll" && verb !== "text-overlay" && !["{", "}"].includes(trimmed)) {
       diagnostics.push({
         severity: "error",
         message: `unknown command: ${verb}`,

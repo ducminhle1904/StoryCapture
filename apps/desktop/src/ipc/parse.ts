@@ -94,6 +94,13 @@ export type Command =
     }
   | { verb: "wait"; duration_ms: number; span: Span; step_id?: string | null }
   | {
+      verb: "text-overlay";
+      text: string;
+      duration_ms: number;
+      span: Span;
+      step_id?: string | null;
+    }
+  | {
       verb: "wait-for" | "wait-for-visible";
       target: SelectorOrText;
       target_nth?: number;

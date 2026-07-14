@@ -12,7 +12,9 @@ const DEFAULT_STEP_MS = 1500;
 
 function estimateSceneDuration(scene: Scene): number {
   return scene.commands.reduce((sum, cmd) => {
-    if (cmd.verb === "wait") return sum + Math.max(100, Number(cmd.duration_ms) || 0);
+    if (cmd.verb === "wait" || cmd.verb === "text-overlay") {
+      return sum + Math.max(100, Number(cmd.duration_ms) || 0);
+    }
     return sum + DEFAULT_STEP_MS;
   }, 0);
 }
@@ -59,6 +61,8 @@ function stepLabel(cmd: Command): string {
       return `${cmd.target ? `${targetLabel(cmd.target)} ` : ""}${cmd.direction} ${cmd.amount}${cmd.unit}`;
     case "wait":
       return `${cmd.duration_ms}ms`;
+    case "text-overlay":
+      return `${cmd.text} · ${cmd.duration_ms}ms`;
     case "screenshot":
       return cmd.name;
     case "pause":

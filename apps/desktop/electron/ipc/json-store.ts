@@ -13,3 +13,16 @@ export async function writeJson(file: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, JSON.stringify(value, null, 2), "utf8");
 }
+
+export async function writeJsonAtomic(file: string, value: unknown): Promise<void> {
+  const dir = path.dirname(file);
+  await fs.mkdir(dir, { recursive: true });
+  const tempPath = path.join(dir, `.${path.basename(file)}.tmp.${process.pid}.${Date.now()}`);
+  try {
+    await fs.writeFile(tempPath, JSON.stringify(value, null, 2), "utf8");
+    await fs.rename(tempPath, file);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}

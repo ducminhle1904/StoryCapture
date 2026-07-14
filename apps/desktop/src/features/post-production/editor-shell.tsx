@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { PageContentTransition } from "@/components/page-content-transition";
 import { PreviewSurface } from "@/components/preview-surface";
 import {
@@ -46,7 +47,11 @@ import { useEditorHotkeys } from "./hooks/use-hotkeys";
 import { InspectorPanel } from "./inspector/inspector-panel";
 import { QueueWidget } from "./render-queue/queue-widget";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
-import { buildTimelineFromStory, recordingSourceRevision } from "./state/build-timeline-from-story";
+import {
+  buildTimelineFromStory,
+  mergeIndependentAnnotations,
+  recordingSourceRevision,
+} from "./state/build-timeline-from-story";
 import { createClipId } from "./state/clip-id";
 import { DEFAULT_BACKGROUND, readEditorBackground, useEditorStore } from "./state/store";
 import { styleDefaults } from "./state/text-style";
@@ -594,14 +599,27 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       polish: polishDoc,
       stepTiming: stepTimingQuery.data ?? null,
     });
-    const { background, ...generatedTracks } = built;
+    const { background, warnings, ...generatedTracks } = built;
     const builtTracks = {
       ...generatedTracks,
-      annotations: [...generatedTracks.annotations, ...staleIndependentAnnotationsRef.current],
+      annotations: mergeIndependentAnnotations(
+        generatedTracks.annotations,
+        staleIndependentAnnotationsRef.current,
+      ),
     };
     staleIndependentAnnotationsRef.current = [];
     setTracks(builtTracks);
     setDuration(maxTrackEndMs(builtTracks));
+    if (warnings.length > 0) {
+      const visibleWarnings = warnings.slice(0, 3).map((warning) => warning.message);
+      const remainingWarnings = warnings.length - visibleWarnings.length;
+      toast.warning(
+        `${warnings.length} text overlay${warnings.length === 1 ? "" : "s"} could not be placed`,
+        {
+          description: `${visibleWarnings.join(" ")}${remainingWarnings > 0 ? ` ${remainingWarnings} more skipped.` : ""} Re-record this story to regenerate step timing.`,
+        },
+      );
+    }
     useEditorStore.setState((state) => ({
       _undoExtras: {
         graphSnapshot: state._undoExtras?.graphSnapshot ?? {},

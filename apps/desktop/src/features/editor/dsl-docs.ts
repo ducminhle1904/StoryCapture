@@ -41,6 +41,10 @@ export const VERB_DOCS: Record<string, KeywordDoc> = {
     description: "Pause for a fixed duration (ms / s / m).",
     example: "wait 500ms",
   },
+  "text-overlay": {
+    description: "Show a caption in the recorded story for 100–30000ms (default 2000ms).",
+    example: 'text-overlay "Welcome to StoryCapture" 2000ms',
+  },
   "wait-for": {
     description: "Wait until an element appears in the DOM (optional timeout).",
     example: 'wait-for "Loaded" timeout 5s',

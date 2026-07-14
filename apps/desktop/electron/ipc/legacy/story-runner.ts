@@ -16,6 +16,7 @@ import {
   type ActionTimelineEvent,
   actionsSidecarPath,
   actionTimelineEventFromStep,
+  deriveActionCaptureRect,
   recordingActionsFromSession,
   writeActionsSidecarAtomic,
 } from "../action-timeline";
@@ -36,7 +37,7 @@ import {
   observeInteractionTarget,
   waitForInteractionReadiness,
 } from "../interaction-readiness";
-import { readJson } from "../json-store";
+import { readJson, writeJsonAtomic } from "../json-store";
 import { sameNavigationUrl } from "../navigation-url";
 import { userDataPath } from "../paths";
 import { RecordingPauseCancelledError } from "../recording-pause-gate";
@@ -50,7 +51,7 @@ import {
   executeControlledScroll,
   TargetVisibilityPhaseError,
 } from "../smooth-scroll";
-import { type ParsedCommand, parsedCommands } from "../story-parser";
+import { type ParsedCommand, parsedCommands, parseStorySource } from "../story-parser";
 import {
   authorSession,
   captureAutomationRecordingTail,
@@ -63,6 +64,7 @@ import {
   storyBrowserExecutionProfile,
   targetsPathFor,
 } from "./capture-preview";
+import { sidecarPath } from "./post-production";
 import { stopRecording } from "./recording";
 import {
   authorPreviewSessions,
@@ -199,6 +201,10 @@ export async function executeParsedCommand(
   }
   if (command.verb === "wait") {
     await waitForRecordingDelay(options.pauseGate, Math.min(command.duration_ms ?? 0, 30_000));
+    return {};
+  }
+  if (command.verb === "text-overlay") {
+    await waitForRecordingDelay(options.pauseGate, command.duration_ms ?? 0);
     return {};
   }
   if (command.verb === "pause") return {};
@@ -1020,6 +1026,51 @@ export async function writeRecordingActionsSidecarBestEffort(
   }
 }
 
+interface RecordingStepTiming {
+  ordinal: number;
+  stepId: string | null;
+  sceneName: string;
+  verb: string;
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  status: "succeeded" | "failed";
+  cursor: { x: number; y: number } | null;
+  target: {
+    selector: string | null;
+    bbox: { x: number; y: number; w: number; h: number };
+    matchKind: "primary";
+  } | null;
+  confidence: "high" | "low";
+}
+
+async function writeRecordingStepTimingSidecarBestEffort(
+  session: RecordingSession,
+  source: string,
+  steps: RecordingStepTiming[],
+  status: "completed" | "failed" | "partial",
+): Promise<void> {
+  const file = sidecarPath(session.outputPath, "steps");
+  try {
+    await writeJsonAtomic(file, {
+      version: 1,
+      recordingPath: session.outputPath,
+      captureRect: deriveActionCaptureRect(session),
+      storyHash: storyHash(source),
+      timebase: "recording-ms",
+      status,
+      steps,
+    });
+  } catch (error) {
+    void hostLog("warn", "recording_step_timing_sidecar_write_failed", {
+      session_id: session.id,
+      recording_path: session.outputPath,
+      sidecar_path: file,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export function rebaseActionEventsToFirstCursorInteraction(
   events: ActionTimelineEvent[],
 ): ActionTimelineEvent[] {
@@ -1071,7 +1122,11 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   const onEvent = channelIdFrom(args.onEvent);
   const source = String(args.storySource ?? "");
   const projectFolder = String(args.projectFolder ?? app.getPath("userData"));
-  const commands = parsedCommands(source);
+  const parsedStory = parseStorySource(source).ast;
+  const commands = (parsedStory?.scenes.flatMap((scene) => scene.commands) ??
+    []) as ParsedCommand[];
+  const sceneNames =
+    parsedStory?.scenes.flatMap((scene) => scene.commands.map(() => scene.name)) ?? [];
   const streamId = typeof args.streamId === "string" ? args.streamId : null;
   const recordingSessionId =
     typeof args.recordingSessionId === "string" ? args.recordingSessionId : null;
@@ -1110,6 +1165,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     ? recordingSessions.get(recordingSessionId)
     : null;
   const actionEvents: ActionTimelineEvent[] = [];
+  const stepTimings: RecordingStepTiming[] = [];
   const actionStepStartMs = new Map<number, number>();
   const actionRunStartedAt = recordingSessionAtLaunch?.startedAt ?? Date.now();
   const executionProfile = storyBrowserExecutionProfile({
@@ -1151,8 +1207,8 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
         : undefined,
       hooks: {
         onStepStarted: (ordinal, command) => {
-          if (recordingSessionId) {
-            actionStepStartMs.set(ordinal, Math.max(0, Date.now() - actionRunStartedAt));
+          if (recordingSessionAtLaunch) {
+            actionStepStartMs.set(ordinal, recordingFrameClockMs(recordingSessionAtLaunch));
           }
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
@@ -1171,7 +1227,9 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           actionDurationMs,
           timing,
         }) => {
-          const fallbackStepEndedAtMs = Math.max(0, Date.now() - actionRunStartedAt);
+          const fallbackStepEndedAtMs = recordingSessionAtLaunch
+            ? recordingFrameClockMs(recordingSessionAtLaunch)
+            : Math.max(0, Date.now() - actionRunStartedAt);
           const stepEndedAtMs = timing?.stepEndedAtMs ?? fallbackStepEndedAtMs;
           const stepStartedAtMs =
             timing?.stepStartedAtMs ??
@@ -1182,6 +1240,27 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             stepEndedAtMs,
             timing?.actionAtMs ?? stepStartedAtMs + Math.max(0, actionDurationMs),
           );
+          if (recordingSessionAtLaunch) {
+            stepTimings.push({
+              ordinal,
+              stepId: command.step_id ?? null,
+              sceneName: sceneNames[ordinal - 1] ?? "Unknown scene",
+              verb: command.verb,
+              startMs: stepStartedAtMs,
+              endMs: stepEndedAtMs,
+              durationMs: Math.max(0, stepEndedAtMs - stepStartedAtMs),
+              status: "succeeded",
+              cursor: stepResult.cursor ?? null,
+              target: stepResult.target
+                ? {
+                    selector: targetSelector(command.target),
+                    bbox: stepResult.target.bounds,
+                    matchKind: "primary",
+                  }
+                : null,
+              confidence: "high",
+            });
+          }
           if (recordingSessionId && stepResult.target && commandContributesCursorEvent(command)) {
             actionEvents.push(
               actionTimelineEventFromStep({
@@ -1231,7 +1310,27 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           }
         },
         onStepFailed: (ordinal, error, screenshotPath) => {
+          const stepStartedAtMs = actionStepStartMs.get(ordinal);
           actionStepStartMs.delete(ordinal);
+          if (recordingSessionAtLaunch && stepStartedAtMs != null) {
+            const command = commands[ordinal - 1];
+            const stepEndedAtMs = recordingFrameClockMs(recordingSessionAtLaunch);
+            if (command) {
+              stepTimings.push({
+                ordinal,
+                stepId: command.step_id ?? null,
+                sceneName: sceneNames[ordinal - 1] ?? "Unknown scene",
+                verb: command.verb,
+                startMs: stepStartedAtMs,
+                endMs: stepEndedAtMs,
+                durationMs: Math.max(0, stepEndedAtMs - stepStartedAtMs),
+                status: "failed",
+                cursor: null,
+                target: null,
+                confidence: "low",
+              });
+            }
+          }
           const diagnostics = automationFailureDiagnostics(error);
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
@@ -1255,6 +1354,18 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     await ensureRecordingFramesCoverElapsedTime(recordingSession);
   }
   if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
+    if (recordingSession) {
+      await writeRecordingStepTimingSidecarBestEffort(
+        recordingSession,
+        source,
+        stepTimings,
+        result.exitReason === "completed"
+          ? "completed"
+          : result.exitReason === "failed"
+            ? "failed"
+            : "partial",
+      );
+    }
     await stopRecording({ id: recordingSessionId });
     if (recordingSession) {
       await writeRecordingActionsSidecarBestEffort(recordingSession, actionEvents, {

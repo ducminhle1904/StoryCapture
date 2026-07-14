@@ -20,6 +20,13 @@ const SOURCE_WITH_TWO_COMMANDS = `story "Manual QA" {
 }
 `;
 
+const SOURCE_WITH_TEXT_OVERLAY = `story "Text overlay" {
+  scene "Intro" {
+    text-overlay "Welcome" 2000ms  # @id=12345678-1234-1234-1234-123456789abc
+  }
+}
+`;
+
 function parseStory(source: string): Story {
   const ast = parseStorySource(source).ast as Story | null;
   expect(ast).toBeTruthy();
@@ -31,6 +38,7 @@ interface HarnessProps {
   initialPolish?: StoryPolishDoc;
   simulatorActive?: boolean;
   onSourceChange?: (source: string, story?: Story) => void;
+  onValidityChange?: (valid: boolean) => void;
 }
 
 function StoryBuilderHarness({
@@ -38,6 +46,7 @@ function StoryBuilderHarness({
   initialPolish = DEFAULT_POLISH_DOC,
   simulatorActive = false,
   onSourceChange = () => {},
+  onValidityChange,
 }: HarnessProps) {
   const [story, setStory] = useState(initialStory);
   const [source, setSource] = useState(formatEditableStory(initialStory));
@@ -62,6 +71,7 @@ function StoryBuilderHarness({
       }}
       onPolishChange={setPolish}
       onJumpToOffset={() => {}}
+      onValidityChange={onValidityChange}
     />
   );
 }
@@ -90,6 +100,62 @@ describe("StoryBuilder UI/code synchronization", () => {
 
     expect(clickValue).toHaveValue("Continue");
     expect(sourceChanges.at(-1)).toContain('click <button> "Continue"');
+  });
+
+  it("edits text overlay text and duration with canonical serialization", async () => {
+    const user = userEvent.setup();
+    const sourceChanges: string[] = [];
+    render(
+      <StoryBuilderHarness
+        initialStory={parseStory(SOURCE_WITH_TEXT_OVERLAY)}
+        onSourceChange={(source) => sourceChanges.push(source)}
+      />,
+    );
+
+    const text = screen.getByLabelText("Text overlay text");
+    const duration = screen.getByLabelText("Text overlay duration");
+    expect(screen.getByText("Text overlay")).toBeInTheDocument();
+    expect(text).toHaveValue("Welcome");
+    expect(duration).toHaveValue(2_000);
+
+    await user.clear(text);
+    await user.type(text, "A clearer title");
+    await user.clear(duration);
+    await user.type(duration, "5000");
+
+    expect(sourceChanges.at(-1)).toContain(
+      'text-overlay "A clearer title" 5000ms  # @id=12345678-1234-1234-1234-123456789abc',
+    );
+  });
+
+  it("shows text overlay validation without clamping or committing invalid fields", () => {
+    const sourceChanges: string[] = [];
+    const validityChanges: boolean[] = [];
+    render(
+      <StoryBuilderHarness
+        initialStory={parseStory(SOURCE_WITH_TEXT_OVERLAY)}
+        onSourceChange={(source) => sourceChanges.push(source)}
+        onValidityChange={(valid) => validityChanges.push(valid)}
+      />,
+    );
+
+    const text = screen.getByLabelText("Text overlay text");
+    const duration = screen.getByLabelText("Text overlay duration");
+    fireEvent.change(text, { target: { value: "" } });
+    fireEvent.change(duration, { target: { value: "99" } });
+
+    expect(text).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/text must not be empty/)).toBeInTheDocument();
+    expect(duration).toHaveValue(99);
+    expect(duration).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/between 100ms and 30000ms/)).toBeInTheDocument();
+    expect(sourceChanges).toEqual([]);
+    expect(validityChanges.at(-1)).toBe(false);
+
+    fireEvent.change(duration, { target: { value: "2000" } });
+    expect(validityChanges.at(-1)).toBe(false);
+    fireEvent.change(text, { target: { value: "Welcome" } });
+    expect(validityChanges.at(-1)).toBe(true);
   });
 
   it("persists Full and Reduced Motion selection in project polish", async () => {
@@ -151,10 +217,7 @@ describe("StoryBuilder UI/code synchronization", () => {
 
   it("disables motion controls while the simulator is active", () => {
     render(
-      <StoryBuilderHarness
-        initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)}
-        simulatorActive
-      />,
+      <StoryBuilderHarness initialStory={parseStory(SOURCE_WITH_TWO_COMMANDS)} simulatorActive />,
     );
 
     expect(screen.getByLabelText("Motion mode")).toHaveAttribute("data-disabled");

@@ -25,6 +25,7 @@ export const KNOWN_VERBS = [
   "select",
   "upload",
   "wait",
+  "text-overlay",
   "wait-for",
   "wait-for-visible",
   "assert",

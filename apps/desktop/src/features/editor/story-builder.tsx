@@ -10,7 +10,7 @@ import {
   Sparkles,
   Volume2,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { SelectField } from "@/components/ui/select-field";
 import type { Command, ScrollDir, ScrollUnit, Story } from "@/ipc/parse";
@@ -22,6 +22,13 @@ import {
   pickerStampStepId,
   type TargetRecordDto,
 } from "@/ipc/picker";
+import {
+  parseTextOverlayDuration,
+  TEXT_OVERLAY_MAX_DURATION_MS,
+  TEXT_OVERLAY_MIN_DURATION_MS,
+  validateTextOverlayText,
+} from "@/ipc/text-overlay";
+import { MIN_RESIZABLE_ZOOM_DURATION_MS } from "../post-production/state/zoom-motion";
 import {
   calloutText,
   DEFAULT_AUTO_ZOOM_DURATION_MS,
@@ -43,7 +50,6 @@ import {
   setScenePolish,
   setStepPolish,
 } from "./polish-sidecar";
-import { MIN_RESIZABLE_ZOOM_DURATION_MS } from "../post-production/state/zoom-motion";
 import {
   cloneStoryWithStepId,
   commandSupportsPick,
@@ -68,6 +74,7 @@ interface StoryBuilderProps {
   onFlushSource?: () => void;
   onPolishChange: (doc: StoryPolishDoc) => void;
   onJumpToOffset: (offset: number) => void;
+  onValidityChange?: (valid: boolean) => void;
 }
 
 const recipeOptions = [
@@ -185,6 +192,99 @@ function LabeledControl({
   );
 }
 
+type TextOverlayCommand = Extract<Command, { verb: "text-overlay" }>;
+
+function TextOverlayCommandFields({
+  command,
+  disabled,
+  onPatch,
+}: {
+  command: TextOverlayCommand;
+  disabled: boolean;
+  onPatch: (patch: Partial<TextOverlayCommand>) => void;
+}) {
+  const [text, setText] = useState(command.text);
+  const [duration, setDuration] = useState(String(command.duration_ms));
+  const textError = validateTextOverlayText(text);
+  const durationError = parseTextOverlayDuration(`${duration}ms`).error;
+  const fieldId = command.step_id ?? `text-overlay-${command.span.start}`;
+
+  useEffect(() => {
+    setText(command.text);
+  }, [command.text]);
+
+  useEffect(() => {
+    setDuration(String(command.duration_ms));
+  }, [command.duration_ms]);
+
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
+      <LabeledControl label="Text">
+        <input
+          className={`${fieldClass} w-full`}
+          value={text}
+          disabled={disabled}
+          required
+          pattern=".*\S.*"
+          aria-label="Text overlay text"
+          aria-invalid={Boolean(textError)}
+          aria-describedby={textError ? `${fieldId}-text-error` : undefined}
+          onChange={(event) => {
+            const value = event.target.value;
+            const error = validateTextOverlayText(value);
+            setText(value);
+            if (!error) onPatch({ text: value });
+          }}
+        />
+        {textError ? (
+          <span
+            id={`${fieldId}-text-error`}
+            className="text-[10px]"
+            style={{ color: "var(--sc-danger, #c33)" }}
+          >
+            {textError}
+          </span>
+        ) : null}
+      </LabeledControl>
+      <LabeledControl label="Duration">
+        <div className="relative">
+          <input
+            className={`${fieldClass} w-full pr-7`}
+            type="number"
+            min={TEXT_OVERLAY_MIN_DURATION_MS}
+            max={TEXT_OVERLAY_MAX_DURATION_MS}
+            step={1}
+            value={duration}
+            disabled={disabled}
+            required
+            aria-label="Text overlay duration"
+            aria-invalid={Boolean(durationError)}
+            aria-describedby={durationError ? `${fieldId}-duration-error` : undefined}
+            onChange={(event) => {
+              const value = event.target.value;
+              const parsed = parseTextOverlayDuration(`${value}ms`);
+              setDuration(value);
+              if (parsed.durationMs != null) onPatch({ duration_ms: parsed.durationMs });
+            }}
+          />
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--sc-text-4)]">
+            ms
+          </span>
+        </div>
+        {durationError ? (
+          <span
+            id={`${fieldId}-duration-error`}
+            className="text-[10px]"
+            style={{ color: "var(--sc-danger, #c33)" }}
+          >
+            {durationError}
+          </span>
+        ) : null}
+      </LabeledControl>
+    </div>
+  );
+}
+
 function polishChipClass(active: boolean): string {
   return [
     "inline-flex h-7 items-center gap-1.5 rounded-[var(--sc-r-sm)] border px-2 text-[11px] font-medium transition-[background-color,border-color,transform] active:scale-[0.98]",
@@ -233,6 +333,8 @@ function zoomTargetObject(value: PolishZoomTarget | undefined): PolishZoomTarget
 
 function commandTitle(command: Command): string {
   switch (command.verb) {
+    case "text-overlay":
+      return "Text overlay";
     case "wait-for":
       return "Wait for";
     case "wait-for-visible":
@@ -263,6 +365,8 @@ function commandSummary(command: Command): string {
       return `${targetLabel(command.target)} <- ${command.path}`;
     case "wait":
       return `${command.duration_ms}ms`;
+    case "text-overlay":
+      return `${command.text} / ${command.duration_ms}ms`;
     case "wait-for":
     case "wait-for-visible":
       return `${targetLabel(command.target)}${command.timeout_ms ? ` / ${command.timeout_ms}ms` : ""}`;
@@ -296,6 +400,8 @@ function primaryEditableValue(command: Command): string {
       return command.target.kind === "role" ? command.target.value.name : command.target.value;
     case "wait":
       return String(command.duration_ms);
+    case "text-overlay":
+      return command.text;
     case "scroll":
       return String(command.amount);
     case "drag":
@@ -348,10 +454,13 @@ export function StoryBuilder({
   onFlushSource,
   onPolishChange,
   onJumpToOffset,
+  onValidityChange,
 }: StoryBuilderProps) {
   const [pickingKey, setPickingKey] = useState<string | null>(null);
   const [expandedPolishKey, setExpandedPolishKey] = useState<string | null>(null);
   const [intentExpanded, setIntentExpanded] = useState(true);
+
+  useEffect(() => () => onValidityChange?.(true), [onValidityChange]);
 
   if (!story) {
     return (
@@ -404,6 +513,9 @@ export function StoryBuilder({
         break;
       case "wait":
         patch = { duration_ms: Math.max(0, Number(value) || 0) };
+        break;
+      case "text-overlay":
+        patch = { text: value };
         break;
       case "scroll": {
         const amount = Number(value);
@@ -506,6 +618,14 @@ export function StoryBuilder({
       aria-label="Story builder"
       className="flex h-full flex-col overflow-hidden bg-[var(--sc-surface)]"
       onSubmit={(event) => event.preventDefault()}
+      onChange={(event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        const hasOtherInvalidField = Array.from(
+          event.currentTarget.querySelectorAll('[aria-invalid="true"]'),
+        ).some((field) => field !== target);
+        onValidityChange?.(target.validity.valid && !hasOtherInvalidField);
+      }}
       onBlur={(event) => {
         const nextTarget = event.relatedTarget;
         if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
@@ -554,9 +674,7 @@ export function StoryBuilder({
                   aria-label="Motion mode"
                   disabled={simulatorActive}
                   options={motionModeOptions}
-                  onValueChange={(value) =>
-                    updateGlobal({ motionMode: value as PolishMotionMode })
-                  }
+                  onValueChange={(value) => updateGlobal({ motionMode: value as PolishMotionMode })}
                 />
               </LabeledControl>
               <LabeledControl label="Auto zoom" className="min-w-[140px] flex-1">
@@ -762,43 +880,54 @@ export function StoryBuilder({
                         <Code2 size={12} aria-hidden="true" className="text-[var(--sc-text-4)]" />
                       </div>
 
-                      <div
-                        className={
-                          supportsPick
-                            ? "grid grid-cols-[1fr_auto] items-center gap-2"
-                            : "grid grid-cols-1"
-                        }
-                      >
-                        <input
-                          className="h-9 min-w-0 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 text-sm text-[var(--sc-text)] outline-none focus:border-[var(--sc-accent-400)]"
-                          value={primaryEditableValue(command)}
-                          disabled={
-                            simulatorActive || command.verb === "drag" || command.verb === "pause"
-                          }
-                          onChange={(event) =>
-                            updateSourceCommand(
-                              sceneIndex,
-                              commandIndex,
-                              command,
-                              event.target.value,
-                            )
-                          }
-                          aria-label={`${commandTitle(command)} value`}
+                      {command.verb === "text-overlay" ? (
+                        <TextOverlayCommandFields
+                          command={command}
+                          disabled={simulatorActive}
+                          onPatch={(patch) => {
+                            const nextStory = patchCommand(story, sceneIndex, commandIndex, patch);
+                            onSourceChange(formatEditableStory(nextStory), nextStory);
+                          }}
                         />
-                        {supportsPick ? (
-                          <ScButton
-                            size="sm"
-                            variant="ghost"
-                            disabled={simulatorActive || pickingKey === pickKey}
-                            icon={<MousePointer2 size={12} aria-hidden="true" />}
-                            title="Pick target from preview"
-                            className="h-9 self-center"
-                            onClick={() => pickTarget(sceneIndex, commandIndex, command)}
-                          >
-                            {pickingKey === pickKey ? "Picking" : "Pick"}
-                          </ScButton>
-                        ) : null}
-                      </div>
+                      ) : (
+                        <div
+                          className={
+                            supportsPick
+                              ? "grid grid-cols-[1fr_auto] items-center gap-2"
+                              : "grid grid-cols-1"
+                          }
+                        >
+                          <input
+                            className="h-9 min-w-0 rounded-[var(--sc-r-sm)] border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 text-sm text-[var(--sc-text)] outline-none focus:border-[var(--sc-accent-400)]"
+                            value={primaryEditableValue(command)}
+                            disabled={
+                              simulatorActive || command.verb === "drag" || command.verb === "pause"
+                            }
+                            onChange={(event) =>
+                              updateSourceCommand(
+                                sceneIndex,
+                                commandIndex,
+                                command,
+                                event.target.value,
+                              )
+                            }
+                            aria-label={`${commandTitle(command)} value`}
+                          />
+                          {supportsPick ? (
+                            <ScButton
+                              size="sm"
+                              variant="ghost"
+                              disabled={simulatorActive || pickingKey === pickKey}
+                              icon={<MousePointer2 size={12} aria-hidden="true" />}
+                              title="Pick target from preview"
+                              className="h-9 self-center"
+                              onClick={() => pickTarget(sceneIndex, commandIndex, command)}
+                            >
+                              {pickingKey === pickKey ? "Picking" : "Pick"}
+                            </ScButton>
+                          ) : null}
+                        </div>
+                      )}
 
                       {command.verb === "scroll" ? (
                         <div className="mt-2 grid grid-cols-2 gap-2">

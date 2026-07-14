@@ -13,7 +13,9 @@ export function sidecarPath(
 ): string {
   if (suffix === "actions") return actionsSidecarPath(recordingPath);
   const ext = suffix === "steps" ? ".steps.json" : `.${suffix}.json`;
-  return recordingPath.replace(/\.[^/.]+$/, ext);
+  return /\.[^/.]+$/.test(recordingPath)
+    ? recordingPath.replace(/\.[^/.]+$/, ext)
+    : `${recordingPath}${ext}`;
 }
 
 export async function readRecordingSidecar(

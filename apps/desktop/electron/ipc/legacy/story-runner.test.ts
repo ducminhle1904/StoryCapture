@@ -51,6 +51,7 @@ vi.mock("./recording", () => ({
 }));
 
 import { authorSession } from "./capture-preview";
+import { stopRecording } from "./recording";
 import { recordingSessions } from "./shared";
 import {
   commandContributesCursorEvent,
@@ -81,6 +82,14 @@ function command(verb: string, label: string): ParsedCommand {
   return {
     verb,
     target: { kind: "label", value: label },
+  } as ParsedCommand;
+}
+
+function textOverlay(text: string, durationMs: number): ParsedCommand {
+  return {
+    verb: "text-overlay",
+    text,
+    duration_ms: durationMs,
   } as ParsedCommand;
 }
 
@@ -203,6 +212,192 @@ describe("story browser cursor pacing", () => {
     expect(commandContributesCursorEvent(command("wait-for", "Heading"))).toBe(false);
     expect(commandContributesCursorEvent(command("assert", "Heading"))).toBe(false);
     expect(commandGetsPreActionPacing(command("wait-for", "Heading"))).toBe(false);
+    expect(commandContributesCursorEvent(textOverlay("Welcome", 2_000))).toBe(false);
+    expect(commandGetsPreActionPacing(textOverlay("Welcome", 2_000))).toBe(false);
+  });
+
+  it("waits the full text overlay duration without browser or input side effects", async () => {
+    const contents = fakeContents([]);
+    const inputSideEffect = vi.fn();
+    let completed = false;
+    const execution = executeParsedCommand(
+      contents as never,
+      textOverlay("Welcome", 30_001),
+      "/tmp",
+      { onInputSideEffect: inputSideEffect },
+    ).then((result) => {
+      completed = true;
+      return result;
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(completed).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(execution).resolves.toEqual({});
+    expect(contents.loadURL).not.toHaveBeenCalled();
+    expect(contents.executeJavaScript).not.toHaveBeenCalled();
+    expect(contents.sendInputEvent).not.toHaveBeenCalled();
+    expect(contents.capturePage).not.toHaveBeenCalled();
+    expect(inputSideEffect).not.toHaveBeenCalled();
+  });
+
+  it("runs text overlays sequentially and preserves their step timing hooks", async () => {
+    const contents = fakeContents([]);
+    const started: Array<[number, number]> = [];
+    const succeeded: Array<{
+      ordinal: number;
+      durationMs: number;
+      actionDurationMs: number;
+      timing?: { stepStartedAtMs: number; actionAtMs: number; stepEndedAtMs: number };
+    }> = [];
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [textOverlay("First", 250), textOverlay("Second", 400)],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+      hooks: {
+        onStepStarted: (ordinal) => started.push([ordinal, Date.now()]),
+        onStepSucceeded: (step) => succeeded.push(step),
+      },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({
+      succeeded: 2,
+      failed: 0,
+      exitReason: "completed",
+      durationMs: 650,
+    });
+    expect(started).toEqual([
+      [1, 0],
+      [2, 250],
+    ]);
+    expect(succeeded).toMatchObject([
+      {
+        ordinal: 1,
+        durationMs: 250,
+        actionDurationMs: 250,
+        timing: { stepStartedAtMs: 0, actionAtMs: 0, stepEndedAtMs: 250 },
+      },
+      {
+        ordinal: 2,
+        durationMs: 400,
+        actionDurationMs: 400,
+        timing: { stepStartedAtMs: 250, actionAtMs: 250, stepEndedAtMs: 650 },
+      },
+    ]);
+  });
+
+  it("freezes a text overlay delay while recording is paused", async () => {
+    const pauseGate = new RecordingPauseGate();
+    const started: number[] = [];
+    const succeeded: number[] = [];
+    const run = runStoryCommandsInBrowser({
+      contents: fakeContents([]) as never,
+      commands: [textOverlay("Paused", 1_000), textOverlay("Next", 100)],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      pauseGate,
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+      hooks: {
+        onStepStarted: (ordinal) => started.push(ordinal),
+        onStepSucceeded: ({ ordinal }) => succeeded.push(ordinal),
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(250);
+    pauseGate.pause();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(started).toEqual([1]);
+    expect(succeeded).toEqual([]);
+
+    pauseGate.resume();
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 2, failed: 0 });
+    expect(started).toEqual([1, 2]);
+    expect(succeeded).toEqual([1, 2]);
+  });
+
+  it("cancels an active text overlay delay without failing or starting the next step", async () => {
+    const pauseGate = new RecordingPauseGate();
+    const started: number[] = [];
+    const succeeded = vi.fn();
+    const failed = vi.fn();
+    const run = runStoryCommandsInBrowser({
+      contents: fakeContents([]) as never,
+      commands: [textOverlay("Cancel me", 1_000), textOverlay("Never starts", 100)],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      pauseGate,
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+      hooks: {
+        onStepStarted: (ordinal) => started.push(ordinal),
+        onStepSucceeded: succeeded,
+        onStepFailed: failed,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(250);
+    pauseGate.cancel();
+
+    await expect(run).resolves.toMatchObject({
+      succeeded: 0,
+      failed: 0,
+      exitReason: "cancelled",
+    });
+    expect(started).toEqual([1]);
+    expect(succeeded).not.toHaveBeenCalled();
+    expect(failed).not.toHaveBeenCalled();
+  });
+
+  it("captures the normal post-step frame after a text overlay delay", async () => {
+    const frameDir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-text-overlay-"));
+    tempDirs.push(frameDir);
+    const contents = fakeContents([]);
+    const frames: Array<{ duration_ms: number; screenshot_path: string | null }> = [];
+    const run = runStoryCommandsInBrowser({
+      contents: contents as never,
+      commands: [textOverlay("Capture me", 100)],
+      projectFolder: "/tmp/storycapture-test",
+      storySource: "",
+      targets: { version: 1, steps: {} },
+      frameDir,
+      executionProfile: {
+        typingMode: "instant",
+        captureRecordingFrames: false,
+        settleDelayForCommand: () => 0,
+      },
+      hooks: { onFrameCaptured: (_ordinal, frame) => frames.push(frame) },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+    expect(contents.capturePage).toHaveBeenCalledTimes(1);
+    expect(frames).toMatchObject([
+      {
+        duration_ms: 100,
+        screenshot_path: path.join(frameDir, "step-0001.png"),
+      },
+    ]);
+    await expect(fs.stat(path.join(frameDir, "step-0001.png"))).resolves.toBeDefined();
   });
 
   it("re-resolves a semantic target after the prepared target detaches", async () => {
@@ -784,7 +979,7 @@ describe("story browser cursor pacing", () => {
   it("excludes non-interaction targets from recorded action sidecars", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-actions-"));
     tempDirs.push(dir);
-    const outputPath = path.join(dir, "recording.mp4");
+    const outputPath = path.join(dir, "recording");
     const contents = fakeContentsByLabel({
       Login: target("Login", { x: 640, y: 170 }),
       "EMAIL ADDRESS": target("EMAIL ADDRESS", { x: 460, y: 320 }),
@@ -827,6 +1022,10 @@ describe("story browser cursor pacing", () => {
       loggedAuthorPreviewFrame: false,
       requestedFps: 60,
     } as never);
+    vi.mocked(stopRecording).mockImplementationOnce(async () => {
+      await expect(fs.stat(`${outputPath}.steps.json`)).resolves.toBeDefined();
+      return {} as Awaited<ReturnType<typeof stopRecording>>;
+    });
 
     const run = launchAutomationCommand(
       {
@@ -835,6 +1034,7 @@ describe("story browser cursor pacing", () => {
         projectFolder: dir,
         storySource: `story "Demo" {
 scene "Login" {
+  text-overlay "Sign in securely" 2000ms # @id=11111111-1111-4111-8111-111111111111
   wait-for heading "Login" timeout 10ms
   type field "EMAIL ADDRESS" "demo@example.com"
   type field "PASSWORD" "password"
@@ -867,5 +1067,26 @@ scene "Login" {
           event.cursor_timing && event.input_timing,
       ),
     ).toBe(true);
+
+    const stepTimingPath = `${outputPath}.steps.json`;
+    const stepTiming = JSON.parse(await fs.readFile(stepTimingPath, "utf8"));
+    expect(stepTiming).toMatchObject({
+      version: 1,
+      recordingPath: outputPath,
+      storyHash: expect.any(String),
+      timebase: "recording-ms",
+      status: "completed",
+      captureRect: { x: 0, y: 0, width: 1280, height: 800 },
+    });
+    expect(stepTiming.steps).toHaveLength(5);
+    expect(stepTiming.steps[0]).toMatchObject({
+      ordinal: 1,
+      stepId: "11111111-1111-4111-8111-111111111111",
+      sceneName: "Login",
+      verb: "text-overlay",
+      status: "succeeded",
+      target: null,
+      confidence: "high",
+    });
   });
 });

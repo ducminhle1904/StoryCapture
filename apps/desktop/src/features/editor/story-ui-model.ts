@@ -80,6 +80,9 @@ function formatCommand(command: EditableCommand): string {
     case "wait":
       line = `wait ${command.duration_ms}ms`;
       break;
+    case "text-overlay":
+      line = `text-overlay ${quote(command.text)} ${command.duration_ms}ms`;
+      break;
     case "wait-for":
     case "wait-for-visible":
       line = `${command.verb} ${formatTargetWithNth(command.target, command.target_nth)}${

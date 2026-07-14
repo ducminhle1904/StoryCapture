@@ -37,6 +37,7 @@ drag <target> to <target>
 select <target> "<value>"
 upload <target> "<path>"
 wait <duration>
+text-overlay "<text>" [<integer>ms]
 wait-for <target> [timeout <duration>]
 assert <target>
 screenshot "<name>"
@@ -76,6 +77,20 @@ Unitless legacy amounts normalize to pixels, and an omitted amount defaults to
 `500px`. Targeted scroll moves the picked element's own scrollable box or its
 nearest scrollable ancestor. `wait-for` and `assert` remain DOM-presence checks;
 `wait-for-visible` and `assert-visible` use the actionable visibility pipeline.
+
+`text-overlay` declares a caption that appears in the recording timeline:
+
+```text
+text-overlay "Welcome to StoryCapture"
+text-overlay "This stays longer" 5000ms
+```
+
+The default duration is `2000ms`. An explicit duration must be an integer with
+the `ms` suffix from `100ms` through `30000ms`, inclusive; empty text, other
+units, unitless or decimal values, values outside the range, and trailing tokens
+are parser errors that block recording. UI mode exposes separate text and
+duration fields and serializes the default explicitly as `2000ms` while
+preserving step-id comments.
 
 ## Project And Sidecars
 
@@ -143,6 +158,11 @@ Rust/native capture crates.
 - Recording lifecycle supports start/stop and pause/resume surfaces.
 - Recording sidecars feed post-production cursor, zoom, callout, highlight, and
   sound defaults.
+- Recorded automation treats `text-overlay` as a sequential, pause-aware and
+  cancellable delay. It keeps capture active for the declared duration, records
+  normal step start/end timing, and does not resolve a target, touch the DOM,
+  run interaction readiness, or emit cursor/action events. The following
+  command cannot begin until the overlay duration completes.
 - Recorded automation treats `click`, `hover`, `type`, and `select` as
   cursor-visible interaction events. Before these actions, pure target
   observation computes safe viewport and nested-scroller clips, chooses an
@@ -190,6 +210,18 @@ without crashing. The editor owns:
 - Preview engine with WebGPU path where available and fallback behavior.
 - Export modal, render queue/progress UI, undo/history, sound drawer, and
   voiceover compact UI.
+
+During recording bootstrap, `text-overlay` directives match `<recording>.steps.json`
+timing by step id and then by ordinal when no id is available. Each match creates
+a recording-bound annotation from the existing `caption` style: its start comes
+from the recorded step, its duration comes from the script, and its end is
+clamped to the recorded media. Missing or outside-media timing skips the overlay
+and produces one aggregated re-record warning instead of guessing placement.
+Generated overlays carry the recording sync group, source revision, and source
+time map, so preview and export use the existing annotation/compositor path.
+Saved timeline edits are authoritative for the current source revision; a
+re-record regenerates script-bound overlays while preserving independent user
+annotations. Post-production edits never rewrite the `.story` source.
 
 Action-backed cursor clips support `None`, `Ring`, `Soft Pulse`, `Echo`, and
 `Press` click feedback with color and intensity presets. New generated clips

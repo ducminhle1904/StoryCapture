@@ -2,13 +2,16 @@
  * Phase 19-03 — unit tests for the post-production timeline producer.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_POLISH_DOC } from "@/features/editor/polish-sidecar";
 import { actionSidecarFps, type RecordingActions } from "@/ipc/actions";
 import type { ParseResult } from "@/ipc/parse";
 import type { RecordingInfo } from "@/ipc/projects";
 import type { RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
-import { DEFAULT_POLISH_DOC } from "@/features/editor/polish-sidecar";
-
-import { buildTimelineFromStory } from "../state/build-timeline-from-story";
+import {
+  buildTimelineFromStory,
+  mergeIndependentAnnotations,
+} from "../state/build-timeline-from-story";
+import type { AnnotationClip } from "../state/timeline-slice";
 
 const RECORDING: RecordingInfo = {
   path: "/tmp/projects/p1/recordings/recording-123.mp4",
@@ -139,6 +142,50 @@ function actionsEndingAt(tEndMs: number): RecordingActions {
       ...event,
       t_action_ms: Math.min(event.t_action_ms, tEndMs),
       t_end_ms: tEndMs,
+    })),
+  };
+}
+
+function textOverlayStory(
+  commands: Array<{ text: string; durationMs: number; stepId?: string | null }>,
+): ParseResult {
+  const scene = STORY_AST.scenes[0];
+  if (!scene) throw new Error("expected story scene fixture");
+  return {
+    ...STORY,
+    ast: {
+      ...STORY_AST,
+      scenes: [
+        {
+          ...scene,
+          commands: commands.map((command, index) => ({
+            verb: "text-overlay" as const,
+            text: command.text,
+            duration_ms: command.durationMs,
+            span: { start: index, end: index + 1, line: index + 1, col: 1 },
+            step_id: command.stepId,
+          })),
+        },
+      ],
+    },
+  };
+}
+
+function textOverlayTiming(
+  steps: Array<{ ordinal: number; stepId?: string | null; startMs: number }>,
+): RecordingStepTimingSidecar {
+  return {
+    ...STEP_TIMING,
+    steps: steps.map((step) => ({
+      ordinal: step.ordinal,
+      stepId: step.stepId,
+      sceneName: "Checkout",
+      verb: "text-overlay",
+      startMs: step.startMs,
+      endMs: step.startMs + 2_000,
+      durationMs: 2_000,
+      status: "succeeded",
+      confidence: "high",
     })),
   };
 }
@@ -1238,5 +1285,167 @@ describe("buildTimelineFromStory", () => {
     expect(bounds?.y).toBeCloseTo(456 / 1012);
     expect(bounds?.w).toBeCloseTo(0.1);
     expect(bounds?.h).toBeCloseTo(100 / 1012);
+  });
+
+  it("uses parser-provided default and explicit text overlay durations", () => {
+    const out = buildTimelineFromStory({
+      story: textOverlayStory([
+        { text: "Default duration", durationMs: 2_000, stepId: "overlay-default" },
+        { text: "Explicit duration", durationMs: 5_000, stepId: "overlay-explicit" },
+      ]),
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: textOverlayTiming([
+        { ordinal: 1, stepId: "overlay-default", startMs: 1_000 },
+        { ordinal: 2, stepId: "overlay-explicit", startMs: 5_000 },
+      ]),
+    });
+
+    expect(out.annotations.map((clip) => [clip.text, clip.startMs, clip.durationMs])).toEqual([
+      ["Default duration", 1_000, 2_000],
+      ["Explicit duration", 5_000, 5_000],
+    ]);
+    expect(out.warnings).toEqual([]);
+  });
+
+  it("matches text overlay timing by step id before falling back to ordinal", () => {
+    const out = buildTimelineFromStory({
+      story: textOverlayStory([
+        { text: "By ID", durationMs: 2_000, stepId: "overlay-by-id" },
+        { text: "By ordinal", durationMs: 2_000 },
+      ]),
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: textOverlayTiming([
+        { ordinal: 1, stepId: "different-step", startMs: 250 },
+        { ordinal: 99, stepId: "overlay-by-id", startMs: 2_500 },
+        { ordinal: 2, startMs: 5_500 },
+      ]),
+    });
+
+    expect(out.annotations.map((clip) => [clip.text, clip.startMs])).toEqual([
+      ["By ID", 2_500],
+      ["By ordinal", 5_500],
+    ]);
+    expect(out.annotations[1]?.id).toMatch(/^text-overlay-[a-f0-9]{8}-ordinal-2$/);
+  });
+
+  it("uses caption defaults, stable recording identity, and source sync metadata", () => {
+    const input = {
+      story: textOverlayStory([
+        { text: "Safe-area caption", durationMs: 2_000, stepId: "caption-step" },
+      ]),
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: textOverlayTiming([{ ordinal: 1, stepId: "caption-step", startMs: 1_500 }]),
+    };
+    const first = buildTimelineFromStory(input);
+    const second = buildTimelineFromStory(input);
+    const clip = first.annotations[0];
+
+    expect(clip).toMatchObject({
+      id: expect.stringMatching(/^text-overlay-[a-f0-9]{8}-caption-step$/),
+      label: "Text overlay",
+      text: "Safe-area caption",
+      styleId: "caption",
+      pos: { x: 0.5, y: 0.9 },
+      sizePt: 20,
+      color: "#ffffff",
+      align: "center",
+      boxStyle: {
+        paddingPx: 10,
+        radiusPx: 10,
+        bgColor: "#111317bf",
+        borderColor: null,
+      },
+      anchor: { kind: "screen", pos: { x: 0.5, y: 0.9 } },
+    });
+    expect(second.annotations[0]?.id).toBe(clip?.id);
+    expect(clip?.syncGroupId).toBe(first.video[0]?.syncGroupId);
+    expect(clip?.sourceRevision).toBe(first.video[0]?.sourceRevision);
+    expect(clip?.sourceTimeMap).toEqual(first.video[0]?.sourceTimeMap);
+  });
+
+  it("clamps text overlays at the recorded media end", () => {
+    const out = buildTimelineFromStory({
+      story: textOverlayStory([
+        { text: "Ending caption", durationMs: 2_000, stepId: "ending-caption" },
+      ]),
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: textOverlayTiming([{ ordinal: 1, stepId: "ending-caption", startMs: 12_000 }]),
+    });
+
+    expect(out.annotations[0]).toMatchObject({ startMs: 12_000, durationMs: 345 });
+    expect(out.warnings).toEqual([]);
+  });
+
+  it("skips text overlays without timing and returns a structured warning", () => {
+    const out = buildTimelineFromStory({
+      story: textOverlayStory([
+        { text: "Needs timing", durationMs: 2_000, stepId: "missing-timing" },
+      ]),
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: null,
+    });
+
+    expect(out.annotations).toEqual([]);
+    expect(out.warnings).toEqual([
+      {
+        code: "missing-text-overlay-timing",
+        stepId: "missing-timing",
+        ordinal: 1,
+        message: expect.stringContaining("missing-timing"),
+      },
+    ]);
+  });
+
+  it("skips text overlays starting outside media and returns a structured warning", () => {
+    const out = buildTimelineFromStory({
+      story: textOverlayStory([{ text: "Too late", durationMs: 2_000 }]),
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: textOverlayTiming([{ ordinal: 1, startMs: RECORDING.duration_ms ?? 0 }]),
+    });
+
+    expect(out.annotations).toEqual([]);
+    expect(out.warnings).toEqual([
+      {
+        code: "text-overlay-outside-media",
+        stepId: null,
+        ordinal: 1,
+        message: expect.stringContaining("step 1"),
+      },
+    ]);
+  });
+
+  it("regenerates recording-bound overlays while preserving independent annotations", () => {
+    const generated = buildTimelineFromStory({
+      story: textOverlayStory([
+        { text: "Generated", durationMs: 2_000, stepId: "generated-caption" },
+      ]),
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: textOverlayTiming([{ ordinal: 1, stepId: "generated-caption", startMs: 1_000 }]),
+    }).annotations;
+    const manual: AnnotationClip = {
+      id: "manual-caption",
+      trackId: "annotations",
+      startMs: 3_000,
+      durationMs: 1_000,
+      text: "Manual",
+      pos: { x: 0.5, y: 0.5 },
+      sizePt: 20,
+    };
+    const staleGenerated: AnnotationClip = {
+      ...manual,
+      id: "old-generated-caption",
+      syncGroupId: "old-recording",
+    };
+
+    expect(
+      mergeIndependentAnnotations(generated, [manual, staleGenerated]).map((clip) => clip.id),
+    ).toEqual([generated[0]?.id, manual.id]);
   });
 });

@@ -33,11 +33,7 @@ import { type EditorJumpTarget, StoryEditor } from "@/features/editor/story-edit
 import { ensureAllStepIds, formatEditableStory } from "@/features/editor/story-ui-model";
 import { useEditorLivePreview } from "@/features/editor/use-editor-live-preview";
 import { parseStory, type Story } from "@/ipc/parse";
-import {
-  fetchProjectFolder,
-  type ProjectFolderInfo,
-  useProjectRecordings,
-} from "@/ipc/projects";
+import { fetchProjectFolder, type ProjectFolderInfo, useProjectRecordings } from "@/ipc/projects";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import { useAppSettingsStore } from "@/state/app-settings";
 import { EMPTY_DIAGNOSTICS, useEditorStore } from "@/state/editor";
@@ -67,6 +63,7 @@ export default function EditorRoute() {
   const [polishReady, setPolishReady] = useState(false);
   const [polishDirty, setPolishDirty] = useState(false);
   const [recordPolishStarting, setRecordPolishStarting] = useState(false);
+  const [storyBuilderValid, setStoryBuilderValid] = useState(true);
   const latestPolishRef = useRef(polish);
   // Only render once store state matches the URL project to avoid a stale scene flash.
   const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
@@ -81,6 +78,9 @@ export default function EditorRoute() {
   const appSettings = useAppSettingsStore((s) => s.settings);
   const story = useEditorStore((s) => s.lastParse?.ast ?? null);
   const diagnostics = useEditorStore((s) => s.lastParse?.diagnostics) ?? EMPTY_DIAGNOSTICS;
+  const errorCount = diagnostics.filter((d) => d.severity === "error").length;
+  const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
+  const recordingBlocked = errorCount > 0 || (editorMode === "ui" && !storyBuilderValid);
 
   const previewViewport = useEditorStore((s) => s.previewViewport);
   const setPreviewViewport = useEditorStore((s) => s.setViewport);
@@ -290,7 +290,7 @@ export default function EditorRoute() {
   }, [uiAutosave]);
 
   const handleRecordAndPolish = useCallback(async () => {
-    if (!projectId) return;
+    if (!projectId || recordingBlocked) return;
     setRecordPolishStarting(true);
     try {
       uiAutosave.flush();
@@ -306,7 +306,15 @@ export default function EditorRoute() {
     } finally {
       setRecordPolishStarting(false);
     }
-  }, [commitUiSourceChange, navigate, projectId, setLastParse, source, uiAutosave]);
+  }, [
+    commitUiSourceChange,
+    navigate,
+    projectId,
+    recordingBlocked,
+    setLastParse,
+    source,
+    uiAutosave,
+  ]);
 
   // Reload when the window regains focus and disk drifted from our snapshot.
   // Clean buffer → silent reload; dirty buffer → prompt before discarding edits.
@@ -372,8 +380,6 @@ export default function EditorRoute() {
     );
   }
 
-  const errorCount = diagnostics.filter((d) => d.severity === "error").length;
-  const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
   return (
     <main id="main-content" className="relative flex h-full flex-col bg-[var(--sc-bg)]">
       <div
@@ -430,14 +436,25 @@ export default function EditorRoute() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {projectId && (
             <>
-              <Link to={`/recorder/${projectId}`} className="sc-btn ghost sm">
+              <Link
+                to={`/recorder/${projectId}`}
+                className={`sc-btn ghost sm ${recordingBlocked ? "pointer-events-none opacity-50" : ""}`}
+                aria-disabled={recordingBlocked}
+                tabIndex={recordingBlocked ? -1 : undefined}
+                title={
+                  recordingBlocked ? "Fix story validation errors before recording" : undefined
+                }
+                onClick={(event) => {
+                  if (recordingBlocked) event.preventDefault();
+                }}
+              >
                 <Video size={12} aria-hidden="true" />
                 Record
               </Link>
               <ScButton
                 size="sm"
                 variant="success"
-                disabled={recordPolishStarting}
+                disabled={recordPolishStarting || recordingBlocked}
                 icon={<Sparkles size={12} aria-hidden="true" />}
                 onClick={handleRecordAndPolish}
               >
@@ -573,6 +590,7 @@ export default function EditorRoute() {
                         onFlushSource={flushUiSourceChange}
                         onPolishChange={updatePolish}
                         onJumpToOffset={queueEditorJump}
+                        onValidityChange={setStoryBuilderValid}
                       />
                     ) : (
                       <StoryEditor
@@ -596,6 +614,7 @@ export default function EditorRoute() {
                     storySource={source}
                     streamId={authorStreamId}
                     appUrlValid={appUrlValid}
+                    disabled={recordingBlocked}
                   />
                 </div>
               </section>

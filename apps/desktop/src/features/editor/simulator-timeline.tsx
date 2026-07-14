@@ -18,6 +18,7 @@ interface SimulatorTimelineProps {
   storySource: string;
   streamId: string | null;
   appUrlValid: boolean;
+  disabled?: boolean;
 }
 
 function stringifySelectorOrText(s: SelectorOrText): string {
@@ -75,6 +76,7 @@ export function SimulatorTimeline({
   storySource,
   streamId,
   appUrlValid,
+  disabled = false,
 }: SimulatorTimelineProps) {
   const frames = useSimulatorStore((s) => s.frames);
   const runState = useSimulatorStore((s) => s.runState);
@@ -130,7 +132,7 @@ export function SimulatorTimeline({
     return map;
   }, [ast]);
 
-  const canRun = appUrlValid && streamId != null;
+  const canRun = !disabled && appUrlValid && streamId != null;
 
   const handleRun = async () => {
     console.log("[sim] Run clicked", { canRun, appUrlValid, streamId, projectFolder, storyPath });
@@ -244,11 +246,13 @@ export function SimulatorTimeline({
               disabled={!canRun}
               aria-label="Run simulator"
               title={
-                !appUrlValid
-                  ? "Set meta.app in your story to enable the simulator"
-                  : streamId == null
-                    ? "Live Preview is starting — wait for the badge to read 'live'"
-                    : undefined
+                disabled
+                  ? "Fix story validation errors before running the simulator"
+                  : !appUrlValid
+                    ? "Set meta.app in your story to enable the simulator"
+                    : streamId == null
+                      ? "Live Preview is starting — wait for the badge to read 'live'"
+                      : undefined
               }
               className={`inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-2.5 py-1 text-xs font-semibold transition-colors active:translate-y-[1px] disabled:cursor-not-allowed ${
                 canRun
