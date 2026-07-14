@@ -10,10 +10,12 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { sampleExportZoom } from "../export-compositor/export-compositor-app";
 import type { Graph, VideoNode } from "../state/compute-graph";
 import { computeGraph, graphIsRenderable } from "../state/compute-graph";
 import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
+import { clearSystemFontCatalogCache, loadSystemFontCatalog } from "../state/system-font-catalog";
 import type { ZoomClip } from "../state/timeline-slice";
 import {
   applyZoomToPoint,
@@ -21,7 +23,6 @@ import {
   resolveZoomMotion,
   sampleResolvedZoom,
 } from "../state/zoom-motion";
-import { sampleExportZoom } from "../export-compositor/export-compositor-app";
 
 function videoNodeAt(graph: Graph, index: number): VideoNode {
   const node = graph.video[index];
@@ -51,7 +52,10 @@ function resetStore() {
   });
 }
 
-beforeEach(resetStore);
+beforeEach(() => {
+  resetStore();
+  clearSystemFontCatalogCache();
+});
 
 describe("computeGraph", () => {
   it("empty store yields empty video/audio with schema metadata", () => {
@@ -518,7 +522,9 @@ describe("computeGraph", () => {
       times: [999, 1_000, 1_250, 1_999, 2_500],
     },
   ])("keeps preview-resolution and export sampling in parity for $name", ({ clips, times }) => {
-    useEditorStore.setState({ tracks: { video: [], cursor: [], zoom: clips, sound: [], annotations: [] } });
+    useEditorStore.setState({
+      tracks: { video: [], cursor: [], zoom: clips, sound: [], annotations: [] },
+    });
     const graph = computeGraph(useEditorStore.getState());
     const motions = resolveZoomMotion(clips);
 
@@ -560,7 +566,9 @@ describe("computeGraph", () => {
         origin: "authored",
       },
     ];
-    useEditorStore.setState({ tracks: { video: [], cursor: [], zoom: clips, sound: [], annotations: [] } });
+    useEditorStore.setState({
+      tracks: { video: [], cursor: [], zoom: clips, sound: [], annotations: [] },
+    });
 
     const nodes = computeGraph(useEditorStore.getState()).video.filter(
       (node) => node.type === "zoom-pan",
@@ -778,18 +786,151 @@ describe("computeGraph", () => {
     if (!text || text.type !== "text-overlay") throw new Error("expected text-overlay");
     expect(text.boxes[0]).toMatchObject({
       text: "Styled",
-      font: { kind: "bundled", family: "Geist", weight: 700 },
+      font: { kind: "bundled", family: "Geist", weight: 700, style: "normal" },
       size_pt: 18,
       color: { r: 248, g: 250, b: 252, a: 255 },
+      align: "center",
+      max_width_pct: 82,
+      line_height: 1.1,
+      letter_spacing_px: 0,
+      text_shadow: null,
       box_style: {
         padding_px: 10,
         radius_px: 10,
         bg_color: { r: 16, g: 18, b: 21, a: 230 },
         border_color: { r: 255, g: 255, b: 255, a: 46 },
+        border_width_px: 1,
+        shadow: null,
       },
       anim_in: "fade",
       anim_out: "fade",
       anim_duration_ms: 180,
+    });
+  });
+
+  it("maps resolved font, typography, text shadow, border, and box shadow overrides", () => {
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "custom-text",
+            trackId: "annotations",
+            startMs: 500,
+            durationMs: 1_500,
+            text: "Custom\nstyle",
+            pos: { x: 0.25, y: 0.7 },
+            sizePt: 27,
+            styleId: "caption",
+            font: {
+              kind: "system",
+              family: "Example Sans",
+              fullName: "Example Sans Semibold Italic",
+              postscriptName: "ExampleSans-SemiboldItalic",
+              faceStyle: "Semibold Italic",
+              weight: 600,
+              style: "italic",
+            },
+            color: "#abcdef80",
+            align: "right",
+            maxWidthPct: 44,
+            lineHeight: 1.45,
+            letterSpacingPx: 2.5,
+            textShadow: { color: "#11223380", blurPx: 7, offsetXpx: 1.5, offsetYpx: 2 },
+            boxStyle: {
+              paddingPx: 12,
+              radiusPx: 16,
+              bgColor: "#223344cc",
+              borderColor: "#fedcba99",
+              borderWidthPx: 2.5,
+              shadow: { color: "#01020366", blurPx: 9, offsetXpx: -2, offsetYpx: 3 },
+            },
+          },
+        ],
+      },
+    });
+
+    const graph = computeGraph(useEditorStore.getState());
+    const text = graph.video.find((node) => node.type === "text-overlay");
+    if (!text || text.type !== "text-overlay") throw new Error("expected text-overlay");
+    expect(text.boxes[0]).toMatchObject({
+      font: {
+        kind: "system",
+        family: "Example Sans",
+        weight: 600,
+        style: "italic",
+      },
+      align: "right",
+      max_width_pct: 44,
+      line_height: 1.45,
+      letter_spacing_px: 2.5,
+      color: { r: 171, g: 205, b: 239, a: 128 },
+      text_shadow: {
+        color: { r: 17, g: 34, b: 51, a: 128 },
+        blur_px: 7,
+        offset_x_px: 1.5,
+        offset_y_px: 2,
+      },
+      box_style: {
+        padding_px: 12,
+        radius_px: 16,
+        bg_color: { r: 34, g: 51, b: 68, a: 204 },
+        border_color: { r: 254, g: 220, b: 186, a: 153 },
+        border_width_px: 2.5,
+        shadow: {
+          color: { r: 1, g: 2, b: 3, a: 102 },
+          blur_px: 9,
+          offset_x_px: -2,
+          offset_y_px: 3,
+        },
+      },
+    });
+  });
+
+  it("emits the bundled fallback when a saved system font is missing", async () => {
+    await loadSystemFontCatalog({ queryLocalFonts: async () => [] } as unknown as Window);
+    useEditorStore.setState({
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "missing-font",
+            trackId: "annotations",
+            startMs: 0,
+            durationMs: 1_000,
+            text: "Fallback",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 18,
+            styleId: "callout",
+            font: {
+              kind: "system",
+              family: "Missing Sans",
+              fullName: "Missing Sans Regular",
+              postscriptName: "MissingSans-Regular",
+              faceStyle: "Regular",
+              weight: 400,
+              style: "normal",
+            },
+          },
+        ],
+      },
+    });
+
+    const text = computeGraph(useEditorStore.getState()).video.find(
+      (node) => node.type === "text-overlay",
+    );
+    if (!text || text.type !== "text-overlay") throw new Error("expected text-overlay");
+    expect(text.boxes[0]?.font).toEqual({
+      kind: "bundled",
+      family: "Geist",
+      weight: 500,
+      style: "normal",
     });
   });
 

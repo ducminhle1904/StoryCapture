@@ -155,17 +155,44 @@ export interface SoundClip extends ClipBase {
 export type TextStyleId = "title" | "callout" | "lower-third" | "hotspot" | "caption";
 export type TextAlign = "left" | "center" | "right";
 export type TextAnimationKind = "none" | "fade" | "slide-up" | "scale-in";
+export type TextFontStyle = "normal" | "italic";
+export type TextFontChoice =
+  | {
+      kind: "bundled";
+      family: string;
+      weight: number;
+      style?: TextFontStyle;
+    }
+  | {
+      kind: "system";
+      family: string;
+      fullName: string;
+      postscriptName: string;
+      faceStyle: string;
+      weight: number;
+      style: TextFontStyle;
+    }
+  | { kind: "system-default" };
 export type TextAnchor =
   | { kind: "screen"; pos: Vec2 }
   | { kind: "cursor"; offset: Vec2 }
   | { kind: "target"; stepId: string; placement: "top" | "right" | "bottom" | "left" }
   | { kind: "safe-area"; placement: "top" | "bottom" | "center" };
 
+export interface ShadowStyle {
+  color: string;
+  blurPx: number;
+  offsetXpx: number;
+  offsetYpx: number;
+}
+
 export interface TextBoxStyle {
   paddingPx: number;
   radiusPx: number;
   bgColor?: string;
   borderColor?: string | null;
+  borderWidthPx?: number;
+  shadow?: ShadowStyle | null;
 }
 
 export interface TextAnimation {
@@ -179,12 +206,22 @@ export interface AnnotationClip extends ClipBase {
   text: string;
   pos: Vec2;
   sizePt: number;
+  font?: TextFontChoice;
   color?: string;
   styleId?: TextStyleId;
-  boxStyle?: TextBoxStyle;
+  maxWidthPct?: number;
+  lineHeight?: number;
+  letterSpacingPx?: number;
+  textShadow?: ShadowStyle | null;
+  boxStyle?: TextBoxStyle | null;
   align?: TextAlign;
   anchor?: TextAnchor;
   animation?: TextAnimation;
+  sourceBinding?: {
+    kind: "story-text-overlay";
+    stepId: string | null;
+    ordinal: number;
+  };
   highlight?: {
     center: Vec2;
     radiusPx: number;

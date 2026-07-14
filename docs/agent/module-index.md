@@ -41,6 +41,16 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/src/features/post-production/export-modal/`, and
   `apps/desktop/src/features/post-production/render-queue/`. Export disclosure
   UI lives in `apps/desktop/src/features/export/AiDisclosureModal.tsx`.
+- Post-production text customization: `state/timeline-slice.ts` owns persisted
+  clip fields; `state/text-style.ts` owns presets, normalization, and render
+  projection; `state/system-font-catalog.ts` owns user-activated system-font
+  discovery and fallback. Appearance controls live in
+  `inspector/text-appearance-controls.tsx`, layer and bulk-apply orchestration
+  in `inspector/effect-params.tsx`, and exact multi-clip undo snapshots in
+  `undo/actions.ts`. Keep parity changes paired across
+  `preview/preview-player.tsx`, `state/compute-graph.ts`, and
+  `export-compositor/export-compositor-app.tsx`; re-record style reattachment
+  lives in `state/build-timeline-from-story.ts` and `editor-shell.tsx`.
 - Settings/onboarding: `apps/desktop/src/routes/settings.tsx`,
   `apps/desktop/src/features/settings/categories/`,
   `apps/desktop/src/routes/onboarding.tsx`,

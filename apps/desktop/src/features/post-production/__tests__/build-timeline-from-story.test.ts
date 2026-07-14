@@ -10,6 +10,7 @@ import type { RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/traj
 import {
   buildTimelineFromStory,
   mergeIndependentAnnotations,
+  mergeReRecordedAnnotations,
 } from "../state/build-timeline-from-story";
 import type { AnnotationClip } from "../state/timeline-slice";
 
@@ -1330,6 +1331,46 @@ describe("buildTimelineFromStory", () => {
     expect(out.annotations[1]?.id).toMatch(/^text-overlay-[a-f0-9]{8}-ordinal-2$/);
   });
 
+  it("assigns provenance ordinals within the text-overlay group", () => {
+    const overlays = textOverlayStory([
+      { text: "First", durationMs: 2_000 },
+      { text: "Second", durationMs: 2_000 },
+    ]);
+    const overlayAst = overlays.ast;
+    const overlayScene = overlayAst?.scenes[0];
+    const firstOverlay = overlayScene?.commands[0];
+    const secondOverlay = overlayScene?.commands[1];
+    const clickCommand = STORY.ast?.scenes[0]?.commands[0];
+    if (!overlayAst || !overlayScene || !firstOverlay || !secondOverlay || !clickCommand) {
+      throw new Error("expected story fixtures");
+    }
+    const story: ParseResult = {
+      ...overlays,
+      ast: {
+        ...overlayAst,
+        scenes: [
+          {
+            ...overlayScene,
+            commands: [firstOverlay, clickCommand, secondOverlay],
+          },
+        ],
+      },
+    };
+
+    const out = buildTimelineFromStory({
+      story,
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: textOverlayTiming([
+        { ordinal: 1, startMs: 1_000 },
+        { ordinal: 3, startMs: 3_000 },
+      ]),
+    });
+
+    expect(out.annotations.map((clip) => clip.sourceBinding?.ordinal)).toEqual([1, 2]);
+    expect(out.annotations.map((clip) => clip.startMs)).toEqual([1_000, 3_000]);
+  });
+
   it("uses caption defaults, stable recording identity, and source sync metadata", () => {
     const input = {
       story: textOverlayStory([
@@ -1364,6 +1405,11 @@ describe("buildTimelineFromStory", () => {
     expect(clip?.syncGroupId).toBe(first.video[0]?.syncGroupId);
     expect(clip?.sourceRevision).toBe(first.video[0]?.sourceRevision);
     expect(clip?.sourceTimeMap).toEqual(first.video[0]?.sourceTimeMap);
+    expect(clip?.sourceBinding).toEqual({
+      kind: "story-text-overlay",
+      stepId: "caption-step",
+      ordinal: 1,
+    });
   });
 
   it("clamps text overlays at the recorded media end", () => {
@@ -1420,7 +1466,124 @@ describe("buildTimelineFromStory", () => {
     ]);
   });
 
-  it("regenerates recording-bound overlays while preserving independent annotations", () => {
+  it("preserves every approved customization while keeping fresh recording data", () => {
+    const previous = buildTimelineFromStory({
+      story: textOverlayStory([{ text: "Old copy", durationMs: 2_000, stepId: "caption" }]),
+      recording: RECORDING,
+      trajectory: null,
+      stepTiming: textOverlayTiming([{ ordinal: 1, stepId: "caption", startMs: 1_000 }]),
+    }).annotations[0];
+    const nextRecording = { ...RECORDING, path: "/tmp/new-recording.mp4", captured_at: 2 };
+    const generated = buildTimelineFromStory({
+      story: textOverlayStory([{ text: "New copy", durationMs: 3_000, stepId: "caption" }]),
+      recording: nextRecording,
+      trajectory: null,
+      stepTiming: textOverlayTiming([{ ordinal: 1, stepId: "caption", startMs: 4_000 }]),
+    }).annotations;
+    expect(previous).toBeDefined();
+    if (!previous) return;
+    const saved: AnnotationClip = {
+      ...previous,
+      styleId: "hotspot",
+      font: {
+        kind: "system",
+        family: "Inter",
+        fullName: "Inter Bold Italic",
+        postscriptName: "Inter-BoldItalic",
+        faceStyle: "Bold Italic",
+        weight: 700,
+        style: "italic",
+      },
+      sizePt: 31,
+      color: "#123456",
+      align: "right",
+      maxWidthPct: 63,
+      lineHeight: 1.35,
+      letterSpacingPx: 2.5,
+      textShadow: { color: "#00000080", blurPx: 8, offsetXpx: 1, offsetYpx: 2 },
+      boxStyle: {
+        paddingPx: 17,
+        radiusPx: 23,
+        bgColor: "#abcdefaa",
+        borderColor: "#fedcba",
+        borderWidthPx: 3,
+        shadow: { color: "#11223380", blurPx: 12, offsetXpx: 4, offsetYpx: 5 },
+      },
+      pos: { x: 0.25, y: 0.75 },
+      anchor: { kind: "safe-area", placement: "top" },
+      animation: { in: "scale-in", out: "none", durationMs: 333 },
+    };
+
+    const result = mergeReRecordedAnnotations(generated, [saved]);
+
+    expect(result.legacyGeneratedCount).toBe(0);
+    expect(result.annotations[0]).toMatchObject({
+      id: generated[0]?.id,
+      text: "New copy",
+      startMs: 4_000,
+      durationMs: 3_000,
+      syncGroupId: generated[0]?.syncGroupId,
+      sourceRevision: generated[0]?.sourceRevision,
+      sourceTimeMap: generated[0]?.sourceTimeMap,
+      sourceBinding: generated[0]?.sourceBinding,
+      styleId: "hotspot",
+      font: saved.font,
+      sizePt: 31,
+      color: "#123456",
+      align: "right",
+      maxWidthPct: 63,
+      lineHeight: 1.35,
+      letterSpacingPx: 2.5,
+      textShadow: saved.textShadow,
+      boxStyle: saved.boxStyle,
+      pos: { x: 0.25, y: 0.75 },
+      anchor: { kind: "safe-area", placement: "top" },
+      animation: { in: "scale-in", out: "none", durationMs: 333 },
+    });
+  });
+
+  it("uses step ids across add, remove, and reorder without assigning another step's style", () => {
+    const annotation = (
+      id: string,
+      stepId: string | null,
+      ordinal: number,
+      color: string,
+    ): AnnotationClip => ({
+      id,
+      trackId: "annotations",
+      startMs: ordinal * 1_000,
+      durationMs: 500,
+      text: id,
+      pos: { x: 0.5, y: 0.5 },
+      sizePt: 20,
+      color,
+      syncGroupId: "recording",
+      sourceBinding: { kind: "story-text-overlay", stepId, ordinal },
+    });
+    const saved = [
+      annotation("old-a", "a", 1, "#aaaaaa"),
+      annotation("old-removed", "removed", 2, "#bbbbbb"),
+      annotation("old-no-id", null, 3, "#cccccc"),
+      annotation("old-id-at-ordinal-four", "old-four", 4, "#dddddd"),
+    ];
+    const generated = [
+      annotation("new-added", "added", 1, "#010101"),
+      annotation("new-a", "a", 2, "#020202"),
+      annotation("new-no-id", null, 3, "#030303"),
+      annotation("new-no-id-no-fallback", null, 4, "#040404"),
+    ];
+
+    const result = mergeReRecordedAnnotations(generated, saved);
+
+    expect(result.annotations.map((clip) => [clip.id, clip.color])).toEqual([
+      ["new-added", "#010101"],
+      ["new-a", "#aaaaaa"],
+      ["new-no-id", "#cccccc"],
+      ["new-no-id-no-fallback", "#040404"],
+    ]);
+  });
+
+  it("preserves independent annotations and reports legacy generated clips without parsing ids", () => {
     const generated = buildTimelineFromStory({
       story: textOverlayStory([
         { text: "Generated", durationMs: 2_000, stepId: "generated-caption" },
@@ -1440,10 +1603,13 @@ describe("buildTimelineFromStory", () => {
     };
     const staleGenerated: AnnotationClip = {
       ...manual,
-      id: "old-generated-caption",
+      id: generated[0]?.id ?? "text-overlay-looks-parseable",
       syncGroupId: "old-recording",
     };
 
+    const result = mergeReRecordedAnnotations(generated, [manual, staleGenerated]);
+    expect(result.annotations.map((clip) => clip.id)).toEqual([generated[0]?.id, manual.id]);
+    expect(result.legacyGeneratedCount).toBe(1);
     expect(
       mergeIndependentAnnotations(generated, [manual, staleGenerated]).map((clip) => clip.id),
     ).toEqual([generated[0]?.id, manual.id]);

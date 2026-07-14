@@ -120,7 +120,7 @@ describe("timeline-slice", () => {
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.layout.version).toBe(2);
+    expect(parsed.layout.version).toBe(3);
     expect(parsed.layout.timingModelVersion).toBe(1);
     expect(parsed.layout.tracks.video[0]).toMatchObject({ id: "video-1", trackId: "video" });
     expect(parsed.layout.durationMs).toBe(1000);
@@ -139,19 +139,41 @@ describe("timeline-slice", () => {
       background: { kind: "transparent" },
       tracks: {
         video: [
-          { id: "video-a", trackId: "video", startMs: 0, durationMs: 900, sourcePath: "/tmp/a.mp4" },
+          {
+            id: "video-a",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 900,
+            sourcePath: "/tmp/a.mp4",
+          },
         ],
         cursor: [],
         zoom: [],
         sound: [],
         annotations: [
-          { id: "note", trackId: "annotations", startMs: 50, durationMs: 100, text: "keep", pos: { x: 0.5, y: 0.5 }, sizePt: 16 },
+          {
+            id: "note",
+            trackId: "annotations",
+            startMs: 50,
+            durationMs: 100,
+            text: "keep",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 16,
+          },
         ],
       },
     });
     const current = {
       video: [
-        { id: "video-a", trackId: "video" as const, startMs: 0, durationMs: 1_000, sourcePath: "/tmp/a.mp4", syncGroupId: "g", sourceRevision: "new" },
+        {
+          id: "video-a",
+          trackId: "video" as const,
+          startMs: 0,
+          durationMs: 1_000,
+          sourcePath: "/tmp/a.mp4",
+          syncGroupId: "g",
+          sourceRevision: "new",
+        },
       ],
       cursor: [],
       zoom: [],

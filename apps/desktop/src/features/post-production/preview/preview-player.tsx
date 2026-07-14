@@ -47,7 +47,13 @@ import {
   isActionsCursorClip,
   resolveTextAnchorPosition,
 } from "../state/text-anchor";
-import { resolvedTextStyle, type TextStylePreset, textFontCss } from "../state/text-style";
+import {
+  type ResolvedTextStyle,
+  resolvedTextStyle,
+  type TextStylePreset,
+  textFontCss,
+  textHorizontalOrigin,
+} from "../state/text-style";
 import type {
   AnnotationClip,
   CursorClip,
@@ -62,9 +68,9 @@ import {
   applyZoomToBounds,
   applyZoomToPoint,
   normalizedZoomCropTopLeft,
+  type ResolvedZoomMotion,
   resolveZoomMotion,
   sampleResolvedZoom,
-  type ResolvedZoomMotion,
 } from "../state/zoom-motion";
 import { PresentedMediaClock } from "./presented-media-clock";
 import { PreviewEngine } from "./preview-engine";
@@ -420,6 +426,10 @@ function percent(value: number): string {
   return `${Math.round(value * 10_000) / 100}%`;
 }
 
+function textShadowCss(shadow: NonNullable<ResolvedTextStyle["textShadow"]>): string {
+  return `${shadow.offsetXpx}px ${shadow.offsetYpx}px ${shadow.blurPx}px ${shadow.color}`;
+}
+
 function hasReliableHighlightBounds(
   bounds: HighlightBounds | null | undefined,
 ): bounds is HighlightBounds {
@@ -488,9 +498,9 @@ function clampTextPosition(value: number): number {
 }
 
 function textTranslateX(posX: number): string {
-  if (!Number.isFinite(posX)) return "-50%";
-  if (posX < 0.18) return "0%";
-  if (posX > 0.82) return "-100%";
+  const origin = textHorizontalOrigin(posX);
+  if (origin === "left") return "0%";
+  if (origin === "right") return "-100%";
   return "-50%";
 }
 
@@ -500,6 +510,7 @@ function textMotionStyle(
   playheadMs: number,
   posX: number,
 ): CSSProperties {
+  const horizontalOrigin = textHorizontalOrigin(posX);
   const duration = Math.max(1, animation.durationMs);
   const inProgress = clamp01((playheadMs - clip.startMs) / duration);
   const outProgress = clamp01((clip.startMs + clip.durationMs - playheadMs) / duration);
@@ -521,7 +532,7 @@ function textMotionStyle(
   return {
     opacity,
     transform: `translate(${textTranslateX(posX)}, calc(-50% + ${yPx}px)) scale(${scale})`,
-    transformOrigin: posX < 0.18 ? "left center" : posX > 0.82 ? "right center" : "center center",
+    transformOrigin: `${horizontalOrigin} center`,
   };
 }
 
@@ -1862,7 +1873,6 @@ export function PreviewPlayer({
                       ? applyZoomToPoint(anchorPosition, previewZoom)
                       : anchorPosition;
                   const font = textFontCss(style.font);
-                  const hasBox = Boolean(style.boxStyle);
                   return (
                     <div
                       key={clip.id}
@@ -1870,7 +1880,7 @@ export function PreviewPlayer({
                       tabIndex={0}
                       aria-label={`Text overlay ${clip.text}`}
                       data-text-clip-id={clip.id}
-                      className={`pointer-events-auto absolute max-w-[78%] whitespace-pre-wrap transition-[box-shadow,outline-color,transform,opacity] ${
+                      className={`pointer-events-auto absolute whitespace-pre-wrap transition-[box-shadow,outline-color,transform,opacity] ${
                         selected
                           ? "rounded-md outline outline-2 outline-[var(--sc-focus-ring)]"
                           : "outline outline-1 outline-transparent hover:outline-white/32"
@@ -1883,21 +1893,25 @@ export function PreviewPlayer({
                         fontFamily: font.fontFamily,
                         fontSize: `clamp(12px, ${style.sizePt}px, 72px)`,
                         fontWeight: font.fontWeight,
+                        fontStyle: font.fontStyle,
                         textAlign: style.align,
-                        letterSpacing: "0",
-                        lineHeight: hasBox ? 1.18 : 1.08,
+                        letterSpacing: `${style.letterSpacingPx}px`,
+                        lineHeight: style.lineHeight,
                         width: "max-content",
                         maxWidth: `${style.maxWidthPct}%`,
+                        boxSizing: "content-box",
+                        overflowWrap: "break-word",
                         padding: style.boxStyle ? `${style.boxStyle.paddingPx}px` : undefined,
                         borderRadius: style.boxStyle ? `${style.boxStyle.radiusPx}px` : undefined,
                         background: style.boxStyle?.bgColor,
-                        border: style.boxStyle?.borderColor
-                          ? `1px solid ${style.boxStyle.borderColor}`
+                        border:
+                          style.boxStyle?.borderColor && style.boxStyle.borderWidthPx > 0
+                            ? `${style.boxStyle.borderWidthPx}px solid ${style.boxStyle.borderColor}`
+                            : undefined,
+                        boxShadow: style.boxStyle?.shadow
+                          ? textShadowCss(style.boxStyle.shadow)
                           : undefined,
-                        boxShadow: hasBox
-                          ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 42px -28px rgba(0,0,0,0.72)"
-                          : "0 3px 12px rgba(0,0,0,0.62)",
-                        backdropFilter: hasBox ? "blur(10px)" : undefined,
+                        textShadow: style.textShadow ? textShadowCss(style.textShadow) : undefined,
                       }}
                       onPointerDown={(e) => onTextPointerDown(e, clip)}
                       onDoubleClick={(e) => {

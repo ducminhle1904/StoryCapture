@@ -27,7 +27,7 @@ import type { ExportFormState } from "./export-slice";
 import type { SourceTimelineMap } from "./source-timeline-map";
 import { type EditorBackgroundKind, readEditorBackground } from "./store";
 import { resolveTextAnchorPosition } from "./text-anchor";
-import { hexToRgbaWithAlpha, resolvedTextStyle } from "./text-style";
+import { effectiveTextFontChoice, hexToRgbaWithAlpha, resolvedTextStyle } from "./text-style";
 import type {
   AnnotationClip,
   Clip,
@@ -35,6 +35,7 @@ import type {
   CursorMotionPreset,
   CursorSkin,
   SoundClip,
+  TextFontChoice,
   TimelineSlice,
   TrackId,
   Vec2,
@@ -111,17 +112,24 @@ export interface TrajectoryRef {
   frame_count: number;
 }
 
-export type FontChoice =
-  | { kind: "bundled"; family: string; weight: number }
-  | { kind: "system-default" };
+export type FontChoice = TextFontChoice;
 
 export type TextAnim = "none" | "fade" | "slide-up" | "scale-in";
+
+export interface TextShadow {
+  color: Rgba;
+  blur_px: number;
+  offset_x_px: number;
+  offset_y_px: number;
+}
 
 export interface BoxStyle {
   padding_px: number;
   radius_px: number;
   bg_color: Rgba;
   border_color: Rgba | null;
+  border_width_px: number;
+  shadow: TextShadow | null;
 }
 
 export interface TextBox {
@@ -132,6 +140,11 @@ export interface TextBox {
   font: FontChoice;
   size_pt: number;
   color: Rgba;
+  align: "left" | "center" | "right";
+  max_width_pct: number;
+  line_height: number;
+  letter_spacing_px: number;
+  text_shadow: TextShadow | null;
   box_style: BoxStyle | null;
   anim_in: TextAnim;
   anim_out: Extract<TextAnim, "none" | "fade">;
@@ -422,14 +435,27 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
 function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
   if (!clip.text) return null;
   const style = resolvedTextStyle(clip);
+  const textShadow = style.textShadow
+    ? {
+        color: hexToRgbaWithAlpha(style.textShadow.color, { r: 0, g: 0, b: 0, a: 128 }),
+        blur_px: style.textShadow.blurPx,
+        offset_x_px: style.textShadow.offsetXpx,
+        offset_y_px: style.textShadow.offsetYpx,
+      }
+    : null;
   return {
     t_start_ms: clip.startMs,
     t_end_ms: clip.startMs + clip.durationMs,
     text: clip.text,
     pos,
-    font: style.font,
+    font: effectiveTextFontChoice(style.font),
     size_pt: style.sizePt,
-    color: hexToRgba(style.color),
+    color: hexToRgbaWithAlpha(style.color, { r: 255, g: 255, b: 255, a: 255 }),
+    align: style.align,
+    max_width_pct: style.maxWidthPct,
+    line_height: style.lineHeight,
+    letter_spacing_px: style.letterSpacingPx,
+    text_shadow: textShadow,
     box_style: style.boxStyle
       ? {
           padding_px: style.boxStyle.paddingPx,
@@ -437,6 +463,20 @@ function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
           bg_color: hexToRgbaWithAlpha(style.boxStyle.bgColor, { r: 17, g: 19, b: 23, a: 216 }),
           border_color: style.boxStyle.borderColor
             ? hexToRgbaWithAlpha(style.boxStyle.borderColor, { r: 255, g: 255, b: 255, a: 36 })
+            : null,
+          border_width_px: style.boxStyle.borderWidthPx,
+          shadow: style.boxStyle.shadow
+            ? {
+                color: hexToRgbaWithAlpha(style.boxStyle.shadow.color, {
+                  r: 0,
+                  g: 0,
+                  b: 0,
+                  a: 128,
+                }),
+                blur_px: style.boxStyle.shadow.blurPx,
+                offset_x_px: style.boxStyle.shadow.offsetXpx,
+                offset_y_px: style.boxStyle.shadow.offsetYpx,
+              }
             : null,
         }
       : null,

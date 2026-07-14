@@ -59,11 +59,66 @@ export interface BuildTimelineWarning {
   message: string;
 }
 
+export interface ReRecordedAnnotationMerge {
+  annotations: AnnotationClip[];
+  legacyGeneratedCount: number;
+}
+
+export function mergeReRecordedAnnotations(
+  generated: readonly AnnotationClip[],
+  saved: readonly AnnotationClip[],
+): ReRecordedAnnotationMerge {
+  const savedByStepId = new Map<string, AnnotationClip>();
+  const savedByOrdinal = new Map<number, AnnotationClip>();
+
+  for (const clip of saved) {
+    const binding = clip.sourceBinding;
+    if (!binding) continue;
+    if (binding.stepId !== null) {
+      if (!savedByStepId.has(binding.stepId)) savedByStepId.set(binding.stepId, clip);
+    } else if (!savedByOrdinal.has(binding.ordinal)) {
+      savedByOrdinal.set(binding.ordinal, clip);
+    }
+  }
+
+  const annotations = generated.map((clip) => {
+    const binding = clip.sourceBinding;
+    if (!binding) return clip;
+    const savedClip =
+      binding.stepId !== null
+        ? savedByStepId.get(binding.stepId)
+        : savedByOrdinal.get(binding.ordinal);
+    if (!savedClip) return clip;
+
+    return {
+      ...clip,
+      styleId: savedClip.styleId,
+      font: savedClip.font,
+      sizePt: savedClip.sizePt,
+      color: savedClip.color,
+      align: savedClip.align,
+      maxWidthPct: savedClip.maxWidthPct,
+      lineHeight: savedClip.lineHeight,
+      letterSpacingPx: savedClip.letterSpacingPx,
+      textShadow: savedClip.textShadow,
+      boxStyle: savedClip.boxStyle,
+      pos: savedClip.pos,
+      anchor: savedClip.anchor,
+      animation: savedClip.animation,
+    };
+  });
+
+  return {
+    annotations: [...annotations, ...saved.filter((clip) => !clip.syncGroupId)],
+    legacyGeneratedCount: saved.filter((clip) => clip.syncGroupId && !clip.sourceBinding).length,
+  };
+}
+
 export function mergeIndependentAnnotations(
   generated: readonly AnnotationClip[],
   saved: readonly AnnotationClip[],
 ): AnnotationClip[] {
-  return [...generated, ...saved.filter((clip) => !clip.syncGroupId)];
+  return mergeReRecordedAnnotations(generated, saved).annotations;
 }
 
 type CaptureRect = { x: number; y: number; width: number; height: number };
@@ -521,9 +576,11 @@ function buildTextOverlayClips({
   const timing = stepTimingLookup(stepTiming);
   const annotations: AnnotationClip[] = [];
   const warnings: BuildTimelineWarning[] = [];
+  let textOverlayOrdinal = 0;
 
   for (const step of flattenStorySteps(story)) {
     if (step.verb !== "text-overlay" || step.text == null || step.durationMs == null) continue;
+    textOverlayOrdinal += 1;
     const stepTime =
       (step.stepId ? timing.byStepId.get(step.stepId) : undefined) ??
       timing.byOrdinal.get(step.ordinal) ??
@@ -563,6 +620,11 @@ function buildTextOverlayClips({
       syncGroupId,
       sourceRevision,
       sourceTimeMap,
+      sourceBinding: {
+        kind: "story-text-overlay",
+        stepId: step.stepId,
+        ordinal: textOverlayOrdinal,
+      },
     });
   }
 

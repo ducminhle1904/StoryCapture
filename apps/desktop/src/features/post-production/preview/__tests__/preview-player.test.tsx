@@ -925,9 +925,7 @@ describe("PreviewPlayer", () => {
       resolveZoomMotion(useEditorStore.getState().tracks.zoom),
       1110,
     ).scale;
-    await waitFor(() =>
-      expect(zoomLayer.style.transform).toContain(`matrix(${expectedScale}`),
-    );
+    await waitFor(() => expect(zoomLayer.style.transform).toContain(`matrix(${expectedScale}`));
     expect(zoomLayer.style.transformOrigin).toBe("0 0");
 
     act(() => {
@@ -943,9 +941,7 @@ describe("PreviewPlayer", () => {
       resolveZoomMotion(useEditorStore.getState().tracks.zoom),
       1890,
     ).scale;
-    await waitFor(() =>
-      expect(zoomLayer.style.transform).toContain(`matrix(${expectedExitScale}`),
-    );
+    await waitFor(() => expect(zoomLayer.style.transform).toContain(`matrix(${expectedExitScale}`));
 
     expect(PreviewEngine).not.toHaveBeenCalled();
   });
@@ -969,6 +965,28 @@ describe("PreviewPlayer", () => {
             pos: { x: 0.5, y: 0.82 },
             sizePt: 32,
             color: "#ffcc00",
+            font: {
+              kind: "system",
+              family: "Example Sans",
+              fullName: "Example Sans Semibold Italic",
+              postscriptName: "ExampleSans-SemiboldItalic",
+              faceStyle: "Semibold Italic",
+              weight: 600,
+              style: "italic",
+            },
+            align: "right",
+            maxWidthPct: 44,
+            lineHeight: 1.45,
+            letterSpacingPx: 2.5,
+            textShadow: { color: "#11223380", blurPx: 7, offsetXpx: 1.5, offsetYpx: 2 },
+            boxStyle: {
+              paddingPx: 12,
+              radiusPx: 16,
+              bgColor: "#223344cc",
+              borderColor: "#fedcba99",
+              borderWidthPx: 2.5,
+              shadow: { color: "#01020366", blurPx: 9, offsetXpx: -2, offsetYpx: 3 },
+            },
           },
           {
             id: "text-2",
@@ -990,6 +1008,20 @@ describe("PreviewPlayer", () => {
     expect(screen.getByTestId("text-overlay")).toBeInTheDocument();
     expect(screen.getByText("Checkout ready")).toBeInTheDocument();
     expect(screen.queryByText("Later title")).not.toBeInTheDocument();
+    const activeText = screen.getByRole("button", { name: "Text overlay Checkout ready" });
+    expect(activeText.style.fontFamily).toBe('"Example Sans", Geist, sans-serif');
+    expect(activeText.style.fontWeight).toBe("600");
+    expect(activeText.style.fontStyle).toBe("italic");
+    expect(activeText.style.textAlign).toBe("right");
+    expect(activeText.style.maxWidth).toBe("44%");
+    expect(activeText.style.lineHeight).toBe("1.45");
+    expect(activeText.style.letterSpacing).toBe("2.5px");
+    expect(activeText.style.padding).toBe("12px");
+    expect(activeText.style.borderRadius).toBe("16px");
+    expect(activeText.style.border).toContain("2.5px solid");
+    expect(activeText.style.textShadow).toContain("1.5px 2px 7px");
+    expect(activeText.style.boxShadow).toContain("-2px 3px 9px");
+    expect(activeText.style.backdropFilter).toBe("");
     expect(PreviewEngine).not.toHaveBeenCalled();
 
     act(() => {
@@ -998,6 +1030,10 @@ describe("PreviewPlayer", () => {
 
     await waitFor(() => expect(screen.getByText("Later title")).toBeInTheDocument());
     expect(screen.queryByText("Checkout ready")).not.toBeInTheDocument();
+    const laterText = screen.getByRole("button", { name: "Text overlay Later title" });
+    expect(laterText.style.boxShadow).toBe("");
+    expect(laterText.style.textShadow).toBe("");
+    expect(laterText.style.backdropFilter).toBe("");
   });
 
   it("resolves cursor and target text anchors in the native preview", async () => {

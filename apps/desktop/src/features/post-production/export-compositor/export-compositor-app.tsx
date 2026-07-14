@@ -18,11 +18,12 @@ import {
   cursorClickEffectRenderScale,
 } from "../state/cursor-click-effect";
 import { timelineMsToSourcePtsUs } from "../state/source-timeline-map";
-import { zoomEase, type ZoomEasing } from "../state/zoom-motion";
+import { DEFAULT_TEXT_FONT, textFontCss, textHorizontalOrigin } from "../state/text-style";
 import {
   buildVirtualCursorSchedule,
   type VirtualCursorSchedule,
 } from "../state/virtual-cursor-scheduler";
+import { type ZoomEasing, zoomEase } from "../state/zoom-motion";
 import { parseExportCursorSidecar } from "./cursor-sidecar";
 
 const CURSOR_BASE_SIZE_PX = 32;
@@ -80,6 +81,18 @@ interface TextAnimationState {
   scale: number;
 }
 
+export interface ExportTextLineLayout {
+  text: string;
+  width: number;
+}
+
+export interface ExportTextLayout {
+  lines: ExportTextLineLayout[];
+  width: number;
+  height: number;
+  lineHeight: number;
+}
+
 const GRADIENTS: Record<string, [string, string, string]> = {
   "runway-dark": ["#141414", "#0e1117", "#17130f"],
   "runway-light": ["#fbfaf7", "#f3f0e9", "#f8fbff"],
@@ -118,12 +131,52 @@ function easeInOutCubic(value: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
 
-function fontFamily(font: TextBoxNode["font"]): string {
-  return font.kind === "bundled" ? font.family : "Inter, system-ui, sans-serif";
+function normalizedFontSize(box: TextBoxNode): number {
+  return Math.max(12, Math.min(72, box.size_pt));
 }
 
-function fontWeight(font: TextBoxNode["font"]): number {
-  return font.kind === "bundled" ? font.weight : 700;
+function canvasFont(box: TextBoxNode, fallback = false): string {
+  const font = textFontCss(fallback ? DEFAULT_TEXT_FONT : box.font);
+  return `${font.fontStyle} ${font.fontWeight} ${normalizedFontSize(box)}px ${font.fontFamily}`;
+}
+
+function browserFontSet(): Pick<FontFaceSet, "load"> | undefined {
+  if (typeof document === "undefined" || typeof document.fonts?.load !== "function") {
+    return undefined;
+  }
+  return document.fonts;
+}
+
+export async function loadExportTextFonts(
+  graph: ExportGraph,
+  fontSet: Pick<FontFaceSet, "load"> | undefined = browserFontSet(),
+): Promise<void> {
+  if (!fontSet) return;
+  const requests = new Map<string, { fallbackFont: string; sample: string }>();
+  for (const node of nodesOf(graph, "text-overlay")) {
+    for (const box of node.boxes) {
+      const font = canvasFont(box);
+      if (!requests.has(font)) {
+        requests.set(font, {
+          fallbackFont: canvasFont(box, true),
+          sample: box.text.slice(0, 128) || "M",
+        });
+      }
+    }
+  }
+  await Promise.all(
+    Array.from(requests, async ([font, request]) => {
+      try {
+        await fontSet.load(font, request.sample);
+      } catch {
+        try {
+          await fontSet.load(request.fallbackFont, request.sample);
+        } catch {
+          // Canvas will still use its built-in sans-serif fallback.
+        }
+      }
+    }),
+  );
 }
 
 function textAnimationState(box: TextBoxNode, timeMs: number): TextAnimationState {
@@ -232,7 +285,12 @@ function exportZoomEasing(easing: EasingKind): ZoomEasing {
   return "ease-in-out-cubic";
 }
 
-export function sampleExportZoom(graph: ExportGraph, timeMs: number, width: number, height: number) {
+export function sampleExportZoom(
+  graph: ExportGraph,
+  timeMs: number,
+  width: number,
+  height: number,
+) {
   let selected: { center: Vec2; scale: number } | null = null;
   let selectedStart = -Infinity;
   for (const node of nodesOf(graph, "zoom-pan")) {
@@ -379,6 +437,202 @@ function roundedRectPath(ctx: CanvasRenderingContext2D, rect: Rect, radius: numb
   ctx.quadraticCurveTo(rect.x, rect.y, rect.x + r, rect.y);
 }
 
+const graphemeSegmenter =
+  typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+
+export function segmentTextGraphemes(text: string): string[] {
+  if (!text) return [];
+  if (!graphemeSegmenter) return [text];
+  return Array.from(graphemeSegmenter.segment(text), ({ segment }) => segment);
+}
+
+function textWidth(ctx: CanvasRenderingContext2D, text: string, letterSpacingPx: number): number {
+  if (!text) return 0;
+  if (letterSpacingPx === 0) return ctx.measureText(text).width;
+  const glyphs = segmentTextGraphemes(text);
+  return Math.max(
+    0,
+    ctx.measureText(text).width + letterSpacingPx * Math.max(0, glyphs.length - 1),
+  );
+}
+
+function splitLongText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  letterSpacingPx: number,
+): string[] {
+  const chunks: string[] = [];
+  let chunk = "";
+  for (const glyph of segmentTextGraphemes(text)) {
+    const candidate = `${chunk}${glyph}`;
+    if (chunk && textWidth(ctx, candidate, letterSpacingPx) > maxWidth) {
+      chunks.push(chunk);
+      chunk = glyph;
+    } else {
+      chunk = candidate;
+    }
+  }
+  if (chunk || chunks.length === 0) chunks.push(chunk);
+  return chunks;
+}
+
+function wrapParagraph(
+  ctx: CanvasRenderingContext2D,
+  paragraph: string,
+  maxWidth: number,
+  letterSpacingPx: number,
+): string[] {
+  if (!paragraph) return [""];
+  const lines: string[] = [];
+  const tokens = paragraph.match(/\S+|[ \t]+/g) ?? [paragraph];
+  let line = "";
+  for (const token of tokens) {
+    const candidate = `${line}${token}`;
+    if (textWidth(ctx, candidate, letterSpacingPx) <= maxWidth) {
+      line = candidate;
+      continue;
+    }
+    if (/^[ \t]+$/.test(token)) {
+      if (line) lines.push(line.trimEnd());
+      line = "";
+      continue;
+    }
+    if (line) {
+      lines.push(line.trimEnd());
+      line = "";
+    }
+    const chunks = splitLongText(ctx, token, maxWidth, letterSpacingPx);
+    lines.push(...chunks.slice(0, -1));
+    line = chunks.at(-1) ?? "";
+  }
+  if (line || lines.length === 0) lines.push(line.trimEnd());
+  return lines;
+}
+
+export function layoutExportTextBox(
+  ctx: CanvasRenderingContext2D,
+  box: TextBoxNode,
+  outputWidth: number,
+): ExportTextLayout {
+  ctx.font = canvasFont(box);
+  const letterSpacingPx = Number.isFinite(box.letter_spacing_px) ? box.letter_spacing_px : 0;
+  const maxWidthPct = Number.isFinite(box.max_width_pct)
+    ? Math.max(20, Math.min(100, box.max_width_pct))
+    : 78;
+  const maxWidth = Math.max(1, outputWidth * (maxWidthPct / 100));
+  const lines = box.text
+    .split("\n")
+    .flatMap((paragraph) => wrapParagraph(ctx, paragraph, maxWidth, letterSpacingPx))
+    .map((text) => ({ text, width: textWidth(ctx, text, letterSpacingPx) }));
+  const lineHeightFactor = Number.isFinite(box.line_height)
+    ? Math.max(0.8, Math.min(2, box.line_height))
+    : 1.12;
+  const lineHeight = normalizedFontSize(box) * lineHeightFactor;
+  return {
+    lines,
+    width: Math.max(1, ...lines.map((line) => line.width)),
+    height: lineHeight * lines.length,
+    lineHeight,
+  };
+}
+
+function setCanvasShadow(ctx: CanvasRenderingContext2D, shadow: TextBoxNode["text_shadow"]): void {
+  ctx.shadowColor = shadow ? rgba(shadow.color) : "transparent";
+  ctx.shadowBlur = shadow?.blur_px ?? 0;
+  ctx.shadowOffsetX = shadow?.offset_x_px ?? 0;
+  ctx.shadowOffsetY = shadow?.offset_y_px ?? 0;
+}
+
+function drawTextWithSpacing(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  letterSpacingPx: number,
+): void {
+  if (!text) return;
+  if (letterSpacingPx === 0) {
+    ctx.fillText(text, x, y);
+    return;
+  }
+  const glyphs = segmentTextGraphemes(text);
+  let prefix = "";
+  glyphs.forEach((glyph, index) => {
+    const prefixWidth = prefix ? ctx.measureText(prefix).width : 0;
+    const cursorX = x + prefixWidth + letterSpacingPx * index;
+    ctx.fillText(glyph, cursorX, y);
+    prefix += glyph;
+  });
+}
+
+export function drawExportTextBox(
+  ctx: CanvasRenderingContext2D,
+  box: TextBoxNode,
+  timeMs: number,
+  outputWidth: number,
+  outputHeight: number,
+): void {
+  if (timeMs < box.t_start_ms || timeMs > box.t_end_ms) return;
+  const animation = textAnimationState(box, timeMs);
+  if (animation.alpha <= 0) return;
+  const letterSpacingPx = Number.isFinite(box.letter_spacing_px) ? box.letter_spacing_px : 0;
+  const align = box.align === "left" || box.align === "right" ? box.align : "center";
+  const horizontalOrigin = textHorizontalOrigin(box.pos.x);
+  const x = clamp01(box.pos.x) * outputWidth;
+  const y = clamp01(box.pos.y) * outputHeight;
+
+  ctx.save();
+  const layout = layoutExportTextBox(ctx, box, outputWidth);
+  ctx.globalAlpha = animation.alpha;
+  ctx.translate(x, y + animation.translateY);
+  ctx.scale(animation.scale, animation.scale);
+  ctx.font = canvasFont(box);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+
+  const pad = box.box_style?.padding_px ?? 0;
+  const totalWidth = layout.width + pad * 2;
+  const boxLeft =
+    horizontalOrigin === "left" ? 0 : horizontalOrigin === "right" ? -totalWidth : -totalWidth / 2;
+  const contentLeft = boxLeft + pad;
+
+  if (box.box_style) {
+    const rect = {
+      x: boxLeft,
+      y: -layout.height / 2 - pad,
+      w: layout.width + pad * 2,
+      h: layout.height + pad * 2,
+    };
+    setCanvasShadow(ctx, box.box_style.shadow);
+    roundedRectPath(ctx, rect, box.box_style.radius_px);
+    ctx.fillStyle = rgba(box.box_style.bg_color);
+    ctx.fill();
+    setCanvasShadow(ctx, null);
+    if (box.box_style.border_color && box.box_style.border_width_px > 0) {
+      ctx.strokeStyle = rgba(box.box_style.border_color);
+      ctx.lineWidth = box.box_style.border_width_px;
+      ctx.stroke();
+    }
+  }
+
+  ctx.fillStyle = rgba(box.color);
+  setCanvasShadow(ctx, box.text_shadow);
+  layout.lines.forEach((line, index) => {
+    const lineX =
+      align === "left"
+        ? contentLeft
+        : align === "right"
+          ? contentLeft + layout.width - line.width
+          : contentLeft + (layout.width - line.width) / 2;
+    const lineY = -layout.height / 2 + layout.lineHeight * (index + 0.5);
+    drawTextWithSpacing(ctx, line.text, lineX, lineY, letterSpacingPx);
+  });
+  ctx.restore();
+}
+
 function containRect(sourceW: number, sourceH: number, bounds: Rect): Rect {
   const aspect = sourceW > 0 && sourceH > 0 ? sourceW / sourceH : bounds.w / bounds.h;
   const boundsAspect = bounds.w / bounds.h;
@@ -446,6 +700,7 @@ class CanvasExportCompositor {
       background?.kind.kind === "image" && background.kind.path
         ? await loadImage(assetUrl(background.kind.path))
         : null;
+    await loadExportTextFonts(payload.graph);
     if (this.isStale(version)) {
       unloadVideo(video);
       throw new Error("export compositor configure was cancelled");
@@ -681,51 +936,9 @@ class CanvasExportCompositor {
 
   private drawText(timeMs: number): void {
     if (!this.graph) return;
-    const ctx = this.ctx;
     for (const node of nodesOf(this.graph, "text-overlay")) {
       for (const box of node.boxes) {
-        if (timeMs < box.t_start_ms || timeMs > box.t_end_ms) continue;
-        const x = clamp01(box.pos.x) * this.outputWidth;
-        const y = clamp01(box.pos.y) * this.outputHeight;
-        const fontSize = Math.max(12, Math.min(96, box.size_pt));
-        const animation = textAnimationState(box, timeMs);
-        if (animation.alpha <= 0) continue;
-        ctx.save();
-        ctx.globalAlpha = animation.alpha;
-        ctx.translate(x, y + animation.translateY);
-        ctx.scale(animation.scale, animation.scale);
-        ctx.font = `${fontWeight(box.font)} ${fontSize}px ${fontFamily(box.font)}`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        const lines = box.text.split("\n");
-        const lineHeight = fontSize * 1.12;
-        const width = Math.max(...lines.map((line) => ctx.measureText(line).width), 1);
-        const height = lineHeight * lines.length;
-        if (box.box_style) {
-          const pad = box.box_style.padding_px;
-          const rect = {
-            x: -width / 2 - pad,
-            y: -height / 2 - pad,
-            w: width + pad * 2,
-            h: height + pad * 2,
-          };
-          roundedRectPath(ctx, rect, box.box_style.radius_px);
-          ctx.fillStyle = rgba(box.box_style.bg_color);
-          ctx.fill();
-          if (box.box_style.border_color) {
-            ctx.strokeStyle = rgba(box.box_style.border_color);
-            ctx.lineWidth = 1;
-            ctx.stroke();
-          }
-        }
-        ctx.fillStyle = rgba(box.color);
-        ctx.shadowColor = "rgba(0,0,0,0.62)";
-        ctx.shadowBlur = 8;
-        lines.forEach((line, index) => {
-          const offset = (index - (lines.length - 1) / 2) * lineHeight;
-          ctx.fillText(line, 0, offset);
-        });
-        ctx.restore();
+        drawExportTextBox(this.ctx, box, timeMs, this.outputWidth, this.outputHeight);
       }
     }
   }

@@ -110,6 +110,14 @@ file explicitly says otherwise.
   `apps/desktop/src/features/post-production/preview/preview-engine.ts`,
   `apps/desktop/src/features/post-production/export-modal/`, and
   `apps/desktop/src/features/post-production/render-queue/`.
+- Post-production text appearance, system fonts, and re-record style
+  preservation: read `apps/desktop/src/features/post-production/state/timeline-slice.ts`,
+  `apps/desktop/src/features/post-production/state/text-style.ts`,
+  `apps/desktop/src/features/post-production/state/system-font-catalog.ts`,
+  `apps/desktop/src/features/post-production/inspector/text-appearance-controls.tsx`,
+  `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
+  `apps/desktop/src/features/post-production/preview/preview-player.tsx`, and
+  `apps/desktop/src/features/post-production/export-compositor/export-compositor-app.tsx`.
 - Recorded action/cursor timing: read `docs/DOMAIN.md`,
   `apps/desktop/electron/ipc/action-timeline.ts`,
   `apps/desktop/electron/ipc/action-landmarks.ts`,

@@ -6,8 +6,8 @@
  * step; a 600 ms gap starts a new entry.
  *
  * Discrete actions (delete-clip, add-clip, apply-preset, add-sound-clip,
- * change-background, revert-preset) NEVER coalesce — each is its own
- * step.
+ * edit-clip-snapshots, change-background, revert-preset) NEVER coalesce —
+ * each is its own step.
  *
  * The Coalescer does not own the history buffer. It returns a
  * `{ kind: 'coalesced' | 'new', entry }` discriminator so the caller
@@ -37,6 +37,7 @@ export function coalesceKey(a: UndoableAction): CoalesceKey | null {
     case "edit-text-overlay":
       return `edit-text-overlay:${a.overlayId}`;
     case "edit-sync-group":
+    case "edit-clip-snapshots":
     case "delete-clip":
     case "add-clip":
     case "add-sound-clip":

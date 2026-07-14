@@ -16,10 +16,16 @@ const ipcMocks = vi.hoisted(() => ({
   useRecordingStepTiming: vi.fn(),
   useRecordingTrajectory: vi.fn(),
 }));
+const fsMocks = vi.hoisted(() => ({
+  exists: vi.fn(),
+  readTextFile: vi.fn(),
+}));
+const parseMocks = vi.hoisted(() => ({ parseStory: vi.fn() }));
+const toastMocks = vi.hoisted(() => ({ warning: vi.fn() }));
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
-  exists: vi.fn(() => Promise.resolve(false)),
-  readTextFile: vi.fn(() => Promise.reject(new Error("not loaded in toolbar tests"))),
+  exists: fsMocks.exists,
+  readTextFile: fsMocks.readTextFile,
 }));
 
 vi.mock("@/ipc/projects", () => ({
@@ -33,8 +39,10 @@ vi.mock("@/ipc/timeline", () => ({
 }));
 
 vi.mock("@/ipc/parse", () => ({
-  parseStory: vi.fn(() => Promise.resolve(null)),
+  parseStory: parseMocks.parseStory,
 }));
+
+vi.mock("sonner", () => ({ toast: { warning: toastMocks.warning } }));
 
 vi.mock("@/ipc/actions", () => ({
   actionSidecarFps: (actions: { fps_num: number; fps_den: number }) =>
@@ -93,6 +101,10 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore();
+  toastMocks.warning.mockReset();
+  fsMocks.exists.mockResolvedValue(false);
+  fsMocks.readTextFile.mockRejectedValue(new Error("not loaded in toolbar tests"));
+  parseMocks.parseStory.mockResolvedValue(null);
   ipcMocks.fetchProjectFolder.mockRejectedValue(new Error("not loaded"));
   ipcMocks.timelineLoad.mockResolvedValue(null);
   ipcMocks.timelineSave.mockResolvedValue(undefined);
@@ -273,7 +285,27 @@ describe("EditorShell toolbar actions", () => {
           cursor: [],
           zoom: [],
           sound: [],
-          annotations: [],
+          annotations: [
+            {
+              id: "manual-caption",
+              trackId: "annotations",
+              startMs: 100,
+              durationMs: 500,
+              text: "Manual",
+              pos: { x: 0.5, y: 0.5 },
+              sizePt: 20,
+            },
+            {
+              id: "text-overlay-looks-parseable",
+              trackId: "annotations",
+              startMs: 200,
+              durationMs: 500,
+              text: "Legacy generated",
+              pos: { x: 0.5, y: 0.5 },
+              sizePt: 20,
+              syncGroupId: "old-recording",
+            },
+          ],
         },
         durationMs: 1_000,
         background: { kind: "transparent" },
@@ -305,7 +337,172 @@ describe("EditorShell toolbar actions", () => {
       expect(state.tracks.video[0]?.sourcePath).toBe("/recordings/new.mp4");
       expect(state.tracks.video[0]?.durationMs).toBe(2_500);
       expect(state.durationMs).toBe(2_500);
+      expect(state.tracks.annotations.map((clip) => clip.id)).toEqual(["manual-caption"]);
     });
+    expect(toastMocks.warning).toHaveBeenCalledWith(
+      "1 legacy generated annotation was reset",
+      expect.objectContaining({ description: expect.stringContaining("source binding") }),
+    );
+  });
+
+  it("re-applies a source-bound overlay customization after re-recording", async () => {
+    resetStore();
+    useEditorStore.setState({ durationMs: 0 });
+    ipcMocks.fetchProjectFolder.mockResolvedValue({ story_path: "/stories/story-1.story" });
+    fsMocks.readTextFile.mockResolvedValue('text-overlay "New text" 3000ms');
+    parseMocks.parseStory.mockResolvedValue({
+      ast: {
+        scenes: [
+          {
+            name: "Scene",
+            commands: [
+              {
+                verb: "text-overlay",
+                text: "New text",
+                duration_ms: 3_000,
+                step_id: "caption-step",
+                span: { start: 0, end: 1, line: 1, col: 1 },
+              },
+            ],
+          },
+        ],
+      },
+      diagnostics: [],
+    });
+    ipcMocks.timelineLoad.mockResolvedValue({
+      story_id: "story-1",
+      layout_json: JSON.stringify({
+        version: 3,
+        timingModelVersion: 1,
+        sourceRevision: "old-source",
+        tracks: {
+          video: [
+            {
+              id: "video-old",
+              trackId: "video",
+              startMs: 0,
+              durationMs: 1_000,
+              sourcePath: "/recordings/old.mp4",
+              sourceRevision: "old-source",
+            },
+          ],
+          cursor: [],
+          zoom: [],
+          sound: [],
+          annotations: [
+            {
+              id: "old-generated-caption",
+              trackId: "annotations",
+              startMs: 200,
+              durationMs: 500,
+              text: "Old text",
+              styleId: "hotspot",
+              font: {
+                kind: "bundled",
+                family: "Geist Mono",
+                weight: 700,
+                style: "italic",
+              },
+              pos: { x: 0.2, y: 0.3 },
+              sizePt: 32,
+              color: "#abcdef",
+              align: "right",
+              maxWidthPct: 54,
+              lineHeight: 1.4,
+              letterSpacingPx: 3,
+              textShadow: { color: "#00000080", blurPx: 5, offsetXpx: 1, offsetYpx: 2 },
+              boxStyle: null,
+              anchor: { kind: "safe-area", placement: "top" },
+              animation: { in: "slide-up", out: "none", durationMs: 400 },
+              syncGroupId: "old-recording",
+              sourceRevision: "old-source",
+              sourceBinding: {
+                kind: "story-text-overlay",
+                stepId: "caption-step",
+                ordinal: 1,
+              },
+            },
+            {
+              id: "manual-caption",
+              trackId: "annotations",
+              startMs: 300,
+              durationMs: 500,
+              text: "Manual",
+              pos: { x: 0.5, y: 0.5 },
+              sizePt: 20,
+            },
+          ],
+        },
+        durationMs: 1_000,
+        background: { kind: "transparent" },
+      }),
+      last_modified: 1,
+    });
+    ipcMocks.useProjectRecordings.mockReturnValue({
+      data: [
+        {
+          path: "/recordings/new.mp4",
+          captured_at: 2,
+          duration_ms: 6_000,
+          width: 1280,
+          height: 720,
+        },
+      ],
+      isSuccess: true,
+      isError: false,
+    });
+    ipcMocks.useRecordingStepTiming.mockReturnValue({
+      data: {
+        steps: [
+          {
+            ordinal: 1,
+            stepId: "caption-step",
+            sceneName: "Scene",
+            verb: "text-overlay",
+            startMs: 2_000,
+            endMs: 5_000,
+            durationMs: 3_000,
+            status: "succeeded",
+            confidence: "high",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      const annotations = useEditorStore.getState().tracks.annotations;
+      expect(annotations).toHaveLength(2);
+      expect(annotations[0]).toMatchObject({
+        id: expect.not.stringMatching(/^old-/),
+        text: "New text",
+        startMs: 2_000,
+        durationMs: 3_000,
+        styleId: "hotspot",
+        font: { family: "Geist Mono", weight: 700, style: "italic" },
+        pos: { x: 0.2, y: 0.3 },
+        sizePt: 32,
+        color: "#abcdef",
+        align: "right",
+        maxWidthPct: 54,
+        lineHeight: 1.4,
+        letterSpacingPx: 3,
+        boxStyle: null,
+        anchor: { kind: "safe-area", placement: "top" },
+        animation: { in: "slide-up", out: "none", durationMs: 400 },
+        sourceBinding: { kind: "story-text-overlay", stepId: "caption-step", ordinal: 1 },
+      });
+      expect(annotations[0]?.syncGroupId).not.toBe("old-recording");
+      expect(annotations[0]?.sourceRevision).not.toBe("old-source");
+      expect(annotations[1]?.id).toBe("manual-caption");
+    });
+    expect(toastMocks.warning).not.toHaveBeenCalled();
   });
 
   it("treats an actions sidecar as review timing data", () => {

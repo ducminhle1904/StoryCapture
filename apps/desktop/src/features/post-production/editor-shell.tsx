@@ -49,7 +49,7 @@ import { QueueWidget } from "./render-queue/queue-widget";
 import { SoundDrawer } from "./sound-browser/sound-drawer";
 import {
   buildTimelineFromStory,
-  mergeIndependentAnnotations,
+  mergeReRecordedAnnotations,
   recordingSourceRevision,
 } from "./state/build-timeline-from-story";
 import { createClipId } from "./state/clip-id";
@@ -347,7 +347,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const [workspaceMode, setWorkspaceMode] = useState<"review" | "fine-tune">("review");
   const timelineLoadTokenRef = useRef(0);
   const lastSavedTimelineRef = useRef("");
-  const staleIndependentAnnotationsRef = useRef<AnnotationClip[]>([]);
+  const staleAnnotationsRef = useRef<AnnotationClip[]>([]);
   useEffect(() => {
     let cancelled = false;
     setStoryParsed(null);
@@ -389,7 +389,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     setTimelineHydrated(false);
     setTimelineNeedsBootstrap(false);
     lastSavedTimelineRef.current = "";
-    staleIndependentAnnotationsRef.current = [];
+    staleAnnotationsRef.current = [];
     resetTransientTimelineState();
 
     if (videoSrc) {
@@ -410,9 +410,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
               ? !timelineLayoutMatchesRecording(parsed.layout, latestRecording)
               : recordingsQuery.isSuccess;
             if (staleForLatestRecording) {
-              staleIndependentAnnotationsRef.current = parsed.layout.tracks.annotations.filter(
-                (clip) => !clip.syncGroupId,
-              );
+              staleAnnotationsRef.current = parsed.layout.tracks.annotations;
               console.info(
                 `Saved timeline for story ${storyId} was ignored because its recording is stale.`,
               );
@@ -600,14 +598,15 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       stepTiming: stepTimingQuery.data ?? null,
     });
     const { background, warnings, ...generatedTracks } = built;
+    const annotationMerge = mergeReRecordedAnnotations(
+      generatedTracks.annotations,
+      staleAnnotationsRef.current,
+    );
     const builtTracks = {
       ...generatedTracks,
-      annotations: mergeIndependentAnnotations(
-        generatedTracks.annotations,
-        staleIndependentAnnotationsRef.current,
-      ),
+      annotations: annotationMerge.annotations,
     };
-    staleIndependentAnnotationsRef.current = [];
+    staleAnnotationsRef.current = [];
     setTracks(builtTracks);
     setDuration(maxTrackEndMs(builtTracks));
     if (warnings.length > 0) {
@@ -617,6 +616,15 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         `${warnings.length} text overlay${warnings.length === 1 ? "" : "s"} could not be placed`,
         {
           description: `${visibleWarnings.join(" ")}${remainingWarnings > 0 ? ` ${remainingWarnings} more skipped.` : ""} Re-record this story to regenerate step timing.`,
+        },
+      );
+    }
+    if (annotationMerge.legacyGeneratedCount > 0) {
+      toast.warning(
+        `${annotationMerge.legacyGeneratedCount} legacy generated annotation${annotationMerge.legacyGeneratedCount === 1 ? " was" : "s were"} reset`,
+        {
+          description:
+            "Saved styling could not be matched safely because source binding was unavailable. The new recording defaults were kept.",
         },
       );
     }

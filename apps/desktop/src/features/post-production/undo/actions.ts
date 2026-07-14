@@ -43,6 +43,7 @@ export type ActionKind =
   | "add-clip"
   | "add-sound-clip"
   | "set-effect-param"
+  | "edit-clip-snapshots"
   | "apply-preset"
   | "revert-preset"
   | "edit-text-overlay"
@@ -103,6 +104,12 @@ export type UndoableAction =
       field: string;
       prev: unknown;
       next: unknown;
+    }
+  | {
+      kind: "edit-clip-snapshots";
+      /** Exact existing clip values before and after one logical transaction. */
+      before: Clip[];
+      after: Clip[];
     }
   | {
       kind: "apply-preset";
@@ -341,6 +348,20 @@ export function applyAction(action: UndoableAction): void {
       });
       return;
     }
+    case "edit-clip-snapshots": {
+      const replacements = new Map(
+        action.after.map((clip) => [`${clip.trackId}:${clip.id}`, clip] as const),
+      );
+      useEditorStore.setState((state) => ({
+        tracks: Object.fromEntries(
+          Object.entries(state.tracks).map(([trackId, clips]) => [
+            trackId,
+            (clips as Clip[]).map((clip) => replacements.get(`${clip.trackId}:${clip.id}`) ?? clip),
+          ]),
+        ) as typeof state.tracks,
+      }));
+      return;
+    }
     case "apply-preset": {
       // For redo we re-apply the forward transition. We don't own the
       // preset→graph resolution; for the initial apply we just mark
@@ -449,6 +470,12 @@ export function invertAction(action: UndoableAction): UndoableAction {
         field: action.field,
         prev: action.next,
         next: action.prev,
+      };
+    case "edit-clip-snapshots":
+      return {
+        kind: "edit-clip-snapshots",
+        before: action.after,
+        after: action.before,
       };
     case "apply-preset":
       return {

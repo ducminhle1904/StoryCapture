@@ -211,6 +211,15 @@ without crashing. The editor owns:
 - Export modal, render queue/progress UI, undo/history, sound drawer, and
   voiceover compact UI.
 
+Text appearance has one shared resolution boundary in `state/text-style.ts`.
+Preset values are inherited when a persisted field is absent, while nullable
+effects such as the text box and shadows use `null` as an explicit off state.
+The same normalized typography, color alpha, wrapping, edge anchoring, and
+animation values feed the DOM preview and Canvas export graph. System-font
+discovery is user-activated and cached for the renderer session; saved font
+metadata remains intact when access is denied or a face is missing, while the
+effective preview/export font falls back to bundled Geist.
+
 During recording bootstrap, `text-overlay` directives match `<recording>.steps.json`
 timing by step id and then by ordinal when no id is available. Each match creates
 a recording-bound annotation from the existing `caption` style: its start comes

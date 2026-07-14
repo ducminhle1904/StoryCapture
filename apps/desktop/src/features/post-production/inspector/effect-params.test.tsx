@@ -106,6 +106,12 @@ async function selectFieldOption(label: string, optionName: string) {
   await user.click(await screen.findByRole("option", { name: optionName }));
 }
 
+function first<T>(values: readonly T[]): T {
+  const value = values[0];
+  if (value === undefined) throw new Error("Expected at least one matching element");
+  return value;
+}
+
 beforeEach(() => {
   resetStore();
 });
@@ -142,6 +148,12 @@ describe("EffectParams", () => {
     });
 
     render(<EffectParams />);
+
+    expect(screen.getByRole("form", { name: "Effect parameters" })).toHaveClass(
+      "min-w-0",
+      "w-full",
+      "max-w-full",
+    );
 
     await selectFieldOption("Zoom target", "Element");
     expectSetParam(pushAction, {
@@ -320,6 +332,76 @@ describe("EffectParams", () => {
     });
   });
 
+  it("resets appearance or changes preset in one snapshot while preserving clip layout", async () => {
+    const user = userEvent.setup();
+    const pushAction = vi.fn();
+    resetStore(pushAction);
+    useEditorStore.setState({
+      selectedClipId: "text-1",
+      tracks: {
+        video: [],
+        cursor: [],
+        zoom: [],
+        sound: [],
+        annotations: [
+          {
+            id: "text-1",
+            trackId: "annotations",
+            startMs: 1200,
+            durationMs: 2300,
+            text: "Keep me",
+            pos: { x: 0.22, y: 0.77 },
+            sizePt: 40,
+            styleId: "callout",
+            color: "#ff00ff",
+            maxWidthPct: 45,
+            lineHeight: 1.8,
+            animation: { in: "scale-in", out: "fade", durationMs: 400 },
+            anchor: { kind: "safe-area", placement: "bottom" },
+          },
+        ],
+      },
+    });
+
+    render(<EffectParams />);
+
+    await user.click(screen.getByRole("button", { name: "Reset appearance" }));
+    expect(pushAction).toHaveBeenCalledTimes(1);
+    const resetAction = pushAction.mock.calls[0]?.[0];
+    expect(resetAction).toMatchObject({ kind: "edit-clip-snapshots" });
+    expect(resetAction.after[0]).toMatchObject({
+      id: "text-1",
+      text: "Keep me",
+      startMs: 1200,
+      durationMs: 2300,
+      pos: { x: 0.22, y: 0.77 },
+      anchor: { kind: "safe-area", placement: "bottom" },
+      styleId: "callout",
+      sizePt: 14,
+    });
+    expect(resetAction.after[0]).toHaveProperty("font", undefined);
+    expect(resetAction.after[0]).toHaveProperty("boxStyle", undefined);
+    expect(resetAction.after[0]).toHaveProperty("animation", undefined);
+
+    pushAction.mockClear();
+    await selectFieldOption("Text style preset", "Title");
+    expect(pushAction).toHaveBeenCalledTimes(1);
+    expect(pushAction.mock.calls[0]?.[0]).toMatchObject({
+      kind: "edit-clip-snapshots",
+      after: [
+        expect.objectContaining({
+          text: "Keep me",
+          startMs: 1200,
+          durationMs: 2300,
+          pos: { x: 0.22, y: 0.77 },
+          anchor: { kind: "safe-area", placement: "bottom" },
+          styleId: "title",
+          sizePt: 34,
+        }),
+      ],
+    });
+  });
+
   it("dispatches text anchor helper actions from the selected playhead step", () => {
     const pushAction = vi.fn();
     resetStore(pushAction);
@@ -431,6 +513,28 @@ describe("EffectParams", () => {
             pos: { x: 0.5, y: 0.5 },
             sizePt: 18,
           },
+          {
+            id: "text-3",
+            trackId: "annotations",
+            startMs: 5000,
+            durationMs: 1000,
+            label: "Title role",
+            text: "Different role",
+            pos: { x: 0.5, y: 0.2 },
+            sizePt: 30,
+            styleId: "title",
+          },
+          {
+            id: "text-empty",
+            trackId: "annotations",
+            startMs: 6000,
+            durationMs: 1000,
+            label: "Empty",
+            text: "   ",
+            pos: { x: 0.5, y: 0.5 },
+            sizePt: 18,
+            styleId: "callout",
+          },
         ],
       },
     });
@@ -453,15 +557,13 @@ describe("EffectParams", () => {
       expect.objectContaining({ kind: "add-clip", trackId: "annotations" }),
     );
 
-    await user.click(screen.getAllByRole("button", { name: "Style all" })[0]!);
-    expect(pushAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "set-effect-param",
-        nodePath: "tracks.annotations[1]",
-        field: "styleId",
-        next: "callout",
-      }),
-    );
+    await user.click(first(screen.getAllByText("Apply style")));
+    await user.click(first(screen.getAllByRole("button", { name: "Same preset / role" })));
+    expect(pushAction).toHaveBeenCalledWith({
+      kind: "edit-clip-snapshots",
+      before: [expect.objectContaining({ id: "text-2" })],
+      after: [expect.objectContaining({ id: "text-2" })],
+    });
 
     await user.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
     expect(pushAction).toHaveBeenCalledWith(
@@ -519,6 +621,7 @@ describe("EffectParams", () => {
             styleId: "callout",
             align: "center",
             anchor: { kind: "cursor", offset: { x: 0.04, y: -0.06 } },
+            animation: { in: "fade", out: "none", durationMs: 140 },
           },
         ],
       },
@@ -526,20 +629,29 @@ describe("EffectParams", () => {
 
     render(<EffectParams />);
 
-    await user.click(screen.getAllByRole("button", { name: "Style all" })[0]!);
+    await user.click(first(screen.getAllByText("Apply style")));
+    await user.click(first(screen.getAllByRole("button", { name: "All text" })));
 
-    const fields = pushAction.mock.calls.map(([action]) => action.field);
-    expect(fields).toEqual(["styleId", "sizePt", "color", "align", "boxStyle", "animation"]);
-    expect(fields).not.toContain("text");
-    expect(fields).not.toContain("startMs");
-    expect(fields).not.toContain("durationMs");
-    expect(fields).not.toContain("anchor");
-    expect(pushAction.mock.calls[0]?.[0]).toMatchObject({
-      kind: "set-effect-param",
-      nodePath: "tracks.annotations[1]",
-      field: "styleId",
-      prev: "callout",
-      next: "lower-third",
+    expect(pushAction).toHaveBeenCalledTimes(1);
+    const action = pushAction.mock.calls[0]?.[0];
+    expect(action).toMatchObject({
+      kind: "edit-clip-snapshots",
+      before: [expect.objectContaining({ id: "text-target" })],
+      after: [
+        expect.objectContaining({
+          id: "text-target",
+          styleId: "callout",
+          text: "Keep this copy",
+          startMs: 4000,
+          durationMs: 1200,
+          pos: { x: 0.5, y: 0.18 },
+          anchor: { kind: "cursor", offset: { x: 0.04, y: -0.06 } },
+          animation: { in: "fade", out: "none", durationMs: 140 },
+          sizePt: 22,
+          color: "#ffcc00",
+          align: "left",
+        }),
+      ],
     });
   });
 

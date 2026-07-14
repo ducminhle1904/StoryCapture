@@ -3,10 +3,10 @@ import { DEFAULT_BACKGROUND } from "./store";
 import type { TimelineSlice } from "./timeline-slice";
 import { cloneTimelineTracks } from "./timeline-slice";
 
-export const TIMELINE_LAYOUT_VERSION = 2;
+export const TIMELINE_LAYOUT_VERSION = 3;
 export const TIMELINE_TIMING_MODEL_VERSION = 1;
 
-export interface TimelineLayoutV2 {
+export interface TimelineLayoutV3 {
   version: typeof TIMELINE_LAYOUT_VERSION;
   timingModelVersion: typeof TIMELINE_TIMING_MODEL_VERSION;
   sourceRevision: string | null;
@@ -16,8 +16,11 @@ export interface TimelineLayoutV2 {
 }
 
 export type TimelineLayoutParseResult =
-  | { ok: true; layout: TimelineLayoutV2; migrated: boolean; rebuiltGeneratedLayers: boolean }
+  | { ok: true; layout: TimelineLayoutV3; migrated: boolean; rebuiltGeneratedLayers: boolean }
   | { ok: false; reason: string };
+
+/** Compatibility alias for callers that only depend on the current layout shape. */
+export type TimelineLayoutV2 = TimelineLayoutV3;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -48,13 +51,22 @@ function parseTracks(value: unknown): TimelineSlice["tracks"] | null {
     return null;
   }
   return cloneTimelineTracks({
-    video: video.filter(isRecord).map((clip) => ({ ...clip, trackId: "video" })) as TimelineSlice["tracks"]["video"],
-    cursor: cursor.filter(isRecord).map((clip) => ({ ...clip, trackId: "cursor" })) as TimelineSlice["tracks"]["cursor"],
-    zoom: zoom.filter(isRecord).map((clip) => ({ ...clip, trackId: "zoom" })) as TimelineSlice["tracks"]["zoom"],
-    sound: sound.filter(isRecord).map((clip) => ({ ...clip, trackId: "sound" })) as TimelineSlice["tracks"]["sound"],
-    annotations: annotations
+    video: video
       .filter(isRecord)
-      .map((clip) => ({ ...clip, trackId: "annotations" })) as TimelineSlice["tracks"]["annotations"],
+      .map((clip) => ({ ...clip, trackId: "video" })) as TimelineSlice["tracks"]["video"],
+    cursor: cursor
+      .filter(isRecord)
+      .map((clip) => ({ ...clip, trackId: "cursor" })) as TimelineSlice["tracks"]["cursor"],
+    zoom: zoom
+      .filter(isRecord)
+      .map((clip) => ({ ...clip, trackId: "zoom" })) as TimelineSlice["tracks"]["zoom"],
+    sound: sound
+      .filter(isRecord)
+      .map((clip) => ({ ...clip, trackId: "sound" })) as TimelineSlice["tracks"]["sound"],
+    annotations: annotations.filter(isRecord).map((clip) => ({
+      ...clip,
+      trackId: "annotations",
+    })) as TimelineSlice["tracks"]["annotations"],
   });
 }
 
@@ -81,8 +93,9 @@ export function serializeTimelineLayout(input: {
   durationMs: number;
   background: EditorBackgroundKind;
 }): string {
-  const sourceRevision = input.tracks.video.find((clip) => clip.sourceRevision)?.sourceRevision ?? null;
-  const layout: TimelineLayoutV2 = {
+  const sourceRevision =
+    input.tracks.video.find((clip) => clip.sourceRevision)?.sourceRevision ?? null;
+  const layout: TimelineLayoutV3 = {
     version: TIMELINE_LAYOUT_VERSION,
     timingModelVersion: TIMELINE_TIMING_MODEL_VERSION,
     sourceRevision,
@@ -109,7 +122,7 @@ export function parseTimelineLayoutJson(
     return { ok: false, reason: "invalid JSON" };
   }
   if (!isRecord(parsed)) return { ok: false, reason: "layout root is not an object" };
-  if (parsed.version !== 1 && parsed.version !== TIMELINE_LAYOUT_VERSION) {
+  if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== TIMELINE_LAYOUT_VERSION) {
     return { ok: false, reason: `unsupported layout version ${String(parsed.version)}` };
   }
   const tracks = parseTracks(parsed.tracks);
@@ -118,7 +131,8 @@ export function parseTimelineLayoutJson(
     typeof parsed.durationMs === "number" && Number.isFinite(parsed.durationMs)
       ? Math.max(0, parsed.durationMs)
       : 0;
-  const isLegacy = parsed.version === 1;
+  const isV1 = parsed.version === 1;
+  const isLegacyLayout = parsed.version !== TIMELINE_LAYOUT_VERSION;
   const currentGenerated = options.currentGeneratedTracks;
   const currentRevision = options.currentSourceRevision;
   const storedRevision = typeof parsed.sourceRevision === "string" ? parsed.sourceRevision : null;
@@ -127,10 +141,11 @@ export function parseTimelineLayoutJson(
     ? generatedTimingMatches(tracks, currentGenerated, toleranceMs)
     : true;
   const sourceMatches = !currentRevision || storedRevision === currentRevision;
-  const shouldRebuild = Boolean(currentGenerated && (!timingMatches || (!isLegacy && !sourceMatches)));
-  const migratedTracks = shouldRebuild && currentGenerated
-    ? preserveIndependentOverlays(currentGenerated, tracks)
-    : tracks;
+  const shouldRebuild = Boolean(currentGenerated && (!timingMatches || (!isV1 && !sourceMatches)));
+  const migratedTracks =
+    shouldRebuild && currentGenerated
+      ? preserveIndependentOverlays(currentGenerated, tracks)
+      : tracks;
   return {
     ok: true,
     layout: {
@@ -141,7 +156,7 @@ export function parseTimelineLayoutJson(
       durationMs,
       background: parseBackground(parsed.background),
     },
-    migrated: isLegacy,
+    migrated: isLegacyLayout,
     rebuiltGeneratedLayers: shouldRebuild,
   };
 }

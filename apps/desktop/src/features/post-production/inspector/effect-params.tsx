@@ -14,8 +14,8 @@ import {
   CURSOR_CLICK_EFFECT_COLORS,
   CURSOR_CLICK_EFFECT_INTENSITIES,
   CURSOR_CLICK_EFFECT_STYLES,
-  type CursorClickEffectConfig,
   type CursorClickEffectColor,
+  type CursorClickEffectConfig,
   type CursorClickEffectIntensity,
   type CursorClickEffectStyle,
   normalizeCursorClickEffect,
@@ -32,7 +32,13 @@ import {
   targetAnchorHasGeometry,
   targetAnchorPosition,
 } from "../state/text-anchor";
-import { styleDefaults, TEXT_STYLE_IDS, TEXT_STYLE_PRESETS } from "../state/text-style";
+import {
+  appearanceOverridesFromResolved,
+  resolveTextStyle,
+  styleDefaults,
+  TEXT_STYLE_IDS,
+  TEXT_STYLE_PRESETS,
+} from "../state/text-style";
 import type {
   AnnotationClip,
   Clip,
@@ -41,7 +47,6 @@ import type {
   CursorSkin,
   SoundClip,
   SoundKind,
-  TextAlign,
   TextAnchor,
   TextAnimationKind,
   TextStyleId,
@@ -60,13 +65,14 @@ import {
   TRACK_IDS,
   XFADE_KINDS,
 } from "../state/timeline-slice";
+import { TextAppearanceControls } from "./text-appearance-controls";
 
 const FIELD_CLASS =
   "min-h-10 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]";
 
 const RANGE_CLASS = "w-full accent-[var(--color-accent,#ff5b76)]";
 const SECTION_CLASS =
-  "rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3";
+  "min-w-0 max-w-full rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3";
 const FIELD_ROW_CLASS = "flex flex-col gap-1.5";
 const SECONDARY_BUTTON_CLASS =
   "rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-2 text-xs font-medium text-[var(--color-fg)] transition-[background-color,transform,border-color] hover:border-[var(--color-border)] hover:bg-[var(--color-surface-100)] active:scale-[0.98] disabled:opacity-45";
@@ -86,7 +92,6 @@ const CURSOR_SKIN_OPTIONS: CursorSkin[] = [
 ];
 const SOUND_KIND_OPTIONS: SoundKind[] = ["bgm", "sfx", "voiceover"];
 const TRANSITION_KIND_OPTIONS = XFADE_KINDS;
-const TEXT_ALIGN_OPTIONS: TextAlign[] = ["left", "center", "right"];
 const TEXT_ANIM_IN_OPTIONS: TextAnimationKind[] = ["none", "fade", "slide-up", "scale-in"];
 const TEXT_ANIM_OUT_OPTIONS: Array<"none" | "fade"> = ["none", "fade"];
 const TEXT_ANCHOR_KIND_OPTIONS: TextAnchor["kind"][] = ["screen", "safe-area", "cursor", "target"];
@@ -151,7 +156,6 @@ const textStyleSelectOptions = TEXT_STYLE_IDS.map((id) => ({
   value: id,
   label: TEXT_STYLE_PRESETS[id].label,
 }));
-const textAlignSelectOptions = TEXT_ALIGN_OPTIONS.map((align) => ({ value: align, label: align }));
 const textAnimInSelectOptions = TEXT_ANIM_IN_OPTIONS.map((anim) => ({ value: anim, label: anim }));
 const textAnimOutSelectOptions = TEXT_ANIM_OUT_OPTIONS.map((anim) => ({
   value: anim,
@@ -557,18 +561,17 @@ interface AnnotationParamsProps {
   clip: AnnotationClip;
   nodePath: string;
   onSetParam: (nodePath: string, field: string, prev: unknown, next: unknown) => void;
+  onReplaceClip: (next: AnnotationClip) => void;
 }
 
-function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps) {
+function AnnotationParams({ clip, nodePath, onSetParam, onReplaceClip }: AnnotationParamsProps) {
   const posPath = `${nodePath}.pos`;
   const playheadMs = useEditorStore((s) => s.playheadMs);
   const cursorClips = useEditorStore((s) => s.tracks.cursor);
   const actions = useEditorStore((s) => s._undoExtras?.actions ?? null);
   const stepTiming = useEditorStore((s) => s._undoExtras?.stepTiming ?? null);
   const captureRect = useEditorStore((s) => s._undoExtras?.captureRect ?? null);
-  const color = clip.color ?? "#ffffff";
   const preset = TEXT_STYLE_PRESETS[clip.styleId ?? "callout"];
-  const boxStyle = clip.boxStyle ?? preset.boxStyle;
   const animation = clip.animation ?? preset.animation;
   const anchor = clip.anchor ?? { kind: "screen", pos: clip.pos };
   const currentStep = currentStepForPlayhead(stepTiming, playheadMs);
@@ -635,17 +638,18 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
             value={clip.styleId ?? "callout"}
             onValueChange={(value) => {
               const nextStyle = value as TextStyleId;
-              const defaults = styleDefaults(nextStyle);
-              onSetParam(nodePath, "styleId", clip.styleId, nextStyle);
-              onSetParam(nodePath, "sizePt", clip.sizePt, defaults.sizePt);
-              onSetParam(nodePath, "color", clip.color, defaults.color);
-              onSetParam(nodePath, "align", clip.align, defaults.align);
-              onSetParam(nodePath, "boxStyle", clip.boxStyle, defaults.boxStyle);
-              onSetParam(nodePath, "animation", clip.animation, defaults.animation);
+              onReplaceClip(resetAnnotationAppearance(clip, nextStyle));
             }}
             options={textStyleSelectOptions}
           />
         </label>
+        <button
+          type="button"
+          className={SECONDARY_BUTTON_CLASS}
+          onClick={() => onReplaceClip(resetAnnotationAppearance(clip, clip.styleId ?? "callout"))}
+        >
+          Reset appearance
+        </button>
         <label className={FIELD_ROW_CLASS}>
           <FieldLabel>Content</FieldLabel>
           <textarea
@@ -681,71 +685,10 @@ function AnnotationParams({ clip, nodePath, onSetParam }: AnnotationParamsProps)
           <SectionTitle>Appearance</SectionTitle>
           <SectionCopy>Keep text readable while preserving the video frame.</SectionCopy>
         </div>
-        <label className={FIELD_ROW_CLASS}>
-          <span className="flex items-center justify-between gap-2">
-            <FieldLabel>Size</FieldLabel>
-            <ValuePill>{clip.sizePt} pt</ValuePill>
-          </span>
-          <input
-            type="range"
-            aria-label="Annotation size"
-            value={clip.sizePt}
-            min="12"
-            max="72"
-            step="1"
-            onChange={(e) => {
-              const next = parseFiniteNumber(e.target.value, clip.sizePt);
-              if (next !== clip.sizePt) {
-                onSetParam(nodePath, "sizePt", clip.sizePt, next);
-              }
-            }}
-            className={RANGE_CLASS}
-          />
-        </label>
-        <div className="grid grid-cols-2 gap-2">
-          <label className={FIELD_ROW_CLASS}>
-            <FieldLabel>Align</FieldLabel>
-            <SelectField
-              aria-label="Text alignment"
-              value={clip.align ?? preset.align}
-              onValueChange={(value) => onSetParam(nodePath, "align", clip.align, value)}
-              options={textAlignSelectOptions}
-            />
-          </label>
-          <label className={FIELD_ROW_CLASS}>
-            <FieldLabel>Color</FieldLabel>
-            <input
-              type="color"
-              aria-label="Annotation color"
-              value={color}
-              onChange={(e) => onSetParam(nodePath, "color", clip.color, e.target.value)}
-              className="h-10 w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
-            />
-          </label>
-        </div>
-        <label className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.56)]">
-          <span>
-            <span className="block text-xs font-medium text-[var(--color-fg)]">Background</span>
-            <span className="text-[11px] text-[var(--color-fg-muted)]">
-              Add a readable pill behind the text.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            aria-label="Text background"
-            checked={Boolean(boxStyle)}
-            onChange={(e) =>
-              onSetParam(
-                nodePath,
-                "boxStyle",
-                clip.boxStyle,
-                e.currentTarget.checked
-                  ? (preset.boxStyle ?? TEXT_STYLE_PRESETS.callout.boxStyle)
-                  : undefined,
-              )
-            }
-          />
-        </label>
+        <TextAppearanceControls
+          clip={clip}
+          onChange={(field, prev, next) => onSetParam(nodePath, field, prev, next)}
+        />
       </fieldset>
 
       <details className="rounded-[8px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3">
@@ -1204,13 +1147,28 @@ function VideoParams({
   );
 }
 
+function resetAnnotationAppearance(clip: AnnotationClip, styleId: TextStyleId): AnnotationClip {
+  const defaults = styleDefaults(styleId);
+  return {
+    ...clip,
+    styleId,
+    font: undefined,
+    sizePt: defaults.sizePt,
+    color: undefined,
+    align: undefined,
+    maxWidthPct: undefined,
+    lineHeight: undefined,
+    letterSpacingPx: undefined,
+    textShadow: undefined,
+    boxStyle: undefined,
+    animation: undefined,
+  };
+}
+
 function cloneAnnotationStyle(clip: AnnotationClip): Partial<AnnotationClip> {
   return {
     styleId: clip.styleId,
-    sizePt: clip.sizePt,
-    color: clip.color,
-    align: clip.align,
-    boxStyle: clip.boxStyle,
+    ...appearanceOverridesFromResolved(resolveTextStyle(clip)),
     animation: clip.animation,
   };
 }
@@ -1284,8 +1242,6 @@ function LayerClipList({
   pushAction,
 }: LayerClipListProps) {
   const sortedClips = useMemo(() => [...clips].sort((a, b) => a.startMs - b.startMs), [clips]);
-  const annotationClips = allAnnotations.filter((clip) => clip.text.trim());
-
   const duplicateClip = (clip: AnnotationClip) => {
     pushAction({
       kind: "add-clip",
@@ -1327,23 +1283,20 @@ function LayerClipList({
     });
   };
 
-  const applyStyleToAll = (source: AnnotationClip) => {
-    const style = cloneAnnotationStyle(source);
-    annotationClips.forEach((clip) => {
-      if (clip.id === source.id) return;
-      const trackIndex = allAnnotations.findIndex((item) => item.id === clip.id);
-      if (trackIndex < 0) return;
-      Object.entries(style).forEach(([field, next]) => {
-        const prev = clip[field as keyof AnnotationClip];
-        if (Object.is(prev, next)) return;
-        pushAction({
-          kind: "set-effect-param",
-          nodePath: clipNodePath("annotations", trackIndex),
-          field,
-          prev,
-          next,
-        });
-      });
+  const applyStyle = (source: AnnotationClip, scope: "same-style" | "all") => {
+    const sourceStyleId = source.styleId ?? "callout";
+    const before = allAnnotations.filter(
+      (clip) =>
+        clip.id !== source.id &&
+        clip.text.trim().length > 0 &&
+        (scope === "all" || (clip.styleId ?? "callout") === sourceStyleId),
+    );
+    if (before.length === 0) return;
+    const appearance = appearanceOverridesFromResolved(resolveTextStyle(source));
+    pushAction({
+      kind: "edit-clip-snapshots",
+      before,
+      after: before.map((clip) => ({ ...clip, ...appearance })),
     });
   };
 
@@ -1416,13 +1369,29 @@ function LayerClipList({
                     >
                       Dupe style
                     </button>
-                    <button
-                      type="button"
-                      className={TINY_BUTTON_CLASS}
-                      onClick={() => applyStyleToAll(clip)}
-                    >
-                      Style all
-                    </button>
+                    <details className="relative">
+                      <summary
+                        className={`${TINY_BUTTON_CLASS} cursor-pointer list-none text-center`}
+                      >
+                        Apply style
+                      </summary>
+                      <div className="absolute right-0 z-20 mt-1 flex min-w-44 flex-col gap-1 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
+                        <button
+                          type="button"
+                          className={TINY_BUTTON_CLASS}
+                          onClick={() => applyStyle(clip, "same-style")}
+                        >
+                          Same preset / role
+                        </button>
+                        <button
+                          type="button"
+                          className={TINY_BUTTON_CLASS}
+                          onClick={() => applyStyle(clip, "all")}
+                        >
+                          All text
+                        </button>
+                      </div>
+                    </details>
                     <button
                       type="button"
                       className={TINY_BUTTON_CLASS}
@@ -1566,7 +1535,10 @@ function EffectParamsBase() {
   const accent = clipTypeAccent(trackId);
 
   return (
-    <form aria-label="Effect parameters" className="flex flex-col gap-3 p-4 text-sm">
+    <form
+      aria-label="Effect parameters"
+      className="flex min-w-0 w-full max-w-full flex-col gap-3 p-4 text-sm"
+    >
       <LayerTabs activeLayer={activeLayer} tracks={tracks} onLayerChange={selectLayer} />
       <LayerClipList
         activeLayer={activeLayer}
@@ -1633,7 +1605,14 @@ function EffectParamsBase() {
         <ZoomParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
       ) : null}
       {clip.trackId === "annotations" ? (
-        <AnnotationParams clip={clip} nodePath={nodePath} onSetParam={onSetParam} />
+        <AnnotationParams
+          clip={clip}
+          nodePath={nodePath}
+          onSetParam={onSetParam}
+          onReplaceClip={(next) =>
+            pushAction({ kind: "edit-clip-snapshots", before: [clip], after: [next] })
+          }
+        />
       ) : null}
       {clip.trackId === "cursor" ? (
         <CursorParams
