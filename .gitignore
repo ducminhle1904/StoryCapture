@@ -67,3 +67,4 @@ eval_result.json
 .eslintcache
 coverage/
 .claude/
+discussion/
