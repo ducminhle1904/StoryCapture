@@ -2,8 +2,9 @@
 // Shared TS exports for desktop IPC and companion types.
 // `ipc.ts` is the checked-in host IPC compatibility surface.
 
-export * from "./ipc";
 export * from "./browser-presets";
+export * from "./export-composition";
+export * from "./ipc";
 
 // WebAccountInfo stays in web-account.ts to avoid colliding with IPC types.
 

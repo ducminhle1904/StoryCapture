@@ -265,6 +265,51 @@ describe("EditorShell toolbar actions", () => {
     });
   });
 
+  it("preserves recording sidecars after timeline bootstrap", async () => {
+    const actions = {
+      source_version: 1,
+      confidence: "legacy-approximate",
+      recording_path: "/recordings/full-duration.mp4",
+      cursor_motion_preset: "natural",
+      viewport: { width: 1_920, height: 1_080 },
+      capture_rect: { x: 0, y: 0, width: 1_920, height: 1_080 },
+      fps_num: 60,
+      fps_den: 1,
+      frame_count: 0,
+      events: [],
+    };
+    ipcMocks.useProjectRecordings.mockReturnValue({
+      data: [
+        {
+          path: "/recordings/full-duration.mp4",
+          captured_at: 1,
+          duration_ms: 2_000,
+          width: 1_920,
+          height: 1_080,
+        },
+      ],
+      isSuccess: true,
+      isError: false,
+    });
+    ipcMocks.useRecordingActions.mockReturnValue({
+      data: actions,
+      isLoading: false,
+      isSuccess: true,
+    });
+
+    render(
+      <MemoryRouter>
+        <EditorShell storyId="story-1" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(useEditorStore.getState().tracks.video).toHaveLength(1));
+    expect(useEditorStore.getState()._undoExtras).toMatchObject({
+      actions,
+      captureRect: actions.capture_rect,
+    });
+  });
+
   it("rebuilds the timeline when the saved layout points at an older recording", async () => {
     resetStore();
     useEditorStore.setState({ durationMs: 0 });

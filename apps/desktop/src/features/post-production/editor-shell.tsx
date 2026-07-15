@@ -63,9 +63,11 @@ import {
 import {
   type AnnotationClip,
   cloneTimelineTracks,
+  type SoundClip,
   type TimelineSlice,
   type ZoomClip,
 } from "./state/timeline-slice";
+import { reflowVoiceoverClips } from "./state/voiceover-timeline";
 import { Timeline } from "./timeline/timeline";
 
 export interface EditorShellProps {
@@ -348,6 +350,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
   const timelineLoadTokenRef = useRef(0);
   const lastSavedTimelineRef = useRef("");
   const staleAnnotationsRef = useRef<AnnotationClip[]>([]);
+  const staleVoiceoversRef = useRef<SoundClip[]>([]);
   useEffect(() => {
     let cancelled = false;
     setStoryParsed(null);
@@ -390,6 +393,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
     setTimelineNeedsBootstrap(false);
     lastSavedTimelineRef.current = "";
     staleAnnotationsRef.current = [];
+    staleVoiceoversRef.current = [];
     resetTransientTimelineState();
 
     if (videoSrc) {
@@ -411,6 +415,9 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
               : recordingsQuery.isSuccess;
             if (staleForLatestRecording) {
               staleAnnotationsRef.current = parsed.layout.tracks.annotations;
+              staleVoiceoversRef.current = parsed.layout.tracks.sound.filter(
+                (clip) => clip.kind === "voiceover",
+              );
               console.info(
                 `Saved timeline for story ${storyId} was ignored because its recording is stale.`,
               );
@@ -602,11 +609,19 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
       generatedTracks.annotations,
       staleAnnotationsRef.current,
     );
+    const source = generatedTracks.video[0];
+    const voiceoverReflow = reflowVoiceoverClips(staleVoiceoversRef.current, {
+      stepTiming: stepTimingQuery.data ?? null,
+      sourceRevision: source?.sourceRevision,
+      sourceTimeMap: source?.sourceTimeMap,
+    });
     const builtTracks = {
       ...generatedTracks,
+      sound: [...generatedTracks.sound, ...voiceoverReflow.clips],
       annotations: annotationMerge.annotations,
     };
     staleAnnotationsRef.current = [];
+    staleVoiceoversRef.current = [];
     setTracks(builtTracks);
     setDuration(maxTrackEndMs(builtTracks));
     if (warnings.length > 0) {
@@ -628,10 +643,22 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         },
       );
     }
+    if (voiceoverReflow.unresolved.length > 0) {
+      toast.warning(
+        `${voiceoverReflow.unresolved.length} voiceover clip${voiceoverReflow.unresolved.length === 1 ? " needs" : "s need"} timing review`,
+        {
+          description:
+            "The new recording has no matching step timing, so the previous timeline position was preserved.",
+        },
+      );
+    }
     useEditorStore.setState((state) => ({
       _undoExtras: {
-        graphSnapshot: state._undoExtras?.graphSnapshot ?? {},
-        textOverlays: state._undoExtras?.textOverlays ?? {},
+        ...(state._undoExtras ?? {
+          graphSnapshot: {},
+          textOverlays: {},
+          background: DEFAULT_BACKGROUND,
+        }),
         background,
       },
     }));

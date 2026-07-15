@@ -5,18 +5,22 @@
  *     (Source → ZoomPan → Background → CursorOverlay → TextOverlay → Transition)
  *     with shapes that deserialize cleanly into the Rust `effects::Graph` AST
  *   - determinism: two calls with the same state produce byte-equal JSON
- *   - clips missing required metadata are skipped (no source/audio path,
- *     no cursor trajectory dir, no annotation text)
+ *   - clips missing required metadata produce blocking diagnostics
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { sampleExportZoom } from "../export-compositor/export-compositor-app";
+import { evaluateSceneZoom } from "../export-compositor/scene-evaluator";
 import type { Graph, VideoNode } from "../state/compute-graph";
-import { computeGraph, graphIsRenderable } from "../state/compute-graph";
+import {
+  compileExportComposition,
+  computeGraph,
+  EXPORT_CLIP_FIELD_COVERAGE,
+  graphIsRenderable,
+} from "../state/compute-graph";
 import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
 import { clearSystemFontCatalogCache, loadSystemFontCatalog } from "../state/system-font-catalog";
-import type { ZoomClip } from "../state/timeline-slice";
+import { TRACK_IDS, type ZoomClip } from "../state/timeline-slice";
 import {
   applyZoomToPoint,
   normalizedZoomCenterToPixels,
@@ -58,12 +62,21 @@ beforeEach(() => {
 });
 
 describe("computeGraph", () => {
+  it("keeps exhaustive field coverage for every timeline track", () => {
+    expect(Object.keys(EXPORT_CLIP_FIELD_COVERAGE).sort()).toEqual([...TRACK_IDS].sort());
+    for (const fields of Object.values(EXPORT_CLIP_FIELD_COVERAGE)) {
+      expect(Object.keys(fields)).toContain("id");
+      expect(Object.keys(fields)).toContain("durationMs");
+    }
+  });
+
   it("empty store yields empty video/audio with schema metadata", () => {
     const g = computeGraph(useEditorStore.getState());
-    expect(g.schema_version).toBe(3);
+    expect(g.schema_version).toBe(4);
     expect(g.output_width).toBe(1920);
     expect(g.output_height).toBe(1080);
     expect(g.output_fps).toBe(60);
+    expect(g.duration_ms).toBe(0);
     expect(g.video).toEqual([]);
     expect(g.audio).toEqual([]);
     expect(graphIsRenderable(g)).toBe(false);
@@ -199,8 +212,8 @@ describe("computeGraph", () => {
       "text-overlay",
       "transition",
     ]);
-    expect(g.audio.map((n) => n.type)).toEqual(["audio-source", "volume"]);
-    expect(g.audio[1]).toMatchObject({ type: "volume", volume: 0.35 });
+    expect(g.audio.map((n) => n.type)).toEqual(["sound"]);
+    expect(g.audio[0]).toMatchObject({ type: "sound", kind: "bgm", gain: 0.35 });
 
     const src = videoNodeAt(g, 0);
     if (src.type !== "source") throw new Error("expected source");
@@ -304,7 +317,7 @@ describe("computeGraph", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "gradient", preset_id: "runway-dark" },
+        background: { kind: "transparent" },
         captureRect: { x: 0, y: 0, width: 1920, height: 1080 },
       },
       tracks: {
@@ -330,7 +343,11 @@ describe("computeGraph", () => {
 
     expect(g.output_width).toBe(2048);
     expect(g.output_height).toBe(1208);
-    expect(background).toMatchObject({ type: "background", padding_px: 64 });
+    expect(background).toMatchObject({
+      type: "background",
+      kind: { kind: "ambient" },
+      padding_px: 64,
+    });
   });
 
   it("preserves source dimensions for source-mode match-source exports", () => {
@@ -530,7 +547,7 @@ describe("computeGraph", () => {
 
     for (const timeMs of times) {
       const preview = sampleResolvedZoom(motions, timeMs);
-      const exported = sampleExportZoom(graph, timeMs, graph.output_width, graph.output_height);
+      const exported = evaluateSceneZoom(graph, timeMs);
       const expectedCenter = normalizedZoomCenterToPixels(
         preview.center,
         preview.scale,
@@ -618,9 +635,14 @@ describe("computeGraph", () => {
       "source",
       "source",
       "source",
+      "background",
       "transition",
       "transition",
     ]);
+    expect(g.video.find((node) => node.type === "background")).toMatchObject({
+      kind: { kind: "ambient" },
+      padding_px: 64,
+    });
 
     const transitions = g.video.filter((node) => node.type === "transition");
     expect(transitions).toEqual([
@@ -1042,7 +1064,7 @@ describe("computeGraph", () => {
     expect(a).toBe(b);
   });
 
-  it("skips clips missing required metadata", () => {
+  it("returns exhaustive diagnostics for clips missing required metadata", () => {
     useEditorStore.setState({
       tracks: {
         video: [
@@ -1096,8 +1118,19 @@ describe("computeGraph", () => {
         ],
       },
     });
-    const g = computeGraph(useEditorStore.getState());
-    expect(g.video).toEqual([]);
-    expect(g.audio).toEqual([]);
+    const result = compileExportComposition(useEditorStore.getState());
+    expect(result.graph.video).toEqual([]);
+    expect(result.graph.audio).toEqual([]);
+    expect(result.issues.map((issue) => issue.code)).toEqual([
+      "annotation.empty",
+      "composition.missing-video",
+      "cursor.invalid-frame-count",
+      "cursor.missing-trajectory",
+      "sound.missing-source",
+      "transition.missing-next-source",
+      "video.missing-source",
+      "video.missing-source",
+    ]);
+    expect(result.issues.every((issue) => issue.severity === "error")).toBe(true);
   });
 });

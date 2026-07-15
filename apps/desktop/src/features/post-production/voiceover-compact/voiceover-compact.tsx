@@ -6,6 +6,7 @@ import { TtsClipInspector } from "@/features/voiceover/TtsClipInspector";
 import { TtsScriptEditor } from "@/features/voiceover/TtsScriptEditor";
 import { useVoiceoverStore } from "@/features/voiceover/voiceoverStore";
 import type { Command, SelectorOrText, Story } from "@/ipc/parse";
+import type { VoiceoverStepBinding } from "../state/voiceover-timeline";
 
 /* Voiceover helpers */
 
@@ -18,6 +19,7 @@ interface VoiceoverStep {
   sceneLabel: string;
   commandIndex: number;
   spanStart: number;
+  binding: VoiceoverStepBinding;
 }
 
 function summariseScript(text: string): string {
@@ -90,17 +92,27 @@ function computeStepStatus(
 
 function buildVoiceoverSteps(story: Story | null): VoiceoverStep[] {
   if (!story) return [];
+  let ordinal = 0;
   return story.scenes.flatMap((scene, sceneIndex) =>
-    scene.commands.map((command, commandIndex) => ({
-      id: `scene-${sceneIndex + 1}-step-${commandIndex + 1}`,
-      label: `${scene.name || `Scene ${sceneIndex + 1}`} · ${command.verb}`,
-      suggestedScript: buildSuggestedScript(command, scene.name),
-      verb: command.verb,
-      sceneIndex,
-      sceneLabel: scene.name || `Scene ${sceneIndex + 1}`,
-      commandIndex,
-      spanStart: command.span.start,
-    })),
+    scene.commands.map((command, commandIndex) => {
+      ordinal += 1;
+      const fallbackId = `scene-${sceneIndex + 1}-step-${commandIndex + 1}`;
+      return {
+        id: command.step_id ?? fallbackId,
+        label: `${scene.name || `Scene ${sceneIndex + 1}`} · ${command.verb}`,
+        suggestedScript: buildSuggestedScript(command, scene.name),
+        verb: command.verb,
+        sceneIndex,
+        sceneLabel: scene.name || `Scene ${sceneIndex + 1}`,
+        commandIndex,
+        spanStart: command.span.start,
+        binding: {
+          kind: "story-voiceover" as const,
+          stepId: command.step_id ?? null,
+          ordinal,
+        },
+      };
+    }),
   );
 }
 
@@ -218,11 +230,15 @@ export function VoiceoverCompact({
         voiceId: preset.id,
         model: preset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
       });
-      setClip(selectedStep.id, {
-        filePath: result.file_path,
-        durationMs: result.audio_duration_ms,
-        costUsd: result.cost_usd,
-      });
+      setClip(
+        selectedStep.id,
+        {
+          filePath: result.file_path,
+          durationMs: result.audio_duration_ms,
+          costUsd: result.cost_usd,
+        },
+        selectedStep.binding,
+      );
       setEditedAfterGen(selectedStep.id, false);
     } finally {
       setGenerating(selectedStep.id, false);
@@ -372,7 +388,11 @@ export function VoiceoverCompact({
                 </button>
               </div>
 
-              <TtsScriptEditor projectId={projectId} stepId={selectedStep.id} />
+              <TtsScriptEditor
+                projectId={projectId}
+                stepId={selectedStep.id}
+                stepBinding={selectedStep.binding}
+              />
 
               {selectedClip ? (
                 <TtsClipInspector

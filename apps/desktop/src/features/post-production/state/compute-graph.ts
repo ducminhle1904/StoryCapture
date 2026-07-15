@@ -2,10 +2,9 @@
  * computeGraph — pure projection from the timeline editor store into the
  * export graph shape that the Electron export pipeline consumes.
  *
- * The TS reference lives in `packages/shared-types/src/generated/effects.ts`,
- * but that file uses `bigint` for u64 fields which JSON.stringify cannot
- * encode. We instead emit plain numbers for ms-scale timestamps and narrow our
- * own structurally-identical local types so the boundary stays type-checked.
+ * The JSON-safe v4 contract lives in `@storycapture/shared-types`. The
+ * generated effects surface still uses bigint timestamps and is intentionally
+ * not used at this serialization boundary.
  *
  * Determinism: NodeId UUIDs are derived from a stable hash of the clip id,
  * so calling `computeGraph` twice with the same store produces JSON.stringify
@@ -19,12 +18,26 @@
  * `metadata` bag to read from. Field access here is direct.
  */
 
+import {
+  EXPORT_COMPOSITION_SCHEMA_VERSION,
+  type ExportAudioNode,
+  type ExportCompositionGraphV4,
+  type ExportEasingKind,
+  type ExportHighlightOverlaySpec,
+  type ExportIssue,
+  type ExportRgba,
+  type ExportTextBox,
+  type ExportTextFontChoice,
+  type ExportTextShadow,
+  type ExportTrajectoryRef,
+  type ExportVideoNode,
+  type ExportZoomKeyframe,
+} from "@storycapture/shared-types";
 import type { RecordingActions } from "../../../ipc/actions";
 import type { ExportResolution } from "../../../ipc/export";
 import type { CaptureRect, RecordingStepTimingSidecar } from "../../../ipc/trajectory";
-import { type CursorClickEffectConfig, normalizeCursorClickEffect } from "./cursor-click-effect";
+import { normalizeCursorClickEffect } from "./cursor-click-effect";
 import type { ExportFormState } from "./export-slice";
-import type { SourceTimelineMap } from "./source-timeline-map";
 import { type EditorBackgroundKind, readEditorBackground } from "./store";
 import { resolveTextAnchorPosition } from "./text-anchor";
 import { effectiveTextFontChoice, hexToRgbaWithAlpha, resolvedTextStyle } from "./text-style";
@@ -32,10 +45,8 @@ import type {
   AnnotationClip,
   Clip,
   CursorClip,
-  CursorMotionPreset,
   CursorSkin,
   SoundClip,
-  TextFontChoice,
   TimelineSlice,
   TrackId,
   Vec2,
@@ -71,178 +82,24 @@ export interface ComputeGraphInput {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Local Graph types use `number` instead of `bigint` for timestamp fields so
-// JSON.stringify works. Keep this in sync with the shared generated effects
-// types where those are still consumed.
-//
-// Vec2, ZoomTarget, CursorSkin are re-exported from timeline-slice so the
-// editor's store shape and the wire format share a single definition.
-// ---------------------------------------------------------------------------
-
 export type { CursorSkin, Vec2, XfadeKind, ZoomTarget };
-
-export interface Rgba {
-  r: number;
-  g: number;
-  b: number;
-  a: number;
-}
-
-export type EasingKind =
-  | "linear"
-  | "ease-in-cubic"
-  | "ease-out-cubic"
-  | "ease-in"
-  | "ease-out"
-  | "ease-in-out"
-  | "ease-in-out-cubic"
-  | "ease-out-quad";
-
-export interface ZoomKeyframe {
-  t_ms: number;
-  center: Vec2;
-  scale: number;
-  easing: EasingKind;
-}
-
-export interface TrajectoryRef {
-  png_sequence_dir: string;
-  fps: number;
-  frame_count: number;
-}
-
-export type FontChoice = TextFontChoice;
-
-export type TextAnim = "none" | "fade" | "slide-up" | "scale-in";
-
-export interface TextShadow {
-  color: Rgba;
-  blur_px: number;
-  offset_x_px: number;
-  offset_y_px: number;
-}
-
-export interface BoxStyle {
-  padding_px: number;
-  radius_px: number;
-  bg_color: Rgba;
-  border_color: Rgba | null;
-  border_width_px: number;
-  shadow: TextShadow | null;
-}
-
-export interface TextBox {
-  t_start_ms: number;
-  t_end_ms: number;
-  text: string;
-  pos: Vec2;
-  font: FontChoice;
-  size_pt: number;
-  color: Rgba;
-  align: "left" | "center" | "right";
-  max_width_pct: number;
-  line_height: number;
-  letter_spacing_px: number;
-  text_shadow: TextShadow | null;
-  box_style: BoxStyle | null;
-  anim_in: TextAnim;
-  anim_out: Extract<TextAnim, "none" | "fade">;
-  anim_duration_ms: number;
-}
-
-export interface RippleEvent {
-  t_anticipate_ms: number;
-  t_impact_ms: number;
-  duration_ms: number;
-  center: Vec2;
-  max_radius_px: number;
-  bounds?: { x: number; y: number; w: number; h: number };
-  color: Rgba;
-}
-
-export type HighlightShape = "ring" | "spotlight";
-
-export interface HighlightOverlaySpec {
-  t_start_ms: number;
-  duration_ms: number;
-  shape: HighlightShape;
-  center: Vec2;
-  max_radius_px: number;
-  bounds?: { x: number; y: number; w: number; h: number };
-  padding_px: number;
-  radius_px: number;
-  stroke_px: number;
-  glow_px: number;
-  color: Rgba;
-  opacity: number;
-  png_path?: string | null;
-  overlay_pos?: Vec2 | null;
-}
-
-export type VideoNode =
-  | {
-      type: "source";
-      id: string;
-      path: string;
-      pts_offset_ms: number;
-      duration_ms: number;
-      source_width?: number;
-      source_height?: number;
-      source_time_map?: SourceTimelineMap;
-    }
-  | { type: "zoom-pan"; id: string; target: ZoomTarget; keyframes: ZoomKeyframe[] }
-  | {
-      type: "background";
-      id: string;
-      kind: Exclude<EditorBackgroundKind, { kind: "transparent" }>;
-      radius_px: number;
-      shadow: null;
-      padding_px: number;
-    }
-  | {
-      type: "cursor-overlay";
-      id: string;
-      skin: CursorSkin;
-      size_scale: number;
-      motion_preset: CursorMotionPreset;
-      preserve_full_motion: boolean;
-      click_effect: CursorClickEffectConfig;
-      color_tint: Rgba | null;
-      t_start_ms: number;
-      duration_ms: number;
-      trajectory: TrajectoryRef;
-    }
-  | { type: "ripple-overlay"; id: string; events: RippleEvent[] }
-  | { type: "highlight-overlay"; id: string; highlights: HighlightOverlaySpec[] }
-  | { type: "text-overlay"; id: string; boxes: TextBox[] }
-  | {
-      type: "transition";
-      id: string;
-      kind: XfadeKind;
-      duration_ms: number;
-      offset_ms: number;
-    };
-
-export type AudioNode =
-  | { type: "audio-source"; id: string; path: string; pts_offset_ms: number }
-  | { type: "volume"; id: string; input_label: string; volume: number };
-
-export interface Graph {
-  schema_version: number;
-  output_width: number;
-  output_height: number;
-  output_fps: number;
-  video: VideoNode[];
-  audio: AudioNode[];
-}
+export type Rgba = ExportRgba;
+export type EasingKind = ExportEasingKind;
+export type ZoomKeyframe = ExportZoomKeyframe;
+export type TrajectoryRef = ExportTrajectoryRef;
+export type FontChoice = ExportTextFontChoice;
+export type TextShadow = ExportTextShadow;
+export type TextBox = ExportTextBox;
+export type HighlightOverlaySpec = ExportHighlightOverlaySpec;
+export type VideoNode = ExportVideoNode;
+export type AudioNode = ExportAudioNode;
+export type Graph = ExportCompositionGraphV4;
 
 // ---------------------------------------------------------------------------
 // Determinism helpers
 // ---------------------------------------------------------------------------
 
-/** Mirrors the Rust schema_version constant. */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = EXPORT_COMPOSITION_SCHEMA_VERSION;
 
 const RESOLUTION_PX: Record<ExportResolution, { w: number; h: number }> = {
   "match-source": { w: 1920, h: 1080 },
@@ -287,22 +144,24 @@ function deterministicNodeId(clipId: string, role: string): string {
   ].join("-");
 }
 
-function audioNodeLabel(id: string): string {
-  return `a_${id.replaceAll("-", "").slice(-4)}`;
-}
-
 // ---------------------------------------------------------------------------
 // Per-track projections — typed direct access, no metadata bag.
 // ---------------------------------------------------------------------------
+
+function safeTimelineMs(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+}
 
 function videoSource(clip: VideoClip): VideoNode | null {
   if (!clip.sourcePath) return null;
   return {
     type: "source",
     id: deterministicNodeId(clip.id, "source"),
+    clip_id: clip.id,
     path: clip.sourcePath,
-    pts_offset_ms: clip.startMs,
-    duration_ms: Math.max(0, Math.round(clip.durationMs)),
+    pts_offset_ms: safeTimelineMs(clip.startMs),
+    timeline_start_ms: safeTimelineMs(clip.startMs),
+    duration_ms: safeTimelineMs(clip.durationMs),
     source_width: clip.sourceSize?.width,
     source_height: clip.sourceSize?.height,
     source_time_map: clip.sourceTimeMap,
@@ -312,15 +171,20 @@ function videoSource(clip: VideoClip): VideoNode | null {
 function zoomPan(
   clip: ZoomClip,
   keyframes: ReturnType<typeof resolveZoomMotion>[number]["keyframes"],
+  startMs: number,
+  endMs: number,
   outputWidth: number,
   outputHeight: number,
 ): VideoNode {
   return {
     type: "zoom-pan",
     id: deterministicNodeId(clip.id, "zoom"),
+    clip_id: clip.id,
+    t_start_ms: safeTimelineMs(startMs),
+    duration_ms: safeTimelineMs(Math.max(0, endMs - startMs)),
     target: clip.target,
     keyframes: keyframes.map((keyframe) => ({
-      t_ms: keyframe.timeMs,
+      t_ms: safeTimelineMs(keyframe.timeMs),
       center: normalizedZoomCenterToPixels(
         keyframe.center,
         keyframe.scale,
@@ -333,12 +197,21 @@ function zoomPan(
   };
 }
 
-function backgroundNode(background: EditorBackgroundKind): VideoNode | null {
-  if (background.kind === "transparent") return null;
+function backgroundNode(background: EditorBackgroundKind): VideoNode {
+  const kind =
+    background.kind === "transparent"
+      ? ({ kind: "ambient" } as const)
+      : background.kind === "image"
+        ? {
+            kind: "image" as const,
+            asset_id: background.assetId,
+            path: background.path || null,
+          }
+        : background;
   return {
     type: "background",
     id: deterministicNodeId("scene-background", "background"),
-    kind: background,
+    kind,
     radius_px: 24,
     shadow: null,
     padding_px: FRAMED_BACKGROUND_PADDING_PX,
@@ -382,11 +255,8 @@ function outputPixels(state: ComputeGraphInput): { w: number; h: number } {
     const sourceWidth = source?.w ?? rect?.width;
     const sourceHeight = source?.h ?? rect?.height;
     if (sourceWidth && sourceHeight && sourceWidth > 0 && sourceHeight > 0) {
-      const background = readEditorBackground(state);
       const framedPadding =
-        exportForm.frameMode === "framed" && background.kind !== "transparent"
-          ? FRAMED_BACKGROUND_PADDING_PX * 2
-          : 0;
+        exportForm.frameMode === "framed" ? FRAMED_BACKGROUND_PADDING_PX * 2 : 0;
       return {
         w: evenDimension(sourceWidth + framedPadding, 1920),
         h: evenDimension(sourceHeight + framedPadding, 1080),
@@ -416,15 +286,19 @@ function cursorOverlay(clip: CursorClip): VideoNode | null {
   return {
     type: "cursor-overlay",
     id: deterministicNodeId(clip.id, "cursor"),
+    clip_id: clip.id,
     skin: clip.skin,
     size_scale: clip.sizeScale,
     motion_preset: normalizeCursorMotionPreset(clip.motionPreset),
     preserve_full_motion: clip.preserveFullMotion ?? false,
     click_effect: normalizeCursorClickEffect(clip.clickEffect),
-    color_tint: null,
-    t_start_ms: clip.startMs,
-    duration_ms: Math.max(0, Math.round(clip.durationMs)),
+    color_tint: clip.colorTint ? hexToRgba(clip.colorTint) : null,
+    t_start_ms: safeTimelineMs(clip.startMs),
+    duration_ms: safeTimelineMs(clip.durationMs),
+    source_time_map: clip.sourceTimeMap,
     trajectory: {
+      kind: clip.trajectoryKind ?? "trajectory",
+      path: clip.trajectoryDir,
       png_sequence_dir: clip.trajectoryDir,
       fps: clip.trajectoryFps,
       frame_count: clip.trajectoryFrameCount,
@@ -444,10 +318,14 @@ function textBox(clip: AnnotationClip, pos: Vec2): TextBox | null {
       }
     : null;
   return {
-    t_start_ms: clip.startMs,
-    t_end_ms: clip.startMs + clip.durationMs,
+    clip_id: clip.id,
+    t_start_ms: safeTimelineMs(clip.startMs),
+    t_end_ms: safeTimelineMs(clip.startMs + clip.durationMs),
     text: clip.text,
     pos,
+    fallback_pos: clip.pos,
+    anchor: clip.anchor ?? { kind: "screen", pos: clip.pos },
+    source_binding: clip.sourceBinding ?? null,
     font: effectiveTextFontChoice(style.font),
     size_pt: style.sizePt,
     color: hexToRgbaWithAlpha(style.color, { r: 255, g: 255, b: 255, a: 255 }),
@@ -493,15 +371,17 @@ function highlightOverlaySpec(
 ): HighlightOverlaySpec | null {
   const highlight = clip.highlight;
   if (!highlight) return null;
-  const impact = Math.max(0, clip.startMs);
+  const impact = safeTimelineMs(clip.startMs);
   const zoom = zoomAt(impact);
   const center = applyZoomToPoint(highlight.center, zoom);
   const bounds = highlight.bounds ? applyZoomToBounds(highlight.bounds, zoom) : undefined;
   return {
+    clip_id: clip.id,
     t_start_ms: impact,
-    duration_ms: Math.max(1, highlight.durationMs ?? clip.durationMs),
+    duration_ms: Math.max(1, safeTimelineMs(highlight.durationMs ?? clip.durationMs)),
     shape: highlight.shape ?? "ring",
     center: { x: center.x * output.w, y: center.y * output.h },
+    source_center: highlight.center,
     max_radius_px: Math.max(1, highlight.radiusPx * Math.max(1, zoom.scale)),
     bounds: bounds
       ? {
@@ -511,6 +391,7 @@ function highlightOverlaySpec(
           h: bounds.h * output.h,
         }
       : undefined,
+    source_bounds: highlight.bounds,
     padding_px: highlight.paddingPx ?? 8,
     radius_px: highlight.bounds
       ? Math.min(12, Math.max(4, highlight.radiusPx * 0.18))
@@ -522,27 +403,21 @@ function highlightOverlaySpec(
   };
 }
 
-function audioNodes(clip: SoundClip): AudioNode[] {
-  if (!clip.path) return [];
-  const sourceId = deterministicNodeId(clip.id, "audio");
-  const nodes: AudioNode[] = [
-    {
-      type: "audio-source",
-      id: sourceId,
-      path: clip.path,
-      pts_offset_ms: clip.startMs,
-    },
-  ];
+function audioNode(clip: SoundClip): AudioNode | null {
+  if (!clip.path) return null;
   const gain = clip.gain ?? 1;
-  if (Number.isFinite(gain) && gain !== 1) {
-    nodes.push({
-      type: "volume",
-      id: deterministicNodeId(clip.id, "volume"),
-      input_label: audioNodeLabel(sourceId),
-      volume: Math.max(0, gain),
-    });
-  }
-  return nodes;
+  return {
+    type: "sound",
+    id: deterministicNodeId(clip.id, "sound"),
+    clip_id: clip.id,
+    kind: clip.kind,
+    path: clip.path,
+    t_start_ms: safeTimelineMs(clip.startMs),
+    duration_ms: safeTimelineMs(clip.durationMs),
+    gain: Number.isFinite(gain) ? Math.max(0, gain) : 1,
+    source_binding: clip.sourceBinding ?? null,
+    source_time_map: clip.sourceTimeMap,
+  };
 }
 
 interface TimelineTransition {
@@ -603,6 +478,8 @@ function transitionNodes(
       kind: transition.kind,
       duration_ms: transition.durationMs,
       offset_ms: offsetMs,
+      from_source_id: deterministicNodeId(transition.leftClipId, "source"),
+      to_source_id: deterministicNodeId(transition.rightClipId, "source"),
     };
   });
 }
@@ -615,6 +492,349 @@ function clipsByStart<C extends Clip>(clips: readonly C[]): C[] {
   return [...clips].sort((a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id));
 }
 
+type ExportFieldDisposition = "graph" | "identity" | "editor-only" | "diagnostic";
+
+const COMMON_CLIP_FIELD_COVERAGE = {
+  id: "identity",
+  trackId: "identity",
+  startMs: "graph",
+  durationMs: "graph",
+  label: "editor-only",
+  syncGroupId: "editor-only",
+  sourceRevision: "editor-only",
+  sourceTimeMap: "graph",
+} as const;
+
+/** Compile-time inventory: adding a timeline property requires an export decision. */
+export const EXPORT_CLIP_FIELD_COVERAGE = {
+  video: {
+    ...COMMON_CLIP_FIELD_COVERAGE,
+    sourcePath: "graph",
+    sourceSize: "graph",
+    outgoingTransition: "graph",
+  } satisfies Record<keyof VideoClip, ExportFieldDisposition>,
+  cursor: {
+    ...COMMON_CLIP_FIELD_COVERAGE,
+    trajectoryDir: "graph",
+    trajectoryKind: "graph",
+    trajectoryFps: "graph",
+    trajectoryFrameCount: "graph",
+    skin: "graph",
+    motionPreset: "graph",
+    clickEffect: "graph",
+    preserveFullMotion: "graph",
+    sizeScale: "graph",
+    colorTint: "graph",
+  } satisfies Record<keyof CursorClip, ExportFieldDisposition>,
+  zoom: {
+    ...COMMON_CLIP_FIELD_COVERAGE,
+    target: "graph",
+    scale: "graph",
+    center: "graph",
+    origin: "graph",
+    preset: "graph",
+    easing: "graph",
+  } satisfies Record<keyof ZoomClip, ExportFieldDisposition>,
+  sound: {
+    ...COMMON_CLIP_FIELD_COVERAGE,
+    path: "graph",
+    kind: "graph",
+    gain: "graph",
+    sourceBinding: "graph",
+  } satisfies Record<keyof SoundClip, ExportFieldDisposition>,
+  annotations: {
+    ...COMMON_CLIP_FIELD_COVERAGE,
+    text: "graph",
+    pos: "graph",
+    sizePt: "graph",
+    font: "graph",
+    color: "graph",
+    styleId: "graph",
+    maxWidthPct: "graph",
+    lineHeight: "graph",
+    letterSpacingPx: "graph",
+    textShadow: "graph",
+    boxStyle: "graph",
+    align: "graph",
+    anchor: "graph",
+    animation: "graph",
+    sourceBinding: "graph",
+    highlight: "graph",
+  } satisfies Record<keyof AnnotationClip, ExportFieldDisposition>,
+} as const;
+
+export function assertNever(value: never, context: string): never {
+  throw new Error(`Unhandled ${context}: ${JSON.stringify(value)}`);
+}
+
+function exportIssue(
+  code: string,
+  message: string,
+  options: Omit<ExportIssue, "id" | "code" | "message">,
+): ExportIssue {
+  const scope = [options.clip_id, options.output_index, options.property]
+    .filter((value) => value !== undefined)
+    .join(":");
+  return {
+    id: scope ? `${code}:${scope}` : code,
+    code,
+    message,
+    ...options,
+  };
+}
+
+function finiteTimelineValue(value: number): boolean {
+  return Number.isFinite(value) && value >= 0;
+}
+
+function validHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+function clipIssues(clip: Clip, state: ComputeGraphInput): ExportIssue[] {
+  const issues: ExportIssue[] = [];
+  if (!finiteTimelineValue(clip.startMs)) {
+    issues.push(
+      exportIssue("clip.invalid-start", "Clip start must be a finite non-negative number.", {
+        severity: "error",
+        clip_id: clip.id,
+        property: "startMs",
+      }),
+    );
+  }
+  if (!Number.isFinite(clip.durationMs) || clip.durationMs <= 0) {
+    issues.push(
+      exportIssue("clip.invalid-duration", "Clip duration must be greater than zero.", {
+        severity: "error",
+        clip_id: clip.id,
+        property: "durationMs",
+      }),
+    );
+  }
+
+  switch (clip.trackId) {
+    case "video":
+      if (!clip.sourcePath.trim()) {
+        issues.push(
+          exportIssue("video.missing-source", "Video clip has no source path.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "sourcePath",
+            remediation: "Relink or re-record the missing source video.",
+          }),
+        );
+      }
+      if (
+        clip.sourceSize &&
+        (!Number.isFinite(clip.sourceSize.width) ||
+          !Number.isFinite(clip.sourceSize.height) ||
+          clip.sourceSize.width <= 0 ||
+          clip.sourceSize.height <= 0)
+      ) {
+        issues.push(
+          exportIssue("video.invalid-source-size", "Video source dimensions are invalid.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "sourceSize",
+          }),
+        );
+      }
+      break;
+    case "cursor":
+      if (!clip.trajectoryDir.trim()) {
+        issues.push(
+          exportIssue("cursor.missing-trajectory", "Cursor clip has no trajectory source.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "trajectoryDir",
+          }),
+        );
+      }
+      if (!Number.isFinite(clip.trajectoryFps) || clip.trajectoryFps <= 0) {
+        issues.push(
+          exportIssue("cursor.invalid-fps", "Cursor trajectory FPS must be greater than zero.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "trajectoryFps",
+          }),
+        );
+      }
+      if (!Number.isFinite(clip.trajectoryFrameCount) || clip.trajectoryFrameCount <= 0) {
+        issues.push(
+          exportIssue(
+            "cursor.invalid-frame-count",
+            "Cursor trajectory must contain at least one frame.",
+            {
+              severity: "error",
+              clip_id: clip.id,
+              property: "trajectoryFrameCount",
+            },
+          ),
+        );
+      }
+      if (clip.colorTint && !validHexColor(clip.colorTint)) {
+        issues.push(
+          exportIssue(
+            "cursor.invalid-color-tint",
+            "Cursor color tint must be a six-digit hex color.",
+            {
+              severity: "error",
+              clip_id: clip.id,
+              property: "colorTint",
+            },
+          ),
+        );
+      }
+      break;
+    case "zoom":
+      if (!Number.isFinite(clip.scale) || clip.scale < 1) {
+        issues.push(
+          exportIssue("zoom.invalid-scale", "Zoom scale must be a finite value of at least 1.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "scale",
+          }),
+        );
+      }
+      if (clip.target.kind === "element" && !clip.target.selector.trim()) {
+        issues.push(
+          exportIssue("zoom.missing-selector", "Element zoom target has no selector.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "target.selector",
+          }),
+        );
+      }
+      break;
+    case "sound":
+      if (!clip.path.trim()) {
+        issues.push(
+          exportIssue("sound.missing-source", "Sound clip has no audio path.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "path",
+            remediation: "Relink or regenerate the missing audio clip.",
+          }),
+        );
+      }
+      if (clip.gain !== undefined && (!Number.isFinite(clip.gain) || clip.gain < 0)) {
+        issues.push(
+          exportIssue("sound.invalid-gain", "Sound gain must be a finite non-negative value.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "gain",
+          }),
+        );
+      }
+      if (clip.kind === "voiceover" && !clip.sourceBinding) {
+        issues.push(
+          exportIssue(
+            "voiceover.missing-step-binding",
+            "Voiceover is missing its stable story-step binding.",
+            {
+              severity: "error",
+              clip_id: clip.id,
+              property: "sourceBinding",
+              remediation: "Regenerate the voiceover for the corresponding story step.",
+            },
+          ),
+        );
+      }
+      break;
+    case "annotations":
+      if (!clip.text.trim() && !clip.highlight) {
+        issues.push(
+          exportIssue("annotation.empty", "Annotation has neither text nor a highlight effect.", {
+            severity: "error",
+            clip_id: clip.id,
+            property: "text",
+          }),
+        );
+      }
+      if (
+        (clip.anchor?.kind === "target" || clip.anchor?.kind === "cursor") &&
+        !state._undoExtras?.actions &&
+        !state._undoExtras?.stepTiming
+      ) {
+        issues.push(
+          exportIssue(
+            "annotation.missing-anchor-data",
+            "Dynamic annotation anchor cannot be resolved without recorded action or step timing data.",
+            {
+              severity: "error",
+              clip_id: clip.id,
+              property: "anchor",
+              remediation: "Re-record the story or change the annotation to a screen anchor.",
+            },
+          ),
+        );
+      }
+      break;
+    default:
+      assertNever(clip, "timeline clip");
+  }
+  return issues;
+}
+
+function compilationIssues(state: ComputeGraphInput): ExportIssue[] {
+  const issues = Object.values(state.tracks)
+    .flatMap((clips) => clips as Clip[])
+    .flatMap((clip) => clipIssues(clip, state));
+  const sortedVideo = clipsByStart(state.tracks.video);
+  sortedVideo.forEach((clip, index) => {
+    if (!clip.outgoingTransition) return;
+    const next = sortedVideo[index + 1];
+    if (!next?.sourcePath) {
+      issues.push(
+        exportIssue(
+          "transition.missing-next-source",
+          "Transition does not have a following source video.",
+          {
+            severity: "error",
+            clip_id: clip.id,
+            property: "outgoingTransition",
+          },
+        ),
+      );
+    }
+  });
+  const background = readEditorBackground(state);
+  if (background.kind === "gradient" && !background.preset_id.trim()) {
+    issues.push(
+      exportIssue("background.missing-preset", "Gradient background has no preset id.", {
+        severity: "error",
+        property: "background.preset_id",
+      }),
+    );
+  }
+  if (background.kind === "image" && !background.assetId && !background.path.trim()) {
+    issues.push(
+      exportIssue("background.missing-image", "Image background has no asset id or local path.", {
+        severity: "error",
+        property: "background",
+      }),
+    );
+  }
+  if (!state.tracks.video.some((clip) => clip.sourcePath.trim())) {
+    issues.push(
+      exportIssue("composition.missing-video", "Composition has no renderable source video.", {
+        severity: "error",
+        remediation: "Add or relink a video clip before exporting.",
+      }),
+    );
+  }
+  return issues.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function compositionDurationMs(tracks: TimelineSlice["tracks"]): number {
+  return Math.max(
+    0,
+    ...Object.values(tracks).flatMap((clips) =>
+      clips.map((clip) => safeTimelineMs(clip.startMs) + safeTimelineMs(clip.durationMs)),
+    ),
+  );
+}
+
 /**
  * Project the timeline state into a Graph. Pure: no side effects, no IO.
  * The output is JSON-serializable (no bigints, no functions) and stable
@@ -625,7 +845,7 @@ function clipsByStart<C extends Clip>(clips: readonly C[]): C[] {
  * skipped silently — the Export modal's `graphAvailable` flag gates
  * submission when nothing usable was produced.
  */
-export function computeGraph(state: ComputeGraphInput): Graph {
+function projectGraph(state: ComputeGraphInput): Graph {
   const { tracks, exportForm } = state;
   const px = outputPixels(state);
 
@@ -641,9 +861,16 @@ export function computeGraph(state: ComputeGraphInput): Graph {
   const sortedZoomClips = clipsByStart(tracks.zoom);
   const resolvedZoomMotions = resolveZoomMotion(sortedZoomClips);
   for (const motion of resolvedZoomMotions) {
-    video.push(zoomPan(motion.sourceClip, motion.keyframes, px.w, px.h));
+    video.push(
+      zoomPan(motion.sourceClip, motion.keyframes, motion.startMs, motion.endMs, px.w, px.h),
+    );
   }
-  const bg = exportForm.frameMode === "framed" ? backgroundNode(readEditorBackground(state)) : null;
+  const editorBackground = readEditorBackground(state);
+  const bg =
+    exportForm.frameMode === "framed" &&
+    (editorBackground.kind !== "transparent" || sourceVideoClips.length > 0)
+      ? backgroundNode(editorBackground)
+      : null;
   if (bg) video.push(bg);
   const sortedAnnotations = clipsByStart(tracks.annotations);
   const zoomSampleCache = new Map<number, ZoomSample>();
@@ -702,7 +929,8 @@ export function computeGraph(state: ComputeGraphInput): Graph {
 
   const audio: AudioNode[] = [];
   for (const clip of clipsByStart(tracks.sound)) {
-    audio.push(...audioNodes(clip));
+    const node = audioNode(clip);
+    if (node) audio.push(node);
   }
 
   return {
@@ -710,9 +938,28 @@ export function computeGraph(state: ComputeGraphInput): Graph {
     output_width: px.w,
     output_height: px.h,
     output_fps: exportForm.fps,
+    duration_ms: compositionDurationMs(tracks),
     video,
     audio,
   };
+}
+
+export interface CompileExportCompositionResult {
+  graph: Graph;
+  issues: ExportIssue[];
+}
+
+/** Compile the canonical graph and return every blocking/non-blocking diagnostic. */
+export function compileExportComposition(state: ComputeGraphInput): CompileExportCompositionResult {
+  return {
+    graph: projectGraph(state),
+    issues: compilationIssues(state),
+  };
+}
+
+/** Compatibility projection for preview/tests that only need the graph. */
+export function computeGraph(state: ComputeGraphInput): Graph {
+  return compileExportComposition(state).graph;
 }
 
 /** True when the graph has at least one renderable video node. */

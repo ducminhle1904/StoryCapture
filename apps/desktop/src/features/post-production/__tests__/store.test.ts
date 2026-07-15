@@ -120,7 +120,7 @@ describe("timeline-slice", () => {
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.layout.version).toBe(3);
+    expect(parsed.layout.version).toBe(4);
     expect(parsed.layout.timingModelVersion).toBe(1);
     expect(parsed.layout.tracks.video[0]).toMatchObject({ id: "video-1", trackId: "video" });
     expect(parsed.layout.durationMs).toBe(1000);

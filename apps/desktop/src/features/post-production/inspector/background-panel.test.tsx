@@ -105,7 +105,7 @@ describe("BackgroundPanel", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "image", path: "" },
+        background: { kind: "image", assetId: null, path: "" },
       },
     });
     render(<BackgroundPanel />);
@@ -115,11 +115,30 @@ describe("BackgroundPanel", () => {
 
     expect(pushAction).toHaveBeenLastCalledWith({
       kind: "change-background",
-      prev: { kind: "image", path: "" },
+      prev: { kind: "image", assetId: null, path: "" },
       next: {
         kind: "image",
+        assetId: "macos:bigsur-dark",
         path: expect.stringContaining("bigsur-dark.jpg"),
       },
     });
+  });
+
+  it("selects the image tab from a stable bundled asset id", () => {
+    useEditorStore.setState({
+      _undoExtras: {
+        graphSnapshot: {},
+        textOverlays: {},
+        background: {
+          kind: "image",
+          assetId: "macos:sequoia-dark",
+          path: "/assets/stale-sequoia-hash.jpeg",
+        },
+      },
+    });
+
+    render(<BackgroundPanel />);
+
+    expect(screen.getByRole("tab", { name: "macOS" })).toHaveAttribute("aria-selected", "true");
   });
 });

@@ -27,6 +27,12 @@
 - Smooth document/nested-container scroll Electron E2E:
   `pnpm --dir apps/desktop run test:e2e:scroll`.
 - Local media playback Electron E2E: `pnpm --dir apps/desktop run test:e2e:media`.
+- Packaged post-production export parity:
+  `pnpm --dir apps/desktop run test:e2e:export`. This builds the Electron main
+  bundle and renderer, creates an unpacked package, exports the all-effects
+  fixture to MP4/WebM/GIF with bundled FFmpeg, verifies it with bundled
+  ffprobe/full decode, and compares encoded MP4/WebM frames to raw canonical
+  frame goldens at SSIM >= 0.99.
 - Web all tests: `pnpm --dir apps/web test`.
 - Web focused test: `pnpm --dir apps/web exec vitest run <path>`.
 - UI all tests: `pnpm --dir packages/ui test`.
@@ -54,6 +60,10 @@
 
 - Desktop tests cover editor, recorder, post-production, state, IPC helpers,
   local asset URL handling, and screen-capture permission helpers.
+- Export coverage includes the schema-v4 compiler/preflight contract,
+  canonical scene/media/asset renderers, every transition/background/cursor
+  trajectory variant, full audio-bus planning, queue/output lifecycle,
+  verification, packaged assets/binaries, and the all-effects package smoke.
 - Web tests are narrow: workflow helpers, sync router metadata, and template
   router metadata.
 - UI tests cover `packages/ui/src/claude-design/primitives/__tests__/`.
@@ -119,9 +129,13 @@
   `apps/desktop/src/features/post-production/__tests__/build-timeline-from-story.test.ts`.
 - Source-map/preview/export changes should also run
   `state/__tests__/source-timeline-map.test.ts`,
-  `preview/__tests__/source-bound-parity.test.ts`, and the Electron export
-  planning/compositor tests. Use `scripts/ci/analyze-cursor-sync-roi.mjs` for
-  encoded-marker frame correlation.
+  `preview/__tests__/source-bound-parity.test.ts`,
+  `preview/__tests__/canonical-render-parity.test.ts`, the focused
+  `export-compositor/*.test.ts` suites, and Electron
+  `export-{planning,audio-planning,output-lifecycle,artifact-verification,render}.test.ts`.
+  Run `test:e2e:export` whenever the change reaches hidden-window assets,
+  FFmpeg/ffprobe, audio mixing, output publication, or packaging. Use
+  `scripts/ci/analyze-cursor-sync-roi.mjs` for encoded-marker frame correlation.
 - Prisma/schema/web router changes: run `pnpm --dir apps/web db:generate`,
   focused web tests, and `pnpm --dir apps/web typecheck`.
 - Cross-package contract changes: run focused package tests, consumer tests, and
@@ -136,7 +150,10 @@
   `apps/desktop/e2e/record-engine-live-repair.spec.ts`; process-loss recovery:
   `apps/desktop/e2e/record-engine-recovery.spec.ts`; tab-audio fixture:
   `apps/desktop/e2e/record-engine-tab-audio.spec.ts`; smooth-scroll smoke:
-  `apps/desktop/e2e/smooth-scroll.spec.ts`.
+  `apps/desktop/e2e/smooth-scroll.spec.ts`. The export package smoke is driven
+  by `apps/desktop/scripts/export-compositor-artifact-smoke.mjs` and the main
+  process fixture in `apps/desktop/electron/ipc/export-e2e-smoke.ts`, not by
+  Playwright.
 - Visibility/scroll host changes should focus `target-visibility.test.ts`,
   `smooth-scroll.test.ts`, `interaction-readiness.test.ts`,
   `legacy/story-runner.test.ts`, and `legacy/capture-preview-picker.test.ts`

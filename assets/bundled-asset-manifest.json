@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    { "assetId": "cosmic:1", "path": "cosmic/1.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:2", "path": "cosmic/2.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:3", "path": "cosmic/3.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:4", "path": "cosmic/4.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:5", "path": "cosmic/5.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:6", "path": "cosmic/6.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:7", "path": "cosmic/7.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:8", "path": "cosmic/8.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:9", "path": "cosmic/9.jpg", "mimeType": "image/jpeg" },
+    { "assetId": "cosmic:10", "path": "cosmic/10.jpg", "mimeType": "image/jpeg" },
+    {
+      "assetId": "glass:glass-1",
+      "path": "glass/glass-1.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-2",
+      "path": "glass/glass-2.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-3",
+      "path": "glass/glass-3.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-4",
+      "path": "glass/glass-4.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-5",
+      "path": "glass/glass-5.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-6",
+      "path": "glass/glass-6.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-7",
+      "path": "glass/glass-7.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-8",
+      "path": "glass/glass-8.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-9",
+      "path": "glass/glass-9.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-10",
+      "path": "glass/glass-10.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "glass:glass-11",
+      "path": "glass/glass-11.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:bigsur-dark",
+      "path": "macos/bigsur-dark.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:bigsur-light",
+      "path": "macos/bigsur-light.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:mojave-dark",
+      "path": "macos/mojave-dark.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:mojave-light",
+      "path": "macos/mojave-light.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:monterey-dark",
+      "path": "macos/monterey-dark.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:monterey-light",
+      "path": "macos/monterey-light.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:photo-1702539336564-b37d0f3276e7",
+      "path": "macos/photo-1702539336564-b37d0f3276e7.png",
+      "mimeType": "image/png"
+    },
+    {
+      "assetId": "macos:sequoia-dark",
+      "path": "macos/sequoia-dark.jpeg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:sequoia-light",
+      "path": "macos/sequoia-light.jpeg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:sonoma-dark",
+      "path": "macos/sonoma-dark.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:sonoma-light",
+      "path": "macos/sonoma-light.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:tahoe-dark",
+      "path": "macos/tahoe-dark.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:tahoe-landscape-day",
+      "path": "macos/tahoe-landscape-day.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:tahoe-landscape-night",
+      "path": "macos/tahoe-landscape-night.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:tahoe-light",
+      "path": "macos/tahoe-light.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:ventura-dark",
+      "path": "macos/ventura-dark.jpg",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "assetId": "macos:ventura-light",
+      "path": "macos/ventura-light.jpg",
+      "mimeType": "image/jpeg"
+    }
+  ]
+}

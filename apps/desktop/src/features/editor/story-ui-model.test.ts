@@ -192,7 +192,7 @@ describe("story-ui-model", () => {
     expect(doc.global.background).toEqual({ kind: "solid", color: "#101218" });
     expect(doc.global.cursorSkin).toBe("mac-default");
     expect(doc.global.actionFocus).toBe("off");
-    expect(doc.global.autoZoomDurationMs).toBe(800);
+    expect(doc.global.autoZoomDurationMs).toBe(1600);
     expect(doc.steps["step-buy"]?.callout).toBe("Buy");
     expect(doc.steps["step-buy"]?.highlight).toBe(true);
   });

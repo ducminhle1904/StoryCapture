@@ -25,7 +25,7 @@
 - Root typecheck: `pnpm typecheck`.
 - Root lint: `pnpm lint`.
 - Format: `pnpm format`.
-- TypeScript is pinned directly to TypeScript 7. The web app disables Next's
+- Read the TypeScript pin from the workspace manifests and lockfile. The web app disables Next's
   built-in build-time type validation, but `pnpm --dir apps/web build` runs the
   web typecheck before `next build`. Run `pnpm --dir apps/web typecheck` first
   only when invoking `next build` directly.
@@ -33,6 +33,7 @@
   TypeScript setup check does not fail in CI while built-in validation is off.
 - Desktop Electron build: `pnpm --dir apps/desktop run build`.
 - Desktop renderer build: `pnpm --dir apps/desktop renderer:build`.
+- Packaged export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Web build: `pnpm --dir apps/web build`.
 - Story DSL typecheck: `pnpm --dir packages/story-dsl typecheck`.
 
@@ -53,13 +54,16 @@
 
 - Primary workflow: `.github/workflows/ci.yml`.
 - Toolchain action: `.github/actions/setup-toolchain/action.yml`.
-- CI runs on `macos-14`:
+- Read `.github/workflows/ci.yml` for current runner images. The macOS job runs:
   - `pnpm install --frozen-lockfile`
   - `pnpm typecheck`
   - `pnpm --dir apps/desktop exec vitest run`
+  - `pnpm --dir apps/desktop run test:e2e:cursor-sync`
+  - `pnpm --dir apps/desktop run test:e2e:media`
   - `pnpm --dir packages/ui test`
   - `pnpm --dir apps/web test`
-  - `pnpm --dir apps/desktop run build`
+  - `pnpm --dir apps/desktop run test:e2e:export`
+- The Windows job runs the media and packaged export smokes.
 
 ## Helper Scripts
 
@@ -109,6 +113,5 @@
 - Keep `AGENTS.md` as the routing index only. Put longer details in
   `docs/agent/` or the relevant `docs/*.md` source doc, then link or summarize
   from `AGENTS.md` only when future sessions need the rule up front.
-- CI also runs the cursor synchronization Playwright Electron smoke before the
-  desktop package build. Run it locally with
-  `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
+- CI also runs cursor synchronization, local-media, and packaged export smokes.
+  Use the owning package script so host/renderer bundles cannot be stale.

@@ -150,6 +150,12 @@ export interface SoundClip extends ClipBase {
   path: string;
   kind: SoundKind;
   gain?: number;
+  /** Stable story-step identity used to reflow generated narration after re-recording. */
+  sourceBinding?: {
+    kind: "story-voiceover";
+    stepId: string | null;
+    ordinal: number;
+  };
 }
 
 export type TextStyleId = "title" | "callout" | "lower-third" | "hotspot" | "caption";

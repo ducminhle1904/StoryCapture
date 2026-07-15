@@ -4,6 +4,7 @@ import type { FSWatcher } from "node:fs";
 import type { FileHandle as NodeFileHandle } from "node:fs/promises";
 import type { Server } from "node:http";
 import os from "node:os";
+import type { ExportJobStatus } from "@storycapture/shared-types";
 import {
   app,
   BrowserWindow,
@@ -42,6 +43,7 @@ import type {
 import { simulatorTargetGeometryScript } from "../simulator-dom";
 import { type ParsedCommand, parseStorySource } from "../story-parser";
 import { releaseNotesText } from "../update-store";
+import type { ExportOutputReservation } from "./export-output-lifecycle";
 
 export const { autoUpdater } = electronUpdater;
 
@@ -206,8 +208,9 @@ export interface RenderJob extends NewRenderJob {
   output_width: number | null;
   output_height: number | null;
   encoder_options_json: string | null;
-  status: string;
+  status: ExportJobStatus;
   progress_pct: number;
+  phase_progress_pct: number;
   started_at: number | null;
   completed_at: number | null;
   error: string | null;
@@ -227,6 +230,7 @@ export interface RenderSession {
   ffmpegProcess: ChildProcess | null;
   cancelCompositedExport: (() => void) | null;
   cancelRequested: boolean;
+  outputReservation: ExportOutputReservation | null;
 }
 
 export type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts";

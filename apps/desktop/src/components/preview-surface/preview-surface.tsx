@@ -5,7 +5,11 @@ import { motion } from "motion/react";
 import { PreviewPlayer } from "@/features/post-production/preview/preview-player";
 import type { RecordingActions } from "@/ipc/actions";
 import { useProjectRecordings } from "@/ipc/projects";
-import type { CaptureRect, RecordingStepTimingSidecar, RecordingTrajectory } from "@/ipc/trajectory";
+import type {
+  CaptureRect,
+  RecordingStepTimingSidecar,
+  RecordingTrajectory,
+} from "@/ipc/trajectory";
 
 export type PreviewSurfaceProps =
   | {
@@ -30,6 +34,7 @@ export function PreviewSurface(props: PreviewSurfaceProps) {
       <PreviewPlayer
         storyId={props.storyId}
         videoSrc={props.videoSrc}
+        outputMode="composited-canvas"
         width={props.width}
         height={props.height}
         actions={props.actions}

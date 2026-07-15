@@ -55,7 +55,8 @@ video.
 - `packages/story-dsl` is AST/vocabulary plus CodeMirror support. Runtime parse
   and simulator behavior is desktop IPC/host code, not a shared parser package.
 - `packages/shared-types` publicly exports browser presets, web account types,
-  and the checked-in IPC compatibility surface.
+  the checked-in IPC compatibility surface, and the JSON-safe post-production
+  composition/preflight/job contract.
   `packages/shared-types/src/generated/effects.ts` is checked-in generated
   source, but is not currently exported through the package export map.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
@@ -110,9 +111,16 @@ explicitly references them.
   `apps/desktop/src/features/post-production/state/store.ts`,
   `apps/desktop/src/features/post-production/state/compute-graph.ts`,
   `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
-  `apps/desktop/src/features/post-production/preview/preview-engine.ts`,
+  `apps/desktop/src/features/post-production/preview/preview-player.tsx`,
+  `apps/desktop/src/features/post-production/preview/canonical-preview-adapter.ts`,
+  `apps/desktop/src/features/post-production/export-compositor/canonical-visual-engine.ts`,
+  `apps/desktop/src/features/post-production/export-compositor/canvas-scene-renderer.ts`,
   `apps/desktop/src/features/post-production/export-modal/`, and
-  `apps/desktop/src/features/post-production/render-queue/`.
+  `apps/desktop/src/features/post-production/render-queue/`. For the host path,
+  start with `apps/desktop/electron/ipc/legacy/export-render.ts`, then read
+  `export-planning.ts`, `export-audio-planning.ts`,
+  `export-output-lifecycle.ts`, `export-artifact-verification.ts`, and
+  `apps/desktop/electron/ipc/export-compositor-host.ts`.
 - Post-production text appearance, system fonts, and re-record style
   preservation: read `apps/desktop/src/features/post-production/state/timeline-slice.ts`,
   `apps/desktop/src/features/post-production/state/text-style.ts`,
@@ -120,7 +128,7 @@ explicitly references them.
   `apps/desktop/src/features/post-production/inspector/text-appearance-controls.tsx`,
   `apps/desktop/src/features/post-production/state/build-timeline-from-story.ts`,
   `apps/desktop/src/features/post-production/preview/preview-player.tsx`, and
-  `apps/desktop/src/features/post-production/export-compositor/export-compositor-app.tsx`.
+  `apps/desktop/src/features/post-production/export-compositor/canonical-visual-engine.ts`.
 - Recorded action/cursor timing: read `docs/DOMAIN.md`,
   `apps/desktop/electron/ipc/action-timeline.ts`,
   `apps/desktop/electron/ipc/action-landmarks.ts`,
@@ -139,7 +147,7 @@ explicitly references them.
   `apps/desktop/src/features/post-production/state/cursor-preset-reflow.ts`,
   `apps/desktop/src/features/post-production/preview/presented-media-clock.ts`,
   `apps/desktop/src/features/post-production/preview/preview-player.tsx`, and
-  `apps/desktop/src/features/post-production/export-compositor/export-compositor-app.tsx`.
+  `apps/desktop/src/features/post-production/preview/canonical-preview-adapter.ts`.
 - Web routes/API/data: read `apps/web/src/app`, `apps/web/src/app/api`,
   `apps/web/src/trpc/routers/_app.ts`, `apps/web/src/trpc/routers/*`,
   `apps/web/src/lib/*`, and `apps/web/prisma/schema.prisma`.
@@ -164,10 +172,11 @@ explicitly references them.
   `pnpm format`.
 - There is no root `pnpm test`; run package-scoped Vitest commands from
   `docs/agent/testing.md`.
+- Packaged post-production export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Web Prisma commands live in `apps/web/package.json`: `db:generate`,
   `db:migrate`, `db:push`, and `db:seed`.
-- CI is `.github/workflows/ci.yml` and runs typecheck, desktop tests, UI tests,
-  web tests, then the desktop Electron build on macOS.
+- CI is `.github/workflows/ci.yml` and runs typecheck, desktop/UI/web tests,
+  Electron smokes, and the packaged export parity gate on macOS and Windows.
 
 ## Guardrails
 

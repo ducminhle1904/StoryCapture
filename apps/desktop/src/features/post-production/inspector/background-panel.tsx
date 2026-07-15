@@ -27,11 +27,18 @@ const glassImageAssets = import.meta.glob("../../../../../../assets/glass/*.jpg"
   import: "default",
 }) as Record<string, string>;
 
-const macosImageAssets = import.meta.glob("../../../../../../assets/macos/*.jpg", {
-  eager: true,
-  query: "?url",
-  import: "default",
-}) as Record<string, string>;
+const macosImageAssets = import.meta.glob(
+  [
+    "../../../../../../assets/macos/*.jpg",
+    "../../../../../../assets/macos/*.jpeg",
+    "../../../../../../assets/macos/*.png",
+  ],
+  {
+    eager: true,
+    query: "?url",
+    import: "default",
+  },
+) as Record<string, string>;
 
 const GRADIENT_PRESETS = gradientManifest.presets.map((preset) => ({
   id: preset.id,
@@ -147,6 +154,11 @@ function imageTabForPath(path: string): BackgroundImageTab | null {
   return null;
 }
 
+function imageTabForAssetId(assetId: string): BackgroundImageTab | null {
+  const category = assetId.split(":", 1)[0];
+  return IMAGE_TABS.some((tab) => tab.id === category) ? (category as BackgroundImageTab) : null;
+}
+
 export function BackgroundPanel() {
   const background = useEditorStore(readEditorBackground);
   const pushAction = useEditorStore((s) => s.pushAction);
@@ -158,17 +170,24 @@ export function BackgroundPanel() {
   const activeGradientImage = GRADIENT_PRESETS.find((preset) => preset.id === activePreset)?.image;
   const imagePresets = BACKGROUND_IMAGES[activeImageTab];
   const backgroundImagePath = background.kind === "image" ? background.path : null;
+  const backgroundImageAssetId = background.kind === "image" ? background.assetId : null;
   const selectedImage =
-    backgroundImagePath != null
+    (backgroundImageAssetId
+      ? ALL_BACKGROUND_IMAGES.find((image) => image.id === backgroundImageAssetId)
+      : null) ??
+    (backgroundImagePath != null
       ? ALL_BACKGROUND_IMAGES.find((image) => image.src === backgroundImagePath)
-      : null;
+      : null);
   const imagePreview = selectedImage?.src ?? DEFAULT_IMAGE?.src;
 
   useEffect(() => {
-    if (backgroundImagePath == null) return;
-    const tab = imageTabForPath(backgroundImagePath);
+    const tab = backgroundImageAssetId
+      ? imageTabForAssetId(backgroundImageAssetId)
+      : backgroundImagePath == null
+        ? null
+        : imageTabForPath(backgroundImagePath);
     if (tab) setActiveImageTab(tab);
-  }, [backgroundImagePath]);
+  }, [backgroundImageAssetId, backgroundImagePath]);
 
   const commit = (next: EditorBackgroundKind) => {
     if (JSON.stringify(background) === JSON.stringify(next)) return;
@@ -275,7 +294,8 @@ export function BackgroundPanel() {
             disabled={!DEFAULT_IMAGE}
             onClick={() => {
               if (!DEFAULT_IMAGE) return;
-              commit({ kind: "image", path: imagePreview ?? DEFAULT_IMAGE.src });
+              const image = selectedImage ?? DEFAULT_IMAGE;
+              commit({ kind: "image", assetId: image.id, path: image.src });
             }}
           >
             <span
@@ -398,7 +418,10 @@ export function BackgroundPanel() {
           </div>
           <div className="grid grid-cols-2 gap-2">
             {imagePresets.map((preset) => {
-              const selected = background.kind === "image" && background.path === preset.src;
+              const selected =
+                background.kind === "image" &&
+                (background.assetId === preset.id ||
+                  (!background.assetId && background.path === preset.src));
               return (
                 <button
                   key={preset.id}
@@ -410,7 +433,7 @@ export function BackgroundPanel() {
                       ? "border-[var(--color-accent-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent-primary)_82%,transparent)]"
                       : "border-[var(--color-border-subtle)] hover:border-[color-mix(in_oklch,var(--color-fg-muted)_48%,var(--color-border-subtle))]"
                   }`}
-                  onClick={() => commit({ kind: "image", path: preset.src })}
+                  onClick={() => commit({ kind: "image", assetId: preset.id, path: preset.src })}
                 >
                   <span
                     aria-hidden="true"

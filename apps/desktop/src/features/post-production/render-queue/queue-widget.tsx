@@ -6,6 +6,7 @@
  * by `story_id`; the widget renders whatever the backend returns.
  */
 
+import { ACTIVE_EXPORT_JOB_STATUSES } from "@storycapture/shared-types";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useCallback, useId, useState } from "react";
@@ -31,7 +32,7 @@ export function QueueWidget({ storyId }: QueueWidgetProps) {
     void renderCancel(jobId);
   }, []);
 
-  const activeCount = jobs.length;
+  const activeCount = jobs.filter((job) => ACTIVE_EXPORT_JOB_STATUSES.includes(job.status)).length;
   const queueLabel =
     activeCount === 0
       ? "Queue"
@@ -69,14 +70,9 @@ export function QueueWidget({ storyId }: QueueWidgetProps) {
           {jobs.length === 0 ? (
             <div className="p-2 text-xs text-[var(--color-fg-muted)]">No active exports.</div>
           ) : (
-            <ul aria-label="Active Render Jobs" className="space-y-2">
+            <ul aria-label="Recent Render Jobs" className="space-y-2">
               {jobs.map((j) => (
-                <JobRow
-                  key={j.id}
-                  job={j}
-                  progress={progressMap[j.id]}
-                  onCancel={handleCancel}
-                />
+                <JobRow key={j.id} job={j} progress={progressMap[j.id]} onCancel={handleCancel} />
               ))}
             </ul>
           )}

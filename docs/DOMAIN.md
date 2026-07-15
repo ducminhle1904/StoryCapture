@@ -272,7 +272,8 @@ without crashing. The editor owns:
   deterministic, playhead-driven primitive sampling shared by preview/export.
 - `state/compute-graph.ts`: timeline to render/export graph.
 - Inspector panels for output, background, effects, sound, and export settings.
-- Preview engine with WebGPU path where available and fallback behavior.
+- Production Preview adapter over the canonical Canvas renderer shared with
+  hidden export; native video remains only for lightweight harnesses.
 - Export modal, render queue/progress UI, undo/history, sound drawer, and
   voiceover compact UI.
 
@@ -280,7 +281,7 @@ Text appearance has one shared resolution boundary in `state/text-style.ts`.
 Preset values are inherited when a persisted field is absent, while nullable
 effects such as the text box and shadows use `null` as an explicit off state.
 The same normalized typography, color alpha, wrapping, edge anchoring, and
-animation values feed the DOM preview and Canvas export graph. System-font
+animation values feed the canonical Preview and export graph. System-font
 discovery is user-activated and cached for the renderer session; saved font
 metadata remains intact when access is denied or a face is missing, while the
 effective preview/export font falls back to bundled Geist.
@@ -302,20 +303,42 @@ Action-backed cursor clips support `None`, `Ring`, `Soft Pulse`, `Echo`, and
 use `Soft Pulse + Auto + Normal`; saved clips without the field normalize to
 the legacy `Ring + White + Normal` behavior. Feedback starts at action-sidecar
 input timing, is sampled only from playhead/source time, and uses the same
-bounded primitive contract in DOM preview and Canvas export. Trajectory-only
+bounded canonical Canvas primitives in Preview and export. Trajectory-only
 and PNG-sequence cursors do not infer clicks and keep the controls disabled.
 
-Current host export behavior: `export_run` writes a graph snapshot and creates
-real render queue jobs. The legacy host path plans each output before queueing:
-eligible one-source, match-source, high-quality MP4/WebM exports use stream
-copy; source-only re-encodes apply encoder quality, keyframe, scale, and audio
-settings through FFmpeg; supported one-source composited MP4/WebM graphs render
-through a hidden renderer canvas and stream raw BGRA frames into FFmpeg.
-Supported compositor nodes include background, zoom, cursor, ripple, highlight,
-and text overlays with source audio mapped from the source video when the source
-starts at `pts_offset_ms: 0`. Multiple sources, non-zero source offsets,
-transitions, GIF compositing, and separate audio graph nodes still fail clearly
-before queueing instead of being silently dropped.
+`computeGraph` emits the JSON-safe schema-v4 composition contract from
+`packages/shared-types/src/export-composition.ts`. Preview and export evaluate
+that same contract through the canonical scene evaluator and Canvas renderer;
+the hidden export window is only a host for the canonical engine. Source-copy
+and source-only bypasses are retired: MP4, WebM, and GIF all receive raw BGRA
+frames from the canonical renderer, including multi-source transitions,
+background, zoom, cursor, ripple, highlight, and text layers.
+In framed mode, the editor's transparent background means the canonical
+ambient treatment: a blurred, darkened source fill behind the contained source
+frame. Match-source keeps the foreground at native pixels and expands the
+output by the configured frame padding. Source mode remains full-bleed and
+does not emit a background node.
+
+`export_preflight` returns structured info/warning/error issues scoped to an
+output and, where available, a clip. Warnings stay visible but only errors block
+submission. `export_run` writes a unique graph snapshot, reserves each output
+independently, and queues jobs with `queued`, `rendering`, `mixing`,
+`verifying`, `completed`, `failed`, or `cancelled` status. One failed output
+does not stop siblings in the same batch.
+
+The audio planner builds deterministic source, BGM, SFX, and voiceover inputs.
+It applies source transition crossfades, timeline trim/delay, BGM looping,
+voiceover sidechain ducking, channel/sample-rate normalization, a limiter, and
+silence for sources without audio. MP4 uses AAC, WebM uses Opus, and GIF emits
+an informational no-audio diagnostic.
+
+FFmpeg writes a same-folder partial file. Completion is published only after
+ffprobe validates dimensions, frame rate, duration, and stream shape and FFmpeg
+decodes the whole artifact. The host then publishes the reserved final path;
+the same-folder verified inode is linked atomically so a file created after
+reservation can never be overwritten. Failure/cancellation removes partial
+state, and startup cleans dead-process reservation sidecars from previously
+used output folders.
 
 ## Render And Export
 
@@ -329,14 +352,19 @@ Renderer-side boundaries:
 Host-side boundaries:
 
 - Modular handlers under `apps/desktop/electron/ipc/*`.
-- Remaining render/export implementation in `ipc/legacy.ts`; export planning and
-  FFmpeg argument mapping live in `ipc/legacy/export-planning.ts`; hidden
-  renderer orchestration for composited exports lives in
-  `ipc/legacy/export-compositor.ts`.
-- FFmpeg comes from `ffmpeg-static`.
+- `ipc/export-compositor-host.ts` owns the hidden renderer window and packaged
+  asset resolution; the renderer bridge is
+  `features/post-production/export-compositor/export-compositor-app.tsx`.
+- Remaining render/export orchestration lives under `ipc/legacy/`:
+  `export-render.ts`, `export-planning.ts`, `export-audio-planning.ts`,
+  `export-compositor.ts`, `export-output-lifecycle.ts`, and
+  `export-artifact-verification.ts`.
+- `ipc/export-binaries.ts` resolves packaged FFmpeg and ffprobe executables,
+  including their unpacked application paths.
 
 Export graph changes should include targeted tests around graph generation and
-at least one host-path verification when behavior reaches FFmpeg.
+the canonical visual/audio planners. Changes that reach FFmpeg or packaged
+assets must also run `pnpm --dir apps/desktop run test:e2e:export`.
 
 ## AI / NL / TTS
 

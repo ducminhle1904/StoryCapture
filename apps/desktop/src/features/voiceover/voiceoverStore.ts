@@ -7,6 +7,11 @@
 
 import { create } from "zustand";
 
+import {
+  commitVoiceoverTimelineClip,
+  type VoiceoverStepBinding,
+} from "@/features/post-production/state/voiceover-timeline";
+
 export interface VoicePreset {
   id: string;
   name: string;
@@ -37,7 +42,7 @@ export interface VoiceoverStore {
   setCatalogOpen: (open: boolean) => void;
   setCatalogMode: (mode: "curated" | "expanded") => void;
   setFilter: (filter: { locale?: string; premium?: boolean }) => void;
-  setClip: (stepId: string, clip: TtsClip) => void;
+  setClip: (stepId: string, clip: TtsClip, binding?: VoiceoverStepBinding) => void;
   setGenerating: (stepId: string, active: boolean) => void;
   setScript: (stepId: string, text: string) => void;
   setEditedAfterGen: (stepId: string, edited: boolean) => void;
@@ -61,10 +66,18 @@ export const useVoiceoverStore = create<VoiceoverStore>((set) => ({
 
   setFilter: (filter) => set({ filter }),
 
-  setClip: (stepId, clip) =>
+  setClip: (stepId, clip, binding) => {
     set((s) => ({
       clipByStepId: { ...s.clipByStepId, [stepId]: clip },
-    })),
+    }));
+    if (binding) {
+      commitVoiceoverTimelineClip({
+        filePath: clip.filePath,
+        durationMs: clip.durationMs,
+        binding,
+      });
+    }
+  },
 
   setGenerating: (stepId, active) =>
     set((s) => {

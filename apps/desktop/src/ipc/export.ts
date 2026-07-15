@@ -1,12 +1,15 @@
 /**
  * Export IPC wrappers.
  *
- * Typed wrappers around `export_run` / `export_get_presets` /
- * `export_validate_config`. Consumed by the Post-Production editor's
- * Export modal.
+ * Typed wrappers around `export_run`, `export_preflight`, and
+ * `export_get_presets`. Consumed by the Post-Production editor's Export modal.
  */
 
-import type { EncoderOptionsDto } from "@storycapture/shared-types";
+import type {
+  EncoderOptionsDto,
+  ExportIssue,
+  ExportPreflightResult,
+} from "@storycapture/shared-types";
 import { invoke } from "@tauri-apps/api/core";
 
 export type ExportFormat = "mp4" | "webm" | "gif";
@@ -42,6 +45,12 @@ export interface ExportResult {
   graph_snapshot_path: string;
 }
 
+export interface ExportPreflightArgs {
+  graph_json: string;
+  outputs: ExportOutput[];
+  compiler_issues: ExportIssue[];
+}
+
 export interface ExportPresetsCatalogue {
   formats: string[];
   resolutions: string[];
@@ -61,6 +70,6 @@ export async function exportGetPresets(): Promise<ExportPresetsCatalogue> {
   return invoke<ExportPresetsCatalogue>("export_get_presets");
 }
 
-export async function exportValidateConfig(cfg: ExportOutput): Promise<void> {
-  await invoke<void>("export_validate_config", { cfg });
+export async function exportPreflight(args: ExportPreflightArgs): Promise<ExportPreflightResult> {
+  return invoke<ExportPreflightResult>("export_preflight", { args });
 }

@@ -1,29 +1,15 @@
 import { spawn } from "node:child_process";
-import path from "node:path";
 import type { Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, type Rectangle } from "electron";
-import ffmpegPath from "ffmpeg-static";
-import identity from "../../identity.json";
-import { isDevRuntime } from "../../runtime";
-import {
-  ffmpegArgsForExportPlan,
-  type CompositedExportPlan,
-} from "./export-planning";
+import { exportFfmpegPath } from "../export-binaries";
+import { createExportCompositorHost } from "../export-compositor-host";
+import type { CompositedExportPlan } from "./export-planning";
 import type { RenderSession } from "./shared";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const devServerUrl = process.env[identity.devServerUrlEnv] ?? identity.defaultDevServerUrl;
-const EXPORT_COMPOSITOR_QUERY = "storycaptureExportCompositor";
 
 export function compositedFrameTimeMs(frameIndex: number, fps: number): number {
   return (Math.max(0, frameIndex) / Math.max(1, fps)) * 1000;
 }
 
-export async function writeFrameWithBackpressure(
-  stream: Writable,
-  frame: Buffer,
-): Promise<void> {
+export async function writeFrameWithBackpressure(stream: Writable, frame: Buffer): Promise<void> {
   if (stream.destroyed || stream.writableEnded) {
     throw new Error("ffmpeg stdin is closed");
   }
@@ -54,97 +40,6 @@ export async function writeFrameWithBackpressure(
   });
 }
 
-function createCompositorWindow(plan: CompositedExportPlan): BrowserWindow {
-  const win = new BrowserWindow({
-    show: false,
-    useContentSize: true,
-    width: plan.outputWidth,
-    height: plan.outputHeight,
-    backgroundColor: "#000000",
-    webPreferences: {
-      offscreen: true,
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      backgroundThrottling: false,
-    },
-  });
-  win.webContents.setFrameRate(plan.fps);
-  win.webContents.setZoomFactor(1);
-  return win;
-}
-
-async function loadCompositorApp(win: BrowserWindow): Promise<void> {
-  if (isDevRuntime(app)) {
-    const url = new URL(devServerUrl);
-    url.searchParams.set(EXPORT_COMPOSITOR_QUERY, "1");
-    await win.loadURL(url.toString());
-    return;
-  }
-  await win.loadFile(path.join(here, "..", "..", "..", "dist", "index.html"), {
-    query: { [EXPORT_COMPOSITOR_QUERY]: "1" },
-  });
-}
-
-async function waitForCompositorBridge(win: BrowserWindow): Promise<void> {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    const ready = await win.webContents
-      .executeJavaScript("Boolean(window.__STORYCAPTURE_EXPORT_COMPOSITOR__)", true)
-      .catch(() => false);
-    if (ready) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error("export compositor renderer did not become ready");
-}
-
-async function configureCompositorWindow(
-  win: BrowserWindow,
-  plan: CompositedExportPlan,
-): Promise<void> {
-  const payload = {
-    graph: plan.graph,
-    outputWidth: plan.outputWidth,
-    outputHeight: plan.outputHeight,
-    fps: plan.fps,
-    durationMs: plan.durationMs,
-  };
-  await win.webContents.executeJavaScript(
-    `window.__STORYCAPTURE_EXPORT_COMPOSITOR__.configure(${JSON.stringify(payload)})`,
-    true,
-  );
-}
-
-async function renderCompositorFrame(
-  win: BrowserWindow,
-  plan: CompositedExportPlan,
-  timeMs: number,
-): Promise<Buffer> {
-  await win.webContents.executeJavaScript(
-    `window.__STORYCAPTURE_EXPORT_COMPOSITOR__.renderFrame(${JSON.stringify(timeMs)})`,
-    true,
-  );
-  const captureRect: Rectangle = {
-    x: 0,
-    y: 0,
-    width: plan.outputWidth,
-    height: plan.outputHeight,
-  };
-  const image = await win.webContents.capturePage(captureRect);
-  const size = image.getSize();
-  const normalized =
-    size.width === plan.outputWidth && size.height === plan.outputHeight
-      ? image
-      : image.resize({ width: plan.outputWidth, height: plan.outputHeight, quality: "best" });
-  const bitmap = normalized.toBitmap();
-  const expectedBytes = plan.outputWidth * plan.outputHeight * 4;
-  if (bitmap.byteLength !== expectedBytes) {
-    throw new Error(
-      `export compositor captured ${bitmap.byteLength} bytes, expected ${expectedBytes}`,
-    );
-  }
-  return bitmap;
-}
-
 function waitForFfmpeg(
   session: RenderSession,
   child: ReturnType<typeof spawn>,
@@ -154,7 +49,7 @@ function waitForFfmpeg(
     let stderr = "";
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = String(chunk);
-      stderr += text;
+      stderr = `${stderr}${text}`.slice(-8_000);
       const frame = text.match(/frame=\s*(\d+)/);
       if (frame?.[1]) {
         session.frame = Math.max(session.frame, Number(frame[1]));
@@ -180,58 +75,58 @@ function waitForFfmpeg(
 export async function runCompositedExportForRenderSession(
   session: RenderSession,
   plan: CompositedExportPlan,
-  outputPath: string,
   onProgress: (frame: number) => void,
+  ffmpegArgs: string[],
+  onFramesComplete: () => void = () => undefined,
 ): Promise<void> {
-  const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static binary is unavailable");
+  const binary = exportFfmpegPath();
 
-  const win = createCompositorWindow(plan);
-  const child = spawn(binary, ffmpegArgsForExportPlan(plan, outputPath), {
-    stdio: ["pipe", "ignore", "pipe"],
-  });
-  session.ffmpegProcess = child;
+  const compositor = createExportCompositorHost(plan);
+  let child: ReturnType<typeof spawn> | null = null;
+  let ffmpegDone: Promise<void> | null = null;
   session.cancelCompositedExport = () => {
-    if (!win.isDestroyed()) win.destroy();
+    if (!compositor.isDestroyed()) compositor.window.destroy();
   };
-  const ffmpegDone = waitForFfmpeg(session, child, onProgress);
 
   try {
-    await loadCompositorApp(win);
-    await waitForCompositorBridge(win);
-    await configureCompositorWindow(win, plan);
+    await compositor.start();
+    if (session.cancelRequested) throw new Error("render cancelled");
+    child = spawn(binary, ffmpegArgs, {
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    const ffmpegInput = child.stdin;
+    if (!ffmpegInput) throw new Error("ffmpeg stdin is unavailable");
+    session.ffmpegProcess = child;
+    ffmpegDone = waitForFfmpeg(session, child, onProgress);
+    // Attach a rejection handler immediately; frame capture may still be in
+    // flight when a spawn/runtime error closes FFmpeg.
+    void ffmpegDone.catch(() => undefined);
 
     for (let frameIndex = 0; frameIndex < plan.frameCount; frameIndex += 1) {
       if (session.cancelRequested) throw new Error("render cancelled");
-      const timeMs = Math.min(
-        plan.durationMs,
-        compositedFrameTimeMs(frameIndex, plan.fps),
-      );
-      const frame = await renderCompositorFrame(win, plan, timeMs);
-      await writeFrameWithBackpressure(child.stdin, frame);
+      const timeMs = Math.min(plan.durationMs, compositedFrameTimeMs(frameIndex, plan.fps));
+      const frame = await compositor.renderFrame(timeMs);
+      await writeFrameWithBackpressure(ffmpegInput, frame);
       session.frame = frameIndex + 1;
-      session.job.progress_pct = Math.min(
-        99,
-        Math.max(5, Math.round((session.frame / plan.frameCount) * 95)),
+      session.job.phase_progress_pct = Math.min(
+        100,
+        Math.max(0, Math.round((session.frame / plan.frameCount) * 100)),
       );
+      session.job.progress_pct = Math.min(85, 5 + Math.round(session.job.phase_progress_pct * 0.8));
       onProgress(session.frame);
     }
 
-    child.stdin.end();
+    ffmpegInput.end();
+    onFramesComplete();
     await ffmpegDone;
   } catch (error) {
-    child.stdin.destroy();
-    if (!session.cancelRequested) child.kill("SIGKILL");
-    await ffmpegDone.catch(() => undefined);
+    child?.stdin?.destroy();
+    if (child && !session.cancelRequested) child.kill("SIGKILL");
+    await ffmpegDone?.catch(() => undefined);
     throw error;
   } finally {
     session.ffmpegProcess = null;
     session.cancelCompositedExport = null;
-    if (!win.isDestroyed()) {
-      await win.webContents
-        .executeJavaScript("window.__STORYCAPTURE_EXPORT_COMPOSITOR__?.dispose?.()", true)
-        .catch(() => undefined);
-      win.destroy();
-    }
+    await compositor.dispose();
   }
 }

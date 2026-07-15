@@ -149,7 +149,7 @@ describe("Timeline", () => {
     fireEvent.pointerMove(window, { clientX: 1700, pointerId: 1 });
     fireEvent.pointerUp(window, { clientX: 1700, pointerId: 1 });
 
-    expect(useEditorStore.getState().tracks.zoom[0]?.durationMs).toBe(700);
+    expect(useEditorStore.getState().tracks.zoom[0]?.durationMs).toBe(900);
     expect(useEditorStore.getState().canUndo).toBe(true);
   });
 

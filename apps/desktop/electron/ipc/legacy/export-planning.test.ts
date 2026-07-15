@@ -1,32 +1,43 @@
+import type { ExportCompositionGraphV4 } from "@storycapture/shared-types";
 import { describe, expect, it } from "vitest";
+import { buildExportAudioPlan } from "./export-audio-planning";
 import {
   analyzeExportPlan,
-  ffmpegArgsForExportPlan,
-  mappedAudioFilter,
+  ffmpegArgsForCanonicalExportPlan,
   validateExportOutput,
 } from "./export-planning";
 import type { ExportOutput } from "./shared";
 
-function graph(video: unknown[], audio: unknown[] = []): string {
-  return JSON.stringify({
-    schema_version: 2,
-    output_width: 1920,
-    output_height: 1080,
-    output_fps: 60,
-    video,
-    audio,
-  });
-}
-
 function source(overrides: Record<string, unknown> = {}) {
   return {
     type: "source",
+    id: "source-1",
+    clip_id: "clip-1",
     path: "/tmp/in.mp4",
     pts_offset_ms: 0,
+    timeline_start_ms: 0,
     duration_ms: 1_000,
-    source_fps: 60,
+    source_width: 1920,
+    source_height: 1080,
     ...overrides,
   };
+}
+
+function graph(
+  video: unknown[] = [source()],
+  audio: unknown[] = [],
+  overrides: Record<string, unknown> = {},
+): string {
+  return JSON.stringify({
+    schema_version: 4,
+    output_width: 1920,
+    output_height: 1080,
+    output_fps: 60,
+    duration_ms: 1_000,
+    video,
+    audio,
+    ...overrides,
+  });
 }
 
 function output(overrides: Partial<ExportOutput> = {}): ExportOutput {
@@ -39,7 +50,7 @@ function output(overrides: Partial<ExportOutput> = {}): ExportOutput {
       container: "mp4",
       codec: "h264",
       rate_control: "auto",
-      hw_encoder: null,
+      hw_encoder: "libx264-software",
       quality_value: null,
       x264_preset: "medium",
       keyframe_interval_sec: 2,
@@ -61,9 +72,26 @@ function runnablePlan(graphJson: string, cfg: ExportOutput) {
   return plan;
 }
 
-describe("post-production export planning", () => {
-  it("forces compositor export for a non-identity source time map", () => {
-    const plan = analyzeExportPlan(
+function audioPlanFor(graphJson: string, format: "mp4" | "webm" = "mp4") {
+  const parsed = JSON.parse(graphJson) as ExportCompositionGraphV4;
+  return buildExportAudioPlan({
+    graph: parsed,
+    output: {
+      format,
+      bitrateKbps: 160,
+      channels: 2,
+      sampleRateHz: 48_000,
+    },
+    sourceAudio: Object.fromEntries(
+      parsed.video.filter((node) => node.type === "source").map((node) => [node.id, true]),
+    ),
+  });
+}
+
+describe("canonical post-production export planning", () => {
+  it("routes identity, retimed, and multi-source graphs through the compositor", () => {
+    const identity = analyzeExportPlan(graph(), output());
+    const retimed = analyzeExportPlan(
       graph([
         source({
           source_time_map: {
@@ -76,361 +104,141 @@ describe("post-production export planning", () => {
                 timelineStartMs: 0,
                 timelineEndMs: 500,
               },
-              { kind: "hold", sourcePtsUs: 500_000, timelineStartMs: 500, timelineEndMs: 750 },
+              {
+                kind: "hold",
+                sourcePtsUs: 500_000,
+                timelineStartMs: 500,
+                timelineEndMs: 750,
+              },
             ],
           },
         }),
       ]),
       output(),
     );
-    expect(plan.kind).toBe("composited");
-  });
-
-  it("maps capture-bound audio through media and exact silence hold segments", () => {
-    const filter = mappedAudioFilter({
-      version: 1,
-      segments: [
-        {
-          kind: "media",
-          sourceStartUs: 0,
-          sourceEndUs: 500_000,
-          timelineStartMs: 0,
-          timelineEndMs: 500,
-        },
-        { kind: "hold", sourcePtsUs: 500_000, timelineStartMs: 500, timelineEndMs: 750 },
-        {
-          kind: "media",
-          sourceStartUs: 500_000,
-          sourceEndUs: 1_000_000,
-          timelineStartMs: 750,
-          timelineEndMs: 1_250,
-        },
-      ],
-    });
-    expect(filter).toContain("atrim=start=0:end=0.5");
-    expect(filter).toContain("anullsrc=r=48000:cl=stereo,atrim=duration=0.25");
-    expect(filter).toContain("concat=n=3:v=0:a=1[mapped_audio]");
-  });
-
-  it("classifies a one-source match-source high-quality MP4 as source-copy eligible", () => {
-    const plan = analyzeExportPlan(graph([source()]), output());
-
-    expect(plan.kind).toBe("source-copy");
-    if (plan.kind === "unsupported") throw new Error(plan.reason);
-    expect(ffmpegArgsForExportPlan(plan, "/tmp/out.mp4")).toEqual([
-      "-y",
-      "-i",
-      "/tmp/in.mp4",
-      "-map",
-      "0",
-      "-c",
-      "copy",
-      "-movflags",
-      "+faststart",
-      "/tmp/out.mp4",
-    ]);
-  });
-
-  it("re-encodes one source when resolution or fps changes", () => {
-    const plan = analyzeExportPlan(graph([source()]), output({ resolution: "1080p", fps: 30 }));
-
-    expect(plan.kind).toBe("simple-reencode");
-    if (plan.kind === "unsupported") throw new Error(plan.reason);
-    const args = ffmpegArgsForExportPlan(plan, "/tmp/out.mp4");
-    expect(args).toContain("-vf");
-    expect(args).toContain("fps=30,scale=1920:1080:flags=lanczos");
-  });
-
-  it("does not source-copy when source fps metadata is missing", () => {
-    const plan = analyzeExportPlan(graph([source({ source_fps: undefined })]), output());
-
-    expect(plan.kind).toBe("simple-reencode");
-  });
-
-  it("does not source-copy when audio encoding settings change", () => {
-    const baseOptions = output().encoder_options!;
-    const cfg = output({
-      encoder_options: {
-        ...baseOptions,
-        audio: {
-          codec: "aac",
-          bitrate_kbps: 192,
-          channels: 2,
-          sample_rate_hz: 48_000,
-        },
-      },
-    });
-    const plan = analyzeExportPlan(graph([source()]), cfg);
-
-    expect(plan.kind).toBe("simple-reencode");
-    if (plan.kind === "unsupported") throw new Error(plan.reason);
-    const args = ffmpegArgsForExportPlan(plan, "/tmp/out.mp4");
-    expect(args).toContain("-b:a");
-    expect(args).toContain("192k");
-  });
-
-  it("source-copies WebM when default Opus audio options are present", () => {
-    const baseOptions = output().encoder_options!;
-    const cfg = output({
-      format: "webm",
-      encoder_options: {
-        ...baseOptions,
-        container: "webm",
-        audio: {
-          codec: "opus",
-          bitrate_kbps: 160,
-          channels: 2,
-          sample_rate_hz: 48_000,
-        },
-      },
-    });
-    const plan = analyzeExportPlan(graph([source({ path: "/tmp/in.webm" })]), cfg);
-
-    expect(plan.kind).toBe("source-copy");
-    if (plan.kind === "unsupported") throw new Error(plan.reason);
-    expect(ffmpegArgsForExportPlan(plan, "/tmp/out.webm")).toEqual([
-      "-y",
-      "-i",
-      "/tmp/in.webm",
-      "-map",
-      "0",
-      "-c",
-      "copy",
-      "/tmp/out.webm",
-    ]);
-  });
-
-  it("fails fast for multiple sources until simple concat is implemented", () => {
-    const plan = analyzeExportPlan(
-      graph([source({ path: "/tmp/a.mp4" }), source({ path: "/tmp/b.mp4", pts_offset_ms: 1_000 })]),
-      output(),
-    );
-
-    expect(plan).toMatchObject({
-      kind: "unsupported",
-      requiredPlan: "simple-concat",
-    });
-    if (plan.kind === "unsupported") expect(plan.reason).toMatch(/simple concat/);
-  });
-
-  it("classifies cursor overlays as composited exports", () => {
-    const plan = analyzeExportPlan(
+    const multiple = analyzeExportPlan(
       graph([
-        source({ source_width: 1920, source_height: 1080 }),
+        source({ id: "source-a", path: "/tmp/a.mp4", duration_ms: 600 }),
+        source({
+          id: "source-b",
+          clip_id: "clip-2",
+          path: "/tmp/b.mp4",
+          timeline_start_ms: 500,
+          duration_ms: 500,
+        }),
         {
-          type: "cursor-overlay",
-          id: "cursor",
-          skin: "mac-default",
-          size_scale: 1,
-          motion_preset: "natural",
-          color_tint: null,
-          trajectory: {
-            png_sequence_dir: "/tmp/in.actions.json",
-            fps: 60,
-            frame_count: 60,
-          },
+          type: "transition",
+          id: "transition-1",
+          kind: "fade",
+          duration_ms: 100,
+          offset_ms: 500,
+          from_source_id: "source-a",
+          to_source_id: "source-b",
         },
       ]),
       output(),
     );
 
-    expect(plan).toMatchObject({
-      kind: "composited",
-      outputWidth: 1920,
-      outputHeight: 1080,
-      fps: 60,
-      durationMs: 1_000,
-      frameCount: 60,
-    });
+    expect(identity.kind).toBe("composited");
+    expect(retimed.kind).toBe("composited");
+    expect(multiple.kind).toBe("composited");
   });
 
-  it("classifies zoom and highlight overlays as composited exports", () => {
-    const plan = analyzeExportPlan(
-      graph([
-        source(),
-        {
-          type: "zoom-pan",
-          id: "zoom",
-          target: { kind: "cursor" },
-          keyframes: [
-            { t_ms: 0, center: { x: 960, y: 540 }, scale: 1 },
-            { t_ms: 200, center: { x: 960, y: 540 }, scale: 1.5 },
-          ],
-        },
-        {
-          type: "highlight-overlay",
-          id: "highlight",
-          highlights: [
-            {
-              t_start_ms: 100,
-              duration_ms: 500,
-              shape: "ring",
-              center: { x: 960, y: 540 },
-              max_radius_px: 56,
-              padding_px: 8,
-              radius_px: 56,
-              stroke_px: 2,
-              glow_px: 16,
-              color: { r: 255, g: 255, b: 255, a: 229 },
-              opacity: 0.72,
-            },
-          ],
-        },
-      ]),
-      output(),
-    );
-
-    expect(plan).toMatchObject({
-      kind: "composited",
-      outputWidth: 1920,
-      outputHeight: 1080,
-      fps: 60,
-    });
-  });
-
-  it("fails fast for unsupported compositor graph nodes and audio graph nodes", () => {
+  it("accepts every canonical visual node plus sound nodes", () => {
     const plan = analyzeExportPlan(
       graph(
-        [source(), { type: "transition", id: "transition", kind: "fade", duration_ms: 250 }],
-        [{ type: "audio-source", path: "/tmp/audio.m4a", pts_offset_ms: 0 }],
+        [
+          source(),
+          { type: "zoom-pan", id: "zoom" },
+          { type: "background", id: "background" },
+          { type: "cursor-overlay", id: "cursor" },
+          { type: "ripple-overlay", id: "ripple" },
+          { type: "highlight-overlay", id: "highlight" },
+          { type: "text-overlay", id: "text" },
+          { type: "transition", id: "transition" },
+        ],
+        [
+          {
+            type: "sound",
+            id: "sound-1",
+            clip_id: "audio-1",
+            kind: "sfx",
+            path: "/tmp/sfx.wav",
+            t_start_ms: 0,
+            duration_ms: 500,
+            gain: 1,
+            source_binding: null,
+          },
+        ],
       ),
       output(),
     );
 
-    expect(plan).toMatchObject({
-      kind: "unsupported",
-      requiredPlan: "composited",
-      unsupportedNodes: ["audio", "transition"],
-    });
+    expect(plan.kind).toBe("composited");
   });
 
-  it("fails fast for composited source offsets until audio alignment is implemented", () => {
-    const plan = analyzeExportPlan(
-      graph([
-        source({ pts_offset_ms: 2_000 }),
-        {
-          type: "cursor-overlay",
-          id: "cursor",
-          skin: "mac-default",
-          size_scale: 1,
-          motion_preset: "natural",
-          color_tint: null,
-          trajectory: {
-            png_sequence_dir: "/tmp/in.actions.json",
-            fps: 60,
-            frame_count: 60,
-          },
-        },
-      ]),
-      output(),
+  it("rejects non-v4, source-less, path-less, duration-less, and unknown graphs", () => {
+    expect(analyzeExportPlan(graph([source()], [], { schema_version: 3 }), output())).toMatchObject(
+      {
+        kind: "unsupported",
+        reason: "canonical export requires composition graph schema v4",
+      },
     );
-
-    expect(plan).toMatchObject({
-      kind: "unsupported",
-      requiredPlan: "composited",
-      unsupportedNodes: ["pts_offset_ms"],
-    });
-  });
-
-  it("returns unsupported for invalid or missing source graphs", () => {
-    expect(analyzeExportPlan("{", output())).toMatchObject({
-      kind: "unsupported",
-    });
     expect(analyzeExportPlan(graph([]), output())).toMatchObject({
       kind: "unsupported",
       reason: "export graph has no source video",
     });
-  });
-
-  it("maps software H.264 CRF, preset, keyframes, scaling, and audio args", () => {
-    const cfg = output({
-      resolution: "720p",
-      encoder_options: {
-        container: "mp4",
-        codec: "h264",
-        rate_control: "crf",
-        hw_encoder: "libx264-software",
-        quality_value: 17,
-        x264_preset: "slow",
-        keyframe_interval_sec: 2,
-        downscale_algo: "bicubic",
-        audio: {
-          codec: "aac",
-          bitrate_kbps: 192,
-          channels: 1,
-          sample_rate_hz: 44_100,
-        },
-      },
+    expect(analyzeExportPlan(graph([source({ path: "" })]), output())).toMatchObject({
+      kind: "unsupported",
+      reason: "export graph has no source video",
     });
-    const args = ffmpegArgsForExportPlan(runnablePlan(graph([source()]), cfg), "/tmp/out.mp4");
-
-    expect(args).toContain("fps=60,scale=1280:720:flags=bicubic");
-    expect(args).toContain("libx264");
-    expect(args).toContain("slow");
-    expect(args).toContain("-crf");
-    expect(args).toContain("17");
-    expect(args).toContain("-g");
-    expect(args).toContain("120");
-    expect(args).toContain("-c:a");
-    expect(args).toContain("aac");
-    expect(args).toContain("192k");
-    expect(args).not.toContain("-an");
-  });
-
-  it("maps CRF 0 to a real lossless H.264 encode", () => {
-    const cfg = output({
-      encoder_options: {
-        container: "mp4",
-        codec: "h264",
-        rate_control: "crf",
-        hw_encoder: "libx264-software",
-        quality_value: 0,
-        x264_preset: "veryfast",
-        keyframe_interval_sec: 2,
-        downscale_algo: "lanczos",
-        audio: {
-          codec: "aac",
-          bitrate_kbps: 160,
-          channels: 2,
-          sample_rate_hz: 48_000,
-        },
+    expect(analyzeExportPlan(graph([source()], [], { duration_ms: null }), output())).toMatchObject(
+      {
+        kind: "unsupported",
+        reason: "canonical export requires graph duration_ms",
       },
-    });
-
-    const args = ffmpegArgsForExportPlan(runnablePlan(graph([source()]), cfg), "/tmp/out.mp4");
-    expect(args).toContain("-crf");
-    expect(args).toContain("0");
-    expect(args).toContain("veryfast");
-  });
-
-  it("maps composited MP4 exports to raw-video stdin with source audio", () => {
-    const plan = runnablePlan(
-      graph([
-        source({ source_width: 1920, source_height: 1080 }),
-        {
-          type: "text-overlay",
-          id: "text",
-          boxes: [
-            {
-              t_start_ms: 0,
-              t_end_ms: 1_000,
-              text: "Hello",
-              pos: { x: 0.5, y: 0.5 },
-              font: { family: "Inter", weight: 700 },
-              size_pt: 32,
-              color: { r: 255, g: 255, b: 255, a: 255 },
-              box_style: null,
-              anim_in: "none",
-              anim_out: "none",
-            },
-          ],
-        },
-      ]),
-      output(),
     );
+    expect(
+      analyzeExportPlan(graph([source(), { type: "unknown-effect" }]), output()),
+    ).toMatchObject({
+      kind: "unsupported",
+      requiredPlan: "composited",
+      unsupportedNodes: ["unknown-effect"],
+    });
+    expect(
+      analyzeExportPlan(graph([source()], [{ type: "audio-source" }]), output()),
+    ).toMatchObject({
+      kind: "unsupported",
+      unsupportedNodes: ["audio:audio-source"],
+    });
+    expect(analyzeExportPlan("{", output()).kind).toBe("unsupported");
+  });
 
-    expect(plan.kind).toBe("composited");
-    expect(ffmpegArgsForExportPlan(plan, "/tmp/out.mp4")).toEqual([
+  it("derives exact dimensions, duration, fps, and frame count", () => {
+    expect(
+      analyzeExportPlan(
+        graph([source()], [], { duration_ms: 1_250, output_fps: 24 }),
+        output({ resolution: "720p", fps: 24 }),
+      ),
+    ).toMatchObject({
+      kind: "composited",
+      outputWidth: 1280,
+      outputHeight: 720,
+      durationMs: 1_250,
+      fps: 24,
+      frameCount: 30,
+      pixelFormat: "bgra",
+    });
+  });
+
+  it("builds MP4 args from raw canonical frames and the full audio plan", () => {
+    const graphJson = graph();
+    const plan = runnablePlan(graphJson, output());
+    const audioPlan = audioPlanFor(graphJson);
+    const args = ffmpegArgsForCanonicalExportPlan(plan, audioPlan, "/tmp/out.mp4");
+
+    expect(audioPlan.kind).toBe("mixed");
+    expect(args.slice(0, 11)).toEqual([
       "-y",
       "-f",
       "rawvideo",
@@ -442,66 +250,103 @@ describe("post-production export planning", () => {
       "60",
       "-i",
       "pipe:0",
-      "-i",
-      "/tmp/in.mp4",
-      "-map",
-      "0:v:0",
-      "-map",
-      "1:a?",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "medium",
-      "-crf",
-      "18",
-      "-g",
-      "120",
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "160k",
-      "-ac",
-      "2",
-      "-ar",
-      "48000",
-      "-shortest",
-      "/tmp/out.mp4",
     ]);
+    expect(args).toContain("/tmp/in.mp4");
+    expect(args).toContain("-filter_complex");
+    expect(args).toContain("[audio_master]");
+    expect(args).toContain("libx264");
+    expect(args).toContain("aac");
+    expect(args).toContain("1.000000");
+    expect(args.at(-1)).toBe("/tmp/out.mp4");
   });
 
-  it("uses the requested resolution for composited exports", () => {
-    const plan = runnablePlan(
-      graph([
-        source({ source_width: 1920, source_height: 1080 }),
-        {
-          type: "text-overlay",
-          id: "text",
-          boxes: [
-            {
-              t_start_ms: 0,
-              t_end_ms: 1_000,
-              text: "Hello",
-              pos: { x: 0.5, y: 0.5 },
-              size_pt: 32,
-              color: { r: 255, g: 255, b: 255, a: 255 },
-              box_style: null,
-            },
-          ],
+  it("builds WebM with VP9/Opus and exact duration", () => {
+    const graphJson = graph();
+    const cfg = output({
+      format: "webm",
+      encoder_options: {
+        ...output().encoder_options,
+        container: "webm",
+        audio: {
+          codec: "opus",
+          bitrate_kbps: 160,
+          channels: 2,
+          sample_rate_hz: 48_000,
         },
-      ]),
-      output({ resolution: "720p" }),
+      },
+    });
+    const args = ffmpegArgsForCanonicalExportPlan(
+      runnablePlan(graphJson, cfg),
+      audioPlanFor(graphJson, "webm"),
+      "/tmp/out.webm",
     );
 
-    expect(plan).toMatchObject({
-      kind: "composited",
-      outputWidth: 1280,
-      outputHeight: 720,
+    expect(args).toContain("libvpx-vp9");
+    expect(args).toContain("libopus");
+    expect(args).toContain("1.000000");
+    expect(args.at(-1)).toBe("/tmp/out.webm");
+  });
+
+  it("builds animated GIF from canonical frames without any audio input", () => {
+    const graphJson = graph();
+    const plan = runnablePlan(graphJson, output({ format: "gif", encoder_options: null }));
+    const noAudio = buildExportAudioPlan({
+      graph: JSON.parse(graphJson) as ExportCompositionGraphV4,
+      output: { format: "gif" },
+      sourceAudio: {},
     });
-    expect(ffmpegArgsForExportPlan(plan, "/tmp/out.mp4")).toContain("1280x720");
+    const args = ffmpegArgsForCanonicalExportPlan(plan, noAudio, "/tmp/out.gif");
+
+    expect(noAudio.kind).toBe("none");
+    expect(args.join(" ")).toContain("palettegen=max_colors=256");
+    expect(args.join(" ")).toContain("paletteuse=dither=sierra2_4a");
+    expect(args).toContain("-an");
+    expect(args).toContain("-loop");
+    expect(args).toContain("1.000000");
+    expect(args).not.toContain("/tmp/in.mp4");
+    expect(args.at(-1)).toBe("/tmp/out.gif");
+  });
+
+  it("preserves explicit CRF 0, preset, and keyframe settings on canonical MP4", () => {
+    const graphJson = graph();
+    const cfg = output({
+      encoder_options: {
+        ...output().encoder_options,
+        rate_control: "crf",
+        quality_value: 0,
+        x264_preset: "veryfast",
+        keyframe_interval_sec: 2,
+      },
+    });
+    const args = ffmpegArgsForCanonicalExportPlan(
+      runnablePlan(graphJson, cfg),
+      audioPlanFor(graphJson),
+      "/tmp/out.mp4",
+    );
+
+    expect(args).toContain("-crf");
+    expect(args).toContain("0");
+    expect(args).toContain("veryfast");
+    expect(args).toContain("-g");
+    expect(args).toContain("120");
+  });
+
+  it("rejects an invalid audio plan for MP4/WebM", () => {
+    const graphJson = graph();
+    const invalidAudio = buildExportAudioPlan({
+      graph: JSON.parse(graphJson) as ExportCompositionGraphV4,
+      output: { format: "mp4", bitrateKbps: 160, channels: 2, sampleRateHz: 48_000 },
+      sourceAudio: {},
+    });
+
+    expect(invalidAudio.kind).toBe("invalid");
+    expect(() =>
+      ffmpegArgsForCanonicalExportPlan(
+        runnablePlan(graphJson, output()),
+        invalidAudio,
+        "/tmp/out.mp4",
+      ),
+    ).toThrow(/probe result/i);
   });
 
   it("validates container and audio combinations before queueing", () => {

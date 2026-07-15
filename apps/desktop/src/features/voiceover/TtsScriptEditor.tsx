@@ -5,9 +5,9 @@
  * Keeps the writing surface spare and focused on the line itself.
  */
 
-import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-
+import { useCallback } from "react";
+import type { VoiceoverStepBinding } from "@/features/post-production/state/voiceover-timeline";
 import { frontendLog } from "@/lib/log";
 
 import { useVoiceoverStore } from "./voiceoverStore";
@@ -15,13 +15,14 @@ import { useVoiceoverStore } from "./voiceoverStore";
 export interface TtsScriptEditorProps {
   projectId: string;
   stepId: string;
+  stepBinding?: VoiceoverStepBinding;
 }
 
 /** Soft char limit for warning */
 const SOFT_LIMIT = 800;
 const WARNING_THRESHOLD = 700;
 
-export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
+export function TtsScriptEditor({ projectId, stepId, stepBinding }: TtsScriptEditorProps) {
   const {
     selectedPreset,
     scriptByStepId,
@@ -66,16 +67,17 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
         scriptText: script,
         provider: selectedPreset.provider,
         voiceId: selectedPreset.id,
-        model:
-          selectedPreset.provider === "elevenlabs"
-            ? "eleven_multilingual_v2"
-            : "tts-1",
+        model: selectedPreset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
       });
-      setClip(stepId, {
-        filePath: result.file_path,
-        durationMs: result.audio_duration_ms,
-        costUsd: result.cost_usd,
-      });
+      setClip(
+        stepId,
+        {
+          filePath: result.file_path,
+          durationMs: result.audio_duration_ms,
+          costUsd: result.cost_usd,
+        },
+        stepBinding,
+      );
       setEditedAfterGen(stepId, false);
     } catch (err) {
       frontendLog.error("TtsScriptEditor", "tts_generate IPC failed", {
@@ -90,7 +92,16 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
     } finally {
       setGenerating(stepId, false);
     }
-  }, [projectId, stepId, script, selectedPreset, setClip, setGenerating, setEditedAfterGen]);
+  }, [
+    projectId,
+    stepId,
+    stepBinding,
+    script,
+    selectedPreset,
+    setClip,
+    setGenerating,
+    setEditedAfterGen,
+  ]);
 
   const handleRegenerate = useCallback(async () => {
     if (!selectedPreset || !script.trim()) return;
@@ -107,16 +118,17 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
         scriptText: script,
         provider: selectedPreset.provider,
         voiceId: selectedPreset.id,
-        model:
-          selectedPreset.provider === "elevenlabs"
-            ? "eleven_multilingual_v2"
-            : "tts-1",
+        model: selectedPreset.provider === "elevenlabs" ? "eleven_multilingual_v2" : "tts-1",
       });
-      setClip(stepId, {
-        filePath: result.file_path,
-        durationMs: result.audio_duration_ms,
-        costUsd: result.cost_usd,
-      });
+      setClip(
+        stepId,
+        {
+          filePath: result.file_path,
+          durationMs: result.audio_duration_ms,
+          costUsd: result.cost_usd,
+        },
+        stepBinding,
+      );
       setEditedAfterGen(stepId, false);
     } catch (err) {
       frontendLog.error("TtsScriptEditor", "tts_regenerate_clip IPC failed", {
@@ -131,7 +143,16 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
     } finally {
       setGenerating(stepId, false);
     }
-  }, [projectId, stepId, script, selectedPreset, setClip, setGenerating, setEditedAfterGen]);
+  }, [
+    projectId,
+    stepId,
+    stepBinding,
+    script,
+    selectedPreset,
+    setClip,
+    setGenerating,
+    setEditedAfterGen,
+  ]);
 
   return (
     <div data-testid="tts-script-editor" className="flex flex-col gap-4">
@@ -165,14 +186,11 @@ export function TtsScriptEditor({ projectId, stepId }: TtsScriptEditorProps) {
         onChange={handleTextChange}
         placeholder="Write the narration for this step..."
         rows={6}
-        role="textbox"
       />
 
       {/* Stale warning chip */}
       {isEditedAfterGen && clip && (
-        <div className="text-xs text-[var(--warning)]">
-          The script changed since the last take.
-        </div>
+        <div className="text-xs text-[var(--warning)]">The script changed since the last take.</div>
       )}
 
       {/* Footer row */}

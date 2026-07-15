@@ -1,12 +1,13 @@
+import { bundledBackgroundAssetIdFromPath } from "./background-asset";
 import type { EditorBackgroundKind } from "./store";
 import { DEFAULT_BACKGROUND } from "./store";
 import type { TimelineSlice } from "./timeline-slice";
 import { cloneTimelineTracks } from "./timeline-slice";
 
-export const TIMELINE_LAYOUT_VERSION = 3;
+export const TIMELINE_LAYOUT_VERSION = 4;
 export const TIMELINE_TIMING_MODEL_VERSION = 1;
 
-export interface TimelineLayoutV3 {
+export interface TimelineLayoutV4 {
   version: typeof TIMELINE_LAYOUT_VERSION;
   timingModelVersion: typeof TIMELINE_TIMING_MODEL_VERSION;
   sourceRevision: string | null;
@@ -16,11 +17,12 @@ export interface TimelineLayoutV3 {
 }
 
 export type TimelineLayoutParseResult =
-  | { ok: true; layout: TimelineLayoutV3; migrated: boolean; rebuiltGeneratedLayers: boolean }
+  | { ok: true; layout: TimelineLayoutV4; migrated: boolean; rebuiltGeneratedLayers: boolean }
   | { ok: false; reason: string };
 
 /** Compatibility alias for callers that only depend on the current layout shape. */
-export type TimelineLayoutV2 = TimelineLayoutV3;
+export type TimelineLayoutV3 = TimelineLayoutV4;
+export type TimelineLayoutV2 = TimelineLayoutV4;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -83,7 +85,11 @@ function parseBackground(value: unknown): EditorBackgroundKind {
     return { kind: "gradient", preset_id: value.preset_id };
   }
   if (value.kind === "image" && typeof value.path === "string") {
-    return { kind: "image", path: value.path };
+    const assetId =
+      typeof value.assetId === "string"
+        ? value.assetId
+        : bundledBackgroundAssetIdFromPath(value.path);
+    return { kind: "image", assetId, path: value.path };
   }
   return DEFAULT_BACKGROUND;
 }
@@ -95,7 +101,7 @@ export function serializeTimelineLayout(input: {
 }): string {
   const sourceRevision =
     input.tracks.video.find((clip) => clip.sourceRevision)?.sourceRevision ?? null;
-  const layout: TimelineLayoutV3 = {
+  const layout: TimelineLayoutV4 = {
     version: TIMELINE_LAYOUT_VERSION,
     timingModelVersion: TIMELINE_TIMING_MODEL_VERSION,
     sourceRevision,
@@ -122,7 +128,12 @@ export function parseTimelineLayoutJson(
     return { ok: false, reason: "invalid JSON" };
   }
   if (!isRecord(parsed)) return { ok: false, reason: "layout root is not an object" };
-  if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== TIMELINE_LAYOUT_VERSION) {
+  if (
+    parsed.version !== 1 &&
+    parsed.version !== 2 &&
+    parsed.version !== 3 &&
+    parsed.version !== TIMELINE_LAYOUT_VERSION
+  ) {
     return { ok: false, reason: `unsupported layout version ${String(parsed.version)}` };
   }
   const tracks = parseTracks(parsed.tracks);

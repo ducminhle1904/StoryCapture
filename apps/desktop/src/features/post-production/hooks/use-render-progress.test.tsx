@@ -1,5 +1,5 @@
-import { StrictMode } from "react";
 import { render, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RenderProgress } from "@/ipc/render";
@@ -25,8 +25,8 @@ vi.mock("@/lib/log", () => ({
   },
 }));
 
-import { useRenderProgress } from "./use-render-progress";
 import { useEditorStore } from "../state/store";
+import { useRenderProgress } from "./use-render-progress";
 
 function Probe() {
   const progressMap = useRenderProgress();
@@ -76,7 +76,9 @@ describe("useRenderProgress", () => {
     await waitFor(() => expect(channels).toHaveLength(1));
     channels[0]?.onmessage?.({
       job_id: "job-1",
+      status: "rendering",
       pct: 42,
+      phase_pct: 35,
       frame: 120,
       fps: 60,
       speed: 1,

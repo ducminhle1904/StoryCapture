@@ -3,6 +3,7 @@ import { watch as watchFs } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { ExportPreflightArgs } from "@storycapture/shared-types";
 import { app, dialog, type IpcMainInvokeEvent, shell } from "electron";
 import { DEV_RELAUNCH_EXIT_CODE, isDevRuntime } from "../../runtime";
 import { readRecordingActionsSidecar } from "../action-sidecar-reader";
@@ -39,6 +40,7 @@ import {
   stopPreviewStream,
   windowInfo,
 } from "./capture-preview";
+import { exportPreflight } from "./export-preflight";
 import {
   exportRun,
   renderCancel,
@@ -485,6 +487,14 @@ export async function handleLegacyInvoke(
       );
     case "export_get_presets":
       return exportPresetsCatalogue();
+    case "export_preflight":
+      return exportPreflight(
+        (args as { args?: ExportPreflightArgs } | undefined)?.args ?? {
+          graph_json: "",
+          outputs: [],
+          compiler_issues: [],
+        },
+      );
     case "export_validate_config":
       validateExportOutput(
         (args as { cfg?: ExportOutput } | undefined)?.cfg ?? ({} as ExportOutput),

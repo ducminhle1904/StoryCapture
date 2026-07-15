@@ -35,8 +35,8 @@ function tracks(): TimelineSlice["tracks"] {
   };
 }
 
-describe("timeline layout v3", () => {
-  it("serializes current layouts as v3 and preserves annotation style metadata", () => {
+describe("timeline layout v4", () => {
+  it("serializes current layouts as v4 and preserves annotation style metadata", () => {
     const json = serializeTimelineLayout({
       tracks: tracks(),
       durationMs: 1_000,
@@ -46,7 +46,7 @@ describe("timeline layout v3", () => {
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.layout.version).toBe(3);
+    expect(parsed.layout.version).toBe(4);
     expect(parsed.migrated).toBe(false);
     expect(parsed.layout.tracks.annotations[0]).toMatchObject({
       font: { kind: "system", postscriptName: "AcmeSans-Bold" },
@@ -56,7 +56,7 @@ describe("timeline layout v3", () => {
     });
   });
 
-  it.each([1, 2])("accepts and migrates a v%s layout", (version) => {
+  it.each([1, 2, 3])("accepts and migrates a v%s layout", (version) => {
     const parsed = parseTimelineLayoutJson(
       JSON.stringify({
         version,
@@ -70,8 +70,29 @@ describe("timeline layout v3", () => {
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.layout.version).toBe(3);
+    expect(parsed.layout.version).toBe(4);
     expect(parsed.migrated).toBe(true);
     expect(parsed.layout.tracks.annotations[0]?.id).toBe("text-1");
+  });
+
+  it("migrates a legacy Vite image URL to a stable bundled asset id", () => {
+    const parsed = parseTimelineLayoutJson(
+      JSON.stringify({
+        version: 3,
+        timingModelVersion: 1,
+        sourceRevision: null,
+        tracks: tracks(),
+        durationMs: 1_000,
+        background: { kind: "image", path: "/assets/8-AbCd1234.jpg" },
+      }),
+    );
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.layout.background).toEqual({
+      kind: "image",
+      assetId: "cosmic:8",
+      path: "/assets/8-AbCd1234.jpg",
+    });
   });
 });

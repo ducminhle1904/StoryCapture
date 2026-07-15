@@ -259,6 +259,27 @@ Capture/render/export are desktop app boundaries, not shared packages. They are
 split between renderer IPC facades, post-production feature state, and Electron
 host handlers.
 
+### Post-Production Export Ownership
+
+- `features/post-production/state/compute-graph.ts` compiles the renderer state
+  into the schema-v4 composition contract exported by `@storycapture/shared-types`.
+- `features/post-production/export-compositor/scene-evaluator.ts`,
+  `canvas-scene-renderer.ts`, and `canonical-visual-engine.ts` are the visual
+  source of truth. Preview/export adapters share this engine; the hidden bridge
+  in `export-compositor-app.tsx` contains no parallel renderer.
+- `electron/ipc/export-compositor-host.ts` owns the offscreen window and bundled
+  asset resolution. `electron/ipc/legacy/export-compositor.ts` streams its BGRA
+  frames to FFmpeg.
+- `electron/ipc/legacy/export-render.ts` owns batch/job orchestration.
+  `export-planning.ts`, `export-audio-planning.ts`,
+  `export-output-lifecycle.ts`, and `export-artifact-verification.ts` own
+  encoder arguments, the full audio bus, reserved same-folder output state,
+  and ffprobe/full-decode verification respectively.
+- `electron/ipc/export-binaries.ts` is the only resolver for packaged FFmpeg
+  and ffprobe paths. Export jobs reach `completed` only after verification and
+  final publication; terminal jobs stay briefly visible so the queue can show
+  output paths or actionable errors.
+
 ## Shared Packages
 
 - `@storycapture/config`: shared TypeScript base config.
@@ -266,8 +287,9 @@ host handlers.
   plus CodeMirror language support. Runtime parsing is reached through desktop IPC
   (`apps/desktop/src/ipc/parse.ts`) and host handlers.
 - `@storycapture/shared-types`: public package exports are `.` and `./ipc`.
-  The root barrel exports IPC types/commands, browser presets, and
-  `APP_PANIC_EVENT`. `src/generated/effects.ts` is a checked-in
+  The root barrel exports IPC types/commands, browser presets,
+  `APP_PANIC_EVENT`, and the JSON-safe export composition/preflight/job
+  contract. `src/generated/effects.ts` is a checked-in
   `ts-rs`-generated file in the package tree, but it is not currently exposed
   through the package export map or root barrel.
 - `@storycapture/ui`: shared token layer, `claude-design` CSS, and `Sc*`
@@ -275,7 +297,7 @@ host handlers.
 
 ## Web Companion
 
-`apps/web` is a Next.js 16 app with App Router, tRPC, Prisma, NextAuth v5,
+`apps/web` is a Next.js App Router app with tRPC, Prisma, NextAuth,
 Cloudflare R2 multipart uploads, workspace/video dashboards, invites,
 templates, analytics, oEmbed, and desktop sync.
 
@@ -324,17 +346,17 @@ Prisma models: Auth.js `User`, `Account`, `Session`, `VerificationToken`, plus
 
 ## CI
 
-Current CI is `.github/workflows/ci.yml` on `macos-14`. It runs on pull
-requests and pushes to `main`, uses `contents: read`, and cancels older runs on
-the same ref through workflow concurrency.
+Current CI is `.github/workflows/ci.yml`. It runs on pull requests and pushes
+to `main`, uses `contents: read`, and cancels older runs on the same ref through
+workflow concurrency. Read the workflow for current runner images.
 
 1. setup pnpm and Node through `.github/actions/setup-toolchain/action.yml`;
 2. `pnpm install --frozen-lockfile`;
 3. `pnpm typecheck`;
-4. desktop Vitest;
+4. desktop Vitest and Electron smoke coverage;
 5. UI package Vitest;
 6. web Vitest;
-7. desktop Electron package build.
+7. packaged Electron export parity smoke on macOS and Windows.
 
 There is no current GitHub release workflow. Release/signing scripts exist but
 are standalone unless a future workflow wires them in.

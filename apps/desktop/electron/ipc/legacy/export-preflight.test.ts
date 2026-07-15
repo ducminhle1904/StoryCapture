@@ -1,0 +1,71 @@
+import type { ExportCompositionGraphV4, ExportPreflightArgs } from "@storycapture/shared-types";
+import { describe, expect, it } from "vitest";
+
+import { exportPreflight } from "./export-preflight";
+
+const GRAPH: ExportCompositionGraphV4 = {
+  schema_version: 4,
+  output_width: 1920,
+  output_height: 1080,
+  output_fps: 60,
+  duration_ms: 2_000,
+  video: [
+    {
+      type: "source",
+      id: "00000000-0000-4000-8000-000000000001",
+      clip_id: "video-1",
+      path: "/tmp/source.mp4",
+      pts_offset_ms: 0,
+      timeline_start_ms: 0,
+      duration_ms: 2_000,
+      source_width: 1920,
+      source_height: 1080,
+    },
+  ],
+  audio: [],
+};
+
+function args(overrides: Partial<ExportPreflightArgs> = {}): ExportPreflightArgs {
+  return {
+    graph_json: JSON.stringify(GRAPH),
+    outputs: [{ format: "mp4", resolution: "1080p", fps: 60, quality: "high" }],
+    compiler_issues: [],
+    ...overrides,
+  };
+}
+
+describe("exportPreflight", () => {
+  it("accepts a valid graph/output and reports canonical duration", () => {
+    const result = exportPreflight(args());
+
+    expect(result.ready).toBe(true);
+    expect(result.composition_duration_ms).toBe(2_000);
+    expect(result.outputs).toEqual([
+      expect.objectContaining({ output_index: 0, format: "mp4", ready: true, issues: [] }),
+    ]);
+  });
+
+  it("returns typed compiler and output issues without throwing", () => {
+    const result = exportPreflight(
+      args({
+        outputs: [{ format: "avi", resolution: "1080p", fps: 60, quality: "high" }],
+        compiler_issues: [
+          {
+            id: "sound.missing-source:voiceover",
+            code: "sound.missing-source",
+            severity: "error",
+            message: "Voiceover source is missing.",
+            clip_id: "voiceover",
+          },
+        ],
+      }),
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toEqual([
+      "sound.missing-source",
+      "output.invalid-config",
+    ]);
+    expect(result.outputs[0]?.ready).toBe(false);
+  });
+});

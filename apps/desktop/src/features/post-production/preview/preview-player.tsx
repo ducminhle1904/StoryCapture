@@ -1,13 +1,11 @@
 /**
  * PreviewPlayer — owns the post-production preview surface:
  *   - default path displays the source through native <video>
- *   - composited mode keeps the <video> as a source and renders <canvas>
+ *   - composited mode uses the canonical graph/Canvas renderer shared with export
  *   - syncs `<video>.currentTime = playheadMs / 1000` on every scrub
  *
- * The PreviewRenderPlan consumed here is a minimum viable plan: zoom
- * identity, no ripples, no cursor atlas, no background. The engine
- * already understands the full shape, so future enrichments slot in
- * without changes here.
+ * Native video remains available for lightweight harnesses. The production
+ * post-production surface opts into composited mode.
  */
 
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -30,6 +28,7 @@ import type {
   RecordingTrajectory,
 } from "@/ipc/trajectory";
 import { frontendLog } from "@/lib/log";
+import { computeGraph } from "../state/compute-graph";
 import {
   CURSOR_CLICK_EFFECT_CONTRAST_STROKE_PX,
   CURSOR_CLICK_EFFECT_MAX_ACTIVE_FEEDBACK,
@@ -72,10 +71,9 @@ import {
   resolveZoomMotion,
   sampleResolvedZoom,
 } from "../state/zoom-motion";
+import { CanonicalPreviewAdapter } from "./canonical-preview-adapter";
 import { PresentedMediaClock } from "./presented-media-clock";
-import { PreviewEngine } from "./preview-engine";
 import { TransportControls } from "./transport-controls";
-import type { PreviewRenderPlan } from "./types";
 import { samplePreparedVirtualCursor, sampleTrajectoryCursor } from "./virtual-cursor-path";
 
 type PreviewOutputMode = "native-video" | "composited-canvas";
@@ -150,20 +148,6 @@ export interface PreviewPlayerProps {
   trajectory?: RecordingTrajectory | null;
   stepTiming?: RecordingStepTimingSidecar | null;
   captureRect?: CaptureRect | null;
-}
-
-function buildPlan(width: number, height: number): PreviewRenderPlan {
-  return {
-    output_width: width,
-    output_height: height,
-    fps: 60,
-    zoom_matrices: [],
-    cursor_atlas_ref: null,
-    ripples: [],
-    highlights: [],
-    text_boxes: [],
-    background: null,
-  };
 }
 
 function safeAspect(width: number, height: number): number {
@@ -596,7 +580,7 @@ export function PreviewPlayer({
   const ambientSampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const ambientDisplayedPaletteRef = useRef<AmbientPalette>(DEFAULT_AMBIENT_PALETTE);
   const ambientTargetPaletteRef = useRef<AmbientPalette>(DEFAULT_AMBIENT_PALETTE);
-  const engineRef = useRef<PreviewEngine | null>(null);
+  const engineRef = useRef<CanonicalPreviewAdapter | null>(null);
   const rafRef = useRef<number | null>(null);
   const ambientRafRef = useRef<number | null>(null);
   const ambientLastSampleTimeRef = useRef(0);
@@ -606,9 +590,13 @@ export function PreviewPlayer({
   const sourceTimeMapRef = useRef<SourceTimelineMap>(identitySourceTimelineMap(0));
   const mediaRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaRetryCountRef = useRef(0);
+  const canonicalRenderGenerationRef = useRef(0);
+  const canonicalRenderPendingRef = useRef<number | null>(null);
+  const canonicalRenderActiveRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [mediaSourceGeneration, setMediaSourceGeneration] = useState(0);
   const [mediaError, setMediaError] = useState(false);
+  const [canonicalError, setCanonicalError] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
   const [ambientSamplingReady, setAmbientSamplingReady] = useState(false);
   const [editingTextClipId, setEditingTextClipId] = useState<string | null>(null);
@@ -627,6 +615,9 @@ export function PreviewPlayer({
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
   const setSelectedClipId = useEditorStore((s) => s.setSelectedClipId);
   const setSelectedTab = useEditorStore((s) => s.setSelectedTab);
+  const timelineTracks = useEditorStore((s) => s.tracks);
+  const exportForm = useEditorStore((s) => s.exportForm);
+  const undoExtras = useEditorStore((s) => s._undoExtras);
   const cursorClips = useEditorStore((s) => s.tracks.cursor);
   const videoClips = useEditorStore((s) => s.tracks.video);
   const zoomClips = useEditorStore((s) => s.tracks.zoom);
@@ -658,8 +649,11 @@ export function PreviewPlayer({
     presentedClockRef.current = new PresentedMediaClock(sourceTimeMap);
   }, [sourceTimeMap]);
   const useCompositedCanvas = outputMode === "composited-canvas";
+  const canonicalGraph = useMemo(
+    () => computeGraph({ tracks: timelineTracks, exportForm, _undoExtras: undoExtras }),
+    [exportForm, timelineTracks, undoExtras],
+  );
   const displayReady = !useCompositedCanvas || engineReady;
-  const renderPlan = useMemo(() => buildPlan(width, height), [width, height]);
   const editorBackground = useEditorStore(readEditorBackground);
   const stageStyle = useMemo(() => stageBackgroundStyle(editorBackground), [editorBackground]);
   const sortedTextClips = useMemo(
@@ -687,24 +681,27 @@ export function PreviewPlayer({
     () => annotationClips.find((clip) => clip.id === editingTextClipId) ?? null,
     [annotationClips, editingTextClipId],
   );
+  const displayAspect = useCompositedCanvas
+    ? safeAspect(canonicalGraph.output_width, canonicalGraph.output_height)
+    : mediaAspect;
   const frameStyle = useMemo<CSSProperties>(() => {
     const maxWidth = stageSize.width * PREVIEW_FRAME_SCALE;
     const maxHeight = stageSize.height * PREVIEW_FRAME_SCALE;
     if (maxWidth > 0 && maxHeight > 0) {
-      const frameWidth = Math.min(maxWidth, maxHeight * mediaAspect);
-      const frameHeight = frameWidth / mediaAspect;
+      const frameWidth = Math.min(maxWidth, maxHeight * displayAspect);
+      const frameHeight = frameWidth / displayAspect;
       return {
         width: Math.round(frameWidth),
         height: Math.round(frameHeight),
       };
     }
     return {
-      aspectRatio: `${mediaAspect}`,
+      aspectRatio: `${displayAspect}`,
       maxHeight: `${PREVIEW_FRAME_SCALE * 100}%`,
       maxWidth: `${PREVIEW_FRAME_SCALE * 100}%`,
       width: `${PREVIEW_FRAME_SCALE * 100}%`,
     };
-  }, [mediaAspect, stageSize.height, stageSize.width]);
+  }, [displayAspect, stageSize.height, stageSize.width]);
 
   const resolvedSrc = videoSrc
     ? videoSrc.startsWith("asset:") || videoSrc.startsWith("http")
@@ -714,16 +711,52 @@ export function PreviewPlayer({
   const useAmbientBackdrop = editorBackground.kind === "transparent" && Boolean(resolvedSrc);
   const mediaSourceKey = `${resolvedSrc ?? "empty"}:${mediaSourceGeneration}`;
 
+  const requestCanonicalFrame = useCallback((timestampMs: number) => {
+    canonicalRenderPendingRef.current = Math.max(0, timestampMs);
+    if (canonicalRenderActiveRef.current) return;
+
+    const generation = canonicalRenderGenerationRef.current;
+    canonicalRenderActiveRef.current = true;
+    void (async () => {
+      try {
+        while (generation === canonicalRenderGenerationRef.current) {
+          const pendingTimestampMs = canonicalRenderPendingRef.current;
+          if (pendingTimestampMs === null) break;
+          canonicalRenderPendingRef.current = null;
+          const engine = engineRef.current;
+          if (!engine) break;
+          await engine.renderFrame(pendingTimestampMs);
+        }
+      } catch (error) {
+        if (generation === canonicalRenderGenerationRef.current) {
+          canonicalRenderPendingRef.current = null;
+          setCanonicalError(true);
+          frontendLog.warn(
+            "post-production/PreviewPlayer",
+            "Canonical preview frame render failed",
+            { error },
+          );
+        }
+      } finally {
+        if (generation === canonicalRenderGenerationRef.current) {
+          canonicalRenderActiveRef.current = false;
+        }
+      }
+    })();
+  }, []);
+
   const clearMediaRetryTimer = useCallback(() => {
     if (mediaRetryTimerRef.current === null) return;
     clearTimeout(mediaRetryTimerRef.current);
     mediaRetryTimerRef.current = null;
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changing the resolved source intentionally resets retry state.
   useEffect(() => {
     clearMediaRetryTimer();
     mediaRetryCountRef.current = 0;
     setMediaError(false);
+    setCanonicalError(false);
     playingRef.current = false;
     setPlaying(false);
     setMediaSourceGeneration(0);
@@ -736,22 +769,34 @@ export function PreviewPlayer({
     for (const node of cursorClickFeedbackRefs.current) hideClickFeedbackNode(node);
   }, []);
 
-  const applyPreviewZoom = useCallback((playheadMs: number) => {
-    const frame = previewFrameContentRef.current;
-    if (!frame) return;
+  const applyPreviewZoom = useCallback(
+    (playheadMs: number) => {
+      const frame = previewFrameContentRef.current;
+      if (!frame) return;
+      if (useCompositedCanvas) {
+        frame.style.transformOrigin = "0 0";
+        frame.style.transform = "none";
+        return;
+      }
 
-    const zoom = sampleResolvedZoom(resolvedZoomMotionsRef.current, playheadMs);
-    const crop = normalizedZoomCropTopLeft(zoom.center, zoom.scale);
-    const width = frame.clientWidth || frame.getBoundingClientRect().width;
-    const height = frame.clientHeight || frame.getBoundingClientRect().height;
-    const tx = -crop.x * width * zoom.scale;
-    const ty = -crop.y * height * zoom.scale;
-    frame.style.transformOrigin = "0 0";
-    frame.style.transform = `matrix(${zoom.scale}, 0, 0, ${zoom.scale}, ${tx}, ${ty})`;
-  }, []);
+      const zoom = sampleResolvedZoom(resolvedZoomMotionsRef.current, playheadMs);
+      const crop = normalizedZoomCropTopLeft(zoom.center, zoom.scale);
+      const width = frame.clientWidth || frame.getBoundingClientRect().width;
+      const height = frame.clientHeight || frame.getBoundingClientRect().height;
+      const tx = -crop.x * width * zoom.scale;
+      const ty = -crop.y * height * zoom.scale;
+      frame.style.transformOrigin = "0 0";
+      frame.style.transform = `matrix(${zoom.scale}, 0, 0, ${zoom.scale}, ${tx}, ${ty})`;
+    },
+    [useCompositedCanvas],
+  );
 
   const renderCursorOverlay = useCallback(
     (playheadMs: number) => {
+      if (useCompositedCanvas) {
+        hideCursorOverlay();
+        return;
+      }
       const cursor = cursorRef.current;
       const currentTrajectory = trajectoryRef.current;
       if (!cursor) {
@@ -849,7 +894,7 @@ export function PreviewPlayer({
         }
       }
     },
-    [hideCursorOverlay],
+    [hideCursorOverlay, useCompositedCanvas],
   );
 
   const applyAmbientPalette = useCallback((palette: AmbientPalette) => {
@@ -929,26 +974,28 @@ export function PreviewPlayer({
         applyPreviewZoom(fallbackTimelineMs);
         renderCursorOverlay(fallbackTimelineMs);
         if (useCompositedCanvas) {
-          const engine = engineRef.current;
-          if (engine) void engine.renderFrame(fallbackTimelineMs, renderPlan);
+          requestCanonicalFrame(fallbackTimelineMs);
         }
       }
     },
     [
       applyAmbientPalette,
       applyPreviewZoom,
+      requestCanonicalFrame,
       renderCursorOverlay,
-      renderPlan,
       sampleAmbientPalette,
       syncAmbientVideo,
       useCompositedCanvas,
     ],
   );
 
-  // The current UI shows native video. Keep the compositor dormant until its
-  // canvas output is visible, otherwise playback pays hidden GPU work.
+  // Keep the canonical renderer dormant for native-video harnesses.
   useEffect(() => {
+    const retryGeneration = mediaSourceGeneration;
     if (!useCompositedCanvas) {
+      canonicalRenderGenerationRef.current += 1;
+      canonicalRenderPendingRef.current = null;
+      canonicalRenderActiveRef.current = false;
       engineRef.current?.dispose();
       engineRef.current = null;
       setEngineReady(false);
@@ -956,17 +1003,17 @@ export function PreviewPlayer({
     }
 
     const canvas = canvasRef.current;
-    const video = videoRef.current;
-    if (!canvas || !video) return;
+    if (!canvas) return;
     let disposed = false;
-    const engine = new PreviewEngine({
-      canvas,
-      videoElement: video,
-      outputWidth: width,
-      outputHeight: height,
-    });
+    const generation = canonicalRenderGenerationRef.current + 1;
+    canonicalRenderGenerationRef.current = generation;
+    canonicalRenderPendingRef.current = null;
+    canonicalRenderActiveRef.current = false;
+    setEngineReady(false);
+    setCanonicalError(false);
+    const engine = new CanonicalPreviewAdapter(canvas);
     engine
-      .init()
+      .configure(canonicalGraph)
       .then(() => {
         if (disposed) {
           engine.dispose();
@@ -974,21 +1021,27 @@ export function PreviewPlayer({
         }
         engineRef.current = engine;
         setEngineReady(true);
+        requestCanonicalFrame(useEditorStore.getState().playheadMs);
       })
       .catch((err) => {
+        if (disposed) return;
+        setCanonicalError(true);
         frontendLog.warn(
           "post-production/PreviewPlayer",
-          "PreviewEngine init failed (preview disabled)",
-          { error: err },
+          "Canonical preview initialization failed",
+          { error: err, fields: { retry_generation: retryGeneration } },
         );
       });
     return () => {
       disposed = true;
-      engineRef.current?.dispose();
-      engineRef.current = null;
+      canonicalRenderGenerationRef.current += 1;
+      canonicalRenderPendingRef.current = null;
+      canonicalRenderActiveRef.current = false;
+      if (engineRef.current === engine) engineRef.current = null;
+      engine.dispose();
       setEngineReady(false);
     };
-  }, [useCompositedCanvas, width, height]);
+  }, [canonicalGraph, mediaSourceGeneration, requestCanonicalFrame, useCompositedCanvas]);
 
   useEffect(() => {
     playingRef.current = playing;
@@ -1016,6 +1069,7 @@ export function PreviewPlayer({
     setMediaAspect(safeAspect(width, height));
   }, [width, height]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stage resizing intentionally reapplies zoom and cursor geometry.
   useEffect(() => {
     const playheadMs = useEditorStore.getState().playheadMs;
     applyPreviewZoom(playheadMs);
@@ -1148,8 +1202,7 @@ export function PreviewPlayer({
       applyPreviewZoom(state.timelineMs);
       renderCursorOverlay(state.timelineMs);
       if (useCompositedCanvas) {
-        const engine = engineRef.current;
-        if (engine) void engine.renderFrame(state.timelineMs, renderPlan);
+        requestCanonicalFrame(state.timelineMs);
       }
     };
 
@@ -1177,7 +1230,13 @@ export function PreviewPlayer({
         video.cancelVideoFrameCallback(callbackId);
       }
     };
-  }, [applyPreviewZoom, renderCursorOverlay, renderPlan, resolvedSrc, useCompositedCanvas]);
+  }, [
+    applyPreviewZoom,
+    renderCursorOverlay,
+    requestCanonicalFrame,
+    resolvedSrc,
+    useCompositedCanvas,
+  ]);
 
   useEffect(() => {
     if (!playing || useCompositedCanvas) return;
@@ -1313,7 +1372,7 @@ export function PreviewPlayer({
 
   // rAF loop while playing the visible composited canvas.
   useEffect(() => {
-    if (!playing || !useCompositedCanvas) return;
+    if (!playing || !useCompositedCanvas || !engineReady) return;
     const video = videoRef.current;
     const eng = engineRef.current;
     if (!video || !resolvedSrc) return;
@@ -1374,7 +1433,7 @@ export function PreviewPlayer({
       ) {
         commitPlayhead(nextPlayheadMs);
       }
-      void eng.renderFrame(renderedTimelineMs, renderPlan);
+      requestCanonicalFrame(renderedTimelineMs);
       if (Number.isFinite(durationMs) && nextPlayheadMs >= durationMs) {
         commitPlayhead(durationMs);
         setPlaying(false);
@@ -1428,8 +1487,9 @@ export function PreviewPlayer({
   }, [
     playing,
     applyPreviewZoom,
+    engineReady,
     renderCursorOverlay,
-    renderPlan,
+    requestCanonicalFrame,
     resolvedSrc,
     seekPreviewToPlayhead,
     setPlayhead,
@@ -1478,6 +1538,7 @@ export function PreviewPlayer({
     clearMediaRetryTimer();
     mediaRetryCountRef.current = 0;
     setMediaError(false);
+    setCanonicalError(false);
     setMediaSourceGeneration((generation) => generation + 1);
   }, [clearMediaRetryTimer]);
 
@@ -1560,6 +1621,10 @@ export function PreviewPlayer({
     },
     [selectTextClip],
   );
+
+  const focusTextEditor = useCallback((node: HTMLTextAreaElement | null) => {
+    node?.focus();
+  }, []);
 
   const onTextPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>, clip: AnnotationClip) => {
@@ -1738,19 +1803,17 @@ export function PreviewPlayer({
               {useCompositedCanvas ? (
                 <canvas
                   ref={canvasRef}
-                  width={width}
-                  height={height}
+                  width={canonicalGraph.output_width}
+                  height={canonicalGraph.output_height}
                   className="relative h-full w-full object-contain"
-                  aria-label="Composited preview canvas"
+                  aria-label="Canonical composited preview canvas"
                 />
               ) : null}
             </div>
-            {mediaError ? (
+            {mediaError || canonicalError ? (
               <div className="absolute inset-0 z-30 grid place-items-center bg-zinc-950/72 px-6 text-center">
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-white">
-                    Video preview could not be loaded.
-                  </p>
+                  <p className="text-sm font-medium text-white">Preview could not be rendered.</p>
                   <button
                     type="button"
                     className="rounded-md border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15"
@@ -1761,7 +1824,7 @@ export function PreviewPlayer({
                 </div>
               </div>
             ) : null}
-            {activeHighlights.length > 0 ? (
+            {!useCompositedCanvas && activeHighlights.length > 0 ? (
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -1826,30 +1889,32 @@ export function PreviewPlayer({
                 })}
               </div>
             ) : null}
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 overflow-hidden"
-              data-testid="virtual-cursor-overlay"
-            >
-              {CURSOR_CLICK_FEEDBACK_NODE_KEYS.map((nodeKey, nodeIndex) => (
-                <div
-                  key={nodeKey}
-                  ref={(node) => {
-                    cursorClickFeedbackRefs.current[nodeIndex] = node;
-                  }}
-                  className="absolute box-border opacity-0 invisible"
-                  data-feedback-slot={Math.floor(nodeIndex / CURSOR_CLICK_EFFECT_MAX_PRIMITIVES)}
-                  data-primitive-slot={nodeIndex % CURSOR_CLICK_EFFECT_MAX_PRIMITIVES}
-                  data-testid="cursor-click-feedback-primitive"
+            {!useCompositedCanvas ? (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 overflow-hidden"
+                data-testid="virtual-cursor-overlay"
+              >
+                {CURSOR_CLICK_FEEDBACK_NODE_KEYS.map((nodeKey, nodeIndex) => (
+                  <div
+                    key={nodeKey}
+                    ref={(node) => {
+                      cursorClickFeedbackRefs.current[nodeIndex] = node;
+                    }}
+                    className="absolute box-border opacity-0 invisible"
+                    data-feedback-slot={Math.floor(nodeIndex / CURSOR_CLICK_EFFECT_MAX_PRIMITIVES)}
+                    data-primitive-slot={nodeIndex % CURSOR_CLICK_EFFECT_MAX_PRIMITIVES}
+                    data-testid="cursor-click-feedback-primitive"
+                  />
+                ))}
+                <img
+                  ref={cursorRef}
+                  alt=""
+                  className="absolute opacity-0 drop-shadow-[0_5px_12px_rgba(0,0,0,0.42)]"
+                  draggable={false}
                 />
-              ))}
-              <img
-                ref={cursorRef}
-                alt=""
-                className="absolute opacity-0 drop-shadow-[0_5px_12px_rgba(0,0,0,0.42)]"
-                draggable={false}
-              />
-            </div>
+              </div>
+            ) : null}
             {activeTextOverlays.length > 0 ? (
               <div
                 className="pointer-events-none absolute inset-0 overflow-visible"
@@ -1859,6 +1924,7 @@ export function PreviewPlayer({
                   const style = resolvedTextStyle(clip);
                   const selected = selectedClipId === clip.id;
                   const editing = editingTextClipId === clip.id;
+                  const canonicalInteractionOnly = useCompositedCanvas && !editing;
                   const anchorPosition = resolveTextAnchorPosition(
                     clip,
                     playheadMs,
@@ -1874,12 +1940,16 @@ export function PreviewPlayer({
                       : anchorPosition;
                   const font = textFontCss(style.font);
                   return (
+                    // biome-ignore lint/a11y/useSemanticElements: this composite drag/edit surface contains its own resize button and cannot be a button element.
                     <div
                       key={clip.id}
                       role="button"
                       tabIndex={0}
                       aria-label={`Text overlay ${clip.text}`}
                       data-text-clip-id={clip.id}
+                      data-canonical-interaction-only={
+                        canonicalInteractionOnly ? "true" : undefined
+                      }
                       className={`pointer-events-auto absolute whitespace-pre-wrap transition-[box-shadow,outline-color,transform,opacity] ${
                         selected
                           ? "rounded-md outline outline-2 outline-[var(--sc-focus-ring)]"
@@ -1889,7 +1959,7 @@ export function PreviewPlayer({
                         left: percent(position.x),
                         top: percent(position.y),
                         ...textMotionStyle(style.animation, clip, playheadMs, position.x),
-                        color: style.color,
+                        color: canonicalInteractionOnly ? "transparent" : style.color,
                         fontFamily: font.fontFamily,
                         fontSize: `clamp(12px, ${style.sizePt}px, 72px)`,
                         fontWeight: font.fontWeight,
@@ -1903,15 +1973,23 @@ export function PreviewPlayer({
                         overflowWrap: "break-word",
                         padding: style.boxStyle ? `${style.boxStyle.paddingPx}px` : undefined,
                         borderRadius: style.boxStyle ? `${style.boxStyle.radiusPx}px` : undefined,
-                        background: style.boxStyle?.bgColor,
+                        background: canonicalInteractionOnly
+                          ? "transparent"
+                          : style.boxStyle?.bgColor,
                         border:
-                          style.boxStyle?.borderColor && style.boxStyle.borderWidthPx > 0
+                          !canonicalInteractionOnly &&
+                          style.boxStyle?.borderColor &&
+                          style.boxStyle.borderWidthPx > 0
                             ? `${style.boxStyle.borderWidthPx}px solid ${style.boxStyle.borderColor}`
                             : undefined,
-                        boxShadow: style.boxStyle?.shadow
-                          ? textShadowCss(style.boxStyle.shadow)
-                          : undefined,
-                        textShadow: style.textShadow ? textShadowCss(style.textShadow) : undefined,
+                        boxShadow:
+                          !canonicalInteractionOnly && style.boxStyle?.shadow
+                            ? textShadowCss(style.boxStyle.shadow)
+                            : undefined,
+                        textShadow:
+                          !canonicalInteractionOnly && style.textShadow
+                            ? textShadowCss(style.textShadow)
+                            : undefined,
                       }}
                       onPointerDown={(e) => onTextPointerDown(e, clip)}
                       onDoubleClick={(e) => {
@@ -1925,7 +2003,7 @@ export function PreviewPlayer({
                     >
                       {editing ? (
                         <textarea
-                          autoFocus
+                          ref={focusTextEditor}
                           aria-label="Edit text overlay"
                           value={textDraft}
                           className="min-h-[2.4em] w-[min(420px,62vw)] resize-none rounded-md border border-white/18 bg-zinc-950/82 px-2 py-1 text-inherit outline-none"

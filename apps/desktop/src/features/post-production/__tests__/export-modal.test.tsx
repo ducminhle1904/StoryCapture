@@ -3,14 +3,14 @@
  *   - Export button disabled when no formats selected
  *   - Selecting MP4 + 1080p + 60fps + medium + picking a folder enables
  *     submit, and clicking Export calls `export_run` with the right shape
- *   - `export_validate_config` failures surface as warnings
+ *   - typed `export_preflight` failures surface as warnings
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Tauri invoke mock — must be declared via vi.mock BEFORE importing modules
 // that read from @tauri-apps/api/core.
@@ -29,10 +29,10 @@ vi.mock("sonner", () => ({
   },
 }));
 
+import { RENDER_KEYS } from "@/ipc/render";
+import { DEFAULT_EXPORT_KNOBS, useOutputPrefsStore } from "@/state/output-prefs";
 // Re-import AFTER the mock is in place.
 import { ExportModal } from "../export-modal/export-modal";
-import { DEFAULT_EXPORT_KNOBS, useOutputPrefsStore } from "@/state/output-prefs";
-import { RENDER_KEYS } from "@/ipc/render";
 import { DEFAULT_EXPORT_FORM } from "../state/export-slice";
 import { useEditorStore } from "../state/store";
 
@@ -67,6 +67,15 @@ function resetStore() {
       baseName: "export",
     },
   });
+}
+
+function successfulPreflight() {
+  return {
+    ready: true,
+    composition_duration_ms: 1_000,
+    issues: [],
+    outputs: [],
+  };
 }
 
 beforeEach(() => {
@@ -200,7 +209,7 @@ describe("ExportModal", () => {
       },
     });
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "export_validate_config") return Promise.resolve(null);
+      if (cmd === "export_preflight") return Promise.resolve(successfulPreflight());
       if (cmd === "export_run") {
         return Promise.resolve({
           batch_id: "b1",
@@ -279,7 +288,7 @@ describe("ExportModal", () => {
       },
     });
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "export_validate_config") return Promise.resolve(null);
+      if (cmd === "export_preflight") return Promise.resolve(successfulPreflight());
       if (cmd === "export_run") {
         return Promise.resolve({
           batch_id: "b1",
@@ -367,7 +376,7 @@ describe("ExportModal", () => {
       },
     });
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "export_validate_config") return Promise.resolve(null);
+      if (cmd === "export_preflight") return Promise.resolve(successfulPreflight());
       if (cmd === "export_run") {
         return Promise.reject(new Error("mp4 export is unsupported: text-overlay"));
       }
@@ -401,8 +410,21 @@ describe("ExportModal", () => {
     });
 
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "export_validate_config") {
-        return Promise.reject("GIF does not support 4K");
+      if (cmd === "export_preflight") {
+        return Promise.resolve({
+          ready: false,
+          composition_duration_ms: 1_000,
+          issues: [
+            {
+              id: "output.invalid-config:0",
+              code: "output.invalid-config",
+              severity: "error",
+              message: "GIF does not support 4K",
+              output_index: 0,
+            },
+          ],
+          outputs: [],
+        });
       }
       return Promise.resolve(null);
     });
@@ -416,9 +438,7 @@ describe("ExportModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /validate/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/GIF does not support 4K/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/GIF does not support 4K/i)).toBeInTheDocument();
     });
 
     const btn = screen.getByRole("button", { name: /start export/i });

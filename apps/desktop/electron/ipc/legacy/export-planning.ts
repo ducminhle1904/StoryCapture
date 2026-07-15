@@ -1,4 +1,4 @@
-import path from "node:path";
+import type { ExportAudioPlan as CanonicalExportAudioPlan } from "./export-audio-planning";
 import type { ExportEncoderOptions, ExportOutput } from "./shared";
 
 type ExportFormat = "mp4" | "webm" | "gif";
@@ -46,6 +46,7 @@ interface ExportGraph {
   output_width?: number;
   output_height?: number;
   output_fps?: number;
+  duration_ms?: number;
   video?: Array<Record<string, unknown>>;
   audio?: Array<Record<string, unknown>>;
 }
@@ -67,10 +68,7 @@ export interface CompositedExportPlan extends RunnableExportPlanBase {
   pixelFormat: "bgra";
 }
 
-export type RunnableExportPlan =
-  | (RunnableExportPlanBase & { kind: "source-copy" })
-  | (RunnableExportPlanBase & { kind: "simple-reencode" })
-  | CompositedExportPlan;
+export type RunnableExportPlan = CompositedExportPlan;
 
 export interface UnsupportedExportPlan {
   kind: "unsupported";
@@ -125,6 +123,7 @@ const SUPPORTED_COMPOSITOR_VIDEO_NODES = new Set([
   "ripple-overlay",
   "highlight-overlay",
   "text-overlay",
+  "transition",
 ]);
 
 function enumValue<T extends readonly string[]>(value: unknown, allowed: T): T[number] | null {
@@ -339,7 +338,10 @@ export function analyzeExportPlan(graphJson: string, output: ExportOutput): Expo
   }
 
   const sources = sourceNodes(graph);
-  if (sources.length === 0 || !sources.some((source) => source.path)) {
+  if (graph.schema_version !== 4) {
+    return unsupportedPlan(output, graph, "canonical export requires composition graph schema v4");
+  }
+  if (sources.length === 0 || sources.some((source) => !source.path)) {
     return unsupportedPlan(output, graph, "export graph has no source video");
   }
 
@@ -354,18 +356,6 @@ export function analyzeExportPlan(graphJson: string, output: ExportOutput): Expo
     );
   }
 
-  if (sources.length > 1) {
-    const missingDuration = sources.some((source) => !Number.isFinite(source.duration_ms));
-    return unsupportedPlan(
-      output,
-      graph,
-      missingDuration
-        ? "multiple source clips require duration_ms before simple concat export can run"
-        : "multiple source clips require simple concat export, which is not implemented yet",
-      "simple-concat",
-    );
-  }
-
   const source = sources[0];
   if (!source?.path) {
     return unsupportedPlan(output, graph, "export graph has no source video");
@@ -373,15 +363,7 @@ export function analyzeExportPlan(graphJson: string, output: ExportOutput): Expo
 
   const encoderOptions = normalizeExportEncoderOptions(output);
   const base = { output, graph, source, encoderOptions };
-  if (requiresComposition(graph)) {
-    const composited = compositedPlan(base);
-    if (composited.kind === "unsupported") return composited;
-    return composited;
-  }
-  if (isSourceCopyEligible(source, output, encoderOptions)) {
-    return { ...base, kind: "source-copy" };
-  }
-  return { ...base, kind: "simple-reencode" };
+  return compositedPlan(base);
 }
 
 function unsupportedGraphNodes(graph: ExportGraph): string[] {
@@ -390,61 +372,21 @@ function unsupportedGraphNodes(graph: ExportGraph): string[] {
     const type = String(node.type ?? "unknown-video");
     if (!SUPPORTED_COMPOSITOR_VIDEO_NODES.has(type)) unsupported.add(type);
   }
-  if ((Array.isArray(graph.audio) ? graph.audio : []).length > 0) unsupported.add("audio");
+  for (const node of Array.isArray(graph.audio) ? graph.audio : []) {
+    if (node.type !== "sound") unsupported.add(`audio:${String(node.type ?? "unknown")}`);
+  }
   return [...unsupported].sort();
-}
-
-function requiresComposition(graph: ExportGraph): boolean {
-  return (Array.isArray(graph.video) ? graph.video : []).some(
-    (node) => node.type !== "source" || !isIdentitySourceTimeMap(node.source_time_map),
-  );
-}
-
-function isIdentitySourceTimeMap(value: unknown): boolean {
-  if (value == null) return true;
-  if (typeof value !== "object" || value === null) return false;
-  const segments = (value as { segments?: unknown }).segments;
-  if (!Array.isArray(segments) || segments.length !== 1) return false;
-  const segment = segments[0] as Record<string, unknown>;
-  return (
-    segment.kind === "media" &&
-    segment.sourceStartUs === 0 &&
-    segment.timelineStartMs === 0 &&
-    typeof segment.sourceEndUs === "number" &&
-    typeof segment.timelineEndMs === "number" &&
-    segment.sourceEndUs === Math.round(segment.timelineEndMs * 1000)
-  );
 }
 
 function compositedPlan(
   base: RunnableExportPlanBase,
 ): CompositedExportPlan | UnsupportedExportPlan {
-  const format = enumValue(base.output.format, FORMATS);
-  if (format === "gif") {
-    return unsupportedPlan(
-      base.output,
-      base.graph,
-      "GIF composited export is not implemented yet",
-      "composited",
-      ["gif"],
-    );
-  }
-  const sourceOffsetMs = Math.max(0, finiteNumber(base.source.pts_offset_ms) ?? 0);
-  if (sourceOffsetMs > 0) {
-    return unsupportedPlan(
-      base.output,
-      base.graph,
-      "composited export does not support source pts_offset_ms yet",
-      "composited",
-      ["pts_offset_ms"],
-    );
-  }
-  const durationMs = compositedDurationMs(base.source);
+  const durationMs = finiteNumber(base.graph.duration_ms);
   if (!durationMs) {
     return unsupportedPlan(
       base.output,
       base.graph,
-      "composited export requires source duration_ms",
+      "canonical export requires graph duration_ms",
       "composited",
       ["duration_ms"],
     );
@@ -453,20 +395,21 @@ function compositedPlan(
   const fps = clampFpsValue(base.output.fps ?? base.graph.output_fps);
   return {
     ...base,
+    graph: {
+      ...base.graph,
+      output_width: size.width,
+      output_height: size.height,
+      output_fps: fps,
+      duration_ms: Math.max(1, Math.round(durationMs)),
+    },
     kind: "composited",
     outputWidth: size.width,
     outputHeight: size.height,
     fps,
-    durationMs,
+    durationMs: Math.max(1, Math.round(durationMs)),
     frameCount: Math.max(1, Math.ceil((durationMs / 1000) * fps)),
     pixelFormat: "bgra",
   };
-}
-
-function compositedDurationMs(source: ExportSourceNode): number | null {
-  const duration = finiteNumber(source.duration_ms);
-  if (duration === null || duration <= 0) return null;
-  return Math.max(1, Math.round(duration));
 }
 
 function compositedOutputSize(
@@ -510,119 +453,13 @@ function unsupportedPlan(
   };
 }
 
-function isSourceCopyEligible(
-  source: ExportSourceNode,
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): boolean {
-  const format = enumValue(output.format, FORMATS);
-  if (format !== "mp4" && format !== "webm") return false;
-  if (output.quality !== "high") return false;
-  if (resolutionSize(output)) return false;
-  if (!sourceExtensionMatchesFormat(source.path, format)) return false;
-  if (!sourceFpsMatches(source.source_fps, output.fps)) return false;
-  if (encoderOptions.container !== format) return false;
-  return !hasExplicitReencodeOptions(output.encoder_options, format);
-}
-
-function sourceFpsMatches(sourceFps: number | undefined, outputFps: number): boolean {
-  if (!Number.isFinite(sourceFps)) return false;
-  return Math.abs(Number(sourceFps) - outputFps) < 0.01;
-}
-
-function sourceExtensionMatchesFormat(sourcePath: string, format: "mp4" | "webm"): boolean {
-  const ext = path.extname(sourcePath).toLowerCase();
-  if (format === "mp4") return ext === ".mp4" || ext === ".m4v";
-  return ext === ".webm";
-}
-
-function hasExplicitReencodeOptions(
-  options: ExportEncoderOptions | null | undefined,
-  format: ExportFormat,
-): boolean {
-  if (!options) return false;
-  if (options.rate_control && options.rate_control !== "auto") return true;
-  if (options.hw_encoder) return true;
-  if (options.quality_value !== undefined && options.quality_value !== null) return true;
-  if (options.x264_preset && options.x264_preset !== "medium") return true;
-  if (
-    options.keyframe_interval_sec !== undefined &&
-    options.keyframe_interval_sec !== null &&
-    options.keyframe_interval_sec !== 2
-  ) {
-    return true;
-  }
-  if (options.downscale_algo && options.downscale_algo !== "lanczos") return true;
-  if (hasExplicitAudioOptions(options.audio, format)) return true;
-  return false;
-}
-
-function hasExplicitAudioOptions(
-  audio: ExportEncoderOptions["audio"] | null | undefined,
-  format: ExportFormat,
-): boolean {
-  if (!audio) return false;
-  const defaultCodec = format === "webm" ? "opus" : "aac";
-  if (audio.codec && audio.codec !== defaultCodec) return true;
-  if (
-    audio.bitrate_kbps !== undefined &&
-    audio.bitrate_kbps !== null &&
-    audio.bitrate_kbps !== DEFAULT_AUDIO_BITRATE_KBPS
-  ) {
-    return true;
-  }
-  if (
-    audio.channels !== undefined &&
-    audio.channels !== null &&
-    audio.channels !== DEFAULT_AUDIO_CHANNELS
-  ) {
-    return true;
-  }
-  if (
-    audio.sample_rate_hz !== undefined &&
-    audio.sample_rate_hz !== null &&
-    audio.sample_rate_hz !== DEFAULT_AUDIO_SAMPLE_RATE_HZ
-  ) {
-    return true;
-  }
-  return false;
-}
-
-export function ffmpegArgsForExportPlan(plan: RunnableExportPlan, out: string): string[] {
-  if (plan.kind === "source-copy") {
-    const args = ["-y", "-i", plan.source.path, "-map", "0", "-c", "copy"];
-    if (plan.output.format === "mp4") args.push("-movflags", "+faststart");
-    args.push(out);
-    return args;
-  }
-  if (plan.kind === "composited") {
-    return ffmpegArgsForCompositedExportPlan(plan, out);
-  }
-
-  const format = enumValue(plan.output.format, FORMATS);
-  const args = ["-y", "-i", plan.source.path];
-  const filters = videoFiltersForExport(plan.output, plan.encoderOptions);
-  if (format === "gif") {
-    if (filters.length > 0) args.push("-vf", filters.join(","));
-    args.push("-an", out);
-    return args;
-  }
-
-  args.push("-map", "0:v:0", "-map", "0:a?");
-  if (filters.length > 0) args.push("-vf", filters.join(","));
-  if (format === "webm") {
-    args.push(...webmVideoArgs(plan.output, plan.encoderOptions));
-  } else {
-    args.push(...mp4VideoArgs(plan.output, plan.encoderOptions));
-  }
-  args.push(...audioArgs(plan.encoderOptions, format ?? "mp4"));
-  args.push(out);
-  return args;
-}
-
-function ffmpegArgsForCompositedExportPlan(plan: CompositedExportPlan, out: string): string[] {
+export function ffmpegArgsForCanonicalExportPlan(
+  plan: CompositedExportPlan,
+  audioPlan: CanonicalExportAudioPlan,
+  out: string,
+): string[] {
   const format = enumValue(plan.output.format, FORMATS) ?? "mp4";
-  const args = [
+  const rawInput = [
     "-y",
     "-f",
     "rawvideo",
@@ -635,100 +472,33 @@ function ffmpegArgsForCompositedExportPlan(plan: CompositedExportPlan, out: stri
     "-i",
     "pipe:0",
   ];
-  const includeSourceAudio = format !== "gif";
-  if (includeSourceAudio) {
-    args.push("-i", plan.source.path);
+  const exactDuration = (plan.durationMs / 1_000).toFixed(6);
+  if (format === "gif") {
+    return [
+      ...rawInput,
+      "-filter_complex",
+      "[0:v]split[gif_palette_source][gif_source];[gif_palette_source]palettegen=max_colors=256[gif_palette];[gif_source][gif_palette]paletteuse=dither=sierra2_4a[gif_video]",
+      "-map",
+      "[gif_video]",
+      "-an",
+      "-loop",
+      "0",
+      "-t",
+      exactDuration,
+      out,
+    ];
   }
-  args.push("-map", "0:v:0");
-  if (includeSourceAudio) {
-    const mappedAudio = mappedAudioFilter(plan.source.source_time_map);
-    if (mappedAudio) {
-      args.push("-filter_complex", mappedAudio, "-map", "[mapped_audio]");
-    } else {
-      args.push("-map", "1:a?");
-    }
+  if (audioPlan.kind !== "mixed") {
+    const reason = audioPlan.diagnostics.map((diagnostic) => diagnostic.message).join("; ");
+    throw new Error(reason || "canonical audio planning failed");
   }
-  if (format === "webm") {
-    args.push(...webmVideoArgs(plan.output, plan.encoderOptions));
-  } else {
-    args.push(...mp4VideoArgs(plan.output, plan.encoderOptions));
-  }
-  if (includeSourceAudio) {
-    args.push(...audioArgs(plan.encoderOptions, format));
-    args.push("-shortest");
-  } else {
-    args.push("-an");
-  }
-  args.push(out);
+  const args = [...rawInput, ...audioPlan.inputArgs];
+  if (audioPlan.filterComplex) args.push("-filter_complex", audioPlan.filterComplex);
+  args.push("-map", "0:v:0", ...audioPlan.mapArgs);
+  if (format === "webm") args.push(...webmVideoArgs(plan.output, plan.encoderOptions));
+  else args.push(...mp4VideoArgs(plan.output, plan.encoderOptions));
+  args.push(...audioPlan.encoderArgs, ...audioPlan.outputArgs, out);
   return args;
-}
-
-export function mappedAudioFilter(value: unknown): string | null {
-  if (isIdentitySourceTimeMap(value) || typeof value !== "object" || value === null) return null;
-  const segments = (value as { segments?: unknown }).segments;
-  if (!Array.isArray(segments) || segments.length === 0) return null;
-  const chains: string[] = [];
-  const labels: string[] = [];
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index] as Record<string, unknown>;
-    const label = `mapped_audio_${index}`;
-    if (
-      segment.kind === "media" &&
-      typeof segment.sourceStartUs === "number" &&
-      typeof segment.sourceEndUs === "number"
-    ) {
-      const start = Math.max(0, segment.sourceStartUs) / 1_000_000;
-      const end = Math.max(segment.sourceStartUs, segment.sourceEndUs) / 1_000_000;
-      chains.push(`[1:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[${label}]`);
-    } else if (
-      segment.kind === "hold" &&
-      typeof segment.timelineStartMs === "number" &&
-      typeof segment.timelineEndMs === "number"
-    ) {
-      const duration = Math.max(0, segment.timelineEndMs - segment.timelineStartMs) / 1000;
-      chains.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${duration}[${label}]`);
-    } else {
-      return null;
-    }
-    labels.push(`[${label}]`);
-  }
-  return `${chains.join(";")};${labels.join("")}concat=n=${labels.length}:v=0:a=1[mapped_audio]`;
-}
-
-export function ffmpegArgsForExportOutput(
-  input: string,
-  output: ExportOutput,
-  out: string,
-): string[] {
-  validateExportOutput(output);
-  const graph: ExportGraph = {
-    schema_version: 2,
-    output_fps: output.fps,
-    video: [{ type: "source", path: input, pts_offset_ms: 0 }],
-    audio: [],
-  };
-  return ffmpegArgsForExportPlan(
-    {
-      kind: "simple-reencode",
-      output,
-      graph,
-      source: { type: "source", path: input, pts_offset_ms: 0 },
-      encoderOptions: normalizeExportEncoderOptions(output),
-    },
-    out,
-  );
-}
-
-function videoFiltersForExport(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): string[] {
-  const filters = [`fps=${clampFpsValue(output.fps)}`];
-  const size = resolutionSize(output);
-  if (size) {
-    filters.push(`scale=${size.width}:${size.height}:flags=${encoderOptions.downscaleAlgo}`);
-  }
-  return filters;
 }
 
 function mp4VideoArgs(
@@ -843,22 +613,6 @@ function keyframeArgs(
     Math.round(clampFpsValue(output.fps) * encoderOptions.keyframeIntervalSec),
   );
   return ["-g", String(interval)];
-}
-
-function audioArgs(encoderOptions: NormalizedExportEncoderOptions, format: ExportFormat): string[] {
-  const audio = encoderOptions.audio;
-  if (!audio) return [];
-  const codec = format === "webm" ? "libopus" : "aac";
-  return [
-    "-c:a",
-    codec,
-    "-b:a",
-    `${audio.bitrateKbps}k`,
-    "-ac",
-    String(audio.channels),
-    "-ar",
-    String(audio.sampleRateHz),
-  ];
 }
 
 function errorMessage(error: unknown): string {

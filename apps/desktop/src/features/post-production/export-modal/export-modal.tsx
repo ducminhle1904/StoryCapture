@@ -6,45 +6,41 @@
  * Folder picker uses the Tauri dialog plugin directly by command name
  * (`plugin:dialog|open`) so the IPC shape is visible for grep / audit.
  *
- * Validation runs through `exportValidateConfig` per selected output —
- * failures surface as a single inline warning list; the Export button
- * is disabled until all selected outputs validate OR validation has not
- * yet been invoked (initial state).
+ * Validation runs through typed graph-aware `export_preflight`; errors block
+ * submission while warnings and informational disclosures remain visible.
  */
 
 import { Dialog } from "@base-ui/react/dialog";
-import type { HardwareEncoderDto } from "@storycapture/shared-types";
+import type { ExportIssue, HardwareEncoderDto } from "@storycapture/shared-types";
+import { ScButton } from "@storycapture/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight, FolderOpen, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { SelectField } from "@/components/ui/select-field";
 import {
   dialogBackdropMotionClassName,
   dialogSideSheetPopupMotionClassName,
   dialogSideSheetViewportClassName,
 } from "@/components/ui/dialog-motion";
+import { SelectField } from "@/components/ui/select-field";
 import { AiDisclosureModal } from "@/features/export/AiDisclosureModal";
-import { ScButton } from "@storycapture/ui";
-import { useVoiceoverStore } from "@/features/voiceover/voiceoverStore";
 import {
   type ExportEncoderOptions,
   type ExportOutput,
+  exportPreflight,
   exportRun,
-  exportValidateConfig,
 } from "@/ipc/export";
 import { RENDER_KEYS } from "@/ipc/render";
 import { type ExportKnobs, useOutputPrefsStore } from "@/state/output-prefs";
 
-import { computeGraph, graphIsRenderable } from "../state/compute-graph";
+import { compileExportComposition, graphIsRenderable } from "../state/compute-graph";
 import { useEditorStore } from "../state/store";
 import { AdvancedOutputOptions } from "./advanced-output-options";
 import { FormatCheckboxes } from "./format-checkboxes";
@@ -115,10 +111,12 @@ export function ExportModal({ storyId }: ExportModalProps) {
   const setFrameMode = useEditorStore((s) => s.setExportFrameMode);
   const setOutFolder = useEditorStore((s) => s.setExportOutFolder);
   const setBaseName = useEditorStore((s) => s.setExportBaseName);
-  const ttsClipCount = useVoiceoverStore((s) => Object.keys(s.clipByStepId).length);
+  const ttsClipCount = useEditorStore(
+    (s) => s.tracks.sound.filter((clip) => clip.kind === "voiceover").length,
+  );
 
   const [submitting, setSubmitting] = useState(false);
-  const [warnings, setWarnings] = useState<string[]>([]);
+  const [preflightIssues, setPreflightIssues] = useState<ExportIssue[]>([]);
   const [disclosureOpen, setDisclosureOpen] = useState(false);
 
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);
@@ -135,16 +133,17 @@ export function ExportModal({ storyId }: ExportModalProps) {
   }, [setOutFolder]);
 
   // Project the timeline into a Graph. We subscribe only to the slices
-  // computeGraph reads (tracks + form + undo extras) so React's snapshot equality check
-  // doesn't loop on the fresh object that `computeGraph` returns.
+  // The compiler reads tracks + form + undo extras. Keep the subscription
+  // narrow so React does not loop on the fresh compilation result.
   // `graphAvailable` gates submission so we never enqueue an empty-graph
   // job (e.g. project opened with no video clips).
   const tracks = useEditorStore((s) => s.tracks);
   const undoExtras = useEditorStore((s) => s._undoExtras);
-  const graph = useMemo(
-    () => computeGraph({ tracks, exportForm: form, _undoExtras: undoExtras }),
+  const compilation = useMemo(
+    () => compileExportComposition({ tracks, exportForm: form, _undoExtras: undoExtras }),
     [tracks, form, undoExtras],
   );
+  const graph = compilation.graph;
   const graphAvailable = graphIsRenderable(graph);
 
   const outputs: ExportOutput[] = useMemo(() => {
@@ -173,20 +172,18 @@ export function ExportModal({ storyId }: ExportModalProps) {
     outputs.length > 0 &&
     !!form.outFolder &&
     form.baseName.trim().length > 0 &&
-    warnings.length === 0 &&
+    !preflightIssues.some((issue) => issue.severity === "error") &&
     graphAvailable;
 
   const runValidate = useCallback(async () => {
-    const results = await Promise.allSettled(outputs.map((cfg) => exportValidateConfig(cfg)));
-    const errs = results.flatMap((result, index) => {
-      if (result.status === "fulfilled") return [];
-      const cfg = outputs[index];
-      if (!cfg) return [String(result.reason)];
-      return [`${cfg.format} @ ${cfg.resolution}/${cfg.fps}: ${String(result.reason)}`];
+    const result = await exportPreflight({
+      graph_json: JSON.stringify(graph),
+      outputs,
+      compiler_issues: compilation.issues,
     });
-    setWarnings(errs);
-    return errs.length === 0;
-  }, [outputs]);
+    setPreflightIssues(result.issues);
+    return result.ready;
+  }, [compilation.issues, graph, outputs]);
 
   const runExport = useCallback(async () => {
     if (!form.outFolder) return;
@@ -214,11 +211,21 @@ export function ExportModal({ storyId }: ExportModalProps) {
         preset_id: null,
       });
       void queryClient.invalidateQueries({ queryKey: RENDER_KEYS.listActive(storyId) });
-      toast.success(`Export started: ${res.job_ids.length} job${res.job_ids.length === 1 ? "" : "s"} queued`);
+      toast.success(
+        `Export started: ${res.job_ids.length} job${res.job_ids.length === 1 ? "" : "s"} queued`,
+      );
       setOpen(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setWarnings([message]);
+      setPreflightIssues([
+        {
+          id: "export.start-failed",
+          code: "export.start-failed",
+          severity: "error",
+          message,
+          remediation: "Check the output folder and retry the export.",
+        },
+      ]);
       toast.error(`Export failed: ${message}`);
     } finally {
       setSubmitting(false);
@@ -487,26 +494,31 @@ export function ExportModal({ storyId }: ExportModalProps) {
                           Nothing to export yet
                         </div>
                         <p className="font-serif mt-1 text-sm leading-6 text-[var(--sc-text-3)]">
-                          Add a video clip with a source path to the timeline, then this
-                          drawer will assemble the render graph automatically.
+                          Add a video clip with a source path to the timeline, then this drawer will
+                          assemble the render graph automatically.
                         </p>
                       </div>
                     </div>
                   </section>
                 ) : null}
 
-                {warnings.length > 0 ? (
+                {preflightIssues.length > 0 ? (
                   <div
                     role="alert"
                     className="rounded-[var(--sc-r-xl)] border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"
                   >
                     <div className="flex items-center gap-2 font-medium">
                       <TriangleAlert className="h-4 w-4" />
-                      Validation warnings
+                      Export preflight
                     </div>
                     <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-amber-100/85">
-                      {warnings.map((w) => (
-                        <li key={w}>{w}</li>
+                      {preflightIssues.map((issue) => (
+                        <li key={issue.id}>
+                          {issue.output_index != null ? `Output ${issue.output_index + 1} · ` : ""}
+                          {issue.clip_id ? `Clip ${issue.clip_id} · ` : ""}
+                          {issue.message}
+                          {issue.remediation ? ` ${issue.remediation}` : ""}
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -524,7 +536,11 @@ export function ExportModal({ storyId }: ExportModalProps) {
                   aria-disabled={!canSubmit}
                   onClick={onSubmit}
                   aria-label="Start export"
-                  title={!graphAvailable ? "Add a video clip with a sourcePath to the timeline" : undefined}
+                  title={
+                    !graphAvailable
+                      ? "Add a video clip with a sourcePath to the timeline"
+                      : undefined
+                  }
                 >
                   {submitting ? "Queueing…" : "Export"}
                 </ScButton>

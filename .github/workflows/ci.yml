@@ -51,9 +51,9 @@ jobs:
         shell: bash
         run: pnpm --dir apps/web test
 
-      - name: Desktop Electron build
+      - name: Desktop package and export parity smoke
         shell: bash
-        run: pnpm --dir apps/desktop run build
+        run: pnpm --dir apps/desktop run test:e2e:export
 
   windows-media-smoke:
     name: windows-media-smoke
@@ -72,3 +72,7 @@ jobs:
       - name: Local media playback Electron smoke
         shell: bash
         run: pnpm --dir apps/desktop run test:e2e:media
+
+      - name: Windows package and export parity smoke
+        shell: bash
+        run: pnpm --dir apps/desktop run test:e2e:export

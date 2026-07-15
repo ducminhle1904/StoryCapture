@@ -7,14 +7,17 @@ migrations, generated files, or release tooling.
 
 - Workflow: `.github/workflows/ci.yml`.
 - Toolchain action: `.github/actions/setup-toolchain/action.yml`.
-- CI runs on `macos-14`, installs with `pnpm install --frozen-lockfile`, then
-  runs:
+- CI runner images are defined in `.github/workflows/ci.yml`. The macOS job
+  installs with `pnpm install --frozen-lockfile`, then runs:
   - `pnpm typecheck`
   - `pnpm --dir apps/desktop exec vitest run`
   - `pnpm --dir apps/desktop run test:e2e:cursor-sync`
+  - `pnpm --dir apps/desktop run test:e2e:media`
   - `pnpm --dir packages/ui test`
   - `pnpm --dir apps/web test`
-  - `pnpm --dir apps/desktop run build`
+  - `pnpm --dir apps/desktop run test:e2e:export`
+- The Windows job runs local-media and packaged export parity smokes. Both
+  package smokes use the platform binaries installed on that runner.
 - CI package manager and Node versions are configured in
   `.github/actions/setup-toolchain/action.yml`; dependency pins live in package
   manifests and `pnpm-lock.yaml`, not agent docs.
@@ -27,6 +30,21 @@ migrations, generated files, or release tooling.
   - `apps/desktop/scripts/start-dev-electron.mjs`
   - `apps/desktop/scripts/prepare-dev-electron-app.mjs`
 - Electron package output is `apps/desktop/release-electron`.
+- Packaged export verification is
+  `pnpm --dir apps/desktop run test:e2e:export`; its main-process harness is
+  `apps/desktop/electron/ipc/export-e2e-smoke.ts`, and its launcher is
+  `apps/desktop/scripts/export-compositor-artifact-smoke.mjs`.
+- Production export code must resolve FFmpeg and ffprobe through
+  `apps/desktop/electron/ipc/export-binaries.ts`. Executables packaged below
+  `app.asar` are run from `app.asar.unpacked`; keep installer changes covered
+  by the package smoke on each supported CI OS.
+- Output reservations and same-folder partial files are owned by
+  `apps/desktop/electron/ipc/legacy/export-output-lifecycle.ts`. The host stores
+  a registry of used output folders under Electron `userData`, removes only
+  dead-process reservation sidecars/partials at startup, serializes concurrent
+  registry updates, and publishes a verified same-folder partial with an
+  atomic no-replace hard link so it never overwrites a final file created after
+  reservation.
 - Signing/notarization scripts are standalone, not wired into a current GitHub
   release workflow:
   - `scripts/notarize/notarize-mac.sh`

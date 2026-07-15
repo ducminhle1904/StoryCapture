@@ -7,14 +7,14 @@ import type { SourceTimelineMap } from "../../state/source-timeline-map";
 import { useEditorStore } from "../../state/store";
 import type { CursorClip } from "../../state/timeline-slice";
 import { resolveZoomMotion, sampleResolvedZoom } from "../../state/zoom-motion";
-import { PreviewEngine } from "../preview-engine";
+import { CanonicalPreviewAdapter } from "../canonical-preview-adapter";
 import { PreviewPlayer } from "../preview-player";
 import { ACTIONS } from "./fixtures";
 
-vi.mock("../preview-engine", () => ({
-  PreviewEngine: vi.fn().mockImplementation(function MockPreviewEngine() {
+vi.mock("../canonical-preview-adapter", () => ({
+  CanonicalPreviewAdapter: vi.fn().mockImplementation(function MockCanonicalPreviewAdapter() {
     return {
-      init: vi.fn(async () => undefined),
+      configure: vi.fn(async () => undefined),
       renderFrame: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -91,15 +91,15 @@ function feedbackPrimitives(overlay: HTMLElement): HTMLDivElement[] {
 }
 
 describe("PreviewPlayer", () => {
-  it("uses native video by default without initializing the preview engine", () => {
+  it("uses native video by default without initializing the canonical adapter", () => {
     render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
 
     expect(screen.getByLabelText("Source video preview")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Composited preview canvas")).not.toBeInTheDocument();
-    expect(PreviewEngine).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Canonical composited preview canvas")).not.toBeInTheDocument();
+    expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
   });
 
-  it("initializes the preview engine only when composited canvas mode is requested", async () => {
+  it("initializes the canonical preview adapter only when composited canvas mode is requested", async () => {
     render(
       <PreviewPlayer
         storyId="story-1"
@@ -108,12 +108,46 @@ describe("PreviewPlayer", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Composited preview canvas")).toBeInTheDocument();
+    expect(screen.getByLabelText("Canonical composited preview canvas")).toBeInTheDocument();
     expect(screen.queryByLabelText("Source video preview")).not.toBeInTheDocument();
-    await waitFor(() => expect(PreviewEngine).toHaveBeenCalled());
+    await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
+    const adapter = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
+      configure: ReturnType<typeof vi.fn>;
+    };
+    expect(adapter.configure).toHaveBeenCalledWith(
+      expect.objectContaining({ schema_version: 4, output_width: 1920, output_height: 1080 }),
+    );
   });
 
-  it("starts native video playback without requiring a preview engine", async () => {
+  it("keeps canonical renderer failures visible after the source video loads", async () => {
+    vi.mocked(CanonicalPreviewAdapter).mockImplementationOnce(
+      function MockFailingCanonicalPreviewAdapter() {
+        return {
+          configure: vi.fn(async () => {
+            throw new Error("missing canonical asset");
+          }),
+          renderFrame: vi.fn(async () => undefined),
+          dispose: vi.fn(),
+        } as unknown as CanonicalPreviewAdapter;
+      },
+    );
+
+    const { container } = render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        outputMode="composited-canvas"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("Preview could not be rendered.")).toBeVisible());
+    const video = container.querySelector("video[hidden]");
+    if (!video) throw new Error("expected hidden source video");
+    fireEvent.loadedData(video);
+    expect(screen.getByText("Preview could not be rendered.")).toBeVisible();
+  });
+
+  it("starts native video playback without requiring the canonical adapter", async () => {
     const user = userEvent.setup();
     const { play, requestAnimationFrameSpy } = mockNativePlayback();
 
@@ -121,7 +155,7 @@ describe("PreviewPlayer", () => {
     await user.click(screen.getByRole("button", { name: "Play" }));
 
     await waitFor(() => expect(play).toHaveBeenCalled());
-    expect(PreviewEngine).not.toHaveBeenCalled();
+    expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
     await waitFor(() => expect(requestAnimationFrameSpy).toHaveBeenCalled());
   });
 
@@ -297,10 +331,10 @@ describe("PreviewPlayer", () => {
         outputMode="composited-canvas"
       />,
     );
-    await waitFor(() => expect(PreviewEngine).toHaveBeenCalled());
+    await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
     const video = container.querySelector("video[hidden]") as HTMLVideoElement;
     Object.defineProperty(video, "duration", { value: 1.2, configurable: true });
-    const engine = vi.mocked(PreviewEngine).mock.results[0]?.value as {
+    const engine = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
       renderFrame: ReturnType<typeof vi.fn>;
     };
 
@@ -312,13 +346,13 @@ describe("PreviewPlayer", () => {
     });
     expect(useEditorStore.getState().playheadMs).toBe(1500);
     expect(video.currentTime).toBeCloseTo(1.199);
-    expect(engine.renderFrame).toHaveBeenLastCalledWith(1500, expect.anything());
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(1500);
 
     act(() => {
       rafCallback?.(2100);
     });
     expect(useEditorStore.getState().playheadMs).toBe(2000);
-    expect(engine.renderFrame).toHaveBeenLastCalledWith(2000, expect.anything());
+    await waitFor(() => expect(engine.renderFrame).toHaveBeenLastCalledWith(2000));
     await waitFor(() => expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument());
   });
 
@@ -344,10 +378,10 @@ describe("PreviewPlayer", () => {
         outputMode="composited-canvas"
       />,
     );
-    await waitFor(() => expect(PreviewEngine).toHaveBeenCalled());
+    await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
     const video = container.querySelector("video[hidden]") as HTMLVideoElement;
     Object.defineProperty(video, "duration", { value: 0.1, configurable: true });
-    const engine = vi.mocked(PreviewEngine).mock.results[0]?.value as {
+    const engine = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
       renderFrame: ReturnType<typeof vi.fn>;
     };
 
@@ -355,7 +389,7 @@ describe("PreviewPlayer", () => {
 
     await waitFor(() => expect(play).toHaveBeenCalled());
     expect(useEditorStore.getState().playheadMs).toBe(0);
-    expect(engine.renderFrame).toHaveBeenLastCalledWith(0, expect.anything());
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(0);
     await waitFor(() => expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument());
     await waitFor(() => expect(rafCallback).toBeTruthy());
 
@@ -363,7 +397,7 @@ describe("PreviewPlayer", () => {
       rafCallback?.(150);
     });
     expect(useEditorStore.getState().playheadMs).toBe(150);
-    expect(engine.renderFrame).toHaveBeenLastCalledWith(150, expect.anything());
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(150);
   });
 
   it("commits native playback time when media pauses", async () => {
@@ -391,7 +425,7 @@ describe("PreviewPlayer", () => {
     });
 
     await waitFor(() => expect(video.currentTime).toBe(2.5));
-    expect(PreviewEngine).not.toHaveBeenCalled();
+    expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
   });
 
   it("maps a scrub inside a source hold to the held media frame", async () => {
@@ -460,7 +494,7 @@ describe("PreviewPlayer", () => {
 
     await waitFor(() => expect(video.currentTime).toBe(4));
     expect(useEditorStore.getState().playheadMs).toBe(4000);
-    expect(PreviewEngine).not.toHaveBeenCalled();
+    expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
   });
 
   it("shows the virtual cursor overlay from active cursor clips without starting the compositor", async () => {
@@ -501,7 +535,7 @@ describe("PreviewPlayer", () => {
     expect(cursor?.style.left).toBe("80%");
     expect(cursor?.style.top).toBe("60%");
     expect(cursor?.style.width).toBe("40px");
-    expect(PreviewEngine).not.toHaveBeenCalled();
+    expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
   });
 
   it("shows the virtual cursor overlay from trajectory-only sidecars", async () => {
@@ -558,7 +592,7 @@ describe("PreviewPlayer", () => {
     expect(cursor?.style.top).toBe("70%");
     expect(feedbackNodes).toHaveLength(6);
     expect(feedbackNodes.every((node) => node.style.visibility === "hidden")).toBe(true);
-    expect(PreviewEngine).not.toHaveBeenCalled();
+    expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
   });
 
   it("renders configured click primitives with deterministic dual-tone styles", async () => {
@@ -943,7 +977,7 @@ describe("PreviewPlayer", () => {
     ).scale;
     await waitFor(() => expect(zoomLayer.style.transform).toContain(`matrix(${expectedExitScale}`));
 
-    expect(PreviewEngine).not.toHaveBeenCalled();
+    expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
   });
 
   it("renders active annotation text over the native video preview", async () => {
@@ -1022,7 +1056,7 @@ describe("PreviewPlayer", () => {
     expect(activeText.style.textShadow).toContain("1.5px 2px 7px");
     expect(activeText.style.boxShadow).toContain("-2px 3px 9px");
     expect(activeText.style.backdropFilter).toBe("");
-    expect(PreviewEngine).not.toHaveBeenCalled();
+    expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
 
     act(() => {
       useEditorStore.getState().setPlayhead(4500);

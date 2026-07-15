@@ -48,9 +48,12 @@ Use this for task routing after reading the short root guide.
   `inspector/text-appearance-controls.tsx`, layer and bulk-apply orchestration
   in `inspector/effect-params.tsx`, and exact multi-clip undo snapshots in
   `undo/actions.ts`. Keep parity changes paired across
-  `preview/preview-player.tsx`, `state/compute-graph.ts`, and
-  `export-compositor/export-compositor-app.tsx`; re-record style reattachment
-  lives in `state/build-timeline-from-story.ts` and `editor-shell.tsx`.
+  `preview/preview-player.tsx`, `preview/canonical-preview-adapter.ts`,
+  `state/compute-graph.ts`, and `export-compositor/canonical-visual-engine.ts`;
+  the retired WebGPU/WebGL2 preview stack must not be revived. The production
+  hidden bridge is `export-compositor/export-compositor-app.tsx`. Re-record
+  style reattachment lives in `state/build-timeline-from-story.ts` and
+  `editor-shell.tsx`.
 - Settings/onboarding: `apps/desktop/src/routes/settings.tsx`,
   `apps/desktop/src/features/settings/categories/`,
   `apps/desktop/src/routes/onboarding.tsx`,
@@ -144,8 +147,14 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/recording.ts`,
   `apps/desktop/electron/ipc/render.ts`,
   `apps/desktop/electron/ipc/export.ts`,
+  `apps/desktop/electron/ipc/export-compositor-host.ts`,
+  `apps/desktop/electron/ipc/export-binaries.ts`,
+  `apps/desktop/electron/ipc/legacy/export-render.ts`,
   `apps/desktop/electron/ipc/legacy/export-planning.ts`,
-  `apps/desktop/electron/ipc/legacy/export-compositor.ts`, and corresponding
+  `apps/desktop/electron/ipc/legacy/export-audio-planning.ts`,
+  `apps/desktop/electron/ipc/legacy/export-compositor.ts`,
+  `apps/desktop/electron/ipc/legacy/export-output-lifecycle.ts`,
+  `apps/desktop/electron/ipc/legacy/export-artifact-verification.ts`, and corresponding
   renderer facades under `apps/desktop/src/ipc/`.
 
 ## Web Companion
