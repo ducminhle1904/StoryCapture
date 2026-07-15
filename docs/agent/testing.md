@@ -88,7 +88,10 @@
   canary secrets, story/typed content, upload paths, filenames, and raw selectors
   are absent from JSONL, text logs, and exported diagnostic bundles. Health and
   encoder tests must reject per-frame logging and enforce the one-Hz normal
-  aggregate cadence while allowing immediate state transitions.
+  aggregate cadence while allowing immediate state transitions. Record-engine
+  producers must use typed JSONL V2; general Electron/simulator diagnostics stay
+  text-only, and tests should fail if production recording event names return to
+  `hostLog` or the removed `recording.legacy` bridge.
 - REC-190/220 harness smoke uses the documented `spike:macos-* -- --quick`
   commands. Promotion must omit `--quick`: REC-190 needs the permission,
   ten-minute timing, performance, packaging, and audio-marker exclusion matrix;

@@ -18,6 +18,10 @@ vi.mock("electron-updater", () => ({
 
 vi.mock("ffmpeg-static", () => ({ default: null }));
 
+vi.mock("../recording-observability", () => ({
+  recordEngineLog: vi.fn(async () => null),
+}));
+
 import { RecordingActionLandmarkRecorder } from "../action-landmarks";
 import { CaptureBackendDeliveryGuard, type CaptureBackendProvenance } from "../capture-backend";
 import {
@@ -25,6 +29,7 @@ import {
   registerRecordingCheckpoints,
 } from "../recording-checkpoints";
 import { RecordingMediaClock } from "../recording-media-clock";
+import { recordEngineLog } from "../recording-observability";
 import { recordingReadiness } from "../recording-readiness";
 import {
   acknowledgeEncodedRecordingFrames,
@@ -67,6 +72,7 @@ afterEach(() => {
   vi.mocked(desktopCapturer.getSources).mockReset();
   recordingReadiness.remove("recording-frame-sync");
   recordingSessions.clear();
+  vi.mocked(recordEngineLog).mockClear();
 });
 
 describe("recording frame synchronization", () => {
@@ -150,6 +156,19 @@ describe("recording frame synchronization", () => {
     );
     expect(deliveries).toHaveLength(1);
     expect(desktopCapturer.getSources).toHaveBeenCalledTimes(1);
+    const targetLossEvents = vi
+      .mocked(recordEngineLog)
+      .mock.calls.map(([event]) => event)
+      .filter((event) => event.event === "recording.backend.target_lost");
+    expect(targetLossEvents).toEqual([
+      expect.objectContaining({
+        context: expect.objectContaining({
+          session_id: session.id,
+          backend_id: "electron_external",
+          reason_code: expectedReason,
+        }),
+      }),
+    ]);
   });
 
   it("counts each successful external source capture before live-sink submission", async () => {
@@ -511,6 +530,7 @@ describe("recording frame synchronization", () => {
     });
 
     await vi.waitFor(() => expect(session.framesDropped).toBe(1));
+    expect(recordEngineLog).not.toHaveBeenCalled();
   });
 
   it("does not attach duplicate handlers while a scheduled capture is in flight", () => {

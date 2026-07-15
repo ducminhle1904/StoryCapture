@@ -69,8 +69,10 @@
   - process/discovery/native-spike coherence:
     `pnpm --dir apps/desktop diagnose:recording -- --input <path> --process [--json]`.
   Exit `0` means coherent, `1` means incomplete/inconsistent, and `2` means
-  invalid input. Process sequences are validated independently per JSONL file.
-  This command does not launch Electron or read project data.
+  invalid input. The reader accepts typed record-engine schema V2 only; V1 and
+  the removed `recording.legacy` event return `2`. Process sequences are
+  validated independently per JSONL file. This command does not launch
+  Electron or read project data.
 
 - Local/manual CI helpers: `scripts/ci/check-av-drift.sh`,
   `scripts/ci/generate-synthetic-recording.sh`.

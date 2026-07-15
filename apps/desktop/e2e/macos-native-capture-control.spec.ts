@@ -74,7 +74,7 @@ test("measures the production Electron external-window control", async () => {
       .map((line) => JSON.parse(line));
     expect(trace).toEqual([
       expect.objectContaining({
-        schema_version: 1,
+        schema_version: 2,
         event: "recording.backend.spike_started",
         backend_id: "macos_screencapturekit",
       }),

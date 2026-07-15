@@ -343,7 +343,7 @@ export async function exportDiagnosticBundle(parentDir: string) {
         },
         logs: {
           source: "local_log_directory",
-          recording_schema_version: 1,
+          recording_schema_version: 2,
           recording_format: "jsonl",
         },
         contents: ["logs", "manifest.json"],

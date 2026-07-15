@@ -54,6 +54,7 @@ describe("recording native spike trace", () => {
       "recording.backend.spike_completed",
     ]);
     expect(events.map((event) => event.process_sequence)).toEqual([1, 2]);
+    expect(events.map((event) => event.schema_version)).toEqual([2, 2]);
     expect(events[1]).toMatchObject({
       request_id: "native-capture-batch-1",
       attempt_id: "native-capture-batch-1",

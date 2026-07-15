@@ -91,7 +91,7 @@ export function createRecordingSpikeTrace({
     if (!enabled()) return Promise.resolve(null);
     processSequence += 1;
     const item = {
-      schema_version: 1,
+      schema_version: 2,
       redaction_version: 1,
       emitted_at: new Date().toISOString(),
       level,

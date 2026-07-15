@@ -32,7 +32,6 @@ import { readJson, writeJson } from "../json-store";
 import { type FrontendLogPayload, logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
 import type { RecordingMediaClock } from "../recording-media-clock";
-import { recordEngineLog, recordingLogContextFromFields } from "../recording-observability";
 import type { RecordingPauseGate } from "../recording-pause-gate";
 import type {
   RecordingFitMode,
@@ -533,6 +532,7 @@ export interface StoryBrowserRunOptions {
   frameDir?: string | null;
   failureFrameDir?: string | null;
   executionProfile?: StoryBrowserExecutionProfile;
+  recordingSessionId?: string | null;
   recordingClockMs?: () => number;
   actionLandmarks?: RecordingActionLandmarkRecorder;
   requestFrameCommit?: () => Promise<FrameSyncOutcome>;
@@ -886,20 +886,12 @@ export async function hostLog(
   message: string,
   fields: Record<string, unknown> = {},
 ): Promise<void> {
-  await Promise.allSettled([
-    logFromFrontend({
-      level,
-      source: "electron-host",
-      message,
-      fields: Object.entries(fields).map(([key, value]) => [key, String(value)]),
-    }),
-    recordEngineLog({
-      level,
-      event: "recording.legacy",
-      context: recordingLogContextFromFields(fields),
-      details: { legacy_message: message, ...fields },
-    }),
-  ]);
+  await logFromFrontend({
+    level,
+    source: "electron-host",
+    message,
+    fields: Object.entries(fields).map(([key, value]) => [key, String(value)]),
+  }).catch(() => undefined);
 }
 
 export function takeNextResourceId(): number {

@@ -20,6 +20,7 @@ import {
 import { RecordingMediaClock } from "../recording-media-clock";
 import { RecordingPauseGate } from "../recording-pause-gate";
 import { invalidateRecordingRepair, recordingRepairController } from "../recording-repair";
+import { recordEngineLog } from "../recording-observability";
 import { AUTOMATION_RECORDING_TAIL_DURATION_MS } from "../recording-tail";
 import { type ParsedCommand, parseStorySource } from "../story-parser";
 
@@ -32,6 +33,10 @@ vi.mock("electron", () => ({
 
 vi.mock("electron-updater", () => ({
   default: { autoUpdater: {} },
+}));
+
+vi.mock("../recording-observability", () => ({
+  recordEngineLog: vi.fn(async () => null),
 }));
 
 vi.mock("./capture-preview", () => ({
@@ -233,6 +238,41 @@ describe("story browser cursor pacing", () => {
     expect(written.version).toBe(3);
     expect(written.events).toEqual([]);
     expect(written.media_clock.clock).toBe("encoded_video_pts");
+  });
+
+  it("uses the typed event when an actions sidecar cannot be written", async () => {
+    vi.stubEnv("STORYCAPTURE_RECORDING_OUTCOME_MODE", "strict");
+    vi.stubEnv("STORYCAPTURE_RECORDING_OUTCOME_LEGACY_KILL_SWITCH", "0");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-actions-failure-"));
+    tempDirs.push(dir);
+    const blocker = path.join(dir, "not-a-directory");
+    await fs.writeFile(blocker, "blocked");
+    const session = {
+      id: "session-sidecar-failure",
+      outputPath: path.join(blocker, "recording.mp4"),
+      width: 1280,
+      height: 720,
+      outputWidth: 1280,
+      outputHeight: 720,
+      fps: 30,
+      frameSeq: 0,
+      target: { kind: "author_preview" },
+      frameCrop: null,
+      mediaClock: new RecordingMediaClock({ fpsNum: 30, fpsDen: 1 }),
+    } as RecordingSession;
+
+    await expect(writeRecordingActionsSidecarBestEffort(session, [])).rejects.toBeDefined();
+    expect(recordEngineLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "recording.sidecar.write_failed",
+        context: expect.objectContaining({
+          session_id: session.id,
+          phase: "actions",
+          reason_code: "sidecar_write_failed",
+        }),
+        details: { sidecar_kind: "actions" },
+      }),
+    );
   });
 
   it("commits one immutable checkpoint segment per parsed scene", async () => {
@@ -586,6 +626,7 @@ scene "First" {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    vi.mocked(recordEngineLog).mockClear();
   });
 
   afterEach(async () => {
@@ -1008,6 +1049,7 @@ scene "First" {
       projectFolder: "/tmp/storycapture-test",
       storySource: "",
       targets: { version: 1, steps: {} },
+      recordingSessionId: "recording-target-retry",
       executionProfile: {
         typingMode: "instant",
         captureRecordingFrames: false,
@@ -1022,6 +1064,15 @@ scene "First" {
     expect(failures[0]).toMatchObject({
       message: expect.stringContaining("detached after 3 attempts"),
     });
+    expect(recordEngineLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "recording.target.retry_scheduled",
+        context: expect.objectContaining({
+          session_id: "recording-target-retry",
+          reason_code: "detached",
+        }),
+      }),
+    );
   });
 
   it("does not retry a cancelled scroll as a detached target", async () => {
@@ -1221,6 +1272,7 @@ scene "First" {
       projectFolder: "/tmp/storycapture-test",
       storySource: "",
       targets: { version: 1, steps: {} },
+      recordingSessionId: "recording-readiness",
       executionProfile: {
         typingMode: "incremental",
         captureRecordingFrames: true,
@@ -1237,6 +1289,16 @@ scene "First" {
     expect(
       contents.executeJavaScript.mock.calls.some(([script]) => script.includes("ElectronJS")),
     ).toBe(true);
+    expect(recordEngineLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "recording.readiness.degraded",
+        context: expect.objectContaining({
+          session_id: "recording-readiness",
+          phase: "cursor_arrival",
+          reason_code: "frame_commit_timeout",
+        }),
+      }),
+    );
   });
 
   it("records healthy type landmarks from an explicitly committed frame", async () => {

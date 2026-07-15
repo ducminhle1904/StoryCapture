@@ -60,13 +60,18 @@ async function loadEvents(input) {
       if (!line) continue;
       try {
         const event = JSON.parse(line);
-        if (event && event.schema_version === 1 && typeof event.event === "string") {
-          events.push({ ...event, __file: file, __line: index + 1 });
-        } else {
+        if (event?.schema_version !== 2 || typeof event.event !== "string") {
           parseIssues.push({
             code: "invalid_schema",
-            message: `${path.basename(file)}:${index + 1} is not a v1 recording event`,
+            message: `${path.basename(file)}:${index + 1} is not a v2 recording event`,
           });
+        } else if (event.event === "recording.legacy") {
+          parseIssues.push({
+            code: "unsupported_event",
+            message: `${path.basename(file)}:${index + 1} uses removed event recording.legacy`,
+          });
+        } else {
+          events.push({ ...event, __file: file, __line: index + 1 });
         }
       } catch {
         parseIssues.push({

@@ -224,6 +224,40 @@ function captureStateSnapshot(
   }
 }
 
+function logFrameSyncDegradation(input: {
+  options: StoryBrowserRunOptions;
+  recordingSessionId?: string;
+  command: ParsedCommand;
+  ordinal: number;
+  barrier: "cursor_arrival" | "pre_input";
+  reason: string;
+}): void {
+  const { options, recordingSessionId, command, ordinal, barrier, reason } = input;
+  if (recordingSessionId) {
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.readiness.degraded",
+      context: {
+        session_id: recordingSessionId,
+        step_id: command.step_id ?? undefined,
+        ordinal,
+        phase: barrier,
+        reason_code: reason,
+      },
+      details: { verb: command.verb },
+    });
+    return;
+  }
+  void hostLog("warn", "automation_frame_sync_degraded_before_input", {
+    ordinal,
+    step_id: command.step_id ?? null,
+    verb: command.verb,
+    barrier,
+    reason,
+    ...captureStateSnapshot(options.captureStateSnapshot),
+  });
+}
+
 function recordingFrameClockMs(session: RecordingSession): number {
   return Math.max(0, Math.round(session.mediaClock.snapshot().durationUs / 1000));
 }
@@ -722,18 +756,38 @@ async function recoverDetachedCommandTarget(
       if (!(error instanceof TargetVisibilityPhaseError) || error.reason !== "detached")
         throw error;
       lastError = error;
-      void hostLog("warn", "automation_target_recovery", {
-        ordinal,
-        step_id: command.step_id ?? null,
-        verb: command.verb,
-        phase: error.phase,
-        reason: error.reason,
-        attempt,
-        elapsed_ms: elapsedMs,
-        budget_ms: budgetMs,
-        target_label: targetLabel(command.target),
-        target_bounds: error.diagnostics?.bounds ?? null,
-      });
+      if (options.recordingSessionId) {
+        void recordEngineLog({
+          level: "warn",
+          event: "recording.target.retry_scheduled",
+          context: {
+            session_id: options.recordingSessionId,
+            step_id: command.step_id ?? undefined,
+            ordinal,
+            phase: error.phase,
+            reason_code: error.reason,
+          },
+          details: {
+            attempt,
+            elapsed_ms: elapsedMs,
+            budget_ms: budgetMs,
+            verb: command.verb,
+          },
+        });
+      } else {
+        void hostLog("warn", "automation_target_recovery", {
+          ordinal,
+          step_id: command.step_id ?? null,
+          verb: command.verb,
+          phase: error.phase,
+          reason: error.reason,
+          attempt,
+          elapsed_ms: elapsedMs,
+          budget_ms: budgetMs,
+          target_label: targetLabel(command.target),
+          target_bounds: error.diagnostics?.bounds ?? null,
+        });
+      }
       if (options.shouldCancel?.()) throw new RecordingPauseCancelledError();
       if (attempt <= MAX_TARGET_DETACH_RETRIES) {
         await waitForRecordingDelay(
@@ -923,12 +977,27 @@ async function resolveDragEndpoint(
   });
   const mode = runtimeTargetCandidatesMode();
   if (candidateSet.diagnostics.length > 0) {
-    void hostLog("warn", "runtime_drag_endpoint_diagnostic", {
-      ordinal,
-      step_id: command.step_id ?? null,
-      endpoint,
-      diagnostics: candidateSet.diagnostics,
-    });
+    if (options.recordingSessionId) {
+      void recordEngineLog({
+        level: "warn",
+        event: "recording.target.candidate_validation_failed",
+        context: {
+          session_id: options.recordingSessionId,
+          step_id: command.step_id ?? undefined,
+          ordinal,
+          phase: `drag_${endpoint}_candidate_validation`,
+          reason_code: "invalid_sidecar_candidate",
+        },
+        details: { endpoint, diagnostic_count: candidateSet.diagnostics.length },
+      });
+    } else {
+      void hostLog("warn", "runtime_drag_endpoint_diagnostic", {
+        ordinal,
+        step_id: command.step_id ?? null,
+        endpoint,
+        diagnostics: candidateSet.diagnostics,
+      });
+    }
   }
 
   if (!candidateSet.eligible || mode === "off") {
@@ -952,15 +1021,36 @@ async function resolveDragEndpoint(
     );
     const proposed = await probeRuntimeTarget(options, endpointCommand, candidateSet);
     const actual = legacyRuntimeTarget(candidateSet, legacy.target, legacy.scrollTiming);
-    void hostLog("info", "runtime_drag_endpoint_shadow", {
-      ordinal,
-      step_id: command.step_id ?? null,
-      endpoint,
-      actual_source: actual?.candidate.source ?? "story_target",
-      proposed_source: proposed?.candidate.source ?? null,
-      diverged: Boolean(proposed && proposed.candidate.key !== actual?.candidate.key),
-      attempted: proposed?.attempts ?? [],
-    });
+    const diverged = Boolean(proposed && proposed.candidate.key !== actual?.candidate.key);
+    if (options.recordingSessionId) {
+      void recordEngineLog({
+        event: "recording.drag.shadow_compared",
+        context: {
+          session_id: options.recordingSessionId,
+          step_id: command.step_id ?? undefined,
+          ordinal,
+          phase: endpoint,
+        },
+        details: {
+          endpoint,
+          actual_source: actual?.candidate.source ?? "story_target",
+          proposed_source: proposed?.candidate.source ?? null,
+          proposed_fallback_index: proposed?.candidate.fallbackIndex ?? null,
+          attempt_count: proposed?.attempts.length ?? 0,
+          diverged,
+        },
+      });
+    } else {
+      void hostLog("info", "runtime_drag_endpoint_shadow", {
+        ordinal,
+        step_id: command.step_id ?? null,
+        endpoint,
+        actual_source: actual?.candidate.source ?? "story_target",
+        proposed_source: proposed?.candidate.source ?? null,
+        diverged,
+        attempted: proposed?.attempts ?? [],
+      });
+    }
     if (!actual) throw new RuntimeTargetCandidatesExhaustedError([]);
     return actual;
   }
@@ -1047,11 +1137,26 @@ async function resolveCommandVisibility(
   const candidateSet = buildRuntimeTargetCandidates({ command, sidecar: options.targets });
   const mode = runtimeTargetCandidatesMode();
   if (candidateSet.diagnostics.length > 0) {
-    void hostLog("warn", "runtime_target_sidecar_diagnostic", {
-      ordinal,
-      step_id: command.step_id ?? null,
-      diagnostics: candidateSet.diagnostics,
-    });
+    if (options.recordingSessionId) {
+      void recordEngineLog({
+        level: "warn",
+        event: "recording.target.candidate_validation_failed",
+        context: {
+          session_id: options.recordingSessionId,
+          step_id: command.step_id ?? undefined,
+          ordinal,
+          phase: "target_candidate_validation",
+          reason_code: "invalid_sidecar_candidate",
+        },
+        details: { diagnostic_count: candidateSet.diagnostics.length },
+      });
+    } else {
+      void hostLog("warn", "runtime_target_sidecar_diagnostic", {
+        ordinal,
+        step_id: command.step_id ?? null,
+        diagnostics: candidateSet.diagnostics,
+      });
+    }
   }
 
   if (!commandSupportsFallback(command) || !candidateSet.eligible || mode === "off") {
@@ -1077,16 +1182,37 @@ async function resolveCommandVisibility(
     );
     const proposed = await probeRuntimeTarget(options, command, candidateSet);
     const actual = legacyRuntimeTarget(candidateSet, legacy.target, legacy.scrollTiming);
-    void hostLog("info", "runtime_target_shadow", {
-      ordinal,
-      step_id: command.step_id ?? null,
-      candidate_count: candidateSet.candidates.length,
-      actual_source: actual?.candidate.source ?? "story_target",
-      proposed_source: proposed?.candidate.source ?? null,
-      proposed_fallback_index: proposed?.candidate.fallbackIndex ?? null,
-      diverged: Boolean(proposed && proposed.candidate.key !== actual?.candidate.key),
-      attempted: proposed?.attempts ?? [],
-    });
+    const diverged = Boolean(proposed && proposed.candidate.key !== actual?.candidate.key);
+    if (options.recordingSessionId) {
+      void recordEngineLog({
+        event: "recording.target.shadow_compared",
+        context: {
+          session_id: options.recordingSessionId,
+          step_id: command.step_id ?? undefined,
+          ordinal,
+          phase: "target_resolution",
+        },
+        details: {
+          candidate_count: candidateSet.candidates.length,
+          actual_source: actual?.candidate.source ?? "story_target",
+          proposed_source: proposed?.candidate.source ?? null,
+          proposed_fallback_index: proposed?.candidate.fallbackIndex ?? null,
+          attempt_count: proposed?.attempts.length ?? 0,
+          diverged,
+        },
+      });
+    } else {
+      void hostLog("info", "runtime_target_shadow", {
+        ordinal,
+        step_id: command.step_id ?? null,
+        candidate_count: candidateSet.candidates.length,
+        actual_source: actual?.candidate.source ?? "story_target",
+        proposed_source: proposed?.candidate.source ?? null,
+        proposed_fallback_index: proposed?.candidate.fallbackIndex ?? null,
+        diverged,
+        attempted: proposed?.attempts ?? [],
+      });
+    }
     return { ...legacy, command, runtimeTarget: actual };
   }
 
@@ -1191,19 +1317,38 @@ async function performCursorPreActionPacing(input: {
 function cursorTargetShiftWarning(input: {
   command: ParsedCommand;
   ordinal: number;
+  recordingSessionId?: string | null;
   before: ActionTarget;
   after: ActionTarget;
   thresholdPx: number;
 }): void {
   const deltaPx = targetCenterDeltaPx(input.before, input.after);
   if (deltaPx <= input.thresholdPx) return;
-  void hostLog("warn", "cursor_target_shifted_before_input", {
-    ordinal: input.ordinal,
-    step_id: input.command.step_id ?? null,
+  const details = {
     verb: input.command.verb,
     delta_px: Math.round(deltaPx * 100) / 100,
     threshold_px: input.thresholdPx,
-  });
+  };
+  if (input.recordingSessionId) {
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.cursor.target_shifted",
+      context: {
+        session_id: input.recordingSessionId,
+        step_id: input.command.step_id ?? undefined,
+        ordinal: input.ordinal,
+        phase: "before_input",
+        reason_code: "target_shifted",
+      },
+      details,
+    });
+  } else {
+    void hostLog("warn", "cursor_target_shifted_before_input", {
+      ordinal: input.ordinal,
+      step_id: input.command.step_id ?? null,
+      ...details,
+    });
+  }
 }
 
 function cursorPacingSizeForRun(
@@ -1240,7 +1385,10 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
   const recordingClockMs = options.recordingClockMs ?? (() => Math.max(0, Date.now() - startedAt));
   const executionProfile = options.executionProfile ?? storyBrowserExecutionProfile();
   const loggingSessionId =
-    options.recordingCheckpointSessionId ?? options.recordingRepairSessionId ?? undefined;
+    options.recordingSessionId ??
+    options.recordingCheckpointSessionId ??
+    options.recordingRepairSessionId ??
+    undefined;
   const repairController =
     options.recordingRepairSessionId && recordingRepairMode() === "manual_hybrid"
       ? recordingRepairController(options.recordingRepairSessionId)
@@ -1254,10 +1402,6 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
     checkpointCoordinator = null;
     const reason = error instanceof RecordingCheckpointError ? error.reason : "unexpected_error";
     const errorName = error instanceof Error ? error.name : "UnknownError";
-    void hostLog("warn", "recording_checkpoint_shadow_diverged", {
-      stage,
-      reason_code: reason,
-    });
     if (loggingSessionId) {
       void recordEngineLog({
         level: "warn",
@@ -1505,6 +1649,7 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
           cursorTargetShiftWarning({
             command: executionCommand,
             ordinal,
+            recordingSessionId: options.recordingSessionId,
             before: resolvedTarget,
             after: targetAfterPacing,
             thresholdPx: executionProfile.targetStabilityThresholdPx ?? 8,
@@ -1545,13 +1690,13 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
           const arrivalOutcome = await arrival;
           if (arrivalOutcome.status === "cancelled") throw new RecordingPauseCancelledError();
           if (arrivalOutcome.status === "degraded") {
-            void hostLog("warn", "recording_frame_sync_degraded_before_input", {
+            logFrameSyncDegradation({
+              options,
+              recordingSessionId: loggingSessionId,
+              command,
               ordinal,
-              step_id: command.step_id ?? null,
-              verb: command.verb,
               barrier: "cursor_arrival",
               reason: arrivalOutcome.reason,
-              ...captureStateSnapshot(options.captureStateSnapshot),
             });
             options.actionLandmarks.discard(landmarkEventId);
             landmarkStarted = false;
@@ -1565,13 +1710,13 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
         const requestedOutcome = await requestFrameCommitOutcome(options.requestFrameCommit);
         if (requestedOutcome?.status === "cancelled") throw new RecordingPauseCancelledError();
         if (requestedOutcome?.status === "degraded") {
-          void hostLog("warn", "recording_frame_sync_degraded_before_input", {
+          logFrameSyncDegradation({
+            options,
+            recordingSessionId: loggingSessionId,
+            command,
             ordinal,
-            step_id: command.step_id ?? null,
-            verb: command.verb,
             barrier: "pre_input",
             reason: requestedOutcome.reason,
-            ...captureStateSnapshot(options.captureStateSnapshot),
           });
         }
       }
@@ -1995,6 +2140,24 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
   };
 }
 
+function logSidecarWriteFailure(
+  sessionId: string,
+  sidecarKind: "actions" | "steps",
+  error: unknown,
+): void {
+  void recordEngineLog({
+    level: "warn",
+    event: "recording.sidecar.write_failed",
+    context: {
+      session_id: sessionId,
+      phase: sidecarKind,
+      reason_code: "sidecar_write_failed",
+    },
+    details: { sidecar_kind: sidecarKind },
+    error,
+  });
+}
+
 export async function writeRecordingActionsSidecarBestEffort(
   session: RecordingSession,
   events: ActionTimelineEvent[],
@@ -2019,11 +2182,16 @@ export async function writeRecordingActionsSidecarBestEffort(
       );
     }).length;
     if (syncMode === "shadow") {
-      void hostLog("info", "recording_cursor_sync_shadow", {
-        session_id: session.id,
-        event_count: events.length,
-        authoritative_event_count: authoritativeEvents,
-        invalid_ordering_event_count: invalidOrderingEvents,
+      void recordEngineLog({
+        event: "recording.cursor.shadow_compared",
+        context: { session_id: session.id, phase: "sidecar_validation" },
+        details: {
+          event_count: events.length,
+          authoritative_event_count: authoritativeEvents,
+          invalid_ordering_event_count: invalidOrderingEvents,
+          diverged: invalidOrderingEvents > 0,
+          sync_mode: syncMode,
+        },
       });
     }
     const actions = recordingActionsFromSession(session, events, {
@@ -2035,12 +2203,7 @@ export async function writeRecordingActionsSidecarBestEffort(
     }
     await writeActionsSidecarAtomic(file, actions);
   } catch (error) {
-    void hostLog("warn", "recording_actions_sidecar_write_failed", {
-      session_id: session.id,
-      recording_path: session.outputPath,
-      sidecar_path: file,
-      reason: error instanceof Error ? error.message : String(error),
-    });
+    logSidecarWriteFailure(session.id, "actions", error);
     if (options.strict || strictOutcome || syncMode === "unified") throw error;
   }
 }
@@ -2084,12 +2247,7 @@ async function writeRecordingStepTimingSidecarBestEffort(
       steps,
     });
   } catch (error) {
-    void hostLog("warn", "recording_step_timing_sidecar_write_failed", {
-      session_id: session.id,
-      recording_path: session.outputPath,
-      sidecar_path: file,
-      reason: error instanceof Error ? error.message : String(error),
-    });
+    logSidecarWriteFailure(session.id, "steps", error);
   }
 }
 
@@ -2218,6 +2376,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       targets,
       executionProfile,
       failureFrameDir,
+      recordingSessionId: recordingSessionAtLaunch?.id ?? null,
       recordingClockMs: recordingSessionAtLaunch
         ? () => recordingFrameClockMs(recordingSessionAtLaunch)
         : undefined,
@@ -2395,10 +2554,17 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
                 actionEvent,
               );
             } catch (error) {
-              void hostLog("warn", "recording_checkpoint_action_capture_failed", {
-                session_id: recordingSessionId,
-                ordinal,
-                error_name: error instanceof Error ? error.name : "UnknownError",
+              void recordEngineLog({
+                level: "warn",
+                event: "recording.checkpoint.failed",
+                context: {
+                  session_id: recordingSessionId,
+                  step_id: command.step_id ?? undefined,
+                  ordinal,
+                  phase: "action_capture",
+                  reason_code: "checkpoint_action_capture_failed",
+                },
+                error,
               });
             }
           }

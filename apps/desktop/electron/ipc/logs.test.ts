@@ -158,7 +158,7 @@ describe("logs IPC handlers", () => {
       )
     ).join("\n");
     const manifest = await fs.readFile(path.join(result.path, "manifest.json"), "utf8");
-    expect(manifest).toContain('"recording_schema_version": 1');
+    expect(manifest).toContain('"recording_schema_version": 2');
     expect(manifest).toContain('"log_redaction_version": 1');
     expect(manifest).toContain('"redaction_scope": "write_time_known_fields"');
     expect(manifest).not.toContain(tempDir);

@@ -1,5 +1,5 @@
 import type { RecordingOutcomeV1, RecordingTerminalEventV1 } from "@storycapture/shared-types";
-import { hostLog, type RecordingSession, recordingSessions, sendChannel } from "./legacy/shared";
+import { type RecordingSession, recordingSessions, sendChannel } from "./legacy/shared";
 import { recordEngineLog } from "./recording-observability";
 import {
   classifyRecordingOutcome,
@@ -528,13 +528,6 @@ export class RecordingLifecycleController {
           to_state: next,
           lifecycle_sequence: active.sequence,
         },
-      });
-      void hostLog("warn", "recording_lifecycle_illegal_transition", {
-        session_id: active.session.id,
-        from_state: active.state,
-        to_state: next,
-        sequence: active.sequence,
-        reason_code: reasonCode,
       });
       throw new Error(`illegal recording lifecycle transition ${active.state} -> ${next}`);
     }

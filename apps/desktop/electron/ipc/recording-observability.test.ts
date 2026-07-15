@@ -58,6 +58,28 @@ afterEach(async () => {
 });
 
 describe("recordEngineLog", () => {
+  it("keeps production record-engine paths off the application text sink", async () => {
+    const producerFiles = [
+      "electron/ipc/legacy/capture-preview.ts",
+      "electron/ipc/legacy/recording.ts",
+      "electron/ipc/legacy/story-runner.ts",
+      "electron/ipc/recording-lifecycle.ts",
+    ];
+    const sources = await Promise.all(
+      producerFiles.map((file) => fs.readFile(path.resolve(process.cwd(), file), "utf8")),
+    );
+    for (const source of sources) {
+      expect(source).not.toMatch(/hostLog\([^\n]*["']recording[._]/);
+    }
+
+    const sharedSource = await fs.readFile(
+      path.resolve(process.cwd(), "electron/ipc/legacy/shared.ts"),
+      "utf8",
+    );
+    expect(sharedSource).not.toContain("recordEngineLog");
+    expect(sharedSource).not.toContain("recording.legacy");
+  });
+
   it("writes correlated events in emission order", async () => {
     await Promise.all(
       ["created", "ready", "terminal"].map((phase, index) =>
@@ -74,6 +96,7 @@ describe("recordEngineLog", () => {
     );
 
     const events = await readStructuredEvents();
+    expect(events.every((event) => event.schema_version === 2)).toBe(true);
     expect(events.map((event) => event.process_sequence)).toEqual([1, 2, 3]);
     expect(events.map((event) => event.session_sequence)).toEqual([1, 2, 3]);
     expect(events.map((event) => event.phase)).toEqual(["created", "ready", "terminal"]);
@@ -189,7 +212,7 @@ describe("recordEngineLog", () => {
     });
     tracks.fail(identity, { sequence: 0, reason: "audio_zero_samples" });
     await recordEngineLog({
-      event: "recording.legacy",
+      event: "recording.health.sampled",
       context: { session_id: identity.session_id },
       details: { flush: true },
     });

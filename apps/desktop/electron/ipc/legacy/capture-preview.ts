@@ -51,6 +51,7 @@ import {
 } from "../recording-bundle";
 import {
   disposeRecordingCheckpoints,
+  RecordingCheckpointError,
   recordingCheckpointMode,
   recordingCheckpointsForSession,
   registerRecordingCheckpoints,
@@ -203,13 +204,20 @@ async function recordCheckpointFrameBestEffort(
   try {
     await recordingCheckpointsForSession(session.id)?.recordFrame(bitmap, landmark);
   } catch (error) {
-    void hostLog("warn", "recording_scene_segment_frame_failed", {
-      session_id: session.id,
-      error_name: error instanceof Error ? error.name : "UnknownError",
-      reason:
-        error && typeof error === "object" && "reason" in error
-          ? String((error as { reason: unknown }).reason)
-          : "checkpoint_failed",
+    const reason = error instanceof RecordingCheckpointError ? error.reason : "checkpoint_failed";
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.scene.segment_frame_failed",
+      context: {
+        session_id: session.id,
+        phase: "segment_frame",
+        reason_code: reason,
+      },
+      details: {
+        frame_index: landmark.frameIndex,
+        pts_us: landmark.ptsUs,
+      },
+      error,
     });
   }
 }
@@ -289,9 +297,15 @@ async function publishEngineHealthBestEffort(
       });
     }
   } catch (error) {
-    void hostLog("warn", "recording_engine_health_publish_failed", {
-      session_id: session.id,
-      error_name: error instanceof Error ? error.name : "UnknownError",
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.health.publish_failed",
+      context: {
+        session_id: session.id,
+        phase: "health_update",
+        reason_code: "health_publish_failed",
+      },
+      error,
     });
   }
 }
@@ -477,9 +491,21 @@ async function deliverCaptureBackendFrame(
     session.captureBackendLastPtsUs = ptsUs;
   } catch (error) {
     if (backend.mode !== "contract_shadow") throw error;
-    void hostLog("warn", "recording_capture_backend_shadow_delivery_failed", {
-      session_id: session.id,
-      error_name: error instanceof Error ? error.name : "UnknownError",
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.backend.delivery_failed",
+      context: {
+        session_id: session.id,
+        backend_id: backend.selected_backend_id,
+        phase: "shadow_frame_delivery",
+        reason_code: "backend_delivery_failed",
+      },
+      details: {
+        sequence: session.captureBackendDeliverySequence ?? 0,
+        frame_index: session.captureBackendFrameIndex ?? 0,
+        pts_us: ptsUs,
+      },
+      error,
     });
   }
 }
@@ -509,9 +535,17 @@ async function markRecordingCaptureTargetLost(
     });
     session.captureBackendDeliverySequence = sequence + 1;
   } catch (deliveryError) {
-    void hostLog("warn", "recording_capture_backend_target_loss_delivery_failed", {
-      session_id: session.id,
-      error_name: deliveryError instanceof Error ? deliveryError.name : "UnknownError",
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.backend.delivery_failed",
+      context: {
+        session_id: session.id,
+        backend_id: backend.selected_backend_id,
+        phase: "target_loss_delivery",
+        reason_code: "backend_delivery_failed",
+      },
+      details: { sequence },
+      error: deliveryError,
     });
   }
 
@@ -530,12 +564,6 @@ async function markRecordingCaptureTargetLost(
     const update = recordingHealth.get(session.id)?.latestUpdate();
     if (update) void publishEngineHealthBestEffort(session, update);
   }
-  void hostLog("warn", "recording_capture_target_lost", {
-    session_id: session.id,
-    target_kind: session.target.kind,
-    reason,
-    enforced,
-  });
   void recordEngineLog({
     level: "warn",
     event: "recording.backend.target_lost",
@@ -926,16 +954,23 @@ export function resolveActiveAuthorPreviewTarget(streamId?: string | null, ensur
     const mediaSourceId = session.window.getMediaSourceId();
     const windowId = parseSourceNumericId(mediaSourceId);
     const bounds = session.window.getContentBounds();
-    void hostLog("info", "resolve_playwright_target", {
-      requested_stream_id: streamId ?? "",
-      author_session_count: authorPreviewSessions.size,
-      resolved_stream_id: session.id,
-      browser_window_id: session.window.id,
-      media_source_id: mediaSourceId,
-      window_id: windowId,
-      visible: session.window.isVisible(),
-      width_px: bounds.width,
-      height_px: bounds.height,
+    void recordEngineLog({
+      level: "info",
+      event: "recording.target.resolved",
+      context: {
+        request_id: streamId || undefined,
+        phase: "author_preview_resolution",
+      },
+      details: {
+        candidate_count: candidates.length,
+        resolved_stream_id: session.id,
+        browser_window_id: session.window.id,
+        window_id: windowId,
+        visible: session.window.isVisible(),
+        width_px: bounds.width,
+        height_px: bounds.height,
+        pid: process.pid,
+      },
     });
     return {
       window_id: windowId,
@@ -953,10 +988,18 @@ export function resolveActiveAuthorPreviewTarget(streamId?: string | null, ensur
       },
     };
   }
-  void hostLog("warn", "resolve_playwright_target unavailable", {
-    requested_stream_id: streamId ?? "",
-    author_session_count: authorPreviewSessions.size,
-    candidate_ids: [...authorPreviewSessions.keys()].join(","),
+  void recordEngineLog({
+    level: "warn",
+    event: "recording.target.failed",
+    context: {
+      request_id: streamId || undefined,
+      phase: "author_preview_resolution",
+      reason_code: "author_preview_target_unavailable",
+    },
+    details: {
+      candidate_count: candidates.length,
+      author_session_count: authorPreviewSessions.size,
+    },
   });
   return null;
 }
@@ -1489,17 +1532,12 @@ export function scheduleRecordingFrame(
     snapshotRecordingHealth(session);
     return;
   }
-  void queueFrame(session).catch((error) => {
+  void queueFrame(session).catch(() => {
     session.framesDropped += 1;
     sendChannel(session.eventTarget, session.eventChannelId, {
       type: "frames-dropped",
       total: session.framesDropped,
       delta: 1,
-    });
-    void hostLog("warn", "recording_frame_capture_failed", {
-      ...recordingCaptureStateSnapshot(session),
-      reason: "frame_capture_failed",
-      error_name: error instanceof Error ? error.name : "UnknownError",
     });
   });
 }
@@ -1720,16 +1758,24 @@ export async function captureRecordingNativeImage(session: RecordingSession): Pr
     if (!session.loggedAuthorPreviewFrame) {
       const size = image.getSize();
       session.loggedAuthorPreviewFrame = true;
-      void hostLog("info", "author_preview_recording_frame", {
-        stream_id: session.target.stream_id,
-        frame_width: size.width,
-        frame_height: size.height,
-        session_width: session.width,
-        session_height: session.height,
-        latest_paint_age_ms:
+      void recordEngineLog({
+        level: "info",
+        event: "recording.preview.first_frame",
+        context: {
+          session_id: session.id,
+          request_id: session.target.stream_id,
+          phase: "first_frame",
+        },
+        details: {
+          frame_width: size.width,
+          frame_height: size.height,
+          session_width: session.width,
+          session_height: session.height,
+          latest_paint_age_ms:
           preview.latestPaintAt == null
-            ? "none"
-            : String(Math.max(0, Date.now() - preview.latestPaintAt)),
+              ? null
+              : Math.max(0, Date.now() - preview.latestPaintAt),
+        },
       });
     }
     return image;
@@ -1917,11 +1963,21 @@ export async function stopAuthorPreviewSession(streamId: string): Promise<void> 
   if (!session) return;
   authorPreviewSessions.delete(streamId);
   if (globalPreviewStreamSessionId === streamId) globalPreviewStreamSessionId = null;
-  void hostLog("info", "stop_author_preview", {
-    stream_id: streamId,
-    browser_window_id: session.window.id,
-    was_destroyed: session.window.isDestroyed(),
-  });
+  const wasDestroyed = session.window.isDestroyed();
+  if (session.purpose === "recording") {
+    void recordEngineLog({
+      level: "info",
+      event: "recording.preview.stopped",
+      context: { request_id: streamId, phase: "stopped" },
+      details: { browser_window_id: session.window.id, was_destroyed: wasDestroyed },
+    });
+  } else {
+    void hostLog("info", "stop_author_preview", {
+      stream_id: streamId,
+      browser_window_id: session.window.id,
+      was_destroyed: wasDestroyed,
+    });
+  }
   if (!session.window.isDestroyed()) session.window.destroy();
 }
 
@@ -2028,9 +2084,7 @@ export async function startAuthorPreviewSession(
     throw error;
   }
   emitAuthorNav(session);
-  void hostLog("info", "start_author_preview", {
-    stream_id: id,
-    initial_url: initialUrl,
+  const previewDetails = {
     viewport_width: width,
     viewport_height: height,
     show: preview.isVisible(),
@@ -2038,13 +2092,27 @@ export async function startAuthorPreviewSession(
     requested_fps: purpose === "recording" ? positiveNumber(args.fps, frameRate) : null,
     effective_fps: frameRate,
     replace_existing: replaceExisting,
-    purpose,
-    partition: partition ?? null,
     preview_x: "x" in previewBounds ? previewBounds.x : null,
     preview_y: "y" in previewBounds ? previewBounds.y : null,
     browser_window_id: preview.id,
-    media_source_id: preview.getMediaSourceId(),
-  });
+  };
+  if (purpose === "recording") {
+    void recordEngineLog({
+      level: "info",
+      event: "recording.preview.started",
+      context: { request_id: id, phase: "started" },
+      details: { url: initialUrl, ...previewDetails },
+    });
+  } else {
+    void hostLog("info", "start_author_preview", {
+      stream_id: id,
+      initial_url: initialUrl,
+      ...previewDetails,
+      purpose,
+      partition: partition ?? null,
+      media_source_id: preview.getMediaSourceId(),
+    });
+  }
   return id;
 }
 
@@ -2721,7 +2789,6 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
           attempts: result.attempts,
         },
       });
-      void hostLog("info", "recording_readiness_observation", { ...result });
       if (result.barrier === "first_frame_committed") {
         health?.recordFirstFrameBarrier(result.status);
       }
@@ -2731,9 +2798,15 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
         result.status === "committed"
       ) {
         void recordingSessionJournal.checkpoint(id, "first_encoded_frame").catch((error) => {
-          void hostLog("warn", "recording_readiness_journal_checkpoint_failed", {
-            session_id: id,
-            error_name: error instanceof Error ? error.name : "UnknownError",
+          void recordEngineLog({
+            level: "warn",
+            event: "recording.checkpoint.failed",
+            context: {
+              session_id: id,
+              phase: "first_encoded_frame",
+              reason_code: "journal_checkpoint_failed",
+            },
+            error,
           });
         });
       }

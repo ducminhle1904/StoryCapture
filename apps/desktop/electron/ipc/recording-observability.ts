@@ -7,12 +7,12 @@ import {
 
 export type RecordingLogLevel = "debug" | "info" | "warn" | "error";
 
-export type RecordingLogEventName =
-  | "recording.legacy"
+export type RecordingLogEventNameV2 =
   | "recording.session.created"
   | "recording.lifecycle.transition"
   | "recording.preflight.completed"
   | "recording.readiness.completed"
+  | "recording.readiness.degraded"
   | "recording.encoder.started"
   | "recording.encoder.exited"
   | "recording.bundle.committed"
@@ -23,16 +23,23 @@ export type RecordingLogEventName =
   | "recording.terminal"
   | "recording.target.resolved"
   | "recording.target.failed"
+  | "recording.target.retry_scheduled"
+  | "recording.target.candidate_validation_failed"
+  | "recording.target.shadow_compared"
   | "recording.cursor.policy_selected"
+  | "recording.cursor.target_shifted"
+  | "recording.cursor.shadow_compared"
   | "recording.drag.started"
   | "recording.drag.completed"
   | "recording.drag.failed"
+  | "recording.drag.shadow_compared"
   | "recording.upload.started"
   | "recording.upload.completed"
   | "recording.upload.failed"
   | "recording.scene.attempt_started"
   | "recording.scene.attempt_committed"
   | "recording.scene.attempt_failed"
+  | "recording.scene.segment_frame_failed"
   | "recording.checkpoint.committed"
   | "recording.checkpoint.failed"
   | "recording.repair.required"
@@ -44,13 +51,21 @@ export type RecordingLogEventName =
   | "recording.stitch.failed"
   | "recording.health.sampled"
   | "recording.health.state_changed"
+  | "recording.health.publish_failed"
   | "recording.audio.track_state_changed"
   | "recording.audio.drift_detected"
+  | "recording.audio.finalize_failed"
   | "recording.backend.probed"
   | "recording.backend.selected"
   | "recording.backend.fallback"
   | "recording.backend.target_lost"
   | "recording.backend.stopped"
+  | "recording.backend.delivery_failed"
+  | "recording.preview.started"
+  | "recording.preview.first_frame"
+  | "recording.preview.stopped"
+  | "recording.outcome.shadow_mismatch"
+  | "recording.sidecar.write_failed"
   | "recording.discovery.completed"
   | "recording.discovery.failed"
   | "recording.backend.spike_started"
@@ -74,12 +89,12 @@ export interface RecordingLogContext {
   artifact_relpath?: string;
 }
 
-export interface RecordingLogEventV1 extends RecordingLogContext {
-  schema_version: 1;
+export interface RecordingLogEventV2 extends RecordingLogContext {
+  schema_version: 2;
   redaction_version: 1;
   emitted_at: string;
   level: RecordingLogLevel;
-  event: RecordingLogEventName;
+  event: RecordingLogEventNameV2;
   process_sequence: number;
   session_sequence?: number;
   error?: { name: string; message: string; stack?: string };
@@ -88,7 +103,7 @@ export interface RecordingLogEventV1 extends RecordingLogContext {
 
 export interface RecordingLogInput {
   level?: RecordingLogLevel;
-  event: RecordingLogEventName;
+  event: RecordingLogEventNameV2;
   context?: RecordingLogContext;
   details?: Record<string, unknown>;
   error?: unknown;
@@ -131,7 +146,7 @@ async function writeObservabilityFallback(
   }
 }
 
-function sanitizedError(error: unknown): RecordingLogEventV1["error"] {
+function sanitizedError(error: unknown): RecordingLogEventV2["error"] {
   if (error === undefined || error === null) return undefined;
   if (error instanceof Error) {
     return {
@@ -197,7 +212,7 @@ function sanitizedContext(context: RecordingLogContext): RecordingLogContext {
 
 export async function recordEngineLog(
   input: RecordingLogInput,
-): Promise<RecordingLogEventV1 | null> {
+): Promise<RecordingLogEventV2 | null> {
   if (!structuredLoggingEnabled()) return null;
   const context = sanitizedContext(input.context ?? {});
   processSequence += 1;
@@ -205,8 +220,8 @@ export async function recordEngineLog(
   const details = input.details
     ? (redactDiagnosticValue(input.details) as Record<string, DiagnosticJsonValue>)
     : undefined;
-  const event: RecordingLogEventV1 = {
-    schema_version: 1,
+  const event: RecordingLogEventV2 = {
+    schema_version: 2,
     redaction_version: 1,
     emitted_at: new Date().toISOString(),
     level: input.level ?? "info",
@@ -242,27 +257,6 @@ export async function recordEngineLog(
     ]);
     return null;
   }
-}
-
-export function recordingLogContextFromFields(
-  fields: Record<string, unknown>,
-): RecordingLogContext {
-  const stringField = (key: string): string | undefined =>
-    typeof fields[key] === "string" && fields[key] ? String(fields[key]) : undefined;
-  return {
-    session_id: stringField("session_id"),
-    take_id: stringField("take_id"),
-    scene_id: stringField("scene_id"),
-    step_id: stringField("step_id"),
-    attempt_id: stringField("attempt_id"),
-    reason_code: stringField("reason_code"),
-    backend_id: stringField("backend_id"),
-    track_id: stringField("track_id"),
-    ordinal:
-      typeof fields.ordinal === "number" && Number.isFinite(fields.ordinal)
-        ? fields.ordinal
-        : undefined,
-  };
 }
 
 export function resetRecordingObservabilityForTest(): void {

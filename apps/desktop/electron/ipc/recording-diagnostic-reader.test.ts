@@ -10,7 +10,7 @@ let input: string;
 
 function event(sequence: number, name: string, overrides: Record<string, unknown> = {}) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     redaction_version: 1,
     emitted_at: new Date(1_700_000_000_000 + sequence * 10).toISOString(),
     level: "info",
@@ -133,12 +133,21 @@ describe("recording diagnostics reader", () => {
   it("uses exit code 2 for malformed or unsupported event input", async () => {
     await writeEvents([
       event(1, "recording.session.created"),
-      { ...event(2, "recording.terminal"), schema_version: 2 },
+      { ...event(2, "recording.terminal"), schema_version: 1 },
     ]);
     const result = run();
     expect(result.status).toBe(2);
     expect(JSON.parse(result.stdout).issues).toContainEqual(
       expect.objectContaining({ code: "invalid_schema" }),
+    );
+  });
+
+  it("uses exit code 2 for the removed recording.legacy event", async () => {
+    await writeEvents([event(1, "recording.legacy")]);
+    const result = run();
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout).issues).toContainEqual(
+      expect.objectContaining({ code: "unsupported_event" }),
     );
   });
 

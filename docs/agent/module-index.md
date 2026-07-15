@@ -80,11 +80,14 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/electron/ipc/recording-segment-stitch.ts`, and
   `apps/desktop/electron/ipc/recording-repair.ts`.
 - Record-engine diagnostics: `apps/desktop/electron/ipc/recording-observability.ts`
-  owns structured events/redaction, `apps/desktop/electron/ipc/log-store.ts`
-  owns local streams/rotation/bundle export, and
+  owns the primary typed JSONL V2 events/redaction,
+  `apps/desktop/electron/ipc/log-store.ts` owns local streams/rotation/bundle
+  export, and
   `apps/desktop/scripts/recording-diagnostics.mjs` reads a session or
-  process-scoped trace. Standalone native spikes write allowlisted batch traces
-  through `apps/desktop/scripts/spikes/recording-spike-trace.mjs`.
+  process-scoped trace. V1 and `recording.legacy` are deliberately unsupported.
+  `hostLog` is only for general Electron/simulator text diagnostics and the
+  structured-writer fallback. Standalone native spikes write allowlisted V2
+  batch traces through `apps/desktop/scripts/spikes/recording-spike-trace.mjs`.
 - Record-engine operability: `apps/desktop/electron/ipc/engine-health.ts` and
   renderer reduction/copy in `apps/desktop/src/features/recorder/engine-health.ts`.
 - Capture backend contract/routing: `apps/desktop/electron/ipc/capture-backend.ts`

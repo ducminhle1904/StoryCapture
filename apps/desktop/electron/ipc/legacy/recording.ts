@@ -82,7 +82,7 @@ import {
   recordingCaptureActiveMediaMs,
   recordingFrameCommitBudgetMs,
 } from "./capture-preview";
-import { hostLog, type RecordingSession, recordingSessions, sendChannel } from "./shared";
+import { type RecordingSession, recordingSessions, sendChannel } from "./shared";
 
 interface RecordingAudioSink {
   file: FileHandle | null;
@@ -665,9 +665,15 @@ async function finalizeRecordingAvOutput(
         }
       }
     } catch (error) {
-      void hostLog("warn", "recording_audio_mux_failed", {
-        session_id: session.id,
-        error_name: error instanceof Error ? error.name : "UnknownError",
+      void recordEngineLog({
+        level: "warn",
+        event: "recording.audio.finalize_failed",
+        context: {
+          session_id: session.id,
+          phase: "background_mux",
+          reason_code: "audio_mux_failed",
+        },
+        error,
       });
     }
   }
@@ -1074,9 +1080,15 @@ export async function finalizeRecordingSession(session: RecordingSession, intent
       session.audioPath = compatibilityMixPath;
     }
   } catch (error) {
-    void hostLog("warn", "recording_audio_compatibility_mix_failed", {
-      session_id: session.id,
-      error_name: error instanceof Error ? error.name : "UnknownError",
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.audio.finalize_failed",
+      context: {
+        session_id: session.id,
+        phase: "compatibility_mix",
+        reason_code: "audio_compatibility_mix_failed",
+      },
+      error,
     });
   }
   if (avMode !== "unified") {
@@ -1118,18 +1130,25 @@ export async function finalizeRecordingSession(session: RecordingSession, intent
     requestedFps: session.effectiveFps,
   });
   if (warning) {
-    void hostLog("warn", "recording_capture_cadence_below_target", {
-      session_id: session.id,
-      target_kind: session.target.kind,
-      requested_fps: session.requestedFps,
-      effective_fps: session.effectiveFps,
-      actual_capture_fps: actualCaptureFps.toFixed(2),
-      frames_written: session.frameSeq,
-      frames_dropped: session.framesDropped,
-      late_frames: session.lateFrames,
-      skipped_ticks: session.skippedTicks,
-      encoder_backpressure_events: session.encoderBackpressureEvents,
-      cadence_warning: warning.code,
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.health.state_changed",
+      context: {
+        session_id: session.id,
+        phase: "final",
+        reason_code: warning.code,
+      },
+      details: {
+        target_kind: session.target.kind,
+        requested_fps: session.requestedFps,
+        effective_fps: session.effectiveFps,
+        actual_capture_fps: actualCaptureFps,
+        frames_written: session.frameSeq,
+        frames_dropped: session.framesDropped,
+        late_frames: session.lateFrames,
+        skipped_ticks: session.skippedTicks,
+        encoder_backpressure_events: session.encoderBackpressureEvents,
+      },
     });
   }
   if (session.captureBackend) {
@@ -1277,11 +1296,18 @@ export async function finalizeRecordingSession(session: RecordingSession, intent
       outcome: strict,
     });
     if (strict.verdict !== legacy.verdict || strict.reason_code !== legacy.reason_code) {
-      void hostLog("warn", "recording_outcome_shadow_mismatch", {
-        session_id: session.id,
-        legacy_verdict: legacy.verdict,
-        strict_verdict: strict.verdict,
-        strict_reason_code: strict.reason_code,
+      void recordEngineLog({
+        level: "warn",
+        event: "recording.outcome.shadow_mismatch",
+        context: {
+          session_id: session.id,
+          phase: "shadow_compare",
+          reason_code: strict.reason_code,
+        },
+        details: {
+          legacy_verdict: legacy.verdict,
+          strict_verdict: strict.verdict,
+        },
       });
     }
   };
