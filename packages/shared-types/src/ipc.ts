@@ -6,1746 +6,2590 @@
 
 /** user-defined commands **/
 
-
 export const commands = {
-async ping() : Promise<string> {
+  async ping(): Promise<string> {
     return await TAURI_INVOKE("ping");
-},
-async appInfo() : Promise<Result<AppInfo, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("app_info") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async storeSecret(service: string, account: string, value: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("store_secret", { service, account, value }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async loadSecret(service: string, account: string) : Promise<Result<string, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("load_secret", { service, account }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async deleteSecret(service: string, account: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("delete_secret", { service, account }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Smoke command — panics on a worker thread so we can prove the panic
- * host panic hook catches cross-thread panics and emits the
- * `app:panic` event to the renderer.
- * 
- * In release builds this is a no-op that returns
- * `AppError::InvalidArgument("trigger_panic disabled in release")` —
- * the renderer button is hidden in release UIs. This keeps the IPC
- * surface stable across debug/release.
- */
-async triggerPanic() : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("trigger_panic") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async logFromFrontend(payload: FrontendLogPayload) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("log_from_frontend", { payload }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Launch a story and stream events to the renderer.
- */
-async launchAutomation(storySource: string, projectFolder: string, onEvent: TAURI_CHANNEL<AutomationEvent>, chromeHiding: boolean | null, pacingProfile: PacingProfileDto | null, recordingSessionId: string | null, recordingDisplay: RecordingDisplayPlacementDto | null, recordingViewport: RecordingViewportDto | null) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("launch_automation", { storySource, projectFolder, onEvent, chromeHiding, pacingProfile, recordingSessionId, recordingDisplay, recordingViewport }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Resolve the current Playwright auto-target to a window id.
- */
-async resolvePlaywrightTarget() : Promise<Result<ResolvedPlaywrightTarget | null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("resolve_playwright_target") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Read macOS Stage Manager's global-enable flag.
- * 
- * Stage Manager (macOS 13+) groups windows into per-app "stages" and stops
- * compositing off-stage windows, which silently breaks SCK window-target
- * capture. We surface this as a pre-flight warning in the Recorder UI so
- * users understand why recording another app blacks out — the workaround
- * is to disable Stage Manager in Control Centre, matching Screen Studio's
- * and CleanShot X's UX. Returns `false` on non-macOS platforms.
- */
-async isStageManagerEnabled() : Promise<Result<boolean, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("is_stage_manager_enabled") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Start the CDP screencast and pump decoded frames into a host event.
- * 
- * Returns `UnavailableOnBackend` when no Playwright driver is registered
- * with `AppState::preview_driver` — the frontend uses this to fall back
- * to the static preview stage. A second invocation aborts any prior
- * pump task so frames are not double-emitted.
- */
-async startPreviewStream() : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("start_preview_stream") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Stop the preview pump and instruct the sidecar to end the CDP
- * screencast. Idempotent — a second call without an active stream is a
- * no-op. Preview-stop errors are swallowed (CLAUDE.md: intentional
- * isolation — preview lifecycle MUST NOT cascade into recording).
- */
-async stopPreviewStream() : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("stop_preview_stream") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Spawn an ephemeral author-time Playwright session and start its CDP
- * screencast. Returns the generated streamId; frontend binds
- * `<LivePreview streamId=... />` to the matching `preview://frame` events.
- * 
- * `initial_url` is usually `story.meta.app`; `None` launches on
- * about:blank and caller-side state stays happy for missing meta.app.
- */
-async startAuthorPreview(initialUrl: string | null, viewportWidth: number | null, viewportHeight: number | null) : Promise<Result<string, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("start_author_preview", { initialUrl, viewportWidth, viewportHeight }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Teardown an ephemeral author-time session. Idempotent.
- */
-async stopAuthorPreview(streamId: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("stop_author_preview", { streamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async pauseAuthorPreview(streamId: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("pause_author_preview", { streamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async resumeAuthorPreview(streamId: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("resume_author_preview", { streamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setAuthorPreviewViewport(streamId: string, args: AuthorViewportArgs) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_author_preview_viewport", { streamId, args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Navigate a live author-preview session to a new URL without relaunch.
- * Caller must pass an http(s) URL; the sidecar re-validates and rejects
- * otherwise.
- */
-async setAuthorPreviewUrl(streamId: string, url: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_author_preview_url", { streamId, url }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * URL-bar Back. No-op when at history index 0.
- */
-async authorPreviewBack(streamId: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("author_preview_back", { streamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * URL-bar Forward. No-op when forward stack is empty.
- */
-async authorPreviewForward(streamId: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("author_preview_forward", { streamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * URL-bar Reload. Always re-emits a `preview/nav` notification.
- */
-async authorPreviewReload(streamId: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("author_preview_reload", { streamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Readiness probe: confirms streamId is registered + sidecar is alive.
- */
-async attachAuthorDriver(streamId: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("attach_author_driver", { streamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Forward a pointer/wheel event from the LivePreview canvas into the
- * headless author browser. No-op if the session has been torn down.
- */
-async authorDispatchInput(streamId: string, event: AuthorInputEvent) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("author_dispatch_input", { streamId, event }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Start an element-picker session against the in-flight Playwright
- * sidecar. Returns the ranked DSL line (`emitted`) on a successful
- * pick, or a `Cancelled` variant on Esc / navigation / unsupported
- * URL / timeout. Wire contract — `emitted: String` — matches the
- * sidecar `pickElement.start` response.
- */
-async pickerStart(timeoutMs: bigint) : Promise<Result<PickElementResponseDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("picker_start", { timeoutMs }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Cancel an in-flight pickElement session. Idempotent — no-op when no
- * session is active. The sidecar will resolve any pending start with
- * `{ cancelled: true, reason: "user-cancel" }`.
- * 
- * Routes by FSM state: when the registry reports `Picking { stream_id }`,
- * the in-flight pick belongs to that author session and we must cancel on
- * `author_preview_sessions[stream_id].driver` — the recorder-path
- * `playwright_driver` is a different sidecar process and would silently
- * drop the cancel. The recorder driver is only consulted as a fallback for
- * the legacy recorder-path `picker_start` flow (FSM not in Picking state).
- */
-async pickerCancel() : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("picker_cancel") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * True iff a pickElement session is currently waiting for a click.
- * Returns `false` when no sidecar is launched (rather than erroring) so
- * the UI can poll cheaply.
- */
-async pickerIsActive() : Promise<Result<boolean, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("picker_is_active") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * stamp a UUIDv7 step id onto a picked `.story` line AND
- * seed the sibling `.story.targets.json` with the pick's primary +
- * fallback locators. Called fire-and-forget by `PickElementButton`
- * after a successful pick.
- * 
- * ## Protocol
- * 
- * 1. Read the `.story` source; parse via `story_parser::parse`.
- * 2. Locate the command whose `LineMeta.line` matches `line_offset`
- * (1-indexed). If already stamped, reuse its existing step id
- * (idempotent — re-picking the same line updates the targets JSON
- * without regenerating the UUID).
- * 3. If the line needs a fresh id, generate a `Uuid::now_v7`, set it on
- * the `Command`, re-serialize with `story_parser::format_story`, and
- * write back to the same path.
- * 4. Load (or create) the sibling `<story>.story.targets.json`, upsert
- * the step's `{ primary, fallbacks }` record, atomically write it
- * back via `targets_store::atomic_write`.
- * 5. Return the stamped UUID as a string.
- * 
- * ## Security
- * 
- * Rejects `story_path` that contains `..` (path-traversal guard). The
- * Host file-scope validation is still the primary boundary; this check is
- * defense-in-depth against future refactors.
- * 
- * ## Error mapping
- * 
- * `AppError::Automation` carries the underlying parse / io / protocol
- * error as a string — the renderer toasts it without blocking the
- * pick flow (fire-and-forget semantics on the UI side).
- * `primary` and `fallbacks` are typed `TargetRecordDto`s — see below.
- * The shape mirrors `automation::targets_store::TargetRecord` exactly
- * so the TS caller passes a real discriminated union, not a stringified
- * envelope.
- */
-async pickerStampStepId(storyPath: string, lineOffset: number, primary: TargetRecordDto, fallbacks: TargetRecordDto[]) : Promise<Result<PickerStampResultDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("picker_stamp_step_id", { storyPath, lineOffset, primary, fallbacks }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Host command entry point for Preview-panel Pick. See
- * `picker_start_author_impl` for the orchestration. Accepts `story_src`
- * directly from the renderer (the renderer handles dirty-buffer toast
- * before invoking this command).
- * 
- * `stream_id` MUST match an entry in `AppState.author_preview_sessions`
- * (started via `start_author_preview`); unknown streamId surfaces as
- * `AppError::InvalidArgument`.
- */
-async pickerStartAuthor(streamId: string, storySrc: string, cursorLine: number, timeoutMs: bigint | null) : Promise<Result<PickElementResponseDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("picker_start_author", { streamId, storySrc, cursorLine, timeoutMs }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * capture a fresh snapshot for `url`, persist the trio
- * under `<project>/.story.snapshots/`, return the manifest entry.
- * 
- * Requires the Playwright sidecar to be launched (via
- * `launch_automation`) — the capture routes to the SAME driver handle
- * but calls the dedicated `captureSnapshot` verb that the sidecar
- * implements against a SEPARATE browser context.
- */
-async authorSnapshotCapture(projectDir: string, url: string) : Promise<Result<AuthorSnapshotEntry, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("author_snapshot_capture", { projectDir, url }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * return the manifest entry for `url` if one exists.
- * Missing → `Ok(None)`. Corrupt JSON → `Err(AppError::Automation)`.
- */
-async authorSnapshotGet(projectDir: string, url: string) : Promise<Result<AuthorSnapshotEntry | null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("author_snapshot_get", { projectDir, url }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * enumerate every stored snapshot for `project_dir`.
- * Skips malformed manifests (logged at debug) rather than erroring the
- * whole list — one corrupt file shouldn't black out the UI.
- */
-async authorSnapshotList(projectDir: string) : Promise<Result<AuthorSnapshotEntry[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("author_snapshot_list", { projectDir }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * validate a parsed DSL target against the cached snapshot
- * DOM. Returns `NoSnapshot` if no snapshot exists for `url`; otherwise
- * projects the host-side validation result onto the wire DTO.
- * 
- * `target` is a typed mirror of `story_parser::SelectorOrText` —
- * see `commands::parse::SelectorOrTextDto` (carries `Role` with
- * structured `{ role, name }` fields rather than a packed string).
- */
-async authorSnapshotValidate(projectDir: string, url: string, target: SelectorOrTextDto) : Promise<Result<AuthorValidationDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("author_snapshot_validate", { projectDir, url, target }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getAppSettings() : Promise<Result<AppSettingsDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_app_settings") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setAppSettings(update: AppSettingsUpdate) : Promise<Result<AppSettingsDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_app_settings", { update }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async resetAppSettingsCategory(category: SettingsCategory) : Promise<Result<AppSettingsDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("reset_app_settings_category", { category }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getBrowserLanguageOptions() : Promise<Result<BrowserLanguageOptionDto[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_browser_language_options") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setBrowserExecutable(path: string | null) : Promise<Result<AppSettingsDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_browser_executable", { path }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setBrowserLanguage(language: string) : Promise<Result<AppSettingsDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_browser_language", { language }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getLogConfig() : Promise<Result<LogConfigDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_log_config") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setLogConfig(config: LogConfigUpdate) : Promise<Result<LogConfigDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_log_config", { config }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async openLogDir() : Promise<Result<string, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("open_log_dir") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async exportDiagnosticBundle(parentDir: string) : Promise<Result<DiagnosticBundleResult, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("export_diagnostic_bundle", { parentDir }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Enumerate audio input devices. Lazy: does NOT run at app launch,
- * fires only when the AudioDevicePicker opens (first-open only; the
- * React query caches the result for the session).
- */
-async listAudioInputs() : Promise<Result<AudioInputInfoDto[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_audio_inputs") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async listDisplays() : Promise<Result<DisplayInfoDto[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_displays") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async listWindows() : Promise<Result<WindowInfoDto[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_windows") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async listCaptureTargets() : Promise<Result<CaptureTargetsDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_capture_targets") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async checkScreenCapturePermission() : Promise<Result<ScreenCapturePermissionReportDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("check_screen_capture_permission") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async openScreenCapturePrefs() : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("open_screen_capture_prefs") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Request macOS screen-capture access and return the resulting permission report.
- */
-async requestScreenCaptureAccess() : Promise<Result<ScreenCapturePermissionReportDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("request_screen_capture_access") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async relaunchApp() : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("relaunch_app") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async startCapture(cfg: CaptureConfigDto, onEvent: TAURI_CHANNEL<CaptureEventDto>, onFrame: TAURI_CHANNEL<FrameMetaDto>) : Promise<Result<SessionId, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("start_capture", { cfg, onEvent, onFrame }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Extended `start_capture` that accepts a `CaptureTarget`.
- */
-async startCaptureTarget(args: StartCaptureTargetArgs, onEvent: TAURI_CHANNEL<CaptureEventDto>, onFrame: TAURI_CHANNEL<FrameMetaDto>) : Promise<Result<SessionId, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("start_capture_target", { args, onEvent, onFrame }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async stopCapture(session: SessionId) : Promise<Result<CaptureStatsDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("stop_capture", { session }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getCaptureTarget() : Promise<Result<CaptureTargetDto | null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_capture_target") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async setCaptureTarget(target: CaptureTargetDto) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("set_capture_target", { target }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * One-shot thumbnail capture for the recorder preview box.
- */
-async captureTargetThumbnail(target: CaptureTargetDto, maxWidth: number | null, maxHeight: number | null) : Promise<Result<number[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("capture_target_thumbnail", { target, maxWidth, maxHeight }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Runtime HW-encoder feature detection.
- */
-async probeHwEncoders() : Promise<Result<EncoderProbeDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("probe_hw_encoders") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Re-probe HW encoders bypassing any cached result.
- */
-async refreshHwEncoders() : Promise<Result<EncoderProbeDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("refresh_hw_encoders") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Start an end-to-end recording.
- */
-async startRecording(args: StartRecordingArgs, onEvent: TAURI_CHANNEL<RecordingEvent>) : Promise<Result<RecordingSessionId, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("start_recording", { args, onEvent }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async pauseRecording(session: RecordingSessionId) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("pause_recording", { session }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async resumeRecording(session: RecordingSessionId) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("resume_recording", { session }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async stopRecording(session: RecordingSessionId, onEvent: TAURI_CHANNEL<RecordingEvent>) : Promise<Result<EncodeResultDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("stop_recording", { session, onEvent }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Parse a `.story` source string and return best-effort AST + diagnostics.
- * 
- * The parser is guaranteed non-panicking on valid UTF-8; the 10 MB byte cap
- * is enforced at the higher `story_parser::io::parse_file` layer — this
- * command accepts an already-loaded string (the renderer owns the buffer,
- * CodeMirror virtualizes large files). If you need the hard cap here,
- * check `source.len() <= story_parser::MAX_STORY_FILE_BYTES` first.
- */
-async parseStory(source: string) : Promise<Result<ParseResultDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("parse_story", { source }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async listProjects() : Promise<Result<ProjectDto[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_projects") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async createProject(args: CreateProjectArgs) : Promise<Result<ProjectDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("create_project", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async openProject(args: ProjectIdArg) : Promise<Result<ProjectFolderInfoDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("open_project", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getProjectWorkflow(args: ProjectIdArg) : Promise<Result<WorkflowStateDto | null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_project_workflow", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async updateProjectWorkflow(args: UpdateProjectWorkflowArgs) : Promise<Result<WorkflowStateDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("update_project_workflow", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async removeProject(args: ProjectIdArg) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("remove_project", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async listProjectRecordings(args: ProjectIdArg) : Promise<Result<RecordingInfoDto[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_project_recordings", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getRecordingActions(args: GetRecordingActionsArgs) : Promise<Result<ActionTimelineDto | null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_recording_actions", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Load the trajectory sidecar that lives alongside an MP4.
- * 
- * Returns `Ok(None)` when the sidecar does not exist (older
- * recording or trajectory recorder skipped this session).
- */
-async getRecordingTrajectory(args: GetRecordingTrajectoryArgs) : Promise<Result<TrajectoryDto | null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_recording_trajectory", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Load `<recording>.steps.json`, the recording-relative timing sidecar
- * emitted by `launch_automation` for Record & Polish runs.
- * Returns `Ok(None)` for older recordings or manual recording sessions.
- */
-async getRecordingStepTiming(args: GetRecordingTrajectoryArgs) : Promise<Result<RecordingStepTimingSidecarDto | null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_recording_step_timing", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async renderEnqueue(job: NewRenderJobDto) : Promise<Result<string, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("render_enqueue", { job }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async renderCancel(jobId: string) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("render_cancel", { jobId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async renderListActive(storyId: string) : Promise<Result<RenderJobDto[], AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("render_list_active", { storyId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Streams `RenderProgress` snapshots to the renderer. Single-subscriber:
- * the receiver is consumed on first call; subsequent calls return
- * `AppError::Internal("already streaming")` until the receiver is
- * re-armed by the host.
- */
-async streamRenderProgress(channel: TAURI_CHANNEL<RenderProgressDto>) : Promise<Result<null, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("stream_render_progress", { channel }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async exportRun(args: ExportRunArgs) : Promise<Result<ExportResultDto, AppError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("export_run", { args }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async exportGetPresets() : Promise<ExportPresetsCatalogue> {
+  },
+  async appInfo(): Promise<Result<AppInfo, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("app_info") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async storeSecret(
+    service: string,
+    account: string,
+    value: string,
+  ): Promise<Result<null, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("store_secret", { service, account, value }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async loadSecret(service: string, account: string): Promise<Result<string, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("load_secret", { service, account }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async deleteSecret(service: string, account: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("delete_secret", { service, account }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Smoke command — panics on a worker thread so we can prove the panic
+   * host panic hook catches cross-thread panics and emits the
+   * `app:panic` event to the renderer.
+   *
+   * In release builds this is a no-op that returns
+   * `AppError::InvalidArgument("trigger_panic disabled in release")` —
+   * the renderer button is hidden in release UIs. This keeps the IPC
+   * surface stable across debug/release.
+   */
+  async triggerPanic(): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("trigger_panic") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async logFromFrontend(payload: FrontendLogPayload): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("log_from_frontend", { payload }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Launch a story and stream events to the renderer.
+   */
+  async launchAutomation(
+    storySource: string,
+    projectFolder: string,
+    onEvent: TAURI_CHANNEL<AutomationEvent>,
+    chromeHiding: boolean | null,
+    pacingProfile: PacingProfileDto | null,
+    recordingSessionId: string | null,
+    recordingDisplay: RecordingDisplayPlacementDto | null,
+    recordingViewport: RecordingViewportDto | null,
+  ): Promise<Result<null, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("launch_automation", {
+          storySource,
+          projectFolder,
+          onEvent,
+          chromeHiding,
+          pacingProfile,
+          recordingSessionId,
+          recordingDisplay,
+          recordingViewport,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Resolve the current Playwright auto-target to a window id.
+   */
+  async resolvePlaywrightTarget(): Promise<Result<ResolvedPlaywrightTarget | null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("resolve_playwright_target") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Read macOS Stage Manager's global-enable flag.
+   *
+   * Stage Manager (macOS 13+) groups windows into per-app "stages" and stops
+   * compositing off-stage windows, which silently breaks SCK window-target
+   * capture. We surface this as a pre-flight warning in the Recorder UI so
+   * users understand why recording another app blacks out — the workaround
+   * is to disable Stage Manager in Control Centre, matching Screen Studio's
+   * and CleanShot X's UX. Returns `false` on non-macOS platforms.
+   */
+  async isStageManagerEnabled(): Promise<Result<boolean, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("is_stage_manager_enabled") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Start the CDP screencast and pump decoded frames into a host event.
+   *
+   * Returns `UnavailableOnBackend` when no Playwright driver is registered
+   * with `AppState::preview_driver` — the frontend uses this to fall back
+   * to the static preview stage. A second invocation aborts any prior
+   * pump task so frames are not double-emitted.
+   */
+  async startPreviewStream(): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("start_preview_stream") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Stop the preview pump and instruct the sidecar to end the CDP
+   * screencast. Idempotent — a second call without an active stream is a
+   * no-op. Preview-stop errors are swallowed (CLAUDE.md: intentional
+   * isolation — preview lifecycle MUST NOT cascade into recording).
+   */
+  async stopPreviewStream(): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("stop_preview_stream") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Spawn an ephemeral author-time Playwright session and start its CDP
+   * screencast. Returns the generated streamId; frontend binds
+   * `<LivePreview streamId=... />` to the matching `preview://frame` events.
+   *
+   * `initial_url` is usually `story.meta.app`; `None` launches on
+   * about:blank and caller-side state stays happy for missing meta.app.
+   */
+  async startAuthorPreview(
+    initialUrl: string | null,
+    viewportWidth: number | null,
+    viewportHeight: number | null,
+  ): Promise<Result<string, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("start_author_preview", {
+          initialUrl,
+          viewportWidth,
+          viewportHeight,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Teardown an ephemeral author-time session. Idempotent.
+   */
+  async stopAuthorPreview(streamId: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("stop_author_preview", { streamId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async pauseAuthorPreview(streamId: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("pause_author_preview", { streamId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async resumeAuthorPreview(streamId: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("resume_author_preview", { streamId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setAuthorPreviewViewport(
+    streamId: string,
+    args: AuthorViewportArgs,
+  ): Promise<Result<null, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("set_author_preview_viewport", { streamId, args }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Navigate a live author-preview session to a new URL without relaunch.
+   * Caller must pass an http(s) URL; the sidecar re-validates and rejects
+   * otherwise.
+   */
+  async setAuthorPreviewUrl(streamId: string, url: string): Promise<Result<null, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("set_author_preview_url", { streamId, url }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * URL-bar Back. No-op when at history index 0.
+   */
+  async authorPreviewBack(streamId: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("author_preview_back", { streamId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * URL-bar Forward. No-op when forward stack is empty.
+   */
+  async authorPreviewForward(streamId: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("author_preview_forward", { streamId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * URL-bar Reload. Always re-emits a `preview/nav` notification.
+   */
+  async authorPreviewReload(streamId: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("author_preview_reload", { streamId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Readiness probe: confirms streamId is registered + sidecar is alive.
+   */
+  async attachAuthorDriver(streamId: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("attach_author_driver", { streamId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Forward a pointer/wheel event from the LivePreview canvas into the
+   * headless author browser. No-op if the session has been torn down.
+   */
+  async authorDispatchInput(
+    streamId: string,
+    event: AuthorInputEvent,
+  ): Promise<Result<null, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("author_dispatch_input", { streamId, event }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Start an element-picker session against the in-flight Playwright
+   * sidecar. Returns the ranked DSL line (`emitted`) on a successful
+   * pick, or a `Cancelled` variant on Esc / navigation / unsupported
+   * URL / timeout. Wire contract — `emitted: String` — matches the
+   * sidecar `pickElement.start` response.
+   */
+  async pickerStart(timeoutMs: bigint): Promise<Result<PickElementResponseDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("picker_start", { timeoutMs }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Cancel an in-flight pickElement session. Idempotent — no-op when no
+   * session is active. The sidecar will resolve any pending start with
+   * `{ cancelled: true, reason: "user-cancel" }`.
+   *
+   * Routes by FSM state: when the registry reports `Picking { stream_id }`,
+   * the in-flight pick belongs to that author session and we must cancel on
+   * `author_preview_sessions[stream_id].driver` — the recorder-path
+   * `playwright_driver` is a different sidecar process and would silently
+   * drop the cancel. The recorder driver is only consulted as a fallback for
+   * the legacy recorder-path `picker_start` flow (FSM not in Picking state).
+   */
+  async pickerCancel(): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("picker_cancel") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * True iff a pickElement session is currently waiting for a click.
+   * Returns `false` when no sidecar is launched (rather than erroring) so
+   * the UI can poll cheaply.
+   */
+  async pickerIsActive(): Promise<Result<boolean, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("picker_is_active") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * stamp a UUIDv7 step id onto a picked `.story` line AND
+   * seed the sibling `.story.targets.json` with the pick's primary +
+   * fallback locators. Called fire-and-forget by `PickElementButton`
+   * after a successful pick.
+   *
+   * ## Protocol
+   *
+   * 1. Read the `.story` source; parse via `story_parser::parse`.
+   * 2. Locate the command whose `LineMeta.line` matches `line_offset`
+   * (1-indexed). If already stamped, reuse its existing step id
+   * (idempotent — re-picking the same line updates the targets JSON
+   * without regenerating the UUID).
+   * 3. If the line needs a fresh id, generate a `Uuid::now_v7`, set it on
+   * the `Command`, re-serialize with `story_parser::format_story`, and
+   * write back to the same path.
+   * 4. Load (or create) the sibling `<story>.story.targets.json`, upsert
+   * the step's `{ primary, fallbacks }` record, atomically write it
+   * back via `targets_store::atomic_write`.
+   * 5. Return the stamped UUID as a string.
+   *
+   * ## Security
+   *
+   * Rejects `story_path` that contains `..` (path-traversal guard). The
+   * Host file-scope validation is still the primary boundary; this check is
+   * defense-in-depth against future refactors.
+   *
+   * ## Error mapping
+   *
+   * `AppError::Automation` carries the underlying parse / io / protocol
+   * error as a string — the renderer toasts it without blocking the
+   * pick flow (fire-and-forget semantics on the UI side).
+   * `primary` and `fallbacks` are typed `TargetRecordDto`s — see below.
+   * The shape mirrors `automation::targets_store::TargetRecord` exactly
+   * so the TS caller passes a real discriminated union, not a stringified
+   * envelope.
+   */
+  async pickerStampStepId(
+    storyPath: string,
+    lineOffset: number,
+    primary: TargetRecordDto,
+    fallbacks: TargetRecordDto[],
+  ): Promise<Result<PickerStampResultDto, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("picker_stamp_step_id", {
+          storyPath,
+          lineOffset,
+          primary,
+          fallbacks,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Host command entry point for Preview-panel Pick. See
+   * `picker_start_author_impl` for the orchestration. Accepts `story_src`
+   * directly from the renderer (the renderer handles dirty-buffer toast
+   * before invoking this command).
+   *
+   * `stream_id` MUST match an entry in `AppState.author_preview_sessions`
+   * (started via `start_author_preview`); unknown streamId surfaces as
+   * `AppError::InvalidArgument`.
+   */
+  async pickerStartAuthor(
+    streamId: string,
+    storySrc: string,
+    cursorLine: number,
+    timeoutMs: bigint | null,
+  ): Promise<Result<PickElementResponseDto, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("picker_start_author", {
+          streamId,
+          storySrc,
+          cursorLine,
+          timeoutMs,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * capture a fresh snapshot for `url`, persist the trio
+   * under `<project>/.story.snapshots/`, return the manifest entry.
+   *
+   * Requires the Playwright sidecar to be launched (via
+   * `launch_automation`) — the capture routes to the SAME driver handle
+   * but calls the dedicated `captureSnapshot` verb that the sidecar
+   * implements against a SEPARATE browser context.
+   */
+  async authorSnapshotCapture(
+    projectDir: string,
+    url: string,
+  ): Promise<Result<AuthorSnapshotEntry, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("author_snapshot_capture", { projectDir, url }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * return the manifest entry for `url` if one exists.
+   * Missing → `Ok(None)`. Corrupt JSON → `Err(AppError::Automation)`.
+   */
+  async authorSnapshotGet(
+    projectDir: string,
+    url: string,
+  ): Promise<Result<AuthorSnapshotEntry | null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("author_snapshot_get", { projectDir, url }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * enumerate every stored snapshot for `project_dir`.
+   * Skips malformed manifests (logged at debug) rather than erroring the
+   * whole list — one corrupt file shouldn't black out the UI.
+   */
+  async authorSnapshotList(projectDir: string): Promise<Result<AuthorSnapshotEntry[], AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("author_snapshot_list", { projectDir }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * validate a parsed DSL target against the cached snapshot
+   * DOM. Returns `NoSnapshot` if no snapshot exists for `url`; otherwise
+   * projects the host-side validation result onto the wire DTO.
+   *
+   * `target` is a typed mirror of `story_parser::SelectorOrText` —
+   * see `commands::parse::SelectorOrTextDto` (carries `Role` with
+   * structured `{ role, name }` fields rather than a packed string).
+   */
+  async authorSnapshotValidate(
+    projectDir: string,
+    url: string,
+    target: SelectorOrTextDto,
+  ): Promise<Result<AuthorValidationDto, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("author_snapshot_validate", { projectDir, url, target }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getAppSettings(): Promise<Result<AppSettingsDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_app_settings") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setAppSettings(update: AppSettingsUpdate): Promise<Result<AppSettingsDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("set_app_settings", { update }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async resetAppSettingsCategory(
+    category: SettingsCategory,
+  ): Promise<Result<AppSettingsDto, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("reset_app_settings_category", { category }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getBrowserLanguageOptions(): Promise<Result<BrowserLanguageOptionDto[], AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_browser_language_options") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setBrowserExecutable(path: string | null): Promise<Result<AppSettingsDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("set_browser_executable", { path }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setBrowserLanguage(language: string): Promise<Result<AppSettingsDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("set_browser_language", { language }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getLogConfig(): Promise<Result<LogConfigDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_log_config") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setLogConfig(config: LogConfigUpdate): Promise<Result<LogConfigDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("set_log_config", { config }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async openLogDir(): Promise<Result<string, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("open_log_dir") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async exportDiagnosticBundle(
+    parentDir: string,
+  ): Promise<Result<DiagnosticBundleResult, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("export_diagnostic_bundle", { parentDir }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Enumerate audio input devices. Lazy: does NOT run at app launch,
+   * fires only when the AudioDevicePicker opens (first-open only; the
+   * React query caches the result for the session).
+   */
+  async listAudioInputs(): Promise<Result<AudioInputInfoDto[], AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("list_audio_inputs") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async listDisplays(): Promise<Result<DisplayInfoDto[], AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("list_displays") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async listWindows(): Promise<Result<WindowInfoDto[], AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("list_windows") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async listCaptureTargets(): Promise<Result<CaptureTargetsDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("list_capture_targets") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async checkScreenCapturePermission(): Promise<
+    Result<ScreenCapturePermissionReportDto, AppError>
+  > {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("check_screen_capture_permission") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async openScreenCapturePrefs(): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("open_screen_capture_prefs") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Request macOS screen-capture access and return the resulting permission report.
+   */
+  async requestScreenCaptureAccess(): Promise<Result<ScreenCapturePermissionReportDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("request_screen_capture_access") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async relaunchApp(): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("relaunch_app") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async startCapture(
+    cfg: CaptureConfigDto,
+    onEvent: TAURI_CHANNEL<CaptureEventDto>,
+    onFrame: TAURI_CHANNEL<FrameMetaDto>,
+  ): Promise<Result<SessionId, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("start_capture", { cfg, onEvent, onFrame }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Extended `start_capture` that accepts a `CaptureTarget`.
+   */
+  async startCaptureTarget(
+    args: StartCaptureTargetArgs,
+    onEvent: TAURI_CHANNEL<CaptureEventDto>,
+    onFrame: TAURI_CHANNEL<FrameMetaDto>,
+  ): Promise<Result<SessionId, AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("start_capture_target", { args, onEvent, onFrame }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async stopCapture(session: SessionId): Promise<Result<CaptureStatsDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("stop_capture", { session }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getCaptureTarget(): Promise<Result<CaptureTargetDto | null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_capture_target") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setCaptureTarget(target: CaptureTargetDto): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("set_capture_target", { target }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * One-shot thumbnail capture for the recorder preview box.
+   */
+  async captureTargetThumbnail(
+    target: CaptureTargetDto,
+    maxWidth: number | null,
+    maxHeight: number | null,
+  ): Promise<Result<number[], AppError>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("capture_target_thumbnail", { target, maxWidth, maxHeight }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Runtime HW-encoder feature detection.
+   */
+  async probeHwEncoders(): Promise<Result<EncoderProbeDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("probe_hw_encoders") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Re-probe HW encoders bypassing any cached result.
+   */
+  async refreshHwEncoders(): Promise<Result<EncoderProbeDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("refresh_hw_encoders") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Start an end-to-end recording.
+   */
+  async startRecording(
+    args: StartRecordingArgs,
+    onEvent: TAURI_CHANNEL<RecordingEvent>,
+  ): Promise<Result<RecordingSessionId, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("start_recording", { args, onEvent }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async pauseRecording(session: RecordingSessionId): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("pause_recording", { session }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async resumeRecording(session: RecordingSessionId): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("resume_recording", { session }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async stopRecording(
+    session: RecordingSessionId,
+    onEvent: TAURI_CHANNEL<RecordingEvent>,
+  ): Promise<Result<EncodeResultDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("stop_recording", { session, onEvent }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Parse a `.story` source string and return best-effort AST + diagnostics.
+   *
+   * The parser is guaranteed non-panicking on valid UTF-8; the 10 MB byte cap
+   * is enforced at the higher `story_parser::io::parse_file` layer — this
+   * command accepts an already-loaded string (the renderer owns the buffer,
+   * CodeMirror virtualizes large files). If you need the hard cap here,
+   * check `source.len() <= story_parser::MAX_STORY_FILE_BYTES` first.
+   */
+  async parseStory(source: string): Promise<Result<ParseResultDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("parse_story", { source }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async listProjects(): Promise<Result<ProjectDto[], AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("list_projects") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async createProject(args: CreateProjectArgs): Promise<Result<ProjectDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("create_project", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async openProject(args: ProjectIdArg): Promise<Result<ProjectFolderInfoDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("open_project", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getProjectWorkflow(args: ProjectIdArg): Promise<Result<WorkflowStateDto | null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_project_workflow", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async updateProjectWorkflow(
+    args: UpdateProjectWorkflowArgs,
+  ): Promise<Result<WorkflowStateDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("update_project_workflow", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async removeProject(args: ProjectIdArg): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("remove_project", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async listProjectRecordings(args: ProjectIdArg): Promise<Result<RecordingInfoDto[], AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("list_project_recordings", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getRecordingActions(
+    args: GetRecordingActionsArgs,
+  ): Promise<Result<ActionTimelineDto | null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_recording_actions", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Load the trajectory sidecar that lives alongside an MP4.
+   *
+   * Returns `Ok(None)` when the sidecar does not exist (older
+   * recording or trajectory recorder skipped this session).
+   */
+  async getRecordingTrajectory(
+    args: GetRecordingTrajectoryArgs,
+  ): Promise<Result<TrajectoryDto | null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_recording_trajectory", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Load `<recording>.steps.json`, the recording-relative timing sidecar
+   * emitted by `launch_automation` for Record & Polish runs.
+   * Returns `Ok(None)` for older recordings or manual recording sessions.
+   */
+  async getRecordingStepTiming(
+    args: GetRecordingTrajectoryArgs,
+  ): Promise<Result<RecordingStepTimingSidecarDto | null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_recording_step_timing", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async renderEnqueue(job: NewRenderJobDto): Promise<Result<string, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("render_enqueue", { job }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async renderCancel(jobId: string): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("render_cancel", { jobId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async renderListActive(storyId: string): Promise<Result<RenderJobDto[], AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("render_list_active", { storyId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Streams `RenderProgress` snapshots to the renderer. Single-subscriber:
+   * the receiver is consumed on first call; subsequent calls return
+   * `AppError::Internal("already streaming")` until the receiver is
+   * re-armed by the host.
+   */
+  async streamRenderProgress(
+    channel: TAURI_CHANNEL<RenderProgressDto>,
+  ): Promise<Result<null, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("stream_render_progress", { channel }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async exportRun(args: ExportRunArgs): Promise<Result<ExportResultDto, AppError>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("export_run", { args }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async exportGetPresets(): Promise<ExportPresetsCatalogue> {
     return await TAURI_INVOKE("export_get_presets");
-},
-async exportValidateConfig(cfg: ExportOutputDto) : Promise<Result<null, AppError>> {
+  },
+  async exportValidateConfig(cfg: ExportOutputDto): Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("export_validate_config", { cfg }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async presetList(scope: PresetScopeDto) : Promise<Result<EffectPresetDto[], AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("export_validate_config", { cfg }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async presetList(scope: PresetScopeDto): Promise<Result<EffectPresetDto[], AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("preset_list", { scope }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async presetImport(path: string, scope: PresetScopeDto) : Promise<Result<string, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("preset_list", { scope }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async presetImport(path: string, scope: PresetScopeDto): Promise<Result<string, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("preset_import", { path, scope }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async presetExport(id: string, out: string) : Promise<Result<null, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("preset_import", { path, scope }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async presetExport(id: string, out: string): Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("preset_export", { id, out }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async timelineLoad(storyId: string) : Promise<Result<TimelineStateDto | null, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("preset_export", { id, out }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async timelineLoad(storyId: string): Promise<Result<TimelineStateDto | null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("timeline_load", { storyId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async timelineSave(storyId: string, layoutJson: string) : Promise<Result<null, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("timeline_load", { storyId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async timelineSave(storyId: string, layoutJson: string): Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("timeline_save", { storyId, layoutJson }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async soundLibraryList(category: SoundCategoryDto) : Promise<Result<SoundLibraryEntryDto[], AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("timeline_save", { storyId, layoutJson }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async soundLibraryList(
+    category: SoundCategoryDto,
+  ): Promise<Result<SoundLibraryEntryDto[], AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("sound_library_list", { category }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Query the configured update endpoint.
- * 
- * Returns `None` when the running version is already up to date.
- */
-async checkUpdate() : Promise<Result<UpdateInfo | null, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("sound_library_list", { category }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Query the configured update endpoint.
+   *
+   * Returns `None` when the running version is already up to date.
+   */
+  async checkUpdate(): Promise<Result<UpdateInfo | null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("check_update") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Download + apply the pending update, then relaunch the app.
- * 
- * The updater verifies the manifest signature before applying.
- */
-async installUpdate() : Promise<Result<null, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("check_update") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Download + apply the pending update, then relaunch the app.
+   *
+   * The updater verifies the manifest signature before applying.
+   */
+  async installUpdate(): Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("install_update") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Store a provider key in the OS keychain.
- * 
- * `#[tracing::instrument(skip(key))]` is the primary defence — without it
- * tracing auto-derives `Debug` on every argument and the key would land in
- * any `INFO`-level span capture. The `intelligence::tracing::redaction_layer`
- * installed at app boot is the defence-in-depth layer.
- */
-async keySet(provider: ProviderId, key: string) : Promise<Result<null, KeyError>> {
+      return { status: "ok", data: await TAURI_INVOKE("install_update") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Store a provider key in the OS keychain.
+   *
+   * `#[tracing::instrument(skip(key))]` is the primary defence — without it
+   * tracing auto-derives `Debug` on every argument and the key would land in
+   * any `INFO`-level span capture. The `intelligence::tracing::redaction_layer`
+   * installed at app boot is the defence-in-depth layer.
+   */
+  async keySet(provider: ProviderId, key: string): Promise<Result<null, KeyError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("key_set", { provider, key }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Return `true` iff a key is stored for `provider`. The return type is
- * `Result<bool, KeyError>` — bool at compile time, so the value is
- * physically incapable of crossing the IPC boundary. (Acceptance criterion
- * "Return type of `key_get_presence` is `Result<bool, KeyError>`" is
- * enforced by the function signature below — grep-friendly.)
- */
-async keyGetPresence(provider: ProviderId) : Promise<Result<boolean, KeyError>> {
+      return { status: "ok", data: await TAURI_INVOKE("key_set", { provider, key }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Return `true` iff a key is stored for `provider`. The return type is
+   * `Result<bool, KeyError>` — bool at compile time, so the value is
+   * physically incapable of crossing the IPC boundary. (Acceptance criterion
+   * "Return type of `key_get_presence` is `Result<bool, KeyError>`" is
+   * enforced by the function signature below — grep-friendly.)
+   */
+  async keyGetPresence(provider: ProviderId): Promise<Result<boolean, KeyError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("key_get_presence", { provider }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Remove a key from the keychain. Returns `KeyError::KeyNotFound` if the
- * entry was already absent (so the webview can distinguish "already gone"
- * from "keychain unavailable").
- */
-async keyDelete(provider: ProviderId) : Promise<Result<null, KeyError>> {
+      return { status: "ok", data: await TAURI_INVOKE("key_get_presence", { provider }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Remove a key from the keychain. Returns `KeyError::KeyNotFound` if the
+   * entry was already absent (so the webview can distinguish "already gone"
+   * from "keychain unavailable").
+   */
+  async keyDelete(provider: ProviderId): Promise<Result<null, KeyError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("key_delete", { provider }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Cheap provider-specific probe. Fetches the key from the keychain, wraps
- * it in `intelligence::secrets::Redacted<String>` (so any accidental
- * `Debug`/`Display` call renders `***`), issues a single GET against the
- * provider's list endpoint, and returns latency + status.
- * 
- * `detail` never contains the key or the request headers — only the HTTP
- * reason line. `KeyError::ProviderAuthFailed` is returned for 401/403,
- * `KeyError::ProviderNetworkError` for transport failures.
- */
-async keyTest(provider: ProviderId) : Promise<Result<KeyTestReport, KeyError>> {
+      return { status: "ok", data: await TAURI_INVOKE("key_delete", { provider }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Cheap provider-specific probe. Fetches the key from the keychain, wraps
+   * it in `intelligence::secrets::Redacted<String>` (so any accidental
+   * `Debug`/`Display` call renders `***`), issues a single GET against the
+   * provider's list endpoint, and returns latency + status.
+   *
+   * `detail` never contains the key or the request headers — only the HTTP
+   * reason line. `KeyError::ProviderAuthFailed` is returned for 401/403,
+   * `KeyError::ProviderNetworkError` for transport failures.
+   */
+  async keyTest(provider: ProviderId): Promise<Result<KeyTestReport, KeyError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("key_test", { provider }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Start a dry-run against the given steps.
- * 
- * Returns a `task_id` that can be passed to `dryrun_cancel` to abort.
- * Events are streamed to the renderer via `on_event`.
- */
-async dryrunStart(steps: DryRunStepDto[], onEvent: TAURI_CHANNEL<DryRunEventDto>) : Promise<Result<string, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("key_test", { provider }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Start a dry-run against the given steps.
+   *
+   * Returns a `task_id` that can be passed to `dryrun_cancel` to abort.
+   * Events are streamed to the renderer via `on_event`.
+   */
+  async dryrunStart(
+    steps: DryRunStepDto[],
+    onEvent: TAURI_CHANNEL<DryRunEventDto>,
+  ): Promise<Result<string, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("dryrun_start", { steps, onEvent }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Cancel a running dry-run by task_id.
- */
-async dryrunCancel(taskId: string) : Promise<Result<null, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("dryrun_start", { steps, onEvent }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Cancel a running dry-run by task_id.
+   */
+  async dryrunCancel(taskId: string): Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("dryrun_cancel", { taskId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async simulatorStart(projectFolder: string, storySource: string, storyPath: string, streamId: string, stopAfterOrdinal: number | null, channel: TAURI_CHANNEL<SimulatorEvent>) : Promise<Result<string, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("dryrun_cancel", { taskId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async simulatorStart(
+    projectFolder: string,
+    storySource: string,
+    storyPath: string,
+    streamId: string,
+    stopAfterOrdinal: number | null,
+    channel: TAURI_CHANNEL<SimulatorEvent>,
+  ): Promise<Result<string, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("simulator_start", { projectFolder, storySource, storyPath, streamId, stopAfterOrdinal, channel }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async simulatorStepTo(sessionId: string, ordinal: number) : Promise<Result<null, AppError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("simulator_start", {
+          projectFolder,
+          storySource,
+          storyPath,
+          streamId,
+          stopAfterOrdinal,
+          channel,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async simulatorStepTo(sessionId: string, ordinal: number): Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("simulator_step_to", { sessionId, ordinal }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async simulatorCancel(sessionId: string) : Promise<Result<null, AppError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("simulator_step_to", { sessionId, ordinal }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async simulatorCancel(sessionId: string): Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("simulator_cancel", { sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async simulatorPromoteFallback(sessionId: string, ordinal: number) : Promise<Result<null, AppError>> {
+      return { status: "ok", data: await TAURI_INVOKE("simulator_cancel", { sessionId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async simulatorPromoteFallback(
+    sessionId: string,
+    ordinal: number,
+  ): Promise<Result<null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("simulator_promote_fallback", { sessionId, ordinal }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Send a JSON-RPC request or notification to the in-process LSP server.
- */
-async lspRequest(jsonrpcRequestJson: string, onNotification: TAURI_CHANNEL<LspNotificationDto>) : Promise<Result<string, string>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("simulator_promote_fallback", { sessionId, ordinal }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Send a JSON-RPC request or notification to the in-process LSP server.
+   */
+  async lspRequest(
+    jsonrpcRequestJson: string,
+    onNotification: TAURI_CHANNEL<LspNotificationDto>,
+  ): Promise<Result<string, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("lsp_request", { jsonrpcRequestJson, onNotification }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Start an NL-to-DSL turn. Streams events via `on_event` channel.
- * Returns the `task_id` immediately (non-blocking).
- */
-async nlChatSend(projectId: string, userMessage: string, currentStory: string, providerOverride: ProviderId | null, onEvent: TAURI_CHANNEL<NlChatEvent>) : Promise<Result<string, NlCommandError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("lsp_request", { jsonrpcRequestJson, onNotification }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Start an NL-to-DSL turn. Streams events via `on_event` channel.
+   * Returns the `task_id` immediately (non-blocking).
+   */
+  async nlChatSend(
+    projectId: string,
+    userMessage: string,
+    currentStory: string,
+    providerOverride: ProviderId | null,
+    onEvent: TAURI_CHANNEL<NlChatEvent>,
+  ): Promise<Result<string, NlCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("nl_chat_send", { projectId, userMessage, currentStory, providerOverride, onEvent }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Cancel an in-flight NL turn.
- */
-async nlCancel(taskId: string) : Promise<Result<null, NlCommandError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("nl_chat_send", {
+          projectId,
+          userMessage,
+          currentStory,
+          providerOverride,
+          onEvent,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Cancel an in-flight NL turn.
+   */
+  async nlCancel(taskId: string): Promise<Result<null, NlCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("nl_cancel", { taskId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Apply steps from a completed NL turn.
- */
-async nlDiffApply(projectId: string, taskId: string, stepIds: string[]) : Promise<Result<string, NlCommandError>> {
+      return { status: "ok", data: await TAURI_INVOKE("nl_cancel", { taskId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Apply steps from a completed NL turn.
+   */
+  async nlDiffApply(
+    projectId: string,
+    taskId: string,
+    stepIds: string[],
+  ): Promise<Result<string, NlCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("nl_diff_apply", { projectId, taskId, stepIds }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Reject a turn's output and drop the cached doc.
- */
-async nlDiffReject(projectId: string, taskId: string) : Promise<Result<null, NlCommandError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("nl_diff_apply", { projectId, taskId, stepIds }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Reject a turn's output and drop the cached doc.
+   */
+  async nlDiffReject(projectId: string, taskId: string): Promise<Result<null, NlCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("nl_diff_reject", { projectId, taskId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Regenerate a single step and stream events.
- */
-async nlRegenStep(projectId: string, stepId: string, currentStory: string, onEvent: TAURI_CHANNEL<NlChatEvent>) : Promise<Result<string, NlCommandError>> {
+      return { status: "ok", data: await TAURI_INVOKE("nl_diff_reject", { projectId, taskId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Regenerate a single step and stream events.
+   */
+  async nlRegenStep(
+    projectId: string,
+    stepId: string,
+    currentStory: string,
+    onEvent: TAURI_CHANNEL<NlChatEvent>,
+  ): Promise<Result<string, NlCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("nl_regen_step", { projectId, stepId, currentStory, onEvent }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Load conversation history for a project.
- */
-async nlLoadHistory(projectId: string) : Promise<Result<NlTurnDto[], NlCommandError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("nl_regen_step", { projectId, stepId, currentStory, onEvent }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Load conversation history for a project.
+   */
+  async nlLoadHistory(projectId: string): Promise<Result<NlTurnDto[], NlCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("nl_load_history", { projectId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async nlGetSessionId() : Promise<Result<string, NlCommandError>> {
+      return { status: "ok", data: await TAURI_INVOKE("nl_load_history", { projectId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async nlGetSessionId(): Promise<Result<string, NlCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("nl_get_session_id") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async sessionGetRollup(projectId: string, sessionId: string) : Promise<Result<SessionRollupDto, NlCommandError>> {
+      return { status: "ok", data: await TAURI_INVOKE("nl_get_session_id") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async sessionGetRollup(
+    projectId: string,
+    sessionId: string,
+  ): Promise<Result<SessionRollupDto, NlCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("session_get_rollup", { projectId, sessionId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Generate a TTS clip. Cache-first: returns existing MP3 on hash match.
- */
-async ttsGenerate(projectId: string, stepId: string, scriptText: string, provider: ProviderId, voiceId: string, model: string) : Promise<Result<TtsGenerateResult, TtsCommandError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("session_get_rollup", { projectId, sessionId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Generate a TTS clip. Cache-first: returns existing MP3 on hash match.
+   */
+  async ttsGenerate(
+    projectId: string,
+    stepId: string,
+    scriptText: string,
+    provider: ProviderId,
+    voiceId: string,
+    model: string,
+  ): Promise<Result<TtsGenerateResult, TtsCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("tts_generate", { projectId, stepId, scriptText, provider, voiceId, model }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * List voices for a TTS provider.
- * 
- * For ElevenLabs, curated presets come first, then the full catalog
- * with duplicates removed.
- */
-async ttsVoiceList(provider: ProviderId) : Promise<Result<VoiceInfoDto[], TtsCommandError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("tts_generate", {
+          projectId,
+          stepId,
+          scriptText,
+          provider,
+          voiceId,
+          model,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * List voices for a TTS provider.
+   *
+   * For ElevenLabs, curated presets come first, then the full catalog
+   * with duplicates removed.
+   */
+  async ttsVoiceList(provider: ProviderId): Promise<Result<VoiceInfoDto[], TtsCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("tts_voice_list", { provider }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Regenerate a TTS clip, bypassing the cache.
- */
-async ttsRegenerateClip(projectId: string, stepId: string, scriptText: string, provider: ProviderId, voiceId: string, model: string) : Promise<Result<TtsGenerateResult, TtsCommandError>> {
+      return { status: "ok", data: await TAURI_INVOKE("tts_voice_list", { provider }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Regenerate a TTS clip, bypassing the cache.
+   */
+  async ttsRegenerateClip(
+    projectId: string,
+    stepId: string,
+    scriptText: string,
+    provider: ProviderId,
+    voiceId: string,
+    model: string,
+  ): Promise<Result<TtsGenerateResult, TtsCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("tts_regenerate_clip", { projectId, stepId, scriptText, provider, voiceId, model }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Garbage-collect TTS cache entries older than 7 days.
- * 
- * Returns the number of entries removed.
- */
-async ttsGcCache(projectId: string) : Promise<Result<bigint, TtsCommandError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("tts_regenerate_clip", {
+          projectId,
+          stepId,
+          scriptText,
+          provider,
+          voiceId,
+          model,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Garbage-collect TTS cache entries older than 7 days.
+   *
+   * Returns the number of entries removed.
+   */
+  async ttsGcCache(projectId: string): Promise<Result<bigint, TtsCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("tts_gc_cache", { projectId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Compute a TTS voiceover-to-timeline sync plan and emit duck events
- * to the sound mixer.
- * 
- * This command accepts step timings directly (effects AST integration
- * is deferred — once it lands, this will load step timings from the
- * project's effects AST instead of requiring them as a parameter).
- * 
- * Flow:
- * 1. Load ClipMeta by scanning tts_cache_index + probing audio durations.
- * 2. Call `compute_sync_plan`.
- * 3. Emit duck_events via `app.emit("sound_mixer/duck_events", ...)`.
- * 4. Persist drift_ms in tts_clip_metrics for each clip.
- */
-async ttsApplySync(projectId: string, stepTimings: StepTimingDto[]) : Promise<Result<SyncPlanDto, TtsCommandError>> {
+      return { status: "ok", data: await TAURI_INVOKE("tts_gc_cache", { projectId }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Compute a TTS voiceover-to-timeline sync plan and emit duck events
+   * to the sound mixer.
+   *
+   * This command accepts step timings directly (effects AST integration
+   * is deferred — once it lands, this will load step timings from the
+   * project's effects AST instead of requiring them as a parameter).
+   *
+   * Flow:
+   * 1. Load ClipMeta by scanning tts_cache_index + probing audio durations.
+   * 2. Call `compute_sync_plan`.
+   * 3. Emit duck_events via `app.emit("sound_mixer/duck_events", ...)`.
+   * 4. Persist drift_ms in tts_clip_metrics for each clip.
+   */
+  async ttsApplySync(
+    projectId: string,
+    stepTimings: StepTimingDto[],
+  ): Promise<Result<SyncPlanDto, TtsCommandError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("tts_apply_sync", { projectId, stepTimings }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Upload a video + thumbnail to the web companion via presigned R2 URLs.
- * 
- * Manual trigger only. No auto-retry. Progress events via Channel.
- */
-async uploadVideo(videoPath: string, projectName: string, workspaceId: string | null, storySource: string | null, sceneBoundaries: string | null, onProgress: TAURI_CHANNEL<UploadProgressEvent>) : Promise<Result<UploadResult, UploadError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("tts_apply_sync", { projectId, stepTimings }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Upload a video + thumbnail to the web companion via presigned R2 URLs.
+   *
+   * Manual trigger only. No auto-retry. Progress events via Channel.
+   */
+  async uploadVideo(
+    videoPath: string,
+    projectName: string,
+    workspaceId: string | null,
+    storySource: string | null,
+    sceneBoundaries: string | null,
+    onProgress: TAURI_CHANNEL<UploadProgressEvent>,
+  ): Promise<Result<UploadResult, UploadError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("upload_video", { videoPath, projectName, workspaceId, storySource, sceneBoundaries, onProgress }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Cancel an in-progress upload.
- */
-async cancelUpload() : Promise<Result<null, UploadError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("upload_video", {
+          videoPath,
+          projectName,
+          workspaceId,
+          storySource,
+          sceneBoundaries,
+          onProgress,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Cancel an in-progress upload.
+   */
+  async cancelUpload(): Promise<Result<null, UploadError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("cancel_upload") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Get current upload status.
- */
-async getUploadStatus() : Promise<Result<UploadStatusDto, UploadError>> {
+      return { status: "ok", data: await TAURI_INVOKE("cancel_upload") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Get current upload status.
+   */
+  async getUploadStatus(): Promise<Result<UploadStatusDto, UploadError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_upload_status") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Start the OAuth flow: spawn a localhost callback server and open the
- * system browser to the web companion's GitHub OAuth page.
- * 
- * Returns the port number the callback server is listening on.
- */
-async startWebOauth() : Promise<Result<number, WebAccountError>> {
+      return { status: "ok", data: await TAURI_INVOKE("get_upload_status") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Start the OAuth flow: spawn a localhost callback server and open the
+   * system browser to the web companion's GitHub OAuth page.
+   *
+   * Returns the port number the callback server is listening on.
+   */
+  async startWebOauth(): Promise<Result<number, WebAccountError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("start_web_oauth") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Wait for the OAuth callback, exchange the session token for an API token,
- * and store both in the OS keychain.
- */
-async completeWebOauth() : Promise<Result<WebAccountInfo, WebAccountError>> {
+      return { status: "ok", data: await TAURI_INVOKE("start_web_oauth") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Wait for the OAuth callback, exchange the session token for an API token,
+   * and store both in the OS keychain.
+   */
+  async completeWebOauth(): Promise<Result<WebAccountInfo, WebAccountError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("complete_web_oauth") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Read the connected web account info from keychain.
- */
-async getWebAccount() : Promise<Result<WebAccountInfo | null, WebAccountError>> {
+      return { status: "ok", data: await TAURI_INVOKE("complete_web_oauth") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Read the connected web account info from keychain.
+   */
+  async getWebAccount(): Promise<Result<WebAccountInfo | null, WebAccountError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_web_account") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Remove all web account data from keychain.
- */
-async disconnectWebAccount() : Promise<Result<null, WebAccountError>> {
+      return { status: "ok", data: await TAURI_INVOKE("get_web_account") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Remove all web account data from keychain.
+   */
+  async disconnectWebAccount(): Promise<Result<null, WebAccountError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("disconnect_web_account") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Read the API token from keychain (used by upload + sync commands).
- */
-async getWebApiToken() : Promise<Result<string | null, WebAccountError>> {
+      return { status: "ok", data: await TAURI_INVOKE("disconnect_web_account") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Read the API token from keychain (used by upload + sync commands).
+   */
+  async getWebApiToken(): Promise<Result<string | null, WebAccountError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_web_api_token") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Push project metadata to the web companion. Queues locally if offline.
- */
-async syncProjectMetadata(desktopId: string, workspaceId: string, projectName: string, storySource: string | null, workflowType: string | null, workflowStateJson: string | null) : Promise<Result<SyncResult, WebSyncError>> {
+      return { status: "ok", data: await TAURI_INVOKE("get_web_api_token") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Push project metadata to the web companion. Queues locally if offline.
+   */
+  async syncProjectMetadata(
+    desktopId: string,
+    workspaceId: string,
+    projectName: string,
+    storySource: string | null,
+    workflowType: string | null,
+    workflowStateJson: string | null,
+  ): Promise<Result<SyncResult, WebSyncError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("sync_project_metadata", { desktopId, workspaceId, projectName, storySource, workflowType, workflowStateJson }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Update recording status on the web companion. Fire-and-forget pattern:
- * does NOT queue on failure (recording status is ephemeral).
- */
-async updateRecordingStatus(desktopId: string, workspaceId: string, status: string) : Promise<Result<null, WebSyncError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("sync_project_metadata", {
+          desktopId,
+          workspaceId,
+          projectName,
+          storySource,
+          workflowType,
+          workflowStateJson,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Update recording status on the web companion. Fire-and-forget pattern:
+   * does NOT queue on failure (recording status is ephemeral).
+   */
+  async updateRecordingStatus(
+    desktopId: string,
+    workspaceId: string,
+    status: string,
+  ): Promise<Result<null, WebSyncError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("update_recording_status", { desktopId, workspaceId, status }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Flush all pending items from the offline sync queue.
- * Called on app startup and on network reconnect.
- * 
- * NOTE: rusqlite::Connection is !Send, so we must not hold it across .await
- * points. We read pending items, drop the connection, do HTTP calls, then
- * reopen the connection to delete successfully sent items.
- */
-async flushSyncQueue() : Promise<Result<FlushResult, WebSyncError>> {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("update_recording_status", { desktopId, workspaceId, status }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Flush all pending items from the offline sync queue.
+   * Called on app startup and on network reconnect.
+   *
+   * NOTE: rusqlite::Connection is !Send, so we must not hold it across .await
+   * points. We read pending items, drop the connection, do HTTP calls, then
+   * reopen the connection to delete successfully sent items.
+   */
+  async flushSyncQueue(): Promise<Result<FlushResult, WebSyncError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("flush_sync_queue") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Get the current sync status: connected, pending queue count, last sync time.
- */
-async getSyncStatus() : Promise<Result<SyncStatusDto, WebSyncError>> {
+      return { status: "ok", data: await TAURI_INVOKE("flush_sync_queue") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  /**
+   * Get the current sync status: connected, pending queue count, last sync time.
+   */
+  async getSyncStatus(): Promise<Result<SyncStatusDto, WebSyncError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_sync_status") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-}
-}
+      return { status: "ok", data: await TAURI_INVOKE("get_sync_status") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+};
 
 /** user-defined events **/
 
-
-
 /** user-defined constants **/
-
-
 
 /** user-defined types **/
 
-export type ActionBoundsDto = { x: number; y: number; w: number; h: number }
-export type ActionCaptureRectDto = { x: number; y: number; width: number; height: number }
-export type ActionPointDto = { x: number; y: number }
-export type ActionPointerDto = { button: string; effect: string }
-export type ActionTargetDto = { kind: string; label: string | null; center: ActionPointDto; bounds: ActionBoundsDto }
-export type ActionTimelineDto = { version: number; recording_path: string; viewport: ActionViewportDto; capture_rect: ActionCaptureRectDto; fps: number; frame_count: number; events: ActionTimelineEventDto[] }
-export type ActionTimelineEventDto = { step_id: string | null; ordinal: number; verb: string; t_start_ms: bigint; t_action_ms: bigint; t_end_ms: bigint; target: ActionTargetDto | null; secondary_target: ActionTargetDto | null; pointer: ActionPointerDto | null }
-export type ActionViewportDto = { width: number; height: number }
-export type AdjustedStepDto = { step_id: string; new_duration_ms: bigint; freeze_frame_extension_ms: bigint; silence_padding_ms: bigint; clip_start_ms: bigint; drift_ms: bigint }
-export type AppError = { kind: "Io"; message: string } | { kind: "Serialization"; message: string } | { kind: "Keyring"; message: string } | { kind: "Automation"; message: string } | { kind: "Capture"; message: string } | { kind: "Encoder"; message: string } | { kind: "Storage"; message: string } | { kind: "NotFound"; message: string } | { kind: "InvalidArgument"; message: string } | { kind: "Internal"; message: string } | { kind: "UnavailableOnBackend"; message: string } | 
-/**
- * Another `start_recording` is already in-flight. The global
- * `compare_exchange` guard at the command entry returns this when a
- * concurrent caller beats the current one. Frontend treats this as a
- * benign no-op (retry is the user clicking Start again).
- */
-{ kind: "AlreadyStarting" } | 
-/**
- * FFmpeg did not open the audio FIFO within the 2s handshake
- * window. Surfaces the failure instead of dangling the AudioCaptureStream
- * start on a pipe that FFmpeg will never read.
- */
-{ kind: "FifoHandshakeTimeout" }
-export type AppInfo = { version: string; platform: string; arch: string; data_dir: string; log_dir: string; 
-/**
- * Per-process session id (matches the `session=<uuid>` prefix on every
- * log line). Surfaced to the renderer so bug-report bundles can
- * reference the exact slice of the log file the user is running in.
- */
-session_id: string; pid: number }
-export type AppSettingsDto = { browser_executable: string | null; browser_language: string; general: GeneralSettings; capture: CaptureDefaults; render: RenderDefaults; privacy: PrivacySettings; updates: UpdateSettings; default_projects_folder: string; dock_progress_badge_supported: boolean }
-export type AppSettingsUpdate = { general: GeneralSettings; capture: CaptureDefaults; render: RenderDefaults; privacy: PrivacySettings; updates: UpdateSettings }
-export type AudioCodecDto = "aac" | "opus"
-export type AudioInputDefault = "none" | "system_default"
+export type ActionBoundsDto = { x: number; y: number; w: number; h: number };
+export type ActionCaptureRectDto = { x: number; y: number; width: number; height: number };
+export type ActionPointDto = { x: number; y: number };
+export type ActionPointerDto = { button: string; effect: string };
+export type ActionTargetDto = {
+  kind: string;
+  label: string | null;
+  center: ActionPointDto;
+  bounds: ActionBoundsDto;
+};
+export type ActionTimelineDto = {
+  version: number;
+  recording_path: string;
+  viewport: ActionViewportDto;
+  capture_rect: ActionCaptureRectDto;
+  fps: number;
+  frame_count: number;
+  events: ActionTimelineEventDto[];
+};
+export type ActionTimelineEventDto = {
+  step_id: string | null;
+  ordinal: number;
+  verb: string;
+  t_start_ms: bigint;
+  t_action_ms: bigint;
+  t_end_ms: bigint;
+  target: ActionTargetDto | null;
+  secondary_target: ActionTargetDto | null;
+  pointer: ActionPointerDto | null;
+};
+export type ActionViewportDto = { width: number; height: number };
+export type AdjustedStepDto = {
+  step_id: string;
+  new_duration_ms: bigint;
+  freeze_frame_extension_ms: bigint;
+  silence_padding_ms: bigint;
+  clip_start_ms: bigint;
+  drift_ms: bigint;
+};
+export type AppError =
+  | { kind: "Io"; message: string }
+  | { kind: "Serialization"; message: string }
+  | { kind: "Keyring"; message: string }
+  | { kind: "Automation"; message: string }
+  | { kind: "Capture"; message: string }
+  | { kind: "Encoder"; message: string }
+  | { kind: "Storage"; message: string }
+  | { kind: "NotFound"; message: string }
+  | { kind: "InvalidArgument"; message: string }
+  | { kind: "Internal"; message: string }
+  | { kind: "UnavailableOnBackend"; message: string }
+  /**
+   * Another `start_recording` is already in-flight. The global
+   * `compare_exchange` guard at the command entry returns this when a
+   * concurrent caller beats the current one. Frontend treats this as a
+   * benign no-op (retry is the user clicking Start again).
+   */
+  | { kind: "AlreadyStarting" }
+  /**
+   * FFmpeg did not open the audio FIFO within the 2s handshake
+   * window. Surfaces the failure instead of dangling the AudioCaptureStream
+   * start on a pipe that FFmpeg will never read.
+   */
+  | { kind: "FifoHandshakeTimeout" };
+export type AppInfo = {
+  version: string;
+  platform: string;
+  arch: string;
+  data_dir: string;
+  log_dir: string;
+  /**
+   * Per-process session id (matches the `session=<uuid>` prefix on every
+   * log line). Surfaced to the renderer so bug-report bundles can
+   * reference the exact slice of the log file the user is running in.
+   */
+  session_id: string;
+  pid: number;
+};
+export type AppSettingsDto = {
+  browser_executable: string | null;
+  browser_language: string;
+  general: GeneralSettings;
+  capture: CaptureDefaults;
+  render: RenderDefaults;
+  privacy: PrivacySettings;
+  updates: UpdateSettings;
+  default_projects_folder: string;
+  dock_progress_badge_supported: boolean;
+};
+export type AppSettingsUpdate = {
+  general: GeneralSettings;
+  capture: CaptureDefaults;
+  render: RenderDefaults;
+  privacy: PrivacySettings;
+  updates: UpdateSettings;
+};
+export type AudioCodecDto = "aac" | "opus";
+export type AudioInputDefault = "none" | "system_default";
 /**
  * Serializable DTO for the audio-device picker.
  */
-export type AudioInputInfoDto = { id: string; name: string; is_default: boolean; channels: number; sample_rate_hz: number }
-export type AudioOptionsDto = { codec?: AudioCodecDto | null; bitrate_kbps?: number | null; channels?: number | null; sample_rate_hz?: number | null }
+export type AudioInputInfoDto = {
+  id: string;
+  name: string;
+  is_default: boolean;
+  channels: number;
+  sample_rate_hz: number;
+};
+export type AudioOptionsDto = {
+  codec?: AudioCodecDto | null;
+  bitrate_kbps?: number | null;
+  channels?: number | null;
+  sample_rate_hz?: number | null;
+};
 /**
  * Renderer-side pointer events from the LivePreview canvas, forwarded
  * into the headless author browser via Playwright's `page.mouse` API.
  * Coordinates are in page viewport space (the renderer transforms canvas
  * px → page px before calling).
  */
-export type AuthorInputEvent = { type: "mousemove"; x: number; y: number } | { type: "click"; x: number; y: number; button?: AuthorMouseButton } | { type: "wheel"; x: number; y: number; deltaX: number; deltaY: number } | { type: "keydown"; key: string; code: string; modifiers?: AuthorKeyModifiers; repeat?: boolean } | { type: "keyup"; key: string; code: string; modifiers?: AuthorKeyModifiers } | { type: "text"; text: string }
-export type AuthorKeyModifiers = { shift?: boolean; ctrl?: boolean; alt?: boolean; meta?: boolean }
-export type AuthorMouseButton = "left" | "right" | "middle"
+export type AuthorInputEvent =
+  | { type: "mousemove"; x: number; y: number }
+  | { type: "click"; x: number; y: number; button?: AuthorMouseButton }
+  | { type: "wheel"; x: number; y: number; deltaX: number; deltaY: number }
+  | { type: "keydown"; key: string; code: string; modifiers?: AuthorKeyModifiers; repeat?: boolean }
+  | { type: "keyup"; key: string; code: string; modifiers?: AuthorKeyModifiers }
+  | { type: "text"; text: string };
+export type AuthorKeyModifiers = { shift?: boolean; ctrl?: boolean; alt?: boolean; meta?: boolean };
+export type AuthorMouseButton = "left" | "right" | "middle";
 /**
  * Payload of `preview://nav/<streamId>` host events.
  */
-export type AuthorPreviewNavPayload = { streamId: string; url: string; canGoBack: boolean; canGoForward: boolean }
+export type AuthorPreviewNavPayload = {
+  streamId: string;
+  url: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+};
 /**
  * Manifest entry persisted alongside the HTML + PNG snapshot files.
  */
-export type AuthorSnapshotEntry = { 
-/**
- * Original URL this snapshot was captured for.
- */
-url: string; 
-/**
- * SHA-256(innerHTML) — cheap staleness check for the UI.
- */
-dom_hash: string; 
-/**
- * ISO-8601 when the snapshot was captured.
- */
-captured_at: string; 
-/**
- * Absolute path to the saved PNG.
- */
-screenshot_path: string; 
-/**
- * Absolute path to the saved innerHTML text file.
- */
-html_path: string }
+export type AuthorSnapshotEntry = {
+  /**
+   * Original URL this snapshot was captured for.
+   */
+  url: string;
+  /**
+   * SHA-256(innerHTML) — cheap staleness check for the UI.
+   */
+  dom_hash: string;
+  /**
+   * ISO-8601 when the snapshot was captured.
+   */
+  captured_at: string;
+  /**
+   * Absolute path to the saved PNG.
+   */
+  screenshot_path: string;
+  /**
+   * Absolute path to the saved innerHTML text file.
+   */
+  html_path: string;
+};
 /**
  * Validator status for one DSL step target against the cached snapshot DOM.
  * The renderer can pattern match on `status` directly.
  */
-export type AuthorValidationDto = { status: "unique"; strategy: string } | { status: "fuzzy"; count: number; reason: string } | { status: "none" } | { status: "no_snapshot" }
+export type AuthorValidationDto =
+  | { status: "unique"; strategy: string }
+  | { status: "fuzzy"; count: number; reason: string }
+  | { status: "none" }
+  | { status: "no_snapshot" };
 /**
  * Arguments for the editor-surface viewport switcher.
  */
-export type AuthorViewportArgs = { width: number; height: number }
+export type AuthorViewportArgs = { width: number; height: number };
 /**
  * Wrapper around automation executor events.
  */
-export type AutomationEvent = { 
-/**
- * JSON-stringified automation executor event.
- */
-json: string }
-export type BrowserLanguageOptionDto = { value: string; label: string }
-export type CaptureConfigDto = { display_id: bigint; include_cursor: boolean; fps_target: number; pixel_format: PixelFormatDto; 
-/**
- * Defaults to 256 MiB if `None`.
- */
-queue_cap_bytes: bigint | null }
-export type CaptureDefaults = { capture_fps: number; include_cursor_default: boolean; audio_input_default: AudioInputDefault; color_profile: ColorProfile }
+export type AutomationEvent = {
+  /**
+   * JSON-stringified automation executor event.
+   */
+  json: string;
+};
+export type BrowserLanguageOptionDto = { value: string; label: string };
+export type CaptureConfigDto = {
+  display_id: bigint;
+  include_cursor: boolean;
+  fps_target: number;
+  pixel_format: PixelFormatDto;
+  /**
+   * Defaults to 256 MiB if `None`.
+   */
+  queue_cap_bytes: bigint | null;
+};
+export type CaptureDefaults = {
+  capture_fps: number;
+  include_cursor_default: boolean;
+  audio_input_default: AudioInputDefault;
+  color_profile: ColorProfile;
+};
 /**
  * Wrapper around capture events for the typed `Channel<T>`.
  */
-export type CaptureEventDto = { json: string }
-export type CaptureRectDto = { x: number; y: number; width: number; height: number }
-export type CaptureStatsDto = { frames_delivered: bigint; frames_dropped: bigint; bytes_peak: bigint; duration_ms: bigint }
+export type CaptureEventDto = { json: string };
+export type CaptureRectDto = { x: number; y: number; width: number; height: number };
+export type CaptureStatsDto = {
+  frames_delivered: bigint;
+  frames_dropped: bigint;
+  bytes_peak: bigint;
+  duration_ms: bigint;
+};
 /**
  * Tagged `CaptureTarget` DTO.
  */
-export type CaptureTargetDto = { kind: "display"; display_id: bigint } | { kind: "window"; window_id: bigint } | { kind: "window_by_pid"; pid: number; title_hint: string | null } | { kind: "author_preview"; stream_id: string } | { kind: "display_region"; display_id: bigint; rect: RegionRectDto }
-export type CaptureTargetsDto = { displays: DisplayInfoDto[]; windows: WindowInfoDto[]; playwright_auto_available: boolean }
-export type ClockSourceDto = "host-time" | "qpc" | "synthetic"
-export type CodecDto = "h264"
-export type ColorProfile = "srgb_rec_709"
-export type CommandDto = { verb: "navigate"; url: string; span: SpanDto; step_id: string | null } | { verb: "click"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null } | { verb: "type"; target: SelectorOrTextDto; text: string; span: SpanDto; step_id: string | null } | { verb: "scroll"; direction: ScrollDirDto; amount: number | null; span: SpanDto; step_id: string | null } | { verb: "hover"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null } | { verb: "drag"; from: SelectorOrTextDto; to: SelectorOrTextDto; span: SpanDto; step_id: string | null } | { verb: "select"; target: SelectorOrTextDto; value: string; span: SpanDto; step_id: string | null } | { verb: "upload"; target: SelectorOrTextDto; path: string; span: SpanDto; step_id: string | null } | { verb: "wait"; duration_ms: bigint; span: SpanDto; step_id: string | null } | { verb: "wait-for"; target: SelectorOrTextDto; timeout_ms: bigint | null; span: SpanDto; step_id: string | null } | { verb: "assert"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null } | { verb: "screenshot"; name: string; span: SpanDto; step_id: string | null } | { verb: "pause"; span: SpanDto; step_id: string | null }
-export type ContainerDto = "mp4" | "mov" | "webm"
-export type CreateProjectArgs = { name: string; 
-/**
- * Parent directory to create the project folder under. The folder
- * name itself is derived from `name` via slugification (see
- * the host project-folder helper).
- */
-parent: string; workflow_type: WorkflowTypeDto | null; starter_story_source: string | null; workflow_state: WorkflowStateDto | null }
-export type DiagnosticBundleResult = { path: string }
-export type DiagnosticDto = { severity: SeverityDto; message: string; span: SpanDto; suggestion: string | null }
-export type DisplayInfoDto = { id: bigint; name: string; x: number; y: number; width_px: number; height_px: number; scale_factor: number; is_primary: boolean }
+export type CaptureTargetDto =
+  | { kind: "display"; display_id: bigint }
+  | { kind: "window"; window_id: bigint }
+  | { kind: "window_by_pid"; pid: number; title_hint: string | null }
+  | { kind: "author_preview"; stream_id: string }
+  | { kind: "display_region"; display_id: bigint; rect: RegionRectDto };
+export type CaptureTargetsDto = {
+  displays: DisplayInfoDto[];
+  windows: WindowInfoDto[];
+  playwright_auto_available: boolean;
+};
+export type ClockSourceDto = "host-time" | "qpc" | "synthetic";
+export type CodecDto = "h264";
+export type ColorProfile = "srgb_rec_709";
+export type CommandDto =
+  | { verb: "navigate"; url: string; span: SpanDto; step_id: string | null }
+  | { verb: "click"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null }
+  | { verb: "type"; target: SelectorOrTextDto; text: string; span: SpanDto; step_id: string | null }
+  | {
+      verb: "scroll";
+      direction: ScrollDirDto;
+      amount: number | null;
+      span: SpanDto;
+      step_id: string | null;
+    }
+  | { verb: "hover"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null }
+  | {
+      verb: "drag";
+      from: SelectorOrTextDto;
+      to: SelectorOrTextDto;
+      span: SpanDto;
+      step_id: string | null;
+    }
+  | {
+      verb: "select";
+      target: SelectorOrTextDto;
+      value: string;
+      span: SpanDto;
+      step_id: string | null;
+    }
+  | {
+      verb: "upload";
+      target: SelectorOrTextDto;
+      path: string;
+      span: SpanDto;
+      step_id: string | null;
+    }
+  | { verb: "wait"; duration_ms: bigint; span: SpanDto; step_id: string | null }
+  | {
+      verb: "wait-for";
+      target: SelectorOrTextDto;
+      timeout_ms: bigint | null;
+      span: SpanDto;
+      step_id: string | null;
+    }
+  | { verb: "assert"; target: SelectorOrTextDto; span: SpanDto; step_id: string | null }
+  | { verb: "screenshot"; name: string; span: SpanDto; step_id: string | null }
+  | { verb: "pause"; span: SpanDto; step_id: string | null };
+export type ContainerDto = "mp4" | "mov" | "webm";
+export type CreateProjectArgs = {
+  name: string;
+  /**
+   * Parent directory to create the project folder under. The folder
+   * name itself is derived from `name` via slugification (see
+   * the host project-folder helper).
+   */
+  parent: string;
+  workflow_type: WorkflowTypeDto | null;
+  starter_story_source: string | null;
+  workflow_state: WorkflowStateDto | null;
+};
+export type DiagnosticBundleResult = { path: string };
+export type DiagnosticDto = {
+  severity: SeverityDto;
+  message: string;
+  span: SpanDto;
+  suggestion: string | null;
+};
+export type DisplayInfoDto = {
+  id: bigint;
+  name: string;
+  x: number;
+  y: number;
+  width_px: number;
+  height_px: number;
+  scale_factor: number;
+  is_primary: boolean;
+};
 /**
  * IPC wrapper around dry-run events.
  */
-export type DryRunEventDto = { 
-/**
- * JSON-stringified `DryRunEvent`.
- */
-json: string }
+export type DryRunEventDto = {
+  /**
+   * JSON-stringified `DryRunEvent`.
+   */
+  json: string;
+};
 /**
  * Input steps from the webview (matches ExecStep shape).
  */
-export type DryRunStepDto = { id: string; verb: string; target: string | null; value: string | null }
-export type DuckEventDto = { start_ms: bigint; end_ms: bigint; db: number }
-export type EffectPresetDto = { id: string; 
-/**
- * "project" | "global"
- */
-scope: string; name: string; description: string; ast_json: string; version: number; bundled: boolean; created_at: bigint; author: string | null; tags: string[] }
-export type EncodeProgressDto = { frame: bigint; fps: number; bitrate_kbps: number; out_time_ms: bigint; drop_frames: bigint; dup_frames: bigint; speed: number; finished: boolean }
-export type EncodeResultDto = { output_path: string; duration_ms: bigint; bytes: bigint; frames_written: bigint; frames_dropped: bigint }
-export type EncoderOptionsDto = { container?: ContainerDto | null; codec?: CodecDto | null; rate_control?: RateControlDto | null; hw_encoder?: HardwareEncoderDto | null; quality_value?: number | null; x264_preset?: X264PresetDto | null; keyframe_interval_sec?: number | null; downscale_algo?: ScaleAlgoDto | null; audio?: AudioOptionsDto | null }
-export type EncoderProbeDto = { available: HardwareEncoderDto[]; preferred: HardwareEncoderDto }
-export type ExportOutputDto = { 
-/**
- * "mp4" | "webm" | "gif"
- */
-format: string; 
-/**
- * "720p" | "1080p" | "4k"
- */
-resolution: string; output_width?: number | null; output_height?: number | null; fps: number; 
-/**
- * "low" | "med" | "high"
- */
-quality: string; encoder_options?: EncoderOptionsDto | null }
-export type ExportPresetsCatalogue = { formats: string[]; resolutions: string[]; fps: number[]; qualities: string[] }
-export type ExportResultDto = { batch_id: string; job_ids: string[]; graph_snapshot_path: string }
-export type ExportRunArgs = { story_id: string; 
-/**
- * Graph is accepted as a JSON string; TS side sends `JSON.stringify(graph)`.
- */
-graph_json: string; outputs: ExportOutputDto[]; priority: number; output_folder: string; base_name: string; preset_id: string | null }
-export type FitModeDto = "letterbox" | "fill-crop" | "stretch"
+export type DryRunStepDto = {
+  id: string;
+  verb: string;
+  target: string | null;
+  value: string | null;
+};
+export type DuckEventDto = { start_ms: bigint; end_ms: bigint; db: number };
+export type EffectPresetDto = {
+  id: string;
+  /**
+   * "project" | "global"
+   */
+  scope: string;
+  name: string;
+  description: string;
+  ast_json: string;
+  version: number;
+  bundled: boolean;
+  created_at: bigint;
+  author: string | null;
+  tags: string[];
+};
+export type EncodeProgressDto = {
+  frame: bigint;
+  fps: number;
+  bitrate_kbps: number;
+  out_time_ms: bigint;
+  drop_frames: bigint;
+  dup_frames: bigint;
+  speed: number;
+  finished: boolean;
+};
+export type EncodeResultDto = {
+  output_path: string;
+  duration_ms: bigint;
+  bytes: bigint;
+  frames_written: bigint;
+  frames_dropped: bigint;
+  health?: RecordingHealthV1 | null;
+};
+export type EncoderOptionsDto = {
+  container?: ContainerDto | null;
+  codec?: CodecDto | null;
+  rate_control?: RateControlDto | null;
+  hw_encoder?: HardwareEncoderDto | null;
+  quality_value?: number | null;
+  x264_preset?: X264PresetDto | null;
+  keyframe_interval_sec?: number | null;
+  downscale_algo?: ScaleAlgoDto | null;
+  audio?: AudioOptionsDto | null;
+};
+export type EncoderProbeDto = { available: HardwareEncoderDto[]; preferred: HardwareEncoderDto };
+export type ExportOutputDto = {
+  /**
+   * "mp4" | "webm" | "gif"
+   */
+  format: string;
+  /**
+   * "720p" | "1080p" | "4k"
+   */
+  resolution: string;
+  output_width?: number | null;
+  output_height?: number | null;
+  fps: number;
+  /**
+   * "low" | "med" | "high"
+   */
+  quality: string;
+  encoder_options?: EncoderOptionsDto | null;
+};
+export type ExportPresetsCatalogue = {
+  formats: string[];
+  resolutions: string[];
+  fps: number[];
+  qualities: string[];
+};
+export type ExportResultDto = { batch_id: string; job_ids: string[]; graph_snapshot_path: string };
+export type ExportRunArgs = {
+  story_id: string;
+  /**
+   * Graph is accepted as a JSON string; TS side sends `JSON.stringify(graph)`.
+   */
+  graph_json: string;
+  outputs: ExportOutputDto[];
+  priority: number;
+  output_folder: string;
+  base_name: string;
+  preset_id: string | null;
+};
+export type FitModeDto = "letterbox" | "fill-crop" | "stretch";
 /**
  * Result of flushing the offline queue.
  */
-export type FlushResult = { flushed: number; failed: number; remaining: number }
-export type FrameCropRectDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null; scale_hint?: number | null }
-export type FrameMetaDto = { sequence: bigint; 
-/**
- * PTS in nanoseconds.
- */
-pts_ns: bigint; clock_source: ClockSourceDto; bytes: bigint; width_px: number; height_px: number }
-export type FrontendLogLevel = "trace" | "debug" | "info" | "warn" | "error"
-export type FrontendLogPayload = { level: FrontendLogLevel; 
-/**
- * Originating component / module — e.g. `"RecordingView"`. Free-form.
- */
-source: string; message: string; 
-/**
- * Dynamic key/value pairs rendered into the event tail as `key="value"`.
- * `tracing`'s static field machinery can't accept runtime field names,
- * hence the string-tuple shape.
- */
-fields?: ([string, string])[]; stack?: string | null; url?: string | null }
-export type GeneralSettings = { projects_folder: string | null; startup_behavior: StartupBehavior; autosave_enabled: boolean; autosave_interval_sec: number; dock_progress_badge: boolean }
-export type GetRecordingActionsArgs = { recording_path: string }
-export type GetRecordingTrajectoryArgs = { recording_path: string }
-export type HardwareEncoderDto = "video-toolbox-h264" | "video-toolbox-hevc" | "nvenc-h264" | "qsv-h264" | "amf-h264" | "libx264-software" | "openh-264-software"
+export type FlushResult = { flushed: number; failed: number; remaining: number };
+export type FrameCropRectDto = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  basis_w?: number | null;
+  basis_h?: number | null;
+  scale_hint?: number | null;
+};
+export type FrameMetaDto = {
+  sequence: bigint;
+  /**
+   * PTS in nanoseconds.
+   */
+  pts_ns: bigint;
+  clock_source: ClockSourceDto;
+  bytes: bigint;
+  width_px: number;
+  height_px: number;
+};
+export type FrontendLogLevel = "trace" | "debug" | "info" | "warn" | "error";
+export type FrontendLogPayload = {
+  level: FrontendLogLevel;
+  /**
+   * Originating component / module — e.g. `"RecordingView"`. Free-form.
+   */
+  source: string;
+  message: string;
+  /**
+   * Dynamic key/value pairs rendered into the event tail as `key="value"`.
+   * `tracing`'s static field machinery can't accept runtime field names,
+   * hence the string-tuple shape.
+   */
+  fields?: [string, string][];
+  stack?: string | null;
+  url?: string | null;
+};
+export type GeneralSettings = {
+  projects_folder: string | null;
+  startup_behavior: StartupBehavior;
+  autosave_enabled: boolean;
+  autosave_interval_sec: number;
+  dock_progress_badge: boolean;
+};
+export type GetRecordingActionsArgs = { recording_path: string };
+export type GetRecordingTrajectoryArgs = { recording_path: string };
+export type HardwareEncoderDto =
+  | "video-toolbox-h264"
+  | "video-toolbox-hevc"
+  | "nvenc-h264"
+  | "qsv-h264"
+  | "amf-h264"
+  | "libx264-software"
+  | "openh-264-software";
 /**
  * Structured failure modes. Each variant is derivable from a keychain or
  * HTTP error without including the key material.
  */
-export type KeyError = { kind: "KeychainUnavailable" } | { kind: "KeyNotFound" } | { kind: "InvalidKeyFormat" } | { kind: "ProviderAuthFailed" } | { kind: "ProviderNetworkError"; message: string }
+export type KeyError =
+  | { kind: "KeychainUnavailable" }
+  | { kind: "KeyNotFound" }
+  | { kind: "InvalidKeyFormat" }
+  | { kind: "ProviderAuthFailed" }
+  | { kind: "ProviderNetworkError"; message: string };
 /**
  * Outcome of a `key_test` probe — safe to surface to the webview.
- * 
+ *
  * `detail` contains the HTTP status line (e.g. `"200 OK"` or `"401 Unauthorized"`)
  * and NEVER the key, the `Authorization` header, or any provider response body.
  * The leak-proof test greps this field for the canary substring.
  */
-export type KeyTestReport = { ok: boolean; latency_ms: bigint; detail: string }
-export type LogConfigDto = { 
-/**
- * Effective directory log files are written to. Always populated —
- * when `log_dir_override` is null, this is the platform default the
- * frontend can show as a hint.
- */
-effective_log_dir: string; 
-/**
- * Raw user override (null = use platform default).
- */
-log_dir_override: string | null; 
-/**
- * Platform default log directory; informational, never written.
- */
-default_log_dir: string; max_file_size_bytes: bigint; max_files: number; min_file_size_bytes: bigint; max_allowed_file_size_bytes: bigint; min_files: number; max_allowed_files: number }
-export type LogConfigUpdate = { log_dir: string | null; max_file_size_bytes: bigint; max_files: number }
+export type KeyTestReport = { ok: boolean; latency_ms: bigint; detail: string };
+export type LogConfigDto = {
+  /**
+   * Effective directory log files are written to. Always populated —
+   * when `log_dir_override` is null, this is the platform default the
+   * frontend can show as a hint.
+   */
+  effective_log_dir: string;
+  /**
+   * Raw user override (null = use platform default).
+   */
+  log_dir_override: string | null;
+  /**
+   * Platform default log directory; informational, never written.
+   */
+  default_log_dir: string;
+  max_file_size_bytes: bigint;
+  max_files: number;
+  min_file_size_bytes: bigint;
+  max_allowed_file_size_bytes: bigint;
+  min_files: number;
+  max_allowed_files: number;
+};
+export type LogConfigUpdate = {
+  log_dir: string | null;
+  max_file_size_bytes: bigint;
+  max_files: number;
+};
 /**
  * DTO for LSP notifications sent back to the frontend via Channel.
  */
-export type LspNotificationDto = { method: string; 
-/**
- * JSON-stringified notification params.
- */
-params_json: string }
-export type MetaDto = { app: string | null; viewport: ViewportDto | null; theme: ThemeDto | null; speed: number | null; span: SpanDto }
-export type NewRenderJobDto = { story_id: string; preset_id: string | null; format: string; resolution: string; output_width: number | null; output_height: number | null; fps: number; quality: string; encoder_options_json: string | null; priority: number; batch_id: string | null }
+export type LspNotificationDto = {
+  method: string;
+  /**
+   * JSON-stringified notification params.
+   */
+  params_json: string;
+};
+export type MetaDto = {
+  app: string | null;
+  viewport: ViewportDto | null;
+  theme: ThemeDto | null;
+  speed: number | null;
+  span: SpanDto;
+};
+export type NewRenderJobDto = {
+  story_id: string;
+  preset_id: string | null;
+  format: string;
+  resolution: string;
+  output_width: number | null;
+  output_height: number | null;
+  fps: number;
+  quality: string;
+  encoder_options_json: string | null;
+  priority: number;
+  batch_id: string | null;
+};
 /**
  * Event payload streamed to the webview via `Channel<NlChatEvent>`.
  */
-export type NlChatEvent = { kind: "text"; delta: string } | { kind: "story_doc_ready"; doc: NlStoryDocDto; diff: NlStepDiffDto[]; task_id: string } | { kind: "usage"; input: number; output: number; cache_read: number; cache_write: number; cost_usd: number } | { kind: "error"; message: string } | { kind: "done"; task_id: string }
-export type NlCommandError = { kind: "InvalidProject" } | { kind: "NoApiKey" } | { kind: "TaskNotFound"; message: string } | { kind: "TooManyInFlight" } | { kind: "InvalidProvider"; message: string } | { kind: "Orchestrator"; message: string } | { kind: "Storage"; message: string }
-export type NlStepDiffDto = { step_id: string; kind: string; old_text: string | null; new_text: string | null }
+export type NlChatEvent =
+  | { kind: "text"; delta: string }
+  | { kind: "story_doc_ready"; doc: NlStoryDocDto; diff: NlStepDiffDto[]; task_id: string }
+  | {
+      kind: "usage";
+      input: number;
+      output: number;
+      cache_read: number;
+      cache_write: number;
+      cost_usd: number;
+    }
+  | { kind: "error"; message: string }
+  | { kind: "done"; task_id: string };
+export type NlCommandError =
+  | { kind: "InvalidProject" }
+  | { kind: "NoApiKey" }
+  | { kind: "TaskNotFound"; message: string }
+  | { kind: "TooManyInFlight" }
+  | { kind: "InvalidProvider"; message: string }
+  | { kind: "Orchestrator"; message: string }
+  | { kind: "Storage"; message: string };
+export type NlStepDiffDto = {
+  step_id: string;
+  kind: string;
+  old_text: string | null;
+  new_text: string | null;
+};
 /**
  * Serialisable DTO mirroring `intelligence::nl::schemas::StoryDoc`.
  */
-export type NlStoryDocDto = { title: string; steps: NlStoryStepDto[] }
-export type NlStoryStepDto = { id: string; label: string; verb: string; 
-/**
- * JSON-stringified step arguments.
- */
-args_json: string; narration: string | null }
+export type NlStoryDocDto = { title: string; steps: NlStoryStepDto[] };
+export type NlStoryStepDto = {
+  id: string;
+  label: string;
+  verb: string;
+  /**
+   * JSON-stringified step arguments.
+   */
+  args_json: string;
+  narration: string | null;
+};
 /**
  * Serialisable DTO for a single conversation turn (history).
  */
-export type NlTurnDto = { id: string; project_id: string; turn_index: bigint; role: string; content: string; tool_calls_json: string | null; llm_model: string | null; llm_provider: string | null; token_usage_json: string | null; created_at: bigint }
-export type OutputResolutionDto = { kind: "p720" } | { kind: "p1080" } | { kind: "p1440" } | { kind: "p2160" } | { kind: "match-source" } | { kind: "custom"; w: number; h: number }
-export type PacingProfileDto = "raw" | "fast" | "normal" | "cinematic"
-export type PadColorDto = { kind: "black" } | { kind: "white" } | { kind: "custom"; r: number; g: number; b: number }
-export type PanicPayload = { 
-/**
- * Sanitized panic message. Backtrace is NOT included (file-only).
- */
-message: string; 
-/**
- * Name of the thread that panicked, or "unknown".
- */
-thread: string }
-export type ParseResultDto = { ast: StoryDto | null; diagnostics: DiagnosticDto[] }
+export type NlTurnDto = {
+  id: string;
+  project_id: string;
+  turn_index: bigint;
+  role: string;
+  content: string;
+  tool_calls_json: string | null;
+  llm_model: string | null;
+  llm_provider: string | null;
+  token_usage_json: string | null;
+  created_at: bigint;
+};
+export type OutputResolutionDto =
+  | { kind: "p720" }
+  | { kind: "p1080" }
+  | { kind: "p1440" }
+  | { kind: "p2160" }
+  | { kind: "match-source" }
+  | { kind: "custom"; w: number; h: number };
+export type PacingProfileDto = "raw" | "fast" | "normal" | "cinematic";
+export type PadColorDto =
+  | { kind: "black" }
+  | { kind: "white" }
+  | { kind: "custom"; r: number; g: number; b: number };
+export type PanicPayload = {
+  /**
+   * Sanitized panic message. Backtrace is NOT included (file-only).
+   */
+  message: string;
+  /**
+   * Name of the thread that panicked, or "unknown".
+   */
+  thread: string;
+};
+export type ParseResultDto = { ast: StoryDto | null; diagnostics: DiagnosticDto[] };
 /**
  * macOS-only permission state.
  */
-export type PermissionState = "granted" | "denied" | "undetermined"
-export type ScreenCapturePermissionReportDto = { state: PermissionState; rawStatus: string; platform: string; appName: string; bundleId: string | null; executablePath: string; isPackaged: boolean; devIdentityOk: boolean | null; canEnumerateSources: boolean; sourceCount: number; reason?: string; debugBypassAllowed: boolean }
+export type PermissionState = "granted" | "denied" | "undetermined";
+export type ScreenCapturePermissionReportDto = {
+  state: PermissionState;
+  rawStatus: string;
+  platform: string;
+  appName: string;
+  bundleId: string | null;
+  executablePath: string;
+  isPackaged: boolean;
+  devIdentityOk: boolean | null;
+  canEnumerateSources: boolean;
+  sourceCount: number;
+  reason?: string;
+  debugBypassAllowed: boolean;
+};
 /**
  * DTO wrapping a pick-element response as a JSON string. The TS wrapper
  * (`apps/desktop/src/ipc/picker.ts`) parses the typed union.
  */
-export type PickElementResponseDto = { 
-/**
- * JSON-stringified `automation::PickElementResponse`.
- */
-json: string }
+export type PickElementResponseDto = {
+  /**
+   * JSON-stringified `automation::PickElementResponse`.
+   */
+  json: string;
+};
 /**
  * Return shape of `picker_stamp_step_id`. Splits the stamped UUID from
  * the stamping outcome so the renderer can dispatch UI-SPEC-locked
  * first-pick vs re-pick toasts without re-parsing the .story source.
  */
-export type PickerStampResultDto = { 
-/**
- * UUIDv7 as a hyphenated string (matches existing on-the-wire shape).
- */
-step_id: string; 
-/**
- * true iff the None-arm fired — fresh UUID minted AND source rewritten.
- * false iff the line already carried `# @id=<uuid>`.
- */
-was_freshly_stamped: boolean }
-export type PixelFormatDto = "bgra" | "nv-12"
-export type PresetScopeDto = "project" | "global"
-export type PrivacySettings = { crash_reports_enabled: boolean; usage_analytics_enabled: boolean; prompt_redaction_enabled: boolean; diagnostic_bundle_enabled: boolean }
+export type PickerStampResultDto = {
+  /**
+   * UUIDv7 as a hyphenated string (matches existing on-the-wire shape).
+   */
+  step_id: string;
+  /**
+   * true iff the None-arm fired — fresh UUID minted AND source rewritten.
+   * false iff the line already carried `# @id=<uuid>`.
+   */
+  was_freshly_stamped: boolean;
+};
+export type PixelFormatDto = "bgra" | "nv-12";
+export type PresetScopeDto = "project" | "global";
+export type PrivacySettings = {
+  crash_reports_enabled: boolean;
+  usage_analytics_enabled: boolean;
+  prompt_redaction_enabled: boolean;
+  diagnostic_bundle_enabled: boolean;
+};
 /**
  * DTO mirror of `storage::Project`. Serializes `Uuid` as a string and
  * `PathBuf` as a string so the renderer sees plain JSON. `last_opened_at`
  * is `i64` millis since epoch (the renderer converts to `Date`).
  */
-export type ProjectDto = { id: string; name: string; folder_path: string; created_at: bigint; last_opened_at: bigint | null; thumbnail_path: string | null }
+export type ProjectDto = {
+  id: string;
+  name: string;
+  folder_path: string;
+  created_at: bigint;
+  last_opened_at: bigint | null;
+  thumbnail_path: string | null;
+};
 /**
  * Returned by `open_project` — enough context for the editor to load
  * the story file and show recent-session counts. The renderer uses
  * `folder_path` + `story_path` to read/write via `tauri-plugin-fs`.
  */
-export type ProjectFolderInfoDto = { id: string; name: string; folder_path: string; story_path: string; exports_dir: string; session_count: bigint }
-export type ProjectIdArg = { id: string }
+export type ProjectFolderInfoDto = {
+  id: string;
+  name: string;
+  folder_path: string;
+  story_path: string;
+  exports_dir: string;
+  session_count: bigint;
+};
+export type ProjectIdArg = { id: string };
 /**
  * Four supported AI providers.
  */
-export type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts"
-export type QualityPresetDto = "high" | "lossless"
-export type RateControlDto = "auto" | "cbr" | "vbr" | "crf" | "cq"
-export type RecordingDisplayPlacementDto = { x: number; y: number }
+export type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts";
+export type QualityPresetDto = "high" | "lossless";
+export type RateControlDto = "auto" | "cbr" | "vbr" | "crf" | "cq";
+export type RecordingDisplayPlacementDto = { x: number; y: number };
+export type RecordingVerdict = "passed" | "repairable" | "failed" | "cancelled";
+export type RecordingReasonCode =
+  | "passed"
+  | "automation_failed"
+  | "capture_degraded"
+  | "capture_health_failed"
+  | "capture_target_lost"
+  | "encode_failed"
+  | "artifact_missing"
+  | "bundle_commit_failed"
+  | "readiness_failed"
+  | "recovery_salvaged"
+  | "preflight_warning"
+  | "required_audio_failed"
+  | "terminal_evidence_missing"
+  | "terminal_evidence_version_unsupported"
+  | "cancelled_by_user"
+  | "cancelled_by_host";
+export type RecordingWarningCode = "optional_audio_failed" | "legacy_outcome_mismatch";
+export type RecordingOutcomeV1 = {
+  version: 1;
+  session_id: string;
+  verdict: RecordingVerdict;
+  reason_code: RecordingReasonCode;
+  warnings: RecordingWarningCode[];
+  automation: {
+    exit_reason: "completed" | "failed" | "cancelled" | "paused";
+    total_steps: number;
+    succeeded: number;
+    failed: number;
+    failed_ordinal: number | null;
+  };
+  capture: {
+    output_path: string | null;
+    frames_written: number;
+    frames_dropped: number;
+    cadence_warning: string | null;
+    finalized: boolean;
+  };
+};
+export type RecordingAudioRequirement = "required" | "optional" | "none";
+export type RecordingUiDispositionV1 = {
+  show_complete: boolean;
+  can_publish: boolean;
+  auto_open_take: boolean;
+  open_repair: boolean;
+  retain_bundle: boolean;
+};
+export type RecordingTerminalArtifactV1 = {
+  output_path: string;
+  duration_ms: number;
+  frame_count: number;
+  output_width: number;
+  output_height: number;
+};
+export type RecordingTerminalEventV1 = {
+  event: "terminal";
+  version: 1;
+  outcome: RecordingOutcomeV1;
+  disposition: RecordingUiDispositionV1;
+  artifact: RecordingTerminalArtifactV1 | null;
+};
+export type RecordingHealthVerdict = "pass" | "degraded" | "fail";
+export type RecordingHealthProfile = "1080p30" | "1440p30" | "unsupported";
+export type RecordingHealthV1 = {
+  version: 1;
+  session_id: string;
+  capture_path: "raw_bgra" | "png";
+  profile: RecordingHealthProfile;
+  verdict: RecordingHealthVerdict;
+  reasons: readonly string[];
+  requested_fps: number;
+  observed_fps: number | null;
+  expected_frames: number;
+  requested_frames: number;
+  source_frames: number;
+  submitted_frames: number;
+  encoded_frames: number;
+  dropped_frames: number;
+  skipped_frames: number;
+  loss_ratio: number;
+  first_encoded_frame_ms: number | null;
+  frame_gap_p95_ms: number | null;
+  frame_gap_max_ms: number | null;
+  backpressure_events: number;
+  backpressure_total_ms: number;
+  backpressure_high_water: number;
+  action_to_presentation_p95_ms: number | null;
+  output_readable: boolean | null;
+  finalized: boolean;
+};
+export type RecordingHealthUpdateV1 = {
+  event: "health-update";
+  phase: "snapshot" | "final";
+  health: RecordingHealthV1;
+};
 /**
  * Unified recording event from capture / encode progress and terminal results.
  */
-export type RecordingEvent = { type: "capture-status"; json: string } | { type: "encode-progress"; progress: EncodeProgressDto } | 
-/**
- * Emitted periodically from the capture pipeline when the
- * byte-bounded queue has dropped frames. `total` is the lifetime
- * count for this session; `delta` is the count since the last
- * event (always >= 1 when an event fires).
- */
-{ type: "frames-dropped"; total: bigint; delta: bigint } | { type: "completed"; result: EncodeResultDto } | { type: "failed"; message: string } | 
-/**
- * Mic/audio negotiation failed or the device vanished mid-session.
- * Recording continues video-only.
- */
-{ type: "audio-unavailable"; reason: string } | 
-/**
- * Periodic liveness signal from the host so the renderer can detect
- * state-sync drift (>5s missed => offer Force Stop).
- */
-{ type: "heartbeat"; seq: bigint }
+export type RecordingEvent =
+  | { type: "capture-status"; json: string }
+  | { type: "encode-progress"; progress: EncodeProgressDto }
+  /**
+   * Emitted periodically from the capture pipeline when the
+   * byte-bounded queue has dropped frames. `total` is the lifetime
+   * count for this session; `delta` is the count since the last
+   * event (always >= 1 when an event fires).
+   */
+  | { type: "frames-dropped"; total: bigint; delta: bigint }
+  | { type: "completed"; result: EncodeResultDto }
+  | { type: "failed"; message: string }
+  /**
+   * Mic/audio negotiation failed or the device vanished mid-session.
+   * Recording continues video-only.
+   */
+  | { type: "audio-unavailable"; reason: string }
+  /**
+   * Periodic liveness signal from the host so the renderer can detect
+   * state-sync drift (>5s missed => offer Force Stop).
+   */
+  | { type: "heartbeat"; seq: bigint }
+  | { type: "recording_outcome_shadow"; outcome: RecordingOutcomeV1 }
+  | { type: "health-update"; update: RecordingHealthUpdateV1 }
+  | { type: "terminal"; terminal: RecordingTerminalEventV1 };
 /**
  * File-system metadata for a single `.mp4` under `<project>/exports/`.
  */
-export type RecordingInfoDto = { path: string; captured_at: bigint; duration_ms: bigint | null; width: number | null; height: number | null }
-export type RecordingSessionId = string
-export type RecordingStepTimingDto = { ordinal: number; stepId: string | null; sceneName: string; verb: string; startMs: bigint; endMs: bigint; durationMs: bigint; status: string; cursor: TimingPointDto | null; target: TimingTargetDto | null; confidence: string }
-export type RecordingStepTimingSidecarDto = { version: number; recordingPath: string; captureRect?: CaptureRectDto | null; storyHash: string; timebase: string; status: string; steps: RecordingStepTimingDto[] }
-export type RecordingViewportDto = { width: number; height: number }
+export type RecordingInfoDto = {
+  path: string;
+  captured_at: bigint;
+  duration_ms: bigint | null;
+  width: number | null;
+  height: number | null;
+};
+export type RecordingSessionId = string;
+export type RecordingStepTimingDto = {
+  ordinal: number;
+  stepId: string | null;
+  sceneName: string;
+  verb: string;
+  startMs: bigint;
+  endMs: bigint;
+  durationMs: bigint;
+  status: string;
+  cursor: TimingPointDto | null;
+  target: TimingTargetDto | null;
+  confidence: string;
+};
+export type RecordingStepTimingSidecarDto = {
+  version: number;
+  recordingPath: string;
+  captureRect?: CaptureRectDto | null;
+  storyHash: string;
+  timebase: string;
+  status: string;
+  steps: RecordingStepTimingDto[];
+};
+export type RecordingViewportDto = { width: number; height: number };
 /**
  * Logical-point rect over a display.
  */
-export type RegionRectDto = { x: number; y: number; w: number; h: number }
-export type RenderDefaults = { parallel_renders: number }
-export type RenderJobDto = { id: string; story_id: string; preset_id: string | null; format: string; resolution: string; output_width: number | null; output_height: number | null; fps: number; quality: string; encoder_options_json: string | null; status: string; progress_pct: number; started_at: bigint | null; completed_at: bigint | null; error: string | null; priority: number; output_path: string | null; batch_id: string | null; created_at: bigint }
-export type RenderProgressDto = { job_id: string; pct: number; frame: bigint; fps: number; speed: number; eta_ms: bigint }
-export type ResolvedFrameCropDto = { x: number; y: number; w: number; h: number; basis_w?: number | null; basis_h?: number | null; scale_hint?: number | null }
+export type RegionRectDto = { x: number; y: number; w: number; h: number };
+export type RenderDefaults = { parallel_renders: number };
+export type RenderJobDto = {
+  id: string;
+  story_id: string;
+  preset_id: string | null;
+  format: string;
+  resolution: string;
+  output_width: number | null;
+  output_height: number | null;
+  fps: number;
+  quality: string;
+  encoder_options_json: string | null;
+  status: string;
+  progress_pct: number;
+  started_at: bigint | null;
+  completed_at: bigint | null;
+  error: string | null;
+  priority: number;
+  output_path: string | null;
+  batch_id: string | null;
+  created_at: bigint;
+};
+export type RenderProgressDto = {
+  job_id: string;
+  pct: number;
+  frame: bigint;
+  fps: number;
+  speed: number;
+  eta_ms: bigint;
+};
+export type ResolvedFrameCropDto = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  basis_w?: number | null;
+  basis_h?: number | null;
+  scale_hint?: number | null;
+};
 /**
  * Returned by `resolve_playwright_target`.
  */
-export type ResolvedPlaywrightTarget = { window_id: bigint; pid: number; 
-/**
- * Window pixel width (retina-scaled on macOS). `0` when unknown
- * (Windows path currently doesn't populate this — renderer treats 0
- * as "fall back to display dims").
- */
-width_px: number; 
-/**
- * Window pixel height (retina-scaled on macOS). See `width_px`.
- */
-height_px: number; 
-/**
- * Frame-relative crop for the page viewport within the captured browser
- * window. `basis_w/h` allow the capture layer to scale logical browser
- * measurements to Retina/DPI-scaled native frames.
- */
-content_crop: ResolvedFrameCropDto | null }
+export type ResolvedPlaywrightTarget = {
+  window_id: bigint;
+  pid: number;
+  /**
+   * Window pixel width (retina-scaled on macOS). `0` when unknown
+   * (Windows path currently doesn't populate this — renderer treats 0
+   * as "fall back to display dims").
+   */
+  width_px: number;
+  /**
+   * Window pixel height (retina-scaled on macOS). See `width_px`.
+   */
+  height_px: number;
+  /**
+   * Frame-relative crop for the page viewport within the captured browser
+   * window. `basis_w/h` allow the capture layer to scale logical browser
+   * measurements to Retina/DPI-scaled native frames.
+   */
+  content_crop: ResolvedFrameCropDto | null;
+};
 /**
  * Structured payload for the `Role` variant — both the ARIA role keyword
  * and the accessible name as typed fields. Mirrors
@@ -1753,212 +2597,356 @@ content_crop: ResolvedFrameCropDto | null }
  * TS-side discriminated union round-trips cleanly without ad-hoc
  * `<role>:<name>` string packing.
  */
-export type RoleSelectorDto = { role: string; name: string }
-export type ScaleAlgoDto = "lanczos" | "bicubic" | "bilinear" | "area"
-export type SceneDto = { name: string; commands: CommandDto[]; span: SpanDto }
-export type ScrollDirDto = "up" | "down" | "left" | "right"
-export type SelectorOrTextDto = { kind: "text"; value: string } | { kind: "selector"; value: string } | { kind: "test_id"; value: string } | { kind: "aria"; value: string } | { kind: "role"; value: RoleSelectorDto } | { kind: "label"; value: string } | { kind: "text_exact"; value: string }
-export type SessionId = string
-export type SessionRollupDto = { turn_count: bigint; total_cost_usd: number; total_tokens: bigint; avg_first_token_ms: number | null }
-export type SettingsCategory = "general" | "capture" | "render" | "privacy" | "updates" | "all"
-export type SeverityDto = "error" | "warning" | "info"
-export type SimulatorBbox = { x: number; y: number; w: number; h: number }
-export type SimulatorEvent = { type: "started"; session_id: string; run_id: string; total_steps: number } | { type: "step_started"; ordinal: number } | { type: "frame_captured"; ordinal: number; frame: SimulatorStepFrame } | { type: "paused"; ordinal: number } | { type: "failed"; ordinal: number; error_message: string } | { type: "completed"; succeeded: number; failed: number } | { type: "cancelled" }
-export type SimulatorMatchKind = "primary" | "fuzzy" | "none"
+export type RoleSelectorDto = { role: string; name: string };
+export type ScaleAlgoDto = "lanczos" | "bicubic" | "bilinear" | "area";
+export type SceneDto = { name: string; commands: CommandDto[]; span: SpanDto };
+export type ScrollDirDto = "up" | "down" | "left" | "right";
+export type SelectorOrTextDto =
+  | { kind: "text"; value: string }
+  | { kind: "selector"; value: string }
+  | { kind: "test_id"; value: string }
+  | { kind: "aria"; value: string }
+  | { kind: "role"; value: RoleSelectorDto }
+  | { kind: "label"; value: string }
+  | { kind: "text_exact"; value: string };
+export type SessionId = string;
+export type SessionRollupDto = {
+  turn_count: bigint;
+  total_cost_usd: number;
+  total_tokens: bigint;
+  avg_first_token_ms: number | null;
+};
+export type SettingsCategory = "general" | "capture" | "render" | "privacy" | "updates" | "all";
+export type SeverityDto = "error" | "warning" | "info";
+export type SimulatorBbox = { x: number; y: number; w: number; h: number };
+export type SimulatorEvent =
+  | { type: "started"; session_id: string; run_id: string; total_steps: number }
+  | { type: "step_started"; ordinal: number }
+  | { type: "frame_captured"; ordinal: number; frame: SimulatorStepFrame }
+  | { type: "paused"; ordinal: number }
+  | { type: "failed"; ordinal: number; error_message: string }
+  | { type: "completed"; succeeded: number; failed: number }
+  | { type: "cancelled" };
+export type SimulatorMatchKind = "primary" | "fuzzy" | "none";
 /**
  * Step frame payload for renderer IPC.
  */
-export type SimulatorStepFrame = { ordinal: number; screenshot_path: string | null; cursor_xy: [number, number]; matched_selector: string | null; matched_bbox: SimulatorBbox | null; match_kind: SimulatorMatchKind; duration_ms: bigint }
-export type SoundCategoryDto = "sfx" | "bgm"
-export type SoundLibraryEntryDto = { id: string; 
-/**
- * "sfx" | "bgm"
- */
-category: string; name: string; file_path: string; duration_ms: bigint; license: string; source_url: string | null; author: string | null; bundled: boolean }
-export type SpanDto = { start: number; end: number; line: number; col: number }
-export type StartCaptureTargetArgs = { target: CaptureTargetDto; include_cursor: boolean; fps_target: number; pixel_format: PixelFormatDto; queue_cap_bytes: bigint | null }
-export type StartRecordingArgs = { project_folder: string; 
-/**
- * Capture target DTO.
- */
-target: CaptureTargetDto; width: number; height: number; fps: number; 
-/**
- * Optional mic device.
- */
-audio_device_id?: string | null; 
-/**
- * Optional per-recording cursor toggle.
- */
-include_cursor?: boolean | null; output_resolution?: OutputResolutionDto | null; fit_mode?: FitModeDto | null; pad_color?: PadColorDto | null; quality_preset?: QualityPresetDto | null; scale_algo?: ScaleAlgoDto | null; 
-/**
- * First-frame wait budget in milliseconds. Defaults to 3000 when `None`.
- */
-first_frame_timeout_ms?: bigint | null; 
-/**
- * Force a keyframe every N seconds. `None` keeps FFmpeg's default GOP.
- */
-keyframe_interval_sec?: number | null; 
-/**
- * Optional frame-relative crop applied to each captured frame before
- * encoding. `basis_w/h` may describe the full logical window size this
- * crop was measured against, allowing capture backends to scale it to the
- * actual native frame size.
- */
-frame_crop?: FrameCropRectDto | null }
-export type StartupBehavior = "welcome" | "last_project" | "new_story"
+export type SimulatorStepFrame = {
+  ordinal: number;
+  screenshot_path: string | null;
+  cursor_xy: [number, number];
+  matched_selector: string | null;
+  matched_bbox: SimulatorBbox | null;
+  match_kind: SimulatorMatchKind;
+  duration_ms: bigint;
+};
+export type SoundCategoryDto = "sfx" | "bgm";
+export type SoundLibraryEntryDto = {
+  id: string;
+  /**
+   * "sfx" | "bgm"
+   */
+  category: string;
+  name: string;
+  file_path: string;
+  duration_ms: bigint;
+  license: string;
+  source_url: string | null;
+  author: string | null;
+  bundled: boolean;
+};
+export type SpanDto = { start: number; end: number; line: number; col: number };
+export type StartCaptureTargetArgs = {
+  target: CaptureTargetDto;
+  include_cursor: boolean;
+  fps_target: number;
+  pixel_format: PixelFormatDto;
+  queue_cap_bytes: bigint | null;
+};
+export type StartRecordingArgs = {
+  project_folder: string;
+  /**
+   * Capture target DTO.
+   */
+  target: CaptureTargetDto;
+  width: number;
+  height: number;
+  fps: number;
+  /**
+   * Optional mic device.
+   */
+  audio_device_id?: string | null;
+  /**
+   * Optional per-recording cursor toggle.
+   */
+  include_cursor?: boolean | null;
+  output_resolution?: OutputResolutionDto | null;
+  fit_mode?: FitModeDto | null;
+  pad_color?: PadColorDto | null;
+  quality_preset?: QualityPresetDto | null;
+  scale_algo?: ScaleAlgoDto | null;
+  /**
+   * First-frame wait budget in milliseconds. Defaults to 3000 when `None`.
+   */
+  first_frame_timeout_ms?: bigint | null;
+  /**
+   * Force a keyframe every N seconds. `None` keeps FFmpeg's default GOP.
+   */
+  keyframe_interval_sec?: number | null;
+  /**
+   * Optional frame-relative crop applied to each captured frame before
+   * encoding. `basis_w/h` may describe the full logical window size this
+   * crop was measured against, allowing capture backends to scale it to the
+   * actual native frame size.
+   */
+  frame_crop?: FrameCropRectDto | null;
+};
+export type StartupBehavior = "welcome" | "last_project" | "new_story";
 /**
  * Step timing DTO for the `tts_apply_sync` command.
- * 
+ *
  * When the effects AST integration lands, this parameter can be replaced
  * by loading step timings from the project's effects AST directly.
  */
-export type StepTimingDto = { step_id: string; original_duration_ms: bigint }
-export type StoryDto = { name: string | null; meta: MetaDto; scenes: SceneDto[]; span: SpanDto }
-export type SyncPlanDto = { adjusted_steps: AdjustedStepDto[]; duck_events: DuckEventDto[] }
+export type StepTimingDto = { step_id: string; original_duration_ms: bigint };
+export type StoryDto = { name: string | null; meta: MetaDto; scenes: SceneDto[]; span: SpanDto };
+export type SyncPlanDto = { adjusted_steps: AdjustedStepDto[]; duck_events: DuckEventDto[] };
 /**
  * Result of a metadata sync push.
  */
-export type SyncResult = { synced: boolean; lastSyncedAt: string }
+export type SyncResult = { synced: boolean; lastSyncedAt: string };
 /**
  * Current sync status.
  */
-export type SyncStatusDto = { connected: boolean; pendingCount: number; lastSync: string | null }
-export type TAURI_CHANNEL<TSend> = null
+export type SyncStatusDto = { connected: boolean; pendingCount: number; lastSync: string | null };
+export type TAURI_CHANNEL<TSend> = null;
 /**
  * Typed target-record shape. Each kind
  * fully specifies its `value` shape (string for most, `{ role, name }`
  * object for `role`) so picker IPC no longer needs a JSON-string envelope.
- * 
+ *
  * On-the-wire shape per arm: `{ kind: "<kind>", value: <typed>, nth?: number }`
  * — matches the `.story.targets.json` schema byte-for-byte. The optional
  * `nth` field is 1-indexed and skipped on the wire when absent so legacy
  * stamps round-trip unchanged.
  */
-export type TargetRecordDto = { kind: "testid"; value: string; nth?: number | null } | { kind: "role"; value: RoleSelectorDto; nth?: number | null } | { kind: "label"; value: string; nth?: number | null } | { kind: "text_exact"; value: string; nth?: number | null } | { kind: "selector"; value: string; nth?: number | null } | { kind: "aria"; value: string; nth?: number | null } | { kind: "text"; value: string; nth?: number | null }
-export type ThemeDto = "light" | "dark" | "auto"
-export type TimelineStateDto = { story_id: string; layout_json: string; last_modified: bigint }
-export type TimingBBoxDto = { x: number; y: number; w: number; h: number }
-export type TimingPointDto = { x: number; y: number }
-export type TimingTargetDto = { selector: string | null; bbox: TimingBBoxDto | null; matchKind: string }
-export type TrajectoryDto = { recording_path: string; capture_rect: CaptureRectDto; fps: number; frame_count: number; frames: TrajectoryFrameDto[] }
-export type TrajectoryFrameDto = { t_ms: number; x: number; y: number; click: boolean }
-export type TtsCommandError = { kind: "InvalidProject" } | { kind: "NoApiKey" } | { kind: "Provider"; message: string } | { kind: "Io"; message: string } | { kind: "Storage"; message: string } | { kind: "AudioProbe"; message: string }
-export type TtsGenerateResult = { file_path: string; audio_duration_ms: bigint; cost_usd: number; cache_hit: boolean }
+export type TargetRecordDto =
+  | { kind: "testid"; value: string; nth?: number | null }
+  | { kind: "role"; value: RoleSelectorDto; nth?: number | null }
+  | { kind: "label"; value: string; nth?: number | null }
+  | { kind: "text_exact"; value: string; nth?: number | null }
+  | { kind: "selector"; value: string; nth?: number | null }
+  | { kind: "aria"; value: string; nth?: number | null }
+  | { kind: "text"; value: string; nth?: number | null };
+export type ThemeDto = "light" | "dark" | "auto";
+export type TimelineStateDto = { story_id: string; layout_json: string; last_modified: bigint };
+export type TimingBBoxDto = { x: number; y: number; w: number; h: number };
+export type TimingPointDto = { x: number; y: number };
+export type TimingTargetDto = {
+  selector: string | null;
+  bbox: TimingBBoxDto | null;
+  matchKind: string;
+};
+export type TrajectoryDto = {
+  recording_path: string;
+  capture_rect: CaptureRectDto;
+  fps: number;
+  frame_count: number;
+  frames: TrajectoryFrameDto[];
+};
+export type TrajectoryFrameDto = { t_ms: number; x: number; y: number; click: boolean };
+export type TtsCommandError =
+  | { kind: "InvalidProject" }
+  | { kind: "NoApiKey" }
+  | { kind: "Provider"; message: string }
+  | { kind: "Io"; message: string }
+  | { kind: "Storage"; message: string }
+  | { kind: "AudioProbe"; message: string };
+export type TtsGenerateResult = {
+  file_path: string;
+  audio_duration_ms: bigint;
+  cost_usd: number;
+  cache_hit: boolean;
+};
 /**
  * Summary of an available update, serialized to the renderer.
  */
-export type UpdateInfo = { 
-/**
- * New version string (e.g. "0.1.1").
- */
-version: string; 
-/**
- * ISO-8601 release date, best-effort. `None` if the server didn't supply one.
- */
-date: string | null; 
-/**
- * Release notes / body from the server manifest.
- */
-body: string | null; 
-/**
- * Current installed version, for the UI to display a "X → Y" diff.
- */
-current_version: string }
-export type UpdateProjectWorkflowArgs = { id: string; workflow_state: WorkflowStateDto }
-export type UpdateSettings = { check_updates_on_launch: boolean }
+export type UpdateInfo = {
+  /**
+   * New version string (e.g. "0.1.1").
+   */
+  version: string;
+  /**
+   * ISO-8601 release date, best-effort. `None` if the server didn't supply one.
+   */
+  date: string | null;
+  /**
+   * Release notes / body from the server manifest.
+   */
+  body: string | null;
+  /**
+   * Current installed version, for the UI to display a "X → Y" diff.
+   */
+  current_version: string;
+};
+export type UpdateProjectWorkflowArgs = { id: string; workflow_state: WorkflowStateDto };
+export type UpdateSettings = { check_updates_on_launch: boolean };
 /**
  * Structured error for upload operations.
  */
-export type UploadError = { kind: "NotConnected" } | { kind: "FileNotFound"; message: string } | { kind: "FileReadError"; message: string } | { kind: "NetworkError"; message: string } | { kind: "ServerError"; message: string } | { kind: "Cancelled" } | { kind: "FfmpegError"; message: string } | { kind: "KeychainError" }
+export type UploadError =
+  | { kind: "NotConnected" }
+  | { kind: "FileNotFound"; message: string }
+  | { kind: "FileReadError"; message: string }
+  | { kind: "NetworkError"; message: string }
+  | { kind: "ServerError"; message: string }
+  | { kind: "Cancelled" }
+  | { kind: "FfmpegError"; message: string }
+  | { kind: "KeychainError" };
 /**
  * Progress event emitted via Channel<T> during upload.
  */
-export type UploadProgressEvent = { phase: string; partNumber: number; totalParts: number; bytesUploaded: bigint; totalBytes: bigint }
+export type UploadProgressEvent = {
+  phase: string;
+  partNumber: number;
+  totalParts: number;
+  bytesUploaded: bigint;
+  totalBytes: bigint;
+};
 /**
  * Result returned after a successful upload.
  */
-export type UploadResult = { videoId: string; slug: string; status: string }
+export type UploadResult = { videoId: string; slug: string; status: string };
 /**
  * Current upload status.
  */
-export type UploadStatusDto = { status: string; progress: UploadProgressEvent | null; videoSlug: string | null; error: string | null }
-export type ViewportDto = { width: number; height: number }
-export type VoiceInfoDto = { id: string; name: string; locale: string | null; premium: boolean }
+export type UploadStatusDto = {
+  status: string;
+  progress: UploadProgressEvent | null;
+  videoSlug: string | null;
+  error: string | null;
+};
+export type ViewportDto = { width: number; height: number };
+export type VoiceInfoDto = { id: string; name: string; locale: string | null; premium: boolean };
 /**
  * Structured error for web account operations.
  */
-export type WebAccountError = { kind: "KeychainUnavailable" } | { kind: "NotConnected" } | { kind: "OAuthTimeout" } | { kind: "TokenExchangeFailed"; message: string } | { kind: "NetworkError"; message: string } | { kind: "ServerError"; message: string }
+export type WebAccountError =
+  | { kind: "KeychainUnavailable" }
+  | { kind: "NotConnected" }
+  | { kind: "OAuthTimeout" }
+  | { kind: "TokenExchangeFailed"; message: string }
+  | { kind: "NetworkError"; message: string }
+  | { kind: "ServerError"; message: string };
 /**
  * Information about a connected web account.
  */
-export type WebAccountInfo = { email: string; name: string | null; avatarUrl: string | null; connectedAt: string }
+export type WebAccountInfo = {
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+  connectedAt: string;
+};
 /**
  * Structured error for web sync operations.
  */
-export type WebSyncError = { kind: "NotConnected" } | { kind: "NetworkError"; message: string } | { kind: "ServerError"; message: string } | { kind: "DatabaseError"; message: string }
-export type WindowInfoDto = { window_id: bigint; title: string | null; app_name: string; pid: number; bundle_id: string; x: number; y: number; width: number; height: number; is_on_screen: boolean }
-export type WorkflowStateDto = { version: number; type: WorkflowTypeDto; steps: WorkflowStepDto[]; createdAt: bigint; updatedAt: bigint }
-export type WorkflowStepDto = { id: string; title: string; status: WorkflowStepStatusDto; sceneName?: string | null; requiredInputs: string[]; notes?: string | null }
-export type WorkflowStepStatusDto = "todo" | "drafted" | "recorded" | "polished"
-export type WorkflowTypeDto = "product_demo" | "tutorial" | "feature_launch" | "sales_marketing" | "support" | "internal_training" | "bug_reproduction" | "documentation" | "freestyle"
-export type X264PresetDto = "ultrafast" | "superfast" | "veryfast" | "faster" | "fast" | "medium" | "slow" | "slower" | "veryslow"
+export type WebSyncError =
+  | { kind: "NotConnected" }
+  | { kind: "NetworkError"; message: string }
+  | { kind: "ServerError"; message: string }
+  | { kind: "DatabaseError"; message: string };
+export type WindowInfoDto = {
+  window_id: bigint;
+  title: string | null;
+  app_name: string;
+  pid: number;
+  bundle_id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  is_on_screen: boolean;
+};
+export type WorkflowStateDto = {
+  version: number;
+  type: WorkflowTypeDto;
+  steps: WorkflowStepDto[];
+  createdAt: bigint;
+  updatedAt: bigint;
+};
+export type WorkflowStepDto = {
+  id: string;
+  title: string;
+  status: WorkflowStepStatusDto;
+  sceneName?: string | null;
+  requiredInputs: string[];
+  notes?: string | null;
+};
+export type WorkflowStepStatusDto = "todo" | "drafted" | "recorded" | "polished";
+export type WorkflowTypeDto =
+  | "product_demo"
+  | "tutorial"
+  | "feature_launch"
+  | "sales_marketing"
+  | "support"
+  | "internal_training"
+  | "bug_reproduction"
+  | "documentation"
+  | "freestyle";
+export type X264PresetDto =
+  | "ultrafast"
+  | "superfast"
+  | "veryfast"
+  | "faster"
+  | "fast"
+  | "medium"
+  | "slow"
+  | "slower"
+  | "veryslow";
 
 /** Tauri-compatible globals used by the Electron preload bridge. **/
 
-import {
-	invoke as TAURI_INVOKE,
-	Channel as TAURI_CHANNEL,
-} from "@tauri-apps/api/core";
+import { type Channel as TAURI_CHANNEL, invoke as TAURI_INVOKE } from "@tauri-apps/api/core";
 import * as TAURI_API_EVENT from "@tauri-apps/api/event";
-import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
+import type { WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
 
 type __EventObj__<T> = {
-	listen: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-	once: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
-	emit: null extends T
-		? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
-		: (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
+  listen: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+  once: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+  emit: null extends T
+    ? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
+    : (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
-export type Result<T, E> =
-	| { status: "ok"; data: T }
-	| { status: "error"; error: E };
+export type Result<T, E> = { status: "ok"; data: T } | { status: "error"; error: E };
 
-function __makeEvents__<T extends Record<string, any>>(
-	mappings: Record<keyof T, string>,
-) {
-	return new Proxy(
-		{} as unknown as {
-			[K in keyof T]: __EventObj__<T[K]> & {
-				(handle: __WebviewWindow__): __EventObj__<T[K]>;
-			};
-		},
-		{
-			get: (_, event) => {
-				const name = mappings[event as keyof T];
+function __makeEvents__<T extends Record<string, any>>(mappings: Record<keyof T, string>) {
+  return new Proxy(
+    {} as unknown as {
+      [K in keyof T]: __EventObj__<T[K]> & ((handle: __WebviewWindow__) => __EventObj__<T[K]>);
+    },
+    {
+      get: (_, event) => {
+        const name = mappings[event as keyof T];
 
-				return new Proxy((() => {}) as any, {
-					apply: (_, __, [window]: [__WebviewWindow__]) => ({
-						listen: (arg: any) => window.listen(name, arg),
-						once: (arg: any) => window.once(name, arg),
-						emit: (arg: any) => window.emit(name, arg),
-					}),
-					get: (_, command: keyof __EventObj__<any>) => {
-						switch (command) {
-							case "listen":
-								return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-							case "once":
-								return (arg: any) => TAURI_API_EVENT.once(name, arg);
-							case "emit":
-								return (arg: any) => TAURI_API_EVENT.emit(name, arg);
-						}
-					},
-				});
-			},
-		},
-	);
+        return new Proxy((() => {}) as any, {
+          apply: (_, __, [window]: [__WebviewWindow__]) => ({
+            listen: (arg: any) => window.listen(name, arg),
+            once: (arg: any) => window.once(name, arg),
+            emit: (arg: any) => window.emit(name, arg),
+          }),
+          get: (_, command: keyof __EventObj__<any>) => {
+            switch (command) {
+              case "listen":
+                return (arg: any) => TAURI_API_EVENT.listen(name, arg);
+              case "once":
+                return (arg: any) => TAURI_API_EVENT.once(name, arg);
+              case "emit":
+                return (arg: any) => TAURI_API_EVENT.emit(name, arg);
+            }
+          },
+        });
+      },
+    },
+  );
 }

@@ -153,7 +153,9 @@ There is no separate release or benchmark workflow in the current tree.
 3. Match established local patterns.
 4. Read immediate callers, tests, and wrappers before editing behavior.
 5. Do not revert user changes.
-6. There is no `.planning/` directory in the current checkout. If planning docs
-   are restored, treat phase/research docs as historical unless a current state
-   file explicitly says otherwise.
-7. Report skipped checks and residual risk clearly.
+6. Use `tasks/plan.md` as the active record-engine roadmap and `tasks/todo.md`
+   as its only execution-status tracker; individual plans do not carry status.
+7. There is no `.planning/` directory in the current checkout. If it is
+   restored, treat phase and research docs as historical unless the active plan
+   explicitly references them.
+8. Report skipped checks and residual risk clearly.

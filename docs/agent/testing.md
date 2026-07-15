@@ -5,7 +5,25 @@
 - There is no root `pnpm test`.
 - Desktop all tests: `pnpm --dir apps/desktop exec vitest run`.
 - Desktop focused test: `pnpm --dir apps/desktop exec vitest run <path>`.
+- Recording diagnostic reader tests:
+  `pnpm --dir apps/desktop exec vitest run electron/ipc/recording-observability.test.ts electron/ipc/recording-discovery.test.ts electron/ipc/recording-diagnostic-reader.test.ts electron/ipc/recording-spike-trace.test.ts electron/ipc/logs.test.ts`.
+- macOS native-spike Electron control:
+  `pnpm --dir apps/desktop exec playwright test --config playwright.config.ts e2e/macos-native-capture-control.spec.ts`.
+  A direct run skips unless the parent spike harness supplies its validated
+  control fixture; `spike:macos-native-capture` owns the exercised run.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
+- Record-engine checkpoint/bundle Electron E2E:
+  `pnpm --dir apps/desktop run test:e2e:record-engine-checkpoints`.
+- Record-engine exact external-window/target-loss Electron E2E:
+  `pnpm --dir apps/desktop run test:e2e:record-engine-external-capture`.
+- Record-engine drag/upload Electron E2E:
+  `pnpm --dir apps/desktop run test:e2e:record-engine-interactions`.
+- Record-engine live scene-repair/stitch, token-expiry, and attempt-exhaustion Electron E2E:
+  `pnpm --dir apps/desktop run test:e2e:record-engine-live-repair`.
+- Record-engine process-loss recovery Electron E2E:
+  `pnpm --dir apps/desktop run test:e2e:record-engine-recovery`.
+- Record-engine authenticated microphone-plus-tab iframe/navigation/silence Electron E2E:
+  `pnpm --dir apps/desktop run test:e2e:record-engine-tab-audio`.
 - Smooth document/nested-container scroll Electron E2E:
   `pnpm --dir apps/desktop run test:e2e:scroll`.
 - Local media playback Electron E2E: `pnpm --dir apps/desktop run test:e2e:media`.
@@ -47,6 +65,43 @@
 
 ## Focus Guidance
 
+- Wave 1 record-engine changes should run the focused tests for
+  `recording-outcome`, `recording-lifecycle`, `recording-bundle`,
+  `recording-discovery`, `recording-session-journal`, `recording-readiness`,
+  `recording-health`, `recording-preflight`, `recording-av-clock`, preload,
+  action timeline/landmarks/media clock, legacy story runner, and recorder
+  lifecycle before desktop typecheck and the full desktop suite.
+- Later record-engine changes should add the owning focused suites before the
+  full desktop run: `audio-tracks`, `audio-track-requirements`,
+  `author-preview-tab-audio`, `engine-health`, `recording-checkpoints`,
+  `recording-segment-stitch`, `recording-repair`, `capture-backend`,
+  `capture-backend-delivery`, `capture-target-resolver`, and
+  `electron-capture-backends`. Tab/system/native promotion additionally needs
+  packaged platform fixtures; unit tests do not satisfy permission, drift,
+  signing, or measured spike gates. Use the owning `test:e2e:record-engine-*`
+  package script so the Electron main bundle is rebuilt before Playwright;
+  calling Playwright directly can exercise stale host code. The tab-audio E2E
+  covers concurrent fake-device microphone plus tab capture and hostile page
+  denial, but physical-device and signed-package UAT remain separate gates.
+- Structured logging changes should run `recording-observability`, `logs`, the
+  reader test, and the owning boundary suites. Privacy fixtures must assert that
+  canary secrets, story/typed content, upload paths, filenames, and raw selectors
+  are absent from JSONL, text logs, and exported diagnostic bundles. Health and
+  encoder tests must reject per-frame logging and enforce the one-Hz normal
+  aggregate cadence while allowing immediate state transitions.
+- REC-190/220 harness smoke uses the documented `spike:macos-* -- --quick`
+  commands. Promotion must omit `--quick`: REC-190 needs the permission,
+  ten-minute timing, performance, packaging, and audio-marker exclusion matrix;
+  REC-220 needs paired Electron/native 1080p30 for ten minutes, 1440p30 for five
+  minutes, exploratory 4K30, lifecycle, stress, and signed-package evidence.
+  The native lifecycle gate must explicitly cover first-run/denial/reset,
+  window and display, source close, minimize/occlusion, resize and Retina scale,
+  sleep/wake, cursor on/off, format/color metadata, and system-audio coexistence.
+- The paired Electron control is
+  `apps/desktop/e2e/macos-native-capture-control.spec.ts`. It is diagnostic and
+  intentionally fails the promotion comparison when the exact source thumbnail
+  is empty under macOS TCC.
+
 - UI/component changes: run the nearest Vitest file first, then the owning
   package test command when risk warrants.
 - IPC/host changes: run focused desktop Electron tests plus
@@ -71,7 +126,13 @@
 - Generated type surfaces: do not edit generated files directly unless the
   generation source and regeneration process are also handled.
 - Electron E2E config: `apps/desktop/playwright.config.ts`; cursor-sync smoke:
-  `apps/desktop/e2e/cursor-sync.spec.ts`; smooth-scroll smoke:
+  `apps/desktop/e2e/cursor-sync.spec.ts`; record-engine checkpoint fixture:
+  `apps/desktop/e2e/record-engine-checkpoints.spec.ts`; external capture fixture:
+  `apps/desktop/e2e/record-engine-external-capture.spec.ts`; interaction fixture:
+  `apps/desktop/e2e/record-engine-interactions.spec.ts`; live-repair fixture:
+  `apps/desktop/e2e/record-engine-live-repair.spec.ts`; process-loss recovery:
+  `apps/desktop/e2e/record-engine-recovery.spec.ts`; tab-audio fixture:
+  `apps/desktop/e2e/record-engine-tab-audio.spec.ts`; smooth-scroll smoke:
   `apps/desktop/e2e/smooth-scroll.spec.ts`.
 - Visibility/scroll host changes should focus `target-visibility.test.ts`,
   `smooth-scroll.test.ts`, `interaction-readiness.test.ts`,

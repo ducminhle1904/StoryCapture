@@ -6,6 +6,8 @@ Edit `AGENTS.md` when updating agent guidance.
 
 ## Start Here
 
+- Use `tasks/plan.md` for the active record-engine roadmap and
+  `tasks/todo.md` for its authoritative execution status.
 - Use `docs/agent/project-map.md` for the repo map, generated-file guardrails,
   and first files to read by area.
 - Use `docs/agent/module-index.md` for detailed frontend, Electron, web,
@@ -79,9 +81,10 @@ Read only what the task needs.
 4. `docs/CREDENTIALS.md`
    Signing, auth, R2, email, cron, desktop runtime env, and service secrets.
 
-There is no `.planning/` directory in the current checkout. If planning
-artifacts are restored later, treat them as historical unless a current state
-file explicitly says otherwise.
+Active record-engine planning lives in `tasks/plan.md` and `tasks/todo.md`.
+There is no `.planning/` directory in the current checkout; if it is restored,
+treat its phase and research artifacts as historical unless the active plan
+explicitly references them.
 
 ## Task Routing
 
@@ -126,6 +129,11 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
   `apps/desktop/src/ipc/actions.ts`, and
   `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`.
+- Record-engine logs/diagnostics: read
+  `apps/desktop/electron/ipc/recording-observability.ts`,
+  `apps/desktop/electron/ipc/log-store.ts`, and
+  `apps/desktop/scripts/recording-diagnostics.mjs`; use the reader command in
+  `docs/agent/workflows.md`.
 - Source/timeline synchronization and presented-media playback: read
   `apps/desktop/src/features/post-production/state/source-timeline-map.ts`,
   `apps/desktop/src/features/post-production/state/cursor-preset-reflow.ts`,

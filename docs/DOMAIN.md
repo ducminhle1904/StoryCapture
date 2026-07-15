@@ -110,6 +110,10 @@ StoryCapture stores source plus JSON sidecars near projects and recordings.
   The v1/v2 reader remains part of the compatibility contract.
 - `<recording>.trajectory.json`: cursor movement data.
 - `<recording>.steps.json`: step timing summaries.
+- New canonical takes live at `exports/takes/<take-id>/`. `manifest.json` is
+  committed last and is the discovery authority; `media/video.mp4`, optional
+  audio tracks, action/health sidecars, and salvage diagnostics stay inside the
+  immutable bundle. Legacy flat MP4 recordings remain discoverable.
 - Post-production graph snapshots: export/render graph JSON written before host
   export work.
 
@@ -149,13 +153,67 @@ Rust/native capture crates.
   offscreen browser window or attach to an author preview stream.
 - Recording uses Electron capture APIs such as `desktopCapturer`, `screen`, and
   `webContents.capturePage`.
-- Frame capture writes a PNG sequence and then encodes through
-  `ffmpeg-static`.
-- Audio is optional and merged during encode when available. The Electron
-  preload special-cases recording start/stop so renderer-side browser
-  `MediaRecorder` microphone capture can be handed back to the host through
-  `electron_recording_set_audio`.
-- Recording lifecycle supports start/stop and pause/resume surfaces.
+- Display/window capture keeps the PNG path for compatibility and uses the live
+  raw BGRA encoder sink when enforced readiness needs pre-input ACKs;
+  author-preview capture uses that live sink directly. Every selected path
+  reports real encoded-frame acknowledgements to the same readiness and health
+  contracts.
+- Browser automation cannot start until the first encoded frame is committed.
+  Scene work uses hard capture barriers; individual action boundaries use
+  bounded soft barriers and never invent frame PTS on failure.
+- Microphone capture supports a bounded ordered stream from preload to host.
+  Encoded-video PTS is the master clock; pause spans, start offset, end drift,
+  padding/trimming, and the explicit video duration are recorded as A/V
+  evidence. The legacy whole-buffer path remains rollout-controlled.
+- Multitrack mode preserves `microphone`, author-preview `tab`, and platform
+  `system` as separate identities and immutable stems. Author preview may use
+  microphone plus tab; external targets may use microphone plus system; tab
+  and system never alias or run together. Required track failure cannot pass
+  strict outcome, while optional failure is retained as a warning. A derived
+  compatibility mix pads leading PTS gaps to the full video duration and never
+  deletes the source stems. Electron coverage records microphone and tab
+  concurrently through separate authenticated channels; fake-device evidence
+  does not replace physical-device packaged UAT.
+- The live engine-health snapshot exposes FPS/loss/backpressure, audio-track
+  state, target liveness, disk pressure, and terminal health. Fatal UI actions
+  are restricted to the host-provided Stop, Cancel, and Repair allowlist. The
+  steady-state event stream is capped at 1 Hz; severity, terminal, and disk
+  pressure transitions bypass that throttle.
+- Recording lifecycle is a guarded session state machine. Stop and cancel are
+  idempotent, cleanup runs once, and a cached typed terminal result can be
+  replayed after renderer reattachment.
+- A read-only preflight checks permission, exact target liveness, writable
+  output, disk, encoder smoke, and requested audio before allocating a session.
+- Terminal verdicts are `passed`, `repairable`, `failed`, or `cancelled`.
+  Partial artifacts may be retained, but only `passed` with a committed
+  canonical bundle is a successful, publishable take. Shadow mode keeps legacy
+  UX while emitting the strict classifier result for comparison.
+- Durable session journals support restart-time Recover or Discard. Recovery
+  salvages committed media/sidecars only and never resumes browser state or
+  automation input.
+- Scene checkpoints produce immutable media attempts and soft per-step
+  PTS/frame/state-hash landmarks. Each attempt snapshot also preserves its
+  source frame/PTS range and the actions/checkpoints captured inside that
+  range. Repair is manual and valid only while the original browser session is
+  alive; unsafe replay expands to scene/full rerun.
+- A successful repair selects one committed attempt per scene and assembles a
+  new immutable revision. Video, action, and checkpoint time are rebased from
+  each selected attempt's source range; audio stems are sliced against the
+  encoded-video master clock, retained by track identity, and mixed only into a
+  derived compatibility track. The revision manifest is committed last, then
+  canonical media points at that revision. The original session media and all
+  source attempts remain immutable and registered in the recording bundle.
+  Token expiry, attempt exhaustion, cancellation, or another non-success exit
+  does not assemble an incomplete revision; it finalizes the original media as
+  a non-success salvage bundle.
+- Browser-surface video stays on direct Electron author-preview capture.
+  External window/display capture resolves exact target identity through the
+  host-private capture-backend contract. Missing, ambiguous, PID-unresolvable,
+  or lost targets fail with typed evidence; a running session never switches
+  backend mid-artifact. Contract delivery carries the actual bitmap with an
+  explicit sequence, frame index, and PTS. Shadow mode only observes the
+  contract; internal/GA modes emit target loss once, retain its terminal
+  provenance, and reject every later frame for that target.
 - Recording sidecars feed post-production cursor, zoom, callout, highlight, and
   sound defaults.
 - Recorded automation treats `text-overlay` as a sequential, pause-aware and
@@ -171,8 +229,10 @@ Rust/native capture crates.
   travel begins; action sidecars store scroll and cursor timing separately.
   `wait-for` and `assert` never scroll or create cursor movement, while
   `wait-for-visible` and `assert-visible` use the same visibility pipeline.
-  `drag` and `upload` remain outside synced cursor recording until the Electron
-  runner implements those commands end to end.
+  `drag` uses mouse-down, interpolated committed movement, and mouse-up with a
+  complete cursor/input trajectory. `upload` uses the Chromium file-input path,
+  validates allowed file scope and multiplicity, and redacts local paths from
+  logs and sidecars.
 - Recording cursor synchronization is anchored to committed encoded frames,
   not wall-clock callbacks. `recording-media-clock.ts` owns frame-to-PTS
   conversion; `action-landmarks.ts` owns arrival/input/presentation landmarks;
@@ -182,7 +242,12 @@ Rust/native capture crates.
   active capture session. A committed frame produces authoritative landmarks;
   timeout, backpressure, capture failure, or encoder failure degrades to the
   existing timing fallback without inventing frame PTS or blocking valid input.
-  Stop/cancel settles pending landmark waiters.
+  A post-input presentation timeout is a typed repair condition. Choosing
+  `await_presentation` rearms the presentation wait and never replays the
+  browser input. Stop/cancel settles pending landmark waiters.
+- External window/display capture is fail-closed. Once the exact source
+  disappears, the backend emits one typed target-loss event, rejects later
+  frames, and strict outcome reports `failed/capture_target_lost`.
 
 Operator-gated capture work still requires real macOS Screen Recording/TCC
 verification; do not treat simulated tests as equivalent to OS-level UAT.

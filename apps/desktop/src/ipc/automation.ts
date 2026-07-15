@@ -1,5 +1,6 @@
 /** Automation IPC wrappers. */
 
+import type { RecordingOutcomeV1 } from "@storycapture/shared-types";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { DEFAULT_RECORDING_PACING, type RecordingPacingProfile } from "@/state/output-prefs";
 
@@ -18,6 +19,28 @@ export interface BoundingBox {
  * "Promote to fallback" button: visible only for `"fuzzy"`.
  */
 export type MatchKind = "primary" | "fuzzy" | "none";
+
+export type RecordingRepairAction =
+  | "retry_step"
+  | "use_candidate_and_retry"
+  | "await_presentation"
+  | "retry_scene"
+  | "abort_keep_salvage";
+
+export interface RepairRequiredEvent {
+  type: "repair-required";
+  session_id: string;
+  repair_token: string;
+  scene_id: string;
+  step_id: string;
+  ordinal: number;
+  phase: "pre_input" | "input_emitted_presentation_pending" | "post_input_failed";
+  reason_code: string;
+  candidates: Array<{ key: string; source: string; fallback_index: number | null }>;
+  attempt: number;
+  allowed_actions: RecordingRepairAction[];
+  expires_at_ms: number;
+}
 
 /**
  * Mirror of `automation::StepFrame` — per-step capture emitted when the
@@ -52,6 +75,10 @@ export type ExecutorEvent =
       matched_selector: string | null;
       matched_bbox: BoundingBox | null;
       match_kind: MatchKind;
+      target_source?: "sidecar_primary" | "story_target" | "sidecar_fallback" | null;
+      fallback_index?: number | null;
+      target_key?: string | null;
+      target_attempts?: unknown[];
     }
   | { type: "action_recorded"; event: unknown }
   | {
@@ -65,11 +92,28 @@ export type ExecutorEvent =
       type: "story_ended";
       status: { total_steps: number; succeeded: number; failed: number; duration_ms: number };
     }
+  | { type: "recording_outcome_shadow"; outcome: RecordingOutcomeV1 }
+  | RepairRequiredEvent
   | { type: "run_paused"; ordinal: number }
   | { type: "step_frame_captured"; ordinal: number; frame: StepFrame };
 
+export function resolveRecordingRepair(input: {
+  sessionId: string;
+  repairToken: string;
+  action: RecordingRepairAction;
+  candidateKey?: string;
+}): Promise<{ version: 1; accepted: true }> {
+  return invoke("resolve_recording_repair", {
+    session: { id: input.sessionId },
+    repair_token: input.repairToken,
+    action: input.action,
+    candidate_key: input.candidateKey,
+  });
+}
+
 export interface LaunchAutomationArgs {
   storySource: string;
+  storyPath?: string;
   projectFolder: string;
   /** Existing author-preview stream to execute against instead of spawning a throwaway browser. */
   streamId?: string | null;
@@ -127,6 +171,7 @@ export async function launchAutomation(
   onChannelReady?.(channel);
   await invoke("launch_automation", {
     storySource: args.storySource,
+    storyPath: args.storyPath ?? null,
     projectFolder: args.projectFolder,
     streamId: args.streamId ?? null,
     onEvent: channel,

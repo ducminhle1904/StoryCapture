@@ -38,6 +38,12 @@ export interface RecordedActionLandmarks {
     | { status: "not_applicable" };
 }
 
+export interface RecordedActionPresentationObservation {
+  eventId: string;
+  input: RecordingFrameLandmark;
+  presentation: Extract<RecordedActionLandmarks["presentation"], { status: "presented" }>;
+}
+
 interface PendingEvent {
   delivery: RecordedInputDelivery;
   point: RecordedActionPoint;
@@ -75,6 +81,9 @@ function settleArrival(event: PendingEvent, outcome: FrameSyncOutcome): FrameSyn
 
 export class RecordingActionLandmarkRecorder {
   private readonly events = new Map<string, PendingEvent>();
+  private readonly presentationObservers = new Set<
+    (observation: RecordedActionPresentationObservation) => void
+  >();
   private lastCommittedFrame: RecordingFrameLandmark | null = null;
   private paintSequence = 0;
 
@@ -116,9 +125,21 @@ export class RecordingActionLandmarkRecorder {
     return this.lastCommittedFrame ? copyLandmark(this.lastCommittedFrame) : null;
   }
 
+  onPresentation(
+    observer: (observation: RecordedActionPresentationObservation) => void,
+  ): () => void {
+    this.presentationObservers.add(observer);
+    return () => this.presentationObservers.delete(observer);
+  }
+
+  anchorArrival(id: string, landmark: RecordingFrameLandmark): FrameSyncOutcome {
+    const event = this.requiredEvent(id);
+    return settleArrival(event, { status: "committed", landmark });
+  }
+
   commitFrame(landmark: RecordingFrameLandmark): void {
     this.lastCommittedFrame = copyLandmark(landmark);
-    for (const event of this.events.values()) {
+    for (const [eventId, event] of this.events) {
       if (event.inputFrameIndex == null) {
         const previous = event.samples.at(-1);
         if (!previous || !samePoint(previous, event.point)) {
@@ -137,6 +158,21 @@ export class RecordingActionLandmarkRecorder {
           ? { firstPostInputPaint: copyLandmark(landmark) }
           : {}),
       };
+      const actionInput = event.input.action;
+      if (actionInput) {
+        const observation: RecordedActionPresentationObservation = {
+          eventId,
+          input: copyLandmark(actionInput),
+          presentation: {
+            status: "presented",
+            firstPostInputFrame: copyLandmark(event.presentation.firstPostInputFrame),
+            ...(event.presentation.firstPostInputPaint
+              ? { firstPostInputPaint: copyLandmark(event.presentation.firstPostInputPaint) }
+              : {}),
+          },
+        };
+        for (const observer of this.presentationObservers) observer(observation);
+      }
       for (const resolve of event.presentationWaiters.splice(0)) resolve(event.presentation);
     }
   }
@@ -191,7 +227,7 @@ export class RecordingActionLandmarkRecorder {
 
   markInput(id: string, kind: RecordedInputLandmarkKind): RecordingFrameLandmark {
     const event = this.requiredEvent(id);
-    const landmark = this.lastCommittedFrame;
+    const landmark = kind === "action" && event.arrival ? event.arrival : this.lastCommittedFrame;
     if (!landmark)
       throw new Error("input cannot be recorded before the first committed media frame");
     const recorded = copyLandmark(landmark);
@@ -202,6 +238,7 @@ export class RecordingActionLandmarkRecorder {
 
   armPresentation(id: string): void {
     const event = this.requiredEvent(id);
+    if (event.presentation?.status === "timeout") event.presentation = null;
     event.paintToken = this.paintSequence;
   }
 

@@ -9,6 +9,7 @@ import { readRecordingActionsSidecar } from "../action-sidecar-reader";
 import { readJson, writeJson } from "../json-store";
 import { logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
+import { runRecordingPreflight } from "../recording";
 import { sessionId } from "../session";
 import type { InvokeEnvelope } from "../types";
 import { checkElectronUpdate, getPendingUpdateInfo, installElectronUpdate } from "../update-store";
@@ -86,7 +87,13 @@ import {
   timelineSave,
   updateProjectWorkflow,
 } from "./projects";
-import { setRecordingAudio, stopRecording } from "./recording";
+import {
+  pauseRecording,
+  recordingAudioStream,
+  resumeRecording,
+  setRecordingAudio,
+  stopRecording,
+} from "./recording";
 import {
   emptySessionRollup,
   keyDelete,
@@ -113,7 +120,6 @@ import {
   fsResources,
   type OpenDialogSpec,
   pluginLogLevel,
-  recordingSessions,
   restoreElectronWindowState,
   type SaveDialogSpec,
   saveElectronWindowState,
@@ -159,6 +165,8 @@ export async function handleLegacyInvoke(
   { cmd, args, options }: InvokeEnvelope,
 ): Promise<unknown> {
   switch (cmd) {
+    case "recording_preflight":
+      return runRecordingPreflight(args);
     case "list_audio_inputs":
       return listAudioInputs(event.sender);
     case "probe_hw_encoders":
@@ -176,30 +184,20 @@ export async function handleLegacyInvoke(
       );
     case "electron_recording_set_audio":
       return setRecordingAudio(args);
+    case "recording_audio_stream":
+      return recordingAudioStream(args);
     case "stop_recording":
       return stopRecording(
         (args as { session?: { id?: string } | undefined } | undefined)?.session,
       );
-    case "pause_recording": {
-      const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
-      const session = recordingSessions.get(id);
-      if (!session) throw new Error(`recording session ${id} not found`);
-      session.paused = true;
-      session.lifecycle = "paused";
-      session.mediaClock.pause();
-      session.pauseGate.pause();
-      return { status: session.lifecycle };
-    }
-    case "resume_recording": {
-      const id = String((args as { session?: { id?: string } } | undefined)?.session?.id ?? "");
-      const session = recordingSessions.get(id);
-      if (!session) throw new Error(`recording session ${id} not found`);
-      session.paused = false;
-      session.lifecycle = "recording";
-      session.mediaClock.resume();
-      session.pauseGate.resume();
-      return { status: session.lifecycle };
-    }
+    case "pause_recording":
+      return pauseRecording(
+        (args as { session?: { id?: string } | undefined } | undefined)?.session,
+      );
+    case "resume_recording":
+      return resumeRecording(
+        (args as { session?: { id?: string } | undefined } | undefined)?.session,
+      );
     case "launch_automation":
       return launchAutomationCommand((args ?? {}) as Record<string, unknown>, event.sender);
     case "start_preview_stream":

@@ -26,11 +26,13 @@ import type {
   ActionScrollTiming,
   ActionTarget,
 } from "../action-timeline";
+import type { CaptureBackendDeliveryGuard, CaptureBackendProvenance } from "../capture-backend";
 import type { CursorTimingSize } from "../cursor-timing";
 import { readJson, writeJson } from "../json-store";
 import { type FrontendLogPayload, logFromFrontend } from "../log-store";
 import { userDataPath } from "../paths";
 import type { RecordingMediaClock } from "../recording-media-clock";
+import { recordEngineLog, recordingLogContextFromFields } from "../recording-observability";
 import type { RecordingPauseGate } from "../recording-pause-gate";
 import type {
   RecordingFitMode,
@@ -404,6 +406,11 @@ export interface RecordingSession {
   sourceFramesReceived: number;
   captureInFlight: Promise<void> | null;
   audioPath: string | null;
+  captureBackend?: CaptureBackendProvenance | null;
+  captureBackendDelivery?: CaptureBackendDeliveryGuard | null;
+  captureBackendDeliverySequence?: number;
+  captureBackendFrameIndex?: number;
+  captureBackendLastPtsUs?: number | null;
   frameCrop: FrameCropRect | null;
   loggedAuthorPreviewFrame: boolean;
   requestedFps: number;
@@ -879,16 +886,20 @@ export async function hostLog(
   message: string,
   fields: Record<string, unknown> = {},
 ): Promise<void> {
-  try {
-    await logFromFrontend({
+  await Promise.allSettled([
+    logFromFrontend({
       level,
       source: "electron-host",
       message,
       fields: Object.entries(fields).map(([key, value]) => [key, String(value)]),
-    });
-  } catch {
-    // Host diagnostics must never fail the browser run they describe.
-  }
+    }),
+    recordEngineLog({
+      level,
+      event: "recording.legacy",
+      context: recordingLogContextFromFields(fields),
+      details: { legacy_message: message, ...fields },
+    }),
+  ]);
 }
 
 export function takeNextResourceId(): number {

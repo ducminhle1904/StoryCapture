@@ -9,6 +9,7 @@ export type InteractionReadinessReason =
   | "detached"
   | "hidden"
   | "disabled"
+  | "not_file_input"
   | "invalid_bounds"
   | "outside_viewport"
   | "covered"

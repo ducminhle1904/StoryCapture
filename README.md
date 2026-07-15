@@ -43,6 +43,8 @@ docs/        Read-on-demand technical docs
 ## Status
 
 This repo moves quickly. Do not treat `README.md` as the live project tracker.
-There is no `.planning/` directory in the current checkout. Treat `docs/*.md`
-and the live source tree as the current references unless a future planning
-state file is restored.
+Active record-engine planning lives in `tasks/plan.md`, with status tracked only
+in `tasks/todo.md`. There is no `.planning/` directory in the current checkout;
+if it is restored, treat its contents as historical unless the active plan
+explicitly references them. Treat `docs/*.md` and the live source tree as the
+current implementation references.
