@@ -31,6 +31,8 @@ import { frontendLog } from "@/lib/log";
 import { type PreviewViewport, VIEWPORT_SIZES } from "@/state/editor";
 
 const STOP_GRACE_MS = 60_000;
+const RECORDING_PREVIEW_SUPERSEDED_MESSAGE =
+  "Preview URL or session changed while preparing recording";
 
 type Listener = (streamId: string | null) => void;
 export type PreviewLifecycleStatus = "idle" | "starting" | "live" | "error";
@@ -73,9 +75,20 @@ function navEqual(a: PreviewNavState, b: PreviewNavState): boolean {
 type NavListener = (s: PreviewNavState) => void;
 type StatusListener = (status: PreviewLifecycleStatus) => void;
 
+interface AppUrlDrain {
+  streamId: string;
+  promise: Promise<void>;
+  errorObserver: {
+    appUrls: Set<string>;
+    reported: boolean;
+  };
+}
+
 interface State {
   streamId: string | null;
   appUrl: string | null;
+  desiredAppUrl: string | null;
+  appUrlDrain: AppUrlDrain | null;
   viewportKey: string;
   status: PreviewLifecycleStatus;
   starting: boolean;
@@ -92,6 +105,8 @@ interface State {
 const state: State = {
   streamId: null,
   appUrl: null,
+  desiredAppUrl: null,
+  appUrlDrain: null,
   viewportKey: "preset:desktop",
   status: "idle",
   starting: false,
@@ -142,7 +157,102 @@ function viewportKey(viewport: PreviewViewportRequest): string {
     : `size:${viewport.width}x${viewport.height}`;
 }
 
+function recordingPreviewSupersededError(): Error {
+  return new Error(RECORDING_PREVIEW_SUPERSEDED_MESSAGE);
+}
+
+async function drainAppUrlQueue(drain: AppUrlDrain): Promise<void> {
+  while (state.streamId === drain.streamId) {
+    const targetUrl = state.desiredAppUrl;
+    if (targetUrl == null || targetUrl === state.appUrl) return;
+
+    try {
+      await setAuthorPreviewUrl(drain.streamId, targetUrl);
+    } catch (err) {
+      if (state.streamId !== drain.streamId) return;
+      if (state.desiredAppUrl !== targetUrl) continue;
+      throw err;
+    }
+
+    if (state.streamId !== drain.streamId) return;
+    state.appUrl = targetUrl;
+  }
+}
+
+function queueAppUrl(
+  appUrl: string,
+  errorObserver?: AppUrlDrain["errorObserver"],
+): Promise<void> | null {
+  state.desiredAppUrl = appUrl;
+
+  const streamId = state.streamId;
+  if (streamId == null) return null;
+
+  const activeDrain = state.appUrlDrain;
+  if (activeDrain?.streamId === streamId) return activeDrain.promise;
+  if (state.appUrl === state.desiredAppUrl) return null;
+
+  const drain: AppUrlDrain = {
+    streamId,
+    promise: Promise.resolve(),
+    errorObserver: errorObserver ?? { appUrls: new Set(), reported: false },
+  };
+  state.appUrlDrain = drain;
+  drain.promise = drainAppUrlQueue(drain).then(
+    () => {
+      if (state.appUrlDrain !== drain) return;
+      state.appUrlDrain = null;
+      if (
+        state.streamId === streamId &&
+        state.desiredAppUrl != null &&
+        state.desiredAppUrl !== state.appUrl
+      ) {
+        return queueAppUrl(state.desiredAppUrl, drain.errorObserver) ?? undefined;
+      }
+    },
+    (err) => {
+      if (state.appUrlDrain === drain) state.appUrlDrain = null;
+      throw err;
+    },
+  );
+  return drain.promise;
+}
+
+function assertRecordingPreview(streamId: string, appUrl: string): void {
+  if (
+    state.streamId !== streamId ||
+    state.appUrl !== appUrl ||
+    state.desiredAppUrl !== appUrl ||
+    state.appUrlDrain != null
+  ) {
+    throw recordingPreviewSupersededError();
+  }
+}
+
+async function ensureAppUrlForRecording(streamId: string, appUrl: string): Promise<void> {
+  queueAppUrl(appUrl);
+
+  while (true) {
+    if (state.streamId !== streamId) throw recordingPreviewSupersededError();
+    const drain = state.appUrlDrain;
+    if (drain == null) break;
+    if (drain.streamId !== streamId) throw recordingPreviewSupersededError();
+
+    try {
+      await drain.promise;
+    } catch (err) {
+      if (state.streamId !== streamId || state.desiredAppUrl !== appUrl) {
+        throw recordingPreviewSupersededError();
+      }
+      throw err;
+    }
+  }
+
+  assertRecordingPreview(streamId, appUrl);
+}
+
 async function launch(appUrl: string, viewport: PreviewViewportRequest) {
+  state.desiredAppUrl = appUrl;
   if (state.starting || state.streamId != null) return;
   state.starting = true;
   setStatus("starting");
@@ -155,6 +265,7 @@ async function launch(appUrl: string, viewport: PreviewViewportRequest) {
     });
     state.streamId = id;
     state.appUrl = appUrl;
+    state.appUrlDrain = null;
     state.viewportKey = viewportKey(viewport);
     state.paused = false;
     setStatus("live");
@@ -177,6 +288,13 @@ async function launch(appUrl: string, viewport: PreviewViewportRequest) {
       });
     }
     notify();
+    if (
+      state.streamId === id &&
+      state.desiredAppUrl != null &&
+      state.desiredAppUrl !== state.appUrl
+    ) {
+      updateAppUrl(state.desiredAppUrl);
+    }
   } catch (err) {
     setStatus("error");
     frontendLog.warn("previewLifecycle", "start_author_preview failed", {
@@ -193,6 +311,8 @@ async function teardown() {
   if (id == null) return;
   state.streamId = null;
   state.appUrl = null;
+  state.desiredAppUrl = null;
+  state.appUrlDrain = null;
   state.paused = false;
   setStatus("idle");
   if (state.navUnlisten) {
@@ -277,13 +397,33 @@ export function retainPreviewForRecording(reason: string): PreviewRecordingLease
     release: () => {
       if (released) return;
       released = true;
-      state.refcount = Math.max(0, state.refcount - 1);
+      if (state.streamId === streamId) {
+        state.refcount = Math.max(0, state.refcount - 1);
+      }
       frontendLog.info("previewLifecycle", "released recording preview lease", {
         fields: { reason, stream_id: streamId, refcount: state.refcount },
       });
-      if (state.refcount === 0) scheduleStop();
+      if (state.streamId === streamId && state.refcount === 0) scheduleStop();
     },
   };
+}
+
+async function finalizePreviewForRecording(
+  lease: PreviewRecordingLease,
+  appUrl: string,
+  viewport: PreviewViewportRequest,
+): Promise<PreviewRecordingLease> {
+  const streamId = lease.streamId;
+  try {
+    await ensureAppUrlForRecording(streamId, appUrl);
+    assertRecordingPreview(streamId, appUrl);
+    await updateViewportForRecording(viewport);
+    assertRecordingPreview(streamId, appUrl);
+    return lease;
+  } catch (err) {
+    lease.release();
+    throw err;
+  }
 }
 
 export async function acquirePreviewForRecording({
@@ -294,14 +434,7 @@ export async function acquirePreviewForRecording({
 }: AcquirePreviewForRecordingArgs): Promise<PreviewRecordingLease> {
   const retained = retainPreviewForRecording(reason);
   if (retained) {
-    try {
-      await updateAppUrlForRecording(appUrl);
-      await updateViewportForRecording(viewport);
-      return retained;
-    } catch (err) {
-      retained.release();
-      throw err;
-    }
+    return finalizePreviewForRecording(retained, appUrl, viewport);
   }
 
   let release: (() => void) | null = null;
@@ -343,7 +476,7 @@ export async function acquirePreviewForRecording({
     });
     if (pendingStreamId) finish(pendingStreamId);
   });
-  return lease;
+  return finalizePreviewForRecording(lease, appUrl, viewport);
 }
 
 function scheduleStop() {
@@ -361,22 +494,22 @@ function scheduleStop() {
  * instead of restarting Chromium.
  */
 export function updateAppUrl(appUrl: string) {
-  updateAppUrlForRecording(appUrl).catch((err) => {
+  const streamId = state.streamId;
+  const drain = queueAppUrl(appUrl);
+  if (drain == null) return;
+  const errorObserver = state.appUrlDrain?.errorObserver;
+  if (errorObserver?.appUrls.has(appUrl)) return;
+  errorObserver?.appUrls.add(appUrl);
+
+  drain.catch((err) => {
+    if (state.streamId !== streamId || state.desiredAppUrl !== appUrl) return;
+    if (errorObserver?.reported) return;
+    if (errorObserver) errorObserver.reported = true;
     frontendLog.warn("previewLifecycle", "set_author_preview_url failed", {
       error: err,
-      fields: { stream_id: state.streamId, app_url: appUrl },
+      fields: { stream_id: streamId, app_url: appUrl },
     });
   });
-}
-
-async function updateAppUrlForRecording(appUrl: string): Promise<void> {
-  if (state.streamId == null) return;
-  if (state.appUrl === appUrl) return;
-  const streamId = state.streamId;
-  await setAuthorPreviewUrl(streamId, appUrl);
-  if (state.streamId === streamId) {
-    state.appUrl = appUrl;
-  }
 }
 
 export function updateViewport(viewport: PreviewViewportRequest) {

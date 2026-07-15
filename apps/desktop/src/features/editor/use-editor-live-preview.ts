@@ -3,13 +3,12 @@ import { useEffect, useState } from "react";
 import {
   acquirePreview,
   INITIAL_NAV,
-  pausePreview,
   type PreviewLifecycleStatus,
   type PreviewNavState,
+  pausePreview,
   resumePreview,
   subscribeNav,
   subscribeStatus,
-  updateAppUrl,
   updateViewport,
 } from "@/features/editor/preview-lifecycle";
 import { useEditorStore } from "@/state/editor";
@@ -33,6 +32,7 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
   const [streamId, setStreamId] = useState<string | null>(null);
   const sanitized = sanitizeAppUrl(appUrl);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Viewport changes use the dedicated effect below without reacquiring the preview.
   useEffect(() => {
     if (sanitized == null) return;
 
@@ -47,11 +47,6 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
       setStreamId(null);
     };
   }, [sanitized]);
-
-  useEffect(() => {
-    if (streamId == null) return;
-    updateAppUrl(sanitized ?? "");
-  }, [streamId, sanitized]);
 
   useEffect(() => {
     if (streamId == null) return;
@@ -83,8 +78,7 @@ export function useEditorLivePreview(appUrl: string | null | undefined) {
   const [nav, setNav] = useState<PreviewNavState>(INITIAL_NAV);
   useEffect(() => subscribeNav(setNav), []);
 
-  const [lifecycleStatus, setLifecycleStatus] =
-    useState<PreviewLifecycleStatus>("idle");
+  const [lifecycleStatus, setLifecycleStatus] = useState<PreviewLifecycleStatus>("idle");
   useEffect(() => subscribeStatus(setLifecycleStatus), []);
 
   return {
