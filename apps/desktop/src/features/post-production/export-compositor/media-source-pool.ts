@@ -84,10 +84,10 @@ export const loadDomMediaSource: CanonicalMediaLoader = async (node) => {
         durationUs == null
           ? Number.POSITIVE_INFINITY
           : Math.max(0, durationUs - Math.max(1, options.frame_duration_us));
-      const clampedUs = Math.max(
-        0,
-        Math.min(sourcePtsUs, options.last_frame ? terminalUs : (durationUs ?? sourcePtsUs)),
-      );
+      // Seeking exactly to media.duration has no decodable frame and behaves
+      // differently across Chromium backends. Always clamp to the final full
+      // frame, even when the graph still considers an overstated source active.
+      const clampedUs = Math.max(0, Math.min(sourcePtsUs, terminalUs));
       const timeSeconds = clampedUs / 1_000_000;
       if (Math.abs(video.currentTime - timeSeconds) < 0.0005 && video.readyState >= 2) return;
       const seeked = waitForVideoEvent(
@@ -150,9 +150,7 @@ export class CanonicalMediaSourcePool {
       if (!entry) throw new Error(`canonical media source is not loaded: ${source.node.id}`);
       const durationUs = entry.handle.duration_us;
       const maxPtsUs =
-        durationUs == null
-          ? Number.POSITIVE_INFINITY
-          : Math.max(0, durationUs - (source.held ? frameDurationUs : 0));
+        durationUs == null ? Number.POSITIVE_INFINITY : Math.max(0, durationUs - frameDurationUs);
       const sourcePtsUs = Math.max(0, Math.min(source.source_pts_us, maxPtsUs));
       if (entry.last_source_pts_us === sourcePtsUs) continue;
       await entry.handle.seek(sourcePtsUs, {

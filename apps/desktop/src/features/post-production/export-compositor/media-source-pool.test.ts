@@ -74,4 +74,27 @@ describe("canonical media source pool", () => {
     expect(disposed).toHaveBeenCalledOnce();
     expect(pool.loadedSourceIds()).toEqual([]);
   });
+
+  it("clamps an active source with overstated graph duration to its final decodable frame", async () => {
+    const seek = vi.fn(async () => undefined);
+    const loader: CanonicalMediaLoader = async () => ({
+      source: {} as CanvasImageSource,
+      duration_us: 1_000_000,
+      seek,
+      dispose: vi.fn(),
+    });
+    const graph = canonicalGraph([canonicalSource("source-a", 0, 2_000)]);
+    graph.output_fps = 10;
+    graph.duration_ms = 2_000;
+    const pool = new CanonicalMediaSourcePool(loader);
+
+    await pool.configure(graph);
+    await pool.prepare(evaluateScene(graph, 1_500));
+
+    expect(seek).toHaveBeenCalledWith(900_000, {
+      last_frame: false,
+      frame_duration_us: 100_000,
+    });
+    pool.dispose();
+  });
 });
