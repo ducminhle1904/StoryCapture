@@ -8,21 +8,92 @@ import ffmpegPath from "ffmpeg-static";
 
 const execFileAsync = promisify(execFile);
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const devServerUrl = "http://127.0.0.1:1420";
 
-test("streams and seeks real MP4 media through the local asset protocol", async () => {
-  test.skip(!ffmpegPath, "ffmpeg-static binary is unavailable");
+async function launchDevRenderer(extraArgs: string[] = []) {
   const app = await electron.launch({
-    args: [desktopDir],
+    args: [desktopDir, ...extraArgs],
     cwd: desktopDir,
-    env: { ...process.env, VITE_DEV_SERVER_URL: "http://127.0.0.1:1420" },
+    env: { ...process.env, VITE_DEV_SERVER_URL: devServerUrl },
   });
   try {
     await expect
-      .poll(() => app.windows().some((window) => window.url().startsWith("http://127.0.0.1:1420")))
+      .poll(() => app.windows().some((window) => window.url().startsWith(devServerUrl)))
       .toBe(true);
-    const main = app.windows().find((window) => window.url().startsWith("http://127.0.0.1:1420"));
+    const main = app.windows().find((window) => window.url().startsWith(devServerUrl));
     if (!main) throw new Error("StoryCapture renderer window did not open");
     await expect(main.locator("body")).toBeVisible();
+    return { app, main };
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
+}
+
+test("loads the bundled cursor skin through Vite in the Electron dev renderer", async () => {
+  const { app, main } = await launchDevRenderer();
+  try {
+    const cursorSkin = await main.evaluate(async () => {
+      const canonicalAssetsModulePath =
+        "/src/features/post-production/export-compositor/canonical-assets.ts";
+      const { CanonicalImageAssetPool } = await import(canonicalAssetsModulePath);
+      const pool = new CanonicalImageAssetPool();
+      try {
+        await pool.configure({
+          schema_version: 4,
+          output_width: 1_280,
+          output_height: 720,
+          output_fps: 30,
+          duration_ms: 1_000,
+          video: [
+            {
+              type: "cursor-overlay",
+              id: "cursor-skin-e2e",
+              clip_id: "cursor-skin-e2e-clip",
+              skin: "mac-default",
+              size_scale: 1,
+              motion_preset: "natural",
+              preserve_full_motion: true,
+              click_effect: { style: "none", color: "auto", intensity: "normal" },
+              color_tint: null,
+              t_start_ms: 0,
+              duration_ms: 1_000,
+              trajectory: {
+                kind: "actions",
+                path: "unused.actions.json",
+                png_sequence_dir: "unused.actions.json",
+                fps: 60,
+                frame_count: 0,
+              },
+            },
+          ],
+          audio: [],
+        });
+        const skin = pool.cursorSkin("mac-default");
+        return {
+          exists: skin !== null,
+          naturalWidth: skin instanceof HTMLImageElement ? skin.naturalWidth : 0,
+          naturalHeight: skin instanceof HTMLImageElement ? skin.naturalHeight : 0,
+          src: skin instanceof HTMLImageElement ? skin.currentSrc || skin.src : "",
+        };
+      } finally {
+        pool.dispose();
+      }
+    });
+
+    expect(cursorSkin.exists).toBe(true);
+    expect(cursorSkin.naturalWidth).toBeGreaterThan(0);
+    expect(cursorSkin.naturalHeight).toBeGreaterThan(0);
+    expect(new URL(cursorSkin.src).pathname).toMatch(/^\/@fs\//);
+  } finally {
+    await app.close();
+  }
+});
+
+test("streams and seeks real MP4 media through the local asset protocol", async () => {
+  test.skip(!ffmpegPath, "ffmpeg-static binary is unavailable");
+  const { app, main } = await launchDevRenderer();
+  try {
     const userDataDir = await app.evaluate(({ app }) => app.getPath("userData"));
     const exportsDir = path.join(userDataDir, "exports");
     await fs.mkdir(exportsDir, { recursive: true });
@@ -175,17 +246,8 @@ test("uses the newest recording and recovers from transient media failure", asyn
     ]),
   );
 
-  const app = await electron.launch({
-    args: [desktopDir, `--user-data-dir=${userDataDir}`],
-    cwd: desktopDir,
-    env: { ...process.env, VITE_DEV_SERVER_URL: "http://127.0.0.1:1420" },
-  });
+  const { app, main } = await launchDevRenderer([`--user-data-dir=${userDataDir}`]);
   try {
-    await expect
-      .poll(() => app.windows().some((window) => window.url().startsWith("http://127.0.0.1:1420")))
-      .toBe(true);
-    const main = app.windows().find((window) => window.url().startsWith("http://127.0.0.1:1420"));
-    if (!main) throw new Error("StoryCapture renderer window did not open");
     const discovered = await main.evaluate(async (id) => {
       const internals = (
         window as typeof window & {
@@ -199,7 +261,7 @@ test("uses the newest recording and recovers from transient media failure", asyn
     expect(discovered.map((recording) => recording.path)).toEqual([latest, older]);
     const latestAssetUrl = `storycapture-asset://local/${encodeURIComponent(latest)}`;
     await main.goto(
-      `http://127.0.0.1:1420/?storycapturePreviewE2E=${encodeURIComponent(latestAssetUrl)}`,
+      `${devServerUrl}/?storycapturePreviewE2E=${encodeURIComponent(latestAssetUrl)}`,
     );
     await expect(main.getByLabel("Source video preview")).toHaveAttribute("src", latestAssetUrl);
     const dispatchMediaEvent = (type: string) =>

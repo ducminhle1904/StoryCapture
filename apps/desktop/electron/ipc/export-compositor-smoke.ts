@@ -11,6 +11,9 @@ import { type ExportPipelineSmokeEvidence, runExportPipelineSmoke } from "./expo
 const OUTPUT_WIDTH = 320;
 const OUTPUT_HEIGHT = 180;
 const DURATION_MS = 1_000;
+const SMOKE_CURSOR_SKIN = "big-arrow";
+
+type SmokeFrameVariant = "base" | "cursor" | "cursor-and-text";
 
 interface MainRendererEvidence {
   url: string;
@@ -21,7 +24,9 @@ interface MainRendererEvidence {
 interface CompositorEvidence {
   frameBytes: number;
   visiblePixels: number;
+  cursorChangedPixels: number;
   textChangedPixels: number;
+  bundledCursorSkin: typeof SMOKE_CURSOR_SKIN;
   bundledFontFamilies: string[];
   loadFailures: string[];
 }
@@ -129,6 +134,42 @@ async function createVideoFixture(outputPath: string): Promise<void> {
   });
 }
 
+async function createCursorActionsFixture(outputPath: string, videoPath: string): Promise<void> {
+  await fs.writeFile(
+    outputPath,
+    `${JSON.stringify(
+      {
+        version: 1,
+        recording_path: videoPath,
+        viewport: { width: 160, height: 90 },
+        capture_rect: { x: 0, y: 0, width: 160, height: 90 },
+        fps: 30,
+        frame_count: 30,
+        events: [
+          {
+            step_id: "smoke-cursor",
+            ordinal: 1,
+            verb: "click",
+            t_start_ms: 0,
+            t_action_ms: 250,
+            t_end_ms: 500,
+            target: {
+              kind: "element",
+              label: "Smoke cursor target",
+              center: { x: 96, y: 45 },
+              bounds: { x: 88, y: 37, w: 16, h: 16 },
+            },
+            secondary_target: null,
+            pointer: { button: "left", effect: "click" },
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
 function sourceNode(videoPath: string): Record<string, unknown> {
   return {
     type: "source",
@@ -181,28 +222,59 @@ const textNode = {
   ],
 };
 
-function graph(videoPath: string, withText: boolean) {
+function cursorNode(actionsPath: string) {
+  return {
+    type: "cursor-overlay",
+    id: "smoke-cursor",
+    clip_id: "smoke-clip",
+    skin: SMOKE_CURSOR_SKIN,
+    size_scale: 4,
+    motion_preset: "natural",
+    preserve_full_motion: false,
+    click_effect: { style: "none", color: "auto", intensity: "normal" },
+    color_tint: null,
+    t_start_ms: 0,
+    duration_ms: DURATION_MS,
+    trajectory: {
+      kind: "actions",
+      path: actionsPath,
+      png_sequence_dir: "",
+      fps: 30,
+      frame_count: 30,
+    },
+  };
+}
+
+function graph(videoPath: string, actionsPath: string, variant: SmokeFrameVariant) {
+  const withCursor = variant !== "base";
+  const withText = variant === "cursor-and-text";
   return {
     schema_version: 4,
     output_width: OUTPUT_WIDTH,
     output_height: OUTPUT_HEIGHT,
     output_fps: 30,
     duration_ms: DURATION_MS,
-    video: [sourceNode(videoPath), backgroundNode, ...(withText ? [textNode] : [])],
+    video: [
+      sourceNode(videoPath),
+      backgroundNode,
+      ...(withCursor ? [cursorNode(actionsPath)] : []),
+      ...(withText ? [textNode] : []),
+    ],
     audio: [],
   };
 }
 
 async function renderSmokeFrame(
   videoPath: string,
-  withText: boolean,
+  actionsPath: string,
+  variant: SmokeFrameVariant,
 ): Promise<{
   frame: Buffer;
   fonts: Array<{ family: string; status: string }>;
   loadFailures: string[];
 }> {
   const host = createExportCompositorHost({
-    graph: graph(videoPath, withText),
+    graph: graph(videoPath, actionsPath, variant),
     outputWidth: OUTPUT_WIDTH,
     outputHeight: OUTPUT_HEIGHT,
     fps: 30,
@@ -225,25 +297,42 @@ async function renderSmokeFrame(
 }
 
 function frameEvidence(
-  withoutText: Buffer,
+  base: Buffer,
+  withCursor: Buffer,
   withText: Buffer,
-): Pick<CompositorEvidence, "frameBytes" | "visiblePixels" | "textChangedPixels"> {
-  if (withoutText.byteLength !== withText.byteLength) {
+): Pick<
+  CompositorEvidence,
+  "frameBytes" | "visiblePixels" | "cursorChangedPixels" | "textChangedPixels"
+> {
+  if (base.byteLength !== withCursor.byteLength || withCursor.byteLength !== withText.byteLength) {
     throw new Error("Smoke compositor frame sizes differ");
   }
   let visiblePixels = 0;
+  let cursorChangedPixels = 0;
   let textChangedPixels = 0;
   for (let index = 0; index < withText.byteLength; index += 4) {
     if (withText[index] || withText[index + 1] || withText[index + 2]) visiblePixels += 1;
     if (
-      withText[index] !== withoutText[index] ||
-      withText[index + 1] !== withoutText[index + 1] ||
-      withText[index + 2] !== withoutText[index + 2]
+      withCursor[index] !== base[index] ||
+      withCursor[index + 1] !== base[index + 1] ||
+      withCursor[index + 2] !== base[index + 2]
+    ) {
+      cursorChangedPixels += 1;
+    }
+    if (
+      withText[index] !== withCursor[index] ||
+      withText[index + 1] !== withCursor[index + 1] ||
+      withText[index + 2] !== withCursor[index + 2]
     ) {
       textChangedPixels += 1;
     }
   }
-  return { frameBytes: withText.byteLength, visiblePixels, textChangedPixels };
+  return {
+    frameBytes: withText.byteLength,
+    visiblePixels,
+    cursorChangedPixels,
+    textChangedPixels,
+  };
 }
 
 async function runSmoke(
@@ -256,17 +345,23 @@ async function runSmoke(
   }
   const exportsDir = path.join(app.getPath("userData"), "exports");
   const videoPath = path.join(exportsDir, "export-compositor-artifact-smoke.mp4");
+  const actionsPath = path.join(exportsDir, "export-compositor-artifact-smoke.actions.json");
   await createVideoFixture(videoPath);
-  const [base, text] = await Promise.all([
-    renderSmokeFrame(videoPath, false),
-    renderSmokeFrame(videoPath, true),
+  await createCursorActionsFixture(actionsPath, videoPath);
+  const [base, cursor, text] = await Promise.all([
+    renderSmokeFrame(videoPath, actionsPath, "base"),
+    renderSmokeFrame(videoPath, actionsPath, "cursor"),
+    renderSmokeFrame(videoPath, actionsPath, "cursor-and-text"),
   ]);
-  const loadFailures = [...base.loadFailures, ...text.loadFailures];
+  const loadFailures = [...base.loadFailures, ...cursor.loadFailures, ...text.loadFailures];
   if (loadFailures.length > 0) {
     throw new Error(`Export compositor load failed: ${loadFailures.join("; ")}`);
   }
-  const pixels = frameEvidence(base.frame, text.frame);
+  const pixels = frameEvidence(base.frame, cursor.frame, text.frame);
   if (pixels.visiblePixels <= 1_000) throw new Error("Bundled background did not render");
+  if (pixels.cursorChangedPixels <= 50) {
+    throw new Error(`Bundled ${SMOKE_CURSOR_SKIN} cursor did not render`);
+  }
   if (pixels.textChangedPixels <= 100) throw new Error("Bundled font text did not render");
   const loadedFontFamilies = text.fonts
     .filter((font) => font.status === "loaded")
@@ -280,6 +375,7 @@ async function runSmoke(
     mainRenderer,
     compositor: {
       ...pixels,
+      bundledCursorSkin: SMOKE_CURSOR_SKIN,
       bundledFontFamilies: loadedFontFamilies,
       loadFailures,
     },

@@ -10,15 +10,27 @@ const cursorSkinAssetUrls = import.meta.glob("../../../../../../assets/cursor-sk
   import: "default",
 }) as Record<string, string>;
 
-export type CanonicalImageLoader = (path: string) => Promise<CanvasImageSource>;
+export type CanonicalImageSourceKind = "graph-path" | "bundled-url";
 
-export const loadCanonicalImage: CanonicalImageLoader = (path) =>
+export function resolveCanonicalImageSrc(
+  path: string,
+  sourceKind: CanonicalImageSourceKind,
+): string {
+  return sourceKind === "bundled-url" ? path : canonicalAssetUrl(path);
+}
+
+export type CanonicalImageLoader = (
+  path: string,
+  sourceKind: CanonicalImageSourceKind,
+) => Promise<CanvasImageSource>;
+
+export const loadCanonicalImage: CanonicalImageLoader = (path, sourceKind) =>
   new Promise((resolve, reject) => {
     const image = new Image();
     image.decoding = "sync";
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error(`failed to load canonical image: ${path}`));
-    image.src = canonicalAssetUrl(path);
+    image.src = resolveCanonicalImageSrc(path, sourceKind);
   });
 
 function cursorSkinUrl(skin: ExportCursorSkin): string | null {
@@ -70,7 +82,7 @@ export class CanonicalImageAssetPool implements Omit<CanonicalRenderAssets, "sou
       }
     }
     for (const path of Array.from(paths).sort()) {
-      const image = await this.loader(path);
+      const image = await this.loader(path, "graph-path");
       if (generation !== this.generation) {
         throw new Error("canonical image asset configuration was superseded");
       }
@@ -83,7 +95,7 @@ export class CanonicalImageAssetPool implements Omit<CanonicalRenderAssets, "sou
     for (const skin of skins) {
       const path = cursorSkinUrl(skin);
       if (!path) throw new Error(`canonical cursor skin asset is unresolved: ${skin}`);
-      const image = await this.loader(path);
+      const image = await this.loader(path, "bundled-url");
       if (generation !== this.generation) {
         throw new Error("canonical cursor skin configuration was superseded");
       }
@@ -97,7 +109,7 @@ export class CanonicalImageAssetPool implements Omit<CanonicalRenderAssets, "sou
       const key = `${cursor.node.id}:${cursor.png_frame_index}`;
       if (this.cursorFrames.has(key)) continue;
       const path = canonicalCursorPngFramePath(cursor.node.trajectory.path, cursor.png_frame_index);
-      this.cursorFrames.set(key, await this.loader(path));
+      this.cursorFrames.set(key, await this.loader(path, "graph-path"));
     }
   }
 
