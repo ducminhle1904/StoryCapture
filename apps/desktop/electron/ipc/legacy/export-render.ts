@@ -1,12 +1,19 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
 import type { ExportCompositionGraphV4, ExportJobStatus } from "@storycapture/shared-types";
 import type { WebContents } from "electron";
+import { exportFfmpegPath } from "../export-binaries";
 import { clampFps } from "./capture-preview";
 import { sourceHasAudio, verifyExportArtifact } from "./export-artifact-verification";
-import { buildExportAudioPlan } from "./export-audio-planning";
+import {
+  applyExportLoudnessMeasurement,
+  buildExportAudioPlan,
+  buildExportLoudnessAnalysisArgs,
+  parseExportLoudnessMeasurement,
+} from "./export-audio-planning";
 import { runCompositedExportForRenderSession } from "./export-compositor";
 import {
   commitExportOutput,
@@ -53,6 +60,7 @@ interface EnqueueExportRenderJobArgs {
   plan: RunnableExportPlan;
   outputReservation: ExportOutputReservation;
   probeSourceAudio?: (path: string) => Promise<boolean>;
+  analyzeLoudness?: (ffmpegArgs: string[], session: RenderSession) => Promise<string>;
   presetId?: string | null;
   priority?: number;
 }
@@ -195,6 +203,49 @@ function wakeExportRenderScheduler(): void {
   });
 }
 
+function runExportLoudnessAnalysis(ffmpegArgs: string[], session: RenderSession): Promise<string> {
+  const child = spawn(exportFfmpegPath(), ffmpegArgs, {
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  session.ffmpegProcess = child;
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let stderrBytes = 0;
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (session.ffmpegProcess === child) session.ffmpegProcess = null;
+      if (error) reject(error);
+      else resolve(Buffer.concat(chunks).toString("utf8"));
+    };
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stderrBytes += buffer.length;
+      if (stderrBytes > 8 * 1024 * 1024) {
+        child.kill("SIGKILL");
+        finish(new Error("FFmpeg loudness analysis exceeded the diagnostic output limit."));
+        return;
+      }
+      chunks.push(buffer);
+    });
+    child.once("error", (error) => finish(error));
+    child.once("close", (code, signal) => {
+      if (code === 0) {
+        finish();
+        return;
+      }
+      finish(
+        new Error(
+          session.cancelRequested
+            ? "render cancelled"
+            : `FFmpeg loudness analysis failed (code ${String(code)}, signal ${String(signal)}).`,
+        ),
+      );
+    });
+  });
+}
+
 async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<void> {
   const { args, id, session } = queued;
   const renderJob = session.job;
@@ -205,7 +256,7 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
       throw new Error("canonical export received a retired non-composited plan");
     }
     renderJob.started_at = Date.now();
-    setJobPhase(session, "rendering", 5, 0);
+    setJobPhase(session, "mixing", 2, 0);
     const graph = args.plan.graph as unknown as ExportCompositionGraphV4;
     const sourceAudio =
       args.output.format === "gif"
@@ -230,7 +281,7 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
           ? { format: "gif" }
           : {
               format: args.output.format as "mp4" | "webm",
-              bitrateKbps: normalized.audio?.bitrateKbps ?? 160,
+              bitrateKbps: normalized.audio?.bitrateKbps ?? 192,
               channels: normalized.audio?.channels ?? 2,
               sampleRateHz: normalized.audio?.sampleRateHz ?? 48_000,
             },
@@ -239,9 +290,24 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
     if (audioPlan.kind === "invalid") {
       throw new Error(audioPlan.diagnostics.map((issue) => issue.message).join("; "));
     }
+    let finalAudioPlan = audioPlan;
+    if (args.output.format === "mp4" && audioPlan.kind === "mixed") {
+      if (session.cancelRequested) throw new Error("render cancelled");
+      const analysisOutput = await (args.analyzeLoudness ?? runExportLoudnessAnalysis)(
+        buildExportLoudnessAnalysisArgs(audioPlan),
+        session,
+      );
+      if (session.cancelRequested) throw new Error("render cancelled");
+      finalAudioPlan = applyExportLoudnessMeasurement(
+        audioPlan,
+        parseExportLoudnessMeasurement(analysisOutput),
+      );
+      setJobPhase(session, "mixing", 4, 100);
+    }
+    setJobPhase(session, "rendering", 5, 0);
     const ffmpegArgs = ffmpegArgsForCanonicalExportPlan(
       args.plan,
-      audioPlan,
+      finalAudioPlan,
       args.outputReservation.tempPath,
     );
     await runCompositedExportForRenderSession(
@@ -260,7 +326,7 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
       height: args.plan.outputHeight,
       fps: args.plan.fps,
       durationMs: args.plan.durationMs,
-      expectAudio: audioPlan.kind === "mixed",
+      expectAudio: finalAudioPlan.kind === "mixed",
     });
     if (session.cancelRequested) throw new Error("render cancelled");
     setJobPhase(session, "verifying", 99, 100);

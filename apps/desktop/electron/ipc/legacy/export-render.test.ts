@@ -152,6 +152,7 @@ function enqueueTestJob(args: {
   output?: ExportOutput;
   priority?: number;
   probeSourceAudio?: (path: string) => Promise<boolean>;
+  analyzeLoudness?: (ffmpegArgs: string[], session: RenderSession) => Promise<string>;
 }): ExportOutputReservation {
   const cfg = args.output ?? output();
   const outputReservation = reservation(args.id);
@@ -164,6 +165,7 @@ function enqueueTestJob(args: {
     outputReservation,
     priority: args.priority,
     probeSourceAudio: args.probeSourceAudio,
+    analyzeLoudness: args.analyzeLoudness,
   });
   return outputReservation;
 }
@@ -458,6 +460,70 @@ describe("export render orchestration", () => {
     await vi.waitFor(() => expect(mocks.release).toHaveBeenCalledWith(outputReservation));
     expect(mocks.runComposited).not.toHaveBeenCalled();
     expect(session("cancel-probe-job")?.job.status).toBe("cancelled");
+  });
+
+  it("runs measured MP4 loudness normalization before rendering frames", async () => {
+    mocks.sourceHasAudio.mockResolvedValue(true);
+    const analyzeLoudness = vi.fn(async (ffmpegArgs: string[]) => {
+      expect(ffmpegArgs.join(" ")).toContain("loudnorm=I=-14:TP=-1:LRA=11");
+      return JSON.stringify({
+        input_i: "-20.25",
+        input_tp: "-3.10",
+        input_lra: "4.50",
+        input_thresh: "-30.25",
+        target_offset: "0.15",
+      });
+    });
+    let finalFfmpegArgs: string[] = [];
+    mocks.runComposited.mockImplementation(
+      async (
+        _activeSession: RenderSession,
+        _plan: unknown,
+        _onProgress: (frame: number) => void,
+        ffmpegArgs: string[],
+        onFramesComplete: () => void,
+      ) => {
+        finalFfmpegArgs = ffmpegArgs;
+        onFramesComplete();
+      },
+    );
+
+    enqueueTestJob({ id: "normalized-audio-job", analyzeLoudness });
+    await expectStatus("normalized-audio-job", "completed");
+
+    expect(analyzeLoudness).toHaveBeenCalledOnce();
+    expect(finalFfmpegArgs.join(" ")).toContain("measured_I=-20.25");
+    expect(finalFfmpegArgs.join(" ")).toContain("alimiter=limit=0.891251");
+    expect(mocks.verify).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ format: "mp4", expectAudio: true }),
+    );
+  });
+
+  it("skips loudness passes for audio-free output", async () => {
+    const analyzeLoudness = vi.fn();
+
+    enqueueTestJob({ id: "audio-free-job", analyzeLoudness });
+    await expectStatus("audio-free-job", "completed");
+
+    expect(analyzeLoudness).not.toHaveBeenCalled();
+    expect(mocks.verify).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ expectAudio: false }),
+    );
+  });
+
+  it("fails and releases the reservation when loudness analysis fails", async () => {
+    mocks.sourceHasAudio.mockResolvedValue(true);
+    const outputReservation = enqueueTestJob({
+      id: "loudness-failure-job",
+      analyzeLoudness: vi.fn().mockRejectedValue(new Error("loudness analysis unavailable")),
+    });
+
+    await expectStatus("loudness-failure-job", "failed");
+    expect(mocks.runComposited).not.toHaveBeenCalled();
+    expect(mocks.release).toHaveBeenCalledWith(outputReservation);
+    expect(session("loudness-failure-job")?.job.error).toContain("loudness analysis unavailable");
   });
 
   it("exposes status and phase progress through the shared DTO", () => {
