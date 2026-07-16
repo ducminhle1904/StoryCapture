@@ -1,6 +1,11 @@
 import path from "node:path";
 
-import { app, BrowserWindow, type BrowserWindowConstructorOptions, type Rectangle } from "electron";
+import {
+  app,
+  BrowserWindow,
+  type BrowserWindowConstructorOptions,
+  type NativeImage,
+} from "electron";
 
 import identity from "../identity.json";
 import { isDevRuntime } from "../runtime";
@@ -141,6 +146,7 @@ export interface ExportCompositorHostOptions {
   devServerUrl?: string;
   startupTimeoutMs?: number;
   windowFactory?: (options: BrowserWindowConstructorOptions) => BrowserWindow;
+  captureScaleFactor?: number;
 }
 
 export interface ExportCompositorHost {
@@ -171,15 +177,18 @@ function startupError(
   );
 }
 
-function createWindowOptions(plan: ExportCompositorHostPlan): BrowserWindowConstructorOptions {
+function createWindowOptions(
+  plan: ExportCompositorHostPlan,
+  captureScaleFactor: number,
+): BrowserWindowConstructorOptions {
   return {
     show: false,
     useContentSize: true,
-    width: plan.outputWidth,
-    height: plan.outputHeight,
+    width: Math.ceil(plan.outputWidth / captureScaleFactor),
+    height: Math.ceil(plan.outputHeight / captureScaleFactor),
     backgroundColor: "#000000",
     webPreferences: {
-      offscreen: true,
+      offscreen: { deviceScaleFactor: captureScaleFactor },
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -210,12 +219,14 @@ export function exportCompositorViewportForOutput(
 function viewportMatchesOutput(
   viewport: ExportCompositorViewport,
   plan: ExportCompositorHostPlan,
+  captureScaleFactor: number,
 ): boolean {
   return (
     viewport.canvasBackingWidth === plan.outputWidth &&
     viewport.canvasBackingHeight === plan.outputHeight &&
-    Math.round(viewport.cssViewportWidth * viewport.devicePixelRatio) === plan.outputWidth &&
-    Math.round(viewport.cssViewportHeight * viewport.devicePixelRatio) === plan.outputHeight
+    Math.round(viewport.cssViewportWidth * captureScaleFactor) === plan.outputWidth &&
+    Math.round(viewport.cssViewportHeight * captureScaleFactor) === plan.outputHeight &&
+    viewport.devicePixelRatio === captureScaleFactor
   );
 }
 
@@ -313,20 +324,34 @@ async function configureExportCompositor(
 async function captureExportCompositorFrame(
   win: BrowserWindow,
   plan: ExportCompositorHostPlan,
-  viewport: ExportCompositorViewport,
+  captureScaleFactor: number,
   timeMs: number,
 ): Promise<Buffer> {
   await win.webContents.executeJavaScript(
     `window.__STORYCAPTURE_EXPORT_COMPOSITOR__.renderFrame(${JSON.stringify(timeMs)})`,
     true,
   );
-  const captureRect: Rectangle = {
-    x: 0,
-    y: 0,
-    width: viewport.cssViewportWidth,
-    height: viewport.cssViewportHeight,
-  };
-  const image = await win.webContents.capturePage(captureRect, { stayHidden: true });
+  await win.webContents.executeJavaScript(
+    "new Promise((resolve) => requestAnimationFrame(() => resolve(true)))",
+    true,
+  );
+  const image = await new Promise<NativeImage>((resolve, reject) => {
+    let settled = false;
+    const finish = (result: NativeImage | Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      win.webContents.endFrameSubscription();
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    };
+    const timeout = setTimeout(
+      () => finish(new Error("export compositor timed out waiting for a presented frame")),
+      DEFAULT_STARTUP_TIMEOUT_MS,
+    );
+    win.webContents.beginFrameSubscription(false, (frame) => finish(frame));
+    win.webContents.invalidate();
+  });
   const size = image.getSize(1);
   const bitmap = image.toBitmap({ scaleFactor: 1 });
   const expectedBytes = plan.outputWidth * plan.outputHeight * 4;
@@ -340,7 +365,7 @@ async function captureExportCompositorFrame(
       expectedHeight: plan.outputHeight,
       capturedWidth: size.width,
       capturedHeight: size.height,
-      devicePixelRatio: viewport.devicePixelRatio,
+      devicePixelRatio: captureScaleFactor,
       expectedBytes,
       capturedBytes: bitmap.byteLength,
     });
@@ -356,13 +381,15 @@ export function createExportCompositorHost(
   const devRuntime = options.devRuntime ?? isDevRuntime(runtimeApp);
   const devServerUrl =
     options.devServerUrl ?? process.env[identity.devServerUrlEnv] ?? identity.defaultDevServerUrl;
+  const captureScale = normalizedDevicePixelRatio(options.captureScaleFactor ?? 1);
   const win = (options.windowFactory ?? ((windowOptions) => new BrowserWindow(windowOptions)))(
-    createWindowOptions(plan),
+    createWindowOptions(plan, captureScale),
   );
   win.webContents.setFrameRate(plan.fps);
   win.webContents.setZoomFactor(1);
+  win.webContents.startPainting();
   let started = false;
-  let captureViewport: ExportCompositorViewport | null = null;
+  let captureScaleFactor: number | null = null;
 
   return {
     window: win,
@@ -398,38 +425,31 @@ export function createExportCompositorHost(
         );
       }
 
-      const readiness = await waitForExportCompositorReady(win, {
+      await waitForExportCompositorReady(win, {
         timeoutMs: options.startupTimeoutMs,
       });
       try {
-        let targetViewport = exportCompositorViewportForOutput(
+        const targetViewport = exportCompositorViewportForOutput(
           plan.outputWidth,
           plan.outputHeight,
-          readiness.viewport?.devicePixelRatio ?? 1,
+          captureScale,
         );
         win.setContentSize(
-          Math.ceil(targetViewport.cssViewportWidth),
-          Math.ceil(targetViewport.cssViewportHeight),
+          Math.ceil(plan.outputWidth / captureScale),
+          Math.ceil(plan.outputHeight / captureScale),
         );
-        let configuredViewport = await configureExportCompositor(win, plan, graph, targetViewport);
-        if (configuredViewport.devicePixelRatio !== targetViewport.devicePixelRatio) {
-          targetViewport = exportCompositorViewportForOutput(
-            plan.outputWidth,
-            plan.outputHeight,
-            configuredViewport.devicePixelRatio,
-          );
-          win.setContentSize(
-            Math.ceil(targetViewport.cssViewportWidth),
-            Math.ceil(targetViewport.cssViewportHeight),
-          );
-          configuredViewport = await configureExportCompositor(win, plan, graph, targetViewport);
-        }
-        if (!viewportMatchesOutput(configuredViewport, plan)) {
+        const configuredViewport = await configureExportCompositor(
+          win,
+          plan,
+          graph,
+          targetViewport,
+        );
+        if (!viewportMatchesOutput(configuredViewport, plan, captureScale)) {
           throw new Error(
             `export compositor viewport handshake does not match ${plan.outputWidth}x${plan.outputHeight}: ${JSON.stringify(configuredViewport)}`,
           );
         }
-        captureViewport = configuredViewport;
+        captureScaleFactor = captureScale;
       } catch (error) {
         throw startupError(
           "configure-failed",
@@ -441,15 +461,17 @@ export function createExportCompositorHost(
       started = true;
     },
     async renderFrame(timeMs) {
-      if (!started || !captureViewport || win.isDestroyed()) {
+      if (!started || !captureScaleFactor || win.isDestroyed()) {
         throw new Error("export compositor host is not ready");
       }
-      return captureExportCompositorFrame(win, plan, captureViewport, timeMs);
+      return captureExportCompositorFrame(win, plan, captureScaleFactor, timeMs);
     },
     async dispose() {
       started = false;
-      captureViewport = null;
-      if (win.isDestroyed()) return;
+      captureScaleFactor = null;
+      if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+      win.webContents.endFrameSubscription();
+      win.webContents.stopPainting();
       await win.webContents
         .executeJavaScript("window.__STORYCAPTURE_EXPORT_COMPOSITOR__?.dispose?.()", true)
         .catch(() => undefined);

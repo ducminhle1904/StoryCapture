@@ -408,8 +408,8 @@ describe("ExportModal", () => {
         audio: {
           codec: "aac",
           bitrate_kbps: 192,
-          channels: 1,
-          sample_rate_hz: 44_100,
+          channels: 2,
+          sample_rate_hz: 48_000,
         },
       },
     });

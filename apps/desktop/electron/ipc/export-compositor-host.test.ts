@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createExportCompositorHost,
-  ExportCompositorFrameDimensionError,
   ExportCompositorStartupError,
   exportCompositorRendererPath,
   exportCompositorViewportForOutput,
@@ -29,6 +28,12 @@ function fakeWindow(
   const imageWidth = options.imageWidth ?? 2;
   const imageHeight = options.imageHeight ?? 2;
   const bitmap = Buffer.alloc(options.bitmapBytes ?? imageWidth * imageHeight * 4);
+  const toBitmap = vi.fn(options.toBitmap ?? (() => bitmap));
+  const image = {
+    getSize: () => ({ width: imageWidth, height: imageHeight }),
+    toBitmap,
+  };
+  let frameSubscription: ((image: unknown, dirtyRect: unknown) => void) | undefined;
   return {
     isDestroyed: vi.fn(() => options.destroyed ?? false),
     destroy: vi.fn(),
@@ -37,6 +42,19 @@ function fakeWindow(
     setContentSize: vi.fn(),
     webContents: {
       isDestroyed: vi.fn(() => options.destroyed ?? false),
+      beginFrameSubscription: vi.fn((_onlyDirty, callback) => {
+        frameSubscription = callback;
+      }),
+      endFrameSubscription: vi.fn(() => {
+        frameSubscription = undefined;
+      }),
+      startPainting: vi.fn(),
+      stopPainting: vi.fn(),
+      invalidate: vi.fn(() => {
+        queueMicrotask(() =>
+          frameSubscription?.(image, { x: 0, y: 0, width: imageWidth, height: imageHeight }),
+        );
+      }),
       setFrameRate: vi.fn(),
       setZoomFactor: vi.fn(),
       executeJavaScript: vi.fn(
@@ -80,10 +98,6 @@ function fakeWindow(
             return { ok: true };
           }),
       ),
-      capturePage: vi.fn(async () => ({
-        getSize: () => ({ width: imageWidth, height: imageHeight }),
-        toBitmap: vi.fn(options.toBitmap ?? (() => bitmap)),
-      })),
     },
   } as unknown as BrowserWindow;
 }
@@ -208,7 +222,8 @@ describe("export compositor production bootstrap", () => {
   });
 
   it("configures, renders, and disposes a ready hidden compositor", async () => {
-    const win = fakeWindow();
+    const toBitmap = vi.fn(() => Buffer.alloc(16));
+    const win = fakeWindow({ toBitmap });
     const host = createExportCompositorHost(plan, {
       app: runtimeApp,
       devRuntime: false,
@@ -229,12 +244,15 @@ describe("export compositor production bootstrap", () => {
             source.includes(".configure(") && source.includes('"resamplingQuality":"high"'),
         ),
     ).toBe(true);
-    expect(win.webContents.capturePage).toHaveBeenCalledWith(
-      { x: 0, y: 0, width: 2, height: 2 },
-      { stayHidden: true },
+    expect(win.webContents.setZoomFactor).toHaveBeenCalledWith(1);
+    expect(win.webContents.beginFrameSubscription).toHaveBeenCalledWith(
+      false,
+      expect.any(Function),
     );
-    const image = await vi.mocked(win.webContents.capturePage).mock.results[0]?.value;
-    expect(image?.toBitmap).toHaveBeenCalledWith({ scaleFactor: 1 });
+    expect(win.webContents.invalidate).toHaveBeenCalledOnce();
+    expect(toBitmap).toHaveBeenCalledWith({ scaleFactor: 1 });
+    expect(win.webContents.endFrameSubscription).toHaveBeenCalled();
+    expect(win.webContents.stopPainting).toHaveBeenCalledOnce();
     expect(win.destroy).toHaveBeenCalledOnce();
   });
 
@@ -253,6 +271,7 @@ describe("export compositor production bootstrap", () => {
       app: runtimeApp,
       devRuntime: false,
       windowFactory: () => win,
+      captureScaleFactor: devicePixelRatio,
     });
 
     const viewport = exportCompositorViewportForOutput(outputWidth, outputHeight, devicePixelRatio);
@@ -265,14 +284,10 @@ describe("export compositor production bootstrap", () => {
       Math.ceil(outputWidth / devicePixelRatio),
       Math.ceil(outputHeight / devicePixelRatio),
     );
-    expect(win.webContents.capturePage).toHaveBeenCalledWith(
-      {
-        x: 0,
-        y: 0,
-        width: outputWidth / devicePixelRatio,
-        height: outputHeight / devicePixelRatio,
-      },
-      { stayHidden: true },
+    expect(win.webContents.setZoomFactor).toHaveBeenCalledWith(1);
+    expect(win.webContents.beginFrameSubscription).toHaveBeenCalledWith(
+      false,
+      expect.any(Function),
     );
     await host.dispose();
   });
@@ -303,8 +318,6 @@ describe("export compositor production bootstrap", () => {
         capturedBytes: 24,
       },
     });
-    expect(toBitmap).toHaveBeenCalledWith({ scaleFactor: 1 });
-    expect(ExportCompositorFrameDimensionError.prototype).not.toHaveProperty("resize");
     await host.dispose();
     expect(win.destroy).toHaveBeenCalledOnce();
   });

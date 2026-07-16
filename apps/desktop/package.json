@@ -116,6 +116,12 @@
       "icons/**",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "../web/node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf",
+        "to": "assets/fonts/Geist-Regular.ttf"
+      }
+    ],
     "mac": {
       "category": "public.app-category.video",
       "icon": "icons/icon.icns",

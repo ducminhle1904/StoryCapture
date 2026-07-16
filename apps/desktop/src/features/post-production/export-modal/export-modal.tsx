@@ -39,7 +39,7 @@ import {
   exportRun,
 } from "@/ipc/export";
 import { RENDER_KEYS } from "@/ipc/render";
-import { type ExportKnobs, useOutputPrefsStore } from "@/state/output-prefs";
+import { DEFAULT_EXPORT_KNOBS, type ExportKnobs, useOutputPrefsStore } from "@/state/output-prefs";
 
 import { compileExportComposition, graphIsRenderable } from "../state/compute-graph";
 import { useEditorStore } from "../state/store";
@@ -87,7 +87,18 @@ function encoderOptionsForOutput(
       audio: options.audio ? { ...options.audio, codec: "opus" } : null,
     };
   }
-  if (format === "mp4") return { ...options, container: "mp4" };
+  if (format === "mp4") {
+    return {
+      ...options,
+      container: "mp4",
+      audio: {
+        codec: DEFAULT_EXPORT_KNOBS.audio.codec,
+        bitrate_kbps: DEFAULT_EXPORT_KNOBS.audio.bitrateKbps,
+        channels: DEFAULT_EXPORT_KNOBS.audio.channels,
+        sample_rate_hz: DEFAULT_EXPORT_KNOBS.audio.sampleRateHz,
+      },
+    };
+  }
   return { ...options, container: null, audio: null };
 }
 

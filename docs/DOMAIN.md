@@ -319,22 +319,46 @@ frame. Match-source keeps the foreground at native pixels and expands the
 output by the configured frame padding. Source mode remains full-bleed and
 does not emit a background node.
 
+The host creates an Electron offscreen backing store at an explicit capture DPR
+and reads the renderer's presented frame without depending on the physical
+display scale. Every successful capture must match the requested physical
+dimensions and `width * height * 4` BGRA byte count; a mismatch fails the job
+and is never repaired by a resize fallback.
+
 `export_preflight` returns structured info/warning/error issues scoped to an
 output and, where available, a clip. Warnings stay visible but only errors block
 submission. `export_run` writes a unique graph snapshot, reserves each output
 independently, and queues jobs with `queued`, `rendering`, `mixing`,
 `verifying`, `completed`, `failed`, or `cancelled` status. One failed output
-does not stop siblings in the same batch.
+does not stop siblings in the same batch. The strict priority/FIFO scheduler has
+two weighted units: outputs through 2560×1440 consume one unit and larger
+outputs consume both. Jobs are ordered by priority and then FIFO, a queued head
+job is never bypassed to overcommit memory, and queued jobs expose their current
+`queue_position`.
 
 The audio planner builds deterministic source, BGM, SFX, and voiceover inputs.
 It applies source transition crossfades, timeline trim/delay, BGM looping,
 voiceover sidechain ducking, channel/sample-rate normalization, a limiter, and
 silence for sources without audio. MP4 uses AAC, WebM uses Opus, and GIF emits
-an informational no-audio diagnostic.
+an informational no-audio diagnostic. MP4 audio is measured and normalized to
+-14 LUFS (within 0.5 LU), with true peak capped at -1 dBTP, before the final
+render pass. Audio-bearing MP4 is AAC-LC, 48 kHz stereo; an audio-free graph
+produces no audio stream. The MP4 audio target is 192 kbps and the loudness
+normalizer uses an 11 LU range target.
+
+MP4 delivery uses H.264 High, yuv420p, CFR, limited-range Rec.709, and faststart.
+When a batch contains generated voice, the renderer presents the disclosure
+choice; enabled MP4 outputs receive a bounded Adobe UUID XMP packet containing
+only the approved creator tool, format, generated-voice flag, and generation
+method. This is disclosure metadata, not signed C2PA provenance. WebM and GIF
+remain exportable and receive a preflight warning because this XMP carrier is
+MP4-only.
 
 FFmpeg writes a same-folder partial file. Completion is published only after
 ffprobe validates dimensions, frame rate, duration, and stream shape and FFmpeg
-decodes the whole artifact. The host then publishes the reserved final path;
+decodes the whole artifact. MP4 verification also checks profile, pixel/color
+metadata, CFR, faststart, loudness, and requested XMP before publication. The
+host then publishes the reserved final path;
 the same-folder verified inode is linked atomically so a file created after
 reservation can never be overwritten. Failure/cancellation removes partial
 state, and startup cleans dead-process reservation sidecars from previously
@@ -358,9 +382,12 @@ Host-side boundaries:
 - Remaining render/export orchestration lives under `ipc/legacy/`:
   `export-render.ts`, `export-planning.ts`, `export-audio-planning.ts`,
   `export-compositor.ts`, `export-output-lifecycle.ts`, and
-  `export-artifact-verification.ts`.
+  `export-artifact-verification.ts`; `export-xmp.ts` owns the bounded MP4 XMP
+  writer/parser.
 - `ipc/export-binaries.ts` resolves packaged FFmpeg and ffprobe executables,
   including their unpacked application paths.
+- `ipc/export-e2e-smoke.ts` and `ipc/export-quality-gate.ts` own the packaged
+  all-effects regression and independent quality evidence.
 
 Export graph changes should include targeted tests around graph generation and
 the canonical visual/audio planners. Changes that reach FFmpeg or packaged

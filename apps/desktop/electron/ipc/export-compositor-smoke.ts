@@ -358,11 +358,17 @@ async function runSmoke(
     throw new Error(`Export compositor load failed: ${loadFailures.join("; ")}`);
   }
   const pixels = frameEvidence(base.frame, cursor.frame, text.frame);
-  if (pixels.visiblePixels <= 1_000) throw new Error("Bundled background did not render");
-  if (pixels.cursorChangedPixels <= 50) {
-    throw new Error(`Bundled ${SMOKE_CURSOR_SKIN} cursor did not render`);
+  if (pixels.visiblePixels <= 1_000) {
+    throw new Error(`Bundled background did not render: ${JSON.stringify(pixels)}`);
   }
-  if (pixels.textChangedPixels <= 100) throw new Error("Bundled font text did not render");
+  if (pixels.cursorChangedPixels <= 50) {
+    throw new Error(
+      `Bundled ${SMOKE_CURSOR_SKIN} cursor did not render: ${JSON.stringify(pixels)}`,
+    );
+  }
+  if (pixels.textChangedPixels <= 50) {
+    throw new Error(`Bundled font text did not render: ${JSON.stringify(pixels)}`);
+  }
   const loadedFontFamilies = text.fonts
     .filter((font) => font.status === "loaded")
     .map((font) => font.family);

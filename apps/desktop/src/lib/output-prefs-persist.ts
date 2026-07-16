@@ -41,6 +41,22 @@ type PartialPersist = Partial<{
   version: number;
 }>;
 
+const SUPPORTED_EXPORT_ENCODERS = new Set<ExportKnobs["hwEncoder"]>([
+  "auto",
+  "software",
+  "libx264",
+  "h264-videotoolbox",
+  "h264-nvenc",
+  "h264-qsv",
+  "h264-amf",
+]);
+
+const LEGACY_RESAMPLING_QUALITY = {
+  lanczos: "high",
+  bicubic: "balanced",
+  bilinear: "fast",
+} as const;
+
 function isPresetName(value: unknown): value is PresetName {
   return value === "Standard" || value === "Lossless" || value === "Custom";
 }
@@ -79,26 +95,15 @@ function mergeExportKnobs(
   } as ExportKnobs;
   const legacyPreset = typeof x264Preset === "string" ? x264Preset : null;
   const legacyResampling =
-    downscaleAlgo === "lanczos"
-      ? "high"
-      : downscaleAlgo === "bicubic"
-        ? "balanced"
-        : downscaleAlgo === "bilinear"
-          ? "fast"
-          : null;
-  const supportedEncoders = new Set([
-    "auto",
-    "software",
-    "libx264",
-    "h264-videotoolbox",
-    "h264-nvenc",
-    "h264-qsv",
-    "h264-amf",
-  ]);
+    typeof downscaleAlgo === "string"
+      ? (LEGACY_RESAMPLING_QUALITY[downscaleAlgo as keyof typeof LEGACY_RESAMPLING_QUALITY] ?? null)
+      : null;
+  const container = next.container === "webm" ? "webm" : "mp4";
   return {
     ...next,
-    container: next.container === "webm" ? "webm" : "mp4",
-    hwEncoder: supportedEncoders.has(next.hwEncoder) ? next.hwEncoder : "auto",
+    container,
+    hwEncoder: SUPPORTED_EXPORT_ENCODERS.has(next.hwEncoder) ? next.hwEncoder : "auto",
+    audio: container === "mp4" ? { ...DEFAULT_EXPORT_KNOBS.audio } : next.audio,
     encoderPreset:
       typeof override?.encoderPreset === "string"
         ? override.encoderPreset
@@ -135,7 +140,9 @@ export function resolveOverride(
   project: PartialPersist | null,
 ): PersistShape {
   if (!project) return global;
-  const activePreset = isPresetName(project.activePreset) ? project.activePreset : global.activePreset;
+  const activePreset = isPresetName(project.activePreset)
+    ? project.activePreset
+    : global.activePreset;
   const hasExplicitPreset = isPresetName(project.activePreset);
   const recordingKnobs =
     hasExplicitPreset && activePreset !== "Custom"

@@ -8,6 +8,7 @@ import {
   type ExportLoudnessMeasurement,
   parseExportLoudnessMeasurement,
 } from "./export-audio-planning";
+import { MP4_DELIVERY_PROFILE } from "./export-planning";
 import { type AiVoiceXmpMetadata, readAdobeXmpMetadata } from "./export-xmp";
 
 const execFileAsync = promisify(execFile);
@@ -107,13 +108,13 @@ function frameRateMode(video: FfprobeStream): "cfr" | "vfr" | "unknown" {
 }
 
 function validateMp4VideoContract(video: FfprobeStream): void {
-  requiredValue(video.codec_name, "h264", "video codec");
-  requiredValue(video.profile, "High", "H.264 profile");
-  requiredValue(video.pix_fmt, "yuv420p", "pixel format");
-  requiredValue(video.color_primaries, "bt709", "color primaries");
-  requiredValue(video.color_transfer, "bt709", "color transfer");
-  requiredValue(video.color_space, "bt709", "color matrix");
-  requiredValue(video.color_range, "tv", "color range");
+  requiredValue(video.codec_name, MP4_DELIVERY_PROFILE.codec, "video codec");
+  requiredValue(video.profile, MP4_DELIVERY_PROFILE.profile, "H.264 profile");
+  requiredValue(video.pix_fmt, MP4_DELIVERY_PROFILE.pixelFormat, "pixel format");
+  requiredValue(video.color_primaries, MP4_DELIVERY_PROFILE.colorPrimaries, "color primaries");
+  requiredValue(video.color_transfer, MP4_DELIVERY_PROFILE.colorTransfer, "color transfer");
+  requiredValue(video.color_space, MP4_DELIVERY_PROFILE.colorMatrix, "color matrix");
+  requiredValue(video.color_range, MP4_DELIVERY_PROFILE.colorRange, "color range");
   if (frameRateMode(video) !== "cfr") {
     throw new Error("Export video stream is not constant frame rate.");
   }

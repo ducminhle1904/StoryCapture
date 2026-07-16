@@ -1,17 +1,16 @@
 /**
  * TokenCounter + CostWarningModal + AiDisclosureModal tests.
  *
- * Covers 6 behaviors:
+ * Covers 5 behaviors:
  * 1. Token counter polls session_get_rollup every 500ms; renders cost.
  * 2. When cost > $1.00, counter switches to warning color.
  * 3. Clicking counter opens TokenBreakdownPopover.
  * 4. CostWarningModal renders when input > 50K tokens; checkbox suppresses.
  * 5. CostWarningModal is skipped when previously suppressed in session.
- * 6. AiDisclosureModal on export with TTS clips; C2PA default ON.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock Tauri invoke
 const mockInvoke = vi.hoisted(() => vi.fn());
@@ -30,6 +29,7 @@ vi.mock("@tanstack/react-query", () => {
 });
 
 import { useQuery } from "@tanstack/react-query";
+
 const mockUseQuery = vi.mocked(useQuery);
 
 describe("TokenCounter", () => {
@@ -58,7 +58,7 @@ describe("TokenCounter", () => {
 
   it("switches to warning color when cost > $1.00", async () => {
     mockUseQuery.mockReturnValue({
-      data: { turn_count: 20, total_cost_usd: 1.50, total_tokens: 80000, avg_first_token_ms: 300 },
+      data: { turn_count: 20, total_cost_usd: 1.5, total_tokens: 80000, avg_first_token_ms: 300 },
       isError: false,
       isLoading: false,
     } as ReturnType<typeof useQuery>);
@@ -97,13 +97,7 @@ describe("CostWarningModal", () => {
     const { CostWarningModal } = await import("../nl-mode/CostWarningModal");
     const onResult = vi.fn();
 
-    render(
-      <CostWarningModal
-        estimatedTokens={60000}
-        open={true}
-        onResult={onResult}
-      />,
-    );
+    render(<CostWarningModal estimatedTokens={60000} open={true} onResult={onResult} />);
 
     expect(screen.getByText(/This prompt uses a lot of tokens/)).toBeTruthy();
     expect(screen.getByText(/Don't ask again for this session/)).toBeTruthy();
@@ -127,34 +121,5 @@ describe("CostWarningModal", () => {
 
     // Should not render modal content when suppressed
     expect(screen.queryByText(/This prompt uses a lot of tokens/)).toBeNull();
-  });
-});
-
-describe("AiDisclosureModal", () => {
-  it("renders EU AI Act text + XMP checkbox default ON on export with TTS clips", async () => {
-    const { AiDisclosureModal } = await import("../export/AiDisclosureModal");
-    const onResult = vi.fn();
-
-    render(
-      <AiDisclosureModal
-        open={true}
-        ttsClipCount={3}
-        onResult={onResult}
-      />,
-    );
-
-    // EU AI Act text
-    expect(screen.getByText(/EU AI Act/)).toBeTruthy();
-
-    // XMP disclosure checkbox defaults ON.
-    const xmpCheckbox = screen.getByRole("checkbox", {
-      name: /AI-generated voice metadata \(XMP\)/i,
-    });
-    expect(xmpCheckbox).toBeTruthy();
-    expect(xmpCheckbox).toBeChecked();
-
-    // Buttons
-    expect(screen.getByText(/Export anyway/)).toBeTruthy();
-    expect(screen.getByText(/Cancel/)).toBeTruthy();
   });
 });

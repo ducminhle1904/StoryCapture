@@ -19,7 +19,6 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { probeHwEncoders } from "@/ipc/encode";
 import {
-  type AudioKnobs,
   type ExportContainer,
   type ExportEncoderPreset,
   type ExportRateControl,
@@ -28,7 +27,7 @@ import {
 } from "@/state/output-prefs";
 
 import * as copy from "./advanced-copy";
-import { type QualityControlSpec, deriveQualityControls } from "./encoder-options-table";
+import { deriveQualityControls, type QualityControlSpec } from "./encoder-options-table";
 
 type HwEncoderKind =
   | "auto"
@@ -125,10 +124,7 @@ export function AdvancedOutputOptions() {
 
   const availableEncoders = useMemo(() => parseProbe(probeRaw), [probeRaw]);
   const displayedEncoders = useMemo(
-    () =>
-      availableEncoders.filter(
-        (encoder) => encoder !== "libx264" && encoder !== "libopenh264",
-      ),
+    () => availableEncoders.filter((encoder) => encoder !== "libx264" && encoder !== "libopenh264"),
     [availableEncoders],
   );
 
@@ -331,65 +327,13 @@ export function AdvancedOutputOptions() {
           </RadioGroup>
         </Field>
         <Field label={copy.LABEL_AUDIO_CODEC}>
-          <Select
-            value={exportKnobs.audio.codec}
-            onValueChange={(v) => {
-              if (typeof v === "string")
-                setExportKnob("audio", {
-                  ...exportKnobs.audio,
-                  codec: v as AudioKnobs["codec"],
-                });
-            }}
-          >
-            <SelectTrigger aria-label={copy.LABEL_AUDIO_CODEC}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="aac">AAC</SelectItem>
-              <SelectItem value="opus" disabled>
-                Opus (WebM only — not yet supported)
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <p className="text-xs text-[var(--color-fg-secondary)]">AAC-LC</p>
         </Field>
         <Field label={copy.LABEL_AUDIO_BITRATE}>
-          <div className="flex items-center gap-3">
-            <Slider
-              min={64}
-              max={320}
-              step={32}
-              value={exportKnobs.audio.bitrateKbps}
-              onValueChange={(v) => {
-                if (typeof v === "number")
-                  setExportKnob("audio", { ...exportKnobs.audio, bitrateKbps: v });
-              }}
-            />
-            <span className="text-xs tabular-nums text-[var(--color-fg-muted)] min-w-[4ch] text-right">
-              {exportKnobs.audio.bitrateKbps}
-            </span>
-          </div>
+          <p className="text-xs tabular-nums text-[var(--color-fg-secondary)]">192 kbps</p>
         </Field>
         <Field label={copy.LABEL_AUDIO_CHANNELS}>
-          <RadioGroup
-            value={String(exportKnobs.audio.channels)}
-            onValueChange={(v) => {
-              if (typeof v === "string")
-                setExportKnob("audio", {
-                  ...exportKnobs.audio,
-                  channels: (Number(v) === 1 ? 1 : 2) as 1 | 2,
-                });
-            }}
-            className="flex gap-4"
-          >
-            <span className="flex items-center gap-2 text-xs text-[var(--color-fg-secondary)]">
-              <RadioGroupItem value="1" />
-              Mono
-            </span>
-            <span className="flex items-center gap-2 text-xs text-[var(--color-fg-secondary)]">
-              <RadioGroupItem value="2" />
-              Stereo
-            </span>
-          </RadioGroup>
+          <p className="text-xs text-[var(--color-fg-secondary)]">Stereo · 48 kHz</p>
         </Field>
       </SubGroup>
     </div>

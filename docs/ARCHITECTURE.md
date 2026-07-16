@@ -165,7 +165,7 @@ Current non-plugin command ownership:
 | `ipc/capture.ts` | capture target get/set/thumbnail and capture start/stop |
 | `ipc/post-production.ts` | workflow state, timeline load/save, recording actions/trajectory/step timing, presets, sound library |
 | `ipc/render.ts` | render cancel/list active/progress stream; direct enqueue is not a fake timer path |
-| `ipc/export.ts` | export presets, validation, run; `export_run` creates real render jobs |
+| `ipc/export.ts` | export presets, validation, AI-voice disclosure, run; `export_run` creates real weighted render jobs |
 | `ipc/ai.ts` | LSP requests, NL sessions/chat/diffs/regeneration, session rollup, TTS voices/generation/sync/cache |
 | `ipc/web-sync.ts` | web account/token, sync/upload status, OAuth, metadata sync queue, upload/cancel, recording status |
 | `ipc/updates.ts` | update check/install |
@@ -268,13 +268,20 @@ host handlers.
   source of truth. Preview/export adapters share this engine; the hidden bridge
   in `export-compositor-app.tsx` contains no parallel renderer.
 - `electron/ipc/export-compositor-host.ts` owns the offscreen window and bundled
-  asset resolution. `electron/ipc/legacy/export-compositor.ts` streams its BGRA
-  frames to FFmpeg.
-- `electron/ipc/legacy/export-render.ts` owns batch/job orchestration.
+  asset resolution. It creates Chromium's offscreen backing store at the
+  requested capture DPR and reads each presented frame through a one-shot frame
+  subscription; the resulting bitmap must have the exact requested dimensions
+  or the job fails instead of resizing.
+  `electron/ipc/legacy/export-compositor.ts` streams its BGRA frames to FFmpeg.
+- `electron/ipc/legacy/export-render.ts` owns batch/job orchestration and the
+  two-unit priority/FIFO scheduler.
   `export-planning.ts`, `export-audio-planning.ts`,
   `export-output-lifecycle.ts`, and `export-artifact-verification.ts` own
-  encoder arguments, the full audio bus, reserved same-folder output state,
-  and ffprobe/full-decode verification respectively.
+  encoder arguments, the full audio bus and measured loudness normalization,
+  reserved same-folder output state, and MP4 media/full-decode verification
+  respectively. `export-xmp.ts` owns bounded Adobe UUID XMP read/write.
+- `features/export/AiDisclosureModal.tsx` owns the generated-voice disclosure
+  confirmation; the post-production export modal passes that choice into IPC.
 - `electron/ipc/export-binaries.ts` is the only resolver for packaged FFmpeg
   and ffprobe paths. Export jobs reach `completed` only after verification and
   final publication; terminal jobs stay briefly visible so the queue can show
@@ -357,6 +364,15 @@ workflow concurrency. Read the workflow for current runner images.
 5. UI package Vitest;
 6. web Vitest;
 7. packaged Electron export parity smoke on macOS and Windows.
+
+The packaged export gate is implemented by
+`apps/desktop/electron/ipc/export-e2e-smoke.ts`. It keeps the all-effects
+canonical regression, adds a reference generated independently with FFmpeg,
+checks MP4 delivery/loudness/XMP and scheduler evidence, and performs short
+720p/1080p/4K exact-byte captures at 30/60 fps with explicit DPR 1/2 backing
+stores. Pure quality metrics live in
+`apps/desktop/electron/ipc/export-quality-gate.ts`; temporary evidence is not
+committed.
 
 There is no current GitHub release workflow. Release/signing scripts exist but
 are standalone unless a future workflow wires them in.

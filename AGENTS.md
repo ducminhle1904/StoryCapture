@@ -115,12 +115,15 @@ explicitly references them.
   `apps/desktop/src/features/post-production/preview/canonical-preview-adapter.ts`,
   `apps/desktop/src/features/post-production/export-compositor/canonical-visual-engine.ts`,
   `apps/desktop/src/features/post-production/export-compositor/canvas-scene-renderer.ts`,
+  `apps/desktop/src/features/export/AiDisclosureModal.tsx`,
   `apps/desktop/src/features/post-production/export-modal/`, and
   `apps/desktop/src/features/post-production/render-queue/`. For the host path,
   start with `apps/desktop/electron/ipc/legacy/export-render.ts`, then read
   `export-planning.ts`, `export-audio-planning.ts`,
-  `export-output-lifecycle.ts`, `export-artifact-verification.ts`, and
-  `apps/desktop/electron/ipc/export-compositor-host.ts`.
+  `export-output-lifecycle.ts`, `export-artifact-verification.ts`,
+  `export-xmp.ts`, `apps/desktop/electron/ipc/export-compositor-host.ts`, and,
+  for packaged quality gates, `apps/desktop/electron/ipc/export-e2e-smoke.ts`
+  plus `apps/desktop/electron/ipc/export-quality-gate.ts`.
 - Post-production text appearance, system fonts, and re-record style
   preservation: read `apps/desktop/src/features/post-production/state/timeline-slice.ts`,
   `apps/desktop/src/features/post-production/state/text-style.ts`,

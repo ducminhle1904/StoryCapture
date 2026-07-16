@@ -65,6 +65,19 @@ describe("migrate", () => {
     expect(out.version).toBe(2);
   });
 
+  it("normalizes legacy MP4 audio to the delivery contract", () => {
+    const out = migrate({
+      exportKnobs: {
+        ...DEFAULT_EXPORT_KNOBS,
+        container: "mp4",
+        audio: { codec: "aac", bitrateKbps: 160, channels: 1, sampleRateHz: 44_100 },
+      },
+      version: 1,
+    });
+
+    expect(out.exportKnobs.audio).toEqual(DEFAULT_EXPORT_KNOBS.audio);
+  });
+
   it("propagates user qualityValue", () => {
     const out = migrate({ exportKnobs: { qualityValue: 19 } } as unknown);
     expect(out.exportKnobs.qualityValue).toBe(19);

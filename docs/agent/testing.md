@@ -30,9 +30,16 @@
 - Packaged post-production export parity:
   `pnpm --dir apps/desktop run test:e2e:export`. This builds the Electron main
   bundle and renderer, creates an unpacked package, exports the all-effects
-  fixture to MP4/WebM/GIF with bundled FFmpeg, verifies it with bundled
-  ffprobe/full decode, and compares encoded MP4/WebM frames to raw canonical
-  frame goldens at SSIM >= 0.99.
+  fixture to MP4/WebM/GIF, and runs an independent FFmpeg-generated 720p MP4
+  fixture with color swatches, one-pixel edges, bundled-font text,
+  cursor/effect markers, and deterministic audio. It verifies full decode,
+  final-frame motion, exact overlay geometry, color samples, scheduler capacity,
+  MP4 delivery/loudness/XMP, and exact-byte 720p/1080p/4K capture at 30/60 fps.
+  Software High must score SSIM >= 0.995 against the independent FFmpeg
+  reference. When a bundled platform hardware encoder is available at runtime,
+  explicit hardware High must score >= 0.985; otherwise the evidence records a
+  structured platform/runtime skip. The canonical all-effects regression
+  remains >= 0.99.
 - Web all tests: `pnpm --dir apps/web test`.
 - Web focused test: `pnpm --dir apps/web exec vitest run <path>`.
 - UI all tests: `pnpm --dir packages/ui test`.
@@ -63,7 +70,11 @@
 - Export coverage includes the schema-v4 compiler/preflight contract,
   canonical scene/media/asset renderers, every transition/background/cursor
   trajectory variant, full audio-bus planning, queue/output lifecycle,
-  verification, packaged assets/binaries, and the all-effects package smoke.
+  verification, XMP writer/parser, packaged assets/binaries, the all-effects
+  regression, and the independent quality/capture matrix. Host geometry tests
+  cover DPR 1, 1.25, 1.5, and 2; the packaged capture matrix explicitly requests
+  DPR 1 and 2 without relying on the CI runner's physical display scale or
+  committing generated artifacts.
 - Web tests are narrow: workflow helpers, sync router metadata, and template
   router metadata.
 - UI tests cover `packages/ui/src/claude-design/primitives/__tests__/`.
@@ -132,7 +143,8 @@
   `preview/__tests__/source-bound-parity.test.ts`,
   `preview/__tests__/canonical-render-parity.test.ts`, the focused
   `export-compositor/*.test.ts` suites, and Electron
-  `export-{planning,audio-planning,output-lifecycle,artifact-verification,render}.test.ts`.
+  `export-{planning,audio-planning,output-lifecycle,artifact-verification,xmp,render}.test.ts`,
+  `export-quality-gate.test.ts`, and `export-compositor-host.test.ts`.
   Run `test:e2e:export` whenever the change reaches hidden-window assets,
   FFmpeg/ffprobe, audio mixing, output publication, or packaging. Use
   `scripts/ci/analyze-cursor-sync-roi.mjs` for encoded-marker frame correlation.
