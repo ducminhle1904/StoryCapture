@@ -228,9 +228,15 @@ four required, mature direct packages, so the final direct inventory is 95.
 - Electron 43 remains quarantined. Its next review must cover bitmap color
   normalization, dialog paths, hidden/frameless windows, and capture/export
   pixel parity on both supported operating systems.
-- Remote macOS/Windows CI, signing, and release credentials are not available
-  in this local run. The pinned workflow contains the required platform and
-  PostgreSQL jobs; merge remains conditional on those remote checks.
+- Final PR run
+  [29538771451](https://github.com/ducminhle1904/StoryCapture/actions/runs/29538771451)
+  passed the required macOS build/test, PostgreSQL adapter smoke, Windows media
+  and packaged export parity, and Vercel checks. The macOS media test passed
+  after one retry and remains a non-blocking flake to monitor. Signing and
+  production release credentials were not exercised by this CI run.
+- GitHub warned that the quarantined, SHA-pinned `setup-node` v4 action runtime
+  was forced from Node 20 to Node 24. The action passed; re-evaluate the newer
+  action after it clears the seven-day quarantine.
 - Re-run the dated registry/audit procedure on or after 2026-07-23, then apply
   the same seven-day rule to anything published after this snapshot rather than
   assuming the deferred targets are still latest.
