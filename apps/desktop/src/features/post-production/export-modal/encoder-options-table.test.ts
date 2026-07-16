@@ -9,7 +9,9 @@ import { deriveQualityControls } from "./encoder-options-table";
 describe("deriveQualityControls", () => {
   it("software → CRF slider 0..51 default 18 + 9 x264 presets", () => {
     const r = deriveQualityControls("software", "h264");
-    expect(r.rateControlOptions.map((o) => o.value)).toEqual(["crf", "cbr", "vbr"]);
+    expect(r.rateControlOptions).toEqual([{ value: "crf", locked: true }]);
+    expect(r.defaultRateControl).toBe("crf");
+    expect(r.defaultPreset).toBe("medium");
     expect(r.qualityControl).toMatchObject({ kind: "slider-crf", min: 0, max: 51, default: 18 });
     expect(r.presetOptions).toHaveLength(9);
   });
@@ -32,7 +34,7 @@ describe("deriveQualityControls", () => {
     const r = deriveQualityControls("auto", "h264");
     expect(r.qualityControl.kind).toBe("auto-hide");
     if (r.qualityControl.kind === "auto-hide") {
-      expect(r.qualityControl.note).toMatch(/Encoder will be selected at export time/);
+      expect(r.qualityControl.note).toMatch(/software libx264.*stable, deterministic/i);
     }
     expect(r.rateControlOptions).toHaveLength(0);
     expect(r.presetOptions).toHaveLength(0);
@@ -45,9 +47,9 @@ describe("deriveQualityControls", () => {
     expect(r.note).toMatch(/Fallback/);
   });
 
-  it("h264-qsv → VBR/CBR + bitrate Mbps + qsv preset list", () => {
+  it("h264-qsv → locked VBR + bitrate Mbps + qsv preset list", () => {
     const r = deriveQualityControls("h264-qsv", "h264");
-    expect(r.rateControlOptions.map((o) => o.value)).toEqual(["vbr", "cbr"]);
+    expect(r.rateControlOptions).toEqual([{ value: "vbr", locked: true }]);
     expect(r.qualityControl.kind).toBe("number-bitrate-mbps");
     expect(r.presetOptions).toEqual(["veryfast", "faster", "fast", "medium", "slow", "slower"]);
   });

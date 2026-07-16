@@ -6,8 +6,7 @@ type ExportContainer = "mp4" | "mov" | "webm";
 type ExportCodec = "h264";
 type ExportRateControl = "auto" | "cbr" | "vbr" | "crf" | "cq";
 type ExportHardwareEncoder = NonNullable<ExportEncoderOptions["hw_encoder"]>;
-type ExportX264Preset = NonNullable<ExportEncoderOptions["x264_preset"]>;
-type ExportScaleAlgo = NonNullable<ExportEncoderOptions["downscale_algo"]>;
+type ExportResamplingQuality = "high" | "balanced" | "fast";
 type ExportAudioCodec = "aac" | "opus";
 
 interface ExportAudioPlan {
@@ -23,9 +22,9 @@ export interface NormalizedExportEncoderOptions {
   rateControl: ExportRateControl;
   hwEncoder: ExportHardwareEncoder;
   qualityValue: number | null;
-  x264Preset: ExportX264Preset;
+  encoderPreset: string | null;
   keyframeIntervalSec: number | null;
-  downscaleAlgo: ExportScaleAlgo;
+  resamplingQuality: ExportResamplingQuality;
   audio: ExportAudioPlan | null;
 }
 
@@ -109,10 +108,18 @@ const X264_PRESETS = [
   "veryslow",
 ] as const;
 const SCALE_ALGOS = ["lanczos", "bicubic", "bilinear", "area"] as const;
+const RESAMPLING_QUALITIES = ["high", "balanced", "fast"] as const;
+const ENCODER_PRESETS: Partial<Record<ExportHardwareEncoder, readonly string[]>> = {
+  "libx264-software": X264_PRESETS,
+  "nvenc-h264": ["p1", "p2", "p3", "p4", "p5", "p6", "p7"],
+  "video-toolbox-h264": ["speed", "quality"],
+  "qsv-h264": ["veryfast", "faster", "fast", "medium", "slow", "slower"],
+  "amf-h264": ["speed", "balanced", "quality"],
+};
 const AUDIO_CODECS = ["aac", "opus"] as const;
 
 const DEFAULT_MAX_DIMENSION = 7680;
-const DEFAULT_AUDIO_BITRATE_KBPS = 160;
+const DEFAULT_AUDIO_BITRATE_KBPS = 192;
 const DEFAULT_AUDIO_CHANNELS = 2;
 const DEFAULT_AUDIO_SAMPLE_RATE_HZ = 48_000;
 const SUPPORTED_COMPOSITOR_VIDEO_NODES = new Set([
@@ -189,15 +196,40 @@ export function normalizeExportEncoderOptions(
     enumValue(raw.container, CONTAINERS) ?? (format === "mp4" || format === "webm" ? format : null);
   const defaultAudioCodec: ExportAudioCodec = format === "webm" ? "opus" : "aac";
   const rawAudio = raw.audio ?? {};
+  const hwEncoder = enumValue(raw.hw_encoder, HARDWARE_ENCODERS) ?? "libx264-software";
+  const rawRateControl = enumValue(raw.rate_control, RATE_CONTROLS) ?? "auto";
+  const rateControl =
+    rawRateControl === "auto"
+      ? hwEncoder === "libx264-software"
+        ? "crf"
+        : hwEncoder === "openh-264-software"
+          ? "cbr"
+          : "vbr"
+      : rawRateControl;
+  const legacyResampling =
+    raw.downscale_algo === "lanczos" || raw.downscale_algo === "area"
+      ? "high"
+      : raw.downscale_algo === "bicubic"
+        ? "balanced"
+        : raw.downscale_algo === "bilinear"
+          ? "fast"
+          : null;
+  const encoderPreset =
+    typeof raw.encoder_preset === "string"
+      ? raw.encoder_preset
+      : typeof raw.x264_preset === "string"
+        ? raw.x264_preset
+        : (defaultEncoderPreset(hwEncoder) ?? null);
   return {
     container,
     codec: enumValue(raw.codec, CODECS) ?? "h264",
-    rateControl: enumValue(raw.rate_control, RATE_CONTROLS) ?? "auto",
-    hwEncoder: enumValue(raw.hw_encoder, HARDWARE_ENCODERS) ?? "libx264-software",
+    rateControl,
+    hwEncoder,
     qualityValue: finiteNumber(raw.quality_value),
-    x264Preset: enumValue(raw.x264_preset, X264_PRESETS) ?? "medium",
+    encoderPreset,
     keyframeIntervalSec: finiteNumber(raw.keyframe_interval_sec),
-    downscaleAlgo: enumValue(raw.downscale_algo, SCALE_ALGOS) ?? "lanczos",
+    resamplingQuality:
+      enumValue(raw.resampling_quality, RESAMPLING_QUALITIES) ?? legacyResampling ?? "high",
     audio:
       format === "gif"
         ? null
@@ -213,6 +245,39 @@ export function normalizeExportEncoderOptions(
             ),
           },
   };
+}
+
+function defaultEncoderPreset(encoder: ExportHardwareEncoder): string | null {
+  switch (encoder) {
+    case "libx264-software":
+    case "qsv-h264":
+      return "medium";
+    case "nvenc-h264":
+      return "p4";
+    case "video-toolbox-h264":
+      return "quality";
+    case "amf-h264":
+      return "balanced";
+    default:
+      return null;
+  }
+}
+
+function allowedRateControls(encoder: ExportHardwareEncoder): readonly ExportRateControl[] {
+  switch (encoder) {
+    case "libx264-software":
+      return ["crf", "cbr", "vbr"];
+    case "openh-264-software":
+      return ["cbr"];
+    case "nvenc-h264":
+    case "video-toolbox-h264":
+      return ["vbr"];
+    case "qsv-h264":
+    case "amf-h264":
+      return ["vbr", "cbr"];
+    default:
+      return [];
+  }
 }
 
 export function validateExportOutput(output: ExportOutput): void {
@@ -249,8 +314,30 @@ export function validateExportOutput(output: ExportOutput): void {
   if (raw?.x264_preset && !enumValue(raw.x264_preset, X264_PRESETS)) {
     throw new Error(`unsupported x264 preset: ${String(raw.x264_preset)}`);
   }
+  if (raw?.encoder_preset !== undefined && raw.encoder_preset !== null) {
+    if (typeof raw.encoder_preset !== "string") {
+      throw new Error("encoder preset must be a string");
+    }
+  }
   if (raw?.downscale_algo && !enumValue(raw.downscale_algo, SCALE_ALGOS)) {
     throw new Error(`unsupported downscale algorithm: ${String(raw.downscale_algo)}`);
+  }
+  if (raw?.resampling_quality && !enumValue(raw.resampling_quality, RESAMPLING_QUALITIES)) {
+    throw new Error(`unsupported resampling quality: ${String(raw.resampling_quality)}`);
+  }
+  if (!allowedRateControls(normalized.hwEncoder).includes(normalized.rateControl)) {
+    throw new Error(
+      `rate control ${normalized.rateControl} is not supported by ${normalized.hwEncoder}`,
+    );
+  }
+  const allowedPresets = ENCODER_PRESETS[normalized.hwEncoder] ?? [];
+  if (
+    normalized.encoderPreset !== null &&
+    !allowedPresets.includes(normalized.encoderPreset)
+  ) {
+    throw new Error(
+      `encoder preset ${normalized.encoderPreset} is not supported by ${normalized.hwEncoder}`,
+    );
   }
   if (
     normalized.rateControl === "crf" ||
@@ -508,7 +595,7 @@ function mp4VideoArgs(
   const encoder = mp4EncoderName(encoderOptions.hwEncoder);
   const args = ["-c:v", encoder];
   if (encoder === "libx264") {
-    args.push("-preset", encoderOptions.x264Preset);
+    args.push("-preset", encoderOptions.encoderPreset ?? "medium");
     args.push(...x264RateControlArgs(output, encoderOptions));
   } else if (encoder === "libopenh264") {
     args.push(...bitrateArgs(output, encoderOptions));

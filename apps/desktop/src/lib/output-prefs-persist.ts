@@ -33,7 +33,11 @@ type PartialPersist = Partial<{
   activePreset: unknown;
   recordingKnobs: Partial<RecordingKnobs>;
   recordingPacing: unknown;
-  exportKnobs: Partial<ExportKnobs> & { audio?: Partial<ExportKnobs["audio"]> };
+  exportKnobs: Partial<ExportKnobs> & {
+    audio?: Partial<ExportKnobs["audio"]>;
+    x264Preset?: unknown;
+    downscaleAlgo?: unknown;
+  };
   version: number;
 }>;
 
@@ -61,17 +65,51 @@ function currentRecordingKnobs(
 
 function mergeExportKnobs(
   base: ExportKnobs,
-  override?: Partial<ExportKnobs> & { audio?: Partial<ExportKnobs["audio"]> },
+  override?: Partial<ExportKnobs> & {
+    audio?: Partial<ExportKnobs["audio"]>;
+    x264Preset?: unknown;
+    downscaleAlgo?: unknown;
+  },
 ): ExportKnobs {
+  const { x264Preset, downscaleAlgo, ...canonicalOverride } = override ?? {};
   const next = {
     ...base,
-    ...(override ?? {}),
+    ...canonicalOverride,
     audio: { ...base.audio, ...(override?.audio ?? {}) },
   } as ExportKnobs;
-  if (next.hwEncoder === "none") {
-    next.hwEncoder = "software";
-  }
-  return next;
+  const legacyPreset = typeof x264Preset === "string" ? x264Preset : null;
+  const legacyResampling =
+    downscaleAlgo === "lanczos"
+      ? "high"
+      : downscaleAlgo === "bicubic"
+        ? "balanced"
+        : downscaleAlgo === "bilinear"
+          ? "fast"
+          : null;
+  const supportedEncoders = new Set([
+    "auto",
+    "software",
+    "libx264",
+    "h264-videotoolbox",
+    "h264-nvenc",
+    "h264-qsv",
+    "h264-amf",
+  ]);
+  return {
+    ...next,
+    container: next.container === "webm" ? "webm" : "mp4",
+    hwEncoder: supportedEncoders.has(next.hwEncoder) ? next.hwEncoder : "auto",
+    encoderPreset:
+      typeof override?.encoderPreset === "string"
+        ? override.encoderPreset
+        : (legacyPreset ?? base.encoderPreset),
+    resamplingQuality:
+      override?.resamplingQuality === "high" ||
+      override?.resamplingQuality === "balanced" ||
+      override?.resamplingQuality === "fast"
+        ? override.resamplingQuality
+        : (legacyResampling ?? base.resamplingQuality),
+  };
 }
 
 export function migrate(raw: unknown): PersistShape {

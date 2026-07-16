@@ -68,4 +68,86 @@ describe("exportPreflight", () => {
     ]);
     expect(result.outputs[0]?.ready).toBe(false);
   });
+
+  it("rejects encoder-specific rate-control and preset combinations", () => {
+    const result = exportPreflight(
+      args({
+        outputs: [
+          {
+            format: "mp4",
+            resolution: "1080p",
+            fps: 60,
+            quality: "high",
+            encoder_options: {
+              container: "mp4",
+              codec: "h264",
+              hw_encoder: "nvenc-h264",
+              rate_control: "crf",
+              encoder_preset: "slow",
+              resampling_quality: "high",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "output.invalid-config",
+        message: expect.stringMatching(/rate control crf.*nvenc-h264/i),
+      }),
+    ]);
+  });
+
+  it("accepts canonical generic preset and resampling fields", () => {
+    const result = exportPreflight(
+      args({
+        outputs: [
+          {
+            format: "mp4",
+            resolution: "1080p",
+            fps: 60,
+            quality: "high",
+            encoder_options: {
+              container: "mp4",
+              codec: "h264",
+              hw_encoder: "libx264-software",
+              rate_control: "crf",
+              encoder_preset: "slow",
+              resampling_quality: "balanced",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(result.ready).toBe(true);
+  });
+
+  it("rejects an x264 preset on a hardware encoder", () => {
+    const result = exportPreflight(
+      args({
+        outputs: [
+          {
+            format: "mp4",
+            resolution: "1080p",
+            fps: 60,
+            quality: "high",
+            encoder_options: {
+              container: "mp4",
+              codec: "h264",
+              hw_encoder: "nvenc-h264",
+              rate_control: "vbr",
+              encoder_preset: "slow",
+              resampling_quality: "high",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.issues[0]?.message).toMatch(/preset slow.*nvenc-h264/i);
+  });
 });

@@ -11,7 +11,7 @@
  */
 
 import { Dialog } from "@base-ui/react/dialog";
-import type { ExportIssue, HardwareEncoderDto } from "@storycapture/shared-types";
+import type { ExportIssue } from "@storycapture/shared-types";
 import { ScButton } from "@storycapture/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
@@ -43,31 +43,30 @@ import { type ExportKnobs, useOutputPrefsStore } from "@/state/output-prefs";
 import { compileExportComposition, graphIsRenderable } from "../state/compute-graph";
 import { useEditorStore } from "../state/store";
 import { AdvancedOutputOptions } from "./advanced-output-options";
+import { deriveQualityControls } from "./encoder-options-table";
 import { FormatCheckboxes } from "./format-checkboxes";
 import { ResolutionPicker } from "./resolution-picker";
 
-const HW_UI_TO_DTO: Record<string, HardwareEncoderDto> = {
-  "h264-videotoolbox": "video-toolbox-h264",
-  "hevc-videotoolbox": "video-toolbox-hevc",
-  "h264-nvenc": "nvenc-h264",
-  "h264-qsv": "qsv-h264",
-  "h264-amf": "amf-h264",
-  libopenh264: "openh-264-software",
-  software: "libx264-software",
-  libx264: "libx264-software",
-};
-
-function buildEncoderOptions(knobs: ExportKnobs): ExportEncoderOptions {
-  const hw = HW_UI_TO_DTO[knobs.hwEncoder] ?? null;
+export function buildEncoderOptions(knobs: ExportKnobs): ExportEncoderOptions {
+  const controls = deriveQualityControls(knobs.hwEncoder, knobs.codec);
+  const rateControl = controls.rateControlOptions.some(
+    (option) => option.value === knobs.rateControl,
+  )
+    ? knobs.rateControl
+    : controls.defaultRateControl;
+  const encoderPreset = controls.presetOptions.includes(knobs.encoderPreset)
+    ? knobs.encoderPreset
+    : controls.defaultPreset;
   return {
     container: knobs.container,
     codec: knobs.codec,
-    rate_control: knobs.rateControl,
-    hw_encoder: hw,
-    quality_value: knobs.qualityValue,
-    x264_preset: knobs.x264Preset,
+    rate_control: rateControl,
+    hw_encoder: controls.backendEncoder,
+    quality_value:
+      knobs.hwEncoder === "auto" ? controls.defaultQualityValue : knobs.qualityValue,
+    encoder_preset: encoderPreset,
     keyframe_interval_sec: knobs.keyframeSec,
-    downscale_algo: knobs.downscaleAlgo,
+    resampling_quality: knobs.resamplingQuality,
     audio: {
       codec: knobs.audio.codec,
       bitrate_kbps: knobs.audio.bitrateKbps,

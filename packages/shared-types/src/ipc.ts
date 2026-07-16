@@ -2021,8 +2021,12 @@ export type EncoderOptionsDto = {
   rate_control?: RateControlDto | null;
   hw_encoder?: HardwareEncoderDto | null;
   quality_value?: number | null;
+  encoder_preset?: string | null;
+  resampling_quality?: ResamplingQualityDto | null;
+  /** @deprecated Backward-read alias for `encoder_preset`. */
   x264_preset?: X264PresetDto | null;
   keyframe_interval_sec?: number | null;
+  /** @deprecated Backward-read alias for `resampling_quality`. */
   downscale_algo?: ScaleAlgoDto | null;
   audio?: AudioOptionsDto | null;
 };
@@ -2549,6 +2553,7 @@ export type RenderJobDto = {
   output_path: string | null;
   batch_id: string | null;
   created_at: bigint;
+  queue_position?: number | null;
 };
 export type RenderProgressDto = {
   job_id: string;
@@ -2557,7 +2562,9 @@ export type RenderProgressDto = {
   fps: number;
   speed: number;
   eta_ms: bigint;
+  queue_position?: number | null;
 };
+export type ResamplingQualityDto = "high" | "balanced" | "fast";
 export type ResolvedFrameCropDto = {
   x: number;
   y: number;

@@ -27,29 +27,20 @@ export interface AudioKnobs {
   sampleRateHz: number;
 }
 
-export type ExportContainer = "mp4" | "mov" | "webm";
+export type ExportContainer = "mp4" | "webm";
 export type ExportCodec = "h264";
 export type ExportRateControl = "auto" | "cbr" | "vbr" | "crf" | "cq";
-export type ExportX264Preset =
-  | "ultrafast"
-  | "superfast"
-  | "veryfast"
-  | "faster"
-  | "fast"
-  | "medium"
-  | "slow"
-  | "slower"
-  | "veryslow";
-export type ExportDownscaleAlgo = "lanczos" | "bicubic" | "bilinear";
+export type ExportEncoderPreset = string;
+export type ExportResamplingQuality = "high" | "balanced" | "fast";
 
 export interface ExportKnobs {
   container: ExportContainer;
   codec: ExportCodec;
   rateControl: ExportRateControl;
   hwEncoder: string;
-  x264Preset: ExportX264Preset;
+  encoderPreset: ExportEncoderPreset;
   keyframeSec: number;
-  downscaleAlgo: ExportDownscaleAlgo;
+  resamplingQuality: ExportResamplingQuality;
   audio: AudioKnobs;
   qualityValue: number | null;
 }
@@ -74,12 +65,12 @@ export const PRESET_BUNDLES: Record<Exclude<PresetName, "Custom">, RecordingKnob
 export const DEFAULT_EXPORT_KNOBS: ExportKnobs = {
   container: "mp4",
   codec: "h264",
-  rateControl: "auto",
+  rateControl: "crf",
   hwEncoder: "auto",
-  x264Preset: "medium",
+  encoderPreset: "medium",
   keyframeSec: 2,
-  downscaleAlgo: "lanczos",
-  audio: { codec: "aac", bitrateKbps: 160, channels: 2, sampleRateHz: 48_000 },
+  resamplingQuality: "high",
+  audio: { codec: "aac", bitrateKbps: 192, channels: 2, sampleRateHz: 48_000 },
   qualityValue: null,
 };
 

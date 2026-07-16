@@ -61,7 +61,7 @@ describe("AdvancedOutputOptions", () => {
       </Wrapped>,
     );
     await flushQueries();
-    expect(screen.getByText(/Encoder will be selected at export time/)).toBeInTheDocument();
+    expect(screen.getByText(/software libx264.*stable, deterministic/i)).toBeInTheDocument();
     expect(screen.queryByText(/Quality \(lower/)).not.toBeInTheDocument();
   });
 
@@ -137,6 +137,53 @@ describe("AdvancedOutputOptions", () => {
     await flushQueries();
     await userEvent.click(screen.getByLabelText("Hardware encoder"));
     expect(await screen.findAllByText("Software (libx264)")).toHaveLength(1);
+  });
+
+  it("atomically resets rate control, quality, and preset when the encoder changes", async () => {
+    mockProbe.mockResolvedValue({
+      available: ["nvenc-h264", "libx264-software"],
+      preferred: "nvenc-h264",
+    });
+    resetStore({
+      hwEncoder: "software",
+      rateControl: "crf",
+      qualityValue: 14,
+      encoderPreset: "slow",
+    });
+    render(
+      <Wrapped>
+        <AdvancedOutputOptions />
+      </Wrapped>,
+    );
+    await flushQueries();
+
+    await userEvent.click(screen.getByLabelText("Hardware encoder"));
+    await userEvent.click(await screen.findByText("NVENC H.264"));
+
+    expect(useOutputPrefsStore.getState().exportKnobs).toMatchObject({
+      hwEncoder: "h264-nvenc",
+      rateControl: "vbr",
+      qualityValue: 19,
+      encoderPreset: "p4",
+    });
+  });
+
+  it("does not expose HEVC or OpenH264 choices returned by the probe", async () => {
+    mockProbe.mockResolvedValue({
+      available: ["video-toolbox-hevc", "openh-264-software", "video-toolbox-h264"],
+      preferred: "video-toolbox-h264",
+    });
+    render(
+      <Wrapped>
+        <AdvancedOutputOptions />
+      </Wrapped>,
+    );
+    await flushQueries();
+
+    await userEvent.click(screen.getByLabelText("Hardware encoder"));
+    expect(screen.queryByText(/HEVC/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/OpenH264/)).not.toBeInTheDocument();
+    expect(await screen.findByText("VideoToolbox H.264")).toBeInTheDocument();
   });
 
   it("setExportKnob is wired — bumping the store reflects in the rendered slider value", async () => {

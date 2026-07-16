@@ -16,12 +16,13 @@ export const LABEL_QUALITY_SLIDER = "Quality (lower = better)";
 export const LABEL_BITRATE_MBPS = "Bitrate (Mbps)";
 export const LABEL_PRESET = "Encoding speed";
 export const LABEL_KEYFRAME = "Keyframe interval (seconds)";
-export const LABEL_DOWNSCALE = "Downscaling algorithm";
+export const LABEL_DOWNSCALE = "Resampling quality";
 export const LABEL_AUDIO_CODEC = "Audio codec";
 export const LABEL_AUDIO_BITRATE = "Audio bitrate";
 export const LABEL_AUDIO_CHANNELS = "Channels";
 
-export const LABEL_AUTO_HIDE_NOTE = "Encoder will be selected at export time";
+export const LABEL_AUTO_HIDE_NOTE =
+  "Auto uses software libx264 with CRF quality for stable, deterministic output.";
 export const LABEL_LIBOPENH264_NOTE = "Fallback encoder — no preset tuning";
 
 export const WARN_HW_UNAVAILABLE = (name: string): string =>

@@ -154,6 +154,9 @@ export interface ExportEncoderOptions {
     | "openh-264-software"
     | null;
   quality_value?: number | null;
+  encoder_preset?: string | null;
+  resampling_quality?: "high" | "balanced" | "fast" | null;
+  /** Backward-read alias for encoder_preset. */
   x264_preset?:
     | "ultrafast"
     | "superfast"
@@ -166,6 +169,7 @@ export interface ExportEncoderOptions {
     | "veryslow"
     | null;
   keyframe_interval_sec?: number | null;
+  /** Backward-read alias for resampling_quality. */
   downscale_algo?: "lanczos" | "bicubic" | "bilinear" | "area" | null;
   audio?: ExportAudioOptions | null;
 }

@@ -255,9 +255,9 @@ describe("ExportModal", () => {
         hwEncoder: "software",
         rateControl: "crf",
         qualityValue: 14,
-        x264Preset: "slow",
+        encoderPreset: "slow",
         keyframeSec: 4,
-        downscaleAlgo: "bicubic",
+        resamplingQuality: "balanced",
         audio: { codec: "aac", bitrateKbps: 192, channels: 1, sampleRateHz: 44_100 },
       },
     });
@@ -326,9 +326,9 @@ describe("ExportModal", () => {
         rate_control: "crf",
         hw_encoder: "libx264-software",
         quality_value: 14,
-        x264_preset: "slow",
+        encoder_preset: "slow",
         keyframe_interval_sec: 4,
-        downscale_algo: "bicubic",
+        resampling_quality: "balanced",
         audio: {
           codec: "aac",
           bitrate_kbps: 192,
@@ -337,6 +337,8 @@ describe("ExportModal", () => {
         },
       },
     });
+    expect(args.args.outputs[0]?.encoder_options).not.toHaveProperty("x264_preset");
+    expect(args.args.outputs[0]?.encoder_options).not.toHaveProperty("downscale_algo");
     expect(args.args.outputs[1]).toMatchObject({
       format: "webm",
       encoder_options: {

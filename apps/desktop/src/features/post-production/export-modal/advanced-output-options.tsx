@@ -21,9 +21,9 @@ import { probeHwEncoders } from "@/ipc/encode";
 import {
   type AudioKnobs,
   type ExportContainer,
-  type ExportDownscaleAlgo,
+  type ExportEncoderPreset,
   type ExportRateControl,
-  type ExportX264Preset,
+  type ExportResamplingQuality,
   useOutputPrefsStore,
 } from "@/state/output-prefs";
 
@@ -35,9 +35,7 @@ type HwEncoderKind =
   | "software"
   | "libx264"
   | "h264-videotoolbox"
-  | "hevc-videotoolbox"
   | "h264-nvenc"
-  | "hevc-nvenc"
   | "h264-qsv"
   | "h264-amf"
   | "libopenh264";
@@ -45,7 +43,6 @@ type HwEncoderKind =
 /** Serialized HardwareEncoderDto -> UI kebab identifier. */
 const PROBE_TO_UI: Record<string, HwEncoderKind> = {
   "video-toolbox-h264": "h264-videotoolbox",
-  "video-toolbox-hevc": "hevc-videotoolbox",
   "nvenc-h264": "h264-nvenc",
   "qsv-h264": "h264-qsv",
   "amf-h264": "h264-amf",
@@ -58,9 +55,7 @@ const UI_LABEL: Record<HwEncoderKind, string> = {
   software: "Software (libx264)",
   libx264: "Software (libx264)",
   "h264-videotoolbox": "VideoToolbox H.264",
-  "hevc-videotoolbox": "VideoToolbox HEVC",
   "h264-nvenc": "NVENC H.264",
-  "hevc-nvenc": "NVENC HEVC",
   "h264-qsv": "QuickSync H.264",
   "h264-amf": "AMF H.264",
   libopenh264: "OpenH264 (fallback)",
@@ -130,7 +125,10 @@ export function AdvancedOutputOptions() {
 
   const availableEncoders = useMemo(() => parseProbe(probeRaw), [probeRaw]);
   const displayedEncoders = useMemo(
-    () => availableEncoders.filter((encoder) => encoder !== "libx264"),
+    () =>
+      availableEncoders.filter(
+        (encoder) => encoder !== "libx264" && encoder !== "libopenh264",
+      ),
     [availableEncoders],
   );
 
@@ -145,9 +143,15 @@ export function AdvancedOutputOptions() {
   const qualityValue = exportKnobs.qualityValue ?? qualityDefault(quality.qualityControl);
 
   const onHwEncoderChange = (v: string) => {
-    // Reset qualityValue so the new control's default renders; user commit will write a real number.
+    const defaults = deriveQualityControls(v, exportKnobs.codec);
     useOutputPrefsStore.setState((s) => ({
-      exportKnobs: { ...s.exportKnobs, hwEncoder: v, qualityValue: null },
+      exportKnobs: {
+        ...s.exportKnobs,
+        hwEncoder: v,
+        rateControl: defaults.defaultRateControl,
+        qualityValue: defaults.defaultQualityValue,
+        encoderPreset: defaults.defaultPreset ?? "medium",
+      },
     }));
   };
 
@@ -166,7 +170,6 @@ export function AdvancedOutputOptions() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="mp4">MP4</SelectItem>
-              <SelectItem value="mov">MOV</SelectItem>
               <SelectItem value="webm" disabled>
                 WebM (not yet supported)
               </SelectItem>
@@ -272,9 +275,10 @@ export function AdvancedOutputOptions() {
             {quality.presetOptions.length > 0 ? (
               <Field label={copy.LABEL_PRESET}>
                 <Select
-                  value={exportKnobs.x264Preset}
+                  value={exportKnobs.encoderPreset}
                   onValueChange={(v) => {
-                    if (typeof v === "string") setExportKnob("x264Preset", v as ExportX264Preset);
+                    if (typeof v === "string")
+                      setExportKnob("encoderPreset", v as ExportEncoderPreset);
                   }}
                 >
                   <SelectTrigger aria-label={copy.LABEL_PRESET}>
@@ -308,13 +312,14 @@ export function AdvancedOutputOptions() {
         </Field>
         <Field label={copy.LABEL_DOWNSCALE}>
           <RadioGroup
-            value={exportKnobs.downscaleAlgo}
+            value={exportKnobs.resamplingQuality}
             onValueChange={(v) => {
-              if (typeof v === "string") setExportKnob("downscaleAlgo", v as ExportDownscaleAlgo);
+              if (typeof v === "string")
+                setExportKnob("resamplingQuality", v as ExportResamplingQuality);
             }}
             className="flex flex-wrap gap-4"
           >
-            {(["lanczos", "bicubic", "bilinear"] as const).map((opt) => (
+            {(["high", "balanced", "fast"] as const).map((opt) => (
               <span
                 key={opt}
                 className="flex items-center gap-2 text-xs text-[var(--color-fg-secondary)]"

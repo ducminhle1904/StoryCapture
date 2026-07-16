@@ -21,7 +21,7 @@ describe("migrate", () => {
       recordingKnobs: PRESET_BUNDLES.Lossless,
       recordingPacing: DEFAULT_RECORDING_PACING,
       exportKnobs: DEFAULT_EXPORT_KNOBS,
-      version: 1,
+      version: 2,
     };
     expect(migrate(input)).toEqual(input);
   });
@@ -38,7 +38,7 @@ describe("migrate", () => {
     expect(out.recordingPacing).toBe("normal");
     expect(out.recordingKnobs).toEqual(PRESET_BUNDLES.Standard);
     expect(out.exportKnobs).toEqual(SEED.exportKnobs);
-    expect(out.version).toBe(1);
+    expect(out.version).toBe(2);
   });
 
   it("rejects unsupported quality values in custom recording knobs", () => {
@@ -55,14 +55,14 @@ describe("migrate", () => {
     expect(out.recordingPacing).toBe(DEFAULT_RECORDING_PACING);
   });
 
-  it("bumps version from 0 to 1", () => {
+  it("bumps version from 0 to 2", () => {
     const out = migrate({
       activePreset: "Standard",
       recordingKnobs: PRESET_BUNDLES.Standard,
       exportKnobs: DEFAULT_EXPORT_KNOBS,
       version: 0,
     } as unknown);
-    expect(out.version).toBe(1);
+    expect(out.version).toBe(2);
   });
 
   it("propagates user qualityValue", () => {
@@ -73,6 +73,18 @@ describe("migrate", () => {
 
   it("silent-seed sets qualityValue to null", () => {
     expect(migrate(null).exportKnobs.qualityValue).toBeNull();
+  });
+
+  it("reads legacy preset and downscale fields but returns only the canonical shape", () => {
+    const out = migrate({
+      exportKnobs: { x264Preset: "slow", downscaleAlgo: "bicubic" },
+      version: 1,
+    } as unknown);
+
+    expect(out.exportKnobs.encoderPreset).toBe("slow");
+    expect(out.exportKnobs.resamplingQuality).toBe("balanced");
+    expect(out.exportKnobs).not.toHaveProperty("x264Preset");
+    expect(out.exportKnobs).not.toHaveProperty("downscaleAlgo");
   });
 });
 
