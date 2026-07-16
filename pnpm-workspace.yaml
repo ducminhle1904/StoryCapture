@@ -4,6 +4,8 @@ packages:
 overrides:
   '@electron/asar>glob': link:packages/glob-compat
   '@electron/get>global-agent': 4.1.3
+  # Security floor for GHSA-vmh5-mc38-953g and GHSA-2mjp-6r72-7h9j.
+  'undici@>=7.23.0 <7.28.0': 7.28.0
   electron-updater>lodash.isequal: link:packages/lodash-isequal-compat
   temp>rimraf: link:packages/rimraf-compat
 allowBuilds:
