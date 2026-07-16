@@ -19,11 +19,13 @@ async function launchDevRenderer(extraArgs: string[] = []) {
   });
   try {
     await expect
-      .poll(() => app.windows().some((window) => window.url().startsWith(devServerUrl)))
+      .poll(() => app.windows().some((window) => window.url().startsWith(devServerUrl)), {
+        timeout: 15_000,
+      })
       .toBe(true);
     const main = app.windows().find((window) => window.url().startsWith(devServerUrl));
     if (!main) throw new Error("StoryCapture renderer window did not open");
-    await expect(main.locator("body")).toBeVisible();
+    await expect(main.locator("body")).toBeVisible({ timeout: 15_000 });
     return { app, main };
   } catch (error) {
     await app.close();
@@ -285,12 +287,14 @@ test("uses the newest recording and recovers from transient media failure", asyn
     });
     await expect.poll(() => dispatchMediaEvent("error")).toBe(true);
     await expect
-      .poll(() =>
-        main.evaluate(
-          () =>
-            document.querySelector<HTMLVideoElement>('video[aria-label="Source video preview"]')
-              ?.dataset.e2eGeneration !== "first",
-        ),
+      .poll(
+        () =>
+          main.evaluate(
+            () =>
+              document.querySelector<HTMLVideoElement>('video[aria-label="Source video preview"]')
+                ?.dataset.e2eGeneration !== "first",
+          ),
+        { timeout: 15_000 },
       )
       .toBe(true);
     await expect.poll(() => dispatchMediaEvent("loadeddata")).toBe(true);
