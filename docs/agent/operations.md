@@ -21,6 +21,9 @@ migrations, generated files, or release tooling.
 - CI package manager and Node versions are configured in
   `.github/actions/setup-toolchain/action.yml`; dependency pins live in package
   manifests and `pnpm-lock.yaml`, not agent docs.
+- Third-party actions are pinned to full commit SHAs with a version comment.
+  Dependency upgrades must respect the 7-day `minimumReleaseAge` policy in
+  `pnpm-workspace.yaml` and record younger deferred releases explicitly.
 
 ## Desktop Packaging And Release
 
