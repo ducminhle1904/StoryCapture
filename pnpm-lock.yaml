@@ -247,8 +247,8 @@ importers:
         specifier: ^3.1083.0
         version: 3.1083.0
       '@maxmind/geoip2-node':
-        specifier: ^6.3.4
-        version: 6.3.4
+        specifier: ^7.0.0
+        version: 7.0.0
       '@prisma/adapter-pg':
         specifier: ^7.8.0
         version: 7.8.0
@@ -1414,8 +1414,9 @@ packages:
   '@marijn/find-cluster-break@1.0.2':
     resolution: {integrity: sha512-l0h88YhZFyKdXIFNfSWpyjStDjGHwZ/U7iobcK1cQQD8sejsONdQtTVU+1wVN1PBw40PiiHB1vA5S7VTfQiP9g==}
 
-  '@maxmind/geoip2-node@6.3.4':
-    resolution: {integrity: sha512-BTRFHCX7Uie4wVSPXsWQfg0EVl4eGZgLCts0BTKAP+Eiyt1zmF2UPyuUZkaj0R59XSDYO+84o1THAtaenUoQYg==}
+  '@maxmind/geoip2-node@7.0.0':
+    resolution: {integrity: sha512-TUuCUXP93+cCkHmSy42vLwKquMsr20vrhcDBqqEPrpfdFFw16sL6hcmEuAyHbs2S+IVgouqsF37wnCdtbi+i7A==}
+    engines: {node: '>=22'}
 
   '@napi-rs/wasm-runtime@1.1.6':
     resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
@@ -5614,7 +5615,7 @@ snapshots:
 
   '@marijn/find-cluster-break@1.0.2': {}
 
-  '@maxmind/geoip2-node@6.3.4':
+  '@maxmind/geoip2-node@7.0.0':
     dependencies:
       maxmind: 5.0.6
 

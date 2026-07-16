@@ -33,7 +33,7 @@
     "jose": "^6.2.3",
     "@aws-sdk/client-s3": "^3.1083.0",
     "@aws-sdk/s3-request-presigner": "^3.1083.0",
-    "@maxmind/geoip2-node": "^6.3.4",
+    "@maxmind/geoip2-node": "^7.0.0",
     "pino": "^10.3.1",
     "pg": "^8.22.0",
     "tailwindcss": "^4.2.4",
