@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -197,7 +198,7 @@ test("streams and seeks real MP4 media through the local asset protocol", async 
 
 test("uses the newest recording and recovers from transient media failure", async () => {
   test.skip(!ffmpegPath, "ffmpeg-static binary is unavailable");
-  const userDataDir = await fs.mkdtemp(path.join(process.cwd(), ".media-e2e-"));
+  const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-media-e2e-"));
   const projectId = "media-e2e-project";
   const projectDir = path.join(userDataDir, "project with ünicode");
   const exportsDir = path.join(projectDir, "exports");
