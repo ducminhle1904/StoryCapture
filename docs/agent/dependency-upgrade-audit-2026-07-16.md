@@ -1,8 +1,9 @@
 # Dependency Upgrade Audit — 2026-07-16
 
-Snapshot captured from the npm registry at `2026-07-16T13:25:09Z`. This is a
-dated execution record, not a permanent version inventory. Re-query the
-registry before a later dependency change.
+Snapshot captured from the npm registry at `2026-07-16T13:25:09Z` and checked
+again at `2026-07-16T13:55:53Z`. No registry target changed during execution.
+This is a dated execution record, not a permanent version inventory. Re-query
+the registry before a later dependency change.
 
 ## Policy
 
@@ -34,6 +35,8 @@ registry before a later dependency change.
 
 Disposition counts after applying the exact 7-day timestamp: 35 current,
 44 normal upgrades, 3 mature security targets, and 9 deferred packages.
+The matrix starts with the 91 direct dependencies present at P0. Prisma 7 adds
+four required, mature direct packages, so the final direct inventory is 95.
 
 | Package | Current manifest range | Registry target | Selected target | Disposition |
 |---|---|---|---|---|
@@ -57,6 +60,7 @@ Disposition counts after applying the exact 7-day timestamp: 35 current,
 | `@maxmind/geoip2-node` | `^6.3.4` | `7.0.0` | `7.0.0` | breaking upgrade |
 | `@playwright/test` | `^1.61.1` | `1.61.1` | unchanged | current |
 | `@prisma/client` | `^6.0.0` | `7.8.0` | `7.8.0` | breaking upgrade |
+| `@prisma/adapter-pg` | added | `7.8.0` | `7.8.0` | required Prisma 7 adapter |
 | `@sindresorhus/slugify` | `^3.0.0` | `3.0.0` | unchanged | current |
 | `@tailwindcss/postcss` | `^4.2.4` | `4.3.3` | unchanged | deferred until 2026-07-23 |
 | `@tailwindcss/vite` | `^4.2.4` | `4.3.3` | unchanged | deferred until 2026-07-23 |
@@ -80,6 +84,7 @@ Disposition counts after applying the exact 7-day timestamp: 35 current,
 | `@trpc/server` | `^11.16.0` | `11.18.0` | `11.18.0` | upgrade |
 | `@trpc/tanstack-react-query` | `^11.16.0` | `11.18.0` | `11.18.0` | upgrade |
 | `@types/node` | `^22.x` | `24.13.3` (Node 24) | `24.13.3` | runtime-aligned upgrade |
+| `@types/pg` | added | `8.20.0` | `8.20.0` | required Prisma 7 adapter types |
 | `@types/react` | `^19.2.14` | `19.2.17` | `19.2.17` | upgrade |
 | `@types/react-dom` | `^19.2.3` | `19.2.3` | unchanged | current |
 | `@typescript/native-preview` | `7.0.0-dev.20260707.2` | same | unchanged | intentional exact pin |
@@ -92,6 +97,7 @@ Disposition counts after applying the exact 7-day timestamp: 35 current,
 | `clsx` | `^2.1.1` | `2.1.1` | unchanged | current |
 | `cmdk` | `^1.1.1` | `1.1.1` | unchanged | current |
 | `concurrently` | `^10.0.3` | `10.0.3` | unchanged | current |
+| `dotenv` | added | `17.4.2` | `17.4.2` | explicit Prisma config environment loading |
 | `electron` | `^42.4.1` | `43.1.1` | unchanged | deferred until 2026-07-21 |
 | `electron-builder` | `^26.15.3` | `26.15.3` | unchanged | current |
 | `electron-updater` | `^6.8.9` | `6.8.9` | unchanged | current |
@@ -107,6 +113,7 @@ Disposition counts after applying the exact 7-day timestamp: 35 current,
 | `next-auth` | `5.0.0-beta.31` | `5.0.0-beta.31` (beta) | unchanged | intentional channel pin |
 | `pino` | `^10.3.1` | `10.3.1` | unchanged | current |
 | `pino-pretty` | `^13.1.3` | `13.1.3` | unchanged | current |
+| `pg` | added | `8.22.0` | `8.22.0` | required Prisma 7 PostgreSQL driver |
 | `prisma` | `^6.0.0` | `7.8.0` | `7.8.0` | breaking upgrade |
 | `react` | `^19.2.5` | `19.2.7` | `19.2.7` | upgrade |
 | `react-dom` | `^19.2.5` | `19.2.7` | `19.2.7` | upgrade |
@@ -133,12 +140,20 @@ Disposition counts after applying the exact 7-day timestamp: 35 current,
 
 - Prisma 7 requires the new generator, explicit `prisma.config.ts`, ESM-aware
   configuration, and a PostgreSQL driver adapter. There are no repository
-  `$use` middleware calls to replace.
+  `$use` middleware calls or removed CLI flags to replace. Generated imports
+  now use the generator's `client` entry point. The global client stays lazy so
+  Next can collect build metadata without a database, while the first runtime
+  database access rejects a missing/blank `DATABASE_URL` before `pg` can apply
+  ambient `PG*` defaults.
 - MaxMind 7 is ESM-only and requires Node 22+. StoryCapture uses only local
   `Reader`/`ReaderModel` MMDB lookup; WebService error changes are irrelevant.
 - The current import/call scan found no direct use of the deprecated Next,
   Zod, Vite, Electron, or Tauri symbols identified in the selected release
   declarations. Typecheck and migration-guide scans are repeated after install.
+- CodeMirror was deduplicated to one `@codemirror/state` and
+  `@codemirror/view` identity after the coherent upgrade. `react-hotkeys-hook`
+  5.3's documented platform-sensitive `mod` behavior is covered by explicit
+  macOS and Windows user-agent tests.
 - Electron 43 is deferred. Its future review must cover
   `nativeImage.toBitmap()` color normalization, dialog `defaultPath`, and
   hidden/frameless window behavior.
@@ -157,4 +172,65 @@ Disposition counts after applying the exact 7-day timestamp: 35 current,
 
 ## Final verification
 
-To be completed after the integrated lockfile and test gates are available.
+### Registry and supply chain
+
+- Final registry snapshot: 95 direct packages (the initial 91 plus four Prisma
+  adapter requirements); no target changed during execution. Thirteen live
+  latest releases were younger than seven days, including the already-locked
+  Turbo exception and the latest releases intentionally bypassed by mature
+  AWS/Vite security targets.
+- `minimumReleaseAge: 10080` rejects newly published packages by default.
+  GitHub Actions use full commit SHAs and the PostgreSQL CI service uses an
+  immutable image digest.
+- All 902 registry resolution blocks in `pnpm-lock.yaml` contain integrity
+  hashes. `npm audit signatures --json` reports no invalid or missing
+  signatures. Provenance remains non-universal; selected packages and the four
+  newly introduced packages had no integrity, signature, lifecycle, or
+  publisher anomaly requiring quarantine.
+- OSV batch lookup reports zero matches across the 95 resolved direct targets.
+  `pnpm audit --json` reports 0 critical, 0 high, 0 moderate, and 1 low. The
+  remaining low advisory is dev-only `tsx@4.21.0 -> esbuild@0.27.7`
+  (`GHSA-g7r4-m6w7-qqqr`); patched `tsx@4.23.1` is quarantined until
+  2026-07-20, so the whole package remains deferred by policy.
+- No `fast-xml-parser` or `fast-xml-builder` path remains. Security floors
+  resolve Prisma's Hono path to `@hono/node-server@1.19.13`, Next's path to
+  `postcss@8.5.10`, and affected Electron/jsdom paths to `undici@7.28.0`.
+
+### Regression and integration
+
+- Node `v24.18.0`, pnpm `11.9.0`; frozen install and root typecheck pass.
+- Desktop Vitest: 166 files, 1,460 tests passed. Shared UI: 14 files, 33 tests
+  passed. Web: 5 files, 10 tests passed.
+- Root production build passes for both Electron/desktop and Next/web. Local
+  macOS code signing was skipped because no signing identity is installed; the
+  unsigned package is sufficient for the local smoke but not a release
+  artifact.
+- Electron cursor-sync smoke: 1 passed. Media playback smoke: 3 passed.
+  Packaged export parity passed for MP4/WebM/GIF and the 720p/1080p/4K capture
+  matrix; minimum all-effects SSIM was `0.9940936837`, software High was
+  `0.9998425149`, and VideoToolbox High was `0.9998363759`.
+- Disposable PostgreSQL 17 at the CI image digest passed schema bootstrap,
+  Prisma adapter create/read/delete, unconditional disconnect, and seed. A
+  post-smoke query confirmed zero leaked reserved-email users.
+- Focused non-rewrite Biome checks pass for all newly authored and directly
+  behavior-changed code. The repository-wide `pnpm lint` gate remains red on
+  the pre-existing baseline (471 errors and 260 warnings, including Tailwind
+  `@theme` parser configuration and unrelated format drift); Biome itself was
+  intentionally deferred and unchanged at 2.4.12.
+
+### Residual risk and follow-up
+
+- The checked-in Prisma migration history starts after the original schema
+  baseline, so `migrate deploy` cannot initialize an empty database safely.
+  CI uses `db push` only for its disposable database. A separate production
+  migration-baseline project is required before asserting empty-database
+  `migrate deploy` support.
+- Electron 43 remains quarantined. Its next review must cover bitmap color
+  normalization, dialog paths, hidden/frameless windows, and capture/export
+  pixel parity on both supported operating systems.
+- Remote macOS/Windows CI, signing, and release credentials are not available
+  in this local run. The pinned workflow contains the required platform and
+  PostgreSQL jobs; merge remains conditional on those remote checks.
+- Re-run the dated registry/audit procedure on or after 2026-07-23, then apply
+  the same seven-day rule to anything published after this snapshot rather than
+  assuming the deferred targets are still latest.

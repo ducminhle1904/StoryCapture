@@ -17,8 +17,11 @@ try {
     throw new Error("Prisma smoke could not read the created user");
   }
 } finally {
-  if (userId) {
-    await prisma.user.deleteMany({ where: { id: userId } });
+  try {
+    if (userId) {
+      await prisma.user.deleteMany({ where: { id: userId } });
+    }
+  } finally {
+    await prisma.$disconnect();
   }
-  await prisma.$disconnect();
 }

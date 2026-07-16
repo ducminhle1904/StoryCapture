@@ -8,6 +8,8 @@
  */
 
 import "@testing-library/jest-dom/vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach } from "vitest";
 
 // react-hotkeys-hook 5.3 resolves the `mod` alias from the browser user agent:
 // Meta on macOS and Control elsewhere. The editor shortcut tests use the macOS
@@ -16,8 +18,6 @@ Object.defineProperty(window.navigator, "userAgent", {
   configurable: true,
   value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
 });
-import { afterEach } from "vitest";
-import { cleanup } from "@testing-library/react";
 
 // Ensure DOM is torn down between tests so queries don't see leftover nodes.
 afterEach(() => {

@@ -16,10 +16,9 @@
  */
 
 import { EventEmitter, on } from "node:events";
-import type { PrismaClient } from "@/generated/prisma/client";
 import { TRPCError, tracked } from "@trpc/server";
 import { z } from "zod";
-import { Prisma, WorkflowType } from "@/generated/prisma/client";
+import { Prisma, type PrismaClient, WorkflowType } from "@/generated/prisma/client";
 import { verifyJwt } from "@/lib/jwt";
 import { protectedProcedure, publicProcedure, router } from "../init";
 import { requireWorkspaceMember } from "../lib/guards";
