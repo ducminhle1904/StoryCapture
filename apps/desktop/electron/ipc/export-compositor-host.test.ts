@@ -5,8 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createExportCompositorHost,
+  ExportCompositorFrameDimensionError,
   ExportCompositorStartupError,
   exportCompositorRendererPath,
+  exportCompositorViewportForOutput,
   loadExportCompositorRenderer,
   waitForExportCompositorReady,
 } from "./export-compositor-host";
@@ -17,34 +19,70 @@ function fakeWindow(
     loadFile?: (filePath: string, options?: unknown) => Promise<void>;
     loadURL?: (url: string) => Promise<void>;
     destroyed?: boolean;
+    devicePixelRatio?: number;
+    imageWidth?: number;
+    imageHeight?: number;
+    bitmapBytes?: number;
+    toBitmap?: (options?: { scaleFactor?: number }) => Buffer;
   } = {},
 ): BrowserWindow {
-  const bitmap = Buffer.alloc(2 * 2 * 4);
+  const imageWidth = options.imageWidth ?? 2;
+  const imageHeight = options.imageHeight ?? 2;
+  const bitmap = Buffer.alloc(options.bitmapBytes ?? imageWidth * imageHeight * 4);
   return {
     isDestroyed: vi.fn(() => options.destroyed ?? false),
     destroy: vi.fn(),
     loadFile: vi.fn(options.loadFile ?? (async () => undefined)),
     loadURL: vi.fn(options.loadURL ?? (async () => undefined)),
+    setContentSize: vi.fn(),
     webContents: {
       isDestroyed: vi.fn(() => options.destroyed ?? false),
       setFrameRate: vi.fn(),
       setZoomFactor: vi.fn(),
       executeJavaScript: vi.fn(
         options.executeJavaScript ??
-          (async (source: string) =>
-            source.includes("const bridge")
-              ? {
-                  ready: true,
-                  documentReadyState: "complete",
-                  hasRoot: true,
-                  methods: { configure: true, renderFrame: true, dispose: true },
-                }
-              : { ok: true }),
+          (async (source: string) => {
+            const devicePixelRatio = options.devicePixelRatio ?? 1;
+            if (source.includes("const bridge")) {
+              return {
+                ready: true,
+                documentReadyState: "complete",
+                hasRoot: true,
+                methods: { configure: true, renderFrame: true, dispose: true },
+                viewport: {
+                  canvasBackingWidth: 300,
+                  canvasBackingHeight: 150,
+                  cssViewportWidth: 2,
+                  cssViewportHeight: 2,
+                  devicePixelRatio,
+                },
+              };
+            }
+            const configurePrefix = "window.__STORYCAPTURE_EXPORT_COMPOSITOR__.configure(";
+            if (source.startsWith(configurePrefix)) {
+              const payload = JSON.parse(source.slice(configurePrefix.length, -1)) as {
+                outputWidth: number;
+                outputHeight: number;
+                cssViewportWidth: number;
+                cssViewportHeight: number;
+              };
+              return {
+                ok: true,
+                viewport: {
+                  canvasBackingWidth: payload.outputWidth,
+                  canvasBackingHeight: payload.outputHeight,
+                  cssViewportWidth: payload.cssViewportWidth,
+                  cssViewportHeight: payload.cssViewportHeight,
+                  devicePixelRatio,
+                },
+              };
+            }
+            return { ok: true };
+          }),
       ),
       capturePage: vi.fn(async () => ({
-        getSize: () => ({ width: 2, height: 2 }),
-        resize: vi.fn(),
-        toBitmap: () => bitmap,
+        getSize: () => ({ width: imageWidth, height: imageHeight }),
+        toBitmap: vi.fn(options.toBitmap ?? (() => bitmap)),
       })),
     },
   } as unknown as BrowserWindow;
@@ -56,6 +94,7 @@ const plan = {
   outputHeight: 2,
   fps: 30,
   durationMs: 100,
+  resamplingQuality: "high" as const,
 };
 
 const runtimeApp = {
@@ -181,7 +220,92 @@ describe("export compositor production bootstrap", () => {
     await host.dispose();
 
     expect(win.webContents.setFrameRate).toHaveBeenCalledWith(30);
-    expect(win.webContents.capturePage).toHaveBeenCalledWith({ x: 0, y: 0, width: 2, height: 2 });
+    expect(win.setContentSize).toHaveBeenCalledWith(2, 2);
+    expect(
+      vi
+        .mocked(win.webContents.executeJavaScript)
+        .mock.calls.some(
+          ([source]) =>
+            source.includes(".configure(") && source.includes('"resamplingQuality":"high"'),
+        ),
+    ).toBe(true);
+    expect(win.webContents.capturePage).toHaveBeenCalledWith(
+      { x: 0, y: 0, width: 2, height: 2 },
+      { stayHidden: true },
+    );
+    const image = await vi.mocked(win.webContents.capturePage).mock.results[0]?.value;
+    expect(image?.toBitmap).toHaveBeenCalledWith({ scaleFactor: 1 });
+    expect(win.destroy).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    1, 1.25, 1.5, 2,
+  ])("derives exact backing and CSS capture geometry at DPR %s", async (devicePixelRatio) => {
+    const outputWidth = 62;
+    const outputHeight = 37;
+    const framePlan = { ...plan, outputWidth, outputHeight };
+    const win = fakeWindow({
+      devicePixelRatio,
+      imageWidth: outputWidth,
+      imageHeight: outputHeight,
+    });
+    const host = createExportCompositorHost(framePlan, {
+      app: runtimeApp,
+      devRuntime: false,
+      windowFactory: () => win,
+    });
+
+    const viewport = exportCompositorViewportForOutput(outputWidth, outputHeight, devicePixelRatio);
+    expect(Math.round(viewport.cssViewportWidth * devicePixelRatio)).toBe(outputWidth);
+    expect(Math.round(viewport.cssViewportHeight * devicePixelRatio)).toBe(outputHeight);
+
+    await host.start();
+    await expect(host.renderFrame(25)).resolves.toHaveLength(outputWidth * outputHeight * 4);
+    expect(win.setContentSize).toHaveBeenCalledWith(
+      Math.ceil(outputWidth / devicePixelRatio),
+      Math.ceil(outputHeight / devicePixelRatio),
+    );
+    expect(win.webContents.capturePage).toHaveBeenCalledWith(
+      {
+        x: 0,
+        y: 0,
+        width: outputWidth / devicePixelRatio,
+        height: outputHeight / devicePixelRatio,
+      },
+      { stayHidden: true },
+    );
+    await host.dispose();
+  });
+
+  it("fails with structured dimensions instead of silently resizing", async () => {
+    const toBitmap = vi.fn(() => Buffer.alloc(3 * 2 * 4));
+    const win = fakeWindow({ imageWidth: 3, imageHeight: 2, toBitmap });
+    const host = createExportCompositorHost(plan, {
+      app: runtimeApp,
+      devRuntime: false,
+      windowFactory: () => win,
+    });
+
+    await host.start();
+    const render = host.renderFrame(50);
+
+    await expect(render).rejects.toMatchObject({
+      name: "ExportCompositorFrameDimensionError",
+      code: "frame-dimension-mismatch",
+      stage: "capture",
+      details: {
+        expectedWidth: 2,
+        expectedHeight: 2,
+        capturedWidth: 3,
+        capturedHeight: 2,
+        devicePixelRatio: 1,
+        expectedBytes: 16,
+        capturedBytes: 24,
+      },
+    });
+    expect(toBitmap).toHaveBeenCalledWith({ scaleFactor: 1 });
+    expect(ExportCompositorFrameDimensionError.prototype).not.toHaveProperty("resize");
+    await host.dispose();
     expect(win.destroy).toHaveBeenCalledOnce();
   });
 

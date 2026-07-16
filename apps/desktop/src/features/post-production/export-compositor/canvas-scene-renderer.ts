@@ -63,7 +63,16 @@ export type CanonicalDrawCommand =
 
 export interface CanonicalCanvasRendererOptions {
   createScratchCanvas?: (width: number, height: number) => HTMLCanvasElement;
+  resamplingQuality?: ExportResamplingQuality;
 }
+
+export type ExportResamplingQuality = "high" | "balanced" | "fast";
+
+const CANVAS_SMOOTHING_QUALITY: Record<ExportResamplingQuality, ImageSmoothingQuality> = {
+  high: "high",
+  balanced: "medium",
+  fast: "low",
+};
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled canonical canvas value: ${JSON.stringify(value)}`);
@@ -158,13 +167,22 @@ function clipContent(
   ctx.clip();
 }
 
-function normalizedFontSize(box: ExportTextBox): number {
-  return Math.max(12, Math.min(72, box.size_pt));
+function clampAuthoredMetric(value: number, min: number, max: number, fallback = min): number {
+  const finite = Number.isFinite(value) ? value : fallback;
+  return Math.max(min, Math.min(max, finite));
 }
 
-function canvasFont(box: ExportTextBox): string {
+export function canonical1080pScale(outputHeight: number): number {
+  return Math.max(1, outputHeight) / 1_080;
+}
+
+function normalizedFontSize(box: ExportTextBox): number {
+  return clampAuthoredMetric(box.size_pt, 12, 72, 12);
+}
+
+function canvasFont(box: ExportTextBox, outputScale: number): string {
   const font = textFontCss(box.font ?? DEFAULT_TEXT_FONT);
-  return `${font.fontStyle} ${font.fontWeight} ${normalizedFontSize(box)}px ${font.fontFamily}`;
+  return `${font.fontStyle} ${font.fontWeight} ${normalizedFontSize(box) * outputScale}px ${font.fontFamily}`;
 }
 
 const graphemeSegmenter =
@@ -234,11 +252,19 @@ function wrapText(
   });
 }
 
-function setShadow(ctx: CanvasRenderingContext2D, shadow: ExportTextShadow | null): void {
+function setShadow(
+  ctx: CanvasRenderingContext2D,
+  shadow: ExportTextShadow | null,
+  outputScale: number,
+): void {
   ctx.shadowColor = shadow ? rgba(shadow.color) : "transparent";
-  ctx.shadowBlur = shadow?.blur_px ?? 0;
-  ctx.shadowOffsetX = shadow?.offset_x_px ?? 0;
-  ctx.shadowOffsetY = shadow?.offset_y_px ?? 0;
+  ctx.shadowBlur = shadow ? clampAuthoredMetric(shadow.blur_px, 0, 64) * outputScale : 0;
+  ctx.shadowOffsetX = shadow
+    ? clampAuthoredMetric(shadow.offset_x_px, -32, 32, 0) * outputScale
+    : 0;
+  ctx.shadowOffsetY = shadow
+    ? clampAuthoredMetric(shadow.offset_y_px, -32, 32, 0) * outputScale
+    : 0;
 }
 
 function drawSpacedText(
@@ -288,11 +314,13 @@ export function canonicalCommandSnapshot(scene: EvaluatedScene): string {
 
 export class CanonicalCanvasSceneRenderer {
   private readonly createScratchCanvas: (width: number, height: number) => HTMLCanvasElement;
+  private resamplingQuality: ExportResamplingQuality;
 
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
     options: CanonicalCanvasRendererOptions = {},
   ) {
+    this.resamplingQuality = options.resamplingQuality ?? "high";
     this.createScratchCanvas =
       options.createScratchCanvas ??
       ((width, height) => {
@@ -304,6 +332,15 @@ export class CanonicalCanvasSceneRenderer {
         canvas.height = height;
         return canvas;
       });
+  }
+
+  setResamplingQuality(quality: ExportResamplingQuality): void {
+    this.resamplingQuality = quality;
+  }
+
+  private prepareImageScaling(ctx: CanvasRenderingContext2D = this.ctx): void {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = CANVAS_SMOOTHING_QUALITY[this.resamplingQuality];
   }
 
   render(scene: EvaluatedScene, assets: CanonicalRenderAssets): CanonicalDrawCommand[] {
@@ -363,6 +400,7 @@ export class CanonicalCanvasSceneRenderer {
       ctx.beginPath();
       ctx.rect(0, 0, scene.output_width, scene.output_height);
       ctx.clip();
+      this.prepareImageScaling(ctx);
       ctx.drawImage(image, rect.x, rect.y, rect.w, rect.h);
       ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
       ctx.fillRect(0, 0, scene.output_width, scene.output_height);
@@ -423,6 +461,7 @@ export class CanonicalCanvasSceneRenderer {
       this.ctx.save();
       this.ctx.globalAlpha *= clamp01(frame.alpha) * 0.84;
       this.ctx.filter = `blur(${blurPx}px) saturate(1.15)`;
+      this.prepareImageScaling();
       this.ctx.drawImage(
         source,
         rect.x - overscanX,
@@ -476,6 +515,7 @@ export class CanonicalCanvasSceneRenderer {
     ctx.save();
     ctx.globalAlpha *= clamp01(alpha);
     clipContent(ctx, scene, translateX, translateY);
+    this.prepareImageScaling(ctx);
     ctx.drawImage(source, x, y, baseRect.w * scale, baseRect.h * scale);
     ctx.restore();
   }
@@ -657,6 +697,7 @@ export class CanonicalCanvasSceneRenderer {
           ? overlay.y * scene.output_height
           : overlay.y
         : highlight.center.y;
+      this.prepareImageScaling(ctx);
       ctx.drawImage(image, x - dimensions.width / 2, y - dimensions.height / 2);
     }
   }
@@ -764,6 +805,7 @@ export class CanonicalCanvasSceneRenderer {
     tint: ExportRgba | null,
   ): void {
     if (!tint || tint.a <= 0) {
+      this.prepareImageScaling();
       this.ctx.drawImage(image, rect.x, rect.y, rect.w, rect.h);
       return;
     }
@@ -775,11 +817,13 @@ export class CanonicalCanvasSceneRenderer {
     const scratchCtx = scratch.getContext("2d");
     if (!scratchCtx) throw new Error("canonical color tint scratch context is unavailable");
     scratchCtx.clearRect(0, 0, width, height);
+    this.prepareImageScaling(scratchCtx);
     scratchCtx.drawImage(image, 0, 0, width, height);
     scratchCtx.globalCompositeOperation = "source-in";
     scratchCtx.fillStyle = rgba(tint);
     scratchCtx.fillRect(0, 0, width, height);
     scratchCtx.globalCompositeOperation = "source-over";
+    this.prepareImageScaling();
     this.ctx.drawImage(scratch, rect.x, rect.y, rect.w, rect.h);
   }
 
@@ -787,29 +831,32 @@ export class CanonicalCanvasSceneRenderer {
     if (text.alpha <= 0) return;
     const box = text.box;
     const ctx = this.ctx;
-    const spacing = Number.isFinite(box.letter_spacing_px) ? box.letter_spacing_px : 0;
+    const outputScale = canonical1080pScale(scene.output_height);
+    const spacing = clampAuthoredMetric(box.letter_spacing_px, -4, 20, 0) * outputScale;
     const maxWidth =
       scene.output_width * (Math.max(20, Math.min(100, box.max_width_pct || 78)) / 100);
     ctx.save();
-    ctx.font = canvasFont(box);
+    ctx.font = canvasFont(box, outputScale);
     const lines = wrapText(ctx, box.text, maxWidth, spacing).map((value) => ({
       value,
       width: textWidth(ctx, value, spacing),
     }));
     const layoutWidth = Math.max(1, ...lines.map((line) => line.width));
     const lineHeight =
-      normalizedFontSize(box) * Math.max(0.8, Math.min(2, box.line_height || 1.12));
+      normalizedFontSize(box) * outputScale * Math.max(0.8, Math.min(2, box.line_height || 1.12));
     const layoutHeight = lineHeight * lines.length;
     const x = text.pos.x * scene.output_width;
     const y = text.pos.y * scene.output_height;
     ctx.globalAlpha = text.alpha;
     ctx.translate(x, y + text.translate_y_px);
     ctx.scale(text.scale, text.scale);
-    ctx.font = canvasFont(box);
+    ctx.font = canvasFont(box, outputScale);
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
 
-    const padding = box.box_style?.padding_px ?? 0;
+    const padding = box.box_style
+      ? clampAuthoredMetric(box.box_style.padding_px, 0, 64) * outputScale
+      : 0;
     const totalWidth = layoutWidth + padding * 2;
     const origin = textHorizontalOrigin(text.pos.x);
     const left = origin === "left" ? 0 : origin === "right" ? -totalWidth : -totalWidth / 2;
@@ -821,20 +868,24 @@ export class CanonicalCanvasSceneRenderer {
         w: layoutWidth + padding * 2,
         h: layoutHeight + padding * 2,
       };
-      setShadow(ctx, box.box_style.shadow);
-      roundedRectPath(ctx, rect, box.box_style.radius_px);
+      setShadow(ctx, box.box_style.shadow, outputScale);
+      roundedRectPath(
+        ctx,
+        rect,
+        clampAuthoredMetric(box.box_style.radius_px, 0, 999) * outputScale,
+      );
       ctx.fillStyle = rgba(box.box_style.bg_color);
       ctx.fill();
-      setShadow(ctx, null);
+      setShadow(ctx, null, outputScale);
       if (box.box_style.border_color && box.box_style.border_width_px > 0) {
         ctx.strokeStyle = rgba(box.box_style.border_color);
-        ctx.lineWidth = box.box_style.border_width_px;
+        ctx.lineWidth = clampAuthoredMetric(box.box_style.border_width_px, 0, 8) * outputScale;
         ctx.stroke();
       }
     }
 
     ctx.fillStyle = rgba(box.color);
-    setShadow(ctx, box.text_shadow);
+    setShadow(ctx, box.text_shadow, outputScale);
     lines.forEach((line, index) => {
       const lineX =
         box.align === "left"

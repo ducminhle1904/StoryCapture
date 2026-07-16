@@ -16,6 +16,8 @@ const DEFAULT_READINESS_POLL_MS = 50;
 
 const BRIDGE_READINESS_EXPRESSION = `(() => {
   const bridge = window.__STORYCAPTURE_EXPORT_COMPOSITOR__;
+  const canvas = document.querySelector("canvas");
+  const canvasRect = canvas?.getBoundingClientRect();
   const methods = bridge ? {
     configure: typeof bridge.configure === "function",
     renderFrame: typeof bridge.renderFrame === "function",
@@ -28,6 +30,13 @@ const BRIDGE_READINESS_EXPRESSION = `(() => {
     documentReadyState: document.readyState,
     hasRoot: Boolean(document.getElementById("root")),
     methods,
+    viewport: {
+      canvasBackingWidth: canvas?.width ?? 0,
+      canvasBackingHeight: canvas?.height ?? 0,
+      cssViewportWidth: canvasRect?.width ?? window.innerWidth,
+      cssViewportHeight: canvasRect?.height ?? window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio || 1,
+    },
   };
 })()`;
 
@@ -68,12 +77,43 @@ export class ExportCompositorStartupError extends Error {
   }
 }
 
+export class ExportCompositorFrameDimensionError extends Error {
+  override readonly name = "ExportCompositorFrameDimensionError";
+  readonly code = "frame-dimension-mismatch";
+  readonly stage = "capture";
+
+  constructor(readonly details: Record<string, number>) {
+    super(
+      `Export compositor frame dimensions do not match: expected ${details.expectedWidth}x${details.expectedHeight}, captured ${details.capturedWidth}x${details.capturedHeight} at DPR ${details.devicePixelRatio}`,
+    );
+  }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      code: this.code,
+      stage: this.stage,
+      message: this.message,
+      details: this.details,
+    };
+  }
+}
+
+export interface ExportCompositorViewport {
+  canvasBackingWidth: number;
+  canvasBackingHeight: number;
+  cssViewportWidth: number;
+  cssViewportHeight: number;
+  devicePixelRatio: number;
+}
+
 export interface ExportCompositorHostPlan {
   graph: ExportGraphLike;
   outputWidth: number;
   outputHeight: number;
   fps: number;
   durationMs: number;
+  resamplingQuality?: "high" | "balanced" | "fast";
 }
 
 interface ExportCompositorApp extends ExportAssetAppPaths {
@@ -85,6 +125,7 @@ interface ReadinessProbe {
   documentReadyState?: string;
   hasRoot?: boolean;
   methods?: Record<string, boolean> | null;
+  viewport?: ExportCompositorViewport;
 }
 
 export interface WaitForExportCompositorReadyOptions {
@@ -145,6 +186,37 @@ function createWindowOptions(plan: ExportCompositorHostPlan): BrowserWindowConst
       backgroundThrottling: false,
     },
   };
+}
+
+function normalizedDevicePixelRatio(value: number | undefined): number {
+  return Number.isFinite(value) && Number(value) > 0 ? Number(value) : 1;
+}
+
+export function exportCompositorViewportForOutput(
+  outputWidth: number,
+  outputHeight: number,
+  devicePixelRatio: number,
+): ExportCompositorViewport {
+  const dpr = normalizedDevicePixelRatio(devicePixelRatio);
+  return {
+    canvasBackingWidth: outputWidth,
+    canvasBackingHeight: outputHeight,
+    cssViewportWidth: outputWidth / dpr,
+    cssViewportHeight: outputHeight / dpr,
+    devicePixelRatio: dpr,
+  };
+}
+
+function viewportMatchesOutput(
+  viewport: ExportCompositorViewport,
+  plan: ExportCompositorHostPlan,
+): boolean {
+  return (
+    viewport.canvasBackingWidth === plan.outputWidth &&
+    viewport.canvasBackingHeight === plan.outputHeight &&
+    Math.round(viewport.cssViewportWidth * viewport.devicePixelRatio) === plan.outputWidth &&
+    Math.round(viewport.cssViewportHeight * viewport.devicePixelRatio) === plan.outputHeight
+  );
 }
 
 export function exportCompositorRendererPath(appPath: string): string {
@@ -216,23 +288,32 @@ async function configureExportCompositor(
   win: BrowserWindow,
   plan: ExportCompositorHostPlan,
   graph: ExportGraphLike,
-): Promise<void> {
+  viewport: ExportCompositorViewport,
+): Promise<ExportCompositorViewport> {
   const payload = {
     graph,
     outputWidth: plan.outputWidth,
     outputHeight: plan.outputHeight,
     fps: plan.fps,
     durationMs: plan.durationMs,
+    resamplingQuality: plan.resamplingQuality ?? "high",
+    cssViewportWidth: viewport.cssViewportWidth,
+    cssViewportHeight: viewport.cssViewportHeight,
   };
-  await win.webContents.executeJavaScript(
+  const configured = (await win.webContents.executeJavaScript(
     `window.__STORYCAPTURE_EXPORT_COMPOSITOR__.configure(${JSON.stringify(payload)})`,
     true,
-  );
+  )) as { viewport?: ExportCompositorViewport };
+  if (!configured?.viewport) {
+    throw new Error("export compositor configure handshake did not return viewport metrics");
+  }
+  return configured.viewport;
 }
 
 async function captureExportCompositorFrame(
   win: BrowserWindow,
   plan: ExportCompositorHostPlan,
+  viewport: ExportCompositorViewport,
   timeMs: number,
 ): Promise<Buffer> {
   await win.webContents.executeJavaScript(
@@ -242,21 +323,27 @@ async function captureExportCompositorFrame(
   const captureRect: Rectangle = {
     x: 0,
     y: 0,
-    width: plan.outputWidth,
-    height: plan.outputHeight,
+    width: viewport.cssViewportWidth,
+    height: viewport.cssViewportHeight,
   };
-  const image = await win.webContents.capturePage(captureRect);
-  const size = image.getSize();
-  const normalized =
-    size.width === plan.outputWidth && size.height === plan.outputHeight
-      ? image
-      : image.resize({ width: plan.outputWidth, height: plan.outputHeight, quality: "best" });
-  const bitmap = normalized.toBitmap();
+  const image = await win.webContents.capturePage(captureRect, { stayHidden: true });
+  const size = image.getSize(1);
+  const bitmap = image.toBitmap({ scaleFactor: 1 });
   const expectedBytes = plan.outputWidth * plan.outputHeight * 4;
-  if (bitmap.byteLength !== expectedBytes) {
-    throw new Error(
-      `export compositor captured ${bitmap.byteLength} bytes, expected ${expectedBytes}`,
-    );
+  if (
+    size.width !== plan.outputWidth ||
+    size.height !== plan.outputHeight ||
+    bitmap.byteLength !== expectedBytes
+  ) {
+    throw new ExportCompositorFrameDimensionError({
+      expectedWidth: plan.outputWidth,
+      expectedHeight: plan.outputHeight,
+      capturedWidth: size.width,
+      capturedHeight: size.height,
+      devicePixelRatio: viewport.devicePixelRatio,
+      expectedBytes,
+      capturedBytes: bitmap.byteLength,
+    });
   }
   return bitmap;
 }
@@ -275,6 +362,7 @@ export function createExportCompositorHost(
   win.webContents.setFrameRate(plan.fps);
   win.webContents.setZoomFactor(1);
   let started = false;
+  let captureViewport: ExportCompositorViewport | null = null;
 
   return {
     window: win,
@@ -310,11 +398,38 @@ export function createExportCompositorHost(
         );
       }
 
-      await waitForExportCompositorReady(win, {
+      const readiness = await waitForExportCompositorReady(win, {
         timeoutMs: options.startupTimeoutMs,
       });
       try {
-        await configureExportCompositor(win, plan, graph);
+        let targetViewport = exportCompositorViewportForOutput(
+          plan.outputWidth,
+          plan.outputHeight,
+          readiness.viewport?.devicePixelRatio ?? 1,
+        );
+        win.setContentSize(
+          Math.ceil(targetViewport.cssViewportWidth),
+          Math.ceil(targetViewport.cssViewportHeight),
+        );
+        let configuredViewport = await configureExportCompositor(win, plan, graph, targetViewport);
+        if (configuredViewport.devicePixelRatio !== targetViewport.devicePixelRatio) {
+          targetViewport = exportCompositorViewportForOutput(
+            plan.outputWidth,
+            plan.outputHeight,
+            configuredViewport.devicePixelRatio,
+          );
+          win.setContentSize(
+            Math.ceil(targetViewport.cssViewportWidth),
+            Math.ceil(targetViewport.cssViewportHeight),
+          );
+          configuredViewport = await configureExportCompositor(win, plan, graph, targetViewport);
+        }
+        if (!viewportMatchesOutput(configuredViewport, plan)) {
+          throw new Error(
+            `export compositor viewport handshake does not match ${plan.outputWidth}x${plan.outputHeight}: ${JSON.stringify(configuredViewport)}`,
+          );
+        }
+        captureViewport = configuredViewport;
       } catch (error) {
         throw startupError(
           "configure-failed",
@@ -326,13 +441,14 @@ export function createExportCompositorHost(
       started = true;
     },
     async renderFrame(timeMs) {
-      if (!started || win.isDestroyed()) {
+      if (!started || !captureViewport || win.isDestroyed()) {
         throw new Error("export compositor host is not ready");
       }
-      return captureExportCompositorFrame(win, plan, timeMs);
+      return captureExportCompositorFrame(win, plan, captureViewport, timeMs);
     },
     async dispose() {
       started = false;
+      captureViewport = null;
       if (win.isDestroyed()) return;
       await win.webContents
         .executeJavaScript("window.__STORYCAPTURE_EXPORT_COMPOSITOR__?.dispose?.()", true)

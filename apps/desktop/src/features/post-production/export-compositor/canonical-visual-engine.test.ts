@@ -10,12 +10,19 @@ import {
   CanonicalCanvasSceneRenderer,
   type CanonicalDrawCommand,
   type CanonicalRenderAssets,
+  type ExportResamplingQuality,
 } from "./canvas-scene-renderer";
 import { CanonicalMediaSourcePool } from "./media-source-pool";
 import type { EvaluatedScene } from "./scene-evaluator";
 
 class CapturingRenderer extends CanonicalCanvasSceneRenderer {
   scene: EvaluatedScene | null = null;
+  lastResamplingQuality: ExportResamplingQuality | null = null;
+
+  override setResamplingQuality(quality: ExportResamplingQuality): void {
+    super.setResamplingQuality(quality);
+    this.lastResamplingQuality = quality;
+  }
 
   override render(scene: EvaluatedScene, _assets: CanonicalRenderAssets): CanonicalDrawCommand[] {
     this.scene = scene;
@@ -117,6 +124,28 @@ describe("canonical visual engine dynamic target anchors", () => {
 });
 
 describe("canonical visual engine lifecycle", () => {
+  it("threads runtime resampling quality without changing the graph", async () => {
+    const ctx = { clearRect: vi.fn() } as unknown as CanvasRenderingContext2D;
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ctx,
+    } as unknown as HTMLCanvasElement;
+    const renderer = new CapturingRenderer(ctx);
+    const graph = canonicalGraph([]);
+    const engine = new CanonicalVisualEngine(canvas, {
+      context: ctx,
+      renderer,
+      fontSet: null,
+    });
+
+    await engine.configure(graph, { resamplingQuality: "balanced" });
+
+    expect(renderer.lastResamplingQuality).toBe("balanced");
+    expect(graph).not.toHaveProperty("resampling_quality");
+    engine.dispose();
+  });
+
   it("does not paint a stale frame after the engine is disposed", async () => {
     let resolveSeek!: () => void;
     let signalSeekStarted!: () => void;

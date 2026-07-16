@@ -5,6 +5,12 @@ import { createExportCompositorHost } from "../export-compositor-host";
 import type { CompositedExportPlan } from "./export-planning";
 import type { RenderSession } from "./shared";
 
+export interface CompositedExportRuntimeDependencies {
+  createHost?: typeof createExportCompositorHost;
+  ffmpegPath?: () => string;
+  spawnProcess?: typeof spawn;
+}
+
 export function compositedFrameTimeMs(frameIndex: number, fps: number): number {
   return (Math.max(0, frameIndex) / Math.max(1, fps)) * 1000;
 }
@@ -78,10 +84,14 @@ export async function runCompositedExportForRenderSession(
   onProgress: (frame: number) => void,
   ffmpegArgs: string[],
   onFramesComplete: () => void = () => undefined,
+  dependencies: CompositedExportRuntimeDependencies = {},
 ): Promise<void> {
-  const binary = exportFfmpegPath();
+  const binary = (dependencies.ffmpegPath ?? exportFfmpegPath)();
 
-  const compositor = createExportCompositorHost(plan);
+  const compositor = (dependencies.createHost ?? createExportCompositorHost)({
+    ...plan,
+    resamplingQuality: plan.encoderOptions.resamplingQuality,
+  });
   let child: ReturnType<typeof spawn> | null = null;
   let ffmpegDone: Promise<void> | null = null;
   session.cancelCompositedExport = () => {
@@ -91,7 +101,7 @@ export async function runCompositedExportForRenderSession(
   try {
     await compositor.start();
     if (session.cancelRequested) throw new Error("render cancelled");
-    child = spawn(binary, ffmpegArgs, {
+    child = (dependencies.spawnProcess ?? spawn)(binary, ffmpegArgs, {
       stdio: ["pipe", "ignore", "pipe"],
     });
     const ffmpegInput = child.stdin;

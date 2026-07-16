@@ -1,5 +1,4 @@
 import type { ExportCompositionGraphV4 } from "@storycapture/shared-types";
-
 import {
   type CanonicalRenderedFrame,
   CanonicalVisualEngine,
@@ -7,6 +6,7 @@ import {
   type CanonicalVisualEnginePort,
   canonicalFrameCommandSnapshot,
 } from "./canonical-visual-engine";
+import type { ExportResamplingQuality } from "./canvas-scene-renderer";
 import type { SceneEvaluationInputs } from "./scene-evaluator";
 
 export interface CanonicalExportCompositorPayload {
@@ -15,6 +15,9 @@ export interface CanonicalExportCompositorPayload {
   outputHeight?: number;
   fps?: number;
   durationMs?: number;
+  resamplingQuality?: ExportResamplingQuality;
+  cssViewportWidth?: number;
+  cssViewportHeight?: number;
 }
 
 /** Production hidden-compositor adapter backed by the shared canonical engine. */
@@ -44,7 +47,7 @@ export class CanonicalExportCompositorAdapter {
     if (payload.durationMs != null && payload.durationMs !== graph.duration_ms) {
       throw new Error("canonical export duration must match graph.duration_ms");
     }
-    await this.engine.configure(graph);
+    await this.engine.configure(graph, { resamplingQuality: payload.resamplingQuality });
     this.graph = graph;
     return { ok: true };
   }

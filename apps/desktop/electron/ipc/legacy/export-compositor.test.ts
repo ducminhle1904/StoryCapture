@@ -1,6 +1,13 @@
+import { EventEmitter } from "node:events";
 import { Writable } from "node:stream";
-import { describe, expect, it } from "vitest";
-import { compositedFrameTimeMs, writeFrameWithBackpressure } from "./export-compositor";
+import { describe, expect, it, vi } from "vitest";
+import {
+  compositedFrameTimeMs,
+  runCompositedExportForRenderSession,
+  writeFrameWithBackpressure,
+} from "./export-compositor";
+import type { CompositedExportPlan } from "./export-planning";
+import type { RenderSession } from "./shared";
 
 describe("post-production export compositor helpers", () => {
   it("calculates deterministic frame timestamps from fps", () => {
@@ -67,5 +74,64 @@ describe("post-production export compositor helpers", () => {
     sink.end();
 
     await expect(writeFrameWithBackpressure(sink, Buffer.alloc(4))).rejects.toThrow(/closed/);
+  });
+
+  it("threads resampling quality and cleans up after a frame failure", async () => {
+    const dispose = vi.fn(async () => undefined);
+    const host = {
+      start: vi.fn(async () => undefined),
+      renderFrame: vi.fn(async () => {
+        throw new Error("frame-dimension-mismatch");
+      }),
+      dispose,
+      isDestroyed: vi.fn(() => false),
+      window: { destroy: vi.fn() },
+    };
+    const createHost = vi.fn(() => host);
+    const child = new EventEmitter() as EventEmitter & {
+      stdin: Writable;
+      stderr: EventEmitter;
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdin = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+    child.stderr = new EventEmitter();
+    child.kill = vi.fn(() => {
+      queueMicrotask(() => child.emit("close", 1));
+      return true;
+    });
+    const spawnProcess = vi.fn(() => child);
+    const session = {
+      frame: 0,
+      cancelRequested: false,
+      cancelCompositedExport: null,
+      ffmpegProcess: null,
+      job: { progress_pct: 0, phase_progress_pct: 0 },
+    } as unknown as RenderSession;
+    const plan = {
+      outputWidth: 2,
+      outputHeight: 2,
+      fps: 30,
+      durationMs: 100,
+      frameCount: 1,
+      encoderOptions: { resamplingQuality: "fast" },
+    } as unknown as CompositedExportPlan;
+
+    await expect(
+      runCompositedExportForRenderSession(session, plan, vi.fn(), ["-f", "rawvideo"], undefined, {
+        createHost: createHost as never,
+        ffmpegPath: () => "/mock/ffmpeg",
+        spawnProcess: spawnProcess as never,
+      }),
+    ).rejects.toThrow("frame-dimension-mismatch");
+
+    expect(createHost).toHaveBeenCalledWith(expect.objectContaining({ resamplingQuality: "fast" }));
+    expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.ffmpegProcess).toBeNull();
+    expect(session.cancelCompositedExport).toBeNull();
   });
 });

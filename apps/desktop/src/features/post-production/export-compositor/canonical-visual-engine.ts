@@ -22,6 +22,7 @@ import {
   type CanonicalDrawCommand,
   type CanonicalRenderAssets,
   canonicalCommandSnapshot,
+  type ExportResamplingQuality,
 } from "./canvas-scene-renderer";
 import { parseExportCursorSidecar } from "./cursor-sidecar";
 import { CanonicalMediaSourcePool, canonicalAssetUrl } from "./media-source-pool";
@@ -77,13 +78,20 @@ export interface CanonicalVisualEngineOptions {
   fontSet?: Pick<FontFaceSet, "load"> | null;
 }
 
+export interface CanonicalVisualEngineRuntimeConfig {
+  resamplingQuality?: ExportResamplingQuality;
+}
+
 export interface CanonicalRenderedFrame {
   scene: EvaluatedScene;
   commands: CanonicalDrawCommand[];
 }
 
 export interface CanonicalVisualEnginePort {
-  configure(graph: ExportCompositionGraphV4): Promise<void>;
+  configure(
+    graph: ExportCompositionGraphV4,
+    runtimeConfig?: CanonicalVisualEngineRuntimeConfig,
+  ): Promise<void>;
   renderFrame(timestampMs: number): Promise<CanonicalRenderedFrame>;
   readFrameBytes(): Uint8ClampedArray;
   dispose(): void;
@@ -160,7 +168,10 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
         : options.fontSet;
   }
 
-  async configure(graph: ExportCompositionGraphV4): Promise<void> {
+  async configure(
+    graph: ExportCompositionGraphV4,
+    runtimeConfig: CanonicalVisualEngineRuntimeConfig = {},
+  ): Promise<void> {
     if (graph.schema_version !== 4) {
       throw new Error(
         `canonical visual engine requires graph v4, received ${graph.schema_version}`,
@@ -176,6 +187,7 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
     this.targetBoundsByStepId.clear();
     this.canvas.width = Math.round(graph.output_width);
     this.canvas.height = Math.round(graph.output_height);
+    this.renderer.setResamplingQuality(runtimeConfig.resamplingQuality ?? "high");
 
     try {
       await this.mediaPool.configure(graph);

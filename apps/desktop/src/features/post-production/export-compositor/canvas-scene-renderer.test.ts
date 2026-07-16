@@ -14,6 +14,7 @@ import {
   CANONICAL_TRANSITION_KINDS,
   CanonicalCanvasSceneRenderer,
   type CanonicalRenderAssets,
+  canonical1080pScale,
   canonicalCommandSnapshot,
 } from "./canvas-scene-renderer";
 import { evaluateScene } from "./scene-evaluator";
@@ -33,6 +34,8 @@ function createCanvasContextMock() {
     font: "10px sans-serif",
     textAlign: "start",
     textBaseline: "alphabetic",
+    imageSmoothingEnabled: false,
+    imageSmoothingQuality: "low",
     clearRect: vi.fn(),
     fillRect: vi.fn(),
     drawImage: vi.fn(),
@@ -71,6 +74,68 @@ function assets(overrides: Partial<CanonicalRenderAssets> = {}): CanonicalRender
 }
 
 describe("canonical Canvas 2D renderer", () => {
+  it.each([
+    ["high", "high"],
+    ["balanced", "medium"],
+    ["fast", "low"],
+  ] as const)("maps %s resampling to Canvas %s smoothing", (quality, canvasQuality) => {
+    const { ctx } = createCanvasContextMock();
+    const renderer = new CanonicalCanvasSceneRenderer(ctx, { resamplingQuality: quality });
+
+    renderer.render(
+      evaluateScene(canonicalGraph([canonicalSource("source-a", 0, 1_000)]), 500),
+      assets(),
+    );
+
+    expect(ctx.imageSmoothingEnabled).toBe(true);
+    expect(ctx.imageSmoothingQuality).toBe(canvasQuality);
+    expect(ctx.drawImage).toHaveBeenCalled();
+  });
+
+  it.each([
+    [720, 2 / 3],
+    [1_080, 1],
+    [2_160, 2],
+  ])("clamps authored text metrics before applying the %sp output scale", (outputHeight, expectedScale) => {
+    expect(canonical1080pScale(outputHeight)).toBeCloseTo(expectedScale, 10);
+    const textBox = {
+      ...canonicalTextBox(),
+      size_pt: 100,
+      letter_spacing_px: 30,
+      text_shadow: {
+        blur_px: 100,
+        offset_x_px: 40,
+        offset_y_px: -40,
+        color: { r: 0, g: 0, b: 0, a: 255 },
+      },
+      box_style: {
+        padding_px: 100,
+        radius_px: 20,
+        bg_color: { r: 20, g: 22, b: 26, a: 220 },
+        border_color: { r: 255, g: 255, b: 255, a: 60 },
+        border_width_px: 10,
+        shadow: null,
+      },
+    };
+    const graph = canonicalGraph([{ type: "text-overlay", id: "text", boxes: [textBox] }]);
+    graph.output_height = outputHeight;
+    graph.output_width = Math.round((outputHeight * 16) / 9);
+    const { ctx } = createCanvasContextMock();
+
+    new CanonicalCanvasSceneRenderer(ctx).render(evaluateScene(graph, 500), assets());
+
+    expect(ctx.font).toContain(`${72 * expectedScale}px`);
+    expect(ctx.lineWidth).toBeCloseTo(8 * expectedScale, 10);
+    expect(ctx.shadowBlur).toBeCloseTo(64 * expectedScale, 10);
+    expect(ctx.shadowOffsetX).toBeCloseTo(32 * expectedScale, 10);
+    expect(ctx.shadowOffsetY).toBeCloseTo(-32 * expectedScale, 10);
+    const boxPathStart = vi.mocked(ctx.moveTo).mock.calls[0];
+    expect(boxPathStart?.[1]).toBeCloseTo(
+      -(72 * expectedScale * 1.15) / 2 - 64 * expectedScale,
+      10,
+    );
+  });
+
   it("implements every canonical transition kind exhaustively", () => {
     const expected: ExportTransitionKind[] = [
       "fade",
