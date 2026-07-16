@@ -131,7 +131,7 @@ describe("CostWarningModal", () => {
 });
 
 describe("AiDisclosureModal", () => {
-  it("renders EU AI Act text + C2PA checkbox default ON on export with TTS clips", async () => {
+  it("renders EU AI Act text + XMP checkbox default ON on export with TTS clips", async () => {
     const { AiDisclosureModal } = await import("../export/AiDisclosureModal");
     const onResult = vi.fn();
 
@@ -146,12 +146,12 @@ describe("AiDisclosureModal", () => {
     // EU AI Act text
     expect(screen.getByText(/EU AI Act/)).toBeTruthy();
 
-    // C2PA checkbox default ON
-    const c2paCheckbox = screen.getByRole("checkbox", {
-      name: /C2PA/i,
+    // XMP disclosure checkbox defaults ON.
+    const xmpCheckbox = screen.getByRole("checkbox", {
+      name: /AI-generated voice metadata \(XMP\)/i,
     });
-    expect(c2paCheckbox).toBeTruthy();
-    expect(c2paCheckbox).toBeChecked();
+    expect(xmpCheckbox).toBeTruthy();
+    expect(xmpCheckbox).toBeChecked();
 
     // Buttons
     expect(screen.getByText(/Export anyway/)).toBeTruthy();

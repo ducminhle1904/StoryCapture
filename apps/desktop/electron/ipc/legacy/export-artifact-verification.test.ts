@@ -6,12 +6,14 @@ import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { exportFfprobePath } from "../export-binaries";
 import {
   buildArtifactLoudnessAnalysisArgs,
   validateExportArtifactProbe,
   validateExportLoudness,
   verifyExportArtifact,
 } from "./export-artifact-verification";
+import { appendAiVoiceXmpToMp4, buildAdobeXmpUuidBox } from "./export-xmp";
 
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
@@ -309,6 +311,20 @@ describe("export artifact verification", () => {
         { maxBuffer: 8 * 1024 * 1024, timeout: 20_000 },
       );
 
+      const streamProbeArgs = [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=codec_type,codec_name,profile,pix_fmt,color_range,color_space,color_transfer,color_primaries,width,height,avg_frame_rate,r_frame_rate,sample_rate,channels,channel_layout:format=duration",
+        "-of",
+        "json",
+        outputPath,
+      ];
+      const beforeBytes = await fs.readFile(outputPath);
+      const beforeProbe = JSON.parse(
+        (await execFileAsync(exportFfprobePath(), streamProbeArgs)).stdout,
+      ) as unknown;
+
       await expect(
         verifyExportArtifact(outputPath, {
           format: "mp4",
@@ -317,6 +333,28 @@ describe("export artifact verification", () => {
           fps: 30,
           durationMs: 2_000,
           expectAudio: true,
+          expectXmp: true,
+        }),
+      ).rejects.toThrow(/missing.*XMP/i);
+
+      await appendAiVoiceXmpToMp4(outputPath);
+      const afterBytes = await fs.readFile(outputPath);
+      const afterProbe = JSON.parse(
+        (await execFileAsync(exportFfprobePath(), streamProbeArgs)).stdout,
+      ) as unknown;
+      expect(afterBytes.subarray(0, beforeBytes.length)).toEqual(beforeBytes);
+      expect(afterBytes.length - beforeBytes.length).toBe(buildAdobeXmpUuidBox().length);
+      expect(afterProbe).toEqual(beforeProbe);
+
+      await expect(
+        verifyExportArtifact(outputPath, {
+          format: "mp4",
+          width: 320,
+          height: 180,
+          fps: 30,
+          durationMs: 2_000,
+          expectAudio: true,
+          expectXmp: true,
         }),
       ).resolves.toMatchObject({
         videoCodec: "h264",
@@ -331,6 +369,12 @@ describe("export artifact verification", () => {
         audioChannelLayout: "stereo",
         faststart: true,
         fullDecodePassed: true,
+        xmp: {
+          creatorTool: "StoryCapture",
+          format: "video/mp4",
+          containsAiGeneratedVoice: true,
+          generationMethod: "text-to-speech",
+        },
       });
     },
     30_000,

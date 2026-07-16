@@ -28,6 +28,7 @@ import {
   normalizeExportEncoderOptions,
   type RunnableExportPlan,
 } from "./export-planning";
+import { appendAiVoiceXmpToMp4 } from "./export-xmp";
 import {
   channelIdFrom,
   type ExportOutput,
@@ -61,6 +62,8 @@ interface EnqueueExportRenderJobArgs {
   outputReservation: ExportOutputReservation;
   probeSourceAudio?: (path: string) => Promise<boolean>;
   analyzeLoudness?: (ffmpegArgs: string[], session: RenderSession) => Promise<string>;
+  embedAiVoiceXmp?: boolean;
+  writeAiVoiceXmp?: (filePath: string) => Promise<void>;
   presetId?: string | null;
   priority?: number;
 }
@@ -318,6 +321,10 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
       () => setJobPhase(session, "mixing", 86, 0),
     );
     if (session.cancelRequested) throw new Error("render cancelled");
+    if (args.embedAiVoiceXmp) {
+      await (args.writeAiVoiceXmp ?? appendAiVoiceXmpToMp4)(args.outputReservation.tempPath);
+      if (session.cancelRequested) throw new Error("render cancelled");
+    }
     setJobPhase(session, "mixing", 92, 100);
     setJobPhase(session, "verifying", 94, 0);
     await verifyExportArtifact(args.outputReservation.tempPath, {
@@ -327,6 +334,7 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
       fps: args.plan.fps,
       durationMs: args.plan.durationMs,
       expectAudio: finalAudioPlan.kind === "mixed",
+      expectXmp: args.embedAiVoiceXmp ?? false,
     });
     if (session.cancelRequested) throw new Error("render cancelled");
     setJobPhase(session, "verifying", 99, 100);
@@ -398,6 +406,13 @@ export function enqueueExportRenderJob(args: EnqueueExportRenderJobArgs): string
 
 export async function exportRun(args: ExportRunArgs) {
   if (!args.outputs.length) throw new Error("export requires at least one output");
+  const aiDisclosure = args.ai_disclosure ?? {
+    contains_ai_voiceover: false,
+    embed_xmp: false,
+  };
+  if (aiDisclosure.embed_xmp && !aiDisclosure.contains_ai_voiceover) {
+    throw new Error("XMP AI voice metadata cannot be embedded without AI-generated voiceover.");
+  }
   await prepareExportOutputFolder(args.output_folder);
   const batchId = randomUUID();
   const snapshotPath = path.join(
@@ -452,6 +467,7 @@ export async function exportRun(args: ExportRunArgs) {
         plan,
         outputReservation,
         probeSourceAudio,
+        embedAiVoiceXmp: aiDisclosure.embed_xmp && output.format.toLowerCase() === "mp4",
         presetId: args.preset_id,
         priority: args.priority,
       });

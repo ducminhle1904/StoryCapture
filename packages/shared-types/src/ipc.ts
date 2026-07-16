@@ -2056,6 +2056,10 @@ export type ExportPresetsCatalogue = {
   qualities: string[];
 };
 export type ExportResultDto = { batch_id: string; job_ids: string[]; graph_snapshot_path: string };
+export type AiDisclosureDto = {
+  contains_ai_voiceover: boolean;
+  embed_xmp: boolean;
+};
 export type ExportRunArgs = {
   story_id: string;
   /**
@@ -2067,6 +2071,7 @@ export type ExportRunArgs = {
   output_folder: string;
   base_name: string;
   preset_id: string | null;
+  ai_disclosure: AiDisclosureDto;
 };
 export type FitModeDto = "letterbox" | "fill-crop" | "stretch";
 /**

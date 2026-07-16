@@ -32,6 +32,7 @@ import {
 import { SelectField } from "@/components/ui/select-field";
 import { AiDisclosureModal } from "@/features/export/AiDisclosureModal";
 import {
+  type AiDisclosure,
   type ExportEncoderOptions,
   type ExportOutput,
   exportPreflight,
@@ -62,8 +63,7 @@ export function buildEncoderOptions(knobs: ExportKnobs): ExportEncoderOptions {
     codec: knobs.codec,
     rate_control: rateControl,
     hw_encoder: controls.backendEncoder,
-    quality_value:
-      knobs.hwEncoder === "auto" ? controls.defaultQualityValue : knobs.qualityValue,
+    quality_value: knobs.hwEncoder === "auto" ? controls.defaultQualityValue : knobs.qualityValue,
     encoder_preset: encoderPreset,
     keyframe_interval_sec: knobs.keyframeSec,
     resampling_quality: knobs.resamplingQuality,
@@ -117,6 +117,10 @@ export function ExportModal({ storyId }: ExportModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const [preflightIssues, setPreflightIssues] = useState<ExportIssue[]>([]);
   const [disclosureOpen, setDisclosureOpen] = useState(false);
+  const defaultAiDisclosure = useMemo<AiDisclosure>(
+    () => ({ contains_ai_voiceover: ttsClipCount > 0, embed_xmp: ttsClipCount > 0 }),
+    [ttsClipCount],
+  );
 
   const exportKnobs = useOutputPrefsStore((s) => s.exportKnobs);
 
@@ -174,86 +178,94 @@ export function ExportModal({ storyId }: ExportModalProps) {
     !preflightIssues.some((issue) => issue.severity === "error") &&
     graphAvailable;
 
-  const runValidate = useCallback(async () => {
-    const result = await exportPreflight({
-      graph_json: JSON.stringify(graph),
-      outputs,
-      compiler_issues: compilation.issues,
-    });
-    setPreflightIssues(result.issues);
-    return result.ready;
-  }, [compilation.issues, graph, outputs]);
-
-  const runExport = useCallback(async () => {
-    if (!form.outFolder) return;
-    setSubmitting(true);
-    try {
-      const ok = await runValidate();
-      if (!ok) {
-        toast.error("Export validation failed — fix warnings and retry");
-        return;
-      }
-      // Defensive: `canSubmit` already gates on `graphAvailable`, but
-      // re-check here so a race between render and submit can't slip an
-      // empty graph through to the backend.
-      if (!graphAvailable) {
-        toast.error("Nothing to export — add a video clip to the timeline");
-        return;
-      }
-      const res = await exportRun({
-        story_id: storyId,
+  const runValidate = useCallback(
+    async (aiDisclosure = defaultAiDisclosure) => {
+      const result = await exportPreflight({
         graph_json: JSON.stringify(graph),
         outputs,
-        priority: 0,
-        output_folder: form.outFolder,
-        base_name: form.baseName,
-        preset_id: null,
+        compiler_issues: compilation.issues,
+        ai_disclosure: aiDisclosure,
       });
-      void queryClient.invalidateQueries({ queryKey: RENDER_KEYS.listActive(storyId) });
-      toast.success(
-        `Export started: ${res.job_ids.length} job${res.job_ids.length === 1 ? "" : "s"} queued`,
-      );
-      setOpen(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setPreflightIssues([
-        {
-          id: "export.start-failed",
-          code: "export.start-failed",
-          severity: "error",
-          message,
-          remediation: "Check the output folder and retry the export.",
-        },
-      ]);
-      toast.error(`Export failed: ${message}`);
-    } finally {
-      setSubmitting(false);
-    }
-  }, [
-    form.outFolder,
-    form.baseName,
-    outputs,
-    runValidate,
-    storyId,
-    setOpen,
-    graph,
-    graphAvailable,
-    queryClient,
-  ]);
+      setPreflightIssues(result.issues);
+      return result.ready;
+    },
+    [compilation.issues, defaultAiDisclosure, graph, outputs],
+  );
+
+  const runExport = useCallback(
+    async (aiDisclosure: AiDisclosure) => {
+      if (!form.outFolder) return;
+      setSubmitting(true);
+      try {
+        const ok = await runValidate(aiDisclosure);
+        if (!ok) {
+          toast.error("Export validation failed — fix warnings and retry");
+          return;
+        }
+        // Defensive: `canSubmit` already gates on `graphAvailable`, but
+        // re-check here so a race between render and submit can't slip an
+        // empty graph through to the backend.
+        if (!graphAvailable) {
+          toast.error("Nothing to export — add a video clip to the timeline");
+          return;
+        }
+        const res = await exportRun({
+          story_id: storyId,
+          graph_json: JSON.stringify(graph),
+          outputs,
+          priority: 0,
+          output_folder: form.outFolder,
+          base_name: form.baseName,
+          preset_id: null,
+          ai_disclosure: aiDisclosure,
+        });
+        void queryClient.invalidateQueries({ queryKey: RENDER_KEYS.listActive(storyId) });
+        toast.success(
+          `Export started: ${res.job_ids.length} job${res.job_ids.length === 1 ? "" : "s"} queued`,
+        );
+        setOpen(false);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setPreflightIssues([
+          {
+            id: "export.start-failed",
+            code: "export.start-failed",
+            severity: "error",
+            message,
+            remediation: "Check the output folder and retry the export.",
+          },
+        ]);
+        toast.error(`Export failed: ${message}`);
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [
+      form.outFolder,
+      form.baseName,
+      outputs,
+      runValidate,
+      storyId,
+      setOpen,
+      graph,
+      graphAvailable,
+      queryClient,
+    ],
+  );
 
   const onSubmit = useCallback(async () => {
     if (ttsClipCount > 0) {
       setDisclosureOpen(true);
       return;
     }
-    await runExport();
-  }, [runExport, ttsClipCount]);
+    await runExport(defaultAiDisclosure);
+  }, [defaultAiDisclosure, runExport, ttsClipCount]);
 
   const handleDisclosureResult = useCallback(
-    async ({ proceed }: { proceed: boolean; embedC2pa: boolean }) => {
+    async ({ proceed, embedXmp }: { proceed: boolean; embedXmp: boolean }) => {
       setDisclosureOpen(false);
       if (!proceed) return;
-      await runExport();
+      await runExport({ contains_ai_voiceover: true, embed_xmp: embedXmp });
     },
     [runExport],
   );
@@ -525,7 +537,7 @@ export function ExportModal({ storyId }: ExportModalProps) {
               </div>
 
               <footer className="flex items-center justify-between border-t border-[var(--sc-border)] bg-[var(--sc-surface-2)] px-5 py-4">
-                <ScButton variant="ghost" size="sm" onClick={runValidate}>
+                <ScButton variant="ghost" size="sm" onClick={() => void runValidate()}>
                   Validate
                 </ScButton>
                 <ScButton

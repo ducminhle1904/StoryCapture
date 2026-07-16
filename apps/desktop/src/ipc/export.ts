@@ -17,6 +17,11 @@ export type ExportResolution = "match-source" | "720p" | "1080p" | "4k" | "custo
 export type ExportQuality = "low" | "med" | "high";
 export type ExportEncoderOptions = EncoderOptionsDto & { quality_value?: number | null };
 
+export interface AiDisclosure {
+  contains_ai_voiceover: boolean;
+  embed_xmp: boolean;
+}
+
 export interface ExportOutput {
   format: ExportFormat | string;
   resolution: ExportResolution | string;
@@ -37,6 +42,7 @@ export interface ExportRunArgs {
   output_folder: string;
   base_name: string;
   preset_id: string | null;
+  ai_disclosure: AiDisclosure;
 }
 
 export interface ExportResult {
@@ -49,6 +55,7 @@ export interface ExportPreflightArgs {
   graph_json: string;
   outputs: ExportOutput[];
   compiler_issues: ExportIssue[];
+  ai_disclosure: AiDisclosure;
 }
 
 export interface ExportPresetsCatalogue {

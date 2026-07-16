@@ -182,6 +182,10 @@ export interface ExportRunArgs {
   base_name: string;
   preset_id?: string | null;
   priority?: number;
+  ai_disclosure?: {
+    contains_ai_voiceover: boolean;
+    embed_xmp: boolean;
+  };
 }
 
 export interface SoundLibraryEntry {

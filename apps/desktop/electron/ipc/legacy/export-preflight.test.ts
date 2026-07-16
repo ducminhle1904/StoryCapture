@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { exportPreflight } from "./export-preflight";
 
+type ExportPreflightArgsWithDisclosure = ExportPreflightArgs & {
+  ai_disclosure?: { contains_ai_voiceover: boolean; embed_xmp: boolean };
+};
+
 const GRAPH: ExportCompositionGraphV4 = {
   schema_version: 4,
   output_width: 1920,
@@ -25,7 +29,9 @@ const GRAPH: ExportCompositionGraphV4 = {
   audio: [],
 };
 
-function args(overrides: Partial<ExportPreflightArgs> = {}): ExportPreflightArgs {
+function args(
+  overrides: Partial<ExportPreflightArgsWithDisclosure> = {},
+): ExportPreflightArgsWithDisclosure {
   return {
     graph_json: JSON.stringify(GRAPH),
     outputs: [{ format: "mp4", resolution: "1080p", fps: 60, quality: "high" }],
@@ -43,6 +49,33 @@ describe("exportPreflight", () => {
     expect(result.outputs).toEqual([
       expect.objectContaining({ output_index: 0, format: "mp4", ready: true, issues: [] }),
     ]);
+  });
+
+  it("warns without blocking when requested XMP cannot be embedded in WebM or GIF", () => {
+    const result = exportPreflight(
+      args({
+        outputs: [
+          { format: "webm", resolution: "1080p", fps: 60, quality: "high" },
+          { format: "gif", resolution: "1080p", fps: 60, quality: "high" },
+        ],
+        ai_disclosure: { contains_ai_voiceover: true, embed_xmp: true },
+      }),
+    );
+
+    expect(result.ready).toBe(true);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "output.xmp-mp4-only",
+        severity: "warning",
+        output_index: 0,
+      }),
+      expect.objectContaining({
+        code: "output.xmp-mp4-only",
+        severity: "warning",
+        output_index: 1,
+      }),
+    ]);
+    expect(result.outputs.every((output) => output.ready)).toBe(true);
   });
 
   it("returns typed compiler and output issues without throwing", () => {

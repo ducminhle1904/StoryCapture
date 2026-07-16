@@ -175,6 +175,82 @@ describe("ExportModal", () => {
     expect(btn).not.toBeDisabled();
   });
 
+  it.each([
+    true,
+    false,
+  ])("wires TTS disclosure with embed_xmp=%s through preflight and export_run", async (embedXmp) => {
+    useEditorStore.setState({
+      tracks: {
+        video: [
+          {
+            id: "v1",
+            trackId: "video",
+            startMs: 0,
+            durationMs: 1000,
+            sourcePath: "/tmp/in.mp4",
+          },
+        ],
+        cursor: [],
+        zoom: [],
+        sound: [
+          {
+            id: "tts-1",
+            trackId: "sound",
+            startMs: 0,
+            durationMs: 1000,
+            path: "/tmp/voice.wav",
+            kind: "voiceover",
+          },
+        ],
+        annotations: [],
+      },
+      exportForm: {
+        ...DEFAULT_EXPORT_FORM,
+        formats: ["mp4"],
+        resolution: "1080p",
+        fps: 60,
+        quality: "high",
+        outFolder: "/tmp/out",
+        baseName: "demo",
+      },
+    });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "export_preflight") return Promise.resolve(successfulPreflight());
+      if (cmd === "export_run") {
+        return Promise.resolve({
+          batch_id: "b1",
+          job_ids: ["j1"],
+          graph_snapshot_path: "/tmp/graph.json",
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    render(
+      <Wrapped>
+        <ExportModal storyId="s1" />
+      </Wrapped>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /start export/i }));
+    const checkbox = await screen.findByRole("checkbox", {
+      name: /Embed AI-generated voice metadata \(XMP\)/i,
+    });
+    if (!embedXmp) fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole("button", { name: /export anyway/i }));
+
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("export_run", expect.anything()));
+    for (const command of ["export_preflight", "export_run"]) {
+      expect(mockInvoke).toHaveBeenCalledWith(command, {
+        args: expect.objectContaining({
+          ai_disclosure: {
+            contains_ai_voiceover: true,
+            embed_xmp: embedXmp,
+          },
+        }),
+      });
+    }
+  });
+
   it("includes editor background in exported graph_json only for framed exports", async () => {
     useEditorStore.setState({
       tracks: {

@@ -153,6 +153,8 @@ function enqueueTestJob(args: {
   priority?: number;
   probeSourceAudio?: (path: string) => Promise<boolean>;
   analyzeLoudness?: (ffmpegArgs: string[], session: RenderSession) => Promise<string>;
+  embedAiVoiceXmp?: boolean;
+  writeAiVoiceXmp?: (filePath: string) => Promise<void>;
 }): ExportOutputReservation {
   const cfg = args.output ?? output();
   const outputReservation = reservation(args.id);
@@ -166,6 +168,8 @@ function enqueueTestJob(args: {
     priority: args.priority,
     probeSourceAudio: args.probeSourceAudio,
     analyzeLoudness: args.analyzeLoudness,
+    embedAiVoiceXmp: args.embedAiVoiceXmp,
+    writeAiVoiceXmp: args.writeAiVoiceXmp,
   });
   return outputReservation;
 }
@@ -362,6 +366,41 @@ describe("export render orchestration", () => {
     await expectStatus("verified-job", "completed");
     await expectStatus("after-commit-job", "completed");
     expect(session("verified-job")?.job.output_path).toBe(outputReservation.finalPath);
+  });
+
+  it("embeds requested XMP into the temporary MP4 before verification and commit", async () => {
+    const writeAiVoiceXmp = vi.fn().mockResolvedValue(undefined);
+    mocks.verify.mockImplementation(async (_filePath: string, expectation: unknown) => {
+      expect(writeAiVoiceXmp).toHaveBeenCalledWith("/tmp/.xmp-job.part.mp4");
+      expect(expectation).toEqual(expect.objectContaining({ format: "mp4", expectXmp: true }));
+    });
+
+    const outputReservation = enqueueTestJob({
+      id: "xmp-job",
+      embedAiVoiceXmp: true,
+      writeAiVoiceXmp,
+    });
+    await expectStatus("xmp-job", "completed");
+
+    expect(mocks.verify).toHaveBeenCalledWith(
+      outputReservation.tempPath,
+      expect.objectContaining({ expectXmp: true }),
+    );
+    expect(mocks.commit).toHaveBeenCalledWith(outputReservation);
+  });
+
+  it("fails cleanly and releases partial output when XMP embedding fails", async () => {
+    const outputReservation = enqueueTestJob({
+      id: "xmp-failure-job",
+      embedAiVoiceXmp: true,
+      writeAiVoiceXmp: vi.fn().mockRejectedValue(new Error("synthetic XMP append failure")),
+    });
+
+    await expectStatus("xmp-failure-job", "failed");
+    expect(mocks.verify).not.toHaveBeenCalled();
+    expect(mocks.commit).not.toHaveBeenCalled();
+    expect(mocks.release).toHaveBeenCalledWith(outputReservation);
+    expect(session("xmp-failure-job")?.job.error).toContain("synthetic XMP append failure");
   });
 
   it("isolates failures between runtime jobs in one batch", async () => {

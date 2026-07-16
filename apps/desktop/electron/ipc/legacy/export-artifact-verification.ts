@@ -8,6 +8,7 @@ import {
   type ExportLoudnessMeasurement,
   parseExportLoudnessMeasurement,
 } from "./export-audio-planning";
+import { type AiVoiceXmpMetadata, readAdobeXmpMetadata } from "./export-xmp";
 
 const execFileAsync = promisify(execFile);
 
@@ -43,6 +44,7 @@ export interface ExportArtifactExpectation {
   fps: number;
   durationMs: number;
   expectAudio: boolean;
+  expectXmp?: boolean;
 }
 
 export interface VerifiedExportArtifact {
@@ -70,6 +72,7 @@ export interface VerifiedExportArtifact {
   faststart: boolean | null;
   fullDecodePassed: boolean;
   loudness: ExportLoudnessMeasurement | null;
+  xmp: AiVoiceXmpMetadata | null;
 }
 
 function frameRate(value: string | undefined): number {
@@ -204,6 +207,7 @@ export function validateExportArtifactProbe(
     faststart: null,
     fullDecodePassed: false,
     loudness: null,
+    xmp: null,
   };
 }
 
@@ -339,5 +343,9 @@ export async function verifyExportArtifact(
     );
     loudness = validateExportLoudness(parseExportLoudnessMeasurement(stderr));
   }
-  return { ...probe, faststart, fullDecodePassed: true, loudness };
+  const xmp = expected.format === "mp4" ? await readAdobeXmpMetadata(filePath) : null;
+  if (expected.expectXmp && !xmp) {
+    throw new Error("MP4 export is missing the requested AI-generated voice XMP metadata.");
+  }
+  return { ...probe, faststart, fullDecodePassed: true, loudness, xmp };
 }
