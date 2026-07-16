@@ -8,10 +8,14 @@ import ffmpegPath from "ffmpeg-static";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  applyExportLoudnessMeasurement,
   buildExportAudioPlan,
+  buildExportLoudnessAnalysisArgs,
   EXPORT_AUDIO_DUCKING,
   EXPORT_AUDIO_LIMIT_DBFS,
+  EXPORT_LOUDNESS_TARGET,
   type ExportAudioPlan,
+  parseExportLoudnessMeasurement,
 } from "./export-audio-planning";
 
 const execFileAsync = promisify(execFile);
@@ -282,7 +286,18 @@ describe("export audio planning", () => {
     expect(filter).toContain("aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo");
     expect(filter).toContain("alimiter=limit=0.891251:attack=5:release=50:level=disabled");
     expect(plan.mapArgs).toEqual(["-map", "[audio_master]"]);
-    expect(plan.encoderArgs).toEqual(["-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000"]);
+    expect(plan.encoderArgs).toEqual([
+      "-c:a",
+      "aac",
+      "-profile:a",
+      "aac_low",
+      "-b:a",
+      "192k",
+      "-ac",
+      "2",
+      "-ar",
+      "48000",
+    ]);
   });
 
   it("uses generated silence for source files without an audio stream", () => {
@@ -314,14 +329,68 @@ describe("export audio planning", () => {
       }),
     ];
     value.audio = [];
-    const plan = mixedPlan(value, { "held-source": true });
+    const plan = buildExportAudioPlan({
+      graph: value,
+      output: { format: "mp4", bitrateKbps: 192, channels: 2, sampleRateHz: 48_000 },
+      sourceAudio: { "held-source": true },
+    });
     const held = entry(plan, "held-source");
 
+    expect(plan.kind).toBe("none");
     expect(held).toMatchObject({ available: true, included: false, inputIndex: null });
     expect(plan.inputArgs).toEqual([]);
-    expect(plan.filterComplex).toContain(
-      `anullsrc=r=48000:cl=stereo,atrim=duration=1.000000,asetpts=PTS-STARTPTS[${held.label}_content]`,
+    expect(plan.filterComplex).toBeNull();
+    expect(plan.mapArgs).toEqual(["-an"]);
+  });
+
+  it("builds a reusable first pass, parses measurements, and injects the second pass", () => {
+    const plan = mixedPlan();
+    const analysisArgs = buildExportLoudnessAnalysisArgs(plan);
+    const analysisFilter = analysisArgs[analysisArgs.indexOf("-filter_complex") + 1] ?? "";
+    expect(EXPORT_LOUDNESS_TARGET).toMatchObject({
+      integratedLufs: -14,
+      truePeakDbtp: -1,
+      loudnessRangeLu: 11,
+    });
+    expect(analysisFilter).toContain("[0:a:0]");
+    expect(analysisFilter).not.toContain("[5:a:0]");
+    expect(analysisFilter).toContain("loudnorm=I=-14:TP=-1:LRA=11:print_format=json");
+    expect(analysisArgs.slice(-3)).toEqual(["-f", "null", "-"]);
+
+    const measurement = parseExportLoudnessMeasurement(`noise before
+{
+  "input_i": "-20.25",
+  "input_tp": "-3.10",
+  "input_lra": "4.50",
+  "input_thresh": "-30.25",
+  "target_offset": "0.15"
+}
+noise after`);
+    expect(measurement).toEqual({
+      integratedLufs: -20.25,
+      truePeakDbtp: -3.1,
+      loudnessRangeLu: 4.5,
+      thresholdLufs: -30.25,
+      targetOffsetLu: 0.15,
+    });
+
+    const normalized = applyExportLoudnessMeasurement(plan, measurement);
+    expect(normalized.mapArgs).toEqual(["-map", "[audio_normalized]"]);
+    expect(normalized.filterComplex).toContain(
+      "loudnorm=I=-14:TP=-1:LRA=11:measured_I=-20.25:measured_TP=-3.1:measured_LRA=4.5:measured_thresh=-30.25:offset=0.15:linear=true",
     );
+    expect(normalized.filterComplex).toContain(
+      "alimiter=limit=0.891251:attack=5:release=50:level=disabled",
+    );
+  });
+
+  it("rejects missing or non-finite loudness measurements", () => {
+    expect(() => parseExportLoudnessMeasurement("no JSON here")).toThrow(/measured JSON/);
+    expect(() =>
+      parseExportLoudnessMeasurement(
+        '{"input_i":"-inf","input_tp":"-3","input_lra":"0","input_thresh":"-70","target_offset":"0"}',
+      ),
+    ).toThrow(/non-finite/);
   });
 
   it("emits AAC for MP4, Opus for WebM, and an informational no-audio GIF plan", () => {
@@ -613,33 +682,25 @@ describe("export audio FFmpeg integration", () => {
     20_000,
   );
 
-  it.skipIf(!ffmpegPath)(
-    "renders the exact duration from silence when the source has no audio stream",
-    async () => {
-      const directory = await makeTempDir();
-      const outputPath = path.join(directory, "silence.wav");
-      const silentGraph: ExportCompositionGraphV4 = {
-        schema_version: 4,
-        output_width: 64,
-        output_height: 64,
-        output_fps: 30,
-        duration_ms: 500,
-        video: [source("silent-source", "silent-video", "/not-opened/video.mp4", 0, 500)],
-        audio: [],
-      };
-      const plan = buildExportAudioPlan({
-        graph: silentGraph,
-        output: { format: "mp4", bitrateKbps: 160, channels: 1, sampleRateHz: 48_000 },
-        sourceAudio: { "silent-source": false },
-        firstInputIndex: 0,
-      });
-      if (plan.kind !== "mixed") throw new Error(JSON.stringify(plan.diagnostics));
-
-      const pcm = await renderPcmPlan(plan, outputPath);
-      expect(plan.inputArgs).toEqual([]);
-      expect(pcm.byteLength / 4 / plan.sampleRateHz).toBeCloseTo(0.5, 2);
-      expect(activeRegionStarts(pcm, plan.sampleRateHz)).toEqual([]);
-    },
-    20_000,
-  );
+  it("omits the audio stream when the composition has no audible input", () => {
+    const silentGraph: ExportCompositionGraphV4 = {
+      schema_version: 4,
+      output_width: 64,
+      output_height: 64,
+      output_fps: 30,
+      duration_ms: 500,
+      video: [source("silent-source", "silent-video", "/not-opened/video.mp4", 0, 500)],
+      audio: [],
+    };
+    const plan = buildExportAudioPlan({
+      graph: silentGraph,
+      output: { format: "mp4", bitrateKbps: 192, channels: 2, sampleRateHz: 48_000 },
+      sourceAudio: { "silent-source": false },
+      firstInputIndex: 0,
+    });
+    expect(plan.kind).toBe("none");
+    expect(plan.inputArgs).toEqual([]);
+    expect(plan.filterComplex).toBeNull();
+    expect(plan.mapArgs).toEqual(["-an"]);
+  });
 });

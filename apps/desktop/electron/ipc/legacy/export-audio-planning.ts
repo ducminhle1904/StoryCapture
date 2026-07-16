@@ -66,7 +66,7 @@ interface ExportAudioPlanBase {
 export interface MixedExportAudioPlan extends ExportAudioPlanBase {
   kind: "mixed";
   codec: "aac" | "opus";
-  mapLabel: "audio_master";
+  mapLabel: "audio_master" | "audio_normalized";
   filterComplex: string;
   durationMs: number;
   channels: number;
@@ -110,6 +110,21 @@ export const EXPORT_AUDIO_DUCKING = {
 } as const;
 
 export const EXPORT_AUDIO_LIMIT_DBFS = -1 as const;
+
+export const EXPORT_LOUDNESS_TARGET = {
+  integratedLufs: -14,
+  truePeakDbtp: -1,
+  loudnessRangeLu: 11,
+  integratedToleranceLu: 0.5,
+} as const;
+
+export interface ExportLoudnessMeasurement {
+  integratedLufs: number;
+  truePeakDbtp: number;
+  loudnessRangeLu: number;
+  thresholdLufs: number;
+  targetOffsetLu: number;
+}
 
 const LIMIT_LINEAR = 0.891251;
 const MAX_AUDIO_CHANNELS = 8;
@@ -506,6 +521,94 @@ function compactNumber(value: number): string {
   return Number(value.toFixed(6)).toString();
 }
 
+function loudnormTargetOptions(): string {
+  return `I=${EXPORT_LOUDNESS_TARGET.integratedLufs}:TP=${EXPORT_LOUDNESS_TARGET.truePeakDbtp}:LRA=${EXPORT_LOUDNESS_TARGET.loudnessRangeLu}`;
+}
+
+function remapAudioInputIndexes(plan: MixedExportAudioPlan): string {
+  const included = plan.registry
+    .filter(
+      (entry): entry is ExportAudioInputRegistration & { inputIndex: number } =>
+        entry.included && entry.inputIndex !== null,
+    )
+    .sort((left, right) => left.inputIndex - right.inputIndex);
+  let filter = plan.filterComplex;
+  included.forEach((entry, index) => {
+    filter = filter.split(`[${entry.inputIndex}:a:0]`).join(`[${index}:a:0]`);
+  });
+  return filter;
+}
+
+export function buildExportLoudnessAnalysisArgs(plan: MixedExportAudioPlan): string[] {
+  if (!plan.registry.some((entry) => entry.included)) {
+    throw new Error("Cannot analyze loudness for an audio-free composition.");
+  }
+  return [
+    "-hide_banner",
+    "-nostats",
+    "-v",
+    "info",
+    ...plan.inputArgs,
+    "-filter_complex",
+    `${remapAudioInputIndexes(plan)};[audio_master]loudnorm=${loudnormTargetOptions()}:print_format=json[loudness_analysis]`,
+    "-map",
+    "[loudness_analysis]",
+    "-f",
+    "null",
+    "-",
+  ];
+}
+
+export function parseExportLoudnessMeasurement(output: string): ExportLoudnessMeasurement {
+  const blocks = output.match(/\{[\s\S]*?\}/g) ?? [];
+  for (const block of blocks.reverse()) {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(block) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (!("input_i" in parsed) || !("target_offset" in parsed)) continue;
+    const measurement = {
+      integratedLufs: Number(parsed.input_i),
+      truePeakDbtp: Number(parsed.input_tp),
+      loudnessRangeLu: Number(parsed.input_lra),
+      thresholdLufs: Number(parsed.input_thresh),
+      targetOffsetLu: Number(parsed.target_offset),
+    };
+    if (Object.values(measurement).every(Number.isFinite)) return measurement;
+    throw new Error("FFmpeg loudness analysis returned non-finite measured values.");
+  }
+  throw new Error("FFmpeg loudness analysis did not return a measured JSON block.");
+}
+
+export function applyExportLoudnessMeasurement(
+  plan: MixedExportAudioPlan,
+  measurement: ExportLoudnessMeasurement,
+): MixedExportAudioPlan {
+  if (!Object.values(measurement).every(Number.isFinite)) {
+    throw new Error("Cannot build loudness normalization from non-finite measured values.");
+  }
+  const normalization = [
+    `loudnorm=${loudnormTargetOptions()}`,
+    `measured_I=${compactNumber(measurement.integratedLufs)}`,
+    `measured_TP=${compactNumber(measurement.truePeakDbtp)}`,
+    `measured_LRA=${compactNumber(measurement.loudnessRangeLu)}`,
+    `measured_thresh=${compactNumber(measurement.thresholdLufs)}`,
+    `offset=${compactNumber(measurement.targetOffsetLu)}`,
+    "linear=true",
+    "print_format=summary",
+  ].join(":");
+  const finalFilter = `[audio_master]${normalization},aresample=${plan.sampleRateHz}:async=0:first_pts=0,aformat=sample_fmts=fltp:sample_rates=${plan.sampleRateHz}:channel_layouts=${plan.channelLayout},alimiter=limit=${LIMIT_LINEAR}:attack=5:release=50:level=disabled,atrim=duration=${secondsFromMs(plan.durationMs)}[audio_normalized]`;
+  return {
+    ...plan,
+    mapLabel: "audio_normalized",
+    filterChains: [...plan.filterChains, finalFilter],
+    filterComplex: `${plan.filterComplex};${finalFilter}`,
+    mapArgs: ["-map", "[audio_normalized]"],
+  };
+}
+
 function channelLayout(channels: number): string {
   switch (channels) {
     case 1:
@@ -837,6 +940,9 @@ export function buildExportAudioPlan(input: BuildExportAudioPlanInput): ExportAu
       diagnostics,
     );
   }
+  if (!baseRegistry.some((registration) => registration.included)) {
+    return emptyPlan("none", baseRegistry, diagnostics);
+  }
 
   const sampleRateHz = input.output.sampleRateHz;
   const layout = channelLayout(input.output.channels);
@@ -936,6 +1042,7 @@ export function buildExportAudioPlan(input: BuildExportAudioPlanInput): ExportAu
     encoderArgs: [
       "-c:a",
       codec === "opus" ? "libopus" : "aac",
+      ...(codec === "aac" ? ["-profile:a", "aac_low"] : []),
       "-b:a",
       `${input.output.bitrateKbps}k`,
       "-ac",

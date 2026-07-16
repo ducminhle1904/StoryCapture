@@ -4,6 +4,8 @@ import { buildExportAudioPlan } from "./export-audio-planning";
 import {
   analyzeExportPlan,
   ffmpegArgsForCanonicalExportPlan,
+  hardwareTargetBitrateMbps,
+  MP4_DELIVERY_PROFILE,
   validateExportOutput,
 } from "./export-planning";
 import type { ExportOutput } from "./shared";
@@ -57,7 +59,7 @@ function output(overrides: Partial<ExportOutput> = {}): ExportOutput {
       downscale_algo: "lanczos",
       audio: {
         codec: "aac",
-        bitrate_kbps: 160,
+        bitrate_kbps: 192,
         channels: 2,
         sample_rate_hz: 48_000,
       },
@@ -78,7 +80,7 @@ function audioPlanFor(graphJson: string, format: "mp4" | "webm" = "mp4") {
     graph: parsed,
     output: {
       format,
-      bitrateKbps: 160,
+      bitrateKbps: format === "mp4" ? 192 : 160,
       channels: 2,
       sampleRateHz: 48_000,
     },
@@ -256,6 +258,15 @@ describe("canonical post-production export planning", () => {
     expect(args).toContain("[audio_master]");
     expect(args).toContain("libx264");
     expect(args).toContain("aac");
+    expect(args).toContain("aac_low");
+    expect(args).toContain("cfr");
+    expect(args).toContain("high");
+    expect(args).toContain("yuv420p");
+    expect(args.filter((arg) => arg === "bt709")).toHaveLength(3);
+    expect(args).toContain("tv");
+    expect(args).toContain("+faststart");
+    expect(args[args.indexOf("-crf") + 1]).toBe("18");
+    expect(args[args.indexOf("-g") + 1]).toBe("120");
     expect(args).toContain("1.000000");
     expect(args.at(-1)).toBe("/tmp/out.mp4");
   });
@@ -331,11 +342,71 @@ describe("canonical post-production export planning", () => {
     expect(args).toContain("120");
   });
 
+  it("centralizes software CRF and hardware bitrate quality mappings", () => {
+    expect(MP4_DELIVERY_PROFILE.crf).toEqual({ high: 18, med: 22, low: 26 });
+    expect(hardwareTargetBitrateMbps(1920, 1080, 60, "high")).toBeCloseTo(14.92992, 5);
+    expect(hardwareTargetBitrateMbps(320, 180, 24, "low")).toBe(4);
+    expect(hardwareTargetBitrateMbps(7680, 4320, 240, "high")).toBe(100);
+  });
+
+  it.each([
+    {
+      encoder: "nvenc-h264" as const,
+      preset: "p4",
+      qualityValue: 19,
+      expected: ["h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "19"],
+      forbidden: "-quality",
+    },
+    {
+      encoder: "video-toolbox-h264" as const,
+      preset: "quality",
+      qualityValue: null,
+      expected: ["h264_videotoolbox", "-prio_speed", "0"],
+      forbidden: "-preset",
+    },
+    {
+      encoder: "qsv-h264" as const,
+      preset: "medium",
+      qualityValue: null,
+      expected: ["h264_qsv", "-preset", "medium"],
+      forbidden: "-rc",
+    },
+    {
+      encoder: "amf-h264" as const,
+      preset: "balanced",
+      qualityValue: null,
+      expected: ["h264_amf", "-quality", "balanced", "-rc", "vbr_peak"],
+      forbidden: "-preset",
+    },
+  ])("emits capability-safe $encoder rate-control arguments", (fixture) => {
+    const graphJson = graph();
+    const cfg = output({
+      encoder_options: {
+        ...output().encoder_options,
+        hw_encoder: fixture.encoder,
+        rate_control: "vbr",
+        quality_value: fixture.qualityValue,
+        encoder_preset: fixture.preset,
+        x264_preset: undefined,
+      },
+    });
+    const args = ffmpegArgsForCanonicalExportPlan(
+      runnablePlan(graphJson, cfg),
+      audioPlanFor(graphJson),
+      "/tmp/out.mp4",
+    );
+    for (const expectedArg of fixture.expected) expect(args).toContain(expectedArg);
+    expect(args).not.toContain(fixture.forbidden);
+    expect(args[args.indexOf("-b:v") + 1]).toBe("14.93M");
+    expect(args[args.indexOf("-maxrate") + 1]).toBe("22.39M");
+    expect(args[args.indexOf("-bufsize") + 1]).toBe("29.86M");
+  });
+
   it("rejects an invalid audio plan for MP4/WebM", () => {
     const graphJson = graph();
     const invalidAudio = buildExportAudioPlan({
       graph: JSON.parse(graphJson) as ExportCompositionGraphV4,
-      output: { format: "mp4", bitrateKbps: 160, channels: 2, sampleRateHz: 48_000 },
+      output: { format: "mp4", bitrateKbps: 192, channels: 2, sampleRateHz: 48_000 },
       sourceAudio: {},
     });
 
@@ -383,5 +454,29 @@ describe("canonical post-production export planning", () => {
         }),
       ),
     ).toThrow(/Opus audio/);
+
+    expect(() =>
+      validateExportOutput(
+        output({
+          encoder_options: {
+            ...output().encoder_options,
+            hw_encoder: "openh-264-software",
+            rate_control: "cbr",
+            encoder_preset: null,
+          },
+        }),
+      ),
+    ).toThrow(/not supported by the bundled MP4 delivery path/);
+
+    expect(() =>
+      validateExportOutput(
+        output({
+          encoder_options: {
+            ...output().encoder_options,
+            audio: { codec: "aac", bitrate_kbps: 160, channels: 2, sample_rate_hz: 48_000 },
+          },
+        }),
+      ),
+    ).toThrow(/192 kbps/);
   });
 });

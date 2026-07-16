@@ -2,6 +2,7 @@ import type { ExportAudioPlan as CanonicalExportAudioPlan } from "./export-audio
 import type { ExportEncoderOptions, ExportOutput } from "./shared";
 
 type ExportFormat = "mp4" | "webm" | "gif";
+type ExportQuality = "low" | "med" | "high";
 type ExportContainer = "mp4" | "mov" | "webm";
 type ExportCodec = "h264";
 type ExportRateControl = "auto" | "cbr" | "vbr" | "crf" | "cq";
@@ -117,6 +118,60 @@ const ENCODER_PRESETS: Partial<Record<ExportHardwareEncoder, readonly string[]>>
   "amf-h264": ["speed", "balanced", "quality"],
 };
 const AUDIO_CODECS = ["aac", "opus"] as const;
+
+export const MP4_DELIVERY_PROFILE = {
+  codec: "h264",
+  profile: "high",
+  pixelFormat: "yuv420p",
+  colorPrimaries: "bt709",
+  colorTransfer: "bt709",
+  colorMatrix: "bt709",
+  colorRange: "tv",
+  defaultKeyframeIntervalSec: 2,
+  crf: { high: 18, med: 22, low: 26 },
+  hardwareBitrateCoefficient: { high: 0.12, med: 0.08, low: 0.05 },
+  minHardwareBitrateMbps: 4,
+  maxHardwareBitrateMbps: 100,
+  maxrateMultiplier: 1.5,
+  bufferMultiplier: 2,
+} as const;
+
+const MP4_ENCODER_CAPABILITIES: Partial<
+  Record<
+    ExportHardwareEncoder,
+    {
+      ffmpegName: string;
+      rateControls: readonly ExportRateControl[];
+      presets: readonly string[];
+    }
+  >
+> = {
+  "libx264-software": {
+    ffmpegName: "libx264",
+    rateControls: ["crf"],
+    presets: X264_PRESETS,
+  },
+  "nvenc-h264": {
+    ffmpegName: "h264_nvenc",
+    rateControls: ["vbr"],
+    presets: ENCODER_PRESETS["nvenc-h264"] ?? [],
+  },
+  "video-toolbox-h264": {
+    ffmpegName: "h264_videotoolbox",
+    rateControls: ["vbr"],
+    presets: ENCODER_PRESETS["video-toolbox-h264"] ?? [],
+  },
+  "qsv-h264": {
+    ffmpegName: "h264_qsv",
+    rateControls: ["vbr"],
+    presets: ENCODER_PRESETS["qsv-h264"] ?? [],
+  },
+  "amf-h264": {
+    ffmpegName: "h264_amf",
+    rateControls: ["vbr"],
+    presets: ENCODER_PRESETS["amf-h264"] ?? [],
+  },
+};
 
 const DEFAULT_MAX_DIMENSION = 7680;
 const DEFAULT_AUDIO_BITRATE_KBPS = 192;
@@ -264,20 +319,7 @@ function defaultEncoderPreset(encoder: ExportHardwareEncoder): string | null {
 }
 
 function allowedRateControls(encoder: ExportHardwareEncoder): readonly ExportRateControl[] {
-  switch (encoder) {
-    case "libx264-software":
-      return ["crf", "cbr", "vbr"];
-    case "openh-264-software":
-      return ["cbr"];
-    case "nvenc-h264":
-    case "video-toolbox-h264":
-      return ["vbr"];
-    case "qsv-h264":
-    case "amf-h264":
-      return ["vbr", "cbr"];
-    default:
-      return [];
-  }
+  return MP4_ENCODER_CAPABILITIES[encoder]?.rateControls ?? [];
 }
 
 export function validateExportOutput(output: ExportOutput): void {
@@ -325,30 +367,33 @@ export function validateExportOutput(output: ExportOutput): void {
   if (raw?.resampling_quality && !enumValue(raw.resampling_quality, RESAMPLING_QUALITIES)) {
     throw new Error(`unsupported resampling quality: ${String(raw.resampling_quality)}`);
   }
-  if (!allowedRateControls(normalized.hwEncoder).includes(normalized.rateControl)) {
+  if (format === "mp4" && !MP4_ENCODER_CAPABILITIES[normalized.hwEncoder]) {
+    throw new Error(
+      `encoder ${normalized.hwEncoder} is not supported by the bundled MP4 delivery path`,
+    );
+  }
+  if (
+    format === "mp4" &&
+    !allowedRateControls(normalized.hwEncoder).includes(normalized.rateControl)
+  ) {
     throw new Error(
       `rate control ${normalized.rateControl} is not supported by ${normalized.hwEncoder}`,
     );
   }
-  const allowedPresets = ENCODER_PRESETS[normalized.hwEncoder] ?? [];
-  if (
-    normalized.encoderPreset !== null &&
-    !allowedPresets.includes(normalized.encoderPreset)
-  ) {
+  const allowedPresets =
+    format === "mp4"
+      ? (MP4_ENCODER_CAPABILITIES[normalized.hwEncoder]?.presets ?? [])
+      : (ENCODER_PRESETS[normalized.hwEncoder] ?? []);
+  if (normalized.encoderPreset !== null && !allowedPresets.includes(normalized.encoderPreset)) {
     throw new Error(
       `encoder preset ${normalized.encoderPreset} is not supported by ${normalized.hwEncoder}`,
     );
   }
-  if (
-    normalized.rateControl === "crf" ||
-    (normalized.rateControl === "auto" && normalized.qualityValue !== null)
-  ) {
+  if (normalized.hwEncoder === "libx264-software") {
     validateRange(normalized.qualityValue, "CRF quality", 0, 51);
-  }
-  if (normalized.rateControl === "cq") {
-    validateRange(normalized.qualityValue, "CQ quality", 0, 51);
-  }
-  if (normalized.rateControl === "cbr" || normalized.rateControl === "vbr") {
+  } else if (normalized.hwEncoder === "nvenc-h264") {
+    validateRange(normalized.qualityValue, "NVENC CQ quality", 0, 51);
+  } else if (normalized.rateControl === "cbr" || normalized.rateControl === "vbr") {
     validateRange(normalized.qualityValue, "video bitrate Mbps", 1, 100);
   }
   if (
@@ -366,6 +411,14 @@ export function validateExportOutput(output: ExportOutput): void {
     }
     if (format === "webm" && normalized.audio.codec !== "opus") {
       throw new Error("WebM export currently supports Opus audio only");
+    }
+    if (
+      format === "mp4" &&
+      (normalized.audio.bitrateKbps !== 192 ||
+        normalized.audio.channels !== 2 ||
+        normalized.audio.sampleRateHz !== 48_000)
+    ) {
+      throw new Error("MP4 export requires AAC-LC audio at 192 kbps, 48 kHz, and stereo");
     }
   }
 }
@@ -575,7 +628,7 @@ export function ffmpegArgsForCanonicalExportPlan(
       out,
     ];
   }
-  if (audioPlan.kind !== "mixed") {
+  if (audioPlan.kind === "invalid") {
     const reason = audioPlan.diagnostics.map((diagnostic) => diagnostic.message).join("; ");
     throw new Error(reason || "canonical audio planning failed");
   }
@@ -583,27 +636,79 @@ export function ffmpegArgsForCanonicalExportPlan(
   if (audioPlan.filterComplex) args.push("-filter_complex", audioPlan.filterComplex);
   args.push("-map", "0:v:0", ...audioPlan.mapArgs);
   if (format === "webm") args.push(...webmVideoArgs(plan.output, plan.encoderOptions));
-  else args.push(...mp4VideoArgs(plan.output, plan.encoderOptions));
+  else args.push(...mp4VideoArgs(plan));
   args.push(...audioPlan.encoderArgs, ...audioPlan.outputArgs, out);
   return args;
 }
 
-function mp4VideoArgs(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): string[] {
-  const encoder = mp4EncoderName(encoderOptions.hwEncoder);
-  const args = ["-c:v", encoder];
-  if (encoder === "libx264") {
-    args.push("-preset", encoderOptions.encoderPreset ?? "medium");
-    args.push(...x264RateControlArgs(output, encoderOptions));
-  } else if (encoder === "libopenh264") {
-    args.push(...bitrateArgs(output, encoderOptions));
-  } else {
-    args.push(...hardwareRateControlArgs(output, encoderOptions));
+function mp4VideoArgs(plan: CompositedExportPlan): string[] {
+  const { encoderOptions, output } = plan;
+  const capability = MP4_ENCODER_CAPABILITIES[encoderOptions.hwEncoder];
+  if (!capability) {
+    throw new Error(
+      `encoder ${encoderOptions.hwEncoder} is not supported by the bundled MP4 delivery path`,
+    );
   }
-  args.push(...keyframeArgs(output, encoderOptions));
-  args.push("-pix_fmt", "yuv420p", "-movflags", "+faststart");
+  const args = ["-c:v", capability.ffmpegName];
+  switch (encoderOptions.hwEncoder) {
+    case "libx264-software":
+      args.push("-preset", encoderOptions.encoderPreset ?? "medium");
+      args.push("-crf", String(crfValue(output, encoderOptions)));
+      break;
+    case "nvenc-h264":
+      args.push(
+        "-preset",
+        encoderOptions.encoderPreset ?? "p4",
+        "-rc",
+        "vbr",
+        "-cq",
+        String(cqValue(output, encoderOptions)),
+        ...hardwareBitrateArgs(plan, false),
+      );
+      break;
+    case "video-toolbox-h264":
+      args.push(
+        "-prio_speed",
+        encoderOptions.encoderPreset === "speed" ? "1" : "0",
+        ...hardwareBitrateArgs(plan, true),
+      );
+      break;
+    case "qsv-h264":
+      args.push(
+        "-preset",
+        encoderOptions.encoderPreset ?? "medium",
+        ...hardwareBitrateArgs(plan, true),
+      );
+      break;
+    case "amf-h264":
+      args.push(
+        "-quality",
+        encoderOptions.encoderPreset ?? "balanced",
+        "-rc",
+        "vbr_peak",
+        ...hardwareBitrateArgs(plan, true),
+      );
+      break;
+  }
+  args.push(
+    ...keyframeArgs(plan.fps, encoderOptions),
+    "-fps_mode",
+    "cfr",
+    "-profile:v",
+    MP4_DELIVERY_PROFILE.profile,
+    "-pix_fmt",
+    MP4_DELIVERY_PROFILE.pixelFormat,
+    "-color_range",
+    MP4_DELIVERY_PROFILE.colorRange,
+    "-color_primaries",
+    MP4_DELIVERY_PROFILE.colorPrimaries,
+    "-color_trc",
+    MP4_DELIVERY_PROFILE.colorTransfer,
+    "-colorspace",
+    MP4_DELIVERY_PROFILE.colorMatrix,
+    "-movflags",
+    "+faststart",
+  );
   return args;
 }
 
@@ -616,56 +721,45 @@ function webmVideoArgs(
     "libvpx-vp9",
     "-b:v",
     bitrateValue(output, encoderOptions),
-    ...keyframeArgs(output, encoderOptions),
+    ...keyframeArgs(clampFpsValue(output.fps), encoderOptions),
   ];
 }
 
-function mp4EncoderName(encoder: ExportHardwareEncoder): string {
-  switch (encoder) {
-    case "video-toolbox-h264":
-      return "h264_videotoolbox";
-    case "nvenc-h264":
-      return "h264_nvenc";
-    case "qsv-h264":
-      return "h264_qsv";
-    case "amf-h264":
-      return "h264_amf";
-    case "openh-264-software":
-      return "libopenh264";
-    default:
-      return "libx264";
-  }
+export function hardwareTargetBitrateMbps(
+  width: number,
+  height: number,
+  fps: number,
+  quality: ExportQuality,
+  explicitMbps: number | null = null,
+): number {
+  const coefficient = MP4_DELIVERY_PROFILE.hardwareBitrateCoefficient[quality];
+  const calculated = explicitMbps ?? (width * height * fps * coefficient) / 1_000_000;
+  return Math.max(
+    MP4_DELIVERY_PROFILE.minHardwareBitrateMbps,
+    Math.min(MP4_DELIVERY_PROFILE.maxHardwareBitrateMbps, calculated),
+  );
 }
 
-function x264RateControlArgs(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): string[] {
-  if (encoderOptions.rateControl === "cbr") {
-    const bitrate = bitrateValue(output, encoderOptions);
-    return ["-b:v", bitrate, "-minrate", bitrate, "-maxrate", bitrate, "-bufsize", bitrate];
-  }
-  if (encoderOptions.rateControl === "vbr") {
-    return bitrateArgs(output, encoderOptions);
-  }
-  return ["-crf", String(crfValue(output, encoderOptions))];
+function hardwareBitrateArgs(plan: CompositedExportPlan, allowExplicitBitrate: boolean): string[] {
+  const target = hardwareTargetBitrateMbps(
+    plan.outputWidth,
+    plan.outputHeight,
+    plan.fps,
+    enumValue(plan.output.quality, QUALITIES) ?? "high",
+    allowExplicitBitrate ? plan.encoderOptions.qualityValue : null,
+  );
+  return [
+    "-b:v",
+    bitrateArgument(target),
+    "-maxrate",
+    bitrateArgument(target * MP4_DELIVERY_PROFILE.maxrateMultiplier),
+    "-bufsize",
+    bitrateArgument(target * MP4_DELIVERY_PROFILE.bufferMultiplier),
+  ];
 }
 
-function hardwareRateControlArgs(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): string[] {
-  if (encoderOptions.rateControl === "cq" || encoderOptions.rateControl === "crf") {
-    return ["-cq", String(cqValue(output, encoderOptions))];
-  }
-  return bitrateArgs(output, encoderOptions);
-}
-
-function bitrateArgs(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): string[] {
-  return ["-b:v", bitrateValue(output, encoderOptions)];
+function bitrateArgument(mbps: number): string {
+  return `${Number(mbps.toFixed(2))}M`;
 }
 
 function bitrateValue(
@@ -680,9 +774,7 @@ function bitrateValue(
 
 function crfValue(output: ExportOutput, encoderOptions: NormalizedExportEncoderOptions): number {
   if (encoderOptions.qualityValue !== null) return Math.round(encoderOptions.qualityValue);
-  if (output.quality === "high") return 18;
-  if (output.quality === "med") return 23;
-  return 28;
+  return MP4_DELIVERY_PROFILE.crf[enumValue(output.quality, QUALITIES) ?? "high"];
 }
 
 function cqValue(output: ExportOutput, encoderOptions: NormalizedExportEncoderOptions): number {
@@ -690,15 +782,10 @@ function cqValue(output: ExportOutput, encoderOptions: NormalizedExportEncoderOp
   return output.quality === "high" ? 19 : output.quality === "med" ? 24 : 30;
 }
 
-function keyframeArgs(
-  output: ExportOutput,
-  encoderOptions: NormalizedExportEncoderOptions,
-): string[] {
-  if (!encoderOptions.keyframeIntervalSec) return [];
-  const interval = Math.max(
-    1,
-    Math.round(clampFpsValue(output.fps) * encoderOptions.keyframeIntervalSec),
-  );
+function keyframeArgs(fps: number, encoderOptions: NormalizedExportEncoderOptions): string[] {
+  const keyframeIntervalSec =
+    encoderOptions.keyframeIntervalSec ?? MP4_DELIVERY_PROFILE.defaultKeyframeIntervalSec;
+  const interval = Math.max(1, Math.round(clampFpsValue(fps) * keyframeIntervalSec));
   return ["-g", String(interval)];
 }
 
