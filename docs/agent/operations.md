@@ -18,6 +18,12 @@ migrations, generated files, or release tooling.
   - `pnpm --dir apps/desktop run test:e2e:export`
 - The Windows job runs local-media and packaged export parity smokes. Both
   package smokes use the platform binaries installed on that runner.
+- The Ubuntu Prisma job uses a disposable PostgreSQL 17 service. Because the
+  repository's checked-in migration history starts after the original schema
+  baseline, CI uses `prisma db push` only for this empty disposable database,
+  then runs adapter CRUD and seed smokes. Do not copy this bootstrap flow to a
+  production database or fabricate a baseline migration without a dedicated
+  production migration plan.
 - CI package manager and Node versions are configured in
   `.github/actions/setup-toolchain/action.yml`; dependency pins live in package
   manifests and `pnpm-lock.yaml`, not agent docs.

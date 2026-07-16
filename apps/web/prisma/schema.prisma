@@ -2,13 +2,12 @@
 // 12 models, 4 enums covering auth, workspaces, video, analytics, templates, sync
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ─── Auth.js required models ───
