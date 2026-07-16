@@ -220,6 +220,7 @@ export interface RenderJob extends NewRenderJob {
   error: string | null;
   output_path: string | null;
   created_at: number;
+  queue_position?: number | null;
 }
 
 export interface RenderProgressListener {

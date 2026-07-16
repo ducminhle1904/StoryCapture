@@ -42,6 +42,34 @@ const ACTIVE_EXPORT_JOB_STATUSES: readonly ExportJobStatus[] = [
   "verifying",
 ];
 
+const EXPORT_SCHEDULER_CAPACITY = 2;
+const ONE_UNIT_MAX_PIXELS = 2560 * 1440;
+
+interface EnqueueExportRenderJobArgs {
+  id?: string;
+  batchId: string;
+  storyId: string;
+  output: ExportOutput;
+  plan: RunnableExportPlan;
+  outputReservation: ExportOutputReservation;
+  probeSourceAudio?: (path: string) => Promise<boolean>;
+  presetId?: string | null;
+  priority?: number;
+}
+
+interface QueuedExportRenderJob {
+  args: EnqueueExportRenderJobArgs;
+  id: string;
+  sequence: number;
+  session: RenderSession;
+  weight: number;
+}
+
+const queuedExportRenderJobs = new Map<string, QueuedExportRenderJob>();
+const activeExportRenderJobWeights = new Map<string, number>();
+let nextExportRenderJobSequence = 0;
+let exportSchedulerWakePending = false;
+
 export {
   analyzeExportPlan,
   firstSourcePath,
@@ -131,17 +159,157 @@ function graphSourceNodes(graph: ExportCompositionGraphV4) {
   return graph.video.filter((node) => node.type === "source");
 }
 
-export function enqueueExportRenderJob(args: {
-  id?: string;
-  batchId: string;
-  storyId: string;
-  output: ExportOutput;
-  plan: RunnableExportPlan;
-  outputReservation: ExportOutputReservation;
-  probeSourceAudio?: (path: string) => Promise<boolean>;
-  presetId?: string | null;
-  priority?: number;
-}): string {
+function exportRenderJobWeight(plan: RunnableExportPlan): number {
+  return plan.outputWidth * plan.outputHeight <= ONE_UNIT_MAX_PIXELS ? 1 : 2;
+}
+
+function queuedExportRenderJobsInOrder(): QueuedExportRenderJob[] {
+  return [...queuedExportRenderJobs.values()].sort(
+    (a, b) => b.session.job.priority - a.session.job.priority || a.sequence - b.sequence,
+  );
+}
+
+function refreshQueuedExportJobPositions(shouldBroadcast: boolean): void {
+  for (const [index, queued] of queuedExportRenderJobsInOrder().entries()) {
+    const queuePosition = index + 1;
+    if (queued.session.job.queue_position === queuePosition) continue;
+    queued.session.job.queue_position = queuePosition;
+    if (shouldBroadcast) {
+      broadcastRenderProgress(queued.session.job, queued.session.frame);
+    }
+  }
+}
+
+function activeExportRenderUnits(): number {
+  let units = 0;
+  for (const weight of activeExportRenderJobWeights.values()) units += weight;
+  return units;
+}
+
+function wakeExportRenderScheduler(): void {
+  if (exportSchedulerWakePending) return;
+  exportSchedulerWakePending = true;
+  queueMicrotask(() => {
+    exportSchedulerWakePending = false;
+    startReadyExportRenderJobs();
+  });
+}
+
+async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<void> {
+  const { args, id, session } = queued;
+  const renderJob = session.job;
+
+  try {
+    if (session.cancelRequested) throw new Error("render cancelled");
+    if (args.plan.kind !== "composited") {
+      throw new Error("canonical export received a retired non-composited plan");
+    }
+    renderJob.started_at = Date.now();
+    setJobPhase(session, "rendering", 5, 0);
+    const graph = args.plan.graph as unknown as ExportCompositionGraphV4;
+    const sourceAudio =
+      args.output.format === "gif"
+        ? {}
+        : Object.fromEntries(
+            await Promise.all(
+              graphSourceNodes(graph).map(
+                async (source) =>
+                  [
+                    source.id,
+                    await (args.probeSourceAudio ?? sourceHasAudio)(source.path),
+                  ] as const,
+              ),
+            ),
+          );
+    if (session.cancelRequested) throw new Error("render cancelled");
+    const normalized = normalizeExportEncoderOptions(args.output);
+    const audioPlan = buildExportAudioPlan({
+      graph,
+      output:
+        args.output.format === "gif"
+          ? { format: "gif" }
+          : {
+              format: args.output.format as "mp4" | "webm",
+              bitrateKbps: normalized.audio?.bitrateKbps ?? 160,
+              channels: normalized.audio?.channels ?? 2,
+              sampleRateHz: normalized.audio?.sampleRateHz ?? 48_000,
+            },
+      sourceAudio,
+    });
+    if (audioPlan.kind === "invalid") {
+      throw new Error(audioPlan.diagnostics.map((issue) => issue.message).join("; "));
+    }
+    const ffmpegArgs = ffmpegArgsForCanonicalExportPlan(
+      args.plan,
+      audioPlan,
+      args.outputReservation.tempPath,
+    );
+    await runCompositedExportForRenderSession(
+      session,
+      args.plan,
+      (frame) => broadcastRenderProgress(renderJob, frame),
+      ffmpegArgs,
+      () => setJobPhase(session, "mixing", 86, 0),
+    );
+    if (session.cancelRequested) throw new Error("render cancelled");
+    setJobPhase(session, "mixing", 92, 100);
+    setJobPhase(session, "verifying", 94, 0);
+    await verifyExportArtifact(args.outputReservation.tempPath, {
+      format: args.output.format as "mp4" | "webm" | "gif",
+      width: args.plan.outputWidth,
+      height: args.plan.outputHeight,
+      fps: args.plan.fps,
+      durationMs: args.plan.durationMs,
+      expectAudio: audioPlan.kind === "mixed",
+    });
+    if (session.cancelRequested) throw new Error("render cancelled");
+    setJobPhase(session, "verifying", 99, 100);
+    await commitExportOutput(args.outputReservation);
+    session.outputReservation = null;
+    setJobPhase(session, "completed", 100, 100);
+  } catch (error) {
+    if (session.outputReservation) {
+      await releaseExportOutput(session.outputReservation).catch(() => undefined);
+      session.outputReservation = null;
+    }
+    renderJob.status = session.cancelRequested ? "cancelled" : "failed";
+    renderJob.error = session.cancelRequested
+      ? "Export cancelled. Partial output was removed."
+      : error instanceof Error
+        ? error.message
+        : String(error);
+    if (renderJob.status === "failed") {
+      console.error("[export-render] render job failed", {
+        jobId: renderJob.id,
+        outputPath: renderJob.output_path,
+        error: renderJob.error,
+      });
+    }
+  } finally {
+    renderJob.completed_at = Date.now();
+    broadcastRenderProgress(renderJob, session.frame);
+    scheduleRenderSessionRemoval(id);
+  }
+}
+
+function startReadyExportRenderJobs(): void {
+  while (true) {
+    const next = queuedExportRenderJobsInOrder()[0];
+    if (!next) return;
+    if (activeExportRenderUnits() + next.weight > EXPORT_SCHEDULER_CAPACITY) return;
+
+    queuedExportRenderJobs.delete(next.id);
+    activeExportRenderJobWeights.set(next.id, next.weight);
+    next.session.job.queue_position = null;
+    refreshQueuedExportJobPositions(true);
+    void executeExportRenderJob(next).finally(() => {
+      activeExportRenderJobWeights.delete(next.id);
+      wakeExportRenderScheduler();
+    });
+  }
+}
+
+export function enqueueExportRenderJob(args: EnqueueExportRenderJobArgs): string {
   const id = args.id ?? randomUUID();
   const renderJob = createRenderJob({
     ...args,
@@ -150,101 +318,15 @@ export function enqueueExportRenderJob(args: {
   });
   const session = createRenderSession(renderJob, args.outputReservation);
   renderSessions.set(id, session);
-  broadcastRenderProgress(renderJob, 0);
-
-  void (async () => {
-    try {
-      if (session.cancelRequested) throw new Error("render cancelled");
-      if (args.plan.kind !== "composited") {
-        throw new Error("canonical export received a retired non-composited plan");
-      }
-      renderJob.started_at = Date.now();
-      setJobPhase(session, "rendering", 5, 0);
-      const graph = args.plan.graph as unknown as ExportCompositionGraphV4;
-      const sourceAudio =
-        args.output.format === "gif"
-          ? {}
-          : Object.fromEntries(
-              await Promise.all(
-                graphSourceNodes(graph).map(
-                  async (source) =>
-                    [
-                      source.id,
-                      await (args.probeSourceAudio ?? sourceHasAudio)(source.path),
-                    ] as const,
-                ),
-              ),
-            );
-      if (session.cancelRequested) throw new Error("render cancelled");
-      const normalized = normalizeExportEncoderOptions(args.output);
-      const audioPlan = buildExportAudioPlan({
-        graph,
-        output:
-          args.output.format === "gif"
-            ? { format: "gif" }
-            : {
-                format: args.output.format as "mp4" | "webm",
-                bitrateKbps: normalized.audio?.bitrateKbps ?? 160,
-                channels: normalized.audio?.channels ?? 2,
-                sampleRateHz: normalized.audio?.sampleRateHz ?? 48_000,
-              },
-        sourceAudio,
-      });
-      if (audioPlan.kind === "invalid") {
-        throw new Error(audioPlan.diagnostics.map((issue) => issue.message).join("; "));
-      }
-      const ffmpegArgs = ffmpegArgsForCanonicalExportPlan(
-        args.plan,
-        audioPlan,
-        args.outputReservation.tempPath,
-      );
-      await runCompositedExportForRenderSession(
-        session,
-        args.plan,
-        (frame) => broadcastRenderProgress(renderJob, frame),
-        ffmpegArgs,
-        () => setJobPhase(session, "mixing", 86, 0),
-      );
-      if (session.cancelRequested) throw new Error("render cancelled");
-      setJobPhase(session, "mixing", 92, 100);
-      setJobPhase(session, "verifying", 94, 0);
-      await verifyExportArtifact(args.outputReservation.tempPath, {
-        format: args.output.format as "mp4" | "webm" | "gif",
-        width: args.plan.outputWidth,
-        height: args.plan.outputHeight,
-        fps: args.plan.fps,
-        durationMs: args.plan.durationMs,
-        expectAudio: audioPlan.kind === "mixed",
-      });
-      if (session.cancelRequested) throw new Error("render cancelled");
-      setJobPhase(session, "verifying", 99, 100);
-      await commitExportOutput(args.outputReservation);
-      session.outputReservation = null;
-      setJobPhase(session, "completed", 100, 100);
-    } catch (error) {
-      if (session.outputReservation) {
-        await releaseExportOutput(session.outputReservation).catch(() => undefined);
-        session.outputReservation = null;
-      }
-      renderJob.status = session.cancelRequested ? "cancelled" : "failed";
-      renderJob.error = session.cancelRequested
-        ? "Export cancelled. Partial output was removed."
-        : error instanceof Error
-          ? error.message
-          : String(error);
-      if (renderJob.status === "failed") {
-        console.error("[export-render] render job failed", {
-          jobId: renderJob.id,
-          outputPath: renderJob.output_path,
-          error: renderJob.error,
-        });
-      }
-    } finally {
-      renderJob.completed_at = Date.now();
-      broadcastRenderProgress(renderJob, session.frame);
-      scheduleRenderSessionRemoval(id);
-    }
-  })();
+  queuedExportRenderJobs.set(id, {
+    args,
+    id,
+    sequence: nextExportRenderJobSequence++,
+    session,
+    weight: exportRenderJobWeight(args.plan),
+  });
+  refreshQueuedExportJobPositions(true);
+  wakeExportRenderScheduler();
   return id;
 }
 
@@ -345,6 +427,7 @@ export function renderProgress(job: RenderJob, frame: number) {
     fps: job.fps,
     speed: 1,
     eta_ms: Math.max(0, Math.round((100 - job.progress_pct) * 100)),
+    queue_position: job.status === "queued" ? (job.queue_position ?? null) : null,
   };
 }
 
@@ -368,6 +451,28 @@ export function renderEnqueue(rawJob: unknown): string {
 
 export function renderCancel(jobId: string): null {
   const session = renderSessions.get(jobId);
+  if (session?.job.status === "queued" && queuedExportRenderJobs.delete(jobId)) {
+    session.cancelRequested = true;
+    session.job.status = "cancelled";
+    session.job.queue_position = null;
+    session.job.error = "Export cancelled. Partial output is being removed.";
+    session.job.completed_at = Date.now();
+    const outputReservation = session.outputReservation;
+    if (outputReservation) {
+      void releaseExportOutput(outputReservation)
+        .catch(() => undefined)
+        .finally(() => {
+          if (session.outputReservation === outputReservation) {
+            session.outputReservation = null;
+          }
+        });
+    }
+    broadcastRenderProgress(session.job, session.frame);
+    refreshQueuedExportJobPositions(true);
+    scheduleRenderSessionRemoval(jobId);
+    wakeExportRenderScheduler();
+    return null;
+  }
   if (session && ACTIVE_EXPORT_JOB_STATUSES.includes(session.job.status)) {
     if (session.timer) clearInterval(session.timer);
     session.cancelRequested = true;

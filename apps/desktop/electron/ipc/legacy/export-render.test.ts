@@ -67,7 +67,7 @@ function output(overrides: Partial<ExportOutput> = {}): ExportOutput {
       downscale_algo: "lanczos",
       audio: {
         codec: "aac",
-        bitrate_kbps: 160,
+        bitrate_kbps: 192,
         channels: 2,
         sample_rate_hz: 48_000,
       },
@@ -118,6 +118,56 @@ function session(jobId: string): RenderSession | undefined {
   return mocks.renderSessions.get(jobId) as RenderSession | undefined;
 }
 
+function requiredSession(jobId: string): RenderSession {
+  const value = session(jobId);
+  if (!value) throw new Error(`missing render session: ${jobId}`);
+  return value;
+}
+
+function installControlledCompositor() {
+  const started: string[] = [];
+  const finish = new Map<string, () => void>();
+  mocks.runComposited.mockImplementation(
+    (
+      activeSession: RenderSession,
+      _plan: unknown,
+      _onProgress: (frame: number) => void,
+      _ffmpegArgs: string[],
+      onFramesComplete: () => void,
+    ) => {
+      started.push(activeSession.job.id);
+      return new Promise<void>((resolve) => {
+        finish.set(activeSession.job.id, () => {
+          onFramesComplete();
+          resolve();
+        });
+      });
+    },
+  );
+  return { finish, started };
+}
+
+function enqueueTestJob(args: {
+  id: string;
+  output?: ExportOutput;
+  priority?: number;
+  probeSourceAudio?: (path: string) => Promise<boolean>;
+}): ExportOutputReservation {
+  const cfg = args.output ?? output();
+  const outputReservation = reservation(args.id);
+  enqueueExportRenderJob({
+    id: args.id,
+    batchId: "scheduler-batch",
+    storyId: "story-1",
+    output: cfg,
+    plan: planFor(cfg),
+    outputReservation,
+    priority: args.priority,
+    probeSourceAudio: args.probeSourceAudio,
+  });
+  return outputReservation;
+}
+
 async function expectStatus(jobId: string, status: RenderJob["status"]): Promise<void> {
   await vi.waitFor(() => expect(session(jobId)?.job.status).toBe(status));
 }
@@ -147,30 +197,168 @@ beforeEach(() => {
 });
 
 describe("export render orchestration", () => {
+  it("never consumes more than two scheduler units", async () => {
+    const controlled = installControlledCompositor();
+    const oneUnitBoundaryOutput = output({
+      resolution: "custom",
+      output_width: 2560,
+      output_height: 1440,
+    });
+
+    for (const id of ["capacity-first", "capacity-second", "capacity-third"]) {
+      enqueueTestJob({ id, output: oneUnitBoundaryOutput });
+    }
+
+    await vi.waitFor(() =>
+      expect(controlled.started).toEqual(["capacity-first", "capacity-second"]),
+    );
+    expect(session("capacity-third")?.job).toMatchObject({
+      status: "queued",
+      queue_position: 1,
+      started_at: null,
+    });
+
+    controlled.finish.get("capacity-first")?.();
+    await vi.waitFor(() =>
+      expect(controlled.started).toEqual(["capacity-first", "capacity-second", "capacity-third"]),
+    );
+    controlled.finish.get("capacity-second")?.();
+    controlled.finish.get("capacity-third")?.();
+    await Promise.all([
+      expectStatus("capacity-first", "completed"),
+      expectStatus("capacity-second", "completed"),
+      expectStatus("capacity-third", "completed"),
+    ]);
+  });
+
+  it("orders queued jobs by descending priority and FIFO for ties", async () => {
+    const controlled = installControlledCompositor();
+    const twoUnitOutput = output({ resolution: "4k" });
+
+    enqueueTestJob({ id: "priority-low", output: twoUnitOutput, priority: 0 });
+    enqueueTestJob({ id: "priority-high-first", output: twoUnitOutput, priority: 10 });
+    enqueueTestJob({ id: "priority-high-second", output: twoUnitOutput, priority: 10 });
+
+    await vi.waitFor(() => expect(controlled.started).toEqual(["priority-high-first"]));
+    expect(renderProgress(requiredSession("priority-high-second").job, 0).queue_position).toBe(1);
+    expect(renderProgress(requiredSession("priority-low").job, 0).queue_position).toBe(2);
+    expect(
+      renderListActive("story-1").find((job) => job.id === "priority-high-second")?.queue_position,
+    ).toBe(1);
+
+    controlled.finish.get("priority-high-first")?.();
+    await vi.waitFor(() =>
+      expect(controlled.started).toEqual(["priority-high-first", "priority-high-second"]),
+    );
+    controlled.finish.get("priority-high-second")?.();
+    await vi.waitFor(() =>
+      expect(controlled.started).toEqual([
+        "priority-high-first",
+        "priority-high-second",
+        "priority-low",
+      ]),
+    );
+    controlled.finish.get("priority-low")?.();
+    await Promise.all([
+      expectStatus("priority-high-first", "completed"),
+      expectStatus("priority-high-second", "completed"),
+      expectStatus("priority-low", "completed"),
+    ]);
+  });
+
+  it("enforces strict head-of-line scheduling without preemption", async () => {
+    const controlled = installControlledCompositor();
+
+    enqueueTestJob({ id: "hol-active" });
+    await vi.waitFor(() => expect(controlled.started).toEqual(["hol-active"]));
+    enqueueTestJob({ id: "hol-two-unit-head", output: output({ resolution: "4k" }), priority: 10 });
+    enqueueTestJob({ id: "hol-one-unit-tail", priority: 0 });
+
+    await vi.waitFor(() => expect(session("hol-two-unit-head")?.job.queue_position).toBe(1));
+    expect(session("hol-one-unit-tail")?.job.queue_position).toBe(2);
+    expect(controlled.started).toEqual(["hol-active"]);
+
+    controlled.finish.get("hol-active")?.();
+    await vi.waitFor(() => expect(controlled.started).toEqual(["hol-active", "hol-two-unit-head"]));
+    expect(session("hol-one-unit-tail")?.job.status).toBe("queued");
+    controlled.finish.get("hol-two-unit-head")?.();
+    await vi.waitFor(() =>
+      expect(controlled.started).toEqual(["hol-active", "hol-two-unit-head", "hol-one-unit-tail"]),
+    );
+    controlled.finish.get("hol-one-unit-tail")?.();
+    await Promise.all([
+      expectStatus("hol-active", "completed"),
+      expectStatus("hol-two-unit-head", "completed"),
+      expectStatus("hol-one-unit-tail", "completed"),
+    ]);
+  });
+
+  it("cancels a queued job without probing audio or starting the compositor", async () => {
+    const controlled = installControlledCompositor();
+    const probeQueuedSource = vi.fn().mockResolvedValue(false);
+
+    enqueueTestJob({ id: "queued-cancel-blocker", output: output({ resolution: "4k" }) });
+    await vi.waitFor(() => expect(controlled.started).toEqual(["queued-cancel-blocker"]));
+    const queuedReservation = enqueueTestJob({
+      id: "queued-cancel-target",
+      probeSourceAudio: probeQueuedSource,
+    });
+    await vi.waitFor(() => expect(session("queued-cancel-target")?.job.status).toBe("queued"));
+
+    renderCancel("queued-cancel-target");
+
+    expect(session("queued-cancel-target")?.job).toMatchObject({
+      status: "cancelled",
+      queue_position: null,
+    });
+    await vi.waitFor(() => expect(mocks.release).toHaveBeenCalledWith(queuedReservation));
+    expect(probeQueuedSource).not.toHaveBeenCalled();
+    expect(controlled.started).toEqual(["queued-cancel-blocker"]);
+
+    controlled.finish.get("queued-cancel-blocker")?.();
+    await expectStatus("queued-cancel-blocker", "completed");
+  });
+
   it("does not complete or commit until artifact verification succeeds", async () => {
     let finishVerification: (() => void) | undefined;
+    let finishCommit: (() => void) | undefined;
     mocks.verify.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           finishVerification = resolve;
         }),
     );
+    mocks.commit.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCommit = resolve;
+        }),
+    );
     const outputReservation = reservation("verified-job");
+    const twoUnitOutput = output({ resolution: "4k" });
 
     enqueueExportRenderJob({
       id: "verified-job",
       batchId: "batch-1",
       storyId: "story-1",
-      output: output(),
-      plan: planFor(),
+      output: twoUnitOutput,
+      plan: planFor(twoUnitOutput),
       outputReservation,
     });
+    enqueueTestJob({ id: "after-commit-job", output: twoUnitOutput });
 
     await expectStatus("verified-job", "verifying");
     expect(mocks.commit).not.toHaveBeenCalled();
+    expect(session("after-commit-job")?.job.started_at).toBeNull();
     finishVerification?.();
+    await vi.waitFor(() => expect(mocks.commit).toHaveBeenCalledWith(outputReservation));
+    expect(session("verified-job")?.job.status).toBe("verifying");
+    expect(session("after-commit-job")?.job.started_at).toBeNull();
+    mocks.verify.mockResolvedValue(undefined);
+    mocks.commit.mockResolvedValue(undefined);
+    finishCommit?.();
     await expectStatus("verified-job", "completed");
-    expect(mocks.commit).toHaveBeenCalledWith(outputReservation);
+    await expectStatus("after-commit-job", "completed");
     expect(session("verified-job")?.job.output_path).toBe(outputReservation.finalPath);
   });
 
@@ -189,6 +377,7 @@ describe("export render orchestration", () => {
     );
     const failedReservation = reservation("failed-job");
     const completedReservation = reservation("completed-job");
+    const twoUnitOutput = output({ resolution: "4k" });
 
     for (const [id, outputReservation] of [
       ["failed-job", failedReservation],
@@ -198,8 +387,8 @@ describe("export render orchestration", () => {
         id,
         batchId: "batch-2",
         storyId: "story-1",
-        output: output(),
-        plan: planFor(),
+        output: twoUnitOutput,
+        plan: planFor(twoUnitOutput),
         outputReservation,
       });
     }
@@ -278,6 +467,7 @@ describe("export render orchestration", () => {
       progress_pct: 90,
       phase_progress_pct: 50,
       fps: 30,
+      queue_position: null,
     } as RenderJob;
 
     expect(renderProgress(job, 30)).toMatchObject({
@@ -286,6 +476,7 @@ describe("export render orchestration", () => {
       pct: 90,
       phase_pct: 50,
       frame: 30,
+      queue_position: null,
     });
   });
 });
