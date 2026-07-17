@@ -99,6 +99,15 @@ describe("PreviewPlayer", () => {
     expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
   });
 
+  it("renders the preview frame borderless while retaining its outer shadow", () => {
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+
+    const frame = screen.getByTestId("preview-zoom-layer").parentElement;
+    expect(frame).not.toHaveClass("border", "border-white/14");
+    expect(frame?.className).not.toContain("inset_");
+    expect(frame?.className).toContain("shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68)]");
+  });
+
   it("initializes the canonical preview adapter only when composited canvas mode is requested", async () => {
     render(
       <PreviewPlayer

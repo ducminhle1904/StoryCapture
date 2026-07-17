@@ -1777,7 +1777,7 @@ export function PreviewPlayer({
           ) : null}
 
           <div
-            className="relative z-10 flex max-w-[1480px] items-center justify-center overflow-visible rounded-[18px] border border-white/14 bg-transparent shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68),inset_0_1px_0_rgba(255,255,255,0.10)]"
+            className="relative z-10 flex max-w-[1480px] items-center justify-center overflow-visible rounded-[18px] bg-transparent shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68)]"
             style={frameStyle}
           >
             <div
