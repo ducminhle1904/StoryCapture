@@ -132,6 +132,11 @@ describe("PreviewPlayer", () => {
     expect(frame?.className).not.toContain("shadow-");
     expect(frame?.style.width).toBe("100%");
     expect(frame?.style.maxWidth).toBe("100%");
+    expect(screen.getByTestId("preview-ambient-video")).toHaveClass(
+      "object-cover",
+      "scale-[1.12]",
+      "opacity-[0.84]",
+    );
   });
 
   it("keeps canonical renderer failures visible after the source video loads", async () => {
