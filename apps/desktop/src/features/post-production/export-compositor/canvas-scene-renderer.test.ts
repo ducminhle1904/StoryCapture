@@ -203,6 +203,11 @@ describe("canonical Canvas 2D renderer", () => {
     expect(ctx.fillRect).toHaveBeenCalled();
     expect(ctx.fill).toHaveBeenCalled();
     expect(ctx.stroke).not.toHaveBeenCalled();
+    const expectedSourceWidth = 640 * (1_280 / 720);
+    const expectedSourceX = 40 + (1_200 - expectedSourceWidth) / 2;
+    const sourceShadowPathStart = vi.mocked(ctx.moveTo).mock.calls[0];
+    expect(sourceShadowPathStart?.[0]).toBeCloseTo(expectedSourceX + 24, 3);
+    expect(sourceShadowPathStart?.[1]).toBe(40);
     if (kind.kind === "image") {
       expect(vi.mocked(ctx.drawImage).mock.calls.some((call) => call[0] === PORTRAIT_IMAGE)).toBe(
         true,

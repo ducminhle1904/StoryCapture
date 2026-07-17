@@ -352,9 +352,15 @@ export class CanonicalCanvasSceneRenderer {
           this.drawBackground(scene, command, assets);
           break;
         case "source":
+          this.drawSourceShadow(scene, command.source, assets);
           this.drawSource(scene, command.source, assets);
           break;
         case "transition":
+          this.drawSourceShadow(
+            scene,
+            command.transition.progress < 0.5 ? command.transition.from : command.transition.to,
+            assets,
+          );
           this.drawTransition(scene, command.transition, assets);
           break;
         case "highlight":
@@ -415,17 +421,6 @@ export class CanonicalCanvasSceneRenderer {
       if (kind.preset_id === "paper-grain") this.drawPaperTexture(scene);
     } else if (kind) {
       assertNever(kind);
-    }
-
-    if (scene.background) {
-      ctx.save();
-      roundedRectPath(ctx, scene.content_rect, command.radius_px);
-      ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-      ctx.shadowColor = "rgba(0, 0, 0, 0.34)";
-      ctx.shadowBlur = Math.max(12, scene.output_width * 0.012);
-      ctx.shadowOffsetY = Math.max(4, scene.output_height * 0.008);
-      ctx.fill();
-      ctx.restore();
     }
   }
 
@@ -494,16 +489,7 @@ export class CanonicalCanvasSceneRenderer {
     translateX = 0,
     translateY = 0,
   ): void {
-    const source = assets.source(sourceFrame.node.id);
-    if (!source) throw new Error(`canonical source frame is not loaded: ${sourceFrame.node.id}`);
-    const dimensions = sourceDimensions(
-      source,
-      sourceFrame.node.source_width ?? scene.content_rect.w,
-      sourceFrame.node.source_height ?? scene.content_rect.h,
-    );
-    const baseRect = scene.background
-      ? containRect(dimensions.width, dimensions.height, scene.content_rect)
-      : coverRect(dimensions.width, dimensions.height, scene.content_rect);
+    const { source, rect: baseRect } = this.sourceLayout(scene, sourceFrame, assets);
     const scale = Math.max(1, scene.zoom.scale);
     const cropX = scene.zoom.center.x / Math.max(1, scene.output_width) - 1 / (2 * scale);
     const cropY = scene.zoom.center.y / Math.max(1, scene.output_height) - 1 / (2 * scale);
@@ -515,6 +501,42 @@ export class CanonicalCanvasSceneRenderer {
     clipContent(ctx, scene, translateX, translateY);
     this.prepareImageScaling(ctx);
     ctx.drawImage(source, x, y, baseRect.w * scale, baseRect.h * scale);
+    ctx.restore();
+  }
+
+  private sourceLayout(
+    scene: EvaluatedScene,
+    sourceFrame: EvaluatedSource,
+    assets: CanonicalRenderAssets,
+  ): { source: CanvasImageSource; rect: SceneRect } {
+    const source = assets.source(sourceFrame.node.id);
+    if (!source) throw new Error(`canonical source frame is not loaded: ${sourceFrame.node.id}`);
+    const dimensions = sourceDimensions(
+      source,
+      sourceFrame.node.source_width ?? scene.content_rect.w,
+      sourceFrame.node.source_height ?? scene.content_rect.h,
+    );
+    const rect = scene.background
+      ? containRect(dimensions.width, dimensions.height, scene.content_rect)
+      : coverRect(dimensions.width, dimensions.height, scene.content_rect);
+    return { source, rect };
+  }
+
+  private drawSourceShadow(
+    scene: EvaluatedScene,
+    sourceFrame: EvaluatedSource,
+    assets: CanonicalRenderAssets,
+  ): void {
+    if (!scene.background) return;
+    const { rect } = this.sourceLayout(scene, sourceFrame, assets);
+    const ctx = this.ctx;
+    ctx.save();
+    roundedRectPath(ctx, rect, scene.background.radius_px);
+    ctx.fillStyle = "#000";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.34)";
+    ctx.shadowBlur = Math.max(12, scene.output_width * 0.012);
+    ctx.shadowOffsetY = Math.max(4, scene.output_height * 0.008);
+    ctx.fill();
     ctx.restore();
   }
 
