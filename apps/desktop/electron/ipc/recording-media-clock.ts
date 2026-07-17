@@ -21,14 +21,6 @@ export interface RecordingMediaClockSnapshot extends RecordingFrameRate {
   state: RecordingMediaClockState;
 }
 
-export interface RecordingActiveDeadlineSnapshot {
-  budgetMs: number;
-  activeElapsedMs: number;
-  remainingMs: number;
-  paused: boolean;
-  expired: boolean;
-}
-
 const MICROSECONDS_PER_SECOND = 1_000_000n;
 
 function positiveInteger(value: number, name: string): number {
@@ -62,73 +54,6 @@ export function recordingFramePtsUs(frameIndex: number, frameRate: RecordingFram
     throw new Error("frame PTS exceeds the safe integer range");
   }
   return result;
-}
-
-/**
- * A monotonic deadline whose budget advances only while capture is active.
- * Readiness barriers use this clock so a user pause never consumes the
- * source/encoder acknowledgement budget.
- */
-export class RecordingActiveDeadline {
-  readonly #budgetMs: number;
-  readonly #now: () => number;
-  #activeStartedAt: number;
-  #accumulatedActiveMs = 0;
-  #paused = false;
-
-  constructor(budgetMs: number, now: () => number = Date.now) {
-    if (!Number.isFinite(budgetMs) || budgetMs < 0) {
-      throw new Error("budgetMs must be a finite non-negative number");
-    }
-    this.#budgetMs = budgetMs;
-    this.#now = now;
-    this.#activeStartedAt = now();
-  }
-
-  pause(): void {
-    if (this.#paused) return;
-    const current = this.#now();
-    this.#accumulatedActiveMs += Math.max(0, current - this.#activeStartedAt);
-    this.#paused = true;
-  }
-
-  resume(): void {
-    if (!this.#paused) return;
-    this.#activeStartedAt = this.#now();
-    this.#paused = false;
-  }
-
-  get paused(): boolean {
-    return this.#paused;
-  }
-
-  activeElapsedMs(): number {
-    return Math.max(
-      0,
-      this.#accumulatedActiveMs +
-        (this.#paused ? 0 : Math.max(0, this.#now() - this.#activeStartedAt)),
-    );
-  }
-
-  remainingMs(): number {
-    return Math.max(0, this.#budgetMs - this.activeElapsedMs());
-  }
-
-  expired(): boolean {
-    return this.remainingMs() <= 0;
-  }
-
-  snapshot(): RecordingActiveDeadlineSnapshot {
-    const activeElapsedMs = this.activeElapsedMs();
-    const remainingMs = Math.max(0, this.#budgetMs - activeElapsedMs);
-    return {
-      budgetMs: this.#budgetMs,
-      activeElapsedMs,
-      remainingMs,
-      paused: this.#paused,
-      expired: remainingMs <= 0,
-    };
-  }
 }
 
 export class RecordingMediaClock {

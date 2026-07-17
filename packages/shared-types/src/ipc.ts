@@ -2013,7 +2013,6 @@ export type EncodeResultDto = {
   bytes: bigint;
   frames_written: bigint;
   frames_dropped: bigint;
-  health?: RecordingHealthV1 | null;
 };
 export type EncoderOptionsDto = {
   container?: ContainerDto | null;
@@ -2375,102 +2374,6 @@ export type ProviderId = "anthropic" | "openai" | "elevenlabs" | "openai_tts";
 export type QualityPresetDto = "high" | "lossless";
 export type RateControlDto = "auto" | "cbr" | "vbr" | "crf" | "cq";
 export type RecordingDisplayPlacementDto = { x: number; y: number };
-export type RecordingVerdict = "passed" | "repairable" | "failed" | "cancelled";
-export type RecordingReasonCode =
-  | "passed"
-  | "automation_failed"
-  | "capture_degraded"
-  | "capture_health_failed"
-  | "capture_target_lost"
-  | "encode_failed"
-  | "artifact_missing"
-  | "bundle_commit_failed"
-  | "readiness_failed"
-  | "recovery_salvaged"
-  | "preflight_warning"
-  | "required_audio_failed"
-  | "terminal_evidence_missing"
-  | "terminal_evidence_version_unsupported"
-  | "cancelled_by_user"
-  | "cancelled_by_host";
-export type RecordingWarningCode = "optional_audio_failed" | "legacy_outcome_mismatch";
-export type RecordingOutcomeV1 = {
-  version: 1;
-  session_id: string;
-  verdict: RecordingVerdict;
-  reason_code: RecordingReasonCode;
-  warnings: RecordingWarningCode[];
-  automation: {
-    exit_reason: "completed" | "failed" | "cancelled" | "paused";
-    total_steps: number;
-    succeeded: number;
-    failed: number;
-    failed_ordinal: number | null;
-  };
-  capture: {
-    output_path: string | null;
-    frames_written: number;
-    frames_dropped: number;
-    cadence_warning: string | null;
-    finalized: boolean;
-  };
-};
-export type RecordingAudioRequirement = "required" | "optional" | "none";
-export type RecordingUiDispositionV1 = {
-  show_complete: boolean;
-  can_publish: boolean;
-  auto_open_take: boolean;
-  open_repair: boolean;
-  retain_bundle: boolean;
-};
-export type RecordingTerminalArtifactV1 = {
-  output_path: string;
-  duration_ms: number;
-  frame_count: number;
-  output_width: number;
-  output_height: number;
-};
-export type RecordingTerminalEventV1 = {
-  event: "terminal";
-  version: 1;
-  outcome: RecordingOutcomeV1;
-  disposition: RecordingUiDispositionV1;
-  artifact: RecordingTerminalArtifactV1 | null;
-};
-export type RecordingHealthVerdict = "pass" | "degraded" | "fail";
-export type RecordingHealthProfile = "1080p30" | "1440p30" | "unsupported";
-export type RecordingHealthV1 = {
-  version: 1;
-  session_id: string;
-  capture_path: "raw_bgra" | "png";
-  profile: RecordingHealthProfile;
-  verdict: RecordingHealthVerdict;
-  reasons: readonly string[];
-  requested_fps: number;
-  observed_fps: number | null;
-  expected_frames: number;
-  requested_frames: number;
-  source_frames: number;
-  submitted_frames: number;
-  encoded_frames: number;
-  dropped_frames: number;
-  skipped_frames: number;
-  loss_ratio: number;
-  first_encoded_frame_ms: number | null;
-  frame_gap_p95_ms: number | null;
-  frame_gap_max_ms: number | null;
-  backpressure_events: number;
-  backpressure_total_ms: number;
-  backpressure_high_water: number;
-  action_to_presentation_p95_ms: number | null;
-  output_readable: boolean | null;
-  finalized: boolean;
-};
-export type RecordingHealthUpdateV1 = {
-  event: "health-update";
-  phase: "snapshot" | "final";
-  health: RecordingHealthV1;
-};
 /**
  * Unified recording event from capture / encode progress and terminal results.
  */
@@ -2495,10 +2398,7 @@ export type RecordingEvent =
    * Periodic liveness signal from the host so the renderer can detect
    * state-sync drift (>5s missed => offer Force Stop).
    */
-  | { type: "heartbeat"; seq: bigint }
-  | { type: "recording_outcome_shadow"; outcome: RecordingOutcomeV1 }
-  | { type: "health-update"; update: RecordingHealthUpdateV1 }
-  | { type: "terminal"; terminal: RecordingTerminalEventV1 };
+  | { type: "heartbeat"; seq: bigint };
 /**
  * File-system metadata for a single `.mp4` under `<project>/exports/`.
  */

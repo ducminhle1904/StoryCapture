@@ -110,42 +110,6 @@ migrations, generated files, or release tooling.
   parity gates pass. Roll back by selecting `legacy`; compatibility readers
   remain available indefinitely.
 
-## Interrupted Recording Support
-
-- Durable record-engine journals live under Electron `userData` in
-  `recording-journal/`; canonical take staging remains under the project
-  `exports/takes` root.
-- Startup discovery is read-only. Never delete a staging tree or claim a take
-  was recovered merely because a journal is present.
-- Support tooling must use the typed list/recover/discard IPC operations.
-  Recover can publish only `repairable` or `failed`; it never resumes browser
-  input. Discard removes only journal-declared, containment-checked temporary
-  paths and never a committed bundle.
-- Terminal recovery/discard receipts are retained for 30 days so retries stay
-  idempotent across restarts. A journal left in a transitional
-  `recovering`/`discarding` state after a crash must remain listable and be
-  reconciled by the next explicit request.
-- Manual fault injection: start a recording, kill Electron after the first
-  media-durable checkpoint, relaunch, list without mutation, then invoke
-  Recover or Discard twice and confirm identical cached receipts and zero
-  automation input.
-
-## Native Capture Spike Artifacts
-
-- macOS REC-190/220 spike binaries, raw JSON, media probes, and generated
-  reports live only under the OS temporary directory
-  `storycapture-native-spikes/<batch-id>/`; they are diagnostics, not product
-  artifacts. Durable decision summaries belong under
-  `tasks/record-engine/evidence/`.
-- Before a promotion run, verify `security find-identity -v -p codesigning`
-  reports the intended identity and validate the signed/notarized diagnostic
-  package. Ad-hoc or unsigned success is not accepted for TCC evidence.
-- Screen Recording/audio permission belongs to the exact packaged identity.
-  Empty Electron thumbnails, no shareable ScreenCaptureKit display, or
-  idle/blank-only frames are failure evidence; never reinterpret them as a
-  successful capture. Permission reset changes local TCC state and must be an
-  explicit operator action.
-
 ### Cursor Synchronization Diagnostics
 
 - `scripts/ci/analyze-cursor-sync-roi.mjs` decodes a grayscale ROI against the

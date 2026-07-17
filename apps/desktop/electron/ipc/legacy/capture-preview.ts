@@ -15,50 +15,13 @@ import {
 import ffmpegPath from "ffmpeg-static";
 import { type FrameSyncOutcome, RecordingActionLandmarkRecorder } from "../action-landmarks";
 import {
-  authorPreviewTabGrants,
-  createRecordingAudioTrackRequest,
-  type RecordingAudioTrackRequest,
-  recordingAudioMode,
-  recordingAudioTracks,
-  validateRecordingAudioSelection,
-} from "../audio-tracks";
-import {
-  CaptureBackendContractError,
-  CaptureBackendDeliveryGuard,
-  type CaptureTargetLostReason,
-  resolveCaptureSource,
-} from "../capture-backend";
-import { resolveRecordingIncludeCursor } from "../cursor-policy";
-import {
   type CursorTimingSize,
   HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
   HOST_CURSOR_DEFAULT_MOTION_PRESET,
   HOST_CURSOR_TARGET_STABILITY_THRESHOLD_PX,
 } from "../cursor-timing";
-import { electronCaptureProvenance } from "../electron-capture-backends";
-import { engineHealth, engineHealthInputFromRecording, engineHealthMode } from "../engine-health";
-import { readJson, writeJsonAtomic } from "../json-store";
-import {
-  monotonicEpochMilliseconds,
-  recordingAvMode,
-  recordingAvSessions,
-  recordingUsesLiveVideoSink,
-} from "../recording-av-clock";
-import {
-  RecordingBundleWriter,
-  recordingBundleForSession,
-  recordingBundleMode,
-} from "../recording-bundle";
-import {
-  disposeRecordingCheckpoints,
-  RecordingCheckpointError,
-  recordingCheckpointMode,
-  recordingCheckpointsForSession,
-  registerRecordingCheckpoints,
-} from "../recording-checkpoints";
-import { recordingHealth, recordingHealthMode } from "../recording-health";
-import { recordingLifecycle } from "../recording-lifecycle";
-import { RecordingMediaClock, recordingFramePtsUs } from "../recording-media-clock";
+import { readJson } from "../json-store";
+import { RecordingMediaClock } from "../recording-media-clock";
 import { recordEngineLog } from "../recording-observability";
 import { RecordingPauseGate } from "../recording-pause-gate";
 import {
@@ -72,13 +35,6 @@ import {
   recordingVideoFilters,
   resolveRecordingOutput,
 } from "../recording-pipeline";
-import {
-  type RecordingReadinessReason,
-  recordingReadiness,
-  recordingReadinessMode,
-} from "../recording-readiness";
-import { recordingRepairControllerForSession } from "../recording-repair";
-import { recordingSessionJournal } from "../recording-session-journal";
 import {
   AUTOMATION_RECORDING_MAX_PADDING_MS,
   recordingFrameCountForElapsedMs,
@@ -113,211 +69,53 @@ import {
 } from "./shared";
 
 export let globalPreviewStreamSessionId: string | null = null;
-const recordingHealthSlots = new WeakMap<RecordingSession, number>();
-const recordingBackpressureState = new WeakMap<
-  RecordingSession,
-  { startedAtMs: number; highWater: number }
->();
-const tabAudioHandlerSessions = new WeakSet<object>();
 
-function installAuthorPreviewTabAudioHandler(sender: WebContents): void {
-  if (tabAudioHandlerSessions.has(sender.session)) return;
-  sender.session.setDisplayMediaRequestHandler(
-    (request, callback) => {
-      const grant = request.frame ? authorPreviewTabGrants.consume(request.frame) : null;
-      if (!grant) {
-        callback({});
-        return;
-      }
-      callback({
-        video: grant.source,
-        audio: grant.source,
-        enableLocalEcho: true,
-      });
+function recordingBackendId(target: CaptureTarget): string {
+  return target.kind === "author_preview" ? "electron_author_preview" : "electron_desktop_capturer";
+}
+
+function recordFirstRecordingFrame(session: RecordingSession): void {
+  if (session.frameSeq !== 1) return;
+  void recordEngineLog({
+    event: "recording.preview.first_frame",
+    context: {
+      session_id: session.id,
+      backend_id: recordingBackendId(session.target),
+      phase: "capture",
     },
-    { useSystemPicker: false },
-  );
-  tabAudioHandlerSessions.add(sender.session);
-}
-
-function recordingAudioRequests(
-  raw: unknown,
-  input: {
-    sessionId: string;
-    target: CaptureTarget;
-    audioDeviceId?: string | null;
-    audioCaptureId?: string | null;
-  },
-): RecordingAudioTrackRequest[] {
-  if (recordingAudioMode() === "legacy") return [];
-  const supplied = Array.isArray(raw) ? raw : [];
-  const requests = supplied.map((value) => {
-    if (!value || typeof value !== "object") throw new Error("audio track request invalid");
-    const candidate = value as Partial<RecordingAudioTrackRequest>;
-    if (
-      candidate.role !== "microphone" &&
-      candidate.role !== "tab" &&
-      candidate.role !== "system"
-    ) {
-      throw new Error("audio track role invalid");
-    }
-    if (candidate.requirement !== "required" && candidate.requirement !== "optional") {
-      throw new Error("audio track requirement invalid");
-    }
-    return createRecordingAudioTrackRequest({
-      track_id: candidate.track_id,
-      capture_token: candidate.capture_token,
-      role: candidate.role,
-      requirement: candidate.requirement,
-      source_id: candidate.source_id ?? null,
-    });
+    details: {
+      target_kind: session.target.kind,
+      frame_index: session.frameSeq,
+      width: session.width,
+      height: session.height,
+    },
   });
-  if (requests.length === 0 && input.audioDeviceId) {
-    requests.push(
-      createRecordingAudioTrackRequest({
-        track_id: `microphone-${input.sessionId}`,
-        capture_token: input.audioCaptureId || `unavailable-${input.sessionId}`,
-        role: "microphone",
-        requirement: "optional",
-        source_id: input.audioDeviceId,
-      }),
-    );
-  }
-  const tab = requests.find((request) => request.role === "tab");
-  if (tab && input.target.kind === "author_preview" && tab.source_id !== input.target.stream_id) {
-    throw new Error("tab audio source must match the active author preview");
-  }
-  validateRecordingAudioSelection(input.target.kind, requests);
-  return requests;
 }
 
-interface RecordingCaptureHealthFrame {
-  slot: number;
-  ptsUs: number;
-}
-
-async function recordCheckpointFrameBestEffort(
+function recordCaptureFailure(
   session: RecordingSession,
-  bitmap: Uint8Array,
-  landmark: { frameIndex: number; ptsUs: number },
-): Promise<void> {
-  try {
-    await recordingCheckpointsForSession(session.id)?.recordFrame(bitmap, landmark);
-  } catch (error) {
-    const reason = error instanceof RecordingCheckpointError ? error.reason : "checkpoint_failed";
-    void recordEngineLog({
-      level: "warn",
-      event: "recording.scene.segment_frame_failed",
-      context: {
-        session_id: session.id,
-        phase: "segment_frame",
-        reason_code: reason,
-      },
-      details: {
-        frame_index: landmark.frameIndex,
-        pts_us: landmark.ptsUs,
-      },
-      error,
-    });
-  }
-}
-
-function nextRecordingCaptureHealthFrame(
-  session: RecordingSession,
-): RecordingCaptureHealthFrame | null {
-  const health = recordingHealth.get(session.id);
-  if (!health) return null;
-  const slot = recordingHealthSlots.get(session) ?? 0;
-  recordingHealthSlots.set(session, slot + 1);
-  const ptsUs = recordingFramePtsUs(slot, {
-    fpsNum: session.effectiveFps,
-    fpsDen: 1,
+  error: unknown,
+  phase: "capture" | "encoder_submission",
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const targetLost =
+    message.includes("capture target unavailable") ||
+    (message.includes("author preview") && message.includes("not found"));
+  void recordEngineLog({
+    level: "warn",
+    event: targetLost ? "recording.backend.target_lost" : "recording.backend.delivery_failed",
+    context: {
+      session_id: session.id,
+      backend_id: recordingBackendId(session.target),
+      phase,
+      reason_code: targetLost ? "target_unavailable" : "frame_delivery_failed",
+    },
+    details: {
+      target_kind: session.target.kind,
+      frame_index: session.frameSeq + 1,
+    },
+    error,
   });
-  health.recordScheduledSlot({ slot, ptsUs });
-  return { slot, ptsUs };
-}
-
-function snapshotRecordingHealth(session: RecordingSession): void {
-  recordingHealth.get(session.id)?.snapshot();
-}
-
-async function publishEngineHealthBestEffort(
-  session: RecordingSession,
-  update: Parameters<typeof engineHealthInputFromRecording>[1],
-): Promise<void> {
-  const publisher = engineHealth.get(session.id);
-  if (!publisher) return;
-  try {
-    const previousState = publisher.evidence()?.latest.state ?? null;
-    const statfs = await fs.statfs(path.dirname(session.outputPath));
-    const freeBytes = Number(statfs.bavail) * Number(statfs.bsize);
-    const snapshot = publisher.update(
-      engineHealthInputFromRecording(session, update, {
-        observedAtMs: Date.now(),
-        diskFreeBytes: freeBytes,
-        targetLive:
-          !session.eventTarget.isDestroyed() && !session.captureBackend?.target_loss_reason,
-        repairAvailable: Boolean(recordingRepairControllerForSession(session.id)?.pendingEvent),
-      }),
-    );
-    if (!snapshot) return;
-    void recordEngineLog({
-      event:
-        previousState !== snapshot.state
-          ? "recording.health.state_changed"
-          : "recording.health.sampled",
-      level: snapshot.state === "healthy" || snapshot.state === "starting" ? "info" : "warn",
-      context: {
-        session_id: session.id,
-        phase: snapshot.state,
-        reason_code: snapshot.reason_codes[0],
-      },
-      details: {
-        previous_state: previousState,
-        sequence: snapshot.sequence,
-        effective_fps: snapshot.effective_fps,
-        frames_dropped: snapshot.frames_dropped,
-        skipped_ticks: snapshot.skipped_ticks,
-        encoder_backpressured: snapshot.encoder_backpressured,
-        target_liveness: snapshot.target_liveness,
-      },
-    });
-    const bundle = recordingBundleForSession(session.id);
-    const evidence = publisher.evidence();
-    if (bundle && evidence) {
-      const relativePath = "engine-health.json";
-      await writeJsonAtomic(path.join(bundle.allocation.stagingRoot, relativePath), evidence);
-      bundle.registerArtifact("health", relativePath, false);
-    }
-    const mode = engineHealthMode();
-    if (mode === "internal" || mode === "beta" || mode === "ga") {
-      sendChannel(session.eventTarget, session.eventChannelId, {
-        type: "health-update",
-        snapshot,
-      });
-    }
-  } catch (error) {
-    void recordEngineLog({
-      level: "warn",
-      event: "recording.health.publish_failed",
-      context: {
-        session_id: session.id,
-        phase: "health_update",
-        reason_code: "health_publish_failed",
-      },
-      error,
-    });
-  }
-}
-
-export function recordingCaptureActiveMediaMs(session: RecordingSession): number {
-  const scheduledSlots = recordingHealthSlots.get(session) ?? 0;
-  return (
-    recordingFramePtsUs(scheduledSlots, {
-      fpsNum: session.effectiveFps,
-      fpsDen: 1,
-    }) / 1_000
-  );
 }
 
 export function resizeToFit(image: NativeImage, maxWidth: number, maxHeight: number): NativeImage {
@@ -396,190 +194,23 @@ export async function captureTargetNativeImage(
     thumbnailSize,
     fetchWindowIcons: true,
   });
-  const resolved = resolveCaptureSource(
-    target,
-    sources.map((candidate) => ({
-      source_id: candidate.id,
-      native_window_id:
-        target.kind === "window" || target.kind === "window_by_pid"
-          ? parseSourceNumericId(candidate.id)
-          : null,
-      display_id: candidate.display_id || null,
-      owner_pid: null,
-      title: candidate.name || null,
-    })),
-  );
-  const source = sources.find((candidate) => candidate.id === resolved.source_id);
-  if (!source) {
-    throw new CaptureBackendContractError("target_not_found", "capture target unavailable");
-  }
-  if (source.thumbnail.isEmpty()) {
-    throw new CaptureBackendContractError("target_not_found", "capture target thumbnail is empty");
-  }
+  const source =
+    sources.find((candidate) => {
+      if (target.kind === "display" || target.kind === "display_region") {
+        return candidate.display_id === String(target.display_id);
+      }
+      if (target.kind === "window") {
+        return parseSourceNumericId(candidate.id) === Number(target.window_id);
+      }
+      return target.title_hint ? candidate.name.includes(target.title_hint) : false;
+    }) ?? sources[0];
+  if (!source) throw new Error("capture target unavailable");
+  if (source.thumbnail.isEmpty()) throw new Error("capture target thumbnail is empty");
   const image =
     target.kind === "display_region"
       ? resizeToFit(cropDisplayRegionThumbnail(source.thumbnail, target), maxWidth, maxHeight)
       : source.thumbnail;
   return image;
-}
-
-function captureBackendContractEnforced(session: RecordingSession): boolean {
-  return (
-    session.captureBackend?.mode === "contract_internal" ||
-    session.captureBackend?.mode === "contract_ga"
-  );
-}
-
-function captureTargetLostReason(
-  session: RecordingSession,
-  error: unknown,
-): CaptureTargetLostReason | null {
-  if (session.target.kind === "author_preview") return null;
-  if (error instanceof CaptureBackendContractError) {
-    if (
-      error.reason !== "target_not_found" &&
-      error.reason !== "target_ambiguous" &&
-      error.reason !== "target_invalid" &&
-      error.reason !== "pid_resolution_unsupported"
-    ) {
-      return null;
-    }
-    if (error.reason === "target_not_found") {
-      if (session.target.kind === "window") return "window_closed";
-      if (session.target.kind === "window_by_pid") return "process_exited";
-      return "display_removed";
-    }
-    return "source_unresolvable";
-  }
-  const message = error instanceof Error ? `${error.name} ${error.message}` : String(error);
-  return /permission|notallowed|not allowed/i.test(message) ? "permission_revoked" : null;
-}
-
-async function deliverCaptureBackendFrame(
-  session: RecordingSession,
-  payload: Uint8Array,
-  healthFrame: RecordingCaptureHealthFrame | null,
-): Promise<void> {
-  const delivery = session.captureBackendDelivery;
-  const backend = session.captureBackend;
-  if (!delivery || !backend || session.target.kind === "author_preview") return;
-  if (backend.target_loss_reason) return;
-  const durationUs = Math.max(1, Math.round(1_000_000 / session.effectiveFps));
-  const lastPtsUs = session.captureBackendLastPtsUs ?? null;
-  const requestedPtsUs = healthFrame?.ptsUs ?? (lastPtsUs == null ? 0 : lastPtsUs + durationUs);
-  const ptsUs =
-    lastPtsUs == null ? Math.max(0, requestedPtsUs) : Math.max(lastPtsUs + 1, requestedPtsUs);
-  try {
-    const disposition = await delivery.deliver({
-      type: "frame",
-      backend_id: backend.selected_backend_id,
-      session_id: session.id,
-      sequence: session.captureBackendDeliverySequence ?? 0,
-      frame_index: session.captureBackendFrameIndex ?? 0,
-      pts_us: ptsUs,
-      duration_us: durationUs,
-      width: session.width,
-      height: session.height,
-      pixel_format: "bgra",
-      payload,
-    });
-    if (disposition !== "accepted") {
-      throw new CaptureBackendContractError("delivery_invalid", "capture delivery backpressured");
-    }
-    session.captureBackendDeliverySequence = (session.captureBackendDeliverySequence ?? 0) + 1;
-    session.captureBackendFrameIndex = (session.captureBackendFrameIndex ?? 0) + 1;
-    session.captureBackendLastPtsUs = ptsUs;
-  } catch (error) {
-    if (backend.mode !== "contract_shadow") throw error;
-    void recordEngineLog({
-      level: "warn",
-      event: "recording.backend.delivery_failed",
-      context: {
-        session_id: session.id,
-        backend_id: backend.selected_backend_id,
-        phase: "shadow_frame_delivery",
-        reason_code: "backend_delivery_failed",
-      },
-      details: {
-        sequence: session.captureBackendDeliverySequence ?? 0,
-        frame_index: session.captureBackendFrameIndex ?? 0,
-        pts_us: ptsUs,
-      },
-      error,
-    });
-  }
-}
-
-async function markRecordingCaptureTargetLost(
-  session: RecordingSession,
-  error: unknown,
-): Promise<boolean> {
-  const backend = session.captureBackend;
-  if (!backend || backend.mode === "legacy") return false;
-  const reason = captureTargetLostReason(session, error);
-  if (!reason) return false;
-  if (backend.target_loss_reason) return true;
-
-  const sequence = session.captureBackendDeliverySequence ?? 0;
-  try {
-    await session.captureBackendDelivery?.deliver({
-      type: "targetLost",
-      backend_id: backend.selected_backend_id,
-      session_id: session.id,
-      sequence,
-      reason,
-      observed_at_us: Math.round(
-        monotonicEpochMilliseconds(performance.timeOrigin, performance.now()) * 1_000,
-      ),
-      last_pts_us: session.captureBackendLastPtsUs ?? null,
-    });
-    session.captureBackendDeliverySequence = sequence + 1;
-  } catch (deliveryError) {
-    void recordEngineLog({
-      level: "warn",
-      event: "recording.backend.delivery_failed",
-      context: {
-        session_id: session.id,
-        backend_id: backend.selected_backend_id,
-        phase: "target_loss_delivery",
-        reason_code: "backend_delivery_failed",
-      },
-      details: { sequence },
-      error: deliveryError,
-    });
-  }
-
-  const enforced = captureBackendContractEnforced(session);
-  session.captureBackend = {
-    ...backend,
-    target_loss_reason: reason,
-    terminal_status: enforced ? "target_lost" : backend.terminal_status,
-  };
-  if (enforced) {
-    const terminalError = new Error(`capture target lost: ${reason}`);
-    terminalError.name = "CaptureTargetLostError";
-    session.encoderError ??= terminalError;
-    if (session.captureTimer) clearInterval(session.captureTimer);
-    session.captureTimer = null;
-    const update = recordingHealth.get(session.id)?.latestUpdate();
-    if (update) void publishEngineHealthBestEffort(session, update);
-  }
-  void recordEngineLog({
-    level: "warn",
-    event: "recording.backend.target_lost",
-    context: {
-      session_id: session.id,
-      backend_id: backend.selected_backend_id,
-      reason_code: reason,
-      phase: "capture",
-    },
-    details: {
-      enforced,
-      target_kind: session.target.kind,
-      last_pts_us: session.captureBackendLastPtsUs ?? null,
-    },
-  });
-  return true;
 }
 
 export async function captureTargetThumbnail(
@@ -954,23 +585,16 @@ export function resolveActiveAuthorPreviewTarget(streamId?: string | null, ensur
     const mediaSourceId = session.window.getMediaSourceId();
     const windowId = parseSourceNumericId(mediaSourceId);
     const bounds = session.window.getContentBounds();
-    void recordEngineLog({
-      level: "info",
-      event: "recording.target.resolved",
-      context: {
-        request_id: streamId || undefined,
-        phase: "author_preview_resolution",
-      },
-      details: {
-        candidate_count: candidates.length,
-        resolved_stream_id: session.id,
-        browser_window_id: session.window.id,
-        window_id: windowId,
-        visible: session.window.isVisible(),
-        width_px: bounds.width,
-        height_px: bounds.height,
-        pid: process.pid,
-      },
+    void hostLog("info", "resolve_playwright_target", {
+      requested_stream_id: streamId ?? "",
+      author_session_count: authorPreviewSessions.size,
+      resolved_stream_id: session.id,
+      browser_window_id: session.window.id,
+      media_source_id: mediaSourceId,
+      window_id: windowId,
+      visible: session.window.isVisible(),
+      width_px: bounds.width,
+      height_px: bounds.height,
     });
     return {
       window_id: windowId,
@@ -988,18 +612,10 @@ export function resolveActiveAuthorPreviewTarget(streamId?: string | null, ensur
       },
     };
   }
-  void recordEngineLog({
-    level: "warn",
-    event: "recording.target.failed",
-    context: {
-      request_id: streamId || undefined,
-      phase: "author_preview_resolution",
-      reason_code: "author_preview_target_unavailable",
-    },
-    details: {
-      candidate_count: candidates.length,
-      author_session_count: authorPreviewSessions.size,
-    },
+  void hostLog("warn", "resolve_playwright_target unavailable", {
+    requested_stream_id: streamId ?? "",
+    author_session_count: authorPreviewSessions.size,
+    candidate_ids: [...authorPreviewSessions.keys()].join(","),
   });
   return null;
 }
@@ -1103,14 +719,8 @@ export function electronDialogFilters(filters: DialogFilterSpec[] | undefined) {
     .filter((filter) => filter.extensions.length > 0);
 }
 
-export async function captureRecordingFrame(
-  session: RecordingSession,
-  healthFrame: RecordingCaptureHealthFrame | null = null,
-): Promise<void> {
-  if (session.paused) {
-    if (healthFrame) recordingHealth.get(session.id)?.recordSkipped(healthFrame.slot, "paused");
-    return;
-  }
+export async function captureRecordingFrame(session: RecordingSession): Promise<void> {
+  if (session.paused) return;
   const startedAt = Date.now();
   const frameIndex = session.frameSeq + 1;
   const framePath = path.join(
@@ -1119,31 +729,14 @@ export async function captureRecordingFrame(
   );
   try {
     const image = await captureRecordingNativeImage(session);
-    recordingReadiness.get(session.id)?.markSourceReady();
     await fs.writeFile(framePath, image.toPNG());
-    const imageSize = image.getSize();
-    const checkpointImage =
-      imageSize.width === session.width && imageSize.height === session.height
-        ? image
-        : image.resize({ width: session.width, height: session.height, quality: "best" });
-    const bitmap = checkpointImage.toBitmap({ scaleFactor: 1 });
-    await deliverCaptureBackendFrame(session, bitmap, healthFrame);
-    if (healthFrame) {
-      const health = recordingHealth.get(session.id);
-      health?.recordSourceFrame(healthFrame.slot);
-      health?.recordSubmission(healthFrame);
-    }
     const landmark = session.mediaClock.commitFrame(true);
-    if (landmark) {
-      session.actionLandmarks.commitFrame(landmark);
-      await recordCheckpointFrameBestEffort(session, bitmap, landmark);
-    }
+    if (landmark) session.actionLandmarks.commitFrame(landmark);
     session.frameSeq = session.mediaClock.snapshot().frameCount;
-  } catch {
-    if (healthFrame) {
-      recordingHealth.get(session.id)?.recordSkipped(healthFrame.slot, "source_unavailable");
-    }
+    recordFirstRecordingFrame(session);
+  } catch (error) {
     session.framesDropped += 1;
+    recordCaptureFailure(session, error, "capture");
     sendChannel(session.eventTarget, session.eventChannelId, {
       type: "frames-dropped",
       total: session.framesDropped,
@@ -1154,14 +747,10 @@ export async function captureRecordingFrame(
     session.captureDurationMs.push(durationMs);
     if (session.captureDurationMs.length > 300) session.captureDurationMs.shift();
     if (durationMs > 1000 / session.effectiveFps) session.lateFrames += 1;
-    snapshotRecordingHealth(session);
   }
 }
 
-export function startRecordingFfmpegPipe(
-  ffmpegArgs: string[],
-  onEncodedFrame?: (encodedFrameCount: number) => void,
-): {
+export function startRecordingFfmpegPipe(ffmpegArgs: string[]): {
   child: ChildProcess;
   done: Promise<void>;
 } {
@@ -1171,22 +760,8 @@ export function startRecordingFfmpegPipe(
     stdio: ["pipe", "ignore", "pipe"],
   });
   let stderr = "";
-  let progressBuffer = "";
-  let lastEncodedFrameCount = 0;
   const appendStderr = (chunk: Buffer) => {
-    const text = String(chunk);
-    stderr = `${stderr}${text}`.slice(-2000);
-    progressBuffer += text;
-    const lines = progressBuffer.split(/\r?\n/);
-    progressBuffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const match = /^frame=(\d+)$/.exec(line.trim());
-      if (!match) continue;
-      const frameCount = Number(match[1]);
-      if (!Number.isSafeInteger(frameCount) || frameCount <= lastEncodedFrameCount) continue;
-      lastEncodedFrameCount = frameCount;
-      onEncodedFrame?.(frameCount);
-    }
+    stderr = `${stderr}${String(chunk)}`.slice(-2000);
   };
   const done = new Promise<void>((resolve, reject) => {
     child.stderr.on("data", appendStderr);
@@ -1214,11 +789,6 @@ export function authorPreviewStreamFfmpegArgs(session: RecordingSession): string
   });
   const args = [
     "-y",
-    "-nostats",
-    "-stats_period",
-    "0.1",
-    "-progress",
-    "pipe:2",
     ...recordingRawVideoInputArgs({
       width: session.width,
       height: session.height,
@@ -1226,82 +796,34 @@ export function authorPreviewStreamFfmpegArgs(session: RecordingSession): string
       pixelFormat: "bgra",
     }),
   ];
+  if (session.audioPath) {
+    args.push("-i", session.audioPath);
+  }
   args.push("-vf", filters.join(","));
-  args.push("-an");
+  if (session.audioPath) {
+    args.push("-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "160k", "-shortest");
+  } else {
+    args.push("-an");
+  }
   args.push(
     "-c:v",
     "libx264",
     ...recordingQualityArgs(session.qualityPreset),
-    // REC-050 readiness treats FFmpeg progress as the encoded-frame ACK.
-    // Disable x264 reordering/lookahead so a bounded tail barrier can observe
-    // the final submitted frames before stdin closes.
-    "-tune",
-    "zerolatency",
     "-movflags",
     "+faststart",
-    recordingAvSessions.get(session.id)?.videoOnlyPath ?? session.outputPath,
+    session.outputPath,
   );
   return args;
 }
 
-export function acknowledgeEncodedRecordingFrames(
-  session: RecordingSession,
-  encodedFrameCount: number,
-): void {
-  const readiness = recordingReadiness.get(session.id);
-  try {
-    while (session.mediaClock.snapshot().frameCount < encodedFrameCount) {
-      const wasPaused = session.mediaClock.snapshot().state === "paused";
-      if (wasPaused) session.mediaClock.resume();
-      const landmark = session.mediaClock.commitFrame(true);
-      if (wasPaused) session.mediaClock.pause();
-      if (!landmark) break;
-      session.actionLandmarks.commitFrame(landmark);
-      session.frameSeq = session.mediaClock.snapshot().frameCount;
-      recordingAvSessions.get(session.id)?.observeEncodedVideoFrame({
-        ptsUs: landmark.ptsUs,
-        monotonicEpochMs: monotonicEpochMilliseconds(performance.timeOrigin, performance.now()),
-      });
-      recordingHealth.get(session.id)?.recordSinkAck({
-        ...landmark,
-        committedAtMs: Date.now(),
-      });
-      snapshotRecordingHealth(session);
-      readiness?.acknowledgeEncodedFrame({
-        sessionId: session.id,
-        encodedFrameCount: session.frameSeq,
-        landmark,
-      });
-    }
-  } catch (error) {
-    session.encoderError = error instanceof Error ? error : new Error(String(error));
-    readiness?.markEncoderFailed();
-  }
-}
-
 export async function startAuthorPreviewRecordingStream(session: RecordingSession): Promise<void> {
-  const preview =
-    session.target.kind === "author_preview" ? authorSession(session.target.stream_id) : null;
-  const { child, done } = startRecordingFfmpegPipe(
-    authorPreviewStreamFfmpegArgs(session),
-    (encodedFrameCount) => acknowledgeEncodedRecordingFrames(session, encodedFrameCount),
-  );
+  if (session.target.kind !== "author_preview") {
+    throw new Error("author preview recording stream requires author_preview target");
+  }
+  const preview = authorSession(session.target.stream_id);
+  const { child, done } = startRecordingFfmpegPipe(authorPreviewStreamFfmpegArgs(session));
   session.ffmpegProcess = child;
   session.ffmpegDone = done;
-  void recordEngineLog({
-    event: "recording.encoder.started",
-    context: {
-      session_id: session.id,
-      phase: "capture",
-      backend_id: session.captureBackend?.selected_backend_id,
-    },
-    details: {
-      capture_path: "raw_bgra",
-      output_width: session.outputWidth,
-      output_height: session.outputHeight,
-      effective_fps: session.effectiveFps,
-    },
-  });
   if (!child.stdin) {
     throw new Error("ffmpeg stdin pipe was not created");
   }
@@ -1309,26 +831,24 @@ export async function startAuthorPreviewRecordingStream(session: RecordingSessio
     session.encoderError = error;
   });
 
-  if (preview && session.target.kind === "author_preview") {
-    session.authorPaintHandler = (_event, _dirty, image) => {
-      recordAuthorPreviewPaint(session, image);
-    };
-    preview.window.webContents.on("paint", session.authorPaintHandler);
-    if (preview.latestPaintImage) {
-      recordAuthorPreviewPaint(session, preview.latestPaintImage);
-    } else {
-      try {
-        recordAuthorPreviewPaint(
-          session,
-          await captureAuthorPreviewNativeImage(
-            session.target.stream_id,
-            session.width,
-            session.height,
-          ),
-        );
-      } catch {
-        // A first paint event may still arrive after start. Stop will fail if none do.
-      }
+  session.authorPaintHandler = (_event, _dirty, image) => {
+    recordAuthorPreviewPaint(session, image);
+  };
+  preview.window.webContents.on("paint", session.authorPaintHandler);
+  if (preview.latestPaintImage) {
+    recordAuthorPreviewPaint(session, preview.latestPaintImage);
+  } else {
+    try {
+      recordAuthorPreviewPaint(
+        session,
+        await captureAuthorPreviewNativeImage(
+          session.target.stream_id,
+          session.width,
+          session.height,
+        ),
+      );
+    } catch {
+      // A first paint event may still arrive after start. Stop will fail if none do.
     }
   }
   await queueRecordingFrame(session);
@@ -1340,38 +860,24 @@ export function recordAuthorPreviewPaint(session: RecordingSession, image: Nativ
   session.paintSequence += 1;
   session.actionLandmarks.notePaint();
   session.latestAuthorPreviewImage = image;
-  recordingReadiness.get(session.id)?.markSourceReady();
 }
 
 export async function submitAuthorPreviewFrame(
   session: RecordingSession,
   image: NativeImage,
-  healthFrame: RecordingCaptureHealthFrame | null = null,
 ): Promise<void> {
-  if (session.paused) {
-    if (healthFrame) recordingHealth.get(session.id)?.recordSkipped(healthFrame.slot, "paused");
-    return;
-  }
+  if (session.paused) return;
   if (session.encoderError) {
     session.framesDropped += 1;
-    if (healthFrame) {
-      recordingHealth.get(session.id)?.recordSkipped(healthFrame.slot, "source_unavailable");
-    }
     return;
   }
   const child = session.ffmpegProcess;
   if (!child || child.killed || !child.stdin || child.stdin.destroyed) {
     session.framesDropped += 1;
-    if (healthFrame) {
-      recordingHealth.get(session.id)?.recordSkipped(healthFrame.slot, "source_unavailable");
-    }
     return;
   }
-  const stdin = child.stdin;
   if (session.encoderBackpressured) {
     session.skippedTicks += 1;
-    if (healthFrame)
-      recordingHealth.get(session.id)?.recordSkipped(healthFrame.slot, "backpressure");
     return;
   }
   const startedAt = Date.now();
@@ -1388,74 +894,26 @@ export async function submitAuthorPreviewFrame(
     const bitmap = frame.toBitmap({ scaleFactor: 1 });
     const expectedBytes = session.width * session.height * 4;
     if (bitmap.byteLength !== expectedBytes) {
-      throw new Error(`recording bitmap size ${bitmap.byteLength} did not match ${expectedBytes}`);
+      throw new Error(
+        `author preview bitmap size ${bitmap.byteLength} did not match ${expectedBytes}`,
+      );
     }
-    await deliverCaptureBackendFrame(session, bitmap, healthFrame);
-    const accepted = stdin.write(bitmap);
-    const drainPromise = accepted
-      ? null
-      : new Promise<void>((resolve, reject) => {
-          const cleanup = () => {
-            stdin.off("drain", onDrain);
-            stdin.off("error", onError);
-            child.off("exit", onExit);
-          };
-          const onDrain = () => {
-            cleanup();
-            resolve();
-          };
-          const onError = (error: Error) => {
-            cleanup();
-            reject(error);
-          };
-          const onExit = () => {
-            cleanup();
-            reject(new Error("recording encoder exited while draining input"));
-          };
-          stdin.once("drain", onDrain);
-          stdin.once("error", onError);
-          child.once("exit", onExit);
-        });
-    if (drainPromise) {
+    const accepted = child.stdin.write(bitmap);
+    const landmark = session.mediaClock.commitFrame(true);
+    if (landmark) session.actionLandmarks.commitFrame(landmark);
+    session.frameSeq = session.mediaClock.snapshot().frameCount;
+    recordFirstRecordingFrame(session);
+    if (!accepted) {
       session.encoderBackpressureEvents += 1;
       session.encoderBackpressured = true;
-      recordingBackpressureState.set(session, {
-        startedAtMs: Date.now(),
-        highWater: Math.max(0, stdin.writableLength),
-      });
-    }
-    // The primary encoder may acknowledge this write while the shadow scene
-    // encoder is still consuming its copy. Publish submission ownership before
-    // awaiting that mirror so a valid primary ACK cannot be rejected as early.
-    recordingReadiness.get(session.id)?.markFrameSubmitted();
-    const checkpointClock = session.mediaClock.snapshot();
-    await recordCheckpointFrameBestEffort(session, bitmap, {
-      frameIndex: checkpointClock.frameCount,
-      ptsUs: checkpointClock.nextPtsUs,
-    });
-    if (healthFrame) {
-      const health = recordingHealth.get(session.id);
-      health?.recordSourceFrame(healthFrame.slot);
-      health?.recordSubmission(healthFrame);
-    }
-    if (drainPromise) {
-      await drainPromise.finally(() => {
+      child.stdin.once("drain", () => {
         session.encoderBackpressured = false;
-        const backpressure = recordingBackpressureState.get(session);
-        if (backpressure) {
-          recordingHealth.get(session.id)?.recordBackpressureSpan({
-            startedAtMs: backpressure.startedAtMs,
-            endedAtMs: Date.now(),
-            highWater: backpressure.highWater,
-          });
-          recordingBackpressureState.delete(session);
-        }
       });
     }
   } catch (error) {
     session.framesDropped += 1;
     if (error instanceof Error) session.encoderError = error;
-    recordingReadiness.get(session.id)?.markEncoderFailed();
+    recordCaptureFailure(session, error, "encoder_submission");
     sendChannel(session.eventTarget, session.eventChannelId, {
       type: "frames-dropped",
       total: session.framesDropped,
@@ -1466,20 +924,12 @@ export async function submitAuthorPreviewFrame(
     session.captureDurationMs.push(durationMs);
     if (session.captureDurationMs.length > 300) session.captureDurationMs.shift();
     if (durationMs > 1000 / session.effectiveFps) session.lateFrames += 1;
-    snapshotRecordingHealth(session);
   }
 }
 
-export async function submitLatestAuthorPreviewFrame(
-  session: RecordingSession,
-  healthFrame: RecordingCaptureHealthFrame | null = null,
-): Promise<void> {
+export async function submitLatestAuthorPreviewFrame(session: RecordingSession): Promise<void> {
   if (session.target.kind !== "author_preview") {
-    const image = await captureRecordingNativeImage(session);
-    session.sourceFramesReceived += 1;
-    recordingReadiness.get(session.id)?.markSourceReady();
-    await submitAuthorPreviewFrame(session, image, healthFrame);
-    return;
+    throw new Error("author preview frame submission requires author_preview target");
   }
   const preview = authorSession(session.target.stream_id);
   const latestImage = session.latestAuthorPreviewImage;
@@ -1491,28 +941,19 @@ export async function submitLatestAuthorPreviewFrame(
       session.height,
     );
     recordAuthorPreviewPaint(session, image);
-    await submitAuthorPreviewFrame(session, image, healthFrame);
+    await submitAuthorPreviewFrame(session, image);
     return;
   }
-  await submitAuthorPreviewFrame(session, latestImage, healthFrame);
+  await submitAuthorPreviewFrame(session, latestImage);
 }
 
 export function queueRecordingFrame(session: RecordingSession): Promise<void> {
-  if (session.paused) {
-    return Promise.resolve();
-  }
-  const healthFrame = nextRecordingCaptureHealthFrame(session);
   if (session.captureInFlight) {
     session.skippedTicks += 1;
-    if (healthFrame)
-      recordingHealth.get(session.id)?.recordSkipped(healthFrame.slot, "capture_busy");
-    snapshotRecordingHealth(session);
     return session.captureInFlight;
   }
   const capture = (
-    session.streaming
-      ? submitLatestAuthorPreviewFrame(session, healthFrame)
-      : captureRecordingFrame(session, healthFrame)
+    session.streaming ? submitLatestAuthorPreviewFrame(session) : captureRecordingFrame(session)
   ).finally(() => {
     if (session.captureInFlight === capture) session.captureInFlight = null;
   });
@@ -1526,27 +967,20 @@ export function scheduleRecordingFrame(
 ): void {
   if (session.captureInFlight) {
     session.skippedTicks += 1;
-    const healthFrame = nextRecordingCaptureHealthFrame(session);
-    if (healthFrame)
-      recordingHealth.get(session.id)?.recordSkipped(healthFrame.slot, "capture_busy");
-    snapshotRecordingHealth(session);
     return;
   }
-  void queueFrame(session).catch(() => {
+  void queueFrame(session).catch((error) => {
     session.framesDropped += 1;
     sendChannel(session.eventTarget, session.eventChannelId, {
       type: "frames-dropped",
       total: session.framesDropped,
       delta: 1,
     });
+    recordCaptureFailure(session, error, "capture");
   });
 }
 
-// The software encoder and scene-segment mirror can legitimately need more
-// than 500ms to drain on constrained machines. Presentation latency is still
-// measured by REC-060; this budget only bounds how long correctness waits for
-// a real encoded landmark before failing closed.
-const FRAME_COMMIT_MIN_BUDGET_MS = 2_000;
+const FRAME_COMMIT_MIN_BUDGET_MS = 500;
 const FRAME_COMMIT_MAX_BUDGET_MS = 2_000;
 const FRAME_COMMIT_BUDGET_INTERVALS = 4;
 
@@ -1600,31 +1034,6 @@ export async function requestRecordingFrameCommit(
   session: RecordingSession,
   queueFrame: (session: RecordingSession) => Promise<void> = queueRecordingFrame,
 ): Promise<FrameSyncOutcome> {
-  const readiness = recordingReadiness.get(session.id);
-  if (readiness?.mode === "observe") {
-    void readiness.request({
-      barrier: "pre_input_frame_committed",
-      budgetMs: recordingFrameCommitBudgetMs(session),
-      requestedMediaUs: session.mediaClock.snapshot().nextPtsUs,
-      queueFrame: () => queueFrame(session),
-    });
-  } else if (readiness?.mode === "enforce") {
-    const result = await readiness.require({
-      barrier: "pre_input_frame_committed",
-      budgetMs: recordingFrameCommitBudgetMs(session),
-      requestedMediaUs: session.mediaClock.snapshot().nextPtsUs,
-      queueFrame: () => queueFrame(session),
-    });
-    if (result.status === "committed" && result.committed_landmark) {
-      return { status: "committed", landmark: result.committed_landmark };
-    }
-    if (result.status === "cancelled") return { status: "cancelled" };
-    return {
-      status: "degraded",
-      reason: readinessFrameSyncReason(result.reason),
-    };
-  }
-
   const initialState = recordingFrameSyncAvailability(session);
   if (initialState) return initialState;
 
@@ -1657,15 +1066,6 @@ export async function requestRecordingFrameCommit(
     };
   }
   return { status: "committed", landmark: committed };
-}
-
-function readinessFrameSyncReason(
-  reason: RecordingReadinessReason | null,
-): Extract<FrameSyncOutcome, { status: "degraded" }>["reason"] {
-  if (reason === "encoder_error") return "encoder_error";
-  if (reason === "frame_commit_timeout") return "frame_commit_timeout";
-  if (reason === "recording_cancelled") return "capture_inactive";
-  return "frame_capture_failed";
 }
 
 function recordingFrameSyncAvailability(session: RecordingSession): FrameSyncOutcome | null {
@@ -1749,49 +1149,13 @@ export async function captureAuthorPreviewNativeImage(
 
 export async function captureRecordingNativeImage(session: RecordingSession): Promise<NativeImage> {
   if (session.target.kind === "author_preview") {
-    const preview = authorSession(session.target.stream_id);
-    const image = await captureAuthorPreviewNativeImage(
+    return captureAuthorPreviewNativeImage(
       session.target.stream_id,
       session.width,
       session.height,
     );
-    if (!session.loggedAuthorPreviewFrame) {
-      const size = image.getSize();
-      session.loggedAuthorPreviewFrame = true;
-      void recordEngineLog({
-        level: "info",
-        event: "recording.preview.first_frame",
-        context: {
-          session_id: session.id,
-          request_id: session.target.stream_id,
-          phase: "first_frame",
-        },
-        details: {
-          frame_width: size.width,
-          frame_height: size.height,
-          session_width: session.width,
-          session_height: session.height,
-          latest_paint_age_ms:
-          preview.latestPaintAt == null
-              ? null
-              : Math.max(0, Date.now() - preview.latestPaintAt),
-        },
-      });
-    }
-    return image;
   }
-  if (session.captureBackend?.target_loss_reason && captureBackendContractEnforced(session)) {
-    throw new CaptureBackendContractError(
-      "delivery_after_terminal",
-      "capture target already terminated",
-    );
-  }
-  try {
-    return await captureTargetNativeImage(session.target, session.width, session.height);
-  } catch (error) {
-    await markRecordingCaptureTargetLost(session, error);
-    throw error;
-  }
+  return captureTargetNativeImage(session.target, session.width, session.height);
 }
 
 export function clampDimension(value: unknown, fallback: number): number {
@@ -1845,7 +1209,6 @@ export function recordingSettleDelayMs(command: ParsedCommand): number {
 export function storyBrowserExecutionProfile(options?: {
   captureRecordingFrames?: boolean;
   captureSize?: CursorTimingSize;
-  includeCursor?: boolean;
 }): StoryBrowserExecutionProfile {
   return {
     typingMode: "incremental",
@@ -1853,7 +1216,7 @@ export function storyBrowserExecutionProfile(options?: {
     captureSize: options?.captureSize,
     cursorMotionPreset: HOST_CURSOR_DEFAULT_MOTION_PRESET,
     minCursorLeadMs: HOST_CURSOR_DEFAULT_MIN_LEAD_MS,
-    injectCursorPath: options?.includeCursor ?? true,
+    injectCursorPath: true,
     targetStabilityThresholdPx: HOST_CURSOR_TARGET_STABILITY_THRESHOLD_PX,
     settleDelayForCommand: recordingSettleDelayMs,
   };
@@ -1963,21 +1326,11 @@ export async function stopAuthorPreviewSession(streamId: string): Promise<void> 
   if (!session) return;
   authorPreviewSessions.delete(streamId);
   if (globalPreviewStreamSessionId === streamId) globalPreviewStreamSessionId = null;
-  const wasDestroyed = session.window.isDestroyed();
-  if (session.purpose === "recording") {
-    void recordEngineLog({
-      level: "info",
-      event: "recording.preview.stopped",
-      context: { request_id: streamId, phase: "stopped" },
-      details: { browser_window_id: session.window.id, was_destroyed: wasDestroyed },
-    });
-  } else {
-    void hostLog("info", "stop_author_preview", {
-      stream_id: streamId,
-      browser_window_id: session.window.id,
-      was_destroyed: wasDestroyed,
-    });
-  }
+  void hostLog("info", "stop_author_preview", {
+    stream_id: streamId,
+    browser_window_id: session.window.id,
+    was_destroyed: session.window.isDestroyed(),
+  });
   if (!session.window.isDestroyed()) session.window.destroy();
 }
 
@@ -2084,7 +1437,9 @@ export async function startAuthorPreviewSession(
     throw error;
   }
   emitAuthorNav(session);
-  const previewDetails = {
+  void hostLog("info", "start_author_preview", {
+    stream_id: id,
+    initial_url: initialUrl,
     viewport_width: width,
     viewport_height: height,
     show: preview.isVisible(),
@@ -2092,27 +1447,13 @@ export async function startAuthorPreviewSession(
     requested_fps: purpose === "recording" ? positiveNumber(args.fps, frameRate) : null,
     effective_fps: frameRate,
     replace_existing: replaceExisting,
+    purpose,
+    partition: partition ?? null,
     preview_x: "x" in previewBounds ? previewBounds.x : null,
     preview_y: "y" in previewBounds ? previewBounds.y : null,
     browser_window_id: preview.id,
-  };
-  if (purpose === "recording") {
-    void recordEngineLog({
-      level: "info",
-      event: "recording.preview.started",
-      context: { request_id: id, phase: "started" },
-      details: { url: initialUrl, ...previewDetails },
-    });
-  } else {
-    void hostLog("info", "start_author_preview", {
-      stream_id: id,
-      initial_url: initialUrl,
-      ...previewDetails,
-      purpose,
-      partition: partition ?? null,
-      media_source_id: preview.getMediaSourceId(),
-    });
-  }
+    media_source_id: preview.getMediaSourceId(),
+  });
   return id;
 }
 
@@ -2501,10 +1842,6 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     height?: number;
     fps?: number;
     audio_device_id?: string | null;
-    audio_capture_id?: string | null;
-    audio_unavailable_reason?: string | null;
-    audio_tracks?: RecordingAudioTrackRequest[] | null;
-    include_cursor?: boolean | null;
     frame_crop?: FrameCropRect | null;
     output_resolution?: RecordingOutputResolution | null;
     fit_mode?: RecordingFitMode | null;
@@ -2517,23 +1854,7 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
   const eventChannelId = channelIdFrom(onEvent);
   const fps = clampFps(args.fps);
   const requestedFps = positiveNumber(args.fps, fps);
-  const includeCursor = resolveRecordingIncludeCursor(args.include_cursor);
-  const readinessMode = recordingReadinessMode();
   const target = args.target ?? defaultCaptureTarget();
-  const audioRequests = recordingAudioRequests(args.audio_tracks, {
-    sessionId: id,
-    target,
-    audioDeviceId: args.audio_device_id,
-    audioCaptureId: args.audio_capture_id,
-  });
-  const microphoneRequest = audioRequests.find((request) => request.role === "microphone");
-  const tabRequest = audioRequests.find((request) => request.role === "tab");
-  const audioMode = recordingAudioMode();
-  const compatibilityRequest =
-    microphoneRequest ?? (audioMode === "multitrack_shadow" ? undefined : tabRequest);
-  const compatibilityAudioRequested =
-    Boolean(args.audio_device_id) ||
-    Boolean(compatibilityRequest && audioMode !== "multitrack_shadow");
   const width = clampDimension(args.width, 1280);
   const height = clampDimension(args.height, 720);
   const output = resolveRecordingOutput(width, height, {
@@ -2543,24 +1864,6 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     qualityPreset: args.quality_preset,
     scaleAlgo: args.scale_algo,
   });
-  const captureBackend = await electronCaptureProvenance({
-    target,
-    width,
-    height,
-    fps,
-    includeCursor,
-  });
-  const captureBackendDelivery =
-    target.kind !== "author_preview" && captureBackend.mode !== "legacy"
-      ? new CaptureBackendDeliveryGuard(
-          {
-            backend_id: captureBackend.selected_backend_id,
-            session_id: id,
-            ownership_token: id,
-          },
-          { deliver: async () => "accepted" },
-        )
-      : null;
   const framesDir = path.join(os.tmpdir(), "storycapture-electron-recordings", id);
   await fs.mkdir(framesDir, { recursive: true });
   const exportsDir = path.join(args.project_folder, EXPORTS_DIRNAME);
@@ -2568,22 +1871,7 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     recursive: true,
   });
   const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
-  const bundleWriter =
-    recordingBundleMode() === "off"
-      ? null
-      : await RecordingBundleWriter.allocate(id, args.project_folder);
-  const outputPath =
-    bundleWriter?.allocation.stagingVideoPath ?? path.join(exportsDir, `recording-${stamp}.mp4`);
-  if (bundleWriter) {
-    await recordingSessionJournal.createForBundle(bundleWriter.allocation, {
-      target_kind: target.kind,
-      width,
-      height,
-      output_width: output.outputWidth,
-      output_height: output.outputHeight,
-      requested_fps: requestedFps,
-    });
-  }
+  const outputPath = path.join(exportsDir, `recording-${stamp}.mp4`);
   let heartbeatSeq = 0;
   const heartbeat = setInterval(() => {
     heartbeatSeq += 1;
@@ -2593,7 +1881,7 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     });
   }, 2000);
   heartbeat.unref?.();
-  const session: RecordingSession & { includeCursor: boolean } = {
+  const session: RecordingSession = {
     id,
     projectFolder: args.project_folder,
     outputPath,
@@ -2622,23 +1910,12 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     sourceFramesReceived: 0,
     captureInFlight: null,
     audioPath: null,
-    captureBackend,
-    captureBackendDelivery,
-    captureBackendDeliverySequence: 0,
-    captureBackendFrameIndex: 0,
-    captureBackendLastPtsUs: null,
     frameCrop: args.frame_crop ?? null,
-    loggedAuthorPreviewFrame: false,
     requestedFps,
     effectiveFps: fps,
     lateFrames: 0,
     captureDurationMs: [],
-    streaming: recordingUsesLiveVideoSink({
-      mode: recordingAvMode(),
-      targetKind: target.kind,
-      audioRequested: compatibilityAudioRequested,
-      readinessEnforced: readinessMode === "enforce",
-    }),
+    streaming: target.kind === "author_preview" && !args.audio_device_id,
     ffmpegProcess: null,
     ffmpegDone: null,
     encoderBackpressured: false,
@@ -2649,171 +1926,34 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
     padColor: output.padColor,
     qualityPreset: output.qualityPreset,
     scaleAlgo: output.scaleAlgo,
-    includeCursor,
   };
-  if (bundleWriter && recordingCheckpointMode() === "shadow") {
-    registerRecordingCheckpoints({
-      sessionId: id,
-      segmentsDir: bundleWriter.allocation.segmentsDir,
+  void recordEngineLog({
+    event: "recording.session.created",
+    context: {
+      session_id: id,
+      backend_id: recordingBackendId(target),
+      phase: "recording",
+    },
+    details: {
+      target_kind: target.kind,
       width,
       height,
-      fps,
-    });
-  }
-  const avRuntime = recordingAvSessions.register({
-    sessionId: id,
-    audioRequested: compatibilityAudioRequested,
-    audioCaptureId: compatibilityRequest?.capture_token ?? args.audio_capture_id,
-    videoOutputPath: outputPath,
-    registeredMonotonicEpochMs: monotonicEpochMilliseconds(
-      performance.timeOrigin,
-      performance.now(),
-    ),
-  });
-  if (recordingAudioMode() !== "legacy") {
-    recordingAudioTracks.register({
-      sessionId: id,
-      targetKind: target.kind,
-      originMonotonicEpochMs: avRuntime.registeredMonotonicEpochMs,
-      requests: audioRequests,
-    });
-  }
-  if (args.audio_unavailable_reason) {
-    avRuntime.assertAudioCaptureId(microphoneRequest?.capture_token ?? `unavailable-${id}`);
-    avRuntime.audio.abort({
-      sequence: 0,
-      monotonicEpochMs: avRuntime.registeredMonotonicEpochMs,
-      reason: "audio_stream_aborted",
-    });
-    avRuntime.markAudioTerminal();
-    if (microphoneRequest) {
-      recordingAudioTracks.fail(
-        {
-          session_id: id,
-          track_id: microphoneRequest.track_id,
-          role: microphoneRequest.role,
-          source_id: microphoneRequest.source_id,
-          capture_token: microphoneRequest.capture_token,
-        },
-        { sequence: 0, reason: args.audio_unavailable_reason },
-      );
-    }
-  }
-  if (tabRequest && target.kind === "author_preview") {
-    installAuthorPreviewTabAudioHandler(sender);
-    const preview = authorSession(target.stream_id);
-    authorPreviewTabGrants.arm({
-      sessionId: id,
-      trackId: tabRequest.track_id,
-      captureToken: tabRequest.capture_token,
-      requester: sender.mainFrame,
-      source: preview.window.webContents.mainFrame,
-    });
-  }
-  await recordingLifecycle.register(session);
-  void recordEngineLog({
-    event: "recording.backend.probed",
-    context: {
-      session_id: id,
-      backend_id: captureBackend.attempted_backend_id ?? undefined,
-      reason_code: captureBackend.fallback_reason ?? undefined,
-      phase: "capture_setup",
-    },
-    details: {
-      selected_backend_id: captureBackend.selected_backend_id,
-      supported: captureBackend.fallback_reason === null,
-      delivery_mode: captureBackend.delivery_mode,
-      target_kind: target.kind,
+      requested_fps: requestedFps,
+      effective_fps: fps,
+      streaming: session.streaming,
     },
   });
   void recordEngineLog({
-    event:
-      captureBackend.fallback_reason === null
-        ? "recording.backend.selected"
-        : "recording.backend.fallback",
+    event: "recording.backend.selected",
     context: {
       session_id: id,
-      backend_id: captureBackend.selected_backend_id,
-      reason_code: captureBackend.fallback_reason ?? undefined,
-      phase: "capture_setup",
+      backend_id: recordingBackendId(target),
+      phase: "recording",
     },
-    details: {
-      attempted_backend_id: captureBackend.attempted_backend_id,
-      selected_backend_id: captureBackend.selected_backend_id,
-      delivery_mode: captureBackend.delivery_mode,
-      mode: captureBackend.mode,
-      target_kind: target.kind,
-    },
+    details: { target_kind: target.kind },
   });
-  if (engineHealthMode() !== "off") engineHealth.register(id);
-  const health =
-    recordingHealthMode() === "off"
-      ? null
-      : recordingHealth.register({
-          sessionId: id,
-          capturePath: session.streaming ? "raw_bgra" : "png",
-          outputWidth: session.outputWidth,
-          outputHeight: session.outputHeight,
-          requestedFps: session.effectiveFps,
-          startedAtMs: session.startedAt,
-          onUpdate: (update) => {
-            sendChannel(sender, eventChannelId, { type: "health-update", update });
-            void publishEngineHealthBestEffort(session, update);
-          },
-        });
-  session.actionLandmarks.onPresentation((observation) => {
-    health?.recordActionPresentation(
-      observation.input,
-      observation.presentation.firstPostInputFrame,
-    );
-  });
-  const readiness = recordingReadiness.register({
-    sessionId: id,
-    mode: readinessMode,
-    sinkAcknowledgements: session.streaming,
-    onObservation: (result) => {
-      void recordEngineLog({
-        level: result.status === "failed" ? "warn" : "info",
-        event: "recording.readiness.completed",
-        context: {
-          session_id: id,
-          request_id: result.request_id,
-          phase: result.barrier,
-          reason_code: result.reason ?? undefined,
-          duration_ms: result.active_wait_ms,
-        },
-        details: {
-          status: result.status,
-          requested_media_us: result.requested_media_us,
-          committed_pts_us: result.committed_landmark?.ptsUs ?? null,
-          attempts: result.attempts,
-        },
-      });
-      if (result.barrier === "first_frame_committed") {
-        health?.recordFirstFrameBarrier(result.status);
-      }
-      if (
-        bundleWriter &&
-        result.barrier === "first_frame_committed" &&
-        result.status === "committed"
-      ) {
-        void recordingSessionJournal.checkpoint(id, "first_encoded_frame").catch((error) => {
-          void recordEngineLog({
-            level: "warn",
-            event: "recording.checkpoint.failed",
-            context: {
-              session_id: id,
-              phase: "first_encoded_frame",
-              reason_code: "journal_checkpoint_failed",
-            },
-            error,
-          });
-        });
-      }
-    },
-  });
-  try {
-    if (session.streaming) {
+  if (session.streaming) {
+    try {
       await startAuthorPreviewRecordingStream(session);
       session.captureTimer = setInterval(
         () => {
@@ -2822,55 +1962,49 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
         Math.max(1000 / fps, 16),
       );
       session.captureTimer.unref?.();
-    } else {
-      session.captureTimer = setInterval(
-        () => {
-          scheduleRecordingFrame(session);
+    } catch (error) {
+      clearInterval(heartbeat);
+      session.ffmpegProcess?.kill("SIGKILL");
+      await fs.rm(framesDir, { recursive: true, force: true });
+      void recordEngineLog({
+        level: "error",
+        event: "recording.terminal",
+        context: {
+          session_id: id,
+          backend_id: recordingBackendId(target),
+          phase: "start",
+          reason_code: "preview_start_failed",
         },
-        Math.max(1000 / fps, 16),
-      );
-      session.captureTimer.unref?.();
-      await captureRecordingFrame(session);
+        details: { outcome: "failed", target_kind: target.kind },
+        error,
+      });
+      throw error;
     }
-    await readiness.require({ barrier: "source_ready", budgetMs: 5_000 });
-    const firstFrame = await readiness.require({
-      barrier: "first_frame_committed",
-      budgetMs: 5_000,
-      requestedMediaUs: session.mediaClock.snapshot().nextPtsUs,
-      queueFrame: () => queueRecordingFrame(session),
+  } else {
+    session.captureTimer = setInterval(
+      () => {
+        scheduleRecordingFrame(session);
+      },
+      Math.max(1000 / fps, 16),
+    );
+    session.captureTimer.unref?.();
+    await captureRecordingFrame(session);
+  }
+  recordingSessions.set(id, session);
+  if (target.kind === "author_preview") {
+    void recordEngineLog({
+      event: "recording.preview.started",
+      context: {
+        session_id: id,
+        backend_id: recordingBackendId(target),
+        phase: "recording",
+      },
+      details: { width, height, effective_fps: fps },
     });
-    if (readiness.mode !== "observe") health?.recordFirstFrameBarrier(firstFrame.status);
-    await recordingLifecycle.markRecording(id);
-    if (bundleWriter) {
-      await recordingSessionJournal.checkpoint(id, "capture_started");
-      if (firstFrame.status === "committed") {
-        await recordingSessionJournal.checkpoint(id, "first_encoded_frame");
-      }
-    }
-  } catch (error) {
-    if (session.captureTimer) clearInterval(session.captureTimer);
-    clearInterval(heartbeat);
-    session.ffmpegProcess?.kill("SIGKILL");
-    await fs.rm(framesDir, { recursive: true, force: true });
-    recordingReadiness.remove(id);
-    recordingHealth.remove(id);
-    engineHealth.remove(id);
-    recordingAvSessions.remove(id);
-    authorPreviewTabGrants.revoke(id);
-    recordingAudioTracks.remove(id);
-    await disposeRecordingCheckpoints(id);
-    await recordingLifecycle.fail(id, "capture_start_failed");
-    throw error;
   }
   sendChannel(sender, eventChannelId, {
     type: "capture-status",
     json: JSON.stringify({ type: "started", session_id: id }),
   });
-  if (args.audio_unavailable_reason) {
-    sendChannel(sender, eventChannelId, {
-      type: "audio-unavailable",
-      reason: args.audio_unavailable_reason,
-    });
-  }
   return { id };
 }

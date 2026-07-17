@@ -1,4 +1,5 @@
 import { VIEWPORT_SIZES } from "@/state/editor";
+import { parsedCommands, parseStorySource } from "../../../electron/ipc/story-parser";
 
 export interface BrowserViewportSize {
   width: number;
@@ -16,7 +17,9 @@ export function storyViewportSize(source: string): BrowserViewportSize {
     return { width: Number(pair[1]), height: Number(pair[2]) };
   }
 
-  const named = source.match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]?.toLowerCase();
+  const named = source
+    .match(/\bviewport\s*:\s*(desktop|tablet|mobile)\b/i)?.[1]
+    ?.toLowerCase();
   if (named === "desktop" || named === "tablet" || named === "mobile") {
     const preset = VIEWPORT_SIZES[named];
     return { width: preset.w, height: preset.h };
@@ -25,9 +28,12 @@ export function storyViewportSize(source: string): BrowserViewportSize {
 }
 
 export function storyAppUrlForRecording(source: string): string | null {
-  const metaBlock = source.match(/\bmeta\s*\{([\s\S]*?)^\s*\}/im)?.[1] ?? "";
-  const app = metaBlock.match(/^\s*app\s*:\s*(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/im);
-  return normalizedHttpUrl(app?.[1] ?? app?.[2] ?? app?.[3] ?? null);
+  const parsedAppUrl = parseStorySource(source).ast?.meta.app ?? null;
+  const metaBlockAppUrl =
+    source
+      .match(/\bmeta\s*\{([\s\S]*?)(?:^\s*\}|})/im)?.[1]
+      ?.match(/^\s*app\s*:\s*["'](https?:\/\/[^"']+)["']/im)?.[1] ?? null;
+  return normalizedHttpUrl(parsedAppUrl ?? metaBlockAppUrl);
 }
 
 function normalizedHttpUrl(rawUrl: string | null | undefined): string | null {
@@ -41,10 +47,12 @@ function normalizedHttpUrl(rawUrl: string | null | undefined): string | null {
   }
 }
 
-export function storyFirstNavigateUrlForRecording(source: string): string | null {
-  const navigatePattern = /^\s*navigate\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/gim;
-  for (const match of source.matchAll(navigatePattern)) {
-    const url = normalizedHttpUrl(match[1] ?? match[2] ?? match[3]);
+export function storyFirstNavigateUrlForRecording(
+  source: string,
+): string | null {
+  for (const command of parsedCommands(source)) {
+    if (command.verb !== "navigate") continue;
+    const url = normalizedHttpUrl(command.url);
     if (url) return url;
   }
   return null;

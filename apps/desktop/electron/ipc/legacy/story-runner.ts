@@ -18,10 +18,8 @@ import {
   actionTimelineEventFromStep,
   deriveActionCaptureRect,
   recordingActionsFromSession,
-  validateRecordingActionsV3,
   writeActionsSidecarAtomic,
 } from "../action-timeline";
-import { cursorCommandPolicy, resolveCursorCommandPolicy } from "../cursor-policy";
 import { resolveCursorSyncMode } from "../cursor-sync-mode";
 import {
   type CursorActionTimingPlan,
@@ -35,20 +33,6 @@ import {
   targetCenterDeltaPx,
 } from "../cursor-timing";
 import {
-  DragExecutionError,
-  dragExecutionMode,
-  executeDragPlan,
-  planDragExecution,
-} from "../drag-execution";
-import {
-  executeFileUpload,
-  FileUploadError,
-  observeUploadInput,
-  type ResolvedUploadAsset,
-  resolveUploadAsset,
-  uploadExecutionMode,
-} from "../file-upload";
-import {
   InteractionReadinessError,
   observeInteractionTarget,
   waitForInteractionReadiness,
@@ -56,33 +40,8 @@ import {
 import { readJson, writeJsonAtomic } from "../json-store";
 import { sameNavigationUrl } from "../navigation-url";
 import { userDataPath } from "../paths";
-import {
-  disposeRecordingCheckpoints,
-  RecordingCheckpointError,
-  recordingCheckpointsForSession,
-} from "../recording-checkpoints";
-import { recordingLifecycle } from "../recording-lifecycle";
 import { recordEngineLog } from "../recording-observability";
-import { recordingOutcomeMode } from "../recording-outcome";
 import { RecordingPauseCancelledError } from "../recording-pause-gate";
-import {
-  type RecordingRepairPhase,
-  type RepairRequiredEvent,
-  recordingRepairController,
-  recordingRepairMode,
-} from "../recording-repair";
-import {
-  buildRuntimeTargetCandidates,
-  RuntimeTargetAttemptError,
-  type RuntimeTargetCandidate,
-  type RuntimeTargetCandidateSet,
-  RuntimeTargetCandidatesExhaustedError,
-  type RuntimeTargetEndpointKey,
-  type RuntimeTargetResolution,
-  type RuntimeTargetSidecar,
-  resolveRuntimeTargetCandidates,
-  runtimeTargetCandidatesMode,
-} from "../runtime-target-candidates";
 import {
   setSimulatorTargetValueIncrementalScript,
   setSimulatorTargetValueScript,
@@ -93,12 +52,7 @@ import {
   executeControlledScroll,
   TargetVisibilityPhaseError,
 } from "../smooth-scroll";
-import {
-  type ParsedCommand,
-  type ParsedCommandSceneContext,
-  parsedCommands,
-  parseStorySource,
-} from "../story-parser";
+import { type ParsedCommand, parsedCommands, parseStorySource } from "../story-parser";
 import {
   authorSession,
   captureAutomationRecordingTail,
@@ -112,7 +66,7 @@ import {
   targetsPathFor,
 } from "./capture-preview";
 import { sidecarPath } from "./post-production";
-import { pauseRecording, resumeRecording, stopRecording } from "./recording";
+import { stopRecording } from "./recording";
 import {
   authorPreviewSessions,
   channelIdFrom,
@@ -139,7 +93,7 @@ import {
 } from "./shared";
 
 const FALLBACK_TARGET_VERBS = ["click", "type", "hover", "select", "upload"];
-const CAPTURE_MUTATION_VERBS = ["navigate", "scroll", "click", "type", "hover", "select", "upload"];
+const CURSOR_INTERACTION_VERBS = ["click", "type", "hover", "select"];
 const FRAME_SYNC_FALLBACK_TIMEOUT_MS = 500;
 const MAX_TARGET_DETACH_RETRIES = 2;
 const TARGET_DETACH_RETRY_DELAY_MS = 100;
@@ -147,7 +101,8 @@ const TYPE_PROBE_HASH_SALT = randomUUID();
 
 function typeProbeEnabled(executionProfile: StoryBrowserExecutionProfile): boolean {
   return (
-    executionProfile.captureRecordingFrames && process.env.STORYCAPTURE_DEBUG_TYPE_PROBE === "1"
+    executionProfile.captureRecordingFrames &&
+    process.env.STORYCAPTURE_DEBUG_TYPE_PROBE === "1"
   );
 }
 
@@ -180,20 +135,9 @@ async function requestFrameCommitOutcome(
   if (!requestFrameCommit) return null;
   try {
     return await requestFrameCommit();
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      (error as { recordingReasonCode?: unknown }).recordingReasonCode === "readiness_failed"
-    ) {
-      throw error;
-    }
+  } catch {
     return { status: "degraded", reason: "frame_capture_failed" };
   }
-}
-
-export function commandMutatesCapturedPage(command: ParsedCommand): boolean {
-  return CAPTURE_MUTATION_VERBS.includes(command.verb);
 }
 
 function automationFailureDiagnostics(error: unknown): Record<string, unknown> | null {
@@ -224,40 +168,6 @@ function captureStateSnapshot(
   }
 }
 
-function logFrameSyncDegradation(input: {
-  options: StoryBrowserRunOptions;
-  recordingSessionId?: string;
-  command: ParsedCommand;
-  ordinal: number;
-  barrier: "cursor_arrival" | "pre_input";
-  reason: string;
-}): void {
-  const { options, recordingSessionId, command, ordinal, barrier, reason } = input;
-  if (recordingSessionId) {
-    void recordEngineLog({
-      level: "warn",
-      event: "recording.readiness.degraded",
-      context: {
-        session_id: recordingSessionId,
-        step_id: command.step_id ?? undefined,
-        ordinal,
-        phase: barrier,
-        reason_code: reason,
-      },
-      details: { verb: command.verb },
-    });
-    return;
-  }
-  void hostLog("warn", "automation_frame_sync_degraded_before_input", {
-    ordinal,
-    step_id: command.step_id ?? null,
-    verb: command.verb,
-    barrier,
-    reason,
-    ...captureStateSnapshot(options.captureStateSnapshot),
-  });
-}
-
 function recordingFrameClockMs(session: RecordingSession): number {
   return Math.max(0, Math.round(session.mediaClock.snapshot().durationUs / 1000));
 }
@@ -282,12 +192,8 @@ export async function executeParsedCommand(
     shouldCancel?: () => boolean;
     onInputSideEffect?: (kind: RecordedInputLandmarkKind) => void;
     beforeInputSideEffect?: () => void;
-    resolvedSecondaryTarget?: ActionTarget | null;
-    validateSecondaryTarget?: () => Promise<boolean>;
-    onCursorSample?: (point: { x: number; y: number }) => void;
-    resolvedUploadAsset?: ResolvedUploadAsset | null;
   } = {},
-): Promise<RuntimeParsedCommandResult> {
+): Promise<ParsedCommandResult> {
   const executionProfile = options.executionProfile ?? storyBrowserExecutionProfile();
   if (command.verb === "navigate" && command.url) {
     if (sameNavigationUrl(contents.getURL(), command.url)) return {};
@@ -329,51 +235,6 @@ export async function executeParsedCommand(
     });
     return {};
   }
-  if (command.verb === "drag") {
-    if (!options.resolvedTarget || !options.resolvedSecondaryTarget) {
-      throw new DragExecutionError("target_missing_before_input", false);
-    }
-    const recordingFps =
-      (executionProfile as StoryBrowserExecutionProfile & { recordingFps?: number }).recordingFps ??
-      30;
-    const plan = planDragExecution({
-      source: options.resolvedTarget,
-      destination: options.resolvedSecondaryTarget,
-      fps: recordingFps,
-      motionPreset: executionProfile.cursorMotionPreset ?? "natural",
-      eventKey: `${command.step_id ?? "drag"}:${options.resolvedTarget.center.x}:${options.resolvedSecondaryTarget.center.x}`,
-    });
-    const result = await executeDragPlan({
-      plan,
-      sendInputEvent: (event) => contents.sendInputEvent(event as never),
-      wait: async (durationMs) => {
-        await waitForRecordingDelay(options.pauseGate, durationMs);
-        return true;
-      },
-      shouldCancel: options.shouldCancel,
-      beforeInputSideEffect: options.beforeInputSideEffect,
-      onInputSideEffect: options.onInputSideEffect,
-      onCursorSample: options.onCursorSample,
-      beforePressedPath: options.validateSecondaryTarget,
-    });
-    return { ...result, dragSamples: plan.samples };
-  }
-  if (command.verb === "upload") {
-    if (!options.resolvedTarget || !options.resolvedUploadAsset) {
-      throw new Error("upload target and asset must be resolved before execution");
-    }
-    return executeFileUpload({
-      contents,
-      targetDescriptor: command.target,
-      targetNth: command.target_nth,
-      selector: targetSelector(command.target),
-      resolvedTarget: options.resolvedTarget,
-      asset: options.resolvedUploadAsset,
-      shouldCancel: options.shouldCancel,
-      beforeInputSideEffect: options.beforeInputSideEffect,
-      onInputSideEffect: (kind) => options.onInputSideEffect?.(kind),
-    });
-  }
 
   const target = command.target
     ? (options.resolvedTarget ??
@@ -404,7 +265,6 @@ export async function executeParsedCommand(
     throw new Error(`target not found for ${command.verb}: ${selectorSummary(command.target)}`);
   }
   if ((command.verb === "click" || command.verb === "hover") && center) {
-    if (command.verb === "hover") options.beforeInputSideEffect?.();
     contents.sendInputEvent({ type: "mouseMove", x: center.x, y: center.y });
     if (command.verb === "click") {
       options.beforeInputSideEffect?.();
@@ -424,8 +284,6 @@ export async function executeParsedCommand(
         button: "left",
         clickCount: 1,
       });
-      options.onInputSideEffect?.("action");
-    } else {
       options.onInputSideEffect?.("action");
     }
     return {
@@ -486,6 +344,9 @@ export async function executeParsedCommand(
     }
     return { cursor: center, target };
   }
+  if (command.verb === "upload") {
+    throw new Error("upload command is not supported by the Electron browser runner yet");
+  }
   if (command.verb === "screenshot") {
     const image = await contents.capturePage();
     const exportsDir = path.join(projectFolder, EXPORTS_DIRNAME);
@@ -516,27 +377,6 @@ export async function ensureStoryInitialUrl(
   })();
   if (shouldNavigate) {
     await contents.loadURL(appUrl);
-  }
-}
-
-export function liveSceneEntryUrlForRepair(
-  commands: ParsedCommand[],
-  sceneId: string,
-  storySource: string,
-): string | null {
-  const first = commands.find((command) => command.scene_id === sceneId);
-  const candidate =
-    first?.verb === "navigate" && first.url
-      ? first.url
-      : first?.scene_ordinal === 1
-        ? storyAppUrl(storySource)
-        : null;
-  if (!candidate) return null;
-  try {
-    const url = new URL(candidate);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
-  } catch {
-    return null;
   }
 }
 
@@ -615,7 +455,7 @@ export function simulatorFrameFromResult(
 }
 
 export function commandGetsPreActionPacing(command: ParsedCommand): boolean {
-  return cursorCommandPolicy(command.verb).contributesActionEvent;
+  return commandContributesCursorEvent(command);
 }
 
 async function resolveCommandTarget(
@@ -627,25 +467,11 @@ async function resolveCommandTarget(
 }
 
 function commandRequiresEnabledTarget(command: ParsedCommand): boolean {
-  return (
-    command.verb === "click" ||
-    command.verb === "type" ||
-    command.verb === "select" ||
-    command.verb === "drag"
-  );
+  return command.verb === "click" || command.verb === "type" || command.verb === "select";
 }
 
 async function observeReadyCommandTarget(options: StoryBrowserRunOptions, command: ParsedCommand) {
   if (!command.target) return { status: "not_ready", reason: "not_found" } as const;
-  if (command.verb === "upload") {
-    return observeUploadInput({
-      contents: options.contents,
-      target: command.target,
-      targetNth: command.target_nth,
-      selector: targetSelector(command.target),
-      label: targetLabel(command.target),
-    });
-  }
   return observeInteractionTarget({
     contents: options.contents,
     target: command.target,
@@ -680,7 +506,7 @@ async function resolveReadyCommandTarget(
 
 function commandUsesVisibilityPipeline(command: ParsedCommand): boolean {
   return (
-    (command.verb !== "drag" && commandGetsPreActionPacing(command)) ||
+    commandGetsPreActionPacing(command) ||
     command.verb === "wait-for-visible" ||
     command.verb === "assert-visible"
   );
@@ -691,11 +517,9 @@ async function ensureReadyCommandTarget(
   command: ParsedCommand,
   recordingClockMs: () => number,
   timeoutMs = Math.min(Number(command.timeout_ms ?? 30_000), 30_000),
-  waitOverride?: (durationMs: number) => Promise<boolean | undefined>,
 ): Promise<{
   target: ActionTarget;
   scrollTiming: ActionScrollTiming | null;
-  diagnostics?: RuntimeTargetResolution["diagnostics"];
 }> {
   const result = await ensureTargetVisible({
     contents: options.contents,
@@ -703,18 +527,16 @@ async function ensureReadyCommandTarget(
     targetNth: command.target_nth,
     selector: targetSelector(command.target),
     observe: () => observeReadyCommandTarget(options, command),
-    wait:
-      waitOverride ??
-      (async (durationMs) => {
-        if (options.pauseGate) {
-          if (!(await options.pauseGate.waitForDelay(durationMs))) {
-            throw new RecordingPauseCancelledError();
-          }
-          return true;
+    wait: async (durationMs) => {
+      if (options.pauseGate) {
+        if (!(await options.pauseGate.waitForDelay(durationMs))) {
+          throw new RecordingPauseCancelledError();
         }
-        await waitMs(durationMs);
         return true;
-      }),
+      }
+      await waitMs(durationMs);
+      return true;
+    },
     shouldCancel: () => {
       if (options.shouldCancel?.()) throw new RecordingPauseCancelledError();
       return false;
@@ -724,7 +546,6 @@ async function ensureReadyCommandTarget(
   });
   return {
     target: result.target,
-    diagnostics: result.diagnostics,
     scrollTiming: result.scrollTiming
       ? {
           start_ms: result.scrollTiming.startedAtMs,
@@ -751,10 +572,27 @@ async function recoverDetachedCommandTarget(
     const remainingMs = Math.max(0, budgetMs - elapsedMs);
     if (attempt > 1 && remainingMs <= 0) break;
     try {
-      return await ensureReadyCommandTarget(options, command, recordingClockMs, remainingMs);
+      const resolved = await ensureReadyCommandTarget(
+        options,
+        command,
+        recordingClockMs,
+        remainingMs,
+      );
+      if (attempt > 1 && options.recordingSessionId) {
+        void recordEngineLog({
+          event: "recording.target.resolved",
+          context: {
+            session_id: options.recordingSessionId,
+            step_id: command.step_id ?? undefined,
+            ordinal,
+            phase: "pre_input",
+          },
+          details: { verb: command.verb, attempt, elapsed_ms: elapsedMs },
+        });
+      }
+      return resolved;
     } catch (error) {
-      if (!(error instanceof TargetVisibilityPhaseError) || error.reason !== "detached")
-        throw error;
+      if (!(error instanceof TargetVisibilityPhaseError) || error.reason !== "detached") throw error;
       lastError = error;
       if (options.recordingSessionId) {
         void recordEngineLog({
@@ -767,12 +605,8 @@ async function recoverDetachedCommandTarget(
             phase: error.phase,
             reason_code: error.reason,
           },
-          details: {
-            attempt,
-            elapsed_ms: elapsedMs,
-            budget_ms: budgetMs,
-            verb: command.verb,
-          },
+          details: { verb: command.verb, attempt, elapsed_ms: elapsedMs, budget_ms: budgetMs },
+          error,
         });
       } else {
         void hostLog("warn", "automation_target_recovery", {
@@ -784,8 +618,6 @@ async function recoverDetachedCommandTarget(
           attempt,
           elapsed_ms: elapsedMs,
           budget_ms: budgetMs,
-          target_label: targetLabel(command.target),
-          target_bounds: error.diagnostics?.bounds ?? null,
         });
       }
       if (options.shouldCancel?.()) throw new RecordingPauseCancelledError();
@@ -808,431 +640,33 @@ async function recoverDetachedCommandTarget(
     exhausted.message =
       `interaction target detached after ${MAX_TARGET_DETACH_RETRIES + 1} attempts ` +
       `(last phase: ${lastError.phase}, elapsed: ${elapsedMs}/${budgetMs}ms)`;
+    if (options.recordingSessionId) {
+      void recordEngineLog({
+        level: "error",
+        event: "recording.target.failed",
+        context: {
+          session_id: options.recordingSessionId,
+          step_id: command.step_id ?? undefined,
+          ordinal,
+          phase: lastError.phase,
+          reason_code: "detach_retries_exhausted",
+        },
+        details: {
+          verb: command.verb,
+          attempts: MAX_TARGET_DETACH_RETRIES + 1,
+          elapsed_ms: elapsedMs,
+          budget_ms: budgetMs,
+        },
+        error: exhausted,
+      });
+    }
     throw exhausted;
   }
   throw new InteractionReadinessError("detached");
 }
 
-interface ResolvedCommandVisibility {
-  target: ActionTarget;
-  scrollTiming: ActionScrollTiming | null;
-  command: ParsedCommand;
-  runtimeTarget: RuntimeTargetResolution | null;
-}
-
-type RuntimeParsedCommandResult = ParsedCommandResult & {
-  runtimeTarget?: RuntimeTargetResolution;
-  runtimeTargets?: {
-    source: RuntimeTargetResolution;
-    destination: RuntimeTargetResolution;
-  };
-  source?: ActionTarget;
-  dragSamples?: Array<{ x: number; y: number; elapsedMs: number }>;
-  uploadAsset?: {
-    projectRelativePath: string;
-    basename: string;
-    byteSize: number;
-  };
-};
-
-interface ResolvedDragEndpoints {
-  source: RuntimeTargetResolution;
-  destination: RuntimeTargetResolution;
-}
-
-interface RecordingCheckpointRunOptions extends StoryBrowserRunOptions {
-  recordingCheckpointSessionId?: string | null;
-  recordingMediaClockSnapshot?: () => ReturnType<RecordingSession["mediaClock"]["snapshot"]>;
-  captureSceneTail?: () => Promise<void>;
-  recordingRepairSessionId?: string | null;
-  onRepairRequired?: (event: RepairRequiredEvent) => void;
-  pauseRecordingForRepair?: () => Promise<void>;
-  resumeRecordingForRepair?: () => Promise<void>;
-  canRestoreSceneEntry?: (sceneId: string) => boolean;
-  restoreSceneEntry?: (sceneId: string) => Promise<boolean>;
-}
-
-function requiredSceneContext(command: ParsedCommand): ParsedCommandSceneContext {
-  if (
-    !command.scene_id ||
-    !command.scene_name ||
-    !Number.isSafeInteger(command.scene_ordinal) ||
-    Number(command.scene_ordinal) <= 0 ||
-    !Number.isSafeInteger(command.step_ordinal) ||
-    Number(command.step_ordinal) <= 0
-  ) {
-    throw new RecordingCheckpointError("scene_context_missing");
-  }
-  return {
-    scene_id: command.scene_id,
-    scene_name: command.scene_name,
-    scene_ordinal: Number(command.scene_ordinal),
-    step_ordinal: Number(command.step_ordinal),
-  };
-}
-
-function commandForRuntimeCandidate(
-  command: ParsedCommand,
-  candidate: RuntimeTargetCandidate,
-): ParsedCommand {
-  return {
-    ...command,
-    target: candidate.target,
-    ...(candidate.targetNth == null
-      ? { target_nth: undefined }
-      : { target_nth: candidate.targetNth }),
-  };
-}
-
-function dragEndpointCommand(
-  command: ParsedCommand,
-  endpoint: Exclude<RuntimeTargetEndpointKey, "target">,
-  candidate?: RuntimeTargetCandidate,
-): ParsedCommand {
-  const target = candidate?.target ?? command[endpoint];
-  const targetNth =
-    candidate?.targetNth ?? (endpoint === "from" ? command.from_nth : command.to_nth);
-  return {
-    ...command,
-    verb: endpoint === "from" ? "click" : "hover",
-    target,
-    target_nth: targetNth,
-  };
-}
-
-function runtimeTargetAttemptError(error: unknown): RuntimeTargetAttemptError | null {
-  if (error instanceof InteractionReadinessError) {
-    return new RuntimeTargetAttemptError(error.reason, error.diagnostics);
-  }
-  if (error instanceof TargetVisibilityPhaseError) {
-    return new RuntimeTargetAttemptError(error.reason, error.diagnostics);
-  }
-  return null;
-}
-
-async function waitForRuntimeTargetDelay(
-  options: StoryBrowserRunOptions,
-  durationMs: number,
-): Promise<boolean> {
-  if (options.shouldCancel?.()) throw new RecordingPauseCancelledError();
-  if (options.pauseGate) {
-    if (!(await options.pauseGate.waitForDelay(durationMs))) {
-      throw new RecordingPauseCancelledError();
-    }
-    return true;
-  }
-  await waitMs(durationMs);
-  return true;
-}
-
-async function resolveRuntimeTarget(
-  options: StoryBrowserRunOptions,
-  command: ParsedCommand,
-  candidateSet: RuntimeTargetCandidateSet,
-  recordingClockMs: () => number,
-  timeoutMs: number,
-): Promise<RuntimeTargetResolution> {
-  return resolveRuntimeTargetCandidates({
-    candidates: candidateSet.candidates,
-    timeoutMs,
-    wait: (durationMs) => waitForRuntimeTargetDelay(options, durationMs),
-    observe: (candidate) =>
-      observeReadyCommandTarget(options, commandForRuntimeCandidate(command, candidate)),
-    attempt: async (candidate, attemptTimeoutMs, wait) => {
-      try {
-        const result = await ensureReadyCommandTarget(
-          options,
-          commandForRuntimeCandidate(command, candidate),
-          recordingClockMs,
-          attemptTimeoutMs,
-          wait,
-        );
-        return {
-          target: result.target,
-          diagnostics: result.diagnostics,
-          scrollTiming: result.scrollTiming,
-        };
-      } catch (error) {
-        const readinessError = runtimeTargetAttemptError(error);
-        if (readinessError) throw readinessError;
-        throw error;
-      }
-    },
-  });
-}
-
-async function resolveDragEndpoint(
-  options: StoryBrowserRunOptions,
-  command: ParsedCommand,
-  endpoint: Exclude<RuntimeTargetEndpointKey, "target">,
-  ordinal: number,
-  recordingClockMs: () => number,
-  timeoutMs: number,
-): Promise<RuntimeTargetResolution> {
-  const endpointCommand = dragEndpointCommand(command, endpoint);
-  const candidateSet = buildRuntimeTargetCandidates({
-    command,
-    sidecar: options.targets,
-    endpointKey: endpoint,
-  });
-  const mode = runtimeTargetCandidatesMode();
-  if (candidateSet.diagnostics.length > 0) {
-    if (options.recordingSessionId) {
-      void recordEngineLog({
-        level: "warn",
-        event: "recording.target.candidate_validation_failed",
-        context: {
-          session_id: options.recordingSessionId,
-          step_id: command.step_id ?? undefined,
-          ordinal,
-          phase: `drag_${endpoint}_candidate_validation`,
-          reason_code: "invalid_sidecar_candidate",
-        },
-        details: { endpoint, diagnostic_count: candidateSet.diagnostics.length },
-      });
-    } else {
-      void hostLog("warn", "runtime_drag_endpoint_diagnostic", {
-        ordinal,
-        step_id: command.step_id ?? null,
-        endpoint,
-        diagnostics: candidateSet.diagnostics,
-      });
-    }
-  }
-
-  if (!candidateSet.eligible || mode === "off") {
-    const legacy = await recoverDetachedCommandTarget(
-      options,
-      { ...endpointCommand, timeout_ms: timeoutMs },
-      ordinal,
-      recordingClockMs,
-    );
-    const resolved = legacyRuntimeTarget(candidateSet, legacy.target, legacy.scrollTiming);
-    if (!resolved) throw new RuntimeTargetCandidatesExhaustedError([]);
-    return resolved;
-  }
-
-  if (mode === "shadow") {
-    const legacy = await recoverDetachedCommandTarget(
-      options,
-      { ...endpointCommand, timeout_ms: timeoutMs },
-      ordinal,
-      recordingClockMs,
-    );
-    const proposed = await probeRuntimeTarget(options, endpointCommand, candidateSet);
-    const actual = legacyRuntimeTarget(candidateSet, legacy.target, legacy.scrollTiming);
-    const diverged = Boolean(proposed && proposed.candidate.key !== actual?.candidate.key);
-    if (options.recordingSessionId) {
-      void recordEngineLog({
-        event: "recording.drag.shadow_compared",
-        context: {
-          session_id: options.recordingSessionId,
-          step_id: command.step_id ?? undefined,
-          ordinal,
-          phase: endpoint,
-        },
-        details: {
-          endpoint,
-          actual_source: actual?.candidate.source ?? "story_target",
-          proposed_source: proposed?.candidate.source ?? null,
-          proposed_fallback_index: proposed?.candidate.fallbackIndex ?? null,
-          attempt_count: proposed?.attempts.length ?? 0,
-          diverged,
-        },
-      });
-    } else {
-      void hostLog("info", "runtime_drag_endpoint_shadow", {
-        ordinal,
-        step_id: command.step_id ?? null,
-        endpoint,
-        actual_source: actual?.candidate.source ?? "story_target",
-        proposed_source: proposed?.candidate.source ?? null,
-        diverged,
-        attempted: proposed?.attempts ?? [],
-      });
-    }
-    if (!actual) throw new RuntimeTargetCandidatesExhaustedError([]);
-    return actual;
-  }
-
-  return resolveRuntimeTarget(options, endpointCommand, candidateSet, recordingClockMs, timeoutMs);
-}
-
-async function resolveDragEndpoints(
-  options: StoryBrowserRunOptions,
-  command: ParsedCommand,
-  ordinal: number,
-  recordingClockMs: () => number,
-): Promise<ResolvedDragEndpoints> {
-  const timeoutMs = Math.max(0, Math.min(30_000, Number(command.timeout_ms ?? 30_000)));
-  const startedAtMs = recordingClockMs();
-  const remaining = () => Math.max(0, timeoutMs - (recordingClockMs() - startedAtMs));
-  const source = await resolveDragEndpoint(
-    options,
-    command,
-    "from",
-    ordinal,
-    recordingClockMs,
-    remaining(),
-  );
-  const destination = await resolveDragEndpoint(
-    options,
-    command,
-    "to",
-    ordinal,
-    recordingClockMs,
-    remaining(),
-  );
-  return { source, destination };
-}
-
-async function probeRuntimeTarget(
-  options: StoryBrowserRunOptions,
-  command: ParsedCommand,
-  candidateSet: RuntimeTargetCandidateSet,
-): Promise<RuntimeTargetResolution | null> {
-  const attempts: RuntimeTargetResolution["attempts"] = [];
-  for (const candidate of candidateSet.candidates) {
-    const observation = await observeReadyCommandTarget(
-      options,
-      commandForRuntimeCandidate(command, candidate),
-    );
-    if (observation.status === "ready") {
-      return {
-        candidate,
-        target: observation.target,
-        diagnostics: observation.diagnostics,
-        attempts,
-        scrollTiming: null,
-      };
-    }
-    attempts.push({
-      key: candidate.key,
-      source: candidate.source,
-      fallbackIndex: candidate.fallbackIndex,
-      reason: observation.reason,
-    });
-  }
-  return null;
-}
-
-function legacyRuntimeTarget(
-  candidateSet: RuntimeTargetCandidateSet,
-  target: ActionTarget,
-  scrollTiming: ActionScrollTiming | null,
-): RuntimeTargetResolution | null {
-  const candidate =
-    candidateSet.candidates.find((item) => item.source === "story_target") ??
-    candidateSet.candidates[0];
-  return candidate ? { candidate, target, attempts: [], scrollTiming } : null;
-}
-
-async function resolveCommandVisibility(
-  options: StoryBrowserRunOptions,
-  command: ParsedCommand,
-  ordinal: number,
-  recordingClockMs: () => number,
-  timeoutMs = Math.min(Number(command.timeout_ms ?? 30_000), 30_000),
-): Promise<ResolvedCommandVisibility> {
-  const candidateSet = buildRuntimeTargetCandidates({ command, sidecar: options.targets });
-  const mode = runtimeTargetCandidatesMode();
-  if (candidateSet.diagnostics.length > 0) {
-    if (options.recordingSessionId) {
-      void recordEngineLog({
-        level: "warn",
-        event: "recording.target.candidate_validation_failed",
-        context: {
-          session_id: options.recordingSessionId,
-          step_id: command.step_id ?? undefined,
-          ordinal,
-          phase: "target_candidate_validation",
-          reason_code: "invalid_sidecar_candidate",
-        },
-        details: { diagnostic_count: candidateSet.diagnostics.length },
-      });
-    } else {
-      void hostLog("warn", "runtime_target_sidecar_diagnostic", {
-        ordinal,
-        step_id: command.step_id ?? null,
-        diagnostics: candidateSet.diagnostics,
-      });
-    }
-  }
-
-  if (!commandSupportsFallback(command) || !candidateSet.eligible || mode === "off") {
-    const legacy = await recoverDetachedCommandTarget(
-      options,
-      { ...command, timeout_ms: timeoutMs },
-      ordinal,
-      recordingClockMs,
-    );
-    return {
-      ...legacy,
-      command,
-      runtimeTarget: legacyRuntimeTarget(candidateSet, legacy.target, legacy.scrollTiming),
-    };
-  }
-
-  if (mode === "shadow") {
-    const legacy = await recoverDetachedCommandTarget(
-      options,
-      { ...command, timeout_ms: timeoutMs },
-      ordinal,
-      recordingClockMs,
-    );
-    const proposed = await probeRuntimeTarget(options, command, candidateSet);
-    const actual = legacyRuntimeTarget(candidateSet, legacy.target, legacy.scrollTiming);
-    const diverged = Boolean(proposed && proposed.candidate.key !== actual?.candidate.key);
-    if (options.recordingSessionId) {
-      void recordEngineLog({
-        event: "recording.target.shadow_compared",
-        context: {
-          session_id: options.recordingSessionId,
-          step_id: command.step_id ?? undefined,
-          ordinal,
-          phase: "target_resolution",
-        },
-        details: {
-          candidate_count: candidateSet.candidates.length,
-          actual_source: actual?.candidate.source ?? "story_target",
-          proposed_source: proposed?.candidate.source ?? null,
-          proposed_fallback_index: proposed?.candidate.fallbackIndex ?? null,
-          attempt_count: proposed?.attempts.length ?? 0,
-          diverged,
-        },
-      });
-    } else {
-      void hostLog("info", "runtime_target_shadow", {
-        ordinal,
-        step_id: command.step_id ?? null,
-        candidate_count: candidateSet.candidates.length,
-        actual_source: actual?.candidate.source ?? "story_target",
-        proposed_source: proposed?.candidate.source ?? null,
-        proposed_fallback_index: proposed?.candidate.fallbackIndex ?? null,
-        diverged,
-        attempted: proposed?.attempts ?? [],
-      });
-    }
-    return { ...legacy, command, runtimeTarget: actual };
-  }
-
-  const resolved = await resolveRuntimeTarget(
-    options,
-    command,
-    candidateSet,
-    recordingClockMs,
-    timeoutMs,
-  );
-  return {
-    target: resolved.target,
-    scrollTiming: resolved.scrollTiming,
-    command: commandForRuntimeCandidate(command, resolved.candidate),
-    runtimeTarget: resolved,
-  };
-}
-
-function commandUsesBrowserCursorPath(command: ParsedCommand, includeCursor: boolean): boolean {
-  return resolveCursorCommandPolicy(command.verb, includeCursor).emitVisibleTrajectory;
+function commandUsesBrowserCursorPath(command: ParsedCommand): boolean {
+  return command.verb === "click" || command.verb === "hover";
 }
 
 function cursorPathEventKey(
@@ -1265,11 +699,10 @@ async function performCursorPreActionPacing(input: {
     targetShiftThresholdPx = 8,
     onCursorSample,
   } = input;
-  const shouldInjectPath = commandUsesBrowserCursorPath(
-    command,
-    executionProfile.injectCursorPath !== false,
-  );
+  const shouldInjectPath =
+    executionProfile.injectCursorPath !== false && commandUsesBrowserCursorPath(command);
   if (!shouldInjectPath) {
+    if (plan.preActionDelayMs > 0) await waitForRecordingDelay(pauseGate, plan.preActionDelayMs);
     return { lastPoint: plan.to, shiftedTarget: null };
   }
 
@@ -1324,11 +757,6 @@ function cursorTargetShiftWarning(input: {
 }): void {
   const deltaPx = targetCenterDeltaPx(input.before, input.after);
   if (deltaPx <= input.thresholdPx) return;
-  const details = {
-    verb: input.command.verb,
-    delta_px: Math.round(deltaPx * 100) / 100,
-    threshold_px: input.thresholdPx,
-  };
   if (input.recordingSessionId) {
     void recordEngineLog({
       level: "warn",
@@ -1337,16 +765,22 @@ function cursorTargetShiftWarning(input: {
         session_id: input.recordingSessionId,
         step_id: input.command.step_id ?? undefined,
         ordinal: input.ordinal,
-        phase: "before_input",
+        phase: "pre_input",
         reason_code: "target_shifted",
       },
-      details,
+      details: {
+        verb: input.command.verb,
+        delta_px: Math.round(deltaPx * 100) / 100,
+        threshold_px: input.thresholdPx,
+      },
     });
   } else {
     void hostLog("warn", "cursor_target_shifted_before_input", {
       ordinal: input.ordinal,
       step_id: input.command.step_id ?? null,
-      ...details,
+      verb: input.command.verb,
+      delta_px: Math.round(deltaPx * 100) / 100,
+      threshold_px: input.thresholdPx,
     });
   }
 }
@@ -1373,10 +807,9 @@ function cursorPacingSizeForRun(
   }
 }
 
-export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunOptions): Promise<{
+export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions): Promise<{
   succeeded: number;
   failed: number;
-  failedOrdinal: number | null;
   pausedOrdinal: number | null;
   exitReason: StoryBrowserRunExitReason;
   durationMs: number;
@@ -1384,52 +817,6 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
   const startedAt = Date.now();
   const recordingClockMs = options.recordingClockMs ?? (() => Math.max(0, Date.now() - startedAt));
   const executionProfile = options.executionProfile ?? storyBrowserExecutionProfile();
-  const loggingSessionId =
-    options.recordingSessionId ??
-    options.recordingCheckpointSessionId ??
-    options.recordingRepairSessionId ??
-    undefined;
-  const repairController =
-    options.recordingRepairSessionId && recordingRepairMode() === "manual_hybrid"
-      ? recordingRepairController(options.recordingRepairSessionId)
-      : null;
-  const repairCandidateOverrides = new Map<string, RuntimeTargetCandidate>();
-  let checkpointCoordinator = options.recordingCheckpointSessionId
-    ? recordingCheckpointsForSession(options.recordingCheckpointSessionId)
-    : null;
-  const disableShadowCheckpoints = async (stage: string, error: unknown): Promise<void> => {
-    const coordinator = checkpointCoordinator;
-    checkpointCoordinator = null;
-    const reason = error instanceof RecordingCheckpointError ? error.reason : "unexpected_error";
-    const errorName = error instanceof Error ? error.name : "UnknownError";
-    if (loggingSessionId) {
-      void recordEngineLog({
-        level: "warn",
-        event: "recording.checkpoint.failed",
-        context: {
-          session_id: loggingSessionId,
-          phase: stage,
-          reason_code: reason,
-        },
-        error,
-      });
-    }
-    try {
-      await coordinator?.recordShadowDivergence(stage, reason, errorName);
-      if (coordinator?.activeSceneId) {
-        await coordinator.closeScene("failed", options.captureStateSnapshot?.());
-      }
-    } catch {
-      // Shadow artifacts are diagnostic; the monolithic recording remains authoritative.
-    }
-    if (options.recordingCheckpointSessionId) {
-      try {
-        await disposeRecordingCheckpoints(options.recordingCheckpointSessionId);
-      } catch {
-        // Final recording cleanup retries disposal.
-      }
-    }
-  };
   const pacingSize = executionProfile.captureRecordingFrames
     ? cursorPacingSizeForRun(options.contents, executionProfile.captureSize)
     : null;
@@ -1440,7 +827,6 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
       : options.commands.length;
   let succeeded = 0;
   let failed = 0;
-  let failedOrdinal: number | null = null;
   let lastOrdinal = 0;
   let exitReason: StoryBrowserRunExitReason = "completed";
   await ensureStoryInitialUrl(options.contents, options.storySource);
@@ -1455,120 +841,36 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
       exitReason = "cancelled";
       break;
     }
-    const sourceCommand = options.commands[index];
-    const repairCandidate = sourceCommand.step_id
-      ? repairCandidateOverrides.get(sourceCommand.step_id)
-      : undefined;
-    const command = repairCandidate
-      ? commandForRuntimeCandidate(sourceCommand, repairCandidate)
-      : sourceCommand;
-    const commandPolicy = resolveCursorCommandPolicy(
-      command.verb,
-      executionProfile.injectCursorPath !== false,
-    );
-    if (loggingSessionId && commandPolicy.contributesActionEvent) {
-      void recordEngineLog({
-        event: "recording.cursor.policy_selected",
-        context: {
-          session_id: loggingSessionId,
-          scene_id: command.scene_id ?? undefined,
-          step_id: command.step_id ?? undefined,
-          ordinal,
-          phase: "pre_input",
-        },
-        details: {
-          verb: command.verb,
-          delivery: commandPolicy.delivery,
-          presentation: commandPolicy.presentation,
-          inject_cursor_path: executionProfile.injectCursorPath !== false,
-        },
-      });
-    }
+    const command = options.commands[index];
     lastOrdinal = ordinal;
     options.hooks?.onStepStarted?.(ordinal, command);
     const stepStartedAt = Date.now();
     const stepStartedClockMs = recordingClockMs();
-    const landmarkEventId = `${ordinal}:${command.step_id ?? command.verb}`;
-    let repairPhase: RecordingRepairPhase = "pre_input";
-    let repairResult: RuntimeParsedCommandResult | null = null;
-    let repairActionStartedClockMs = stepStartedClockMs;
     try {
-      if (loggingSessionId && (command.verb === "drag" || command.verb === "upload")) {
-        void recordEngineLog({
-          event: command.verb === "drag" ? "recording.drag.started" : "recording.upload.started",
-          context: {
-            session_id: loggingSessionId,
-            scene_id: command.scene_id ?? undefined,
-            step_id: command.step_id ?? undefined,
-            ordinal,
-            phase: "pre_input",
-          },
-        });
-      }
-      if (command.verb === "drag" && dragExecutionMode() === "off") {
-        throw new DragExecutionError("disabled", false);
-      }
-      if (command.verb === "upload" && uploadExecutionMode() === "off") {
-        throw new FileUploadError("disabled");
-      }
-      const uploadAsset =
-        command.verb === "upload"
-          ? await resolveUploadAsset(options.projectFolder, command.path)
-          : null;
-      if (checkpointCoordinator) {
-        try {
-          const context = requiredSceneContext(command);
-          if (!checkpointCoordinator.activeSceneId) {
-            await checkpointCoordinator.beginScene(context);
-          } else if (checkpointCoordinator.activeSceneId !== context.scene_id) {
-            throw new RecordingCheckpointError("scene_boundary_unclosed");
-          }
-          const clock = options.recordingMediaClockSnapshot?.();
-          if (!clock) throw new RecordingCheckpointError("media_clock_missing");
-          checkpointCoordinator.beginStep(command, clock);
-        } catch (error) {
-          await disableShadowCheckpoints("begin_step", error);
-        }
-      }
       if (executionProfile.captureRecordingFrames) {
         invalidateAuthorPreviewPaintForContents(options.contents);
       }
-      const isPacedCommand = commandPolicy.contributesActionEvent;
+      const isPacedCommand = commandGetsPreActionPacing(command);
+      const landmarkEventId = `${ordinal}:${command.step_id ?? command.verb}`;
       let landmarkStarted = false;
-      let preInputBarrierRequested = false;
-      let dragEndpoints =
-        command.verb === "drag"
-          ? await resolveDragEndpoints(options, command, ordinal, recordingClockMs)
-          : null;
-      let visibility = commandUsesVisibilityPipeline(command)
-        ? await resolveCommandVisibility(options, command, ordinal, recordingClockMs)
+      const visibility = commandUsesVisibilityPipeline(command)
+        ? await recoverDetachedCommandTarget(options, command, ordinal, recordingClockMs)
         : null;
-      let executionCommand = dragEndpoints
-        ? {
-            ...command,
-            target: dragEndpoints.source.candidate.target,
-            target_nth: dragEndpoints.source.candidate.targetNth,
-          }
-        : (visibility?.command ?? command);
-      let resolvedTarget = dragEndpoints
-        ? dragEndpoints.source.target
-        : visibility
-          ? visibility.target
-          : await resolveCommandTarget(options.contents, command);
-      let secondaryTarget = dragEndpoints?.destination.target ?? null;
-      let scrollTiming =
-        visibility?.scrollTiming ??
-        dragEndpoints?.source.scrollTiming ??
-        dragEndpoints?.destination.scrollTiming ??
-        null;
+      let resolvedTarget = visibility
+        ? visibility.target
+        : await resolveCommandTarget(options.contents, command);
+      const scrollTiming = visibility?.scrollTiming ?? null;
       let cursorPlan: CursorActionTimingPlan | null = null;
       let cursorStartedClockMs = recordingClockMs();
       if (pacingSize && previousCursor && resolvedTarget && isPacedCommand) {
         cursorStartedClockMs = recordingClockMs();
         options.actionLandmarks?.begin(landmarkEventId, {
-          delivery: commandPolicy.delivery,
+          delivery:
+            command.verb === "type" || command.verb === "select"
+              ? "virtual_only"
+              : "browser_injected",
           point: previousCursor,
-          expectsPresentation: commandPolicy.presentation === "required",
+          expectsPresentation: command.verb !== "hover",
         });
         landmarkStarted = Boolean(options.actionLandmarks);
         let cursorFrom = previousCursor;
@@ -1583,71 +885,20 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
           });
           const pacing = await performCursorPreActionPacing({
             contents: options.contents,
-            command: executionCommand,
+            command,
             ordinal,
             plan: cursorPlan,
-            executionProfile:
-              command.verb === "upload" && resolvedTarget.kind === "file_input_hidden"
-                ? { ...executionProfile, injectCursorPath: false }
-                : executionProfile,
+            executionProfile,
             pauseGate: options.pauseGate,
-            observeTarget: () => observeReadyCommandTarget(options, executionCommand),
+            observeTarget: () => observeReadyCommandTarget(options, command),
             targetShiftThresholdPx: executionProfile.targetStabilityThresholdPx ?? 8,
             onCursorSample: (point) =>
               options.actionLandmarks?.updateCursor(landmarkEventId, point),
           });
-          let targetAfterPacing: ActionTarget;
-          try {
-            targetAfterPacing =
-              pacing.shiftedTarget ?? (await resolveReadyCommandTarget(options, executionCommand));
-          } catch (error) {
-            const elapsedStepMs = Math.max(0, recordingClockMs() - stepStartedClockMs);
-            const remainingStepMs = Math.max(
-              0,
-              Math.min(Number(command.timeout_ms ?? 30_000), 30_000) - elapsedStepMs,
-            );
-            if (
-              visibility?.runtimeTarget &&
-              runtimeTargetCandidatesMode() === "enforce" &&
-              runtimeTargetAttemptError(error) &&
-              remainingStepMs > 0
-            ) {
-              visibility = await resolveCommandVisibility(
-                options,
-                command,
-                ordinal,
-                recordingClockMs,
-                remainingStepMs,
-              );
-              executionCommand = visibility.command;
-              resolvedTarget = visibility.target;
-              scrollTiming = visibility.scrollTiming;
-              cursorFrom = pacing.lastPoint;
-              continue;
-            }
-            if (dragEndpoints && runtimeTargetAttemptError(error) && remainingStepMs > 0) {
-              const source = await resolveDragEndpoint(
-                options,
-                command,
-                "from",
-                ordinal,
-                recordingClockMs,
-                remainingStepMs,
-              );
-              dragEndpoints = { ...dragEndpoints, source };
-              executionCommand = {
-                ...command,
-                target: source.candidate.target,
-                target_nth: source.candidate.targetNth,
-              };
-              resolvedTarget = source.target;
-              cursorFrom = pacing.lastPoint;
-              continue;
-            }
-            throw error;
-          }
+          const targetAfterPacing =
+            pacing.shiftedTarget ?? (await resolveReadyCommandTarget(options, command));
           cursorTargetShiftWarning({
-            command: executionCommand,
+            command,
             ordinal,
             recordingSessionId: options.recordingSessionId,
             before: resolvedTarget,
@@ -1675,10 +926,6 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
             options.frameSyncTimeoutMs ?? FRAME_SYNC_FALLBACK_TIMEOUT_MS,
           );
           const requestedOutcome = await requestFrameCommitOutcome(options.requestFrameCommit);
-          preInputBarrierRequested = Boolean(options.requestFrameCommit);
-          if (requestedOutcome?.status === "committed") {
-            options.actionLandmarks.anchorArrival(landmarkEventId, requestedOutcome.landmark);
-          }
           if (requestedOutcome?.status === "degraded") {
             options.actionLandmarks.degradeArrival(
               landmarkEventId,
@@ -1690,177 +937,55 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
           const arrivalOutcome = await arrival;
           if (arrivalOutcome.status === "cancelled") throw new RecordingPauseCancelledError();
           if (arrivalOutcome.status === "degraded") {
-            logFrameSyncDegradation({
-              options,
-              recordingSessionId: loggingSessionId,
-              command,
-              ordinal,
-              barrier: "cursor_arrival",
-              reason: arrivalOutcome.reason,
-            });
+            if (options.recordingSessionId) {
+              void recordEngineLog({
+                level: "warn",
+                event: "recording.readiness.degraded",
+                context: {
+                  session_id: options.recordingSessionId,
+                  step_id: command.step_id ?? undefined,
+                  ordinal,
+                  phase: "cursor_arrival",
+                  reason_code: arrivalOutcome.reason,
+                },
+                details: {
+                  verb: command.verb,
+                  barrier: "cursor_arrival",
+                  ...captureStateSnapshot(options.captureStateSnapshot),
+                },
+              });
+            } else {
+              void hostLog("warn", "automation_frame_sync_degraded_before_input", {
+                ordinal,
+                step_id: command.step_id ?? null,
+                verb: command.verb,
+                barrier: "cursor_arrival",
+                reason: arrivalOutcome.reason,
+                ...captureStateSnapshot(options.captureStateSnapshot),
+              });
+            }
             options.actionLandmarks.discard(landmarkEventId);
             landmarkStarted = false;
-            if (command.verb === "drag") {
-              throw new DragExecutionError("frame_barrier_failed", false);
-            }
           }
         }
-      }
-      if (commandMutatesCapturedPage(command) && !preInputBarrierRequested) {
-        const requestedOutcome = await requestFrameCommitOutcome(options.requestFrameCommit);
-        if (requestedOutcome?.status === "cancelled") throw new RecordingPauseCancelledError();
-        if (requestedOutcome?.status === "degraded") {
-          logFrameSyncDegradation({
-            options,
-            recordingSessionId: loggingSessionId,
-            command,
-            ordinal,
-            barrier: "pre_input",
-            reason: requestedOutcome.reason,
-          });
-        }
-      }
-      let destinationCommand: ParsedCommand | null = null;
-      if (dragEndpoints) {
-        destinationCommand = dragEndpointCommand(
-          command,
-          "to",
-          dragEndpoints.destination.candidate,
-        );
-        const destinationObservation = await observeReadyCommandTarget(options, destinationCommand);
-        if (destinationObservation.status !== "ready") {
-          throw new RuntimeTargetAttemptError(
-            destinationObservation.reason,
-            "diagnostics" in destinationObservation
-              ? destinationObservation.diagnostics
-              : undefined,
-          );
-        }
-        secondaryTarget = destinationObservation.target;
-        dragEndpoints = {
-          ...dragEndpoints,
-          destination: { ...dragEndpoints.destination, target: destinationObservation.target },
-        };
       }
       await waitForRecordingDelay(options.pauseGate, 0);
       const actionStartedAt = Date.now();
       const actionStartedClockMs = recordingClockMs();
-      repairActionStartedClockMs = actionStartedClockMs;
-      const parsedResult = await executeParsedCommand(
-        options.contents,
-        executionCommand,
-        options.projectFolder,
-        {
-          executionProfile,
-          resolvedTarget,
-          resolvedSecondaryTarget: secondaryTarget,
-          resolvedUploadAsset: uploadAsset,
-          pauseGate: options.pauseGate,
-          shouldCancel: options.shouldCancel,
-          validateSecondaryTarget: destinationCommand
-            ? async () =>
-                (await observeReadyCommandTarget(options, destinationCommand)).status === "ready"
-            : undefined,
-          beforeInputSideEffect: landmarkStarted
-            ? () => options.actionLandmarks?.armPresentation(landmarkEventId)
-            : undefined,
-          onInputSideEffect: landmarkStarted
-            ? (kind) => {
-                repairPhase =
-                  commandPolicy.presentation === "required"
-                    ? "input_emitted_presentation_pending"
-                    : "post_input_failed";
-                options.actionLandmarks?.markInput(landmarkEventId, kind);
-              }
-            : undefined,
-        },
-      );
-      const result: RuntimeParsedCommandResult = dragEndpoints
-        ? { ...parsedResult, runtimeTargets: dragEndpoints }
-        : visibility?.runtimeTarget
-          ? { ...parsedResult, runtimeTarget: visibility.runtimeTarget }
-          : parsedResult;
-      if (loggingSessionId && (result.runtimeTarget || result.runtimeTargets)) {
-        const runtimeTarget = result.runtimeTarget;
-        void recordEngineLog({
-          event: "recording.target.resolved",
-          context: {
-            session_id: loggingSessionId,
-            scene_id: command.scene_id ?? undefined,
-            step_id: command.step_id ?? undefined,
-            ordinal,
-            phase: "pre_input",
-          },
-          details: runtimeTarget
-            ? {
-                source: runtimeTarget.candidate.source,
-                fallback_index: runtimeTarget.candidate.fallbackIndex,
-                target_strategy: runtimeTarget.candidate.summary.kind,
-                target_hash: runtimeTarget.candidate.key.replace(/^target:/, ""),
-                attempt_count: runtimeTarget.attempts.length,
-              }
-            : {
-                source: result.runtimeTargets?.source.candidate.source ?? null,
-                source_fallback_index:
-                  result.runtimeTargets?.source.candidate.fallbackIndex ?? null,
-                source_strategy: result.runtimeTargets?.source.candidate.summary.kind ?? null,
-                source_target_hash:
-                  result.runtimeTargets?.source.candidate.key.replace(/^target:/, "") ?? null,
-                destination: result.runtimeTargets?.destination.candidate.source ?? null,
-                destination_fallback_index:
-                  result.runtimeTargets?.destination.candidate.fallbackIndex ?? null,
-                destination_strategy:
-                  result.runtimeTargets?.destination.candidate.summary.kind ?? null,
-                destination_target_hash:
-                  result.runtimeTargets?.destination.candidate.key.replace(/^target:/, "") ?? null,
-              },
-        });
-      }
-      if (loggingSessionId && command.verb === "drag") {
-        void recordEngineLog({
-          event: "recording.drag.completed",
-          context: {
-            session_id: loggingSessionId,
-            scene_id: command.scene_id ?? undefined,
-            step_id: command.step_id ?? undefined,
-            ordinal,
-            phase: "post_input",
-            duration_ms: Math.max(0, recordingClockMs() - repairActionStartedClockMs),
-          },
-          details: { sample_count: parsedResult.dragSamples?.length ?? 0 },
-        });
-      } else if (loggingSessionId && command.verb === "upload") {
-        void recordEngineLog({
-          event: "recording.upload.completed",
-          context: {
-            session_id: loggingSessionId,
-            scene_id: command.scene_id ?? undefined,
-            step_id: command.step_id ?? undefined,
-            ordinal,
-            phase: "post_input",
-            duration_ms: Math.max(0, recordingClockMs() - repairActionStartedClockMs),
-          },
-          details: {
-            file_count: uploadAsset ? 1 : 0,
-            file_type: uploadAsset
-              ? path.extname(uploadAsset.basename).slice(1).toLowerCase() || "unknown"
-              : "unknown",
-            total_bytes: uploadAsset?.byteSize ?? 0,
-          },
-        });
-      }
-      repairResult = result;
-      if (landmarkStarted && commandPolicy.presentation === "required") {
-        const presentation = await options.actionLandmarks?.waitForPresentation(
-          landmarkEventId,
-          500,
-        );
-        if (presentation?.status === "timeout") {
-          const error = new Error("action presentation timed out");
-          Object.assign(error, { recordingReasonCode: "presentation_timeout" });
-          throw error;
-        }
-        repairPhase = "post_input_failed";
+      const result = await executeParsedCommand(options.contents, command, options.projectFolder, {
+        executionProfile,
+        resolvedTarget,
+        pauseGate: options.pauseGate,
+        shouldCancel: options.shouldCancel,
+        beforeInputSideEffect: landmarkStarted
+          ? () => options.actionLandmarks?.armPresentation(landmarkEventId)
+          : undefined,
+        onInputSideEffect: landmarkStarted
+          ? (kind) => options.actionLandmarks?.markInput(landmarkEventId, kind)
+          : undefined,
+      });
+      if (landmarkStarted && command.verb !== "hover") {
+        await options.actionLandmarks?.waitForPresentation(landmarkEventId, 500);
       }
       const actionDurationMs = isPacedCommand
         ? actionStartedAt - stepStartedAt
@@ -1870,9 +995,7 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
       const stepEndedClockMs = recordingClockMs();
       const durationMs = Math.max(0, stepEndedClockMs - stepStartedClockMs);
       const explicitTiming =
-        cursorPlan &&
-        commandPolicy.applyCursorPacing &&
-        resolvedTarget?.kind !== "file_input_hidden"
+        cursorPlan && isPacedCommand
           ? cursorTimelineTimingFromPlan({
               plan: cursorPlan,
               verb: command.verb,
@@ -1883,37 +1006,8 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
       const landmarks = landmarkStarted
         ? (options.actionLandmarks?.finish(landmarkEventId) ?? null)
         : null;
-      if (
-        pacingSize &&
-        result.target &&
-        result.target.kind !== "file_input_hidden" &&
-        commandPolicy.contributesActionEvent
-      ) {
+      if (pacingSize && result.target && commandContributesCursorEvent(command)) {
         previousCursor = cursorPointForTarget(result.target, pacingSize);
-      }
-      if (checkpointCoordinator) {
-        try {
-          const checkpointFrame = await requestFrameCommitOutcome(options.requestFrameCommit);
-          if (checkpointFrame?.status !== "committed") {
-            throw new RecordingCheckpointError("step_media_uncommitted");
-          }
-          await checkpointCoordinator.commitStep({
-            command,
-            actionEventId: commandPolicy.contributesActionEvent
-              ? `${command.step_id ?? "step"}:${ordinal}`
-              : null,
-            url: options.contents.getURL(),
-            targetKind: result.target?.kind ?? null,
-            health: options.captureStateSnapshot?.(),
-          });
-          const nextCommand = options.commands[index + 1];
-          if (!nextCommand || nextCommand.scene_id !== command.scene_id) {
-            await options.captureSceneTail?.();
-            await checkpointCoordinator.closeScene("committed", options.captureStateSnapshot?.());
-          }
-        } catch (error) {
-          await disableShadowCheckpoints("commit_step", error);
-        }
       }
       succeeded += 1;
       options.hooks?.onStepSucceeded?.({
@@ -1954,164 +1048,13 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
         exitReason = "cancelled";
         break;
       }
-      if (loggingSessionId) {
-        const reasonCode =
-          typeof (error as { recordingReasonCode?: unknown })?.recordingReasonCode === "string"
-            ? String((error as { recordingReasonCode: string }).recordingReasonCode)
-            : error instanceof RuntimeTargetCandidatesExhaustedError
-              ? error.reason
-              : "step_failed";
-        void recordEngineLog({
-          level: "warn",
-          event:
-            command.verb === "drag"
-              ? "recording.drag.failed"
-              : command.verb === "upload"
-                ? "recording.upload.failed"
-                : "recording.target.failed",
-          context: {
-            session_id: loggingSessionId,
-            scene_id: command.scene_id ?? undefined,
-            step_id: command.step_id ?? undefined,
-            ordinal,
-            phase: repairPhase,
-            reason_code: reasonCode,
-            duration_ms: Math.max(0, recordingClockMs() - stepStartedClockMs),
-          },
-          details: {
-            verb: command.verb,
-            ...(error instanceof RuntimeTargetCandidatesExhaustedError
-              ? {
-                  attempt_count: error.attempts.length,
-                  attempts: error.attempts.map((attempt) => ({
-                    source: attempt.source,
-                    fallback_index: attempt.fallbackIndex,
-                    reason: attempt.reason,
-                  })),
-                }
-              : {}),
-          },
-          error,
-        });
-      }
+      failed += 1;
+      exitReason = "failed";
       const screenshotPath = await captureFailureFrameBestEffort(
         options.contents,
         options.failureFrameDir,
         ordinal,
       );
-      if (repairController && command.scene_id && command.step_id) {
-        const candidateSet = buildRuntimeTargetCandidates({
-          command: sourceCommand,
-          sidecar: options.targets as RuntimeTargetSidecar,
-        });
-        const wasRunning = options.pauseGate?.state === "running";
-        let recordingPausedForRepair = false;
-        if (options.pauseRecordingForRepair) {
-          await options.pauseRecordingForRepair();
-          recordingPausedForRepair = true;
-        }
-        if (wasRunning) options.pauseGate?.pause();
-        if (checkpointCoordinator?.activeSceneId) {
-          try {
-            await checkpointCoordinator.closeScene("failed", options.captureStateSnapshot?.());
-          } catch (checkpointError) {
-            await disableShadowCheckpoints("repair_failure", checkpointError);
-          }
-        }
-        const pending = repairController.begin({
-          session_id: options.recordingRepairSessionId as string,
-          scene_id: command.scene_id,
-          step_id: command.step_id,
-          ordinal,
-          phase: repairPhase,
-          reason_code:
-            typeof (error as { recordingReasonCode?: unknown })?.recordingReasonCode === "string"
-              ? String((error as { recordingReasonCode: string }).recordingReasonCode)
-              : "step_failed",
-          candidates: candidateSet.candidates.map((candidate) => ({
-            key: candidate.key,
-            source: candidate.source,
-            fallback_index: candidate.fallbackIndex,
-          })),
-          scene_retry_available: Boolean(
-            checkpointCoordinator &&
-              options.restoreSceneEntry &&
-              (options.canRestoreSceneEntry?.(command.scene_id) ?? true),
-          ),
-        });
-        options.onRepairRequired?.(pending.event);
-        const resolution = await pending.resolution;
-        const shouldResume = resolution.action !== "abort_keep_salvage";
-        if (shouldResume && recordingPausedForRepair) {
-          await options.resumeRecordingForRepair?.();
-        }
-        if (wasRunning && options.pauseGate?.state === "paused") {
-          options.pauseGate.resume();
-        }
-        if (resolution.action === "retry_step" || resolution.action === "use_candidate_and_retry") {
-          if (resolution.action === "use_candidate_and_retry" && resolution.candidate_key) {
-            const candidate = candidateSet.candidates.find(
-              (item) => item.key === resolution.candidate_key,
-            );
-            if (candidate && command.step_id)
-              repairCandidateOverrides.set(command.step_id, candidate);
-          }
-          index -= 1;
-          continue;
-        }
-        if (resolution.action === "await_presentation" && repairResult) {
-          options.actionLandmarks?.armPresentation(landmarkEventId);
-          const presentation = await options.actionLandmarks?.waitForPresentation(
-            landmarkEventId,
-            500,
-          );
-          const frame =
-            presentation?.status === "presented"
-              ? await requestFrameCommitOutcome(options.requestFrameCommit)
-              : null;
-          if (presentation?.status === "presented" && frame?.status === "committed") {
-            const stepEndedClockMs = recordingClockMs();
-            const landmarks = options.actionLandmarks?.finish(landmarkEventId) ?? null;
-            succeeded += 1;
-            options.hooks?.onStepSucceeded?.({
-              ordinal,
-              command,
-              result: repairResult,
-              durationMs: Math.max(0, stepEndedClockMs - stepStartedClockMs),
-              actionDurationMs: Math.max(0, repairActionStartedClockMs - stepStartedClockMs),
-              timing: {
-                stepStartedAtMs: stepStartedClockMs,
-                actionAtMs: repairActionStartedClockMs,
-                stepEndedAtMs: stepEndedClockMs,
-                scrollTiming: null,
-                cursorTiming: null,
-                inputTiming: null,
-                landmarks,
-              },
-            });
-            continue;
-          }
-        }
-        if (resolution.action === "retry_scene" && options.restoreSceneEntry) {
-          const restored = await options.restoreSceneEntry(command.scene_id);
-          if (restored) {
-            const sceneStart = options.commands.findIndex(
-              (candidate) => candidate.scene_id === command.scene_id,
-            );
-            if (sceneStart >= 0) {
-              succeeded = Math.max(0, succeeded - Math.max(0, index - sceneStart));
-              for (const candidate of options.commands.slice(sceneStart, index + 1)) {
-                if (candidate.step_id) repairCandidateOverrides.delete(candidate.step_id);
-              }
-              index = sceneStart - 1;
-              continue;
-            }
-          }
-        }
-      }
-      failed += 1;
-      failedOrdinal = ordinal;
-      exitReason = "failed";
       options.hooks?.onStepFailed?.(ordinal, error, screenshotPath);
       break;
     }
@@ -2119,43 +1062,14 @@ export async function runStoryCommandsInBrowser(options: RecordingCheckpointRunO
   if (exitReason === "completed" && limit < options.commands.length) {
     exitReason = "paused";
   }
-  if (checkpointCoordinator?.activeSceneId) {
-    try {
-      await checkpointCoordinator.closeScene(
-        exitReason === "cancelled" ? "cancelled" : "failed",
-        options.captureStateSnapshot?.(),
-      );
-    } catch (error) {
-      await disableShadowCheckpoints("close_run", error);
-    }
-  }
 
   return {
     succeeded,
     failed,
-    failedOrdinal,
     pausedOrdinal: exitReason === "paused" ? lastOrdinal || limit : null,
     exitReason,
     durationMs: Date.now() - startedAt,
   };
-}
-
-function logSidecarWriteFailure(
-  sessionId: string,
-  sidecarKind: "actions" | "steps",
-  error: unknown,
-): void {
-  void recordEngineLog({
-    level: "warn",
-    event: "recording.sidecar.write_failed",
-    context: {
-      session_id: sessionId,
-      phase: sidecarKind,
-      reason_code: "sidecar_write_failed",
-    },
-    details: { sidecar_kind: sidecarKind },
-    error,
-  });
 }
 
 export async function writeRecordingActionsSidecarBestEffort(
@@ -2166,11 +1080,9 @@ export async function writeRecordingActionsSidecarBestEffort(
     strict?: boolean;
   } = {},
 ): Promise<void> {
+  if (events.length === 0) return;
   const file = actionsSidecarPath(session.outputPath);
   const syncMode = resolveCursorSyncMode();
-  const strictOutcome = recordingOutcomeMode() === "strict";
-  const version = strictOutcome || syncMode === "unified" ? 3 : 2;
-  if (events.length === 0 && version !== 3) return;
   try {
     const authoritativeEvents = events.filter((event) => event.input_landmarks?.action).length;
     const invalidOrderingEvents = events.filter((event) => {
@@ -2184,27 +1096,34 @@ export async function writeRecordingActionsSidecarBestEffort(
     if (syncMode === "shadow") {
       void recordEngineLog({
         event: "recording.cursor.shadow_compared",
-        context: { session_id: session.id, phase: "sidecar_validation" },
+        context: { session_id: session.id, phase: "actions_sidecar" },
         details: {
           event_count: events.length,
           authoritative_event_count: authoritativeEvents,
           invalid_ordering_event_count: invalidOrderingEvents,
-          diverged: invalidOrderingEvents > 0,
-          sync_mode: syncMode,
         },
       });
     }
-    const actions = recordingActionsFromSession(session, events, {
-      cursorMotionPreset: options.cursorMotionPreset,
-      version,
-    });
-    if (version === 3) {
-      validateRecordingActionsV3(actions, { requirePresented: strictOutcome });
-    }
-    await writeActionsSidecarAtomic(file, actions);
+    await writeActionsSidecarAtomic(
+      file,
+      recordingActionsFromSession(session, events, {
+        cursorMotionPreset: options.cursorMotionPreset,
+        version: syncMode === "unified" ? 3 : 2,
+      }),
+    );
   } catch (error) {
-    logSidecarWriteFailure(session.id, "actions", error);
-    if (options.strict || strictOutcome || syncMode === "unified") throw error;
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.sidecar.write_failed",
+      context: {
+        session_id: session.id,
+        phase: "actions_sidecar",
+        reason_code: "write_failed",
+      },
+      details: { sidecar_kind: "actions", event_count: events.length },
+      error,
+    });
+    if (options.strict || syncMode === "unified") throw error;
   }
 }
 
@@ -2222,9 +1141,6 @@ interface RecordingStepTiming {
     selector: string | null;
     bbox: { x: number; y: number; w: number; h: number };
     matchKind: "primary";
-    source: RuntimeTargetCandidate["source"] | null;
-    fallbackIndex: number | null;
-    key: string | null;
   } | null;
   confidence: "high" | "low";
 }
@@ -2247,7 +1163,17 @@ async function writeRecordingStepTimingSidecarBestEffort(
       steps,
     });
   } catch (error) {
-    logSidecarWriteFailure(session.id, "steps", error);
+    void recordEngineLog({
+      level: "warn",
+      event: "recording.sidecar.write_failed",
+      context: {
+        session_id: session.id,
+        phase: "step_timing_sidecar",
+        reason_code: "write_failed",
+      },
+      details: { sidecar_kind: "step_timing", step_count: steps.length, status },
+      error,
+    });
   }
 }
 
@@ -2301,7 +1227,6 @@ function rebaseInputTiming(timing: ActionInputTiming, offsetMs: number): ActionI
 export async function launchAutomationCommand(args: Record<string, unknown>, sender: WebContents) {
   const onEvent = channelIdFrom(args.onEvent);
   const source = String(args.storySource ?? "");
-  const storyPath = typeof args.storyPath === "string" ? args.storyPath : "";
   const projectFolder = String(args.projectFolder ?? app.getPath("userData"));
   const parsedStory = parseStorySource(source).ast;
   const commands = (parsedStory?.scenes.flatMap((scene) => scene.commands) ??
@@ -2341,7 +1266,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       : null;
   const contents = streamId ? authorSession(streamId).window.webContents : ownedWindow?.webContents;
   if (!contents) throw new Error("browser session unavailable for automation");
-  const targets = storyPath ? await readTargetsForStory(storyPath) : { version: 1, steps: {} };
+  const targets = { version: 1, steps: {} };
   const recordingSessionAtLaunch = recordingSessionId
     ? recordingSessions.get(recordingSessionId)
     : null;
@@ -2349,23 +1274,16 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   const stepTimings: RecordingStepTiming[] = [];
   const actionStepStartMs = new Map<number, number>();
   const actionRunStartedAt = recordingSessionAtLaunch?.startedAt ?? Date.now();
-  const executionProfile = {
-    ...storyBrowserExecutionProfile({
-      captureRecordingFrames: Boolean(recordingSessionId),
-      includeCursor:
-        (recordingSessionAtLaunch as (RecordingSession & { includeCursor?: boolean }) | null)
-          ?.includeCursor ?? true,
-      captureSize: recordingSessionAtLaunch
-        ? {
-            width: recordingSessionAtLaunch.width,
-            height: recordingSessionAtLaunch.height,
-          }
-        : undefined,
-    }),
-    recordingFps: recordingSessionAtLaunch?.fps ?? 30,
-  };
+  const executionProfile = storyBrowserExecutionProfile({
+    captureRecordingFrames: Boolean(recordingSessionId),
+    captureSize: recordingSessionAtLaunch
+      ? {
+          width: recordingSessionAtLaunch.width,
+          height: recordingSessionAtLaunch.height,
+        }
+      : undefined,
+  });
   const failureFrameDir = userDataPath("automation-runs", randomUUID(), "diagnostics");
-  const sceneEntryUrl = (sceneId: string) => liveSceneEntryUrlForRepair(commands, sceneId, source);
   let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
   try {
     result = await runStoryCommandsInBrowser({
@@ -2376,46 +1294,9 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       targets,
       executionProfile,
       failureFrameDir,
-      recordingSessionId: recordingSessionAtLaunch?.id ?? null,
+      recordingSessionId,
       recordingClockMs: recordingSessionAtLaunch
         ? () => recordingFrameClockMs(recordingSessionAtLaunch)
-        : undefined,
-      recordingCheckpointSessionId: recordingSessionAtLaunch?.id ?? null,
-      recordingMediaClockSnapshot: recordingSessionAtLaunch
-        ? () => recordingSessionAtLaunch.mediaClock.snapshot()
-        : undefined,
-      captureSceneTail: recordingSessionAtLaunch
-        ? () => captureAutomationRecordingTail(recordingSessionAtLaunch)
-        : undefined,
-      recordingRepairSessionId: recordingSessionAtLaunch?.id ?? null,
-      onRepairRequired: (event) => {
-        sendChannel(sender, onEvent, { json: JSON.stringify(event) });
-      },
-      pauseRecordingForRepair: recordingSessionAtLaunch
-        ? async () => {
-            await pauseRecording({ id: recordingSessionAtLaunch.id });
-          }
-        : undefined,
-      resumeRecordingForRepair: recordingSessionAtLaunch
-        ? async () => {
-            await resumeRecording({ id: recordingSessionAtLaunch.id });
-          }
-        : undefined,
-      canRestoreSceneEntry: recordingSessionAtLaunch
-        ? (sceneId) => sceneEntryUrl(sceneId) !== null
-        : undefined,
-      restoreSceneEntry: recordingSessionAtLaunch
-        ? async (sceneId) => {
-            const url = sceneEntryUrl(sceneId);
-            if (!url || contents.isDestroyed()) return false;
-            try {
-              await contents.loadURL(url);
-              invalidateAuthorPreviewPaintForContents(contents);
-              return true;
-            } catch {
-              return false;
-            }
-          }
         : undefined,
       actionLandmarks: recordingSessionAtLaunch?.actionLandmarks,
       requestFrameCommit: recordingSessionAtLaunch
@@ -2429,9 +1310,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
         : undefined,
       pauseGate: recordingSessionAtLaunch?.pauseGate,
       shouldCancel: recordingSessionAtLaunch
-        ? () =>
-            recordingSessions.get(recordingSessionAtLaunch.id) !== recordingSessionAtLaunch ||
-            recordingLifecycle.isCancellationRequested(recordingSessionAtLaunch.id)
+        ? () => recordingSessions.get(recordingSessionAtLaunch.id) !== recordingSessionAtLaunch
         : undefined,
       hooks: {
         onStepStarted: (ordinal, command) => {
@@ -2455,12 +1334,6 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           actionDurationMs,
           timing,
         }) => {
-          const runtimeResult = stepResult as RuntimeParsedCommandResult;
-          const runtimeTargets = runtimeResult.runtimeTargets ?? null;
-          const runtimeTarget = runtimeResult.runtimeTarget ?? runtimeTargets?.destination ?? null;
-          const matchedCommand = runtimeTarget
-            ? commandForRuntimeCandidate(command, runtimeTarget.candidate)
-            : command;
           const fallbackStepEndedAtMs = recordingSessionAtLaunch
             ? recordingFrameClockMs(recordingSessionAtLaunch)
             : Math.max(0, Date.now() - actionRunStartedAt);
@@ -2487,86 +1360,30 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
               cursor: stepResult.cursor ?? null,
               target: stepResult.target
                 ? {
-                    selector: targetSelector(matchedCommand.target),
+                    selector: targetSelector(command.target),
                     bbox: stepResult.target.bounds,
                     matchKind: "primary",
-                    source: runtimeTarget?.candidate.source ?? null,
-                    fallbackIndex: runtimeTarget?.candidate.fallbackIndex ?? null,
-                    key: runtimeTarget?.candidate.key ?? null,
                   }
                 : null,
               confidence: "high",
             });
           }
-          if (recordingSessionId && commandContributesCursorEvent(command)) {
-            const actionEvent = actionTimelineEventFromStep({
-              ordinal,
-              command: matchedCommand,
-              stepStartedAtMs,
-              actionAtMs,
-              stepEndedAtMs,
-              target: stepResult.target,
-              secondaryTarget: runtimeResult.source ?? null,
-              pointer: stepResult.pointer ?? undefined,
-              scrollTiming: timing?.scrollTiming ?? null,
-              cursorTiming: timing?.cursorTiming ?? null,
-              inputTiming: timing?.inputTiming ?? null,
-              landmarks: timing?.landmarks ?? null,
-              includeCursor: executionProfile.injectCursorPath !== false,
-              cursorApplicable: stepResult.target?.kind !== "file_input_hidden",
-              targetMatch: runtimeTarget
-                ? {
-                    source: runtimeTarget.candidate.source,
-                    fallbackIndex: runtimeTarget.candidate.fallbackIndex,
-                  }
-                : null,
-              gesture:
-                command.verb === "drag" && runtimeResult.source && stepResult.target
-                  ? {
-                      kind: "drag",
-                      source: runtimeResult.source.center,
-                      destination: stepResult.target.center,
-                      samples: runtimeResult.dragSamples?.map((sample) => ({
-                        x: sample.x,
-                        y: sample.y,
-                        elapsed_ms: sample.elapsedMs,
-                      })),
-                      source_match: runtimeTargets
-                        ? {
-                            source: runtimeTargets.source.candidate.source,
-                            fallback_index: runtimeTargets.source.candidate.fallbackIndex,
-                          }
-                        : undefined,
-                      destination_match: runtimeTargets
-                        ? {
-                            source: runtimeTargets.destination.candidate.source,
-                            fallback_index: runtimeTargets.destination.candidate.fallbackIndex,
-                          }
-                        : undefined,
-                    }
-                  : null,
-              uploadAsset: runtimeResult.uploadAsset ?? null,
-            });
-            actionEvents.push(actionEvent);
-            try {
-              recordingCheckpointsForSession(recordingSessionId)?.recordAction(
-                `${command.step_id ?? "step"}:${ordinal}`,
-                actionEvent,
-              );
-            } catch (error) {
-              void recordEngineLog({
-                level: "warn",
-                event: "recording.checkpoint.failed",
-                context: {
-                  session_id: recordingSessionId,
-                  step_id: command.step_id ?? undefined,
-                  ordinal,
-                  phase: "action_capture",
-                  reason_code: "checkpoint_action_capture_failed",
-                },
-                error,
-              });
-            }
+          if (recordingSessionId && stepResult.target && commandContributesCursorEvent(command)) {
+            actionEvents.push(
+              actionTimelineEventFromStep({
+                ordinal,
+                command,
+                stepStartedAtMs,
+                actionAtMs,
+                stepEndedAtMs,
+                target: stepResult.target,
+                pointer: stepResult.pointer ?? undefined,
+                scrollTiming: timing?.scrollTiming ?? null,
+                cursorTiming: timing?.cursorTiming ?? null,
+                inputTiming: timing?.inputTiming ?? null,
+                landmarks: timing?.landmarks ?? null,
+              }),
+            );
           }
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
@@ -2576,14 +1393,9 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
               duration_ms: durationMs,
               cursor_x: stepResult.cursor?.x ?? 0,
               cursor_y: stepResult.cursor?.y ?? 0,
-              matched_selector: targetSelector(matchedCommand.target),
+              matched_selector: targetSelector(command.target),
               matched_bbox: stepResult.target?.bounds ?? null,
               match_kind: stepResult.cursor ? "primary" : "none",
-              target_source: runtimeTarget?.candidate.source ?? null,
-              fallback_index: runtimeTarget?.candidate.fallbackIndex ?? null,
-              target_key: runtimeTarget?.candidate.key ?? null,
-              target_attempts: runtimeTarget?.attempts ?? [],
-              source_target_attempts: runtimeTargets?.source.attempts ?? [],
             }),
           });
           if (stepResult.screenshotPath) {
@@ -2627,17 +1439,11 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             }
           }
           const diagnostics = automationFailureDiagnostics(error);
-          const attempts =
-            error instanceof RuntimeTargetCandidatesExhaustedError
-              ? error.attempts
-              : diagnostics
-                ? [diagnostics]
-                : [];
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
               type: "step_failed",
               ordinal,
-              attempts,
+              attempts: diagnostics ? [diagnostics] : [],
               error_message: error instanceof Error ? error.message : String(error),
               screenshot_path: screenshotPath ?? undefined,
             }),
@@ -2654,7 +1460,6 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     await captureAutomationRecordingTail(recordingSession);
     await ensureRecordingFramesCoverElapsedTime(recordingSession);
   }
-  let actionSidecarError: unknown = null;
   if (recordingSessionId && recordingSessions.has(recordingSessionId)) {
     if (recordingSession) {
       await writeRecordingStepTimingSidecarBestEffort(
@@ -2667,29 +1472,14 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             ? "failed"
             : "partial",
       );
-      try {
-        await writeRecordingActionsSidecarBestEffort(recordingSession, actionEvents, {
-          cursorMotionPreset: executionProfile.cursorMotionPreset,
-        });
-      } catch (error) {
-        actionSidecarError = error;
-      }
     }
-    await stopRecording(
-      { id: recordingSessionId },
-      {
-        kind: "complete",
-        automation: {
-          exit_reason: actionSidecarError ? "failed" : result.exitReason,
-          total_steps: commands.length,
-          succeeded: result.succeeded,
-          failed: actionSidecarError ? Math.max(1, result.failed) : result.failed,
-          failed_ordinal: result.failedOrdinal,
-        },
-      },
-    );
+    await stopRecording({ id: recordingSessionId });
+    if (recordingSession) {
+      await writeRecordingActionsSidecarBestEffort(recordingSession, actionEvents, {
+        cursorMotionPreset: executionProfile.cursorMotionPreset,
+      });
+    }
   }
-  if (actionSidecarError) throw actionSidecarError;
   sendChannel(sender, onEvent, {
     json: JSON.stringify({
       type: "story_ended",
@@ -2709,7 +1499,7 @@ export function commandSupportsFallback(command: ParsedCommand | undefined): boo
 }
 
 export function commandContributesCursorEvent(command: ParsedCommand | undefined): boolean {
-  return Boolean(command && cursorCommandPolicy(command.verb).contributesActionEvent);
+  return Boolean(command && CURSOR_INTERACTION_VERBS.includes(command.verb));
 }
 
 export function selectorSummary(record: unknown): string | null {
@@ -2726,32 +1516,15 @@ export function selectorSummary(record: unknown): string | null {
   return kind;
 }
 
-export async function readTargetsForStory(storyPath: string): Promise<RuntimeTargetSidecar> {
-  const raw = await readJson<unknown>(targetsPathFor(storyPath), {
-    version: 1,
-    steps: {},
-  });
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { version: 0, steps: {} };
-  }
-  const targets = raw as { version?: unknown; steps?: unknown };
-  const version = Number(targets.version);
-  const rawSteps =
-    targets.steps && typeof targets.steps === "object" && !Array.isArray(targets.steps)
-      ? (targets.steps as Record<string, unknown>)
-      : {};
-  const steps = Object.fromEntries(
-    Object.entries(rawSteps).map(([stepId, value]) => [
-      stepId,
-      value && typeof value === "object" && !Array.isArray(value)
-        ? (value as { primary?: unknown; fallbacks?: unknown[] })
-        : { primary: value },
-    ]),
-  );
-  return {
-    version: Number.isSafeInteger(version) ? version : 0,
-    steps,
-  };
+export async function readTargetsForStory(storyPath: string): Promise<{
+  version: number;
+  steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }>;
+}> {
+  const targets = await readJson<{
+    version: number;
+    steps: Record<string, { primary?: unknown; fallbacks?: unknown[] }>;
+  }>(targetsPathFor(storyPath), { version: 1, steps: {} });
+  return { version: 1, steps: targets.steps ?? {} };
 }
 
 export async function writeTargetsForStory(
@@ -2911,11 +1684,7 @@ export async function simulatorPromoteFallback(sessionId: string, ordinal: numbe
   }
 
   const targets = await readTargetsForStory(session.storyPath);
-  const stepValue = targets.steps[command.step_id];
-  const stepTargets =
-    stepValue && typeof stepValue === "object" && !Array.isArray(stepValue)
-      ? (stepValue as { primary?: unknown; fallbacks?: unknown[] })
-      : null;
+  const stepTargets = targets.steps[command.step_id];
   const [promoted, ...remainingFallbacks] = Array.isArray(stepTargets?.fallbacks)
     ? stepTargets.fallbacks
     : [];

@@ -11,18 +11,10 @@ import {
   actionsSidecarPath,
 } from "../action-timeline";
 import { estimateCursorTravelDelayMs, initialCursorPoint } from "../cursor-timing";
-import {
-  discoverCommittedSceneAttempts,
-  disposeRecordingCheckpoints,
-  recordingCheckpointsForSession,
-  registerRecordingCheckpoints,
-} from "../recording-checkpoints";
 import { RecordingMediaClock } from "../recording-media-clock";
 import { RecordingPauseGate } from "../recording-pause-gate";
-import { invalidateRecordingRepair, recordingRepairController } from "../recording-repair";
-import { recordEngineLog } from "../recording-observability";
 import { AUTOMATION_RECORDING_TAIL_DURATION_MS } from "../recording-tail";
-import { type ParsedCommand, parseStorySource } from "../story-parser";
+import type { ParsedCommand } from "../story-parser";
 
 vi.mock("electron", () => ({
   app: {
@@ -33,10 +25,6 @@ vi.mock("electron", () => ({
 
 vi.mock("electron-updater", () => ({
   default: { autoUpdater: {} },
-}));
-
-vi.mock("../recording-observability", () => ({
-  recordEngineLog: vi.fn(async () => null),
 }));
 
 vi.mock("./capture-preview", () => ({
@@ -59,21 +47,22 @@ vi.mock("./capture-preview", () => ({
 }));
 
 vi.mock("./recording", () => ({
-  pauseRecording: vi.fn(),
-  resumeRecording: vi.fn(),
   stopRecording: vi.fn(),
 }));
 
+vi.mock("../recording-observability", () => ({
+  recordEngineLog: vi.fn(async () => null),
+}));
+
+import { recordEngineLog } from "../recording-observability";
 import { authorSession } from "./capture-preview";
 import { stopRecording } from "./recording";
-import { type RecordingSession, recordingSessions } from "./shared";
+import { recordingSessions } from "./shared";
 import {
   commandContributesCursorEvent,
   commandGetsPreActionPacing,
-  commandMutatesCapturedPage,
   executeParsedCommand,
   launchAutomationCommand,
-  liveSceneEntryUrlForRepair,
   rebaseActionEventsToFirstCursorInteraction,
   runStoryCommandsInBrowser,
   writeRecordingActionsSidecarBestEffort,
@@ -176,359 +165,6 @@ function fakeContentsByLabel(targets: Record<string, ActionTarget>) {
 }
 
 describe("story browser cursor pacing", () => {
-  it("offers scene restore only from an explicit navigation or the first-scene app entry", () => {
-    const firstScene = {
-      verb: "wait",
-      scene_id: "scene-first",
-      scene_ordinal: 1,
-    } as ParsedCommand;
-    const navigatedScene = {
-      verb: "navigate",
-      url: "https://app.example.test/settings",
-      scene_id: "scene-settings",
-      scene_ordinal: 2,
-    } as ParsedCommand;
-    const implicitLaterScene = {
-      verb: "click",
-      scene_id: "scene-later",
-      scene_ordinal: 3,
-    } as ParsedCommand;
-    const commands = [firstScene, navigatedScene, implicitLaterScene];
-    const storySource = `story "Demo" {
-      meta {
-        app: "https://app.example.test/start"
-      }
-      scene "First" {
-        wait 1ms
-      }
-    }`;
-
-    expect(liveSceneEntryUrlForRepair(commands, "scene-first", storySource)).toBe(
-      "https://app.example.test/start",
-    );
-    expect(liveSceneEntryUrlForRepair(commands, "scene-settings", storySource)).toBe(
-      "https://app.example.test/settings",
-    );
-    expect(liveSceneEntryUrlForRepair(commands, "scene-later", storySource)).toBeNull();
-  });
-
-  it("writes a valid empty v3 sidecar for a strict zero-interaction recording", async () => {
-    vi.stubEnv("STORYCAPTURE_RECORDING_OUTCOME_MODE", "strict");
-    vi.stubEnv("STORYCAPTURE_RECORDING_OUTCOME_LEGACY_KILL_SWITCH", "0");
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-actions-v3-"));
-    tempDirs.push(dir);
-    const outputPath = path.join(dir, "recording.mp4");
-    const session = {
-      id: "session-empty-v3",
-      outputPath,
-      width: 1280,
-      height: 720,
-      outputWidth: 1280,
-      outputHeight: 720,
-      fps: 30,
-      frameSeq: 0,
-      target: { kind: "author_preview" },
-      frameCrop: null,
-      mediaClock: new RecordingMediaClock({ fpsNum: 30, fpsDen: 1 }),
-    } as RecordingSession;
-
-    await writeRecordingActionsSidecarBestEffort(session, []);
-
-    const written = JSON.parse(await fs.readFile(actionsSidecarPath(outputPath), "utf8"));
-    expect(written.version).toBe(3);
-    expect(written.events).toEqual([]);
-    expect(written.media_clock.clock).toBe("encoded_video_pts");
-  });
-
-  it("uses the typed event when an actions sidecar cannot be written", async () => {
-    vi.stubEnv("STORYCAPTURE_RECORDING_OUTCOME_MODE", "strict");
-    vi.stubEnv("STORYCAPTURE_RECORDING_OUTCOME_LEGACY_KILL_SWITCH", "0");
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-actions-failure-"));
-    tempDirs.push(dir);
-    const blocker = path.join(dir, "not-a-directory");
-    await fs.writeFile(blocker, "blocked");
-    const session = {
-      id: "session-sidecar-failure",
-      outputPath: path.join(blocker, "recording.mp4"),
-      width: 1280,
-      height: 720,
-      outputWidth: 1280,
-      outputHeight: 720,
-      fps: 30,
-      frameSeq: 0,
-      target: { kind: "author_preview" },
-      frameCrop: null,
-      mediaClock: new RecordingMediaClock({ fpsNum: 30, fpsDen: 1 }),
-    } as RecordingSession;
-
-    await expect(writeRecordingActionsSidecarBestEffort(session, [])).rejects.toBeDefined();
-    expect(recordEngineLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: "recording.sidecar.write_failed",
-        context: expect.objectContaining({
-          session_id: session.id,
-          phase: "actions",
-          reason_code: "sidecar_write_failed",
-        }),
-        details: { sidecar_kind: "actions" },
-      }),
-    );
-  });
-
-  it("commits one immutable checkpoint segment per parsed scene", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-runner-scenes-"));
-    tempDirs.push(dir);
-    const segmentsDir = path.join(dir, "segments");
-    const sessionId = "runner-scene-checkpoints";
-    const coordinator = registerRecordingCheckpoints({
-      sessionId,
-      segmentsDir,
-      width: 2,
-      height: 2,
-      fps: 30,
-      declareArtifacts: async () => {},
-      encoderFactory: ({ partialPath, finalPath }) => ({
-        write: async () => {},
-        finish: async () => {
-          await fs.mkdir(path.dirname(finalPath), { recursive: true });
-          await fs.writeFile(partialPath, "segment");
-          await fs.rename(partialPath, finalPath);
-        },
-        abort: async () => fs.rm(partialPath, { force: true }),
-      }),
-    });
-    const story = parseStorySource(`story "Checkpoint demo" {
-scene "First" {
-  wait 0ms
-}
-scene "Second" {
-  wait 0ms
-}
-}`).ast;
-    const commands = story?.scenes.flatMap((scene) => scene.commands) as ParsedCommand[];
-    const masterClock = new RecordingMediaClock({ fpsNum: 30, fpsDen: 1 });
-    const captureSceneTail = vi.fn(async () => {});
-
-    const result = await runStoryCommandsInBrowser({
-      contents: fakeContents([]) as never,
-      commands,
-      projectFolder: dir,
-      storySource: "",
-      targets: { version: 1, steps: {} },
-      recordingCheckpointSessionId: sessionId,
-      recordingMediaClockSnapshot: () => masterClock.snapshot(),
-      captureSceneTail,
-      requestFrameCommit: async () => {
-        const landmark = masterClock.commitFrame(true);
-        if (!landmark)
-          return { status: "degraded" as const, reason: "frame_capture_failed" as const };
-        await coordinator.recordFrame(new Uint8Array(16), landmark);
-        return { status: "committed" as const, landmark };
-      },
-      captureStateSnapshot: () => ({ frames_dropped: 0 }),
-    });
-
-    expect(result).toMatchObject({ succeeded: 2, failed: 0, exitReason: "completed" });
-    expect(captureSceneTail).toHaveBeenCalledTimes(2);
-    await expect(discoverCommittedSceneAttempts(segmentsDir)).resolves.toHaveLength(2);
-    await disposeRecordingCheckpoints(sessionId);
-  });
-
-  it("keeps the monolithic result authoritative when shadow checkpoints diverge", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-runner-shadow-"));
-    tempDirs.push(dir);
-    const sessionId = "runner-shadow-divergence";
-    const coordinator = registerRecordingCheckpoints({
-      sessionId,
-      segmentsDir: path.join(dir, "segments"),
-      width: 2,
-      height: 2,
-      fps: 30,
-      declareArtifacts: async () => {},
-      encoderFactory: () => ({
-        write: async () => {
-          throw new Error("synthetic encoder failure");
-        },
-        finish: async () => {},
-        abort: async () => {},
-      }),
-    });
-    const story = parseStorySource(`story "Checkpoint demo" {
-scene "First" {
-  wait 0ms
-}
-}`).ast;
-    const commands = story?.scenes.flatMap((scene) => scene.commands) as ParsedCommand[];
-    const masterClock = new RecordingMediaClock({ fpsNum: 30, fpsDen: 1 });
-
-    const result = await runStoryCommandsInBrowser({
-      contents: fakeContents([]) as never,
-      commands,
-      projectFolder: dir,
-      storySource: "",
-      targets: { version: 1, steps: {} },
-      recordingCheckpointSessionId: sessionId,
-      recordingMediaClockSnapshot: () => masterClock.snapshot(),
-      requestFrameCommit: async () => {
-        const landmark = masterClock.commitFrame(true);
-        if (!landmark)
-          return { status: "degraded" as const, reason: "frame_capture_failed" as const };
-        await coordinator.recordFrame(new Uint8Array(16), landmark);
-        return { status: "committed" as const, landmark };
-      },
-    });
-
-    expect(result).toMatchObject({ succeeded: 1, failed: 0, exitReason: "completed" });
-    expect(recordingCheckpointsForSession(sessionId)).toBeNull();
-  });
-
-  it("pauses for a phase-safe repair decision and aborts with salvage", async () => {
-    vi.stubEnv("STORYCAPTURE_RECORDING_REPAIR_MODE", "manual_hybrid");
-    vi.stubEnv("STORYCAPTURE_UPLOAD_EXECUTION_MODE", "off");
-    const sessionId = "runner-live-repair";
-    const controller = recordingRepairController(sessionId);
-    const pauseGate = new RecordingPauseGate();
-    const pauseRecordingForRepair = vi.fn(async () => undefined);
-    const resumeRecordingForRepair = vi.fn(async () => undefined);
-    const eventSpy = vi.fn((event: { repair_token: string; allowed_actions: string[] }) => {
-      controller.resolve({
-        session_id: sessionId,
-        repair_token: event.repair_token,
-        action: "abort_keep_salvage",
-      });
-    });
-    const failedSpy = vi.fn();
-    const upload = {
-      ...command("upload", "File"),
-      path: "assets/demo.txt",
-      step_id: "step-upload",
-      scene_id: "scene-upload",
-      scene_name: "Upload",
-      scene_ordinal: 1,
-      step_ordinal: 1,
-    } as ParsedCommand;
-
-    const result = await runStoryCommandsInBrowser({
-      contents: fakeContents([]) as never,
-      commands: [upload],
-      projectFolder: "/tmp",
-      storySource: "",
-      targets: { version: 1, steps: {} },
-      recordingRepairSessionId: sessionId,
-      pauseGate,
-      pauseRecordingForRepair,
-      resumeRecordingForRepair,
-      onRepairRequired: eventSpy,
-      hooks: { onStepFailed: failedSpy },
-    });
-
-    expect(eventSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "repair-required",
-        phase: "pre_input",
-        allowed_actions: expect.arrayContaining(["retry_step", "abort_keep_salvage"]),
-      }),
-    );
-    expect(result).toMatchObject({ failed: 1, exitReason: "failed" });
-    expect(failedSpy).toHaveBeenCalledTimes(1);
-    expect(pauseRecordingForRepair).toHaveBeenCalledTimes(1);
-    expect(resumeRecordingForRepair).not.toHaveBeenCalled();
-    expect(pauseRecordingForRepair.mock.invocationCallOrder[0]).toBeLessThan(
-      eventSpy.mock.invocationCallOrder[0] as number,
-    );
-    expect(pauseGate.state).toBe("running");
-    invalidateRecordingRepair(sessionId);
-  });
-
-  it("awaits a timed-out presentation without replaying browser input", async () => {
-    vi.stubEnv("STORYCAPTURE_RECORDING_REPAIR_MODE", "manual_hybrid");
-    const sessionId = "runner-presentation-repair";
-    const controller = recordingRepairController(sessionId);
-    const pauseGate = new RecordingPauseGate();
-    const actionLandmarks = new RecordingActionLandmarkRecorder();
-    actionLandmarks.commitFrame({ frameIndex: 0, ptsUs: 0 });
-    let frameIndex = 0;
-    const pauseRecordingForRepair = vi.fn(async () => undefined);
-    const resumeRecordingForRepair = vi.fn(async () => undefined);
-    const failedSpy = vi.fn();
-    const succeededSpy = vi.fn();
-    const eventSpy = vi.fn(
-      (event: {
-        allowed_actions: string[];
-        phase: string;
-        reason_code: string;
-        repair_token: string;
-      }) => {
-        controller.resolve({
-          session_id: sessionId,
-          repair_token: event.repair_token,
-          action: "await_presentation",
-        });
-        setTimeout(() => {
-          frameIndex += 1;
-          actionLandmarks.notePaint();
-          actionLandmarks.commitFrame({ frameIndex, ptsUs: frameIndex * 33_333 });
-        }, 10);
-      },
-    );
-    const contents = fakeContents([target("Delayed control", { x: 460, y: 320 })]);
-    const click = {
-      ...command("click", "Delayed control"),
-      step_id: "step-presentation",
-      scene_id: "scene-presentation",
-      scene_name: "Presentation",
-      scene_ordinal: 1,
-      step_ordinal: 1,
-    } as ParsedCommand;
-
-    const run = runStoryCommandsInBrowser({
-      contents: contents as never,
-      commands: [click],
-      projectFolder: "/tmp",
-      storySource: "",
-      targets: { version: 1, steps: {} },
-      executionProfile: {
-        typingMode: "incremental",
-        captureRecordingFrames: true,
-        captureSize: { width: 1280, height: 800 },
-        cursorMotionPreset: "natural",
-        injectCursorPath: true,
-        settleDelayForCommand: () => 0,
-      },
-      recordingRepairSessionId: sessionId,
-      pauseGate,
-      pauseRecordingForRepair,
-      resumeRecordingForRepair,
-      onRepairRequired: eventSpy,
-      actionLandmarks,
-      requestFrameCommit: async () => {
-        frameIndex += 1;
-        const landmark = { frameIndex, ptsUs: frameIndex * 33_333 };
-        actionLandmarks.commitFrame(landmark);
-        return { status: "committed" as const, landmark };
-      },
-      hooks: { onStepFailed: failedSpy, onStepSucceeded: succeededSpy },
-    });
-
-    await vi.runAllTimersAsync();
-    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0, exitReason: "completed" });
-    expect(eventSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        phase: "input_emitted_presentation_pending",
-        reason_code: "presentation_timeout",
-        allowed_actions: expect.arrayContaining(["await_presentation"]),
-      }),
-    );
-    expect(
-      contents.sendInputEvent.mock.calls.filter(([event]) => event.type === "mouseDown"),
-    ).toHaveLength(1);
-    expect(pauseRecordingForRepair).toHaveBeenCalledTimes(1);
-    expect(resumeRecordingForRepair).toHaveBeenCalledTimes(1);
-    expect(failedSpy).not.toHaveBeenCalled();
-    expect(succeededSpy).toHaveBeenCalledTimes(1);
-    invalidateRecordingRepair(sessionId);
-  });
-
   it.each([
     ["click", ["down", "up", "action"]],
     ["type", ["down", "up", "text_start", "text_end", "action"]],
@@ -547,72 +183,7 @@ scene "First" {
     expect(landmarks).toEqual(["armed", ...expected]);
   });
 
-  it("executes upload through CDP and returns only privacy-safe asset metadata", async () => {
-    vi.stubEnv("STORYCAPTURE_UPLOAD_EXECUTION_MODE", "on");
-    const inputTarget = {
-      ...target("Upload file", { x: 320, y: 220 }),
-      kind: "file_input",
-    };
-    const sendCommand = vi.fn(async (method: string) => {
-      if (method === "DOM.getDocument") return { root: { nodeId: 1 } };
-      if (method === "DOM.querySelector") return { nodeId: 2 };
-      if (method === "DOM.setFileInputFiles") return {};
-      throw new Error(`unexpected method ${method}`);
-    });
-    const contents = {
-      executeJavaScript: vi.fn(async (script: string) => {
-        if (script.includes("file =")) {
-          return { count: 1, basename: "sample.txt", byteSize: 12 };
-        }
-        if (script.includes("setAttribute")) return { ok: true, accept: ".txt" };
-        return null;
-      }),
-      debugger: {
-        isAttached: () => false,
-        attach: vi.fn(),
-        detach: vi.fn(),
-        sendCommand,
-      },
-    };
-    const landmarks: string[] = [];
-
-    const result = await executeParsedCommand(
-      contents as never,
-      {
-        verb: "upload",
-        target: { kind: "selector", value: "#file" },
-        path: "assets/sample.txt",
-      } as ParsedCommand,
-      "/project",
-      {
-        resolvedTarget: inputTarget,
-        resolvedUploadAsset: {
-          absolutePath: "/project/assets/sample.txt",
-          projectRelativePath: "assets/sample.txt",
-          basename: "sample.txt",
-          byteSize: 12,
-        },
-        onInputSideEffect: (kind) => landmarks.push(kind),
-      },
-    );
-
-    expect(result).toMatchObject({
-      target: inputTarget,
-      uploadAsset: {
-        projectRelativePath: "assets/sample.txt",
-        basename: "sample.txt",
-        byteSize: 12,
-      },
-    });
-    expect(JSON.stringify(result)).not.toContain("/project/");
-    expect(landmarks).toEqual(["action"]);
-    expect(sendCommand).toHaveBeenCalledWith("DOM.setFileInputFiles", {
-      files: ["/project/assets/sample.txt"],
-      nodeId: 2,
-    });
-  });
-
-  it("records a hover action landmark without inventing button input", async () => {
+  it("does not invent input landmarks for hover", async () => {
     const actionTarget = target("Menu", { x: 240, y: 180 });
     const contents = fakeContents([actionTarget]);
     const landmarks: string[] = [];
@@ -620,7 +191,7 @@ scene "First" {
       resolvedTarget: actionTarget,
       onInputSideEffect: (kind) => landmarks.push(kind),
     });
-    expect(landmarks).toEqual(["action"]);
+    expect(landmarks).toEqual([]);
   });
 
   beforeEach(() => {
@@ -632,7 +203,6 @@ scene "First" {
   afterEach(async () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
-    vi.unstubAllEnvs();
     recordingSessions.clear();
     await Promise.all(
       tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })),
@@ -644,155 +214,13 @@ scene "First" {
     expect(commandContributesCursorEvent(command("type", "Email"))).toBe(true);
     expect(commandContributesCursorEvent(command("hover", "Menu"))).toBe(true);
     expect(commandContributesCursorEvent(command("select", "Plan"))).toBe(true);
-    expect(commandContributesCursorEvent(command("upload", "Avatar"))).toBe(true);
-    expect(commandContributesCursorEvent(command("drag", "Card"))).toBe(true);
+    expect(commandContributesCursorEvent(command("upload", "Avatar"))).toBe(false);
+    expect(commandContributesCursorEvent(command("drag", "Card"))).toBe(false);
     expect(commandContributesCursorEvent(command("wait-for", "Heading"))).toBe(false);
     expect(commandContributesCursorEvent(command("assert", "Heading"))).toBe(false);
     expect(commandGetsPreActionPacing(command("wait-for", "Heading"))).toBe(false);
     expect(commandContributesCursorEvent(textOverlay("Welcome", 2_000))).toBe(false);
     expect(commandGetsPreActionPacing(textOverlay("Welcome", 2_000))).toBe(false);
-  });
-
-  it("executes the promoted sidecar primary in runtime-target enforce mode", async () => {
-    vi.stubEnv("STORYCAPTURE_RUNTIME_TARGET_MODE", "enforce");
-    const contents = fakeContentsByLabel({ Primary: target("Primary", { x: 360, y: 220 }) });
-    const succeeded = vi.fn();
-    const run = runStoryCommandsInBrowser({
-      contents: contents as never,
-      commands: [{ ...command("click", "Story"), step_id: "step-1", timeout_ms: 500 }],
-      projectFolder: "/tmp/storycapture-test",
-      storySource: "",
-      targets: {
-        version: 1,
-        steps: {
-          "step-1": {
-            primary: { kind: "label", value: "Primary" },
-            fallbacks: [{ kind: "label", value: "Fallback" }],
-          },
-        },
-      },
-      executionProfile: {
-        typingMode: "instant",
-        captureRecordingFrames: false,
-        settleDelayForCommand: () => 0,
-      },
-      hooks: { onStepSucceeded: succeeded },
-    });
-
-    await vi.runAllTimersAsync();
-    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
-    expect(
-      (succeeded.mock.calls[0][0].result as { runtimeTarget?: { candidate: unknown } })
-        .runtimeTarget,
-    ).toMatchObject({ candidate: { source: "sidecar_primary", fallbackIndex: null } });
-    expect(contents.sendInputEvent).toHaveBeenCalled();
-  });
-
-  it("uses the first ready stored fallback after primary and story target fail", async () => {
-    vi.stubEnv("STORYCAPTURE_RUNTIME_TARGET_MODE", "enforce");
-    const contents = fakeContentsByLabel({ Fallback: target("Fallback", { x: 420, y: 260 }) });
-    const succeeded = vi.fn();
-    const run = runStoryCommandsInBrowser({
-      contents: contents as never,
-      commands: [{ ...command("click", "Story"), step_id: "step-1", timeout_ms: 500 }],
-      projectFolder: "/tmp/storycapture-test",
-      storySource: "",
-      targets: {
-        version: 1,
-        steps: {
-          "step-1": {
-            primary: { kind: "label", value: "Primary" },
-            fallbacks: [{ kind: "label", value: "Fallback" }],
-          },
-        },
-      },
-      executionProfile: {
-        typingMode: "instant",
-        captureRecordingFrames: false,
-        settleDelayForCommand: () => 0,
-      },
-      hooks: { onStepSucceeded: succeeded },
-    });
-
-    await vi.runAllTimersAsync();
-    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
-    expect(
-      (
-        succeeded.mock.calls[0][0].result as {
-          runtimeTarget?: { candidate: unknown; attempts: unknown[] };
-        }
-      ).runtimeTarget,
-    ).toMatchObject({
-      candidate: { source: "sidecar_fallback", fallbackIndex: 0 },
-      attempts: [
-        { source: "sidecar_primary", reason: "not_found" },
-        { source: "story_target", reason: "not_found" },
-      ],
-    });
-  });
-
-  it("fails once with an ordered sanitized trail when candidates are exhausted", async () => {
-    vi.stubEnv("STORYCAPTURE_RUNTIME_TARGET_MODE", "enforce");
-    const contents = fakeContentsByLabel({});
-    const failed = vi.fn();
-    const run = runStoryCommandsInBrowser({
-      contents: contents as never,
-      commands: [{ ...command("click", "Story"), step_id: "step-1", timeout_ms: 100 }],
-      projectFolder: "/tmp/storycapture-test",
-      storySource: "",
-      targets: {
-        version: 1,
-        steps: {
-          "step-1": {
-            primary: { kind: "label", value: "Primary" },
-            fallbacks: [{ kind: "label", value: "Fallback" }],
-          },
-        },
-      },
-      executionProfile: {
-        typingMode: "instant",
-        captureRecordingFrames: false,
-        settleDelayForCommand: () => 0,
-      },
-      hooks: { onStepFailed: failed },
-    });
-
-    await vi.runAllTimersAsync();
-    await expect(run).resolves.toMatchObject({ succeeded: 0, failed: 1, exitReason: "failed" });
-    expect(failed).toHaveBeenCalledOnce();
-    const error = failed.mock.calls[0][1] as Error & {
-      reason?: string;
-      attempts?: unknown[];
-    };
-    expect(error).toMatchObject({
-      reason: "target_candidates_exhausted",
-      attempts: [
-        { source: "sidecar_primary", reason: "not_found" },
-        { source: "story_target", reason: "not_found" },
-        { source: "sidecar_fallback", reason: "not_found" },
-      ],
-    });
-    expect(JSON.stringify(error)).not.toContain("Primary");
-    expect(JSON.stringify(error)).not.toContain("Fallback");
-    expect(contents.sendInputEvent).not.toHaveBeenCalled();
-  });
-
-  it("guards every command that can mutate the captured page", () => {
-    for (const verb of ["navigate", "scroll", "click", "type", "hover", "select", "upload"]) {
-      expect(commandMutatesCapturedPage({ verb } as ParsedCommand)).toBe(true);
-    }
-    for (const verb of [
-      "wait",
-      "pause",
-      "text-overlay",
-      "wait-for",
-      "wait-for-visible",
-      "assert",
-      "assert-visible",
-      "screenshot",
-    ]) {
-      expect(commandMutatesCapturedPage({ verb } as ParsedCommand)).toBe(false);
-    }
   });
 
   it("waits the full text overlay duration without browser or input side effects", async () => {
@@ -1049,12 +477,12 @@ scene "First" {
       projectFolder: "/tmp/storycapture-test",
       storySource: "",
       targets: { version: 1, steps: {} },
-      recordingSessionId: "recording-target-retry",
       executionProfile: {
         typingMode: "instant",
         captureRecordingFrames: false,
         settleDelayForCommand: () => 0,
       },
+      recordingSessionId: "recording-detach",
       hooks: { onStepFailed: (_ordinal, error) => failures.push(error) },
     });
 
@@ -1064,12 +492,17 @@ scene "First" {
     expect(failures[0]).toMatchObject({
       message: expect.stringContaining("detached after 3 attempts"),
     });
+    expect(
+      vi
+        .mocked(recordEngineLog)
+        .mock.calls.filter(([entry]) => entry.event === "recording.target.retry_scheduled"),
+    ).toHaveLength(3);
     expect(recordEngineLog).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: "recording.target.retry_scheduled",
+        event: "recording.target.failed",
         context: expect.objectContaining({
-          session_id: "recording-target-retry",
-          reason_code: "detached",
+          session_id: "recording-detach",
+          reason_code: "detach_retries_exhausted",
         }),
       }),
     );
@@ -1272,7 +705,6 @@ scene "First" {
       projectFolder: "/tmp/storycapture-test",
       storySource: "",
       targets: { version: 1, steps: {} },
-      recordingSessionId: "recording-readiness",
       executionProfile: {
         typingMode: "incremental",
         captureRecordingFrames: true,
@@ -1289,16 +721,6 @@ scene "First" {
     expect(
       contents.executeJavaScript.mock.calls.some(([script]) => script.includes("ElectronJS")),
     ).toBe(true);
-    expect(recordEngineLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: "recording.readiness.degraded",
-        context: expect.objectContaining({
-          session_id: "recording-readiness",
-          phase: "cursor_arrival",
-          reason_code: "frame_commit_timeout",
-        }),
-      }),
-    );
   });
 
   it("records healthy type landmarks from an explicitly committed frame", async () => {
@@ -1345,112 +767,6 @@ scene "First" {
       input: { action: committed, text_start: committed, text_end: committed },
       presentation: { status: "presented", firstPostInputFrame: { frameIndex: 1 } },
     });
-  });
-
-  it("executes a framed drag with ordered landmarks and guaranteed release", async () => {
-    vi.stubEnv("STORYCAPTURE_DRAG_EXECUTION_MODE", "on");
-    vi.stubEnv("STORYCAPTURE_RUNTIME_TARGET_MODE", "off");
-    const source = target("Source", { x: 260, y: 300 });
-    const destination = target("Destination", { x: 620, y: 340 });
-    const contents = fakeContentsByLabel({ Source: source, Destination: destination });
-    const actionLandmarks = new RecordingActionLandmarkRecorder();
-    const committed = { frameIndex: 0, ptsUs: 0 };
-    const successfulSteps: Array<{
-      result?: unknown;
-      timing?: { landmarks?: unknown };
-    }> = [];
-    const requestFrameCommit = vi.fn(async () => {
-      actionLandmarks.commitFrame(committed);
-      setTimeout(() => actionLandmarks.commitFrame({ frameIndex: 1, ptsUs: 33_333 }), 300);
-      return { status: "committed" as const, landmark: committed };
-    });
-
-    const run = runStoryCommandsInBrowser({
-      contents: contents as never,
-      commands: [
-        {
-          verb: "drag",
-          from: { kind: "label", value: "Source" },
-          to: { kind: "label", value: "Destination" },
-        } as ParsedCommand,
-      ],
-      projectFolder: "/tmp/storycapture-test",
-      storySource: "",
-      targets: { version: 1, steps: {} },
-      executionProfile: {
-        typingMode: "incremental",
-        captureRecordingFrames: true,
-        captureSize: { width: 1280, height: 800 },
-        cursorMotionPreset: "natural",
-        injectCursorPath: true,
-        settleDelayForCommand: () => 0,
-      },
-      actionLandmarks,
-      requestFrameCommit,
-      frameSyncTimeoutMs: 1_000,
-      hooks: { onStepSucceeded: (step) => successfulSteps.push(step) },
-    });
-
-    await vi.runAllTimersAsync();
-    await expect(run).resolves.toMatchObject({ succeeded: 1, failed: 0 });
-    expect(
-      contents.sendInputEvent.mock.calls.filter(([event]) => event.type === "mouseDown"),
-    ).toHaveLength(1);
-    expect(
-      contents.sendInputEvent.mock.calls.filter(([event]) => event.type === "mouseUp"),
-    ).toHaveLength(1);
-    expect(successfulSteps[0]?.result).toMatchObject({
-      source,
-      target: destination,
-      pointer: { button: "left", effect: "drag" },
-    });
-    expect(successfulSteps[0]?.timing?.landmarks).toMatchObject({
-      cursorPath: { arrival: committed },
-      input: { down: committed, up: committed, action: committed },
-      presentation: { status: "presented", firstPostInputFrame: { frameIndex: 1 } },
-    });
-  });
-
-  it("does not send drag mouse-down when the source arrival barrier degrades", async () => {
-    vi.stubEnv("STORYCAPTURE_DRAG_EXECUTION_MODE", "on");
-    vi.stubEnv("STORYCAPTURE_RUNTIME_TARGET_MODE", "off");
-    const contents = fakeContentsByLabel({
-      Source: target("Source", { x: 260, y: 300 }),
-      Destination: target("Destination", { x: 620, y: 340 }),
-    });
-    const run = runStoryCommandsInBrowser({
-      contents: contents as never,
-      commands: [
-        {
-          verb: "drag",
-          from: { kind: "label", value: "Source" },
-          to: { kind: "label", value: "Destination" },
-        } as ParsedCommand,
-      ],
-      projectFolder: "/tmp/storycapture-test",
-      storySource: "",
-      targets: { version: 1, steps: {} },
-      executionProfile: {
-        typingMode: "incremental",
-        captureRecordingFrames: true,
-        captureSize: { width: 1280, height: 800 },
-        cursorMotionPreset: "natural",
-        injectCursorPath: true,
-        settleDelayForCommand: () => 0,
-      },
-      actionLandmarks: new RecordingActionLandmarkRecorder(),
-      requestFrameCommit: async () => ({
-        status: "degraded",
-        reason: "frame_capture_failed",
-      }),
-      frameSyncTimeoutMs: 100,
-    });
-
-    await vi.runAllTimersAsync();
-    await expect(run).resolves.toMatchObject({ succeeded: 0, failed: 1, exitReason: "failed" });
-    expect(contents.sendInputEvent.mock.calls.some(([event]) => event.type === "mouseDown")).toBe(
-      false,
-    );
   });
 
   it.each([
@@ -1682,6 +998,50 @@ scene "First" {
     await expect(fs.stat(failures[0]?.screenshotPath ?? "")).resolves.toBeDefined();
   });
 
+  it("logs an actions sidecar write failure without changing the legacy outcome", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-sidecar-failure-"));
+    tempDirs.push(dir);
+    const blockedParent = path.join(dir, "not-a-directory");
+    await fs.writeFile(blockedParent, "blocked");
+    const mediaClock = new RecordingMediaClock({ fpsNum: 60, fpsDen: 1 });
+    mediaClock.commitFrame(true);
+    const session = {
+      id: "recording-sidecar-failure",
+      outputPath: path.join(blockedParent, "recording.mp4"),
+      target: { kind: "author_preview", stream_id: "author-preview" },
+      width: 1280,
+      height: 800,
+      frameCrop: null,
+      mediaClock,
+    } as never;
+    const event: ActionTimelineEvent = {
+      step_id: null,
+      ordinal: 1,
+      verb: "click",
+      t_start_ms: 0,
+      t_action_ms: 1,
+      t_end_ms: 2,
+      target: null,
+      secondary_target: null,
+      pointer: null,
+    };
+
+    await expect(writeRecordingActionsSidecarBestEffort(session, [event])).resolves.toBeUndefined();
+
+    expect(recordEngineLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: "warn",
+        event: "recording.sidecar.write_failed",
+        context: {
+          session_id: "recording-sidecar-failure",
+          phase: "actions_sidecar",
+          reason_code: "write_failed",
+        },
+        details: { sidecar_kind: "actions", event_count: 1 },
+      }),
+    );
+  });
+
   it("excludes non-interaction targets from recorded action sidecars", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-actions-"));
     tempDirs.push(dir);
@@ -1725,7 +1085,6 @@ scene "First" {
       captureInFlight: null,
       audioPath: null,
       frameCrop: null,
-      loggedAuthorPreviewFrame: false,
       requestedFps: 60,
     } as never);
     vi.mocked(stopRecording).mockImplementationOnce(async () => {

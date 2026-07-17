@@ -190,7 +190,7 @@ export function cursorTimelineTimingFromPlan(input: CursorTimelineTimingInput): 
   const dwellMs = Math.max(0, actionAtMs - arrivalMs);
   const kind = inputKindForVerb(input.verb);
   const hasPointerPress =
-    kind === "click" || kind === "focus" || kind === "type" || kind === "select" || kind === "drag";
+    kind === "click" || kind === "focus" || kind === "type" || kind === "select";
 
   return {
     cursorTiming: {

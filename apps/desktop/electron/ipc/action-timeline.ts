@@ -1,9 +1,6 @@
 import type { RecordedActionLandmarks } from "./action-landmarks";
-import { cursorCommandPolicy } from "./cursor-policy";
 import { writeJsonAtomic } from "./json-store";
-import { recordingBundleActionsPath, recordingBundlePublicVideoPath } from "./recording-bundle";
 import type { RecordingMediaClockSnapshot } from "./recording-media-clock";
-import type { ParsedCommandVerb } from "./story-parser";
 
 export interface ActionPoint {
   x: number;
@@ -65,9 +62,6 @@ export interface ActionInputTiming {
 }
 
 export interface ActionTimelineEvent {
-  policy_version?: 1;
-  include_cursor?: boolean;
-  cursor_applicability?: "actionable" | "not_applicable";
   step_id: string | null;
   ordinal: number;
   verb: string;
@@ -93,24 +87,10 @@ export interface ActionTimelineEvent {
     >
   >;
   presentation?: {
-    status: "presented" | "timeout" | "not_applicable" | "cancelled" | "failed";
+    status: "presented" | "timeout" | "not_applicable";
     first_post_input_frame?: { frame_index: number; pts_us: number };
     first_post_input_paint?: { frame_index: number; pts_us: number };
     diagnostic_reason?: string;
-  };
-  target_match?: { source: string; fallback_index: number | null };
-  gesture?: {
-    kind: "drag";
-    source: ActionPoint;
-    destination: ActionPoint;
-    samples?: Array<ActionPoint & { elapsed_ms: number }>;
-    source_match?: { source: string; fallback_index: number | null };
-    destination_match?: { source: string; fallback_index: number | null };
-  };
-  upload_asset?: {
-    project_relative_path: string;
-    basename: string;
-    byte_size: number;
   };
 }
 
@@ -172,27 +152,14 @@ export interface ActionTimelineEventInput {
   cursorTiming?: ActionCursorTiming | null;
   inputTiming?: ActionInputTiming | null;
   landmarks?: RecordedActionLandmarks | null;
-  includeCursor?: boolean;
-  cursorApplicable?: boolean;
-  targetMatch?: { source: string; fallbackIndex: number | null } | null;
-  gesture?: ActionTimelineEvent["gesture"] | null;
-  uploadAsset?: {
-    projectRelativePath: string;
-    basename: string;
-    byteSize: number;
-  } | null;
 }
 
 export interface RecordingActionsOptions {
   cursorMotionPreset?: ActionCursorMotionPreset;
   version?: 1 | 2 | 3;
-  mediaClock?: RecordingMediaClockSnapshot;
-  frameCount?: number;
 }
 
 export function actionsSidecarPath(recordingPath: string): string {
-  const bundlePath = recordingBundleActionsPath(recordingPath);
-  if (bundlePath) return bundlePath;
   return /\.[^/.]+$/.test(recordingPath)
     ? recordingPath.replace(/\.[^/.]+$/, ".actions.json")
     : `${recordingPath}.actions.json`;
@@ -229,9 +196,7 @@ export function deriveActionCaptureRect(
 }
 
 export function actionPointerForVerb(verb: string): ActionPointer | null {
-  if (verb === "click") return { button: "left", effect: "click" };
-  if (verb === "drag") return { button: "left", effect: "drag" };
-  return null;
+  return verb === "click" ? { button: "left", effect: "click" } : null;
 }
 
 export function actionTimelineEventFromStep(input: ActionTimelineEventInput): ActionTimelineEvent {
@@ -243,32 +208,9 @@ export function actionTimelineEventFromStep(input: ActionTimelineEventInput): Ac
   const scrollTiming = sanitizeScrollTiming(input.scrollTiming ?? null);
   const cursorTiming = sanitizeCursorTiming(input.cursorTiming ?? null);
   const inputTiming = sanitizeInputTiming(input.inputTiming ?? null);
-  const serializedLandmarks = input.landmarks ? serializeActionLandmarks(input.landmarks) : null;
-  let landmarks: Partial<ActionTimelineEvent> | null = serializedLandmarks;
-  if (serializedLandmarks && input.cursorApplicable === false) {
-    const { cursor_path: _cursorPath, ...semanticLandmarks } = serializedLandmarks;
-    landmarks = semanticLandmarks;
-  } else if (serializedLandmarks && input.includeCursor === false) {
-    landmarks = {
-      ...serializedLandmarks,
-      cursor_path: {
-        ...serializedLandmarks.cursor_path,
-        samples: [],
-      },
-    };
-  }
+  const landmarks = input.landmarks ? serializeActionLandmarks(input.landmarks) : null;
 
   return {
-    ...(typeof input.includeCursor === "boolean"
-      ? { policy_version: 1 as const, include_cursor: input.includeCursor }
-      : {}),
-    ...(typeof input.cursorApplicable === "boolean"
-      ? {
-          cursor_applicability: input.cursorApplicable
-            ? ("actionable" as const)
-            : ("not_applicable" as const),
-        }
-      : {}),
     step_id:
       typeof input.command.step_id === "string" && input.command.step_id.length > 0
         ? input.command.step_id
@@ -285,24 +227,6 @@ export function actionTimelineEventFromStep(input: ActionTimelineEventInput): Ac
     ...(cursorTiming ? { cursor_timing: cursorTiming } : {}),
     ...(inputTiming ? { input_timing: inputTiming } : {}),
     ...(landmarks ?? {}),
-    ...(input.targetMatch
-      ? {
-          target_match: {
-            source: input.targetMatch.source,
-            fallback_index: input.targetMatch.fallbackIndex,
-          },
-        }
-      : {}),
-    ...(input.gesture ? { gesture: input.gesture } : {}),
-    ...(input.uploadAsset
-      ? {
-          upload_asset: {
-            project_relative_path: input.uploadAsset.projectRelativePath,
-            basename: input.uploadAsset.basename,
-            byte_size: input.uploadAsset.byteSize,
-          },
-        }
-      : {}),
   };
 }
 
@@ -312,11 +236,11 @@ export function recordingActionsFromSession(
   options: RecordingActionsOptions = {},
 ): RecordingActions {
   const cursorMotionPreset = normalizeMotionPreset(options.cursorMotionPreset);
-  const clock = options.mediaClock ?? session.mediaClock?.snapshot();
+  const clock = session.mediaClock?.snapshot();
   const version = options.version ?? (cursorMotionPreset ? 2 : 1);
   return {
     version,
-    recording_path: recordingBundlePublicVideoPath(session.outputPath),
+    recording_path: session.outputPath,
     ...(cursorMotionPreset ? { cursor_motion_preset: cursorMotionPreset } : {}),
     viewport: {
       width: positiveDimension(session.width, session.outputWidth),
@@ -324,10 +248,7 @@ export function recordingActionsFromSession(
     },
     capture_rect: deriveActionCaptureRect(session),
     fps: positiveDimension(session.fps, 30),
-    frame_count: Math.max(
-      0,
-      Math.round(finiteNumber(options.frameCount ?? session.frameSeq, 0)),
-    ),
+    frame_count: Math.max(0, Math.round(finiteNumber(session.frameSeq, 0))),
     ...(version === 3 && clock
       ? {
           media_clock: {
@@ -346,21 +267,14 @@ export function recordingActionsFromSession(
 }
 
 function projectActionEvent(event: ActionTimelineEvent, version: 1 | 2 | 3): ActionTimelineEvent {
-  if (version === 3) return event;
+  if (version === 3 || !event.input_landmarks?.action) return event;
   const {
-    policy_version: _policyVersion,
-    include_cursor: _includeCursor,
-    cursor_applicability: _cursorApplicability,
-    target_match: _targetMatch,
-    gesture: _gesture,
-    upload_asset: _uploadAsset,
     cursor_path: cursorPath,
     input_landmarks: inputLandmarks,
     input_delivery: _inputDelivery,
     presentation,
     ...compatible
   } = event;
-  if (!inputLandmarks?.action) return compatible;
   const toMs = (value: { pts_us: number } | undefined, fallback: number) =>
     value ? Math.round(value.pts_us / 1000) : fallback;
   const actionMs = toMs(inputLandmarks.action, compatible.t_action_ms);
@@ -400,173 +314,6 @@ function projectActionEvent(event: ActionTimelineEvent, version: 1 | 2 | 3): Act
         }
       : {}),
   };
-}
-
-function pathIsUnsafeAssetReference(value: string): boolean {
-  return (
-    value.startsWith("/") ||
-    value.startsWith("\\") ||
-    /^[a-zA-Z]:/.test(value) ||
-    value.split(/[\\/]/).includes("..")
-  );
-}
-
-export class RecordingActionsV3ValidationError extends Error {
-  readonly recordingReasonCode = "action_sidecar_invalid";
-
-  constructor(readonly issues: readonly string[]) {
-    super(`action_sidecar_invalid:${issues.join(",")}`);
-    this.name = "RecordingActionsV3ValidationError";
-  }
-}
-
-export function validateRecordingActionsV3(
-  actions: RecordingActions,
-  options: { requirePresented?: boolean } = {},
-): void {
-  const issues: string[] = [];
-  if (actions.version !== 3) issues.push("version_not_v3");
-  if (!actions.media_clock) issues.push("media_clock_missing");
-  const eventIds = new Set<string>();
-
-  const validPts = (value: unknown, field: string) => {
-    if (!Number.isSafeInteger(value) || Number(value) < 0) issues.push(`${field}_invalid_pts`);
-  };
-  const validPoint = (value: ActionPoint, field: string) => {
-    if (!Number.isFinite(value.x) || !Number.isFinite(value.y))
-      issues.push(`${field}_invalid_point`);
-  };
-
-  for (const [index, event] of actions.events.entries()) {
-    const prefix = `event_${index + 1}`;
-    const eventId = event.step_id ? `step:${event.step_id}` : `ordinal:${event.ordinal}`;
-    if (eventIds.has(eventId)) issues.push(`${prefix}_duplicate_id`);
-    eventIds.add(eventId);
-
-    let policy: ReturnType<typeof cursorCommandPolicy> | null = null;
-    try {
-      policy = cursorCommandPolicy(event.verb as ParsedCommandVerb);
-    } catch {
-      issues.push(`${prefix}_cursor_policy_missing`);
-    }
-    if (policy && !policy.contributesActionEvent) issues.push(`${prefix}_unexpected_event`);
-    if (event.policy_version !== 1) issues.push(`${prefix}_policy_version_missing`);
-    if (typeof event.include_cursor !== "boolean") issues.push(`${prefix}_include_cursor_missing`);
-    if (!Number.isFinite(event.t_start_ms) || event.t_start_ms < 0)
-      issues.push(`${prefix}_invalid_start_ms`);
-    if (!Number.isFinite(event.t_action_ms) || event.t_action_ms < event.t_start_ms)
-      issues.push(`${prefix}_invalid_action_ms`);
-    if (!Number.isFinite(event.t_end_ms) || event.t_end_ms < event.t_action_ms)
-      issues.push(`${prefix}_invalid_end_ms`);
-
-    if (event.cursor_path) {
-      validPts(event.cursor_path.arrival.frame_index, `${prefix}_arrival_frame`);
-      validPts(event.cursor_path.arrival.pts_us, `${prefix}_arrival`);
-      for (const [sampleIndex, sample] of event.cursor_path.samples.entries()) {
-        validPts(sample.frame_index, `${prefix}_sample_${sampleIndex}_frame`);
-        validPts(sample.pts_us, `${prefix}_sample_${sampleIndex}`);
-        validPoint(sample, `${prefix}_sample_${sampleIndex}`);
-      }
-    }
-    if (event.include_cursor === false && event.cursor_path?.samples.length)
-      issues.push(`${prefix}_cursor_samples_disabled`);
-    if (event.include_cursor === false && event.cursor_timing)
-      issues.push(`${prefix}_cursor_timing_disabled`);
-    if (
-      event.include_cursor === true &&
-      policy?.visibleTrajectory &&
-      event.cursor_applicability !== "not_applicable" &&
-      !event.cursor_path
-    )
-      issues.push(`${prefix}_cursor_path_missing`);
-    if (event.cursor_applicability === "not_applicable" && event.cursor_path)
-      issues.push(`${prefix}_cursor_path_not_applicable`);
-
-    for (const [kind, landmark] of Object.entries(event.input_landmarks ?? {})) {
-      if (!landmark) continue;
-      validPts(landmark.frame_index, `${prefix}_${kind}_frame`);
-      validPts(landmark.pts_us, `${prefix}_${kind}`);
-    }
-    for (const required of policy?.requiredInputLandmarks ?? []) {
-      if (!event.input_landmarks?.[required]) issues.push(`${prefix}_${required}_missing`);
-    }
-
-    const arrivalPts = event.cursor_path?.arrival.pts_us;
-    const actionPts = event.input_landmarks?.action?.pts_us;
-    const presentationPts = event.presentation?.first_post_input_frame?.pts_us;
-    if (arrivalPts != null && actionPts != null && arrivalPts > actionPts)
-      issues.push(`${prefix}_arrival_after_action`);
-    if (actionPts != null && presentationPts != null && actionPts > presentationPts)
-      issues.push(`${prefix}_action_after_presentation`);
-    if (presentationPts != null) validPts(presentationPts, `${prefix}_presentation`);
-
-    if (policy?.presentation === "required") {
-      if (!event.presentation || event.presentation.status === "not_applicable") {
-        issues.push(`${prefix}_presentation_missing`);
-      } else if (
-        event.presentation.status === "presented" &&
-        !event.presentation.first_post_input_frame
-      ) {
-        issues.push(`${prefix}_presentation_frame_missing`);
-      } else if (options.requirePresented && event.presentation.status !== "presented") {
-        issues.push(`${prefix}_presentation_not_proven`);
-      }
-    }
-
-    if (event.target_match) {
-      if (!event.target_match.source) issues.push(`${prefix}_target_source_missing`);
-      const fallbackIndex = event.target_match.fallback_index;
-      if (fallbackIndex != null && (!Number.isSafeInteger(fallbackIndex) || fallbackIndex < 0)) {
-        issues.push(`${prefix}_fallback_index_invalid`);
-      }
-    }
-    if (event.gesture) {
-      if (event.gesture.kind !== "drag") issues.push(`${prefix}_gesture_kind_invalid`);
-      validPoint(event.gesture.source, `${prefix}_gesture_source`);
-      validPoint(event.gesture.destination, `${prefix}_gesture_destination`);
-      for (const [sampleIndex, sample] of (event.gesture.samples ?? []).entries()) {
-        validPoint(sample, `${prefix}_gesture_sample_${sampleIndex}`);
-        if (!Number.isFinite(sample.elapsed_ms) || sample.elapsed_ms < 0) {
-          issues.push(`${prefix}_gesture_sample_${sampleIndex}_invalid_time`);
-        }
-      }
-      for (const [matchName, match] of [
-        ["source", event.gesture.source_match],
-        ["destination", event.gesture.destination_match],
-      ] as const) {
-        if (!match) continue;
-        if (!match.source) issues.push(`${prefix}_gesture_${matchName}_source_missing`);
-        if (
-          match.fallback_index != null &&
-          (!Number.isSafeInteger(match.fallback_index) || match.fallback_index < 0)
-        ) {
-          issues.push(`${prefix}_gesture_${matchName}_fallback_index_invalid`);
-        }
-      }
-    }
-    if (event.verb === "drag" && !event.gesture) issues.push(`${prefix}_drag_gesture_missing`);
-    if (event.verb === "upload") {
-      const asset = event.upload_asset;
-      if (!asset) {
-        issues.push(`${prefix}_upload_asset_missing`);
-      } else {
-        if (
-          !asset.project_relative_path ||
-          pathIsUnsafeAssetReference(asset.project_relative_path)
-        ) {
-          issues.push(`${prefix}_upload_asset_path_invalid`);
-        }
-        if (!asset.basename || asset.basename.includes("/") || asset.basename.includes("\\")) {
-          issues.push(`${prefix}_upload_asset_basename_invalid`);
-        }
-        if (!Number.isSafeInteger(asset.byte_size) || asset.byte_size < 0) {
-          issues.push(`${prefix}_upload_asset_size_invalid`);
-        }
-      }
-    }
-  }
-
-  if (issues.length > 0) throw new RecordingActionsV3ValidationError(issues);
 }
 
 function serializeActionLandmarks(landmarks: RecordedActionLandmarks) {

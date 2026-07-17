@@ -11,10 +11,8 @@ const electronMock = vi.hoisted(() => ({
 
 vi.mock("electron", () => ({ app: electronMock }));
 
-import { RecordingAudioTrackRegistry } from "./audio-tracks";
 import { writeLogConfig } from "./log-store";
 import { recordEngineLog, resetRecordingObservabilityForTest } from "./recording-observability";
-import { RecordingRepairController } from "./recording-repair";
 import { sessionId } from "./session";
 
 let tempDir: string;
@@ -63,7 +61,6 @@ describe("recordEngineLog", () => {
       "electron/ipc/legacy/capture-preview.ts",
       "electron/ipc/legacy/recording.ts",
       "electron/ipc/legacy/story-runner.ts",
-      "electron/ipc/recording-lifecycle.ts",
     ];
     const sources = await Promise.all(
       producerFiles.map((file) => fs.readFile(path.resolve(process.cwd(), file), "utf8")),
@@ -174,43 +171,33 @@ describe("recordEngineLog", () => {
     stderr.mockRestore();
   });
 
-  it("records repair expiry and required audio failure without capture tokens", async () => {
-    const repair = new RecordingRepairController("session-boundary", { ttlMs: 60_000 });
-    repair.begin({
-      session_id: "session-boundary",
-      scene_id: "scene-1",
-      step_id: "step-1",
-      ordinal: 1,
-      phase: "pre_input",
-      reason_code: "target_missing",
-      candidates: [],
-      scene_retry_available: false,
-    });
-    repair.expireForTest();
-
-    const tracks = new RecordingAudioTrackRegistry();
+  it("records legacy failures without private capture tokens", async () => {
     const identity = {
       session_id: "session-boundary",
-      track_id: "track-1",
-      role: "microphone" as const,
-      source_id: "device-1",
       capture_token: "capture-token-canary",
     };
-    tracks.register({
-      sessionId: identity.session_id,
-      targetKind: "author_preview",
-      originMonotonicEpochMs: 1_000,
-      requests: [
-        {
-          track_id: identity.track_id,
-          role: identity.role,
-          requirement: "required",
-          source_id: identity.source_id,
-          capture_token: identity.capture_token,
-        },
-      ],
+    await recordEngineLog({
+      level: "warn",
+      event: "recording.target.retry_scheduled",
+      context: {
+        session_id: identity.session_id,
+        step_id: "step-1",
+        ordinal: 1,
+        phase: "pre_input",
+        reason_code: "target_missing",
+      },
+      details: { attempt: 1 },
     });
-    tracks.fail(identity, { sequence: 0, reason: "audio_zero_samples" });
+    await recordEngineLog({
+      level: "error",
+      event: "recording.audio.finalize_failed",
+      context: {
+        session_id: identity.session_id,
+        phase: "mux",
+        reason_code: "audio_zero_samples",
+      },
+      details: { capture_token: identity.capture_token },
+    });
     await recordEngineLog({
       event: "recording.health.sampled",
       context: { session_id: identity.session_id },
@@ -220,9 +207,8 @@ describe("recordEngineLog", () => {
     const events = await readStructuredEvents();
     expect(events.map((event) => event.event)).toEqual(
       expect.arrayContaining([
-        "recording.repair.required",
-        "recording.repair.expired",
-        "recording.audio.track_state_changed",
+        "recording.target.retry_scheduled",
+        "recording.audio.finalize_failed",
       ]),
     );
     expect(JSON.stringify(events)).not.toContain(identity.capture_token);

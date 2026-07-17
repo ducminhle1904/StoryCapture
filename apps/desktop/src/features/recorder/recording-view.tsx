@@ -1,4 +1,3 @@
-import type { RecordingOutcomeV1, RecordingTerminalEventV1 } from "@storycapture/shared-types";
 import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
@@ -22,9 +21,6 @@ import {
   type AutomationChannelHandle,
   type ExecutorEvent,
   launchAutomation,
-  type RecordingRepairAction,
-  type RepairRequiredEvent,
-  resolveRecordingRepair,
 } from "@/ipc/automation";
 import {
   type CaptureTarget,
@@ -37,15 +33,10 @@ import {
   type ScreenCapturePermissionReport,
 } from "@/ipc/capture";
 import {
-  cancelRecording,
-  type EncodeResultDto,
-  getRecordingStatus,
-  openRetainedRecordingArtifact,
   pauseRecording,
+  type EncodeResultDto,
   type RecordingEvent,
-  type RecordingPreflightReportV1,
   type RecordingSessionId,
-  recordingPreflight,
   resumeRecording,
   startRecording,
   stopRecording,
@@ -69,12 +60,6 @@ import { type RecorderStatus, type StepProgress, useRecorderStore } from "@/stat
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
-import {
-  engineHealthCopy,
-  formatEngineHealthBytes,
-  initialRecorderEngineHealthState,
-  reduceRecorderEngineHealth,
-} from "./engine-health";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 import { acquireRecordingPreview, type RecordingPreviewLease } from "./recording-preview";
 import { canFinalizeOwnedRecording } from "./recording-session-lifecycle";
@@ -88,7 +73,6 @@ interface RecordingViewProps {
   projectId: string | null;
   projectName: string;
   projectFolder: string;
-  storyPath?: string;
   storySource: string;
   autoOpenPostProduction?: boolean;
 }
@@ -107,53 +91,6 @@ const initialPermissionReport: ScreenCapturePermissionReport = {
   debugBypassAllowed: false,
 };
 
-const ACTIVE_RECORDING_SESSION_KEY = "storycapture.recording.active-session.v1";
-
-interface PersistedRecordingSessionV1 {
-  version: 1;
-  session_id: string;
-  project_id: string | null;
-}
-
-function readPersistedRecordingSession(): PersistedRecordingSessionV1 | null {
-  try {
-    const raw = window.sessionStorage.getItem(ACTIVE_RECORDING_SESSION_KEY);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<PersistedRecordingSessionV1>;
-    if (
-      value.version !== 1 ||
-      typeof value.session_id !== "string" ||
-      (value.project_id !== null && typeof value.project_id !== "string")
-    ) {
-      return null;
-    }
-    return value as PersistedRecordingSessionV1;
-  } catch {
-    return null;
-  }
-}
-
-function persistRecordingSession(sessionId: string, projectId: string | null): void {
-  try {
-    window.sessionStorage.setItem(
-      ACTIVE_RECORDING_SESSION_KEY,
-      JSON.stringify({ version: 1, session_id: sessionId, project_id: projectId }),
-    );
-  } catch {
-    // Recording remains usable when browser storage is unavailable.
-  }
-}
-
-function clearPersistedRecordingSession(sessionId: string): void {
-  try {
-    if (readPersistedRecordingSession()?.session_id === sessionId) {
-      window.sessionStorage.removeItem(ACTIVE_RECORDING_SESSION_KEY);
-    }
-  } catch {
-    // Best-effort cleanup only.
-  }
-}
-
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
@@ -164,10 +101,7 @@ function formatTime(ms: number): string {
 
 /** True if a Tauri IPC error is the typed `NotFound` variant. */
 function isNotFoundIpcError(e: unknown): boolean {
-  if (typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound") {
-    return true;
-  }
-  return /recording session .* not found/i.test(formatIpcError(e));
+  return typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound";
 }
 
 /** Format a Tauri IPC error into a readable string. */
@@ -194,51 +128,10 @@ function displayId(display: DisplayInfo): number {
   return typeof display.id === "bigint" ? Number(display.id) : display.id;
 }
 
-function isAuthoritativeTerminal(
-  ownerSessionId: string,
-  terminal: RecordingTerminalEventV1,
-): boolean {
-  if (
-    terminal.event !== "terminal" ||
-    terminal.version !== 1 ||
-    terminal.outcome.version !== 1 ||
-    terminal.outcome.session_id !== ownerSessionId
-  ) {
-    return false;
-  }
-  const disposition = terminal.disposition;
-  if (terminal.outcome.verdict === "passed") {
-    return Boolean(
-      terminal.artifact &&
-        disposition.show_complete &&
-        disposition.can_publish &&
-        disposition.auto_open_take &&
-        !disposition.open_repair &&
-        disposition.retain_bundle,
-    );
-  }
-  if (terminal.outcome.verdict === "repairable") {
-    return (
-      !disposition.show_complete &&
-      !disposition.can_publish &&
-      !disposition.auto_open_take &&
-      disposition.open_repair &&
-      disposition.retain_bundle
-    );
-  }
-  return (
-    !disposition.show_complete &&
-    !disposition.can_publish &&
-    !disposition.auto_open_take &&
-    !disposition.open_repair
-  );
-}
-
 export function RecordingView({
   projectId,
   projectName,
   projectFolder,
-  storyPath,
   storySource,
   autoOpenPostProduction = false,
 }: RecordingViewProps) {
@@ -278,11 +171,6 @@ export function RecordingView({
   // "video-only" badge stays visible next to the Live pill until the user
   // starts a new recording.
   const [audioUnavailable, setAudioUnavailable] = useState(false);
-  const [tabAudioEnabled, setTabAudioEnabled] = useState(false);
-  const [preflightReport, setPreflightReport] = useState<RecordingPreflightReportV1 | null>(null);
-  const [repairRequired, setRepairRequired] = useState<RepairRequiredEvent | null>(null);
-  const [repairSubmitting, setRepairSubmitting] = useState(false);
-  const [engineHealthState, setEngineHealthState] = useState(initialRecorderEngineHealthState);
 
   // Host heartbeat watchdog. `lastHeartbeatRef` is last-tick epoch-ms
   // (null before first heartbeat). `desynced` surfaces the "out of sync" UI.
@@ -295,14 +183,10 @@ export function RecordingView({
   // Mirror the active browser preset for ChromeHidingToggle.
   const [browserPreset, setBrowserPreset] = useState<string | null>(null);
   const appSettings = useAppSettingsStore((s) => s.settings);
-  const recordingAudioUiEnabled = ["multitrack_beta", "multitrack_ga"].includes(
-    document.documentElement.dataset.recordingAudioMode ?? "legacy",
-  );
 
   const applyRecorderDefaults = () => {
     const capture = useAppSettingsStore.getState().settings?.capture;
     setAudioDeviceId(capture?.audio_input_default === "system_default" ? "default" : null);
-    setTabAudioEnabled(false);
     setIncludeCursor(capture?.include_cursor_default ?? false);
     if (capture) applyCaptureFpsDefault(capture);
   };
@@ -407,15 +291,6 @@ export function RecordingView({
       automationOwnsStopRef.current = false;
     }
     if (previewSessionRef.current === ownerSessionId) releasePreviewLease();
-  };
-
-  const releaseOwnedSession = (ownerSessionId: string) => {
-    cleanupSessionResources(ownerSessionId);
-    sessionRef.current = null;
-    startedAtRef.current = null;
-    pausedAtRef.current = null;
-    setSession(null);
-    clearPersistedRecordingSession(ownerSessionId);
   };
 
   // Detect Stage Manager once on mount (user can toggle it at any time
@@ -546,12 +421,7 @@ export function RecordingView({
     return () => window.clearInterval(handle);
   }, [status]);
 
-  const finalizeRecording = (
-    ownerSessionId: string,
-    result: EncodeResultDto,
-    terminal?: RecordingTerminalEventV1,
-  ) => {
-    if (terminal && !isAuthoritativeTerminal(ownerSessionId, terminal)) return;
+  const finalizeRecording = (ownerSessionId: string, result: EncodeResultDto) => {
     if (
       !canFinalizeOwnedRecording({
         ownerSessionId,
@@ -562,11 +432,14 @@ export function RecordingView({
       return;
     }
     completedSessionRef.current = ownerSessionId;
-    setRepairRequired(null);
-    releaseOwnedSession(ownerSessionId);
+    cleanupSessionResources(ownerSessionId);
+    sessionRef.current = null;
+    startedAtRef.current = null;
+    pausedAtRef.current = null;
+    setSession(null);
     setStatus("completed");
     setOutputPath(result.output_path);
-    if (projectId && (!terminal || terminal.disposition.can_publish)) {
+    if (projectId) {
       publishCompletedRecording(queryClient, projectId, {
         path: result.output_path,
         captured_at: Date.now(),
@@ -575,11 +448,7 @@ export function RecordingView({
         height: result.output_height ?? null,
       });
     }
-    if (terminal?.outcome.warnings.includes("optional_audio_failed")) {
-      toast.warning("Recording complete without optional audio", {
-        description: result.output_path,
-      });
-    } else if (result.cadence_warning) {
+    if (result.cadence_warning) {
       const cadence =
         typeof result.actual_capture_fps === "number" && typeof result.requested_fps === "number"
           ? `${result.actual_capture_fps} / ${result.requested_fps} fps`
@@ -592,154 +461,31 @@ export function RecordingView({
     } else {
       toast.success("Recording complete", { description: result.output_path });
     }
-    if (autoOpenPostProduction && projectId && (!terminal || terminal.disposition.auto_open_take)) {
+    if (autoOpenPostProduction && projectId) {
       navigate(`/post-production/${projectId}`, { replace: true });
     }
   };
 
-  const consumeTerminal = (ownerSessionId: string, terminal: RecordingTerminalEventV1): boolean => {
-    if (
-      !isAuthoritativeTerminal(ownerSessionId, terminal) ||
-      !ownsActiveSession(ownerSessionId) ||
-      completedSessionRef.current === ownerSessionId
-    ) {
-      return false;
-    }
-    if (terminal.outcome.verdict === "passed" && terminal.artifact) {
-      finalizeRecording(
-        ownerSessionId,
-        {
-          output_path: terminal.artifact.output_path,
-          duration_ms: terminal.artifact.duration_ms,
-          frame_count: terminal.artifact.frame_count,
-          output_width: terminal.artifact.output_width,
-          output_height: terminal.artifact.output_height,
-          cadence_warning: terminal.outcome.capture.cadence_warning,
-        },
-        terminal,
-      );
-      return true;
-    }
-
-    completedSessionRef.current = ownerSessionId;
-    setRepairRequired(null);
-    releaseOwnedSession(ownerSessionId);
-    setOutputPath(
-      terminal.disposition.retain_bundle ? (terminal.artifact?.output_path ?? null) : null,
-    );
-    const reason = terminal.outcome.reason_code.replaceAll("_", " ");
-    if (terminal.outcome.verdict === "repairable") {
-      setStatus("repairable");
-      setError(`Recording needs repair: ${reason}`);
-      toast.warning("Recording needs repair", {
-        description: terminal.artifact?.output_path ?? reason,
-      });
-    } else if (terminal.outcome.verdict === "cancelled") {
-      setStatus("cancelled");
-      setError(null);
-      toast.info("Recording cancelled", {
-        description: terminal.disposition.retain_bundle
-          ? "The partial take was retained."
-          : undefined,
-      });
-    } else {
-      setStatus("failed");
-      setError(`Recording failed: ${reason}`);
-      toast.error("Recording failed", { description: reason });
-    }
-    return true;
-  };
-
-  const authorizeLegacyCompletion = async (
-    ownerSessionId: string,
-    result: EncodeResultDto,
-  ): Promise<void> => {
-    if (!ownsActiveSession(ownerSessionId)) return;
-    try {
-      const statusResult = await getRecordingStatus({ id: ownerSessionId });
-      if (!ownsActiveSession(ownerSessionId)) return;
-      if (statusResult.outcome_mode === "strict") {
-        if (statusResult.terminal_event) {
-          consumeTerminal(ownerSessionId, statusResult.terminal_event);
-        }
-        return;
-      }
-      finalizeRecording(ownerSessionId, result);
-    } catch (error) {
-      if (!ownsActiveSession(ownerSessionId)) return;
-      const message = `Could not verify recording outcome: ${formatIpcError(error)}`;
-      setError(message);
-      toast.error(message);
-    }
-  };
-
   const failRecording = (ownerSessionId: string, message: string) => {
-    if (!ownsActiveSession(ownerSessionId) || completedSessionRef.current === ownerSessionId)
-      return;
-    releaseOwnedSession(ownerSessionId);
+    if (!ownsActiveSession(ownerSessionId) || completedSessionRef.current === ownerSessionId) return;
+    cleanupSessionResources(ownerSessionId);
+    sessionRef.current = null;
+    startedAtRef.current = null;
+    pausedAtRef.current = null;
+    setSession(null);
     setStatus("failed");
     setError(message);
     toast.error(`Recording failed: ${message}`);
   };
 
-  const recordShadowDiagnostic = (ownerSessionId: string, outcome: RecordingOutcomeV1) => {
-    const fields = {
-      session_id: outcome.session_id,
-      verdict: outcome.verdict,
-      reason_code: outcome.reason_code,
-    };
-    if (outcome.session_id !== ownerSessionId) {
-      frontendLog.warn("RecordingView", "ignored recording outcome shadow for another session", {
-        fields: { ...fields, owner_session_id: ownerSessionId },
-      });
-      return;
-    }
-    frontendLog.info("RecordingView", "recording outcome shadow diagnostic", { fields });
-  };
-
-  const authorizeLegacyFailure = async (ownerSessionId: string, message: string): Promise<void> => {
-    if (!ownsActiveSession(ownerSessionId)) return;
-    try {
-      const statusResult = await getRecordingStatus({ id: ownerSessionId });
-      if (!ownsActiveSession(ownerSessionId)) return;
-      if (statusResult.outcome_mode === "strict") {
-        if (statusResult.terminal_event) {
-          consumeTerminal(ownerSessionId, statusResult.terminal_event);
-          return;
-        }
-        const diagnostic = `Recorder reported a failure while the authoritative outcome is pending: ${message}`;
-        setError(diagnostic);
-        frontendLog.warn("RecordingView", "legacy failure awaiting strict terminal", {
-          fields: { session_id: ownerSessionId, message },
-        });
-        return;
-      }
-      failRecording(ownerSessionId, message);
-    } catch (error) {
-      if (!ownsActiveSession(ownerSessionId)) return;
-      const diagnostic = `Could not verify recording outcome after recorder failure: ${formatIpcError(error)}`;
-      setError(diagnostic);
-      frontendLog.warn("RecordingView", "legacy failure status verification failed", {
-        error,
-        fields: { session_id: ownerSessionId, message },
-      });
-    }
-  };
-
-  const dispatch = async (ownerSessionId: string, event: RecordingEvent): Promise<void> => {
+  const dispatch = (ownerSessionId: string, event: RecordingEvent) => {
     if (!ownsActiveSession(ownerSessionId)) return;
     switch (event.type) {
       case "completed":
-        await authorizeLegacyCompletion(ownerSessionId, event.result);
-        break;
-      case "terminal":
-        consumeTerminal(ownerSessionId, event.terminal);
+        finalizeRecording(ownerSessionId, event.result);
         break;
       case "failed":
-        await authorizeLegacyFailure(ownerSessionId, event.message);
-        break;
-      case "recording_outcome_shadow":
-        recordShadowDiagnostic(ownerSessionId, event.outcome);
+        failRecording(ownerSessionId, event.message);
         break;
       case "audio-unavailable":
         // Mic negotiation failed; recording continues video-only.
@@ -751,98 +497,10 @@ export function RecordingView({
         lastHeartbeatRef.current = Date.now();
         if (desynced) setDesynced(false);
         break;
-      case "health-update":
-        if (event.snapshot) {
-          const snapshot = event.snapshot;
-          setEngineHealthState((current) =>
-            reduceRecorderEngineHealth(current, ownerSessionId, snapshot),
-          );
-        }
-        break;
       default:
         break;
     }
   };
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reattachment must run once for the persisted mount context
-  useEffect(() => {
-    const persistedSession = readPersistedRecordingSession();
-    if (!persistedSession || persistedSession.project_id !== projectId) return;
-    const persistedSessionId = persistedSession.session_id;
-
-    let cancelled = false;
-    let retryHandle: number | null = null;
-
-    const scheduleRetry = () => {
-      if (!cancelled) retryHandle = window.setTimeout(() => void restoreStatus(), 250);
-    };
-
-    const restoreStatus = async () => {
-      if (cancelled) return;
-      const currentSession = sessionRef.current;
-      if (currentSession && sessionKey(currentSession) !== persistedSessionId) return;
-      if (!currentSession) {
-        sessionRef.current = { id: persistedSessionId };
-        completedSessionRef.current = null;
-        setSession(persistedSessionId);
-        setStatus("stopping");
-      }
-
-      try {
-        const statusResult = await getRecordingStatus({ id: persistedSessionId });
-        if (cancelled || !ownsActiveSession(persistedSessionId)) return;
-        if (statusResult.outcome_mode === "strict" && statusResult.terminal_event) {
-          consumeTerminal(persistedSessionId, statusResult.terminal_event);
-          return;
-        }
-        if (statusResult.outcome_mode === "shadow" && statusResult.terminal_outcome) {
-          recordShadowDiagnostic(persistedSessionId, statusResult.terminal_outcome);
-        }
-
-        const lifecycleState = statusResult.snapshot.state;
-        if (
-          statusResult.outcome_mode !== "strict" &&
-          (lifecycleState === "finalized" ||
-            lifecycleState === "cancelled" ||
-            lifecycleState === "failed")
-        ) {
-          releaseOwnedSession(persistedSessionId);
-          setStatus("idle");
-          setError("The previous recording ended while this view was detached.");
-          return;
-        }
-
-        const restoredStatus: RecorderStatus =
-          lifecycleState === "recording"
-            ? "recording"
-            : lifecycleState === "paused"
-              ? "paused"
-              : lifecycleState === "starting"
-                ? "starting"
-                : "stopping";
-        setStatus(restoredStatus);
-        scheduleRetry();
-      } catch (error) {
-        if (cancelled || !ownsActiveSession(persistedSessionId)) return;
-        if (isNotFoundIpcError(error)) {
-          releaseOwnedSession(persistedSessionId);
-          setStatus("idle");
-          setError(null);
-          return;
-        }
-        setError(`Could not reconnect to recording: ${formatIpcError(error)}`);
-        scheduleRetry();
-      }
-    };
-
-    void restoreStatus();
-    return () => {
-      cancelled = true;
-      if (retryHandle != null) window.clearTimeout(retryHandle);
-    };
-    // Reattachment intentionally captures the first-render lifecycle handlers.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleRecord = async () => {
     // Double-start guard. Synchronous status flip before any await so a
@@ -852,17 +510,14 @@ export function RecordingView({
     setStatus("starting");
     // Fresh per-session UX state for the audio/heartbeat badges.
     setAudioUnavailable(false);
-    setPreflightReport(null);
-    setRepairRequired(null);
-    setEngineHealthState(initialRecorderEngineHealthState);
     setDesynced(false);
     lastHeartbeatRef.current = null;
-    if (!storyHasBrowser && permission !== "granted") {
+    if (permission !== "granted") {
       setStatus("idle");
       startInFlightRef.current = false;
       return;
     }
-    if (!storyHasBrowser && selectedDisplay == null) {
+    if (selectedDisplay == null) {
       toast.error("Pick a Target before recording.");
       setStatus("idle");
       startInFlightRef.current = false;
@@ -899,7 +554,7 @@ export function RecordingView({
       const shouldAutoFollow = storyHasBrowser;
       let recordingTarget: CaptureTarget = {
         kind: "display" as const,
-        display_id: selectedDisplay ?? 0,
+        display_id: selectedDisplay,
       };
       let frameCrop: {
         x: number;
@@ -940,101 +595,35 @@ export function RecordingView({
         });
         toast.info("Recording browser preview content");
       }
-      const preflight = await recordingPreflight({
-        version: 1,
-        target: recordingTarget,
-        output_directory: projectFolder,
-        width,
-        height,
-        fps: prefs.fps,
-        audio_roles: [
-          ...(audioDeviceId
-            ? [
-                {
-                  role: "microphone" as const,
-                  policy: "required" as const,
-                  device_id: audioDeviceId,
-                },
-              ]
-            : []),
-          ...(tabAudioEnabled && recordingTarget.kind === "author_preview"
-            ? [
-                {
-                  role: "tab" as const,
-                  policy: "required" as const,
-                  device_id: recordingTarget.stream_id,
-                },
-              ]
-            : []),
-        ],
-        available_audio_input_ids: audioDeviceId ? [audioDeviceId] : [],
-      });
-      setPreflightReport(preflight);
-      const nonPassingChecks = preflight.checks.filter((check) => check.status !== "pass");
-      if (preflight.mode === "block" && preflight.verdict === "block") {
-        throw new Error(
-          `Recording preflight blocked: ${nonPassingChecks.map((check) => check.detail).join(" ")}`,
-        );
-      }
-      if (nonPassingChecks.length > 0) {
-        toast.warning("Recording preflight found degraded capabilities", {
-          description: nonPassingChecks.map((check) => check.detail).join(" · "),
-        });
-      }
       let ownerSessionId: string | null = null;
       const pendingRecordingEvents: RecordingEvent[] = [];
-      const startArgs = {
-        project_folder: projectFolder,
-        target: recordingTarget,
-        width,
-        height,
-        fps: prefs.fps,
-        audio_device_id: audioDeviceId ?? undefined,
-        audio_track_selection: [
-          ...(audioDeviceId
-            ? [
-                {
-                  role: "microphone" as const,
-                  requirement: "required" as const,
-                  source_id: audioDeviceId,
-                },
-              ]
-            : []),
-          ...(tabAudioEnabled && recordingTarget.kind === "author_preview"
-            ? [
-                {
-                  role: "tab" as const,
-                  requirement: "required" as const,
-                  source_id: recordingTarget.stream_id,
-                },
-              ]
-            : []),
-        ],
-        include_cursor: includeCursor,
-        output_resolution: recordingOutputResolutionForStart(prefs, activePreset),
-        fit_mode: prefs.fit,
-        pad_color: prefs.pad,
-        quality_preset: prefs.quality,
-        scale_algo: "lanczos",
-        frame_crop: frameCrop,
-      } as Parameters<typeof startRecording>[0] & {
-        audio_track_selection: Array<{
-          role: "microphone" | "tab";
-          requirement: "required" | "optional";
-          source_id: string;
-        }>;
-      };
-      const id = await startRecording(startArgs, (event) => {
-        if (ownerSessionId) void dispatch(ownerSessionId, event);
-        else pendingRecordingEvents.push(event);
-      });
+      const id = await startRecording(
+        {
+          project_folder: projectFolder,
+          target: recordingTarget,
+          width,
+          height,
+          fps: prefs.fps,
+          audio_device_id: audioDeviceId ?? undefined,
+          include_cursor: includeCursor,
+          output_resolution: recordingOutputResolutionForStart(prefs, activePreset),
+          fit_mode: prefs.fit,
+          pad_color: prefs.pad,
+          quality_preset: prefs.quality,
+          scale_algo: "lanczos",
+          frame_crop: frameCrop,
+        },
+        (event) => {
+          if (ownerSessionId) dispatch(ownerSessionId, event);
+          else pendingRecordingEvents.push(event);
+        },
+      );
       ownerSessionId = sessionKey(id);
       sessionRef.current = id;
       completedSessionRef.current = null;
       previewSessionRef.current = ownerSessionId;
-      persistRecordingSession(ownerSessionId, projectId);
       setSession(ownerSessionId);
-      for (const event of pendingRecordingEvents) await dispatch(ownerSessionId, event);
+      for (const event of pendingRecordingEvents) dispatch(ownerSessionId, event);
       if (!ownsActiveSession(ownerSessionId)) {
         startInFlightRef.current = false;
         return;
@@ -1050,7 +639,6 @@ export function RecordingView({
       launchAutomation(
         {
           storySource,
-          storyPath,
           projectFolder,
           streamId: browserStreamId,
           chromeHiding,
@@ -1083,31 +671,6 @@ export function RecordingView({
     }
   };
 
-  const handleRepairAction = async (
-    action: RecordingRepairAction,
-    candidateKey?: string,
-  ): Promise<void> => {
-    const pending = repairRequired;
-    if (!pending || repairSubmitting) return;
-    setRepairSubmitting(true);
-    try {
-      await resolveRecordingRepair({
-        sessionId: pending.session_id,
-        repairToken: pending.repair_token,
-        action,
-        candidateKey,
-      });
-      setRepairRequired(null);
-      if (action === "abort_keep_salvage") {
-        toast.message("Recording stopped; committed scene artifacts were retained.");
-      }
-    } catch (repairError) {
-      toast.error(`Repair action rejected: ${formatIpcError(repairError)}`);
-    } finally {
-      setRepairSubmitting(false);
-    }
-  };
-
   // Map automation events onto the step rail.
   const dispatchAutomation = (ownerSessionId: string, evt: ExecutorEvent) => {
     if (!ownsActiveSession(ownerSessionId)) return;
@@ -1120,7 +683,6 @@ export function RecordingView({
         advanceStep(evt.ordinal - 1, "running");
         break;
       case "step_succeeded":
-        setRepairRequired(null);
         advanceStep(evt.ordinal - 1, "succeeded");
         pushCursor({ x: evt.cursor_x, y: evt.cursor_y, t: Date.now() });
         break;
@@ -1160,13 +722,6 @@ export function RecordingView({
         }
         break;
       }
-      case "repair-required":
-        setRepairRequired(evt);
-        advanceStep(evt.ordinal - 1, "running");
-        toast.warning(`Step ${evt.ordinal} needs a repair decision.`, {
-          description: "Automation is paused. The original attempt remains unchanged.",
-        });
-        break;
       case "story_ended":
         if (evt.status.failed > 0) {
           toast.warning(`Story finished with ${evt.status.failed} failure(s)`);
@@ -1189,13 +744,10 @@ export function RecordingView({
     const session = sessionRef.current;
     const ownerSessionId = sessionKey(session);
     if (expectedSessionId && expectedSessionId !== ownerSessionId) return;
-    setRepairRequired(null);
     setStatus("stopping");
     try {
       const result = await stopRecording(session);
-      if (ownsActiveSession(ownerSessionId)) {
-        await authorizeLegacyCompletion(ownerSessionId, result);
-      }
+      finalizeRecording(ownerSessionId, result);
     } catch (e) {
       if (!ownsActiveSession(ownerSessionId)) return;
       cleanupSessionResources(ownerSessionId);
@@ -1211,16 +763,18 @@ export function RecordingView({
   };
 
   // "Force stop" escape hatch surfaced when the heartbeat watchdog
-  // declares a desync. Ownership is retained until status yields the
-  // authoritative terminal or confirms that the session no longer exists.
+  // declares a desync. Always resets local state to idle regardless of
+  // IPC outcome — NotFound is treated as success (session already gone).
   const forceStop = async () => {
     const sid = sessionRef.current;
-    if (!sid) return;
-    const ownerSessionId = sessionKey(sid);
+    const ownerSessionId = sid ? sessionKey(sid) : null;
+    sessionRef.current = null;
+    setSession(null);
     setDesynced(false);
-    setStatus("stopping");
     try {
-      await stopRecording(sid);
+      if (sid) {
+        await stopRecording(sid);
+      }
     } catch (e) {
       if (!isNotFoundIpcError(e)) {
         frontendLog.warn("RecordingView", "forceStop: stopRecording error", {
@@ -1229,59 +783,12 @@ export function RecordingView({
         });
       }
     }
-    if (!ownsActiveSession(ownerSessionId)) return;
-    try {
-      const statusResult = await getRecordingStatus(sid);
-      if (!ownsActiveSession(ownerSessionId)) return;
-      if (statusResult.outcome_mode === "strict") {
-        if (statusResult.terminal_event) {
-          consumeTerminal(ownerSessionId, statusResult.terminal_event);
-        } else {
-          setError("Force stop is complete; waiting for the authoritative recording outcome.");
-        }
-        return;
-      }
-      if (statusResult.outcome_mode === "shadow" && statusResult.terminal_outcome) {
-        recordShadowDiagnostic(ownerSessionId, statusResult.terminal_outcome);
-      }
-      releaseOwnedSession(ownerSessionId);
-      setStatus("idle");
-      setElapsed(0);
-    } catch (error) {
-      if (!ownsActiveSession(ownerSessionId)) return;
-      if (isNotFoundIpcError(error)) {
-        releaseOwnedSession(ownerSessionId);
-        setStatus("idle");
-        setElapsed(0);
-        return;
-      }
-      setError(`Could not verify force-stop outcome: ${formatIpcError(error)}`);
-      frontendLog.warn("RecordingView", "forceStop: getRecordingStatus error", {
-        error,
-        fields: { session_id: ownerSessionId },
-      });
-    }
-  };
-
-  const handleHealthCancel = async (): Promise<void> => {
-    const sid = sessionRef.current;
-    if (!sid) return;
-    setRepairRequired(null);
-    setStatus("stopping");
-    try {
-      await cancelRecording(sid);
-    } catch (cancelError) {
-      toast.error(`Could not cancel recording: ${formatIpcError(cancelError)}`);
-    }
-  };
-
-  const handleOpenRetainedArtifact = async () => {
-    if (!outputPath) return;
-    try {
-      await openRetainedRecordingArtifact(outputPath);
-    } catch (error) {
-      toast.error(`Could not open retained artifact: ${formatIpcError(error)}`);
-    }
+    startedAtRef.current = null;
+    pausedAtRef.current = null;
+    if (ownerSessionId) cleanupSessionResources(ownerSessionId);
+    else releasePreviewLease();
+    setStatus("idle");
+    setElapsed(0);
   };
 
   const handlePause = async () => {
@@ -1330,8 +837,6 @@ export function RecordingView({
   }, [status, permission, selectedDisplay]);
 
   const canRecord = permission === "granted" && captureTarget != null;
-  const engineSnapshot = engineHealthState.snapshot;
-  const engineCopy = engineSnapshot ? engineHealthCopy(engineSnapshot) : null;
   // Display-only code path for `handleRecord`.
   const canRecordDisplay = canRecord && selectedDisplay != null;
   const targetControlsLocked =
@@ -1387,24 +892,6 @@ export function RecordingView({
           {(status === "recording" || status === "paused") && (
             <LiveRecordingBadge paused={status === "paused"} reduceMotion={!!reduceMotion} />
           )}
-          {engineSnapshot && engineCopy && (status === "recording" || status === "paused") ? (
-            <span
-              role="status"
-              aria-label={`${engineCopy.label}. ${engineCopy.summary}`}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                engineCopy.severity === "danger"
-                  ? "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
-                  : engineCopy.severity === "warning"
-                    ? "bg-[var(--color-warning)]/15 text-[var(--color-warning)]"
-                    : engineCopy.severity === "success"
-                      ? "bg-[var(--color-success)]/15 text-[var(--color-success)]"
-                      : "bg-[var(--color-surface-300)] text-[var(--color-fg-secondary)]"
-              }`}
-            >
-              <span aria-hidden="true">●</span>
-              {engineCopy.label}
-            </span>
-          ) : null}
           {/* Persistent badge while a mic failure is active. */}
           {audioUnavailable && (
             <span
@@ -1501,183 +988,6 @@ export function RecordingView({
           >
             Dismiss
           </button>
-        </div>
-      ) : null}
-
-      {preflightReport && preflightReport.verdict !== "pass" ? (
-        <div className="flex items-center gap-2 border-b border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 px-4 py-2 text-xs">
-          <AlertTriangle
-            size={13}
-            className="shrink-0 text-[var(--color-warning)]"
-            aria-hidden="true"
-          />
-          <span className="font-medium text-[var(--color-fg-primary)]">
-            {preflightReport.mode === "block" && preflightReport.verdict === "block"
-              ? "Recording preflight blocked"
-              : "Recording preflight warning"}
-          </span>
-          <span className="truncate text-[var(--color-fg-secondary)]">
-            {preflightReport.checks.find((check) => check.status !== "pass")?.detail}
-          </span>
-        </div>
-      ) : null}
-
-      {repairRequired ? (
-        <div
-          id="recording-repair-panel"
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-warning)]/35 bg-[var(--color-warning)]/10 px-4 py-2.5 text-xs"
-        >
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <AlertTriangle
-                size={13}
-                className="shrink-0 text-[var(--color-warning)]"
-                aria-hidden="true"
-              />
-              <span className="font-medium text-[var(--color-fg-primary)]">
-                Repair paused at step {repairRequired.ordinal}
-              </span>
-              <span className="text-[var(--color-fg-muted)]">
-                {repairRequired.phase === "pre_input"
-                  ? "No input was sent."
-                  : repairRequired.phase === "input_emitted_presentation_pending"
-                    ? "Input was sent; it will not be repeated."
-                    : "The action may have changed browser state."}
-              </span>
-            </div>
-            <div className="mt-1 text-[11px] text-[var(--color-fg-muted)]">
-              Attempt {repairRequired.attempt + 1} of 3 · decision expires in about{" "}
-              {Math.max(0, Math.ceil((repairRequired.expires_at_ms - Date.now()) / 60_000))} min
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            {repairRequired.allowed_actions.includes("retry_step") ? (
-              <button
-                type="button"
-                disabled={repairSubmitting}
-                onClick={() => void handleRepairAction("retry_step")}
-                className="rounded-[var(--radius-sm)] bg-[var(--color-fg-primary)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-bg-primary)] disabled:opacity-50"
-              >
-                Retry step
-              </button>
-            ) : null}
-            {repairRequired.allowed_actions.includes("use_candidate_and_retry")
-              ? repairRequired.candidates.map((candidate, candidateIndex) => (
-                  <button
-                    key={candidate.key}
-                    type="button"
-                    disabled={repairSubmitting}
-                    onClick={() =>
-                      void handleRepairAction("use_candidate_and_retry", candidate.key)
-                    }
-                    className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1.5 text-[11px] text-[var(--color-fg-primary)] disabled:opacity-50"
-                  >
-                    Try target {candidateIndex + 1}
-                  </button>
-                ))
-              : null}
-            {repairRequired.allowed_actions.includes("await_presentation") ? (
-              <button
-                type="button"
-                disabled={repairSubmitting}
-                onClick={() => void handleRepairAction("await_presentation")}
-                className="rounded-[var(--radius-sm)] bg-[var(--color-fg-primary)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-bg-primary)] disabled:opacity-50"
-              >
-                Wait for frame
-              </button>
-            ) : null}
-            {repairRequired.allowed_actions.includes("retry_scene") ? (
-              <button
-                type="button"
-                disabled={repairSubmitting}
-                onClick={() => void handleRepairAction("retry_scene")}
-                className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1.5 text-[11px] text-[var(--color-fg-primary)] disabled:opacity-50"
-              >
-                Retry scene
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={repairSubmitting}
-              onClick={() => void handleRepairAction("abort_keep_salvage")}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 px-2.5 py-1.5 text-[11px] text-[var(--color-danger)] disabled:opacity-50"
-            >
-              Stop & keep salvage
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {engineSnapshot && engineCopy?.persistent ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-danger)]/35 bg-[var(--color-danger)]/10 px-4 py-2.5 text-xs"
-        >
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <AlertTriangle
-                size={13}
-                className="shrink-0 text-[var(--color-danger)]"
-                aria-hidden="true"
-              />
-              <span className="font-medium text-[var(--color-fg-primary)]">{engineCopy.label}</span>
-              <span className="text-[var(--color-fg-secondary)]">{engineCopy.summary}</span>
-            </div>
-            <details className="mt-1 text-[11px] text-[var(--color-fg-muted)]">
-              <summary className="cursor-pointer">Engine details</summary>
-              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono">
-                <span>
-                  fps {engineSnapshot.actual_capture_fps.toFixed(1)} /{" "}
-                  {engineSnapshot.requested_fps}
-                </span>
-                <span>lost {engineSnapshot.frames_dropped + engineSnapshot.skipped_ticks}</span>
-                <span>backpressure {engineSnapshot.encoder_backpressure_events}</span>
-                <span>target {engineSnapshot.target_liveness.state}</span>
-                <span>disk {formatEngineHealthBytes(engineSnapshot.disk.free_bytes)}</span>
-                <span>
-                  audio{" "}
-                  {engineSnapshot.audio_tracks
-                    .map((track) => `${track.role}:${track.state}`)
-                    .join(", ") || "none"}
-                </span>
-              </div>
-            </details>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {engineSnapshot.allowed_actions.includes("repair") ? (
-              <button
-                type="button"
-                onClick={() =>
-                  document.getElementById("recording-repair-panel")?.scrollIntoView({
-                    behavior: reduceMotion ? "auto" : "smooth",
-                    block: "center",
-                  })
-                }
-                className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] px-2.5 py-1.5 text-[11px] text-[var(--color-fg-primary)]"
-              >
-                Repair
-              </button>
-            ) : null}
-            {engineSnapshot.allowed_actions.includes("stop") ? (
-              <button
-                type="button"
-                onClick={() => void handleStop()}
-                className="rounded-[var(--radius-sm)] bg-[var(--color-danger)] px-2.5 py-1.5 text-[11px] font-medium text-white"
-              >
-                Stop
-              </button>
-            ) : null}
-            {engineSnapshot.allowed_actions.includes("cancel") ? (
-              <button
-                type="button"
-                onClick={() => void handleHealthCancel()}
-                className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 px-2.5 py-1.5 text-[11px] text-[var(--color-danger)]"
-              >
-                Cancel
-              </button>
-            ) : null}
-          </div>
         </div>
       ) : null}
 
@@ -1803,24 +1113,9 @@ export function RecordingView({
                   </button>
                 </>
               )}
-              {status === "repairable" && outputPath && (
+              {status === "completed" && (
                 <button
-                  type="button"
-                  onClick={() => void handleOpenRetainedArtifact()}
-                  aria-label="Open retained artifact for manual repair"
-                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--color-warning)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg-primary)] transition-[filter] duration-150 hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
-                >
-                  Open retained artifact
-                </button>
-              )}
-              {(status === "completed" ||
-                status === "repairable" ||
-                status === "cancelled" ||
-                status === "failed") && (
-                <button
-                  type="button"
                   onClick={() => {
-                    setRepairRequired(null);
                     resetTake();
                     applyRecorderDefaults();
                   }}
@@ -1868,19 +1163,6 @@ export function RecordingView({
             <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
               Default is off; choose "System default" to include voice-over. Resets every recording.
             </p>
-            {recordingAudioUiEnabled && storyHasBrowser ? (
-              <div className="mt-3 border-t border-[var(--color-border-subtle)] pt-3">
-                <Toggle
-                  label="Preview tab audio"
-                  checked={tabAudioEnabled}
-                  onChange={setTabAudioEnabled}
-                  disabled={status === "recording" || status === "paused" || status === "stopping"}
-                />
-                <p className="mt-1.5 text-[10px] text-[var(--color-fg-muted)]">
-                  Records audio from the controlled browser preview as a separate stem.
-                </p>
-              </div>
-            ) : null}
           </SettingsGroup>
 
           <SettingsGroup label="Quality" icon={<SettingsIcon size={13} />}>
@@ -2128,41 +1410,19 @@ function PreviewStage({
           </motion.div>
         )}
 
-        {(status === "failed" || status === "repairable" || status === "cancelled") && (
+        {status === "failed" && error && (
           <motion.div
-            key={status}
+            key="failed"
             initial={reduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={reduceMotion ? undefined : { opacity: 0 }}
             className="relative flex max-w-md flex-col items-center text-center"
           >
-            <AlertTriangle
-              size={26}
-              className={
-                status === "failed" ? "text-[var(--color-danger)]" : "text-[var(--color-warning)]"
-              }
-              aria-hidden="true"
-            />
+            <AlertTriangle size={26} className="text-[var(--color-danger)]" aria-hidden="true" />
             <p className="mt-3 text-sm font-medium text-[var(--color-fg-primary)]">
-              {status === "repairable"
-                ? "Recording needs repair"
-                : status === "cancelled"
-                  ? "Recording cancelled"
-                  : "Recording failed"}
+              Recording failed
             </p>
-            {error && (
-              <p className="font-mono mt-1 text-[11px] text-[var(--color-fg-secondary)]">{error}</p>
-            )}
-            {outputPath && (
-              <p className="font-mono mt-1 max-w-md truncate text-[11px] text-[var(--color-fg-secondary)]">
-                {outputPath}
-              </p>
-            )}
-            {status === "repairable" && outputPath && (
-              <p className="mt-2 text-[11px] text-[var(--color-fg-muted)]">
-                Open the retained take in its default app for manual repair.
-              </p>
-            )}
+            <p className="font-mono mt-1 text-[11px] text-[var(--color-fg-secondary)]">{error}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2340,25 +1600,18 @@ function Toggle({
   label,
   checked,
   onChange,
-  disabled = false,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
-  disabled?: boolean;
 }) {
   return (
-    <label
-      className={`flex items-center justify-between text-[var(--color-fg-secondary)] ${
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-      }`}
-    >
+    <label className="flex cursor-pointer items-center justify-between text-[var(--color-fg-secondary)]">
       <span>{label}</span>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
-        disabled={disabled}
         onClick={() => onChange(!checked)}
         className={`relative h-4 w-7 rounded-full transition-colors duration-150 ${
           checked ? "bg-[var(--color-accent-primary)]" : "bg-[var(--color-surface-400)]"

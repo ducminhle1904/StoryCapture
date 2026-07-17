@@ -95,10 +95,9 @@ logging, and output preferences.
 
 `apps/desktop/electron/preload.ts` exposes the compatibility globals
 `__TAURI_INTERNALS__`, `__TAURI_EVENT_PLUGIN_INTERNALS__`, and
-`__STORYCAPTURE_ELECTRON__`. It also owns the browser `MediaRecorder`
-microphone bridge. `STORYCAPTURE_RECORDING_AV_MODE=legacy|shadow|unified`
-keeps the whole-buffer handoff available for rollback while the bounded,
-ordered audio-stream protocol and video-master PTS mux are promoted.
+`__STORYCAPTURE_ELECTRON__`. It also special-cases recording start/stop so the
+renderer can use browser `MediaRecorder` microphone capture and pass captured
+audio back to the host through `electron_recording_set_audio`.
 
 The packaged app includes:
 
@@ -161,7 +160,7 @@ Current non-plugin command ownership:
 | `ipc/preview.ts` | automation launch, preview stream, author preview lifecycle, viewport/url, back/forward/reload, author input, author snapshots |
 | `ipc/picker.ts` | author/general picker start, cancel, activity check, stamp step id |
 | `ipc/simulator.ts` | simulator start/step/cancel/promote fallback and dry-run start/cancel |
-| `ipc/recording.ts` | preflight; start/stop/pause/resume/cancel/status; interrupted-take list/recover/discard; host audio stream/handoff |
+| `ipc/recording.ts` | start/stop/pause/resume recording and host audio handoff |
 | `ipc/capture.ts` | capture target get/set/thumbnail and capture start/stop |
 | `ipc/post-production.ts` | workflow state, timeline load/save, recording actions/trajectory/step timing, presets, sound library |
 | `ipc/render.ts` | render cancel/list active/progress stream; direct enqueue is not a fake timer path |
@@ -170,72 +169,14 @@ Current non-plugin command ownership:
 | `ipc/web-sync.ts` | web account/token, sync/upload status, OAuth, metadata sync queue, upload/cancel, recording status |
 | `ipc/updates.ts` | update check/install |
 
+Recording diagnostics are independent of recording control: the legacy host
+emits typed JSONL V2 events through `ipc/recording-observability.ts`, while
+`ipc/log-store.ts` owns redaction, rotation, and diagnostic-bundle inclusion.
+Logging is best-effort and cannot change the recording result it describes.
+
 Plugin shims live under `ipc/plugin/*` and cover Tauri-compatible
 dialog/event/log/resource, fs, os/process, shell, store, updater, and
 window-state commands.
-
-### Record Engine Wave 1
-
-The Wave 1 record engine is an additive compatibility layer around the legacy
-capture runner:
-
-- `recording-outcome.ts` classifies `passed | repairable | failed | cancelled`.
-  `STORYCAPTURE_RECORDING_OUTCOME_MODE=legacy|shadow|strict` controls promotion;
-  the legacy kill switch remains available for rollback.
-- `recording-lifecycle.ts` serializes guarded state transitions, makes
-  stop/cancel idempotent, caches the authoritative terminal result, and emits
-  the typed `terminal` event once in strict mode.
-- `recording-bundle.ts` stages canonical takes under `exports/takes`, writes the
-  manifest last, and atomically renames the take into place. Flat legacy MP4s
-  remain readable.
-- `recording-session-journal.ts` records durable checkpoints outside the take
-  staging tree. Restart recovery can salvage committed media or discard it; it
-  never resumes browser input.
-- `recording-readiness.ts`, `recording-health.ts`, and
-  `recording-preflight.ts` own first-frame/input barriers, typed capture health,
-  and the read-only capability gate respectively.
-- `recording-av-clock.ts` owns video-master PTS, pause spans, ordered microphone
-  stream validation, explicit duration bounds, and A/V drift evidence.
-
-The additive renderer IPC surface includes `recording_preflight`,
-`cancel_recording`, `get_recording_status`, and interrupted-recording
-list/recover/discard operations. Existing `output_path` and legacy progress
-events remain compatible. In strict mode only a terminal `passed` outcome with
-a committed canonical bundle may publish, display success, or auto-open.
-
-### Record Engine Later-Wave Seams
-
-Later-wave work remains additive and rollout-gated:
-
-- `recording-checkpoints.ts`, `recording-segment-stitch.ts`, and
-  `recording-repair.ts` own scene segments, deterministic immutable assembly,
-  and live-session-only repair. Restart recovery still salvages artifacts and
-  never resumes browser input. Presentation timeout remains an input-emitted
-  repair phase: `await_presentation` rearms the landmark wait without replaying
-  the browser action. Expiry, attempt exhaustion, cancellation, and other
-  non-success automation exits keep the original recording as salvage and do
-  not attempt deterministic revision assembly from an incomplete scene set.
-- `engine-health.ts` combines capture, target, disk, audio, and terminal state
-  into a bounded host snapshot. Renderer HUD consumption starts only at the
-  internal rollout stages; shadow mode persists evidence without changing UX.
-- `audio-tracks.ts` owns the versioned `microphone | tab | system` registry.
-  Preload is the trusted microphone/tab coordinator; author-preview tab audio
-  is granted once to the exact internal frame and stored as an immutable stem.
-  macOS and Windows system providers remain separate approval-gated plans.
-- `capture-backend.ts` and `electron-capture-backends.ts` define the host-private
-  video/lifecycle contract. `author_preview` is hard-routed to
-  `electron_author_preview`; external targets default to `electron_external`.
-  Exact window/display resolution is fail-closed and never falls back to the
-  first enumerated source. Native adapters cannot register browser-surface
-  capability and require their measured spike gates before production work.
-  An enforced source disappearance is terminal evidence and maps strict outcome
-  to `failed/capture_target_lost`; it cannot publish a partial take as success.
-
-The later-wave kill switches are
-`STORYCAPTURE_RECORDING_AUDIO_MODE=legacy`,
-`STORYCAPTURE_CAPTURE_BACKEND_MODE=legacy`, and the individual repair/health
-rollout variables. They do not authorize native helpers, dependencies,
-entitlements, or packaged promotion.
 
 ## Renderer Feature Map
 

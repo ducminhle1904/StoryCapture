@@ -67,16 +67,12 @@
 
 ## Helper Scripts
 
-- Read one local record-engine JSONL file or exported diagnostic directory:
-  - session coherence:
-    `pnpm --dir apps/desktop diagnose:recording -- --input <path> --session <session-id> [--json]`;
-  - process/discovery/native-spike coherence:
-    `pnpm --dir apps/desktop diagnose:recording -- --input <path> --process [--json]`.
-  Exit `0` means coherent, `1` means incomplete/inconsistent, and `2` means
-  invalid input. The reader accepts typed record-engine schema V2 only; V1 and
-  the removed `recording.legacy` event return `2`. Process sequences are
-  validated independently per JSONL file. This command does not launch
-  Electron or read project data.
+- Read a recording JSONL trace by session or process:
+  `pnpm --dir apps/desktop diagnose:recording -- --input <path> --session <session-id>`
+  or `pnpm --dir apps/desktop diagnose:recording -- --input <path> --process`.
+  Structured recording logging is disabled only when
+  `STORYCAPTURE_RECORD_ENGINE_JSONL=0`; writer failures fall back locally and
+  never change recording outcomes.
 
 - Local/manual CI helpers: `scripts/ci/check-av-drift.sh`,
   `scripts/ci/generate-synthetic-recording.sh`.
@@ -88,23 +84,6 @@
 - Release/signing helpers: `scripts/release/sign-windows.ps1`,
   `scripts/release/verify-installer-size.sh`,
   `scripts/notarize/adhoc-sign.sh`, `scripts/notarize/notarize-mac.sh`.
-
-## macOS Capture Spikes
-
-- REC-190 system-audio diagnostic:
-  `pnpm --dir apps/desktop run spike:macos-system-audio -- --matrix permissions,timing,performance,packaging`.
-- REC-220 native external-capture diagnostic:
-  `pnpm --dir apps/desktop run spike:macos-native-capture -- --matrix baseline,lifecycle,stress --profiles 1080p30,1440p30,4k30`.
-- Add `--quick` only for harness smoke checks. Quick runs use scaled durations
-  and can never promote a provider/backend or supersede a production adapter.
-- The commands require macOS, `xcrun swiftc`, ScreenCaptureKit, a real shareable
-  target, and the relevant Screen Recording/audio permission. Promotion also
-  requires a signed/notarized diagnostic identity; an unsigned dev run is
-  insufficient.
-- Spike source stays under `apps/desktop/native/spikes/` and has no production
-  imports. Do not add a native dependency, entitlement, packaged helper, or
-  adapter from a spike result without the separate approval required by its
-  plan.
 
 ## Agent Docs Maintenance
 

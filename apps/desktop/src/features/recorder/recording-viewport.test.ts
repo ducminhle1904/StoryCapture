@@ -22,7 +22,7 @@ describe("recording viewport helpers", () => {
     expect(storyAppUrlForRecording(source)).toBe("https://app.example.test/");
   });
 
-  it("reads meta.app without importing host parser code into the renderer", () => {
+  it("reads meta.app through the story parser", () => {
     const source = `
       # app: "https://commented.example.test"
       story "Demo" {
@@ -36,22 +36,6 @@ describe("recording viewport helpers", () => {
     `;
 
     expect(storyAppUrlForRecording(source)).toBe("https://app.example.test/");
-  });
-
-  it("accepts unquoted meta and navigate URLs", () => {
-    const source = `
-      story "Demo" {
-        meta {
-          app: https://app.example.test
-        }
-        scene "Main" {
-          navigate https://app.example.test/dashboard
-        }
-      }
-    `;
-
-    expect(storyAppUrlForRecording(source)).toBe("https://app.example.test/");
-    expect(storyFirstNavigateUrlForRecording(source)).toBe("https://app.example.test/dashboard");
   });
 
   it("uses existing named editor viewport presets", () => {
@@ -77,7 +61,9 @@ describe("recording viewport helpers", () => {
     expect(storyFirstNavigateUrlForRecording(source)).toBe(
       "https://app.example.test/auth/login?redirect=/app/bots",
     );
-    expect(storyInitialUrlForRecording(source)).toBe("https://app.example.test/auth/login");
+    expect(storyInitialUrlForRecording(source)).toBe(
+      "https://app.example.test/auth/login",
+    );
   });
 
   it("uses meta.app when there is no valid browser navigate", () => {
@@ -94,6 +80,8 @@ describe("recording viewport helpers", () => {
     `;
 
     expect(storyFirstNavigateUrlForRecording(source)).toBeNull();
-    expect(storyInitialUrlForRecording(source)).toBe("https://app.example.test/auth/login");
+    expect(storyInitialUrlForRecording(source)).toBe(
+      "https://app.example.test/auth/login",
+    );
   });
 });

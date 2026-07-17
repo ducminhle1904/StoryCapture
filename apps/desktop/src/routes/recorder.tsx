@@ -67,7 +67,6 @@ export default function RecorderRoute() {
       projectId={projectId ?? null}
       projectName={folder.name}
       projectFolder={folder.folder_path}
-      storyPath={folder.story_path}
       storySource={storySource}
       autoOpenPostProduction={searchParams.get("polish") === "1"}
     />

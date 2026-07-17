@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  RecordingActiveDeadline,
-  RecordingMediaClock,
-  recordingFramePtsUs,
-} from "./recording-media-clock";
+import { RecordingMediaClock, recordingFramePtsUs } from "./recording-media-clock";
 
 describe("recording media clock", () => {
   it.each([
@@ -57,27 +53,5 @@ describe("recording media clock", () => {
   it("validates rational frame rates and frame indexes", () => {
     expect(() => new RecordingMediaClock({ fpsNum: 0, fpsDen: 1 })).toThrow("fpsNum");
     expect(() => recordingFramePtsUs(-1, { fpsNum: 60, fpsDen: 1 })).toThrow("frameIndex");
-  });
-
-  it("counts only active time in readiness deadlines", () => {
-    let now = 1_000;
-    const deadline = new RecordingActiveDeadline(100, () => now);
-    now += 40;
-    deadline.pause();
-    now += 5_000;
-    expect(deadline.snapshot()).toMatchObject({
-      activeElapsedMs: 40,
-      remainingMs: 60,
-      paused: true,
-      expired: false,
-    });
-    deadline.resume();
-    now += 60;
-    expect(deadline.snapshot()).toMatchObject({
-      activeElapsedMs: 100,
-      remainingMs: 0,
-      paused: false,
-      expired: true,
-    });
   });
 });

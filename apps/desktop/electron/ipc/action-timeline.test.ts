@@ -40,9 +40,6 @@ describe("action timeline sidecar helpers", () => {
   it("derives the actions sidecar path next to the recording", () => {
     expect(actionsSidecarPath("/tmp/demo/recording.mp4")).toBe("/tmp/demo/recording.actions.json");
     expect(actionsSidecarPath("/tmp/demo/recording")).toBe("/tmp/demo/recording.actions.json");
-    expect(actionsSidecarPath("/tmp/demo/take/media/video.mp4")).toBe(
-      "/tmp/demo/take/sidecars/actions.json",
-    );
   });
 
   it("writes the actions sidecar atomically", async () => {
@@ -252,22 +249,6 @@ describe("action timeline sidecar helpers", () => {
       cursor_path: { arrival: { frame_index: 1, pts_us: 16_667 } },
       input_landmarks: { action: { frame_index: 1, pts_us: 16_667 } },
       presentation: { status: "presented" },
-    });
-    const revisionClock = {
-      ...mediaClock.snapshot(),
-      frameCount: 90,
-      nextFrameIndex: 90,
-      nextPtsUs: 1_500_000,
-      durationUs: 1_500_000,
-    };
-    const revisionDto = recordingActionsFromSession(
-      recordingSession({ frameSeq: 180, mediaClock }),
-      [event],
-      { version: 3, frameCount: 90, mediaClock: revisionClock },
-    );
-    expect(revisionDto).toMatchObject({
-      frame_count: 90,
-      media_clock: { frame_count: 90, duration_us: 1_500_000 },
     });
 
     const compatible = recordingActionsFromSession(

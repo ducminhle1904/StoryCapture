@@ -65,38 +65,6 @@ Use this for task routing after reading the short root guide.
 
 ## Electron Host And IPC
 
-- Record-engine outcome/lifecycle: `apps/desktop/electron/ipc/recording-outcome.ts`,
-  `apps/desktop/electron/ipc/recording-lifecycle.ts`, and the public bridge in
-  `apps/desktop/electron/ipc/recording.ts`.
-- Record-engine artifact/recovery: `apps/desktop/electron/ipc/recording-bundle.ts`,
-  `apps/desktop/electron/ipc/recording-discovery.ts`, and
-  `apps/desktop/electron/ipc/recording-session-journal.ts`.
-- Record-engine capture gates: `apps/desktop/electron/ipc/recording-readiness.ts`,
-  `apps/desktop/electron/ipc/recording-health.ts`, and
-  `apps/desktop/electron/ipc/recording-preflight.ts`.
-- Record-engine media clock/audio: `apps/desktop/electron/ipc/recording-media-clock.ts`,
-  `apps/desktop/electron/ipc/recording-av-clock.ts`,
-  `apps/desktop/electron/ipc/audio-tracks.ts`,
-  `apps/desktop/electron/preload.ts`, and finalization in
-  `apps/desktop/electron/ipc/legacy/recording.ts`.
-- Record-engine scene repair: `apps/desktop/electron/ipc/recording-checkpoints.ts`,
-  `apps/desktop/electron/ipc/recording-segment-stitch.ts`, and
-  `apps/desktop/electron/ipc/recording-repair.ts`.
-- Record-engine diagnostics: `apps/desktop/electron/ipc/recording-observability.ts`
-  owns the primary typed JSONL V2 events/redaction,
-  `apps/desktop/electron/ipc/log-store.ts` owns local streams/rotation/bundle
-  export, and
-  `apps/desktop/scripts/recording-diagnostics.mjs` reads a session or
-  process-scoped trace. V1 and `recording.legacy` are deliberately unsupported.
-  `hostLog` is only for general Electron/simulator text diagnostics and the
-  structured-writer fallback. Standalone native spikes write allowlisted V2
-  batch traces through `apps/desktop/scripts/spikes/recording-spike-trace.mjs`.
-- Record-engine operability: `apps/desktop/electron/ipc/engine-health.ts` and
-  renderer reduction/copy in `apps/desktop/src/features/recorder/engine-health.ts`.
-- Capture backend contract/routing: `apps/desktop/electron/ipc/capture-backend.ts`
-  and `apps/desktop/electron/ipc/electron-capture-backends.ts`; current frame
-  capture remains in `apps/desktop/electron/ipc/legacy/capture-preview.ts`.
-
 - Host lifecycle: `apps/desktop/electron/main.ts`,
   `apps/desktop/electron/preload.ts`, `apps/desktop/electron/runtime.ts`.
 - IPC registration: `apps/desktop/electron/ipc.ts`,
@@ -139,6 +107,12 @@ Use this for task routing after reading the short root guide.
   `apps/desktop/src/ipc/actions.ts`,
   `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`,
   and `apps/desktop/src/features/post-production/preview/virtual-cursor-path.ts`.
+- Recording diagnostics use typed JSONL V2 events from
+  `apps/desktop/electron/ipc/recording-observability.ts`, local stream
+  rotation/export from `apps/desktop/electron/ipc/log-store.ts`, and the
+  session/process reader in `apps/desktop/scripts/recording-diagnostics.mjs`.
+  The legacy recorder emits only events that match its current lifecycle;
+  `hostLog` remains for general Electron and simulator diagnostics.
 - Browser picker and authoring sidecars:
   `apps/desktop/src/features/editor/`, `apps/desktop/src/ipc/picker.ts`,
   `apps/desktop/electron/ipc/picker.ts`.

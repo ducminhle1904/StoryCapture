@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -9,9 +7,8 @@ const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 
 test("Electron smoke and deterministic post-input paint fixture", async () => {
   const fixture = await startCursorSyncFixtureServer();
-  const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-cursor-e2e-"));
   const app = await electron.launch({
-    args: [desktopDir, `--user-data-dir=${userDataDir}`],
+    args: [desktopDir],
     cwd: desktopDir,
     env: {
       ...process.env,
@@ -34,6 +31,5 @@ test("Electron smoke and deterministic post-input paint fixture", async () => {
   } finally {
     await app.close();
     await fixture.close();
-    await fs.rm(userDataDir, { recursive: true, force: true });
   }
 });

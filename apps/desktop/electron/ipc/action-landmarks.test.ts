@@ -79,27 +79,12 @@ describe("RecordingActionLandmarkRecorder", () => {
         status: "timeout",
         diagnosticReason: "post_input_frame_timeout",
       });
-      recorder.armPresentation("type");
-      const retriedPresentation = recorder.waitForPresentation("type", 50);
-      recorder.notePaint();
-      recorder.commitFrame({ frameIndex: 1, ptsUs: 33_333 });
-      await expect(retriedPresentation).resolves.toEqual({
-        status: "presented",
-        firstPostInputFrame: { frameIndex: 1, ptsUs: 33_333 },
-        firstPostInputPaint: { frameIndex: 1, ptsUs: 33_333 },
-      });
-      const finished = recorder.finish("type");
-      expect(finished.input).toEqual({
+      expect(recorder.finish("type").input).toEqual({
         down: { frameIndex: 0, ptsUs: 0 },
         up: { frameIndex: 0, ptsUs: 0 },
         text_start: { frameIndex: 0, ptsUs: 0 },
         text_end: { frameIndex: 0, ptsUs: 0 },
         action: { frameIndex: 0, ptsUs: 0 },
-      });
-      expect(finished.presentation).toEqual({
-        status: "presented",
-        firstPostInputFrame: { frameIndex: 1, ptsUs: 33_333 },
-        firstPostInputPaint: { frameIndex: 1, ptsUs: 33_333 },
       });
     } finally {
       vi.useRealTimers();
@@ -150,35 +135,5 @@ describe("RecordingActionLandmarkRecorder", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("anchors input to the barrier landmark and reports first presentation once", () => {
-    const recorder = new RecordingActionLandmarkRecorder();
-    const observations: unknown[] = [];
-    const unsubscribe = recorder.onPresentation((observation) => observations.push(observation));
-    recorder.begin("anchored", {
-      delivery: "browser_injected",
-      point: { x: 20, y: 30 },
-      expectsPresentation: true,
-    });
-    recorder.commitFrame({ frameIndex: 0, ptsUs: 0 });
-    recorder.anchorArrival("anchored", { frameIndex: 0, ptsUs: 0 });
-    recorder.commitFrame({ frameIndex: 1, ptsUs: 16_667 });
-    recorder.armPresentation("anchored");
-    expect(recorder.markInput("anchored", "action")).toEqual({ frameIndex: 0, ptsUs: 0 });
-    recorder.commitFrame({ frameIndex: 2, ptsUs: 33_333 });
-    recorder.commitFrame({ frameIndex: 3, ptsUs: 50_000 });
-    unsubscribe();
-
-    expect(observations).toEqual([
-      {
-        eventId: "anchored",
-        input: { frameIndex: 0, ptsUs: 0 },
-        presentation: {
-          status: "presented",
-          firstPostInputFrame: { frameIndex: 2, ptsUs: 33_333 },
-        },
-      },
-    ]);
   });
 });

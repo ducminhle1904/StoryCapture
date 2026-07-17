@@ -1,30 +1,11 @@
-import { createHash } from "node:crypto";
 import {
   parseTextOverlayDuration,
   TEXT_OVERLAY_DEFAULT_DURATION_MS,
   validateTextOverlayText,
 } from "../../src/ipc/text-overlay";
 
-export type ParsedCommandVerb =
-  | "navigate"
-  | "click"
-  | "hover"
-  | "assert"
-  | "assert-visible"
-  | "type"
-  | "select"
-  | "upload"
-  | "drag"
-  | "scroll"
-  | "wait"
-  | "text-overlay"
-  | "wait-for"
-  | "wait-for-visible"
-  | "screenshot"
-  | "pause";
-
 export interface ParsedCommand {
-  verb: ParsedCommandVerb;
+  verb: string;
   span: { start: number; end: number; line: number; col: number };
   step_id?: string | null;
   url?: string;
@@ -43,28 +24,6 @@ export interface ParsedCommand {
   duration_ms?: number;
   timeout_ms?: number | null;
   name?: string;
-  scene_id?: string;
-  scene_name?: string;
-  scene_ordinal?: number;
-  step_ordinal?: number;
-}
-
-export interface ParsedCommandSceneContext {
-  scene_id: string;
-  scene_name: string;
-  scene_ordinal: number;
-  step_ordinal: number;
-}
-
-export function parsedCommandSceneId(
-  storyName: string | null,
-  sceneOrdinal: number,
-  sceneName: string,
-): string {
-  const normalized = (value: string | null) =>
-    (value ?? "story").normalize("NFKC").trim().replaceAll(/\s+/g, " ").toLowerCase();
-  const identity = `${normalized(storyName)}\0${sceneOrdinal}\0${normalized(sceneName)}`;
-  return `scene_${createHash("sha256").update(identity).digest("hex").slice(0, 20)}`;
 }
 
 const ROLE_KEYWORDS = new Set([
@@ -310,7 +269,7 @@ function parseTextOverlayCommand(
 }
 
 function parseTargetOnlyCommand(
-  verb: "click" | "hover" | "assert" | "assert-visible",
+  verb: string,
   rest: string,
   base: ParsedCommandBase,
 ): ParsedCommand {
@@ -318,11 +277,7 @@ function parseTargetOnlyCommand(
   return { verb, target: parsed.target, target_nth: parsed.target_nth, ...base };
 }
 
-function parseValueCommand(
-  verb: "type" | "select" | "upload",
-  rest: string,
-  base: ParsedCommandBase,
-): ParsedCommand {
+function parseValueCommand(verb: string, rest: string, base: ParsedCommandBase): ParsedCommand {
   const parsed = parseTargetFragment(rest);
   const valueRest = parsed.rest.replace(/^with\s+/, "");
   const value = stripQuotes(valueRest);
@@ -546,15 +501,7 @@ export function parseStorySource(source: string) {
       command = { verb, name: stripQuotes(rest || `shot-${lineNo}`), ...base };
     if (verb === "pause") command = { verb, ...base };
     if (command) {
-      const sceneOrdinal = story.scenes.indexOf(currentScene) + 1;
-      const stepOrdinal = currentScene.commands.length + 1;
-      currentScene.commands.push({
-        ...(command as ParsedCommand),
-        scene_id: parsedCommandSceneId(story.name, sceneOrdinal, currentScene.name),
-        scene_name: currentScene.name,
-        scene_ordinal: sceneOrdinal,
-        step_ordinal: stepOrdinal,
-      });
+      currentScene.commands.push(command);
     } else if (verb !== "scroll" && verb !== "text-overlay" && !["{", "}"].includes(trimmed)) {
       diagnostics.push({
         severity: "error",
