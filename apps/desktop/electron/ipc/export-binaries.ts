@@ -10,14 +10,17 @@ function unpackedBinaryPath(candidate: string): string {
     : candidate;
 }
 
-export function exportFfmpegPath(): string {
+export function ffmpegExecutablePath(): string {
   if (!ffmpegStaticPath) throw new Error("ffmpeg-static binary is unavailable");
   return unpackedBinaryPath(ffmpegStaticPath);
 }
 
-export function exportFfprobePath(): string {
+export function ffprobeExecutablePath(): string {
   if (!ffprobeInstaller.path) throw new Error("ffprobe binary is unavailable");
   return unpackedBinaryPath(ffprobeInstaller.path);
 }
+
+export const exportFfmpegPath = ffmpegExecutablePath;
+export const exportFfprobePath = ffprobeExecutablePath;
 
 export const exportBinaryPathForTest = unpackedBinaryPath;

@@ -60,6 +60,7 @@ import { type RecorderStatus, type StepProgress, useRecorderStore } from "@/stat
 import { AudioDevicePicker } from "./AudioDevicePicker";
 import { ChromeHidingToggle } from "./ChromeHidingToggle";
 import { CursorToggle } from "./CursorToggle";
+import { formatIpcError } from "./ipc-error";
 import { parsePrimaryMiss, RECORD_PATH_MISS_BODY } from "./primary-miss-copy";
 import { acquireRecordingPreview, type RecordingPreviewLease } from "./recording-preview";
 import { canFinalizeOwnedRecording } from "./recording-session-lifecycle";
@@ -102,26 +103,6 @@ function formatTime(ms: number): string {
 /** True if a Tauri IPC error is the typed `NotFound` variant. */
 function isNotFoundIpcError(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound";
-}
-
-/** Format a Tauri IPC error into a readable string. */
-function formatIpcError(e: unknown): string {
-  if (e == null) return "Unknown error";
-  if (typeof e === "string") return e;
-  if (e instanceof Error) return e.message;
-  if (typeof e === "object") {
-    // Tauri AppError shape: { kind: string, message?: string, ... }
-    const obj = e as Record<string, unknown>;
-    if (typeof obj.message === "string") {
-      return obj.kind ? `${obj.kind}: ${obj.message}` : obj.message;
-    }
-    try {
-      return JSON.stringify(e);
-    } catch {
-      return String(e);
-    }
-  }
-  return String(e);
 }
 
 function displayId(display: DisplayInfo): number {

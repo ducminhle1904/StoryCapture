@@ -12,7 +12,6 @@ import {
   screen,
   type WebContents,
 } from "electron";
-import ffmpegPath from "ffmpeg-static";
 import { type FrameSyncOutcome, RecordingActionLandmarkRecorder } from "../action-landmarks";
 import {
   type CursorTimingSize,
@@ -20,6 +19,7 @@ import {
   HOST_CURSOR_DEFAULT_MOTION_PRESET,
   HOST_CURSOR_TARGET_STABILITY_THRESHOLD_PX,
 } from "../cursor-timing";
+import { ffmpegExecutablePath } from "../export-binaries";
 import { readJson } from "../json-store";
 import { RecordingMediaClock } from "../recording-media-clock";
 import { recordEngineLog } from "../recording-observability";
@@ -41,6 +41,7 @@ import {
   recordingTailFrameDelaysMs,
 } from "../recording-tail";
 import { type ParsedCommand, parseStorySource } from "../story-parser";
+import { recordingEncoderFailure, recordingErrorCode } from "./recording-errors";
 import {
   type AuthorPreviewSession,
   type AuthorSnapshotEntry,
@@ -754,18 +755,32 @@ export function startRecordingFfmpegPipe(ffmpegArgs: string[]): {
   child: ChildProcess;
   done: Promise<void>;
 } {
-  const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static binary is unavailable");
-  const child = spawn(binary, ffmpegArgs, {
-    stdio: ["pipe", "ignore", "pipe"],
-  });
+  let binary: string;
+  try {
+    binary = ffmpegExecutablePath();
+  } catch (error) {
+    throw recordingEncoderFailure(error, "start");
+  }
+  let child: ChildProcess;
+  try {
+    child = spawn(binary, ffmpegArgs, {
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+  } catch (error) {
+    throw recordingEncoderFailure(error, "start");
+  }
+  const childStderr = child.stderr;
+  if (!childStderr) {
+    child.kill("SIGKILL");
+    throw recordingEncoderFailure(new Error("ffmpeg stderr pipe was not created"), "start");
+  }
   let stderr = "";
   const appendStderr = (chunk: Buffer) => {
     stderr = `${stderr}${String(chunk)}`.slice(-2000);
   };
   const done = new Promise<void>((resolve, reject) => {
-    child.stderr.on("data", appendStderr);
-    child.on("error", reject);
+    childStderr.on("data", appendStderr);
+    child.on("error", (error) => reject(recordingEncoderFailure(error, "start")));
     child.on("close", (code: number | null) => {
       if (code === 0) {
         resolve();
@@ -1966,6 +1981,7 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
       clearInterval(heartbeat);
       session.ffmpegProcess?.kill("SIGKILL");
       await fs.rm(framesDir, { recursive: true, force: true });
+      const encoderErrorCode = recordingErrorCode(error);
       void recordEngineLog({
         level: "error",
         event: "recording.terminal",
@@ -1975,7 +1991,11 @@ export async function startRecording(raw: unknown, onEvent: unknown, sender: Web
           phase: "start",
           reason_code: "preview_start_failed",
         },
-        details: { outcome: "failed", target_kind: target.kind },
+        details: {
+          outcome: "failed",
+          target_kind: target.kind,
+          ...(encoderErrorCode ? { encoder_error_code: encoderErrorCode } : {}),
+        },
         error,
       });
       throw error;

@@ -3,10 +3,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { app, type BrowserWindow } from "electron";
-import ffmpegPath from "ffmpeg-static";
 
+import { ffmpegExecutablePath } from "./export-binaries";
 import { createExportCompositorHost } from "./export-compositor-host";
 import { type ExportPipelineSmokeEvidence, runExportPipelineSmoke } from "./export-e2e-smoke";
+import {
+  type PackagedRecordingSmokeEvidence,
+  runPackagedRecordingSmoke,
+} from "./recording-artifact-smoke";
 
 const OUTPUT_WIDTH = 320;
 const OUTPUT_HEIGHT = 180;
@@ -36,6 +40,7 @@ interface SmokeSuccess {
   mainRenderer: MainRendererEvidence;
   compositor: CompositorEvidence;
   pipeline: ExportPipelineSmokeEvidence;
+  recording: PackagedRecordingSmokeEvidence;
 }
 
 interface SmokeFailure {
@@ -91,11 +96,7 @@ async function waitForMainRenderer(win: BrowserWindow): Promise<MainRendererEvid
 }
 
 async function createVideoFixture(outputPath: string): Promise<void> {
-  const binary = ffmpegPath?.replace(
-    `${path.sep}app.asar${path.sep}`,
-    `${path.sep}app.asar.unpacked${path.sep}`,
-  );
-  if (!binary) throw new Error("ffmpeg-static binary is unavailable");
+  const binary = ffmpegExecutablePath();
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await new Promise<void>((resolve, reject) => {
     const child = spawn(
@@ -344,6 +345,7 @@ async function runSmoke(
     throw new Error(`Main renderer load failed: ${mainLoadFailures.join("; ")}`);
   }
   const exportsDir = path.join(app.getPath("userData"), "exports");
+  const recording = await runPackagedRecordingSmoke(path.join(exportsDir, "recording-smoke"));
   const videoPath = path.join(exportsDir, "export-compositor-artifact-smoke.mp4");
   const actionsPath = path.join(exportsDir, "export-compositor-artifact-smoke.actions.json");
   await createVideoFixture(videoPath);
@@ -386,6 +388,7 @@ async function runSmoke(
       loadFailures,
     },
     pipeline,
+    recording,
   };
 }
 

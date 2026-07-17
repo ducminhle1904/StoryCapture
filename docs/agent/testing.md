@@ -11,12 +11,13 @@
 - Smooth document/nested-container scroll Electron E2E:
   `pnpm --dir apps/desktop run test:e2e:scroll`.
 - Local media playback Electron E2E: `pnpm --dir apps/desktop run test:e2e:media`.
-- Packaged post-production export parity:
+- Packaged recording and post-production export parity:
   `pnpm --dir apps/desktop run test:e2e:export`. This builds the Electron main
-  bundle and renderer, creates an unpacked package, exports the all-effects
-  fixture to MP4/WebM/GIF, and runs an independent FFmpeg-generated 720p MP4
-  fixture with color swatches, one-pixel edges, bundled-font text,
-  cursor/effect markers, and deterministic audio. It verifies full decode,
+  bundle and renderer, creates an unpacked package, exercises streaming encode,
+  legacy finalize, and media probing through the packaged FFmpeg resolver,
+  exports the all-effects fixture to MP4/WebM/GIF, and runs an independent
+  FFmpeg-generated 720p MP4 fixture with color swatches, one-pixel edges,
+  bundled-font text, cursor/effect markers, and deterministic audio. It verifies full decode,
   final-frame motion, exact overlay geometry, color samples, scheduler capacity,
   MP4 delivery/loudness/XMP, and exact-byte 720p/1080p/4K capture at 30/60 fps.
   Software High must score SSIM >= 0.995 against the independent FFmpeg

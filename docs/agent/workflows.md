@@ -33,7 +33,7 @@
   TypeScript setup check does not fail in CI while built-in validation is off.
 - Desktop Electron build: `pnpm --dir apps/desktop run build`.
 - Desktop renderer build: `pnpm --dir apps/desktop renderer:build`.
-- Packaged export parity: `pnpm --dir apps/desktop run test:e2e:export`.
+- Packaged recording/export parity: `pnpm --dir apps/desktop run test:e2e:export`.
 - Web build: `pnpm --dir apps/web build`.
 - Story DSL typecheck: `pnpm --dir packages/story-dsl typecheck`.
 

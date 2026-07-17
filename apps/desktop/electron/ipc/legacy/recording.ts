@@ -1,15 +1,16 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import ffmpegPath from "ffmpeg-static";
+import { ffmpegExecutablePath } from "../export-binaries";
+import { recordEngineLog } from "../recording-observability";
 import {
   cadenceWarning,
   recordingPngSequenceInputArgs,
   recordingQualityArgs,
   recordingVideoFilters,
 } from "../recording-pipeline";
-import { recordEngineLog } from "../recording-observability";
 import { authorSession, ffmpegCropPlan, percentile, queueRecordingFrame } from "./capture-preview";
+import { recordingEncoderFailure, recordingErrorCode } from "./recording-errors";
 import { type RecordingSession, recordingSessions, sendChannel } from "./shared";
 
 function recordingBackendId(session: RecordingSession): string {
@@ -24,6 +25,7 @@ function recordTerminalFailure(
   phase: string,
   reasonCode: string,
 ): void {
+  const encoderErrorCode = recordingErrorCode(error);
   void recordEngineLog({
     level: "error",
     event: "recording.terminal",
@@ -38,6 +40,7 @@ function recordTerminalFailure(
       target_kind: session.target.kind,
       frames_written: session.frameSeq,
       frames_dropped: session.framesDropped,
+      ...(encoderErrorCode ? { encoder_error_code: encoderErrorCode } : {}),
     },
     error,
   });
@@ -63,17 +66,33 @@ export async function setRecordingAudio(raw: unknown): Promise<null> {
 }
 
 export function runFfmpeg(ffmpegArgs: string[]): Promise<void> {
-  const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static binary is unavailable");
+  let binary: string;
+  try {
+    binary = ffmpegExecutablePath();
+  } catch (error) {
+    throw recordingEncoderFailure(error, "finalize");
+  }
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, ffmpegArgs, {
-      stdio: ["ignore", "ignore", "pipe"],
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(binary, ffmpegArgs, {
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+    } catch (error) {
+      reject(recordingEncoderFailure(error, "finalize"));
+      return;
+    }
+    const childStderr = child.stderr;
+    if (!childStderr) {
+      child.kill("SIGKILL");
+      reject(recordingEncoderFailure(new Error("ffmpeg stderr pipe was not created"), "finalize"));
+      return;
+    }
     let stderr = "";
-    child.stderr.on("data", (chunk: Buffer) => {
+    childStderr.on("data", (chunk: Buffer) => {
       stderr += String(chunk);
     });
-    child.on("error", reject);
+    child.on("error", (error) => reject(recordingEncoderFailure(error, "finalize")));
     child.on("close", (code: number | null) => {
       if (code === 0) {
         resolve();

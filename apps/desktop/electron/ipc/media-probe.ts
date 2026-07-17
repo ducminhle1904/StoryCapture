@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
-import ffmpegPath from "ffmpeg-static";
+
+import { ffmpegExecutablePath } from "./export-binaries";
 
 const PROBE_TIMEOUT_MS = 5_000;
 
@@ -47,8 +48,12 @@ export async function probeRecording(filePath: string): Promise<RecordingProbeRe
   }
   if (!stat.isFile()) return { status: "invalid", reason: "not_file" };
   if (stat.size === 0) return { status: "invalid", reason: "empty" };
-  const binary = ffmpegPath;
-  if (!binary) return { status: "invalid", reason: "unsupported_or_corrupt" };
+  let binary: string;
+  try {
+    binary = ffmpegExecutablePath();
+  } catch {
+    return { status: "invalid", reason: "unsupported_or_corrupt" };
+  }
 
   return new Promise((resolve) => {
     const child = spawn(
