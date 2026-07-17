@@ -685,9 +685,8 @@ export function PreviewPlayer({
     ? safeAspect(canonicalGraph.output_width, canonicalGraph.output_height)
     : mediaAspect;
   const frameStyle = useMemo<CSSProperties>(() => {
-    const frameScale = useCompositedCanvas ? 1 : PREVIEW_FRAME_SCALE;
-    const maxWidth = stageSize.width * frameScale;
-    const maxHeight = stageSize.height * frameScale;
+    const maxWidth = stageSize.width * PREVIEW_FRAME_SCALE;
+    const maxHeight = stageSize.height * PREVIEW_FRAME_SCALE;
     if (maxWidth > 0 && maxHeight > 0) {
       const frameWidth = Math.min(maxWidth, maxHeight * displayAspect);
       const frameHeight = frameWidth / displayAspect;
@@ -698,11 +697,11 @@ export function PreviewPlayer({
     }
     return {
       aspectRatio: `${displayAspect}`,
-      maxHeight: `${frameScale * 100}%`,
-      maxWidth: `${frameScale * 100}%`,
-      width: `${frameScale * 100}%`,
+      maxHeight: `${PREVIEW_FRAME_SCALE * 100}%`,
+      maxWidth: `${PREVIEW_FRAME_SCALE * 100}%`,
+      width: `${PREVIEW_FRAME_SCALE * 100}%`,
     };
-  }, [displayAspect, stageSize.height, stageSize.width, useCompositedCanvas]);
+  }, [displayAspect, stageSize.height, stageSize.width]);
 
   const resolvedSrc = videoSrc
     ? videoSrc.startsWith("asset:") || videoSrc.startsWith("http")
@@ -1147,14 +1146,6 @@ export function PreviewPlayer({
   useEffect(() => {
     return useEditorStore.subscribe((state, prevState) => {
       if (state.playheadMs === prevState.playheadMs) return;
-      if (useCompositedCanvas && useAmbientBackdrop) {
-        const ambientVideo = ambientVideoRef.current;
-        if (ambientVideo) {
-          syncAmbientVideo(
-            mediaSecondsForPlayhead(ambientVideo, state.playheadMs, sourceTimeMapRef.current),
-          );
-        }
-      }
       const video = videoRef.current;
       if (!video) return;
 
@@ -1169,7 +1160,7 @@ export function PreviewPlayer({
 
       seekPreviewToPlayhead(state.playheadMs);
     });
-  }, [seekPreviewToPlayhead, syncAmbientVideo, useAmbientBackdrop, useCompositedCanvas]);
+  }, [seekPreviewToPlayhead]);
 
   useEffect(() => {
     if (playing) return;
@@ -1743,25 +1734,18 @@ export function PreviewPlayer({
                 <video
                   key={`ambient:${mediaSourceKey}`}
                   ref={ambientVideoRef}
-                  data-testid="preview-ambient-video"
                   aria-hidden="true"
                   tabIndex={-1}
                   muted
                   playsInline
                   preload="auto"
                   src={resolvedSrc}
-                  className={`pointer-events-none absolute inset-0 h-full w-full object-cover blur-3xl saturate-[1.15] ${
-                    useCompositedCanvas ? "scale-[1.12] opacity-[0.84]" : "scale-[1.08] opacity-26"
-                  }`}
+                  className="pointer-events-none absolute inset-0 h-full w-full scale-[1.08] object-cover opacity-26 blur-3xl saturate-[1.15]"
                 />
               ) : null}
               <div
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 ${
-                  useCompositedCanvas
-                    ? "bg-[rgba(8,10,12,0.18)]"
-                    : "bg-[radial-gradient(circle_at_50%_48%,rgba(255,255,255,0.08),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.16))]"
-                }`}
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(255,255,255,0.08),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.16))]"
               />
             </>
           ) : null}
@@ -1793,11 +1777,7 @@ export function PreviewPlayer({
           ) : null}
 
           <div
-            className={`relative z-10 flex items-center justify-center overflow-visible bg-transparent ${
-              useCompositedCanvas
-                ? "max-w-none"
-                : "max-w-[1480px] rounded-[18px] shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68)]"
-            }`}
+            className="relative z-10 flex max-w-[1480px] items-center justify-center overflow-visible rounded-[18px] bg-transparent shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68)]"
             style={frameStyle}
           >
             <div

@@ -126,16 +126,18 @@ describe("PreviewPlayer", () => {
     expect(adapter.configure).toHaveBeenCalledWith(
       expect.objectContaining({ schema_version: 4, output_width: 1920, output_height: 1080 }),
     );
+
     const frame = screen.getByTestId("preview-zoom-layer").parentElement;
-    expect(frame).toHaveClass("max-w-none");
-    expect(frame).not.toHaveClass("rounded-[18px]");
-    expect(frame?.className).not.toContain("shadow-");
-    expect(frame?.style.width).toBe("100%");
-    expect(frame?.style.maxWidth).toBe("100%");
-    expect(screen.getByTestId("preview-ambient-video")).toHaveClass(
-      "object-cover",
-      "scale-[1.12]",
-      "opacity-[0.84]",
+    expect(frame).toHaveClass(
+      "max-w-[1480px]",
+      "rounded-[18px]",
+      "shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68)]",
+    );
+    expect(frame?.style.width).toBe("86%");
+    expect(frame?.style.maxWidth).toBe("86%");
+    expect(document.querySelector('video[aria-hidden="true"]')).toHaveClass(
+      "scale-[1.08]",
+      "opacity-26",
     );
   });
 
