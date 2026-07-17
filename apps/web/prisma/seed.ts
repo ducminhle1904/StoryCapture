@@ -1,7 +1,9 @@
-import { PrismaClient } from "../src/generated/prisma";
+import "dotenv/config";
+
+import { createPrismaClient } from "../src/lib/create-prisma-client";
 import { slugify } from "../src/lib/slugify";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 const workflowSpecs = [
   {

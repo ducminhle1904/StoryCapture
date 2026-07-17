@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { TemplateCategory, WorkflowType } from "@/generated/prisma";
+import { TemplateCategory, WorkflowType } from "@/generated/prisma/client";
 import { slugify } from "@/lib/slugify";
 import { protectedProcedure, publicProcedure, router } from "../init";
 
