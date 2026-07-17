@@ -353,11 +353,9 @@ export class CanonicalCanvasSceneRenderer {
           break;
         case "source":
           this.drawSource(scene, command.source, assets);
-          this.drawFrameBorder(scene);
           break;
         case "transition":
           this.drawTransition(scene, command.transition, assets);
-          this.drawFrameBorder(scene);
           break;
         case "highlight":
           this.drawHighlight(scene, command.highlight, assets);
@@ -622,16 +620,6 @@ export class CanonicalCanvasSceneRenderer {
     this.ctx.arc(rect.x + rect.w / 2, rect.y + rect.h / 2, radius, 0, Math.PI * 2);
     this.ctx.clip();
     this.drawSource(scene, source, assets);
-    this.ctx.restore();
-  }
-
-  private drawFrameBorder(scene: EvaluatedScene): void {
-    if (!scene.background) return;
-    this.ctx.save();
-    roundedRectPath(this.ctx, scene.content_rect, scene.background.radius_px);
-    this.ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
-    this.ctx.lineWidth = Math.max(1, scene.output_width / 1_920);
-    this.ctx.stroke();
     this.ctx.restore();
   }
 

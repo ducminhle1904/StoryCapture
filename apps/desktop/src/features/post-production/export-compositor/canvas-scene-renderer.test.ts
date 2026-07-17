@@ -184,7 +184,7 @@ describe("canonical Canvas 2D renderer", () => {
     ["solid", { kind: "solid", color: { r: 12, g: 34, b: 56, a: 255 } }],
     ["gradient-texture", { kind: "gradient", preset_id: "paper-grain" }],
     ["image-cover-overlay", { kind: "image", asset_id: "photo", path: "/bg.png" }],
-  ] as const)("renders %s background plus framed shadow/border", (_name, kind) => {
+  ] as const)("renders %s background plus a borderless framed shadow", (_name, kind) => {
     const { ctx } = createCanvasContextMock();
     const graph = canonicalGraph([
       canonicalSource("source-a", 0, 1_000),
@@ -201,7 +201,8 @@ describe("canonical Canvas 2D renderer", () => {
     new CanonicalCanvasSceneRenderer(ctx).render(evaluateScene(graph, 500), assets());
 
     expect(ctx.fillRect).toHaveBeenCalled();
-    expect(ctx.stroke).toHaveBeenCalled();
+    expect(ctx.fill).toHaveBeenCalled();
+    expect(ctx.stroke).not.toHaveBeenCalled();
     if (kind.kind === "image") {
       expect(vi.mocked(ctx.drawImage).mock.calls.some((call) => call[0] === PORTRAIT_IMAGE)).toBe(
         true,
