@@ -126,6 +126,12 @@ describe("PreviewPlayer", () => {
     expect(adapter.configure).toHaveBeenCalledWith(
       expect.objectContaining({ schema_version: 4, output_width: 1920, output_height: 1080 }),
     );
+    const frame = screen.getByTestId("preview-zoom-layer").parentElement;
+    expect(frame).toHaveClass("max-w-none");
+    expect(frame).not.toHaveClass("rounded-[18px]");
+    expect(frame?.className).not.toContain("shadow-");
+    expect(frame?.style.width).toBe("100%");
+    expect(frame?.style.maxWidth).toBe("100%");
   });
 
   it("keeps canonical renderer failures visible after the source video loads", async () => {

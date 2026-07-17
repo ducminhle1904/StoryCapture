@@ -685,8 +685,9 @@ export function PreviewPlayer({
     ? safeAspect(canonicalGraph.output_width, canonicalGraph.output_height)
     : mediaAspect;
   const frameStyle = useMemo<CSSProperties>(() => {
-    const maxWidth = stageSize.width * PREVIEW_FRAME_SCALE;
-    const maxHeight = stageSize.height * PREVIEW_FRAME_SCALE;
+    const frameScale = useCompositedCanvas ? 1 : PREVIEW_FRAME_SCALE;
+    const maxWidth = stageSize.width * frameScale;
+    const maxHeight = stageSize.height * frameScale;
     if (maxWidth > 0 && maxHeight > 0) {
       const frameWidth = Math.min(maxWidth, maxHeight * displayAspect);
       const frameHeight = frameWidth / displayAspect;
@@ -697,11 +698,11 @@ export function PreviewPlayer({
     }
     return {
       aspectRatio: `${displayAspect}`,
-      maxHeight: `${PREVIEW_FRAME_SCALE * 100}%`,
-      maxWidth: `${PREVIEW_FRAME_SCALE * 100}%`,
-      width: `${PREVIEW_FRAME_SCALE * 100}%`,
+      maxHeight: `${frameScale * 100}%`,
+      maxWidth: `${frameScale * 100}%`,
+      width: `${frameScale * 100}%`,
     };
-  }, [displayAspect, stageSize.height, stageSize.width]);
+  }, [displayAspect, stageSize.height, stageSize.width, useCompositedCanvas]);
 
   const resolvedSrc = videoSrc
     ? videoSrc.startsWith("asset:") || videoSrc.startsWith("http")
@@ -1777,7 +1778,11 @@ export function PreviewPlayer({
           ) : null}
 
           <div
-            className="relative z-10 flex max-w-[1480px] items-center justify-center overflow-visible rounded-[18px] bg-transparent shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68)]"
+            className={`relative z-10 flex items-center justify-center overflow-visible bg-transparent ${
+              useCompositedCanvas
+                ? "max-w-none"
+                : "max-w-[1480px] rounded-[18px] shadow-[0_22px_58px_-38px_rgba(0,0,0,0.68)]"
+            }`}
             style={frameStyle}
           >
             <div
