@@ -383,29 +383,41 @@ describe("useUndoRedo hook", () => {
   });
 
   it("keyboard shortcut ctrl+y triggers redo (Windows convention)", () => {
-    renderHook(() => useUndoRedo());
-    act(() => {
-      useEditorStore.getState().pushAction({
-        kind: "move-clip",
-        trackId: "video",
-        clipId: "v1",
-        fromMs: 100,
-        toMs: 900,
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    });
+    try {
+      renderHook(() => useUndoRedo());
+      act(() => {
+        useEditorStore.getState().pushAction({
+          kind: "move-clip",
+          trackId: "video",
+          clipId: "v1",
+          fromMs: 100,
+          toMs: 900,
+        });
+        useEditorStore.getState().undo();
       });
-      useEditorStore.getState().undo();
-    });
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(100);
+      expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(100);
 
-    act(() => {
-      document.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "y",
-          code: "KeyY",
-          ctrlKey: true,
-          bubbles: true,
-        }),
-      );
-    });
-    expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(900);
+      act(() => {
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "y",
+            code: "KeyY",
+            ctrlKey: true,
+            bubbles: true,
+          }),
+        );
+      });
+      expect(useEditorStore.getState().tracks.video[0]!.startMs).toBe(900);
+    } finally {
+      Object.defineProperty(navigator, "userAgent", {
+        configurable: true,
+        value: originalUserAgent,
+      });
+    }
   });
 });

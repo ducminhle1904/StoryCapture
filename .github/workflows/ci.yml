@@ -18,7 +18,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-toolchain
@@ -60,7 +60,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-toolchain
@@ -76,3 +76,52 @@ jobs:
       - name: Windows package and export parity smoke
         shell: bash
         run: pnpm --dir apps/desktop run test:e2e:export
+
+  prisma-postgres-smoke:
+    name: prisma-postgres-smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_USER: storycapture
+          POSTGRES_PASSWORD: storycapture
+          POSTGRES_DB: storycapture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U storycapture -d storycapture"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://storycapture:storycapture@127.0.0.1:5432/storycapture
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: pnpm install
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        shell: bash
+        run: pnpm --dir apps/web db:generate
+
+      # The repository predates its checked-in migration history, so an empty
+      # disposable database is bootstrapped from the current schema. Production
+      # migration files are neither rewritten nor marked as applied here.
+      - name: Bootstrap disposable schema
+        shell: bash
+        run: pnpm --dir apps/web db:push
+
+      - name: Prisma adapter CRUD smoke
+        shell: bash
+        run: pnpm --dir apps/web db:smoke
+
+      - name: Prisma seed smoke
+        shell: bash
+        run: pnpm --dir apps/web db:seed

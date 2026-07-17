@@ -6,6 +6,12 @@
   (`packageManager`, `engines`) and `.github/actions/setup-toolchain/action.yml`.
   Read those files for exact versions instead of copying pins into agent docs.
 - Workspaces are declared in `pnpm-workspace.yaml`: `apps/*`, `packages/*`.
+- Dependency resolution enforces the security-first release quarantine in
+  `pnpm-workspace.yaml`: normal new releases must be at least 7 days old.
+  Keep exclusions exact and documented; do not broaden them to package-wide
+  patterns. Use `docs/agent/dependency-upgrade-audit-2026-07-16.md` as the
+  dated example of the live registry/security review, not as a permanent pin
+  inventory.
 - Transitive dependency overrides also live in `pnpm-workspace.yaml`. The local
   `packages/glob-compat`, `packages/lodash-isequal-compat`, and
   `packages/rimraf-compat` shims must be reviewed with Electron packaging
@@ -15,6 +21,7 @@
 ## Install And Dev
 
 - Install: `pnpm install`.
+- Reproducible install check: `pnpm install --frozen-lockfile`.
 - Root dev: `pnpm dev`.
 - Desktop dev: `pnpm --dir apps/desktop dev`.
 - Web dev: `pnpm --dir apps/web dev`.
@@ -40,13 +47,20 @@
 ## Database And Codegen
 
 - Prisma schema: `apps/web/prisma/schema.prisma`.
+- Prisma CLI config: `apps/web/prisma.config.ts`; it loads `.env`, owns the
+  datasource URL, migration path, and seed command.
 - Migrations: `apps/web/prisma/migrations/`.
 - Seed file: `apps/web/prisma/seed.ts`.
+- Prisma 7 creates PostgreSQL clients through
+  `apps/web/src/lib/create-prisma-client.ts` and `@prisma/adapter-pg`; the Next
+  singleton remains in `apps/web/src/lib/prisma.ts`.
 - Generated Prisma client output: `apps/web/src/generated/prisma`.
 - Generate Prisma client: `pnpm --dir apps/web db:generate`.
 - Create dev migration: `pnpm --dir apps/web db:migrate`.
 - Push schema: `pnpm --dir apps/web db:push`.
 - Seed database: `pnpm --dir apps/web db:seed`.
+- Adapter CRUD smoke against a disposable PostgreSQL database:
+  `pnpm --dir apps/web db:smoke`.
 - Web build runs `pnpm run typecheck && next build`; the typecheck runs
   `pnpm run db:generate && tsc --noEmit`.
 
@@ -64,6 +78,8 @@
   - `pnpm --dir apps/web test`
   - `pnpm --dir apps/desktop run test:e2e:export`
 - The Windows job runs the media and packaged export smokes.
+- The Ubuntu `prisma-postgres-smoke` job bootstraps the current schema into a
+  disposable PostgreSQL 17 service, then runs adapter CRUD and seed smokes.
 
 ## Helper Scripts
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import type { PrismaClient } from "@/generated/prisma";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { router, protectedProcedure } from "../init";
 import { DASHBOARD_DAYS, MAX_RETENTION_DAYS } from "@/lib/constants";
 import { requireWorkspaceMember } from "../lib/guards";

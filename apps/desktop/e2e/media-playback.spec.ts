@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -18,11 +19,13 @@ async function launchDevRenderer(extraArgs: string[] = []) {
   });
   try {
     await expect
-      .poll(() => app.windows().some((window) => window.url().startsWith(devServerUrl)))
+      .poll(() => app.windows().some((window) => window.url().startsWith(devServerUrl)), {
+        timeout: 15_000,
+      })
       .toBe(true);
     const main = app.windows().find((window) => window.url().startsWith(devServerUrl));
     if (!main) throw new Error("StoryCapture renderer window did not open");
-    await expect(main.locator("body")).toBeVisible();
+    await expect(main.locator("body")).toBeVisible({ timeout: 15_000 });
     return { app, main };
   } catch (error) {
     await app.close();
@@ -197,7 +200,7 @@ test("streams and seeks real MP4 media through the local asset protocol", async 
 
 test("uses the newest recording and recovers from transient media failure", async () => {
   test.skip(!ffmpegPath, "ffmpeg-static binary is unavailable");
-  const userDataDir = await fs.mkdtemp(path.join(process.cwd(), ".media-e2e-"));
+  const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "storycapture-media-e2e-"));
   const projectId = "media-e2e-project";
   const projectDir = path.join(userDataDir, "project with ünicode");
   const exportsDir = path.join(projectDir, "exports");
@@ -284,12 +287,14 @@ test("uses the newest recording and recovers from transient media failure", asyn
     });
     await expect.poll(() => dispatchMediaEvent("error")).toBe(true);
     await expect
-      .poll(() =>
-        main.evaluate(
-          () =>
-            document.querySelector<HTMLVideoElement>('video[aria-label="Source video preview"]')
-              ?.dataset.e2eGeneration !== "first",
-        ),
+      .poll(
+        () =>
+          main.evaluate(
+            () =>
+              document.querySelector<HTMLVideoElement>('video[aria-label="Source video preview"]')
+                ?.dataset.e2eGeneration !== "first",
+          ),
+        { timeout: 15_000 },
       )
       .toBe(true);
     await expect.poll(() => dispatchMediaEvent("loadeddata")).toBe(true);

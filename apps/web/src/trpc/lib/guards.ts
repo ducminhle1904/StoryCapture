@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import type { PrismaClient } from "@/generated/prisma";
+import type { PrismaClient } from "@/generated/prisma/client";
 
 type Role = "OWNER" | "EDITOR" | "VIEWER";
 
