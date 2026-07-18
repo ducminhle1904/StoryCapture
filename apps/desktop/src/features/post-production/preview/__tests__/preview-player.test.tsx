@@ -11,6 +11,15 @@ import { CanonicalPreviewAdapter } from "../canonical-preview-adapter";
 import { PreviewPlayer } from "../preview-player";
 import { ACTIONS } from "./fixtures";
 
+const requestVideoFrameCallbackDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLVideoElement.prototype,
+  "requestVideoFrameCallback",
+);
+const cancelVideoFrameCallbackDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLVideoElement.prototype,
+  "cancelVideoFrameCallback",
+);
+
 vi.mock("../canonical-preview-adapter", () => ({
   CanonicalPreviewAdapter: vi.fn().mockImplementation(function MockCanonicalPreviewAdapter() {
     return {
@@ -44,6 +53,25 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  if (requestVideoFrameCallbackDescriptor) {
+    Object.defineProperty(
+      HTMLVideoElement.prototype,
+      "requestVideoFrameCallback",
+      requestVideoFrameCallbackDescriptor,
+    );
+  } else {
+    Reflect.deleteProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback");
+  }
+  if (cancelVideoFrameCallbackDescriptor) {
+    Object.defineProperty(
+      HTMLVideoElement.prototype,
+      "cancelVideoFrameCallback",
+      cancelVideoFrameCallbackDescriptor,
+    );
+  } else {
+    Reflect.deleteProperty(HTMLVideoElement.prototype, "cancelVideoFrameCallback");
+  }
 });
 
 function mockNativePlayback() {
@@ -57,6 +85,47 @@ function mockNativePlayback() {
   vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
 
   return { play, requestAnimationFrameSpy };
+}
+
+function mockCompositedPlaybackClock() {
+  let animationFrameCallback: FrameRequestCallback | null = null;
+  let videoFrameCallback: VideoFrameRequestCallback | null = null;
+  let nextVideoFrameId = 1;
+
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(window.performance, "now").mockReturnValue(0);
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    animationFrameCallback = callback;
+    return 1;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+  Object.defineProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback", {
+    configurable: true,
+    value: vi.fn((callback: VideoFrameRequestCallback) => {
+      videoFrameCallback = callback;
+      return nextVideoFrameId++;
+    }),
+  });
+  Object.defineProperty(HTMLVideoElement.prototype, "cancelVideoFrameCallback", {
+    configurable: true,
+    value: vi.fn(),
+  });
+
+  return {
+    animationFrame: (now: number) => animationFrameCallback?.(now),
+    presentedFrame: (now: number, mediaTime: number) =>
+      videoFrameCallback?.(now, { mediaTime } as VideoFrameCallbackMetadata),
+  };
+}
+
+function makeVideoPlayable(video: HTMLVideoElement) {
+  Object.defineProperties(video, {
+    duration: { configurable: true, value: 10 },
+    paused: { configurable: true, value: false },
+    readyState: { configurable: true, value: 2 },
+    seeking: { configurable: true, value: false, writable: true },
+  });
 }
 
 function setActionCursorClip(overrides: Partial<CursorClip> = {}) {
@@ -203,33 +272,79 @@ describe("PreviewPlayer", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument());
   });
 
-  it("remounts the source once after a transient media error", () => {
+  it("retries failed media with bounded backoff and cache-busted sources", () => {
     vi.useFakeTimers();
     render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
-    const failedVideo = screen.getByLabelText("Source video preview");
+    let failedVideo = screen.getByLabelText("Source video preview");
 
     fireEvent.error(failedVideo);
-    act(() => vi.advanceTimersByTime(400));
+    act(() => vi.advanceTimersByTime(399));
+    expect(screen.getByLabelText("Source video preview")).toBe(failedVideo);
+    act(() => vi.advanceTimersByTime(1));
+    let retriedVideo = screen.getByLabelText("Source video preview");
+    expect(retriedVideo).not.toBe(failedVideo);
+    expect(retriedVideo).toHaveAttribute(
+      "src",
+      "http://localhost/video.mp4?storycapture_preview_retry=1",
+    );
 
-    expect(screen.getByLabelText("Source video preview")).not.toBe(failedVideo);
+    failedVideo = retriedVideo;
+    fireEvent.error(failedVideo);
+    act(() => vi.advanceTimersByTime(799));
+    expect(screen.getByLabelText("Source video preview")).toBe(failedVideo);
+    act(() => vi.advanceTimersByTime(1));
+    retriedVideo = screen.getByLabelText("Source video preview");
+    expect(retriedVideo).not.toBe(failedVideo);
+    expect(retriedVideo).toHaveAttribute(
+      "src",
+      "http://localhost/video.mp4?storycapture_preview_retry=2",
+    );
+
+    failedVideo = retriedVideo;
+    fireEvent.error(failedVideo);
+    act(() => vi.advanceTimersByTime(1599));
+    expect(screen.getByLabelText("Source video preview")).toBe(failedVideo);
+    act(() => vi.advanceTimersByTime(1));
+    retriedVideo = screen.getByLabelText("Source video preview");
+    expect(retriedVideo).not.toBe(failedVideo);
+    expect(retriedVideo).toHaveAttribute(
+      "src",
+      "http://localhost/video.mp4?storycapture_preview_retry=3",
+    );
+
     expect(screen.queryByRole("button", { name: "Retry preview" })).not.toBeInTheDocument();
-    vi.useRealTimers();
   });
 
-  it("shows a manual retry after the automatic retry also fails", async () => {
+  it("shows a manual retry only after all automatic retries fail", () => {
+    vi.useFakeTimers();
+    render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
+    for (const delayMs of [400, 800, 1600]) {
+      fireEvent.error(screen.getByLabelText("Source video preview"));
+      act(() => vi.advanceTimersByTime(delayMs));
+    }
+    const exhaustedVideo = screen.getByLabelText("Source video preview");
+
+    fireEvent.error(exhaustedVideo);
+    const retryButton = screen.getByRole("button", { name: "Retry preview" });
+    fireEvent.click(retryButton);
+
+    expect(screen.getByLabelText("Source video preview")).not.toBe(exhaustedVideo);
+    expect(screen.queryByRole("button", { name: "Retry preview" })).not.toBeInTheDocument();
+  });
+
+  it("resets media retry backoff after loaded data", () => {
     vi.useFakeTimers();
     render(<PreviewPlayer storyId="story-1" videoSrc="http://localhost/video.mp4" />);
     fireEvent.error(screen.getByLabelText("Source video preview"));
     act(() => vi.advanceTimersByTime(400));
-    const retriedVideo = screen.getByLabelText("Source video preview");
+    const recoveredVideo = screen.getByLabelText("Source video preview");
+    fireEvent.loadedData(recoveredVideo);
 
-    fireEvent.error(retriedVideo);
-    const retryButton = screen.getByRole("button", { name: "Retry preview" });
-    fireEvent.click(retryButton);
-
-    expect(screen.getByLabelText("Source video preview")).not.toBe(retriedVideo);
-    expect(screen.queryByRole("button", { name: "Retry preview" })).not.toBeInTheDocument();
-    vi.useRealTimers();
+    fireEvent.error(recoveredVideo);
+    act(() => vi.advanceTimersByTime(399));
+    expect(screen.getByLabelText("Source video preview")).toBe(recoveredVideo);
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByLabelText("Source video preview")).not.toBe(recoveredVideo);
   });
 
   it("clears media failure state when the source changes", () => {
@@ -237,8 +352,10 @@ describe("PreviewPlayer", () => {
     const { rerender } = render(
       <PreviewPlayer storyId="story-1" videoSrc="http://localhost/video-a.mp4" />,
     );
-    fireEvent.error(screen.getByLabelText("Source video preview"));
-    act(() => vi.advanceTimersByTime(400));
+    for (const delayMs of [400, 800, 1600]) {
+      fireEvent.error(screen.getByLabelText("Source video preview"));
+      act(() => vi.advanceTimersByTime(delayMs));
+    }
     fireEvent.error(screen.getByLabelText("Source video preview"));
     expect(screen.getByRole("button", { name: "Retry preview" })).toBeInTheDocument();
 
@@ -249,7 +366,6 @@ describe("PreviewPlayer", () => {
       "src",
       "http://localhost/video-b.mp4",
     );
-    vi.useRealTimers();
   });
 
   it("cancels a pending media retry when unmounted", () => {
@@ -418,6 +534,120 @@ describe("PreviewPlayer", () => {
     });
     expect(useEditorStore.getState().playheadMs).toBe(150);
     expect(engine.renderFrame).toHaveBeenLastCalledWith(150);
+  });
+
+  it("falls back to currentTime when presented-frame callbacks become stale", async () => {
+    const user = userEvent.setup();
+    const clock = mockCompositedPlaybackClock();
+    const { container } = render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        outputMode="composited-canvas"
+      />,
+    );
+    await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
+    const video = container.querySelector("video[hidden]") as HTMLVideoElement;
+    const ambientVideo = screen.getByTestId("preview-ambient-video") as HTMLVideoElement;
+    makeVideoPlayable(video);
+    const engine = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
+      renderFrame: ReturnType<typeof vi.fn>;
+    };
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument());
+    video.currentTime = 0.25;
+    act(() => clock.animationFrame(200));
+
+    await waitFor(() => expect(engine.renderFrame).toHaveBeenLastCalledWith(250));
+    expect(ambientVideo.currentTime).toBeCloseTo(0.25);
+  });
+
+  it("keeps a fresh presented frame authoritative over currentTime", async () => {
+    const user = userEvent.setup();
+    const clock = mockCompositedPlaybackClock();
+    const { container } = render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        outputMode="composited-canvas"
+      />,
+    );
+    await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
+    const video = container.querySelector("video[hidden]") as HTMLVideoElement;
+    makeVideoPlayable(video);
+    const engine = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
+      renderFrame: ReturnType<typeof vi.fn>;
+    };
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    act(() => clock.presentedFrame(100, 0.1));
+    video.currentTime = 0.4;
+    act(() => clock.animationFrame(150));
+
+    await waitFor(() => expect(engine.renderFrame).toHaveBeenLastCalledWith(100));
+  });
+
+  it("does not move backward when presented-frame callbacks recover", async () => {
+    const user = userEvent.setup();
+    const clock = mockCompositedPlaybackClock();
+    const { container } = render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        outputMode="composited-canvas"
+      />,
+    );
+    await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
+    const video = container.querySelector("video[hidden]") as HTMLVideoElement;
+    makeVideoPlayable(video);
+    const engine = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
+      renderFrame: ReturnType<typeof vi.fn>;
+    };
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    video.currentTime = 0.3;
+    act(() => clock.animationFrame(200));
+    await waitFor(() => expect(engine.renderFrame).toHaveBeenLastCalledWith(300));
+
+    act(() => clock.presentedFrame(210, 0.2));
+    expect(engine.renderFrame).toHaveBeenLastCalledWith(300);
+    act(() => clock.presentedFrame(220, 0.35));
+    await waitFor(() => {
+      const lastTimestamp = engine.renderFrame.mock.lastCall?.[0];
+      expect(lastTimestamp).toBeCloseTo(350);
+    });
+  });
+
+  it("blocks currentTime fallback while seeking and resumes after seeked", async () => {
+    const user = userEvent.setup();
+    const clock = mockCompositedPlaybackClock();
+    const { container } = render(
+      <PreviewPlayer
+        storyId="story-1"
+        videoSrc="http://localhost/video.mp4"
+        outputMode="composited-canvas"
+      />,
+    );
+    await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
+    const video = container.querySelector("video[hidden]") as HTMLVideoElement;
+    makeVideoPlayable(video);
+    const engine = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
+      renderFrame: ReturnType<typeof vi.fn>;
+    };
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    video.currentTime = 0.3;
+    Reflect.set(video, "seeking", true);
+    fireEvent.seeking(video);
+    act(() => clock.animationFrame(200));
+    expect(engine.renderFrame).not.toHaveBeenLastCalledWith(300);
+
+    Reflect.set(video, "seeking", false);
+    fireEvent.seeked(video);
+    video.currentTime = 0.3;
+    act(() => clock.animationFrame(250));
+    await waitFor(() => expect(engine.renderFrame).toHaveBeenLastCalledWith(300));
   });
 
   it("commits native playback time when media pauses", async () => {

@@ -300,30 +300,15 @@ test("uses the newest recording and recovers from transient media failure", asyn
     await expect.poll(() => dispatchMediaEvent("loadeddata")).toBe(true);
     await expect(main.getByRole("button", { name: "Retry preview" })).toHaveCount(0);
 
-    await app.evaluate(async ({ protocol, session }) => {
-      await session.defaultSession.clearCache();
-      protocol.unhandle("storycapture-asset");
-      protocol.handle(
-        "storycapture-asset",
-        () =>
-          new Response("forced media failure", {
-            status: 500,
-            headers: { "cache-control": "no-store" },
-          }),
-      );
-    });
-    await main.evaluate(() => {
-      const video = document.querySelector<HTMLVideoElement>(
-        'video[aria-label="Source video preview"]',
-      );
-      if (!video) return;
-      video.src = `${video.src}?permanent-failure=1`;
-      video.load();
-      video.dispatchEvent(new Event("error"));
-      video.dispatchEvent(new Event("error"));
-    });
+    const missingAssetUrl = `storycapture-asset://local/${encodeURIComponent(
+      path.join(exportsDir, "missing-recording.mp4"),
+    )}`;
+    await main.goto(
+      `${devServerUrl}/?storycapturePreviewE2E=${encodeURIComponent(missingAssetUrl)}`,
+    );
+    await expect(main.getByLabel("Source video preview")).toHaveAttribute("src", missingAssetUrl);
     await expect(main.getByRole("button", { name: "Retry preview" })).toBeVisible({
-      timeout: 5_000,
+      timeout: 15_000,
     });
   } finally {
     await app.close();

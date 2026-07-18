@@ -38,6 +38,7 @@ import {
 import {
   identitySourceTimelineMap,
   type SourceTimelineMap,
+  sourcePtsUsToTimelineMs,
   timelineMsToSourcePtsUs,
 } from "../state/source-timeline-map";
 import { type EditorBackgroundKind, readEditorBackground, useEditorStore } from "../state/store";
@@ -82,6 +83,8 @@ const DEFAULT_PREVIEW_OUTPUT_MODE: PreviewOutputMode = "native-video";
 const NATIVE_PLAYHEAD_COMMIT_INTERVAL_MS = 16;
 const COMPOSITED_PLAYHEAD_COMMIT_INTERVAL_MS = 100;
 const MEDIA_SYNC_EPSILON_MS = 80;
+const PRESENTED_FRAME_STALE_MIN_MS = 120;
+const PRESENTED_FRAME_STALE_FRAME_COUNT = 3;
 const TIMELINE_END_EPSILON_MS = 16;
 const PREVIEW_FRAME_SCALE = 0.86;
 const AMBIENT_SAMPLE_WIDTH = 40;
@@ -98,7 +101,26 @@ const CURSOR_HOTSPOT_OFFSET_PX = 1;
 const SOURCE_HOLD_EPSILON_SECONDS = 0.001;
 const TEXT_DRAG_OVERSCAN = 0.25;
 const MIN_HIGHLIGHT_BOUNDS_SIZE = 0.0001;
-const MEDIA_RETRY_DELAY_MS = 400;
+const MEDIA_RETRY_DELAYS_MS = [400, 800, 1600] as const;
+
+function mediaSrcForGeneration(src: string | undefined, generation: number): string | undefined {
+  if (!src || generation === 0) return src;
+  try {
+    const url = new URL(src);
+    url.searchParams.set("storycapture_preview_retry", String(generation));
+    return url.toString();
+  } catch {
+    return src;
+  }
+}
+
+function presentedFrameStaleAfterMs(outputFps: number): number {
+  const frameDurationMs = 1000 / Math.max(1, outputFps);
+  return Math.max(
+    PRESENTED_FRAME_STALE_MIN_MS,
+    frameDurationMs * PRESENTED_FRAME_STALE_FRAME_COUNT,
+  );
+}
 
 function cursorScheduleKey(preset: CursorMotionPreset, preserveFullMotion: boolean): string {
   return `${preset}:${preserveFullMotion ? "preserve" : "compress"}`;
@@ -587,9 +609,14 @@ export function PreviewPlayer({
   const lastPlayheadCommitRef = useRef(0);
   const presentedPlayheadRef = useRef(0);
   const presentedClockRef = useRef<PresentedMediaClock | null>(null);
+  const lastPresentedFrameAtRef = useRef(0);
+  const presentedFrameAwaitingRef = useRef(false);
+  const clockFallbackActiveRef = useRef(false);
+  const clockFallbackStartedAtRef = useRef(0);
   const sourceTimeMapRef = useRef<SourceTimelineMap>(identitySourceTimelineMap(0));
   const mediaRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaRetryCountRef = useRef(0);
+  const lastMediaErrorGenerationRef = useRef<number | null>(null);
   const canonicalRenderGenerationRef = useRef(0);
   const canonicalRenderPendingRef = useRef<number | null>(null);
   const canonicalRenderActiveRef = useRef(false);
@@ -710,7 +737,9 @@ export function PreviewPlayer({
       : convertFileSrc(videoSrc)
     : undefined;
   const useAmbientBackdrop = editorBackground.kind === "transparent" && Boolean(resolvedSrc);
-  const mediaSourceKey = `${resolvedSrc ?? "empty"}:${mediaSourceGeneration}`;
+  const mediaElementSrc = mediaSrcForGeneration(resolvedSrc, mediaSourceGeneration);
+  const mediaSourceKey = mediaElementSrc ?? "empty";
+  const presentedFrameStaleMs = presentedFrameStaleAfterMs(canonicalGraph.output_fps);
 
   const requestCanonicalFrame = useCallback((timestampMs: number) => {
     canonicalRenderPendingRef.current = Math.max(0, timestampMs);
@@ -756,6 +785,7 @@ export function PreviewPlayer({
   useEffect(() => {
     clearMediaRetryTimer();
     mediaRetryCountRef.current = 0;
+    lastMediaErrorGenerationRef.current = null;
     setMediaError(false);
     setCanonicalError(false);
     playingRef.current = false;
@@ -920,6 +950,19 @@ export function PreviewPlayer({
       MEDIA_SYNC_EPSILON_MS / 1000
     ) {
       ambientVideo.currentTime = sourceVideo.currentTime;
+    }
+  }, []);
+
+  const syncAmbientPlaybackToPlayhead = useCallback((timelineMs: number) => {
+    const ambientVideo = ambientVideoRef.current;
+    if (!ambientVideo) return;
+    const acceptedSeconds = mediaSecondsForPlayhead(
+      ambientVideo,
+      timelineMs,
+      sourceTimeMapRef.current,
+    );
+    if (Math.abs(ambientVideo.currentTime - acceptedSeconds) > MEDIA_SYNC_EPSILON_MS / 1000) {
+      ambientVideo.currentTime = acceptedSeconds;
     }
   }, []);
 
@@ -1147,14 +1190,6 @@ export function PreviewPlayer({
   useEffect(() => {
     return useEditorStore.subscribe((state, prevState) => {
       if (state.playheadMs === prevState.playheadMs) return;
-      if (useCompositedCanvas && useAmbientBackdrop) {
-        const ambientVideo = ambientVideoRef.current;
-        if (ambientVideo) {
-          syncAmbientVideo(
-            mediaSecondsForPlayhead(ambientVideo, state.playheadMs, sourceTimeMapRef.current),
-          );
-        }
-      }
       const video = videoRef.current;
       if (!video) return;
 
@@ -1169,7 +1204,7 @@ export function PreviewPlayer({
 
       seekPreviewToPlayhead(state.playheadMs);
     });
-  }, [seekPreviewToPlayhead, syncAmbientVideo, useAmbientBackdrop, useCompositedCanvas]);
+  }, [seekPreviewToPlayhead]);
 
   useEffect(() => {
     if (playing) return;
@@ -1196,17 +1231,45 @@ export function PreviewPlayer({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !resolvedSrc) return;
+    if (!video || !mediaElementSrc) return;
     let disposed = false;
     let callbackId: number | null = null;
-    let generation = 0;
+    let generation = presentedClockRef.current?.snapshot()?.generation ?? 0;
 
-    const commitPresented = (mediaTimeSeconds: number) => {
-      const state = presentedClockRef.current?.commitPresentedFrame(
-        Math.max(0, Math.round(mediaTimeSeconds * 1_000_000)),
-        generation,
-      );
+    lastPresentedFrameAtRef.current = performance.now();
+    presentedFrameAwaitingRef.current = false;
+    clockFallbackActiveRef.current = false;
+    clockFallbackStartedAtRef.current = 0;
+
+    const commitPresented = (mediaTimeSeconds: number, presentedAt: number) => {
+      const sourcePtsUs = Math.max(0, Math.round(mediaTimeSeconds * 1_000_000));
+      const mappedTimelineMs = sourcePtsUsToTimelineMs(sourceTimeMapRef.current, sourcePtsUs);
+      if (
+        mappedTimelineMs == null ||
+        (clockFallbackActiveRef.current &&
+          playingRef.current &&
+          mappedTimelineMs < presentedPlayheadRef.current)
+      ) {
+        return;
+      }
+      const state = presentedClockRef.current?.commitPresentedFrame(sourcePtsUs, generation);
       if (!state) return;
+      lastPresentedFrameAtRef.current = presentedAt;
+      presentedFrameAwaitingRef.current = false;
+      if (clockFallbackActiveRef.current) {
+        const fallbackDurationMs = Math.max(0, presentedAt - clockFallbackStartedAtRef.current);
+        clockFallbackActiveRef.current = false;
+        clockFallbackStartedAtRef.current = 0;
+        frontendLog.info("post-production/PreviewPlayer", "presented-frame clock recovered", {
+          fields: {
+            fallback_duration_ms: Math.round(fallbackDurationMs),
+            retry_count: mediaRetryCountRef.current,
+            ready_state: video.readyState,
+            network_state: video.networkState,
+            output_mode: "composited-canvas",
+          },
+        });
+      }
       presentedPlayheadRef.current = state.timelineMs;
       applyPreviewZoom(state.timelineMs);
       renderCursorOverlay(state.timelineMs);
@@ -1215,17 +1278,26 @@ export function PreviewPlayer({
       }
     };
 
-    const onVideoFrame = (_now: number, metadata: VideoFrameCallbackMetadata) => {
+    const onVideoFrame = (now: number, metadata: VideoFrameCallbackMetadata) => {
       if (disposed) return;
-      commitPresented(metadata.mediaTime);
+      commitPresented(metadata.mediaTime, now);
       callbackId = video.requestVideoFrameCallback(onVideoFrame);
     };
-    const onTimeUpdate = () => commitPresented(video.currentTime);
+    const onTimeUpdate = () => commitPresented(video.currentTime, performance.now());
     const onSeeking = () => {
       generation = presentedClockRef.current?.beginDiscontinuity() ?? generation + 1;
+      presentedFrameAwaitingRef.current = true;
+      clockFallbackActiveRef.current = false;
+      clockFallbackStartedAtRef.current = 0;
+      lastPresentedFrameAtRef.current = performance.now();
+    };
+    const onSeeked = () => {
+      presentedFrameAwaitingRef.current = false;
+      lastPresentedFrameAtRef.current = performance.now();
     };
 
     video.addEventListener("seeking", onSeeking);
+    video.addEventListener("seeked", onSeeked);
     if (typeof video.requestVideoFrameCallback === "function") {
       callbackId = video.requestVideoFrameCallback(onVideoFrame);
     } else {
@@ -1234,6 +1306,7 @@ export function PreviewPlayer({
     return () => {
       disposed = true;
       video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("timeupdate", onTimeUpdate);
       if (callbackId !== null && typeof video.cancelVideoFrameCallback === "function") {
         video.cancelVideoFrameCallback(callbackId);
@@ -1243,7 +1316,7 @@ export function PreviewPlayer({
     applyPreviewZoom,
     renderCursorOverlay,
     requestCanonicalFrame,
-    resolvedSrc,
+    mediaElementSrc,
     useCompositedCanvas,
   ]);
 
@@ -1352,7 +1425,7 @@ export function PreviewPlayer({
             setPlaying(false);
             frontendLog.warn("post-production/PreviewPlayer", "video play request rejected", {
               error,
-              fields: { src: resolvedSrc, output_mode: "native-video" },
+              fields: { output_mode: "native-video" },
             });
           }
         });
@@ -1391,6 +1464,9 @@ export function PreviewPlayer({
     let lastRenderedPlayheadMs = Math.max(0, useEditorStore.getState().playheadMs);
     const playbackStartMs = lastRenderedPlayheadMs;
     const playbackStartedAt = performance.now();
+    lastPresentedFrameAtRef.current = playbackStartedAt;
+    clockFallbackActiveRef.current = false;
+    clockFallbackStartedAtRef.current = 0;
 
     const playbackDurationMs = () => timelinePlaybackDurationMs(video, durationMsRef.current);
 
@@ -1427,12 +1503,47 @@ export function PreviewPlayer({
         return;
       } else {
         holdingSourceFrame = false;
-        syncAmbientPlayback(video);
       }
 
-      const renderedTimelineMs = holdingSourceFrame
-        ? (presentedClockRef.current?.commitHold(nextPlayheadMs)?.timelineMs ?? nextPlayheadMs)
-        : presentedPlayheadRef.current;
+      let renderedTimelineMs = presentedPlayheadRef.current;
+      if (holdingSourceFrame) {
+        renderedTimelineMs =
+          presentedClockRef.current?.commitHold(nextPlayheadMs)?.timelineMs ?? nextPlayheadMs;
+      } else if (
+        typeof video.requestVideoFrameCallback === "function" &&
+        video.readyState >= 2 &&
+        !video.seeking &&
+        !presentedFrameAwaitingRef.current
+      ) {
+        const staleDurationMs = Math.max(0, now - lastPresentedFrameAtRef.current);
+        if (clockFallbackActiveRef.current || staleDurationMs >= presentedFrameStaleMs) {
+          if (!clockFallbackActiveRef.current) {
+            clockFallbackActiveRef.current = true;
+            clockFallbackStartedAtRef.current = now;
+            frontendLog.warn(
+              "post-production/PreviewPlayer",
+              "presented-frame clock fallback activated",
+              {
+                fields: {
+                  stale_duration_ms: Math.round(staleDurationMs),
+                  retry_count: mediaRetryCountRef.current,
+                  ready_state: video.readyState,
+                  network_state: video.networkState,
+                  output_mode: "composited-canvas",
+                },
+              },
+            );
+          }
+          const fallbackState = presentedClockRef.current?.commitPresentedFrame(
+            Math.max(0, Math.round(video.currentTime * 1_000_000)),
+          );
+          if (fallbackState) {
+            renderedTimelineMs = Math.max(presentedPlayheadRef.current, fallbackState.timelineMs);
+            presentedPlayheadRef.current = renderedTimelineMs;
+          }
+        }
+      }
+      syncAmbientPlaybackToPlayhead(renderedTimelineMs);
       lastRenderedPlayheadMs = renderedTimelineMs;
       applyPreviewZoom(renderedTimelineMs);
       renderCursorOverlay(renderedTimelineMs);
@@ -1461,7 +1572,7 @@ export function PreviewPlayer({
         .play()
         .then(() => {
           if (!disposed) {
-            syncAmbientPlayback(video);
+            syncAmbientPlaybackToPlayhead(presentedPlayheadRef.current);
             void ambientVideoRef.current?.play().catch(() => undefined);
             rafRef.current = requestAnimationFrame(tick);
           }
@@ -1472,7 +1583,7 @@ export function PreviewPlayer({
             setPlaying(false);
             frontendLog.warn("post-production/PreviewPlayer", "video play request rejected", {
               error,
-              fields: { src: resolvedSrc, output_mode: "composited-canvas" },
+              fields: { output_mode: "composited-canvas" },
             });
           }
         });
@@ -1502,7 +1613,8 @@ export function PreviewPlayer({
     resolvedSrc,
     seekPreviewToPlayhead,
     setPlayhead,
-    syncAmbientPlayback,
+    presentedFrameStaleMs,
+    syncAmbientPlaybackToPlayhead,
     syncAmbientVideo,
     useCompositedCanvas,
   ]);
@@ -1538,46 +1650,60 @@ export function PreviewPlayer({
   }, [togglePlay]);
 
   const handleVideoLoaded = useCallback(() => {
+    const retryCount = mediaRetryCountRef.current;
+    const video = videoRef.current;
     clearMediaRetryTimer();
     mediaRetryCountRef.current = 0;
+    lastMediaErrorGenerationRef.current = null;
     setMediaError(false);
+    if (retryCount > 0) {
+      frontendLog.info("post-production/PreviewPlayer", "video element recovered", {
+        fields: {
+          retry_count: retryCount,
+          network_state: video?.networkState ?? null,
+          ready_state: video?.readyState ?? null,
+        },
+      });
+    }
   }, [clearMediaRetryTimer]);
 
   const retryMediaSource = useCallback(() => {
     clearMediaRetryTimer();
     mediaRetryCountRef.current = 0;
+    lastMediaErrorGenerationRef.current = null;
     setMediaError(false);
     setCanonicalError(false);
     setMediaSourceGeneration((generation) => generation + 1);
   }, [clearMediaRetryTimer]);
 
   const handleVideoError = useCallback(() => {
+    if (lastMediaErrorGenerationRef.current === mediaSourceGeneration) return;
+    lastMediaErrorGenerationRef.current = mediaSourceGeneration;
     const video = videoRef.current;
     const err = video?.error;
     playingRef.current = false;
     setPlaying(false);
     frontendLog.warn("post-production/PreviewPlayer", "video element failed", {
       fields: {
-        src: resolvedSrc,
         retry_count: mediaRetryCountRef.current,
         code: err?.code ?? null,
-        message: err?.message ?? null,
         network_state: video?.networkState ?? null,
         ready_state: video?.readyState ?? null,
       },
     });
-    if (mediaRetryCountRef.current === 0) {
-      mediaRetryCountRef.current = 1;
+    const retryDelayMs = MEDIA_RETRY_DELAYS_MS[mediaRetryCountRef.current];
+    if (retryDelayMs !== undefined) {
+      mediaRetryCountRef.current += 1;
       clearMediaRetryTimer();
       mediaRetryTimerRef.current = setTimeout(() => {
         mediaRetryTimerRef.current = null;
         setMediaSourceGeneration((generation) => generation + 1);
-      }, MEDIA_RETRY_DELAY_MS);
+      }, retryDelayMs);
       return;
     }
     clearMediaRetryTimer();
     setMediaError(true);
-  }, [clearMediaRetryTimer, resolvedSrc]);
+  }, [clearMediaRetryTimer, mediaSourceGeneration]);
 
   const handleVideoMetadata = useCallback(() => {
     const video = videoRef.current;
@@ -1749,7 +1875,7 @@ export function PreviewPlayer({
                   muted
                   playsInline
                   preload="auto"
-                  src={resolvedSrc}
+                  src={mediaElementSrc}
                   className={`pointer-events-none absolute inset-0 h-full w-full object-cover blur-3xl saturate-[1.15] ${
                     useCompositedCanvas ? "scale-[1.12] opacity-[0.84]" : "scale-[1.08] opacity-26"
                   }`}
@@ -1812,7 +1938,7 @@ export function PreviewPlayer({
                   muted
                   playsInline
                   preload="auto"
-                  src={resolvedSrc}
+                  src={mediaElementSrc}
                   onError={handleVideoError}
                   onLoadedData={handleVideoLoaded}
                   onLoadedMetadata={handleVideoMetadata}
@@ -2070,7 +2196,7 @@ export function PreviewPlayer({
             muted
             playsInline
             preload="auto"
-            src={resolvedSrc}
+            src={mediaElementSrc}
             onError={handleVideoError}
             onLoadedData={handleVideoLoaded}
             onLoadedMetadata={handleVideoMetadata}
