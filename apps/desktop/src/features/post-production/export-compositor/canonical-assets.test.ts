@@ -36,7 +36,7 @@ describe("canonical image source provenance", () => {
             id: "background",
             kind: {
               kind: "image",
-              asset_id: "background-image",
+              asset_id: null,
               path: "/tmp/project/background.png",
             },
             radius_px: 0,
@@ -69,6 +69,33 @@ describe("canonical image source provenance", () => {
       expect(loader).toHaveBeenCalledWith("/tmp/project/background.png", "graph-path");
       expect(loader).toHaveBeenCalledWith(expect.any(String), "bundled-url");
       expect(pool.cursorSkin("mac-default")).toBe(image);
+    } finally {
+      pool.dispose();
+    }
+  });
+
+  it("keeps bundled background URLs on the renderer asset loader", async () => {
+    const image = { width: 32, height: 32 } as unknown as CanvasImageSource;
+    const loader = vi.fn(async () => image);
+    const pool = new CanonicalImageAssetPool(loader);
+    const bundledUrl = "/@fs/Users/example/StoryCapture/assets/cosmic/1.jpg";
+
+    try {
+      await pool.configure(
+        canonicalGraph([
+          {
+            type: "background",
+            id: "background",
+            kind: { kind: "image", asset_id: "cosmic:1", path: bundledUrl },
+            radius_px: 24,
+            shadow: null,
+            padding_px: 64,
+          },
+        ]),
+      );
+
+      expect(loader).toHaveBeenCalledWith(bundledUrl, "bundled-url");
+      expect(pool.image(bundledUrl)).toBe(image);
     } finally {
       pool.dispose();
     }

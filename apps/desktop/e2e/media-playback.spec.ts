@@ -93,6 +93,95 @@ test("loads the bundled cursor skin through Vite in the Electron dev renderer", 
   }
 });
 
+test("renders canonical backgrounds continuously across an extended preview surface", async () => {
+  const { app, main } = await launchDevRenderer();
+  try {
+    const evidence = await main.evaluate(async () => {
+      const rendererModulePath =
+        "/src/features/post-production/export-compositor/canvas-scene-renderer.ts";
+      const fixtureModulePath =
+        "/src/features/post-production/export-compositor/canonical-test-fixture.ts";
+      const evaluatorModulePath =
+        "/src/features/post-production/export-compositor/scene-evaluator.ts";
+      const { CanonicalCanvasSceneRenderer } = await import(rendererModulePath);
+      const { canonicalGraph, canonicalSource } = await import(fixtureModulePath);
+      const { evaluateScene } = await import(evaluatorModulePath);
+      const source = document.createElement("canvas");
+      source.width = 160;
+      source.height = 90;
+      const sourceContext = source.getContext("2d");
+      if (!sourceContext) throw new Error("fixture source canvas context is unavailable");
+      const sourceGradient = sourceContext.createLinearGradient(0, 0, 0, source.height);
+      sourceGradient.addColorStop(0, "#29557a");
+      sourceGradient.addColorStop(1, "#8f4b43");
+      sourceContext.fillStyle = sourceGradient;
+      sourceContext.fillRect(0, 0, source.width, source.height);
+
+      const backgrounds = [
+        { label: "ambient", kind: { kind: "ambient" } },
+        {
+          label: "solid",
+          kind: { kind: "solid", color: { r: 28, g: 36, b: 48, a: 255 } },
+        },
+        { label: "gradient", kind: { kind: "gradient", preset_id: "cool-ocean" } },
+        { label: "image", kind: { kind: "image", asset_id: "fixture", path: "/bg.png" } },
+      ];
+      const results = [];
+      for (const background of backgrounds) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 480;
+        canvas.height = 360;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("preview canvas context is unavailable");
+        const graph = canonicalGraph([
+          canonicalSource("source-a", 0, 1_000),
+          {
+            type: "background",
+            id: "background",
+            kind: background.kind,
+            radius_px: 24,
+            shadow: null,
+            padding_px: 40,
+          },
+        ]);
+        const presentation = {
+          surfaceRect: { x: 0, y: 0, w: 480, h: 360 },
+          compositionRect: { x: 0, y: 45, w: 480, h: 270 },
+        };
+        new CanonicalCanvasSceneRenderer(context).render(
+          evaluateScene(graph, 500),
+          {
+            source: () => source,
+            image: () => source,
+            cursorSkin: () => source,
+            cursorPngFrame: () => source,
+          },
+          presentation,
+        );
+        const sample = (x: number, y: number) => Array.from(context.getImageData(x, y, 1, 1).data);
+        const above = sample(240, 43);
+        const below = sample(240, 47);
+        results.push({
+          label: background.label,
+          seamDelta: Math.max(...above.map((channel, index) => Math.abs(channel - below[index]))),
+          topAlpha: sample(240, 4)[3],
+          bottomAlpha: sample(240, 355)[3],
+        });
+      }
+      return results;
+    });
+
+    expect(evidence.map((entry) => entry.label)).toEqual(["ambient", "solid", "gradient", "image"]);
+    for (const entry of evidence) {
+      expect(entry.topAlpha, `${entry.label} top edge`).toBeGreaterThan(180);
+      expect(entry.bottomAlpha, `${entry.label} bottom edge`).toBeGreaterThan(180);
+      expect(entry.seamDelta, `${entry.label} composition boundary`).toBeLessThanOrEqual(24);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test("streams and seeks real MP4 media through the local asset protocol", async () => {
   test.skip(!ffmpegPath, "ffmpeg-static binary is unavailable");
   const { app, main } = await launchDevRenderer();

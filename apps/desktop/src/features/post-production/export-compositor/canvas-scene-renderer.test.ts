@@ -122,7 +122,8 @@ describe("canonical Canvas 2D renderer", () => {
     graph.output_width = Math.round((outputHeight * 16) / 9);
     const { ctx } = createCanvasContextMock();
 
-    new CanonicalCanvasSceneRenderer(ctx).render(evaluateScene(graph, 500), assets());
+    const scene = evaluateScene(graph, 500);
+    new CanonicalCanvasSceneRenderer(ctx).render(scene, assets());
 
     expect(ctx.font).toContain(`${72 * expectedScale}px`);
     expect(ctx.lineWidth).toBeCloseTo(8 * expectedScale, 10);
@@ -198,15 +199,17 @@ describe("canonical Canvas 2D renderer", () => {
       },
     ]);
 
-    new CanonicalCanvasSceneRenderer(ctx).render(evaluateScene(graph, 500), assets());
+    const scene = evaluateScene(graph, 500);
+    new CanonicalCanvasSceneRenderer(ctx).render(scene, assets());
 
     expect(ctx.fillRect).toHaveBeenCalled();
     expect(ctx.fill).toHaveBeenCalled();
     expect(ctx.stroke).not.toHaveBeenCalled();
     const expectedSourceWidth = 640 * (1_280 / 720);
     const expectedSourceX = 40 + (1_200 - expectedSourceWidth) / 2;
+    const expectedRadius = 24 * canonical1080pScale(scene.output_height);
     const sourceShadowPathStart = vi.mocked(ctx.moveTo).mock.calls[0];
-    expect(sourceShadowPathStart?.[0]).toBeCloseTo(expectedSourceX + 24, 3);
+    expect(sourceShadowPathStart?.[0]).toBeCloseTo(expectedSourceX + expectedRadius, 3);
     expect(sourceShadowPathStart?.[1]).toBe(40);
     if (kind.kind === "image") {
       expect(vi.mocked(ctx.drawImage).mock.calls.some((call) => call[0] === PORTRAIT_IMAGE)).toBe(
@@ -214,6 +217,62 @@ describe("canonical Canvas 2D renderer", () => {
       );
     }
     if (kind.kind === "gradient") expect(ctx.createLinearGradient).toHaveBeenCalledOnce();
+  });
+
+  it("clips the actual 4K source rect with resolution-scaled rounded corners", () => {
+    const { ctx } = createCanvasContextMock();
+    const graph = canonicalGraph([
+      canonicalSource("source-a", 0, 1_000),
+      {
+        type: "background",
+        id: "background",
+        kind: { kind: "ambient" },
+        radius_px: 24,
+        shadow: null,
+        padding_px: 40,
+      },
+    ]);
+    graph.output_width = 3_840;
+    graph.output_height = 2_160;
+    const scene = evaluateScene(graph, 500);
+
+    new CanonicalCanvasSceneRenderer(ctx).render(scene, assets());
+
+    const expectedRadius = 48;
+    const expectedSourceWidth = scene.content_rect.h * (1_280 / 720);
+    const expectedSourceX =
+      scene.content_rect.x + (scene.content_rect.w - expectedSourceWidth) / 2;
+    const [shadowPathStart, sourceClipPathStart] = vi.mocked(ctx.moveTo).mock.calls;
+    expect(shadowPathStart?.[0]).toBeCloseTo(expectedSourceX + expectedRadius, 3);
+    expect(sourceClipPathStart?.[0]).toBeCloseTo(expectedSourceX + expectedRadius, 3);
+    expect(sourceClipPathStart?.[1]).toBe(scene.content_rect.y);
+  });
+
+  it("draws one full presentation background and aspect-fits canonical foreground", () => {
+    const { ctx } = createCanvasContextMock();
+    const graph = canonicalGraph([
+      canonicalSource("source-a", 0, 1_000),
+      {
+        type: "background",
+        id: "background",
+        kind: { kind: "solid", color: { r: 12, g: 34, b: 56, a: 255 } },
+        radius_px: 24,
+        shadow: null,
+        padding_px: 40,
+      },
+    ]);
+    const presentation = {
+      surfaceRect: { x: 0, y: 0, w: 1_200, h: 1_000 },
+      compositionRect: { x: 0, y: 162.5, w: 1_200, h: 675 },
+    };
+
+    new CanonicalCanvasSceneRenderer(ctx).render(evaluateScene(graph, 500), assets(), presentation);
+
+    expect(ctx.clearRect).toHaveBeenCalledWith(0, 0, 1_200, 1_000);
+    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 1_200, 1_000);
+    expect(ctx.translate).toHaveBeenCalledWith(0, 162.5);
+    expect(ctx.scale).toHaveBeenCalledWith(0.9375, 0.9375);
+    expect(ctx.drawImage).toHaveBeenCalled();
   });
 
   it("renders zoomed click feedback, cursor size, motion sample, and color tint", () => {

@@ -65,7 +65,7 @@ export class CanonicalImageAssetPool implements Omit<CanonicalRenderAssets, "sou
     this.skins.clear();
     this.cursorFrames.clear();
 
-    const paths = new Set<string>();
+    const sources = new Map<string, CanonicalImageSourceKind>();
     for (const background of nodesOf(graph, "background")) {
       if (background.kind.kind === "image") {
         if (!background.kind.path) {
@@ -73,16 +73,23 @@ export class CanonicalImageAssetPool implements Omit<CanonicalRenderAssets, "sou
             `canonical background asset is unresolved: ${background.kind.asset_id ?? "unknown"}`,
           );
         }
-        paths.add(background.kind.path);
+        sources.set(
+          background.kind.path,
+          background.kind.asset_id ? "bundled-url" : "graph-path",
+        );
       }
     }
     for (const node of nodesOf(graph, "highlight-overlay")) {
       for (const highlight of node.highlights) {
-        if (highlight.png_path) paths.add(highlight.png_path);
+        if (highlight.png_path && !sources.has(highlight.png_path)) {
+          sources.set(highlight.png_path, "graph-path");
+        }
       }
     }
-    for (const path of Array.from(paths).sort()) {
-      const image = await this.loader(path, "graph-path");
+    for (const [path, sourceKind] of Array.from(sources).sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      const image = await this.loader(path, sourceKind);
       if (generation !== this.generation) {
         throw new Error("canonical image asset configuration was superseded");
       }

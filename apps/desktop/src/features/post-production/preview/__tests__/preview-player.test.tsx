@@ -24,6 +24,7 @@ vi.mock("../canonical-preview-adapter", () => ({
   CanonicalPreviewAdapter: vi.fn().mockImplementation(function MockCanonicalPreviewAdapter() {
     return {
       configure: vi.fn(async () => undefined),
+      setPresentationViewport: vi.fn(),
       renderFrame: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -165,6 +166,11 @@ describe("PreviewPlayer", () => {
 
     expect(screen.getByLabelText("Source video preview")).toBeInTheDocument();
     expect(screen.queryByLabelText("Canonical composited preview canvas")).not.toBeInTheDocument();
+    expect(screen.getByTestId("preview-ambient-video")).toHaveClass(
+      "object-cover",
+      "scale-[1.08]",
+      "opacity-26",
+    );
     expect(CanonicalPreviewAdapter).not.toHaveBeenCalled();
   });
 
@@ -191,6 +197,7 @@ describe("PreviewPlayer", () => {
     await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
     const adapter = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
       configure: ReturnType<typeof vi.fn>;
+      setPresentationViewport: ReturnType<typeof vi.fn>;
     };
     expect(adapter.configure).toHaveBeenCalledWith(
       expect.objectContaining({ schema_version: 4, output_width: 1920, output_height: 1080 }),
@@ -200,11 +207,13 @@ describe("PreviewPlayer", () => {
     expect(frame).not.toHaveClass("rounded-[18px]");
     expect(frame?.className).not.toContain("shadow-");
     expect(frame?.style.width).toBe("100%");
-    expect(frame?.style.maxWidth).toBe("100%");
-    expect(screen.getByTestId("preview-ambient-video")).toHaveClass(
-      "object-cover",
-      "scale-[1.12]",
-      "opacity-[0.84]",
+    expect(frame?.style.height).toBe("100%");
+    expect(screen.queryByTestId("preview-ambient-video")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Canonical composited preview canvas")).toHaveClass(
+      "absolute",
+      "inset-0",
+      "h-full",
+      "w-full",
     );
   });
 
@@ -215,6 +224,7 @@ describe("PreviewPlayer", () => {
           configure: vi.fn(async () => {
             throw new Error("missing canonical asset");
           }),
+          setPresentationViewport: vi.fn(),
           renderFrame: vi.fn(async () => undefined),
           dispose: vi.fn(),
         } as unknown as CanonicalPreviewAdapter;
@@ -548,7 +558,6 @@ describe("PreviewPlayer", () => {
     );
     await waitFor(() => expect(CanonicalPreviewAdapter).toHaveBeenCalled());
     const video = container.querySelector("video[hidden]") as HTMLVideoElement;
-    const ambientVideo = screen.getByTestId("preview-ambient-video") as HTMLVideoElement;
     makeVideoPlayable(video);
     const engine = vi.mocked(CanonicalPreviewAdapter).mock.results[0]?.value as {
       renderFrame: ReturnType<typeof vi.fn>;
@@ -560,7 +569,7 @@ describe("PreviewPlayer", () => {
     act(() => clock.animationFrame(200));
 
     await waitFor(() => expect(engine.renderFrame).toHaveBeenLastCalledWith(250));
-    expect(ambientVideo.currentTime).toBeCloseTo(0.25);
+    expect(screen.queryByTestId("preview-ambient-video")).not.toBeInTheDocument();
   });
 
   it("keeps a fresh presented frame authoritative over currentTime", async () => {

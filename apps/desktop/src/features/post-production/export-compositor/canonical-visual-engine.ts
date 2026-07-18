@@ -20,6 +20,7 @@ import { CanonicalImageAssetPool } from "./canonical-assets";
 import {
   CanonicalCanvasSceneRenderer,
   type CanonicalDrawCommand,
+  type CanonicalPresentationLayout,
   type CanonicalRenderAssets,
   canonicalCommandSnapshot,
   type ExportResamplingQuality,
@@ -92,6 +93,7 @@ export interface CanonicalVisualEnginePort {
     graph: ExportCompositionGraphV4,
     runtimeConfig?: CanonicalVisualEngineRuntimeConfig,
   ): Promise<void>;
+  setPresentationLayout(layout: CanonicalPresentationLayout | null): void;
   renderFrame(timestampMs: number): Promise<CanonicalRenderedFrame>;
   readFrameBytes(): Uint8ClampedArray;
   dispose(): void;
@@ -147,6 +149,7 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
   private graph: ExportCompositionGraphV4 | null = null;
   private cursorRuntimes: CursorRuntime[] = [];
   private targetBoundsByStepId = new Map<string, ExportRect>();
+  private presentationLayout: CanonicalPresentationLayout | null = null;
   private generation = 0;
 
   constructor(
@@ -183,6 +186,7 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
     const generation = this.generation + 1;
     this.generation = generation;
     this.graph = null;
+    this.presentationLayout = null;
     this.cursorRuntimes = [];
     this.targetBoundsByStepId.clear();
     this.canvas.width = Math.round(graph.output_width);
@@ -245,6 +249,15 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
     }
   }
 
+  setPresentationLayout(layout: CanonicalPresentationLayout | null): void {
+    const graph = this.graph;
+    this.presentationLayout = layout;
+    const width = Math.max(1, Math.round(layout?.surfaceRect.w ?? graph?.output_width ?? 1));
+    const height = Math.max(1, Math.round(layout?.surfaceRect.h ?? graph?.output_height ?? 1));
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
+  }
+
   async renderFrame(timestampMs: number): Promise<CanonicalRenderedFrame> {
     const graph = this.graph;
     if (!graph) throw new Error("canonical visual engine is not configured");
@@ -275,7 +288,10 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
       cursorSkin: (skin) => this.imagePool.cursorSkin(skin),
       cursorPngFrame: (nodeId, frameIndex) => this.imagePool.cursorPngFrame(nodeId, frameIndex),
     };
-    return { scene, commands: this.renderer.render(scene, assets) };
+    return {
+      scene,
+      commands: this.renderer.render(scene, assets, this.presentationLayout ?? undefined),
+    };
   }
 
   readFrameBytes(): Uint8ClampedArray {
@@ -287,6 +303,7 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
   dispose(): void {
     this.generation += 1;
     this.graph = null;
+    this.presentationLayout = null;
     this.cursorRuntimes = [];
     this.targetBoundsByStepId.clear();
     this.mediaPool.dispose();

@@ -47,6 +47,11 @@ export interface CanonicalRenderAssets {
   cursorPngFrame(cursorNodeId: string, frameIndex: number): CanvasImageSource | null;
 }
 
+export interface CanonicalPresentationLayout {
+  surfaceRect: SceneRect;
+  compositionRect: SceneRect;
+}
+
 export type CanonicalDrawCommand =
   | {
       layer: "background";
@@ -156,12 +161,13 @@ function clipContent(
   scene: EvaluatedScene,
   translateX = 0,
   translateY = 0,
+  bounds: SceneRect = scene.content_rect,
 ): void {
-  const radius = scene.background?.radius_px ?? 0;
+  const radius = (scene.background?.radius_px ?? 0) * canonical1080pScale(scene.output_height);
   const rect = {
-    ...scene.content_rect,
-    x: scene.content_rect.x + translateX,
-    y: scene.content_rect.y + translateY,
+    ...bounds,
+    x: bounds.x + translateX,
+    y: bounds.y + translateY,
   };
   roundedRectPath(ctx, rect, radius);
   ctx.clip();
@@ -343,40 +349,67 @@ export class CanonicalCanvasSceneRenderer {
     ctx.imageSmoothingQuality = CANVAS_SMOOTHING_QUALITY[this.resamplingQuality];
   }
 
-  render(scene: EvaluatedScene, assets: CanonicalRenderAssets): CanonicalDrawCommand[] {
+  render(
+    scene: EvaluatedScene,
+    assets: CanonicalRenderAssets,
+    presentation?: CanonicalPresentationLayout,
+  ): CanonicalDrawCommand[] {
     const commands = buildCanonicalDrawCommands(scene);
-    this.ctx.clearRect(0, 0, scene.output_width, scene.output_height);
+    const surfaceRect = presentation?.surfaceRect ?? {
+      x: 0,
+      y: 0,
+      w: scene.output_width,
+      h: scene.output_height,
+    };
+    const compositionRect = presentation?.compositionRect ?? surfaceRect;
+    const compositionScale = Math.min(
+      compositionRect.w / scene.output_width,
+      compositionRect.h / scene.output_height,
+    );
+    this.ctx.clearRect(surfaceRect.x, surfaceRect.y, surfaceRect.w, surfaceRect.h);
     for (const command of commands) {
-      switch (command.layer) {
-        case "background":
-          this.drawBackground(scene, command, assets);
-          break;
-        case "source":
-          this.drawSourceShadow(scene, command.source, assets);
-          this.drawSource(scene, command.source, assets);
-          break;
-        case "transition":
-          this.drawSourceShadow(
-            scene,
-            command.transition.progress < 0.5 ? command.transition.from : command.transition.to,
-            assets,
-          );
-          this.drawTransition(scene, command.transition, assets);
-          break;
-        case "highlight":
-          this.drawHighlight(scene, command.highlight, assets);
-          break;
-        case "ripple":
-          this.drawRipple(command.ripple);
-          break;
-        case "cursor":
-          this.drawCursor(scene, command.cursor, assets);
-          break;
-        case "text":
-          this.drawText(scene, command.text);
-          break;
-        default:
-          assertNever(command);
+      if (command.layer === "background") {
+        this.drawBackground(scene, command, assets, surfaceRect);
+        continue;
+      }
+
+      const usesPresentationTransform = Boolean(presentation);
+      if (usesPresentationTransform) {
+        this.ctx.save();
+        this.ctx.translate(compositionRect.x, compositionRect.y);
+        this.ctx.scale(compositionScale, compositionScale);
+      }
+      try {
+        switch (command.layer) {
+          case "source":
+            this.drawSourceShadow(scene, command.source, assets);
+            this.drawSource(scene, command.source, assets);
+            break;
+          case "transition":
+            this.drawSourceShadow(
+              scene,
+              command.transition.progress < 0.5 ? command.transition.from : command.transition.to,
+              assets,
+            );
+            this.drawTransition(scene, command.transition, assets);
+            break;
+          case "highlight":
+            this.drawHighlight(scene, command.highlight, assets);
+            break;
+          case "ripple":
+            this.drawRipple(command.ripple);
+            break;
+          case "cursor":
+            this.drawCursor(scene, command.cursor, assets);
+            break;
+          case "text":
+            this.drawText(scene, command.text);
+            break;
+          default:
+            assertNever(command);
+        }
+      } finally {
+        if (usesPresentationTransform) this.ctx.restore();
       }
     }
     return commands;
@@ -386,15 +419,15 @@ export class CanonicalCanvasSceneRenderer {
     scene: EvaluatedScene,
     command: Extract<CanonicalDrawCommand, { layer: "background" }>,
     assets: CanonicalRenderAssets,
+    bounds: SceneRect,
   ): void {
     const ctx = this.ctx;
-    const bounds = { x: 0, y: 0, w: scene.output_width, h: scene.output_height };
     const kind = command.kind;
     if (kind?.kind === "ambient") {
       this.drawAmbientBackground(scene, assets, bounds);
     } else if (kind?.kind === "solid") {
       ctx.fillStyle = rgba(kind.color);
-      ctx.fillRect(0, 0, scene.output_width, scene.output_height);
+      ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
     } else if (kind?.kind === "image") {
       if (!kind.path) throw new Error("canonical image background has no resolved path");
       const image = assets.image(kind.path);
@@ -402,23 +435,28 @@ export class CanonicalCanvasSceneRenderer {
       const rect = imageCoverRect(image, bounds);
       ctx.save();
       ctx.beginPath();
-      ctx.rect(0, 0, scene.output_width, scene.output_height);
+      ctx.rect(bounds.x, bounds.y, bounds.w, bounds.h);
       ctx.clip();
       this.prepareImageScaling(ctx);
       ctx.drawImage(image, rect.x, rect.y, rect.w, rect.h);
       ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
-      ctx.fillRect(0, 0, scene.output_width, scene.output_height);
+      ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
       ctx.restore();
     } else if (kind?.kind === "gradient") {
       const colors = GRADIENTS[kind.preset_id];
       if (!colors) throw new Error(`canonical gradient preset is not mapped: ${kind.preset_id}`);
-      const gradient = ctx.createLinearGradient(0, 0, scene.output_width, scene.output_height);
+      const gradient = ctx.createLinearGradient(
+        bounds.x,
+        bounds.y,
+        bounds.x + bounds.w,
+        bounds.y + bounds.h,
+      );
       gradient.addColorStop(0, colors[0]);
       gradient.addColorStop(0.55, colors[1]);
       gradient.addColorStop(1, colors[2]);
       ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, scene.output_width, scene.output_height);
-      if (kind.preset_id === "paper-grain") this.drawPaperTexture(scene);
+      ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
+      if (kind.preset_id === "paper-grain") this.drawPaperTexture(bounds);
     } else if (kind) {
       assertNever(kind);
     }
@@ -437,7 +475,7 @@ export class CanonicalCanvasSceneRenderer {
       : scene.sources[0]
         ? [{ source: scene.sources[0], alpha: 1 }]
         : [];
-    const blurPx = Math.max(18, scene.output_width * 0.025);
+    const blurPx = Math.max(18, bounds.w * 0.025);
     for (const frame of frames) {
       const source = assets.source(frame.source.node.id);
       if (!source) {
@@ -465,16 +503,16 @@ export class CanonicalCanvasSceneRenderer {
       this.ctx.restore();
     }
     this.ctx.fillStyle = "rgba(8, 10, 12, 0.18)";
-    this.ctx.fillRect(0, 0, scene.output_width, scene.output_height);
+    this.ctx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h);
   }
 
-  private drawPaperTexture(scene: EvaluatedScene): void {
+  private drawPaperTexture(bounds: SceneRect): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha = 0.075;
     ctx.fillStyle = "#6f6557";
-    for (let y = 5; y < scene.output_height; y += 11) {
-      for (let x = (y * 7) % 13; x < scene.output_width; x += 17) {
+    for (let y = bounds.y + 5; y < bounds.y + bounds.h; y += 11) {
+      for (let x = bounds.x + ((y * 7) % 13); x < bounds.x + bounds.w; x += 17) {
         ctx.fillRect(x, y, 1, 1);
       }
     }
@@ -498,7 +536,7 @@ export class CanonicalCanvasSceneRenderer {
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha *= clamp01(alpha);
-    clipContent(ctx, scene, translateX, translateY);
+    clipContent(ctx, scene, translateX, translateY, baseRect);
     this.prepareImageScaling(ctx);
     ctx.drawImage(source, x, y, baseRect.w * scale, baseRect.h * scale);
     ctx.restore();
@@ -531,7 +569,11 @@ export class CanonicalCanvasSceneRenderer {
     const { rect } = this.sourceLayout(scene, sourceFrame, assets);
     const ctx = this.ctx;
     ctx.save();
-    roundedRectPath(ctx, rect, scene.background.radius_px);
+    roundedRectPath(
+      ctx,
+      rect,
+      scene.background.radius_px * canonical1080pScale(scene.output_height),
+    );
     ctx.fillStyle = "#000";
     ctx.shadowColor = "rgba(0, 0, 0, 0.34)";
     ctx.shadowBlur = Math.max(12, scene.output_width * 0.012);

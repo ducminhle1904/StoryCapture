@@ -72,7 +72,7 @@ import {
   resolveZoomMotion,
   sampleResolvedZoom,
 } from "../state/zoom-motion";
-import { CanonicalPreviewAdapter } from "./canonical-preview-adapter";
+import { CanonicalPreviewAdapter, fitCanonicalCompositionRect } from "./canonical-preview-adapter";
 import { PresentedMediaClock } from "./presented-media-clock";
 import { TransportControls } from "./transport-controls";
 import { samplePreparedVirtualCursor, sampleTrajectoryCursor } from "./virtual-cursor-path";
@@ -629,7 +629,7 @@ export function PreviewPlayer({
   const [editingTextClipId, setEditingTextClipId] = useState<string | null>(null);
   const [textDraft, setTextDraft] = useState("");
   const [mediaAspect, setMediaAspect] = useState(() => safeAspect(width, height));
-  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0, devicePixelRatio: 1 });
   const playingRef = useRef(false);
   const cursorClipsRef = useRef<CursorClip[]>([]);
   const cursorSchedulesRef = useRef(new Map<string, VirtualCursorSchedule | null>());
@@ -712,7 +712,10 @@ export function PreviewPlayer({
     ? safeAspect(canonicalGraph.output_width, canonicalGraph.output_height)
     : mediaAspect;
   const frameStyle = useMemo<CSSProperties>(() => {
-    const frameScale = useCompositedCanvas ? 1 : PREVIEW_FRAME_SCALE;
+    if (useCompositedCanvas) {
+      return { width: "100%", height: "100%" };
+    }
+    const frameScale = PREVIEW_FRAME_SCALE;
     const maxWidth = stageSize.width * frameScale;
     const maxHeight = stageSize.height * frameScale;
     if (maxWidth > 0 && maxHeight > 0) {
@@ -730,13 +733,37 @@ export function PreviewPlayer({
       width: `${frameScale * 100}%`,
     };
   }, [displayAspect, stageSize.height, stageSize.width, useCompositedCanvas]);
+  const compositionInteractionStyle = useMemo<CSSProperties>(() => {
+    if (!useCompositedCanvas || stageSize.width <= 0 || stageSize.height <= 0) {
+      return { inset: 0 };
+    }
+    const rect = fitCanonicalCompositionRect(
+      stageSize.width,
+      stageSize.height,
+      canonicalGraph.output_width,
+      canonicalGraph.output_height,
+    );
+    return {
+      left: rect.x,
+      top: rect.y,
+      width: rect.w,
+      height: rect.h,
+    };
+  }, [
+    canonicalGraph.output_height,
+    canonicalGraph.output_width,
+    stageSize.height,
+    stageSize.width,
+    useCompositedCanvas,
+  ]);
 
   const resolvedSrc = videoSrc
     ? videoSrc.startsWith("asset:") || videoSrc.startsWith("http")
       ? videoSrc
       : convertFileSrc(videoSrc)
     : undefined;
-  const useAmbientBackdrop = editorBackground.kind === "transparent" && Boolean(resolvedSrc);
+  const useDomAmbientBackdrop =
+    !useCompositedCanvas && editorBackground.kind === "transparent" && Boolean(resolvedSrc);
   const mediaElementSrc = mediaSrcForGeneration(resolvedSrc, mediaSourceGeneration);
   const mediaSourceKey = mediaElementSrc ?? "empty";
   const presentedFrameStaleMs = presentedFrameStaleAfterMs(canonicalGraph.output_fps);
@@ -953,22 +980,9 @@ export function PreviewPlayer({
     }
   }, []);
 
-  const syncAmbientPlaybackToPlayhead = useCallback((timelineMs: number) => {
-    const ambientVideo = ambientVideoRef.current;
-    if (!ambientVideo) return;
-    const acceptedSeconds = mediaSecondsForPlayhead(
-      ambientVideo,
-      timelineMs,
-      sourceTimeMapRef.current,
-    );
-    if (Math.abs(ambientVideo.currentTime - acceptedSeconds) > MEDIA_SYNC_EPSILON_MS / 1000) {
-      ambientVideo.currentTime = acceptedSeconds;
-    }
-  }, []);
-
   const sampleAmbientPalette = useCallback((): boolean => {
     const video = videoRef.current;
-    if (!useAmbientBackdrop || !video || video.readyState < 2 || !video.videoWidth) return false;
+    if (!useDomAmbientBackdrop || !video || video.readyState < 2 || !video.videoWidth) return false;
 
     try {
       const canvas = ambientSampleCanvasRef.current ?? document.createElement("canvas");
@@ -989,7 +1003,7 @@ export function PreviewPlayer({
       setAmbientSamplingReady(false);
       return false;
     }
-  }, [useAmbientBackdrop]);
+  }, [useDomAmbientBackdrop]);
 
   const seekPreviewToPlayhead = useCallback(
     (targetMs: number) => {
@@ -999,14 +1013,16 @@ export function PreviewPlayer({
       const nextSeconds = mediaSecondsForPlayhead(video, nextMs, sourceTimeMapRef.current);
 
       video.currentTime = nextSeconds;
-      syncAmbientVideo(nextSeconds);
-      if (sampleAmbientPalette()) {
-        ambientDisplayedPaletteRef.current = smoothPalette(
-          ambientDisplayedPaletteRef.current,
-          ambientTargetPaletteRef.current,
-          0.55,
-        );
-        applyAmbientPalette(ambientDisplayedPaletteRef.current);
+      if (!useCompositedCanvas) {
+        syncAmbientVideo(nextSeconds);
+        if (sampleAmbientPalette()) {
+          ambientDisplayedPaletteRef.current = smoothPalette(
+            ambientDisplayedPaletteRef.current,
+            ambientTargetPaletteRef.current,
+            0.55,
+          );
+          applyAmbientPalette(ambientDisplayedPaletteRef.current);
+        }
       }
       lastPlayheadCommitRef.current = nextMs;
       if (typeof video.requestVideoFrameCallback !== "function") {
@@ -1056,6 +1072,14 @@ export function PreviewPlayer({
     setEngineReady(false);
     setCanonicalError(false);
     const engine = new CanonicalPreviewAdapter(canvas);
+    const stageBounds = stageRef.current?.getBoundingClientRect();
+    if (stageBounds && stageBounds.width > 0 && stageBounds.height > 0) {
+      engine.setPresentationViewport({
+        width: stageBounds.width,
+        height: stageBounds.height,
+        devicePixelRatio: window.devicePixelRatio || 1,
+      });
+    }
     engine
       .configure(canonicalGraph)
       .then(() => {
@@ -1121,6 +1145,16 @@ export function PreviewPlayer({
   }, [applyPreviewZoom, renderCursorOverlay, stageSize]);
 
   useEffect(() => {
+    if (!useCompositedCanvas || !engineReady || stageSize.width <= 0 || stageSize.height <= 0) {
+      return;
+    }
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.setPresentationViewport(stageSize);
+    requestCanonicalFrame(useEditorStore.getState().playheadMs);
+  }, [engineReady, requestCanonicalFrame, stageSize, useCompositedCanvas]);
+
+  useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -1129,8 +1163,19 @@ export function PreviewPlayer({
       setStageSize((prev) => {
         const nextWidth = Math.round(rect.width);
         const nextHeight = Math.round(rect.height);
-        if (prev.width === nextWidth && prev.height === nextHeight) return prev;
-        return { width: nextWidth, height: nextHeight };
+        const nextDevicePixelRatio = window.devicePixelRatio || 1;
+        if (
+          prev.width === nextWidth &&
+          prev.height === nextHeight &&
+          prev.devicePixelRatio === nextDevicePixelRatio
+        ) {
+          return prev;
+        }
+        return {
+          width: nextWidth,
+          height: nextHeight,
+          devicePixelRatio: nextDevicePixelRatio,
+        };
       });
     };
 
@@ -1149,7 +1194,7 @@ export function PreviewPlayer({
   }, []);
 
   useEffect(() => {
-    if (!useAmbientBackdrop) {
+    if (!useDomAmbientBackdrop) {
       setAmbientSamplingReady(false);
       ambientDisplayedPaletteRef.current = DEFAULT_AMBIENT_PALETTE;
       ambientTargetPaletteRef.current = DEFAULT_AMBIENT_PALETTE;
@@ -1185,7 +1230,7 @@ export function PreviewPlayer({
         ambientRafRef.current = null;
       }
     };
-  }, [applyAmbientPalette, sampleAmbientPalette, useAmbientBackdrop]);
+  }, [applyAmbientPalette, sampleAmbientPalette, useDomAmbientBackdrop]);
 
   useEffect(() => {
     return useEditorStore.subscribe((state, prevState) => {
@@ -1494,8 +1539,6 @@ export function PreviewPlayer({
           video.currentTime = mediaSeconds;
         }
         if (!video.paused) video.pause();
-        ambientVideoRef.current?.pause();
-        syncAmbientVideo(mediaSeconds);
       } else if (video.ended || video.paused) {
         const finalPlayheadMs = video.currentTime * 1000;
         commitPlayhead(finalPlayheadMs);
@@ -1543,7 +1586,6 @@ export function PreviewPlayer({
           }
         }
       }
-      syncAmbientPlaybackToPlayhead(renderedTimelineMs);
       lastRenderedPlayheadMs = renderedTimelineMs;
       applyPreviewZoom(renderedTimelineMs);
       renderCursorOverlay(renderedTimelineMs);
@@ -1572,8 +1614,6 @@ export function PreviewPlayer({
         .play()
         .then(() => {
           if (!disposed) {
-            syncAmbientPlaybackToPlayhead(presentedPlayheadRef.current);
-            void ambientVideoRef.current?.play().catch(() => undefined);
             rafRef.current = requestAnimationFrame(tick);
           }
         })
@@ -1594,7 +1634,6 @@ export function PreviewPlayer({
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
       video.pause();
-      ambientVideoRef.current?.pause();
       if (holdingSourceFrame) {
         setPlayhead(lastRenderedPlayheadMs);
         lastPlayheadCommitRef.current = lastRenderedPlayheadMs;
@@ -1614,8 +1653,6 @@ export function PreviewPlayer({
     seekPreviewToPlayhead,
     setPlayhead,
     presentedFrameStaleMs,
-    syncAmbientPlaybackToPlayhead,
-    syncAmbientVideo,
     useCompositedCanvas,
   ]);
 
@@ -1855,9 +1892,9 @@ export function PreviewPlayer({
         <div
           ref={stageRef}
           className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[var(--sc-r-xl)] border border-[color-mix(in_oklch,var(--sc-border)_72%,transparent)]"
-          style={stageStyle}
+          style={useCompositedCanvas ? undefined : stageStyle}
         >
-          {useAmbientBackdrop && resolvedSrc ? (
+          {useDomAmbientBackdrop && resolvedSrc ? (
             <>
               <div
                 ref={ambientLayerRef}
@@ -1876,22 +1913,16 @@ export function PreviewPlayer({
                   playsInline
                   preload="auto"
                   src={mediaElementSrc}
-                  className={`pointer-events-none absolute inset-0 h-full w-full object-cover blur-3xl saturate-[1.15] ${
-                    useCompositedCanvas ? "scale-[1.12] opacity-[0.84]" : "scale-[1.08] opacity-26"
-                  }`}
+                  className="pointer-events-none absolute inset-0 h-full w-full scale-[1.08] object-cover opacity-26 blur-3xl saturate-[1.15]"
                 />
               ) : null}
               <div
                 aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 ${
-                  useCompositedCanvas
-                    ? "bg-[rgba(8,10,12,0.18)]"
-                    : "bg-[radial-gradient(circle_at_50%_48%,rgba(255,255,255,0.08),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.16))]"
-                }`}
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(255,255,255,0.08),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.16))]"
               />
             </>
           ) : null}
-          {resolvedSrc ? null : (
+          {!resolvedSrc && !useCompositedCanvas ? (
             <>
               <img
                 src={previewBackdrop}
@@ -1909,8 +1940,8 @@ export function PreviewPlayer({
                 </span>
               </div>
             </>
-          )}
-          {!resolvedSrc ? (
+          ) : null}
+          {!resolvedSrc && !useCompositedCanvas ? (
             <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center">
               <div className="grid h-16 w-16 place-items-center rounded-[var(--sc-r-xl)] border border-white/10 bg-zinc-950/42 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                 <Film className="h-7 w-7 text-white/82" />
@@ -1949,9 +1980,7 @@ export function PreviewPlayer({
               {useCompositedCanvas ? (
                 <canvas
                   ref={canvasRef}
-                  width={canonicalGraph.output_width}
-                  height={canonicalGraph.output_height}
-                  className="relative h-full w-full object-contain"
+                  className="absolute inset-0 h-full w-full"
                   aria-label="Canonical composited preview canvas"
                 />
               ) : null}
@@ -2063,8 +2092,11 @@ export function PreviewPlayer({
             ) : null}
             {activeTextOverlays.length > 0 ? (
               <div
-                className="pointer-events-none absolute inset-0 overflow-visible"
+                className={`pointer-events-none absolute overflow-visible ${
+                  useCompositedCanvas ? "" : "inset-0"
+                }`}
                 data-testid="text-overlay"
+                style={useCompositedCanvas ? compositionInteractionStyle : undefined}
               >
                 {activeTextOverlays.map((clip) => {
                   const style = resolvedTextStyle(clip);

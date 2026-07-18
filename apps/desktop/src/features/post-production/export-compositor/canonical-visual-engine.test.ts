@@ -9,6 +9,7 @@ import {
   buildCanonicalDrawCommands,
   CanonicalCanvasSceneRenderer,
   type CanonicalDrawCommand,
+  type CanonicalPresentationLayout,
   type CanonicalRenderAssets,
   type ExportResamplingQuality,
 } from "./canvas-scene-renderer";
@@ -17,6 +18,7 @@ import type { EvaluatedScene } from "./scene-evaluator";
 
 class CapturingRenderer extends CanonicalCanvasSceneRenderer {
   scene: EvaluatedScene | null = null;
+  presentationLayout: CanonicalPresentationLayout | undefined;
   lastResamplingQuality: ExportResamplingQuality | null = null;
 
   override setResamplingQuality(quality: ExportResamplingQuality): void {
@@ -24,8 +26,13 @@ class CapturingRenderer extends CanonicalCanvasSceneRenderer {
     this.lastResamplingQuality = quality;
   }
 
-  override render(scene: EvaluatedScene, _assets: CanonicalRenderAssets): CanonicalDrawCommand[] {
+  override render(
+    scene: EvaluatedScene,
+    _assets: CanonicalRenderAssets,
+    presentation?: CanonicalPresentationLayout,
+  ): CanonicalDrawCommand[] {
     this.scene = scene;
+    this.presentationLayout = presentation;
     return buildCanonicalDrawCommands(scene);
   }
 }
@@ -124,6 +131,41 @@ describe("canonical visual engine dynamic target anchors", () => {
 });
 
 describe("canonical visual engine lifecycle", () => {
+  it("resizes only the preview surface while preserving canonical scene coordinates", async () => {
+    const ctx = { clearRect: vi.fn() } as unknown as CanvasRenderingContext2D;
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ctx,
+    } as unknown as HTMLCanvasElement;
+    const renderer = new CapturingRenderer(ctx);
+    const graph = canonicalGraph([]);
+    const engine = new CanonicalVisualEngine(canvas, {
+      context: ctx,
+      renderer,
+      fontSet: null,
+    });
+    const presentation = {
+      surfaceRect: { x: 0, y: 0, w: 1_200, h: 1_000 },
+      compositionRect: { x: 0, y: 162.5, w: 1_200, h: 675 },
+    };
+
+    await engine.configure(graph);
+    engine.setPresentationLayout(presentation);
+    await engine.renderFrame(500);
+
+    expect(canvas.width).toBe(1_200);
+    expect(canvas.height).toBe(1_000);
+    expect(renderer.presentationLayout).toEqual(presentation);
+    expect(renderer.scene?.output_width).toBe(graph.output_width);
+    expect(renderer.scene?.output_height).toBe(graph.output_height);
+
+    engine.setPresentationLayout(null);
+    expect(canvas.width).toBe(graph.output_width);
+    expect(canvas.height).toBe(graph.output_height);
+    engine.dispose();
+  });
+
   it("threads runtime resampling quality without changing the graph", async () => {
     const ctx = { clearRect: vi.fn() } as unknown as CanvasRenderingContext2D;
     const canvas = {
