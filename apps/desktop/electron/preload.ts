@@ -1,12 +1,13 @@
 import { contextBridge, ipcRenderer } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { TauriChannelSequencer } from "./channel-sequence";
 import { convertLocalAssetPath, LOCAL_ASSET_PROTOCOL } from "./local-asset-url";
 
 type Callback = (...args: unknown[]) => void;
 
 const callbacks = new Map<number, { callback?: Callback; once: boolean }>();
-const channelIndexes = new Map<number, number>();
+const channelSequencer = new TauriChannelSequencer();
 const micSessions = new Map<string, MicSession>();
 let nextCallbackId = 1;
 
@@ -27,6 +28,9 @@ function invokeMain(cmd: string, args?: unknown, options?: unknown) {
 }
 
 function channelIdFrom(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
   if (typeof value === "string" && value.startsWith("__CHANNEL__:")) {
     const id = Number(value.slice("__CHANNEL__:".length));
     return Number.isFinite(id) ? id : null;
@@ -43,9 +47,19 @@ function sendLocalChannel(channel: unknown, message: unknown): void {
   if (id == null) return;
   const entry = callbacks.get(id);
   if (!entry?.callback) return;
-  const index = channelIndexes.get(id) ?? 0;
-  channelIndexes.set(id, index + 1);
-  entry.callback({ index, message });
+  entry.callback(channelSequencer.message(id, message));
+}
+
+function closeLocalChannel(channel: unknown): void {
+  const id = channelIdFrom(channel);
+  if (id == null) return;
+  const entry = callbacks.get(id);
+  if (entry?.callback) {
+    entry.callback(channelSequencer.end(id));
+  } else {
+    channelSequencer.forget(id);
+  }
+  callbacks.delete(id);
 }
 
 function recorderMimeType(): string | undefined {
@@ -199,6 +213,7 @@ const tauriInternals = {
   },
   unregisterCallback: (id: number) => {
     callbacks.delete(id);
+    channelSequencer.forget(id);
   },
   convertFileSrc,
 };
@@ -226,7 +241,21 @@ ipcRenderer.on(
     const entry = callbacks.get(payload.id);
     if (!entry?.callback) return;
     entry.callback(payload.value);
-    if (entry.once) callbacks.delete(payload.id);
+    if (entry.once) {
+      callbacks.delete(payload.id);
+      channelSequencer.forget(payload.id);
+    }
+  },
+);
+
+ipcRenderer.on(
+  "tauri-channel",
+  (_event, payload: { id: number; message?: unknown; end?: boolean }) => {
+    if (payload.end) {
+      closeLocalChannel(payload.id);
+      return;
+    }
+    sendLocalChannel(payload.id, payload.message);
   },
 );
 

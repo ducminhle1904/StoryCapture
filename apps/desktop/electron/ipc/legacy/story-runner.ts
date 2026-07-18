@@ -70,6 +70,7 @@ import { stopRecording } from "./recording";
 import {
   authorPreviewSessions,
   channelIdFrom,
+  closeChannel,
   type DryRunSession,
   type DryRunStep,
   dryRunSessions,
@@ -1050,6 +1051,28 @@ export async function runStoryCommandsInBrowser(options: StoryBrowserRunOptions)
       }
       failed += 1;
       exitReason = "failed";
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (
+        options.recordingSessionId &&
+        command.target &&
+        errorMessage.startsWith(`target not found for ${command.verb}:`)
+      ) {
+        void recordEngineLog({
+          level: "error",
+          event: "recording.target.failed",
+          context: {
+            session_id: options.recordingSessionId,
+            step_id: command.step_id ?? undefined,
+            ordinal,
+            phase: "target_resolution",
+            reason_code: "target_not_found",
+          },
+          details: {
+            verb: command.verb,
+            timeout_ms: Math.min(Number(command.timeout_ms ?? 5_000), 30_000),
+          },
+        });
+      }
       const screenshotPath = await captureFailureFrameBestEffort(
         options.contents,
         options.failureFrameDir,
@@ -1285,6 +1308,7 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
   });
   const failureFrameDir = userDataPath("automation-runs", randomUUID(), "diagnostics");
   let result: Awaited<ReturnType<typeof runStoryCommandsInBrowser>>;
+  let failedOrdinal: number | null = null;
   try {
     result = await runStoryCommandsInBrowser({
       contents,
@@ -1417,10 +1441,11 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
           }
         },
         onStepFailed: (ordinal, error, screenshotPath) => {
+          failedOrdinal ??= ordinal;
+          const command = commands[ordinal - 1];
           const stepStartedAtMs = actionStepStartMs.get(ordinal);
           actionStepStartMs.delete(ordinal);
           if (recordingSessionAtLaunch && stepStartedAtMs != null) {
-            const command = commands[ordinal - 1];
             const stepEndedAtMs = recordingFrameClockMs(recordingSessionAtLaunch);
             if (command) {
               stepTimings.push({
@@ -1438,13 +1463,14 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
               });
             }
           }
+          const errorMessage = error instanceof Error ? error.message : String(error);
           const diagnostics = automationFailureDiagnostics(error);
           sendChannel(sender, onEvent, {
             json: JSON.stringify({
               type: "step_failed",
               ordinal,
               attempts: diagnostics ? [diagnostics] : [],
-              error_message: error instanceof Error ? error.message : String(error),
+              error_message: errorMessage,
               screenshot_path: screenshotPath ?? undefined,
             }),
           });
@@ -1455,6 +1481,12 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
     if (ownedWindow && !ownedWindow.isDestroyed()) ownedWindow.destroy();
   }
   const recordingSession = recordingSessionId ? recordingSessions.get(recordingSessionId) : null;
+  let recordingOutcome:
+    | { status: "finalized"; result: Awaited<ReturnType<typeof stopRecording>> }
+    | { status: "already_finalized"; result: null }
+    | { status: "not_requested"; result: null } = recordingSessionId
+    ? { status: "already_finalized", result: null }
+    : { status: "not_requested", result: null };
   if (recordingSession?.captureTimer) {
     clearInterval(recordingSession.captureTimer);
     await captureAutomationRecordingTail(recordingSession);
@@ -1473,7 +1505,8 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
             : "partial",
       );
     }
-    await stopRecording({ id: recordingSessionId });
+    const recordingResult = await stopRecording({ id: recordingSessionId });
+    recordingOutcome = { status: "finalized", result: recordingResult };
     if (recordingSession) {
       await writeRecordingActionsSidecarBestEffort(recordingSession, actionEvents, {
         cursorMotionPreset: executionProfile.cursorMotionPreset,
@@ -1491,7 +1524,18 @@ export async function launchAutomationCommand(args: Record<string, unknown>, sen
       },
     }),
   });
-  return null;
+  closeChannel(sender, onEvent);
+  return {
+    story: {
+      total_steps: commands.length,
+      succeeded: result.succeeded,
+      failed: result.failed,
+      duration_ms: result.durationMs,
+      exit_reason: result.exitReason,
+      failed_ordinal: failedOrdinal,
+    },
+    recording: recordingOutcome,
+  };
 }
 
 export function commandSupportsFallback(command: ParsedCommand | undefined): boolean {
@@ -1639,6 +1683,7 @@ export async function simulatorStartCommand(
     },
   });
   if (result.exitReason === "cancelled") {
+    closeChannel(sender, channelId);
     return id;
   }
   if (result.pausedOrdinal != null && result.failed === 0) {
@@ -1660,6 +1705,7 @@ export async function simulatorStartCommand(
       failed: result.failed,
     });
   }
+  closeChannel(sender, channelId);
   return id;
 }
 

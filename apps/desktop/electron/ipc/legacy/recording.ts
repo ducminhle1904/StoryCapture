@@ -11,7 +11,7 @@ import {
 } from "../recording-pipeline";
 import { authorSession, ffmpegCropPlan, percentile, queueRecordingFrame } from "./capture-preview";
 import { recordingEncoderFailure, recordingErrorCode } from "./recording-errors";
-import { type RecordingSession, recordingSessions, sendChannel } from "./shared";
+import { closeChannel, type RecordingSession, recordingSessions, sendChannel } from "./shared";
 
 function recordingBackendId(session: RecordingSession): string {
   return session.target.kind === "author_preview"
@@ -326,5 +326,6 @@ export async function stopRecording(raw: unknown) {
     type: "completed",
     result,
   });
+  closeChannel(session.eventTarget, session.eventChannelId);
   return result;
 }

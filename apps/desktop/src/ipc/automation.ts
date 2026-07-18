@@ -1,6 +1,7 @@
 /** Automation IPC wrappers. */
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import type { EncodeResultDto } from "@/ipc/encode";
 import { DEFAULT_RECORDING_PACING, type RecordingPacingProfile } from "@/state/output-prefs";
 
 /**
@@ -110,11 +111,30 @@ export interface AutomationChannelHandle {
   onmessage: ((e: { json: string }) => void) | null;
 }
 
+export interface AutomationStoryOutcome {
+  total_steps: number;
+  succeeded: number;
+  failed: number;
+  duration_ms: number;
+  exit_reason: "completed" | "paused" | "cancelled" | "failed";
+  failed_ordinal: number | null;
+}
+
+export type AutomationRecordingOutcome =
+  | { status: "finalized"; result: EncodeResultDto }
+  | { status: "already_finalized"; result: null }
+  | { status: "not_requested"; result: null };
+
+export interface AutomationRunOutcome {
+  story: AutomationStoryOutcome;
+  recording: AutomationRecordingOutcome;
+}
+
 export async function launchAutomation(
   args: LaunchAutomationArgs,
   onEvent: (e: ExecutorEvent) => void,
   onChannelReady?: (channel: AutomationChannelHandle) => void,
-): Promise<void> {
+): Promise<AutomationRunOutcome> {
   const channel = new Channel<{ json: string }>();
   channel.onmessage = (wrapper) => {
     try {
@@ -125,7 +145,7 @@ export async function launchAutomation(
     }
   };
   onChannelReady?.(channel);
-  await invoke("launch_automation", {
+  return invoke<AutomationRunOutcome>("launch_automation", {
     storySource: args.storySource,
     projectFolder: args.projectFolder,
     streamId: args.streamId ?? null,

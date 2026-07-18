@@ -976,10 +976,11 @@ describe("story browser cursor pacing", () => {
 
     const run = runStoryCommandsInBrowser({
       contents: contents as never,
-      commands: [command("click", "Missing")],
+      commands: [command("wait-for", "Missing")],
       projectFolder: dir,
       storySource: "",
       targets: { version: 1, steps: {} },
+      recordingSessionId: "recording-safe-target-log",
       failureFrameDir: path.join(dir, "diagnostics"),
       executionProfile: {
         typingMode: "instant",
@@ -996,6 +997,19 @@ describe("story browser cursor pacing", () => {
     expect(failures[0]?.error).toBeInstanceOf(Error);
     expect(failures[0]?.screenshotPath).toMatch(/failure-step-0001\.png$/);
     await expect(fs.stat(failures[0]?.screenshotPath ?? "")).resolves.toBeDefined();
+    const targetFailure = vi
+      .mocked(recordEngineLog)
+      .mock.calls.find(([entry]) => entry.event === "recording.target.failed")?.[0];
+    expect(targetFailure).toMatchObject({
+      context: {
+        session_id: "recording-safe-target-log",
+        ordinal: 1,
+        phase: "target_resolution",
+        reason_code: "target_not_found",
+      },
+      details: { verb: "wait-for", timeout_ms: 5_000 },
+    });
+    expect(JSON.stringify(targetFailure)).not.toContain("Missing");
   });
 
   it("logs an actions sidecar write failure without changing the legacy outcome", async () => {
@@ -1087,9 +1101,13 @@ describe("story browser cursor pacing", () => {
       frameCrop: null,
       requestedFps: 60,
     } as never);
+    const finalizedResult = {
+      output_path: `${outputPath}.mp4`,
+      duration_ms: 4_000,
+    } as Awaited<ReturnType<typeof stopRecording>>;
     vi.mocked(stopRecording).mockImplementationOnce(async () => {
       await expect(fs.stat(`${outputPath}.steps.json`)).resolves.toBeDefined();
-      return {} as Awaited<ReturnType<typeof stopRecording>>;
+      return finalizedResult;
     });
 
     const run = launchAutomationCommand(
@@ -1111,7 +1129,18 @@ scene "Login" {
     );
 
     await vi.runAllTimersAsync();
-    await run;
+    const outcome = await run;
+
+    expect(outcome).toMatchObject({
+      story: {
+        total_steps: 5,
+        succeeded: 5,
+        failed: 0,
+        exit_reason: "completed",
+        failed_ordinal: null,
+      },
+      recording: { status: "finalized", result: finalizedResult },
+    });
 
     const sidecar = JSON.parse(await fs.readFile(actionsSidecarPath(outputPath), "utf8"));
     expect(sidecar.version).toBe(2);

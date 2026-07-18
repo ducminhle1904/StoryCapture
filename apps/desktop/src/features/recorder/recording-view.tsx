@@ -102,7 +102,11 @@ function formatTime(ms: number): string {
 
 /** True if a Tauri IPC error is the typed `NotFound` variant. */
 function isNotFoundIpcError(e: unknown): boolean {
-  return typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound";
+  if (typeof e === "object" && e !== null && (e as { kind?: unknown }).kind === "NotFound") {
+    return true;
+  }
+  const message = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+  return /recording session .* not found/i.test(message);
 }
 
 function displayId(display: DisplayInfo): number {
@@ -199,10 +203,12 @@ export function RecordingView({
   const previewLeaseRef = useRef<RecordingPreviewLease | null>(null);
   const previewSessionRef = useRef<string | null>(null);
   const startInFlightRef = useRef(false);
+  const stopInFlightRef = useRef<string | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
   const automationOwnsStopRef = useRef(false);
   const automationSessionRef = useRef<string | null>(null);
+  const automationFailedOrdinalRef = useRef<number | null>(null);
   const videoOutputSectionRef = useRef<HTMLDivElement | null>(null);
   const isOutputBlocked = useIsRecordingBlocked();
 
@@ -270,7 +276,9 @@ export function RecordingView({
       automationChannelRef.current = null;
       automationSessionRef.current = null;
       automationOwnsStopRef.current = false;
+      automationFailedOrdinalRef.current = null;
     }
+    if (stopInFlightRef.current === ownerSessionId) stopInFlightRef.current = null;
     if (previewSessionRef.current === ownerSessionId) releasePreviewLease();
   };
 
@@ -507,6 +515,7 @@ export function RecordingView({
     startedAtRef.current = Date.now();
     pausedAtRef.current = null;
     automationOwnsStopRef.current = false;
+    automationFailedOrdinalRef.current = null;
     const display = selectedDisplayInfo;
     // Seed with display dims; browser stories overwrite this with the
     // author-preview webContents viewport.
@@ -633,14 +642,35 @@ export function RecordingView({
           if (ownsActiveSession(ownerSessionId)) automationChannelRef.current = ch;
           else ch.onmessage = null;
         },
-      ).catch((e) => {
-        if (!ownsActiveSession(ownerSessionId)) return;
-        automationOwnsStopRef.current = false;
-        const msg = formatIpcError(e);
-        toast.error(`Automation failed: ${msg}`);
-        setError(msg);
-        void handleStop(ownerSessionId);
-      });
+      )
+        .then((outcome) => {
+          if (!ownsActiveSession(ownerSessionId)) return;
+          if (
+            outcome.story.failed > 0 &&
+            outcome.story.failed_ordinal != null &&
+            automationFailedOrdinalRef.current !== outcome.story.failed_ordinal
+          ) {
+            automationFailedOrdinalRef.current = outcome.story.failed_ordinal;
+            advanceStep(outcome.story.failed_ordinal - 1, "failed");
+            toast.warning(
+              `Story finished with ${outcome.story.failed} failure(s) at step ${outcome.story.failed_ordinal}`,
+            );
+          }
+          automationOwnsStopRef.current = false;
+          if (outcome.recording.status === "finalized") {
+            finalizeRecording(ownerSessionId, outcome.recording.result);
+          } else if (outcome.recording.status === "not_requested") {
+            void handleStop(ownerSessionId);
+          }
+        })
+        .catch((e) => {
+          if (!ownsActiveSession(ownerSessionId)) return;
+          automationOwnsStopRef.current = false;
+          const msg = formatIpcError(e);
+          toast.error(`Automation failed: ${msg}`);
+          setError(msg);
+          void handleStop(ownerSessionId);
+        });
     } catch (e) {
       releasePreviewLease();
       setError(formatIpcError(e));
@@ -668,6 +698,7 @@ export function RecordingView({
         pushCursor({ x: evt.cursor_x, y: evt.cursor_y, t: Date.now() });
         break;
       case "step_failed": {
+        automationFailedOrdinalRef.current = evt.ordinal;
         advanceStep(evt.ordinal - 1, "failed");
         // Detect the PrimaryMissNoHeal error by substring-matching the
         // locked copy. On a match, pipe the verb excerpt + ordinal into
@@ -725,12 +756,15 @@ export function RecordingView({
     const session = sessionRef.current;
     const ownerSessionId = sessionKey(session);
     if (expectedSessionId && expectedSessionId !== ownerSessionId) return;
+    if (stopInFlightRef.current === ownerSessionId) return;
+    stopInFlightRef.current = ownerSessionId;
     setStatus("stopping");
     try {
       const result = await stopRecording(session);
       finalizeRecording(ownerSessionId, result);
     } catch (e) {
       if (!ownsActiveSession(ownerSessionId)) return;
+      if (isNotFoundIpcError(e) && automationOwnsStopRef.current) return;
       cleanupSessionResources(ownerSessionId);
       sessionRef.current = null;
       startedAtRef.current = null;
@@ -740,6 +774,8 @@ export function RecordingView({
       setStatus("failed");
       setError(message);
       toast.error(`Stop failed: ${message}`);
+    } finally {
+      if (stopInFlightRef.current === ownerSessionId) stopInFlightRef.current = null;
     }
   };
 

@@ -614,8 +614,6 @@ export const lspDocuments = new Map<string, LspDocument>();
 
 export const activePickerStreams = new Set<string>();
 
-export const channelIndexes = new Map<number, number>();
-
 export let nextRid = 1;
 
 export let nextEventId = 1;
@@ -834,9 +832,12 @@ export function sendChannel(
   message: unknown,
 ): void {
   if (channelId == null || webContents.isDestroyed()) return;
-  const index = channelIndexes.get(channelId) ?? 0;
-  channelIndexes.set(channelId, index + 1);
-  sendCallback(webContents, channelId, { index, message });
+  webContents.send("tauri-channel", { id: channelId, message });
+}
+
+export function closeChannel(webContents: WebContents, channelId: number | null): void {
+  if (channelId == null || webContents.isDestroyed()) return;
+  webContents.send("tauri-channel", { id: channelId, end: true });
 }
 
 export function storyHash(source: string): string {
