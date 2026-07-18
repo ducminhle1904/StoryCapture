@@ -3,7 +3,7 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
-import { readJson, writeJson } from "../json-store";
+import { readJson, writeJson, writeJsonAtomic } from "../json-store";
 import { discoverProjectRecordings } from "../recording-discovery";
 import {
   ASSETS_DIRNAME,
@@ -43,7 +43,7 @@ export async function readProjects(): Promise<ProjectRecord[]> {
 }
 
 export async function writeProjects(projects: ProjectRecord[]): Promise<void> {
-  await writeJson(projectsRegistryPath(), projects);
+  await writeJsonAtomic(projectsRegistryPath(), projects);
 }
 
 export async function findProject(id: string): Promise<ProjectRecord> {
