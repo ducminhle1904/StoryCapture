@@ -2,7 +2,7 @@
  * computeGraph — pure projection from the timeline editor store into the
  * export graph shape that the Electron export pipeline consumes.
  *
- * The JSON-safe v4 contract lives in `@storycapture/shared-types`. The
+ * The JSON-safe composition contract lives in `@storycapture/shared-types`. The
  * generated effects surface still uses bigint timestamps and is intentionally
  * not used at this serialization boundary.
  *
@@ -21,7 +21,7 @@
 import {
   EXPORT_COMPOSITION_SCHEMA_VERSION,
   type ExportAudioNode,
-  type ExportCompositionGraphV4,
+  type ExportCompositionGraphV5,
   type ExportEasingKind,
   type ExportHighlightOverlaySpec,
   type ExportIssue,
@@ -93,7 +93,7 @@ export type TextBox = ExportTextBox;
 export type HighlightOverlaySpec = ExportHighlightOverlaySpec;
 export type VideoNode = ExportVideoNode;
 export type AudioNode = ExportAudioNode;
-export type Graph = ExportCompositionGraphV4;
+export type Graph = ExportCompositionGraphV5;
 
 // ---------------------------------------------------------------------------
 // Determinism helpers
@@ -108,8 +108,6 @@ const RESOLUTION_PX: Record<ExportResolution, { w: number; h: number }> = {
   "4k": { w: 3840, h: 2160 },
   custom: { w: 1920, h: 1080 },
 };
-
-const FRAMED_BACKGROUND_PADDING_PX = 64;
 
 /**
  * Deterministic UUID-shaped string derived from a clip id + role. Same
@@ -197,7 +195,11 @@ function zoomPan(
   };
 }
 
-function backgroundNode(background: EditorBackgroundKind): VideoNode {
+function backgroundNode(
+  background: EditorBackgroundKind,
+  foregroundScale: number,
+  radiusPx: number,
+): VideoNode {
   const kind =
     background.kind === "transparent"
       ? ({ kind: "ambient" } as const)
@@ -207,14 +209,16 @@ function backgroundNode(background: EditorBackgroundKind): VideoNode {
             asset_id: background.assetId,
             path: background.path || null,
           }
-        : background;
+        : background.kind === "gradient"
+          ? { kind: "gradient" as const, preset_id: background.preset_id }
+          : { kind: "solid" as const, color: background.color };
   return {
     type: "background",
     id: deterministicNodeId("scene-background", "background"),
     kind,
-    radius_px: 24,
+    radius_px: radiusPx,
     shadow: null,
-    padding_px: FRAMED_BACKGROUND_PADDING_PX,
+    foreground_scale: foregroundScale,
   };
 }
 
@@ -223,6 +227,11 @@ function evenDimension(n: number, fallback: number): number {
   const rounded = Math.round(n);
   const even = rounded % 2 === 0 ? rounded : rounded - 1;
   return Math.max(16, even);
+}
+
+function sourceDimension(n: number, fallback: number): number {
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(1, Math.round(n));
 }
 
 function firstSourceDimensions(tracks: TimelineSlice["tracks"]): { w: number; h: number } | null {
@@ -255,11 +264,9 @@ function outputPixels(state: ComputeGraphInput): { w: number; h: number } {
     const sourceWidth = source?.w ?? rect?.width;
     const sourceHeight = source?.h ?? rect?.height;
     if (sourceWidth && sourceHeight && sourceWidth > 0 && sourceHeight > 0) {
-      const framedPadding =
-        exportForm.frameMode === "framed" ? FRAMED_BACKGROUND_PADDING_PX * 2 : 0;
       return {
-        w: evenDimension(sourceWidth + framedPadding, 1920),
-        h: evenDimension(sourceHeight + framedPadding, 1080),
+        w: sourceDimension(sourceWidth, 1920),
+        h: sourceDimension(sourceHeight, 1080),
       };
     }
   }
@@ -867,9 +874,12 @@ function projectGraph(state: ComputeGraphInput): Graph {
   }
   const editorBackground = readEditorBackground(state);
   const bg =
-    exportForm.frameMode === "framed" &&
-    (editorBackground.kind !== "transparent" || sourceVideoClips.length > 0)
-      ? backgroundNode(editorBackground)
+    editorBackground.kind !== "transparent" || sourceVideoClips.length > 0
+      ? backgroundNode(
+          editorBackground,
+          exportForm.frameMode === "source" ? 1 : editorBackground.foregroundScale,
+          exportForm.frameMode === "source" ? 0 : 24,
+        )
       : null;
   if (bg) video.push(bg);
   const sortedAnnotations = clipsByStart(tracks.annotations);

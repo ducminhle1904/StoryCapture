@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  EXPORT_FOREGROUND_SCALE_MAX,
+  EXPORT_FOREGROUND_SCALE_MIN,
+} from "@storycapture/shared-types";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Slider } from "@/components/ui/slider";
 import gradientManifest from "../../../../../../assets/gradient-presets/manifest.json";
 import {
   DEFAULT_BACKGROUND,
@@ -97,11 +102,26 @@ const ALL_BACKGROUND_IMAGES = Object.values(BACKGROUND_IMAGES).flat();
 const DEFAULT_SOLID: Extract<EditorBackgroundKind, { kind: "solid" }> = {
   kind: "solid",
   color: { r: 16, g: 18, b: 24, a: 255 },
+  foregroundScale: DEFAULT_BACKGROUND.foregroundScale,
 };
 
 const DEFAULT_GRADIENT: Extract<EditorBackgroundKind, { kind: "gradient" }> = {
   kind: "gradient",
   preset_id: "runway-dark",
+  foregroundScale: DEFAULT_BACKGROUND.foregroundScale,
+};
+
+const VIDEO_SIZE_PRESETS = [
+  { label: "Small", percent: 75 },
+  { label: "Balanced", percent: 85 },
+  { label: "Large", percent: 95 },
+] as const;
+
+const VIDEO_SIZE_FORMAT: Intl.NumberFormatOptions = {
+  style: "unit",
+  unit: "percent",
+  unitDisplay: "narrow",
+  maximumFractionDigits: 0,
 };
 
 function clampByte(n: number): number {
@@ -161,10 +181,20 @@ function imageTabForAssetId(assetId: string): BackgroundImageTab | null {
 
 export function BackgroundPanel() {
   const background = useEditorStore(readEditorBackground);
+  const frameMode = useEditorStore((s) => s.exportForm.frameMode);
   const pushAction = useEditorStore((s) => s.pushAction);
+  const setFrameMode = useEditorStore((s) => s.setExportFrameMode);
+  const setForegroundScale = useEditorStore((s) => s.setForegroundScale);
   const [activeImageTab, setActiveImageTab] = useState<BackgroundImageTab>("cosmic");
+  const scaleGestureStartRef = useRef<EditorBackgroundKind | null>(null);
+  const keyboardScaleGestureRef = useRef(false);
 
   const activeMode = background.kind;
+  const foregroundPercent = Math.round(background.foregroundScale * 100);
+  const activeSizePreset = VIDEO_SIZE_PRESETS.find(
+    (preset) => background.foregroundScale === preset.percent / 100,
+  );
+  const sourceFillActive = frameMode === "source";
   const solidHex = useMemo(() => solidColor(background), [background]);
   const activePreset = useMemo(() => gradientPreset(background), [background]);
   const activeGradientImage = GRADIENT_PRESETS.find((preset) => preset.id === activePreset)?.image;
@@ -198,6 +228,64 @@ export function BackgroundPanel() {
     });
   };
 
+  const enableFramedSizing = () => {
+    if (sourceFillActive) setFrameMode("framed");
+  };
+
+  const updateForegroundScale = (value: number | readonly number[]) => {
+    if (typeof value !== "number") return;
+    enableFramedSizing();
+    scaleGestureStartRef.current ??= readEditorBackground(useEditorStore.getState());
+    setForegroundScale(value / 100);
+  };
+
+  const finalizeForegroundScaleGesture = () => {
+    const prev = scaleGestureStartRef.current;
+    scaleGestureStartRef.current = null;
+    if (!prev) return;
+    const next = readEditorBackground(useEditorStore.getState());
+    if (prev.foregroundScale === next.foregroundScale) return;
+    pushAction({ kind: "change-background", prev, next });
+  };
+
+  const commitForegroundScaleGesture = (value: number | readonly number[]) => {
+    if (typeof value !== "number") {
+      keyboardScaleGestureRef.current = false;
+      scaleGestureStartRef.current = null;
+      return;
+    }
+    if (!keyboardScaleGestureRef.current) finalizeForegroundScaleGesture();
+  };
+
+  const isScaleKey = (key: string) =>
+    [
+      "ArrowLeft",
+      "ArrowRight",
+      "ArrowUp",
+      "ArrowDown",
+      "PageUp",
+      "PageDown",
+      "Home",
+      "End",
+    ].includes(key);
+
+  const handleScaleKeyDown = (key: string) => {
+    if (!isScaleKey(key)) return;
+    keyboardScaleGestureRef.current = true;
+    scaleGestureStartRef.current ??= readEditorBackground(useEditorStore.getState());
+  };
+
+  const handleScaleKeyUp = (key: string) => {
+    if (!keyboardScaleGestureRef.current || !isScaleKey(key)) return;
+    keyboardScaleGestureRef.current = false;
+    finalizeForegroundScaleGesture();
+  };
+
+  const finishInterruptedScaleGesture = () => {
+    keyboardScaleGestureRef.current = false;
+    finalizeForegroundScaleGesture();
+  };
+
   const modeButtonClass = (selected: boolean) =>
     `group grid min-h-[92px] grid-rows-[1fr_auto] overflow-hidden rounded-xl border text-left transition duration-200 ease-out active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
       selected
@@ -227,7 +315,9 @@ export function BackgroundPanel() {
             type="button"
             aria-pressed={activeMode === "transparent"}
             className={modeButtonClass(activeMode === "transparent")}
-            onClick={() => commit(DEFAULT_BACKGROUND)}
+            onClick={() =>
+              commit({ ...DEFAULT_BACKGROUND, foregroundScale: background.foregroundScale })
+            }
           >
             <span
               aria-hidden="true"
@@ -251,7 +341,13 @@ export function BackgroundPanel() {
             type="button"
             aria-pressed={activeMode === "solid"}
             className={modeButtonClass(activeMode === "solid")}
-            onClick={() => commit({ kind: "solid", color: hexToRgba(solidHex) })}
+            onClick={() =>
+              commit({
+                kind: "solid",
+                color: hexToRgba(solidHex),
+                foregroundScale: background.foregroundScale,
+              })
+            }
           >
             <span
               aria-hidden="true"
@@ -269,7 +365,13 @@ export function BackgroundPanel() {
             type="button"
             aria-pressed={activeMode === "gradient"}
             className={modeButtonClass(activeMode === "gradient")}
-            onClick={() => commit({ kind: "gradient", preset_id: activePreset })}
+            onClick={() =>
+              commit({
+                kind: "gradient",
+                preset_id: activePreset,
+                foregroundScale: background.foregroundScale,
+              })
+            }
           >
             <span
               aria-hidden="true"
@@ -295,7 +397,12 @@ export function BackgroundPanel() {
             onClick={() => {
               if (!DEFAULT_IMAGE) return;
               const image = selectedImage ?? DEFAULT_IMAGE;
-              commit({ kind: "image", assetId: image.id, path: image.src });
+              commit({
+                kind: "image",
+                assetId: image.id,
+                path: image.src,
+                foregroundScale: background.foregroundScale,
+              });
             }}
           >
             <span
@@ -313,6 +420,98 @@ export function BackgroundPanel() {
             </span>
           </button>
         </div>
+      </section>
+
+      <section
+        aria-labelledby="video-size-heading"
+        className="space-y-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-100)] p-3"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div id="video-size-heading" className="text-xs font-medium text-[var(--color-fg)]">
+              Video size
+            </div>
+            <div className="mt-1 text-xs leading-5 text-[var(--color-fg-muted)]">
+              Scale the video within the background canvas.
+            </div>
+          </div>
+          <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+            {sourceFillActive ? "Source fill" : (activeSizePreset?.label ?? "Custom")}
+          </div>
+        </div>
+
+        <fieldset className="grid grid-cols-3 gap-2">
+          <legend className="sr-only">Video size presets</legend>
+          {VIDEO_SIZE_PRESETS.map((preset) => {
+            const selected = activeSizePreset?.percent === preset.percent;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                aria-pressed={selected}
+                className={`rounded-lg border px-2 py-2 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)] ${
+                  selected
+                    ? "border-[var(--color-accent-primary)] bg-[var(--color-accent-primary)]/10 text-[var(--color-fg)]"
+                    : "border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                }`}
+                onClick={() => {
+                  enableFramedSizing();
+                  commit({ ...background, foregroundScale: preset.percent / 100 });
+                }}
+              >
+                <span className="block text-xs font-medium">{preset.label}</span>
+                <span className="mt-0.5 block font-mono text-[10px]">{preset.percent}%</span>
+              </button>
+            );
+          })}
+        </fieldset>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <span id="video-size-slider-label" className="sr-only">
+              Video size percentage
+            </span>
+            <span className="text-xs text-[var(--color-fg-muted)]">Custom size</span>
+            <output
+              aria-live="polite"
+              className="font-mono text-xs font-medium text-[var(--color-fg)]"
+            >
+              {foregroundPercent}%
+            </output>
+          </div>
+          <Slider
+            id="video-size-slider"
+            aria-labelledby="video-size-slider-label"
+            min={EXPORT_FOREGROUND_SCALE_MIN * 100}
+            max={EXPORT_FOREGROUND_SCALE_MAX * 100}
+            step={1}
+            value={foregroundPercent}
+            format={VIDEO_SIZE_FORMAT}
+            onValueChange={updateForegroundScale}
+            onValueCommitted={commitForegroundScaleGesture}
+            onKeyDownCapture={(event) => handleScaleKeyDown(event.key)}
+            onKeyUpCapture={(event) => handleScaleKeyUp(event.key)}
+            onBlurCapture={finishInterruptedScaleGesture}
+            onPointerCancelCapture={finishInterruptedScaleGesture}
+            onLostPointerCapture={finishInterruptedScaleGesture}
+          />
+        </div>
+
+        {sourceFillActive ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-200)] p-2.5">
+            <p className="text-xs leading-5 text-[var(--color-fg-muted)]">
+              Source fill is full-bleed and currently overrides your saved {foregroundPercent}%
+              size.
+            </p>
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-100)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-accent-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent,#ff5b76)]"
+              onClick={enableFramedSizing}
+            >
+              Use cinematic frame
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {activeMode === "transparent" ? (
@@ -338,7 +537,13 @@ export function BackgroundPanel() {
               type="color"
               value={solidHex}
               className="h-10 flex-1 rounded-lg border border-[var(--color-border)] bg-transparent p-1"
-              onChange={(e) => commit({ kind: "solid", color: hexToRgba(e.currentTarget.value) })}
+              onChange={(e) =>
+                commit({
+                  kind: "solid",
+                  color: hexToRgba(e.currentTarget.value),
+                  foregroundScale: background.foregroundScale,
+                })
+              }
             />
           </span>
         </label>
@@ -361,7 +566,13 @@ export function BackgroundPanel() {
                       ? "border-[var(--color-accent-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent-primary)_82%,transparent)]"
                       : "border-[var(--color-border-subtle)] hover:border-[color-mix(in_oklch,var(--color-fg-muted)_48%,var(--color-border-subtle))]"
                   }`}
-                  onClick={() => commit({ kind: "gradient", preset_id: preset.id })}
+                  onClick={() =>
+                    commit({
+                      kind: "gradient",
+                      preset_id: preset.id,
+                      foregroundScale: background.foregroundScale,
+                    })
+                  }
                 >
                   <span
                     aria-hidden="true"
@@ -433,7 +644,14 @@ export function BackgroundPanel() {
                       ? "border-[var(--color-accent-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--color-accent-primary)_82%,transparent)]"
                       : "border-[var(--color-border-subtle)] hover:border-[color-mix(in_oklch,var(--color-fg-muted)_48%,var(--color-border-subtle))]"
                   }`}
-                  onClick={() => commit({ kind: "image", assetId: preset.id, path: preset.src })}
+                  onClick={() =>
+                    commit({
+                      kind: "image",
+                      assetId: preset.id,
+                      path: preset.src,
+                      foregroundScale: background.foregroundScale,
+                    })
+                  }
                 >
                   <span
                     aria-hidden="true"

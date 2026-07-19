@@ -1,5 +1,6 @@
 import type {
-  ExportCompositionGraphV4,
+  ExportBackgroundNodeV4,
+  ExportBackgroundNodeV5,
   ExportCursorClickEffect,
   ExportHighlightOverlaySpec,
   ExportRect,
@@ -8,16 +9,25 @@ import type {
   ExportTextBox,
   ExportTransitionKind,
   ExportVec2,
-  ExportVideoNode,
+  ExportVideoNodeV4,
+  ExportVideoNodeV5,
   ExportZoomKeyframe,
+  SupportedExportCompositionGraph,
+} from "@storycapture/shared-types";
+import {
+  EXPORT_FOREGROUND_SCALE_MAX,
+  EXPORT_FOREGROUND_SCALE_MIN,
+  isValidExportForegroundScale,
 } from "@storycapture/shared-types";
 
 import type { VirtualCursorSample } from "../preview/virtual-cursor-path";
 
-export type ExportSourceNode = Extract<ExportVideoNode, { type: "source" }>;
-export type ExportBackgroundNode = Extract<ExportVideoNode, { type: "background" }>;
-export type ExportCursorNode = Extract<ExportVideoNode, { type: "cursor-overlay" }>;
-export type ExportTransitionNode = Extract<ExportVideoNode, { type: "transition" }>;
+type SupportedExportVideoNode = ExportVideoNodeV4 | ExportVideoNodeV5;
+
+export type ExportSourceNode = Extract<SupportedExportVideoNode, { type: "source" }>;
+export type ExportBackgroundNode = Extract<SupportedExportVideoNode, { type: "background" }>;
+export type ExportCursorNode = Extract<SupportedExportVideoNode, { type: "cursor-overlay" }>;
+export type ExportTransitionNode = Extract<SupportedExportVideoNode, { type: "transition" }>;
 
 export interface SceneRect {
   x: number;
@@ -85,7 +95,7 @@ export interface EvaluatedText {
 }
 
 export interface EvaluatedScene {
-  graph: ExportCompositionGraphV4;
+  graph: SupportedExportCompositionGraph;
   time_ms: number;
   output_width: number;
   output_height: number;
@@ -121,10 +131,10 @@ export const CANONICAL_VISUAL_NODE_TYPES = [
   "highlight-overlay",
   "text-overlay",
   "transition",
-] as const satisfies readonly ExportVideoNode["type"][];
+] as const satisfies readonly SupportedExportVideoNode["type"][];
 
 type MissingCanonicalVisualNode = Exclude<
-  ExportVideoNode["type"],
+  SupportedExportVideoNode["type"],
   (typeof CANONICAL_VISUAL_NODE_TYPES)[number]
 >;
 const CANONICAL_VISUAL_NODE_TYPES_ARE_EXHAUSTIVE: [MissingCanonicalVisualNode] extends [never]
@@ -136,7 +146,7 @@ function assertNever(value: never): never {
   throw new Error(`Unhandled canonical scene value: ${JSON.stringify(value)}`);
 }
 
-function assertCanonicalVisualCoverage(graph: ExportCompositionGraphV4): void {
+function assertCanonicalVisualCoverage(graph: SupportedExportCompositionGraph): void {
   for (const node of graph.video) {
     switch (node.type) {
       case "source":
@@ -163,13 +173,49 @@ function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
-export function nodesOf<T extends ExportVideoNode["type"]>(
-  graph: ExportCompositionGraphV4,
+export function nodesOf<T extends SupportedExportVideoNode["type"]>(
+  graph: SupportedExportCompositionGraph,
   type: T,
-): Array<Extract<ExportVideoNode, { type: T }>> {
+): Array<Extract<SupportedExportVideoNode, { type: T }>> {
   return graph.video.filter(
-    (node): node is Extract<ExportVideoNode, { type: T }> => node.type === type,
+    (node): node is Extract<SupportedExportVideoNode, { type: T }> => node.type === type,
   );
+}
+
+/** Resolve versioned background geometry without approximating legacy V4 padding. */
+export function resolveSceneContentRect(graph: SupportedExportCompositionGraph): SceneRect {
+  const schemaVersion = (graph as { schema_version?: unknown }).schema_version;
+  if (schemaVersion === 4) {
+    const background = graph.video.find(
+      (node): node is ExportBackgroundNodeV4 => node.type === "background",
+    );
+    const padding = background ? Math.max(0, finiteOr(background.padding_px, 0)) : 0;
+    return {
+      x: padding,
+      y: padding,
+      w: Math.max(1, graph.output_width - padding * 2),
+      h: Math.max(1, graph.output_height - padding * 2),
+    };
+  }
+  if (schemaVersion !== 5) {
+    throw new Error(`unsupported canonical composition graph schema: ${String(schemaVersion)}`);
+  }
+
+  const background = graph.video.find(
+    (node): node is ExportBackgroundNodeV5 => node.type === "background",
+  );
+  const scale = background ? background.foreground_scale : 1;
+  if (!isValidExportForegroundScale(scale)) {
+    throw new Error(
+      `canonical graph schema v5 background foreground_scale must be a finite number between ${EXPORT_FOREGROUND_SCALE_MIN} and ${EXPORT_FOREGROUND_SCALE_MAX}`,
+    );
+  }
+  return {
+    x: (graph.output_width * (1 - scale)) / 2,
+    y: (graph.output_height * (1 - scale)) / 2,
+    w: graph.output_width * scale,
+    h: graph.output_height * scale,
+  };
 }
 
 function evaluateEasing(kind: ExportZoomKeyframe["easing"], value: number): number {
@@ -237,7 +283,10 @@ function interpolateZoomKeyframes(
   return null;
 }
 
-export function evaluateSceneZoom(graph: ExportCompositionGraphV4, timeMs: number): EvaluatedZoom {
+export function evaluateSceneZoom(
+  graph: SupportedExportCompositionGraph,
+  timeMs: number,
+): EvaluatedZoom {
   const selected = nodesOf(graph, "zoom-pan")
     .filter(
       (node) =>
@@ -293,13 +342,13 @@ function nearestSourcePts(
   return terminalSourcePts(map, fallbackMs);
 }
 
-function sortedSources(graph: ExportCompositionGraphV4): ExportSourceNode[] {
+function sortedSources(graph: SupportedExportCompositionGraph): ExportSourceNode[] {
   return nodesOf(graph, "source").sort(
     (a, b) => a.timeline_start_ms - b.timeline_start_ms || a.clip_id.localeCompare(b.clip_id),
   );
 }
 
-function effectiveSourceStarts(graph: ExportCompositionGraphV4): Map<string, number> {
+function effectiveSourceStarts(graph: SupportedExportCompositionGraph): Map<string, number> {
   const starts = new Map<string, number>();
   for (const source of sortedSources(graph)) {
     starts.set(source.id, Math.max(0, finiteOr(source.timeline_start_ms, source.pts_offset_ms)));
@@ -337,7 +386,7 @@ function evaluateSourceAt(
 }
 
 function evaluateSources(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   timeMs: number,
 ): { sources: EvaluatedSource[]; transition: EvaluatedTransition | null } {
   const sourceById = new Map(sortedSources(graph).map((source) => [source.id, source]));
@@ -485,7 +534,7 @@ function sourceRectToOutput(
 }
 
 function evaluateHighlights(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   timeMs: number,
   zoom: EvaluatedZoom,
   contentRect: SceneRect,
@@ -529,7 +578,7 @@ function evaluateHighlights(
 }
 
 function evaluateRipples(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   timeMs: number,
   zoom: EvaluatedZoom,
   contentRect: SceneRect,
@@ -618,7 +667,7 @@ function targetPosition(
 function resolveTextPosition(
   box: ExportTextBox,
   zoom: EvaluatedZoom,
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   contentRect: SceneRect,
   cursors: readonly EvaluatedCursor[],
   highlights: readonly EvaluatedHighlight[],
@@ -684,7 +733,7 @@ function resolveTextPosition(
 }
 
 function evaluateCursors(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   timeMs: number,
   zoom: EvaluatedZoom,
   contentRect: SceneRect,
@@ -715,20 +764,14 @@ export function clickEffectIsVisible(effect: ExportCursorClickEffect): boolean {
 }
 
 export function evaluateScene(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   timestampMs: number,
   inputs: SceneEvaluationInputs = {},
 ): EvaluatedScene {
   assertCanonicalVisualCoverage(graph);
   const timeMs = Math.max(0, Math.min(Math.max(0, graph.duration_ms), finiteOr(timestampMs, 0)));
   const background = nodesOf(graph, "background")[0] ?? null;
-  const padding = background ? Math.max(0, finiteOr(background.padding_px, 0)) : 0;
-  const contentRect = {
-    x: padding,
-    y: padding,
-    w: Math.max(1, graph.output_width - padding * 2),
-    h: Math.max(1, graph.output_height - padding * 2),
-  };
+  const contentRect = resolveSceneContentRect(graph);
   const zoom = evaluateSceneZoom(graph, timeMs);
   const sourceResult = evaluateSources(graph, timeMs);
   const highlights = evaluateHighlights(graph, timeMs, zoom, contentRect);

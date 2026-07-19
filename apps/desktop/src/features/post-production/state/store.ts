@@ -11,6 +11,11 @@
  * `useEditorStore.getState().pushAction(action)`.
  */
 
+import {
+  EXPORT_FOREGROUND_SCALE_DEFAULT,
+  EXPORT_FOREGROUND_SCALE_MAX,
+  EXPORT_FOREGROUND_SCALE_MIN,
+} from "@storycapture/shared-types";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { UndoExtras } from "../undo/actions";
@@ -28,7 +33,18 @@ export interface Rgba {
   a: number;
 }
 
-export type EditorBackgroundKind =
+export const MIN_FOREGROUND_SCALE = EXPORT_FOREGROUND_SCALE_MIN;
+export const MAX_FOREGROUND_SCALE = EXPORT_FOREGROUND_SCALE_MAX;
+export const DEFAULT_FOREGROUND_SCALE = EXPORT_FOREGROUND_SCALE_DEFAULT;
+
+export function sanitizeForegroundScale(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_FOREGROUND_SCALE;
+  }
+  return Math.min(MAX_FOREGROUND_SCALE, Math.max(MIN_FOREGROUND_SCALE, value));
+}
+
+type EditorBackgroundVisual =
   | { kind: "transparent" }
   | { kind: "solid"; color: Rgba }
   | { kind: "gradient"; preset_id: string }
@@ -40,6 +56,10 @@ export type EditorBackgroundKind =
       path: string;
     };
 
+export type EditorBackgroundKind = EditorBackgroundVisual & {
+  foregroundScale: number;
+};
+
 export type EditorStore = TimelineSlice &
   PanelsSlice &
   SelectionSlice &
@@ -47,14 +67,29 @@ export type EditorStore = TimelineSlice &
   QueueSlice &
   UndoSlice & {
     _undoExtras?: UndoExtras & { background: EditorBackgroundKind };
+    setForegroundScale: (scale: number) => void;
   };
 
-export const DEFAULT_BACKGROUND: EditorBackgroundKind = { kind: "transparent" };
+export const DEFAULT_BACKGROUND: EditorBackgroundKind = {
+  kind: "transparent",
+  foregroundScale: DEFAULT_FOREGROUND_SCALE,
+};
 
 export function readEditorBackground(state: {
-  _undoExtras?: { background?: EditorBackgroundKind };
+  _undoExtras?: {
+    background?: EditorBackgroundVisual & { foregroundScale?: unknown };
+  };
 }): EditorBackgroundKind {
-  return (state._undoExtras?.background as EditorBackgroundKind | undefined) ?? DEFAULT_BACKGROUND;
+  const background = state._undoExtras?.background;
+  if (!background) return DEFAULT_BACKGROUND;
+  const foregroundScale = sanitizeForegroundScale(background.foregroundScale);
+  if (background.foregroundScale === foregroundScale) {
+    return background as EditorBackgroundKind;
+  }
+  return {
+    ...background,
+    foregroundScale,
+  } as EditorBackgroundKind;
 }
 
 /**
@@ -74,14 +109,34 @@ const PERSISTED_EXPORT_KEYS = ["exportForm"] as const;
 
 export const useEditorStore = create<EditorStore>()(
   persist(
-    (...a) => ({
-      ...createTimelineSlice(...a),
-      ...createPanelsSlice(...a),
-      ...createSelectionSlice(...a),
-      ...createExportSlice(...a),
-      ...createQueueSlice(...a),
-      ...createUndoSlice(...a),
-    }),
+    (...a) => {
+      const [set] = a;
+      return {
+        ...createTimelineSlice(...a),
+        ...createPanelsSlice(...a),
+        ...createSelectionSlice(...a),
+        ...createExportSlice(...a),
+        ...createQueueSlice(...a),
+        ...createUndoSlice(...a),
+        setForegroundScale: (scale) =>
+          set((state) => {
+            const background = readEditorBackground(state);
+            return {
+              _undoExtras: {
+                ...(state._undoExtras ?? {
+                  graphSnapshot: {},
+                  textOverlays: {},
+                  background: DEFAULT_BACKGROUND,
+                }),
+                background: {
+                  ...background,
+                  foregroundScale: sanitizeForegroundScale(scale),
+                },
+              },
+            };
+          }),
+      };
+    },
     {
       name: PANELS_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),

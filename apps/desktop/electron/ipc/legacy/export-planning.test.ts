@@ -179,11 +179,45 @@ describe("canonical post-production export planning", () => {
     expect(plan.kind).toBe("composited");
   });
 
-  it("rejects non-v4, source-less, path-less, duration-less, and unknown graphs", () => {
+  it("accepts V4 padding and valid V5 foreground scale graphs", () => {
+    const legacy = analyzeExportPlan(
+      graph([source(), { type: "background", id: "legacy", padding_px: 64 }]),
+      output(),
+    );
+    const current = analyzeExportPlan(
+      graph([source(), { type: "background", id: "current", foreground_scale: 0.85 }], [], {
+        schema_version: 5,
+      }),
+      output(),
+    );
+
+    expect(legacy.kind).toBe("composited");
+    expect(current.kind).toBe("composited");
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["non-finite JSON value", null],
+    ["below range", 0.69],
+    ["above range", 1.01],
+  ])("rejects malformed V5 foreground_scale: %s", (_name, foregroundScale) => {
+    const background: Record<string, unknown> = { type: "background", id: "invalid" };
+    if (foregroundScale !== undefined) background.foreground_scale = foregroundScale;
+
+    expect(
+      analyzeExportPlan(graph([source(), background], [], { schema_version: 5 }), output()),
+    ).toMatchObject({
+      kind: "unsupported",
+      reason:
+        "composition graph schema v5 background invalid foreground_scale must be a finite number between 0.7 and 1",
+    });
+  });
+
+  it("rejects unknown-version, source-less, path-less, duration-less, and unknown graphs", () => {
     expect(analyzeExportPlan(graph([source()], [], { schema_version: 3 }), output())).toMatchObject(
       {
         kind: "unsupported",
-        reason: "canonical export requires composition graph schema v4",
+        reason: "canonical export requires composition graph schema v4 or v5 (received 3)",
       },
     );
     expect(analyzeExportPlan(graph([]), output())).toMatchObject({

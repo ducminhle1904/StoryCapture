@@ -1,4 +1,4 @@
-import type { ExportCompositionGraphV4 } from "@storycapture/shared-types";
+import type { SupportedExportCompositionGraph } from "@storycapture/shared-types";
 
 import type { EvaluatedScene, ExportSourceNode } from "./scene-evaluator";
 import { nodesOf } from "./scene-evaluator";
@@ -118,7 +118,7 @@ export class CanonicalMediaSourcePool {
 
   constructor(private readonly loader: CanonicalMediaLoader = loadDomMediaSource) {}
 
-  async configure(graph: ExportCompositionGraphV4): Promise<void> {
+  async configure(graph: SupportedExportCompositionGraph): Promise<void> {
     const generation = this.generation + 1;
     this.generation = generation;
     this.disposeEntries();

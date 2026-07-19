@@ -35,19 +35,20 @@ function tracks(): TimelineSlice["tracks"] {
   };
 }
 
-describe("timeline layout v4", () => {
-  it("serializes current layouts as v4 and preserves annotation style metadata", () => {
+describe("timeline layout v5", () => {
+  it("serializes current layouts as v5 and preserves foreground scale and annotation metadata", () => {
     const json = serializeTimelineLayout({
       tracks: tracks(),
       durationMs: 1_000,
-      background: { kind: "transparent" },
+      background: { kind: "transparent", foregroundScale: 0.92 },
     });
     const parsed = parseTimelineLayoutJson(json);
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.layout.version).toBe(4);
+    expect(parsed.layout.version).toBe(5);
     expect(parsed.migrated).toBe(false);
+    expect(parsed.layout.background.foregroundScale).toBe(0.92);
     expect(parsed.layout.tracks.annotations[0]).toMatchObject({
       font: { kind: "system", postscriptName: "AcmeSans-Bold" },
       textShadow: null,
@@ -56,7 +57,7 @@ describe("timeline layout v4", () => {
     });
   });
 
-  it.each([1, 2, 3])("accepts and migrates a v%s layout", (version) => {
+  it.each([1, 2, 3, 4])("accepts and migrates a v%s layout", (version) => {
     const parsed = parseTimelineLayoutJson(
       JSON.stringify({
         version,
@@ -70,9 +71,33 @@ describe("timeline layout v4", () => {
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.layout.version).toBe(4);
+    expect(parsed.layout.version).toBe(5);
     expect(parsed.migrated).toBe(true);
+    expect(parsed.layout.background.foregroundScale).toBe(0.85);
     expect(parsed.layout.tracks.annotations[0]?.id).toBe("text-1");
+  });
+
+  it.each([
+    [undefined, 0.85],
+    [null, 0.85],
+    ["large", 0.85],
+    [0.5, 0.7],
+    [1.2, 1],
+  ])("sanitizes V5 foreground scale %s to %s", (foregroundScale, expected) => {
+    const parsed = parseTimelineLayoutJson(
+      JSON.stringify({
+        version: 5,
+        timingModelVersion: 1,
+        sourceRevision: null,
+        tracks: tracks(),
+        durationMs: 1_000,
+        background: { kind: "transparent", foregroundScale },
+      }),
+    );
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.layout.background.foregroundScale).toBe(expected);
   });
 
   it("migrates a legacy Vite image URL to a stable bundled asset id", () => {
@@ -93,6 +118,7 @@ describe("timeline layout v4", () => {
       kind: "image",
       assetId: "cosmic:8",
       path: "/assets/8-AbCd1234.jpg",
+      foregroundScale: 0.85,
     });
   });
 });

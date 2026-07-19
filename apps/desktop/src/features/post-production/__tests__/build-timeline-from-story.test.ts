@@ -997,6 +997,7 @@ describe("buildTimelineFromStory", () => {
     expect(out.background).toEqual({
       kind: "solid",
       color: { r: 17, g: 34, b: 51, a: 255 },
+      foregroundScale: 0.85,
     });
     expect(out.video[0]?.outgoingTransition).toEqual({
       kind: "dissolve",

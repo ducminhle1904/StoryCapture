@@ -1,4 +1,4 @@
-import type { ExportCompositionGraphV4, ExportCursorSkin } from "@storycapture/shared-types";
+import type { ExportCursorSkin, SupportedExportCompositionGraph } from "@storycapture/shared-types";
 
 import type { CanonicalRenderAssets } from "./canvas-scene-renderer";
 import { canonicalAssetUrl } from "./media-source-pool";
@@ -58,7 +58,7 @@ export class CanonicalImageAssetPool implements Omit<CanonicalRenderAssets, "sou
 
   constructor(private readonly loader: CanonicalImageLoader = loadCanonicalImage) {}
 
-  async configure(graph: ExportCompositionGraphV4): Promise<void> {
+  async configure(graph: SupportedExportCompositionGraph): Promise<void> {
     const generation = this.generation + 1;
     this.generation = generation;
     this.images.clear();

@@ -50,7 +50,6 @@ function entry(action: UndoableAction, appliedAt = 0): HistoryEntry {
 beforeEach(() => {
   resetStore();
 });
-
 describe("HistoryBuffer", () => {
   it("ring_buffer_cap_50: 51st push evicts oldest and cursor stays at end", () => {
     const buf = new HistoryBuffer(50);
@@ -216,7 +215,11 @@ describe("Coalescer", () => {
       }),
     ).toBeNull();
     expect(
-      coalesceKey({ kind: "change-background", prev: {}, next: {} }),
+      coalesceKey({
+        kind: "change-background",
+        prev: { kind: "transparent", foregroundScale: 0.85 },
+        next: { kind: "transparent", foregroundScale: 0.85 },
+      }),
     ).toBeNull();
   });
 
@@ -396,19 +399,23 @@ describe("applyAction + invertAction", () => {
   it("apply_invert_change_background: writes to _undoExtras", () => {
     const action: UndoableAction = {
       kind: "change-background",
-      prev: { kind: "transparent" },
-      next: { kind: "gradient", from: "#000", to: "#fff" },
+      prev: { kind: "transparent", foregroundScale: 0.85 },
+      next: { kind: "gradient", preset_id: "runway-dark", foregroundScale: 0.85 },
     };
     applyAction(action);
     const extras = (useEditorStore.getState() as unknown as {
       _undoExtras?: { background: Record<string, unknown> };
     })._undoExtras;
-    expect(extras?.background).toEqual({ kind: "gradient", from: "#000", to: "#fff" });
+    expect(extras?.background).toEqual({
+      kind: "gradient",
+      preset_id: "runway-dark",
+      foregroundScale: 0.85,
+    });
     applyAction(invertAction(action));
     const after = (useEditorStore.getState() as unknown as {
       _undoExtras?: { background: Record<string, unknown> };
     })._undoExtras;
-    expect(after?.background).toEqual({ kind: "transparent" });
+    expect(after?.background).toEqual({ kind: "transparent", foregroundScale: 0.85 });
   });
 
   it("apply_invert_edit_text_overlay: round-trips a text overlay", () => {

@@ -5,6 +5,7 @@ import type { VirtualCursorSample } from "../preview/virtual-cursor-path";
 import { sampleCursorClickEffect } from "../state/cursor-click-effect";
 import {
   canonicalGraph,
+  canonicalGraphV5,
   canonicalSource,
   canonicalTextBox,
   canonicalTransition,
@@ -62,6 +63,7 @@ function createCanvasContextMock() {
 
 const SOURCE_IMAGE = { width: 1_280, height: 720 } as unknown as CanvasImageSource;
 const PORTRAIT_IMAGE = { width: 600, height: 900 } as unknown as CanvasImageSource;
+const FOUR_THREE_IMAGE = { width: 1_024, height: 768 } as unknown as CanvasImageSource;
 
 function assets(overrides: Partial<CanonicalRenderAssets> = {}): CanonicalRenderAssets {
   return {
@@ -240,8 +242,7 @@ describe("canonical Canvas 2D renderer", () => {
 
     const expectedRadius = 48;
     const expectedSourceWidth = scene.content_rect.h * (1_280 / 720);
-    const expectedSourceX =
-      scene.content_rect.x + (scene.content_rect.w - expectedSourceWidth) / 2;
+    const expectedSourceX = scene.content_rect.x + (scene.content_rect.w - expectedSourceWidth) / 2;
     const [shadowPathStart, sourceClipPathStart] = vi.mocked(ctx.moveTo).mock.calls;
     expect(shadowPathStart?.[0]).toBeCloseTo(expectedSourceX + expectedRadius, 3);
     expect(sourceClipPathStart?.[0]).toBeCloseTo(expectedSourceX + expectedRadius, 3);
@@ -273,6 +274,33 @@ describe("canonical Canvas 2D renderer", () => {
     expect(ctx.translate).toHaveBeenCalledWith(0, 162.5);
     expect(ctx.scale).toHaveBeenCalledWith(0.9375, 0.9375);
     expect(ctx.drawImage).toHaveBeenCalled();
+  });
+
+  it("contains an aspect-mismatched source inside the normalized V5 rectangle", () => {
+    const { ctx } = createCanvasContextMock();
+    const graph = canonicalGraphV5([
+      canonicalSource("source-a", 0, 1_000),
+      {
+        type: "background",
+        id: "background",
+        kind: { kind: "solid", color: { r: 12, g: 20, b: 28, a: 255 } },
+        radius_px: 24,
+        shadow: null,
+        foreground_scale: 0.85,
+      },
+    ]);
+
+    new CanonicalCanvasSceneRenderer(ctx).render(
+      evaluateScene(graph, 500),
+      assets({ source: () => FOUR_THREE_IMAGE }),
+    );
+
+    const sourceDraw = vi.mocked(ctx.drawImage).mock.calls[0];
+    expect(sourceDraw?.[0]).toBe(FOUR_THREE_IMAGE);
+    expect(sourceDraw?.[1]).toBeCloseTo(232, 10);
+    expect(sourceDraw?.[2]).toBeCloseTo(54, 10);
+    expect(sourceDraw?.[3]).toBeCloseTo(816, 10);
+    expect(sourceDraw?.[4]).toBeCloseTo(612, 10);
   });
 
   it("renders zoomed click feedback, cursor size, motion sample, and color tint", () => {

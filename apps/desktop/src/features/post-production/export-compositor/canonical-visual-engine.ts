@@ -1,7 +1,7 @@
 import type {
-  ExportCompositionGraphV4,
   ExportRect,
   ExportVideoNode,
+  SupportedExportCompositionGraph,
 } from "@storycapture/shared-types";
 import type { RecordingActions } from "@/ipc/action-sidecar";
 import type { RecordingTrajectory } from "@/ipc/trajectory";
@@ -32,6 +32,7 @@ import {
   type ExportCursorNode,
   evaluateScene,
   nodesOf,
+  resolveSceneContentRect,
   type SceneEvaluationInputs,
 } from "./scene-evaluator";
 
@@ -90,7 +91,7 @@ export interface CanonicalRenderedFrame {
 
 export interface CanonicalVisualEnginePort {
   configure(
-    graph: ExportCompositionGraphV4,
+    graph: SupportedExportCompositionGraph,
     runtimeConfig?: CanonicalVisualEngineRuntimeConfig,
   ): Promise<void>;
   setPresentationLayout(layout: CanonicalPresentationLayout | null): void;
@@ -114,7 +115,7 @@ function cursorTimelineMs(node: ExportCursorNode, timeMs: number): number {
 }
 
 async function loadCanonicalTextFonts(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   fontSet: Pick<FontFaceSet, "load"> | null,
 ): Promise<void> {
   if (!fontSet) return;
@@ -132,7 +133,7 @@ async function loadCanonicalTextFonts(
 }
 
 export function canonicalFrameCommandSnapshot(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   timestampMs: number,
   inputs: SceneEvaluationInputs = {},
 ): string {
@@ -146,7 +147,7 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
   private readonly cursorSidecarLoader: CanonicalCursorSidecarLoader;
   private readonly renderer: CanonicalCanvasSceneRenderer;
   private readonly fontSet: Pick<FontFaceSet, "load"> | null;
-  private graph: ExportCompositionGraphV4 | null = null;
+  private graph: SupportedExportCompositionGraph | null = null;
   private cursorRuntimes: CursorRuntime[] = [];
   private targetBoundsByStepId = new Map<string, ExportRect>();
   private presentationLayout: CanonicalPresentationLayout | null = null;
@@ -172,14 +173,10 @@ export class CanonicalVisualEngine implements CanonicalVisualEnginePort {
   }
 
   async configure(
-    graph: ExportCompositionGraphV4,
+    graph: SupportedExportCompositionGraph,
     runtimeConfig: CanonicalVisualEngineRuntimeConfig = {},
   ): Promise<void> {
-    if (graph.schema_version !== 4) {
-      throw new Error(
-        `canonical visual engine requires graph v4, received ${graph.schema_version}`,
-      );
-    }
+    resolveSceneContentRect(graph);
     if (graph.output_width <= 0 || graph.output_height <= 0 || graph.output_fps <= 0) {
       throw new Error("canonical visual engine requires positive output dimensions and fps");
     }

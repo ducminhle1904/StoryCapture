@@ -256,6 +256,43 @@ describe("export compositor production bootstrap", () => {
     expect(win.destroy).toHaveBeenCalledOnce();
   });
 
+  it("forwards V5 foreground geometry through the host configure payload", async () => {
+    const win = fakeWindow();
+    const host = createExportCompositorHost(
+      {
+        ...plan,
+        graph: {
+          schema_version: 5,
+          video: [
+            {
+              type: "background",
+              id: "background",
+              kind: { kind: "solid", color: { r: 12, g: 20, b: 28, a: 255 } },
+              foreground_scale: 0.85,
+            },
+          ],
+        },
+      },
+      {
+        app: runtimeApp,
+        devRuntime: false,
+        windowFactory: () => win,
+      },
+    );
+
+    await host.start();
+
+    expect(
+      vi
+        .mocked(win.webContents.executeJavaScript)
+        .mock.calls.some(
+          ([source]) =>
+            source.includes('"schema_version":5') && source.includes('"foreground_scale":0.85'),
+        ),
+    ).toBe(true);
+    await host.dispose();
+  });
+
   it.each([
     1, 1.25, 1.5, 2,
   ])("derives exact backing and CSS capture geometry at DPR %s", async (devicePixelRatio) => {

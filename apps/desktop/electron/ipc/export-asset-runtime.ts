@@ -50,7 +50,8 @@ export interface ExportAssetAppPaths {
 }
 
 export interface ExportGraphLike {
-  video?: Array<Record<string, unknown>>;
+  schema_version?: number;
+  video?: ReadonlyArray<{ type: string; kind?: unknown } | Record<string, unknown>>;
 }
 
 export interface ResolveExportGraphAssetsOptions {

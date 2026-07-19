@@ -1,7 +1,11 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-
+import type {
+  ExportBackgroundNodeV5,
+  ExportCompositionGraphV5,
+  ExportVideoNodeV5,
+} from "@storycapture/shared-types";
 import { app, type BrowserWindow } from "electron";
 
 import { ffmpegExecutablePath } from "./export-binaries";
@@ -171,7 +175,11 @@ async function createCursorActionsFixture(outputPath: string, videoPath: string)
   );
 }
 
-function sourceNode(videoPath: string): Record<string, unknown> {
+type SmokeSourceNode = Extract<ExportVideoNodeV5, { type: "source" }>;
+type SmokeCursorNode = Extract<ExportVideoNodeV5, { type: "cursor-overlay" }>;
+type SmokeTextNode = Extract<ExportVideoNodeV5, { type: "text-overlay" }>;
+
+function sourceNode(videoPath: string): SmokeSourceNode {
   return {
     type: "source",
     id: "smoke-source",
@@ -191,8 +199,8 @@ const backgroundNode = {
   kind: { kind: "image", asset_id: "cosmic:1", path: null },
   radius_px: 8,
   shadow: null,
-  padding_px: 24,
-};
+  foreground_scale: 0.85,
+} satisfies ExportBackgroundNodeV5;
 
 const textNode = {
   type: "text-overlay",
@@ -221,9 +229,9 @@ const textNode = {
       anim_duration_ms: 0,
     },
   ],
-};
+} satisfies SmokeTextNode;
 
-function cursorNode(actionsPath: string) {
+function cursorNode(actionsPath: string): SmokeCursorNode {
   return {
     type: "cursor-overlay",
     id: "smoke-cursor",
@@ -250,7 +258,7 @@ function graph(videoPath: string, actionsPath: string, variant: SmokeFrameVarian
   const withCursor = variant !== "base";
   const withText = variant === "cursor-and-text";
   return {
-    schema_version: 4,
+    schema_version: 5,
     output_width: OUTPUT_WIDTH,
     output_height: OUTPUT_HEIGHT,
     output_fps: 30,
@@ -262,7 +270,7 @@ function graph(videoPath: string, actionsPath: string, variant: SmokeFrameVarian
       ...(withText ? [textNode] : []),
     ],
     audio: [],
-  };
+  } satisfies ExportCompositionGraphV5;
 }
 
 async function renderSmokeFrame(

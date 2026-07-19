@@ -1,4 +1,4 @@
-import type { ExportCompositionGraphV4 } from "@storycapture/shared-types";
+import type { SupportedExportCompositionGraph } from "@storycapture/shared-types";
 
 import {
   type CanonicalRenderedFrame,
@@ -70,7 +70,7 @@ export function canonicalPreviewPresentationLayout(
 
 /** Preview-side adapter over the exact visual engine used by hidden export. */
 export class CanonicalPreviewAdapter {
-  private graph: ExportCompositionGraphV4 | null = null;
+  private graph: SupportedExportCompositionGraph | null = null;
   private viewport: CanonicalPreviewViewport | null = null;
   private readonly engine: CanonicalVisualEnginePort;
 
@@ -82,7 +82,7 @@ export class CanonicalPreviewAdapter {
     this.engine = engine ?? new CanonicalVisualEngine(canvas, options);
   }
 
-  async configure(graph: ExportCompositionGraphV4): Promise<void> {
+  async configure(graph: SupportedExportCompositionGraph): Promise<void> {
     await this.engine.configure(graph);
     this.graph = graph;
     this.applyPresentationLayout();
@@ -125,7 +125,7 @@ export class CanonicalPreviewAdapter {
 }
 
 export function previewFrameCommandSnapshot(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   timestampMs: number,
   inputs: SceneEvaluationInputs = {},
 ): string {

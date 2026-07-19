@@ -1,5 +1,4 @@
 import type {
-  ExportCompositionGraphV4,
   ExportIssue,
   ExportPreflightArgs,
   ExportPreflightOutput,
@@ -50,7 +49,7 @@ function outputWarning(
 
 function parseCompositionDuration(graphJson: string): number {
   try {
-    const graph = JSON.parse(graphJson) as Partial<ExportCompositionGraphV4>;
+    const graph = JSON.parse(graphJson) as { duration_ms?: number };
     return Number.isFinite(graph.duration_ms) ? Math.max(0, graph.duration_ms ?? 0) : 0;
   } catch {
     return 0;

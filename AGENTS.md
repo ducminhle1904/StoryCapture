@@ -54,7 +54,9 @@ video.
   and simulator behavior is desktop IPC/host code, not a shared parser package.
 - `packages/shared-types` publicly exports browser presets, web account types,
   the checked-in IPC compatibility surface, and the JSON-safe post-production
-  composition/preflight/job contract.
+  composition/preflight/job contract. Electron/Node runtime consumers of
+  composition values use `@storycapture/shared-types/export-composition`, not
+  the package-root barrel.
   `packages/shared-types/src/generated/effects.ts` is checked-in generated
   source, but is not currently exported through the package export map.
 - `packages/ui` ships shared tokens plus the `claude-design` namespace and
@@ -93,6 +95,9 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/handlers.ts`, the matching
   `apps/desktop/electron/ipc/*.ts` module, and the renderer facade in
   `apps/desktop/src/ipc/*`.
+- Project registry persistence: read `apps/desktop/electron/ipc/json-store.ts`
+  and `apps/desktop/electron/ipc/legacy/projects.ts`; registry writes use the
+  atomic JSON-store path.
 - DSL/editor/simulator: read `docs/DOMAIN.md`,
   `packages/story-dsl/src/ast.ts`, `packages/story-dsl/src/codemirror-lang.ts`,
   `apps/desktop/electron/ipc/story-parser.ts`, and
@@ -121,6 +126,13 @@ file explicitly says otherwise.
   `export-xmp.ts`, `apps/desktop/electron/ipc/export-compositor-host.ts`, and,
   for packaged quality gates, `apps/desktop/electron/ipc/export-e2e-smoke.ts`
   plus `apps/desktop/electron/ipc/export-quality-gate.ts`.
+- Post-production canvas sizing and composition schema: read
+  `packages/shared-types/src/export-composition.ts`,
+  `apps/desktop/src/features/post-production/state/timeline-layout.ts`,
+  `apps/desktop/src/features/post-production/inspector/background-panel.tsx`,
+  `apps/desktop/src/features/post-production/state/compute-graph.ts`,
+  `apps/desktop/src/features/post-production/export-compositor/scene-evaluator.ts`,
+  then `apps/desktop/electron/ipc/legacy/export-planning.ts` for host validation.
 - Post-production text appearance, system fonts, and re-record style
   preservation: read `apps/desktop/src/features/post-production/state/timeline-slice.ts`,
   `apps/desktop/src/features/post-production/state/text-style.ts`,
@@ -137,6 +149,12 @@ file explicitly says otherwise.
   `apps/desktop/electron/ipc/legacy/story-runner.ts`,
   `apps/desktop/src/ipc/actions.ts`, and
   `apps/desktop/src/features/post-production/state/virtual-cursor-scheduler.ts`.
+- Recording lifecycle across renderer reloads: read
+  `apps/desktop/electron/channel-sequence.ts`, `apps/desktop/electron/preload.ts`,
+  `apps/desktop/electron/ipc/legacy/recording.ts`,
+  `apps/desktop/electron/ipc/legacy/story-runner.ts`,
+  `apps/desktop/src/ipc/automation.ts`, and
+  `apps/desktop/src/features/recorder/recording-view.tsx`.
 - Recording logs/diagnostics: read
   `apps/desktop/electron/ipc/recording-observability.ts`,
   `apps/desktop/electron/ipc/log-store.ts`, and

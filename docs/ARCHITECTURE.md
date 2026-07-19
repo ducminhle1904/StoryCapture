@@ -203,11 +203,18 @@ host handlers.
 ### Post-Production Export Ownership
 
 - `features/post-production/state/compute-graph.ts` compiles the renderer state
-  into the schema-v4 composition contract exported by `@storycapture/shared-types`.
+  into the current schema-v5 composition contract exported by
+  `@storycapture/shared-types`; canonical renderer and host boundaries retain
+  exact schema-v4 read compatibility.
 - `features/post-production/export-compositor/scene-evaluator.ts`,
   `canvas-scene-renderer.ts`, and `canonical-visual-engine.ts` are the visual
   source of truth. Preview/export adapters share this engine; the hidden bridge
   in `export-compositor-app.tsx` contains no parallel renderer.
+- `features/post-production/preview/canonical-preview-adapter.ts` computes the
+  presentation-only full-stage surface and aspect-fitted composition rectangle.
+  `canvas-scene-renderer.ts` paints the background across that surface and
+  transforms the remaining canonical layers into the composition rectangle;
+  hidden export omits this layout and preserves exact graph dimensions.
 - `electron/ipc/export-compositor-host.ts` owns the offscreen window and bundled
   asset resolution. It creates Chromium's offscreen backing store at the
   requested capture DPR and reads each presented frame through a one-shot frame
@@ -234,8 +241,12 @@ host handlers.
 - `@storycapture/story-dsl`: checked-in, `ts-rs`-generated Story AST surface
   plus CodeMirror language support. Runtime parsing is reached through desktop IPC
   (`apps/desktop/src/ipc/parse.ts`) and host handlers.
-- `@storycapture/shared-types`: public package exports are `.` and `./ipc`.
-  The root barrel exports IPC types/commands, browser presets,
+- `@storycapture/shared-types`: public package exports are `.`, `./ipc`, and
+  `./export-composition`. Electron/Node runtime consumers of composition
+  constants or validators use the self-contained `./export-composition`
+  subpath; the root `src/index.ts` barrel contains extensionless source
+  re-exports and is not directly Node ESM-safe for runtime value imports. The
+  root barrel otherwise exports IPC types/commands, browser presets,
   `APP_PANIC_EVENT`, and the JSON-safe export composition/preflight/job
   contract. `src/generated/effects.ts` is a checked-in
   `ts-rs`-generated file in the package tree, but it is not currently exposed

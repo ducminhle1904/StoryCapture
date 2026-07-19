@@ -271,7 +271,11 @@ describe("ExportModal", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "gradient", preset_id: "runway-dark" },
+        background: {
+          kind: "gradient",
+          preset_id: "runway-dark",
+          foregroundScale: 0.85,
+        },
       },
       exportForm: {
         ...DEFAULT_EXPORT_FORM,

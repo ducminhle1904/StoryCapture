@@ -5,6 +5,14 @@
 - There is no root `pnpm test`.
 - Desktop all tests: `pnpm --dir apps/desktop exec vitest run`.
 - Desktop focused test: `pnpm --dir apps/desktop exec vitest run <path>`.
+- Post-production sizing/schema changes: focus
+  `apps/desktop/src/features/post-production/inspector/background-panel.test.tsx`
+  for preset/slider accessibility and single-entry undo/redo semantics across
+  pointer, keyboard, and interrupted gestures; then cover timeline layout
+  migration, graph compiler, scene evaluator/renderer, host planning, preflight,
+  and compositor-host tests before running `pnpm typecheck`. Run
+  `pnpm --dir apps/desktop run test:e2e:export` when the host or packaged path
+  changes.
 - Recording diagnostic tests:
   `pnpm --dir apps/desktop exec vitest run electron/ipc/recording-observability.test.ts electron/ipc/recording-diagnostic-reader.test.ts electron/ipc/recording-spike-trace.test.ts electron/ipc/logs.test.ts`.
 - Cursor-sync Electron E2E: `pnpm --dir apps/desktop run test:e2e:cursor-sync`.
@@ -52,14 +60,16 @@
 
 - Desktop tests cover editor, recorder, post-production, state, IPC helpers,
   local asset URL handling, and screen-capture permission helpers.
-- Export coverage includes the schema-v4 compiler/preflight contract,
-  canonical scene/media/asset renderers, every transition/background/cursor
-  trajectory variant, full audio-bus planning, queue/output lifecycle,
-  verification, XMP writer/parser, packaged assets/binaries, the all-effects
-  regression, and the independent quality/capture matrix. Host geometry tests
-  cover DPR 1, 1.25, 1.5, and 2; the packaged capture matrix explicitly requests
-  DPR 1 and 2 without relying on the CI runner's physical display scale or
-  committing generated artifacts.
+- Export coverage includes the schema-v5 compiler/preflight contract, malformed
+  V5 foreground-scale rejection, exact schema-v4 compatibility geometry,
+  fixed-resolution foreground-scale parity across preview/export, canonical
+  scene/media/asset renderers, every transition/background/cursor trajectory
+  variant, full audio-bus planning, queue/output lifecycle, verification, XMP
+  writer/parser, packaged assets/binaries, the all-effects regression, and the
+  independent quality/capture matrix. Host geometry tests cover DPR 1, 1.25,
+  1.5, and 2; the packaged capture matrix explicitly requests DPR 1 and 2
+  without relying on the CI runner's physical display scale or committing
+  generated artifacts.
 - Web tests are narrow: workflow helpers, sync router metadata, and template
   router metadata.
 - UI tests cover `packages/ui/src/claude-design/primitives/__tests__/`.
@@ -83,20 +93,35 @@
   `apps/desktop/src/features/post-production/preview/__tests__/virtual-cursor-path.test.ts`,
   and
   `apps/desktop/src/features/post-production/__tests__/build-timeline-from-story.test.ts`.
+- Recording reload/channel lifecycle changes: focus
+  `apps/desktop/electron/channel-sequence.test.ts`,
+  `apps/desktop/electron/ipc/legacy/story-runner.test.ts`, and
+  `apps/desktop/src/features/recorder/recording-view-lifecycle.test.tsx`.
+- Project registry/atomic persistence changes: focus
+  `apps/desktop/electron/ipc/json-store.test.ts` and
+  `apps/desktop/electron/ipc/legacy/projects.test.ts`.
 - Source-map/preview/export changes should also run
   `state/__tests__/source-timeline-map.test.ts`,
   `preview/__tests__/source-bound-parity.test.ts`,
-  `preview/__tests__/canonical-render-parity.test.ts`, the focused
+  `preview/__tests__/canonical-render-parity.test.ts`,
+  `preview/canonical-preview-adapter.test.ts`, the focused
   `export-compositor/*.test.ts` suites, and Electron
   `export-{planning,audio-planning,output-lifecycle,artifact-verification,xmp,render}.test.ts`,
   `export-quality-gate.test.ts`, and `export-compositor-host.test.ts`.
-  Run `test:e2e:export` whenever the change reaches hidden-window assets,
+  Run `test:e2e:media` when preview-stage presentation or background continuity
+  changes. Run `test:e2e:export` whenever the change reaches hidden-window assets,
   FFmpeg/ffprobe, audio mixing, output publication, or packaging. Use
   `scripts/ci/analyze-cursor-sync-roi.mjs` for encoded-marker frame correlation.
 - Prisma/schema/web router changes: run `pnpm --dir apps/web db:generate`,
   focused web tests, and `pnpm --dir apps/web typecheck`.
 - Cross-package contract changes: run focused package tests, consumer tests, and
   `pnpm typecheck`.
+- Electron runtime-value imports from workspace packages must also run the
+  Node-resolution smoke. For `@storycapture/shared-types/export-composition`,
+  run `pnpm --dir apps/desktop exec vitest run electron/shared-types-runtime-resolution.test.ts`;
+  when the consumer is in the post-production startup path, also run
+  `pnpm --dir apps/desktop run test:e2e:media`. Typecheck alone does not prove
+  Node ESM can load the package export.
 - Generated type surfaces: do not edit generated files directly unless the
   generation source and regeneration process are also handled.
 - Electron E2E config: `apps/desktop/playwright.config.ts`; cursor-sync smoke:

@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import type {
-  ExportCompositionGraphV4,
   ExportIssue,
   ExportSoundKind,
   ExportSoundNode,
   ExportVideoNode,
+  SupportedExportCompositionGraph,
 } from "@storycapture/shared-types";
 
 type ExportSourceNode = Extract<ExportVideoNode, { type: "source" }>;
@@ -89,7 +89,7 @@ export interface InvalidExportAudioPlan extends ExportAudioPlanBase {
 export type ExportAudioPlan = MixedExportAudioPlan | SilentExportAudioPlan | InvalidExportAudioPlan;
 
 export interface BuildExportAudioPlanInput {
-  graph: ExportCompositionGraphV4;
+  graph: SupportedExportCompositionGraph;
   output: ExportAudioOutput;
   /**
    * Probe result keyed by source node id. Every source must be present. A
@@ -198,19 +198,19 @@ function compareTransition(left: ExportTransitionNode, right: ExportTransitionNo
   return left.offset_ms - right.offset_ms || left.id.localeCompare(right.id);
 }
 
-function sourceNodes(graph: ExportCompositionGraphV4): ExportSourceNode[] {
+function sourceNodes(graph: SupportedExportCompositionGraph): ExportSourceNode[] {
   return graph.video
     .filter((node): node is ExportSourceNode => node.type === "source")
     .sort(compareSource);
 }
 
-function transitionNodes(graph: ExportCompositionGraphV4): ExportTransitionNode[] {
+function transitionNodes(graph: SupportedExportCompositionGraph): ExportTransitionNode[] {
   return graph.video
     .filter((node): node is ExportTransitionNode => node.type === "transition")
     .sort(compareTransition);
 }
 
-function soundNodes(graph: ExportCompositionGraphV4): ExportSoundNode[] {
+function soundNodes(graph: SupportedExportCompositionGraph): ExportSoundNode[] {
   return [...graph.audio].sort(compareSound);
 }
 
@@ -261,7 +261,7 @@ function validateOutput(output: ExportAudioOutput): ExportIssue[] {
 }
 
 function validateGraph(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   sources: readonly ExportSourceNode[],
   sounds: readonly ExportSoundNode[],
   transitions: readonly ExportTransitionNode[],

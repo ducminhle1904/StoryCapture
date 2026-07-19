@@ -27,7 +27,7 @@ import type {
 import { normalizeCursorMotionPreset, XFADE_KINDS } from "../state/timeline-slice";
 import { NEW_CURSOR_CLICK_EFFECT } from "./cursor-click-effect";
 import { identitySourceTimelineMap } from "./source-timeline-map";
-import type { EditorBackgroundKind, Rgba } from "./store";
+import { DEFAULT_BACKGROUND, type EditorBackgroundKind, type Rgba } from "./store";
 import { styleDefaults } from "./text-style";
 import { buildVirtualCursorSchedule } from "./virtual-cursor-scheduler";
 
@@ -191,8 +191,6 @@ function sourceSize(input: BuildTimelineInput): VideoClip["sourceSize"] {
   return width && height ? { width, height } : undefined;
 }
 
-const DEFAULT_BACKGROUND: EditorBackgroundKind = { kind: "transparent" };
-
 function hashPath(path: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < path.length; i++) {
@@ -242,11 +240,19 @@ function backgroundFromPolish(polish?: StoryPolishDoc | null): EditorBackgroundK
   if (!background) return DEFAULT_BACKGROUND;
   switch (background.kind) {
     case "transparent":
-      return { kind: "transparent" };
+      return DEFAULT_BACKGROUND;
     case "solid":
-      return { kind: "solid", color: hexToRgba(background.color) };
+      return {
+        kind: "solid",
+        color: hexToRgba(background.color),
+        foregroundScale: DEFAULT_BACKGROUND.foregroundScale,
+      };
     case "gradient":
-      return { kind: "gradient", preset_id: background.presetId };
+      return {
+        kind: "gradient",
+        preset_id: background.presetId,
+        foregroundScale: DEFAULT_BACKGROUND.foregroundScale,
+      };
   }
 }
 

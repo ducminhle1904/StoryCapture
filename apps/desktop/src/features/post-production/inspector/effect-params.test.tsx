@@ -411,7 +411,7 @@ describe("EffectParams", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "transparent" },
+        background: { kind: "transparent", foregroundScale: 0.85 },
         actions: ACTIONS,
         stepTiming: STEP_TIMING,
       },
@@ -480,7 +480,7 @@ describe("EffectParams", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "transparent" },
+        background: { kind: "transparent", foregroundScale: 0.85 },
         actions: ACTIONS,
         stepTiming: STEP_TIMING,
       },

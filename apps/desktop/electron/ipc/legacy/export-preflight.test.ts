@@ -51,6 +51,40 @@ describe("exportPreflight", () => {
     ]);
   });
 
+  it("rejects malformed V5 foreground geometry before enqueue", () => {
+    const result = exportPreflight(
+      args({
+        graph_json: JSON.stringify({
+          ...GRAPH,
+          schema_version: 5,
+          video: [
+            ...GRAPH.video,
+            {
+              type: "background",
+              id: "invalid-background",
+              kind: { kind: "ambient" },
+              radius_px: 24,
+              shadow: null,
+              foreground_scale: 1.1,
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.outputs[0]).toMatchObject({
+      ready: false,
+      issues: [
+        {
+          code: "output.unsupported-composition",
+          message:
+            "composition graph schema v5 background invalid-background foreground_scale must be a finite number between 0.7 and 1",
+        },
+      ],
+    });
+  });
+
   it("warns without blocking when requested XMP cannot be embedded in WebM or GIF", () => {
     const result = exportPreflight(
       args({

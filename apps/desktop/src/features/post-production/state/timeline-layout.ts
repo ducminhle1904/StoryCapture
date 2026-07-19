@@ -1,13 +1,13 @@
 import { bundledBackgroundAssetIdFromPath } from "./background-asset";
 import type { EditorBackgroundKind } from "./store";
-import { DEFAULT_BACKGROUND } from "./store";
+import { DEFAULT_BACKGROUND, DEFAULT_FOREGROUND_SCALE, sanitizeForegroundScale } from "./store";
 import type { TimelineSlice } from "./timeline-slice";
 import { cloneTimelineTracks } from "./timeline-slice";
 
-export const TIMELINE_LAYOUT_VERSION = 4;
+export const TIMELINE_LAYOUT_VERSION = 5;
 export const TIMELINE_TIMING_MODEL_VERSION = 1;
 
-export interface TimelineLayoutV4 {
+export interface TimelineLayoutV5 {
   version: typeof TIMELINE_LAYOUT_VERSION;
   timingModelVersion: typeof TIMELINE_TIMING_MODEL_VERSION;
   sourceRevision: string | null;
@@ -17,12 +17,10 @@ export interface TimelineLayoutV4 {
 }
 
 export type TimelineLayoutParseResult =
-  | { ok: true; layout: TimelineLayoutV4; migrated: boolean; rebuiltGeneratedLayers: boolean }
+  | { ok: true; layout: TimelineLayoutV5; migrated: boolean; rebuiltGeneratedLayers: boolean }
   | { ok: false; reason: string };
 
-/** Compatibility alias for callers that only depend on the current layout shape. */
-export type TimelineLayoutV3 = TimelineLayoutV4;
-export type TimelineLayoutV2 = TimelineLayoutV4;
+export type TimelineLayout = TimelineLayoutV5;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -72,24 +70,27 @@ function parseTracks(value: unknown): TimelineSlice["tracks"] | null {
   });
 }
 
-function parseBackground(value: unknown): EditorBackgroundKind {
+function parseBackground(value: unknown, usePersistedScale: boolean): EditorBackgroundKind {
   if (!isRecord(value) || typeof value.kind !== "string") return DEFAULT_BACKGROUND;
-  if (value.kind === "transparent") return { kind: "transparent" };
+  const foregroundScale = usePersistedScale
+    ? sanitizeForegroundScale(value.foregroundScale)
+    : DEFAULT_FOREGROUND_SCALE;
+  if (value.kind === "transparent") return { kind: "transparent", foregroundScale };
   if (value.kind === "solid" && isRecord(value.color)) {
     const { r, g, b, a } = value.color;
     if (isFiniteNumber(r) && isFiniteNumber(g) && isFiniteNumber(b) && isFiniteNumber(a)) {
-      return { kind: "solid", color: { r, g, b, a } };
+      return { kind: "solid", color: { r, g, b, a }, foregroundScale };
     }
   }
   if (value.kind === "gradient" && typeof value.preset_id === "string") {
-    return { kind: "gradient", preset_id: value.preset_id };
+    return { kind: "gradient", preset_id: value.preset_id, foregroundScale };
   }
   if (value.kind === "image" && typeof value.path === "string") {
     const assetId =
       typeof value.assetId === "string"
         ? value.assetId
         : bundledBackgroundAssetIdFromPath(value.path);
-    return { kind: "image", assetId, path: value.path };
+    return { kind: "image", assetId, path: value.path, foregroundScale };
   }
   return DEFAULT_BACKGROUND;
 }
@@ -101,13 +102,16 @@ export function serializeTimelineLayout(input: {
 }): string {
   const sourceRevision =
     input.tracks.video.find((clip) => clip.sourceRevision)?.sourceRevision ?? null;
-  const layout: TimelineLayoutV4 = {
+  const layout: TimelineLayoutV5 = {
     version: TIMELINE_LAYOUT_VERSION,
     timingModelVersion: TIMELINE_TIMING_MODEL_VERSION,
     sourceRevision,
     tracks: cloneTimelineTracks(input.tracks),
     durationMs: Math.max(0, input.durationMs),
-    background: input.background,
+    background: {
+      ...input.background,
+      foregroundScale: sanitizeForegroundScale(input.background.foregroundScale),
+    },
   };
   return JSON.stringify(layout);
 }
@@ -132,6 +136,7 @@ export function parseTimelineLayoutJson(
     parsed.version !== 1 &&
     parsed.version !== 2 &&
     parsed.version !== 3 &&
+    parsed.version !== 4 &&
     parsed.version !== TIMELINE_LAYOUT_VERSION
   ) {
     return { ok: false, reason: `unsupported layout version ${String(parsed.version)}` };
@@ -165,7 +170,7 @@ export function parseTimelineLayoutJson(
       sourceRevision: currentRevision ?? storedRevision,
       tracks: migratedTracks,
       durationMs,
-      background: parseBackground(parsed.background),
+      background: parseBackground(parsed.background, parsed.version === TIMELINE_LAYOUT_VERSION),
     },
     migrated: isLegacyLayout,
     rebuiltGeneratedLayers: shouldRebuild,

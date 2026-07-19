@@ -1,4 +1,4 @@
-import type { ExportCompositionGraphV4 } from "@storycapture/shared-types";
+import type { SupportedExportCompositionGraph } from "@storycapture/shared-types";
 import {
   type CanonicalRenderedFrame,
   CanonicalVisualEngine,
@@ -10,7 +10,7 @@ import type { ExportResamplingQuality } from "./canvas-scene-renderer";
 import type { SceneEvaluationInputs } from "./scene-evaluator";
 
 export interface CanonicalExportCompositorPayload {
-  graph: ExportCompositionGraphV4;
+  graph: SupportedExportCompositionGraph;
   outputWidth?: number;
   outputHeight?: number;
   fps?: number;
@@ -22,7 +22,7 @@ export interface CanonicalExportCompositorPayload {
 
 /** Production hidden-compositor adapter backed by the shared canonical engine. */
 export class CanonicalExportCompositorAdapter {
-  private graph: ExportCompositionGraphV4 | null = null;
+  private graph: SupportedExportCompositionGraph | null = null;
   private readonly engine: CanonicalVisualEnginePort;
 
   constructor(
@@ -73,7 +73,7 @@ export class CanonicalExportCompositorAdapter {
 }
 
 export function exportFrameCommandSnapshot(
-  graph: ExportCompositionGraphV4,
+  graph: SupportedExportCompositionGraph,
   timestampMs: number,
   inputs: SceneEvaluationInputs = {},
 ): string {

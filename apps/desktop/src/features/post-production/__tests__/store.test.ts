@@ -9,7 +9,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useEditorStore } from "../state/store";
+import { DEFAULT_BACKGROUND, useEditorStore } from "../state/store";
 import { parseTimelineLayoutJson, serializeTimelineLayout } from "../state/timeline-layout";
 import { SNAP_THRESHOLD_PX, snapToNearest } from "../state/timeline-slice";
 
@@ -26,6 +26,11 @@ function resetStore() {
     exportModalOpen: false,
     activeJobs: {},
     progressByJobId: {},
+    _undoExtras: {
+      graphSnapshot: {},
+      textOverlays: {},
+      background: DEFAULT_BACKGROUND,
+    },
   });
 }
 
@@ -114,17 +119,36 @@ describe("timeline-slice", () => {
     const layoutJson = serializeTimelineLayout({
       tracks,
       durationMs: 1000,
-      background: { kind: "solid", color: { r: 1, g: 2, b: 3, a: 1 } },
+      background: {
+        kind: "solid",
+        color: { r: 1, g: 2, b: 3, a: 1 },
+        foregroundScale: 0.9,
+      },
     });
     const parsed = parseTimelineLayoutJson(layoutJson);
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.layout.version).toBe(4);
+    expect(parsed.layout.version).toBe(5);
     expect(parsed.layout.timingModelVersion).toBe(1);
     expect(parsed.layout.tracks.video[0]).toMatchObject({ id: "video-1", trackId: "video" });
     expect(parsed.layout.durationMs).toBe(1000);
-    expect(parsed.layout.background).toEqual({ kind: "solid", color: { r: 1, g: 2, b: 3, a: 1 } });
+    expect(parsed.layout.background).toEqual({
+      kind: "solid",
+      color: { r: 1, g: 2, b: 3, a: 1 },
+      foregroundScale: 0.9,
+    });
+  });
+
+  it("sets and clamps foreground scale", () => {
+    useEditorStore.getState().setForegroundScale(0.73);
+    expect(useEditorStore.getState()._undoExtras?.background.foregroundScale).toBe(0.73);
+
+    useEditorStore.getState().setForegroundScale(2);
+    expect(useEditorStore.getState()._undoExtras?.background.foregroundScale).toBe(1);
+
+    useEditorStore.getState().setForegroundScale(Number.NaN);
+    expect(useEditorStore.getState()._undoExtras?.background.foregroundScale).toBe(0.85);
   });
 
   it("rejects corrupt timeline layouts without throwing", () => {

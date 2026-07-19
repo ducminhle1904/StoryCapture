@@ -4,7 +4,19 @@
  * effects surface uses bigint timestamps and is not safe to stringify.
  */
 
-export const EXPORT_COMPOSITION_SCHEMA_VERSION = 4 as const;
+export const EXPORT_COMPOSITION_SCHEMA_VERSION = 5 as const;
+export const EXPORT_FOREGROUND_SCALE_MIN = 0.7;
+export const EXPORT_FOREGROUND_SCALE_MAX = 1;
+export const EXPORT_FOREGROUND_SCALE_DEFAULT = 0.85;
+
+export function isValidExportForegroundScale(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= EXPORT_FOREGROUND_SCALE_MIN &&
+    value <= EXPORT_FOREGROUND_SCALE_MAX
+  );
+}
 
 export interface ExportVec2 {
   x: number;
@@ -219,7 +231,7 @@ export interface ExportHighlightOverlaySpec {
   overlay_pos?: ExportVec2 | null;
 }
 
-export type ExportVideoNode =
+export type ExportVideoNodeBase =
   | {
       type: "source";
       id: string;
@@ -240,14 +252,6 @@ export type ExportVideoNode =
       duration_ms: number;
       target: ExportZoomTarget;
       keyframes: ExportZoomKeyframe[];
-    }
-  | {
-      type: "background";
-      id: string;
-      kind: ExportBackgroundKind;
-      radius_px: number;
-      shadow: null;
-      padding_px: number;
     }
   | {
       type: "cursor-overlay";
@@ -277,6 +281,29 @@ export type ExportVideoNode =
       to_source_id: string;
     };
 
+export interface ExportBackgroundNodeV4 {
+  type: "background";
+  id: string;
+  kind: ExportBackgroundKind;
+  radius_px: number;
+  shadow: null;
+  padding_px: number;
+}
+
+export interface ExportBackgroundNodeV5 {
+  type: "background";
+  id: string;
+  kind: ExportBackgroundKind;
+  radius_px: number;
+  shadow: null;
+  foreground_scale: number;
+}
+
+export type ExportVideoNodeV4 = ExportVideoNodeBase | ExportBackgroundNodeV4;
+export type ExportVideoNodeV5 = ExportVideoNodeBase | ExportBackgroundNodeV5;
+/** Current graph node shape emitted by the renderer. */
+export type ExportVideoNode = ExportVideoNodeV5;
+
 export type ExportSoundKind = "bgm" | "sfx" | "voiceover";
 
 export interface ExportSoundNode {
@@ -295,14 +322,26 @@ export interface ExportSoundNode {
 export type ExportAudioNode = ExportSoundNode;
 
 export interface ExportCompositionGraphV4 {
+  schema_version: 4;
+  output_width: number;
+  output_height: number;
+  output_fps: number;
+  duration_ms: number;
+  video: ExportVideoNodeV4[];
+  audio: ExportAudioNode[];
+}
+
+export interface ExportCompositionGraphV5 {
   schema_version: typeof EXPORT_COMPOSITION_SCHEMA_VERSION;
   output_width: number;
   output_height: number;
   output_fps: number;
   duration_ms: number;
-  video: ExportVideoNode[];
+  video: ExportVideoNodeV5[];
   audio: ExportAudioNode[];
 }
+
+export type SupportedExportCompositionGraph = ExportCompositionGraphV4 | ExportCompositionGraphV5;
 
 export type ExportIssueSeverity = "info" | "warning" | "error";
 

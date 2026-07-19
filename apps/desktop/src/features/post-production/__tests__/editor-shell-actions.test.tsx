@@ -353,7 +353,7 @@ describe("EditorShell toolbar actions", () => {
           ],
         },
         durationMs: 1_000,
-        background: { kind: "transparent" },
+        background: { kind: "transparent", foregroundScale: 0.85 },
       }),
       last_modified: 1,
     });
@@ -479,7 +479,7 @@ describe("EditorShell toolbar actions", () => {
           ],
         },
         durationMs: 1_000,
-        background: { kind: "transparent" },
+        background: { kind: "transparent", foregroundScale: 0.85 },
       }),
       last_modified: 1,
     });

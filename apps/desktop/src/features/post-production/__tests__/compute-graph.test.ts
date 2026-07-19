@@ -51,7 +51,7 @@ function resetStore() {
     _undoExtras: {
       graphSnapshot: {},
       textOverlays: {},
-      background: { kind: "transparent" },
+      background: { kind: "transparent", foregroundScale: 0.85 },
     },
   });
 }
@@ -72,7 +72,7 @@ describe("computeGraph", () => {
 
   it("empty store yields empty video/audio with schema metadata", () => {
     const g = computeGraph(useEditorStore.getState());
-    expect(g.schema_version).toBe(4);
+    expect(g.schema_version).toBe(5);
     expect(g.output_width).toBe(1920);
     expect(g.output_height).toBe(1080);
     expect(g.output_fps).toBe(60);
@@ -88,7 +88,7 @@ describe("computeGraph", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "gradient", preset_id: "runway-dark" },
+        background: { kind: "gradient", preset_id: "runway-dark", foregroundScale: 0.85 },
       },
       tracks: {
         video: [],
@@ -120,7 +120,7 @@ describe("computeGraph", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "gradient", preset_id: "runway-dark" },
+        background: { kind: "gradient", preset_id: "runway-dark", foregroundScale: 0.85 },
       },
       exportForm: {
         formats: ["mp4"],
@@ -247,7 +247,7 @@ describe("computeGraph", () => {
     if (background.type !== "background") throw new Error("expected background");
     expect(background.kind).toEqual({ kind: "gradient", preset_id: "runway-dark" });
     expect(background.radius_px).toBe(24);
-    expect(background.padding_px).toBe(64);
+    expect(background.foreground_scale).toBe(0.85);
 
     const cursor = videoNodeAt(g, 4);
     if (cursor.type !== "cursor-overlay") throw new Error("expected cursor-overlay");
@@ -274,7 +274,7 @@ describe("computeGraph", () => {
     expect(graphIsRenderable(g)).toBe(true);
   });
 
-  it("does not emit a background node for source-preserving exports", () => {
+  it("emits a full-bleed background node for source-preserving exports", () => {
     useEditorStore.setState({
       exportForm: {
         ...DEFAULT_EXPORT_FORM,
@@ -283,7 +283,7 @@ describe("computeGraph", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "gradient", preset_id: "runway-dark" },
+        background: { kind: "gradient", preset_id: "runway-dark", foregroundScale: 0.75 },
       },
       tracks: {
         video: [
@@ -304,10 +304,21 @@ describe("computeGraph", () => {
 
     const g = computeGraph(useEditorStore.getState());
 
-    expect(g.video.map((n) => n.type)).toEqual(["source"]);
+    expect(g.video.map((n) => n.type)).toEqual(["source", "background"]);
+    expect(g.video.find((n) => n.type === "background")).toMatchObject({
+      kind: { kind: "gradient", preset_id: "runway-dark" },
+      foreground_scale: 1,
+      radius_px: 0,
+    });
   });
 
-  it("expands match-source framed exports so the foreground keeps native pixels", () => {
+  it.each([
+    ["720p", 1280, 720],
+    ["1080p", 1920, 1080],
+    ["4K", 3840, 2160],
+    ["ultrawide", 3440, 1440],
+    ["odd-sized source", 1279, 719],
+  ])("keeps exact %s source dimensions for framed match-source exports", (_name, width, height) => {
     useEditorStore.setState({
       exportForm: {
         ...DEFAULT_EXPORT_FORM,
@@ -317,8 +328,8 @@ describe("computeGraph", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "transparent" },
-        captureRect: { x: 0, y: 0, width: 1920, height: 1080 },
+        background: { kind: "transparent", foregroundScale: 0.85 },
+        captureRect: { x: 0, y: 0, width, height },
       },
       tracks: {
         video: [
@@ -328,7 +339,7 @@ describe("computeGraph", () => {
             startMs: 0,
             durationMs: 1000,
             sourcePath: "/tmp/in.mp4",
-            sourceSize: { width: 1920, height: 1080 },
+            sourceSize: { width, height },
           },
         ],
         cursor: [],
@@ -341,12 +352,12 @@ describe("computeGraph", () => {
     const g = computeGraph(useEditorStore.getState());
     const background = g.video.find((n) => n.type === "background");
 
-    expect(g.output_width).toBe(2048);
-    expect(g.output_height).toBe(1208);
+    expect(g.output_width).toBe(width);
+    expect(g.output_height).toBe(height);
     expect(background).toMatchObject({
       type: "background",
       kind: { kind: "ambient" },
-      padding_px: 64,
+      foreground_scale: 0.85,
     });
   });
 
@@ -360,7 +371,7 @@ describe("computeGraph", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "gradient", preset_id: "runway-dark" },
+        background: { kind: "gradient", preset_id: "runway-dark", foregroundScale: 0.75 },
         captureRect: { x: 0, y: 0, width: 1800, height: 1012 },
       },
       tracks: {
@@ -385,7 +396,9 @@ describe("computeGraph", () => {
 
     expect(g.output_width).toBe(1920);
     expect(g.output_height).toBe(1080);
-    expect(g.video.some((n) => n.type === "background")).toBe(false);
+    expect(g.video.find((n) => n.type === "background")).toMatchObject({
+      foreground_scale: 1,
+    });
   });
 
   it("falls back explicitly when match-source dimensions are unavailable", () => {
@@ -398,7 +411,7 @@ describe("computeGraph", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "gradient", preset_id: "runway-dark" },
+        background: { kind: "gradient", preset_id: "runway-dark", foregroundScale: 0.85 },
       },
       tracks: {
         video: [
@@ -641,7 +654,7 @@ describe("computeGraph", () => {
     ]);
     expect(g.video.find((node) => node.type === "background")).toMatchObject({
       kind: { kind: "ambient" },
-      padding_px: 64,
+      foreground_scale: 0.85,
     });
 
     const transitions = g.video.filter((node) => node.type === "transition");
@@ -961,7 +974,7 @@ describe("computeGraph", () => {
       _undoExtras: {
         graphSnapshot: {},
         textOverlays: {},
-        background: { kind: "transparent" },
+        background: { kind: "transparent", foregroundScale: 0.85 },
         actions: {
           source_version: 1,
           confidence: "legacy-approximate",

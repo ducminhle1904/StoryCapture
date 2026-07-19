@@ -1,16 +1,18 @@
 import type {
   ExportCompositionGraphV4,
+  ExportCompositionGraphV5,
   ExportTextAnchor,
   ExportTextBox,
   ExportTransitionKind,
-  ExportVideoNode,
+  ExportVideoNodeV4,
+  ExportVideoNodeV5,
 } from "@storycapture/shared-types";
 
 export function canonicalSource(
   id: string,
   timelineStartMs: number,
   durationMs: number,
-): Extract<ExportVideoNode, { type: "source" }> {
+): Extract<ExportVideoNodeV4, { type: "source" }> {
   return {
     type: "source",
     id,
@@ -28,7 +30,7 @@ export function canonicalTransition(
   kind: ExportTransitionKind,
   fromSourceId = "source-a",
   toSourceId = "source-b",
-): Extract<ExportVideoNode, { type: "transition" }> {
+): Extract<ExportVideoNodeV4, { type: "transition" }> {
   return {
     type: "transition",
     id: `transition-${kind}`,
@@ -68,10 +70,24 @@ export function canonicalTextBox(
 }
 
 export function canonicalGraph(
-  video: ExportVideoNode[] = [canonicalSource("source-a", 0, 1_000)],
+  video: ExportVideoNodeV4[] = [canonicalSource("source-a", 0, 1_000)],
 ): ExportCompositionGraphV4 {
   return {
     schema_version: 4,
+    output_width: 1_280,
+    output_height: 720,
+    output_fps: 60,
+    duration_ms: 2_000,
+    video,
+    audio: [],
+  };
+}
+
+export function canonicalGraphV5(
+  video: ExportVideoNodeV5[] = [canonicalSource("source-a", 0, 1_000)],
+): ExportCompositionGraphV5 {
+  return {
+    schema_version: 5,
     output_width: 1_280,
     output_height: 720,
     output_fps: 60,

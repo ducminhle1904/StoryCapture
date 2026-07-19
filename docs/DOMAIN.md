@@ -245,18 +245,29 @@ input timing, is sampled only from playhead/source time, and uses the same
 bounded canonical Canvas primitives in Preview and export. Trajectory-only
 and PNG-sequence cursors do not infer clicks and keep the controls disabled.
 
-`computeGraph` emits the JSON-safe schema-v4 composition contract from
-`packages/shared-types/src/export-composition.ts`. Preview and export evaluate
-that same contract through the canonical scene evaluator and Canvas renderer;
-the hidden export window is only a host for the canonical engine. Source-copy
-and source-only bypasses are retired: MP4, WebM, and GIF all receive raw BGRA
-frames from the canonical renderer, including multi-source transitions,
-background, zoom, cursor, ripple, highlight, and text layers.
+`computeGraph` emits the JSON-safe schema-v5 composition contract from
+`packages/shared-types/src/export-composition.ts`. Preview, export, and host
+planning accept schema V4 and V5; legacy V4 `padding_px` geometry remains exact.
+The canonical scene evaluator and Canvas renderer evaluate the graph, while the
+hidden export window is only a host for the canonical engine. Source-copy and
+source-only bypasses are retired: MP4, WebM, and GIF all receive raw BGRA frames
+from the canonical renderer, including multi-source transitions, background,
+zoom, cursor, ripple, highlight, and text layers.
+Preview adds a presentation-only layout: the canonical background spans the
+full editor stage while the exact composition is aspect-fitted inside it. This
+does not change graph or export geometry; export renders the canonical canvas
+at its exact output dimensions.
 In framed mode, the editor's transparent background means the canonical
 ambient treatment: a blurred, darkened source fill behind the contained source
-frame. Match-source keeps the foreground at native pixels and expands the
-output by the configured frame padding. Source mode remains full-bleed and
-does not emit a background node.
+frame. V5 background nodes carry a centered `foreground_scale` from 0.70 to
+1.00, defaulting to 0.85. Match-source uses the recorded source dimensions
+exactly instead of expanding the output for frame padding. Source frame mode
+forces scale 1 and radius 0 for full-bleed output; its background node may
+remain in the graph but is covered by the foreground. While Source fill is
+active, the Background panel keeps the saved foreground size visible and labels
+it as overridden. Choosing a size preset, adjusting the slider, or selecting
+`Use cinematic frame` switches to Cinematic framing so the saved size takes
+effect; Source fill itself remains full-bleed until that switch.
 
 The host creates an Electron offscreen backing store at an explicit capture DPR
 and reads the renderer's presented frame without depending on the physical

@@ -13,6 +13,10 @@
     "./ipc": {
       "types": "./src/ipc.ts",
       "import": "./src/ipc.ts"
+    },
+    "./export-composition": {
+      "types": "./src/export-composition.ts",
+      "import": "./src/export-composition.ts"
     }
   },
   "dependencies": {

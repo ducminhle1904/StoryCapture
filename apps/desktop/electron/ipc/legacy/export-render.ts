@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import slugify from "@sindresorhus/slugify";
-import type { ExportCompositionGraphV4, ExportJobStatus } from "@storycapture/shared-types";
+import type { ExportJobStatus, SupportedExportCompositionGraph } from "@storycapture/shared-types";
 import type { WebContents } from "electron";
 import { exportFfmpegPath } from "../export-binaries";
 import { clampFps } from "./capture-preview";
@@ -166,7 +166,7 @@ function setJobPhase(
   broadcastRenderProgress(session.job, session.frame);
 }
 
-function graphSourceNodes(graph: ExportCompositionGraphV4) {
+function graphSourceNodes(graph: SupportedExportCompositionGraph) {
   return graph.video.filter((node) => node.type === "source");
 }
 
@@ -260,7 +260,7 @@ async function executeExportRenderJob(queued: QueuedExportRenderJob): Promise<vo
     }
     renderJob.started_at = Date.now();
     setJobPhase(session, "mixing", 2, 0);
-    const graph = args.plan.graph as unknown as ExportCompositionGraphV4;
+    const graph = args.plan.graph as unknown as SupportedExportCompositionGraph;
     const sourceAudio =
       args.output.format === "gif"
         ? {}

@@ -26,14 +26,15 @@
  * value, so we bypass setters entirely.
  */
 
+import { EXPORT_FOREGROUND_SCALE_DEFAULT } from "@storycapture/shared-types";
 import type { RecordingActions } from "@/ipc/actions";
 import type { CaptureRect, RecordingStepTimingSidecar } from "@/ipc/trajectory";
-import { useEditorStore } from "../state/store";
+import { type EditorBackgroundKind, useEditorStore } from "../state/store";
 import type { Clip, SoundClip, TrackId } from "../state/timeline-slice";
 
 export type GraphSnapshot = Record<string, unknown>;
 export type TextOverlay = Record<string, unknown>;
-export type BackgroundKind = Record<string, unknown>;
+export type BackgroundKind = EditorBackgroundKind;
 
 export type ActionKind =
   | "edit-sync-group"
@@ -152,7 +153,7 @@ export interface UndoExtras {
 export const DEFAULT_UNDO_EXTRAS: UndoExtras = {
   graphSnapshot: {},
   textOverlays: {},
-  background: { kind: "transparent" },
+  background: { kind: "transparent", foregroundScale: EXPORT_FOREGROUND_SCALE_DEFAULT },
 };
 
 function readExtras(): UndoExtras {

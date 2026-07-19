@@ -200,7 +200,7 @@ describe("PreviewPlayer", () => {
       setPresentationViewport: ReturnType<typeof vi.fn>;
     };
     expect(adapter.configure).toHaveBeenCalledWith(
-      expect.objectContaining({ schema_version: 4, output_width: 1920, output_height: 1080 }),
+      expect.objectContaining({ schema_version: 5, output_width: 1920, output_height: 1080 }),
     );
     const frame = screen.getByTestId("preview-zoom-layer").parentElement;
     expect(frame).toHaveClass("max-w-none");

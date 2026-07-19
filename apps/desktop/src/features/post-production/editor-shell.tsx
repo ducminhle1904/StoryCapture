@@ -58,7 +58,7 @@ import { styleDefaults } from "./state/text-style";
 import {
   parseTimelineLayoutJson,
   serializeTimelineLayout,
-  type TimelineLayoutV2,
+  type TimelineLayout,
 } from "./state/timeline-layout";
 import {
   type AnnotationClip,
@@ -74,7 +74,6 @@ export interface EditorShellProps {
   storyId: string;
   videoSrc?: string;
 }
-
 function maxTrackEndMs(tracks: TimelineSlice["tracks"]): number {
   let maxEndMs = 0;
   for (const clips of Object.values(tracks)) {
@@ -112,7 +111,7 @@ function serializeCurrentTimelineLayout(): string {
 }
 
 function timelineLayoutMatchesRecording(
-  layout: TimelineLayoutV2,
+  layout: TimelineLayout,
   recording: RecordingInfo,
 ): boolean {
   return (
@@ -476,7 +475,7 @@ export function EditorShell({ storyId, videoSrc }: EditorShellProps) {
         ...(state._undoExtras ?? {
           graphSnapshot: {},
           textOverlays: {},
-          background: { kind: "transparent" },
+          background: DEFAULT_BACKGROUND,
         }),
         actions: recordingActions,
         stepTiming: stepTimingQuery.data ?? null,

@@ -1,3 +1,8 @@
+import {
+  EXPORT_FOREGROUND_SCALE_MAX,
+  EXPORT_FOREGROUND_SCALE_MIN,
+  isValidExportForegroundScale,
+} from "@storycapture/shared-types/export-composition";
 import type { ExportAudioPlan as CanonicalExportAudioPlan } from "./export-audio-planning";
 import type { ExportEncoderOptions, ExportOutput } from "./shared";
 
@@ -436,6 +441,23 @@ function parseExportGraph(graphJson: string): ExportGraph {
   return parsed;
 }
 
+function validateCompositionGraphVersion(graph: ExportGraph): string | null {
+  if (graph.schema_version !== 4 && graph.schema_version !== 5) {
+    return `canonical export requires composition graph schema v4 or v5 (received ${String(graph.schema_version)})`;
+  }
+  if (graph.schema_version !== 5) return null;
+
+  for (const node of Array.isArray(graph.video) ? graph.video : []) {
+    if (node.type !== "background") continue;
+    const scale = node.foreground_scale;
+    if (!isValidExportForegroundScale(scale)) {
+      const nodeId = typeof node.id === "string" ? ` ${node.id}` : "";
+      return `composition graph schema v5 background${nodeId} foreground_scale must be a finite number between ${EXPORT_FOREGROUND_SCALE_MIN} and ${EXPORT_FOREGROUND_SCALE_MAX}`;
+    }
+  }
+  return null;
+}
+
 function sourceNodes(graph: ExportGraph): ExportSourceNode[] {
   return (Array.isArray(graph.video) ? graph.video : [])
     .filter((node) => node.type === "source")
@@ -478,8 +500,9 @@ export function analyzeExportPlan(graphJson: string, output: ExportOutput): Expo
   }
 
   const sources = sourceNodes(graph);
-  if (graph.schema_version !== 4) {
-    return unsupportedPlan(output, graph, "canonical export requires composition graph schema v4");
+  const versionError = validateCompositionGraphVersion(graph);
+  if (versionError) {
+    return unsupportedPlan(output, graph, versionError);
   }
   if (sources.length === 0 || sources.some((source) => !source.path)) {
     return unsupportedPlan(output, graph, "export graph has no source video");

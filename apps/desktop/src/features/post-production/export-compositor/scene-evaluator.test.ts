@@ -3,11 +3,16 @@ import { describe, expect, it } from "vitest";
 import type { VirtualCursorSample } from "../preview/virtual-cursor-path";
 import {
   canonicalGraph,
+  canonicalGraphV5,
   canonicalSource,
   canonicalTextBox,
   canonicalTransition,
 } from "./canonical-test-fixture";
-import { CANONICAL_VISUAL_NODE_TYPES, evaluateScene } from "./scene-evaluator";
+import {
+  CANONICAL_VISUAL_NODE_TYPES,
+  evaluateScene,
+  resolveSceneContentRect,
+} from "./scene-evaluator";
 
 describe("canonical scene evaluator", () => {
   it("keeps an explicit exhaustive mapping for every visual graph node", () => {
@@ -21,6 +26,115 @@ describe("canonical scene evaluator", () => {
       "text-overlay",
       "transition",
     ]);
+  });
+
+  it("preserves the exact V4 padding rectangle", () => {
+    const graph = canonicalGraph([
+      canonicalSource("source-a", 0, 1_000),
+      {
+        type: "background",
+        id: "legacy-background",
+        kind: { kind: "ambient" },
+        radius_px: 24,
+        shadow: null,
+        padding_px: 64,
+      },
+    ]);
+    graph.output_width = 1_920;
+    graph.output_height = 1_080;
+
+    expect(resolveSceneContentRect(graph)).toEqual({ x: 64, y: 64, w: 1_792, h: 952 });
+  });
+
+  it.each([
+    ["720p", 1_280, 720],
+    ["1080p", 1_920, 1_080],
+    ["4K", 3_840, 2_160],
+    ["ultrawide", 3_440, 1_440],
+  ])("resolves normalized V5 geometry at %s", (_name, width, height) => {
+    const graph = canonicalGraphV5([
+      canonicalSource("source-a", 0, 1_000),
+      {
+        type: "background",
+        id: "background",
+        kind: { kind: "ambient" },
+        radius_px: 24,
+        shadow: null,
+        foreground_scale: 0.85,
+      },
+    ]);
+    graph.output_width = width;
+    graph.output_height = height;
+
+    expect(resolveSceneContentRect(graph)).toEqual({
+      x: (width * (1 - 0.85)) / 2,
+      y: (height * (1 - 0.85)) / 2,
+      w: width * 0.85,
+      h: height * 0.85,
+    });
+  });
+
+  it.each([
+    0.75, 0.85, 0.95, 1,
+  ])("resolves the fixed-resolution foreground rectangle at scale %s", (scale) => {
+    const graph = canonicalGraphV5([
+      canonicalSource("source-a", 0, 1_000),
+      {
+        type: "background",
+        id: "background",
+        kind: { kind: "ambient" },
+        radius_px: scale === 1 ? 0 : 24,
+        shadow: null,
+        foreground_scale: scale,
+      },
+    ]);
+    graph.output_width = 1_920;
+    graph.output_height = 1_080;
+
+    expect(resolveSceneContentRect(graph)).toEqual({
+      x: (1_920 * (1 - scale)) / 2,
+      y: (1_080 * (1 - scale)) / 2,
+      w: 1_920 * scale,
+      h: 1_080 * scale,
+    });
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["non-finite", Number.NaN],
+    ["below minimum", 0.69],
+    ["above maximum", 1.01],
+  ])("rejects a V5 background with %s foreground_scale", (_name, foregroundScale) => {
+    const graph = canonicalGraphV5([
+      canonicalSource("source-a", 0, 1_000),
+      {
+        type: "background",
+        id: "background",
+        kind: { kind: "ambient" },
+        radius_px: 24,
+        shadow: null,
+        foreground_scale: foregroundScale as number,
+      },
+    ]);
+
+    expect(() => resolveSceneContentRect(graph)).toThrow(/foreground_scale/);
+  });
+
+  it("keeps V5 source mode full-bleed at scale 1", () => {
+    const graph = canonicalGraphV5([
+      canonicalSource("source-a", 0, 1_000),
+      {
+        type: "background",
+        id: "background",
+        kind: { kind: "ambient" },
+        radius_px: 24,
+        shadow: null,
+        foreground_scale: 1,
+      },
+    ]);
+
+    expect(evaluateScene(graph, 500).content_rect).toEqual({ x: 0, y: 0, w: 1_280, h: 720 });
   });
 
   it("evaluates transition overlap, source maps, and tail hold deterministically", () => {

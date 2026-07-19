@@ -1,6 +1,6 @@
 import type {
   ExportBackgroundKind,
-  ExportCompositionGraphV4,
+  ExportCompositionGraphV5,
   ExportTrajectoryRef,
   ExportTransitionKind,
 } from "@storycapture/shared-types";
@@ -89,9 +89,9 @@ function trajectoryRef(
 export function createAllEffectsExportGraph(
   paths: ExportE2eFixturePaths,
   variant: ExportE2eFixtureVariant = DEFAULT_EXPORT_E2E_VARIANT,
-): ExportCompositionGraphV4 {
+): ExportCompositionGraphV5 {
   return {
-    schema_version: 4,
+    schema_version: 5,
     output_width: 320,
     output_height: 180,
     output_fps: 30,
@@ -125,7 +125,7 @@ export function createAllEffectsExportGraph(
         kind: backgroundKind(variant.background, paths),
         radius_px: 12,
         shadow: null,
-        padding_px: 12,
+        foreground_scale: 0.85,
       },
       {
         type: "zoom-pan",

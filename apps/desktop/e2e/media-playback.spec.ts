@@ -43,7 +43,7 @@ test("loads the bundled cursor skin through Vite in the Electron dev renderer", 
       const pool = new CanonicalImageAssetPool();
       try {
         await pool.configure({
-          schema_version: 4,
+          schema_version: 5,
           output_width: 1_280,
           output_height: 720,
           output_fps: 30,

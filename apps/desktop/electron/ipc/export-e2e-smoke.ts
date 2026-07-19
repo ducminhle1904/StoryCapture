@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { ExportCompositionGraphV4 } from "@storycapture/shared-types";
+import type { ExportCompositionGraphV5 } from "@storycapture/shared-types";
 
 import {
   createAllEffectsExportGraph,
@@ -362,7 +362,7 @@ async function waitForJobs(
 }
 
 async function renderCanonicalGoldens(
-  graph: ExportCompositionGraphV4,
+  graph: ExportCompositionGraphV5,
 ): Promise<Map<number, Buffer>> {
   const host = createExportCompositorHost({
     graph,
@@ -482,9 +482,9 @@ async function createIndependentQualityFixture(root: string): Promise<{
   return { sourcePath, audioPath };
 }
 
-function independentQualityGraph(sourcePath: string, audioPath: string): ExportCompositionGraphV4 {
+function independentQualityGraph(sourcePath: string, audioPath: string): ExportCompositionGraphV5 {
   return {
-    schema_version: 4,
+    schema_version: 5,
     output_width: QUALITY_WIDTH,
     output_height: QUALITY_HEIGHT,
     output_fps: QUALITY_FPS,
@@ -555,7 +555,7 @@ async function availableHardwareCandidates(): Promise<HardwareEncoderCandidate[]
 }
 
 async function runHardwareHighQualityGate(
-  graph: ExportCompositionGraphV4,
+  graph: ExportCompositionGraphV5,
   reference: Buffer,
   outputRoot: string,
 ): Promise<ExportPipelineSmokeEvidence["independentQuality"]["hardwareHigh"]> {
@@ -744,7 +744,7 @@ async function runCaptureMatrix(
       output_height: fixture.height,
       output_fps: fixture.fps,
       audio: [],
-    } satisfies ExportCompositionGraphV4;
+    } satisfies ExportCompositionGraphV5;
     const host = createExportCompositorHost(
       {
         graph,
